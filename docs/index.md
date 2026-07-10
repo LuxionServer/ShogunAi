@@ -8,7 +8,7 @@ Orquestador de escritorio (Kotlin Multiplatform) para automatizar workflows de d
 
 ## Estado del proyecto
 
-En desarrollo activo. La iteración 1 cubre la capa de dominio e infraestructura del flujo de worktrees (sin GUI todavía). Ver [decisiones de diseño](decisions/index.md) para el detalle de lo decidido en cada iteración.
+En desarrollo activo. La iteración 1 cubrió la capa de dominio e infraestructura del flujo de worktrees; el cambio `project-worktree-ui` añadió la GUI en Compose (catálogo de proyectos, configuración y gestión de worktrees). Ver [decisiones de diseño](decisions/index.md) y `openspec/changes/archive/` para el detalle de lo decidido en cada iteración/cambio.
 
 ## Dónde mirar
 

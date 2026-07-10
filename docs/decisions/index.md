@@ -22,4 +22,4 @@ Motivo: que la futura capa de GUI pueda decidir qué mensaje mostrar inspecciona
 **Los puertos de dominio (`ShellCommandExecutor`, `FileManager`) tienen implementación real y doble de test.**
 `ProcessBuilderShellCommandExecutor` ejecuta el comando como argv (no `sh -c`) para evitar diferencias de shell entre macOS y Linux, y problemas de inyección/escapado. `NioFileManager` usa `java.nio.file`. Ambos tienen fakes (`FakeShellCommandExecutor`, `FakeFileManager`) para testear los casos de uso sin tocar disco ni lanzar procesos.
 
-**Pendiente / próxima iteración**: la GUI en Compose (lista de worktrees activos + acciones de crear/eliminar). Requiere decisiones de diseño de UI antes de construirse.
+**GUI en Compose**: implementada en el cambio `project-worktree-ui` (catálogo de proyectos, formulario de configuración, gestión de worktrees). Decisiones de diseño de esa iteración en `openspec/changes/archive/`.
