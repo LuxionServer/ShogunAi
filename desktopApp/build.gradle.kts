@@ -11,8 +11,12 @@ dependencies {
 
     implementation(compose.desktop.currentOs)
     implementation(libs.kotlinx.coroutinesSwing)
+    implementation(libs.kotlinx.coroutinesCore)
 
     implementation(libs.compose.uiToolingPreview)
+
+    testImplementation(libs.kotlin.testJunit)
+    testImplementation(libs.kotlinx.coroutinesTest)
 }
 
 compose.desktop {
