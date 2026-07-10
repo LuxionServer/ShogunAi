@@ -48,6 +48,7 @@ nav:
       - Visión general: architecture/overview.md
       - Capa de dominio: architecture/domain.md
       - Capa de infraestructura: architecture/infrastructure.md
+      - Capa de UI: architecture/ui.md
   - Proceso de desarrollo:
       - OpenSpec: process/openspec.md
   - Decisiones de diseño: decisions/index.md
