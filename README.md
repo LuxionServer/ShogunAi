@@ -22,6 +22,15 @@ Use the run configurations provided by the run widget in your IDE's toolbar. You
   - Hot reload: `./gradlew :desktopApp:hotRun --auto`
   - Standard run: `./gradlew :desktopApp:run`
 
+### Documentation
+
+Architecture and design decisions are documented with MkDocs in [`/docs`](./docs).
+
+```bash
+pip install -r requirements-docs.txt
+mkdocs serve
+```
+
 ---
 
 Learn more about [Kotlin Multiplatform](https://www.jetbrains.com/help/kotlin-multiplatform-dev/get-started.html)…
