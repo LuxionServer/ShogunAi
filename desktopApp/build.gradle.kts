@@ -34,7 +34,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "app.luxion.shogunai"
-            packageVersion = "1.0.0"
+            packageVersion = (findProperty("appVersion") as String?) ?: "0.0.0-dev"
         }
     }
 }
