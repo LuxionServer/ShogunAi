@@ -1,0 +1,53 @@
+site_name: ShogunAi
+site_description: KMP Desktop orchestrator for Git worktrees, Android environment bootstrapping, and AI agent workflow automation.
+repo_name: ShogunAi
+repo_url: https://github.com/CiroFeliu/ShogunAi
+
+theme:
+  name: material
+  language: es
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - content.code.annotate
+  palette:
+    - scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/weather-night
+        name: Cambiar a modo claro
+    - scheme: default
+      primary: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Cambiar a modo oscuro
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - tables
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+  - git-revision-date
+
+nav:
+  - Inicio: index.md
+  - Arquitectura:
+      - Visión general: architecture/overview.md
+      - Capa de dominio: architecture/domain.md
+      - Capa de infraestructura: architecture/infrastructure.md
+  - Proceso de desarrollo:
+      - OpenSpec: process/openspec.md
+  - Decisiones de diseño: decisions/index.md
