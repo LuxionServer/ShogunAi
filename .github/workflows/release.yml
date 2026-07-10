@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  resolve-version:
+    if: >
+      github.event_name == 'push' ||
+      (github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/'))
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.ref }}
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BRANCH="${{ github.event.pull_request.head.ref }}"
+            VERSION="${BRANCH#release/}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # git tag directamente sobre push de tag no hace falta re-crearlo;
+      # solo se taggea acá cuando el disparo fue el merge de la PR de release/*.
+      - name: Tag merge commit
+        if: github.event_name == 'pull_request'
+        run: |
+          git tag "v${{ steps.version.outputs.value }}" ${{ github.event.pull_request.merge_commit_sha }}
+          git push origin "v${{ steps.version.outputs.value }}"
+
+  build:
+    needs: resolve-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            task: packageReleaseDmg
+            artifact-glob: desktopApp/build/compose/binaries/main-release/dmg/*.dmg
+          - os: windows-latest
+            task: packageReleaseMsi
+            artifact-glob: desktopApp/build/compose/binaries/main-release/msi/*.msi
+          - os: ubuntu-latest
+            task: packageReleaseDeb
+            artifact-glob: desktopApp/build/compose/binaries/main-release/deb/*.deb
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.ref }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: corretto
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build installer
+        run: ./gradlew :desktopApp:${{ matrix.task }} -PappVersion=${{ needs.resolve-version.outputs.version }}
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.resolve-version.outputs.version }}
+          files: ${{ matrix.artifact-glob }}
+          generate_release_notes: true
