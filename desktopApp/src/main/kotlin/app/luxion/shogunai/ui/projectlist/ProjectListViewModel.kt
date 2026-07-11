@@ -18,4 +18,9 @@ class ProjectListViewModel(private val projectRepository: ProjectRepository) : V
     fun refresh() {
         projects = projectRepository.list()
     }
+
+    fun deleteProject(project: Project) {
+        projectRepository.delete(project.id)
+        refresh()
+    }
 }
