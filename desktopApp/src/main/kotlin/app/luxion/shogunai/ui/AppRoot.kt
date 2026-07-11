@@ -29,6 +29,7 @@ fun AppRoot(appContainer: AppContainer) {
                     viewModel = viewModel,
                     onSelectProject = { screen = Screen.WorktreeManagement(it) },
                     onNewProject = { screen = Screen.ProjectConfigForm() },
+                    onEditProject = { screen = Screen.ProjectConfigForm(existingProject = it) },
                 )
             }
 
