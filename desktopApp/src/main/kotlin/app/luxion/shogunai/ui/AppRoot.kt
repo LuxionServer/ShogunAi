@@ -1,6 +1,5 @@
 package app.luxion.shogunai.ui
 
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -12,6 +11,7 @@ import app.luxion.shogunai.ui.projectconfig.ProjectConfigScreen
 import app.luxion.shogunai.ui.projectconfig.ProjectConfigViewModel
 import app.luxion.shogunai.ui.projectlist.ProjectListScreen
 import app.luxion.shogunai.ui.projectlist.ProjectListViewModel
+import app.luxion.shogunai.ui.theme.ShogunAiTheme
 import app.luxion.shogunai.ui.worktree.WorktreeScreen
 import app.luxion.shogunai.ui.worktree.WorktreeViewModel
 
@@ -19,7 +19,7 @@ import app.luxion.shogunai.ui.worktree.WorktreeViewModel
 fun AppRoot(appContainer: AppContainer) {
     var screen by remember { mutableStateOf<Screen>(Screen.ProjectList) }
 
-    MaterialTheme {
+    ShogunAiTheme {
         when (val current = screen) {
             is Screen.ProjectList -> {
                 val viewModel = viewModel { ProjectListViewModel(appContainer.projectRepository) }
