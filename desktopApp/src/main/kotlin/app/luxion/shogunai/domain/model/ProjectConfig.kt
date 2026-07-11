@@ -1,5 +1,7 @@
 package app.luxion.shogunai.domain.model
 
+import kotlinx.serialization.Serializable
+
 /**
  * Configuración de un proyecto sobre el que se crean worktrees.
  *
@@ -13,6 +15,7 @@ package app.luxion.shogunai.domain.model
  * @param secretFiles Archivos de credenciales locales que hay que copiar al
  *   nuevo worktree para poder compilar (p. ej. `local.properties`).
  */
+@Serializable
 data class ProjectConfig(
     val baseRepositoryPath: String,
     val worktreesRoot: String,

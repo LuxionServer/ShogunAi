@@ -1,27 +1,45 @@
 # ShogunAi
-KMP Desktop orchestrator for Git worktrees, Android environment bootstrapping, and AI agent workflow automation.
 
-ShogunAI is a Kotlin Multiplatform desktop application designed to eliminate context switching in complex development workflows. It acts as an orchestrator that automates the creation of isolated Git worktrees, dynamically provisions local secrets for Android compilation, and prepares the exact system state required for autonomous AI agents (Copilot/Claude) to begin execution immediately.
+Orquestador de escritorio que automatiza la creación y gestión de **Git worktrees** aislados, con aprovisionamiento automático de secretos locales — pensado para eliminar el cambio de contexto manual cuando trabajas (o un agente de IA como Claude/Copilot trabaja) en varias tareas a la vez.
 
-This is a Kotlin Multiplatform project targeting Desktop (JVM).
+## Qué hace
 
-* [/shared](./shared/src) is for code that will be shared across your Compose Multiplatform applications.
-  It contains several subfolders:
-  - [commonMain](./shared/src/commonMain/kotlin) is for code that’s common for all targets.
-  - Other folders are for Kotlin code that will be compiled for only the platform indicated in the folder name.
-    For example, if you want to use Apple’s CoreCrypto for the iOS part of your Kotlin app,
-    the [iosMain](./shared/src/iosMain/kotlin) folder would be the right place for such calls.
-    Similarly, if you want to edit the Desktop (JVM) specific part, the [jvmMain](./shared/src/jvmMain/kotlin)
-    folder is the appropriate location.
+- Crea y elimina **Git worktrees** aislados para cada tarea, cada uno en su propia rama (`feature/` o `fix/`).
+- Copia automáticamente a cada worktree nuevo los **archivos de secretos locales** que necesites para compilar (p. ej. `local.properties` de Android).
+- Gestiona varios proyectos desde un catálogo, cada uno con su propia configuración (repositorio base, carpeta de worktrees, secretos).
 
-### Running the apps
+## Instalación
 
-Use the run configurations provided by the run widget in your IDE's toolbar. You can also use these commands and options:
+Descarga el instalador para tu sistema operativo desde la [última versión publicada](https://github.com/LuxionServer/ShogunAi/releases/latest):
 
-- Desktop app:
-  - Hot reload: `./gradlew :desktopApp:hotRun --auto`
-  - Standard run: `./gradlew :desktopApp:run`
+| Sistema operativo | Instalador |
+|---|---|
+| macOS | `.dmg` |
+| Windows | `.msi` |
+| Linux | `.deb` |
 
----
+Instálalo como cualquier otra app de escritorio y ábrelo. No necesitas tener JDK ni herramientas de desarrollo instaladas: el instalador incluye su propio runtime.
 
-Learn more about [Kotlin Multiplatform](https://www.jetbrains.com/help/kotlin-multiplatform-dev/get-started.html)…
+## Uso básico
+
+1. **Crea un proyecto** — al abrir la app por primera vez verás el catálogo de proyectos vacío. Pulsa "Nuevo proyecto" e indica un nombre, la ruta del repositorio base y la carpeta donde se crearán los worktrees. Opcionalmente añade los archivos de secretos que deben copiarse a cada worktree nuevo.
+2. **Entra a un proyecto** — selecciónalo desde el catálogo para ver sus worktrees existentes.
+3. **Crea un worktree** — indica el id de la tarea y el tipo de rama (`feature` o `fix`); la app crea el worktree, la rama y copia los secretos configurados.
+4. **Elimina un worktree** — cuando termines una tarea, elimínalo desde la lista, con la opción de borrar también la rama local. El worktree principal no se puede eliminar.
+
+## Desarrollo
+
+¿Quieres compilar el proyecto desde el código fuente o contribuir? Empieza por [`docs/getting-started.md`](./docs/getting-started.md).
+
+## Documentación
+
+Arquitectura y decisiones de diseño en [`/docs`](./docs), servida con MkDocs:
+
+```bash
+pip install -r requirements-docs.txt
+mkdocs serve
+```
+
+## Licencia
+
+[GNU GPLv3](./LICENSE)

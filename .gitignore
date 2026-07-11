@@ -17,6 +17,7 @@ captures
 !*.xcworkspace/contents.xcworkspacedata
 **/xcshareddata/WorkspaceSettings.xcsettings
 node_modules/
+/site/
 /.claude/.headroom_wrap_marker.json
 /.tokensave/branch-meta.json
 /.tokensave/config.json
