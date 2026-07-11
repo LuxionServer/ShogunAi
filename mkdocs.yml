@@ -51,4 +51,5 @@ nav:
       - Capa de UI: architecture/ui.md
   - Proceso de desarrollo:
       - OpenSpec: process/openspec.md
+      - Release: process/release.md
   - Decisiones de diseño: decisions/index.md
