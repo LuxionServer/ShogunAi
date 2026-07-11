@@ -1,6 +1,7 @@
 package app.luxion.shogunai.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,10 +24,12 @@ fun AppRoot(appContainer: AppContainer) {
         when (val current = screen) {
             is Screen.ProjectList -> {
                 val viewModel = viewModel { ProjectListViewModel(appContainer.projectRepository) }
+                LaunchedEffect(Unit) { viewModel.refresh() }
                 ProjectListScreen(
                     viewModel = viewModel,
                     onSelectProject = { screen = Screen.WorktreeManagement(it) },
                     onNewProject = { screen = Screen.ProjectConfigForm() },
+                    onEditProject = { screen = Screen.ProjectConfigForm(existingProject = it) },
                 )
             }
 
