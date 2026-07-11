@@ -14,6 +14,7 @@ En desarrollo activo. La iteración 1 cubrió la capa de dominio e infraestructu
 
 | Quiero... | Ir a |
 |---|---|
+| Aterrizar en el repo por primera vez (requisitos, cómo ejecutarlo, cómo orientarme) | [Primeros pasos](getting-started.md) |
 | Entender cómo está organizado el código | [Arquitectura › Visión general](architecture/overview.md) |
 | Ver los modelos y casos de uso del dominio | [Arquitectura › Capa de dominio](architecture/domain.md) |
 | Ver cómo se implementan los puertos (Git, ficheros) | [Arquitectura › Capa de infraestructura](architecture/infrastructure.md) |
