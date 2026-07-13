@@ -18,10 +18,11 @@ graph LR
 3. **Abrir la PR** de `release/X.X.X` a `main` y revisarla como cualquier otra.
 4. **Mergear** — al mergearse una PR cuya rama de origen matchea `release/*`, el workflow `Release` (`.github/workflows/release.yml`):
       1. crea y pushea el tag `vX.X.X` sobre el commit de merge (la versión sale del nombre de la rama, no hay que escribirla dos veces),
-      2. compila los instaladores en macOS/Windows/Linux (`packageReleaseDmg`/`Msi`/`Deb`) pasando esa versión,
-      3. publica los tres instaladores como assets de un GitHub Release con notas autogeneradas.
+      2. crea el GitHub Release en modo **draft** con las notas autogeneradas (una sola vez, antes de compilar),
+      3. compila los instaladores en macOS/Windows/Linux (`packageReleaseDmg`/`Msi`/`Deb`) pasando esa versión y sube cada uno como asset de esa release, que se mantiene en draft mientras dura la subida en paralelo,
+      4. una vez subidos los tres instaladores, publica la release (saca el draft).
 
-Todo el paso 4 ocurre en un único run de CI, sin intervención manual.
+Todo el paso 4 ocurre en un único run de CI, sin intervención manual. La release se crea en draft y recién se publica al final porque una release ya publicada es inmutable para GitHub (rechaza nuevos assets) y porque generar las notas una sola vez evita que se dupliquen si cada build del matrix las regenerara por su cuenta.
 
 ## Versión del instalador
 

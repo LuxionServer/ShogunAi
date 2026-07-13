@@ -5,11 +5,14 @@ import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
+import app.luxion.shogunai.domain.FakeTerminalEmulatorDetector
+import app.luxion.shogunai.domain.FakeTerminalLauncher
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
+import app.luxion.shogunai.domain.usecase.OpenWorktreeTerminalUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -62,6 +65,7 @@ class WorktreeViewModelTest {
             list = ListWorktreesUseCase(config, executor),
             create = CreateWorktreeUseCase(config, executor, FakeFileManager()),
             remove = RemoveWorktreeUseCase(config, executor),
+            openTerminal = OpenWorktreeTerminalUseCase(config, FakeTerminalLauncher(), FakeTerminalEmulatorDetector()),
         )
     }
 
