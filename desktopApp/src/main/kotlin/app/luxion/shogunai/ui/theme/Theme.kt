@@ -4,12 +4,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import app.luxion.shogunai.domain.model.ThemeMode
 
-// Paleta pensada para modo oscuro. El modo claro (spec futura "theme-mode-switching")
-// añadirá un ShogunLightColorScheme análogo y un parámetro darkTheme aquí; hasta entonces
-// ShogunAiTheme aplica siempre este esquema.
 private val ShogunDarkColorScheme = darkColorScheme(
     primary = ShogunRed,
     onPrimary = ShogunOnAccent,
@@ -27,10 +27,33 @@ private val ShogunDarkColorScheme = darkColorScheme(
     outline = ShogunOutline,
 )
 
+private val ShogunLightColorScheme = lightColorScheme(
+    primary = ShogunRed,
+    onPrimary = ShogunOnAccent,
+    secondary = ShogunSlate,
+    onSecondary = ShogunOnAccent,
+    tertiary = ShogunRedLight,
+    onTertiary = ShogunOnAccent,
+    background = ShogunLightBackground,
+    onBackground = ShogunLightOnBackground,
+    surface = ShogunLightSurface,
+    onSurface = ShogunLightOnSurface,
+    surfaceVariant = ShogunLightSurfaceVariant,
+    onSurfaceVariant = ShogunLightOnSurfaceVariant,
+    error = ShogunLightError,
+    outline = ShogunLightOutline,
+)
+
 @Composable
-fun ShogunAiTheme(content: @Composable () -> Unit) {
+fun ShogunAiTheme(themeMode: ThemeMode, content: @Composable () -> Unit) {
+    val systemDark by rememberSystemInDarkTheme()
+    val useDark = when (themeMode) {
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+        ThemeMode.SYSTEM -> systemDark
+    }
     MaterialTheme(
-        colorScheme = ShogunDarkColorScheme,
+        colorScheme = if (useDark) ShogunDarkColorScheme else ShogunLightColorScheme,
         typography = ShogunTypography,
     ) {
         // Surface pinta el fondo real de la ventana con colorScheme.background;

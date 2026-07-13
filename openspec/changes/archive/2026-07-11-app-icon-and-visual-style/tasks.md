@@ -25,7 +25,7 @@
 
 ## 5. Verificación
 
-- [ ] 5.1 Ejecutar `./gradlew :desktopApp:run` y navegar por `ProjectListScreen`, `ProjectConfigScreen` y `WorktreeScreen`, confirmando que las tres heredan el nuevo `colorScheme`/`typography` (verificado que la app arranca sin errores y usa el icono propio; falta inspección visual manual de cada pantalla, sin herramienta de captura disponible en esta sesión)
+- [x] 5.1 Ejecutar `./gradlew :desktopApp:run` y navegar por `ProjectListScreen`, `ProjectConfigScreen` y `WorktreeScreen`, confirmando que las tres heredan el nuevo `colorScheme`/`typography` (confirmado visualmente por el usuario)
 - [x] 5.2 Ejecutar `./gradlew test` y confirmar que los tests existentes siguen pasando (el cambio no debería afectarlos al ser puramente de presentación)
 - [x] 5.3 Confirmar que no se introdujeron dependencias nuevas de Gradle
 
@@ -36,4 +36,4 @@
 - [x] 6.3 `ShogunRed` (usado como `primary`, y por defecto como color de texto de `OutlinedButton`/`TextButton`) solo daba ~3:1 de contraste como texto sobre `background`; se aclaró (`0xFFB3382C` → `0xFFD6473C`) para acercarse a ~4:1 en ambos sentidos (como texto sobre fondo oscuro, y como relleno bajo texto claro)
 - [x] 6.4 `onPrimary`/`onSecondary`/`onTertiary` reutilizaban `ShogunOnSurface` (gris claro, no blanco puro); se introdujo `ShogunOnAccent` (blanco puro) para maximizar el contraste sobre los rellenos de color de acento, reforzando la identidad rojo/negro/blanco
 - [x] 6.5 El icono del Dock en macOS dependía únicamente de `-Xdock:icon` (flag JVM vía `nativeDistributions.macOS.iconFile`), poco fiable según el JDK/launcher usado; se añadió `java.awt.Taskbar.setIconImage(...)` en `main.kt` como mecanismo adicional en runtime, independiente de cómo se lance el proceso
-- [ ] 6.6 Confirmación visual del usuario tras relanzar: icono visible en el Dock y contraste de botones aceptable
+- [x] 6.6 Confirmación visual del usuario tras relanzar: icono visible en el Dock y contraste de botones aceptable
