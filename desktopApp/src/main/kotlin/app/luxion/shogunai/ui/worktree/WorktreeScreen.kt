@@ -78,7 +78,11 @@ fun WorktreeScreen(
         Text("Worktrees", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 24.dp))
         LazyColumn(modifier = Modifier.padding(top = 8.dp)) {
             items(viewModel.worktrees) { worktree ->
-                WorktreeRow(worktree = worktree, onRemove = { viewModel.remove(worktree, worktree.branch) })
+                WorktreeRow(
+                    worktree = worktree,
+                    onRemove = { viewModel.remove(worktree, worktree.branch) },
+                    onOpenTerminal = { viewModel.openTerminal(worktree) },
+                )
                 HorizontalDivider()
             }
         }
@@ -86,7 +90,7 @@ fun WorktreeScreen(
 }
 
 @Composable
-private fun WorktreeRow(worktree: Worktree, onRemove: () -> Unit) {
+private fun WorktreeRow(worktree: Worktree, onRemove: () -> Unit, onOpenTerminal: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -95,9 +99,14 @@ private fun WorktreeRow(worktree: Worktree, onRemove: () -> Unit) {
             Text(worktree.path)
             Text(worktree.branch ?: "(detached)", style = MaterialTheme.typography.bodySmall)
         }
-        if (!worktree.isMain) {
-            OutlinedButton(onClick = onRemove) {
-                Text("Eliminar")
+        Row {
+            OutlinedButton(onClick = onOpenTerminal, modifier = Modifier.padding(end = 8.dp)) {
+                Text("Terminal")
+            }
+            if (!worktree.isMain) {
+                OutlinedButton(onClick = onRemove) {
+                    Text("Eliminar")
+                }
             }
         }
     }

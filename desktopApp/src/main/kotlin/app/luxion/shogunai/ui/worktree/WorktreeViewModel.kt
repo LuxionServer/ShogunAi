@@ -47,4 +47,12 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
                 .onFailure { errorMessage = it.message }
         }
     }
+
+    fun openTerminal(worktree: Worktree) {
+        viewModelScope.launch {
+            useCases.openTerminal(worktree.path)
+                .onSuccess { errorMessage = null }
+                .onFailure { errorMessage = it.message }
+        }
+    }
 }
