@@ -63,6 +63,14 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
         }
     }
 
+    fun openTerminal(worktree: Worktree) {
+        viewModelScope.launch {
+            useCases.openTerminal(worktree.path)
+                .onSuccess { errorMessage = null }
+                .onFailure { errorMessage = it.message }
+        }
+    }
+
     fun confirmForceRemoval() {
         val pending = pendingForceRemoval ?: return
         remove(pending.worktree, pending.branchToDelete, force = true)

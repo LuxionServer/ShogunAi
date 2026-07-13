@@ -24,3 +24,4 @@ node_modules/
 /.tokensave/tokensave.db
 /.tokensave/tokensave.db-shm
 /.tokensave/tokensave.db-wal
+/.tokensave/dirty
