@@ -110,6 +110,40 @@ class CreateWorktreeUseCaseTest {
         val gitError = assertIs<WorktreeError.GitCommandFailed>(error)
         assertEquals(128, gitError.exitCode)
         assertTrue(fileManager.copied.isEmpty())
+        assertFalse(
+            executor.executed("git", "worktree", "remove", "--force", worktreePath),
+            "no debe revertir el worktree para fallos de git no relacionados con Git LFS",
+        )
+    }
+
+    @Test
+    fun `rolls back worktree and fails with GitLfsNotFound when git-lfs is missing`() = runTest {
+        val executor = FakeShellCommandExecutor {
+            if (it.first() == "git" && it.getOrNull(1) == "worktree" && it.getOrNull(2) == "add") {
+                failure(
+                    it,
+                    exitCode = 2,
+                    stderr = "This repository is configured for Git LFS but 'git-lfs' was not found on your path.",
+                )
+            } else {
+                success(it)
+            }
+        }
+        val fileManager = FakeFileManager(existing = baseWithSecrets)
+        val useCase = CreateWorktreeUseCase(config, executor, fileManager)
+
+        val error = useCase("TASK-123", BranchType.FEATURE).exceptionOrNull()
+
+        assertIs<WorktreeError.GitLfsNotFound>(error)
+        assertTrue(fileManager.copied.isEmpty())
+        assertTrue(
+            executor.executed("git", "worktree", "remove", "--force", worktreePath),
+            "debe revertir el worktree que Git dejó a medias",
+        )
+        assertTrue(
+            executor.executed("git", "branch", "-D", "feature/TASK-123"),
+            "debe revertir la rama que Git dejó creada para que un reintento no choque con ella",
+        )
     }
 
     @Test

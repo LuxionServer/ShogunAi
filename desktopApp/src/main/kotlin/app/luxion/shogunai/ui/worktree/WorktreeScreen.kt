@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -14,6 +15,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -86,6 +88,24 @@ fun WorktreeScreen(
                 HorizontalDivider()
             }
         }
+    }
+
+    viewModel.worktreePendingForceRemoval?.let { worktree ->
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissForceRemoval() },
+            title = { Text("¿Forzar eliminación?") },
+            text = { Text("\"${worktree.path}\" tiene cambios sin guardar. Se perderán si se elimina el worktree.") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.confirmForceRemoval() }) {
+                    Text("Forzar eliminación")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissForceRemoval() }) {
+                    Text("Cancelar")
+                }
+            },
+        )
     }
 }
 

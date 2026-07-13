@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import app.luxion.shogunai.WorktreeUseCases
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.Worktree
+import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.launch
 
 class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
@@ -17,6 +18,10 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
         private set
     var errorMessage by mutableStateOf<String?>(null)
         private set
+
+    private var pendingForceRemoval by mutableStateOf<PendingForceRemoval?>(null)
+    val worktreePendingForceRemoval: Worktree?
+        get() = pendingForceRemoval?.worktree
 
     init {
         refresh()
@@ -43,8 +48,18 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
     fun remove(worktree: Worktree, branchToDelete: String?, force: Boolean = false) {
         viewModelScope.launch {
             useCases.remove(worktree.path, branchToDelete, force)
-                .onSuccess { worktrees = worktrees.filterNot { it.path == worktree.path }; errorMessage = null }
-                .onFailure { errorMessage = it.message }
+                .onSuccess {
+                    worktrees = worktrees.filterNot { it.path == worktree.path }
+                    errorMessage = null
+                    pendingForceRemoval = null
+                }
+                .onFailure { error ->
+                    if (!force && error.suggestsForceRetry()) {
+                        pendingForceRemoval = PendingForceRemoval(worktree, branchToDelete)
+                    } else {
+                        errorMessage = error.message
+                    }
+                }
         }
     }
 
@@ -55,4 +70,18 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
                 .onFailure { errorMessage = it.message }
         }
     }
+
+    fun confirmForceRemoval() {
+        val pending = pendingForceRemoval ?: return
+        remove(pending.worktree, pending.branchToDelete, force = true)
+    }
+
+    fun dismissForceRemoval() {
+        pendingForceRemoval = null
+    }
+
+    private data class PendingForceRemoval(val worktree: Worktree, val branchToDelete: String?)
 }
+
+private fun Throwable.suggestsForceRetry(): Boolean =
+    this is WorktreeError.GitCommandFailed && errorOutput.contains("--force", ignoreCase = true)

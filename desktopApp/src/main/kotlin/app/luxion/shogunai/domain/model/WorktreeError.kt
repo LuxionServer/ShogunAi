@@ -42,4 +42,10 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     /** El sistema operativo no pudo iniciar el proceso de la terminal. */
     class TerminalLaunchFailed(cause: Throwable) :
         WorktreeError("Falló el lanzamiento de la terminal: ${cause.message}", cause)
+
+    /** El repositorio requiere Git LFS pero el binario `git-lfs` no está instalado. */
+    object GitLfsNotFound : WorktreeError(
+        "El repositorio requiere Git LFS pero 'git-lfs' no está instalado. " +
+            "Instalalo desde https://git-lfs.com y volvé a intentarlo.",
+    )
 }

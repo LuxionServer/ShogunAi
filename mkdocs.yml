@@ -44,6 +44,7 @@ plugins:
 
 nav:
   - Inicio: index.md
+  - Primeros pasos: getting-started.md
   - Arquitectura:
       - Visión general: architecture/overview.md
       - Capa de dominio: architecture/domain.md
@@ -51,4 +52,5 @@ nav:
       - Capa de UI: architecture/ui.md
   - Proceso de desarrollo:
       - OpenSpec: process/openspec.md
+      - Release: process/release.md
   - Decisiones de diseño: decisions/index.md
