@@ -35,6 +35,14 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class SecretCopyFailed(cause: Throwable) :
         WorktreeError("Falló la copia de archivos de secretos: ${cause.message}", cause)
 
+    /** No hay ningún emulador de terminal disponible para abrir el worktree. */
+    object NoTerminalAvailable :
+        WorktreeError("No se encontró ningún emulador de terminal disponible")
+
+    /** El sistema operativo no pudo iniciar el proceso de la terminal. */
+    class TerminalLaunchFailed(cause: Throwable) :
+        WorktreeError("Falló el lanzamiento de la terminal: ${cause.message}", cause)
+
     /** El repositorio requiere Git LFS pero el binario `git-lfs` no está instalado. */
     object GitLfsNotFound : WorktreeError(
         "El repositorio requiere Git LFS pero 'git-lfs' no está instalado. " +

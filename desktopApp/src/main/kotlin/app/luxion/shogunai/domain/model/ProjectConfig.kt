@@ -14,12 +14,18 @@ import kotlinx.serialization.Serializable
  *   (p. ej. `~/projects`).
  * @param secretFiles Archivos de credenciales locales que hay que copiar al
  *   nuevo worktree para poder compilar (p. ej. `local.properties`).
+ * @param terminalPreference Preferencia de emulador de terminal para abrir
+ *   worktrees. Por defecto, autodetección.
+ * @param agentLaunchConfig Comando de agente a lanzar en la terminal del
+ *   worktree. Por defecto, `claude` envuelto con Headroom.
  */
 @Serializable
 data class ProjectConfig(
     val baseRepositoryPath: String,
     val worktreesRoot: String,
     val secretFiles: List<String>,
+    val terminalPreference: TerminalPreference = TerminalPreference(),
+    val agentLaunchConfig: AgentLaunchConfig = AgentLaunchConfig(),
 ) {
     /** Ruta del worktree para una tarea: `<worktreesRoot>/<taskId>`. */
     fun worktreePathFor(taskId: String): String = joinPath(worktreesRoot, taskId)
