@@ -50,6 +50,20 @@ class CreateWorktreeUseCase(
                 workingDirectory = config.baseRepositoryPath,
             )
             if (!add.isSuccess) {
+                if (add.stderr.contains(GIT_LFS_MISSING_MARKER)) {
+                    // El hook post-checkout de Git LFS ya dejó el worktree y la rama
+                    // creados en disco antes de fallar: revertimos ambos para que un
+                    // reintento no choque ni con el directorio ni con la rama existentes.
+                    executor.execute(
+                        command = listOf("git", "worktree", "remove", "--force", worktreePath),
+                        workingDirectory = config.baseRepositoryPath,
+                    )
+                    executor.execute(
+                        command = listOf("git", "branch", "-D", branch),
+                        workingDirectory = config.baseRepositoryPath,
+                    )
+                    throw WorktreeError.GitLfsNotFound
+                }
                 throw WorktreeError.GitCommandFailed(add.command, add.exitCode, add.stderr)
             }
 
@@ -75,5 +89,9 @@ class CreateWorktreeUseCase(
             )
             throw WorktreeError.SecretCopyFailed(copyError)
         }
+    }
+
+    private companion object {
+        const val GIT_LFS_MISSING_MARKER = "git-lfs' was not found on your path"
     }
 }

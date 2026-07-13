@@ -34,4 +34,10 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     /** Falló la copia de algún archivo de secretos tras crear el worktree. */
     class SecretCopyFailed(cause: Throwable) :
         WorktreeError("Falló la copia de archivos de secretos: ${cause.message}", cause)
+
+    /** El repositorio requiere Git LFS pero el binario `git-lfs` no está instalado. */
+    object GitLfsNotFound : WorktreeError(
+        "El repositorio requiere Git LFS pero 'git-lfs' no está instalado. " +
+            "Instalalo desde https://git-lfs.com y volvé a intentarlo.",
+    )
 }
