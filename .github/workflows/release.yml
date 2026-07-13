@@ -47,8 +47,23 @@ jobs:
           git tag "v${{ steps.version.outputs.value }}" ${{ github.event.pull_request.merge_commit_sha }}
           git push origin "v${{ steps.version.outputs.value }}"
 
-  build:
+  # Crea la release en modo draft una sola vez: evita que cada job del matrix
+  # genere sus propias notas (se triplicaba el changelog) y mantiene la release
+  # editable mientras los assets se suben en paralelo (una release publicada es
+  # inmutable y rechaza nuevos uploads).
+  create-release:
     needs: resolve-version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.resolve-version.outputs.version }}
+          draft: true
+          generate_release_notes: true
+
+  build:
+    needs: [resolve-version, create-release]
     strategy:
       fail-fast: false
       matrix:
@@ -80,9 +95,19 @@ jobs:
       - name: Build installer
         run: ./gradlew :desktopApp:${{ matrix.task }} -PappVersion=${{ needs.resolve-version.outputs.version }}
 
-      - name: Publish release
+      - name: Upload asset to draft release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.resolve-version.outputs.version }}
           files: ${{ matrix.artifact-glob }}
-          generate_release_notes: true
+          draft: true
+
+  publish-release:
+    needs: [resolve-version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.resolve-version.outputs.version }}
+          draft: false
