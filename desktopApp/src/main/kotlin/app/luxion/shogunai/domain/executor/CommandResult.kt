@@ -1,10 +1,10 @@
 package app.luxion.shogunai.domain.executor
 
 /**
- * Resultado de la ejecución de un comando de sistema.
+ * Result of running a system command.
  *
- * Captura la salida estándar, la salida de error y el código de salida,
- * sin interpretar su significado: cada caso de uso decide qué considera éxito.
+ * Captures standard output, error output, and exit code, without
+ * interpreting their meaning: each use case decides what counts as success.
  */
 data class CommandResult(
     val command: List<String>,
@@ -12,6 +12,6 @@ data class CommandResult(
     val stdout: String,
     val stderr: String,
 ) {
-    /** Un código de salida 0 es la convención POSIX de éxito en macOS y Linux. */
+    /** An exit code of 0 is the POSIX success convention on macOS and Linux. */
     val isSuccess: Boolean get() = exitCode == 0
 }

@@ -3,12 +3,12 @@ package app.luxion.shogunai.ui
 import java.io.File
 import javax.swing.JFileChooser
 
-/** Envuelve [JFileChooser] para elegir carpetas o archivos desde el sistema. */
+/** Wraps [JFileChooser] to pick folders or files from the system. */
 object FilePicker {
     fun pickDirectory(initialPath: String): String? {
         val chooser = JFileChooser(currentDirectoryOrNull(initialPath)).apply {
             fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
-            dialogTitle = "Selecciona una carpeta"
+            dialogTitle = "Select a folder"
         }
         return if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
             chooser.selectedFile.absolutePath
@@ -21,7 +21,7 @@ object FilePicker {
         val chooser = JFileChooser(currentDirectoryOrNull(initialPath)).apply {
             fileSelectionMode = JFileChooser.FILES_ONLY
             isMultiSelectionEnabled = true
-            dialogTitle = "Selecciona archivos de secretos"
+            dialogTitle = "Select secret files"
         }
         return if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
             chooser.selectedFiles.map { it.absolutePath }
@@ -35,9 +35,9 @@ object FilePicker {
 }
 
 /**
- * Convierte una ruta absoluta a una ruta relativa a [baseRepositoryPath], que es como
- * `ProjectConfig` espera los `secretFiles`. Si el archivo elegido está fuera del
- * repositorio base, se usa solo su nombre.
+ * Converts an absolute path to a path relative to [baseRepositoryPath], which is how
+ * `ProjectConfig` expects `secretFiles`. If the chosen file is outside the base
+ * repository, only its name is used.
  */
 fun relativeToBase(baseRepositoryPath: String, absolutePath: String): String {
     if (baseRepositoryPath.isBlank()) return File(absolutePath).name

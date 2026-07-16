@@ -19,8 +19,8 @@ fun main() = application {
     }
 }
 
-// -Xdock:icon (vía nativeDistributions.macOS.iconFile) no es fiable en todos los
-// launchers/JDKs; Taskbar.setIconImage funciona en runtime independientemente de cómo se lance el proceso.
+// -Xdock:icon (via nativeDistributions.macOS.iconFile) isn't reliable across all
+// launchers/JDKs; Taskbar.setIconImage works at runtime regardless of how the process was launched.
 private fun setDockIcon() {
     if (!Taskbar.isTaskbarSupported()) return
     val taskbar = Taskbar.getTaskbar()

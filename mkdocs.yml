@@ -41,6 +41,29 @@ markdown_extensions:
 plugins:
   - search
   - git-revision-date
+  - i18n:
+      docs_structure: suffix
+      fallback_to_default: true
+      reconfigure_material: true
+      reconfigure_search: true
+      languages:
+        - locale: es
+          default: true
+          name: Español
+          build: true
+        - locale: en
+          name: English
+          build: true
+          nav_translations:
+            Inicio: Home
+            Primeros pasos: Getting started
+            Arquitectura: Architecture
+            Visión general: Overview
+            Capa de dominio: Domain layer
+            Capa de infraestructura: Infrastructure layer
+            Capa de UI: UI layer
+            Proceso de desarrollo: Development process
+            Decisiones de diseño: Design decisions
 
 nav:
   - Inicio: index.md
