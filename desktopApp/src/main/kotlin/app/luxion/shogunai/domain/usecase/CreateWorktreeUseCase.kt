@@ -50,7 +50,7 @@ class CreateWorktreeUseCase(
                 workingDirectory = config.baseRepositoryPath,
             )
             if (!add.isSuccess) {
-                if (add.stderr.contains(GIT_LFS_MISSING_MARKER)) {
+                if (GIT_LFS_MISSING_MARKERS.any { add.stderr.contains(it) }) {
                     // El hook post-checkout de Git LFS ya dejó el worktree y la rama
                     // creados en disco antes de fallar: revertimos ambos para que un
                     // reintento no choque ni con el directorio ni con la rama existentes.
@@ -92,6 +92,17 @@ class CreateWorktreeUseCase(
     }
 
     private companion object {
-        const val GIT_LFS_MISSING_MARKER = "git-lfs' was not found on your path"
+        /**
+         * Git reporta que falta `git-lfs` de dos formas distintas según si el
+         * commit checkouteado trae contenido LFS o no:
+         *  - Sin contenido LFS nuevo: el checkout termina bien y falla el hook
+         *    `post-checkout` al comprobar el PATH.
+         *  - Con contenido LFS nuevo: el propio checkout falla al invocar el
+         *    filtro smudge, antes de que el hook llegue a ejecutarse.
+         */
+        val GIT_LFS_MISSING_MARKERS = listOf(
+            "git-lfs' was not found on your path",
+            "git-lfs filter-process: git-lfs: command not found",
+        )
     }
 }

@@ -31,9 +31,10 @@ class ProcessBuilderShellCommandExecutor(
         workingDirectory: String?,
     ): CommandResult = withContext(ioDispatcher) {
         val process = try {
-            ProcessBuilder(command)
+            val builder = ProcessBuilder(command)
                 .apply { workingDirectory?.let { directory(File(it)) } }
-                .start()
+            builder.environment()["PATH"] = HomebrewPath.merge(builder.environment()["PATH"])
+            builder.start()
         } catch (error: IOException) {
             throw CommandExecutionException(command, error)
         }
@@ -53,5 +54,19 @@ class ProcessBuilderShellCommandExecutor(
         } finally {
             if (process.isAlive) process.destroy()
         }
+    }
+}
+
+/**
+ * Lanzada desde Finder/Launchpad, la app hereda el PATH mínimo de macOS
+ * (sin `/opt/homebrew/bin` ni `/usr/local/bin`), por lo que hooks como el
+ * `post-checkout` de git-lfs fallan aunque el binario esté instalado.
+ */
+internal object HomebrewPath {
+    private val EXTRA_DIRS = listOf("/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin")
+
+    fun merge(currentPath: String?): String {
+        val existingDirs = currentPath.orEmpty().split(File.pathSeparator).filter { it.isNotEmpty() }
+        return (EXTRA_DIRS + existingDirs).distinct().joinToString(File.pathSeparator)
     }
 }
