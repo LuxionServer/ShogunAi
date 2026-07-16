@@ -2,7 +2,7 @@ package app.luxion.shogunai.domain.model
 
 import kotlinx.serialization.Serializable
 
-/** Emuladores de terminal soportados de forma nativa, en macOS y Linux. */
+/** Terminal emulators natively supported, on macOS and Linux. */
 enum class TerminalEmulator {
     MACOS_TERMINAL,
     ITERM2,
@@ -12,26 +12,26 @@ enum class TerminalEmulator {
     XTERM,
 }
 
-/** Cómo se resuelve qué emulador de terminal usar al abrir un worktree. */
+/** How the terminal emulator to use when opening a worktree is resolved. */
 enum class TerminalSelectionMode {
-    /** Se detecta automáticamente un emulador instalado en el sistema. */
+    /** Automatically detects an emulator installed on the system. */
     AUTO_DETECT,
 
-    /** El usuario fija explícitamente uno de los [TerminalEmulator] soportados. */
+    /** The user explicitly picks one of the supported [TerminalEmulator]s. */
     FIXED,
 
-    /** El usuario da su propia plantilla de comando (argv), para cualquier emulador. */
+    /** The user provides their own command template (argv), for any emulator. */
     CUSTOM,
 }
 
 /**
- * Preferencia de terminal de un proyecto.
+ * A project's terminal preference.
  *
- * @param mode Modo de selección del emulador.
- * @param emulator Emulador fijado cuando [mode] es [TerminalSelectionMode.FIXED].
- * @param customCommandTemplate Argv de plantilla cuando [mode] es
- *   [TerminalSelectionMode.CUSTOM], con los placeholders `{path}` y `{command}`
- *   sustituidos por argumento, nunca concatenados en una cadena de shell.
+ * @param mode Emulator selection mode.
+ * @param emulator Fixed emulator when [mode] is [TerminalSelectionMode.FIXED].
+ * @param customCommandTemplate Template argv when [mode] is
+ *   [TerminalSelectionMode.CUSTOM], with the `{path}` and `{command}` placeholders
+ *   substituted per-argument, never concatenated into a shell string.
  */
 @Serializable
 data class TerminalPreference(

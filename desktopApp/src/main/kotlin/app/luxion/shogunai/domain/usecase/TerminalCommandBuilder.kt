@@ -3,13 +3,13 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.model.TerminalEmulator
 
 /**
- * Construye el argv a ejecutar para abrir cada [TerminalEmulator] en una ruta
- * dada, corriendo un comando dentro.
+ * Builds the argv to run to open each [TerminalEmulator] at a given path,
+ * running a command inside it.
  *
- * Cada rama devuelve una lista de argumentos lista para pasar directamente a
- * `ProcessBuilder`, sin invocar un shell para interpretar una cadena completa
- * (salvo el propio `bash -c "<comando>"` que cada terminal necesita para
- * quedarse abierta tras ejecutar el comando).
+ * Each branch returns a list of arguments ready to pass directly to
+ * `ProcessBuilder`, without invoking a shell to interpret a full string
+ * (except for the `bash -c "<command>"` each terminal itself needs to
+ * stay open after running the command).
  */
 object TerminalCommandBuilder {
 
@@ -45,27 +45,26 @@ object TerminalCommandBuilder {
         }
 
     /**
-     * Sustituye `{path}` y `{command}` en cada elemento de [template], sin
-     * concatenar nada en una única cadena de shell.
+     * Substitutes `{path}` and `{command}` in each element of [template],
+     * without concatenating anything into a single shell string.
      */
     fun buildCustom(template: List<String>, workingDirectory: String, command: String): List<String> =
         template.map { it.replace("{path}", workingDirectory).replace("{command}", command) }
 
     /**
-     * Si no hay ninguna ventana de Terminal abierta, `do script` sin destino
-     * la crea directamente (fallback, sin pestañas de por medio). Si ya hay
-     * una ventana, se fuerza una pestaña nueva de forma determinista con
-     * Cmd+T (vía `System Events`) antes de correr el comando — una pestaña
-     * recién creada siempre está idle, así que `do script ... in front
-     * window` la usa sin ambigüedad (a diferencia de reusar "front window"
-     * sin más, que escribe sobre la pestaña existente si Terminal aún no la
-     * marcó como "ocupada", produciendo comandos concatenados sin separador).
-     * Cmd+T requiere permiso de Accesibilidad para que `System Events`
-     * controle Terminal; en modo dev (`./gradlew :desktopApp:run`, sin
-     * bundle de app estable) macOS no siempre llega a pedirlo, y el keystroke
-     * queda sin efecto y sin error visible — degradando a reusar la pestaña
-     * existente. Empaquetar la app como `.app`/dmg nativo debería permitir
-     * que macOS pida el permiso correctamente.
+     * If no Terminal window is open, `do script` with no target creates one
+     * directly (fallback, no tabs involved). If a window already exists, a
+     * new tab is forced deterministically with Cmd+T (via `System Events`)
+     * before running the command — a freshly created tab is always idle, so
+     * `do script ... in front window` uses it unambiguously (unlike just
+     * reusing "front window", which overwrites the existing tab if Terminal
+     * hasn't marked it "busy" yet, producing concatenated commands with no
+     * separator). Cmd+T requires Accessibility permission for `System
+     * Events` to control Terminal; in dev mode (`./gradlew :desktopApp:run`,
+     * no stable app bundle) macOS doesn't always get around to prompting for
+     * it, and the keystroke has no effect with no visible error — degrading
+     * to reusing the existing tab. Packaging the app as a native `.app`/dmg
+     * should let macOS prompt for the permission correctly.
      */
     private fun macosTerminalCommand(workingDirectory: String, command: String): List<String> {
         val shellCommand = "cd '$workingDirectory' && $command"
@@ -88,7 +87,7 @@ object TerminalCommandBuilder {
         )
     }
 
-    /** Crea una pestaña nueva en la ventana actual de iTerm2 en vez de una ventana nueva; sin ventanas, crea una. */
+    /** Creates a new tab in iTerm2's current window instead of a new window; with no windows, creates one. */
     private fun iTerm2Command(workingDirectory: String, command: String): List<String> {
         val shellCommand = "cd '$workingDirectory' && $command"
         val escaped = shellCommand.escapedForAppleScript()

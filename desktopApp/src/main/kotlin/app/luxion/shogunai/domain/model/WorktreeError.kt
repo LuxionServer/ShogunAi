@@ -1,51 +1,65 @@
 package app.luxion.shogunai.domain.model
 
 /**
- * Errores de dominio del flujo de worktrees.
+ * Domain errors of the worktree flow.
  *
- * Los casos de uso devuelven `Result<T>`; cuando fallan de forma esperada, el
- * fallo lleva una de estas variantes, de modo que la capa superior (la futura
- * GUI) pueda decidir el mensaje a mostrar sin inspeccionar cadenas de texto.
+ * Use cases return `Result<T>`; when they fail in an expected way, the
+ * failure carries one of these variants, so the upper layer (the future
+ * GUI) can decide what message to show without inspecting strings.
  */
 sealed class WorktreeError(message: String, cause: Throwable? = null) : Exception(message, cause) {
 
-    /** El repositorio base configurado no existe en disco. */
+    /** The configured base repository doesn't exist on disk. */
     class BaseRepositoryNotFound(val path: String) :
-        WorktreeError("El repositorio base no existe: $path")
+        WorktreeError("Base repository doesn't exist: $path")
 
-    /** Ya hay un directorio en la ruta destino del worktree. */
+    /** There's already a directory at the worktree's destination path. */
     class WorktreeAlreadyExists(val path: String) :
-        WorktreeError("El directorio del worktree ya existe: $path")
+        WorktreeError("Worktree directory already exists: $path")
 
-    /** Faltan uno o más archivos de secretos en el repositorio base. */
+    /** The task id, even after normalizing whitespace, isn't a valid Git ref name. */
+    class InvalidTaskId(val rawInput: String) :
+        WorktreeError("Invalid task id: \"$rawInput\"")
+
+    /** One or more secret files are missing in the base repository. */
     class SecretFileNotFound(val files: List<String>, val basePath: String) :
-        WorktreeError("No se encontraron archivos de secretos en $basePath: ${files.joinToString()}")
+        WorktreeError("Secret files not found in $basePath: ${files.joinToString()}")
 
-    /** Un comando de Git terminó con un código de salida distinto de cero. */
+    /** A Git command exited with a non-zero exit code. */
     class GitCommandFailed(
         val command: List<String>,
         val exitCode: Int,
         val errorOutput: String,
     ) : WorktreeError(
-        "El comando git falló (código $exitCode): ${command.joinToString(" ")}" +
+        "Git command failed (exit code $exitCode): ${command.joinToString(" ")}" +
             if (errorOutput.isNotBlank()) "\n$errorOutput" else "",
     )
 
-    /** Falló la copia de algún archivo de secretos tras crear el worktree. */
+    /** Failed to copy a secret file after creating the worktree. */
     class SecretCopyFailed(cause: Throwable) :
-        WorktreeError("Falló la copia de archivos de secretos: ${cause.message}", cause)
+        WorktreeError("Failed to copy secret files: ${cause.message}", cause)
 
-    /** No hay ningún emulador de terminal disponible para abrir el worktree. */
+    /** No terminal emulator is available to open the worktree. */
     object NoTerminalAvailable :
-        WorktreeError("No se encontró ningún emulador de terminal disponible")
+        WorktreeError("No terminal emulator available was found")
 
-    /** El sistema operativo no pudo iniciar el proceso de la terminal. */
+    /** The operating system failed to start the terminal process. */
     class TerminalLaunchFailed(cause: Throwable) :
-        WorktreeError("Falló el lanzamiento de la terminal: ${cause.message}", cause)
+        WorktreeError("Failed to launch the terminal: ${cause.message}", cause)
 
-    /** El repositorio requiere Git LFS pero el binario `git-lfs` no está instalado. */
+    /** The repository requires Git LFS but the `git-lfs` binary isn't installed. */
     object GitLfsNotFound : WorktreeError(
-        "El repositorio requiere Git LFS pero 'git-lfs' no está instalado. " +
-            "Instalalo desde https://git-lfs.com y volvé a intentarlo.",
+        "The repository requires Git LFS but 'git-lfs' isn't installed. " +
+            "Install it from https://git-lfs.com and try again.",
     )
+
+    /** No local branch with this name exists. */
+    class BranchNotFound(val branch: String) :
+        WorktreeError("Branch not found: $branch")
+
+    /** The requested branch is already checked out in another worktree (or the base repository). */
+    class BranchAlreadyCheckedOut(val branch: String, val path: String?) :
+        WorktreeError(
+            "Branch '$branch' is already checked out" + if (path != null) " at $path" else "",
+        )
 }

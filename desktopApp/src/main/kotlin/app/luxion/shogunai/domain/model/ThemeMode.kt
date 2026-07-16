@@ -2,7 +2,7 @@ package app.luxion.shogunai.domain.model
 
 import kotlinx.serialization.Serializable
 
-// Modo de tema de la app: claro/oscuro fijos, o automático (sigue al sistema operativo).
+// App theme mode: fixed light/dark, or automatic (follows the operating system).
 @Serializable
 enum class ThemeMode {
     LIGHT,

@@ -3,18 +3,18 @@ package app.luxion.shogunai.domain.model
 import kotlinx.serialization.Serializable
 
 /**
- * Configuración de cómo se lanza el agente de código en un worktree.
+ * Configuration for how the code agent is launched in a worktree.
  *
- * @param agentCommand Comando del agente a ejecutar (p. ej. `claude`).
- * @param useHeadroom Si se envuelve [agentCommand] con `headroom wrap`, el
- *   compresor de contexto de Headroom.
+ * @param agentCommand Agent command to run (e.g. `claude`).
+ * @param useHeadroom Whether to wrap [agentCommand] with `headroom wrap`, the
+ *   Headroom context compressor.
  */
 @Serializable
 data class AgentLaunchConfig(
     val agentCommand: String = "claude",
     val useHeadroom: Boolean = true,
 ) {
-    /** Comando final a ejecutar en la terminal, con Headroom aplicado si corresponde. */
+    /** Final command to run in the terminal, with Headroom applied when applicable. */
     fun resolvedCommand(): String =
         if (useHeadroom) "headroom wrap $agentCommand" else agentCommand
 }

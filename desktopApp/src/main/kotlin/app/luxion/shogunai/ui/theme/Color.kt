@@ -2,7 +2,7 @@ package app.luxion.shogunai.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Paleta inspirada en el icono de la app (casco samurái gris/rojo).
+// Palette inspired by the app icon (gray/red samurai helmet).
 
 val ShogunRed = Color(0xFFD6473C)
 val ShogunRedLight = Color(0xFFE8735F)
@@ -21,8 +21,8 @@ val ShogunOnAccent = Color(0xFFFFFFFF)
 val ShogunError = Color(0xFFCF6679)
 val ShogunOutline = Color(0xFF70788A)
 
-// Paleta clara: mismos acentos (ShogunRed/ShogunSlate), fondos/textos invertidos.
-// Contraste texto/fondo ~4:1 o superior en todos los pares onX/X.
+// Light palette: same accents (ShogunRed/ShogunSlate), inverted backgrounds/text.
+// Text/background contrast ~4:1 or higher across all onX/X pairs.
 val ShogunLightBackground = Color(0xFFF7F7F8)
 val ShogunLightSurface = Color(0xFFFFFFFF)
 val ShogunLightSurfaceVariant = Color(0xFFE5E7EB)

@@ -6,19 +6,18 @@ import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
-import app.luxion.shogunai.domain.model.joinPath
 
 /**
- * Crea un worktree y lo deja listo para compilar el proyecto Android.
+ * Creates a worktree and leaves it ready to build the Android project.
  *
- * Orquesta, en secuencia:
- *  1. Validaciones previas (repo base existe, destino libre, secretos presentes).
+ * Orchestrates, in sequence:
+ *  1. Upfront validations (base repo exists, destination free, secrets present).
  *  2. `git worktree add <path> -b <branch>`.
- *  3. Copia de los archivos de secretos al nuevo directorio.
+ *  3. Copying the secret files into the new directory.
  *
- * Las validaciones se hacen *antes* de tocar Git para no dejar a medias un
- * worktree que luego no podríamos completar. Si la copia falla tras crear el
- * worktree, se revierte con un `git worktree remove --force` (best-effort).
+ * Validations happen *before* touching Git so we don't leave a half-done
+ * worktree we couldn't later complete. If the copy fails after creating the
+ * worktree, it's rolled back with a `git worktree remove --force` (best-effort).
  */
 class CreateWorktreeUseCase(
     private val config: ProjectConfig,
@@ -27,8 +26,10 @@ class CreateWorktreeUseCase(
 ) {
     suspend operator fun invoke(taskId: String, branchType: BranchType): Result<Worktree> =
         runCatching {
-            val id = taskId.trim()
-            require(id.isNotEmpty()) { "El identificador de la tarea no puede estar vacío" }
+            val id = normalizeTaskId(taskId)
+            if (!isValidGitRefSegment(id)) {
+                throw WorktreeError.InvalidTaskId(taskId)
+            }
 
             if (!fileManager.exists(config.baseRepositoryPath)) {
                 throw WorktreeError.BaseRepositoryNotFound(config.baseRepositoryPath)
@@ -45,64 +46,28 @@ class CreateWorktreeUseCase(
             }
 
             val branch = "${branchType.prefix}/$id"
-            val add = executor.execute(
-                command = listOf("git", "worktree", "add", worktreePath, "-b", branch),
-                workingDirectory = config.baseRepositoryPath,
+            addWorktreeAndCopySecrets(
+                config = config,
+                executor = executor,
+                fileManager = fileManager,
+                worktreePath = worktreePath,
+                branch = branch,
+                addArgs = listOf("git", "worktree", "add", worktreePath, "-b", branch),
+                branchToDeleteOnLfsFailure = branch,
             )
-            if (!add.isSuccess) {
-                if (GIT_LFS_MISSING_MARKERS.any { add.stderr.contains(it) }) {
-                    // El hook post-checkout de Git LFS ya dejó el worktree y la rama
-                    // creados en disco antes de fallar: revertimos ambos para que un
-                    // reintento no choque ni con el directorio ni con la rama existentes.
-                    executor.execute(
-                        command = listOf("git", "worktree", "remove", "--force", worktreePath),
-                        workingDirectory = config.baseRepositoryPath,
-                    )
-                    executor.execute(
-                        command = listOf("git", "branch", "-D", branch),
-                        workingDirectory = config.baseRepositoryPath,
-                    )
-                    throw WorktreeError.GitLfsNotFound
-                }
-                throw WorktreeError.GitCommandFailed(add.command, add.exitCode, add.stderr)
-            }
-
-            copySecretsOrRollback(worktreePath)
-
-            Worktree(path = worktreePath, branch = branch)
         }
-
-    private suspend fun copySecretsOrRollback(worktreePath: String) {
-        try {
-            config.secretFiles.forEach { fileName ->
-                fileManager.copy(
-                    source = config.baseSecretPath(fileName),
-                    destination = joinPath(worktreePath, fileName),
-                )
-            }
-        } catch (copyError: Exception) {
-            // El worktree ya existe pero está incompleto: lo eliminamos para no
-            // dejar entornos a medias. Ignoramos el resultado del rollback.
-            executor.execute(
-                command = listOf("git", "worktree", "remove", "--force", worktreePath),
-                workingDirectory = config.baseRepositoryPath,
-            )
-            throw WorktreeError.SecretCopyFailed(copyError)
-        }
-    }
-
-    private companion object {
-        /**
-         * Git reporta que falta `git-lfs` de dos formas distintas según si el
-         * commit checkouteado trae contenido LFS o no:
-         *  - Sin contenido LFS nuevo: el checkout termina bien y falla el hook
-         *    `post-checkout` al comprobar el PATH.
-         *  - Con contenido LFS nuevo: el propio checkout falla al invocar el
-         *    filtro smudge, antes de que el hook llegue a ejecutarse.
-         */
-        val GIT_LFS_MISSING_MARKERS = listOf(
-            "git-lfs' was not found on your path",
-            "git-lfs filter-process: git-lfs: command not found",
-        )
-    }
 }
+
+/** Trims [raw] and collapses runs of whitespace into a single `-`, so task ids typed with spaces become valid Git ref segments. */
+fun normalizeTaskId(raw: String): String = raw.trim().replace(Regex("\\s+"), "-")
+
+private val DISALLOWED_GIT_REF_CHARS = Regex("[ ~^:?*\\[\\\\]")
+
+/** Whether [id] is safe to use as a Git ref name segment and a filesystem path segment. */
+fun isValidGitRefSegment(id: String): Boolean =
+    id.isNotEmpty() &&
+        !DISALLOWED_GIT_REF_CHARS.containsMatchIn(id) &&
+        !id.contains("..") &&
+        !id.startsWith(".") && !id.endsWith(".") &&
+        !id.startsWith("/") && !id.endsWith("/") &&
+        !id.endsWith(".lock")

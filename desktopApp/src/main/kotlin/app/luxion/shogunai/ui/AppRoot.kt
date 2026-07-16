@@ -13,7 +13,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.luxion.shogunai.AppContainer
@@ -25,6 +27,9 @@ import app.luxion.shogunai.ui.theme.ShogunAiTheme
 import app.luxion.shogunai.ui.theme.ThemeModeToggle
 import app.luxion.shogunai.ui.worktree.WorktreeScreen
 import app.luxion.shogunai.ui.worktree.WorktreeViewModel
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
 
 @Composable
 fun AppRoot(appContainer: AppContainer) {
@@ -50,7 +55,14 @@ fun AppRoot(appContainer: AppContainer) {
                 when (val current = screen) {
                     is Screen.ProjectList -> {
                         val viewModel = viewModel { ProjectListViewModel(appContainer.projectRepository) }
+                        val windowInfo = LocalWindowInfo.current
                         LaunchedEffect(Unit) { viewModel.refresh() }
+                        LaunchedEffect(windowInfo) {
+                            snapshotFlow { windowInfo.isWindowFocused }
+                                .drop(1)
+                                .filter { it }
+                                .collectLatest { viewModel.refresh() }
+                        }
                         ProjectListScreen(
                             viewModel = viewModel,
                             onSelectProject = { screen = Screen.WorktreeManagement(it) },
@@ -73,6 +85,14 @@ fun AppRoot(appContainer: AppContainer) {
                     is Screen.WorktreeManagement -> {
                         val viewModel = viewModel(key = current.project.id) {
                             WorktreeViewModel(appContainer.worktreeUseCases(current.project.config))
+                        }
+                        val windowInfo = LocalWindowInfo.current
+                        LaunchedEffect(current.project.id) { viewModel.refresh() }
+                        LaunchedEffect(current.project.id, windowInfo) {
+                            snapshotFlow { windowInfo.isWindowFocused }
+                                .drop(1)
+                                .filter { it }
+                                .collectLatest { viewModel.refresh() }
                         }
                         WorktreeScreen(
                             projectName = current.project.name,

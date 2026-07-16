@@ -33,7 +33,7 @@ compose.desktop {
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
-            packageName = "app.luxion.shogunai"
+            packageName = "ShogunAi"
             val rawVersion = (findProperty("appVersion") as String?) ?: "0.0.0"
             // macOS no permite que la versión empiece por 0 (restricción de jpackage / CFBundleVersion).
             // Mapeamos temporalmente "0.x.y" a "1.x.y" para evitar el fallo de compilación en macOS.

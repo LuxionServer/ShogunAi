@@ -16,6 +16,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -43,8 +44,13 @@ fun ProjectListScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text("Proyectos", style = MaterialTheme.typography.headlineSmall)
-            Button(onClick = onNewProject) {
-                Text("Nuevo proyecto")
+            Row {
+                OutlinedButton(onClick = { viewModel.refresh() }, modifier = Modifier.padding(end = 8.dp)) {
+                    Text("Recargar")
+                }
+                Button(onClick = onNewProject) {
+                    Text("Nuevo proyecto")
+                }
             }
         }
 

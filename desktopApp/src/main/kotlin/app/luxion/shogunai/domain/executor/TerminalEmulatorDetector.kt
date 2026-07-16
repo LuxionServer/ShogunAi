@@ -2,9 +2,9 @@ package app.luxion.shogunai.domain.executor
 
 import app.luxion.shogunai.domain.model.TerminalEmulator
 
-/** Puerto de dominio para detectar qué emuladores de terminal están instalados. */
+/** Domain port to detect which terminal emulators are installed. */
 interface TerminalEmulatorDetector {
 
-    /** Emuladores disponibles en el sistema actual, en orden de prioridad. */
+    /** Emulators available on the current system, in priority order. */
     suspend fun detectAvailable(): List<TerminalEmulator>
 }
