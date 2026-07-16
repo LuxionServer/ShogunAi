@@ -3,6 +3,7 @@ package app.luxion.shogunai.ui.worktree
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -17,6 +18,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,58 +37,121 @@ fun WorktreeScreen(
 ) {
     var taskId by remember { mutableStateOf("") }
     var branchType by remember { mutableStateOf(BranchType.FEATURE) }
+    var createMode by remember { mutableStateOf(CreateMode.NEW_BRANCH) }
+    var selectedBranch by remember { mutableStateOf<String?>(null) }
 
-    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(projectName, style = MaterialTheme.typography.headlineSmall)
-            OutlinedButton(onClick = onBack) { Text("Proyectos") }
+    LaunchedEffect(createMode) {
+        if (createMode == CreateMode.EXISTING_BRANCH) {
+            viewModel.loadEligibleBranches()
+        }
+    }
+
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(projectName, style = MaterialTheme.typography.headlineSmall)
+                OutlinedButton(onClick = onBack) { Text("Proyectos") }
+            }
         }
 
         viewModel.errorMessage?.let { message ->
-            Text(message, color = Color.Red, modifier = Modifier.padding(top = 8.dp))
+            item {
+                Text(message, color = Color.Red, modifier = Modifier.padding(top = 8.dp))
+            }
         }
 
-        Text("Nuevo worktree", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))
-        Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-            OutlinedTextField(
-                value = taskId,
-                onValueChange = { taskId = it },
-                label = { Text("Id de tarea") },
-                modifier = Modifier.weight(1f),
-            )
-        }
-        Row(modifier = Modifier.padding(top = 4.dp)) {
-            BranchType.entries.forEach { type ->
+        item {
+            Text("Nuevo worktree", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))
+            Row(modifier = Modifier.padding(top = 8.dp)) {
                 Row {
-                    RadioButton(selected = branchType == type, onClick = { branchType = type })
-                    Text(type.prefix, modifier = Modifier.padding(end = 16.dp))
+                    RadioButton(
+                        selected = createMode == CreateMode.NEW_BRANCH,
+                        onClick = { createMode = CreateMode.NEW_BRANCH },
+                    )
+                    Text("Rama nueva", modifier = Modifier.padding(end = 16.dp))
+                }
+                Row {
+                    RadioButton(
+                        selected = createMode == CreateMode.EXISTING_BRANCH,
+                        onClick = { createMode = CreateMode.EXISTING_BRANCH },
+                    )
+                    Text("Rama existente")
                 }
             }
         }
-        Button(
-            onClick = {
-                viewModel.create(taskId, branchType)
-                taskId = ""
-            },
-            enabled = taskId.isNotBlank(),
-            modifier = Modifier.padding(top = 8.dp),
-        ) {
-            Text("Crear worktree")
+
+        when (createMode) {
+            CreateMode.NEW_BRANCH -> item {
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                    OutlinedTextField(
+                        value = taskId,
+                        onValueChange = { taskId = it },
+                        label = { Text("Id de tarea") },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                Row(modifier = Modifier.padding(top = 4.dp)) {
+                    BranchType.entries.forEach { type ->
+                        Row {
+                            RadioButton(selected = branchType == type, onClick = { branchType = type })
+                            Text(type.prefix, modifier = Modifier.padding(end = 16.dp))
+                        }
+                    }
+                }
+                Button(
+                    onClick = {
+                        viewModel.create(taskId, branchType)
+                        taskId = ""
+                    },
+                    enabled = taskId.isNotBlank(),
+                    modifier = Modifier.padding(top = 8.dp),
+                ) {
+                    Text("Crear worktree")
+                }
+            }
+            CreateMode.EXISTING_BRANCH -> {
+                when {
+                    viewModel.isLoadingBranches -> item {
+                        Text("Cargando ramas...", modifier = Modifier.padding(top = 8.dp))
+                    }
+                    viewModel.eligibleBranches.isEmpty() -> item {
+                        Text("No hay ramas disponibles para crear un worktree.", modifier = Modifier.padding(top = 8.dp))
+                    }
+                    else -> items(viewModel.eligibleBranches) { branch ->
+                        Row(modifier = Modifier.padding(top = 4.dp)) {
+                            RadioButton(selected = selectedBranch == branch, onClick = { selectedBranch = branch })
+                            Text(branch)
+                        }
+                    }
+                }
+                item {
+                    Button(
+                        onClick = {
+                            selectedBranch?.let { viewModel.createFromBranch(it) }
+                            selectedBranch = null
+                        },
+                        enabled = selectedBranch != null,
+                        modifier = Modifier.padding(top = 8.dp),
+                    ) {
+                        Text("Crear worktree")
+                    }
+                }
+            }
         }
 
-        Text("Worktrees", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 24.dp))
-        LazyColumn(modifier = Modifier.padding(top = 8.dp)) {
-            items(viewModel.worktrees) { worktree ->
-                WorktreeRow(
-                    worktree = worktree,
-                    onRemove = { viewModel.remove(worktree, worktree.branch) },
-                    onOpenTerminal = { viewModel.openTerminal(worktree) },
-                )
-                HorizontalDivider()
-            }
+        item {
+            Text("Worktrees", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 24.dp))
+        }
+        items(viewModel.worktrees) { worktree ->
+            WorktreeRow(
+                worktree = worktree,
+                onRemove = { viewModel.remove(worktree, worktree.branch) },
+                onOpenTerminal = { viewModel.openTerminal(worktree) },
+            )
+            HorizontalDivider()
         }
     }
 
@@ -108,6 +173,8 @@ fun WorktreeScreen(
         )
     }
 }
+
+private enum class CreateMode { NEW_BRANCH, EXISTING_BRANCH }
 
 @Composable
 private fun WorktreeRow(worktree: Worktree, onRemove: () -> Unit, onOpenTerminal: () -> Unit) {
