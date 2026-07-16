@@ -201,7 +201,44 @@ class CreateWorktreeUseCaseTest {
 
         val error = useCase("   ", BranchType.FEATURE).exceptionOrNull()
 
-        assertIs<IllegalArgumentException>(error)
+        val invalidTaskId = assertIs<WorktreeError.InvalidTaskId>(error)
+        assertEquals("   ", invalidTaskId.rawInput)
         assertFalse(executor.executedCommands.isNotEmpty())
+    }
+
+    @Test
+    fun `normalizes spaces in task id to hyphens`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+        val fileManager = FakeFileManager(existing = baseWithSecrets)
+        val useCase = CreateWorktreeUseCase(config, executor, fileManager)
+
+        val worktree = useCase("  TASK 123  ", BranchType.FEATURE).getOrThrow()
+
+        assertEquals(worktreePath, worktree.path)
+        assertEquals("feature/TASK-123", worktree.branch)
+        assertTrue(executor.executed("git", "worktree", "add", worktreePath, "-b", "feature/TASK-123"))
+    }
+
+    @Test
+    fun `collapses multiple consecutive spaces into a single hyphen`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+        val fileManager = FakeFileManager(existing = baseWithSecrets)
+        val useCase = CreateWorktreeUseCase(config, executor, fileManager)
+
+        val worktree = useCase("TASK   123", BranchType.FEATURE).getOrThrow()
+
+        assertEquals("feature/TASK-123", worktree.branch)
+    }
+
+    @Test
+    fun `fails with InvalidTaskId when the id is still invalid after normalization`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+        val useCase = CreateWorktreeUseCase(config, executor, FakeFileManager(baseWithSecrets))
+
+        val error = useCase("TASK:123", BranchType.FEATURE).exceptionOrNull()
+
+        val invalidTaskId = assertIs<WorktreeError.InvalidTaskId>(error)
+        assertEquals("TASK:123", invalidTaskId.rawInput)
+        assertTrue(executor.executedCommands.isEmpty(), "should not run any Git command for an invalid task id")
     }
 }

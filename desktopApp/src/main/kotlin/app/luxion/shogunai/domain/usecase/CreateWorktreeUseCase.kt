@@ -26,8 +26,10 @@ class CreateWorktreeUseCase(
 ) {
     suspend operator fun invoke(taskId: String, branchType: BranchType): Result<Worktree> =
         runCatching {
-            val id = taskId.trim()
-            require(id.isNotEmpty()) { "Task id must not be blank" }
+            val id = normalizeTaskId(taskId)
+            if (!isValidGitRefSegment(id)) {
+                throw WorktreeError.InvalidTaskId(taskId)
+            }
 
             if (!fileManager.exists(config.baseRepositoryPath)) {
                 throw WorktreeError.BaseRepositoryNotFound(config.baseRepositoryPath)
@@ -55,3 +57,17 @@ class CreateWorktreeUseCase(
             )
         }
 }
+
+/** Trims [raw] and collapses runs of whitespace into a single `-`, so task ids typed with spaces become valid Git ref segments. */
+fun normalizeTaskId(raw: String): String = raw.trim().replace(Regex("\\s+"), "-")
+
+private val DISALLOWED_GIT_REF_CHARS = Regex("[ ~^:?*\\[\\\\]")
+
+/** Whether [id] is safe to use as a Git ref name segment and a filesystem path segment. */
+fun isValidGitRefSegment(id: String): Boolean =
+    id.isNotEmpty() &&
+        !DISALLOWED_GIT_REF_CHARS.containsMatchIn(id) &&
+        !id.contains("..") &&
+        !id.startsWith(".") && !id.endsWith(".") &&
+        !id.startsWith("/") && !id.endsWith("/") &&
+        !id.endsWith(".lock")
