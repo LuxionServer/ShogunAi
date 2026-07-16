@@ -1,42 +1,43 @@
 # AGENTS.md
 
-Guidelines de estilo y de cómo documentar para agentes de IA que trabajen en este repositorio. **No es documentación del proyecto** — para eso está `docs/` (arquitectura, decisiones, proceso). Este archivo es la fuente única de guidelines; `CLAUDE.md` y cualquier otro archivo específico de herramienta redirigen aquí en vez de duplicar contenido.
+Style and documentation guidelines for AI agents working in this repository. **Not project documentation** — that lives in `docs/` (architecture, decisions, process). This file is the single source of guidelines; `CLAUDE.md` and any other tool-specific file redirect here instead of duplicating content.
 
-No cargues `docs/` completo en contexto por defecto: busca la página concreta que necesites (`docs/architecture/*.md`, `docs/decisions/index.md`, `docs/process/openspec.md`) solo cuando la tarea lo requiera.
+Don't load all of `docs/` into context by default: search for the specific page you need (`docs/architecture/*.md`, `docs/decisions/index.md`, `docs/process/openspec.md`) only when the task requires it.
 
-## Estilo de código
+## Code style
 
-- Comentarios de dominio en **español**, coherente con el código existente.
-- Los casos de uso devuelven `Result<T>` con errores tipados (`sealed class WorktreeError`), nunca excepciones sin tipar de cara al llamador.
-- Los comandos de shell se ejecutan como **argv** (`listOf("git", ...)`), nunca como cadena para un shell.
-- El dominio depende de puertos (`ShellCommandExecutor`, `FileManager`), nunca de implementaciones concretas directamente.
-- **Nunca uses identificadores de la empresa** (nombres internos de repos, prefijos de tareas, etc.) en código, tests o ejemplos. Usa placeholders genéricos (`~/projects/main-repo`, `TASK-123`).
+- Domain comments in **Spanish**, consistent with the existing code.
+- Use cases return `Result<T>` with typed errors (`sealed class WorktreeError`), never untyped exceptions to the caller.
+- Shell commands are executed as **argv** (`listOf("git", ...)`), never as a string for a shell.
+- The domain depends on ports (`ShellCommandExecutor`, `FileManager`), never directly on concrete implementations.
+- **Never use company identifiers** (internal repo names, task prefixes, etc.) in code, tests, or examples. Use generic placeholders (`~/projects/main-repo`, `TASK-123`).
 
-## Cómo documentar
+## How to document
 
-| Qué documentas | Dónde |
+| What you're documenting | Where |
 |---|---|
-| Arquitectura, modelos, capas del sistema | `docs/architecture/` (mkdocs) |
-| Decisión de diseño de un cambio concreto | `design.md` del cambio en OpenSpec (`openspec/changes/<nombre>/`) |
-| Decisiones previas a OpenSpec (histórico) | `docs/decisions/index.md` — no editar entradas viejas, solo lectura |
-| Proceso de trabajo (cómo se planifica, cómo se hacen PRs, etc.) | `docs/process/` (mkdocs) |
-| Guidelines de estilo/comportamiento para IA | Este archivo |
+| Architecture, models, system layers | `docs/architecture/` (mkdocs) |
+| Design decision for a specific change | `design.md` of the change in OpenSpec (`openspec/changes/<name>/`) |
+| Decisions predating OpenSpec (historical) | `docs/decisions/index.md` — don't edit old entries, read-only |
+| Work process (how planning works, how PRs are done, etc.) | `docs/process/` (mkdocs) |
+| Style/behavior guidelines for AI | This file |
 
-Reglas:
+Rules:
 
-- `docs/` (mkdocs) es para humanos: explica el *qué* y el *por qué* del sistema, en español, sin jerga de una sola sesión.
-- Este archivo (`AGENTS.md`) es solo para agentes: reglas de estilo y de proceso, no contenido del proyecto. Si vas a añadir una explicación de arquitectura o una decisión, va en `docs/` u OpenSpec, no aquí.
-- Los cambios no triviales se planifican con OpenSpec (`/opsx:propose` → `/opsx:apply` → `/opsx:archive`) antes de implementarse — ver `docs/process/openspec.md`.
+- `docs/` (mkdocs) is for humans: explains the *what* and *why* of the system, in Spanish, without single-session jargon.
+- This file (`AGENTS.md`) is only for agents: style and process rules, not project content. If you're adding an architecture explanation or a decision, it goes in `docs/` or OpenSpec, not here.
+- Non-trivial changes are planned with OpenSpec (`/opsx:propose` → `/opsx:apply` → `/opsx:archive`) before being implemented — see `docs/process/openspec.md`.
 
-## Comandos
+## Commands
 
 ```bash
-./gradlew :desktopApp:run            # ejecutar la app
-./gradlew :desktopApp:hotRun --auto  # ejecutar con hot reload
-./gradlew test                       # tests de todos los módulos
-mkdocs serve                         # servir la documentación en local
+./gradlew :desktopApp:run            # run the app
+./gradlew :desktopApp:hotRun --auto  # run with hot reload
+./gradlew test                       # run tests for all modules
+mkdocs serve                         # serve the docs locally
 ```
 
 ## Git
 
-- No añadir el trailer `Co-Authored-By: Claude` (ni de ninguna IA) en los commits de este proyecto.
+- Don't add the `Co-Authored-By: Claude` trailer (or any AI's) to commits in this project.
+- Commit messages are always in English, even though the rest of the project's documentation is in Spanish.

@@ -10,6 +10,18 @@ Orquestador de escritorio que automatiza la creación y gestión de **Git worktr
 
 ## Instalación
 
+### macOS (Homebrew)
+
+```bash
+brew tap LuxionServer/shogunai
+brew install --cask shogunai
+```
+
+> [!NOTE]
+> El instalador de macOS solo soporta Apple Silicon (arm64) por ahora. Además, la app no está notarizada por Apple: si al abrirla por primera vez macOS avisa que "no se puede verificar el desarrollador", hazlo con clic derecho → Abrir, o ejecuta `xattr -dr com.apple.quarantine "/Applications/ShogunAi.app"`.
+
+### Descarga manual
+
 Descarga el instalador para tu sistema operativo desde la [última versión publicada](https://github.com/LuxionServer/ShogunAi/releases/latest):
 
 | Sistema operativo | Instalador |
