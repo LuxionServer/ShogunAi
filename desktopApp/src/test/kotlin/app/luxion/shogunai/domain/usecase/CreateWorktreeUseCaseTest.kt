@@ -147,6 +147,36 @@ class CreateWorktreeUseCaseTest {
     }
 
     @Test
+    fun `rolls back worktree and fails with GitLfsNotFound when the LFS smudge filter is missing`() = runTest {
+        // Mensaje distinto al del hook post-checkout: ocurre cuando el commit
+        // checkouteado trae contenido LFS y el checkout falla al invocar el
+        // filtro smudge, antes de que el hook llegue a ejecutarse.
+        val executor = FakeShellCommandExecutor {
+            if (it.first() == "git" && it.getOrNull(1) == "worktree" && it.getOrNull(2) == "add") {
+                failure(
+                    it,
+                    exitCode = 128,
+                    stderr = "git-lfs filter-process: git-lfs: command not found\n" +
+                        "fatal: the remote end hung up unexpectedly",
+                )
+            } else {
+                success(it)
+            }
+        }
+        val fileManager = FakeFileManager(existing = baseWithSecrets)
+        val useCase = CreateWorktreeUseCase(config, executor, fileManager)
+
+        val error = useCase("TASK-123", BranchType.FEATURE).exceptionOrNull()
+
+        assertIs<WorktreeError.GitLfsNotFound>(error)
+        assertTrue(fileManager.copied.isEmpty())
+        assertTrue(
+            executor.executed("git", "branch", "-D", "feature/TASK-123"),
+            "debe revertir la rama que Git dejó creada para que un reintento no choque con ella",
+        )
+    }
+
+    @Test
     fun `rolls back worktree when secret copy fails`() = runTest {
         val executor = FakeShellCommandExecutor { success(it) }
         val fileManager = FakeFileManager(
