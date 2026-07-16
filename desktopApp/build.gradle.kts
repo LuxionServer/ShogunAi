@@ -33,7 +33,7 @@ compose.desktop {
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
-            packageName = "app.luxion.shogunai"
+            packageName = "ShogunAi"
             packageVersion = (findProperty("appVersion") as String?) ?: "0.0.0"
 
             macOS {
