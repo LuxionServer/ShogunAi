@@ -194,6 +194,60 @@ class WorktreeViewModelTest {
     }
 
     @Test
+    fun `refresh re-invokes ListWorktreesUseCase and replaces worktrees with the new result`() = runTest(dispatcher) {
+        var listCallCount = 0
+        val otherWorktreePath = "/home/dev/projects/TASK-456"
+        val otherPorcelainOutput = """
+            worktree $otherWorktreePath
+            HEAD def456
+            branch refs/heads/feature/TASK-456
+        """.trimIndent()
+        val viewModel = WorktreeViewModel(
+            useCases { command ->
+                when (command) {
+                    listCommand -> {
+                        listCallCount++
+                        if (listCallCount == 1) success(command, porcelainOutput) else success(command, otherPorcelainOutput)
+                    }
+                    else -> success(command)
+                }
+            },
+        )
+        advanceUntilIdle()
+        assertTrue(viewModel.worktrees.any { it.path == worktreePath })
+
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertEquals(2, listCallCount)
+        assertTrue(viewModel.worktrees.none { it.path == worktreePath })
+        assertTrue(viewModel.worktrees.any { it.path == otherWorktreePath })
+    }
+
+    @Test
+    fun `refresh surfaces a failure via errorMessage when ListWorktreesUseCase fails`() = runTest(dispatcher) {
+        var listCallCount = 0
+        val viewModel = WorktreeViewModel(
+            useCases { command ->
+                when (command) {
+                    listCommand -> {
+                        listCallCount++
+                        if (listCallCount == 1) success(command, porcelainOutput) else failure(command, stderr = "not a git repository")
+                    }
+                    else -> success(command)
+                }
+            },
+        )
+        advanceUntilIdle()
+        assertNull(viewModel.errorMessage)
+
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertEquals(true, viewModel.errorMessage?.contains("not a git repository"))
+    }
+
+    @Test
     fun `dismissForceRemoval clears pending state without executing another command`() = runTest(dispatcher) {
         val executedCommands = mutableListOf<List<String>>()
         val viewModel = WorktreeViewModel(
