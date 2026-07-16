@@ -69,7 +69,7 @@ class CreateWorktreeUseCaseTest {
 
         assertIs<WorktreeError.WorktreeAlreadyExists>(error)
         assertEquals(worktreePath, error.path)
-        assertTrue(executor.executedCommands.isEmpty(), "no debe tocar Git si el destino existe")
+        assertTrue(executor.executedCommands.isEmpty(), "should not touch Git if the destination already exists")
     }
 
     @Test
@@ -86,7 +86,7 @@ class CreateWorktreeUseCaseTest {
     @Test
     fun `fails when secret files are missing`() = runTest {
         val executor = FakeShellCommandExecutor { success(it) }
-        // Solo existe uno de los dos secretos.
+        // Only one of the two secrets exists.
         val fileManager = FakeFileManager(
             existing = listOf(config.baseRepositoryPath, config.baseSecretPath("local.properties")),
         )
@@ -96,7 +96,7 @@ class CreateWorktreeUseCaseTest {
 
         assertIs<WorktreeError.SecretFileNotFound>(error)
         assertEquals(listOf("app-secrets.properties"), error.files)
-        assertTrue(executor.executedCommands.isEmpty(), "no debe crear el worktree si faltan secretos")
+        assertTrue(executor.executedCommands.isEmpty(), "should not create the worktree if secrets are missing")
     }
 
     @Test
@@ -112,7 +112,7 @@ class CreateWorktreeUseCaseTest {
         assertTrue(fileManager.copied.isEmpty())
         assertFalse(
             executor.executed("git", "worktree", "remove", "--force", worktreePath),
-            "no debe revertir el worktree para fallos de git no relacionados con Git LFS",
+            "should not roll back the worktree for git failures unrelated to Git LFS",
         )
     }
 
@@ -138,19 +138,19 @@ class CreateWorktreeUseCaseTest {
         assertTrue(fileManager.copied.isEmpty())
         assertTrue(
             executor.executed("git", "worktree", "remove", "--force", worktreePath),
-            "debe revertir el worktree que Git dejó a medias",
+            "should roll back the worktree that Git left half-done",
         )
         assertTrue(
             executor.executed("git", "branch", "-D", "feature/TASK-123"),
-            "debe revertir la rama que Git dejó creada para que un reintento no choque con ella",
+            "should roll back the branch that Git left created so a retry doesn't collide with it",
         )
     }
 
     @Test
     fun `rolls back worktree and fails with GitLfsNotFound when the LFS smudge filter is missing`() = runTest {
-        // Mensaje distinto al del hook post-checkout: ocurre cuando el commit
-        // checkouteado trae contenido LFS y el checkout falla al invocar el
-        // filtro smudge, antes de que el hook llegue a ejecutarse.
+        // Different message than the post-checkout hook: happens when the checked-out
+        // commit brings LFS content and the checkout fails invoking the smudge
+        // filter, before the hook gets to run.
         val executor = FakeShellCommandExecutor {
             if (it.first() == "git" && it.getOrNull(1) == "worktree" && it.getOrNull(2) == "add") {
                 failure(
@@ -172,7 +172,7 @@ class CreateWorktreeUseCaseTest {
         assertTrue(fileManager.copied.isEmpty())
         assertTrue(
             executor.executed("git", "branch", "-D", "feature/TASK-123"),
-            "debe revertir la rama que Git dejó creada para que un reintento no choque con ella",
+            "should roll back the branch that Git left created so a retry doesn't collide with it",
         )
     }
 
@@ -190,7 +190,7 @@ class CreateWorktreeUseCaseTest {
         assertIs<WorktreeError.SecretCopyFailed>(error)
         assertTrue(
             executor.executed("git", "worktree", "remove", "--force", worktreePath),
-            "debe revertir el worktree incompleto",
+            "should roll back the incomplete worktree",
         )
     }
 

@@ -56,8 +56,8 @@ fun ShogunAiTheme(themeMode: ThemeMode, content: @Composable () -> Unit) {
         colorScheme = if (useDark) ShogunDarkColorScheme else ShogunLightColorScheme,
         typography = ShogunTypography,
     ) {
-        // Surface pinta el fondo real de la ventana con colorScheme.background;
-        // sin esto, Compose Desktop deja el lienzo por defecto (blanco) detrás del contenido.
+        // Surface paints the actual window background with colorScheme.background;
+        // without this, Compose Desktop leaves the default canvas (white) behind the content.
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background,

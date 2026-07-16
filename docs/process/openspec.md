@@ -32,7 +32,7 @@ openspec/
     └── <capability>/spec.md            # especificación viva de cada capacidad del sistema
 ```
 
-`openspec/config.yaml` admite un bloque `context` (stack, convenciones, dominio — se le muestra a la IA al generar artefactos) y `rules` por tipo de artefacto. Está vacío por ahora.
+`openspec/config.yaml` admite un bloque `context` (stack, convenciones, dominio — se le muestra a la IA al generar artefactos) y `rules` por tipo de artefacto. Se usa para fijar que todos los artefactos de OpenSpec (`proposal.md`, `design.md`, `tasks.md`, `spec.md`) se escriban en inglés, a diferencia del resto del repo (código y `docs/`), que va en español.
 
 ## Dónde viven las decisiones de diseño
 

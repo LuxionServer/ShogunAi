@@ -8,6 +8,9 @@ schema: spec-driven
 #     Tech stack: TypeScript, React, Node.js
 #     We use conventional commits
 #     Domain: e-commerce platform
+context: |
+  Write all OpenSpec artifacts (proposal.md, design.md, tasks.md, spec.md) entirely in English,
+  regardless of the language used elsewhere in the repo (code comments and docs/ are in Spanish).
 
 # Per-artifact rules (optional)
 # Add custom rules for specific artifacts.
