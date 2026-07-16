@@ -6,7 +6,6 @@ import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
-import app.luxion.shogunai.domain.model.joinPath
 
 /**
  * Creates a worktree and leaves it ready to build the Android project.
@@ -47,66 +46,16 @@ class CreateWorktreeUseCase(
             }
 
             val branch = "${branchType.prefix}/$id"
-            val add = executor.execute(
-                command = listOf("git", "worktree", "add", worktreePath, "-b", branch),
-                workingDirectory = config.baseRepositoryPath,
+            addWorktreeAndCopySecrets(
+                config = config,
+                executor = executor,
+                fileManager = fileManager,
+                worktreePath = worktreePath,
+                branch = branch,
+                addArgs = listOf("git", "worktree", "add", worktreePath, "-b", branch),
+                branchToDeleteOnLfsFailure = branch,
             )
-            if (!add.isSuccess) {
-                if (GIT_LFS_MISSING_MARKERS.any { add.stderr.contains(it) }) {
-                    // Git LFS's post-checkout hook already left the worktree and branch
-                    // created on disk before failing: we roll back both so a retry
-                    // doesn't collide with either the existing directory or branch.
-                    executor.execute(
-                        command = listOf("git", "worktree", "remove", "--force", worktreePath),
-                        workingDirectory = config.baseRepositoryPath,
-                    )
-                    executor.execute(
-                        command = listOf("git", "branch", "-D", branch),
-                        workingDirectory = config.baseRepositoryPath,
-                    )
-                    throw WorktreeError.GitLfsNotFound
-                }
-                throw WorktreeError.GitCommandFailed(add.command, add.exitCode, add.stderr)
-            }
-
-            copySecretsOrRollback(worktreePath)
-
-            Worktree(path = worktreePath, branch = branch)
         }
-
-    private suspend fun copySecretsOrRollback(worktreePath: String) {
-        try {
-            config.secretFiles.forEach { fileName ->
-                fileManager.copy(
-                    source = config.baseSecretPath(fileName),
-                    destination = joinPath(worktreePath, fileName),
-                )
-            }
-        } catch (copyError: Exception) {
-            // The worktree already exists but is incomplete: we remove it to avoid
-            // leaving half-done environments. We ignore the rollback's result.
-            executor.execute(
-                command = listOf("git", "worktree", "remove", "--force", worktreePath),
-                workingDirectory = config.baseRepositoryPath,
-            )
-            throw WorktreeError.SecretCopyFailed(copyError)
-        }
-    }
-
-    private companion object {
-        /**
-         * Git reports missing `git-lfs` in two different ways depending on
-         * whether the checked-out commit brings LFS content or not:
-         *  - No new LFS content: the checkout succeeds and the `post-checkout`
-         *    hook fails when checking the PATH.
-         *  - New LFS content: the checkout itself fails invoking the smudge
-         *    filter, before the hook gets to run.
-         */
-        val GIT_LFS_MISSING_MARKERS = listOf(
-            "git-lfs' was not found on your path",
-            "git-lfs filter-process: git-lfs: command not found",
-        )
-    }
 }
 
 /** Trims [raw] and collapses runs of whitespace into a single `-`, so task ids typed with spaces become valid Git ref segments. */

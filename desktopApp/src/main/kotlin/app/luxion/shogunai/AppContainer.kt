@@ -7,7 +7,9 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.executor.TerminalEmulatorDetector
 import app.luxion.shogunai.domain.executor.TerminalLauncher
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
+import app.luxion.shogunai.domain.usecase.ListEligibleBranchesUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.OpenWorktreeTerminalUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
@@ -35,6 +37,8 @@ class AppContainer {
     fun worktreeUseCases(config: ProjectConfig): WorktreeUseCases = WorktreeUseCases(
         list = ListWorktreesUseCase(config, shellCommandExecutor),
         create = CreateWorktreeUseCase(config, shellCommandExecutor, fileManager),
+        createFromBranch = CreateWorktreeFromBranchUseCase(config, shellCommandExecutor, fileManager),
+        listEligibleBranches = ListEligibleBranchesUseCase(config, shellCommandExecutor),
         remove = RemoveWorktreeUseCase(config, shellCommandExecutor),
         openTerminal = OpenWorktreeTerminalUseCase(config, terminalLauncher, terminalEmulatorDetector),
     )
@@ -43,6 +47,8 @@ class AppContainer {
 data class WorktreeUseCases(
     val list: ListWorktreesUseCase,
     val create: CreateWorktreeUseCase,
+    val createFromBranch: CreateWorktreeFromBranchUseCase,
+    val listEligibleBranches: ListEligibleBranchesUseCase,
     val remove: RemoveWorktreeUseCase,
     val openTerminal: OpenWorktreeTerminalUseCase,
 )

@@ -21,6 +21,11 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
     var errorMessage by mutableStateOf<String?>(null)
         private set
 
+    var eligibleBranches by mutableStateOf<List<String>>(emptyList())
+        private set
+    var isLoadingBranches by mutableStateOf(false)
+        private set
+
     private var pendingForceRemoval by mutableStateOf<PendingForceRemoval?>(null)
     val worktreePendingForceRemoval: Worktree?
         get() = pendingForceRemoval?.worktree
@@ -45,6 +50,24 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
     fun create(taskId: String, branchType: BranchType) {
         viewModelScope.launch {
             useCases.create(taskId, branchType)
+                .onSuccess { worktree -> worktrees = worktrees + worktree; errorMessage = null }
+                .onFailure { errorMessage = it.message }
+        }
+    }
+
+    fun loadEligibleBranches() {
+        viewModelScope.launch {
+            isLoadingBranches = true
+            useCases.listEligibleBranches()
+                .onSuccess { eligibleBranches = it; errorMessage = null }
+                .onFailure { errorMessage = it.message }
+            isLoadingBranches = false
+        }
+    }
+
+    fun createFromBranch(branch: String) {
+        viewModelScope.launch {
+            useCases.createFromBranch(branch)
                 .onSuccess { worktree -> worktrees = worktrees + worktree; errorMessage = null }
                 .onFailure { errorMessage = it.message }
         }
