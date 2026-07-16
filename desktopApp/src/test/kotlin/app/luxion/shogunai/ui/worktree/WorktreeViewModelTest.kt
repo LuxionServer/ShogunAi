@@ -10,7 +10,9 @@ import app.luxion.shogunai.domain.FakeTerminalLauncher
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.Worktree
+import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
+import app.luxion.shogunai.domain.usecase.ListEligibleBranchesUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.OpenWorktreeTerminalUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
@@ -64,9 +66,61 @@ class WorktreeViewModelTest {
         return WorktreeUseCases(
             list = ListWorktreesUseCase(config, executor),
             create = CreateWorktreeUseCase(config, executor, FakeFileManager()),
+            createFromBranch = CreateWorktreeFromBranchUseCase(
+                config,
+                executor,
+                FakeFileManager(
+                    existing = listOf(config.baseRepositoryPath) + config.secretFiles.map { config.baseSecretPath(it) },
+                ),
+            ),
+            listEligibleBranches = ListEligibleBranchesUseCase(config, executor),
             remove = RemoveWorktreeUseCase(config, executor),
             openTerminal = OpenWorktreeTerminalUseCase(config, FakeTerminalLauncher(), FakeTerminalEmulatorDetector()),
         )
+    }
+
+    @Test
+    fun `createFromBranch adds the worktree on success`() = runTest(dispatcher) {
+        val branch = "hotfix/security-patch"
+        val branchWorktreePath = "/home/dev/projects/hotfix-security-patch"
+        val viewModel = WorktreeViewModel(
+            useCases { command ->
+                when {
+                    command == listCommand -> success(command, porcelainOutput)
+                    command.getOrNull(1) == "branch" && command.getOrNull(2) == "--list" ->
+                        success(command, stdout = "  $branch\n")
+                    else -> success(command)
+                }
+            },
+        )
+        advanceUntilIdle()
+
+        viewModel.createFromBranch(branch)
+        advanceUntilIdle()
+
+        assertNull(viewModel.errorMessage)
+        assertTrue(viewModel.worktrees.any { it.path == branchWorktreePath && it.branch == branch })
+    }
+
+    @Test
+    fun `createFromBranch sets error message when the branch doesn't exist`() = runTest(dispatcher) {
+        val branch = "hotfix/security-patch"
+        val viewModel = WorktreeViewModel(
+            useCases { command ->
+                when {
+                    command == listCommand -> success(command, porcelainOutput)
+                    command.getOrNull(1) == "branch" && command.getOrNull(2) == "--list" -> success(command, stdout = "")
+                    else -> success(command)
+                }
+            },
+        )
+        advanceUntilIdle()
+
+        viewModel.createFromBranch(branch)
+        advanceUntilIdle()
+
+        assertEquals(true, viewModel.errorMessage?.contains("Branch not found"))
+        assertTrue(viewModel.worktrees.none { it.branch == branch })
     }
 
     @Test

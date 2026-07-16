@@ -17,6 +17,10 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class WorktreeAlreadyExists(val path: String) :
         WorktreeError("Worktree directory already exists: $path")
 
+    /** The task id, even after normalizing whitespace, isn't a valid Git ref name. */
+    class InvalidTaskId(val rawInput: String) :
+        WorktreeError("Invalid task id: \"$rawInput\"")
+
     /** One or more secret files are missing in the base repository. */
     class SecretFileNotFound(val files: List<String>, val basePath: String) :
         WorktreeError("Secret files not found in $basePath: ${files.joinToString()}")
@@ -48,4 +52,14 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
         "The repository requires Git LFS but 'git-lfs' isn't installed. " +
             "Install it from https://git-lfs.com and try again.",
     )
+
+    /** No local branch with this name exists. */
+    class BranchNotFound(val branch: String) :
+        WorktreeError("Branch not found: $branch")
+
+    /** The requested branch is already checked out in another worktree (or the base repository). */
+    class BranchAlreadyCheckedOut(val branch: String, val path: String?) :
+        WorktreeError(
+            "Branch '$branch' is already checked out" + if (path != null) " at $path" else "",
+        )
 }

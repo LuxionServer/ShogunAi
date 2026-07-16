@@ -30,6 +30,12 @@ data class ProjectConfig(
     /** Ruta del worktree para una tarea: `<worktreesRoot>/<taskId>`. */
     fun worktreePathFor(taskId: String): String = joinPath(worktreesRoot, taskId)
 
+    /**
+     * Ruta del worktree para una rama ya existente, reemplazando `/` por `-`
+     * para obtener un único segmento de ruta válido (p. ej. `fix/x` -> `fix-x`).
+     */
+    fun worktreePathForBranch(branch: String): String = worktreePathFor(branch.replace("/", "-"))
+
     /** Ruta de un archivo de secretos dentro del repositorio base. */
     fun baseSecretPath(fileName: String): String = joinPath(baseRepositoryPath, fileName)
 }
