@@ -9,6 +9,8 @@ import app.luxion.shogunai.WorktreeUseCases
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.usecase.isValidGitRefSegment
+import app.luxion.shogunai.domain.usecase.normalizeTaskId
 import kotlinx.coroutines.launch
 
 class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
@@ -36,6 +38,9 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
             isLoading = false
         }
     }
+
+    /** Whether [taskId] is usable as-is: still valid as a Git ref segment once normalized. */
+    fun isTaskIdValid(taskId: String): Boolean = isValidGitRefSegment(normalizeTaskId(taskId))
 
     fun create(taskId: String, branchType: BranchType) {
         viewModelScope.launch {
