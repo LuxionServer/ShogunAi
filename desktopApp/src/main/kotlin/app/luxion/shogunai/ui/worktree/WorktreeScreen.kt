@@ -53,9 +53,18 @@ fun WorktreeScreen(
         Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
             OutlinedTextField(
                 value = taskId,
-                onValueChange = { taskId = it },
+                onValueChange = { taskId = it.replace(' ', '-') },
                 label = { Text("Id de tarea") },
+                isError = taskId.isNotBlank() && !viewModel.isTaskIdValid(taskId),
                 modifier = Modifier.weight(1f),
+            )
+        }
+        if (taskId.isNotBlank() && !viewModel.isTaskIdValid(taskId)) {
+            Text(
+                "Id de tarea inválido",
+                color = Color.Red,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp),
             )
         }
         Row(modifier = Modifier.padding(top = 4.dp)) {
@@ -71,7 +80,7 @@ fun WorktreeScreen(
                 viewModel.create(taskId, branchType)
                 taskId = ""
             },
-            enabled = taskId.isNotBlank(),
+            enabled = taskId.isNotBlank() && viewModel.isTaskIdValid(taskId),
             modifier = Modifier.padding(top = 8.dp),
         ) {
             Text("Crear worktree")

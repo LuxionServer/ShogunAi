@@ -17,6 +17,10 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class WorktreeAlreadyExists(val path: String) :
         WorktreeError("Worktree directory already exists: $path")
 
+    /** The task id, even after normalizing whitespace, isn't a valid Git ref name. */
+    class InvalidTaskId(val rawInput: String) :
+        WorktreeError("Invalid task id: \"$rawInput\"")
+
     /** One or more secret files are missing in the base repository. */
     class SecretFileNotFound(val files: List<String>, val basePath: String) :
         WorktreeError("Secret files not found in $basePath: ${files.joinToString()}")
