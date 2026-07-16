@@ -40,3 +40,4 @@ mkdocs serve                         # serve the docs locally
 ## Git
 
 - Don't add the `Co-Authored-By: Claude` trailer (or for any AI) in this project's commits.
+- Commit messages are always in English, even though the rest of the project's documentation is in Spanish.

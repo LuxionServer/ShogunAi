@@ -111,3 +111,48 @@ jobs:
         with:
           tag_name: v${{ needs.resolve-version.outputs.version }}
           draft: false
+
+  update-homebrew-cask:
+    needs: [resolve-version, publish-release]
+    runs-on: ubuntu-latest
+    steps:
+      # jpackage versiona el .dmg de macOS como "1.<minor>.<patch>" en vez del
+      # tag real "0.<minor>.<patch>" (ver design.md de homebrew-cask-distribution).
+      # El Cask deriva la misma transformación desde `version`, así que acá
+      # solo hace falta reproducirla para descargar el .dmg correcto.
+      - name: Download macOS dmg and compute sha256
+        id: sha
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+        run: |
+          DMG_VERSION="1.${VERSION#*.}"
+          DMG_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/app.luxion.shogunai-${DMG_VERSION}.dmg"
+          curl -sL -f -o app.dmg "$DMG_URL"
+          echo "value=$(sha256sum app.dmg | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      # HOMEBREW_TAP_TOKEN es un fine-grained PAT con permiso de escritura
+      # (Contents) limitado al repo del tap: GITHUB_TOKEN no puede pushear a
+      # otro repositorio. El `url` del Cask no se toca: ya está parametrizado
+      # con `#{version}` y deriva el sufijo del .dmg en Ruby.
+      - name: Update Homebrew tap
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+          SHA256: ${{ steps.sha.outputs.value }}
+        run: |
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/LuxionServer/homebrew-shogunai.git" tap
+          cd tap
+
+          sed -i "s|^  version \".*\"\$|  version \"${VERSION}\"|" Casks/shogunai.rb
+          sed -i "s|^  sha256 \".*\"\$|  sha256 \"${SHA256}\"|" Casks/shogunai.rb
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/shogunai.rb
+
+          if git diff --cached --quiet; then
+            echo "Cask already up to date, nothing to commit."
+          else
+            git commit -m "Update shogunai cask to v${VERSION}"
+            git push
+          fi
