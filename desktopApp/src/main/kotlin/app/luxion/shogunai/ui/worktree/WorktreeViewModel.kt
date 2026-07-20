@@ -26,9 +26,13 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
     var isLoadingBranches by mutableStateOf(false)
         private set
 
-    private var pendingForceRemoval by mutableStateOf<PendingForceRemoval?>(null)
-    val worktreePendingForceRemoval: Worktree?
-        get() = pendingForceRemoval?.worktree
+    private var pendingRemoval by mutableStateOf<PendingRemoval?>(null)
+    val worktreePendingRemoval: Worktree?
+        get() = pendingRemoval?.worktree
+    val pendingRemovalDeleteBranch: Boolean
+        get() = pendingRemoval?.deleteBranch ?: false
+    val pendingRemovalRequiresForce: Boolean
+        get() = pendingRemoval?.requiresForce ?: false
 
     init {
         refresh()
@@ -79,16 +83,24 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
                 .onSuccess {
                     worktrees = worktrees.filterNot { it.path == worktree.path }
                     errorMessage = null
-                    pendingForceRemoval = null
+                    pendingRemoval = null
                 }
                 .onFailure { error ->
                     if (!force && error.suggestsForceRetry()) {
-                        pendingForceRemoval = PendingForceRemoval(worktree, branchToDelete)
+                        pendingRemoval = PendingRemoval(worktree, deleteBranch = branchToDelete != null, requiresForce = true)
                     } else {
                         errorMessage = error.message
                     }
                 }
         }
+    }
+
+    fun requestRemoval(worktree: Worktree) {
+        pendingRemoval = PendingRemoval(worktree, deleteBranch = false)
+    }
+
+    fun setPendingRemovalDeleteBranch(deleteBranch: Boolean) {
+        pendingRemoval = pendingRemoval?.copy(deleteBranch = deleteBranch)
     }
 
     fun openTerminal(worktree: Worktree) {
@@ -99,16 +111,21 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
         }
     }
 
-    fun confirmForceRemoval() {
-        val pending = pendingForceRemoval ?: return
-        remove(pending.worktree, pending.branchToDelete, force = true)
+    fun confirmPendingRemoval() {
+        val pending = pendingRemoval ?: return
+        val branchToDelete = pending.worktree.branch.takeIf { pending.deleteBranch }
+        remove(pending.worktree, branchToDelete, force = pending.requiresForce)
     }
 
-    fun dismissForceRemoval() {
-        pendingForceRemoval = null
+    fun dismissPendingRemoval() {
+        pendingRemoval = null
     }
 
-    private data class PendingForceRemoval(val worktree: Worktree, val branchToDelete: String?)
+    private data class PendingRemoval(
+        val worktree: Worktree,
+        val deleteBranch: Boolean,
+        val requiresForce: Boolean = false,
+    )
 }
 
 private fun Throwable.suggestsForceRetry(): Boolean =
