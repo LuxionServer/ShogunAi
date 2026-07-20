@@ -173,4 +173,22 @@ class CreateWorktreeFromBranchUseCaseTest {
         assertIs<IllegalArgumentException>(error)
         assertTrue(exec.executedCommands.isEmpty())
     }
+
+    @Test
+    fun `strips a known branch type prefix so the directory matches the new-branch flow`() = runTest {
+        val prefixedBranch = "feature/TASK-123"
+        val prefixedWorktreePath = "/home/dev/projects/TASK-123"
+        val exec = FakeShellCommandExecutor {
+            when {
+                it.getOrNull(1) == "branch" && it.getOrNull(2) == "--list" -> success(it, stdout = "  $prefixedBranch\n")
+                else -> success(it)
+            }
+        }
+        val useCase = CreateWorktreeFromBranchUseCase(config, exec, FakeFileManager(existing = baseWithSecrets))
+
+        val worktree = useCase(prefixedBranch).getOrThrow()
+
+        assertEquals(prefixedWorktreePath, worktree.path)
+        assertTrue(exec.executed("git", "worktree", "add", prefixedWorktreePath, prefixedBranch))
+    }
 }
