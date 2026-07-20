@@ -17,21 +17,25 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.Worktree
+import app.luxion.shogunai.ui.components.DropdownSelector
+import app.luxion.shogunai.ui.components.SectionCard
+import app.luxion.shogunai.ui.components.SegmentedSelector
+import app.luxion.shogunai.ui.components.Spacing
+
+private fun CreateMode.label(): String = when (this) {
+    CreateMode.NEW_BRANCH -> "Rama nueva"
+    CreateMode.EXISTING_BRANCH -> "Rama existente"
+}
 
 @Composable
 fun WorktreeScreen(
@@ -39,129 +43,96 @@ fun WorktreeScreen(
     viewModel: WorktreeViewModel,
     onBack: () -> Unit,
 ) {
-    var taskId by remember { mutableStateOf("") }
-    var branchType by remember { mutableStateOf(BranchType.FEATURE) }
-    var createMode by remember { mutableStateOf(CreateMode.NEW_BRANCH) }
-    var selectedBranch by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(createMode) {
-        if (createMode == CreateMode.EXISTING_BRANCH) {
+    LaunchedEffect(viewModel.createMode) {
+        if (viewModel.createMode == CreateMode.EXISTING_BRANCH) {
             viewModel.loadEligibleBranches()
         }
     }
 
-    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(projectName, style = MaterialTheme.typography.headlineSmall)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (viewModel.isLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.padding(end = 8.dp).size(20.dp),
-                            strokeWidth = 2.dp,
-                        )
-                    }
-                    OutlinedButton(
-                        onClick = { viewModel.refresh() },
-                        enabled = !viewModel.isLoading,
-                        modifier = Modifier.padding(end = 8.dp),
-                    ) { Text("Recargar") }
-                    OutlinedButton(onClick = onBack) { Text("Proyectos") }
+    Column(modifier = Modifier.fillMaxSize().padding(Spacing.md)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(projectName, style = MaterialTheme.typography.headlineSmall)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (viewModel.isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.padding(end = Spacing.sm).size(20.dp),
+                        strokeWidth = 2.dp,
+                    )
                 }
+                OutlinedButton(
+                    onClick = { viewModel.refresh() },
+                    enabled = !viewModel.isLoading,
+                    modifier = Modifier.padding(end = Spacing.sm),
+                ) { Text("Recargar") }
+                OutlinedButton(onClick = onBack) { Text("Proyectos") }
             }
         }
 
         viewModel.errorMessage?.let { message ->
-            item {
-                Text(message, color = Color.Red, modifier = Modifier.padding(top = 8.dp))
-            }
+            Text(message, color = Color.Red, modifier = Modifier.padding(top = Spacing.sm))
         }
 
-        item {
-            Text("Nuevo worktree", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))
-            Row(modifier = Modifier.padding(top = 8.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(
-                        selected = createMode == CreateMode.NEW_BRANCH,
-                        onClick = { createMode = CreateMode.NEW_BRANCH },
-                    )
-                    Text("Rama nueva", modifier = Modifier.padding(end = 16.dp))
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(
-                        selected = createMode == CreateMode.EXISTING_BRANCH,
-                        onClick = { createMode = CreateMode.EXISTING_BRANCH },
-                    )
-                    Text("Rama existente")
-                }
-            }
-        }
-
-        when (createMode) {
-            CreateMode.NEW_BRANCH -> item {
-                Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        SectionCard(title = "Nuevo worktree", modifier = Modifier.padding(top = Spacing.md)) {
+            SegmentedSelector(
+                options = CreateMode.entries,
+                selected = viewModel.createMode,
+                onSelect = { viewModel.createMode = it },
+                label = { it.label() },
+            )
+            when (viewModel.createMode) {
+                CreateMode.NEW_BRANCH -> {
                     OutlinedTextField(
-                        value = taskId,
-                        onValueChange = { taskId = it.replace(' ', '-') },
+                        value = viewModel.taskId,
+                        onValueChange = { viewModel.updateTaskId(it) },
                         label = { Text("Id de tarea") },
-                        isError = taskId.isNotBlank() && !viewModel.isTaskIdValid(taskId),
-                        modifier = Modifier.weight(1f),
+                        isError = viewModel.taskId.isNotBlank() && !viewModel.isTaskIdValid(viewModel.taskId),
+                        modifier = Modifier.fillMaxWidth(),
                     )
-                }
-                if (taskId.isNotBlank() && !viewModel.isTaskIdValid(taskId)) {
-                    Text(
-                        "Id de tarea inválido",
-                        color = Color.Red,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(top = 4.dp),
+                    if (viewModel.taskId.isNotBlank() && !viewModel.isTaskIdValid(viewModel.taskId)) {
+                        Text(
+                            "Id de tarea inválido",
+                            color = Color.Red,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    SegmentedSelector(
+                        options = BranchType.entries,
+                        selected = viewModel.branchType,
+                        onSelect = { viewModel.branchType = it },
+                        label = { it.prefix },
                     )
-                }
-                Row(modifier = Modifier.padding(top = 4.dp)) {
-                    BranchType.entries.forEach { type ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(selected = branchType == type, onClick = { branchType = type })
-                            Text(type.prefix, modifier = Modifier.padding(end = 16.dp))
-                        }
-                    }
-                }
-                Button(
-                    onClick = {
-                        viewModel.create(taskId, branchType)
-                        taskId = ""
-                    },
-                    enabled = taskId.isNotBlank() && viewModel.isTaskIdValid(taskId),
-                    modifier = Modifier.padding(top = 8.dp),
-                ) {
-                    Text("Crear worktree")
-                }
-            }
-            CreateMode.EXISTING_BRANCH -> {
-                when {
-                    viewModel.isLoadingBranches -> item {
-                        Text("Cargando ramas...", modifier = Modifier.padding(top = 8.dp))
-                    }
-                    viewModel.eligibleBranches.isEmpty() -> item {
-                        Text("No hay ramas disponibles para crear un worktree.", modifier = Modifier.padding(top = 8.dp))
-                    }
-                    else -> items(viewModel.eligibleBranches) { branch ->
-                        Row(modifier = Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(selected = selectedBranch == branch, onClick = { selectedBranch = branch })
-                            Text(branch)
-                        }
-                    }
-                }
-                item {
                     Button(
                         onClick = {
-                            selectedBranch?.let { viewModel.createFromBranch(it) }
-                            selectedBranch = null
+                            viewModel.create(viewModel.taskId, viewModel.branchType)
+                            viewModel.updateTaskId("")
                         },
-                        enabled = selectedBranch != null,
-                        modifier = Modifier.padding(top = 8.dp),
+                        enabled = viewModel.taskId.isNotBlank() && viewModel.isTaskIdValid(viewModel.taskId),
+                    ) {
+                        Text("Crear worktree")
+                    }
+                }
+                CreateMode.EXISTING_BRANCH -> {
+                    when {
+                        viewModel.isLoadingBranches -> Text("Cargando ramas...")
+                        viewModel.eligibleBranches.isEmpty() -> Text("No hay ramas disponibles para crear un worktree.")
+                        else -> DropdownSelector(
+                            options = viewModel.eligibleBranches,
+                            selected = viewModel.selectedBranch,
+                            onSelect = { viewModel.selectedBranch = it },
+                            label = { it },
+                            placeholder = "Selecciona una rama",
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            viewModel.selectedBranch?.let { viewModel.createFromBranch(it) }
+                            viewModel.selectedBranch = null
+                        },
+                        enabled = viewModel.selectedBranch != null,
                     ) {
                         Text("Crear worktree")
                     }
@@ -169,16 +140,16 @@ fun WorktreeScreen(
             }
         }
 
-        item {
-            Text("Worktrees", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 24.dp))
-        }
-        items(viewModel.worktrees) { worktree ->
-            WorktreeRow(
-                worktree = worktree,
-                onRemove = { viewModel.requestRemoval(worktree) },
-                onOpenTerminal = { viewModel.openTerminal(worktree) },
-            )
-            HorizontalDivider()
+        Text("Worktrees", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = Spacing.lg))
+        LazyColumn(modifier = Modifier.weight(1f)) {
+            items(viewModel.worktrees) { worktree ->
+                WorktreeRow(
+                    worktree = worktree,
+                    onRemove = { viewModel.requestRemoval(worktree) },
+                    onOpenTerminal = { viewModel.openTerminal(worktree) },
+                )
+                HorizontalDivider()
+            }
         }
     }
 
@@ -199,7 +170,7 @@ fun WorktreeScreen(
                     worktree.branch?.let { branch ->
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(top = 8.dp),
+                            modifier = Modifier.padding(top = Spacing.sm),
                         ) {
                             Checkbox(
                                 checked = viewModel.pendingRemovalDeleteBranch,
@@ -224,12 +195,10 @@ fun WorktreeScreen(
     }
 }
 
-private enum class CreateMode { NEW_BRANCH, EXISTING_BRANCH }
-
 @Composable
 private fun WorktreeRow(worktree: Worktree, onRemove: () -> Unit, onOpenTerminal: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.sm),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Column {
@@ -237,7 +206,7 @@ private fun WorktreeRow(worktree: Worktree, onRemove: () -> Unit, onOpenTerminal
             Text(worktree.branch ?: "(detached)", style = MaterialTheme.typography.bodySmall)
         }
         Row {
-            OutlinedButton(onClick = onOpenTerminal, modifier = Modifier.padding(end = 8.dp)) {
+            OutlinedButton(onClick = onOpenTerminal, modifier = Modifier.padding(end = Spacing.sm)) {
                 Text("Terminal")
             }
             if (!worktree.isMain) {

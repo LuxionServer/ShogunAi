@@ -16,7 +16,18 @@ No `navigation-compose`: `AppRoot` holds a `var screen by remember { mutableStat
 
 Each ViewModel uses `androidx.lifecycle` viewmodel-compose (`viewModelScope`) to call use cases without blocking the UI thread.
 
-`WorktreeRow` has a "Terminal" button next to "Delete" that calls `WorktreeViewModel.openTerminal(worktree)`. `ProjectConfigScreen` has a "Terminal" section (radio button group over `TerminalSelectionMode`, with a `TerminalEmulator` selector when `FIXED` and a text field for the argv template when `CUSTOM`) and an "Agent" section (agent command, Headroom switch).
+`WorktreeViewModel` also owns the transient "New worktree" form state (`taskId`, `branchType`, `createMode`, `selectedBranch`), for consistency with how `ProjectConfigViewModel` owns its form state: `updateTaskId` applies the normalization (trim + whitespace runs collapsed to `-`) before storing the value, so the field always shows the already-normalized id while typing.
+
+`WorktreeRow` has a "Terminal" button next to "Delete" that calls `WorktreeViewModel.openTerminal(worktree)`. `ProjectConfigScreen` has a "Terminal" section (`SegmentedSelector` over `TerminalSelectionMode`, with a `DropdownSelector` of `TerminalEmulator` when `FIXED` and a text field for the argv template when `CUSTOM`) and an "Agent" section (agent command, Headroom switch).
+
+## Shared components (`ui/components`)
+
+Introduced in the `ui-consistency-pass` change to unify look & feel across the three screens:
+
+- **`Spacing`**: spacing scale (`xs=4dp`, `sm=8dp`, `md=16dp`, `lg=24dp`) used instead of ad hoc `dp` values.
+- **`SegmentedSelector<T>`**: segmented control (`SingleChoiceSegmentedButtonRow`/`SegmentedButton`) for a small, fixed set of options that should all be visible at once (e.g. `TerminalSelectionMode`, `CreateMode`, `BranchType`).
+- **`DropdownSelector<T>`**: dropdown (`ExposedDropdownMenuBox`) for longer or dynamically loaded lists (e.g. `TerminalEmulator`, branches eligible to create a worktree from).
+- **`SectionCard`**: titled `OutlinedCard`, used to visually group sections of a long form (every section of `ProjectConfigScreen`, and the "New worktree" block of `WorktreeScreen`).
 
 ## `AppContainer`
 

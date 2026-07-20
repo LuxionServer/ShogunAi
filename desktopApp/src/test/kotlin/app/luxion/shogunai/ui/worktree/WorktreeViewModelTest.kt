@@ -44,6 +44,7 @@ class WorktreeViewModelTest {
     private val listCommand = listOf("git", "worktree", "list", "--porcelain")
     private val removeCommand = listOf("git", "worktree", "remove", worktreePath)
     private val forceRemoveCommand = listOf("git", "worktree", "remove", "--force", worktreePath)
+    private val forEachRefCommand = listOf("git", "for-each-ref", "--format=%(refname:short)", "refs/heads")
 
     private val porcelainOutput = """
         worktree $worktreePath
@@ -324,6 +325,36 @@ class WorktreeViewModelTest {
         advanceUntilIdle()
 
         assertEquals(true, viewModel.errorMessage?.contains("not a git repository"))
+    }
+
+    @Test
+    fun `updateTaskId normalizes whitespace to a single dash and trims`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(useCases { command -> success(command) })
+        advanceUntilIdle()
+
+        viewModel.updateTaskId("  TASK   123  ")
+
+        assertEquals("TASK-123", viewModel.taskId)
+    }
+
+    @Test
+    fun `loadEligibleBranches populates eligibleBranches excluding already checked out branches`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(
+            useCases { command ->
+                when (command) {
+                    listCommand -> success(command, porcelainOutput)
+                    forEachRefCommand -> success(command, stdout = "feature/TASK-123\nhotfix/security-patch\n")
+                    else -> success(command)
+                }
+            },
+        )
+        advanceUntilIdle()
+
+        viewModel.loadEligibleBranches()
+        advanceUntilIdle()
+
+        assertEquals(listOf("hotfix/security-patch"), viewModel.eligibleBranches)
+        assertEquals(false, viewModel.isLoadingBranches)
     }
 
     @Test

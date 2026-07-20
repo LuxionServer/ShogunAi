@@ -16,7 +16,18 @@ Sin `navigation-compose`: `AppRoot` guarda un `var screen by remember { mutableS
 
 Cada ViewModel usa `androidx.lifecycle` viewmodel-compose (`viewModelScope`) para llamar a los casos de uso sin bloquear el hilo de UI.
 
-`WorktreeRow` tiene un botón "Terminal" junto a "Eliminar" que llama a `WorktreeViewModel.openTerminal(worktree)`. `ProjectConfigScreen` tiene una sección "Terminal" (grupo de radio buttons sobre `TerminalSelectionMode`, con selector de `TerminalEmulator` cuando es `FIXED` y un campo de texto para la plantilla argv cuando es `CUSTOM`) y una sección "Agente" (comando del agente, switch de Headroom).
+`WorktreeViewModel` también posee el estado transitorio del formulario "Nuevo worktree" (`taskId`, `branchType`, `createMode`, `selectedBranch`), por consistencia con cómo `ProjectConfigViewModel` posee el estado de su formulario: `updateTaskId` aplica la normalización (trim + colapso de espacios a `-`) antes de guardar el valor, así el campo siempre muestra el id ya normalizado mientras se escribe.
+
+`WorktreeRow` tiene un botón "Terminal" junto a "Eliminar" que llama a `WorktreeViewModel.openTerminal(worktree)`. `ProjectConfigScreen` tiene una sección "Terminal" (`SegmentedSelector` sobre `TerminalSelectionMode`, con `DropdownSelector` de `TerminalEmulator` cuando es `FIXED` y un campo de texto para la plantilla argv cuando es `CUSTOM`) y una sección "Agente" (comando del agente, switch de Headroom).
+
+## Componentes compartidos (`ui/components`)
+
+Introducidos en el cambio `ui-consistency-pass` para unificar look & feel entre las tres pantallas:
+
+- **`Spacing`**: escala de espaciado (`xs=4dp`, `sm=8dp`, `md=16dp`, `lg=24dp`) usada en vez de valores `dp` sueltos.
+- **`SegmentedSelector<T>`**: control segmentado (`SingleChoiceSegmentedButtonRow`/`SegmentedButton`) para un conjunto pequeño y fijo de opciones siempre visibles (p. ej. `TerminalSelectionMode`, `CreateMode`, `BranchType`).
+- **`DropdownSelector<T>`**: dropdown (`ExposedDropdownMenuBox`) para listas más largas o cargadas dinámicamente (p. ej. `TerminalEmulator`, ramas elegibles para crear un worktree).
+- **`SectionCard`**: `OutlinedCard` con título, usada para agrupar visualmente secciones de un formulario largo (todas las secciones de `ProjectConfigScreen`, y el bloque "Nuevo worktree" de `WorktreeScreen`).
 
 ## `AppContainer`
 
