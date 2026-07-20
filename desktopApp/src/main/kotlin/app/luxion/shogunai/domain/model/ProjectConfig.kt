@@ -31,10 +31,19 @@ data class ProjectConfig(
     fun worktreePathFor(taskId: String): String = joinPath(worktreesRoot, taskId)
 
     /**
-     * Ruta del worktree para una rama ya existente, reemplazando `/` por `-`
-     * para obtener un único segmento de ruta válido (p. ej. `fix/x` -> `fix-x`).
+     * Ruta del worktree para una rama ya existente.
+     *
+     * Si la rama sigue la convención `<tipo>/<id>` de [BranchType] (p. ej.
+     * `feature/TASK-123`), se descarta el prefijo para que el directorio
+     * coincida con el que se habría creado desde el flujo de rama nueva
+     * (`TASK-123`). En cualquier otro caso, se reemplaza `/` por `-` para
+     * obtener un único segmento de ruta válido (p. ej. `hotfix/x` -> `hotfix-x`).
      */
-    fun worktreePathForBranch(branch: String): String = worktreePathFor(branch.replace("/", "-"))
+    fun worktreePathForBranch(branch: String): String {
+        val knownPrefix = BranchType.entries.map { "${it.prefix}/" }.firstOrNull { branch.startsWith(it) }
+        val sanitized = knownPrefix?.let { branch.removePrefix(it) } ?: branch
+        return worktreePathFor(sanitized.replace("/", "-"))
+    }
 
     /** Ruta de un archivo de secretos dentro del repositorio base. */
     fun baseSecretPath(fileName: String): String = joinPath(baseRepositoryPath, fileName)
