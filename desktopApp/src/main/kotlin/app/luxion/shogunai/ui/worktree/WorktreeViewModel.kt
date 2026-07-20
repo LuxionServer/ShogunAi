@@ -26,12 +26,22 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
     var isLoadingBranches by mutableStateOf(false)
         private set
 
+    var taskId by mutableStateOf("")
+        private set
+    var branchType by mutableStateOf(BranchType.FEATURE)
+    var createMode by mutableStateOf(CreateMode.NEW_BRANCH)
+    var selectedBranch by mutableStateOf<String?>(null)
+
     private var pendingForceRemoval by mutableStateOf<PendingForceRemoval?>(null)
     val worktreePendingForceRemoval: Worktree?
         get() = pendingForceRemoval?.worktree
 
     init {
         refresh()
+    }
+
+    fun updateTaskId(raw: String) {
+        taskId = normalizeTaskId(raw)
     }
 
     fun refresh() {
@@ -113,3 +123,5 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
 
 private fun Throwable.suggestsForceRetry(): Boolean =
     this is WorktreeError.GitCommandFailed && errorOutput.contains("--force", ignoreCase = true)
+
+enum class CreateMode { NEW_BRANCH, EXISTING_BRANCH }
