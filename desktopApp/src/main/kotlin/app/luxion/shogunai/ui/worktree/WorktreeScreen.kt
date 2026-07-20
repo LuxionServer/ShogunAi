@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -144,7 +145,7 @@ fun WorktreeScreen(
             items(viewModel.worktrees) { worktree ->
                 WorktreeRow(
                     worktree = worktree,
-                    onRemove = { viewModel.remove(worktree, worktree.branch) },
+                    onRemove = { viewModel.requestRemoval(worktree) },
                     onOpenTerminal = { viewModel.openTerminal(worktree) },
                 )
                 HorizontalDivider()
@@ -152,18 +153,41 @@ fun WorktreeScreen(
         }
     }
 
-    viewModel.worktreePendingForceRemoval?.let { worktree ->
+    viewModel.worktreePendingRemoval?.let { worktree ->
+        val requiresForce = viewModel.pendingRemovalRequiresForce
         AlertDialog(
-            onDismissRequest = { viewModel.dismissForceRemoval() },
-            title = { Text("¿Forzar eliminación?") },
-            text = { Text("\"${worktree.path}\" tiene cambios sin guardar. Se perderán si se elimina el worktree.") },
+            onDismissRequest = { viewModel.dismissPendingRemoval() },
+            title = { Text(if (requiresForce) "¿Forzar eliminación?" else "¿Eliminar worktree?") },
+            text = {
+                Column {
+                    Text(
+                        if (requiresForce) {
+                            "\"${worktree.path}\" tiene cambios sin guardar. Se perderán si se elimina el worktree."
+                        } else {
+                            "¿Eliminar el worktree \"${worktree.path}\"?"
+                        },
+                    )
+                    worktree.branch?.let { branch ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(top = Spacing.sm),
+                        ) {
+                            Checkbox(
+                                checked = viewModel.pendingRemovalDeleteBranch,
+                                onCheckedChange = { viewModel.setPendingRemovalDeleteBranch(it) },
+                            )
+                            Text("Eliminar también la rama local ($branch)")
+                        }
+                    }
+                }
+            },
             confirmButton = {
-                TextButton(onClick = { viewModel.confirmForceRemoval() }) {
-                    Text("Forzar eliminación")
+                TextButton(onClick = { viewModel.confirmPendingRemoval() }) {
+                    Text(if (requiresForce) "Forzar eliminación" else "Eliminar")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { viewModel.dismissForceRemoval() }) {
+                TextButton(onClick = { viewModel.dismissPendingRemoval() }) {
                     Text("Cancelar")
                 }
             },
