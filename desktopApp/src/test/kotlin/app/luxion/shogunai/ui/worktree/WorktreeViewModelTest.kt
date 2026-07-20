@@ -44,6 +44,7 @@ class WorktreeViewModelTest {
     private val listCommand = listOf("git", "worktree", "list", "--porcelain")
     private val removeCommand = listOf("git", "worktree", "remove", worktreePath)
     private val forceRemoveCommand = listOf("git", "worktree", "remove", "--force", worktreePath)
+    private val forEachRefCommand = listOf("git", "for-each-ref", "--format=%(refname:short)", "refs/heads")
 
     private val porcelainOutput = """
         worktree $worktreePath
@@ -124,7 +125,7 @@ class WorktreeViewModelTest {
     }
 
     @Test
-    fun `sets pending force removal when remove fails suggesting force`() = runTest(dispatcher) {
+    fun `sets pending removal in force state when remove fails suggesting force`() = runTest(dispatcher) {
         val viewModel = WorktreeViewModel(
             useCases { command ->
                 when (command) {
@@ -142,7 +143,8 @@ class WorktreeViewModelTest {
         viewModel.remove(worktree, branchToDelete = null)
         advanceUntilIdle()
 
-        assertEquals(worktree, viewModel.worktreePendingForceRemoval)
+        assertEquals(worktree, viewModel.worktreePendingRemoval)
+        assertTrue(viewModel.pendingRemovalRequiresForce)
         assertNull(viewModel.errorMessage)
         assertTrue(viewModel.worktrees.any { it.path == worktreePath })
     }
@@ -163,7 +165,7 @@ class WorktreeViewModelTest {
         viewModel.remove(worktree, branchToDelete = null)
         advanceUntilIdle()
 
-        assertNull(viewModel.worktreePendingForceRemoval)
+        assertNull(viewModel.worktreePendingRemoval)
         assertEquals(
             true,
             viewModel.errorMessage?.contains("is not a working tree"),
@@ -171,7 +173,7 @@ class WorktreeViewModelTest {
     }
 
     @Test
-    fun `confirmForceRemoval retries with force and clears pending state on success`() = runTest(dispatcher) {
+    fun `confirmPendingRemoval retries with force and clears pending state on success`() = runTest(dispatcher) {
         val viewModel = WorktreeViewModel(
             useCases { command ->
                 when (command) {
@@ -186,11 +188,89 @@ class WorktreeViewModelTest {
         viewModel.remove(worktree, branchToDelete = null)
         advanceUntilIdle()
 
-        viewModel.confirmForceRemoval()
+        viewModel.confirmPendingRemoval()
         advanceUntilIdle()
 
-        assertNull(viewModel.worktreePendingForceRemoval)
+        assertNull(viewModel.worktreePendingRemoval)
         assertTrue(viewModel.worktrees.none { it.path == worktreePath })
+    }
+
+    @Test
+    fun `confirmPendingRemoval keeps the branch when the checkbox is unchecked`() = runTest(dispatcher) {
+        val executedCommands = mutableListOf<List<String>>()
+        val viewModel = WorktreeViewModel(
+            useCases { command ->
+                executedCommands += command
+                when (command) {
+                    listCommand -> success(command, porcelainOutput)
+                    else -> success(command)
+                }
+            },
+        )
+        advanceUntilIdle()
+
+        viewModel.requestRemoval(worktree)
+        viewModel.confirmPendingRemoval()
+        advanceUntilIdle()
+
+        assertNull(viewModel.worktreePendingRemoval)
+        assertTrue(viewModel.worktrees.none { it.path == worktreePath })
+        assertTrue(executedCommands.none { it == listOf("git", "branch", "-d", worktree.branch) })
+    }
+
+    @Test
+    fun `confirmPendingRemoval deletes the branch when the checkbox is checked`() = runTest(dispatcher) {
+        val executedCommands = mutableListOf<List<String>>()
+        val viewModel = WorktreeViewModel(
+            useCases { command ->
+                executedCommands += command
+                when (command) {
+                    listCommand -> success(command, porcelainOutput)
+                    else -> success(command)
+                }
+            },
+        )
+        advanceUntilIdle()
+
+        viewModel.requestRemoval(worktree)
+        viewModel.setPendingRemovalDeleteBranch(true)
+        viewModel.confirmPendingRemoval()
+        advanceUntilIdle()
+
+        assertNull(viewModel.worktreePendingRemoval)
+        assertTrue(viewModel.worktrees.none { it.path == worktreePath })
+        assertTrue(executedCommands.any { it == listOf("git", "branch", "-d", worktree.branch) })
+    }
+
+    @Test
+    fun `force-eligible failure preserves the chosen deleteBranch value`() = runTest(dispatcher) {
+        val executedCommands = mutableListOf<List<String>>()
+        val viewModel = WorktreeViewModel(
+            useCases { command ->
+                executedCommands += command
+                when (command) {
+                    listCommand -> success(command, porcelainOutput)
+                    removeCommand -> failure(command, stderr = "use --force to delete it")
+                    forceRemoveCommand -> success(command)
+                    else -> success(command)
+                }
+            },
+        )
+        advanceUntilIdle()
+
+        viewModel.requestRemoval(worktree)
+        viewModel.setPendingRemovalDeleteBranch(true)
+        viewModel.confirmPendingRemoval()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.pendingRemovalRequiresForce)
+        assertTrue(viewModel.pendingRemovalDeleteBranch)
+
+        viewModel.confirmPendingRemoval()
+        advanceUntilIdle()
+
+        assertNull(viewModel.worktreePendingRemoval)
+        assertTrue(executedCommands.any { it == listOf("git", "branch", "-d", worktree.branch) })
     }
 
     @Test
@@ -248,7 +328,37 @@ class WorktreeViewModelTest {
     }
 
     @Test
-    fun `dismissForceRemoval clears pending state without executing another command`() = runTest(dispatcher) {
+    fun `updateTaskId normalizes whitespace to a single dash and trims`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(useCases { command -> success(command) })
+        advanceUntilIdle()
+
+        viewModel.updateTaskId("  TASK   123  ")
+
+        assertEquals("TASK-123", viewModel.taskId)
+    }
+
+    @Test
+    fun `loadEligibleBranches populates eligibleBranches excluding already checked out branches`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(
+            useCases { command ->
+                when (command) {
+                    listCommand -> success(command, porcelainOutput)
+                    forEachRefCommand -> success(command, stdout = "feature/TASK-123\nhotfix/security-patch\n")
+                    else -> success(command)
+                }
+            },
+        )
+        advanceUntilIdle()
+
+        viewModel.loadEligibleBranches()
+        advanceUntilIdle()
+
+        assertEquals(listOf("hotfix/security-patch"), viewModel.eligibleBranches)
+        assertEquals(false, viewModel.isLoadingBranches)
+    }
+
+    @Test
+    fun `dismissPendingRemoval clears pending state without executing another command`() = runTest(dispatcher) {
         val executedCommands = mutableListOf<List<String>>()
         val viewModel = WorktreeViewModel(
             useCases { command ->
@@ -265,10 +375,34 @@ class WorktreeViewModelTest {
         advanceUntilIdle()
         val commandCountBeforeDismiss = executedCommands.size
 
-        viewModel.dismissForceRemoval()
+        viewModel.dismissPendingRemoval()
         advanceUntilIdle()
 
-        assertNull(viewModel.worktreePendingForceRemoval)
+        assertNull(viewModel.worktreePendingRemoval)
         assertEquals(commandCountBeforeDismiss, executedCommands.size)
+    }
+
+    @Test
+    fun `dismissPendingRemoval cancels before any command runs`() = runTest(dispatcher) {
+        val executedCommands = mutableListOf<List<String>>()
+        val viewModel = WorktreeViewModel(
+            useCases { command ->
+                executedCommands += command
+                when (command) {
+                    listCommand -> success(command, porcelainOutput)
+                    else -> success(command)
+                }
+            },
+        )
+        advanceUntilIdle()
+        val commandCountBeforeRequest = executedCommands.size
+
+        viewModel.requestRemoval(worktree)
+        viewModel.dismissPendingRemoval()
+        advanceUntilIdle()
+
+        assertNull(viewModel.worktreePendingRemoval)
+        assertEquals(commandCountBeforeRequest, executedCommands.size)
+        assertTrue(viewModel.worktrees.any { it.path == worktreePath })
     }
 }

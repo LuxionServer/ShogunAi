@@ -15,6 +15,7 @@ dependencies {
     implementation(compose.foundation)
     implementation(compose.material3)
     implementation(compose.ui)
+    implementation(libs.compose.materialIconsCore)
     implementation(libs.kotlinx.coroutinesSwing)
     implementation(libs.kotlinx.coroutinesCore)
     implementation(libs.kotlinx.serializationJson)

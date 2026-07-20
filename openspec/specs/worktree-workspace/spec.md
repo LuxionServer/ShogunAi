@@ -42,27 +42,43 @@ The system SHALL let the user create a new worktree by entering a task id and ch
 - **THEN** the field displays the normalized value (spaces replaced with `-`) rather than the raw input with spaces
 
 ### Requirement: Remove a worktree
-The system SHALL let the user remove a non-main worktree from the list, using `RemoveWorktreeUseCase`, with an option to also delete its local branch. When the removal fails because the worktree has uncommitted or untracked changes, the system SHALL offer the user a confirmation dialog to retry the removal with `--force` instead of leaving the user with no recourse.
+The system SHALL let the user remove a non-main worktree from the list, using `RemoveWorktreeUseCase`, with an option to also delete its local branch. Clicking the remove action SHALL always show a confirmation dialog before any Git command runs, with a checkbox labeled to delete the local branch as well, unchecked by default; the branch is only passed to `RemoveWorktreeUseCase` as `branchToDelete` if the user checks it. When the removal fails because the worktree has uncommitted or untracked changes, the system SHALL update the same dialog to offer a force retry, reusing the user's branch-deletion choice, instead of leaving the user with no recourse.
 
-#### Scenario: Successful removal
-- **WHEN** the user chooses to remove a worktree from the list and confirms
-- **THEN** the app invokes `RemoveWorktreeUseCase(worktreePath, branchToDelete, force)` and, on success, removes it from the displayed list
+#### Scenario: Confirmation dialog shown before removing
+- **WHEN** the user activates the remove action for a non-main worktree
+- **THEN** the app shows a confirmation dialog with a "delete local branch" checkbox unchecked by default, and does not invoke `RemoveWorktreeUseCase` until the user confirms
+
+#### Scenario: Successful removal without deleting the branch
+- **WHEN** the user confirms the removal dialog with the "delete local branch" checkbox unchecked
+- **THEN** the app invokes `RemoveWorktreeUseCase(worktreePath, branchToDelete = null, force = false)` and, on success, removes the worktree from the displayed list and dismisses the dialog
+
+#### Scenario: Successful removal deleting the branch
+- **WHEN** the user checks "delete local branch" in the confirmation dialog and confirms
+- **THEN** the app invokes `RemoveWorktreeUseCase(worktreePath, branchToDelete = worktree.branch, force = false)` and, on success, removes the worktree from the displayed list and dismisses the dialog
+
+#### Scenario: User cancels the confirmation dialog
+- **WHEN** the user dismisses or cancels the confirmation dialog
+- **THEN** no Git command is executed and the worktree remains in the displayed list
 
 #### Scenario: Removal fails for a reason unrelated to uncommitted changes
 - **WHEN** `RemoveWorktreeUseCase` returns a failed `Result` whose error does not indicate that `--force` would resolve it
-- **THEN** the screen shows an error message and keeps the worktree in the displayed list, without offering a force-retry dialog
+- **THEN** the screen shows an error message and keeps the worktree in the displayed list, without escalating the dialog to a force-retry state
 
 #### Scenario: Removal fails because the worktree has uncommitted or untracked changes
 - **WHEN** `RemoveWorktreeUseCase` returns a failed `Result` whose `WorktreeError.GitCommandFailed` indicates the worktree needs `--force` to be removed
-- **THEN** the screen shows a confirmation dialog asking whether to force-delete the worktree, instead of only showing the raw error message
+- **THEN** the same confirmation dialog updates to ask whether to force-delete the worktree, preserving the "delete local branch" checkbox state the user had chosen, instead of only showing the raw error message
 
 #### Scenario: User confirms force removal
-- **WHEN** the user confirms the force-delete dialog shown after a failed removal
-- **THEN** the app invokes `RemoveWorktreeUseCase(worktreePath, branchToDelete, force = true)` and, on success, removes the worktree from the displayed list and dismisses the dialog
+- **WHEN** the user confirms the force-delete state of the dialog shown after a failed removal
+- **THEN** the app invokes `RemoveWorktreeUseCase(worktreePath, branchToDelete, force = true)` using the branch-deletion choice already selected, and on success removes the worktree from the displayed list and dismisses the dialog
 
 #### Scenario: User cancels force removal
-- **WHEN** the user dismisses or cancels the force-delete dialog
+- **WHEN** the user dismisses or cancels the dialog while it is in the force-retry state
 - **THEN** the worktree remains in the displayed list and no further removal command is executed
+
+#### Scenario: No branch checkbox for a detached worktree
+- **WHEN** the worktree being removed has no associated branch (detached HEAD)
+- **THEN** the confirmation dialog does not show the "delete local branch" checkbox
 
 #### Scenario: Main worktree cannot be removed
 - **WHEN** the user views the main worktree entry in the list
@@ -107,11 +123,15 @@ The system SHALL let the user see which local branches can become a new worktree
 - **THEN** the screen shows an error message derived from the `WorktreeError` instead of a branch list
 
 ### Requirement: Create a worktree from an existing branch
-The system SHALL let the user create a new worktree for a branch that already exists locally, using `CreateWorktreeFromBranchUseCase`, instead of only being able to create worktrees for brand-new branches. The worktree's directory is derived from the branch name, with `/` replaced by `-`.
+The system SHALL let the user create a new worktree for a branch that already exists locally, using `CreateWorktreeFromBranchUseCase`, instead of only being able to create worktrees for brand-new branches. The worktree's directory is derived from the branch name: if the branch starts with a known `BranchType` prefix (`feature/` or `fix/`), that prefix is stripped first; the remaining string then has every `/` replaced with `-`.
 
 #### Scenario: Successful creation
 - **WHEN** the user selects "Existing branch" mode, picks a branch from the eligible list, and confirms
 - **THEN** the app invokes `CreateWorktreeFromBranchUseCase(branch)`, which runs `git worktree add <path> <branch>` (without creating a new branch), copies the project's secret files into the new worktree, and on success adds the returned `Worktree` to the displayed list
+
+#### Scenario: Directory matches the new-branch flow for a known branch type prefix
+- **WHEN** the requested branch starts with a known `BranchType` prefix, e.g. `feature/TASK-123`
+- **THEN** the worktree directory is `<worktreesRoot>/TASK-123` (the prefix stripped), the same directory `CreateWorktreeUseCase` would have produced for that task id and branch type, instead of `<worktreesRoot>/feature-TASK-123`
 
 #### Scenario: Creation fails because the branch doesn't exist
 - **WHEN** the requested branch does not resolve to an existing local ref
@@ -122,7 +142,7 @@ The system SHALL let the user create a new worktree for a branch that already ex
 - **THEN** `CreateWorktreeFromBranchUseCase` returns a failed `Result` with `WorktreeError.BranchAlreadyCheckedOut` instead of `WorktreeError.GitCommandFailed`, and the screen shows an error message describing the conflict
 
 #### Scenario: Creation fails because the destination directory already exists
-- **WHEN** the sanitized branch name maps to a worktree directory that already exists
+- **WHEN** the derived branch name maps to a worktree directory that already exists
 - **THEN** `CreateWorktreeFromBranchUseCase` returns a failed `Result` with `WorktreeError.WorktreeAlreadyExists` without touching Git
 
 #### Scenario: Creation fails because Git LFS is required but not installed
