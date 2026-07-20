@@ -126,7 +126,7 @@ jobs:
           VERSION: ${{ needs.resolve-version.outputs.version }}
         run: |
           DMG_VERSION="1.${VERSION#*.}"
-          DMG_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/app.luxion.shogunai-${DMG_VERSION}.dmg"
+          DMG_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/ShogunAi-${DMG_VERSION}.dmg"
           curl -sL -f -o app.dmg "$DMG_URL"
           echo "value=$(sha256sum app.dmg | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
