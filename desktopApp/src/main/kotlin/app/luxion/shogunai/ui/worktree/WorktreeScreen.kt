@@ -83,14 +83,14 @@ fun WorktreeScreen(
         item {
             Text("Nuevo worktree", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))
             Row(modifier = Modifier.padding(top = 8.dp)) {
-                Row {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(
                         selected = createMode == CreateMode.NEW_BRANCH,
                         onClick = { createMode = CreateMode.NEW_BRANCH },
                     )
                     Text("Rama nueva", modifier = Modifier.padding(end = 16.dp))
                 }
-                Row {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(
                         selected = createMode == CreateMode.EXISTING_BRANCH,
                         onClick = { createMode = CreateMode.EXISTING_BRANCH },
@@ -121,7 +121,7 @@ fun WorktreeScreen(
                 }
                 Row(modifier = Modifier.padding(top = 4.dp)) {
                     BranchType.entries.forEach { type ->
-                        Row {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(selected = branchType == type, onClick = { branchType = type })
                             Text(type.prefix, modifier = Modifier.padding(end = 16.dp))
                         }
@@ -147,7 +147,7 @@ fun WorktreeScreen(
                         Text("No hay ramas disponibles para crear un worktree.", modifier = Modifier.padding(top = 8.dp))
                     }
                     else -> items(viewModel.eligibleBranches) { branch ->
-                        Row(modifier = Modifier.padding(top = 4.dp)) {
+                        Row(modifier = Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(selected = selectedBranch == branch, onClick = { selectedBranch = branch })
                             Text(branch)
                         }
