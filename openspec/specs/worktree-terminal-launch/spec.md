@@ -23,7 +23,7 @@ The system SHALL let the user open a terminal session at a worktree's path from 
 - **THEN** the use case returns success as soon as the terminal process has started, without waiting for the user to close that terminal window
 
 ### Requirement: Resolve which terminal emulator to use
-The system SHALL resolve a concrete terminal emulator for a launch based on the project's `TerminalPreference.mode`: `FIXED` uses the configured `emulator` directly, `CUSTOM` uses the configured `customCommandTemplate` argv with `{path}`/`{command}` placeholders substituted, and `AUTO_DETECT` picks the first available emulator (via `TerminalEmulatorDetector`) in a fixed, OS-appropriate priority order. On macOS, launching against `Terminal.app` SHALL NOT rely on OS Accessibility/GUI-scripting permissions, so the launch works without any manual permission setup.
+The system SHALL resolve a concrete terminal emulator for a launch based on the project's `TerminalPreference.mode`: `FIXED` uses the configured `emulator` directly, `CUSTOM` uses the configured `customCommandTemplate` argv with `{path}`/`{command}` placeholders substituted, and `AUTO_DETECT` picks the first available emulator (via `TerminalEmulatorDetector`) in a fixed, OS-appropriate priority order.
 
 #### Scenario: Fixed emulator configured
 - **WHEN** `TerminalPreference.mode` is `FIXED` and `emulator` is set
@@ -36,10 +36,6 @@ The system SHALL resolve a concrete terminal emulator for a launch based on the 
 #### Scenario: Auto-detect finds an available emulator
 - **WHEN** `TerminalPreference.mode` is `AUTO_DETECT`
 - **THEN** the system queries `TerminalEmulatorDetector` and uses the first available emulator in priority order for the current OS
-
-#### Scenario: Launching Terminal.app on macOS always opens a new window
-- **WHEN** the resolved emulator is `MACOS_TERMINAL`
-- **THEN** the system opens a new `Terminal.app` window and runs the resolved command in it, regardless of how many `Terminal.app` windows are already open, without requesting or depending on Accessibility permission for GUI scripting
 
 ### Requirement: Surface a typed error when no terminal can be launched
 The system SHALL return `WorktreeError.NoTerminalAvailable` when auto-detection finds no supported emulator, or when a `FIXED` preference points at an emulator that is not installed, instead of silently doing nothing or throwing an untyped exception.
