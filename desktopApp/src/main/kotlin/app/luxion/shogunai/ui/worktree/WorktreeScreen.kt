@@ -129,6 +129,7 @@ fun WorktreeScreen(
                             enabled = { !it.isCheckedOut },
                             label = { if (it.isCheckedOut) "${it.name} (ya tiene un worktree)" else it.name },
                             placeholder = "Selecciona una rama",
+                            groupBy = { it.name.substringBefore('/', "otras") },
                         )
                     }
                     Button(

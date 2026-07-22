@@ -6,6 +6,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -13,6 +14,7 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -53,8 +55,10 @@ fun <T> DropdownSelector(
     placeholder: String,
     modifier: Modifier = Modifier,
     enabled: (T) -> Boolean = { true },
+    groupBy: (T) -> String? = { null },
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val expandedGroups = remember { mutableStateMapOf<String, Boolean>() }
 
     ExposedDropdownMenuBox(
         expanded = expanded,
@@ -70,15 +74,33 @@ fun <T> DropdownSelector(
             modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
         )
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            var previousGroup: String? = null
             options.forEach { option ->
-                DropdownMenuItem(
-                    text = { Text(label(option)) },
-                    enabled = enabled(option),
-                    onClick = {
-                        onSelect(option)
-                        expanded = false
-                    },
-                )
+                val group = groupBy(option)
+                if (group != null && group != previousGroup) {
+                    val isExpanded = expandedGroups[group] ?: false
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                "${if (isExpanded) "▼" else "▶"} $group",
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        },
+                        onClick = { expandedGroups[group] = !isExpanded },
+                    )
+                }
+                previousGroup = group
+
+                if (group == null || expandedGroups[group] == true) {
+                    DropdownMenuItem(
+                        text = { Text(label(option)) },
+                        enabled = enabled(option),
+                        onClick = {
+                            onSelect(option)
+                            expanded = false
+                        },
+                    )
+                }
             }
         }
     }
