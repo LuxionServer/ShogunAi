@@ -36,6 +36,7 @@ import app.luxion.shogunai.ui.components.DropdownSelector
 import app.luxion.shogunai.ui.components.SectionCard
 import app.luxion.shogunai.ui.components.SegmentedSelector
 import app.luxion.shogunai.ui.components.Spacing
+import app.luxion.shogunai.ui.components.onEnterKey
 import app.luxion.shogunai.ui.relativeToBase
 
 private fun TerminalSelectionMode.label(): String = when (this) {
@@ -78,36 +79,40 @@ fun ProjectConfigScreen(
 
         SectionCard(title = "Rutas") {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                val pickBaseRepositoryPath = {
+                    FilePicker.pickDirectory(viewModel.baseRepositoryPath)?.let {
+                        viewModel.baseRepositoryPath = it
+                    }
+                    Unit
+                }
                 OutlinedTextField(
                     value = viewModel.baseRepositoryPath,
                     onValueChange = { viewModel.baseRepositoryPath = it },
                     label = { Text("Ruta del repositorio base") },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).onEnterKey(action = pickBaseRepositoryPath),
                 )
                 OutlinedButton(
-                    onClick = {
-                        FilePicker.pickDirectory(viewModel.baseRepositoryPath)?.let {
-                            viewModel.baseRepositoryPath = it
-                        }
-                    },
+                    onClick = pickBaseRepositoryPath,
                     modifier = Modifier.padding(start = Spacing.sm),
                 ) {
                     Text("Examinar…")
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
+                val pickWorktreesRoot = {
+                    FilePicker.pickDirectory(viewModel.worktreesRoot)?.let {
+                        viewModel.worktreesRoot = it
+                    }
+                    Unit
+                }
                 OutlinedTextField(
                     value = viewModel.worktreesRoot,
                     onValueChange = { viewModel.worktreesRoot = it },
                     label = { Text("Carpeta raíz de worktrees") },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).onEnterKey(action = pickWorktreesRoot),
                 )
                 OutlinedButton(
-                    onClick = {
-                        FilePicker.pickDirectory(viewModel.worktreesRoot)?.let {
-                            viewModel.worktreesRoot = it
-                        }
-                    },
+                    onClick = pickWorktreesRoot,
                     modifier = Modifier.padding(start = Spacing.sm),
                 ) {
                     Text("Examinar…")
@@ -131,17 +136,18 @@ fun ProjectConfigScreen(
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
+                val addSecretFile = {
+                    viewModel.addSecretFile(newSecretFile)
+                    newSecretFile = ""
+                }
                 OutlinedTextField(
                     value = newSecretFile,
                     onValueChange = { newSecretFile = it },
                     label = { Text("Nuevo archivo de secretos") },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).onEnterKey(action = addSecretFile),
                 )
                 Button(
-                    onClick = {
-                        viewModel.addSecretFile(newSecretFile)
-                        newSecretFile = ""
-                    },
+                    onClick = addSecretFile,
                     modifier = Modifier.padding(start = Spacing.sm),
                 ) {
                     Text("Añadir")

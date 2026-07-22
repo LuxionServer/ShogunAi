@@ -31,6 +31,7 @@ import app.luxion.shogunai.ui.components.DropdownSelector
 import app.luxion.shogunai.ui.components.SectionCard
 import app.luxion.shogunai.ui.components.SegmentedSelector
 import app.luxion.shogunai.ui.components.Spacing
+import app.luxion.shogunai.ui.components.onEnterKey
 
 private fun CreateMode.label(): String = when (this) {
     CreateMode.NEW_BRANCH -> "Rama nueva"
@@ -85,12 +86,17 @@ fun WorktreeScreen(
             )
             when (viewModel.createMode) {
                 CreateMode.NEW_BRANCH -> {
+                    val isTaskIdValid = viewModel.taskId.isNotBlank() && viewModel.isTaskIdValid(viewModel.taskId)
+                    val createWorktree = {
+                        viewModel.create(viewModel.taskId, viewModel.branchType)
+                        viewModel.updateTaskId("")
+                    }
                     OutlinedTextField(
                         value = viewModel.taskId,
                         onValueChange = { viewModel.updateTaskId(it) },
                         label = { Text("Id de tarea") },
                         isError = viewModel.taskId.isNotBlank() && !viewModel.isTaskIdValid(viewModel.taskId),
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().onEnterKey(enabled = isTaskIdValid, action = createWorktree),
                     )
                     if (viewModel.taskId.isNotBlank() && !viewModel.isTaskIdValid(viewModel.taskId)) {
                         Text(
@@ -106,11 +112,8 @@ fun WorktreeScreen(
                         label = { it.prefix },
                     )
                     Button(
-                        onClick = {
-                            viewModel.create(viewModel.taskId, viewModel.branchType)
-                            viewModel.updateTaskId("")
-                        },
-                        enabled = viewModel.taskId.isNotBlank() && viewModel.isTaskIdValid(viewModel.taskId),
+                        onClick = createWorktree,
+                        enabled = isTaskIdValid,
                     ) {
                         Text("Crear worktree")
                     }
