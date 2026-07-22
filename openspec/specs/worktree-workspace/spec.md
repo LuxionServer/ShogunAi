@@ -85,11 +85,19 @@ The system SHALL let the user remove a non-main worktree from the list, using `R
 - **THEN** the screen does not offer a remove action for it
 
 ### Requirement: Reload the worktree list
-The system SHALL let the user manually trigger a fresh read of the active project's worktree list via a visible "Reload" action on the worktree management screen, SHALL automatically re-run this read every time the user navigates back to the worktree management screen for a project, and SHALL automatically re-run this read whenever the OS window regains focus while the worktree management screen is active, so that worktrees or branches deleted outside the app (e.g. via another Git client, or a branch deleted after merging a pull request) are reflected without restarting the app.
+The system SHALL let the user manually trigger a fresh read of the active project's worktree list via a visible "Reload" action on the worktree management screen, SHALL automatically re-run this read every time the user navigates back to the worktree management screen for a project, and SHALL automatically re-run this read whenever the OS window regains focus while the worktree management screen is active, so that worktrees or branches deleted outside the app (e.g. via another Git client, or a branch deleted after merging a pull request) are reflected without restarting the app. Whenever the reload is triggered while the create-worktree form is in "Existing branch" mode, the system SHALL also reload the local branch list, so branches created or updated outside the app are reflected without restarting it.
 
 #### Scenario: User manually reloads the worktree list
 - **WHEN** the user activates the "Reload" action on the worktree management screen
 - **THEN** the app invokes `ListWorktreesUseCase` again and updates the displayed list to match its result
+
+#### Scenario: Manual reload also refreshes local branches in "Existing branch" mode
+- **WHEN** the user activates the "Reload" action while the create-worktree form is in "Existing branch" mode
+- **THEN** the app also invokes `ListLocalBranchesUseCase` again and updates the displayed branch options to match its result
+
+#### Scenario: Manual reload does not fetch branches in "New branch" mode
+- **WHEN** the user activates the "Reload" action while the create-worktree form is in "New branch" mode
+- **THEN** the app does not invoke `ListLocalBranchesUseCase`
 
 #### Scenario: Worktree screen re-entered after an external change
 - **WHEN** the user navigates away from a project's worktree management screen and back to it again
@@ -108,25 +116,25 @@ The system SHALL let the user manually trigger a fresh read of the active projec
 - **THEN** the screen shows an error message derived from the failure, consistent with the initial load's error handling
 
 ### Requirement: List local branches eligible for a new worktree
-The system SHALL let the user see which local branches can become a new worktree, using `ListEligibleBranchesUseCase`, which returns local branches that are not already checked out in any worktree (including the base repository itself).
+The system SHALL let the user see all local branches, using `ListLocalBranchesUseCase`, which returns every local branch paired with whether it is already checked out in a worktree (including the base repository itself).
 
-#### Scenario: Eligible branches loaded successfully
+#### Scenario: Local branches loaded successfully
 - **WHEN** the user switches the create-worktree dialog to "Existing branch" mode
-- **THEN** the app invokes `ListEligibleBranchesUseCase` and displays the returned branch names for selection
+- **THEN** the app invokes `ListLocalBranchesUseCase` and displays every returned branch, each flagged with whether it is already checked out
 
-#### Scenario: A branch already checked out is excluded
+#### Scenario: A branch already checked out is shown but disabled
 - **WHEN** a local branch is currently checked out in the base repository or in another worktree
-- **THEN** `ListEligibleBranchesUseCase` does not include that branch in its result
+- **THEN** the branch still appears in the dropdown, rendered disabled with a note that it already has a worktree, instead of being omitted
 
-#### Scenario: Listing eligible branches fails
-- **WHEN** `ListEligibleBranchesUseCase` returns a failed `Result` (e.g. `WorktreeError.GitCommandFailed`)
+#### Scenario: Listing local branches fails
+- **WHEN** `ListLocalBranchesUseCase` returns a failed `Result` (e.g. `WorktreeError.GitCommandFailed`)
 - **THEN** the screen shows an error message derived from the `WorktreeError` instead of a branch list
 
 ### Requirement: Create a worktree from an existing branch
 The system SHALL let the user create a new worktree for a branch that already exists locally, using `CreateWorktreeFromBranchUseCase`, instead of only being able to create worktrees for brand-new branches. The worktree's directory is derived from the branch name: if the branch starts with a known `BranchType` prefix (`feature/` or `fix/`), that prefix is stripped first; the remaining string then has every `/` replaced with `-`.
 
 #### Scenario: Successful creation
-- **WHEN** the user selects "Existing branch" mode, picks a branch from the eligible list, and confirms
+- **WHEN** the user selects "Existing branch" mode, picks a branch not already checked out from the list, and confirms
 - **THEN** the app invokes `CreateWorktreeFromBranchUseCase(branch)`, which runs `git worktree add <path> <branch>` (without creating a new branch), copies the project's secret files into the new worktree, and on success adds the returned `Worktree` to the displayed list
 
 #### Scenario: Directory matches the new-branch flow for a known branch type prefix

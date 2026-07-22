@@ -8,11 +8,12 @@ import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
 import app.luxion.shogunai.domain.FakeTerminalEmulatorDetector
 import app.luxion.shogunai.domain.FakeTerminalLauncher
 import app.luxion.shogunai.domain.executor.CommandResult
+import app.luxion.shogunai.domain.model.BranchOption
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
-import app.luxion.shogunai.domain.usecase.ListEligibleBranchesUseCase
+import app.luxion.shogunai.domain.usecase.ListLocalBranchesUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.OpenWorktreeTerminalUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
@@ -74,7 +75,7 @@ class WorktreeViewModelTest {
                     existing = listOf(config.baseRepositoryPath) + config.secretFiles.map { config.baseSecretPath(it) },
                 ),
             ),
-            listEligibleBranches = ListEligibleBranchesUseCase(config, executor),
+            listLocalBranches = ListLocalBranchesUseCase(config, executor),
             remove = RemoveWorktreeUseCase(config, executor),
             openTerminal = OpenWorktreeTerminalUseCase(config, FakeTerminalLauncher(), FakeTerminalEmulatorDetector()),
         )
@@ -328,6 +329,64 @@ class WorktreeViewModelTest {
     }
 
     @Test
+    fun `refresh also reloads local branches when create mode is existing branch`() = runTest(dispatcher) {
+        var forEachRefCallCount = 0
+        val viewModel = WorktreeViewModel(
+            useCases { command ->
+                when (command) {
+                    listCommand -> success(command, porcelainOutput)
+                    forEachRefCommand -> {
+                        forEachRefCallCount++
+                        success(command, stdout = "feature/TASK-123\nhotfix/security-patch\n")
+                    }
+                    else -> success(command)
+                }
+            },
+        )
+        advanceUntilIdle()
+        viewModel.createMode = CreateMode.EXISTING_BRANCH
+        viewModel.loadLocalBranches()
+        advanceUntilIdle()
+        assertEquals(1, forEachRefCallCount)
+
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertEquals(2, forEachRefCallCount)
+        assertEquals(
+            listOf(
+                BranchOption("feature/TASK-123", isCheckedOut = true),
+                BranchOption("hotfix/security-patch", isCheckedOut = false),
+            ),
+            viewModel.localBranches,
+        )
+    }
+
+    @Test
+    fun `refresh does not reload local branches when create mode is new branch`() = runTest(dispatcher) {
+        var forEachRefCallCount = 0
+        val viewModel = WorktreeViewModel(
+            useCases { command ->
+                when (command) {
+                    listCommand -> success(command, porcelainOutput)
+                    forEachRefCommand -> {
+                        forEachRefCallCount++
+                        success(command, stdout = "hotfix/security-patch\n")
+                    }
+                    else -> success(command)
+                }
+            },
+        )
+        advanceUntilIdle()
+        assertEquals(CreateMode.NEW_BRANCH, viewModel.createMode)
+
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertEquals(0, forEachRefCallCount)
+    }
+
+    @Test
     fun `updateTaskId normalizes whitespace to a single dash and trims`() = runTest(dispatcher) {
         val viewModel = WorktreeViewModel(useCases { command -> success(command) })
         advanceUntilIdle()
@@ -338,7 +397,7 @@ class WorktreeViewModelTest {
     }
 
     @Test
-    fun `loadEligibleBranches populates eligibleBranches excluding already checked out branches`() = runTest(dispatcher) {
+    fun `loadLocalBranches populates localBranches flagging already checked out branches`() = runTest(dispatcher) {
         val viewModel = WorktreeViewModel(
             useCases { command ->
                 when (command) {
@@ -350,10 +409,16 @@ class WorktreeViewModelTest {
         )
         advanceUntilIdle()
 
-        viewModel.loadEligibleBranches()
+        viewModel.loadLocalBranches()
         advanceUntilIdle()
 
-        assertEquals(listOf("hotfix/security-patch"), viewModel.eligibleBranches)
+        assertEquals(
+            listOf(
+                BranchOption("feature/TASK-123", isCheckedOut = true),
+                BranchOption("hotfix/security-patch", isCheckedOut = false),
+            ),
+            viewModel.localBranches,
+        )
         assertEquals(false, viewModel.isLoadingBranches)
     }
 
