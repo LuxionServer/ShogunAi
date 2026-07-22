@@ -52,6 +52,7 @@ fun <T> DropdownSelector(
     label: (T) -> String,
     placeholder: String,
     modifier: Modifier = Modifier,
+    enabled: (T) -> Boolean = { true },
 ) {
     var expanded by remember { mutableStateOf(false) }
 
@@ -72,6 +73,7 @@ fun <T> DropdownSelector(
             options.forEach { option ->
                 DropdownMenuItem(
                     text = { Text(label(option)) },
+                    enabled = enabled(option),
                     onClick = {
                         onSelect(option)
                         expanded = false

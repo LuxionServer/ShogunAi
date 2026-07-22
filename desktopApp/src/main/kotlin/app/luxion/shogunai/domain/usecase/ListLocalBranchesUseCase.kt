@@ -1,18 +1,19 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.model.BranchOption
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorktreeError
 
 /**
- * Lists local branches eligible to become a new worktree: local branches
- * that aren't already checked out anywhere (including the base repository).
+ * Lists local branches, flagging the ones already checked out somewhere
+ * (including the base repository) since those can't become a new worktree.
  */
-class ListEligibleBranchesUseCase(
+class ListLocalBranchesUseCase(
     private val config: ProjectConfig,
     private val executor: ShellCommandExecutor,
 ) {
-    suspend operator fun invoke(): Result<List<String>> = runCatching {
+    suspend operator fun invoke(): Result<List<BranchOption>> = runCatching {
         val branches = executor.execute(
             command = listOf("git", "for-each-ref", "--format=%(refname:short)", "refs/heads"),
             workingDirectory = config.baseRepositoryPath,
@@ -34,7 +35,7 @@ class ListEligibleBranchesUseCase(
         branches.stdout.lineSequence()
             .map { it.trim() }
             .filter { it.isNotEmpty() }
-            .filterNot { it in checkedOutBranches }
+            .map { BranchOption(name = it, isCheckedOut = it in checkedOutBranches) }
             .toList()
     }
 }
