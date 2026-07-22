@@ -46,7 +46,7 @@ fun WorktreeScreen(
 ) {
     LaunchedEffect(viewModel.createMode) {
         if (viewModel.createMode == CreateMode.EXISTING_BRANCH) {
-            viewModel.loadEligibleBranches()
+            viewModel.loadLocalBranches()
         }
     }
 
@@ -121,12 +121,13 @@ fun WorktreeScreen(
                 CreateMode.EXISTING_BRANCH -> {
                     when {
                         viewModel.isLoadingBranches -> Text("Cargando ramas...")
-                        viewModel.eligibleBranches.isEmpty() -> Text("No hay ramas disponibles para crear un worktree.")
+                        viewModel.localBranches.isEmpty() -> Text("No hay ramas disponibles para crear un worktree.")
                         else -> DropdownSelector(
-                            options = viewModel.eligibleBranches,
-                            selected = viewModel.selectedBranch,
-                            onSelect = { viewModel.selectedBranch = it },
-                            label = { it },
+                            options = viewModel.localBranches,
+                            selected = viewModel.localBranches.find { it.name == viewModel.selectedBranch },
+                            onSelect = { viewModel.selectedBranch = it.name },
+                            enabled = { !it.isCheckedOut },
+                            label = { if (it.isCheckedOut) "${it.name} (ya tiene un worktree)" else it.name },
                             placeholder = "Selecciona una rama",
                         )
                     }

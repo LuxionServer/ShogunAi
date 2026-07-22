@@ -3,6 +3,7 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
+import app.luxion.shogunai.domain.model.BranchOption
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
@@ -10,7 +11,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
-class ListEligibleBranchesUseCaseTest {
+class ListLocalBranchesUseCaseTest {
 
     private val config = ProjectConfig(
         baseRepositoryPath = "/home/dev/projects/main-repo",
@@ -46,47 +47,68 @@ class ListEligibleBranchesUseCaseTest {
     }
 
     @Test
-    fun `returns all branches when none are checked out`() = runTest {
-        val useCase = ListEligibleBranchesUseCase(config, executor(porcelainOutput = ""))
+    fun `marks no branch as checked out when nothing is checked out`() = runTest {
+        val useCase = ListLocalBranchesUseCase(config, executor(porcelainOutput = ""))
 
-        val eligible = useCase().getOrThrow()
+        val branches = useCase().getOrThrow()
 
-        assertEquals(listOf("develop", "feature/TASK-123", "feature/TASK-456"), eligible)
+        assertEquals(
+            listOf(
+                BranchOption("develop", isCheckedOut = false),
+                BranchOption("feature/TASK-123", isCheckedOut = false),
+                BranchOption("feature/TASK-456", isCheckedOut = false),
+            ),
+            branches,
+        )
     }
 
     @Test
-    fun `excludes branches already checked out in another worktree`() = runTest {
-        val useCase = ListEligibleBranchesUseCase(config, executor())
+    fun `flags branches already checked out in another worktree`() = runTest {
+        val useCase = ListLocalBranchesUseCase(config, executor())
 
-        val eligible = useCase().getOrThrow()
+        val branches = useCase().getOrThrow()
 
-        assertEquals(listOf("feature/TASK-456"), eligible)
+        assertEquals(
+            listOf(
+                BranchOption("develop", isCheckedOut = true),
+                BranchOption("feature/TASK-123", isCheckedOut = true),
+                BranchOption("feature/TASK-456", isCheckedOut = false),
+            ),
+            branches,
+        )
     }
 
     @Test
-    fun `excludes the branch checked out in the base repository`() = runTest {
+    fun `flags the branch checked out in the base repository`() = runTest {
         val basePorcelain = """
             worktree /home/dev/projects/main-repo
             HEAD abc123
             branch refs/heads/develop
         """.trimIndent()
-        val useCase = ListEligibleBranchesUseCase(config, executor(porcelainOutput = basePorcelain))
+        val useCase = ListLocalBranchesUseCase(config, executor(porcelainOutput = basePorcelain))
 
-        val eligible = useCase().getOrThrow()
+        val branches = useCase().getOrThrow()
 
-        assertEquals(listOf("feature/TASK-123", "feature/TASK-456"), eligible)
+        assertEquals(
+            listOf(
+                BranchOption("develop", isCheckedOut = true),
+                BranchOption("feature/TASK-123", isCheckedOut = false),
+                BranchOption("feature/TASK-456", isCheckedOut = false),
+            ),
+            branches,
+        )
     }
 
     @Test
     fun `fails when listing branches fails`() = runTest {
-        val useCase = ListEligibleBranchesUseCase(config, executor(failBranches = true))
+        val useCase = ListLocalBranchesUseCase(config, executor(failBranches = true))
 
         assertIs<WorktreeError.GitCommandFailed>(useCase().exceptionOrNull())
     }
 
     @Test
     fun `fails when listing worktrees fails`() = runTest {
-        val useCase = ListEligibleBranchesUseCase(config, executor(failWorktrees = true))
+        val useCase = ListLocalBranchesUseCase(config, executor(failWorktrees = true))
 
         assertIs<WorktreeError.GitCommandFailed>(useCase().exceptionOrNull())
     }

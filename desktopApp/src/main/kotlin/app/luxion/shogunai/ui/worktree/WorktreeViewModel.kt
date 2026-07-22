@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.luxion.shogunai.WorktreeUseCases
+import app.luxion.shogunai.domain.model.BranchOption
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
@@ -21,7 +22,7 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
     var errorMessage by mutableStateOf<String?>(null)
         private set
 
-    var eligibleBranches by mutableStateOf<List<String>>(emptyList())
+    var localBranches by mutableStateOf<List<BranchOption>>(emptyList())
         private set
     var isLoadingBranches by mutableStateOf(false)
         private set
@@ -56,6 +57,9 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
                 .onFailure { errorMessage = it.message }
             isLoading = false
         }
+        if (createMode == CreateMode.EXISTING_BRANCH) {
+            loadLocalBranches()
+        }
     }
 
     /** Whether [taskId] is usable as-is: still valid as a Git ref segment once normalized. */
@@ -69,11 +73,11 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
         }
     }
 
-    fun loadEligibleBranches() {
+    fun loadLocalBranches() {
         viewModelScope.launch {
             isLoadingBranches = true
-            useCases.listEligibleBranches()
-                .onSuccess { eligibleBranches = it; errorMessage = null }
+            useCases.listLocalBranches()
+                .onSuccess { localBranches = it; errorMessage = null }
                 .onFailure { errorMessage = it.message }
             isLoadingBranches = false
         }
