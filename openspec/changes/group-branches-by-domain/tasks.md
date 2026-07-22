@@ -12,4 +12,4 @@
 ## 3. Verification
 
 - [x] 3.1 Run `./gradlew test` for the desktop app module
-- [ ] 3.2 Manually run the app (`./gradlew :desktopApp:run`), open the worktree creation dialog, switch to "Existing branch", and confirm branches are grouped under clickable domain headers (e.g. "feature", "fix", "otras") that start collapsed and expand/collapse on click, and that individual branches remain selectable
+- [x] 3.2 Manually run the app (`./gradlew :desktopApp:run`), open the worktree creation dialog, switch to "Existing branch", and confirm branches are grouped under clickable domain headers (e.g. "feature", "fix", "otras") that start collapsed and expand/collapse on click, and that individual branches remain selectable
