@@ -11,15 +11,16 @@ class TerminalCommandBuilderTest {
     private val command = "headroom wrap claude"
 
     @Test
-    fun `builds osascript command for macOS Terminal, always opening a new window`() {
+    fun `builds osascript command for macOS Terminal, forcing a new tab via Cmd+T with a new-window fallback`() {
         val argv = TerminalCommandBuilder.build(TerminalEmulator.MACOS_TERMINAL, path, command)
 
         assertEquals("osascript", argv[0])
         assertTrue(argv.any { it.contains("Terminal") })
         assertTrue(argv.any { it.contains(path) })
         assertTrue(argv.any { it.contains(command) })
-        assertTrue(argv.any { it.contains("do script") })
-        assertTrue(argv.none { it.contains("System Events") })
+        assertTrue(argv.any { it.contains("in front window") })
+        assertTrue(argv.any { it.contains("keystroke \"t\" using command down") })
+        assertTrue(argv.any { it.contains("if (count of windows) = 0 then") })
     }
 
     @Test
