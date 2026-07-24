@@ -9,11 +9,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -150,8 +154,9 @@ fun WorktreeScreen(
             items(viewModel.worktrees) { worktree ->
                 WorktreeRow(
                     worktree = worktree,
+                    isCopied = viewModel.copiedWorktreePath == worktree.path,
                     onRemove = { viewModel.requestRemoval(worktree) },
-                    onOpenTerminal = { viewModel.openTerminal(worktree) },
+                    onCopyLaunchCommand = { viewModel.copyLaunchCommand(worktree) },
                 )
                 HorizontalDivider()
             }
@@ -201,7 +206,7 @@ fun WorktreeScreen(
 }
 
 @Composable
-private fun WorktreeRow(worktree: Worktree, onRemove: () -> Unit, onOpenTerminal: () -> Unit) {
+private fun WorktreeRow(worktree: Worktree, isCopied: Boolean, onRemove: () -> Unit, onCopyLaunchCommand: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.sm),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -211,8 +216,13 @@ private fun WorktreeRow(worktree: Worktree, onRemove: () -> Unit, onOpenTerminal
             Text(worktree.branch ?: "(detached)", style = MaterialTheme.typography.bodySmall)
         }
         Row {
-            OutlinedButton(onClick = onOpenTerminal, modifier = Modifier.padding(end = Spacing.sm)) {
-                Text("Terminal")
+            OutlinedButton(onClick = onCopyLaunchCommand, modifier = Modifier.padding(end = Spacing.sm)) {
+                Icon(
+                    imageVector = if (isCopied) Icons.Default.Check else Icons.Default.ContentCopy,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp).padding(end = Spacing.sm),
+                )
+                Text(if (isCopied) "Copiado" else "Copiar comando")
             }
             if (!worktree.isMain) {
                 OutlinedButton(onClick = onRemove) {

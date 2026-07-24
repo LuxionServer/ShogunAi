@@ -12,6 +12,7 @@ import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.usecase.isValidGitRefSegment
 import app.luxion.shogunai.domain.usecase.normalizeTaskId
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
@@ -20,6 +21,8 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
     var isLoading by mutableStateOf(false)
         private set
     var errorMessage by mutableStateOf<String?>(null)
+        private set
+    var copiedWorktreePath by mutableStateOf<String?>(null)
         private set
 
     var localBranches by mutableStateOf<List<BranchOption>>(emptyList())
@@ -117,10 +120,15 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
         pendingRemoval = pendingRemoval?.copy(deleteBranch = deleteBranch)
     }
 
-    fun openTerminal(worktree: Worktree) {
+    fun copyLaunchCommand(worktree: Worktree) {
         viewModelScope.launch {
-            useCases.openTerminal(worktree.path)
-                .onSuccess { errorMessage = null }
+            useCases.copyLaunchCommand(worktree.path)
+                .onSuccess {
+                    errorMessage = null
+                    copiedWorktreePath = worktree.path
+                    delay(COPIED_FEEDBACK_DURATION_MS)
+                    if (copiedWorktreePath == worktree.path) copiedWorktreePath = null
+                }
                 .onFailure { errorMessage = it.message }
         }
     }
@@ -144,5 +152,7 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
 
 private fun Throwable.suggestsForceRetry(): Boolean =
     this is WorktreeError.GitCommandFailed && errorOutput.contains("--force", ignoreCase = true)
+
+private const val COPIED_FEEDBACK_DURATION_MS = 2000L
 
 enum class CreateMode { NEW_BRANCH, EXISTING_BRANCH }

@@ -29,30 +29,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.Project
-import app.luxion.shogunai.domain.model.TerminalEmulator
-import app.luxion.shogunai.domain.model.TerminalSelectionMode
 import app.luxion.shogunai.ui.FilePicker
-import app.luxion.shogunai.ui.components.DropdownSelector
 import app.luxion.shogunai.ui.components.SectionCard
-import app.luxion.shogunai.ui.components.SegmentedSelector
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.onEnterKey
 import app.luxion.shogunai.ui.relativeToBase
-
-private fun TerminalSelectionMode.label(): String = when (this) {
-    TerminalSelectionMode.AUTO_DETECT -> "Detectar automáticamente"
-    TerminalSelectionMode.FIXED -> "Fijo"
-    TerminalSelectionMode.CUSTOM -> "Personalizado"
-}
-
-private fun TerminalEmulator.label(): String = when (this) {
-    TerminalEmulator.MACOS_TERMINAL -> "Terminal (macOS)"
-    TerminalEmulator.ITERM2 -> "iTerm2"
-    TerminalEmulator.WARP -> "Warp"
-    TerminalEmulator.GNOME_TERMINAL -> "GNOME Terminal"
-    TerminalEmulator.KONSOLE -> "Konsole"
-    TerminalEmulator.XTERM -> "XTerm"
-}
 
 @Composable
 fun ProjectConfigScreen(
@@ -162,32 +143,6 @@ fun ProjectConfigScreen(
                 ) {
                     Text("Examinar…")
                 }
-            }
-        }
-
-        SectionCard(title = "Terminal") {
-            SegmentedSelector(
-                options = TerminalSelectionMode.entries,
-                selected = viewModel.terminalSelectionMode,
-                onSelect = { viewModel.terminalSelectionMode = it },
-                label = { it.label() },
-            )
-            if (viewModel.terminalSelectionMode == TerminalSelectionMode.FIXED) {
-                DropdownSelector(
-                    options = TerminalEmulator.entries,
-                    selected = viewModel.terminalEmulator,
-                    onSelect = { viewModel.terminalEmulator = it },
-                    label = { it.label() },
-                    placeholder = "Selecciona un emulador",
-                )
-            }
-            if (viewModel.terminalSelectionMode == TerminalSelectionMode.CUSTOM) {
-                OutlinedTextField(
-                    value = viewModel.customCommandTemplateText,
-                    onValueChange = { viewModel.customCommandTemplateText = it },
-                    label = { Text("Comando personalizado (un argumento por línea; usa {path} y {command})") },
-                    modifier = Modifier.fillMaxWidth(),
-                )
             }
         }
 
