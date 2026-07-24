@@ -35,11 +35,32 @@ class ProjectConfigViewModel(
     var agentCommand by mutableStateOf(existingProject?.config?.agentLaunchConfig?.agentCommand ?: "claude")
     var useHeadroom by mutableStateOf(existingProject?.config?.agentLaunchConfig?.useHeadroom ?: true)
 
+    private val initialName = name
+    private val initialBaseRepositoryPath = baseRepositoryPath
+    private val initialWorktreesRoot = worktreesRoot
+    private val initialSecretFiles = secretFiles
+    private val initialTerminalSelectionMode = terminalSelectionMode
+    private val initialTerminalEmulator = terminalEmulator
+    private val initialCustomCommandTemplateText = customCommandTemplateText
+    private val initialAgentCommand = agentCommand
+    private val initialUseHeadroom = useHeadroom
+
     val isValid: Boolean
         get() = name.isNotBlank() && baseRepositoryPath.isNotBlank()
 
+    val hasUnsavedChanges: Boolean
+        get() = name != initialName ||
+            baseRepositoryPath != initialBaseRepositoryPath ||
+            worktreesRoot != initialWorktreesRoot ||
+            secretFiles != initialSecretFiles ||
+            terminalSelectionMode != initialTerminalSelectionMode ||
+            terminalEmulator != initialTerminalEmulator ||
+            customCommandTemplateText != initialCustomCommandTemplateText ||
+            agentCommand != initialAgentCommand ||
+            useHeadroom != initialUseHeadroom
+
     fun addSecretFile(fileName: String) {
-        if (fileName.isNotBlank()) secretFiles = secretFiles + fileName
+        if (fileName.isNotBlank() && fileName !in secretFiles) secretFiles = secretFiles + fileName
     }
 
     fun removeSecretFile(fileName: String) {
