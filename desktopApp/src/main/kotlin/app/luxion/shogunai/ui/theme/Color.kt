@@ -21,6 +21,9 @@ val ShogunOnAccent = Color(0xFFFFFFFF)
 val ShogunError = Color(0xFFCF6679)
 val ShogunOutline = Color(0xFF70788A)
 
+val ShogunSuccess = Color(0xFF4CAF6D)
+val ShogunOnSuccess = Color(0xFF0A2E17)
+
 // Light palette: same accents (ShogunRed/ShogunSlate), inverted backgrounds/text.
 // Text/background contrast ~4:1 or higher across all onX/X pairs.
 val ShogunLightBackground = Color(0xFFF7F7F8)
@@ -33,3 +36,6 @@ val ShogunLightOnSurfaceVariant = Color(0xFF4B4F58)
 
 val ShogunLightError = Color(0xFFB3261E)
 val ShogunLightOutline = Color(0xFF79747E)
+
+val ShogunLightSuccess = Color(0xFF2E7D46)
+val ShogunLightOnSuccess = Color(0xFFFFFFFF)

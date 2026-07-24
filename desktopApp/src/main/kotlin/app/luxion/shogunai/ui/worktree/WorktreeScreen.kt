@@ -7,17 +7,21 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -25,9 +29,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.Worktree
@@ -36,6 +45,9 @@ import app.luxion.shogunai.ui.components.SectionCard
 import app.luxion.shogunai.ui.components.SegmentedSelector
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.onEnterKey
+import app.luxion.shogunai.ui.components.onNewItemShortcut
+import app.luxion.shogunai.ui.theme.ShogunTheme
+import kotlinx.coroutines.delay
 
 private fun CreateMode.label(): String = when (this) {
     CreateMode.NEW_BRANCH -> "Rama nueva"
@@ -54,7 +66,34 @@ fun WorktreeScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(Spacing.md)) {
+    // Hoisted so it survives the branch dropdown's own composable being remounted whenever
+    // isLoadingBranches/localBranches toggles the `when` branch below.
+    val branchGroupExpansion = remember { mutableStateMapOf<String, Boolean>() }
+    var isCreateSectionExpanded by remember { mutableStateOf(true) }
+
+    val isTaskIdValid = viewModel.taskId.isNotBlank() && viewModel.isTaskIdValid(viewModel.taskId)
+    val createNewBranchWorktree = {
+        viewModel.create(viewModel.taskId, viewModel.branchType)
+        viewModel.updateTaskId("")
+    }
+    val createFromSelectedBranch = {
+        viewModel.selectedBranch?.let { viewModel.createFromBranch(it) }
+        viewModel.selectedBranch = null
+    }
+    val isCreateEnabled = when (viewModel.createMode) {
+        CreateMode.NEW_BRANCH -> isTaskIdValid
+        CreateMode.EXISTING_BRANCH -> viewModel.selectedBranch != null
+    }
+    val createWorktree = when (viewModel.createMode) {
+        CreateMode.NEW_BRANCH -> createNewBranchWorktree
+        CreateMode.EXISTING_BRANCH -> createFromSelectedBranch
+    }
+
+    Column(
+        modifier = Modifier.fillMaxSize().padding(Spacing.md)
+            .verticalScroll(rememberScrollState())
+            .onNewItemShortcut(enabled = isCreateEnabled, action = createWorktree),
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -78,34 +117,79 @@ fun WorktreeScreen(
         }
 
         viewModel.errorMessage?.let { message ->
-            Text(message, color = Color.Red, modifier = Modifier.padding(top = Spacing.sm))
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.Error,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(end = Spacing.sm),
+                    )
+                    Text(message, color = MaterialTheme.colorScheme.error)
+                }
+                IconButton(onClick = { viewModel.dismissError() }) {
+                    Icon(Icons.Default.Close, contentDescription = "Cerrar error")
+                }
+            }
         }
 
-        SectionCard(title = "Nuevo worktree", modifier = Modifier.padding(top = Spacing.md)) {
+        viewModel.successMessage?.let { message ->
+            LaunchedEffect(message) {
+                delay(4000)
+                viewModel.dismissSuccess()
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = ShogunTheme.extendedColors.success,
+                        modifier = Modifier.padding(end = Spacing.sm),
+                    )
+                    Text(message, color = ShogunTheme.extendedColors.success)
+                }
+                IconButton(onClick = { viewModel.dismissSuccess() }) {
+                    Icon(Icons.Default.Close, contentDescription = "Cerrar mensaje")
+                }
+            }
+        }
+
+        SectionCard(
+            title = "Nuevo worktree",
+            modifier = Modifier.padding(top = Spacing.md),
+            collapsible = true,
+            expanded = isCreateSectionExpanded,
+            onExpandedChange = { isCreateSectionExpanded = it },
+        ) {
             SegmentedSelector(
                 options = CreateMode.entries,
                 selected = viewModel.createMode,
                 onSelect = { viewModel.createMode = it },
                 label = { it.label() },
+                enabled = !viewModel.isCreating,
             )
             when (viewModel.createMode) {
                 CreateMode.NEW_BRANCH -> {
-                    val isTaskIdValid = viewModel.taskId.isNotBlank() && viewModel.isTaskIdValid(viewModel.taskId)
-                    val createWorktree = {
-                        viewModel.create(viewModel.taskId, viewModel.branchType)
-                        viewModel.updateTaskId("")
-                    }
                     OutlinedTextField(
                         value = viewModel.taskId,
                         onValueChange = { viewModel.updateTaskId(it) },
                         label = { Text("Id de tarea") },
+                        supportingText = { Text("Ej: TASK-123 (los espacios se convierten en guiones)") },
                         isError = viewModel.taskId.isNotBlank() && !viewModel.isTaskIdValid(viewModel.taskId),
-                        modifier = Modifier.fillMaxWidth().onEnterKey(enabled = isTaskIdValid, action = createWorktree),
+                        modifier = Modifier.fillMaxWidth().onEnterKey(enabled = isTaskIdValid, action = createNewBranchWorktree),
                     )
                     if (viewModel.taskId.isNotBlank() && !viewModel.isTaskIdValid(viewModel.taskId)) {
                         Text(
                             "Id de tarea inválido",
-                            color = Color.Red,
+                            color = MaterialTheme.colorScheme.error,
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
@@ -114,17 +198,32 @@ fun WorktreeScreen(
                         selected = viewModel.branchType,
                         onSelect = { viewModel.branchType = it },
                         label = { it.prefix },
+                        enabled = !viewModel.isCreating,
                     )
-                    Button(
-                        onClick = createWorktree,
-                        enabled = isTaskIdValid,
-                    ) {
-                        Text("Crear worktree")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (viewModel.isCreating) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.padding(end = Spacing.sm).size(20.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        }
+                        Button(
+                            onClick = createWorktree,
+                            enabled = isCreateEnabled && !viewModel.isCreating,
+                        ) {
+                            Text("Crear worktree")
+                        }
                     }
                 }
                 CreateMode.EXISTING_BRANCH -> {
                     when {
-                        viewModel.isLoadingBranches -> Text("Cargando ramas...")
+                        viewModel.isLoadingBranches -> Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.padding(end = Spacing.sm).size(20.dp),
+                                strokeWidth = 2.dp,
+                            )
+                            Text("Cargando ramas...")
+                        }
                         viewModel.localBranches.isEmpty() -> Text("No hay ramas disponibles para crear un worktree.")
                         else -> DropdownSelector(
                             options = viewModel.localBranches,
@@ -134,32 +233,36 @@ fun WorktreeScreen(
                             label = { if (it.isCheckedOut) "${it.name} (ya tiene un worktree)" else it.name },
                             placeholder = "Selecciona una rama",
                             groupBy = { it.name.substringBefore('/', "otras") },
+                            expandedGroups = branchGroupExpansion,
                         )
                     }
-                    Button(
-                        onClick = {
-                            viewModel.selectedBranch?.let { viewModel.createFromBranch(it) }
-                            viewModel.selectedBranch = null
-                        },
-                        enabled = viewModel.selectedBranch != null,
-                    ) {
-                        Text("Crear worktree")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (viewModel.isCreating) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.padding(end = Spacing.sm).size(20.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        }
+                        Button(
+                            onClick = createWorktree,
+                            enabled = isCreateEnabled && !viewModel.isCreating,
+                        ) {
+                            Text("Crear worktree")
+                        }
                     }
                 }
             }
         }
 
         Text("Worktrees", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = Spacing.lg))
-        LazyColumn(modifier = Modifier.weight(1f)) {
-            items(viewModel.worktrees) { worktree ->
-                WorktreeRow(
-                    worktree = worktree,
-                    isCopied = viewModel.copiedWorktreePath == worktree.path,
-                    onRemove = { viewModel.requestRemoval(worktree) },
-                    onCopyLaunchCommand = { viewModel.copyLaunchCommand(worktree) },
-                )
-                HorizontalDivider()
-            }
+        viewModel.worktrees.forEach { worktree ->
+            WorktreeRow(
+                worktree = worktree,
+                isCopied = viewModel.copiedWorktreePath == worktree.path,
+                onRemove = { viewModel.requestRemoval(worktree) },
+                onCopyLaunchCommand = { viewModel.copyLaunchCommand(worktree) },
+            )
+            HorizontalDivider()
         }
     }
 
@@ -192,12 +295,26 @@ fun WorktreeScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { viewModel.confirmPendingRemoval() }) {
-                    Text(if (requiresForce) "Forzar eliminación" else "Eliminar")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (viewModel.isRemoving) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.padding(end = Spacing.sm).size(20.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    }
+                    TextButton(
+                        onClick = { viewModel.confirmPendingRemoval() },
+                        enabled = !viewModel.isRemoving,
+                    ) {
+                        Text(if (requiresForce) "Forzar eliminación" else "Eliminar")
+                    }
                 }
             },
             dismissButton = {
-                TextButton(onClick = { viewModel.dismissPendingRemoval() }) {
+                TextButton(
+                    onClick = { viewModel.dismissPendingRemoval() },
+                    enabled = !viewModel.isRemoving,
+                ) {
                     Text("Cancelar")
                 }
             },
@@ -212,7 +329,7 @@ private fun WorktreeRow(worktree: Worktree, isCopied: Boolean, onRemove: () -> U
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Column {
-            Text(worktree.path)
+            Text(worktree.path, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(worktree.branch ?: "(detached)", style = MaterialTheme.typography.bodySmall)
         }
         Row {
