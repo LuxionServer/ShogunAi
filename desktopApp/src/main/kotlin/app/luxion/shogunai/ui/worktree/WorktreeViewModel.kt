@@ -25,6 +25,8 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
         private set
     var errorMessage by mutableStateOf<String?>(null)
         private set
+    var successMessage by mutableStateOf<String?>(null)
+        private set
 
     var localBranches by mutableStateOf<List<BranchOption>>(emptyList())
         private set
@@ -74,7 +76,11 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
             isCreating = true
             try {
                 useCases.create(taskId, branchType)
-                    .onSuccess { worktree -> worktrees = worktrees + worktree; errorMessage = null }
+                    .onSuccess { worktree ->
+                        worktrees = worktrees + worktree
+                        errorMessage = null
+                        successMessage = "Worktree \"${worktree.path}\" creado"
+                    }
                     .onFailure { errorMessage = it.message }
             } finally {
                 isCreating = false
@@ -97,7 +103,11 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
             isCreating = true
             try {
                 useCases.createFromBranch(branch)
-                    .onSuccess { worktree -> worktrees = worktrees + worktree; errorMessage = null }
+                    .onSuccess { worktree ->
+                        worktrees = worktrees + worktree
+                        errorMessage = null
+                        successMessage = "Worktree \"${worktree.path}\" creado"
+                    }
                     .onFailure { errorMessage = it.message }
             } finally {
                 isCreating = false
@@ -152,6 +162,14 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
 
     fun dismissPendingRemoval() {
         pendingRemoval = null
+    }
+
+    fun dismissError() {
+        errorMessage = null
+    }
+
+    fun dismissSuccess() {
+        successMessage = null
     }
 
     private data class PendingRemoval(

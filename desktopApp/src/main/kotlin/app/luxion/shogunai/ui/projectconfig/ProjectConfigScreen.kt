@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -61,6 +62,10 @@ fun ProjectConfigScreen(
     onCancel: () -> Unit,
 ) {
     var newSecretFile by remember { mutableStateOf("") }
+    var showDiscardChangesDialog by remember { mutableStateOf(false) }
+    val requestCancel = {
+        if (viewModel.hasUnsavedChanges) showDiscardChangesDialog = true else onCancel()
+    }
 
     Column(
         modifier = Modifier.fillMaxWidth().padding(Spacing.md).verticalScroll(rememberScrollState()),
@@ -73,6 +78,12 @@ fun ProjectConfigScreen(
                 value = viewModel.name,
                 onValueChange = { viewModel.name = it },
                 label = { Text("Nombre") },
+                isError = viewModel.name.isBlank(),
+                supportingText = if (viewModel.name.isBlank()) {
+                    { Text("El nombre no puede estar vacío") }
+                } else {
+                    null
+                },
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -89,6 +100,12 @@ fun ProjectConfigScreen(
                     value = viewModel.baseRepositoryPath,
                     onValueChange = { viewModel.baseRepositoryPath = it },
                     label = { Text("Ruta del repositorio base") },
+                    isError = viewModel.baseRepositoryPath.isBlank(),
+                    supportingText = if (viewModel.baseRepositoryPath.isBlank()) {
+                        { Text("La ruta del repositorio no puede estar vacía") }
+                    } else {
+                        null
+                    },
                     modifier = Modifier.weight(1f).onEnterKey(action = pickBaseRepositoryPath),
                 )
                 OutlinedButton(
@@ -186,6 +203,7 @@ fun ProjectConfigScreen(
                     value = viewModel.customCommandTemplateText,
                     onValueChange = { viewModel.customCommandTemplateText = it },
                     label = { Text("Comando personalizado (un argumento por línea; usa {path} y {command})") },
+                    minLines = 3,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -202,10 +220,15 @@ fun ProjectConfigScreen(
                 Switch(checked = viewModel.useHeadroom, onCheckedChange = { viewModel.useHeadroom = it })
                 Text("Usar Headroom (headroom wrap)", modifier = Modifier.padding(start = Spacing.sm))
             }
+            Text(
+                "Headroom envuelve el comando del agente para comprimir el contexto antes de lanzarlo.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            OutlinedButton(onClick = onCancel, modifier = Modifier.padding(end = Spacing.sm)) {
+            OutlinedButton(onClick = requestCancel, modifier = Modifier.padding(end = Spacing.sm)) {
                 Text("Cancelar")
             }
             Button(
@@ -215,5 +238,26 @@ fun ProjectConfigScreen(
                 Text("Guardar")
             }
         }
+    }
+
+    if (showDiscardChangesDialog) {
+        AlertDialog(
+            onDismissRequest = { showDiscardChangesDialog = false },
+            title = { Text("¿Descartar cambios?") },
+            text = { Text("Hay cambios sin guardar que se perderán si continúas.") },
+            confirmButton = {
+                Button(onClick = {
+                    showDiscardChangesDialog = false
+                    onCancel()
+                }) {
+                    Text("Descartar")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showDiscardChangesDialog = false }) {
+                    Text("Seguir editando")
+                }
+            },
+        )
     }
 }

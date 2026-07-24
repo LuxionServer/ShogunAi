@@ -21,6 +21,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -32,6 +33,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.Project
+import app.luxion.shogunai.ui.components.SegmentedSelector
+import app.luxion.shogunai.ui.components.onNewItemShortcut
+
+private fun ProjectSortOrder.label(): String = when (this) {
+    ProjectSortOrder.NAME_ASC -> "A-Z"
+    ProjectSortOrder.NAME_DESC -> "Z-A"
+}
 
 @Composable
 fun ProjectListScreen(
@@ -42,7 +50,11 @@ fun ProjectListScreen(
 ) {
     var projectPendingDeletion by remember { mutableStateOf<Project?>(null) }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(16.dp)
+            .verticalScroll(rememberScrollState())
+            .onNewItemShortcut(action = onNewProject),
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -58,29 +70,58 @@ fun ProjectListScreen(
             }
         }
 
-        if (viewModel.projects.isEmpty()) {
-            Box(modifier = Modifier.fillMaxWidth().padding(top = 32.dp), contentAlignment = Alignment.Center) {
-                Text("No hay proyectos todavía. Crea uno para empezar.")
+        if (viewModel.projects.isNotEmpty()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedTextField(
+                    value = viewModel.searchQuery,
+                    onValueChange = { viewModel.searchQuery = it },
+                    label = { Text("Buscar") },
+                    modifier = Modifier.weight(1f),
+                )
+                SegmentedSelector(
+                    options = ProjectSortOrder.entries,
+                    selected = viewModel.sortOrder,
+                    onSelect = { viewModel.sortOrder = it },
+                    label = { it.label() },
+                )
             }
-        } else {
-            Column(modifier = Modifier.padding(top = 16.dp)) {
-                viewModel.projects.forEach { project ->
-                    ListItem(
-                        headlineContent = { Text(project.name) },
-                        supportingContent = { Text(project.config.baseRepositoryPath) },
-                        trailingContent = {
-                            Row {
-                                IconButton(onClick = { onEditProject(project) }) {
-                                    Icon(Icons.Default.Edit, contentDescription = "Editar proyecto")
+        }
+
+        when {
+            viewModel.projects.isEmpty() -> {
+                Box(modifier = Modifier.fillMaxWidth().padding(top = 32.dp), contentAlignment = Alignment.Center) {
+                    Text("No hay proyectos todavía. Crea uno para empezar.")
+                }
+            }
+            viewModel.visibleProjects.isEmpty() -> {
+                Box(modifier = Modifier.fillMaxWidth().padding(top = 32.dp), contentAlignment = Alignment.Center) {
+                    Text("Ningún proyecto coincide con \"${viewModel.searchQuery}\".")
+                }
+            }
+            else -> {
+                Column(modifier = Modifier.padding(top = 16.dp)) {
+                    viewModel.visibleProjects.forEach { project ->
+                        ListItem(
+                            headlineContent = { Text(project.name) },
+                            supportingContent = { Text(project.config.baseRepositoryPath) },
+                            trailingContent = {
+                                Row {
+                                    IconButton(onClick = { onEditProject(project) }) {
+                                        Icon(Icons.Default.Edit, contentDescription = "Editar proyecto")
+                                    }
+                                    IconButton(onClick = { projectPendingDeletion = project }) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Eliminar proyecto")
+                                    }
                                 }
-                                IconButton(onClick = { projectPendingDeletion = project }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Eliminar proyecto")
-                                }
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth().clickable { onSelectProject(project) },
-                    )
-                    HorizontalDivider()
+                            },
+                            modifier = Modifier.fillMaxWidth().clickable { onSelectProject(project) },
+                        )
+                        HorizontalDivider()
+                    }
                 }
             }
         }

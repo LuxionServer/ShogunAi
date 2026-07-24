@@ -1,11 +1,15 @@
 package app.luxion.shogunai.ui.components
 
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
@@ -13,6 +17,7 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -46,7 +51,13 @@ fun <T> SegmentedSelector(
     }
 }
 
-/** Dropdown for a longer or dynamically loaded list of options. */
+/**
+ * Dropdown for a longer or dynamically loaded list of options.
+ *
+ * Group-expansion state defaults to being remembered internally, but callers whose call site
+ * gets conditionally mounted/unmounted (e.g. behind a loading/empty-state `when`) can pass in
+ * [expandedGroups] hoisted from a stable point so it survives those remounts.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun <T> DropdownSelector(
@@ -58,9 +69,13 @@ fun <T> DropdownSelector(
     modifier: Modifier = Modifier,
     enabled: (T) -> Boolean = { true },
     groupBy: (T) -> String? = { null },
+    expandedGroups: MutableMap<String, Boolean> = remember { mutableStateMapOf() },
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val expandedGroups = remember { mutableStateMapOf<String, Boolean>() }
+
+    LaunchedEffect(Unit) {
+        groupBy(selected ?: return@LaunchedEffect)?.let { group -> expandedGroups.putIfAbsent(group, true) }
+    }
 
     ExposedDropdownMenuBox(
         expanded = expanded,
@@ -82,10 +97,11 @@ fun <T> DropdownSelector(
                 if (group != null && group != previousGroup) {
                     val isExpanded = expandedGroups[group] ?: false
                     DropdownMenuItem(
-                        text = {
-                            Text(
-                                "${if (isExpanded) "▼" else "▶"} $group",
-                                style = MaterialTheme.typography.labelMedium,
+                        text = { Text(group, style = MaterialTheme.typography.labelMedium) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = if (isExpanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
+                                contentDescription = null,
                             )
                         },
                         onClick = { expandedGroups[group] = !isExpanded },
