@@ -8,8 +8,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -42,7 +42,7 @@ fun ProjectListScreen(
 ) {
     var projectPendingDeletion by remember { mutableStateOf<Project?>(null) }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -59,12 +59,12 @@ fun ProjectListScreen(
         }
 
         if (viewModel.projects.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.fillMaxWidth().padding(top = 32.dp), contentAlignment = Alignment.Center) {
                 Text("No hay proyectos todavía. Crea uno para empezar.")
             }
         } else {
-            LazyColumn(modifier = Modifier.padding(top = 16.dp)) {
-                items(viewModel.projects) { project ->
+            Column(modifier = Modifier.padding(top = 16.dp)) {
+                viewModel.projects.forEach { project ->
                     ListItem(
                         headlineContent = { Text(project.name) },
                         supportingContent = { Text(project.config.baseRepositoryPath) },

@@ -7,8 +7,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -50,7 +50,7 @@ fun WorktreeScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(Spacing.md)) {
+    Column(modifier = Modifier.fillMaxSize().padding(Spacing.md).verticalScroll(rememberScrollState())) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -146,15 +146,13 @@ fun WorktreeScreen(
         }
 
         Text("Worktrees", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = Spacing.lg))
-        LazyColumn(modifier = Modifier.weight(1f)) {
-            items(viewModel.worktrees) { worktree ->
-                WorktreeRow(
-                    worktree = worktree,
-                    onRemove = { viewModel.requestRemoval(worktree) },
-                    onOpenTerminal = { viewModel.openTerminal(worktree) },
-                )
-                HorizontalDivider()
-            }
+        viewModel.worktrees.forEach { worktree ->
+            WorktreeRow(
+                worktree = worktree,
+                onRemove = { viewModel.requestRemoval(worktree) },
+                onOpenTerminal = { viewModel.openTerminal(worktree) },
+            )
+            HorizontalDivider()
         }
     }
 
