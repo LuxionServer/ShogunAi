@@ -8,8 +8,6 @@ import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
-import app.luxion.shogunai.domain.model.TerminalPreference
-import app.luxion.shogunai.domain.model.TerminalSelectionMode
 import java.util.UUID
 
 class ProjectConfigViewModel(
@@ -24,14 +22,6 @@ class ProjectConfigViewModel(
     var secretFiles by mutableStateOf(existingProject?.config?.secretFiles ?: emptyList())
         private set
 
-    var terminalSelectionMode by mutableStateOf(
-        existingProject?.config?.terminalPreference?.mode ?: TerminalSelectionMode.AUTO_DETECT,
-    )
-    var terminalEmulator by mutableStateOf(existingProject?.config?.terminalPreference?.emulator)
-    var customCommandTemplateText by mutableStateOf(
-        existingProject?.config?.terminalPreference?.customCommandTemplate?.joinToString("\n") ?: "",
-    )
-
     var agentCommand by mutableStateOf(existingProject?.config?.agentLaunchConfig?.agentCommand ?: "claude")
     var useHeadroom by mutableStateOf(existingProject?.config?.agentLaunchConfig?.useHeadroom ?: true)
 
@@ -39,9 +29,6 @@ class ProjectConfigViewModel(
     private val initialBaseRepositoryPath = baseRepositoryPath
     private val initialWorktreesRoot = worktreesRoot
     private val initialSecretFiles = secretFiles
-    private val initialTerminalSelectionMode = terminalSelectionMode
-    private val initialTerminalEmulator = terminalEmulator
-    private val initialCustomCommandTemplateText = customCommandTemplateText
     private val initialAgentCommand = agentCommand
     private val initialUseHeadroom = useHeadroom
 
@@ -53,9 +40,6 @@ class ProjectConfigViewModel(
             baseRepositoryPath != initialBaseRepositoryPath ||
             worktreesRoot != initialWorktreesRoot ||
             secretFiles != initialSecretFiles ||
-            terminalSelectionMode != initialTerminalSelectionMode ||
-            terminalEmulator != initialTerminalEmulator ||
-            customCommandTemplateText != initialCustomCommandTemplateText ||
             agentCommand != initialAgentCommand ||
             useHeadroom != initialUseHeadroom
 
@@ -68,12 +52,6 @@ class ProjectConfigViewModel(
     }
 
     fun save(): Project {
-        val customCommandTemplate = customCommandTemplateText
-            .lines()
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .takeIf { it.isNotEmpty() }
-
         val project = Project(
             id = existingId ?: UUID.randomUUID().toString(),
             name = name,
@@ -81,11 +59,6 @@ class ProjectConfigViewModel(
                 baseRepositoryPath = baseRepositoryPath,
                 worktreesRoot = worktreesRoot,
                 secretFiles = secretFiles,
-                terminalPreference = TerminalPreference(
-                    mode = terminalSelectionMode,
-                    emulator = terminalEmulator,
-                    customCommandTemplate = customCommandTemplate,
-                ),
                 agentLaunchConfig = AgentLaunchConfig(agentCommand = agentCommand, useHeadroom = useHeadroom),
             ),
         )
