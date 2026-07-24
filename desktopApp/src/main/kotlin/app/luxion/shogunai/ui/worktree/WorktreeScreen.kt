@@ -7,8 +7,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -89,6 +89,7 @@ fun WorktreeScreen(
 
     Column(
         modifier = Modifier.fillMaxSize().padding(Spacing.md)
+            .verticalScroll(rememberScrollState())
             .onNewItemShortcut(enabled = isCreateEnabled, action = createWorktree),
     ) {
         Row(
@@ -171,6 +172,7 @@ fun WorktreeScreen(
                 selected = viewModel.createMode,
                 onSelect = { viewModel.createMode = it },
                 label = { it.label() },
+                enabled = !viewModel.isCreating,
             )
             when (viewModel.createMode) {
                 CreateMode.NEW_BRANCH -> {
@@ -194,12 +196,21 @@ fun WorktreeScreen(
                         selected = viewModel.branchType,
                         onSelect = { viewModel.branchType = it },
                         label = { it.prefix },
+                        enabled = !viewModel.isCreating,
                     )
-                    Button(
-                        onClick = createNewBranchWorktree,
-                        enabled = isTaskIdValid,
-                    ) {
-                        Text("Crear worktree")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (viewModel.isCreating) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.padding(end = Spacing.sm).size(20.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        }
+                        Button(
+                            onClick = createWorktree,
+                            enabled = isCreateEnabled && !viewModel.isCreating,
+                        ) {
+                            Text("Crear worktree")
+                        }
                     }
                 }
                 CreateMode.EXISTING_BRANCH -> {
@@ -223,26 +234,32 @@ fun WorktreeScreen(
                             expandedGroups = branchGroupExpansion,
                         )
                     }
-                    Button(
-                        onClick = createFromSelectedBranch,
-                        enabled = viewModel.selectedBranch != null,
-                    ) {
-                        Text("Crear worktree")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (viewModel.isCreating) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.padding(end = Spacing.sm).size(20.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        }
+                        Button(
+                            onClick = createWorktree,
+                            enabled = isCreateEnabled && !viewModel.isCreating,
+                        ) {
+                            Text("Crear worktree")
+                        }
                     }
                 }
             }
         }
 
         Text("Worktrees", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = Spacing.lg))
-        LazyColumn(modifier = Modifier.weight(1f)) {
-            items(viewModel.worktrees) { worktree ->
-                WorktreeRow(
-                    worktree = worktree,
-                    onRemove = { viewModel.requestRemoval(worktree) },
-                    onOpenTerminal = { viewModel.openTerminal(worktree) },
-                )
-                HorizontalDivider()
-            }
+        viewModel.worktrees.forEach { worktree ->
+            WorktreeRow(
+                worktree = worktree,
+                onRemove = { viewModel.requestRemoval(worktree) },
+                onOpenTerminal = { viewModel.openTerminal(worktree) },
+            )
+            HorizontalDivider()
         }
     }
 
@@ -275,12 +292,26 @@ fun WorktreeScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { viewModel.confirmPendingRemoval() }) {
-                    Text(if (requiresForce) "Forzar eliminación" else "Eliminar")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (viewModel.isRemoving) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.padding(end = Spacing.sm).size(20.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    }
+                    TextButton(
+                        onClick = { viewModel.confirmPendingRemoval() },
+                        enabled = !viewModel.isRemoving,
+                    ) {
+                        Text(if (requiresForce) "Forzar eliminación" else "Eliminar")
+                    }
                 }
             },
             dismissButton = {
-                TextButton(onClick = { viewModel.dismissPendingRemoval() }) {
+                TextButton(
+                    onClick = { viewModel.dismissPendingRemoval() },
+                    enabled = !viewModel.isRemoving,
+                ) {
                     Text("Cancelar")
                 }
             },

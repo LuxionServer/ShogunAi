@@ -19,6 +19,10 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
         private set
     var isLoading by mutableStateOf(false)
         private set
+    var isCreating by mutableStateOf(false)
+        private set
+    var isRemoving by mutableStateOf(false)
+        private set
     var errorMessage by mutableStateOf<String?>(null)
         private set
     var successMessage by mutableStateOf<String?>(null)
@@ -69,13 +73,18 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
 
     fun create(taskId: String, branchType: BranchType) {
         viewModelScope.launch {
-            useCases.create(taskId, branchType)
-                .onSuccess { worktree ->
-                    worktrees = worktrees + worktree
-                    errorMessage = null
-                    successMessage = "Worktree \"${worktree.path}\" creado"
-                }
-                .onFailure { errorMessage = it.message }
+            isCreating = true
+            try {
+                useCases.create(taskId, branchType)
+                    .onSuccess { worktree ->
+                        worktrees = worktrees + worktree
+                        errorMessage = null
+                        successMessage = "Worktree \"${worktree.path}\" creado"
+                    }
+                    .onFailure { errorMessage = it.message }
+            } finally {
+                isCreating = false
+            }
         }
     }
 
@@ -91,31 +100,41 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
 
     fun createFromBranch(branch: String) {
         viewModelScope.launch {
-            useCases.createFromBranch(branch)
-                .onSuccess { worktree ->
-                    worktrees = worktrees + worktree
-                    errorMessage = null
-                    successMessage = "Worktree \"${worktree.path}\" creado"
-                }
-                .onFailure { errorMessage = it.message }
+            isCreating = true
+            try {
+                useCases.createFromBranch(branch)
+                    .onSuccess { worktree ->
+                        worktrees = worktrees + worktree
+                        errorMessage = null
+                        successMessage = "Worktree \"${worktree.path}\" creado"
+                    }
+                    .onFailure { errorMessage = it.message }
+            } finally {
+                isCreating = false
+            }
         }
     }
 
     fun remove(worktree: Worktree, branchToDelete: String?, force: Boolean = false) {
         viewModelScope.launch {
-            useCases.remove(worktree.path, branchToDelete, force)
-                .onSuccess {
-                    worktrees = worktrees.filterNot { it.path == worktree.path }
-                    errorMessage = null
-                    pendingRemoval = null
-                }
-                .onFailure { error ->
-                    if (!force && error.suggestsForceRetry()) {
-                        pendingRemoval = PendingRemoval(worktree, deleteBranch = branchToDelete != null, requiresForce = true)
-                    } else {
-                        errorMessage = error.message
+            isRemoving = true
+            try {
+                useCases.remove(worktree.path, branchToDelete, force)
+                    .onSuccess {
+                        worktrees = worktrees.filterNot { it.path == worktree.path }
+                        errorMessage = null
+                        pendingRemoval = null
                     }
-                }
+                    .onFailure { error ->
+                        if (!force && error.suggestsForceRetry()) {
+                            pendingRemoval = PendingRemoval(worktree, deleteBranch = branchToDelete != null, requiresForce = true)
+                        } else {
+                            errorMessage = error.message
+                        }
+                    }
+            } finally {
+                isRemoving = false
+            }
         }
     }
 
