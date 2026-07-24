@@ -30,12 +30,14 @@ fun <T> SegmentedSelector(
     onSelect: (T) -> Unit,
     label: (T) -> String,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     SingleChoiceSegmentedButtonRow(modifier = modifier) {
         options.forEachIndexed { index, option ->
             SegmentedButton(
                 selected = selected == option,
                 onClick = { onSelect(option) },
+                enabled = enabled,
                 shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
                 icon = {},
                 label = { Text(label(option), maxLines = 1, overflow = TextOverflow.Ellipsis) },

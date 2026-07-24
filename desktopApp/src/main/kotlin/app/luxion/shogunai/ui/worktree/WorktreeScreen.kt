@@ -83,6 +83,7 @@ fun WorktreeScreen(
                 selected = viewModel.createMode,
                 onSelect = { viewModel.createMode = it },
                 label = { it.label() },
+                enabled = !viewModel.isCreating,
             )
             when (viewModel.createMode) {
                 CreateMode.NEW_BRANCH -> {
@@ -110,12 +111,21 @@ fun WorktreeScreen(
                         selected = viewModel.branchType,
                         onSelect = { viewModel.branchType = it },
                         label = { it.prefix },
+                        enabled = !viewModel.isCreating,
                     )
-                    Button(
-                        onClick = createWorktree,
-                        enabled = isTaskIdValid,
-                    ) {
-                        Text("Crear worktree")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (viewModel.isCreating) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.padding(end = Spacing.sm).size(20.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        }
+                        Button(
+                            onClick = createWorktree,
+                            enabled = isTaskIdValid && !viewModel.isCreating,
+                        ) {
+                            Text("Crear worktree")
+                        }
                     }
                 }
                 CreateMode.EXISTING_BRANCH -> {
@@ -132,14 +142,22 @@ fun WorktreeScreen(
                             groupBy = { it.name.substringBefore('/', "otras") },
                         )
                     }
-                    Button(
-                        onClick = {
-                            viewModel.selectedBranch?.let { viewModel.createFromBranch(it) }
-                            viewModel.selectedBranch = null
-                        },
-                        enabled = viewModel.selectedBranch != null,
-                    ) {
-                        Text("Crear worktree")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (viewModel.isCreating) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.padding(end = Spacing.sm).size(20.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        }
+                        Button(
+                            onClick = {
+                                viewModel.selectedBranch?.let { viewModel.createFromBranch(it) }
+                                viewModel.selectedBranch = null
+                            },
+                            enabled = viewModel.selectedBranch != null && !viewModel.isCreating,
+                        ) {
+                            Text("Crear worktree")
+                        }
                     }
                 }
             }
@@ -187,12 +205,26 @@ fun WorktreeScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { viewModel.confirmPendingRemoval() }) {
-                    Text(if (requiresForce) "Forzar eliminación" else "Eliminar")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (viewModel.isRemoving) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.padding(end = Spacing.sm).size(20.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    }
+                    TextButton(
+                        onClick = { viewModel.confirmPendingRemoval() },
+                        enabled = !viewModel.isRemoving,
+                    ) {
+                        Text(if (requiresForce) "Forzar eliminación" else "Eliminar")
+                    }
                 }
             },
             dismissButton = {
-                TextButton(onClick = { viewModel.dismissPendingRemoval() }) {
+                TextButton(
+                    onClick = { viewModel.dismissPendingRemoval() },
+                    enabled = !viewModel.isRemoving,
+                ) {
                     Text("Cancelar")
                 }
             },
