@@ -36,7 +36,15 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "ShogunAi"
-            packageVersion = (findProperty("appVersion") as String?) ?: "0.0.0"
+            val rawVersion = (findProperty("appVersion") as String?) ?: "0.0.0"
+            // macOS no permite que la versión empiece por 0 (restricción de jpackage / CFBundleVersion).
+            // Mapeamos temporalmente "0.x.y" a "1.x.y" para evitar el fallo de compilación en macOS.
+            val isMac = System.getProperty("os.name").contains("Mac", ignoreCase = true)
+            packageVersion = if (isMac && rawVersion.startsWith("0.")) {
+                rawVersion.replaceFirst("0.", "1.")
+            } else {
+                rawVersion
+            }
 
             macOS {
                 iconFile.set(project.file("icons/icon.icns"))
