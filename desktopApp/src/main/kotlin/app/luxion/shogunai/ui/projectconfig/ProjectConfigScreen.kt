@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -29,30 +30,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.Project
-import app.luxion.shogunai.domain.model.TerminalEmulator
-import app.luxion.shogunai.domain.model.TerminalSelectionMode
 import app.luxion.shogunai.ui.FilePicker
-import app.luxion.shogunai.ui.components.DropdownSelector
 import app.luxion.shogunai.ui.components.SectionCard
-import app.luxion.shogunai.ui.components.SegmentedSelector
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.onEnterKey
 import app.luxion.shogunai.ui.relativeToBase
-
-private fun TerminalSelectionMode.label(): String = when (this) {
-    TerminalSelectionMode.AUTO_DETECT -> "Detectar automáticamente"
-    TerminalSelectionMode.FIXED -> "Fijo"
-    TerminalSelectionMode.CUSTOM -> "Personalizado"
-}
-
-private fun TerminalEmulator.label(): String = when (this) {
-    TerminalEmulator.MACOS_TERMINAL -> "Terminal (macOS)"
-    TerminalEmulator.ITERM2 -> "iTerm2"
-    TerminalEmulator.WARP -> "Warp"
-    TerminalEmulator.GNOME_TERMINAL -> "GNOME Terminal"
-    TerminalEmulator.KONSOLE -> "Konsole"
-    TerminalEmulator.XTERM -> "XTerm"
-}
 
 @Composable
 fun ProjectConfigScreen(
@@ -61,6 +43,10 @@ fun ProjectConfigScreen(
     onCancel: () -> Unit,
 ) {
     var newSecretFile by remember { mutableStateOf("") }
+    var showDiscardChangesDialog by remember { mutableStateOf(false) }
+    val requestCancel = {
+        if (viewModel.hasUnsavedChanges) showDiscardChangesDialog = true else onCancel()
+    }
 
     Column(
         modifier = Modifier.fillMaxWidth().padding(Spacing.md).verticalScroll(rememberScrollState()),
@@ -73,6 +59,12 @@ fun ProjectConfigScreen(
                 value = viewModel.name,
                 onValueChange = { viewModel.name = it },
                 label = { Text("Nombre") },
+                isError = viewModel.name.isBlank(),
+                supportingText = if (viewModel.name.isBlank()) {
+                    { Text("El nombre no puede estar vacío") }
+                } else {
+                    null
+                },
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -89,6 +81,12 @@ fun ProjectConfigScreen(
                     value = viewModel.baseRepositoryPath,
                     onValueChange = { viewModel.baseRepositoryPath = it },
                     label = { Text("Ruta del repositorio base") },
+                    isError = viewModel.baseRepositoryPath.isBlank(),
+                    supportingText = if (viewModel.baseRepositoryPath.isBlank()) {
+                        { Text("La ruta del repositorio no puede estar vacía") }
+                    } else {
+                        null
+                    },
                     modifier = Modifier.weight(1f).onEnterKey(action = pickBaseRepositoryPath),
                 )
                 OutlinedButton(
@@ -165,32 +163,6 @@ fun ProjectConfigScreen(
             }
         }
 
-        SectionCard(title = "Terminal") {
-            SegmentedSelector(
-                options = TerminalSelectionMode.entries,
-                selected = viewModel.terminalSelectionMode,
-                onSelect = { viewModel.terminalSelectionMode = it },
-                label = { it.label() },
-            )
-            if (viewModel.terminalSelectionMode == TerminalSelectionMode.FIXED) {
-                DropdownSelector(
-                    options = TerminalEmulator.entries,
-                    selected = viewModel.terminalEmulator,
-                    onSelect = { viewModel.terminalEmulator = it },
-                    label = { it.label() },
-                    placeholder = "Selecciona un emulador",
-                )
-            }
-            if (viewModel.terminalSelectionMode == TerminalSelectionMode.CUSTOM) {
-                OutlinedTextField(
-                    value = viewModel.customCommandTemplateText,
-                    onValueChange = { viewModel.customCommandTemplateText = it },
-                    label = { Text("Comando personalizado (un argumento por línea; usa {path} y {command})") },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
-
         SectionCard(title = "Agente") {
             OutlinedTextField(
                 value = viewModel.agentCommand,
@@ -202,10 +174,15 @@ fun ProjectConfigScreen(
                 Switch(checked = viewModel.useHeadroom, onCheckedChange = { viewModel.useHeadroom = it })
                 Text("Usar Headroom (headroom wrap)", modifier = Modifier.padding(start = Spacing.sm))
             }
+            Text(
+                "Headroom envuelve el comando del agente para comprimir el contexto antes de lanzarlo.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            OutlinedButton(onClick = onCancel, modifier = Modifier.padding(end = Spacing.sm)) {
+            OutlinedButton(onClick = requestCancel, modifier = Modifier.padding(end = Spacing.sm)) {
                 Text("Cancelar")
             }
             Button(
@@ -215,5 +192,26 @@ fun ProjectConfigScreen(
                 Text("Guardar")
             }
         }
+    }
+
+    if (showDiscardChangesDialog) {
+        AlertDialog(
+            onDismissRequest = { showDiscardChangesDialog = false },
+            title = { Text("¿Descartar cambios?") },
+            text = { Text("Hay cambios sin guardar que se perderán si continúas.") },
+            confirmButton = {
+                Button(onClick = {
+                    showDiscardChangesDialog = false
+                    onCancel()
+                }) {
+                    Text("Descartar")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showDiscardChangesDialog = false }) {
+                    Text("Seguir editando")
+                }
+            },
+        )
     }
 }

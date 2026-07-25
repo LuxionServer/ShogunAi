@@ -12,6 +12,7 @@ import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.usecase.isValidGitRefSegment
 import app.luxion.shogunai.domain.usecase.normalizeTaskId
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
@@ -19,7 +20,15 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
         private set
     var isLoading by mutableStateOf(false)
         private set
+    var isCreating by mutableStateOf(false)
+        private set
+    var isRemoving by mutableStateOf(false)
+        private set
     var errorMessage by mutableStateOf<String?>(null)
+        private set
+    var copiedWorktreePath by mutableStateOf<String?>(null)
+        private set
+    var successMessage by mutableStateOf<String?>(null)
         private set
 
     var localBranches by mutableStateOf<List<BranchOption>>(emptyList())
@@ -67,9 +76,18 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
 
     fun create(taskId: String, branchType: BranchType) {
         viewModelScope.launch {
-            useCases.create(taskId, branchType)
-                .onSuccess { worktree -> worktrees = worktrees + worktree; errorMessage = null }
-                .onFailure { errorMessage = it.message }
+            isCreating = true
+            try {
+                useCases.create(taskId, branchType)
+                    .onSuccess { worktree ->
+                        worktrees = worktrees + worktree
+                        errorMessage = null
+                        successMessage = "Worktree \"${worktree.path}\" creado"
+                    }
+                    .onFailure { errorMessage = it.message }
+            } finally {
+                isCreating = false
+            }
         }
     }
 
@@ -85,27 +103,41 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
 
     fun createFromBranch(branch: String) {
         viewModelScope.launch {
-            useCases.createFromBranch(branch)
-                .onSuccess { worktree -> worktrees = worktrees + worktree; errorMessage = null }
-                .onFailure { errorMessage = it.message }
+            isCreating = true
+            try {
+                useCases.createFromBranch(branch)
+                    .onSuccess { worktree ->
+                        worktrees = worktrees + worktree
+                        errorMessage = null
+                        successMessage = "Worktree \"${worktree.path}\" creado"
+                    }
+                    .onFailure { errorMessage = it.message }
+            } finally {
+                isCreating = false
+            }
         }
     }
 
     fun remove(worktree: Worktree, branchToDelete: String?, force: Boolean = false) {
         viewModelScope.launch {
-            useCases.remove(worktree.path, branchToDelete, force)
-                .onSuccess {
-                    worktrees = worktrees.filterNot { it.path == worktree.path }
-                    errorMessage = null
-                    pendingRemoval = null
-                }
-                .onFailure { error ->
-                    if (!force && error.suggestsForceRetry()) {
-                        pendingRemoval = PendingRemoval(worktree, deleteBranch = branchToDelete != null, requiresForce = true)
-                    } else {
-                        errorMessage = error.message
+            isRemoving = true
+            try {
+                useCases.remove(worktree.path, branchToDelete, force)
+                    .onSuccess {
+                        worktrees = worktrees.filterNot { it.path == worktree.path }
+                        errorMessage = null
+                        pendingRemoval = null
                     }
-                }
+                    .onFailure { error ->
+                        if (!force && error.suggestsForceRetry()) {
+                            pendingRemoval = PendingRemoval(worktree, deleteBranch = branchToDelete != null, requiresForce = true)
+                        } else {
+                            errorMessage = error.message
+                        }
+                    }
+            } finally {
+                isRemoving = false
+            }
         }
     }
 
@@ -117,10 +149,15 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
         pendingRemoval = pendingRemoval?.copy(deleteBranch = deleteBranch)
     }
 
-    fun openTerminal(worktree: Worktree) {
+    fun copyLaunchCommand(worktree: Worktree) {
         viewModelScope.launch {
-            useCases.openTerminal(worktree.path)
-                .onSuccess { errorMessage = null }
+            useCases.copyLaunchCommand(worktree.path)
+                .onSuccess {
+                    errorMessage = null
+                    copiedWorktreePath = worktree.path
+                    delay(COPIED_FEEDBACK_DURATION_MS)
+                    if (copiedWorktreePath == worktree.path) copiedWorktreePath = null
+                }
                 .onFailure { errorMessage = it.message }
         }
     }
@@ -135,6 +172,14 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
         pendingRemoval = null
     }
 
+    fun dismissError() {
+        errorMessage = null
+    }
+
+    fun dismissSuccess() {
+        successMessage = null
+    }
+
     private data class PendingRemoval(
         val worktree: Worktree,
         val deleteBranch: Boolean,
@@ -144,5 +189,7 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
 
 private fun Throwable.suggestsForceRetry(): Boolean =
     this is WorktreeError.GitCommandFailed && errorOutput.contains("--force", ignoreCase = true)
+
+private const val COPIED_FEEDBACK_DURATION_MS = 2000L
 
 enum class CreateMode { NEW_BRANCH, EXISTING_BRANCH }

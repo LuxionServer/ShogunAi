@@ -39,13 +39,9 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class SecretCopyFailed(cause: Throwable) :
         WorktreeError("Failed to copy secret files: ${cause.message}", cause)
 
-    /** No terminal emulator is available to open the worktree. */
-    object NoTerminalAvailable :
-        WorktreeError("No terminal emulator available was found")
-
-    /** The operating system failed to start the terminal process. */
-    class TerminalLaunchFailed(cause: Throwable) :
-        WorktreeError("Failed to launch the terminal: ${cause.message}", cause)
+    /** The operating system failed to write the launch command to the system clipboard. */
+    class ClipboardWriteFailed(cause: Throwable) :
+        WorktreeError("Failed to copy the launch command to the clipboard: ${cause.message}", cause)
 
     /** The repository requires Git LFS but the `git-lfs` binary isn't installed. */
     object GitLfsNotFound : WorktreeError(

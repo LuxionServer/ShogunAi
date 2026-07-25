@@ -19,7 +19,7 @@ class JsonProjectRepository(
     private val storagePath: Path = Path.of(System.getProperty("user.home"), ".shogunai", "projects.json"),
 ) : ProjectRepository {
 
-    private val json = Json { prettyPrint = true }
+    private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
 
     override fun list(): List<Project> {
         if (!storagePath.exists()) return emptyList()
