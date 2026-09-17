@@ -9,7 +9,7 @@ class CopyWorktreeLaunchCommandUseCase(
     private val clipboard: ClipboardWriter,
 ) {
     suspend operator fun invoke(worktreePath: String): Result<Unit> = runCatching {
-        val command = "cd '$worktreePath' && ${config.agentLaunchConfig.resolvedCommand()}"
+        val command = "cd \"$worktreePath\" && ${config.agentLaunchConfig.resolvedCommand()}"
         clipboard.write(command).getOrElse { throw WorktreeError.ClipboardWriteFailed(it) }
     }
 }
