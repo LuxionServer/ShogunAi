@@ -27,7 +27,7 @@ class CopyWorktreeLaunchCommandUseCaseTest {
         val result = useCase(worktreePath)
 
         assertTrue(result.isSuccess)
-        assertEquals(listOf("cd '$worktreePath' && headroom wrap claude"), clipboard.writtenText)
+        assertEquals(listOf("cd \"$worktreePath\" && headroom wrap claude"), clipboard.writtenText)
     }
 
     @Test
@@ -38,7 +38,7 @@ class CopyWorktreeLaunchCommandUseCaseTest {
 
         useCase(worktreePath).getOrThrow()
 
-        assertEquals(listOf("cd '$worktreePath' && claude"), clipboard.writtenText)
+        assertEquals(listOf("cd \"$worktreePath\" && claude"), clipboard.writtenText)
     }
 
     @Test
