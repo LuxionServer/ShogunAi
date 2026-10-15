@@ -75,6 +75,7 @@ object EnglishStrings : Strings {
     override val copied = "Copied"
     override val copyCommand = "Copy command"
     override fun worktreeCreated(path: String) = "Worktree \"$path\" created"
+    override val worktreesRepairedAfterMove = "Worktrees repaired after moving the repository"
 
     override fun baseRepositoryNotFound(path: String) = "Base repository doesn't exist: $path"
     override fun worktreeAlreadyExists(path: String) = "Worktree directory already exists: $path"

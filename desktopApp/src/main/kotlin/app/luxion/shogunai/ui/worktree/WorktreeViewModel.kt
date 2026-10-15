@@ -29,7 +29,7 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
         private set
     var copiedWorktreePath by mutableStateOf<String?>(null)
         private set
-    var createdWorktreePath by mutableStateOf<String?>(null)
+    var success by mutableStateOf<WorktreeSuccess?>(null)
         private set
 
     var localBranches by mutableStateOf<List<BranchOption>>(emptyList())
@@ -72,6 +72,21 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
         }
     }
 
+    /**
+     * Re-links the base repository and its worktrees after the project's paths
+     * changed (the repository was moved on disk), then reloads the list.
+     */
+    fun repairAfterMove(previousWorktreesRoot: String) {
+        viewModelScope.launch {
+            isLoading = true
+            useCases.repair(previousWorktreesRoot)
+                .onSuccess { success = WorktreeSuccess.RepairedAfterMove }
+                .onFailure { error = it }
+            isLoading = false
+            refresh()
+        }
+    }
+
     /** Whether [taskId] is usable as-is: still valid as a Git ref segment once normalized. */
     fun isTaskIdValid(taskId: String): Boolean = isValidGitRefSegment(normalizeTaskId(taskId))
 
@@ -83,7 +98,7 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
                     .onSuccess { worktree ->
                         worktrees = worktrees + worktree
                         error = null
-                        createdWorktreePath = worktree.path
+                        success = WorktreeSuccess.Created(worktree.path)
                     }
                     .onFailure { error = it }
             } finally {
@@ -110,7 +125,7 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
                     .onSuccess { worktree ->
                         worktrees = worktrees + worktree
                         error = null
-                        createdWorktreePath = worktree.path
+                        success = WorktreeSuccess.Created(worktree.path)
                     }
                     .onFailure { error = it }
             } finally {
@@ -178,7 +193,7 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
     }
 
     fun dismissSuccess() {
-        createdWorktreePath = null
+        success = null
     }
 
     private data class PendingRemoval(
@@ -194,3 +209,9 @@ private fun Throwable.suggestsForceRetry(): Boolean =
 private const val COPIED_FEEDBACK_DURATION_MS = 2000L
 
 enum class CreateMode { NEW_BRANCH, EXISTING_BRANCH }
+
+/** Outcome of a successful operation, rendered by the screen in the active language. */
+sealed interface WorktreeSuccess {
+    data class Created(val path: String) : WorktreeSuccess
+    data object RepairedAfterMove : WorktreeSuccess
+}

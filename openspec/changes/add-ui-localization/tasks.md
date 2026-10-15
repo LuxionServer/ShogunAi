@@ -16,8 +16,8 @@
 
 ## 4. ViewModel: expose data instead of preformatted messages
 
-- [x] 4.1 In `WorktreeViewModel`, replace `errorMessage: String?` with `error: Throwable?` and `successMessage: String?` with `createdWorktreePath: String?`
-- [x] 4.2 Update `WorktreeViewModelTest` to assert on the error type/data (`assertIs<WorktreeError.BranchNotFound>`…) and on `createdWorktreePath`; verify with `./gradlew :desktopApp:test`
+- [x] 4.1 In `WorktreeViewModel`, replace `errorMessage: String?` with `error: Throwable?` and `successMessage: String?` with `success: WorktreeSuccess?` (`Created(path)`, `RepairedAfterMove`)
+- [x] 4.2 Update `WorktreeViewModelTest` to assert on the error type/data (`assertIs<WorktreeError.BranchNotFound>`…) and on `success`; verify with `./gradlew :desktopApp:test`
 
 ## 5. UI: use the translation layer
 

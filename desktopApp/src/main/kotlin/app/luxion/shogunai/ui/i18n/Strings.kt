@@ -92,6 +92,7 @@ interface Strings {
     val copied: String
     val copyCommand: String
     fun worktreeCreated(path: String): String
+    val worktreesRepairedAfterMove: String
 
     // Worktree errors (see worktreeError)
     fun baseRepositoryNotFound(path: String): String

@@ -142,9 +142,12 @@ fun WorktreeScreen(
             }
         }
 
-        viewModel.createdWorktreePath?.let { path ->
-            val message = strings.worktreeCreated(path)
-            LaunchedEffect(path) {
+        viewModel.success?.let { success ->
+            val message = when (success) {
+                is WorktreeSuccess.Created -> strings.worktreeCreated(success.path)
+                WorktreeSuccess.RepairedAfterMove -> strings.worktreesRepairedAfterMove
+            }
+            LaunchedEffect(success) {
                 delay(4000)
                 viewModel.dismissSuccess()
             }
