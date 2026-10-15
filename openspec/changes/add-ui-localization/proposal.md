@@ -26,6 +26,6 @@ None. Existing capabilities keep their behavior; only the language their texts a
 - **UI** (`desktopApp/.../ui/`): all screens and shared components read texts from the active string table instead of literals; `AppRoot` provides the active language and hosts the new language selector; `FilePicker` receives localized dialog titles.
 - **ViewModels**: `WorktreeViewModel` exposes the failure (`Throwable`) and the created worktree path instead of preformatted message strings, so the UI can render them in the active language. `WorktreeViewModelTest` assertions are updated accordingly.
 - **Domain**: new `AppLanguage` model and `LanguagePreferenceRepository` port, mirroring `ThemeMode` / `ThemePreferenceRepository`.
-- **Infrastructure**: the JSON settings adapter stores both theme mode and language in the same `settings.json`, preserving the other field on each save.
+- **Infrastructure**: a shared `settings.json` file abstraction used by the theme adapter and a new language adapter, each preserving the other field on save.
 - **Dependencies**: none added.
 - **Docs**: `docs/architecture/ui.md` / `ui.en.md` and `infrastructure.md` / `infrastructure.en.md` document the localization layer and the extended settings file.

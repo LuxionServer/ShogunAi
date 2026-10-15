@@ -36,3 +36,14 @@ Instancia `JsonProjectRepository`, `NioFileManager`, `ProcessBuilderShellCommand
 ## `FilePicker`
 
 Envuelve `JFileChooser` para los botones "Examinar…" de la pantalla de configuración (ruta del repo base, carpeta de worktrees, archivos de secretos). Se eligió sobre un selector nativo de Compose porque Compose Desktop no trae uno y `JFileChooser` ya está disponible en el target JVM sin dependencias nuevas. `relativeToBase` convierte la ruta absoluta de un archivo de secretos elegido a la forma relativa al repo que espera `ProjectConfig.secretFiles`.
+
+## Idiomas (`ui/i18n`)
+
+La UI está disponible en inglés (por defecto) y español. Cada texto visible vive en `interface Strings`, con una implementación por idioma (`EnglishStrings`, `SpanishStrings`); los textos con parámetros son funciones (`deleteProjectMessage(projectName)`), así los argumentos se comprueban en compilación.
+
+- `AppRoot` carga el `AppLanguage` guardado (`LanguagePreferenceRepository`) y provee la tabla activa con `CompositionLocalProvider(LocalStrings provides language.strings())` por encima del `when` de pantallas: cambiar de idioma recompone los textos sin recrear ViewModels ni perder el estado de la pantalla.
+- Los composables leen los textos con `val strings = LocalStrings.current`. Código no composable (como `FilePicker`) recibe el texto ya traducido por parámetro.
+- `LanguageToggle`, junto a `ThemeModeToggle` en la barra superior, muestra cada idioma con su propio nombre ("English", "Español").
+- Los ViewModels exponen datos, no mensajes: `WorktreeViewModel` expone `error: Throwable?` y `createdWorktreePath`, y la pantalla los formatea con `strings.worktreeError(error)` / `strings.worktreeCreated(path)`. `worktreeError` recorre de forma exhaustiva la jerarquía sellada `WorktreeError`, así que una variante nueva no compila hasta tener traducción. La salida de error de Git se muestra tal cual, sin traducir.
+
+**Añadir un texto**: declarar el miembro en `Strings` e implementarlo en cada idioma (el compilador avisa si falta alguno). **Añadir un idioma**: nuevo valor en `AppLanguage`, nuevo `object` que implemente `Strings`, y su rama en `AppLanguage.strings()`.

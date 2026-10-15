@@ -10,6 +10,7 @@ import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.model.BranchOption
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.Worktree
+import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.usecase.CopyWorktreeLaunchCommandUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
@@ -26,6 +27,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -99,12 +101,13 @@ class WorktreeViewModelTest {
         viewModel.createFromBranch(branch)
         advanceUntilIdle()
 
-        assertNull(viewModel.errorMessage)
+        assertNull(viewModel.error)
+        assertEquals(branchWorktreePath, viewModel.createdWorktreePath)
         assertTrue(viewModel.worktrees.any { it.path == branchWorktreePath && it.branch == branch })
     }
 
     @Test
-    fun `createFromBranch sets error message when the branch doesn't exist`() = runTest(dispatcher) {
+    fun `createFromBranch sets error when the branch doesn't exist`() = runTest(dispatcher) {
         val branch = "hotfix/security-patch"
         val viewModel = WorktreeViewModel(
             useCases { command ->
@@ -120,7 +123,7 @@ class WorktreeViewModelTest {
         viewModel.createFromBranch(branch)
         advanceUntilIdle()
 
-        assertEquals(true, viewModel.errorMessage?.contains("Branch not found"))
+        assertEquals(branch, assertIs<WorktreeError.BranchNotFound>(viewModel.error).branch)
         assertTrue(viewModel.worktrees.none { it.branch == branch })
     }
 
@@ -145,12 +148,12 @@ class WorktreeViewModelTest {
 
         assertEquals(worktree, viewModel.worktreePendingRemoval)
         assertTrue(viewModel.pendingRemovalRequiresForce)
-        assertNull(viewModel.errorMessage)
+        assertNull(viewModel.error)
         assertTrue(viewModel.worktrees.any { it.path == worktreePath })
     }
 
     @Test
-    fun `sets error message when remove fails for a reason unrelated to force`() = runTest(dispatcher) {
+    fun `sets error when remove fails for a reason unrelated to force`() = runTest(dispatcher) {
         val viewModel = WorktreeViewModel(
             useCases { command ->
                 when (command) {
@@ -166,10 +169,8 @@ class WorktreeViewModelTest {
         advanceUntilIdle()
 
         assertNull(viewModel.worktreePendingRemoval)
-        assertEquals(
-            true,
-            viewModel.errorMessage?.contains("is not a working tree"),
-        )
+        val error = assertIs<WorktreeError.GitCommandFailed>(viewModel.error)
+        assertTrue(error.errorOutput.contains("is not a working tree"))
     }
 
     @Test
@@ -305,7 +306,7 @@ class WorktreeViewModelTest {
     }
 
     @Test
-    fun `refresh surfaces a failure via errorMessage when ListWorktreesUseCase fails`() = runTest(dispatcher) {
+    fun `refresh surfaces a failure via error when ListWorktreesUseCase fails`() = runTest(dispatcher) {
         var listCallCount = 0
         val viewModel = WorktreeViewModel(
             useCases { command ->
@@ -319,12 +320,13 @@ class WorktreeViewModelTest {
             },
         )
         advanceUntilIdle()
-        assertNull(viewModel.errorMessage)
+        assertNull(viewModel.error)
 
         viewModel.refresh()
         advanceUntilIdle()
 
-        assertEquals(true, viewModel.errorMessage?.contains("not a git repository"))
+        val error = assertIs<WorktreeError.GitCommandFailed>(viewModel.error)
+        assertTrue(error.errorOutput.contains("not a git repository"))
     }
 
     @Test

@@ -17,6 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import app.luxion.shogunai.ui.i18n.LocalStrings
 
 /**
  * Card with a title header wrapping [content].
@@ -47,7 +48,7 @@ fun SectionCard(
                     Text(title, style = MaterialTheme.typography.titleMedium)
                     Icon(
                         imageVector = if (expanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
-                        contentDescription = if (expanded) "Contraer" else "Expandir",
+                        contentDescription = if (expanded) LocalStrings.current.collapse else LocalStrings.current.expand,
                     )
                 }
             } else {

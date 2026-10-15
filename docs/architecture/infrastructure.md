@@ -33,6 +33,13 @@ Objeto puro en `domain/usecase/` (no infraestructura, pero documentado aquí por
 - `ITERM2`: abre una **pestaña nueva** — `create tab with default profile` en `current window` (o `create window with default profile` si no hay ninguna). El dictionary de iTerm2 soporta crear pestañas directamente, sin permisos extra.
 - `MACOS_TERMINAL`: si no hay ninguna ventana de Terminal abierta, `do script` sin destino crea una directamente (fallback, sin pestañas). Si ya hay una, fuerza una **pestaña nueva** de forma determinista: `activate` + `System Events` simulando Cmd+T, y luego `do script ... in front window` — una pestaña recién creada siempre está idle, así que ese `do script` la usa sin ambigüedad. Terminal.app no tiene un comando de AppleScript para crear pestañas directamente; Cmd+T vía `System Events` exige permiso de Accesibilidad, que en modo dev (`./gradlew :desktopApp:run`, sin identidad de bundle propia) macOS no siempre llega a solicitar — el keystroke queda sin efecto y sin error visible, degradando a reutilizar la pestaña actual (el bug original: lanzamientos seguidos escribiendo uno sobre otro sin separador). Empaquetar la app como `.app`/dmg debería permitir que macOS pida el permiso correctamente (pendiente de verificar).
 
+## Preferencias de usuario (`settings.json`)
+
+`JsonSettingsFile` es el fichero `~/.shogunai/settings.json`, compartido por `JsonThemePreferenceRepository` (puerto `ThemePreferenceRepository`) y `JsonLanguagePreferenceRepository` (puerto `LanguagePreferenceRepository`). Guarda `{ "themeMode": ..., "language": ... }`.
+
+- **Cada guardado reescribe solo su campo**: `update` lee el contenido actual, aplica el cambio y escribe el fichero completo de forma atómica (temporal + `Files.move` con `ATOMIC_MOVE`, mismo patrón que `JsonProjectRepository`). Así cambiar el idioma no pisa el tema y viceversa.
+- **Valores por defecto**: `SYSTEM` para el tema e `ENGLISH` para el idioma, si el fichero no existe, está vacío o no se puede parsear. Los ficheros escritos por versiones anteriores (solo `themeMode`) se leen sin problema: el idioma toma su valor por defecto.
+
 ## Dobles de test
 
 En `desktopApp/src/test/kotlin/app/luxion/shogunai/domain/`:

@@ -33,6 +33,13 @@ Pure object in `domain/usecase/` (not infrastructure, but documented here since 
 - `ITERM2`: opens a **new tab** — `create tab with default profile` on `current window` (or `create window with default profile` if there's none). iTerm2's dictionary supports creating tabs directly, with no extra permissions.
 - `MACOS_TERMINAL`: if no Terminal window is open, `do script` with no target creates one directly (fallback, no tabs). If one already exists, it forces a **new tab** deterministically: `activate` + `System Events` simulating Cmd+T, then `do script ... in front window` — a freshly created tab is always idle, so that `do script` uses it unambiguously. Terminal.app has no AppleScript command to create tabs directly; Cmd+T via `System Events` requires Accessibility permission, which in dev mode (`./gradlew :desktopApp:run`, with no bundle identity of its own) macOS doesn't always get around to requesting — the keystroke has no effect with no visible error, degrading to reusing the current tab (the original bug: consecutive launches writing over each other with no separator). Packaging the app as a `.app`/dmg should let macOS prompt for the permission correctly (pending verification).
 
+## User preferences (`settings.json`)
+
+`JsonSettingsFile` is the `~/.shogunai/settings.json` file, shared by `JsonThemePreferenceRepository` (`ThemePreferenceRepository` port) and `JsonLanguagePreferenceRepository` (`LanguagePreferenceRepository` port). It stores `{ "themeMode": ..., "language": ... }`.
+
+- **Each save only rewrites its own field**: `update` reads the current contents, applies the change and writes the whole file atomically (temp file + `Files.move` with `ATOMIC_MOVE`, same pattern as `JsonProjectRepository`). Changing the language doesn't overwrite the theme and vice versa.
+- **Defaults**: `SYSTEM` for the theme and `ENGLISH` for the language when the file is missing, empty or unparseable. Files written by older versions (only `themeMode`) are read fine: the language takes its default.
+
 ## Test doubles
 
 In `desktopApp/src/test/kotlin/app/luxion/shogunai/domain/`:

@@ -34,6 +34,7 @@ import app.luxion.shogunai.ui.FilePicker
 import app.luxion.shogunai.ui.components.SectionCard
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.onEnterKey
+import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.relativeToBase
 
 @Composable
@@ -42,6 +43,7 @@ fun ProjectConfigScreen(
     onSaved: (Project) -> Unit,
     onCancel: () -> Unit,
 ) {
+    val strings = LocalStrings.current
     var newSecretFile by remember { mutableStateOf("") }
     var showDiscardChangesDialog by remember { mutableStateOf(false) }
     val requestCancel = {
@@ -52,16 +54,16 @@ fun ProjectConfigScreen(
         modifier = Modifier.fillMaxWidth().padding(Spacing.md).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
-        Text("Configuración de proyecto", style = MaterialTheme.typography.headlineSmall)
+        Text(strings.projectConfigTitle, style = MaterialTheme.typography.headlineSmall)
 
-        SectionCard(title = "Identidad") {
+        SectionCard(title = strings.identitySection) {
             OutlinedTextField(
                 value = viewModel.name,
                 onValueChange = { viewModel.name = it },
-                label = { Text("Nombre") },
+                label = { Text(strings.nameLabel) },
                 isError = viewModel.name.isBlank(),
                 supportingText = if (viewModel.name.isBlank()) {
-                    { Text("El nombre no puede estar vacío") }
+                    { Text(strings.nameEmptyError) }
                 } else {
                     null
                 },
@@ -69,10 +71,10 @@ fun ProjectConfigScreen(
             )
         }
 
-        SectionCard(title = "Rutas") {
+        SectionCard(title = strings.pathsSection) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val pickBaseRepositoryPath = {
-                    FilePicker.pickDirectory(viewModel.baseRepositoryPath)?.let {
+                    FilePicker.pickDirectory(viewModel.baseRepositoryPath, strings.selectFolderDialogTitle)?.let {
                         viewModel.baseRepositoryPath = it
                     }
                     Unit
@@ -80,10 +82,10 @@ fun ProjectConfigScreen(
                 OutlinedTextField(
                     value = viewModel.baseRepositoryPath,
                     onValueChange = { viewModel.baseRepositoryPath = it },
-                    label = { Text("Ruta del repositorio base") },
+                    label = { Text(strings.baseRepositoryPathLabel) },
                     isError = viewModel.baseRepositoryPath.isBlank(),
                     supportingText = if (viewModel.baseRepositoryPath.isBlank()) {
-                        { Text("La ruta del repositorio no puede estar vacía") }
+                        { Text(strings.baseRepositoryPathEmptyError) }
                     } else {
                         null
                     },
@@ -93,12 +95,12 @@ fun ProjectConfigScreen(
                     onClick = pickBaseRepositoryPath,
                     modifier = Modifier.padding(start = Spacing.sm),
                 ) {
-                    Text("Examinar…")
+                    Text(strings.browse)
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val pickWorktreesRoot = {
-                    FilePicker.pickDirectory(viewModel.worktreesRoot)?.let {
+                    FilePicker.pickDirectory(viewModel.worktreesRoot, strings.selectFolderDialogTitle)?.let {
                         viewModel.worktreesRoot = it
                     }
                     Unit
@@ -106,19 +108,19 @@ fun ProjectConfigScreen(
                 OutlinedTextField(
                     value = viewModel.worktreesRoot,
                     onValueChange = { viewModel.worktreesRoot = it },
-                    label = { Text("Carpeta raíz de worktrees") },
+                    label = { Text(strings.worktreesRootLabel) },
                     modifier = Modifier.weight(1f).onEnterKey(action = pickWorktreesRoot),
                 )
                 OutlinedButton(
                     onClick = pickWorktreesRoot,
                     modifier = Modifier.padding(start = Spacing.sm),
                 ) {
-                    Text("Examinar…")
+                    Text(strings.browse)
                 }
             }
         }
 
-        SectionCard(title = "Archivos de secretos") {
+        SectionCard(title = strings.secretFilesSection) {
             LazyColumn(modifier = Modifier.heightIn(max = 160.dp)) {
                 items(viewModel.secretFiles) { file ->
                     Row(
@@ -128,7 +130,7 @@ fun ProjectConfigScreen(
                     ) {
                         Text(file)
                         IconButton(onClick = { viewModel.removeSecretFile(file) }) {
-                            Icon(Icons.Default.Close, contentDescription = "Eliminar archivo de secretos")
+                            Icon(Icons.Default.Close, contentDescription = strings.removeSecretFile)
                         }
                     }
                 }
@@ -141,41 +143,41 @@ fun ProjectConfigScreen(
                 OutlinedTextField(
                     value = newSecretFile,
                     onValueChange = { newSecretFile = it },
-                    label = { Text("Nuevo archivo de secretos") },
+                    label = { Text(strings.newSecretFileLabel) },
                     modifier = Modifier.weight(1f).onEnterKey(action = addSecretFile),
                 )
                 Button(
                     onClick = addSecretFile,
                     modifier = Modifier.padding(start = Spacing.sm),
                 ) {
-                    Text("Añadir")
+                    Text(strings.add)
                 }
                 OutlinedButton(
                     onClick = {
-                        FilePicker.pickFiles(viewModel.baseRepositoryPath).forEach { absolutePath ->
+                        FilePicker.pickFiles(viewModel.baseRepositoryPath, strings.selectSecretFilesDialogTitle).forEach { absolutePath ->
                             viewModel.addSecretFile(relativeToBase(viewModel.baseRepositoryPath, absolutePath))
                         }
                     },
                     modifier = Modifier.padding(start = Spacing.sm),
                 ) {
-                    Text("Examinar…")
+                    Text(strings.browse)
                 }
             }
         }
 
-        SectionCard(title = "Agente") {
+        SectionCard(title = strings.agentSection) {
             OutlinedTextField(
                 value = viewModel.agentCommand,
                 onValueChange = { viewModel.agentCommand = it },
-                label = { Text("Comando del agente") },
+                label = { Text(strings.agentCommandLabel) },
                 modifier = Modifier.fillMaxWidth(),
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Switch(checked = viewModel.useHeadroom, onCheckedChange = { viewModel.useHeadroom = it })
-                Text("Usar Headroom (headroom wrap)", modifier = Modifier.padding(start = Spacing.sm))
+                Text(strings.useHeadroomLabel, modifier = Modifier.padding(start = Spacing.sm))
             }
             Text(
-                "Headroom envuelve el comando del agente para comprimir el contexto antes de lanzarlo.",
+                strings.headroomDescription,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -183,13 +185,13 @@ fun ProjectConfigScreen(
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             OutlinedButton(onClick = requestCancel, modifier = Modifier.padding(end = Spacing.sm)) {
-                Text("Cancelar")
+                Text(strings.cancel)
             }
             Button(
                 onClick = { onSaved(viewModel.save()) },
                 enabled = viewModel.isValid,
             ) {
-                Text("Guardar")
+                Text(strings.save)
             }
         }
     }
@@ -197,19 +199,19 @@ fun ProjectConfigScreen(
     if (showDiscardChangesDialog) {
         AlertDialog(
             onDismissRequest = { showDiscardChangesDialog = false },
-            title = { Text("¿Descartar cambios?") },
-            text = { Text("Hay cambios sin guardar que se perderán si continúas.") },
+            title = { Text(strings.discardChangesTitle) },
+            text = { Text(strings.discardChangesMessage) },
             confirmButton = {
                 Button(onClick = {
                     showDiscardChangesDialog = false
                     onCancel()
                 }) {
-                    Text("Descartar")
+                    Text(strings.discard)
                 }
             },
             dismissButton = {
                 OutlinedButton(onClick = { showDiscardChangesDialog = false }) {
-                    Text("Seguir editando")
+                    Text(strings.keepEditing)
                 }
             },
         )

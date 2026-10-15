@@ -36,3 +36,14 @@ Instantiates `JsonProjectRepository`, `NioFileManager`, `ProcessBuilderShellComm
 ## `FilePicker`
 
 Wraps `JFileChooser` for the "Browse…" buttons on the configuration screen (base repo path, worktrees folder, secret files). Chosen over a native Compose picker because Compose Desktop doesn't ship one and `JFileChooser` is already available on the JVM target with no new dependencies. `relativeToBase` converts the absolute path of a chosen secret file into the path relative to the repo that `ProjectConfig.secretFiles` expects.
+
+## Languages (`ui/i18n`)
+
+The UI is available in English (default) and Spanish. Every visible text lives in `interface Strings`, with one implementation per language (`EnglishStrings`, `SpanishStrings`); texts with parameters are functions (`deleteProjectMessage(projectName)`), so arguments are checked at compile time.
+
+- `AppRoot` loads the stored `AppLanguage` (`LanguagePreferenceRepository`) and provides the active table with `CompositionLocalProvider(LocalStrings provides language.strings())` above the screen `when`: switching language recomposes texts without recreating ViewModels or losing screen state.
+- Composables read texts with `val strings = LocalStrings.current`. Non-composable code (such as `FilePicker`) receives the already-translated text as a parameter.
+- `LanguageToggle`, next to `ThemeModeToggle` in the top bar, shows each language by its own name ("English", "Español").
+- ViewModels expose data, not messages: `WorktreeViewModel` exposes `error: Throwable?` and `createdWorktreePath`, and the screen formats them with `strings.worktreeError(error)` / `strings.worktreeCreated(path)`. `worktreeError` is exhaustive over the sealed `WorktreeError` hierarchy, so a new variant doesn't compile until it's translated. Git's error output is shown as-is, untranslated.
+
+**Adding a text**: declare the member in `Strings` and implement it in every language (the compiler flags any missing one). **Adding a language**: new `AppLanguage` value, new `object` implementing `Strings`, and its branch in `AppLanguage.strings()`.

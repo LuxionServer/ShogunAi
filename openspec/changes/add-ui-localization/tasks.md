@@ -4,8 +4,8 @@
 
 ## 2. Infrastructure: shared settings file
 
-- [ ] 2.1 Replace `JsonThemePreferenceRepository` with `JsonSettingsRepository` implementing `ThemePreferenceRepository` and `LanguagePreferenceRepository` over `~/.shogunai/settings.json` (defaults `SYSTEM` / `ENGLISH`, `ignoreUnknownKeys`, read-modify-write with atomic move); wire it in `AppContainer` behind both port-typed properties
-- [ ] 2.2 Add `JsonSettingsRepositoryTest` covering: missing file → defaults; legacy file with only `themeMode` → stored theme + `ENGLISH`; corrupt file → defaults; saving language keeps theme and vice versa; round-trip of both values. Verify with `./gradlew :desktopApp:test`
+- [ ] 2.1 Extract `JsonSettingsFile` (shared `~/.shogunai/settings.json`; defaults `SYSTEM` / `ENGLISH`, `ignoreUnknownKeys`, read-modify-write with atomic move); make `JsonThemePreferenceRepository` and a new `JsonLanguagePreferenceRepository` use it; wire one shared instance in `AppContainer`
+- [ ] 2.2 Add `JsonSettingsFileTest` covering: missing file → defaults; legacy file with only `themeMode` → stored theme + `ENGLISH`; corrupt file → defaults; saving language keeps theme and vice versa; round-trip of both values. Verify with `./gradlew :desktopApp:test`
 - [ ] 2.3 Document the extended `settings.json` in `docs/architecture/infrastructure.md` and `infrastructure.en.md`
 
 ## 3. Translation layer
