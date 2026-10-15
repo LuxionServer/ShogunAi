@@ -20,6 +20,7 @@ Under active development and published as a desktop app (see the README for inst
 | See how the ports (Git, files) are implemented | [Architecture › Infrastructure layer](architecture/infrastructure.md) |
 | Understand how changes are planned | [Development process › OpenSpec](process/openspec.md) |
 | Know why a decision was made | [Design decisions](decisions/index.md) |
+| See what's planned next | [Roadmap](roadmap.md) |
 | See the style guidelines the AI follows (not project documentation) | `AGENTS.md` at the repo root (`CLAUDE.md` redirects to it) |
 
 ## Running the project
