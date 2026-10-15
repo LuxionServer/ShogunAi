@@ -33,7 +33,7 @@ También puedes usar el run widget del IDE.
 
 ## Orientarte en el código
 
-El proyecto es Kotlin Multiplatform con un único target real (JVM de escritorio). Todo el dominio, la infraestructura y la UI viven en `desktopApp`:
+El proyecto es una app de escritorio Kotlin/JVM construida con Compose Multiplatform, en un único módulo de Gradle. Todo el dominio, la infraestructura y la UI viven en `desktopApp`:
 
 ```
 desktopApp/src/main/kotlin/app/luxion/shogunai/
@@ -43,8 +43,6 @@ desktopApp/src/main/kotlin/app/luxion/shogunai/
 ├── AppContainer.kt   # cablea dominio + infraestructura, sin framework de DI
 └── main.kt           # punto de entrada
 ```
-
-`shared` está declarado pero sin contenido propio (ver [Arquitectura › Visión general](architecture/overview.md) para el porqué).
 
 Para el detalle de cada capa: [Capa de dominio](architecture/domain.md), [Capa de infraestructura](architecture/infrastructure.md), [Capa de UI](architecture/ui.md).
 

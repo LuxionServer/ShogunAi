@@ -33,7 +33,7 @@ You can also use the IDE's run widget.
 
 ## Finding your way around the code
 
-The project is Kotlin Multiplatform with a single real target (desktop JVM). All the domain, infrastructure, and UI live in `desktopApp`:
+The project is a Kotlin/JVM desktop app built with Compose Multiplatform, in a single Gradle module. All the domain, infrastructure, and UI live in `desktopApp`:
 
 ```
 desktopApp/src/main/kotlin/app/luxion/shogunai/
@@ -43,8 +43,6 @@ desktopApp/src/main/kotlin/app/luxion/shogunai/
 ├── AppContainer.kt   # wires domain + infrastructure, no DI framework
 └── main.kt           # entry point
 ```
-
-`shared` is declared but has no content of its own (see [Architecture › Overview](architecture/overview.md) for why).
 
 For the detail of each layer: [Domain layer](architecture/domain.md), [Infrastructure layer](architecture/infrastructure.md), [UI layer](architecture/ui.md).
 

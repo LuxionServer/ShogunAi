@@ -1,18 +1,18 @@
 ## 1. Build pipeline
 
-- [ ] 1.1 Add a `macos-26-intel` (Intel) entry to the build matrix in `.github/workflows/release.yml` next to the existing `macos-latest` (Apple Silicon) one
-- [ ] 1.2 Add a workflow step on macOS runners that renames the built `.dmg` with the architecture suffix (`arm64`/`x64`) derived from `runner.arch`
-- [ ] 1.3 Check that each macOS matrix entry's `artifact-glob` still matches the renamed `.dmg`
+- [x] 1.1 Add a `macos-26-intel` (Intel) entry to the build matrix in `.github/workflows/release.yml` next to the existing `macos-latest` (Apple Silicon) one
+- [x] 1.2 Add a workflow step on macOS runners that renames the built `.dmg` with the architecture suffix (`arm64`/`x64`) derived from `runner.arch`
+- [x] 1.3 Check that each macOS matrix entry's `artifact-glob` still matches the renamed `.dmg`
 
 ## 2. Homebrew Cask
 
-- [ ] 2.1 Add the Cask template `.github/homebrew/shogunai.rb` selecting `url`/`sha256` by architecture (`arch arm:/intel:`, `sha256 arm:/intel:`)
-- [ ] 2.2 Update the `update-homebrew-cask` job to download both `.dmg` files, compute both `sha256` and render the template into the tap's `Casks/shogunai.rb` in a single pass
-- [ ] 2.3 Write the `MODIFIED Requirements` delta on `openspec/specs/homebrew-cask-distribution/spec.md`
+- [x] 2.1 Add the Cask template `.github/homebrew/shogunai.rb` selecting `url`/`sha256` by architecture (`arch arm:/intel:`, `sha256 arm:/intel:`)
+- [x] 2.2 Update the `update-homebrew-cask` job to download both `.dmg` files, compute both `sha256` and render the template into the tap's `Casks/shogunai.rb` in a single pass
+- [x] 2.3 Write the `MODIFIED Requirements` delta on `openspec/specs/homebrew-cask-distribution/spec.md`
 
 ## 3. Documentation
 
-- [ ] 3.1 Update `README.md`/`README.es.md` and `docs/process/release.md`/`.es.md` to state that there are separate macOS installers per architecture
+- [x] 3.1 Update `README.md`/`README.es.md` and `docs/process/release.md`/`.es.md` to state that there are separate macOS installers per architecture
 - [ ] 3.2 Mention the breaking `.dmg` rename in the notes of the first release that ships this change
 
 ## 4. Verification

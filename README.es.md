@@ -22,7 +22,7 @@ brew install --cask shogunai
 ```
 
 > [!NOTE]
-> El instalador de macOS solo soporta Apple Silicon (arm64) por ahora. Además, la app no está notarizada por Apple: si al abrirla por primera vez macOS avisa que "no se puede verificar el desarrollador", hazlo con clic derecho → Abrir, o ejecuta `xattr -dr com.apple.quarantine "/Applications/ShogunAi.app"`.
+> Homebrew elige automáticamente el instalador para la arquitectura de tu Mac (Apple Silicon o Intel). La app no está notarizada por Apple: si al abrirla por primera vez macOS avisa que "no se puede verificar el desarrollador", hazlo con clic derecho → Abrir, o ejecuta `xattr -dr com.apple.quarantine "/Applications/ShogunAi.app"`.
 
 ### Descarga manual
 
@@ -30,7 +30,8 @@ Descarga el instalador para tu sistema operativo desde la [última versión publ
 
 | Sistema operativo | Instalador |
 |---|---|
-| macOS | `.dmg` |
+| macOS (Apple Silicon) | `-arm64.dmg` |
+| macOS (Intel) | `-x64.dmg` |
 | Windows | `.msi` |
 | Linux | `.deb` |
 
