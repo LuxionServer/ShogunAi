@@ -1,36 +1,31 @@
-# Capa de dominio
+# Domain layer
 
-Vive en `desktopApp/src/main/kotlin/app/luxion/shogunai/domain`. No depende de ninguna implementación concreta de infraestructura.
+Lives in `desktopApp/src/main/kotlin/app/luxion/shogunai/domain`. Doesn't depend on any concrete infrastructure implementation.
 
-## Modelos
+## Models
 
 ### `ProjectConfig`
 
-Configuración de un repositorio sobre el que se crean worktrees. Es el punto que hace que el flujo sea reutilizable entre proyectos, en vez de tener rutas o nombres de archivo fijos en el código.
+Configuration of a repository that worktrees are created against. It's what makes the flow reusable across projects, instead of hardcoding paths or file names.
 
-| Campo | Descripción |
+| Field | Description |
 |---|---|
-| `baseRepositoryPath` | Ruta absoluta del repositorio principal, desde donde se ejecuta Git. |
-| `worktreesRoot` | Carpeta padre donde se crean los worktrees. |
-| `secretFiles` | Archivos de credenciales locales a copiar al nuevo worktree (p. ej. `local.properties`). |
-| `terminalPreference` | Cómo elegir el emulador de terminal al abrir uno desde un worktree (`TerminalPreference`, ver abajo). |
-| `agentLaunchConfig` | Qué comando de agente ejecutar en esa terminal (`AgentLaunchConfig`, ver abajo). |
+| `baseRepositoryPath` | Absolute path of the main repository, from which Git is run. |
+| `worktreesRoot` | Parent folder where worktrees are created. |
+| `secretFiles` | Local credential files to copy into each new worktree (e.g. `local.properties`), relative to the base repository. |
+| `agentLaunchConfig` | Agent command included in the launch command copied for a worktree (`AgentLaunchConfig`, see below). |
 
-Expone dos helpers de rutas: `worktreePathFor(taskId)` (`<worktreesRoot>/<taskId>`) y `baseSecretPath(fileName)`.
+Path helpers:
 
-### `TerminalPreference` / `AgentLaunchConfig`
+- `worktreePathFor(taskId)` — `<worktreesRoot>/<taskId>`.
+- `worktreePathForBranch(branch)` — directory for an existing branch: strips a known `BranchType` prefix (`feature/`, `fix/`) and replaces the remaining `/` with `-`, so `feature/TASK-123` lands in the same folder as a new-branch worktree for `TASK-123`.
+- `baseSecretPath(fileName)` — the secret file inside the base repository.
+
+`Project` pairs a `ProjectConfig` with an `id` and a display `name`; it's what the project catalog stores.
+
+### `AgentLaunchConfig`
 
 ```kotlin
-enum class TerminalEmulator { MACOS_TERMINAL, ITERM2, WARP, GNOME_TERMINAL, KONSOLE, XTERM }
-enum class TerminalSelectionMode { AUTO_DETECT, FIXED, CUSTOM }
-
-@Serializable
-data class TerminalPreference(
-    val mode: TerminalSelectionMode = TerminalSelectionMode.AUTO_DETECT,
-    val emulator: TerminalEmulator? = null,          // requerido si mode == FIXED
-    val customCommandTemplate: List<String>? = null, // requerido si mode == CUSTOM
-)
-
 @Serializable
 data class AgentLaunchConfig(
     val agentCommand: String = "claude",
@@ -40,31 +35,39 @@ data class AgentLaunchConfig(
 }
 ```
 
-Ambos son `data class` planas con valores por defecto (no `sealed class`) para serializar con `kotlinx.serialization` sin configurar un `SerializersModule` polimórfico — `JsonProjectRepository` usa `Json { prettyPrint = true }` sin más. `customCommandTemplate` es una lista de argv con los placeholders literales `{path}`/`{command}`, sustituidos por elemento (nunca concatenados en una cadena de shell), lo que cubre cualquier emulador fuera del enum sin tocar código.
+A flat `data class` with default values, so it serializes with `kotlinx.serialization` without a polymorphic `SerializersModule`, and projects saved before a field existed still load.
 
 ### `BranchType`
 
-Enum `FEATURE` / `FIX`, cada uno con un `prefix` (`"feature"` / `"fix"`) que se antepone al ID de la tarea al nombrar la rama: `feature/TASK-123`.
+Enum `FEATURE` / `FIX`, each with a `prefix` (`"feature"` / `"fix"`) prepended to the task ID when naming the branch: `feature/TASK-123`.
 
-### `Worktree`
+### `Worktree` / `BranchOption`
 
-Representa un worktree activo tal y como lo reporta `git worktree list`: `path`, `branch` (`null` si está `detached`), `head`, `isMain`, `isBare`.
+- `Worktree` — an active worktree as reported by `git worktree list`: `path`, `branch` (`null` if `detached`), `head`, `isMain`, `isBare`.
+- `BranchOption` — a local branch offered when creating a worktree from an existing branch: `name` and `isCheckedOut` (already checked out in the base repository or another worktree).
+
+### `ThemeMode` / `AppLanguage`
+
+User preferences: `LIGHT` / `DARK` / `SYSTEM` and `ENGLISH` / `SPANISH`. They're stored in `settings.json` (see [Infrastructure layer](infrastructure.md)).
 
 ### `WorktreeError`
 
-`sealed class` de errores esperados del flujo, para que la futura GUI pueda decidir qué mostrar sin parsear strings:
+`sealed class` of the flow's expected errors, so the UI decides what to show (and translates it) from structured data instead of parsing strings:
 
-- `BaseRepositoryNotFound` — el repo base configurado no existe en disco.
-- `WorktreeAlreadyExists` — ya hay un directorio en la ruta destino.
-- `SecretFileNotFound` — faltan archivos de secretos en el repo base.
-- `GitCommandFailed` — un comando de Git devolvió exit code != 0.
-- `SecretCopyFailed` — falló la copia de secretos tras crear el worktree ya creado.
-- `NoTerminalAvailable` — no se encontró ningún emulador de terminal disponible (auto-detect vacío, o `FIXED` apunta a uno no instalado).
-- `TerminalLaunchFailed` — el proceso de la terminal no arrancó.
+- `BaseRepositoryNotFound` — the configured base repo doesn't exist on disk.
+- `WorktreeAlreadyExists` — there's already a directory at the destination path.
+- `InvalidTaskId` — the task id isn't a valid Git ref segment once normalized.
+- `SecretFileNotFound` — secret files are missing in the base repo.
+- `GitCommandFailed` — a Git command returned a non-zero exit code; keeps the command, exit code and Git's error output.
+- `SecretCopyFailed` — copying secrets failed after the worktree had already been created.
+- `ClipboardWriteFailed` — the launch command couldn't be copied to the clipboard.
+- `GitLfsNotFound` — the repository uses Git LFS but `git-lfs` isn't installed.
+- `BranchNotFound` — the requested existing branch doesn't exist locally.
+- `BranchAlreadyCheckedOut` — the branch is already checked out in another worktree or in the base repository.
 
-## Puertos
+## Ports
 
-Los casos de uso dependen de interfaces, no de implementaciones. Esto es lo que permite testearlos con dobles.
+Use cases depend on interfaces, not implementations. This is what allows testing them with doubles.
 
 ### `ShellCommandExecutor`
 
@@ -74,9 +77,9 @@ interface ShellCommandExecutor {
 }
 ```
 
-El comando se pasa como **argv** (lista de strings), nunca como una cadena para que un shell la interprete. Motivo: evitar diferencias entre el shell por defecto de macOS (zsh) y Arch Linux (bash), y evitar problemas de escapado/inyección de comandos.
+The command is passed as **argv** (a list of strings), never as a string for a shell to interpret. Reason: to avoid differences between macOS's default shell (zsh) and Linux's (bash), and to avoid command escaping/injection issues.
 
-`CommandResult` guarda `command`, `exitCode`, `stdout`, `stderr` sin interpretar su significado — cada caso de uso decide qué considera éxito vía `isSuccess` (`exitCode == 0`).
+`CommandResult` holds `command`, `exitCode`, `stdout`, `stderr` without interpreting their meaning — each use case decides what counts as success via `isSuccess` (`exitCode == 0`). A process that can't even start (e.g. the executable isn't in `PATH`) throws `CommandExecutionException` instead.
 
 ### `FileManager`
 
@@ -87,59 +90,60 @@ interface FileManager {
 }
 ```
 
-Abstrae el sistema de ficheros para que la copia de secretos sea unitariamente testeable sin tocar disco.
+Abstracts the filesystem so that copying secrets is unit-testable without touching disk.
 
-### `TerminalLauncher`
+### `ClipboardWriter`
 
 ```kotlin
-interface TerminalLauncher {
-    suspend fun launch(command: List<String>, workingDirectory: String): Result<Unit>
+interface ClipboardWriter {
+    fun write(text: String): Result<Unit>
 }
 ```
 
-Distinto de `ShellCommandExecutor`: solo confirma que el proceso de la terminal *arrancó*, nunca espera a que se cierre (una terminal se queda abierta toda la sesión; esperar su `waitFor()` bloquearía la corrutina indefinidamente).
+Writes the launch command of a worktree to the system clipboard.
 
-### `TerminalEmulatorDetector`
+### Repositories
 
-```kotlin
-interface TerminalEmulatorDetector {
-    suspend fun detectAvailable(): List<TerminalEmulator>
-}
-```
+- `ProjectRepository` — `list()`, `save(project)`, `delete(id)` over the project catalog.
+- `ThemePreferenceRepository` / `LanguagePreferenceRepository` — `load()` / `save(...)` of each user preference.
 
-Detecta qué emuladores están instalados en el sistema actual, en orden de prioridad (nativo del SO primero). `OpenWorktreeTerminalUseCase` lo usa tanto para `AUTO_DETECT` (elige el primero disponible) como para `FIXED` (comprueba que el emulador configurado esté entre los disponibles).
+## Use cases
 
-## Casos de uso
-
-Todos devuelven `Result<T>` (usando `runCatching`), con errores tipados como `WorktreeError`.
+The worktree use cases are built per project (they receive its `ProjectConfig`) and return `Result<T>` (using `runCatching`), with typed errors as `WorktreeError`. Every Git command runs from the base repository.
 
 ### `CreateWorktreeUseCase`
 
-Orquesta, en este orden:
+Creates a worktree on a **new** branch `<type>/<taskId>`. The task id is normalized first (`normalizeTaskId`: trimmed, whitespace runs replaced with `-`) and validated as a Git ref segment. Then, in this order:
 
-1. **Validaciones previas** (repo base existe, destino libre, secretos presentes) — se hacen *antes* de tocar Git para no dejar un worktree a medias que luego no se pueda completar.
+1. **Upfront validations** (base repo exists, destination free, secrets present) — done *before* touching Git so as not to leave a half-done worktree.
 2. `git worktree add <path> -b <branch>`.
-3. Copia de los archivos de secretos al nuevo directorio.
+3. Copying the secret files into the new directory.
 
-Si la copia de secretos falla **después** de crear el worktree, se revierte con `git worktree remove --force` (best-effort) antes de propagar `SecretCopyFailed`.
+If copying secrets fails **after** the worktree was created, it's rolled back with `git worktree remove --force` (best-effort) before propagating `SecretCopyFailed`. If `git worktree add` fails because `git-lfs` is missing, the half-created worktree and its new branch are removed and `GitLfsNotFound` is returned.
 
-### `RemoveWorktreeUseCase`
+### `CreateWorktreeFromBranchUseCase`
 
-Ejecuta `git worktree remove [--force] <path>` y, opcionalmente, `git branch -d <branch>` para borrar la rama local (borrado seguro, no `-D`).
+Same flow for a branch that **already exists** locally: checks the branch with `git branch --list`, runs `git worktree add <path> <branch>` (without `-b`) in the directory given by `worktreePathForBranch`, and copies the secrets. A branch already checked out elsewhere fails with `BranchAlreadyCheckedOut`.
 
-!!! note
-    Ambos comandos se ejecutan siempre desde el repositorio base — Git no permite eliminar un worktree desde dentro de sí mismo.
+### `ListLocalBranchesUseCase`
+
+Lists local branches (`git for-each-ref --format=%(refname:short) refs/heads`) and flags those already checked out, using `git worktree list --porcelain`. The UI shows the flagged ones disabled.
 
 ### `ListWorktreesUseCase`
 
-Ejecuta `git worktree list --porcelain` (formato estable pensado para parsearse, a diferencia de la salida legible por defecto) y parsea el resultado con `parseWorktreeList`. Marca `isMain = true` en el worktree cuya ruta coincide con `config.baseRepositoryPath`.
+Runs `git worktree list --porcelain` (a stable format meant to be parsed, unlike the default human-readable output) and parses the result with `parseWorktreeList`. Marks `isMain = true` on the worktree whose path matches `config.baseRepositoryPath`.
 
-### `OpenWorktreeTerminalUseCase`
+### `RemoveWorktreeUseCase`
 
-Abre una terminal en la ruta de un worktree y ejecuta ahí `config.agentLaunchConfig.resolvedCommand()`. Resuelve el emulador según `config.terminalPreference.mode`:
+Runs `git worktree remove [--force] <path>` and, optionally, `git branch -d <branch>` to delete the local branch (safe delete, not `-D`).
 
-- `AUTO_DETECT` — primer emulador que devuelva `TerminalEmulatorDetector.detectAvailable()`.
-- `FIXED` — el emulador configurado, si está entre los detectados (si no, `NoTerminalAvailable`).
-- `CUSTOM` — usa `customCommandTemplate` directamente, sin pasar por el detector.
+!!! note
+    Git doesn't allow removing a worktree from inside itself, which is another reason every command runs from the base repository.
 
-El argv final lo construye `TerminalCommandBuilder` (objeto puro en `domain/usecase/`), con una rama por `TerminalEmulator` más la sustitución de placeholders para `CUSTOM`. Fallos al arrancar el proceso se mapean a `WorktreeError.TerminalLaunchFailed`.
+### `CopyWorktreeLaunchCommandUseCase`
+
+Copies `cd "<worktree path>" && <agent command>` to the clipboard, with the agent command from `AgentLaunchConfig.resolvedCommand()`, so the user pastes it in the terminal of their choice.
+
+### `RepairWorktreesUseCase`
+
+Re-links the base repository and its worktrees after they were moved on disk. Git stores absolute paths in both directions (`<worktree>/.git` points to the base repository and `.git/worktrees/<name>/gitdir` points back), so a move breaks them. It runs `git worktree repair` from the (new) base repository; worktrees that no longer exist at their old path but do exist at the same relative location under the new `worktreesRoot` are passed as arguments, so Git fixes both directions. The UI runs it after saving a project whose base repository path or worktrees root changed.

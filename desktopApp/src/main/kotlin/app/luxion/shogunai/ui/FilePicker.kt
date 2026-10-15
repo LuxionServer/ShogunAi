@@ -5,10 +5,10 @@ import javax.swing.JFileChooser
 
 /** Wraps [JFileChooser] to pick folders or files from the system. */
 object FilePicker {
-    fun pickDirectory(initialPath: String): String? {
+    fun pickDirectory(initialPath: String, dialogTitle: String): String? {
         val chooser = JFileChooser(currentDirectoryOrNull(initialPath)).apply {
             fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
-            dialogTitle = "Select a folder"
+            this.dialogTitle = dialogTitle
         }
         return if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
             chooser.selectedFile.absolutePath
@@ -17,11 +17,11 @@ object FilePicker {
         }
     }
 
-    fun pickFiles(initialPath: String): List<String> {
+    fun pickFiles(initialPath: String, dialogTitle: String): List<String> {
         val chooser = JFileChooser(currentDirectoryOrNull(initialPath)).apply {
             fileSelectionMode = JFileChooser.FILES_ONLY
             isMultiSelectionEnabled = true
-            dialogTitle = "Select secret files"
+            this.dialogTitle = dialogTitle
         }
         return if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
             chooser.selectedFiles.map { it.absolutePath }
@@ -39,12 +39,16 @@ object FilePicker {
  * `ProjectConfig` expects `secretFiles`. If the chosen file is outside the base
  * repository, only its name is used.
  */
-fun relativeToBase(baseRepositoryPath: String, absolutePath: String): String {
-    if (baseRepositoryPath.isBlank()) return File(absolutePath).name
+fun relativeToBase(baseRepositoryPath: String, absolutePath: String): String =
+    relativeIfInsideBase(baseRepositoryPath, absolutePath) ?: File(absolutePath).name
+
+internal fun relativeIfInsideBase(baseRepositoryPath: String, absolutePath: String): String? {
+    if (baseRepositoryPath.isBlank()) return null
     return try {
-        val relative = File(baseRepositoryPath).toPath().relativize(File(absolutePath).toPath()).toString()
-        if (relative.startsWith("..")) File(absolutePath).name else relative
+        val base = File(baseRepositoryPath).toPath().normalize()
+        val relative = base.relativize(File(absolutePath).toPath().normalize()).toString()
+        relative.takeUnless { it.isEmpty() || it.startsWith("..") }
     } catch (e: IllegalArgumentException) {
-        File(absolutePath).name
+        null
     }
 }

@@ -1,6 +1,7 @@
 package app.luxion.shogunai
 
 import app.luxion.shogunai.domain.io.FileManager
+import app.luxion.shogunai.domain.io.LanguagePreferenceRepository
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.io.ThemePreferenceRepository
 import app.luxion.shogunai.domain.executor.ClipboardWriter
@@ -12,8 +13,11 @@ import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.ListLocalBranchesUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
+import app.luxion.shogunai.domain.usecase.RepairWorktreesUseCase
 import app.luxion.shogunai.infrastructure.AwtClipboardWriter
+import app.luxion.shogunai.infrastructure.JsonLanguagePreferenceRepository
 import app.luxion.shogunai.infrastructure.JsonProjectRepository
+import app.luxion.shogunai.infrastructure.JsonSettingsFile
 import app.luxion.shogunai.infrastructure.JsonThemePreferenceRepository
 import app.luxion.shogunai.infrastructure.NioFileManager
 import app.luxion.shogunai.infrastructure.ProcessBuilderShellCommandExecutor
@@ -25,7 +29,9 @@ import app.luxion.shogunai.infrastructure.ProcessBuilderShellCommandExecutor
  */
 class AppContainer {
     val projectRepository: ProjectRepository = JsonProjectRepository()
-    val themePreferenceRepository: ThemePreferenceRepository = JsonThemePreferenceRepository()
+    private val settingsFile = JsonSettingsFile()
+    val themePreferenceRepository: ThemePreferenceRepository = JsonThemePreferenceRepository(settingsFile)
+    val languagePreferenceRepository: LanguagePreferenceRepository = JsonLanguagePreferenceRepository(settingsFile)
     private val fileManager: FileManager = NioFileManager()
     private val shellCommandExecutor: ShellCommandExecutor = ProcessBuilderShellCommandExecutor()
     private val clipboardWriter: ClipboardWriter = AwtClipboardWriter()
@@ -37,6 +43,7 @@ class AppContainer {
         listLocalBranches = ListLocalBranchesUseCase(config, shellCommandExecutor),
         remove = RemoveWorktreeUseCase(config, shellCommandExecutor),
         copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboardWriter),
+        repair = RepairWorktreesUseCase(config, shellCommandExecutor, fileManager),
     )
 }
 
@@ -47,4 +54,5 @@ data class WorktreeUseCases(
     val listLocalBranches: ListLocalBranchesUseCase,
     val remove: RemoveWorktreeUseCase,
     val copyLaunchCommand: CopyWorktreeLaunchCommandUseCase,
+    val repair: RepairWorktreesUseCase,
 )

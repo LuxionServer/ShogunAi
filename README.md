@@ -1,14 +1,18 @@
 # ShogunAi
 
-Orquestador de escritorio que automatiza la creación y gestión de **Git worktrees** aislados, con aprovisionamiento automático de secretos locales — pensado para eliminar el cambio de contexto manual cuando trabajas (o un agente de IA como Claude/Copilot trabaja) en varias tareas a la vez.
+**English** · [Español](./README.es.md)
 
-## Qué hace
+Desktop orchestrator that automates creating and managing isolated **Git worktrees**, with automatic provisioning of local secrets — designed to remove the manual context switching when you (or an AI agent like Claude/Copilot) work on several tasks at once.
 
-- Crea y elimina **Git worktrees** aislados para cada tarea, cada uno en su propia rama (`feature/` o `fix/`).
-- Copia automáticamente a cada worktree nuevo los **archivos de secretos locales** que necesites para compilar (p. ej. `local.properties` de Android).
-- Gestiona varios proyectos desde un catálogo, cada uno con su propia configuración (repositorio base, carpeta de worktrees, secretos).
+## What it does
 
-## Instalación
+- Creates and removes isolated **Git worktrees** for each task, each on its own new branch (`feature/` or `fix/`) or on a branch that already exists locally.
+- Automatically copies to each new worktree the **local secret files** you need to build (e.g. Android's `local.properties`).
+- Manages several projects from a catalog, each with its own configuration (base repository, worktrees folder, secrets, agent command).
+- Copies the command to start your AI agent in a worktree (`cd <worktree> && claude`, optionally wrapped with Headroom), ready to paste in any terminal.
+- If you move a repository, update its path in the project and the app re-links its worktrees (`git worktree repair`).
+
+## Installation
 
 ### macOS (Homebrew)
 
@@ -18,40 +22,43 @@ brew install --cask shogunai
 ```
 
 > [!NOTE]
-> El instalador de macOS solo soporta Apple Silicon (arm64) por ahora. Además, la app no está notarizada por Apple: si al abrirla por primera vez macOS avisa que "no se puede verificar el desarrollador", hazlo con clic derecho → Abrir, o ejecuta `xattr -dr com.apple.quarantine "/Applications/ShogunAi.app"`.
+> The macOS installer only supports Apple Silicon (arm64) for now. Also, the app isn't notarized by Apple: if macOS warns that "the developer cannot be verified" the first time you open it, open it with right click → Open, or run `xattr -dr com.apple.quarantine "/Applications/ShogunAi.app"`.
 
-### Descarga manual
+### Manual download
 
-Descarga el instalador para tu sistema operativo desde la [última versión publicada](https://github.com/LuxionServer/ShogunAi/releases/latest):
+Download the installer for your operating system from the [latest release](https://github.com/LuxionServer/ShogunAi/releases/latest):
 
-| Sistema operativo | Instalador |
+| Operating system | Installer |
 |---|---|
 | macOS | `.dmg` |
 | Windows | `.msi` |
 | Linux | `.deb` |
 
-Instálalo como cualquier otra app de escritorio y ábrelo. No necesitas tener JDK ni herramientas de desarrollo instaladas: el instalador incluye su propio runtime.
+Install it like any other desktop app and open it. You don't need a JDK or any development tools: the installer bundles its own runtime.
 
-## Uso básico
+## Basic usage
 
-1. **Crea un proyecto** — al abrir la app por primera vez verás el catálogo de proyectos vacío. Pulsa "Nuevo proyecto" e indica un nombre, la ruta del repositorio base y la carpeta donde se crearán los worktrees. Opcionalmente añade los archivos de secretos que deben copiarse a cada worktree nuevo.
-2. **Entra a un proyecto** — selecciónalo desde el catálogo para ver sus worktrees existentes.
-3. **Crea un worktree** — indica el id de la tarea y el tipo de rama (`feature` o `fix`); la app crea el worktree, la rama y copia los secretos configurados.
-4. **Elimina un worktree** — cuando termines una tarea, elimínalo desde la lista, con la opción de borrar también la rama local. El worktree principal no se puede eliminar.
+1. **Create a project** — the first time you open the app you'll see an empty project catalog. Click "New project" and enter a name, the path of the base repository and the folder where worktrees will be created. Optionally add the secret files that must be copied to each new worktree.
+2. **Open a project** — select it from the catalog to see its existing worktrees.
+3. **Create a worktree** — enter the task id and the branch type (`feature` or `fix`); the app creates the worktree and the branch, and copies the configured secrets. To work on a branch you already have, switch to "Existing branch" and pick it from the list.
+4. **Start working** — click "Copy command" on a worktree and paste it in your terminal to open your AI agent there.
+5. **Remove a worktree** — when you finish a task, remove it from the list, optionally deleting the local branch too. The main worktree can't be removed.
 
-## Desarrollo
+The app is in English by default; you can switch to Spanish from the language selector in the top bar (next to the theme selector). Your choice is remembered between restarts.
 
-¿Quieres compilar el proyecto desde el código fuente o contribuir? Empieza por [`docs/getting-started.md`](./docs/getting-started.md).
+## Development
 
-## Documentación
+Want to build the project from source or contribute? Start with [`docs/getting-started.md`](./docs/getting-started.md).
 
-Arquitectura y decisiones de diseño en [`/docs`](./docs), servida con MkDocs:
+## Documentation
+
+Architecture and design decisions in [`/docs`](./docs) (English and Spanish), served with MkDocs:
 
 ```bash
 pip install -r requirements-docs.txt
 mkdocs serve
 ```
 
-## Licencia
+## License
 
 [GNU GPLv3](./LICENSE)

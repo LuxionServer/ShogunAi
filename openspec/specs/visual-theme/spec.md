@@ -1,7 +1,7 @@
 # visual-theme Specification
 
 ## Purpose
-TBD - created by archiving change app-icon-and-visual-style. Update Purpose after archive.
+Defines the app's own Material 3 look instead of the library defaults.
 ## Requirements
 ### Requirement: Tema Material3 propio
 La aplicación SHALL aplicar un esquema de color y una tipografía Material3 propios de la app (no los valores por defecto de `MaterialTheme`) a todas las pantallas, de forma consistente.

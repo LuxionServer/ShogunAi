@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.ui.components.SegmentedSelector
+import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.components.onNewItemShortcut
 
 private fun ProjectSortOrder.label(): String = when (this) {
@@ -48,6 +49,7 @@ fun ProjectListScreen(
     onNewProject: () -> Unit,
     onEditProject: (Project) -> Unit,
 ) {
+    val strings = LocalStrings.current
     var projectPendingDeletion by remember { mutableStateOf<Project?>(null) }
 
     Column(
@@ -59,13 +61,13 @@ fun ProjectListScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text("Proyectos", style = MaterialTheme.typography.headlineSmall)
+            Text(strings.projectsTitle, style = MaterialTheme.typography.headlineSmall)
             Row {
                 OutlinedButton(onClick = { viewModel.refresh() }, modifier = Modifier.padding(end = 8.dp)) {
-                    Text("Recargar")
+                    Text(strings.reload)
                 }
                 Button(onClick = onNewProject) {
-                    Text("Nuevo proyecto")
+                    Text(strings.newProject)
                 }
             }
         }
@@ -79,7 +81,7 @@ fun ProjectListScreen(
                 OutlinedTextField(
                     value = viewModel.searchQuery,
                     onValueChange = { viewModel.searchQuery = it },
-                    label = { Text("Buscar") },
+                    label = { Text(strings.search) },
                     modifier = Modifier.weight(1f),
                 )
                 SegmentedSelector(
@@ -94,12 +96,12 @@ fun ProjectListScreen(
         when {
             viewModel.projects.isEmpty() -> {
                 Box(modifier = Modifier.fillMaxWidth().padding(top = 32.dp), contentAlignment = Alignment.Center) {
-                    Text("No hay proyectos todavía. Crea uno para empezar.")
+                    Text(strings.noProjectsYet)
                 }
             }
             viewModel.visibleProjects.isEmpty() -> {
                 Box(modifier = Modifier.fillMaxWidth().padding(top = 32.dp), contentAlignment = Alignment.Center) {
-                    Text("Ningún proyecto coincide con \"${viewModel.searchQuery}\".")
+                    Text(strings.noProjectsMatch(viewModel.searchQuery))
                 }
             }
             else -> {
@@ -111,10 +113,10 @@ fun ProjectListScreen(
                             trailingContent = {
                                 Row {
                                     IconButton(onClick = { onEditProject(project) }) {
-                                        Icon(Icons.Default.Edit, contentDescription = "Editar proyecto")
+                                        Icon(Icons.Default.Edit, contentDescription = strings.editProject)
                                     }
                                     IconButton(onClick = { projectPendingDeletion = project }) {
-                                        Icon(Icons.Default.Delete, contentDescription = "Eliminar proyecto")
+                                        Icon(Icons.Default.Delete, contentDescription = strings.deleteProject)
                                     }
                                 }
                             },
@@ -130,19 +132,19 @@ fun ProjectListScreen(
     projectPendingDeletion?.let { project ->
         AlertDialog(
             onDismissRequest = { projectPendingDeletion = null },
-            title = { Text("¿Eliminar proyecto?") },
-            text = { Text("Se eliminará \"${project.name}\" de la lista de proyectos.") },
+            title = { Text(strings.deleteProjectTitle) },
+            text = { Text(strings.deleteProjectMessage(project.name)) },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.deleteProject(project)
                     projectPendingDeletion = null
                 }) {
-                    Text("Eliminar")
+                    Text(strings.delete)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { projectPendingDeletion = null }) {
-                    Text("Cancelar")
+                    Text(strings.cancel)
                 }
             },
         )

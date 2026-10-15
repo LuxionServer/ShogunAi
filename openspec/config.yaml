@@ -10,7 +10,7 @@ schema: spec-driven
 #     Domain: e-commerce platform
 context: |
   Write all OpenSpec artifacts (proposal.md, design.md, tasks.md, spec.md) entirely in English,
-  regardless of the language used elsewhere in the repo (code comments and docs/ are in Spanish).
+  regardless of the language used in conversation (docs/ is bilingual: English default, Spanish in *.es.md).
 
 # Per-artifact rules (optional)
 # Add custom rules for specific artifacts.

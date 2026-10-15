@@ -1,35 +1,35 @@
 # ShogunAi
 
-Orquestador de escritorio (Kotlin Multiplatform) para automatizar workflows de desarrollo complejos:
+Desktop orchestrator (Kotlin Multiplatform) to automate complex development workflows:
 
-- Creación y eliminación de **Git worktrees** aislados.
-- Aprovisionamiento de secretos locales necesarios para compilar (p. ej. `local.properties` de Android).
-- Preparación del estado exacto que necesita un agente de IA (Copilot/Claude) para empezar a trabajar de inmediato en una tarea, sin cambios de contexto manuales.
+- Creating and removing isolated **Git worktrees**.
+- Provisioning the local secrets needed to build (e.g. Android's `local.properties`).
+- Preparing the exact state an AI agent (Copilot/Claude) needs to start working on a task immediately, with no manual context switching.
 
-## Estado del proyecto
+## Project status
 
-En desarrollo activo. La iteración 1 cubrió la capa de dominio e infraestructura del flujo de worktrees; el cambio `project-worktree-ui` añadió la GUI en Compose (catálogo de proyectos, configuración y gestión de worktrees). Ver [decisiones de diseño](decisions/index.md) y `openspec/changes/archive/` para el detalle de lo decidido en cada iteración/cambio.
+Under active development and published as a desktop app (see the README for installation). It manages a catalog of projects and, for each one, creates worktrees from new or existing branches, copies the local secrets into them, copies the command to launch an AI agent in a worktree, and repairs the worktrees when the repository is moved. The UI is available in English and Spanish. See [design decisions](decisions/index.md) for what was decided before OpenSpec, and `openspec/changes/archive/` for every change since.
 
-## Dónde mirar
+## Where to look
 
-| Quiero... | Ir a |
+| I want to... | Go to |
 |---|---|
-| Aterrizar en el repo por primera vez (requisitos, cómo ejecutarlo, cómo orientarme) | [Primeros pasos](getting-started.md) |
-| Entender cómo está organizado el código | [Arquitectura › Visión general](architecture/overview.md) |
-| Ver los modelos y casos de uso del dominio | [Arquitectura › Capa de dominio](architecture/domain.md) |
-| Ver cómo se implementan los puertos (Git, ficheros) | [Arquitectura › Capa de infraestructura](architecture/infrastructure.md) |
-| Entender cómo se planifican los cambios | [Proceso de desarrollo › OpenSpec](process/openspec.md) |
-| Saber por qué se tomó tal decisión | [Decisiones de diseño](decisions/index.md) |
-| Ver las guidelines de estilo que sigue la IA (no documentación del proyecto) | `AGENTS.md` en la raíz del repo (`CLAUDE.md` redirige a él) |
+| Land on the repo for the first time (requirements, how to run it, how to orient myself) | [Getting started](getting-started.md) |
+| Understand how the code is organized | [Architecture › Overview](architecture/overview.md) |
+| See the domain models and use cases | [Architecture › Domain layer](architecture/domain.md) |
+| See how the ports (Git, files) are implemented | [Architecture › Infrastructure layer](architecture/infrastructure.md) |
+| Understand how changes are planned | [Development process › OpenSpec](process/openspec.md) |
+| Know why a decision was made | [Design decisions](decisions/index.md) |
+| See the style guidelines the AI follows (not project documentation) | `AGENTS.md` at the repo root (`CLAUDE.md` redirects to it) |
 
-## Ejecutar el proyecto
+## Running the project
 
 ```bash
-./gradlew :desktopApp:run          # ejecución estándar
+./gradlew :desktopApp:run          # standard run
 ./gradlew :desktopApp:hotRun --auto  # hot reload
 ```
 
-## Servir esta documentación en local
+## Serving this documentation locally
 
 ```bash
 mkdocs serve
