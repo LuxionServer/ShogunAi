@@ -22,7 +22,6 @@ class RepairWorktreesUseCaseTest {
 
     private val listCommand = listOf("git", "worktree", "list", "--porcelain")
 
-    // `git worktree list` still reports the worktrees' old paths after the move.
     private val porcelain = """
         worktree /home/dev/moved/main-repo
         HEAD abc123

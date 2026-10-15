@@ -10,11 +10,6 @@ import java.nio.file.StandardCopyOption
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 
-/**
- * Persists projects as a JSON array in `~/.shogunai/projects.json`.
- * Saves write to a temp file first and rename it into place to avoid
- * leaving a partially-written file behind.
- */
 class JsonProjectRepository(
     private val storagePath: Path = Path.of(System.getProperty("user.home"), ".shogunai", "projects.json"),
 ) : ProjectRepository {

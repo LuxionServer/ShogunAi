@@ -20,23 +20,14 @@ class ProjectConfigViewModel(
     private var _baseRepositoryPath by mutableStateOf(existingProject?.config?.baseRepositoryPath ?: "")
     var worktreesRoot by mutableStateOf(existingProject?.config?.worktreesRoot ?: "")
 
-    // Absolute entries inside the base repository (e.g. typed by hand) are made
-    // relative on load, so they keep pointing to the same file if the base moves.
     var secretFiles by mutableStateOf(
         existingProject?.config?.secretFiles.orEmpty().map { normalizeSecretFile(_baseRepositoryPath, it) },
     )
         private set
 
-    // How the worktrees root relates to the base repository when the project was
-    // loaded (e.g. `..`), so it can follow the base repository when it moves.
     private val worktreesRootOffset = worktreesRootOffset(_baseRepositoryPath, worktreesRoot)
     private var lastNonBlankBaseRepositoryPath = _baseRepositoryPath
 
-    /**
-     * Changing the base repository path also moves [worktreesRoot] along with it
-     * when it was inside or next to the base repository, unless the user has
-     * already edited the worktrees root by hand.
-     */
     var baseRepositoryPath: String
         get() = _baseRepositoryPath
         set(value) {

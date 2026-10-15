@@ -3,12 +3,6 @@ package app.luxion.shogunai.domain
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 
-/**
- * Doble de [ShellCommandExecutor] para tests.
- *
- * Registra todos los comandos ejecutados y delega la respuesta en [responder],
- * de modo que cada test pueda simular éxitos o fallos de comandos concretos.
- */
 class FakeShellCommandExecutor(
     private val responder: (command: List<String>) -> CommandResult = { success(it) },
 ) : ShellCommandExecutor {

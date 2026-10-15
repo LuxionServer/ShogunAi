@@ -5,12 +5,6 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 
-/**
- * Lista los worktrees activos del repositorio base.
- *
- * Usa `git worktree list --porcelain`, un formato estable y pensado para ser
- * parseado por herramientas (a diferencia de la salida legible por defecto).
- */
 class ListWorktreesUseCase(
     private val config: ProjectConfig,
     private val executor: ShellCommandExecutor,
@@ -28,17 +22,6 @@ class ListWorktreesUseCase(
     }
 }
 
-/**
- * Parsea la salida `--porcelain` de `git worktree list`.
- *
- * Cada worktree es un bloque de líneas separado por una línea en blanco:
- * ```
- * worktree /ruta/al/worktree
- * HEAD <sha>
- * branch refs/heads/feature/TASK-123
- * ```
- * Un bloque puede traer `detached` (sin rama) o `bare` en lugar de `branch`.
- */
 internal fun parseWorktreeList(porcelain: String): List<Worktree> {
     val worktrees = mutableListOf<Worktree>()
     var path: String? = null

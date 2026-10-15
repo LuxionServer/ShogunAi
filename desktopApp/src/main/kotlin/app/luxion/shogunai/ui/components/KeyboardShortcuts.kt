@@ -9,7 +9,6 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 
-/** Lets keyboard-only users trigger a nearby action button by pressing Enter in this field. */
 fun Modifier.onEnterKey(enabled: Boolean = true, action: () -> Unit): Modifier =
     onPreviewKeyEvent { event ->
         if (enabled && event.type == KeyEventType.KeyDown && (event.key == Key.Enter || event.key == Key.NumPadEnter)) {
@@ -22,7 +21,6 @@ fun Modifier.onEnterKey(enabled: Boolean = true, action: () -> Unit): Modifier =
 
 private val isMacOs: Boolean = System.getProperty("os.name")?.contains("mac", ignoreCase = true) == true
 
-/** Triggers [action] on the platform's "new item" shortcut: Cmd+N on macOS, Ctrl+N elsewhere. */
 fun Modifier.onNewItemShortcut(enabled: Boolean = true, action: () -> Unit): Modifier =
     onPreviewKeyEvent { event ->
         val shortcutModifierPressed = if (isMacOs) event.isMetaPressed else event.isCtrlPressed

@@ -13,7 +13,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import app.luxion.shogunai.domain.model.AppLanguage
 
-// Each option is labeled in its own language, so it's recognizable whatever the active one is.
 @Composable
 fun LanguageToggle(
     language: AppLanguage,

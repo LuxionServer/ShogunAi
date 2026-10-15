@@ -3,7 +3,6 @@ package app.luxion.shogunai.ui
 import java.io.File
 import javax.swing.JFileChooser
 
-/** Wraps [JFileChooser] to pick folders or files from the system. */
 object FilePicker {
     fun pickDirectory(initialPath: String, dialogTitle: String): String? {
         val chooser = JFileChooser(currentDirectoryOrNull(initialPath)).apply {
@@ -34,11 +33,6 @@ object FilePicker {
         path.takeIf { it.isNotBlank() }?.let(::File)?.takeIf { it.exists() }
 }
 
-/**
- * Converts an absolute path to a path relative to [baseRepositoryPath], which is how
- * `ProjectConfig` expects `secretFiles`. If the chosen file is outside the base
- * repository, only its name is used.
- */
 fun relativeToBase(baseRepositoryPath: String, absolutePath: String): String =
     relativeIfInsideBase(baseRepositoryPath, absolutePath) ?: File(absolutePath).name
 

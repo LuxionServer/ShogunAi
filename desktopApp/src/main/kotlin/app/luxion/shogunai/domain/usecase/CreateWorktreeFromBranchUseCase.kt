@@ -6,15 +6,6 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 
-/**
- * Creates a worktree for a branch that already exists locally, instead of
- * creating a new one, so work already started outside a worktree can be
- * moved into its own.
- *
- * Shares the `git worktree add` + secret-copy + rollback logic with
- * [CreateWorktreeUseCase] via [addWorktreeAndCopySecrets]. Unlike that use
- * case, the branch pre-exists, so it must never be deleted on rollback.
- */
 class CreateWorktreeFromBranchUseCase(
     private val config: ProjectConfig,
     private val executor: ShellCommandExecutor,

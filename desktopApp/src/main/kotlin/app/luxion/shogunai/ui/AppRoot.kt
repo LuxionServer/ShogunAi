@@ -44,8 +44,6 @@ fun AppRoot(appContainer: AppContainer) {
     var themeMode by remember { mutableStateOf(appContainer.themePreferenceRepository.load()) }
     var language by remember { mutableStateOf(appContainer.languagePreferenceRepository.load()) }
 
-    // Provided above the screen `when`, so switching language recomposes texts without
-    // recreating ViewModels or losing screen state.
     CompositionLocalProvider(LocalStrings provides language.strings()) {
         ShogunAiTheme(themeMode) {
             Column(modifier = Modifier.fillMaxSize()) {
@@ -90,8 +88,6 @@ fun AppRoot(appContainer: AppContainer) {
                         }
 
                         is Screen.ProjectConfigForm -> {
-                            // Keyed by the whole project, not just its id: a cached form for
-                            // an earlier version of the project would show stale values.
                             val viewModel = viewModel(key = current.existingProject?.let { "${it.id}-${it.hashCode()}" } ?: "new-project") {
                                 ProjectConfigViewModel(appContainer.projectRepository, current.existingProject)
                             }
@@ -112,9 +108,6 @@ fun AppRoot(appContainer: AppContainer) {
                         }
 
                         is Screen.WorktreeManagement -> {
-                            // Keyed by the config too: the use cases are bound to it, so a
-                            // view model cached before the project was edited (e.g. its
-                            // repository moved) would keep using the old paths.
                             val viewModelKey = "${current.project.id}-${current.project.config.hashCode()}"
                             val viewModel = viewModel(key = viewModelKey) {
                                 WorktreeViewModel(appContainer.worktreeUseCases(current.project.config))

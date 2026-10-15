@@ -13,7 +13,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import app.luxion.shogunai.domain.model.ThemeMode
 
-/** Color tokens Material3's [androidx.compose.material3.ColorScheme] doesn't provide a slot for. */
 data class ShogunExtendedColors(val success: Color, val onSuccess: Color)
 
 private val ShogunDarkExtendedColors = ShogunExtendedColors(success = ShogunSuccess, onSuccess = ShogunOnSuccess)
@@ -21,7 +20,6 @@ private val ShogunLightExtendedColors = ShogunExtendedColors(success = ShogunLig
 
 private val LocalShogunExtendedColors = staticCompositionLocalOf { ShogunDarkExtendedColors }
 
-/** Access alongside `MaterialTheme.colorScheme` for tokens like `success`/`onSuccess`. */
 object ShogunTheme {
     val extendedColors: ShogunExtendedColors
         @Composable get() = LocalShogunExtendedColors.current
@@ -76,8 +74,6 @@ fun ShogunAiTheme(themeMode: ThemeMode, content: @Composable () -> Unit) {
             colorScheme = if (useDark) ShogunDarkColorScheme else ShogunLightColorScheme,
             typography = ShogunTypography,
         ) {
-            // Surface paints the actual window background with colorScheme.background;
-            // without this, Compose Desktop leaves the default canvas (white) behind the content.
             Surface(
                 modifier = Modifier.fillMaxSize(),
                 color = MaterialTheme.colorScheme.background,

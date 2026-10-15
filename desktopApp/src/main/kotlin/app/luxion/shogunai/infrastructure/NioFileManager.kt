@@ -5,10 +5,6 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 
-/**
- * Implementación de [FileManager] sobre `java.nio.file`.
- * Funciona igual en macOS y Linux.
- */
 class NioFileManager : FileManager {
 
     override fun exists(path: String): Boolean = Files.exists(Path.of(path))

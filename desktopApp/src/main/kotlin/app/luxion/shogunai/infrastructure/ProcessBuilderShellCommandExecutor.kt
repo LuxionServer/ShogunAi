@@ -12,16 +12,6 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 
-/**
- * Implementación de [ShellCommandExecutor] sobre [ProcessBuilder].
- *
- * Detalles de robustez:
- *  - Lee stdout y stderr de forma concurrente. Si se leyeran en serie, un
- *    proceso que llene el buffer del stream no leído se bloquearía (deadlock).
- *  - `waitFor` se envuelve en [runInterruptible] para que la cancelación de la
- *    corrutina interrumpa la espera.
- *  - El trabajo bloqueante se confina en [Dispatchers.IO].
- */
 class ProcessBuilderShellCommandExecutor(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ShellCommandExecutor {
@@ -57,11 +47,6 @@ class ProcessBuilderShellCommandExecutor(
     }
 }
 
-/**
- * Lanzada desde Finder/Launchpad, la app hereda el PATH mínimo de macOS
- * (sin `/opt/homebrew/bin` ni `/usr/local/bin`), por lo que hooks como el
- * `post-checkout` de git-lfs fallan aunque el binario esté instalado.
- */
 internal object HomebrewPath {
     private val EXTRA_DIRS = listOf("/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin")
 

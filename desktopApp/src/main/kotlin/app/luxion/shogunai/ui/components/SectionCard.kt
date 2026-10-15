@@ -19,12 +19,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import app.luxion.shogunai.ui.i18n.LocalStrings
 
-/**
- * Card with a title header wrapping [content].
- *
- * Pass [collapsible] = true to make the header clickable and hide [content] when [expanded]
- * is false; the caller owns [expanded]/[onExpandedChange] state.
- */
 @Composable
 fun SectionCard(
     title: String,
