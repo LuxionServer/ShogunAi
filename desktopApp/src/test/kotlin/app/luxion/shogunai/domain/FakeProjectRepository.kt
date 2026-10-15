@@ -3,7 +3,6 @@ package app.luxion.shogunai.domain
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.model.Project
 
-// In-memory double of [ProjectRepository] for tests.
 class FakeProjectRepository(
     initialProjects: List<Project> = emptyList(),
 ) : ProjectRepository {

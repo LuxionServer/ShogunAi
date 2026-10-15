@@ -3,13 +3,6 @@ package app.luxion.shogunai.domain
 import app.luxion.shogunai.domain.io.FileManager
 import java.io.IOException
 
-/**
- * Doble de [FileManager] en memoria para tests.
- *
- * @param existing Rutas que se consideran existentes al inicio.
- * @param failCopyFor Si el `source` de una copia está en este conjunto, la copia
- *   lanza [IOException] para simular un fallo.
- */
 class FakeFileManager(
     existing: Collection<String> = emptyList(),
     private val failCopyFor: Set<String> = emptySet(),

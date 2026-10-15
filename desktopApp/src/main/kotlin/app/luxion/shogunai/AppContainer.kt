@@ -22,11 +22,6 @@ import app.luxion.shogunai.infrastructure.JsonThemePreferenceRepository
 import app.luxion.shogunai.infrastructure.NioFileManager
 import app.luxion.shogunai.infrastructure.ProcessBuilderShellCommandExecutor
 
-/**
- * Manual dependency wiring for the app. Holds the stateless singletons and
- * builds the worktree use cases per active project, since they are scoped to
- * a [ProjectConfig] rather than the app as a whole.
- */
 class AppContainer {
     val projectRepository: ProjectRepository = JsonProjectRepository()
     private val settingsFile = JsonSettingsFile()

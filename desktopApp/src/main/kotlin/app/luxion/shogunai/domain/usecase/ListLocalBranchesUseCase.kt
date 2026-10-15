@@ -5,10 +5,6 @@ import app.luxion.shogunai.domain.model.BranchOption
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorktreeError
 
-/**
- * Lists local branches, flagging the ones already checked out somewhere
- * (including the base repository) since those can't become a new worktree.
- */
 class ListLocalBranchesUseCase(
     private val config: ProjectConfig,
     private val executor: ShellCommandExecutor,

@@ -27,7 +27,6 @@ class CreateWorktreeFromBranchUseCaseTest {
     private val secretsInBase = config.secretFiles.map { config.baseSecretPath(it) }
     private val baseWithSecrets = listOf(config.baseRepositoryPath) + secretsInBase
 
-    /** Default responder: the branch exists locally and every Git command succeeds. */
     private fun executor(addResponse: (List<String>) -> CommandResult = { success(it) }) =
         FakeShellCommandExecutor {
             when {

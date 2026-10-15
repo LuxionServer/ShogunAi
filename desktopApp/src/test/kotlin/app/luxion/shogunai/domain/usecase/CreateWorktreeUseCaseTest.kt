@@ -86,7 +86,6 @@ class CreateWorktreeUseCaseTest {
     @Test
     fun `fails when secret files are missing`() = runTest {
         val executor = FakeShellCommandExecutor { success(it) }
-        // Only one of the two secrets exists.
         val fileManager = FakeFileManager(
             existing = listOf(config.baseRepositoryPath, config.baseSecretPath("local.properties")),
         )
@@ -148,9 +147,6 @@ class CreateWorktreeUseCaseTest {
 
     @Test
     fun `rolls back worktree and fails with GitLfsNotFound when the LFS smudge filter is missing`() = runTest {
-        // Different message than the post-checkout hook: happens when the checked-out
-        // commit brings LFS content and the checkout fails invoking the smudge
-        // filter, before the hook gets to run.
         val executor = FakeShellCommandExecutor {
             if (it.first() == "git" && it.getOrNull(1) == "worktree" && it.getOrNull(2) == "add") {
                 failure(

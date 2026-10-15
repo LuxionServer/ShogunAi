@@ -12,11 +12,6 @@ import java.nio.file.StandardCopyOption
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 
-/**
- * The user preferences file (`~/.shogunai/settings.json`), shared by every
- * preference repository. [update] rewrites the whole file atomically from the
- * current contents, so saving one preference keeps the others as they were.
- */
 class JsonSettingsFile(
     private val storagePath: Path = Path.of(System.getProperty("user.home"), ".shogunai", "settings.json"),
 ) {
@@ -26,7 +21,6 @@ class JsonSettingsFile(
         encodeDefaults = true
     }
 
-    /** Current settings; defaults when the file is missing, empty or can't be parsed. */
     fun read(): Settings {
         if (!storagePath.exists()) return Settings()
         val text = storagePath.readText()
@@ -48,7 +42,6 @@ class JsonSettingsFile(
         Files.move(tempFile, storagePath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
     }
 
-    // Defaults also cover files written before a field existed (e.g. no `language`).
     @Serializable
     data class Settings(
         val themeMode: ThemeMode = ThemeMode.SYSTEM,
