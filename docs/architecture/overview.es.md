@@ -20,10 +20,10 @@ graph TD
 ```
 desktopApp/src/main/kotlin/app/luxion/shogunai/
 ├── domain/           # modelos, puertos y casos de uso — sin dependencias de infraestructura
-│   ├── model/        # ProjectConfig, Project, BranchType, Worktree, WorktreeError, TerminalPreference, AgentLaunchConfig
-│   ├── executor/      # puertos ShellCommandExecutor, TerminalLauncher, TerminalEmulatorDetector + CommandResult
-│   ├── io/            # puertos FileManager, ProjectRepository
-│   └── usecase/       # CreateWorktreeUseCase, RemoveWorktreeUseCase, ListWorktreesUseCase, OpenWorktreeTerminalUseCase, TerminalCommandBuilder
+│   ├── model/        # ProjectConfig, Project, AgentLaunchConfig, BranchType, BranchOption, Worktree, WorktreeError, ThemeMode, AppLanguage
+│   ├── executor/     # puertos ShellCommandExecutor y ClipboardWriter + CommandResult
+│   ├── io/           # puertos FileManager, ProjectRepository, ThemePreferenceRepository, LanguagePreferenceRepository
+│   └── usecase/      # Create/CreateFromBranch/List/ListLocalBranches/Remove/Repair de worktrees, CopyWorktreeLaunchCommand
 ├── infrastructure/   # implementaciones concretas de los puertos de dominio
 ├── ui/               # pantallas Compose, ViewModels y navegación
 ├── AppContainer.kt   # cablea dominio + infraestructura para la UI, sin DI framework

@@ -14,7 +14,7 @@ A full validation of the last three merged pull requests (the branch dropdown gr
 - `WorktreeViewModel.repairAfterMove` keeps a repair failure visible after the follow-up reload; stale list results from an earlier load can no longer overwrite state from a newer one.
 - Process start failures (`CommandExecutionException`) are rendered with a localized message that names the command; the exception's own message is in English.
 - `DropdownSelector` ignores selection of a disabled option regardless of the input method, and the "Create worktree" action in "Existing branch" mode is only enabled for a branch that is available.
-- `SegmentedSelector` labels don't wrap, so each segment is sized to its whole label.
+- `SegmentedSelector` labels report their full width as their minimum intrinsic width, so each segment is sized to its whole label.
 - `generateBuildInfo` declares `appVersion` as a task input.
 - Architecture, process and home docs (English and Spanish), `README.md`/`README.es.md`, `mkdocs.yml` and `AGENTS.md` are brought in line with the code.
 - The validated changes `add-ui-localization` and `fix-repository-relocation` are archived (the latter's artifacts translated to English, as `openspec/config.yaml` requires).

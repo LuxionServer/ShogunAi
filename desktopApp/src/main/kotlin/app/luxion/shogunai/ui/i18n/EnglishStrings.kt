@@ -92,6 +92,8 @@ object EnglishStrings : Strings {
     override fun branchNotFound(branch: String) = "Branch not found: $branch"
     override fun branchAlreadyCheckedOut(branch: String, path: String?) =
         "Branch '$branch' is already checked out" + if (path != null) " at $path" else ""
+    override fun commandCouldNotStart(command: List<String>) =
+        "Could not start the command: ${command.joinToString(" ")}"
     override fun unexpectedError(detail: String?) = "Unexpected error" + detail.asSuffix()
 }
 

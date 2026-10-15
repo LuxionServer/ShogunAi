@@ -6,9 +6,11 @@ Orquestador de escritorio que automatiza la creación y gestión de **Git worktr
 
 ## Qué hace
 
-- Crea y elimina **Git worktrees** aislados para cada tarea, cada uno en su propia rama (`feature/` o `fix/`).
+- Crea y elimina **Git worktrees** aislados para cada tarea, cada uno en su propia rama nueva (`feature/` o `fix/`) o en una rama que ya exista en local.
 - Copia automáticamente a cada worktree nuevo los **archivos de secretos locales** que necesites para compilar (p. ej. `local.properties` de Android).
-- Gestiona varios proyectos desde un catálogo, cada uno con su propia configuración (repositorio base, carpeta de worktrees, secretos).
+- Gestiona varios proyectos desde un catálogo, cada uno con su propia configuración (repositorio base, carpeta de worktrees, secretos, comando del agente).
+- Copia el comando para arrancar tu agente de IA en un worktree (`cd <worktree> && claude`, opcionalmente envuelto con Headroom), listo para pegar en cualquier terminal.
+- Si mueves un repositorio, actualiza su ruta en el proyecto y la app vuelve a enlazar sus worktrees (`git worktree repair`).
 
 ## Instalación
 
@@ -38,8 +40,9 @@ Instálalo como cualquier otra app de escritorio y ábrelo. No necesitas tener J
 
 1. **Crea un proyecto** — al abrir la app por primera vez verás el catálogo de proyectos vacío. Pulsa "Nuevo proyecto" e indica un nombre, la ruta del repositorio base y la carpeta donde se crearán los worktrees. Opcionalmente añade los archivos de secretos que deben copiarse a cada worktree nuevo.
 2. **Entra a un proyecto** — selecciónalo desde el catálogo para ver sus worktrees existentes.
-3. **Crea un worktree** — indica el id de la tarea y el tipo de rama (`feature` o `fix`); la app crea el worktree, la rama y copia los secretos configurados.
-4. **Elimina un worktree** — cuando termines una tarea, elimínalo desde la lista, con la opción de borrar también la rama local. El worktree principal no se puede eliminar.
+3. **Crea un worktree** — indica el id de la tarea y el tipo de rama (`feature` o `fix`); la app crea el worktree, la rama y copia los secretos configurados. Para trabajar en una rama que ya tienes, cambia a "Rama existente" y elígela de la lista.
+4. **Ponte a trabajar** — pulsa "Copiar comando" en un worktree y pégalo en tu terminal para abrir allí tu agente de IA.
+5. **Elimina un worktree** — cuando termines una tarea, elimínalo desde la lista, con la opción de borrar también la rama local. El worktree principal no se puede eliminar.
 
 La app está en inglés por defecto; puedes cambiarla a español desde el selector de idioma de la barra superior (junto al selector de tema). La elección se recuerda entre reinicios.
 

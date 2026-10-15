@@ -1,7 +1,7 @@
 # app-icon Specification
 
 ## Purpose
-TBD - created by archiving change app-icon-and-visual-style. Update Purpose after archive.
+Gives the desktop app its own icon, both in the window and in the native installers.
 ## Requirements
 ### Requirement: Icono de ventana
 La aplicación de escritorio SHALL mostrar un icono propio (no el icono por defecto de Java/AWT) en la barra de título y en el dock/taskbar mientras la ventana principal está abierta.

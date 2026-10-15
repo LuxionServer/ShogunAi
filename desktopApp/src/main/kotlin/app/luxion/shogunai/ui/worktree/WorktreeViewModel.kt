@@ -24,7 +24,6 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
         private set
     var isRemoving by mutableStateOf(false)
         private set
-    // Exposed as data, not text: the screen renders it in the active language.
     var error by mutableStateOf<Throwable?>(null)
         private set
     var copiedWorktreePath by mutableStateOf<String?>(null)
@@ -43,6 +42,8 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
     var createMode by mutableStateOf(CreateMode.NEW_BRANCH)
     var selectedBranch by mutableStateOf<String?>(null)
 
+    private var listGeneration = 0
+
     private var pendingRemoval by mutableStateOf<PendingRemoval?>(null)
     val worktreePendingRemoval: Worktree?
         get() = pendingRemoval?.worktree
@@ -60,35 +61,40 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
     }
 
     fun refresh() {
+        val generation = ++listGeneration
         viewModelScope.launch {
             isLoading = true
-            useCases.list()
-                .onSuccess { worktrees = it; error = null }
-                .onFailure { error = it }
-            isLoading = false
+            applyListResult(generation, useCases.list())
         }
         if (createMode == CreateMode.EXISTING_BRANCH) {
             loadLocalBranches()
         }
     }
 
-    /**
-     * Re-links the base repository and its worktrees after the project's paths
-     * changed (the repository was moved on disk), then reloads the list.
-     */
     fun repairAfterMove(previousWorktreesRoot: String) {
+        val generation = ++listGeneration
         viewModelScope.launch {
             isLoading = true
-            useCases.repair(previousWorktreesRoot)
+            val repair = useCases.repair(previousWorktreesRoot)
+            applyListResult(generation, useCases.list())
+            repair
                 .onSuccess { success = WorktreeSuccess.RepairedAfterMove }
                 .onFailure { error = it }
-            isLoading = false
-            refresh()
         }
     }
 
-    /** Whether [taskId] is usable as-is: still valid as a Git ref segment once normalized. */
+    private fun applyListResult(generation: Int, result: Result<List<Worktree>>) {
+        if (generation != listGeneration) return
+        result
+            .onSuccess { worktrees = it; error = null }
+            .onFailure { error = it }
+        isLoading = false
+    }
+
     fun isTaskIdValid(taskId: String): Boolean = isValidGitRefSegment(normalizeTaskId(taskId))
+
+    val isSelectedBranchAvailable: Boolean
+        get() = localBranches.any { it.name == selectedBranch && !it.isCheckedOut }
 
     fun create(taskId: String, branchType: BranchType) {
         viewModelScope.launch {
@@ -210,7 +216,6 @@ private const val COPIED_FEEDBACK_DURATION_MS = 2000L
 
 enum class CreateMode { NEW_BRANCH, EXISTING_BRANCH }
 
-/** Outcome of a successful operation, rendered by the screen in the active language. */
 sealed interface WorktreeSuccess {
     data class Created(val path: String) : WorktreeSuccess
     data object RepairedAfterMove : WorktreeSuccess

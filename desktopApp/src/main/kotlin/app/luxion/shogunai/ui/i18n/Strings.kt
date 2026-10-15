@@ -1,26 +1,17 @@
 package app.luxion.shogunai.ui.i18n
 
 import androidx.compose.runtime.staticCompositionLocalOf
+import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.model.WorktreeError
 
-/**
- * Every user-facing text of the UI, one implementation per [AppLanguage].
- *
- * Adding a member forces every language to translate it (missing translations
- * are a compile error). Texts with arguments are functions, so the arguments
- * are type-checked instead of positional format placeholders.
- */
 interface Strings {
-    /** Name of the language written in that same language, as shown in the language selector. */
     val languageName: String
 
-    // Theme mode selector
     val themeLight: String
     val themeDark: String
     val themeSystem: String
 
-    // Shared
     val reload: String
     val cancel: String
     val delete: String
@@ -28,11 +19,9 @@ interface Strings {
     val expand: String
     val collapse: String
 
-    // File chooser dialogs
     val selectFolderDialogTitle: String
     val selectSecretFilesDialogTitle: String
 
-    // Project list
     val projectsTitle: String
     val newProject: String
     val search: String
@@ -43,7 +32,6 @@ interface Strings {
     val deleteProjectTitle: String
     fun deleteProjectMessage(projectName: String): String
 
-    // Project configuration
     val projectConfigTitle: String
     val identitySection: String
     val nameLabel: String
@@ -66,7 +54,6 @@ interface Strings {
     val discard: String
     val keepEditing: String
 
-    // Worktrees
     val closeError: String
     val closeMessage: String
     val newWorktreeSection: String
@@ -94,7 +81,6 @@ interface Strings {
     fun worktreeCreated(path: String): String
     val worktreesRepairedAfterMove: String
 
-    // Worktree errors (see worktreeError)
     fun baseRepositoryNotFound(path: String): String
     fun worktreeAlreadyExists(path: String): String
     fun invalidTaskIdError(rawInput: String): String
@@ -105,10 +91,10 @@ interface Strings {
     val gitLfsNotFound: String
     fun branchNotFound(branch: String): String
     fun branchAlreadyCheckedOut(branch: String, path: String?): String
+    fun commandCouldNotStart(command: List<String>): String
     fun unexpectedError(detail: String?): String
 }
 
-/** Strings of the language selected by the user. Provided by `AppRoot`. */
 val LocalStrings = staticCompositionLocalOf<Strings> { EnglishStrings }
 
 fun AppLanguage.strings(): Strings = when (this) {
@@ -116,14 +102,12 @@ fun AppLanguage.strings(): Strings = when (this) {
     AppLanguage.SPANISH -> SpanishStrings
 }
 
-/**
- * User message for a failed operation. Domain errors are translated from their
- * structured data; Git's own error output is appended verbatim.
- */
-fun Strings.worktreeError(error: Throwable): String =
-    if (error is WorktreeError) worktreeErrorMessage(error) else unexpectedError(error.message)
+fun Strings.worktreeError(error: Throwable): String = when (error) {
+    is WorktreeError -> worktreeErrorMessage(error)
+    is CommandExecutionException -> commandCouldNotStart(error.command)
+    else -> unexpectedError(error.message)
+}
 
-// Exhaustive over the sealed hierarchy: a new WorktreeError variant doesn't compile until it's translated.
 private fun Strings.worktreeErrorMessage(error: WorktreeError): String = when (error) {
     is WorktreeError.BaseRepositoryNotFound -> baseRepositoryNotFound(error.path)
     is WorktreeError.WorktreeAlreadyExists -> worktreeAlreadyExists(error.path)

@@ -41,3 +41,13 @@ mkdocs serve                         # serve the docs locally
 
 - Don't add the `Co-Authored-By: Claude` trailer (or for any AI) in this project's commits.
 - Commit messages are always in English, even though the user converses in Spanish.
+
+## Public repository
+
+This repository (`LuxionServer/ShogunAi`) is **public**: every commit, commit message, PR and issue comment is published permanently, and rewriting history doesn't unpublish it.
+
+- Never commit secrets: the `HOMEBREW_TAP_TOKEN` used by the release workflow (it lives only in the repository's Actions secrets), any other token or key, signing material, `.env` files or `local.properties`.
+- Never commit a user's local app data: `~/.shogunai/projects.json` and `~/.shogunai/settings.json` contain real filesystem paths and project names. Tests and examples use generic placeholders (`~/projects/main-repo`, `TASK-123`).
+- Never commit machine-specific state: absolute paths with a home directory, IDE or tool-local settings (e.g. `.claude/settings.local.json`), logs or build outputs.
+- Before committing, review `git diff --staged`, stage explicit paths (no `git add -A` / `git add .`) and add new local or generated files to `.gitignore`.
+- If something sensitive was already committed or pushed, stop and report it instead of amending or force-pushing: a leaked secret must be rotated first.

@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.model.WorktreeError
 import java.io.IOException
@@ -56,6 +57,14 @@ class StringsTest {
         allStrings.forEach { strings ->
             assertTrue(strings.worktreeError(error).contains("disk full"))
         }
+    }
+
+    @Test
+    fun `commands that can't start are reported in the selected language`() {
+        val error = CommandExecutionException(listOf("git", "status"), IOException("No such file or directory"))
+
+        assertEquals("Could not start the command: git status", EnglishStrings.worktreeError(error))
+        assertEquals("No se pudo iniciar el comando: git status", SpanishStrings.worktreeError(error))
     }
 
     @Test

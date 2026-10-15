@@ -8,7 +8,7 @@ Desktop orchestrator (Kotlin Multiplatform) to automate complex development work
 
 ## Project status
 
-Under active development. Iteration 1 covered the domain and infrastructure layer of the worktree flow; the `project-worktree-ui` change added the Compose GUI (project catalog, configuration, and worktree management). See [design decisions](decisions/index.md) and `openspec/changes/archive/` for the detail of what was decided in each iteration/change.
+Under active development and published as a desktop app (see the README for installation). It manages a catalog of projects and, for each one, creates worktrees from new or existing branches, copies the local secrets into them, copies the command to launch an AI agent in a worktree, and repairs the worktrees when the repository is moved. The UI is available in English and Spanish. See [design decisions](decisions/index.md) for what was decided before OpenSpec, and `openspec/changes/archive/` for every change since.
 
 ## Where to look
 

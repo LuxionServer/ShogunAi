@@ -1,7 +1,7 @@
 # homebrew-cask-distribution Specification
 
 ## Purpose
-TBD - created by archiving change homebrew-cask-distribution. Update Purpose after archive.
+Lets macOS users install and update the app with Homebrew, with the Cask kept in sync with every published release.
 ## Requirements
 ### Requirement: Instalación vía Homebrew Cask
 El sistema SHALL ofrecer un Cask de Homebrew en el tap `LuxionServer/homebrew-shogunai` que instale la última versión publicada de la app en macOS a partir del `.dmg` de la GitHub Release correspondiente.
