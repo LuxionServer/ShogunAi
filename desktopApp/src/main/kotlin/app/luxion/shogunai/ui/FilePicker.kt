@@ -39,12 +39,16 @@ object FilePicker {
  * `ProjectConfig` expects `secretFiles`. If the chosen file is outside the base
  * repository, only its name is used.
  */
-fun relativeToBase(baseRepositoryPath: String, absolutePath: String): String {
-    if (baseRepositoryPath.isBlank()) return File(absolutePath).name
+fun relativeToBase(baseRepositoryPath: String, absolutePath: String): String =
+    relativeIfInsideBase(baseRepositoryPath, absolutePath) ?: File(absolutePath).name
+
+internal fun relativeIfInsideBase(baseRepositoryPath: String, absolutePath: String): String? {
+    if (baseRepositoryPath.isBlank()) return null
     return try {
-        val relative = File(baseRepositoryPath).toPath().relativize(File(absolutePath).toPath()).toString()
-        if (relative.startsWith("..")) File(absolutePath).name else relative
+        val base = File(baseRepositoryPath).toPath().normalize()
+        val relative = base.relativize(File(absolutePath).toPath().normalize()).toString()
+        relative.takeUnless { it.isEmpty() || it.startsWith("..") }
     } catch (e: IllegalArgumentException) {
-        File(absolutePath).name
+        null
     }
 }

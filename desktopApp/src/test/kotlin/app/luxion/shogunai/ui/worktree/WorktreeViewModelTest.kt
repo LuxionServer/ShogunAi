@@ -16,6 +16,7 @@ import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.ListLocalBranchesUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
+import app.luxion.shogunai.domain.usecase.RepairWorktreesUseCase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -77,6 +78,7 @@ class WorktreeViewModelTest {
             listLocalBranches = ListLocalBranchesUseCase(config, executor),
             remove = RemoveWorktreeUseCase(config, executor),
             copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, FakeClipboardWriter()),
+            repair = RepairWorktreesUseCase(config, executor, FakeFileManager()),
         )
     }
 

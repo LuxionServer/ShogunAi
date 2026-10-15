@@ -71,6 +71,21 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
         }
     }
 
+    /**
+     * Re-links the base repository and its worktrees after the project's paths
+     * changed (the repository was moved on disk), then reloads the list.
+     */
+    fun repairAfterMove(previousWorktreesRoot: String) {
+        viewModelScope.launch {
+            isLoading = true
+            useCases.repair(previousWorktreesRoot)
+                .onSuccess { successMessage = "Worktrees reparados tras mover el repositorio" }
+                .onFailure { errorMessage = it.message }
+            isLoading = false
+            refresh()
+        }
+    }
+
     /** Whether [taskId] is usable as-is: still valid as a Git ref segment once normalized. */
     fun isTaskIdValid(taskId: String): Boolean = isValidGitRefSegment(normalizeTaskId(taskId))
 

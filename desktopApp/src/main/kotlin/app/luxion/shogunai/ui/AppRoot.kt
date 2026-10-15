@@ -75,23 +75,40 @@ fun AppRoot(appContainer: AppContainer) {
                     }
 
                     is Screen.ProjectConfigForm -> {
-                        val viewModel = viewModel(key = current.existingProject?.id ?: "new-project") {
+                        // Keyed by the whole project, not just its id: a cached form for
+                        // an earlier version of the project would show stale values.
+                        val viewModel = viewModel(key = current.existingProject?.let { "${it.id}-${it.hashCode()}" } ?: "new-project") {
                             ProjectConfigViewModel(appContainer.projectRepository, current.existingProject)
                         }
                         ProjectConfigScreen(
                             viewModel = viewModel,
-                            onSaved = { project -> screen = Screen.WorktreeManagement(project) },
+                            onSaved = { project ->
+                                val previous = current.existingProject?.config
+                                val moved = previous != null &&
+                                    (previous.baseRepositoryPath != project.config.baseRepositoryPath ||
+                                        previous.worktreesRoot != project.config.worktreesRoot)
+                                screen = Screen.WorktreeManagement(
+                                    project = project,
+                                    previousWorktreesRoot = previous?.worktreesRoot?.takeIf { moved },
+                                )
+                            },
                             onCancel = { screen = Screen.ProjectList },
                         )
                     }
 
                     is Screen.WorktreeManagement -> {
-                        val viewModel = viewModel(key = current.project.id) {
+                        // Keyed by the config too: the use cases are bound to it, so a
+                        // view model cached before the project was edited (e.g. its
+                        // repository moved) would keep using the old paths.
+                        val viewModelKey = "${current.project.id}-${current.project.config.hashCode()}"
+                        val viewModel = viewModel(key = viewModelKey) {
                             WorktreeViewModel(appContainer.worktreeUseCases(current.project.config))
                         }
                         val windowInfo = LocalWindowInfo.current
-                        LaunchedEffect(current.project.id) { viewModel.refresh() }
-                        LaunchedEffect(current.project.id, windowInfo) {
+                        LaunchedEffect(viewModelKey) {
+                            current.previousWorktreesRoot?.let(viewModel::repairAfterMove) ?: viewModel.refresh()
+                        }
+                        LaunchedEffect(viewModelKey, windowInfo) {
                             snapshotFlow { windowInfo.isWindowFocused }
                                 .drop(1)
                                 .filter { it }
