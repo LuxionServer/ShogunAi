@@ -10,43 +10,35 @@ Implementation of `ShellCommandExecutor` on top of `ProcessBuilder`. Robustness 
 - `waitFor()` is wrapped in `runInterruptible` so that coroutine cancellation interrupts waiting for the process.
 - Blocking work is confined to `Dispatchers.IO` (injectable via constructor for tests).
 - In the `finally` block, `process.destroy()` is called if the process is still alive, to avoid leaving orphan processes if the coroutine is cancelled.
+- **Homebrew directories in `PATH`**: apps launched from the macOS Finder/Dock don't inherit the shell's `PATH`, so tools installed with Homebrew (e.g. `git-lfs`) wouldn't be found. `HomebrewPath.merge` prepends `/opt/homebrew/bin`, `/opt/homebrew/sbin` and `/usr/local/bin` to the child process's `PATH`, without duplicates.
+- If the process can't start at all, the `IOException` is wrapped in `CommandExecutionException`.
 
 ## `NioFileManager`
 
-Implementation of `FileManager` on top of `java.nio.file`. `copy` uses `REPLACE_EXISTING` and `COPY_ATTRIBUTES`. Works the same on macOS and Linux (supported targets).
+Implementation of `FileManager` on top of `java.nio.file`. `copy` uses `REPLACE_EXISTING` and `COPY_ATTRIBUTES`. Works the same on every supported OS.
 
-## `ProcessTerminalLauncher`
+## `AwtClipboardWriter`
 
-Implementation of `TerminalLauncher`: `ProcessBuilder(command).directory(File(workingDirectory)).start()`, wrapped in `runCatching`, without waiting for the process to finish (fire-and-forget — unlike `ProcessBuilderShellCommandExecutor`, which does wait for the exit code).
+Implementation of `ClipboardWriter` with AWT's system clipboard (`Toolkit.getDefaultToolkit().systemClipboard`), wrapped in `runCatching`.
 
-## `SystemTerminalEmulatorDetector`
+## Project catalog (`projects.json`)
 
-Implementation of `TerminalEmulatorDetector`. Branches on `System.getProperty("os.name")`:
-
-- **macOS**: checks for the existence of `/Applications/iTerm.app` and `/Applications/Warp.app` via `FileManager.exists`; `MACOS_TERMINAL` is always appended at the end (Terminal.app ships with the system).
-- **Linux**: `which <binary>` via `ShellCommandExecutor.execute(...).isSuccess` for `gnome-terminal`, `konsole`, `xterm`.
-
-## `TerminalCommandBuilder`
-
-Pure object in `domain/usecase/` (not infrastructure, but documented here since it builds the per-emulator invocation detail): translates `TerminalEmulator` + path + command into the concrete argv. For `MACOS_TERMINAL`/`ITERM2` it generates an AppleScript passed to `osascript` (as several `-e` arguments, never as a single shell string):
-
-- `ITERM2`: opens a **new tab** — `create tab with default profile` on `current window` (or `create window with default profile` if there's none). iTerm2's dictionary supports creating tabs directly, with no extra permissions.
-- `MACOS_TERMINAL`: if no Terminal window is open, `do script` with no target creates one directly (fallback, no tabs). If one already exists, it forces a **new tab** deterministically: `activate` + `System Events` simulating Cmd+T, then `do script ... in front window` — a freshly created tab is always idle, so that `do script` uses it unambiguously. Terminal.app has no AppleScript command to create tabs directly; Cmd+T via `System Events` requires Accessibility permission, which in dev mode (`./gradlew :desktopApp:run`, with no bundle identity of its own) macOS doesn't always get around to requesting — the keystroke has no effect with no visible error, degrading to reusing the current tab (the original bug: consecutive launches writing over each other with no separator). Packaging the app as a `.app`/dmg should let macOS prompt for the permission correctly (pending verification).
+`JsonProjectRepository` stores the projects in `~/.shogunai/projects.json` with `kotlinx.serialization` (`ignoreUnknownKeys`, so files with fields from older versions still load). Every write replaces the whole file atomically: it's written to a temporary file in the same folder and moved over the original with `ATOMIC_MOVE`, so a crash never leaves a half-written catalog.
 
 ## User preferences (`settings.json`)
 
 `JsonSettingsFile` is the `~/.shogunai/settings.json` file, shared by `JsonThemePreferenceRepository` (`ThemePreferenceRepository` port) and `JsonLanguagePreferenceRepository` (`LanguagePreferenceRepository` port). It stores `{ "themeMode": ..., "language": ... }`.
 
-- **Each save only rewrites its own field**: `update` reads the current contents, applies the change and writes the whole file atomically (temp file + `Files.move` with `ATOMIC_MOVE`, same pattern as `JsonProjectRepository`). Changing the language doesn't overwrite the theme and vice versa.
+- **Each save only rewrites its own field**: `update` reads the current contents, applies the change and writes the whole file atomically (same pattern as `JsonProjectRepository`). Changing the language doesn't overwrite the theme and vice versa.
 - **Defaults**: `SYSTEM` for the theme and `ENGLISH` for the language when the file is missing, empty or unparseable. Files written by older versions (only `themeMode`) are read fine: the language takes its default.
 
 ## Test doubles
 
 In `desktopApp/src/test/kotlin/app/luxion/shogunai/domain/`:
 
-- `FakeShellCommandExecutor` — substitutes `ShellCommandExecutor` in use case tests.
-- `FakeFileManager` — substitutes `FileManager`.
-- `FakeTerminalLauncher` — substitutes `TerminalLauncher`.
-- `FakeTerminalEmulatorDetector` — substitutes `TerminalEmulatorDetector`.
+- `FakeShellCommandExecutor` — substitutes `ShellCommandExecutor`: answers each argv with a canned `CommandResult` and records the commands run.
+- `FakeFileManager` — substitutes `FileManager` with an in-memory set of existing paths.
+- `FakeClipboardWriter` — substitutes `ClipboardWriter`.
+- `FakeProjectRepository` — substitutes `ProjectRepository` in ViewModel tests.
 
-Thanks to the domain depending on interfaces, `CreateWorktreeUseCaseTest`, `RemoveWorktreeUseCaseTest`, and `ListWorktreesUseCaseTest` tests don't touch disk or launch real processes.
+Thanks to the domain depending on interfaces, the use case tests (`*UseCaseTest`) and the ViewModel tests don't touch disk or launch real processes. The infrastructure itself is covered by `ProcessBuilderShellCommandExecutorTest`, `JsonProjectRepositoryTest` and `JsonSettingsFileTest`, which do use real processes and temporary files.

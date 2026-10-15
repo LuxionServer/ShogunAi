@@ -92,5 +92,7 @@ object SpanishStrings : Strings {
     override fun branchNotFound(branch: String) = "No se encontró la rama: $branch"
     override fun branchAlreadyCheckedOut(branch: String, path: String?) =
         "La rama '$branch' ya está en uso" + if (path != null) " en $path" else ""
+    override fun commandCouldNotStart(command: List<String>) =
+        "No se pudo iniciar el comando: ${command.joinToString(" ")}"
     override fun unexpectedError(detail: String?) = "Error inesperado" + detail.asSuffix()
 }

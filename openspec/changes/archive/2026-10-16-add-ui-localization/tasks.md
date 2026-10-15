@@ -30,7 +30,7 @@
 ## 6. Integration checks
 
 - [x] 6.1 Run `./gradlew test` and confirm all tests pass
-- [ ] 6.2 Manual: launch with `./gradlew :desktopApp:run` without a `language` in `settings.json` → UI in English; switch to Español → all three screens in Spanish without leaving the current screen; restart → still Spanish with the theme unchanged
+- [x] 6.2 Manual: launch with `./gradlew :desktopApp:run` without a `language` in `settings.json` → UI in English; switch to Español → all three screens in Spanish without leaving the current screen; restart → still Spanish with the theme unchanged
 
 ## Workflow follow-up
 

@@ -70,8 +70,6 @@ fun WorktreeScreen(
         }
     }
 
-    // Hoisted so it survives the branch dropdown's own composable being remounted whenever
-    // isLoadingBranches/localBranches toggles the `when` branch below.
     val branchGroupExpansion = remember { mutableStateMapOf<String, Boolean>() }
     var isCreateSectionExpanded by remember { mutableStateOf(true) }
 
@@ -86,7 +84,7 @@ fun WorktreeScreen(
     }
     val isCreateEnabled = when (viewModel.createMode) {
         CreateMode.NEW_BRANCH -> isTaskIdValid
-        CreateMode.EXISTING_BRANCH -> viewModel.selectedBranch != null
+        CreateMode.EXISTING_BRANCH -> viewModel.isSelectedBranchAvailable
     }
     val createWorktree = when (viewModel.createMode) {
         CreateMode.NEW_BRANCH -> createNewBranchWorktree

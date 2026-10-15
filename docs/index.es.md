@@ -8,7 +8,7 @@ Orquestador de escritorio (Kotlin Multiplatform) para automatizar workflows de d
 
 ## Estado del proyecto
 
-En desarrollo activo. La iteración 1 cubrió la capa de dominio e infraestructura del flujo de worktrees; el cambio `project-worktree-ui` añadió la GUI en Compose (catálogo de proyectos, configuración y gestión de worktrees). Ver [decisiones de diseño](decisions/index.md) y `openspec/changes/archive/` para el detalle de lo decidido en cada iteración/cambio.
+En desarrollo activo y publicado como app de escritorio (ver el README para instalarla). Gestiona un catálogo de proyectos y, para cada uno, crea worktrees desde ramas nuevas o existentes, les copia los secretos locales, copia el comando para lanzar un agente de IA en un worktree y repara los worktrees cuando se mueve el repositorio. La interfaz está en inglés y español. Ver [decisiones de diseño](decisions/index.md) para lo decidido antes de OpenSpec, y `openspec/changes/archive/` para cada cambio desde entonces.
 
 ## Dónde mirar
 

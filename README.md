@@ -6,9 +6,11 @@ Desktop orchestrator that automates creating and managing isolated **Git worktre
 
 ## What it does
 
-- Creates and removes isolated **Git worktrees** for each task, each on its own branch (`feature/` or `fix/`).
+- Creates and removes isolated **Git worktrees** for each task, each on its own new branch (`feature/` or `fix/`) or on a branch that already exists locally.
 - Automatically copies to each new worktree the **local secret files** you need to build (e.g. Android's `local.properties`).
-- Manages several projects from a catalog, each with its own configuration (base repository, worktrees folder, secrets).
+- Manages several projects from a catalog, each with its own configuration (base repository, worktrees folder, secrets, agent command).
+- Copies the command to start your AI agent in a worktree (`cd <worktree> && claude`, optionally wrapped with Headroom), ready to paste in any terminal.
+- If you move a repository, update its path in the project and the app re-links its worktrees (`git worktree repair`).
 
 ## Installation
 
@@ -38,8 +40,9 @@ Install it like any other desktop app and open it. You don't need a JDK or any d
 
 1. **Create a project** — the first time you open the app you'll see an empty project catalog. Click "New project" and enter a name, the path of the base repository and the folder where worktrees will be created. Optionally add the secret files that must be copied to each new worktree.
 2. **Open a project** — select it from the catalog to see its existing worktrees.
-3. **Create a worktree** — enter the task id and the branch type (`feature` or `fix`); the app creates the worktree and the branch, and copies the configured secrets.
-4. **Remove a worktree** — when you finish a task, remove it from the list, optionally deleting the local branch too. The main worktree can't be removed.
+3. **Create a worktree** — enter the task id and the branch type (`feature` or `fix`); the app creates the worktree and the branch, and copies the configured secrets. To work on a branch you already have, switch to "Existing branch" and pick it from the list.
+4. **Start working** — click "Copy command" on a worktree and paste it in your terminal to open your AI agent there.
+5. **Remove a worktree** — when you finish a task, remove it from the list, optionally deleting the local branch too. The main worktree can't be removed.
 
 The app is in English by default; you can switch to Spanish from the language selector in the top bar (next to the theme selector). Your choice is remembered between restarts.
 

@@ -1,7 +1,7 @@
 site_name: ShogunAi
 site_description: KMP Desktop orchestrator for Git worktrees, Android environment bootstrapping, and AI agent workflow automation.
 repo_name: ShogunAi
-repo_url: https://github.com/CiroFeliu/ShogunAi
+repo_url: https://github.com/LuxionServer/ShogunAi
 
 theme:
   name: material

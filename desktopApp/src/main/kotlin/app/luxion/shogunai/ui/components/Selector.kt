@@ -1,6 +1,8 @@
 package app.luxion.shogunai.ui.components
 
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExpandMore
@@ -26,7 +28,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 
-/** Segmented control for a small, fixed set of options, all visible at once. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun <T> SegmentedSelector(
@@ -45,19 +46,19 @@ fun <T> SegmentedSelector(
                 enabled = enabled,
                 shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
                 icon = {},
-                label = { Text(label(option), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                label = {
+                    Text(
+                        label(option),
+                        modifier = Modifier.width(IntrinsicSize.Max),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
             )
         }
     }
 }
 
-/**
- * Dropdown for a longer or dynamically loaded list of options.
- *
- * Group-expansion state defaults to being remembered internally, but callers whose call site
- * gets conditionally mounted/unmounted (e.g. behind a loading/empty-state `when`) can pass in
- * [expandedGroups] hoisted from a stable point so it survives those remounts.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun <T> DropdownSelector(
@@ -112,8 +113,10 @@ fun <T> DropdownSelector(
                             text = { Text(label(option)) },
                             enabled = enabled(option),
                             onClick = {
-                                onSelect(option)
-                                expanded = false
+                                if (enabled(option)) {
+                                    onSelect(option)
+                                    expanded = false
+                                }
                             },
                         )
                     }
@@ -123,10 +126,5 @@ fun <T> DropdownSelector(
     }
 }
 
-/**
- * Buckets [options] by [groupBy], in order of each group's first appearance and keeping the
- * options' relative order within a group. Options of the same group don't need to be contiguous:
- * e.g. branches sorted by refname interleave grouped (`feature/...`) and ungrouped (`main`) ones.
- */
 internal fun <T> groupOptions(options: List<T>, groupBy: (T) -> String?): List<Pair<String?, List<T>>> =
     options.groupBy(groupBy).toList()

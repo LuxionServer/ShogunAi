@@ -10,43 +10,35 @@ Implementación de `ShellCommandExecutor` sobre `ProcessBuilder`. Detalles de ro
 - `waitFor()` se envuelve en `runInterruptible` para que la cancelación de la corrutina interrumpa la espera del proceso.
 - El trabajo bloqueante se confina en `Dispatchers.IO` (inyectable por constructor para tests).
 - En el `finally` se hace `process.destroy()` si el proceso sigue vivo, para no dejar procesos huérfanos si la corrutina se cancela.
+- **Directorios de Homebrew en el `PATH`**: las apps lanzadas desde el Finder o el Dock de macOS no heredan el `PATH` del shell, así que no encontrarían herramientas instaladas con Homebrew (p. ej. `git-lfs`). `HomebrewPath.merge` antepone `/opt/homebrew/bin`, `/opt/homebrew/sbin` y `/usr/local/bin` al `PATH` del proceso hijo, sin duplicados.
+- Si el proceso no llega a arrancar, la `IOException` se envuelve en `CommandExecutionException`.
 
 ## `NioFileManager`
 
-Implementación de `FileManager` sobre `java.nio.file`. `copy` usa `REPLACE_EXISTING` y `COPY_ATTRIBUTES`. Funciona igual en macOS y Linux (targets soportados).
+Implementación de `FileManager` sobre `java.nio.file`. `copy` usa `REPLACE_EXISTING` y `COPY_ATTRIBUTES`. Funciona igual en todos los sistemas operativos soportados.
 
-## `ProcessTerminalLauncher`
+## `AwtClipboardWriter`
 
-Implementación de `TerminalLauncher`: `ProcessBuilder(command).directory(File(workingDirectory)).start()`, envuelto en `runCatching`, sin esperar a que el proceso termine (fire-and-forget — a diferencia de `ProcessBuilderShellCommandExecutor`, que sí espera el exit code).
+Implementación de `ClipboardWriter` con el portapapeles del sistema de AWT (`Toolkit.getDefaultToolkit().systemClipboard`), envuelta en `runCatching`.
 
-## `SystemTerminalEmulatorDetector`
+## Catálogo de proyectos (`projects.json`)
 
-Implementación de `TerminalEmulatorDetector`. Ramifica por `System.getProperty("os.name")`:
-
-- **macOS**: comprueba existencia de `/Applications/iTerm.app` y `/Applications/Warp.app` vía `FileManager.exists`; `MACOS_TERMINAL` siempre se añade al final (Terminal.app viene con el sistema).
-- **Linux**: `which <binario>` vía `ShellCommandExecutor.execute(...).isSuccess` para `gnome-terminal`, `konsole`, `xterm`.
-
-## `TerminalCommandBuilder`
-
-Objeto puro en `domain/usecase/` (no infraestructura, pero documentado aquí por construir el detalle de invocación por emulador): traduce `TerminalEmulator` + ruta + comando al argv concreto. Para `MACOS_TERMINAL`/`ITERM2` genera un script de AppleScript pasado a `osascript` (como varios argumentos `-e`, nunca como una única cadena de shell):
-
-- `ITERM2`: abre una **pestaña nueva** — `create tab with default profile` en `current window` (o `create window with default profile` si no hay ninguna). El dictionary de iTerm2 soporta crear pestañas directamente, sin permisos extra.
-- `MACOS_TERMINAL`: si no hay ninguna ventana de Terminal abierta, `do script` sin destino crea una directamente (fallback, sin pestañas). Si ya hay una, fuerza una **pestaña nueva** de forma determinista: `activate` + `System Events` simulando Cmd+T, y luego `do script ... in front window` — una pestaña recién creada siempre está idle, así que ese `do script` la usa sin ambigüedad. Terminal.app no tiene un comando de AppleScript para crear pestañas directamente; Cmd+T vía `System Events` exige permiso de Accesibilidad, que en modo dev (`./gradlew :desktopApp:run`, sin identidad de bundle propia) macOS no siempre llega a solicitar — el keystroke queda sin efecto y sin error visible, degradando a reutilizar la pestaña actual (el bug original: lanzamientos seguidos escribiendo uno sobre otro sin separador). Empaquetar la app como `.app`/dmg debería permitir que macOS pida el permiso correctamente (pendiente de verificar).
+`JsonProjectRepository` guarda los proyectos en `~/.shogunai/projects.json` con `kotlinx.serialization` (`ignoreUnknownKeys`, para que se sigan cargando ficheros con campos de versiones anteriores). Cada escritura reemplaza el fichero completo de forma atómica: se escribe en un temporal de la misma carpeta y se mueve sobre el original con `ATOMIC_MOVE`, así un cierre inesperado nunca deja el catálogo a medio escribir.
 
 ## Preferencias de usuario (`settings.json`)
 
 `JsonSettingsFile` es el fichero `~/.shogunai/settings.json`, compartido por `JsonThemePreferenceRepository` (puerto `ThemePreferenceRepository`) y `JsonLanguagePreferenceRepository` (puerto `LanguagePreferenceRepository`). Guarda `{ "themeMode": ..., "language": ... }`.
 
-- **Cada guardado reescribe solo su campo**: `update` lee el contenido actual, aplica el cambio y escribe el fichero completo de forma atómica (temporal + `Files.move` con `ATOMIC_MOVE`, mismo patrón que `JsonProjectRepository`). Así cambiar el idioma no pisa el tema y viceversa.
+- **Cada guardado reescribe solo su campo**: `update` lee el contenido actual, aplica el cambio y escribe el fichero completo de forma atómica (mismo patrón que `JsonProjectRepository`). Así cambiar el idioma no pisa el tema y viceversa.
 - **Valores por defecto**: `SYSTEM` para el tema e `ENGLISH` para el idioma, si el fichero no existe, está vacío o no se puede parsear. Los ficheros escritos por versiones anteriores (solo `themeMode`) se leen sin problema: el idioma toma su valor por defecto.
 
 ## Dobles de test
 
 En `desktopApp/src/test/kotlin/app/luxion/shogunai/domain/`:
 
-- `FakeShellCommandExecutor` — sustituye `ShellCommandExecutor` en los tests de casos de uso.
-- `FakeFileManager` — sustituye `FileManager`.
-- `FakeTerminalLauncher` — sustituye `TerminalLauncher`.
-- `FakeTerminalEmulatorDetector` — sustituye `TerminalEmulatorDetector`.
+- `FakeShellCommandExecutor` — sustituye `ShellCommandExecutor`: responde a cada argv con un `CommandResult` preparado y registra los comandos ejecutados.
+- `FakeFileManager` — sustituye `FileManager` con un conjunto en memoria de rutas existentes.
+- `FakeClipboardWriter` — sustituye `ClipboardWriter`.
+- `FakeProjectRepository` — sustituye `ProjectRepository` en los tests de ViewModels.
 
-Gracias a que el dominio depende de interfaces, los tests de `CreateWorktreeUseCaseTest`, `RemoveWorktreeUseCaseTest` y `ListWorktreesUseCaseTest` no tocan disco ni lanzan procesos reales.
+Gracias a que el dominio depende de interfaces, los tests de casos de uso (`*UseCaseTest`) y los de ViewModels no tocan disco ni lanzan procesos reales. La propia infraestructura se cubre con `ProcessBuilderShellCommandExecutorTest`, `JsonProjectRepositoryTest` y `JsonSettingsFileTest`, que sí usan procesos reales y ficheros temporales.

@@ -1,7 +1,7 @@
 # project-catalog Specification
 
 ## Purpose
-TBD - created by archiving change project-worktree-ui. Update Purpose after archive.
+Keeps the list of configured projects across restarts and lets the user open, edit, delete and reload them.
 ## Requirements
 ### Requirement: Project persistence
 The system SHALL persist known projects (id, name, `ProjectConfig`) to a local JSON file so they are available across app restarts.

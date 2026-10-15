@@ -28,6 +28,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -47,6 +48,7 @@ class WorktreeViewModelTest {
     private val listCommand = listOf("git", "worktree", "list", "--porcelain")
     private val removeCommand = listOf("git", "worktree", "remove", worktreePath)
     private val forceRemoveCommand = listOf("git", "worktree", "remove", "--force", worktreePath)
+    private val repairCommandPrefix = listOf("git", "worktree", "repair")
     private val forEachRefCommand = listOf("git", "for-each-ref", "--format=%(refname:short)", "refs/heads")
 
     private val porcelainOutput = """
@@ -80,7 +82,7 @@ class WorktreeViewModelTest {
             listLocalBranches = ListLocalBranchesUseCase(config, executor),
             remove = RemoveWorktreeUseCase(config, executor),
             copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, FakeClipboardWriter()),
-            repair = RepairWorktreesUseCase(config, executor, FakeFileManager()),
+            repair = RepairWorktreesUseCase(config, executor, FakeFileManager(existing = listOf(config.baseRepositoryPath))),
         )
     }
 
@@ -472,5 +474,73 @@ class WorktreeViewModelTest {
         assertNull(viewModel.worktreePendingRemoval)
         assertEquals(commandCountBeforeRequest, executedCommands.size)
         assertTrue(viewModel.worktrees.any { it.path == worktreePath })
+    }
+
+    @Test
+    fun `repairAfterMove keeps the repair failure visible after reloading the list`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(
+            useCases { command ->
+                when {
+                    command.take(3) == repairCommandPrefix -> failure(command, exitCode = 128, stderr = "fatal: not a git repository")
+                    command == listCommand -> success(command, porcelainOutput)
+                    else -> success(command)
+                }
+            },
+        )
+
+        viewModel.repairAfterMove(previousWorktreesRoot = "/home/dev/old-projects")
+        advanceUntilIdle()
+
+        val error = assertIs<WorktreeError.GitCommandFailed>(viewModel.error)
+        assertEquals(128, error.exitCode)
+        assertTrue(viewModel.worktrees.any { it.path == worktreePath })
+        assertNull(viewModel.success)
+        assertEquals(false, viewModel.isLoading)
+    }
+
+    @Test
+    fun `repairAfterMove reports success and lists the worktrees`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(
+            useCases { command ->
+                when (command) {
+                    listCommand -> success(command, porcelainOutput)
+                    else -> success(command)
+                }
+            },
+        )
+
+        viewModel.repairAfterMove(previousWorktreesRoot = "/home/dev/old-projects")
+        advanceUntilIdle()
+
+        assertEquals(WorktreeSuccess.RepairedAfterMove, viewModel.success)
+        assertNull(viewModel.error)
+        assertTrue(viewModel.worktrees.any { it.path == worktreePath })
+    }
+
+    @Test
+    fun `isSelectedBranchAvailable is true only for a loaded branch without a worktree`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(
+            useCases { command ->
+                when (command) {
+                    listCommand -> success(command, porcelainOutput)
+                    forEachRefCommand -> success(command, stdout = "develop\nfeature/TASK-123\n")
+                    else -> success(command)
+                }
+            },
+        )
+        viewModel.loadLocalBranches()
+        advanceUntilIdle()
+
+        viewModel.selectedBranch = "develop"
+        assertTrue(viewModel.isSelectedBranchAvailable)
+
+        viewModel.selectedBranch = "feature/TASK-123"
+        assertFalse(viewModel.isSelectedBranchAvailable)
+
+        viewModel.selectedBranch = "missing"
+        assertFalse(viewModel.isSelectedBranchAvailable)
+
+        viewModel.selectedBranch = null
+        assertFalse(viewModel.isSelectedBranchAvailable)
     }
 }
