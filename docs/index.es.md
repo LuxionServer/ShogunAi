@@ -20,6 +20,7 @@ En desarrollo activo y publicado como app de escritorio (ver el README para inst
 | Ver cómo se implementan los puertos (Git, ficheros) | [Arquitectura › Capa de infraestructura](architecture/infrastructure.md) |
 | Entender cómo se planifican los cambios | [Proceso de desarrollo › OpenSpec](process/openspec.md) |
 | Saber por qué se tomó tal decisión | [Decisiones de diseño](decisions/index.md) |
+| Ver qué está previsto | [Roadmap](roadmap.md) |
 | Ver las guidelines de estilo que sigue la IA (no documentación del proyecto) | `AGENTS.md` en la raíz del repo (`CLAUDE.md` redirige a él) |
 
 ## Ejecutar el proyecto

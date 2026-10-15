@@ -64,6 +64,7 @@ plugins:
             UI layer: Capa de UI
             Development process: Proceso de desarrollo
             Design decisions: Decisiones de diseño
+            Roadmap: Roadmap
 
 nav:
   - Home: index.md
@@ -77,3 +78,4 @@ nav:
       - OpenSpec: process/openspec.md
       - Release: process/release.md
   - Design decisions: decisions/index.md
+  - Roadmap: roadmap.md
