@@ -22,7 +22,7 @@ brew install --cask shogunai
 ```
 
 > [!NOTE]
-> The macOS installer only supports Apple Silicon (arm64) for now. Also, the app isn't notarized by Apple: if macOS warns that "the developer cannot be verified" the first time you open it, open it with right click → Open, or run `xattr -dr com.apple.quarantine "/Applications/ShogunAi.app"`.
+> Homebrew picks the installer for your Mac's architecture (Apple Silicon or Intel) automatically. The app isn't notarized by Apple: if macOS warns that "the developer cannot be verified" the first time you open it, open it with right click → Open, or run `xattr -dr com.apple.quarantine "/Applications/ShogunAi.app"`.
 
 ### Manual download
 
@@ -30,7 +30,8 @@ Download the installer for your operating system from the [latest release](https
 
 | Operating system | Installer |
 |---|---|
-| macOS | `.dmg` |
+| macOS (Apple Silicon) | `-arm64.dmg` |
+| macOS (Intel) | `-x64.dmg` |
 | Windows | `.msi` |
 | Linux | `.deb` |
 

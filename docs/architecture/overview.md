@@ -1,19 +1,13 @@
 # Overview
 
-ShogunAi is a **Kotlin Multiplatform** project with a single real target: **desktop JVM**.
+ShogunAi is a **Kotlin/JVM desktop** application built with **Compose Multiplatform** (Compose Desktop).
 
 ## Modules
 
-```mermaid
-graph TD
-    desktopApp["desktopApp (Compose Desktop, jvm)"] --> shared["shared (commonMain, jvm())"]
-```
+There is a single Gradle module, **`desktopApp`**: the desktop application (Compose Desktop), the UI (screens and ViewModels), and **all the domain and infrastructure of the worktree flow**.
 
-- **`shared`**: no content — the module was generated from the project's base template (`App`, `Greeting`, `Platform`), and that template was removed when the real GUI was built in `desktopApp` (see [`project-worktree-ui`](../process/openspec.md)). It's kept declared in case a second real target appears in the future.
-- **`desktopApp`**: the desktop application (Compose Desktop), the UI (screens and ViewModels), and **all the domain and infrastructure of the worktree flow**.
-
-!!! note "Why does the domain live in `desktopApp` and not in `shared`?"
-    `shared` uses `jvm()` as its only target — there's no iOS, Android, or WASM in this project. Putting domain logic in a "shared" module that in practice only runs on one target would add a layer of indirection with no real benefit. See [design decisions](../decisions/index.md).
+!!! note "Why isn't there a separate `shared` module?"
+    The project template generated an empty Kotlin Multiplatform `shared` module, and it was removed because nothing used it. There's no iOS, Android, or WASM target in this project: putting domain logic in a "shared" module that in practice only runs on one target would add a layer of indirection with no real benefit. If a second real target ever appears, a shared module can be extracted then. See [design decisions](../decisions/index.md).
 
 ## Layers inside `desktopApp`
 

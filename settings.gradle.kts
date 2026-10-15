@@ -1,5 +1,4 @@
 rootProject.name = "ShogunAi"
-enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
 pluginManagement {
     repositories {
@@ -33,4 +32,3 @@ plugins {
 }
 
 include(":desktopApp")
-include(":shared")

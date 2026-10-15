@@ -1,6 +1,6 @@
 # ShogunAi
 
-Orquestador de escritorio (Kotlin Multiplatform) para automatizar workflows de desarrollo complejos:
+Orquestador de escritorio (Kotlin + Compose Multiplatform) para automatizar workflows de desarrollo complejos:
 
 - Creación y eliminación de **Git worktrees** aislados.
 - Aprovisionamiento de secretos locales necesarios para compilar (p. ej. `local.properties` de Android).

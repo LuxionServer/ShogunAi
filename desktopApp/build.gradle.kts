@@ -8,8 +8,6 @@ plugins {
 }
 
 dependencies {
-    implementation(projects.shared)
-
     implementation(compose.desktop.currentOs)
     implementation(compose.runtime)
     implementation(compose.foundation)

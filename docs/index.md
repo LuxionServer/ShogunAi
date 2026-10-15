@@ -1,6 +1,6 @@
 # ShogunAi
 
-Desktop orchestrator (Kotlin Multiplatform) to automate complex development workflows:
+Desktop orchestrator (Kotlin + Compose Multiplatform) to automate complex development workflows:
 
 - Creating and removing isolated **Git worktrees**.
 - Provisioning the local secrets needed to build (e.g. Android's `local.properties`).
