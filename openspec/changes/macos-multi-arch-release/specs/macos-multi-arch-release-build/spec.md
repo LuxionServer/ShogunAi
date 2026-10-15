@@ -1,27 +1,28 @@
+## Purpose
+
+Publishes native macOS installers for both Apple Silicon (arm64) and Intel (x86_64) Macs in every release, so users of either architecture can install the app.
+
 ## ADDED Requirements
 
-### Requirement: Build de macOS por arquitectura
-El sistema SHALL construir y publicar, en cada release, un `.dmg` para Apple Silicon (arm64) y un `.dmg` separado para Mac Intel (x86_64), cada uno ejecutable nativamente en su arquitectura sin requerir Rosetta.
+### Requirement: Per-architecture macOS build
+The system SHALL build and publish, in every release, one `.dmg` for Apple Silicon (arm64) and a separate `.dmg` for Intel Macs (x86_64), each running natively on its architecture without requiring Rosetta.
 
-#### Scenario: Release con dos instaladores de macOS
-- **WHEN** se publica una nueva release
-- **THEN** la release incluye exactamente dos assets `.dmg` de macOS, uno para arm64 y otro para x86_64, cada uno con el sufijo de arquitectura en el nombre de archivo
+#### Scenario: Release with two macOS installers
+- **WHEN** a new release is published
+- **THEN** the release includes exactly two macOS `.dmg` assets, one for arm64 and one for x86_64, each with its architecture suffix (`arm64` or `x64`) in the file name
 
-#### Scenario: Instalador arm64 en Mac Apple Silicon
-- **WHEN** un usuario con Mac Apple Silicon descarga y abre el `.dmg` con sufijo `arm64`
-- **THEN** la app arranca de forma nativa, sin advertencias de arquitectura incompatible
+#### Scenario: Suffix matches the build architecture
+- **WHEN** a macOS `.dmg` is built for a release
+- **THEN** its architecture suffix is derived from the architecture of the machine that built it, so an Intel build can never be published with the `arm64` suffix or vice versa
 
-#### Scenario: Instalador x64 en Mac Intel
-- **WHEN** un usuario con Mac Intel descarga y abre el `.dmg` con sufijo `x64`
-- **THEN** la app arranca de forma nativa, sin necesidad de Rosetta
+#### Scenario: arm64 installer on an Apple Silicon Mac
+- **WHEN** a user with an Apple Silicon Mac downloads and opens the `.dmg` with the `arm64` suffix
+- **THEN** the app starts natively, without incompatible-architecture warnings
 
-### Requirement: Selección automática de arquitectura en el Cask de Homebrew
-Cuando exista un Cask de Homebrew para la app, el sistema SHALL servir automáticamente el `.dmg` correspondiente a la arquitectura del usuario (arm64 o Intel) sin que el usuario deba elegir manualmente.
+#### Scenario: x64 installer on an Intel Mac
+- **WHEN** a user with an Intel Mac downloads and opens the `.dmg` with the `x64` suffix
+- **THEN** the app starts natively, without needing Rosetta
 
-#### Scenario: Instalación por Homebrew en Mac Apple Silicon
-- **WHEN** un usuario con Mac Apple Silicon ejecuta `brew install --cask shogunai`
-- **THEN** Homebrew descarga el `.dmg` arm64 y verifica su sha256 correspondiente
-
-#### Scenario: Instalación por Homebrew en Mac Intel
-- **WHEN** un usuario con Mac Intel ejecuta `brew install --cask shogunai`
-- **THEN** Homebrew descarga el `.dmg` x86_64 y verifica su sha256 correspondiente
+#### Scenario: One macOS build fails
+- **WHEN** either macOS build fails during a release
+- **THEN** the release is not published (it stays in draft) and the failure is visible in CI

@@ -1,22 +1,22 @@
-## 1. Pipeline de build
+## 1. Build pipeline
 
-- [ ] 1.1 Añadir al matrix de macOS en `.github/workflows/release.yml` una entrada con `os: macos-13` (Intel) junto a la existente `macos-latest` (Apple Silicon)
-- [ ] 1.2 Ajustar `desktopApp/build.gradle.kts` o el paso del workflow para que el `.dmg` generado incluya el sufijo de arquitectura (`arm64`/`x64`) en el nombre de archivo
-- [ ] 1.3 Actualizar el `artifact-glob` de cada entrada del matrix para que apunte al `.dmg` con su sufijo correspondiente
+- [ ] 1.1 Add a `macos-26-intel` (Intel) entry to the build matrix in `.github/workflows/release.yml` next to the existing `macos-latest` (Apple Silicon) one
+- [ ] 1.2 Add a workflow step on macOS runners that renames the built `.dmg` with the architecture suffix (`arm64`/`x64`) derived from `runner.arch`
+- [ ] 1.3 Check that each macOS matrix entry's `artifact-glob` still matches the renamed `.dmg`
 
-## 2. Cask de Homebrew (solo si [[homebrew-cask-distribution]] ya está aplicado)
+## 2. Homebrew Cask
 
-- [ ] 2.1 Convertir `url`/`sha256` de `Casks/shogunai.rb` a bloques `on_arm do ... end` / `on_intel do ... end`
-- [ ] 2.2 Actualizar el job `update-homebrew-cask` para calcular y escribir sha256 de ambos `.dmg` (arm64 y x64) en la misma pasada
-- [ ] 2.3 Si [[homebrew-cask-distribution]] ya fue archivado, crear el delta `MODIFIED Requirements` correspondiente sobre `openspec/specs/homebrew-cask-distribution/spec.md` en vez de solo `ADDED` en este cambio
+- [ ] 2.1 Add the Cask template `.github/homebrew/shogunai.rb` selecting `url`/`sha256` by architecture (`arch arm:/intel:`, `sha256 arm:/intel:`)
+- [ ] 2.2 Update the `update-homebrew-cask` job to download both `.dmg` files, compute both `sha256` and render the template into the tap's `Casks/shogunai.rb` in a single pass
+- [ ] 2.3 Write the `MODIFIED Requirements` delta on `openspec/specs/homebrew-cask-distribution/spec.md`
 
-## 3. Documentación
+## 3. Documentation
 
-- [ ] 3.1 Actualizar `README.md` para aclarar que hay instaladores separados por arquitectura de macOS
-- [ ] 3.2 Documentar en el changelog/notas de la release el cambio de nombre de archivo (breaking) del `.dmg`
+- [ ] 3.1 Update `README.md`/`README.es.md` and `docs/process/release.md`/`.es.md` to state that there are separate macOS installers per architecture
+- [ ] 3.2 Mention the breaking `.dmg` rename in the notes of the first release that ships this change
 
-## 4. Verificación
+## 4. Verification
 
-- [ ] 4.1 Descargar y abrir el `.dmg` arm64 en un Mac Apple Silicon, confirmar arranque nativo
-- [ ] 4.2 Descargar y abrir el `.dmg` x64 en un Mac Intel (o VM), confirmar arranque sin Rosetta
-- [ ] 4.3 Si aplica el Cask, correr `brew install --cask shogunai` en ambas arquitecturas y confirmar que cada una descarga el `.dmg` correcto
+- [ ] 4.1 Download and open the arm64 `.dmg` on an Apple Silicon Mac and confirm it starts natively
+- [ ] 4.2 Download and open the x64 `.dmg` on an Intel Mac (or VM) and confirm it starts without Rosetta
+- [ ] 4.3 Run `brew install --cask shogunai` on both architectures and confirm each downloads the right `.dmg`
