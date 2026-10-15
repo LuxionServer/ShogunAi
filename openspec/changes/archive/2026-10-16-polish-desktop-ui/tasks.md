@@ -9,14 +9,14 @@
 - [x] 2.1 Replace the `"▼"/"▶"` Unicode characters with `Icons.Default.ExpandMore`/`Icons.Default.ChevronRight`
 - [x] 2.2 Hoist `expandedGroups` state so it survives across dropdown open/close within the same screen instance instead of resetting
 - [x] 2.3 Auto-expand the group containing the currently `selected` option the first time the dropdown is shown
-- [x] 2.4 Verify existing call sites (`WorktreeScreen`'s branch dropdown, `ProjectConfigScreen`'s terminal emulator dropdown) still behave correctly with the new state handling
+- [x] 2.4 Verify existing call sites (`WorktreeScreen`'s branch dropdown, `ProjectConfigScreen`'s terminal emulator dropdown) still behave correctly with the new state handling. The terminal emulator dropdown was later removed by `copy-terminal-launch-command`; the branch dropdown is the only remaining call site
 
 ## 3. Project configuration form
 
 - [x] 3.1 Add `isError`/`supportingText` to the "Nombre" field driven by `name.isBlank()`
 - [x] 3.2 Add `isError`/`supportingText` to the "Ruta del repositorio base" field driven by `baseRepositoryPath.isBlank()`
-- [x] 3.3 Add `minLines = 3` to the custom terminal command `OutlinedTextField`
-- [x] 3.4 Add a tooltip/help text next to "Usar Headroom" explaining what it does
+- [x] 3.3 Add `minLines = 3` to the custom terminal command `OutlinedTextField`. Superseded: `copy-terminal-launch-command` removed the terminal configuration UI, including this field
+- [x] 3.4 Add a tooltip/help text next to "Usar Headroom" explaining what it does (implemented as a help text below the switch)
 - [x] 3.5 Update `ProjectConfigViewModel.addSecretFile` to skip file names already present in `secretFiles`
 - [x] 3.6 Snapshot initial field values in `ProjectConfigViewModel` and expose a `hasUnsavedChanges` check
 - [x] 3.7 Show a confirmation `AlertDialog` from `onCancel` when `hasUnsavedChanges` is true, reusing the existing dialog pattern; skip it and cancel immediately otherwise
@@ -35,7 +35,7 @@
 - [x] 5.3 Add a transient success message state to `WorktreeViewModel`, set on successful worktree creation
 - [x] 5.4 Render the success message as a banner (reusing the error banner's layout with the success color) that auto-clears via `LaunchedEffect` after a short delay
 - [x] 5.5 Add a format hint/example next to the "Id de tarea" field (e.g. below the field as supporting text)
-- [x] 5.6 Truncate `WorktreeRow`'s path `Text` with `maxLines = 1` and `overflow = TextOverflow.Ellipsis`
+- [x] 5.6 Truncate `WorktreeRow`'s path `Text` with `maxLines = 1` and `overflow = TextOverflow.Ellipsis`. When closing the change, the path column also got `Modifier.weight(1f)` so the ellipsis applies before the row's buttons are squeezed; the error and success banners' text rows got the same fix
 
 ## 6. Collapsible "Nuevo worktree" section
 
@@ -47,9 +47,10 @@
 
 - [x] 7.1 Add a small shared helper (in `components/`) for matching a key event against a platform-appropriate "new item" shortcut (Cmd+N on macOS, Ctrl+N elsewhere)
 - [x] 7.2 Wire the shortcut on `ProjectListScreen` to trigger `onNewProject`
-- [x] 7.3 Wire the shortcut on `WorktreeScreen` to trigger worktree creation using the current create-worktree form state, respecting the same enabled/disabled conditions as the "Crear worktree" button
+- [x] 7.3 Wire the shortcut on `WorktreeScreen` to trigger worktree creation using the current create-worktree form state, respecting the same enabled/disabled conditions as the "Crear worktree" button. When closing the change, the shortcut was also disabled while a creation is in progress, matching the button
 
 ## 8. Verification
 
 - [x] 8.1 Run `./gradlew test` and fix any failures introduced by the above changes
 - [x] 8.2 Run `./gradlew :desktopApp:run` and manually walk through: project search/sort, form validation feedback, cancel-with-unsaved-changes prompt, duplicate secret file, collapsible worktree form, worktree creation success feedback, dismissible error, branch dropdown group memory, and the new keyboard shortcuts
+- [x] 8.3 Re-verification when archiving (2026-10-16): the code was re-read against every task and delta spec, ViewModel tests were added for project search/sort, duplicate secret files, unsaved-changes detection and error dismissal, and `./gradlew test` passes

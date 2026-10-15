@@ -60,3 +60,11 @@ Add `org.jetbrains.compose.material:material-icons-core` (matching `composeMulti
 - **`WorktreeViewModel` grows in responsibility** (list state + create-form state) → keep the two groups of properties visually separated with a comment-free naming convention (e.g. a `// creation form` grouping is unnecessary; property names already read as form fields); revisit extraction into a separate form-state holder only if it grows further, per AGENTS.md guidance against premature abstraction.
 - **Touching three screens at once risks visual regressions** → tasks are scoped per screen so each can be run (`./gradlew :desktopApp:run`) and manually checked before moving to the next; existing tests for `WorktreeViewModel`/`ProjectConfigViewModel` behavior must keep passing after the state relocation.
 - **Concurrent `system-theme-mode` change** touches `AppRoot.kt`/`ThemeModeToggle` → this change avoids `ThemeModeToggle.kt` entirely and only touches `AppRoot.kt` if needed for spacing constants, minimizing merge conflicts.
+
+## Closing notes (2026-10-16)
+
+Later changes landed before this one was archived, and the delta spec was adjusted to the code as it stands:
+
+- `copy-terminal-launch-command` removed the terminal configuration (`TerminalSelectionMode`, `TerminalEmulator`), so the choice-control scenarios now name the remaining controls: creation mode, branch type and project sort order (segmented), and existing branch (dropdown).
+- `add-ui-localization` made the UI bilingual, so `contentDescription`s follow the active UI language instead of being Spanish only.
+- `polish-desktop-ui` made the "New worktree" section collapsible and the whole worktree screen a single scrolling `Column`. The creation form is still its own card above the worktree rows, so the requirement now asks for separate sections rather than a non-scrolling form.
