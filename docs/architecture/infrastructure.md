@@ -1,52 +1,52 @@
-# Capa de infraestructura
+# Infrastructure layer
 
-Vive en `desktopApp/src/main/kotlin/app/luxion/shogunai/infrastructure`. Implementa los puertos definidos en el dominio.
+Lives in `desktopApp/src/main/kotlin/app/luxion/shogunai/infrastructure`. Implements the ports defined in the domain.
 
 ## `ProcessBuilderShellCommandExecutor`
 
-Implementación de `ShellCommandExecutor` sobre `ProcessBuilder`. Detalles de robustez:
+Implementation of `ShellCommandExecutor` on top of `ProcessBuilder`. Robustness details:
 
-- **Lee stdout y stderr de forma concurrente** (dos `async`). Si se leyeran en serie, un proceso que llena el buffer del stream no leído se bloquearía (deadlock clásico de `ProcessBuilder`).
-- `waitFor()` se envuelve en `runInterruptible` para que la cancelación de la corrutina interrumpa la espera del proceso.
-- El trabajo bloqueante se confina en `Dispatchers.IO` (inyectable por constructor para tests).
-- En el `finally` se hace `process.destroy()` si el proceso sigue vivo, para no dejar procesos huérfanos si la corrutina se cancela.
+- **Reads stdout and stderr concurrently** (two `async`s). If read sequentially, a process that fills the buffer of the unread stream would block (the classic `ProcessBuilder` deadlock).
+- `waitFor()` is wrapped in `runInterruptible` so that coroutine cancellation interrupts waiting for the process.
+- Blocking work is confined to `Dispatchers.IO` (injectable via constructor for tests).
+- In the `finally` block, `process.destroy()` is called if the process is still alive, to avoid leaving orphan processes if the coroutine is cancelled.
 
 ## `NioFileManager`
 
-Implementación de `FileManager` sobre `java.nio.file`. `copy` usa `REPLACE_EXISTING` y `COPY_ATTRIBUTES`. Funciona igual en macOS y Linux (targets soportados).
+Implementation of `FileManager` on top of `java.nio.file`. `copy` uses `REPLACE_EXISTING` and `COPY_ATTRIBUTES`. Works the same on macOS and Linux (supported targets).
 
 ## `ProcessTerminalLauncher`
 
-Implementación de `TerminalLauncher`: `ProcessBuilder(command).directory(File(workingDirectory)).start()`, envuelto en `runCatching`, sin esperar a que el proceso termine (fire-and-forget — a diferencia de `ProcessBuilderShellCommandExecutor`, que sí espera el exit code).
+Implementation of `TerminalLauncher`: `ProcessBuilder(command).directory(File(workingDirectory)).start()`, wrapped in `runCatching`, without waiting for the process to finish (fire-and-forget — unlike `ProcessBuilderShellCommandExecutor`, which does wait for the exit code).
 
 ## `SystemTerminalEmulatorDetector`
 
-Implementación de `TerminalEmulatorDetector`. Ramifica por `System.getProperty("os.name")`:
+Implementation of `TerminalEmulatorDetector`. Branches on `System.getProperty("os.name")`:
 
-- **macOS**: comprueba existencia de `/Applications/iTerm.app` y `/Applications/Warp.app` vía `FileManager.exists`; `MACOS_TERMINAL` siempre se añade al final (Terminal.app viene con el sistema).
-- **Linux**: `which <binario>` vía `ShellCommandExecutor.execute(...).isSuccess` para `gnome-terminal`, `konsole`, `xterm`.
+- **macOS**: checks for the existence of `/Applications/iTerm.app` and `/Applications/Warp.app` via `FileManager.exists`; `MACOS_TERMINAL` is always appended at the end (Terminal.app ships with the system).
+- **Linux**: `which <binary>` via `ShellCommandExecutor.execute(...).isSuccess` for `gnome-terminal`, `konsole`, `xterm`.
 
 ## `TerminalCommandBuilder`
 
-Objeto puro en `domain/usecase/` (no infraestructura, pero documentado aquí por construir el detalle de invocación por emulador): traduce `TerminalEmulator` + ruta + comando al argv concreto. Para `MACOS_TERMINAL`/`ITERM2` genera un script de AppleScript pasado a `osascript` (como varios argumentos `-e`, nunca como una única cadena de shell):
+Pure object in `domain/usecase/` (not infrastructure, but documented here since it builds the per-emulator invocation detail): translates `TerminalEmulator` + path + command into the concrete argv. For `MACOS_TERMINAL`/`ITERM2` it generates an AppleScript passed to `osascript` (as several `-e` arguments, never as a single shell string):
 
-- `ITERM2`: abre una **pestaña nueva** — `create tab with default profile` en `current window` (o `create window with default profile` si no hay ninguna). El dictionary de iTerm2 soporta crear pestañas directamente, sin permisos extra.
-- `MACOS_TERMINAL`: si no hay ninguna ventana de Terminal abierta, `do script` sin destino crea una directamente (fallback, sin pestañas). Si ya hay una, fuerza una **pestaña nueva** de forma determinista: `activate` + `System Events` simulando Cmd+T, y luego `do script ... in front window` — una pestaña recién creada siempre está idle, así que ese `do script` la usa sin ambigüedad. Terminal.app no tiene un comando de AppleScript para crear pestañas directamente; Cmd+T vía `System Events` exige permiso de Accesibilidad, que en modo dev (`./gradlew :desktopApp:run`, sin identidad de bundle propia) macOS no siempre llega a solicitar — el keystroke queda sin efecto y sin error visible, degradando a reutilizar la pestaña actual (el bug original: lanzamientos seguidos escribiendo uno sobre otro sin separador). Empaquetar la app como `.app`/dmg debería permitir que macOS pida el permiso correctamente (pendiente de verificar).
+- `ITERM2`: opens a **new tab** — `create tab with default profile` on `current window` (or `create window with default profile` if there's none). iTerm2's dictionary supports creating tabs directly, with no extra permissions.
+- `MACOS_TERMINAL`: if no Terminal window is open, `do script` with no target creates one directly (fallback, no tabs). If one already exists, it forces a **new tab** deterministically: `activate` + `System Events` simulating Cmd+T, then `do script ... in front window` — a freshly created tab is always idle, so that `do script` uses it unambiguously. Terminal.app has no AppleScript command to create tabs directly; Cmd+T via `System Events` requires Accessibility permission, which in dev mode (`./gradlew :desktopApp:run`, with no bundle identity of its own) macOS doesn't always get around to requesting — the keystroke has no effect with no visible error, degrading to reusing the current tab (the original bug: consecutive launches writing over each other with no separator). Packaging the app as a `.app`/dmg should let macOS prompt for the permission correctly (pending verification).
 
-## Preferencias de usuario (`settings.json`)
+## User preferences (`settings.json`)
 
-`JsonSettingsFile` es el fichero `~/.shogunai/settings.json`, compartido por `JsonThemePreferenceRepository` (puerto `ThemePreferenceRepository`) y `JsonLanguagePreferenceRepository` (puerto `LanguagePreferenceRepository`). Guarda `{ "themeMode": ..., "language": ... }`.
+`JsonSettingsFile` is the `~/.shogunai/settings.json` file, shared by `JsonThemePreferenceRepository` (`ThemePreferenceRepository` port) and `JsonLanguagePreferenceRepository` (`LanguagePreferenceRepository` port). It stores `{ "themeMode": ..., "language": ... }`.
 
-- **Cada guardado reescribe solo su campo**: `update` lee el contenido actual, aplica el cambio y escribe el fichero completo de forma atómica (temporal + `Files.move` con `ATOMIC_MOVE`, mismo patrón que `JsonProjectRepository`). Así cambiar el idioma no pisa el tema y viceversa.
-- **Valores por defecto**: `SYSTEM` para el tema e `ENGLISH` para el idioma, si el fichero no existe, está vacío o no se puede parsear. Los ficheros escritos por versiones anteriores (solo `themeMode`) se leen sin problema: el idioma toma su valor por defecto.
+- **Each save only rewrites its own field**: `update` reads the current contents, applies the change and writes the whole file atomically (temp file + `Files.move` with `ATOMIC_MOVE`, same pattern as `JsonProjectRepository`). Changing the language doesn't overwrite the theme and vice versa.
+- **Defaults**: `SYSTEM` for the theme and `ENGLISH` for the language when the file is missing, empty or unparseable. Files written by older versions (only `themeMode`) are read fine: the language takes its default.
 
-## Dobles de test
+## Test doubles
 
-En `desktopApp/src/test/kotlin/app/luxion/shogunai/domain/`:
+In `desktopApp/src/test/kotlin/app/luxion/shogunai/domain/`:
 
-- `FakeShellCommandExecutor` — sustituye `ShellCommandExecutor` en los tests de casos de uso.
-- `FakeFileManager` — sustituye `FileManager`.
-- `FakeTerminalLauncher` — sustituye `TerminalLauncher`.
-- `FakeTerminalEmulatorDetector` — sustituye `TerminalEmulatorDetector`.
+- `FakeShellCommandExecutor` — substitutes `ShellCommandExecutor` in use case tests.
+- `FakeFileManager` — substitutes `FileManager`.
+- `FakeTerminalLauncher` — substitutes `TerminalLauncher`.
+- `FakeTerminalEmulatorDetector` — substitutes `TerminalEmulatorDetector`.
 
-Gracias a que el dominio depende de interfaces, los tests de `CreateWorktreeUseCaseTest`, `RemoveWorktreeUseCaseTest` y `ListWorktreesUseCaseTest` no tocan disco ni lanzan procesos reales.
+Thanks to the domain depending on interfaces, `CreateWorktreeUseCaseTest`, `RemoveWorktreeUseCaseTest`, and `ListWorktreesUseCaseTest` tests don't touch disk or launch real processes.

@@ -1,68 +1,68 @@
-# Primeros pasos
+# Getting started
 
-Guía para clonar el repo, levantar el proyecto por primera vez y saber por dónde seguir.
+Guide to cloning the repo, running the project for the first time, and knowing where to go next.
 
-## Requisitos
+## Requirements
 
-- **JDK 21** — Gradle usa toolchains (`gradle/gradle-daemon-jvm.properties`) y lo descarga solo si no lo tienes instalado.
+- **JDK 21** — Gradle uses toolchains (`gradle/gradle-daemon-jvm.properties`) and downloads it automatically if you don't have it installed.
 - **Git**.
-- (Opcional) IntelliJ IDEA o Android Studio con el plugin de Kotlin Multiplatform, para usar las run configurations del IDE.
+- (Optional) IntelliJ IDEA or Android Studio with the Kotlin Multiplatform plugin, to use the IDE's run configurations.
 
-## Clonar y compilar
+## Clone and build
 
 ```bash
-git clone <url-del-repo>
+git clone <repo-url>
 cd ShogunAi
 ./gradlew build
 ```
 
-## Ejecutar la app
+## Run the app
 
 ```bash
-./gradlew :desktopApp:run            # ejecución estándar
+./gradlew :desktopApp:run            # standard run
 ./gradlew :desktopApp:hotRun --auto  # hot reload
 ```
 
-También puedes usar el run widget del IDE.
+You can also use the IDE's run widget.
 
-## Ejecutar los tests
+## Run the tests
 
 ```bash
 ./gradlew test
 ```
 
-## Orientarte en el código
+## Finding your way around the code
 
-El proyecto es Kotlin Multiplatform con un único target real (JVM de escritorio). Todo el dominio, la infraestructura y la UI viven en `desktopApp`:
+The project is Kotlin Multiplatform with a single real target (desktop JVM). All the domain, infrastructure, and UI live in `desktopApp`:
 
 ```
 desktopApp/src/main/kotlin/app/luxion/shogunai/
-├── domain/           # modelos, puertos (interfaces) y casos de uso
-├── infrastructure/   # implementaciones concretas de los puertos (Git, filesystem)
-├── ui/               # pantallas Compose, ViewModels y navegación
-├── AppContainer.kt   # cablea dominio + infraestructura, sin framework de DI
-└── main.kt           # punto de entrada
+├── domain/           # models, ports (interfaces), and use cases
+├── infrastructure/   # concrete implementations of the ports (Git, filesystem)
+├── ui/               # Compose screens, ViewModels, and navigation
+├── AppContainer.kt   # wires domain + infrastructure, no DI framework
+└── main.kt           # entry point
 ```
 
-`shared` está declarado pero sin contenido propio (ver [Arquitectura › Visión general](architecture/overview.md) para el porqué).
+`shared` is declared but has no content of its own (see [Architecture › Overview](architecture/overview.md) for why).
 
-Para el detalle de cada capa: [Capa de dominio](architecture/domain.md), [Capa de infraestructura](architecture/infrastructure.md), [Capa de UI](architecture/ui.md).
+For the detail of each layer: [Domain layer](architecture/domain.md), [Infrastructure layer](architecture/infrastructure.md), [UI layer](architecture/ui.md).
 
-## Cómo se planifican los cambios
+## How changes are planned
 
-Los cambios no triviales se planifican con [OpenSpec](process/openspec.md) antes de escribir código: propuesta → aplicación → archivado. Revisa `openspec/changes/` para ver cambios en curso y `openspec/changes/archive/` para el historial.
+Non-trivial changes are planned with [OpenSpec](process/openspec.md) before writing code: proposal → apply → archive. Check `openspec/changes/` for changes in progress and `openspec/changes/archive/` for the history.
 
-## Si vas a trabajar con un agente de IA
+## If you're going to work with an AI agent
 
-Lee `AGENTS.md` en la raíz del repo — recoge las convenciones de estilo de código y de documentación que deben seguir los agentes (Claude, Copilot...) en este proyecto.
+Read `AGENTS.md` at the repo root — it captures the code and documentation style conventions agents (Claude, Copilot...) must follow in this project.
 
-## Ver esta documentación en local
+## View this documentation locally
 
 ```bash
 pip install -r requirements-docs.txt
 mkdocs serve
 ```
 
-## Siguiente parada
+## Next stop
 
-Ver la tabla "Dónde mirar" en [Inicio](index.md) para saber a qué página ir según lo que necesites entender.
+See the "Where to look" table in [Home](index.md) to know which page to go to based on what you need to understand.

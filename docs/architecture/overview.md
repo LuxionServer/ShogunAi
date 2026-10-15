@@ -1,39 +1,39 @@
-# Visión general
+# Overview
 
-ShogunAi es un proyecto **Kotlin Multiplatform** con un único target real: **JVM de escritorio**.
+ShogunAi is a **Kotlin Multiplatform** project with a single real target: **desktop JVM**.
 
-## Módulos
+## Modules
 
 ```mermaid
 graph TD
     desktopApp["desktopApp (Compose Desktop, jvm)"] --> shared["shared (commonMain, jvm())"]
 ```
 
-- **`shared`**: sin contenido — el módulo se generó a partir de la plantilla base del proyecto (`App`, `Greeting`, `Platform`) y ese template se eliminó al construir la GUI real en `desktopApp` (ver [`project-worktree-ui`](../process/openspec.md)). Se mantiene declarado por si en el futuro aparece un segundo target real.
-- **`desktopApp`**: la aplicación de escritorio (Compose Desktop), la UI (pantallas y ViewModels) y **todo el dominio y la infraestructura del flujo de worktrees**.
+- **`shared`**: no content — the module was generated from the project's base template (`App`, `Greeting`, `Platform`), and that template was removed when the real GUI was built in `desktopApp` (see [`project-worktree-ui`](../process/openspec.md)). It's kept declared in case a second real target appears in the future.
+- **`desktopApp`**: the desktop application (Compose Desktop), the UI (screens and ViewModels), and **all the domain and infrastructure of the worktree flow**.
 
-!!! note "¿Por qué el dominio vive en `desktopApp` y no en `shared`?"
-    `shared` usa `jvm()` como único target — no hay iOS, Android ni WASM en este proyecto. Meter lógica de dominio en un módulo "compartido" que en la práctica solo corre en un target añadiría una capa de indirección sin beneficio real. Ver [decisiones de diseño](../decisions/index.md).
+!!! note "Why does the domain live in `desktopApp` and not in `shared`?"
+    `shared` uses `jvm()` as its only target — there's no iOS, Android, or WASM in this project. Putting domain logic in a "shared" module that in practice only runs on one target would add a layer of indirection with no real benefit. See [design decisions](../decisions/index.md).
 
-## Capas dentro de `desktopApp`
+## Layers inside `desktopApp`
 
 ```
 desktopApp/src/main/kotlin/app/luxion/shogunai/
-├── domain/           # modelos, puertos y casos de uso — sin dependencias de infraestructura
+├── domain/           # models, ports, and use cases — no infrastructure dependencies
 │   ├── model/        # ProjectConfig, Project, BranchType, Worktree, WorktreeError, TerminalPreference, AgentLaunchConfig
-│   ├── executor/      # puertos ShellCommandExecutor, TerminalLauncher, TerminalEmulatorDetector + CommandResult
-│   ├── io/            # puertos FileManager, ProjectRepository
+│   ├── executor/      # ShellCommandExecutor, TerminalLauncher, TerminalEmulatorDetector ports + CommandResult
+│   ├── io/            # FileManager, ProjectRepository ports
 │   └── usecase/       # CreateWorktreeUseCase, RemoveWorktreeUseCase, ListWorktreesUseCase, OpenWorktreeTerminalUseCase, TerminalCommandBuilder
-├── infrastructure/   # implementaciones concretas de los puertos de dominio
-├── ui/               # pantallas Compose, ViewModels y navegación
-├── AppContainer.kt   # cablea dominio + infraestructura para la UI, sin DI framework
-└── main.kt           # punto de entrada de la app Compose Desktop
+├── infrastructure/   # concrete implementations of the domain ports
+├── ui/               # Compose screens, ViewModels, and navigation
+├── AppContainer.kt   # wires domain + infrastructure for the UI, no DI framework
+└── main.kt           # Compose Desktop app entry point
 ```
 
-El dominio se define en términos de **puertos** (interfaces) y no conoce `ProcessBuilder` ni `java.nio.file` directamente; eso permite sustituir cada puerto por un doble de prueba (`FakeShellCommandExecutor`, `FakeFileManager`) en los tests de casos de uso, sin tocar disco ni lanzar procesos reales.
+The domain is defined in terms of **ports** (interfaces) and doesn't know about `ProcessBuilder` or `java.nio.file` directly; that lets each port be swapped for a test double (`FakeShellCommandExecutor`, `FakeFileManager`) in use case tests, without touching disk or launching real processes.
 
-Ver el detalle de cada capa:
+See the detail of each layer:
 
-- [Capa de dominio](domain.md)
-- [Capa de infraestructura](infrastructure.md)
-- [Capa de UI](ui.md)
+- [Domain layer](domain.md)
+- [Infrastructure layer](infrastructure.md)
+- [UI layer](ui.md)

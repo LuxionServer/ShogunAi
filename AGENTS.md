@@ -6,7 +6,7 @@ Don't load all of `docs/` into context by default: search for the specific page 
 
 ## Code style
 
-- **All code is written in English**: identifiers, comments, and commit messages. Spanish is reserved for `docs/` (mkdocs) and conversation with the user.
+- **All code is written in English**: identifiers, comments, and commit messages. Spanish is reserved for the Spanish translation of `docs/` and conversation with the user.
 - Use cases return `Result<T>` with typed errors (`sealed class WorktreeError`), never untyped exceptions surfaced to the caller.
 - Shell commands are run as **argv** (`listOf("git", ...)`), never as a string for a shell to parse.
 - The domain depends on ports (`ShellCommandExecutor`, `FileManager`), never directly on concrete implementations.
@@ -24,7 +24,7 @@ Don't load all of `docs/` into context by default: search for the specific page 
 
 Rules:
 
-- `docs/` (mkdocs) is for humans: it explains the *what* and *why* of the system, in Spanish, without single-session jargon.
+- `docs/` (mkdocs) is for humans: it explains the *what* and *why* of the system, without single-session jargon. It's bilingual: English is the default (`page.md`) and every page has its Spanish translation (`page.es.md`); update both when you change one.
 - This file (`AGENTS.md`) is for agents only: style and process rules, not project content. If you're going to add an architecture explanation or a decision, it goes in `docs/` or OpenSpec, not here.
 - Non-trivial changes are planned with OpenSpec (`/opsx:propose` → `/opsx:apply` → `/opsx:archive`) before being implemented — see `docs/process/openspec.md`.
 
@@ -40,4 +40,4 @@ mkdocs serve                         # serve the docs locally
 ## Git
 
 - Don't add the `Co-Authored-By: Claude` trailer (or for any AI) in this project's commits.
-- Commit messages are always in English, even though the rest of the project's documentation is in Spanish.
+- Commit messages are always in English, even though the user converses in Spanish.

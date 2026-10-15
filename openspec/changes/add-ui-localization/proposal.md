@@ -28,4 +28,4 @@ None. Existing capabilities keep their behavior; only the language their texts a
 - **Domain**: new `AppLanguage` model and `LanguagePreferenceRepository` port, mirroring `ThemeMode` / `ThemePreferenceRepository`.
 - **Infrastructure**: a shared `settings.json` file abstraction used by the theme adapter and a new language adapter, each preserving the other field on save.
 - **Dependencies**: none added.
-- **Docs**: `docs/architecture/ui.md` / `ui.en.md` and `infrastructure.md` / `infrastructure.en.md` document the localization layer and the extended settings file.
+- **Docs**: `docs/architecture/ui.md` / `ui.es.md` and `infrastructure.md` / `infrastructure.es.md` document the localization layer and the extended settings file.
