@@ -1,25 +1,25 @@
-# Decisiones de diseño
+# Design decisions
 
-Registro de decisiones de arquitectura tomadas durante el desarrollo, junto con el motivo. Se añade una entrada nueva cuando se toma una decisión que no es obvia leyendo el código.
+Log of architecture decisions made during development, along with the reasoning. A new entry is added when a decision is made that isn't obvious from reading the code.
 
-!!! info "A partir de OpenSpec"
-    Desde la incorporación de [OpenSpec](../process/openspec.md), las decisiones de diseño de cada cambio se documentan en el `design.md` de ese cambio y quedan preservadas al archivarse en `openspec/changes/archive/`. Esta página cubre lo decidido **antes** de adoptar OpenSpec (iteración 1); para cambios posteriores, esa es la fuente de verdad.
+!!! info "Since OpenSpec"
+    Since adopting [OpenSpec](../process/openspec.md), each change's design decisions are documented in that change's `design.md` and are preserved when archived under `openspec/changes/archive/`. This page covers what was decided **before** adopting OpenSpec (iteration 1); for later changes, that's the source of truth.
 
-## Iteración 1 — Dominio e infraestructura del flujo de worktrees (2026-07-10)
+## Iteration 1 — Domain and infrastructure of the worktree flow (2026-07-10)
 
-**Todo el código de dominio e infraestructura vive en `desktopApp`, no en `shared`.**
-Motivo: el único target del proyecto es JVM/escritorio (`shared` usa `jvm()`). Poner lógica de dominio en un módulo "compartido" sin otros targets reales solo añade indirección.
+**All domain and infrastructure code lives in `desktopApp`, not in `shared`.**
+Reason: the project's only target is JVM/desktop (`shared` uses `jvm()`). Putting domain logic in a "shared" module with no other real targets only adds indirection.
 
-**`ProjectConfig` es completamente configurable** (ruta del repo base, carpeta padre de worktrees, lista de archivos de secretos).
-Motivo: que el flujo sea reutilizable entre proyectos distintos sin tocar la lógica de los casos de uso, y sin hardcodear nombres o identificadores propios de un proyecto concreto.
+**`ProjectConfig` is fully configurable** (base repo path, worktrees parent folder, list of secret files).
+Reason: to make the flow reusable across different projects without touching use case logic, and without hardcoding names or identifiers specific to one project.
 
-**`BranchType` = `FEATURE` / `FIX`**, con prefijo `feature/` o `fix/` sobre el ID de la tarea.
-Cubre el flujo de ramas que se necesita hoy; no se añaden más tipos hasta que haga falta.
+**`BranchType` = `FEATURE` / `FIX`**, with a `feature/` or `fix/` prefix on the task ID.
+Covers the branch flow needed today; no more types are added until they're actually needed.
 
-**Los casos de uso devuelven `Result<T>` con errores tipados (`WorktreeError`)**, no excepciones sin tipar ni códigos de error.
-Motivo: que la futura capa de GUI pueda decidir qué mensaje mostrar inspeccionando el tipo del error, sin parsear strings.
+**Use cases return `Result<T>` with typed errors (`WorktreeError`)**, not untyped exceptions or error codes.
+Reason: so the future GUI layer can decide what message to show by inspecting the error's type, without parsing strings.
 
-**Los puertos de dominio (`ShellCommandExecutor`, `FileManager`) tienen implementación real y doble de test.**
-`ProcessBuilderShellCommandExecutor` ejecuta el comando como argv (no `sh -c`) para evitar diferencias de shell entre macOS y Linux, y problemas de inyección/escapado. `NioFileManager` usa `java.nio.file`. Ambos tienen fakes (`FakeShellCommandExecutor`, `FakeFileManager`) para testear los casos de uso sin tocar disco ni lanzar procesos.
+**Domain ports (`ShellCommandExecutor`, `FileManager`) have a real implementation and a test double.**
+`ProcessBuilderShellCommandExecutor` runs the command as argv (not `sh -c`) to avoid shell differences between macOS and Arch Linux, and injection/escaping issues. `NioFileManager` uses `java.nio.file`. Both have fakes (`FakeShellCommandExecutor`, `FakeFileManager`) to test use cases without touching disk or launching processes.
 
-**GUI en Compose**: implementada en el cambio `project-worktree-ui` (catálogo de proyectos, formulario de configuración, gestión de worktrees). Decisiones de diseño de esa iteración en `openspec/changes/archive/`.
+**Compose GUI**: implemented in the `project-worktree-ui` change (project catalog, configuration form, worktree management). Design decisions for that iteration are in `openspec/changes/archive/`.

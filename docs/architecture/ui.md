@@ -1,38 +1,49 @@
-# Capa de UI
+# UI layer
 
-Vive en `desktopApp/src/main/kotlin/app/luxion/shogunai/ui`, más `AppContainer.kt` en la raíz del paquete. Añadida en el cambio `project-worktree-ui` (ver `openspec/changes/archive/`).
+Lives in `desktopApp/src/main/kotlin/app/luxion/shogunai/ui`, plus `AppContainer.kt` at the package root. Added in the `project-worktree-ui` change (see `openspec/changes/archive/`).
 
-## Navegación
+## Navigation
 
-Sin `navigation-compose`: `AppRoot` guarda un `var screen by remember { mutableStateOf<Screen>(...) }` y hace `when` sobre un `sealed class Screen` (`ProjectList`, `ProjectConfigForm`, `WorktreeManagement`) para decidir qué pantalla componer. Suficiente para tres pantallas lineales sin deep linking ni back-stack complejo.
+No `navigation-compose`: `AppRoot` holds a `var screen by remember { mutableStateOf<Screen>(...) }` and does a `when` over a `sealed class Screen` (`ProjectList`, `ProjectConfigForm`, `WorktreeManagement`) to decide which screen to compose. Enough for three linear screens with no deep linking or complex back-stack.
 
-## Pantallas y ViewModels
+## Screens and ViewModels
 
-| Pantalla | ViewModel | Responsabilidad |
+| Screen | ViewModel | Responsibility |
 |---|---|---|
-| `ProjectListScreen` | `ProjectListViewModel` | Carga proyectos vía `ProjectRepository` al iniciar; permite seleccionar uno o crear uno nuevo. |
-| `ProjectConfigScreen` | `ProjectConfigViewModel` | Formulario de `ProjectConfig` (nombre, rutas, archivos de secretos, preferencia de terminal, comando de agente); valida campos requeridos antes de habilitar guardar. |
-| `WorktreeScreen` | `WorktreeViewModel` | Lista, crea y elimina worktrees del proyecto activo, y abre una terminal en el path de un worktree vía los casos de uso existentes; traduce `WorktreeError` a mensajes de usuario. |
+| `ProjectListScreen` | `ProjectListViewModel` | Loads projects via `ProjectRepository` on start; lets you select one or create a new one. |
+| `ProjectConfigScreen` | `ProjectConfigViewModel` | `ProjectConfig` form (name, paths, secret files, terminal preference, agent command); validates required fields before enabling save. |
+| `WorktreeScreen` | `WorktreeViewModel` | Lists, creates, and removes worktrees for the active project, and opens a terminal at a worktree's path via the existing use cases; translates `WorktreeError` into user messages. |
 
-Cada ViewModel usa `androidx.lifecycle` viewmodel-compose (`viewModelScope`) para llamar a los casos de uso sin bloquear el hilo de UI.
+Each ViewModel uses `androidx.lifecycle` viewmodel-compose (`viewModelScope`) to call use cases without blocking the UI thread.
 
-`WorktreeViewModel` también posee el estado transitorio del formulario "Nuevo worktree" (`taskId`, `branchType`, `createMode`, `selectedBranch`), por consistencia con cómo `ProjectConfigViewModel` posee el estado de su formulario: `updateTaskId` aplica la normalización (trim + colapso de espacios a `-`) antes de guardar el valor, así el campo siempre muestra el id ya normalizado mientras se escribe.
+`WorktreeViewModel` also owns the transient "New worktree" form state (`taskId`, `branchType`, `createMode`, `selectedBranch`), for consistency with how `ProjectConfigViewModel` owns its form state: `updateTaskId` applies the normalization (trim + whitespace runs collapsed to `-`) before storing the value, so the field always shows the already-normalized id while typing.
 
-`WorktreeRow` tiene un botón "Terminal" junto a "Eliminar" que llama a `WorktreeViewModel.openTerminal(worktree)`. `ProjectConfigScreen` tiene una sección "Terminal" (`SegmentedSelector` sobre `TerminalSelectionMode`, con `DropdownSelector` de `TerminalEmulator` cuando es `FIXED` y un campo de texto para la plantilla argv cuando es `CUSTOM`) y una sección "Agente" (comando del agente, switch de Headroom).
+`WorktreeRow` has a "Terminal" button next to "Delete" that calls `WorktreeViewModel.openTerminal(worktree)`. `ProjectConfigScreen` has a "Terminal" section (`SegmentedSelector` over `TerminalSelectionMode`, with a `DropdownSelector` of `TerminalEmulator` when `FIXED` and a text field for the argv template when `CUSTOM`) and an "Agent" section (agent command, Headroom switch).
 
-## Componentes compartidos (`ui/components`)
+## Shared components (`ui/components`)
 
-Introducidos en el cambio `ui-consistency-pass` para unificar look & feel entre las tres pantallas:
+Introduced in the `ui-consistency-pass` change to unify look & feel across the three screens:
 
-- **`Spacing`**: escala de espaciado (`xs=4dp`, `sm=8dp`, `md=16dp`, `lg=24dp`) usada en vez de valores `dp` sueltos.
-- **`SegmentedSelector<T>`**: control segmentado (`SingleChoiceSegmentedButtonRow`/`SegmentedButton`) para un conjunto pequeño y fijo de opciones siempre visibles (p. ej. `TerminalSelectionMode`, `CreateMode`, `BranchType`).
-- **`DropdownSelector<T>`**: dropdown (`ExposedDropdownMenuBox`) para listas más largas o cargadas dinámicamente (p. ej. `TerminalEmulator`, ramas elegibles para crear un worktree).
-- **`SectionCard`**: `OutlinedCard` con título, usada para agrupar visualmente secciones de un formulario largo (todas las secciones de `ProjectConfigScreen`, y el bloque "Nuevo worktree" de `WorktreeScreen`).
+- **`Spacing`**: spacing scale (`xs=4dp`, `sm=8dp`, `md=16dp`, `lg=24dp`) used instead of ad hoc `dp` values.
+- **`SegmentedSelector<T>`**: segmented control (`SingleChoiceSegmentedButtonRow`/`SegmentedButton`) for a small, fixed set of options that should all be visible at once (e.g. `TerminalSelectionMode`, `CreateMode`, `BranchType`).
+- **`DropdownSelector<T>`**: dropdown (`ExposedDropdownMenuBox`) for longer or dynamically loaded lists (e.g. `TerminalEmulator`, branches eligible to create a worktree from).
+- **`SectionCard`**: titled `OutlinedCard`, used to visually group sections of a long form (every section of `ProjectConfigScreen`, and the "New worktree" block of `WorktreeScreen`).
 
 ## `AppContainer`
 
-Instancia `JsonProjectRepository`, `NioFileManager`, `ProcessBuilderShellCommandExecutor`, `ProcessTerminalLauncher`, `SystemTerminalEmulatorDetector` y los casos de uso de worktree una sola vez al arrancar la app, y los expone a `AppRoot` para construir cada ViewModel. No hay framework de DI.
+Instantiates `JsonProjectRepository`, `NioFileManager`, `ProcessBuilderShellCommandExecutor`, `ProcessTerminalLauncher`, `SystemTerminalEmulatorDetector`, and the worktree use cases once at app startup, and exposes them to `AppRoot` to build each ViewModel. There's no DI framework.
 
 ## `FilePicker`
 
-Envuelve `JFileChooser` para los botones "Examinar…" de la pantalla de configuración (ruta del repo base, carpeta de worktrees, archivos de secretos). Se eligió sobre un selector nativo de Compose porque Compose Desktop no trae uno y `JFileChooser` ya está disponible en el target JVM sin dependencias nuevas. `relativeToBase` convierte la ruta absoluta de un archivo de secretos elegido a la forma relativa al repo que espera `ProjectConfig.secretFiles`.
+Wraps `JFileChooser` for the "Browse…" buttons on the configuration screen (base repo path, worktrees folder, secret files). Chosen over a native Compose picker because Compose Desktop doesn't ship one and `JFileChooser` is already available on the JVM target with no new dependencies. `relativeToBase` converts the absolute path of a chosen secret file into the path relative to the repo that `ProjectConfig.secretFiles` expects.
+
+## Languages (`ui/i18n`)
+
+The UI is available in English (default) and Spanish. Every visible text lives in `interface Strings`, with one implementation per language (`EnglishStrings`, `SpanishStrings`); texts with parameters are functions (`deleteProjectMessage(projectName)`), so arguments are checked at compile time.
+
+- `AppRoot` loads the stored `AppLanguage` (`LanguagePreferenceRepository`) and provides the active table with `CompositionLocalProvider(LocalStrings provides language.strings())` above the screen `when`: switching language recomposes texts without recreating ViewModels or losing screen state.
+- Composables read texts with `val strings = LocalStrings.current`. Non-composable code (such as `FilePicker`) receives the already-translated text as a parameter.
+- `LanguageToggle`, next to `ThemeModeToggle` in the top bar, shows each language by its own name ("English", "Español").
+- ViewModels expose data, not messages: `WorktreeViewModel` exposes `error: Throwable?` and `success: WorktreeSuccess?` (worktree created, worktrees repaired after a move), and the screen formats them with `strings.worktreeError(error)` and the matching `Strings` text. `worktreeError` is exhaustive over the sealed `WorktreeError` hierarchy, so a new variant doesn't compile until it's translated. Git's error output is shown as-is, untranslated.
+
+**Adding a text**: declare the member in `Strings` and implement it in every language (the compiler flags any missing one). **Adding a language**: new `AppLanguage` value, new `object` implementing `Strings`, and its branch in `AppLanguage.strings()`.

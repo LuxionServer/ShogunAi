@@ -12,11 +12,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import app.luxion.shogunai.domain.model.ThemeMode
+import app.luxion.shogunai.ui.i18n.LocalStrings
+import app.luxion.shogunai.ui.i18n.Strings
 
-private fun ThemeMode.label(): String = when (this) {
-    ThemeMode.LIGHT -> "Claro"
-    ThemeMode.DARK -> "Oscuro"
-    ThemeMode.SYSTEM -> "Automático"
+private fun ThemeMode.label(strings: Strings): String = when (this) {
+    ThemeMode.LIGHT -> strings.themeLight
+    ThemeMode.DARK -> strings.themeDark
+    ThemeMode.SYSTEM -> strings.themeSystem
 }
 
 @Composable
@@ -25,16 +27,17 @@ fun ThemeModeToggle(
     onThemeModeChange: (ThemeMode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val strings = LocalStrings.current
     var expanded by remember { mutableStateOf(false) }
 
     Box(modifier = modifier) {
         TextButton(onClick = { expanded = true }) {
-            Text(themeMode.label())
+            Text(themeMode.label(strings))
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             ThemeMode.entries.forEach { mode ->
                 DropdownMenuItem(
-                    text = { Text(mode.label()) },
+                    text = { Text(mode.label(strings)) },
                     onClick = {
                         onThemeModeChange(mode)
                         expanded = false

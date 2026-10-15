@@ -5,10 +5,10 @@ import javax.swing.JFileChooser
 
 /** Wraps [JFileChooser] to pick folders or files from the system. */
 object FilePicker {
-    fun pickDirectory(initialPath: String): String? {
+    fun pickDirectory(initialPath: String, dialogTitle: String): String? {
         val chooser = JFileChooser(currentDirectoryOrNull(initialPath)).apply {
             fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
-            dialogTitle = "Select a folder"
+            this.dialogTitle = dialogTitle
         }
         return if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
             chooser.selectedFile.absolutePath
@@ -17,11 +17,11 @@ object FilePicker {
         }
     }
 
-    fun pickFiles(initialPath: String): List<String> {
+    fun pickFiles(initialPath: String, dialogTitle: String): List<String> {
         val chooser = JFileChooser(currentDirectoryOrNull(initialPath)).apply {
             fileSelectionMode = JFileChooser.FILES_ONLY
             isMultiSelectionEnabled = true
-            dialogTitle = "Select secret files"
+            this.dialogTitle = dialogTitle
         }
         return if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
             chooser.selectedFiles.map { it.absolutePath }

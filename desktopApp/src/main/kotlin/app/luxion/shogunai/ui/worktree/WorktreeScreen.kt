@@ -46,12 +46,15 @@ import app.luxion.shogunai.ui.components.SegmentedSelector
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.onEnterKey
 import app.luxion.shogunai.ui.components.onNewItemShortcut
+import app.luxion.shogunai.ui.i18n.LocalStrings
+import app.luxion.shogunai.ui.i18n.Strings
+import app.luxion.shogunai.ui.i18n.worktreeError
 import app.luxion.shogunai.ui.theme.ShogunTheme
 import kotlinx.coroutines.delay
 
-private fun CreateMode.label(): String = when (this) {
-    CreateMode.NEW_BRANCH -> "Rama nueva"
-    CreateMode.EXISTING_BRANCH -> "Rama existente"
+private fun CreateMode.label(strings: Strings): String = when (this) {
+    CreateMode.NEW_BRANCH -> strings.newBranchMode
+    CreateMode.EXISTING_BRANCH -> strings.existingBranchMode
 }
 
 @Composable
@@ -60,6 +63,7 @@ fun WorktreeScreen(
     viewModel: WorktreeViewModel,
     onBack: () -> Unit,
 ) {
+    val strings = LocalStrings.current
     LaunchedEffect(viewModel.createMode) {
         if (viewModel.createMode == CreateMode.EXISTING_BRANCH) {
             viewModel.loadLocalBranches()
@@ -111,12 +115,13 @@ fun WorktreeScreen(
                     onClick = { viewModel.refresh() },
                     enabled = !viewModel.isLoading,
                     modifier = Modifier.padding(end = Spacing.sm),
-                ) { Text("Recargar") }
-                OutlinedButton(onClick = onBack) { Text("Proyectos") }
+                ) { Text(strings.reload) }
+                OutlinedButton(onClick = onBack) { Text(strings.projectsTitle) }
             }
         }
 
-        viewModel.errorMessage?.let { message ->
+        viewModel.error?.let { error ->
+            val message = strings.worktreeError(error)
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -132,13 +137,17 @@ fun WorktreeScreen(
                     Text(message, color = MaterialTheme.colorScheme.error)
                 }
                 IconButton(onClick = { viewModel.dismissError() }) {
-                    Icon(Icons.Default.Close, contentDescription = "Cerrar error")
+                    Icon(Icons.Default.Close, contentDescription = strings.closeError)
                 }
             }
         }
 
-        viewModel.successMessage?.let { message ->
-            LaunchedEffect(message) {
+        viewModel.success?.let { success ->
+            val message = when (success) {
+                is WorktreeSuccess.Created -> strings.worktreeCreated(success.path)
+                WorktreeSuccess.RepairedAfterMove -> strings.worktreesRepairedAfterMove
+            }
+            LaunchedEffect(success) {
                 delay(4000)
                 viewModel.dismissSuccess()
             }
@@ -157,13 +166,13 @@ fun WorktreeScreen(
                     Text(message, color = ShogunTheme.extendedColors.success)
                 }
                 IconButton(onClick = { viewModel.dismissSuccess() }) {
-                    Icon(Icons.Default.Close, contentDescription = "Cerrar mensaje")
+                    Icon(Icons.Default.Close, contentDescription = strings.closeMessage)
                 }
             }
         }
 
         SectionCard(
-            title = "Nuevo worktree",
+            title = strings.newWorktreeSection,
             modifier = Modifier.padding(top = Spacing.md),
             collapsible = true,
             expanded = isCreateSectionExpanded,
@@ -173,7 +182,7 @@ fun WorktreeScreen(
                 options = CreateMode.entries,
                 selected = viewModel.createMode,
                 onSelect = { viewModel.createMode = it },
-                label = { it.label() },
+                label = { it.label(strings) },
                 enabled = !viewModel.isCreating,
             )
             when (viewModel.createMode) {
@@ -181,14 +190,14 @@ fun WorktreeScreen(
                     OutlinedTextField(
                         value = viewModel.taskId,
                         onValueChange = { viewModel.updateTaskId(it) },
-                        label = { Text("Id de tarea") },
-                        supportingText = { Text("Ej: TASK-123 (los espacios se convierten en guiones)") },
+                        label = { Text(strings.taskIdLabel) },
+                        supportingText = { Text(strings.taskIdHint) },
                         isError = viewModel.taskId.isNotBlank() && !viewModel.isTaskIdValid(viewModel.taskId),
                         modifier = Modifier.fillMaxWidth().onEnterKey(enabled = isTaskIdValid, action = createNewBranchWorktree),
                     )
                     if (viewModel.taskId.isNotBlank() && !viewModel.isTaskIdValid(viewModel.taskId)) {
                         Text(
-                            "Id de tarea inválido",
+                            strings.invalidTaskId,
                             color = MaterialTheme.colorScheme.error,
                             style = MaterialTheme.typography.bodySmall,
                         )
@@ -211,7 +220,7 @@ fun WorktreeScreen(
                             onClick = createWorktree,
                             enabled = isCreateEnabled && !viewModel.isCreating,
                         ) {
-                            Text("Crear worktree")
+                            Text(strings.createWorktree)
                         }
                     }
                 }
@@ -222,17 +231,17 @@ fun WorktreeScreen(
                                 modifier = Modifier.padding(end = Spacing.sm).size(20.dp),
                                 strokeWidth = 2.dp,
                             )
-                            Text("Cargando ramas...")
+                            Text(strings.loadingBranches)
                         }
-                        viewModel.localBranches.isEmpty() -> Text("No hay ramas disponibles para crear un worktree.")
+                        viewModel.localBranches.isEmpty() -> Text(strings.noBranchesAvailable)
                         else -> DropdownSelector(
                             options = viewModel.localBranches,
                             selected = viewModel.localBranches.find { it.name == viewModel.selectedBranch },
                             onSelect = { viewModel.selectedBranch = it.name },
                             enabled = { !it.isCheckedOut },
-                            label = { if (it.isCheckedOut) "${it.name} (ya tiene un worktree)" else it.name },
-                            placeholder = "Selecciona una rama",
-                            groupBy = { it.name.substringBefore('/', "otras") },
+                            label = { if (it.isCheckedOut) strings.branchAlreadyHasWorktree(it.name) else it.name },
+                            placeholder = strings.selectBranchPlaceholder,
+                            groupBy = { it.name.substringBefore('/', strings.otherBranchesGroup) },
                             expandedGroups = branchGroupExpansion,
                         )
                     }
@@ -247,14 +256,14 @@ fun WorktreeScreen(
                             onClick = createWorktree,
                             enabled = isCreateEnabled && !viewModel.isCreating,
                         ) {
-                            Text("Crear worktree")
+                            Text(strings.createWorktree)
                         }
                     }
                 }
             }
         }
 
-        Text("Worktrees", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = Spacing.lg))
+        Text(strings.worktreesTitle, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = Spacing.lg))
         viewModel.worktrees.forEach { worktree ->
             WorktreeRow(
                 worktree = worktree,
@@ -270,14 +279,14 @@ fun WorktreeScreen(
         val requiresForce = viewModel.pendingRemovalRequiresForce
         AlertDialog(
             onDismissRequest = { viewModel.dismissPendingRemoval() },
-            title = { Text(if (requiresForce) "¿Forzar eliminación?" else "¿Eliminar worktree?") },
+            title = { Text(if (requiresForce) strings.forceRemoveTitle else strings.removeWorktreeTitle) },
             text = {
                 Column {
                     Text(
                         if (requiresForce) {
-                            "\"${worktree.path}\" tiene cambios sin guardar. Se perderán si se elimina el worktree."
+                            strings.forceRemoveMessage(worktree.path)
                         } else {
-                            "¿Eliminar el worktree \"${worktree.path}\"?"
+                            strings.removeWorktreeMessage(worktree.path)
                         },
                     )
                     worktree.branch?.let { branch ->
@@ -289,7 +298,7 @@ fun WorktreeScreen(
                                 checked = viewModel.pendingRemovalDeleteBranch,
                                 onCheckedChange = { viewModel.setPendingRemovalDeleteBranch(it) },
                             )
-                            Text("Eliminar también la rama local ($branch)")
+                            Text(strings.alsoDeleteLocalBranch(branch))
                         }
                     }
                 }
@@ -306,7 +315,7 @@ fun WorktreeScreen(
                         onClick = { viewModel.confirmPendingRemoval() },
                         enabled = !viewModel.isRemoving,
                     ) {
-                        Text(if (requiresForce) "Forzar eliminación" else "Eliminar")
+                        Text(if (requiresForce) strings.forceRemove else strings.delete)
                     }
                 }
             },
@@ -315,7 +324,7 @@ fun WorktreeScreen(
                     onClick = { viewModel.dismissPendingRemoval() },
                     enabled = !viewModel.isRemoving,
                 ) {
-                    Text("Cancelar")
+                    Text(strings.cancel)
                 }
             },
         )
@@ -324,13 +333,14 @@ fun WorktreeScreen(
 
 @Composable
 private fun WorktreeRow(worktree: Worktree, isCopied: Boolean, onRemove: () -> Unit, onCopyLaunchCommand: () -> Unit) {
+    val strings = LocalStrings.current
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.sm),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Column {
             Text(worktree.path, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(worktree.branch ?: "(detached)", style = MaterialTheme.typography.bodySmall)
+            Text(worktree.branch ?: strings.detachedHead, style = MaterialTheme.typography.bodySmall)
         }
         Row {
             OutlinedButton(onClick = onCopyLaunchCommand, modifier = Modifier.padding(end = Spacing.sm)) {
@@ -339,11 +349,11 @@ private fun WorktreeRow(worktree: Worktree, isCopied: Boolean, onRemove: () -> U
                     contentDescription = null,
                     modifier = Modifier.size(18.dp).padding(end = Spacing.sm),
                 )
-                Text(if (isCopied) "Copiado" else "Copiar comando")
+                Text(if (isCopied) strings.copied else strings.copyCommand)
             }
             if (!worktree.isMain) {
                 OutlinedButton(onClick = onRemove) {
-                    Text("Eliminar")
+                    Text(strings.delete)
                 }
             }
         }
