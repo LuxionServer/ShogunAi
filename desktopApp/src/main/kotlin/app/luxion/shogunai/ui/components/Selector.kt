@@ -91,10 +91,8 @@ fun <T> DropdownSelector(
             modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
         )
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            var previousGroup: String? = null
-            options.forEach { option ->
-                val group = groupBy(option)
-                if (group != null && group != previousGroup) {
+            groupOptions(options, groupBy).forEach { (group, groupOptions) ->
+                if (group != null) {
                     val isExpanded = expandedGroups[group] ?: false
                     DropdownMenuItem(
                         text = { Text(group, style = MaterialTheme.typography.labelMedium) },
@@ -107,19 +105,28 @@ fun <T> DropdownSelector(
                         onClick = { expandedGroups[group] = !isExpanded },
                     )
                 }
-                previousGroup = group
 
                 if (group == null || expandedGroups[group] == true) {
-                    DropdownMenuItem(
-                        text = { Text(label(option)) },
-                        enabled = enabled(option),
-                        onClick = {
-                            onSelect(option)
-                            expanded = false
-                        },
-                    )
+                    groupOptions.forEach { option ->
+                        DropdownMenuItem(
+                            text = { Text(label(option)) },
+                            enabled = enabled(option),
+                            onClick = {
+                                onSelect(option)
+                                expanded = false
+                            },
+                        )
+                    }
                 }
             }
         }
     }
 }
+
+/**
+ * Buckets [options] by [groupBy], in order of each group's first appearance and keeping the
+ * options' relative order within a group. Options of the same group don't need to be contiguous:
+ * e.g. branches sorted by refname interleave grouped (`feature/...`) and ungrouped (`main`) ones.
+ */
+internal fun <T> groupOptions(options: List<T>, groupBy: (T) -> String?): List<Pair<String?, List<T>>> =
+    options.groupBy(groupBy).toList()
