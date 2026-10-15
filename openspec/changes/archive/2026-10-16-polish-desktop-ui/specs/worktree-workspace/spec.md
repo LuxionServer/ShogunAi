@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: List local branches eligible for a new worktree
-The system SHALL let the user see all local branches, using `ListLocalBranchesUseCase`, which returns every local branch paired with whether it is already checked out in a worktree (including the base repository itself). In the dropdown, branches SHALL be visually grouped by domain — the segment of the branch name before the first `/`, or "otras" for branches without a `/` — with a clickable header shown for each distinct domain, in order of first appearance. Clicking a header SHALL collapse or expand the branches under that domain. The group containing the currently selected branch SHALL start expanded; other groups start collapsed. Once the user expands or collapses a group, that state SHALL persist across subsequent openings of the dropdown within the same screen instance, instead of resetting to collapsed every time.
+The system SHALL let the user see all local branches, using `ListLocalBranchesUseCase`, which returns every local branch paired with whether it is already checked out in a worktree (including the base repository itself). In the dropdown, branches SHALL be visually grouped by domain — the segment of the branch name before the first `/`, or the localized "other" group ("otras" in Spanish) for branches without a `/` — with a clickable header shown for each distinct domain, in order of first appearance. Clicking a header SHALL collapse or expand the branches under that domain. The group containing the currently selected branch SHALL start expanded; other groups start collapsed. Once the user expands or collapses a group, that state SHALL persist across subsequent openings of the dropdown within the same screen instance, instead of resetting to collapsed every time.
 
 #### Scenario: Local branches loaded successfully
 - **WHEN** the user switches the create-worktree dialog to "Existing branch" mode
@@ -17,7 +17,7 @@ The system SHALL let the user see all local branches, using `ListLocalBranchesUs
 
 #### Scenario: Branches are grouped by domain in the dropdown
 - **WHEN** the "Existing branch" dropdown displays local branches such as `feature/TASK-1`, `feature/TASK-2`, `fix/TASK-3`, and `develop`
-- **THEN** the dropdown shows a "feature" header followed by `feature/TASK-1` and `feature/TASK-2`, then a "fix" header followed by `fix/TASK-3`, then an "otras" header followed by `develop`, instead of a single flat alphabetical list
+- **THEN** the dropdown shows a "feature" header followed by `feature/TASK-1` and `feature/TASK-2`, then a "fix" header followed by `fix/TASK-3`, then an "other" header followed by `develop`, instead of a single flat alphabetical list
 
 #### Scenario: The group containing the selected branch starts expanded
 - **WHEN** the "Existing branch" dropdown is opened and a branch is already selected
@@ -40,7 +40,7 @@ The system SHALL show the same visual loading indicator used elsewhere on the wo
 
 #### Scenario: Branches are loading
 - **WHEN** the user switches the create-worktree form to "Existing branch" mode and `ListLocalBranchesUseCase` has not yet returned
-- **THEN** the screen shows the same loading indicator style used for reloading the worktree list, instead of only a "Cargando ramas..." text
+- **THEN** the screen shows the same loading indicator style used for reloading the worktree list, instead of only a "Loading branches..." text
 
 ### Requirement: Dismiss an error message
 The system SHALL let the user manually dismiss an error message shown on the worktree management screen, in addition to it being replaced automatically by a subsequent successful action.
@@ -64,12 +64,12 @@ The system SHALL show a hint or example of the expected task id format next to t
 - **THEN** the field shows a hint with an example of a valid task id format
 
 ### Requirement: Collapse the "new worktree" form
-The system SHALL let the user collapse and expand the "Nuevo worktree" section of the worktree management screen, instead of it always occupying fixed vertical space.
+The system SHALL let the user collapse and expand the "New worktree" section of the worktree management screen, instead of it always occupying fixed vertical space.
 
 #### Scenario: Collapse the form
-- **WHEN** the user activates the collapse control on the "Nuevo worktree" section
+- **WHEN** the user activates the collapse control on the "New worktree" section
 - **THEN** the section's fields are hidden, leaving only its header visible
 
 #### Scenario: Expand the form
-- **WHEN** the user activates the expand control on a collapsed "Nuevo worktree" section
+- **WHEN** the user activates the expand control on a collapsed "New worktree" section
 - **THEN** the section's fields become visible again

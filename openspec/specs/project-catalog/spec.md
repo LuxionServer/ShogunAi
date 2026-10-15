@@ -2,7 +2,9 @@
 
 ## Purpose
 Keeps the list of configured projects across restarts and lets the user open, edit, delete and reload them.
+
 ## Requirements
+
 ### Requirement: Project persistence
 The system SHALL persist known projects (id, name, `ProjectConfig`) to a local JSON file so they are available across app restarts.
 
@@ -54,3 +56,17 @@ The system SHALL let the user manually trigger a fresh read of the persisted pro
 - **WHEN** the project list screen is the active screen and the application window transitions from unfocused to focused (e.g. the user switches back from another app)
 - **THEN** the app re-reads the project catalog via `ProjectRepository.list()` and updates the displayed list to match its result
 
+### Requirement: Search and sort the project list
+The system SHALL let the user filter the project list by name via a search field, and sort it (e.g. alphabetically), applied client-side over the already-loaded catalog.
+
+#### Scenario: Filter by name
+- **WHEN** the user types text into the project list's search field
+- **THEN** only projects whose name contains that text (case-insensitive) remain visible
+
+#### Scenario: Clear the search
+- **WHEN** the user clears the search field
+- **THEN** all persisted projects are shown again
+
+#### Scenario: Sort the list
+- **WHEN** the user selects a sort order (e.g. alphabetical)
+- **THEN** the displayed project list is reordered accordingly without changing the persisted catalog order

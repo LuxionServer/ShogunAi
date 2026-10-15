@@ -14,6 +14,6 @@ UI elements that convey status (errors, success feedback) or accent emphasis SHA
 ### Requirement: Disabled controls remain visually distinguishable
 Disabled buttons and inputs SHALL use a disabled-state color with sufficient contrast against both their enabled state and the surrounding surface, consistent across screens.
 
-#### Scenario: Disabled "Guardar"/"Crear worktree" button
-- **WHEN** a primary action button (e.g. "Guardar", "Crear worktree") is disabled because required input is missing
+#### Scenario: Disabled "Save"/"Create worktree" button
+- **WHEN** a primary action button (e.g. "Save", "Create worktree") is disabled because required input is missing
 - **THEN** the button is visually distinguishable as disabled while remaining legible against its background

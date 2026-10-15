@@ -132,6 +132,27 @@ class WorktreeViewModelTest {
     }
 
     @Test
+    fun `dismissError clears the error message`() = runTest(dispatcher) {
+        val branch = "hotfix/security-patch"
+        val viewModel = WorktreeViewModel(
+            useCases { command ->
+                when {
+                    command == listCommand -> success(command, porcelainOutput)
+                    command.getOrNull(1) == "branch" && command.getOrNull(2) == "--list" -> success(command, stdout = "")
+                    else -> success(command)
+                }
+            },
+        )
+        advanceUntilIdle()
+        viewModel.createFromBranch(branch)
+        advanceUntilIdle()
+
+        viewModel.dismissError()
+
+        assertNull(viewModel.error)
+    }
+
+    @Test
     fun `sets pending removal in force state when remove fails suggesting force`() = runTest(dispatcher) {
         val viewModel = WorktreeViewModel(
             useCases { command ->

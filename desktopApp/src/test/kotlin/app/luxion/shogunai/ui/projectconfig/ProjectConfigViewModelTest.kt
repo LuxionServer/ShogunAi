@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class ProjectConfigViewModelTest {
 
@@ -132,5 +133,29 @@ class ProjectConfigViewModelTest {
         viewModel.baseRepositoryPath = "/home/dev/moved/main-repo"
 
         assertEquals("/home/dev/custom", viewModel.worktreesRoot)
+    }
+
+    @Test
+    fun `adding a secret file that is already listed leaves the list unchanged`() {
+        val viewModel = viewModelFor(projectWith(listOf("local.properties")))
+
+        viewModel.addSecretFile("local.properties")
+
+        assertEquals(listOf("local.properties"), viewModel.secretFiles)
+    }
+
+    @Test
+    fun `an untouched form has no unsaved changes`() {
+        assertFalse(viewModelFor(projectWith()).hasUnsavedChanges)
+        assertFalse(viewModelFor(null).hasUnsavedChanges)
+    }
+
+    @Test
+    fun `editing a field marks the form as having unsaved changes`() {
+        val viewModel = viewModelFor(projectWith())
+
+        viewModel.name = "Renamed"
+
+        assertTrue(viewModel.hasUnsavedChanges)
     }
 }

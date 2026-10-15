@@ -94,7 +94,7 @@ fun WorktreeScreen(
     Column(
         modifier = Modifier.fillMaxSize().padding(Spacing.md)
             .verticalScroll(rememberScrollState())
-            .onNewItemShortcut(enabled = isCreateEnabled, action = createWorktree),
+            .onNewItemShortcut(enabled = isCreateEnabled && !viewModel.isCreating, action = createWorktree),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -125,7 +125,7 @@ fun WorktreeScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         Icons.Default.Error,
                         contentDescription = null,
@@ -154,7 +154,7 @@ fun WorktreeScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         Icons.Default.CheckCircle,
                         contentDescription = null,
@@ -336,7 +336,7 @@ private fun WorktreeRow(worktree: Worktree, isCopied: Boolean, onRemove: () -> U
         modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.sm),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Column {
+        Column(modifier = Modifier.weight(1f).padding(end = Spacing.sm)) {
             Text(worktree.path, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(worktree.branch ?: strings.detachedHead, style = MaterialTheme.typography.bodySmall)
         }

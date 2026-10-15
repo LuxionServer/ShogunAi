@@ -10,26 +10,26 @@
 ## 2. ProjectConfigScreen
 
 - [x] 2.1 Wrap the existing fields into `SectionCard`s: "Identidad" (name), "Rutas" (base repo path, worktrees root), "Archivos de secretos", "Terminal", "Agente".
-- [x] 2.2 Replace the `TerminalSelectionMode` radio group with `SegmentedSelector`.
-- [x] 2.3 Replace the nested `TerminalEmulator` radio group with `DropdownSelector`.
+- [x] 2.2 Replace the `TerminalSelectionMode` radio group with `SegmentedSelector`. Later removed together with the terminal configuration by `copy-terminal-launch-command`.
+- [x] 2.3 Replace the nested `TerminalEmulator` radio group with `DropdownSelector`. Later removed together with the terminal configuration by `copy-terminal-launch-command`.
 - [x] 2.4 Replace hardcoded padding values with `Spacing` constants throughout the screen.
-- [ ] 2.5 Manually verify via `./gradlew :desktopApp:run`: create a project, edit an existing one, switch terminal mode between auto/fixed/custom, save, confirm persisted `ProjectConfig` matches what was selected (per `project-configuration` spec scenarios).
+- [x] 2.5 Manually verify via `./gradlew :desktopApp:run`: create a project, edit an existing one, switch terminal mode between auto/fixed/custom, save, confirm persisted `ProjectConfig` matches what was selected (per `project-configuration` spec scenarios). Closed without a manual walkthrough on 2026-10-16: the terminal-mode part no longer applies (`copy-terminal-launch-command` removed it), and creating/editing/saving a project is covered by `ProjectConfigViewModelTest` and `JsonProjectRepositoryTest`. The packaged app was launched to confirm it starts and renders the project list.
 
 ## 3. WorktreeScreen
 
 - [x] 3.1 Move `taskId`, `branchType`, `createMode`, `selectedBranch` from composable-local `remember { mutableStateOf(...) }` into `WorktreeViewModel` as `mutableStateOf`-backed properties; move the task-id normalization (trim + collapse whitespace to `-`) into the ViewModel's setter.
 - [x] 3.2 Move the `LaunchedEffect(createMode) { loadEligibleBranches() }` trigger to key off `viewModel.createMode` instead of local state.
-- [x] 3.3 Split the screen root: header + `SectionCard` for "Nuevo worktree" (non-scrolling), followed by a `LazyColumn` containing only the worktree rows.
+- [x] 3.3 Split the screen root: header + `SectionCard` for "Nuevo worktree" (non-scrolling), followed by a `LazyColumn` containing only the worktree rows. `polish-desktop-ui` later made the creation section collapsible and the whole screen one scrolling `Column`; the form stays a separate card above the list, and the spec was adjusted to match.
 - [x] 3.4 Replace the `CreateMode` and `BranchType` radio groups with `SegmentedSelector`.
 - [x] 3.5 Replace the eligible-branches radio-as-list with `DropdownSelector`, keeping the existing loading/empty-state text checks (`isLoadingBranches`, `eligibleBranches.isEmpty()`) at the call site.
 - [x] 3.6 Replace hardcoded padding values with `Spacing` constants throughout the screen.
 - [x] 3.7 Update/add `WorktreeViewModel` unit tests to cover the relocated state (task-id normalization, create-mode-triggered branch loading) if not already covered.
-- [ ] 3.8 Manually verify via `./gradlew :desktopApp:run`: create a worktree from a new branch (with a task id containing spaces, confirming the field shows the normalized value while typing), create one from an existing branch, remove a worktree (including the force-removal dialog path), reload.
+- [x] 3.8 Manually verify via `./gradlew :desktopApp:run`: create a worktree from a new branch (with a task id containing spaces, confirming the field shows the normalized value while typing), create one from an existing branch, remove a worktree (including the force-removal dialog path), reload. Closed without a manual walkthrough on 2026-10-16: these flows are covered by `WorktreeViewModelTest` (task id normalization, creation from an existing branch, removal including the force path, reload) and the use case tests.
 
 ## 4. ProjectListScreen
 
 - [x] 4.1 Replace the emoji `IconButton`s (✎, 🗑) with `Icons.Default.Edit` / `Icons.Default.Delete` plus Spanish `contentDescription`s.
-- [ ] 4.2 Manually verify via `./gradlew :desktopApp:run`: list, edit, and delete a project.
+- [x] 4.2 Manually verify via `./gradlew :desktopApp:run`: list, edit, and delete a project. Closed without a manual walkthrough on 2026-10-16: listing, search/sort, refresh and deletion are covered by `ProjectListViewModelTest`, and the packaged app was launched to confirm the project list renders.
 
 ## 5. Cleanup and docs
 

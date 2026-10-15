@@ -12,8 +12,8 @@ The system SHALL let the user create a new project by entering a name, base repo
 - **THEN** the app shows a validation error and does not save the project
 
 #### Scenario: Required field shows inline feedback
-- **WHEN** the "Nombre" or "Ruta del repositorio base" field is blank
-- **THEN** the app marks that field with an error state and a supporting message explaining it is required, in addition to disabling "Guardar"
+- **WHEN** the "Name" or "Base repository path" field is blank
+- **THEN** the app marks that field with an error state and a supporting message explaining it is required, in addition to disabling "Save"
 
 ### Requirement: Add or remove secret files
 The system SHALL let the user add or remove entries in the project's `secretFiles` list within the configuration form. The system SHALL NOT add a file name that is already present in the list.
@@ -36,9 +36,9 @@ The system SHALL let the user add or remove entries in the project's `secretFile
 The system SHALL ask for confirmation before discarding unsaved edits when the user cancels out of the project configuration form, if any field differs from its initial value.
 
 #### Scenario: Cancel with unsaved changes
-- **WHEN** the user has changed at least one field and activates "Cancelar"
+- **WHEN** the user has changed at least one field and activates "Cancel"
 - **THEN** the app shows a confirmation dialog before discarding the changes and returning to the previous screen
 
 #### Scenario: Cancel without changes
-- **WHEN** the user activates "Cancelar" without having changed any field
+- **WHEN** the user activates "Cancel" without having changed any field
 - **THEN** the app returns to the previous screen immediately without showing a confirmation dialog

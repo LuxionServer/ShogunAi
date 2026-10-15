@@ -5,12 +5,12 @@ The system SHALL let the user trigger frequent actions via keyboard shortcuts in
 
 #### Scenario: New project shortcut
 - **WHEN** the project list screen is active and the user presses the "new project" shortcut (Cmd/Ctrl+N)
-- **THEN** the app navigates to the project configuration screen with an empty form, same as clicking "Nuevo proyecto"
+- **THEN** the app navigates to the project configuration screen with an empty form, same as clicking "New project"
 
 #### Scenario: New worktree shortcut
 - **WHEN** the worktree management screen is active, the create-worktree form has valid input, and the user presses the "new worktree" shortcut (Cmd/Ctrl+N)
-- **THEN** the app creates a worktree using the current create-worktree form state, same as clicking "Crear worktree"
+- **THEN** the app creates a worktree using the current create-worktree form state, same as clicking "Create worktree"
 
 #### Scenario: Shortcut ignored with invalid input
 - **WHEN** the worktree management screen is active, the create-worktree form does not have valid input (e.g. blank or invalid task id), and the user presses the "new worktree" shortcut
-- **THEN** no worktree creation is attempted, consistent with the "Crear worktree" button being disabled
+- **THEN** no worktree creation is attempted, consistent with the "Create worktree" button being disabled
