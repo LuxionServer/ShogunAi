@@ -18,6 +18,7 @@ Under active development and published as a desktop app (see the README for inst
 | Understand how the code is organized | [Architecture › Overview](architecture/overview.md) |
 | See the domain models and use cases | [Architecture › Domain layer](architecture/domain.md) |
 | See how the ports (Git, files) are implemented | [Architecture › Infrastructure layer](architecture/infrastructure.md) |
+| Know which branch to start from and where to open a PR | [Development process › Branches](process/branching.md) |
 | Understand how changes are planned | [Development process › OpenSpec](process/openspec.md) |
 | Know why a decision was made | [Design decisions](decisions/index.md) |
 | See what's planned next | [Roadmap](roadmap.md) |
