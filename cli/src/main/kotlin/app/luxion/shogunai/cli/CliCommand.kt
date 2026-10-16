@@ -16,6 +16,8 @@ sealed interface CliCommand {
     data class Provision(val path: String? = null) : CliCommand
     data object Status : CliCommand
     data class Clean(val confirmed: Boolean = false, val deleteBranches: Boolean = false) : CliCommand
+    data object HookWorktreeCreate : CliCommand
+    data object HookWorktreeRemove : CliCommand
 }
 
 sealed interface ParsedArguments {
@@ -35,6 +37,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "provision" -> parseProvision(rest)
                 "status" -> noArguments(name, rest, CliCommand.Status)
                 "clean" -> parseClean(rest)
+                "hook" -> parseHook(rest)
                 else -> throw UsageException("unknown command '$name'")
             },
         )
@@ -96,6 +99,16 @@ private fun parseClean(rest: List<String>): CliCommand.Clean {
         }
     }
     return CliCommand.Clean(confirmed = confirmed, deleteBranches = deleteBranches)
+}
+
+private fun parseHook(rest: List<String>): CliCommand {
+    val event = rest.firstOrNull() ?: throw UsageException("'hook' needs an event: worktree-create or worktree-remove")
+    val command = when (event) {
+        "worktree-create" -> CliCommand.HookWorktreeCreate
+        "worktree-remove" -> CliCommand.HookWorktreeRemove
+        else -> throw UsageException("unknown hook '$event', expected worktree-create or worktree-remove")
+    }
+    return noArguments("hook $event", rest.drop(1), command)
 }
 
 private fun ArrayDeque<String>.valueOf(option: String): String {

@@ -7,6 +7,7 @@ version = (findProperty("appVersion") as String?) ?: "0.0.0"
 
 dependencies {
     implementation(project(":core"))
+    implementation(libs.kotlinx.serializationJson)
 
     testImplementation(testFixtures(project(":core")))
     testImplementation(libs.kotlin.testJunit)

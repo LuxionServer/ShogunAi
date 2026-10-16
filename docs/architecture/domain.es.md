@@ -220,6 +220,10 @@ Copia al portapapeles `cd "<ruta del worktree>" && <comando del agente>`, con el
 
 Encuentra el repositorio base (worktree principal) que contiene un directorio, para los frontales que parten de un directorio en vez de un proyecto, como el CLI. Ejecuta ahí `git rev-parse --path-format=absolute --git-common-dir`: la carpeta `.git` común la comparten todos los worktrees, así que su padre es el worktree principal tanto si el directorio es el worktree principal, una subcarpeta o un worktree enlazado. Cualquier otra cosa (no es un repositorio, es un repositorio bare) es `RepositoryNotFound`.
 
+### `DeleteMergedBranchUseCase`
+
+Borra una rama local con `git branch -d`, que Git rechaza cuando la rama no está mergeada, y devuelve si se borró en vez de fallar. Lo usa el hook `WorktreeRemove` del CLI, donde conservar la rama es lo esperado y no un error.
+
 ### `ProvisionWorktreeUseCase`
 
 Aplica los mismos archivos que la creación (archivos locales y provisionado del repositorio, ver `CreateWorktreeUseCase`) a un worktree enlazado **ya existente**, p. ej. uno creado por otra herramienta. La ruta tiene que ser uno de los worktrees del repositorio (según `ListWorktreesUseCase`) y no el principal (`NotAWorktree`). Los archivos se copian encima de los que haya, y devuelve las rutas relativas copiadas. A diferencia de la creación, una copia fallida (`SecretCopyFailed`) no elimina nada: el worktree no es de ShogunAi como para borrarlo. Creación y provisionado comparten la misma función de copia.

@@ -11,9 +11,11 @@ The `shogun` command runs ShogunAi's worktree operations from a terminal, a scri
 | `shogun provision [<path>]` | Copies the local files and the repository's provisioning into an existing worktree, e.g. one created by another tool (`ProvisionWorktreeUseCase`). Defaults to the current directory. | One copied relative path per line. |
 | `shogun status` | Lists every worktree of the repository with its state. | One line per worktree: path, branch, then details (`main`, `origin=shogunai\|claude-code\|other`, `locked`, `changes=N`, `ahead=N behind=N` against the upstream, `merged`, `folder-missing`). |
 | `shogun clean [--yes] [--delete-branches]` | Selects the same worktrees as the app's "Clean up" (`selectCleanupCandidates`) and only lists them; with `--yes` removes them (`CleanUpWorktreesUseCase`), and with `--delete-branches` also deletes their merged branches. | `would remove …`, or `removed …` / `kept branch …`, failures on standard error. |
+| `shogun hook worktree-create` | Claude Code's `WorktreeCreate` hook: reads the hook's JSON from standard input (`name`, `cwd`), creates a provisioned worktree for `name` on `feature/<name>` in the repository of `cwd` (the project's worktrees folder, or `<repo>/.claude/worktrees` without a project), or reuses it if it already exists. | The worktree path, the only line on standard output, as the hook requires. |
+| `shogun hook worktree-remove` | Claude Code's `WorktreeRemove` hook: reads `worktree_path` from standard input, removes that linked worktree with `git worktree remove --force` (what Claude Code would do without the hook) and deletes its branch only if merged (`DeleteMergedBranchUseCase`). | Nothing; a kept branch is noted on standard error. |
 | `shogun help`, `shogun --version` | Usage and version (`BuildInfo.VERSION`, the same as the app's). | |
 
-Exit codes: `0` success, `1` the operation failed (error on standard error, from the `WorktreeError` message), `2` wrong usage. Output is plain English text; only `new`'s single line is meant to be consumed by scripts for now.
+Exit codes: `0` success, `1` the operation failed (error on standard error, from the `WorktreeError` message), `2` wrong usage (including hook input that isn't the expected JSON). The hook commands receive standard input through `ShogunCli`'s `readInput`, so tests pass the JSON directly. How to configure them, and recipes for other agents, are in [Using with agents](../agents.md). Output is plain English text; only `new`'s single line is meant to be consumed by scripts for now.
 
 ## Repository and project
 

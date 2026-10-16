@@ -10,13 +10,13 @@ That direction is built in three layers:
 
 | Layer | Role | What it brings |
 |---|---|---|
-| **Engine and CLI** | The foundation | Worktree provisioning defined in the repository (`.shogunai.json`) and a `shogun` command that the desktop app, agents and their hooks all use. |
+| **Engine and CLI** | The foundation | Worktree provisioning defined in the repository (`.shogunai.json`) and a `shogun` command that the desktop app, agents and their hooks all use. **Available**; richer provisioning is planned. |
 | **Control tower** | The view | The desktop app shows the state of every worktree, including the ones created by other tools, keeps them clean and follows changes as they happen. **Available.** |
 | **Android, KMP and JVM** | The content | Provisioning for the stacks where a worktree is hardest to prepare: Gradle, local secrets, emulators and IDEs. |
 
 ```mermaid
 graph LR
-    A["Repository configuration"] --> B["Agent hooks"]
+    A["Repository configuration"] --> B["Command-line output for scripts"]
     A --> D["Android, KMP and JVM provisioning"]
 ```
 
@@ -30,10 +30,9 @@ Richer provisioning in the repository's `.shogunai.json`:
 - Symlinking a secret instead of copying it, so a rotated secret updates every worktree.
 - Detection of secrets in a worktree that differ from the base repository's.
 
-### Agent hooks
+### Command-line output for scripts
 
-- `shogun` as Claude Code's `WorktreeCreate` hook, so `claude --worktree` leaves the worktree ready according to `.shogunai.json`. Equivalent recipes for other agents.
-- A machine-readable output (`--json`) for the commands that scripts need.
+- A machine-readable output (`--json`) for the `shogun` commands that scripts need, starting with `status`.
 
 ### Android, KMP and JVM provisioning
 

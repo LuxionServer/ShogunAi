@@ -10,13 +10,13 @@ Esa dirección se construye en tres capas:
 
 | Capa | Papel | Qué aporta |
 |---|---|---|
-| **Motor y CLI** | La base | Provisionado de worktrees definido en el repositorio (`.shogunai.json`) y un comando `shogun` que usan la app de escritorio, los agentes y sus hooks. |
+| **Motor y CLI** | La base | Provisionado de worktrees definido en el repositorio (`.shogunai.json`) y un comando `shogun` que usan la app de escritorio, los agentes y sus hooks. **Disponible**; el provisionado más completo está planificado. |
 | **Torre de control** | La vista | La app de escritorio muestra el estado de todos los worktrees, incluidos los creados por otras herramientas, los mantiene limpios y sigue los cambios según ocurren. **Disponible.** |
 | **Android, KMP y JVM** | El contenido | Provisionado para los stacks en los que más cuesta preparar un worktree: Gradle, secretos locales, emuladores e IDEs. |
 
 ```mermaid
 graph LR
-    A["Configuración del repositorio"] --> B["Hooks de agentes"]
+    A["Configuración del repositorio"] --> B["Salida del CLI para scripts"]
     A --> D["Provisionado Android, KMP y JVM"]
 ```
 
@@ -30,10 +30,9 @@ Provisionado más completo en el `.shogunai.json` del repositorio:
 - Enlazar un secreto con un symlink en vez de copiarlo, para que al rotarlo se actualice en todos los worktrees.
 - Detectar secretos de un worktree que difieren de los del repositorio base.
 
-### Hooks de agentes
+### Salida del CLI para scripts
 
-- `shogun` como hook `WorktreeCreate` de Claude Code, para que `claude --worktree` deje el worktree listo según `.shogunai.json`. Recetas equivalentes para otros agentes.
-- Una salida legible por máquinas (`--json`) para los comandos que necesiten los scripts.
+- Una salida legible por máquinas (`--json`) para los comandos de `shogun` que necesiten los scripts, empezando por `status`.
 
 ### Provisionado Android, KMP y JVM
 
