@@ -63,6 +63,7 @@ plugins:
             Infrastructure layer: Capa de infraestructura
             UI layer: Capa de UI
             Development process: Proceso de desarrollo
+            Branches: Ramas
             Design decisions: Decisiones de diseño
             Roadmap: Roadmap
 
@@ -75,6 +76,7 @@ nav:
       - Infrastructure layer: architecture/infrastructure.md
       - UI layer: architecture/ui.md
   - Development process:
+      - Branches: process/branching.md
       - OpenSpec: process/openspec.md
       - Release: process/release.md
   - Design decisions: decisions/index.md

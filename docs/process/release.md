@@ -14,7 +14,7 @@ graph LR
 ```
 
 1. **Create the branch** `release/X.X.X` (where `X.X.X` is the version to publish) from `main`.
-2. **Validate** — every push to `release/**` triggers the `Tests` workflow (`.github/workflows/tests.yml`), which runs `./gradlew test`. Used to iterate and fix issues before opening the PR. The same workflow also runs on every pull request targeting `develop` and every push to `develop`, so regressions are caught before they reach a release branch.
+2. **Validate** — every push to `release/**` triggers the `Tests` workflow (`.github/workflows/tests.yml`), which runs `./gradlew test`. Used to iterate and fix issues before opening the PR. The same workflow also runs on every pull request targeting `develop` or an `epic/**` branch and every push to them, so regressions are caught before they reach a release branch.
 3. **Open the PR** from `release/X.X.X` to `main` and review it like any other.
 4. **Merge** — when a PR whose source branch matches `release/*` is merged, the `Release` workflow (`.github/workflows/release.yml`):
       1. creates and pushes the `vX.X.X` tag on the merge commit (the version comes from the branch name, no need to write it twice),

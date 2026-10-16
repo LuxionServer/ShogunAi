@@ -5,9 +5,11 @@ on:
     branches:
       - develop
       - "release/**"
+      - "epic/**"
   pull_request:
     branches:
       - develop
+      - "epic/**"
 
 permissions:
   contents: read
