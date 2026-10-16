@@ -8,12 +8,15 @@ import androidx.lifecycle.viewModelScope
 import app.luxion.shogunai.WorktreeUseCases
 import app.luxion.shogunai.domain.model.BranchOption
 import app.luxion.shogunai.domain.model.BranchType
+import app.luxion.shogunai.domain.model.DaemonStopReport
+import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeStatus
 import app.luxion.shogunai.domain.usecase.CleanupReport
+import app.luxion.shogunai.domain.usecase.idleDaemonsOfRemovedWorktrees
 import app.luxion.shogunai.domain.usecase.isValidGitRefSegment
 import app.luxion.shogunai.domain.usecase.selectCleanupCandidates
 import app.luxion.shogunai.domain.usecase.normalizeTaskId
@@ -68,6 +71,18 @@ class WorktreeViewModel(
     var isCleaningUp by mutableStateOf(false)
         private set
     var cleanupIssues by mutableStateOf<CleanupReport?>(null)
+        private set
+    var cleanupStopGradleDaemons by mutableStateOf(true)
+
+    var isGradleRepository by mutableStateOf(false)
+        private set
+    var gradleDaemons by mutableStateOf<GradleDaemonsState>(GradleDaemonsState.Loading)
+        private set
+    var isGradleBuildCacheEnabled by mutableStateOf(true)
+        private set
+    var isStoppingDaemons by mutableStateOf(false)
+        private set
+    var daemonStopReport by mutableStateOf<DaemonStopReport?>(null)
         private set
 
     var localBranches by mutableStateOf<List<BranchOption>>(emptyList())
@@ -138,6 +153,7 @@ class WorktreeViewModel(
         } else {
             val detected = useCases.detectAgents(worktrees).getOrNull()
             agents = detected
+            if (isGradleRepository && !isStoppingDaemons) loadGradleDaemons(listGeneration, worktrees)
         }
     }
 
@@ -178,6 +194,7 @@ class WorktreeViewModel(
             val detected = useCases.detectAgents(listed).getOrNull()
             if (generation == listGeneration) agents = detected
         }
+        loadGradleSection(generation, listed)
         viewModelScope.launch {
             for (worktree in listed) {
                 val size = useCases.measureSize(worktree, listed).getOrNull()
@@ -185,6 +202,42 @@ class WorktreeViewModel(
                 if (size != null) sizes = sizes + (worktree.path to size)
             }
         }
+    }
+
+    private fun loadGradleSection(generation: Int, listed: List<Worktree>) {
+        isGradleRepository = useCases.gradle.declaresProvider()
+        if (!isGradleRepository) return
+        isGradleBuildCacheEnabled = useCases.gradle.isBuildCacheEnabled()
+        viewModelScope.launch { loadGradleDaemons(generation, listed) }
+    }
+
+    private suspend fun loadGradleDaemons(generation: Int, listed: List<Worktree>) {
+        val state = useCases.gradle.listDaemons(listed)
+            .fold(onSuccess = { GradleDaemonsState.Loaded(it) }, onFailure = { GradleDaemonsState.Unavailable })
+        if (generation == listGeneration) gradleDaemons = state
+    }
+
+    fun stopGradleDaemon(pid: Long) = stopGradleDaemons(listOf(pid))
+
+    fun stopIdleGradleDaemons() = stopGradleDaemons(null)
+
+    private fun stopGradleDaemons(pids: List<Long>?) {
+        if (isStoppingDaemons) return
+        viewModelScope.launch {
+            isStoppingDaemons = true
+            try {
+                useCases.gradle.stopDaemons(pids)
+                    .onSuccess { daemonStopReport = it }
+                    .onFailure { error = it }
+                loadGradleDaemons(listGeneration, worktrees)
+            } finally {
+                isStoppingDaemons = false
+            }
+        }
+    }
+
+    fun dismissDaemonStopReport() {
+        daemonStopReport = null
     }
 
     private fun loadStatusOf(worktree: Worktree) {
@@ -309,6 +362,7 @@ class WorktreeViewModel(
     fun openCleanup() {
         if (cleanupCandidates.isEmpty()) return
         cleanupDeleteBranches = false
+        cleanupStopGradleDaemons = true
         isCleanupDialogOpen = true
     }
 
@@ -318,13 +372,21 @@ class WorktreeViewModel(
 
     fun confirmCleanup() {
         val candidates = cleanupCandidates
+        val listed = worktrees
+        val stopDaemons = isGradleRepository && cleanupStopGradleDaemons
         viewModelScope.launch {
             isCleaningUp = true
             try {
+                val daemonsBefore = if (stopDaemons) useCases.gradle.listDaemons(listed).getOrNull().orEmpty() else emptyList()
                 useCases.cleanUp(candidates, mainBranch, cleanupDeleteBranches)
                     .onSuccess { report ->
                         error = null
-                        success = WorktreeSuccess.CleanedUp(report.removed.size)
+                        val daemonReport = stopDaemonsOfRemovedWorktrees(daemonsBefore, listed, report.removed)
+                        success = WorktreeSuccess.CleanedUp(
+                            removedCount = report.removed.size,
+                            stoppedDaemons = daemonReport?.stopped?.size ?: 0,
+                            keptDaemons = daemonReport?.kept?.size ?: 0,
+                        )
                         cleanupIssues = report.takeIf { it.failures.isNotEmpty() || it.keptBranches.isNotEmpty() }
                     }
                     .onFailure { error = it }
@@ -334,6 +396,16 @@ class WorktreeViewModel(
             }
             refresh()
         }
+    }
+
+    private suspend fun stopDaemonsOfRemovedWorktrees(
+        daemons: List<GradleDaemon>,
+        listed: List<Worktree>,
+        removed: List<String>,
+    ): DaemonStopReport? {
+        val pids = idleDaemonsOfRemovedWorktrees(daemons, listed, removed)
+        if (pids.isEmpty()) return null
+        return useCases.gradle.stopDaemons(pids).getOrNull()
     }
 
     fun dismissCleanupIssues() {
@@ -376,5 +448,15 @@ sealed interface WorktreeStatusState {
 sealed interface WorktreeSuccess {
     data class Created(val path: String) : WorktreeSuccess
     data object RepairedAfterMove : WorktreeSuccess
-    data class CleanedUp(val removedCount: Int) : WorktreeSuccess
+    data class CleanedUp(
+        val removedCount: Int,
+        val stoppedDaemons: Int = 0,
+        val keptDaemons: Int = 0,
+    ) : WorktreeSuccess
+}
+
+sealed interface GradleDaemonsState {
+    data object Loading : GradleDaemonsState
+    data class Loaded(val daemons: List<GradleDaemon>) : GradleDaemonsState
+    data object Unavailable : GradleDaemonsState
 }

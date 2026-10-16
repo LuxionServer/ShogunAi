@@ -89,6 +89,26 @@ Haz que `claude --worktree` cree sus worktrees a través de ShogunAi añadiendo 
 
 Las recetas para Cursor, Codex y cualquier otra herramienta están en [Uso con agentes](./docs/agents.es.md).
 
+## Repositorios Gradle
+
+Declara un repositorio Gradle (Android, KMP o JVM) en su `.shogunai.json`:
+
+```json
+{ "copy": ["/local.properties"], "providers": { "gradle": {} } }
+```
+
+Cada build en un worktree arranca un daemon de Gradle (y normalmente un daemon de compilación de Kotlin) cuando no hay uno ocioso que reutilizar, y cada daemon conserva su memoria durante horas después de la build. En un repositorio Gradle, la pantalla de worktrees muestra una sección "Daemons de Gradle" con todos los daemons de la máquina: su memoria, si están ocupados u ociosos y el worktree de su última build. Desde ahí puedes parar los ociosos, y "Limpiar" ofrece parar los daemons ociosos de los worktrees que elimina. Un daemon ocupado nunca se para.
+
+Si el repositorio no activa la caché de build de Gradle (`org.gradle.caching=true` en `gradle.properties`), ShogunAi te lo dice: con ella activada, la primera build de un worktree nuevo reutiliza lo que otros worktrees ya compilaron.
+
+```bash
+shogun gradle                      # lista los daemons, su memoria, estado y worktree
+shogun gradle stop                 # para todos los daemons ociosos (o solo los ids de proceso indicados)
+shogun clean --yes --stop-gradle-daemons  # para también los daemons ociosos de los worktrees eliminados
+```
+
+Inspeccionar los daemons necesita `ps` (macOS y Linux).
+
 ## Desarrollo
 
 ¿Quieres compilar el proyecto desde el código fuente o contribuir? Empieza por [`docs/getting-started.es.md`](./docs/getting-started.es.md).

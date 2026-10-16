@@ -1,8 +1,11 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.GradleUseCases
 import app.luxion.shogunai.WorktreeUseCases
 import app.luxion.shogunai.domain.FakeClipboardWriter
 import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.FakeGradleDaemonSource
+import app.luxion.shogunai.domain.FakeGradleDaemonSource.Companion.gradleDaemon
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
@@ -10,6 +13,8 @@ import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.BranchOption
+import app.luxion.shogunai.domain.model.DaemonOwner
+import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
@@ -22,12 +27,14 @@ import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.DetectRunningAgentsUseCase
 import app.luxion.shogunai.domain.usecase.MeasureWorktreeSizeUseCase
 import app.luxion.shogunai.domain.usecase.ReadGitMetadataFingerprintUseCase
+import app.luxion.shogunai.domain.usecase.ListGradleDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.ListLocalBranchesUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.RepairWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
+import app.luxion.shogunai.domain.usecase.StopGradleDaemonsUseCase
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -39,6 +46,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import java.time.Instant
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -110,7 +118,38 @@ class WorktreeViewModelTest {
             detectAgents = DetectRunningAgentsUseCase(config, executor),
             measureSize = MeasureWorktreeSizeUseCase(fileManager, dispatcher),
             readFingerprint = ReadGitMetadataFingerprintUseCase(config, fileManager, dispatcher),
+            gradle = gradleUseCases(executor),
         )
+    }
+
+    private fun gradleUseCases(
+        executor: ShellCommandExecutor,
+        source: FakeGradleDaemonSource = FakeGradleDaemonSource(),
+        declaresProvider: Boolean = false,
+        buildCacheEnabled: Boolean = true,
+    ) = GradleUseCases(
+        declaresProvider = { declaresProvider },
+        listDaemons = ListGradleDaemonsUseCase(source, FakeFileManager(existing = listOf(config.baseRepositoryPath, worktreePath))),
+        stopDaemons = StopGradleDaemonsUseCase(source, executor),
+        isBuildCacheEnabled = { buildCacheEnabled },
+    )
+
+    private fun gradleRepository(
+        responder: (List<String>) -> CommandResult,
+        source: FakeGradleDaemonSource,
+        buildCacheEnabled: Boolean = true,
+    ): WorktreeUseCases {
+        val executor = FakeShellCommandExecutor(responder)
+        return useCasesWith(executor).copy(
+            gradle = gradleUseCases(executor, source, declaresProvider = true, buildCacheEnabled = buildCacheEnabled),
+        )
+    }
+
+    private val idle = DaemonState.Idle(Instant.parse("2026-10-16T10:50:00Z"))
+
+    private fun listingResponder(executed: MutableList<List<String>> = mutableListOf()): (List<String>) -> CommandResult = { command ->
+        executed += command
+        if (command == listCommand) success(command, porcelainOutput) else success(command)
     }
 
     @Test
@@ -1012,5 +1051,121 @@ class WorktreeViewModelTest {
         advanceUntilIdle()
 
         assertEquals(MainBranch("main", "origin/main"), viewModel.mainBranch)
+    }
+
+    @Test
+    fun `repositories without the gradle provider don't list daemons`() = runTest(dispatcher) {
+        val source = FakeGradleDaemonSource(listOf(gradleDaemon(10, idle)))
+        val executor = FakeShellCommandExecutor(listingResponder())
+        val viewModel = WorktreeViewModel(useCasesWith(executor).copy(gradle = gradleUseCases(executor, source)))
+        advanceUntilIdle()
+
+        assertFalse(viewModel.isGradleRepository)
+        assertEquals(0, source.listings)
+    }
+
+    @Test
+    fun `gradle repositories list daemons with their worktree and the build cache state`() = runTest(dispatcher) {
+        val source = FakeGradleDaemonSource(listOf(gradleDaemon(10, idle, lastBuildDirectory = worktreePath)))
+        val viewModel = WorktreeViewModel(gradleRepository(listingResponder(), source, buildCacheEnabled = false))
+        advanceUntilIdle()
+
+        assertTrue(viewModel.isGradleRepository)
+        assertFalse(viewModel.isGradleBuildCacheEnabled)
+        val daemons = assertIs<GradleDaemonsState.Loaded>(viewModel.gradleDaemons).daemons
+        assertEquals(DaemonOwner.Worktree(worktreePath), daemons.single().owner)
+    }
+
+    @Test
+    fun `daemons are unavailable when processes can't be listed`() = runTest(dispatcher) {
+        val source = FakeGradleDaemonSource(failure = WorktreeError.ProcessListingFailed(listOf("ps"), 1))
+        val viewModel = WorktreeViewModel(gradleRepository(listingResponder(), source))
+        advanceUntilIdle()
+
+        assertEquals(GradleDaemonsState.Unavailable, viewModel.gradleDaemons)
+        assertNull(viewModel.error)
+    }
+
+    @Test
+    fun `stopping idle daemons keeps busy ones, reports and reloads`() = runTest(dispatcher) {
+        val executed = mutableListOf<List<String>>()
+        val source = FakeGradleDaemonSource(listOf(gradleDaemon(10, idle), gradleDaemon(11, DaemonState.Busy)))
+        val viewModel = WorktreeViewModel(gradleRepository(listingResponder(executed), source))
+        advanceUntilIdle()
+        val listingsBefore = source.listings
+
+        viewModel.stopIdleGradleDaemons()
+        advanceUntilIdle()
+
+        assertTrue(executed.contains(listOf("kill", "10")))
+        assertFalse(executed.contains(listOf("kill", "11")))
+        assertEquals(listOf(10L), viewModel.daemonStopReport?.stopped?.map { it.pid })
+        assertEquals(listOf(11L), viewModel.daemonStopReport?.kept?.map { it.pid })
+        assertEquals(listingsBefore + 2, source.listings)
+        assertFalse(viewModel.isStoppingDaemons)
+    }
+
+    @Test
+    fun `cleanup stops the idle daemons of the removed worktrees`() = runTest(dispatcher) {
+        val executed = mutableListOf<List<String>>()
+        val source = FakeGradleDaemonSource(
+            listOf(
+                gradleDaemon(10, idle, lastBuildDirectory = worktreePath),
+                gradleDaemon(11, idle, lastBuildDirectory = config.baseRepositoryPath),
+            ),
+        )
+        val viewModel = WorktreeViewModel(gradleRepository(mergedResponder(executed), source))
+        advanceUntilIdle()
+
+        viewModel.openCleanup()
+        assertTrue(viewModel.cleanupStopGradleDaemons)
+        viewModel.confirmCleanup()
+        advanceUntilIdle()
+
+        assertTrue(executed.contains(listOf("kill", "10")))
+        assertFalse(executed.contains(listOf("kill", "11")))
+        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1, stoppedDaemons = 1), viewModel.success)
+    }
+
+    @Test
+    fun `cleanup keeps daemons that became busy and reports them`() = runTest(dispatcher) {
+        val executed = mutableListOf<List<String>>()
+        val source = FakeGradleDaemonSource(listOf(gradleDaemon(10, idle, lastBuildDirectory = worktreePath)))
+        val merged = mergedResponder(executed)
+        val viewModel = WorktreeViewModel(
+            gradleRepository(
+                { command ->
+                    if (command.take(3) == listOf("git", "worktree", "remove")) {
+                        source.daemons = listOf(gradleDaemon(10, DaemonState.Busy, lastBuildDirectory = worktreePath))
+                    }
+                    merged(command)
+                },
+                source,
+            ),
+        )
+        advanceUntilIdle()
+
+        viewModel.openCleanup()
+        viewModel.confirmCleanup()
+        advanceUntilIdle()
+
+        assertFalse(executed.contains(listOf("kill", "10")))
+        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1, keptDaemons = 1), viewModel.success)
+    }
+
+    @Test
+    fun `cleanup without the option stops no daemon`() = runTest(dispatcher) {
+        val executed = mutableListOf<List<String>>()
+        val source = FakeGradleDaemonSource(listOf(gradleDaemon(10, idle, lastBuildDirectory = worktreePath)))
+        val viewModel = WorktreeViewModel(gradleRepository(mergedResponder(executed), source))
+        advanceUntilIdle()
+
+        viewModel.openCleanup()
+        viewModel.cleanupStopGradleDaemons = false
+        viewModel.confirmCleanup()
+        advanceUntilIdle()
+
+        assertTrue(executed.none { it.first() == "kill" })
+        assertEquals(WorktreeSuccess.CleanedUp(1), viewModel.success)
     }
 }

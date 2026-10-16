@@ -61,14 +61,24 @@ What the repository declares that each new worktree needs, read from files at th
 |---|---|
 | `copyPatterns` | The `copy` list of `.shogunai.json`. |
 | `worktreeIncludePatterns` | The lines of `.worktreeinclude` (Claude Code's file), skipping blank lines and `#` comments. |
+| `providers` | The `providers` object of `.shogunai.json`: the providers the repository turns on, each keyed by its id with an object of options. Today only `gradle` (`GradleProvider`, no options yet), which makes the [Gradle daemons](#gradle-daemons) visible for the repository. Unknown ids are ignored. |
 
 `allPatterns` is their union without duplicates. Patterns use Git's ignore-pattern syntax, relative to the repository root: `local.properties` matches at any depth, `/local.properties` only at the root, `.idea/runConfigurations/` a whole folder, `.env*` a glob.
 
 ```json
-{ "copy": ["/local.properties", ".env*", ".idea/runConfigurations/"] }
+{ "copy": ["/local.properties", ".env*", ".idea/runConfigurations/"], "providers": { "gradle": {} } }
 ```
 
 Unknown fields of `.shogunai.json` are ignored, so later versions can add fields without breaking older ones.
+
+### Gradle daemons
+
+What the Gradle provider observes on the machine (`GradleDaemon.kt`):
+
+- `DaemonProcess` — a running daemon: `pid`, `kind` (`DaemonKind.GRADLE` or `KOTLIN`), `gradleVersion` (Gradle daemons only), `residentMemoryBytes`, `lastBuildDirectory` (the directory of the last build a Gradle daemon received) and `state`.
+- `DaemonState` — `Busy`, `Idle(since)`, `Unknown` (a Gradle daemon whose state can't be read) or `Untracked` (Kotlin daemons, which don't record one).
+- `GradleDaemon` — a `DaemonProcess` with its `owner` in a repository: `DaemonOwner.Worktree(path)`, `RemovedWorktree` (its last build directory no longer exists) or `OtherProject`; `null` for Kotlin daemons, daemons without a known build directory, or outside a repository.
+- `DaemonStopReport` — the outcome of a stop: `stopped`, `kept` (each with a `DaemonKeptReason`: `BUSY`, `STATE_UNKNOWN` or `BUILD_RUNNING`), `notDaemons` (requested pids that aren't daemons) and `failures`.
 
 ### `ThemeMode` / `AppLanguage`
 
@@ -84,7 +94,7 @@ User preferences: `LIGHT` / `DARK` / `SYSTEM` and `ENGLISH` / `SPANISH`. They're
 - `SecretFileNotFound` — local files are missing in the base repo.
 - `RepositoryNotFound` — the directory isn't inside a Git repository with a working tree (used by the CLI).
 - `NotAWorktree` — the path given to provision is the main worktree or isn't one of the repository's worktrees.
-- `InvalidRepositoryConfig` — `.shogunai.json` exists but isn't valid JSON, isn't an object, or its `copy` isn't a list of strings; keeps the file path and the detail.
+- `InvalidRepositoryConfig` — `.shogunai.json` exists but isn't valid JSON, isn't an object, its `copy` isn't a list of strings, or its `providers` (or a known provider in it) isn't an object; keeps the file path and the detail.
 - `GitCommandFailed` — a Git command returned a non-zero exit code; keeps the command, exit code and Git's error output.
 - `SecretCopyFailed` — copying local or repository files failed after the worktree had already been created.
 - `ClipboardWriteFailed` — the launch command couldn't be copied to the clipboard.
@@ -117,10 +127,11 @@ interface FileManager {
     fun directorySize(path: String, excluding: Set<String> = emptySet()): Long
     fun isDirectory(path: String): Boolean
     fun modificationStamps(path: String): List<Pair<String, Long>>
+    fun readProperties(path: String): Map<String, String>
 }
 ```
 
-Abstracts the filesystem so that copying secrets and measuring worktrees is unit-testable without touching disk. `copy` creates the destination's missing parent folders. `directorySize` adds up the regular files under `path`, skipping the folders in `excluding`. `modificationStamps` returns every file and folder under `path` (or `path` itself if it's a file) with its last-modified time, and nothing if it doesn't exist.
+Abstracts the filesystem so that copying secrets and measuring worktrees is unit-testable without touching disk. `copy` creates the destination's missing parent folders. `directorySize` adds up the regular files under `path`, skipping the folders in `excluding`. `modificationStamps` returns every file and folder under `path` (or `path` itself if it's a file) with its last-modified time, and nothing if it doesn't exist. `readProperties` reads a Java properties file (such as `gradle.properties`), empty if it's missing or unreadable.
 
 ### `ClipboardWriter`
 
@@ -142,6 +153,16 @@ interface RepositoryProvisioningSource {
 ```
 
 Reads the repository's provisioning (throwing `InvalidRepositoryConfig` for an unreadable `.shogunai.json`) and appends patterns to `copy`, which is how the configuration screen moves local files into the repository.
+
+### `GradleDaemonSource`
+
+```kotlin
+interface GradleDaemonSource {
+    suspend fun list(): List<DaemonProcess>
+}
+```
+
+Lists the Gradle and Kotlin daemons running on the machine with their state, or fails with `ProcessListingFailed` when processes can't be listed.
 
 ### Repositories
 
@@ -231,3 +252,12 @@ Applies the same files as creation (local files and the repository's provisionin
 ### `RepairWorktreesUseCase`
 
 Re-links the base repository and its worktrees after they were moved on disk. Git stores absolute paths in both directions (`<worktree>/.git` points to the base repository and `.git/worktrees/<name>/gitdir` points back), so a move breaks them. It runs `git worktree repair` from the (new) base repository; worktrees that no longer exist at their old path but do exist at the same relative location under the new `worktreesRoot` are passed as arguments, so Git fixes both directions. The UI runs it after saving a project whose base repository path or worktrees root changed.
+
+### Gradle daemon use cases
+
+Used when the repository declares the Gradle provider (and by `shogun gradle` anywhere):
+
+- `ListGradleDaemonsUseCase` lists the daemons from `GradleDaemonSource` and, given the repository's worktrees, attributes each Gradle daemon by its last build directory: `RemovedWorktree` if that folder no longer exists, otherwise the worktree with the longest path containing it (the same rule as running agents, so nested worktrees win), otherwise `OtherProject`.
+- `StopGradleDaemonsUseCase` stops the given pids, or every daemon. It lists the daemons again first, so the decision uses their current state: a Gradle daemon is stopped only if `Idle`, a Kotlin daemon only if no Gradle daemon is `Busy` or `Unknown`. Stopping runs `kill <pid>` (SIGTERM, so the JVM runs Gradle's shutdown hooks). One failure doesn't stop the rest.
+- `idleDaemonsOfRemovedWorktrees` picks, from a listing taken before a cleanup, the idle Gradle daemons whose last build was in one of the removed worktrees. The cleanup passes them to `StopGradleDaemonsUseCase`, whose fresh check still keeps a daemon that became busy.
+- `CheckGradleBuildCacheUseCase` tells whether `org.gradle.caching=true` is set in the repository's `gradle.properties` or in `$GRADLE_USER_HOME/gradle.properties`. With Gradle's local build cache on, a new worktree reuses task outputs built in other worktrees, because cache keys don't depend on the checkout's path.

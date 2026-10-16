@@ -156,7 +156,14 @@ fun WorktreeScreen(
             val message = when (success) {
                 is WorktreeSuccess.Created -> strings.worktreeCreated(success.path)
                 WorktreeSuccess.RepairedAfterMove -> strings.worktreesRepairedAfterMove
-                is WorktreeSuccess.CleanedUp -> strings.worktreesCleanedUp(success.removedCount)
+                is WorktreeSuccess.CleanedUp -> listOfNotNull(
+                    strings.worktreesCleanedUp(success.removedCount),
+                    if (success.stoppedDaemons + success.keptDaemons > 0) {
+                        strings.daemonsStopped(success.stoppedDaemons, success.keptDaemons, failed = 0)
+                    } else {
+                        null
+                    },
+                ).joinToString(" · ")
             }
             LaunchedEffect(success) {
                 delay(4000)
@@ -313,6 +320,9 @@ fun WorktreeScreen(
                 onCopyLaunchCommand = { viewModel.copyLaunchCommand(worktree) },
             )
             HorizontalDivider()
+        }
+        if (viewModel.isGradleRepository) {
+            GradleDaemonsSection(viewModel, modifier = Modifier.padding(vertical = Spacing.lg))
         }
     }
 

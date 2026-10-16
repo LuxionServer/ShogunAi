@@ -81,6 +81,17 @@ class ParseArgumentsTest {
         assertEquals(CliCommand.Clean(), command("clean"))
         assertEquals(CliCommand.Clean(confirmed = true, deleteBranches = true), command("clean", "--delete-branches", "-y"))
         assertEquals("unknown argument '--all' for 'clean'", usageError("clean", "--all"))
+        assertEquals(CliCommand.Clean(confirmed = true, stopGradleDaemons = true), command("clean", "--yes", "--stop-gradle-daemons"))
+    }
+
+    @Test
+    fun `gradle commands`() {
+        assertEquals(CliCommand.Gradle, command("gradle"))
+        assertEquals(CliCommand.GradleStop(), command("gradle", "stop"))
+        assertEquals(CliCommand.GradleStop(listOf(4242, 4243)), command("gradle", "stop", "4242", "4243"))
+        assertEquals("'gradle stop' takes process ids, got 'all'", usageError("gradle", "stop", "all"))
+        assertEquals("'gradle stop' takes process ids, got '-1'", usageError("gradle", "stop", "-1"))
+        assertEquals("unknown subcommand 'kill' for 'gradle', expected stop", usageError("gradle", "kill"))
     }
 
     @Test

@@ -1,6 +1,8 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
+import app.luxion.shogunai.domain.model.GradleProvider
+import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.serialization.SerializationException
@@ -24,9 +26,11 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
     override fun read(repositoryPath: String): RepositoryProvisioning {
         val root = Path.of(repositoryPath)
         val configPath = root.resolve(RepositoryProvisioning.CONFIG_FILE_NAME)
+        val config = readConfig(configPath)
         return RepositoryProvisioning(
-            copyPatterns = readConfig(configPath)?.let { copyPatternsOf(it, configPath) }.orEmpty(),
+            copyPatterns = config?.let { copyPatternsOf(it, configPath) }.orEmpty(),
             worktreeIncludePatterns = readWorktreeInclude(root.resolve(RepositoryProvisioning.WORKTREE_INCLUDE_FILE_NAME)),
+            providers = config?.let { providersOf(it, configPath) } ?: RepositoryProviders(),
         )
     }
 
@@ -64,6 +68,24 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         }.filter { it.isNotBlank() }
     }
 
+    private fun providersOf(config: JsonObject, path: Path): RepositoryProviders {
+        val field = config[PROVIDERS_FIELD] ?: return RepositoryProviders()
+        if (field is JsonNull) return RepositoryProviders()
+        val providers = field as? JsonObject
+            ?: throw WorktreeError.InvalidRepositoryConfig(path.toString(), "\"$PROVIDERS_FIELD\" must be an object")
+        return RepositoryProviders(
+            gradle = providers[GRADLE_PROVIDER]?.let { value ->
+                if (value !is JsonObject) {
+                    throw WorktreeError.InvalidRepositoryConfig(
+                        path.toString(),
+                        "\"$PROVIDERS_FIELD.$GRADLE_PROVIDER\" must be an object",
+                    )
+                }
+                GradleProvider
+            },
+        )
+    }
+
     private fun readWorktreeInclude(path: Path): List<String> {
         if (!path.exists()) return emptyList()
         return path.readLines()
@@ -79,5 +101,7 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
 
     private companion object {
         const val COPY_FIELD = "copy"
+        const val PROVIDERS_FIELD = "providers"
+        const val GRADLE_PROVIDER = "gradle"
     }
 }

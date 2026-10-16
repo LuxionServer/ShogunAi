@@ -104,6 +104,22 @@ interface Strings {
     fun worktreesCleanedUp(count: Int): String
     fun cleanupFailed(path: String, detail: String): String
     fun branchKept(branch: String): String
+    val alsoStopIdleGradleDaemons: String
+    val gradleDaemonsTitle: String
+    fun gradleDaemonsSummary(count: Int, totalMemory: String): String
+    val noGradleDaemons: String
+    val gradleDaemonsUnavailable: String
+    fun gradleDaemonLabel(version: String?): String
+    val kotlinDaemonLabel: String
+    val daemonBusy: String
+    fun daemonIdle(since: String): String
+    val daemonStateUnknown: String
+    val daemonOwnerRemoved: String
+    val daemonOwnerOther: String
+    val stopDaemon: String
+    val stopIdleDaemons: String
+    val gradleBuildCacheOff: String
+    fun daemonsStopped(stopped: Int, kept: Int, failed: Int): String
     val justNow: String
     fun minutesAgo(count: Long): String
     fun hoursAgo(count: Long): String
