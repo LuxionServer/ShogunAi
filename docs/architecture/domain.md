@@ -1,6 +1,6 @@
 # Domain layer
 
-Lives in `desktopApp/src/main/kotlin/app/luxion/shogunai/domain`. Doesn't depend on any concrete infrastructure implementation.
+Lives in `core/src/main/kotlin/app/luxion/shogunai/domain`. Doesn't depend on any concrete infrastructure implementation.
 
 ## Models
 

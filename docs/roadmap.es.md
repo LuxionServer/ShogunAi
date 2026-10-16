@@ -16,15 +16,14 @@ Esa dirección se construye en tres capas:
 
 ```mermaid
 graph LR
-    A["Núcleo compartido y configuración del repositorio"] --> B["CLI shogun y hooks de agentes"]
+    A["Configuración del repositorio"] --> B["CLI shogun y hooks de agentes"]
     A --> D["Provisionado Android, KMP y JVM"]
 ```
 
 ## Planificado
 
-### Núcleo compartido y configuración del repositorio
+### Configuración del repositorio
 
-- Extraer el dominio y la infraestructura a un módulo `core`, para que la app de escritorio y el CLI compartan los mismos casos de uso.
 - Separar la configuración en dos: la parte de cada máquina (dónde está el repositorio, dónde van los worktrees, qué agente usas) sigue en `~/.shogunai/`; lo que necesita cada worktree se define en un `.shogunai.json` versionado en el repositorio, sin rutas absolutas, para que un equipo pueda compartirlo.
 - Leer también `.worktreeinclude`, para que los repositorios ya preparados para Claude Code funcionen sin configuración extra.
 - Provisionado más completo en ese fichero:

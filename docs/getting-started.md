@@ -33,12 +33,14 @@ You can also use the IDE's run widget.
 
 ## Finding your way around the code
 
-The project is a Kotlin/JVM desktop app built with Compose Multiplatform, in a single Gradle module. All the domain, infrastructure, and UI live in `desktopApp`:
+The project is a Kotlin/JVM desktop app built with Compose Multiplatform, in two Gradle modules. `core` holds the domain and the infrastructure, without any UI; `desktopApp` holds the Compose UI and wires everything together:
 
 ```
-desktopApp/src/main/kotlin/app/luxion/shogunai/
+core/src/main/kotlin/app/luxion/shogunai/
 ├── domain/           # models, ports (interfaces), and use cases
-├── infrastructure/   # concrete implementations of the ports (Git, filesystem)
+└── infrastructure/   # concrete implementations of the ports (Git, filesystem)
+
+desktopApp/src/main/kotlin/app/luxion/shogunai/
 ├── ui/               # Compose screens, ViewModels, and navigation
 ├── AppContainer.kt   # wires domain + infrastructure, no DI framework
 └── main.kt           # entry point
