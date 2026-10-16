@@ -15,7 +15,7 @@ object EnglishStrings : Strings {
     override val collapse = "Collapse"
 
     override val selectFolderDialogTitle = "Select a folder"
-    override val selectSecretFilesDialogTitle = "Select secret files"
+    override val selectLocalFilesDialogTitle = "Select local files"
 
     override val projectsTitle = "Projects"
     override val newProject = "New project"
@@ -37,9 +37,20 @@ object EnglishStrings : Strings {
     override val worktreesRootLabel = "Worktrees root folder"
     override val mainBranchLabel = "Main branch"
     override val mainBranchPlaceholder = "Detected from the repository"
-    override val secretFilesSection = "Secret files"
-    override val removeSecretFile = "Remove secret file"
-    override val newSecretFileLabel = "New secret file"
+    override val localFilesSection = "Local files"
+    override val removeLocalFile = "Remove local file"
+    override val newLocalFileLabel = "New local file"
+    override val localFilesDescription =
+        "Exact paths copied into each new worktree. They're stored on this machine only."
+    override val repositoryProvisioningSection = "From the repository"
+    override val repositoryProvisioningDescription =
+        "Patterns versioned in .shogunai.json and .worktreeinclude. Every untracked file that matches is copied into each new worktree."
+    override val repositoryProvisioningEmpty = "The repository declares nothing to copy."
+    override fun repositoryConfigUnreadable(path: String) =
+        "Can't read $path. Fix it before creating worktrees."
+    override val moveToRepositoryConfig = "Move to .shogunai.json"
+    override val pendingSave = "on save"
+    override fun saveFailed(detail: String?) = "Couldn't save" + detail.asSuffix()
     override val add = "Add"
     override val agentSection = "Agent"
     override val agentCommandLabel = "Agent command"
@@ -109,10 +120,11 @@ object EnglishStrings : Strings {
     override fun worktreeAlreadyExists(path: String) = "Worktree directory already exists: $path"
     override fun invalidTaskIdError(rawInput: String) = "Invalid task id: \"$rawInput\""
     override fun secretFilesNotFound(files: List<String>, basePath: String) =
-        "Secret files not found in $basePath: ${files.joinToString()}"
+        "Local files not found in $basePath: ${files.joinToString()}"
+    override fun invalidRepositoryConfig(path: String, detail: String?) = "Can't read $path" + detail.asSuffix()
     override fun gitCommandFailed(command: List<String>, exitCode: Int) =
         "Git command failed (exit code $exitCode): ${command.joinToString(" ")}"
-    override fun secretCopyFailed(detail: String?) = "Failed to copy secret files" + detail.asSuffix()
+    override fun secretCopyFailed(detail: String?) = "Failed to copy files into the worktree" + detail.asSuffix()
     override fun clipboardWriteFailed(detail: String?) =
         "Failed to copy the launch command to the clipboard" + detail.asSuffix()
     override val gitLfsNotFound =

@@ -12,7 +12,7 @@ Configuration of a repository that worktrees are created against. It's what make
 |---|---|
 | `baseRepositoryPath` | Absolute path of the main repository, from which Git is run. |
 | `worktreesRoot` | Parent folder where worktrees are created. |
-| `secretFiles` | Local credential files to copy into each new worktree (e.g. `local.properties`), relative to the base repository. |
+| `secretFiles` | "Local files": exact paths, relative to the base repository or absolute, copied into each new worktree on this machine only (e.g. `local.properties`). What the repository itself declares lives in `.shogunai.json` (see `RepositoryProvisioning`). |
 | `agentLaunchConfig` | Agent command included in the launch command copied for a worktree (`AgentLaunchConfig`, see below). |
 | `mainBranch` | Optional branch that worktrees are compared against to show their status (e.g. `develop`). `null` means it's detected from the repository (see `ResolveMainBranchUseCase`). |
 
@@ -53,6 +53,23 @@ Enum `FEATURE` / `FIX`, each with a `prefix` (`"feature"` / `"fix"`) prepended t
 - `Divergence` — commits `ahead` and `behind` with respect to another branch.
 - `WorktreeStatus` — the state of one worktree: `uncommittedChanges`, `upstream` and `mainBranch` divergences (`null` when they don't apply) and `lastCommitAt`. `isMerged` is derived: the branch has nothing the main branch lacks (`ahead == 0`) and the main branch has moved past it (`behind > 0`), so a freshly created branch isn't reported as merged.
 
+### `RepositoryProvisioning`
+
+What the repository declares that each new worktree needs, read from files at the root of the base repository and versioned with it, so it's shared by everyone who clones it and doesn't depend on the machine:
+
+| Field | Source |
+|---|---|
+| `copyPatterns` | The `copy` list of `.shogunai.json`. |
+| `worktreeIncludePatterns` | The lines of `.worktreeinclude` (Claude Code's file), skipping blank lines and `#` comments. |
+
+`allPatterns` is their union without duplicates. Patterns use Git's ignore-pattern syntax, relative to the repository root: `local.properties` matches at any depth, `/local.properties` only at the root, `.idea/runConfigurations/` a whole folder, `.env*` a glob.
+
+```json
+{ "copy": ["/local.properties", ".env*", ".idea/runConfigurations/"] }
+```
+
+Unknown fields of `.shogunai.json` are ignored, so later versions can add fields without breaking older ones.
+
 ### `ThemeMode` / `AppLanguage`
 
 User preferences: `LIGHT` / `DARK` / `SYSTEM` and `ENGLISH` / `SPANISH`. They're stored in `settings.json` (see [Infrastructure layer](infrastructure.md)).
@@ -64,9 +81,10 @@ User preferences: `LIGHT` / `DARK` / `SYSTEM` and `ENGLISH` / `SPANISH`. They're
 - `BaseRepositoryNotFound` — the configured base repo doesn't exist on disk.
 - `WorktreeAlreadyExists` — there's already a directory at the destination path.
 - `InvalidTaskId` — the task id isn't a valid Git ref segment once normalized.
-- `SecretFileNotFound` — secret files are missing in the base repo.
+- `SecretFileNotFound` — local files are missing in the base repo.
+- `InvalidRepositoryConfig` — `.shogunai.json` exists but isn't valid JSON, isn't an object, or its `copy` isn't a list of strings; keeps the file path and the detail.
 - `GitCommandFailed` — a Git command returned a non-zero exit code; keeps the command, exit code and Git's error output.
-- `SecretCopyFailed` — copying secrets failed after the worktree had already been created.
+- `SecretCopyFailed` — copying local or repository files failed after the worktree had already been created.
 - `ClipboardWriteFailed` — the launch command couldn't be copied to the clipboard.
 - `GitLfsNotFound` — the repository uses Git LFS but `git-lfs` isn't installed.
 - `BranchNotFound` — the requested existing branch doesn't exist locally.
@@ -100,7 +118,7 @@ interface FileManager {
 }
 ```
 
-Abstracts the filesystem so that copying secrets and measuring worktrees is unit-testable without touching disk. `directorySize` adds up the regular files under `path`, skipping the folders in `excluding`. `modificationStamps` returns every file and folder under `path` (or `path` itself if it's a file) with its last-modified time, and nothing if it doesn't exist.
+Abstracts the filesystem so that copying secrets and measuring worktrees is unit-testable without touching disk. `copy` creates the destination's missing parent folders. `directorySize` adds up the regular files under `path`, skipping the folders in `excluding`. `modificationStamps` returns every file and folder under `path` (or `path` itself if it's a file) with its last-modified time, and nothing if it doesn't exist.
 
 ### `ClipboardWriter`
 
@@ -111,6 +129,17 @@ interface ClipboardWriter {
 ```
 
 Writes the launch command of a worktree to the system clipboard.
+
+### `RepositoryProvisioningSource`
+
+```kotlin
+interface RepositoryProvisioningSource {
+    fun read(repositoryPath: String): RepositoryProvisioning
+    fun addCopyPatterns(repositoryPath: String, patterns: List<String>)
+}
+```
+
+Reads the repository's provisioning (throwing `InvalidRepositoryConfig` for an unreadable `.shogunai.json`) and appends patterns to `copy`, which is how the configuration screen moves local files into the repository.
 
 ### Repositories
 
@@ -125,15 +154,17 @@ The worktree use cases are built per project (they receive its `ProjectConfig`) 
 
 Creates a worktree on a **new** branch `<type>/<taskId>`. The task id is normalized first (`normalizeTaskId`: trimmed, whitespace runs replaced with `-`) and validated as a Git ref segment. Then, in this order:
 
-1. **Upfront validations** (base repo exists, destination free, secrets present) — done *before* touching Git so as not to leave a half-done worktree.
+1. **Upfront validations** (base repo exists, destination free, local files present) and **resolving the repository's files** — done *before* touching Git so as not to leave a half-done worktree.
 2. `git worktree add <path> -b <branch>`.
-3. Copying the secret files into the new directory.
+3. Copying the local files and then the repository's files into the new directory, at the same relative paths.
 
-If copying secrets fails **after** the worktree was created, it's rolled back with `git worktree remove --force` (best-effort) before propagating `SecretCopyFailed`. If `git worktree add` fails because `git-lfs` is missing, the half-created worktree and its new branch are removed and `GitLfsNotFound` is returned.
+Resolving the repository's files reads `RepositoryProvisioning` and, if it declares any pattern, runs `git ls-files --others --ignored -z -x <pattern>…`: every file not tracked by Git that matches a pattern (tracked files already come with the checkout). Without patterns no Git command runs. An unreadable `.shogunai.json` (`InvalidRepositoryConfig`) or a failing `git ls-files` (`GitCommandFailed`) stops creation before anything is created. Local files are checked strictly (`SecretFileNotFound`), patterns leniently: a pattern with no match copies nothing.
+
+If copying fails **after** the worktree was created, it's rolled back with `git worktree remove --force` (best-effort) before propagating `SecretCopyFailed`. If `git worktree add` fails because `git-lfs` is missing, the half-created worktree and its new branch are removed and `GitLfsNotFound` is returned.
 
 ### `CreateWorktreeFromBranchUseCase`
 
-Same flow for a branch that **already exists** locally: checks the branch with `git branch --list`, runs `git worktree add <path> <branch>` (without `-b`) in the directory given by `worktreePathForBranch`, and copies the secrets. A branch already checked out elsewhere fails with `BranchAlreadyCheckedOut`.
+Same flow for a branch that **already exists** locally: checks the branch with `git branch --list`, runs `git worktree add <path> <branch>` (without `-b`) in the directory given by `worktreePathForBranch`, and copies the local and repository files the same way. A branch already checked out elsewhere fails with `BranchAlreadyCheckedOut`.
 
 ### `ListLocalBranchesUseCase`
 

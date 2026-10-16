@@ -2,10 +2,37 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
+import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.joinPath
+
+internal suspend fun checkProvisioningAndResolveFiles(
+    config: ProjectConfig,
+    executor: ShellCommandExecutor,
+    fileManager: FileManager,
+    provisioningSource: RepositoryProvisioningSource,
+): List<String> {
+    val missingSecrets = config.secretFiles.filterNot { fileManager.exists(config.baseSecretPath(it)) }
+    if (missingSecrets.isNotEmpty()) {
+        throw WorktreeError.SecretFileNotFound(missingSecrets, config.baseRepositoryPath)
+    }
+    return resolveFilesToCopy(config, executor, provisioningSource)
+}
+
+internal suspend fun resolveFilesToCopy(
+    config: ProjectConfig,
+    executor: ShellCommandExecutor,
+    provisioningSource: RepositoryProvisioningSource,
+): List<String> {
+    val patterns = provisioningSource.read(config.baseRepositoryPath).allPatterns
+    if (patterns.isEmpty()) return emptyList()
+    val command = listOf("git", "ls-files", "--others", "--ignored", "-z") + patterns.flatMap { listOf("-x", it) }
+    val result = executor.execute(command = command, workingDirectory = config.baseRepositoryPath)
+    if (!result.isSuccess) throw WorktreeError.GitCommandFailed(result.command, result.exitCode, result.stderr)
+    return result.stdout.split('\u0000').filter { it.isNotEmpty() }
+}
 
 internal suspend fun addWorktreeAndCopySecrets(
     config: ProjectConfig,
@@ -15,6 +42,7 @@ internal suspend fun addWorktreeAndCopySecrets(
     branch: String,
     addArgs: List<String>,
     branchToDeleteOnLfsFailure: String?,
+    repositoryFiles: List<String>,
 ): Worktree {
     val add = executor.execute(command = addArgs, workingDirectory = config.baseRepositoryPath)
     if (!add.isSuccess) {
@@ -36,7 +64,7 @@ internal suspend fun addWorktreeAndCopySecrets(
         throw WorktreeError.GitCommandFailed(add.command, add.exitCode, add.stderr)
     }
 
-    copySecretsOrRollback(config, executor, fileManager, worktreePath)
+    copySecretsOrRollback(config, executor, fileManager, worktreePath, repositoryFiles)
 
     return Worktree(path = worktreePath, branch = branch)
 }
@@ -46,9 +74,10 @@ private suspend fun copySecretsOrRollback(
     executor: ShellCommandExecutor,
     fileManager: FileManager,
     worktreePath: String,
+    repositoryFiles: List<String>,
 ) {
     try {
-        config.secretFiles.forEach { fileName ->
+        (config.secretFiles + repositoryFiles).distinct().forEach { fileName ->
             fileManager.copy(
                 source = config.baseSecretPath(fileName),
                 destination = joinPath(worktreePath, fileName),

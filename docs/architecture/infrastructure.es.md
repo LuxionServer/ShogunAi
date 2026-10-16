@@ -15,7 +15,20 @@ Implementación de `ShellCommandExecutor` sobre `ProcessBuilder`. Detalles de ro
 
 ## `NioFileManager`
 
-Implementación de `FileManager` sobre `java.nio.file`. `copy` usa `REPLACE_EXISTING` y `COPY_ATTRIBUTES`. `directorySize` recorre el árbol con `Files.walkFileTree` sin seguir enlaces simbólicos, suma el tamaño de los archivos regulares, se salta las carpetas excluidas e ignora los archivos que no puede leer. `modificationStamps` recorre el árbol del mismo modo y anota la fecha de modificación de cada entrada. Funciona igual en todos los sistemas operativos soportados.
+Implementación de `FileManager` sobre `java.nio.file`. `copy` crea las carpetas padre que falten en el destino y usa `REPLACE_EXISTING` y `COPY_ATTRIBUTES`. `directorySize` recorre el árbol con `Files.walkFileTree` sin seguir enlaces simbólicos, suma el tamaño de los archivos regulares, se salta las carpetas excluidas e ignora los archivos que no puede leer. `modificationStamps` recorre el árbol del mismo modo y anota la fecha de modificación de cada entrada. Funciona igual en todos los sistemas operativos soportados.
+
+## `RepositoryProvisioningFiles`
+
+Implementación de `RepositoryProvisioningSource` sobre `java.nio.file` y `kotlinx.serialization`, sobre `<repo>/.shogunai.json` y `<repo>/.worktreeinclude`.
+
+- **Lectura**: un `.shogunai.json` inexistente o vacío significa que no hay patrones. El fichero se parsea como un objeto JSON genérico, así que los campos desconocidos se ignoran; un JSON inválido, una raíz que no es un objeto o un `copy` que no es una lista de strings lanzan `InvalidRepositoryConfig`.
+- **Escritura** (`addCopyPatterns`): lee el objeto, sustituye solo `copy` (primero los patrones existentes, después los nuevos sin duplicados) y lo vuelve a escribir con formato, de forma atómica (fichero temporal en la misma carpeta + `ATOMIC_MOVE`), así que los demás campos se conservan. Se niega a reescribir un fichero que no puede parsear.
+
+La coincidencia de patrones se deja a Git (`git ls-files --others --ignored -z -x <patrón>…`, ver `CreateWorktreeUseCase` en el dominio), así que sigue exactamente las reglas de gitignore, incluidos sus límites: no se puede reincluir un fichero con `!` si su carpeta padre está excluida (`.idea/` + `!.idea/workspace.xml` sigue listando `workspace.xml`; usa `.idea/*` en su lugar). Puedes probar un patrón desde el repositorio base con el mismo comando:
+
+```bash
+git ls-files --others --ignored -x '/local.properties' -x '.env*' -x '.idea/runConfigurations/'
+```
 
 ## `AwtClipboardWriter`
 
@@ -40,5 +53,6 @@ En `core/src/testFixtures/kotlin/app/luxion/shogunai/domain/`, los test fixtures
 - `FakeFileManager` — sustituye `FileManager` con un conjunto en memoria de rutas existentes.
 - `FakeClipboardWriter` — sustituye `ClipboardWriter`.
 - `FakeProjectRepository` — sustituye `ProjectRepository` en los tests de ViewModels.
+- `FakeRepositoryProvisioningSource` — sustituye `RepositoryProvisioningSource` con provisionado por ruta de repositorio, repositorios ilegibles y escrituras que fallan, y registra los patrones añadidos.
 
-Gracias a que el dominio depende de interfaces, los tests de casos de uso (`*UseCaseTest`) y los de ViewModels no tocan disco ni lanzan procesos reales. La propia infraestructura se cubre con `ProcessBuilderShellCommandExecutorTest`, `JsonProjectRepositoryTest` y `JsonSettingsFileTest`, que sí usan procesos reales y ficheros temporales.
+Gracias a que el dominio depende de interfaces, los tests de casos de uso (`*UseCaseTest`) y los de ViewModels no tocan disco ni lanzan procesos reales. La propia infraestructura se cubre con `ProcessBuilderShellCommandExecutorTest`, `JsonProjectRepositoryTest`, `JsonSettingsFileTest` y `RepositoryProvisioningFilesTest`, que sí usan procesos reales y ficheros temporales.

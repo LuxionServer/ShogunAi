@@ -15,7 +15,7 @@ object SpanishStrings : Strings {
     override val collapse = "Contraer"
 
     override val selectFolderDialogTitle = "Selecciona una carpeta"
-    override val selectSecretFilesDialogTitle = "Selecciona archivos de secretos"
+    override val selectLocalFilesDialogTitle = "Selecciona archivos locales"
 
     override val projectsTitle = "Proyectos"
     override val newProject = "Nuevo proyecto"
@@ -37,9 +37,20 @@ object SpanishStrings : Strings {
     override val worktreesRootLabel = "Carpeta raíz de worktrees"
     override val mainBranchLabel = "Rama principal"
     override val mainBranchPlaceholder = "Detectada a partir del repositorio"
-    override val secretFilesSection = "Archivos de secretos"
-    override val removeSecretFile = "Eliminar archivo de secretos"
-    override val newSecretFileLabel = "Nuevo archivo de secretos"
+    override val localFilesSection = "Archivos locales"
+    override val removeLocalFile = "Eliminar archivo local"
+    override val newLocalFileLabel = "Nuevo archivo local"
+    override val localFilesDescription =
+        "Rutas exactas que se copian a cada nuevo worktree. Solo se guardan en esta máquina."
+    override val repositoryProvisioningSection = "Del repositorio"
+    override val repositoryProvisioningDescription =
+        "Patrones versionados en .shogunai.json y .worktreeinclude. Cada archivo no versionado que coincida se copia a cada nuevo worktree."
+    override val repositoryProvisioningEmpty = "El repositorio no declara nada que copiar."
+    override fun repositoryConfigUnreadable(path: String) =
+        "No se puede leer $path. Corrígelo antes de crear worktrees."
+    override val moveToRepositoryConfig = "Mover a .shogunai.json"
+    override val pendingSave = "al guardar"
+    override fun saveFailed(detail: String?) = "No se pudo guardar" + detail.asSuffix()
     override val add = "Añadir"
     override val agentSection = "Agente"
     override val agentCommandLabel = "Comando del agente"
@@ -109,10 +120,11 @@ object SpanishStrings : Strings {
     override fun worktreeAlreadyExists(path: String) = "El directorio del worktree ya existe: $path"
     override fun invalidTaskIdError(rawInput: String) = "Id de tarea inválido: \"$rawInput\""
     override fun secretFilesNotFound(files: List<String>, basePath: String) =
-        "No se encontraron archivos de secretos en $basePath: ${files.joinToString()}"
+        "No se encontraron archivos locales en $basePath: ${files.joinToString()}"
+    override fun invalidRepositoryConfig(path: String, detail: String?) = "No se puede leer $path" + detail.asSuffix()
     override fun gitCommandFailed(command: List<String>, exitCode: Int) =
         "Falló el comando de Git (código de salida $exitCode): ${command.joinToString(" ")}"
-    override fun secretCopyFailed(detail: String?) = "No se pudieron copiar los archivos de secretos" + detail.asSuffix()
+    override fun secretCopyFailed(detail: String?) = "No se pudieron copiar los archivos al worktree" + detail.asSuffix()
     override fun clipboardWriteFailed(detail: String?) =
         "No se pudo copiar el comando de lanzamiento al portapapeles" + detail.asSuffix()
     override val gitLfsNotFound =

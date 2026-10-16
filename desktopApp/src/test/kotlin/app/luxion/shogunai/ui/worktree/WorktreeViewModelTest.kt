@@ -3,6 +3,7 @@ package app.luxion.shogunai.ui.worktree
 import app.luxion.shogunai.WorktreeUseCases
 import app.luxion.shogunai.domain.FakeClipboardWriter
 import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
@@ -90,13 +91,14 @@ class WorktreeViewModelTest {
     private fun useCasesWith(executor: ShellCommandExecutor, fileManager: FakeFileManager = FakeFileManager()): WorktreeUseCases {
         return WorktreeUseCases(
             list = ListWorktreesUseCase(config, executor),
-            create = CreateWorktreeUseCase(config, executor, FakeFileManager()),
+            create = CreateWorktreeUseCase(config, executor, FakeFileManager(), FakeRepositoryProvisioningSource()),
             createFromBranch = CreateWorktreeFromBranchUseCase(
                 config,
                 executor,
                 FakeFileManager(
                     existing = listOf(config.baseRepositoryPath) + config.secretFiles.map { config.baseSecretPath(it) },
                 ),
+                FakeRepositoryProvisioningSource(),
             ),
             listLocalBranches = ListLocalBranchesUseCase(config, executor),
             remove = RemoveWorktreeUseCase(config, executor),

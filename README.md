@@ -7,8 +7,8 @@ Desktop orchestrator that automates creating and managing isolated **Git worktre
 ## What it does
 
 - Creates and removes isolated **Git worktrees** for each task, each on its own new branch (`feature/` or `fix/`) or on a branch that already exists locally.
-- Automatically copies to each new worktree the **local secret files** you need to build (e.g. Android's `local.properties`).
-- Manages several projects from a catalog, each with its own configuration (base repository, worktrees folder, secrets, agent command).
+- Automatically copies to each new worktree the **local files** it needs to build (e.g. Android's `local.properties`, `.env` files), as declared in a `.shogunai.json` versioned in the repository or in Claude Code's `.worktreeinclude`.
+- Manages several projects from a catalog, each with its own configuration (base repository, worktrees folder, agent command).
 - Copies the command to start your AI agent in a worktree (`cd <worktree> && claude`, optionally wrapped with Headroom), ready to paste in any terminal.
 - If you move a repository, update its path in the project and the app re-links its worktrees (`git worktree repair`).
 
@@ -39,9 +39,15 @@ Install it like any other desktop app and open it. You don't need a JDK or any d
 
 ## Basic usage
 
-1. **Create a project** — the first time you open the app you'll see an empty project catalog. Click "New project" and enter a name, the path of the base repository and the folder where worktrees will be created. Optionally add the secret files that must be copied to each new worktree.
+1. **Create a project** — the first time you open the app you'll see an empty project catalog. Click "New project" and enter a name, the path of the base repository and the folder where worktrees will be created. Optionally add local files that must be copied to each new worktree on this machine.
 2. **Open a project** — select it from the catalog to see its existing worktrees.
-3. **Create a worktree** — enter the task id and the branch type (`feature` or `fix`); the app creates the worktree and the branch, and copies the configured secrets. To work on a branch you already have, switch to "Existing branch" and pick it from the list.
+3. **Create a worktree** — enter the task id and the branch type (`feature` or `fix`); the app creates the worktree and the branch, and copies the files the repository and the project declare. To work on a branch you already have, switch to "Existing branch" and pick it from the list.
+   To share what a worktree needs with everyone who clones the repository, add a `.shogunai.json` at its root with gitignore-style patterns; every file Git doesn't track that matches one is copied into each new worktree, at the same path. A `.worktreeinclude` (Claude Code's file) is read the same way. The "Move to .shogunai.json" button in the project configuration writes your local files into it.
+
+   ```json
+   { "copy": ["/local.properties", ".env*", ".idea/runConfigurations/"] }
+   ```
+
 4. **Start working** — click "Copy command" on a worktree and paste it in your terminal to open your AI agent there.
 5. **Remove a worktree** — when you finish a task, remove it from the list, optionally deleting the local branch too. The main worktree can't be removed.
 

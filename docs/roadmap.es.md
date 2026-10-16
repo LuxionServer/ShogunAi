@@ -24,13 +24,11 @@ graph LR
 
 ### Configuración del repositorio
 
-- Separar la configuración en dos: la parte de cada máquina (dónde está el repositorio, dónde van los worktrees, qué agente usas) sigue en `~/.shogunai/`; lo que necesita cada worktree se define en un `.shogunai.json` versionado en el repositorio, sin rutas absolutas, para que un equipo pueda compartirlo.
-- Leer también `.worktreeinclude`, para que los repositorios ya preparados para Claude Code funcionen sin configuración extra.
-- Provisionado más completo en ese fichero:
-    - Un hook post-creación ejecutado como argv (p. ej. `npm install`, `direnv allow`).
-    - Carpetas y patrones glob a copiar (p. ej. `.env*`, `.idea/runConfigurations`), no solo archivos sueltos.
-    - Enlazar un secreto con un symlink en vez de copiarlo, para que al rotarlo se actualice en todos los worktrees.
-    - Detectar secretos de un worktree que difieren de los del repositorio base.
+Provisionado más completo en el `.shogunai.json` del repositorio:
+
+- Un hook post-creación ejecutado como argv (p. ej. `npm install`, `direnv allow`).
+- Enlazar un secreto con un symlink en vez de copiarlo, para que al rotarlo se actualice en todos los worktrees.
+- Detectar secretos de un worktree que difieren de los del repositorio base.
 
 ### Herramienta de línea de comandos `shogun`
 

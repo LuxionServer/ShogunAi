@@ -24,13 +24,11 @@ graph LR
 
 ### Repository configuration
 
-- Split the configuration in two: the machine-specific part (where the repository lives, where worktrees go, which agent you use) stays in `~/.shogunai/`; what each worktree needs is defined in a `.shogunai.json` versioned in the repository, without absolute paths, so a team can share it.
-- Read `.worktreeinclude` too, so repositories already prepared for Claude Code work without extra setup.
-- Richer provisioning in that file:
-    - A post-creation hook run as argv (e.g. `npm install`, `direnv allow`).
-    - Folders and glob patterns to copy (e.g. `.env*`, `.idea/runConfigurations`), not only single files.
-    - Symlinking a secret instead of copying it, so a rotated secret updates every worktree.
-    - Detection of secrets in a worktree that differ from the base repository's.
+Richer provisioning in the repository's `.shogunai.json`:
+
+- A post-creation hook run as argv (e.g. `npm install`, `direnv allow`).
+- Symlinking a secret instead of copying it, so a rotated secret updates every worktree.
+- Detection of secrets in a worktree that differ from the base repository's.
 
 ### `shogun` command-line tool
 

@@ -12,7 +12,7 @@ Configuración de un repositorio sobre el que se crean worktrees. Es el punto qu
 |---|---|
 | `baseRepositoryPath` | Ruta absoluta del repositorio principal, desde donde se ejecuta Git. |
 | `worktreesRoot` | Carpeta padre donde se crean los worktrees. |
-| `secretFiles` | Archivos de credenciales locales a copiar a cada nuevo worktree (p. ej. `local.properties`), relativos al repositorio base. |
+| `secretFiles` | "Archivos locales": rutas exactas, relativas al repositorio base o absolutas, que se copian a cada nuevo worktree solo en esta máquina (p. ej. `local.properties`). Lo que declara el propio repositorio vive en `.shogunai.json` (ver `RepositoryProvisioning`). |
 | `agentLaunchConfig` | Comando del agente que se incluye en el comando de lanzamiento copiado para un worktree (`AgentLaunchConfig`, ver abajo). |
 | `mainBranch` | Rama opcional contra la que se comparan los worktrees para mostrar su estado (p. ej. `develop`). `null` significa que se detecta a partir del repositorio (ver `ResolveMainBranchUseCase`). |
 
@@ -53,6 +53,23 @@ Enum `FEATURE` / `FIX`, cada uno con un `prefix` (`"feature"` / `"fix"`) que se 
 - `Divergence` — commits `ahead` (por delante) y `behind` (por detrás) respecto a otra rama.
 - `WorktreeStatus` — el estado de un worktree: `uncommittedChanges`, las divergencias `upstream` y `mainBranch` (`null` cuando no aplican) y `lastCommitAt`. `isMerged` es derivado: la rama no tiene nada que le falte a la rama principal (`ahead == 0`) y la rama principal ha avanzado más allá de ella (`behind > 0`), así que una rama recién creada no aparece como mergeada.
 
+### `RepositoryProvisioning`
+
+Lo que el repositorio declara que necesita cada nuevo worktree, leído de ficheros en la raíz del repositorio base y versionado con él, así que lo comparte todo el que lo clona y no depende de la máquina:
+
+| Campo | Origen |
+|---|---|
+| `copyPatterns` | La lista `copy` de `.shogunai.json`. |
+| `worktreeIncludePatterns` | Las líneas de `.worktreeinclude` (el fichero de Claude Code), sin líneas en blanco ni comentarios `#`. |
+
+`allPatterns` es su unión sin duplicados. Los patrones usan la sintaxis de patrones de ignore de Git, relativos a la raíz del repositorio: `local.properties` coincide a cualquier profundidad, `/local.properties` solo en la raíz, `.idea/runConfigurations/` una carpeta entera, `.env*` un glob.
+
+```json
+{ "copy": ["/local.properties", ".env*", ".idea/runConfigurations/"] }
+```
+
+Los campos desconocidos de `.shogunai.json` se ignoran, para que versiones posteriores puedan añadir campos sin romper las anteriores.
+
 ### `ThemeMode` / `AppLanguage`
 
 Preferencias del usuario: `LIGHT` / `DARK` / `SYSTEM` y `ENGLISH` / `SPANISH`. Se guardan en `settings.json` (ver [Capa de infraestructura](infrastructure.md)).
@@ -64,9 +81,10 @@ Preferencias del usuario: `LIGHT` / `DARK` / `SYSTEM` y `ENGLISH` / `SPANISH`. S
 - `BaseRepositoryNotFound` — el repo base configurado no existe en disco.
 - `WorktreeAlreadyExists` — ya hay un directorio en la ruta destino.
 - `InvalidTaskId` — el id de tarea no es un segmento de ref de Git válido una vez normalizado.
-- `SecretFileNotFound` — faltan archivos de secretos en el repo base.
+- `SecretFileNotFound` — faltan archivos locales en el repo base.
+- `InvalidRepositoryConfig` — `.shogunai.json` existe pero no es JSON válido, no es un objeto o su `copy` no es una lista de strings; guarda la ruta del fichero y el detalle.
 - `GitCommandFailed` — un comando de Git devolvió un código de salida distinto de cero; guarda el comando, el código de salida y la salida de error de Git.
-- `SecretCopyFailed` — la copia de secretos falló después de haber creado ya el worktree.
+- `SecretCopyFailed` — la copia de archivos locales o del repositorio falló después de haber creado ya el worktree.
 - `ClipboardWriteFailed` — no se pudo copiar el comando de lanzamiento al portapapeles.
 - `GitLfsNotFound` — el repositorio usa Git LFS pero `git-lfs` no está instalado.
 - `BranchNotFound` — la rama existente pedida no existe en local.
@@ -100,7 +118,7 @@ interface FileManager {
 }
 ```
 
-Abstrae el sistema de archivos para que la copia de secretos y la medición de worktrees sean testeables sin tocar disco. `directorySize` suma los archivos regulares bajo `path`, saltándose las carpetas de `excluding`. `modificationStamps` devuelve cada archivo y carpeta bajo `path` (o el propio `path` si es un archivo) con su fecha de modificación, y nada si no existe.
+Abstrae el sistema de archivos para que la copia de secretos y la medición de worktrees sean testeables sin tocar disco. `copy` crea las carpetas padre que falten en el destino. `directorySize` suma los archivos regulares bajo `path`, saltándose las carpetas de `excluding`. `modificationStamps` devuelve cada archivo y carpeta bajo `path` (o el propio `path` si es un archivo) con su fecha de modificación, y nada si no existe.
 
 ### `ClipboardWriter`
 
@@ -111,6 +129,17 @@ interface ClipboardWriter {
 ```
 
 Escribe el comando de lanzamiento de un worktree en el portapapeles del sistema.
+
+### `RepositoryProvisioningSource`
+
+```kotlin
+interface RepositoryProvisioningSource {
+    fun read(repositoryPath: String): RepositoryProvisioning
+    fun addCopyPatterns(repositoryPath: String, patterns: List<String>)
+}
+```
+
+Lee el provisionado del repositorio (lanzando `InvalidRepositoryConfig` si `.shogunai.json` no se puede leer) y añade patrones a `copy`, que es como la pantalla de configuración mueve los archivos locales al repositorio.
 
 ### Repositorios
 
@@ -125,15 +154,17 @@ Los casos de uso de worktrees se construyen por proyecto (reciben su `ProjectCon
 
 Crea un worktree en una rama **nueva** `<tipo>/<taskId>`. Primero normaliza el id de tarea (`normalizeTaskId`: recorta y sustituye los espacios por `-`) y lo valida como segmento de ref de Git. Después, en este orden:
 
-1. **Validaciones previas** (repo base existe, destino libre, secretos presentes) — se hacen *antes* de tocar Git para no dejar un worktree a medias.
+1. **Validaciones previas** (repo base existe, destino libre, archivos locales presentes) y **resolución de los archivos del repositorio** — se hacen *antes* de tocar Git para no dejar un worktree a medias.
 2. `git worktree add <path> -b <branch>`.
-3. Copia de los archivos de secretos al nuevo directorio.
+3. Copia de los archivos locales y después de los del repositorio al nuevo directorio, en las mismas rutas relativas.
 
-Si la copia de secretos falla **después** de crear el worktree, se revierte con `git worktree remove --force` (best-effort) antes de propagar `SecretCopyFailed`. Si `git worktree add` falla porque falta `git-lfs`, se eliminan el worktree a medio crear y su rama nueva y se devuelve `GitLfsNotFound`.
+Para resolver los archivos del repositorio se lee `RepositoryProvisioning` y, si declara algún patrón, se ejecuta `git ls-files --others --ignored -z -x <patrón>…`: todos los archivos que Git no versiona y coinciden con un patrón (los versionados ya llegan con el checkout). Sin patrones no se ejecuta ningún comando de Git. Un `.shogunai.json` ilegible (`InvalidRepositoryConfig`) o un `git ls-files` que falla (`GitCommandFailed`) detienen la creación antes de crear nada. Los archivos locales se comprueban de forma estricta (`SecretFileNotFound`) y los patrones de forma laxa: un patrón sin coincidencias no copia nada.
+
+Si la copia falla **después** de crear el worktree, se revierte con `git worktree remove --force` (best-effort) antes de propagar `SecretCopyFailed`. Si `git worktree add` falla porque falta `git-lfs`, se eliminan el worktree a medio crear y su rama nueva y se devuelve `GitLfsNotFound`.
 
 ### `CreateWorktreeFromBranchUseCase`
 
-El mismo flujo para una rama que **ya existe** en local: comprueba la rama con `git branch --list`, ejecuta `git worktree add <path> <branch>` (sin `-b`) en la carpeta que da `worktreePathForBranch` y copia los secretos. Una rama ya en uso en otro sitio falla con `BranchAlreadyCheckedOut`.
+El mismo flujo para una rama que **ya existe** en local: comprueba la rama con `git branch --list`, ejecuta `git worktree add <path> <branch>` (sin `-b`) en la carpeta que da `worktreePathForBranch` y copia los archivos locales y los del repositorio de la misma forma. Una rama ya en uso en otro sitio falla con `BranchAlreadyCheckedOut`.
 
 ### `ListLocalBranchesUseCase`
 

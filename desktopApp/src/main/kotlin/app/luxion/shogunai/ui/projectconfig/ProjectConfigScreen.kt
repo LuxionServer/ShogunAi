@@ -30,11 +30,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.Project
+import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.ui.FilePicker
 import app.luxion.shogunai.ui.components.SectionCard
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.onEnterKey
 import app.luxion.shogunai.ui.i18n.LocalStrings
+import app.luxion.shogunai.ui.i18n.worktreeError
 import app.luxion.shogunai.ui.relativeToBase
 
 @Composable
@@ -46,6 +49,7 @@ fun ProjectConfigScreen(
     val strings = LocalStrings.current
     var newSecretFile by remember { mutableStateOf("") }
     var showDiscardChangesDialog by remember { mutableStateOf(false) }
+    var saveError by remember { mutableStateOf<String?>(null) }
     val requestCancel = {
         if (viewModel.hasUnsavedChanges) showDiscardChangesDialog = true else onCancel()
     }
@@ -128,7 +132,24 @@ fun ProjectConfigScreen(
             )
         }
 
-        SectionCard(title = strings.secretFilesSection) {
+        SectionCard(title = strings.repositoryProvisioningSection) {
+            Text(
+                strings.repositoryProvisioningDescription,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            RepositoryProvisioningList(
+                state = viewModel.repositoryProvisioning,
+                pendingPatterns = viewModel.pendingRepositoryPatterns,
+            )
+        }
+
+        SectionCard(title = strings.localFilesSection) {
+            Text(
+                strings.localFilesDescription,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             LazyColumn(modifier = Modifier.heightIn(max = 160.dp)) {
                 items(viewModel.secretFiles) { file ->
                     Row(
@@ -138,7 +159,7 @@ fun ProjectConfigScreen(
                     ) {
                         Text(file)
                         IconButton(onClick = { viewModel.removeSecretFile(file) }) {
-                            Icon(Icons.Default.Close, contentDescription = strings.removeSecretFile)
+                            Icon(Icons.Default.Close, contentDescription = strings.removeLocalFile)
                         }
                     }
                 }
@@ -151,7 +172,7 @@ fun ProjectConfigScreen(
                 OutlinedTextField(
                     value = newSecretFile,
                     onValueChange = { newSecretFile = it },
-                    label = { Text(strings.newSecretFileLabel) },
+                    label = { Text(strings.newLocalFileLabel) },
                     modifier = Modifier.weight(1f).onEnterKey(action = addSecretFile),
                 )
                 Button(
@@ -162,13 +183,18 @@ fun ProjectConfigScreen(
                 }
                 OutlinedButton(
                     onClick = {
-                        FilePicker.pickFiles(viewModel.baseRepositoryPath, strings.selectSecretFilesDialogTitle).forEach { absolutePath ->
+                        FilePicker.pickFiles(viewModel.baseRepositoryPath, strings.selectLocalFilesDialogTitle).forEach { absolutePath ->
                             viewModel.addSecretFile(relativeToBase(viewModel.baseRepositoryPath, absolutePath))
                         }
                     },
                     modifier = Modifier.padding(start = Spacing.sm),
                 ) {
                     Text(strings.browse)
+                }
+            }
+            if (viewModel.canMoveLocalFilesToRepository) {
+                OutlinedButton(onClick = viewModel::moveLocalFilesToRepository) {
+                    Text(strings.moveToRepositoryConfig)
                 }
             }
         }
@@ -191,12 +217,20 @@ fun ProjectConfigScreen(
             )
         }
 
+        saveError?.let { error ->
+            Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.fillMaxWidth())
+        }
+
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             OutlinedButton(onClick = requestCancel, modifier = Modifier.padding(end = Spacing.sm)) {
                 Text(strings.cancel)
             }
             Button(
-                onClick = { onSaved(viewModel.save()) },
+                onClick = {
+                    viewModel.save()
+                        .onSuccess { saveError = null; onSaved(it) }
+                        .onFailure { saveError = strings.saveFailed(if (it is WorktreeError) strings.worktreeError(it) else it.message) }
+                },
                 enabled = viewModel.isValid,
             ) {
                 Text(strings.save)
@@ -223,5 +257,39 @@ fun ProjectConfigScreen(
                 }
             },
         )
+    }
+}
+
+@Composable
+private fun RepositoryProvisioningList(
+    state: RepositoryProvisioningState,
+    pendingPatterns: List<String>,
+) {
+    val strings = LocalStrings.current
+    val declared = (state as? RepositoryProvisioningState.Declared)?.provisioning
+    val rows = declared?.copyPatterns.orEmpty().map { it to RepositoryProvisioning.CONFIG_FILE_NAME } +
+        declared?.worktreeIncludePatterns.orEmpty().map { it to RepositoryProvisioning.WORKTREE_INCLUDE_FILE_NAME } +
+        pendingPatterns.map { it to "${RepositoryProvisioning.CONFIG_FILE_NAME} · ${strings.pendingSave}" }
+
+    when {
+        state is RepositoryProvisioningState.Unreadable -> Text(
+            strings.repositoryConfigUnreadable(state.path) + (state.detail?.let { "\n$it" } ?: ""),
+            color = MaterialTheme.colorScheme.error,
+        )
+        rows.isEmpty() -> Text(strings.repositoryProvisioningEmpty)
+    }
+    rows.forEach { (pattern, source) ->
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(pattern)
+            Text(
+                source,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }

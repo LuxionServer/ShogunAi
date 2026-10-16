@@ -2,6 +2,7 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
+import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
@@ -10,6 +11,7 @@ class CreateWorktreeFromBranchUseCase(
     private val config: ProjectConfig,
     private val executor: ShellCommandExecutor,
     private val fileManager: FileManager,
+    private val provisioningSource: RepositoryProvisioningSource,
 ) {
     suspend operator fun invoke(branch: String): Result<Worktree> =
         runCatching {
@@ -29,10 +31,7 @@ class CreateWorktreeFromBranchUseCase(
                 throw WorktreeError.BranchNotFound(branchName)
             }
 
-            val missingSecrets = config.secretFiles.filterNot { fileManager.exists(config.baseSecretPath(it)) }
-            if (missingSecrets.isNotEmpty()) {
-                throw WorktreeError.SecretFileNotFound(missingSecrets, config.baseRepositoryPath)
-            }
+            val repositoryFiles = checkProvisioningAndResolveFiles(config, executor, fileManager, provisioningSource)
 
             addWorktreeAndCopySecrets(
                 config = config,
@@ -42,6 +41,7 @@ class CreateWorktreeFromBranchUseCase(
                 branch = branchName,
                 addArgs = listOf("git", "worktree", "add", worktreePath, branchName),
                 branchToDeleteOnLfsFailure = null,
+                repositoryFiles = repositoryFiles,
             )
         }
 

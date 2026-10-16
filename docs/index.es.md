@@ -3,12 +3,12 @@
 Orquestador de escritorio (Kotlin + Compose Multiplatform) para automatizar workflows de desarrollo complejos:
 
 - Creación y eliminación de **Git worktrees** aislados.
-- Aprovisionamiento de secretos locales necesarios para compilar (p. ej. `local.properties` de Android).
+- Aprovisionamiento de los archivos locales necesarios para compilar (p. ej. `local.properties` de Android), declarados en un `.shogunai.json` versionado en el repositorio o en `.worktreeinclude`.
 - Preparación del estado exacto que necesita un agente de IA (Copilot/Claude) para empezar a trabajar de inmediato en una tarea, sin cambios de contexto manuales.
 
 ## Estado del proyecto
 
-En desarrollo activo y publicado como app de escritorio (ver el README para instalarla). Gestiona un catálogo de proyectos y, para cada uno, crea worktrees desde ramas nuevas o existentes, les copia los secretos locales, copia el comando para lanzar un agente de IA en un worktree y repara los worktrees cuando se mueve el repositorio. La interfaz está en inglés y español. Ver [decisiones de diseño](decisions/index.md) para lo decidido antes de OpenSpec, y `openspec/changes/archive/` para cada cambio desde entonces.
+En desarrollo activo y publicado como app de escritorio (ver el README para instalarla). Gestiona un catálogo de proyectos y, para cada uno, crea worktrees desde ramas nuevas o existentes, les copia los archivos locales que declara el repositorio, copia el comando para lanzar un agente de IA en un worktree y repara los worktrees cuando se mueve el repositorio. La interfaz está en inglés y español. Ver [decisiones de diseño](decisions/index.md) para lo decidido antes de OpenSpec, y `openspec/changes/archive/` para cada cambio desde entonces.
 
 ## Dónde mirar
 
