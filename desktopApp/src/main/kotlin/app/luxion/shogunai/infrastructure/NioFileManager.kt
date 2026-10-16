@@ -1,9 +1,13 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.io.FileManager
+import java.io.IOException
+import java.nio.file.FileVisitResult
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.SimpleFileVisitor
 import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.BasicFileAttributes
 
 class NioFileManager : FileManager {
 
@@ -16,5 +20,26 @@ class NioFileManager : FileManager {
             StandardCopyOption.REPLACE_EXISTING,
             StandardCopyOption.COPY_ATTRIBUTES,
         )
+    }
+
+    override fun directorySize(path: String, excluding: Set<String>): Long {
+        val root = Path.of(path).toAbsolutePath().normalize()
+        val excluded = excluding.map { Path.of(it).toAbsolutePath().normalize() }.toSet()
+        var total = 0L
+        Files.walkFileTree(
+            root,
+            object : SimpleFileVisitor<Path>() {
+                override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult =
+                    if (dir != root && dir in excluded) FileVisitResult.SKIP_SUBTREE else FileVisitResult.CONTINUE
+
+                override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+                    if (attrs.isRegularFile) total += attrs.size()
+                    return FileVisitResult.CONTINUE
+                }
+
+                override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult = FileVisitResult.CONTINUE
+            },
+        )
+        return total
     }
 }

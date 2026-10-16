@@ -11,8 +11,10 @@ import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.CopyWorktreeLaunchCommandUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
+import app.luxion.shogunai.domain.usecase.DetectRunningAgentsUseCase
 import app.luxion.shogunai.domain.usecase.ListLocalBranchesUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
+import app.luxion.shogunai.domain.usecase.MeasureWorktreeSizeUseCase
 import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.RepairWorktreesUseCase
@@ -45,6 +47,8 @@ class AppContainer {
         resolveMainBranch = ResolveMainBranchUseCase(config, shellCommandExecutor),
         readStatus = ReadWorktreeStatusUseCase(shellCommandExecutor),
         cleanUp = CleanUpWorktreesUseCase(config, shellCommandExecutor),
+        detectAgents = DetectRunningAgentsUseCase(config, shellCommandExecutor),
+        measureSize = MeasureWorktreeSizeUseCase(fileManager),
     )
 }
 
@@ -59,4 +63,6 @@ data class WorktreeUseCases(
     val resolveMainBranch: ResolveMainBranchUseCase,
     val readStatus: ReadWorktreeStatusUseCase,
     val cleanUp: CleanUpWorktreesUseCase,
+    val detectAgents: DetectRunningAgentsUseCase,
+    val measureSize: MeasureWorktreeSizeUseCase,
 )

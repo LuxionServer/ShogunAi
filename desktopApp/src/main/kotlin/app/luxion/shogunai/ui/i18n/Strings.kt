@@ -83,6 +83,11 @@ interface Strings {
     fun mergedInto(branch: String): String
     val statusUnavailable: String
     val folderMissing: String
+    val originShogunAi: String
+    val originClaudeCode: String
+    val originOther: String
+    val inactive: String
+    fun worktreesSummary(count: Int, totalSize: String): String
     val locked: String
     val cleanUp: String
     val cleanUpTitle: String
@@ -113,6 +118,7 @@ interface Strings {
     fun branchNotFound(branch: String): String
     fun branchAlreadyCheckedOut(branch: String, path: String?): String
     fun commandCouldNotStart(command: List<String>): String
+    fun processListingFailed(command: List<String>, exitCode: Int): String
     fun unexpectedError(detail: String?): String
 }
 
@@ -141,4 +147,5 @@ private fun Strings.worktreeErrorMessage(error: WorktreeError): String = when (e
     WorktreeError.GitLfsNotFound -> gitLfsNotFound
     is WorktreeError.BranchNotFound -> branchNotFound(error.branch)
     is WorktreeError.BranchAlreadyCheckedOut -> branchAlreadyCheckedOut(error.branch, error.path)
+    is WorktreeError.ProcessListingFailed -> processListingFailed(error.command, error.exitCode)
 }

@@ -79,6 +79,12 @@ object SpanishStrings : Strings {
     override fun mergedInto(branch: String) = "mergeada en $branch"
     override val statusUnavailable = "Estado no disponible"
     override val folderMissing = "Carpeta no encontrada"
+    override val originShogunAi = "ShogunAi"
+    override val originClaudeCode = "Claude Code"
+    override val originOther = "otra ubicación"
+    override val inactive = "inactivo"
+    override fun worktreesSummary(count: Int, totalSize: String) =
+        (if (count == 1) "1 worktree" else "$count worktrees") + " · $totalSize"
     override val locked = "bloqueado"
     override val cleanUp = "Limpiar"
     override val cleanUpTitle = "Limpiar worktrees"
@@ -114,6 +120,8 @@ object SpanishStrings : Strings {
     override fun branchNotFound(branch: String) = "No se encontró la rama: $branch"
     override fun branchAlreadyCheckedOut(branch: String, path: String?) =
         "La rama '$branch' ya está en uso" + if (path != null) " en $path" else ""
+    override fun processListingFailed(command: List<String>, exitCode: Int) =
+        "No se pudieron listar los procesos (código de salida $exitCode): ${command.joinToString(" ")}"
     override fun commandCouldNotStart(command: List<String>) =
         "No se pudo iniciar el comando: ${command.joinToString(" ")}"
     override fun unexpectedError(detail: String?) = "Error inesperado" + detail.asSuffix()

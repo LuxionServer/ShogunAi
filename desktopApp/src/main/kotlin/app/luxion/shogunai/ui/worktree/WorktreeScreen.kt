@@ -39,7 +39,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.BranchType
+import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
+import app.luxion.shogunai.domain.model.WorktreeOrigin
+import app.luxion.shogunai.domain.usecase.classifyOrigin
+import app.luxion.shogunai.domain.usecase.isInactive
 import app.luxion.shogunai.ui.components.DropdownSelector
 import app.luxion.shogunai.ui.components.SectionCard
 import app.luxion.shogunai.ui.components.SegmentedSelector
@@ -51,6 +56,7 @@ import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.i18n.worktreeError
 import app.luxion.shogunai.ui.theme.ShogunTheme
 import kotlinx.coroutines.delay
+import java.time.Instant
 
 private fun CreateMode.label(strings: Strings): String = when (this) {
     CreateMode.NEW_BRANCH -> strings.newBranchMode
@@ -60,6 +66,7 @@ private fun CreateMode.label(strings: Strings): String = when (this) {
 @Composable
 fun WorktreeScreen(
     projectName: String,
+    projectConfig: ProjectConfig,
     viewModel: WorktreeViewModel,
     onBack: () -> Unit,
 ) {
@@ -271,17 +278,31 @@ fun WorktreeScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(strings.worktreesTitle, style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(strings.worktreesTitle, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    strings.worktreesSummary(viewModel.worktrees.size, formatSize(viewModel.totalSize)),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = Spacing.sm),
+                )
+            }
             OutlinedButton(
                 onClick = { viewModel.openCleanup() },
                 enabled = viewModel.cleanupCandidates.isNotEmpty() && !viewModel.isCleaningUp,
             ) { Text(strings.cleanUp) }
         }
         viewModel.worktrees.forEach { worktree ->
+            val status = viewModel.statuses[worktree.path]
+            val agents = viewModel.agents?.get(worktree.path).orEmpty()
             WorktreeRow(
                 worktree = worktree,
-                status = viewModel.statuses[worktree.path],
+                status = status,
                 mainBranchName = viewModel.mainBranch?.name,
+                origin = classifyOrigin(worktree, projectConfig),
+                agents = agents,
+                size = viewModel.sizes[worktree.path],
+                isInactive = isInactive(worktree, (status as? WorktreeStatusState.Loaded)?.status, agents, Instant.now()),
                 isCopied = viewModel.copiedWorktreePath == worktree.path,
                 onRemove = { viewModel.requestRemoval(worktree) },
                 onCopyLaunchCommand = { viewModel.copyLaunchCommand(worktree) },
@@ -355,6 +376,10 @@ private fun WorktreeRow(
     worktree: Worktree,
     status: WorktreeStatusState?,
     mainBranchName: String?,
+    origin: WorktreeOrigin?,
+    agents: List<RunningAgent>,
+    size: Long?,
+    isInactive: Boolean,
     isCopied: Boolean,
     onRemove: () -> Unit,
     onCopyLaunchCommand: () -> Unit,
@@ -366,21 +391,12 @@ private fun WorktreeRow(
     ) {
         Column(modifier = Modifier.weight(1f).padding(end = Spacing.sm)) {
             Text(worktree.path, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(worktree.branch ?: strings.detachedHead, style = MaterialTheme.typography.bodySmall)
-                if (worktree.isLocked) {
-                    Text(
-                        strings.locked,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.tertiary,
-                        modifier = Modifier.padding(start = Spacing.sm),
-                    )
-                }
-            }
+            WorktreeBranchLine(worktree, origin, agents)
             if (worktree.isPrunable) {
                 Text(strings.folderMissing, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             } else {
                 WorktreeStatusLine(status, mainBranchName)
+                WorktreeOverviewLine(size, isInactive)
             }
         }
         Row {

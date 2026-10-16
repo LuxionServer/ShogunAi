@@ -94,10 +94,11 @@ The command is passed as **argv** (a list of strings), never as a string for a s
 interface FileManager {
     fun exists(path: String): Boolean
     fun copy(source: String, destination: String)
+    fun directorySize(path: String, excluding: Set<String> = emptySet()): Long
 }
 ```
 
-Abstracts the filesystem so that copying secrets is unit-testable without touching disk.
+Abstracts the filesystem so that copying secrets and measuring worktrees is unit-testable without touching disk. `directorySize` adds up the regular files under `path`, skipping the folders in `excluding`.
 
 ### `ClipboardWriter`
 
@@ -160,6 +161,13 @@ Squash and rebase merges aren't detected as merged, and remote-tracking branches
 `selectCleanupCandidates(worktrees, statuses)` picks the worktrees to clean up: not main, not locked, and either prunable or merged into the main branch with no uncommitted changes. Worktrees without a loaded status are never picked.
 
 `CleanUpWorktreesUseCase` takes those candidates, the `MainBranch` and whether to delete branches, and returns a `CleanupReport` (`removed`, `keptBranches`, `failures`). Each existing worktree is removed with `git worktree remove` (never `--force`), and missing ones with a single `git worktree prune`. A failing step is recorded and the rest continue. Then the branches of every removed worktree, pruned ones included, are deleted only if `git merge-base --is-ancestor <branch> <main ref>` still succeeds, and then with `git branch -D`: `-d` checks against the base repository's `HEAD`, which in a git-flow repository may not contain a branch merged into `develop`.
+
+### Worktree overview
+
+- `classifyOrigin(worktree, config)` returns the `WorktreeOrigin` of a non-main worktree: `CLAUDE_CODE` if its path is inside a `.claude/worktrees/` folder (checked first, since that folder can be inside the worktrees root), `SHOGUNAI` if it's inside `config.worktreesRoot`, `OTHER` otherwise. Paths are compared with `/` separators and without trailing slashes, so Windows paths work too.
+- `isInactive(worktree, status, agents, now)` is true for a non-main worktree with no uncommitted changes, no running agents and a last commit older than `INACTIVITY_THRESHOLD` (14 days).
+- `DetectRunningAgentsUseCase` returns the `RunningAgent`s per worktree path. It runs `lsof -d cwd -F pcn` once to get every process's working directory, assigns each process to the worktree with the longest path containing it (so a process in `.claude/worktrees/<name>` isn't attributed to the main worktree), and runs `ps -o pid=,comm=` for those processes. Their executable's file name is matched against the known agent CLIs (`claude`, `codex`, `gemini`, `cursor-agent`, `opencode`, `aider`, `copilot`) and the project's own agent command. The `lsof` command name isn't used because Claude Code renames its process to its version. If `lsof` or `ps` fail (e.g. on Windows), it fails with `WorktreeError.ProcessListingFailed`.
+- `MeasureWorktreeSizeUseCase` returns a worktree's size with `FileManager.directorySize`, on the IO dispatcher, excluding every other listed worktree nested inside it. It returns `null` for a missing folder.
 
 ### `RemoveWorktreeUseCase`
 

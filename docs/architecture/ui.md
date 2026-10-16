@@ -34,6 +34,14 @@ Each row shows its worktree's status under the branch name. `WorktreeViewModel` 
 
 `WorktreeStatusLine` renders the status as segments separated by `·` (`statusSegments`): uncommitted changes (only when there are any), `↑N ↓N upstream`, `↑N ↓N <main branch>` and the last commit date as relative time (`relativeTime`, in `RelativeTime.kt`). A merged branch shows a "merged into <main branch>" label in the primary color instead of its main branch divergence.
 
+### Worktree overview
+
+`WorktreeScreen` receives the project's `ProjectConfig` to classify each row's origin with `classifyOrigin`. After each list load, `WorktreeViewModel` also runs `DetectRunningAgentsUseCase` once (`agents`, `null` when processes can't be listed) and measures every worktree's size one at a time with `MeasureWorktreeSizeUseCase` (`sizes`, added up in `totalSize`); stale results are dropped with `listGeneration`.
+
+- `WorktreeBranchLine` shows, after the branch and the "locked" label, the origin (ShogunAi, Claude Code or other location) in muted text and each running agent as "● name" in the success color.
+- `WorktreeOverviewLine`, under the status, shows the size (`formatSize`, binary units with one decimal) and an "inactive" label when `isInactive` holds.
+- The "Worktrees" title is followed by "N worktrees · <total size>".
+
 ### Cleaning up worktrees
 
 The "Clean up" button next to the "Worktrees" title is enabled when `cleanupCandidates` (from `selectCleanupCandidates` over the listed worktrees and their loaded statuses) isn't empty. It opens `CleanupDialog`, which lists the candidates by folder name and branch and offers "Also delete their local branches", unchecked by default. Confirming runs `CleanUpWorktreesUseCase`, shows a progress indicator with the dialog's actions disabled, then closes the dialog, shows "N worktrees cleaned up" as a success message and reloads the list. Failures and kept branches stay visible in `CleanupIssues` until dismissed.

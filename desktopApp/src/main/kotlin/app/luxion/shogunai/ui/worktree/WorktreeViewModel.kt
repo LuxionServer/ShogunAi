@@ -9,6 +9,7 @@ import app.luxion.shogunai.WorktreeUseCases
 import app.luxion.shogunai.domain.model.BranchOption
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.MainBranch
+import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeStatus
@@ -42,6 +43,13 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
     var mainBranch by mutableStateOf<MainBranch?>(null)
         private set
     private val statusReadPermits = Semaphore(MAX_PARALLEL_STATUS_READS)
+
+    var agents by mutableStateOf<Map<String, List<RunningAgent>>?>(null)
+        private set
+    var sizes by mutableStateOf<Map<String, Long>>(emptyMap())
+        private set
+    val totalSize: Long
+        get() = sizes.values.sum()
 
     val cleanupCandidates: List<Worktree>
         get() = selectCleanupCandidates(worktrees, loadedStatuses())
@@ -121,6 +129,22 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
             mainBranch = resolved
             listed.forEach { worktree -> launch { readStatus(generation, worktree, resolved) } }
         }
+        loadOverview(generation, listed)
+    }
+
+    private fun loadOverview(generation: Int, listed: List<Worktree>) {
+        sizes = emptyMap()
+        viewModelScope.launch {
+            val detected = useCases.detectAgents(listed).getOrNull()
+            if (generation == listGeneration) agents = detected
+        }
+        viewModelScope.launch {
+            for (worktree in listed) {
+                val size = useCases.measureSize(worktree, listed).getOrNull()
+                if (generation != listGeneration) return@launch
+                if (size != null) sizes = sizes + (worktree.path to size)
+            }
+        }
     }
 
     private fun loadStatusOf(worktree: Worktree) {
@@ -194,6 +218,7 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
                     .onSuccess {
                         worktrees = worktrees.filterNot { it.path == worktree.path }
                         statuses = statuses - worktree.path
+                        sizes = sizes - worktree.path
                         error = null
                         pendingRemoval = null
                     }
