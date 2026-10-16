@@ -50,7 +50,7 @@ class EmulatorSettingsTest {
     )
 
     private fun viewModel(project: Project?, avds: Result<List<String>> = Result.success(listOf("Medium_Phone_API_35"))) =
-        ProjectConfigViewModel(projectRepository, provisioning, project) { path -> avdLoads += path; avds }
+        ProjectConfigViewModel(projectRepository, provisioning, project, loadAvds = { path -> avdLoads += path; avds })
 
     @Test
     fun `projects without the provider show no section and run no Android tool`() = runTest(dispatcher) {

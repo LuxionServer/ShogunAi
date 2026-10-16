@@ -218,6 +218,7 @@ fun ProjectConfigScreen(
         }
 
         EmulatorSettingsSection(viewModel)
+        SimulatorSettingsSection(viewModel)
 
         saveError?.let { error ->
             Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.fillMaxWidth())

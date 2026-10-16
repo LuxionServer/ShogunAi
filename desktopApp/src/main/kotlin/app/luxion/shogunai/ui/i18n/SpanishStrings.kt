@@ -105,6 +105,33 @@ object SpanishStrings : Strings {
     override fun worktreesCleanedUp(count: Int) = if (count == 1) "1 worktree limpiado" else "$count worktrees limpiados"
     override fun cleanupFailed(path: String, detail: String) = "No se pudo eliminar \"$path\": $detail"
     override fun branchKept(branch: String) = "Rama \"$branch\" conservada: no está mergeada en la rama principal"
+    override val simulatorSection = "Simulador de iOS"
+    override val simulatorSectionDescription =
+        "Este repositorio da a cada worktree su propio simulador de iOS (IOS_SIMULATOR_UDID). Estos ajustes solo se aplican en esta máquina."
+    override val simulatorRuntimeLabel = "Runtime"
+    override val simulatorDeviceLabel = "Dispositivo"
+    override val simulatorAutomatic = "Automático"
+    override fun notOnThisMachine(name: String) = "$name (no está en esta máquina)"
+    override val simulatorTestsWired = "Los tests de simulador KMP usan el simulador de cada worktree."
+    override val simulatorTestsNotWired =
+        "Los tests de simulador KMP aún no usan el simulador de cada worktree. Añade esto al build.gradle.kts del módulo:"
+    override val copySnippet = "Copiar"
+    override val installInitScript = "Instalar para todos los proyectos de esta máquina"
+    override val installInitScriptTitle = "¿Instalar el init script de Gradle?"
+    override fun installInitScriptMessage(path: String) =
+        "ShogunAi escribirá el init script de Gradle $path para que los tests de simulador iOS de todos los " +
+            "proyectos Gradle de esta máquina se ejecuten en IOS_SIMULATOR_UDID cuando esté definida. Quítalo con 'shogun simulator gradle-init uninstall'."
+    override val install = "Instalar"
+    override val simulatorLabel = "Simulador de iOS"
+    override val simulatorShutdown = "apagado"
+    override val simulatorBooting = "arrancando"
+    override val simulatorBooted = "arrancado"
+    override val startSimulator = "Arrancar"
+    override val stopSimulator = "Apagar"
+    override val alsoDeleteSimulators = "Borrar también sus simuladores de iOS"
+    override fun orphanedSimulators(names: List<String>) =
+        "Simuladores cuyo worktree ya no existe, que también se borran: ${names.joinToString()}"
+    override fun simulatorsDeleted(count: Int) = if (count == 1) "1 simulador borrado" else "$count simuladores borrados"
     override val emulatorSection = "Emulador de Android"
     override val emulatorSectionDescription =
         "Este repositorio da a cada worktree su propio emulador (ANDROID_SERIAL). Estos ajustes solo se aplican en esta máquina."
@@ -182,6 +209,15 @@ object SpanishStrings : Strings {
         "$serial no ha terminado de arrancar en $seconds s; sigue arrancando"
     override fun androidToolFailed(command: List<String>, exitCode: Int) =
         "Falló una herramienta de Android (código $exitCode): ${command.joinToString(" ")}"
+    override val noIosRuntime =
+        "No hay ningún runtime de simulador de iOS instalado. Instala uno desde Ajustes > Componentes de Xcode y vuelve a intentarlo."
+    override fun simulatorBootTimeout(name: String, seconds: Long) =
+        "El simulador \"$name\" no ha terminado de arrancar en $seconds s; sigue arrancando"
+    override val iosSimulatorProviderNotDeclared =
+        "Este repositorio no usa el provider de simulador de iOS. Añade \"providers\": { \"ios-simulator\": {} } a .shogunai.json."
+    override val iosSimulatorsNotSupported = "Los simuladores de iOS necesitan macOS con Xcode instalado."
+    override fun appleToolFailed(command: List<String>, exitCode: Int) =
+        "Falló una herramienta de Xcode (código $exitCode): ${command.joinToString(" ")}"
     override val emulatorProviderNotDeclared =
         "Este repositorio no usa el provider de emulador. Añade \"providers\": { \"emulator\": {} } a .shogunai.json."
     override fun environmentFileTracked(path: String) =

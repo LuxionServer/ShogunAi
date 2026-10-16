@@ -44,6 +44,7 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeEmulator
+import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.model.WorktreeOrigin
 import app.luxion.shogunai.domain.usecase.classifyOrigin
 import app.luxion.shogunai.domain.usecase.isInactive
@@ -165,6 +166,7 @@ fun WorktreeScreen(
                         null
                     },
                     success.stoppedEmulators.takeIf { it > 0 }?.let(strings::emulatorsStopped),
+                    success.deletedSimulators.takeIf { it > 0 }?.let(strings::simulatorsDeleted),
                 ).joinToString(" · ")
             }
             LaunchedEffect(success) {
@@ -303,7 +305,7 @@ fun WorktreeScreen(
             }
             OutlinedButton(
                 onClick = { viewModel.openCleanup() },
-                enabled = viewModel.cleanupCandidates.isNotEmpty() && !viewModel.isCleaningUp,
+                enabled = viewModel.canCleanUp && !viewModel.isCleaningUp,
             ) { Text(strings.cleanUp) }
         }
         viewModel.worktrees.forEach { worktree ->
@@ -322,6 +324,11 @@ fun WorktreeScreen(
                 isStartingEmulator = worktree.path in viewModel.startingEmulators,
                 onStartEmulator = { viewModel.startEmulator(worktree) },
                 onStopEmulator = { viewModel.stopEmulator(worktree) },
+                showSimulator = viewModel.isSimulatorRepository,
+                simulator = viewModel.simulators[worktree.path],
+                isStartingSimulator = worktree.path in viewModel.startingSimulators,
+                onStartSimulator = { viewModel.startSimulator(worktree) },
+                onStopSimulator = { viewModel.stopSimulator(worktree) },
                 isInactive = isInactive(worktree, (status as? WorktreeStatusState.Loaded)?.status, agents, Instant.now()),
                 isCopied = viewModel.copiedWorktreePath == worktree.path,
                 onRemove = { viewModel.requestRemoval(worktree) },
@@ -408,6 +415,11 @@ private fun WorktreeRow(
     isStartingEmulator: Boolean,
     onStartEmulator: () -> Unit,
     onStopEmulator: () -> Unit,
+    showSimulator: Boolean,
+    simulator: WorktreeSimulator?,
+    isStartingSimulator: Boolean,
+    onStartSimulator: () -> Unit,
+    onStopSimulator: () -> Unit,
     isInactive: Boolean,
     isCopied: Boolean,
     onRemove: () -> Unit,
@@ -427,6 +439,7 @@ private fun WorktreeRow(
                 WorktreeStatusLine(status, mainBranchName)
                 WorktreeOverviewLine(size, isInactive, ports)
                 if (showEmulator) EmulatorLine(emulator, isStartingEmulator, onStartEmulator, onStopEmulator)
+                if (showSimulator) SimulatorLine(simulator, isStartingSimulator, onStartSimulator, onStopSimulator)
             }
         }
         Row {

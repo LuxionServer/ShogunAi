@@ -5,6 +5,7 @@ import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.InvalidEnvironmentTemplate
+import app.luxion.shogunai.domain.model.IosSimulatorProvider
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
@@ -120,20 +121,34 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
                 }
                 GradleProvider
             },
-            emulator = providers[EMULATOR_PROVIDER]?.let { value -> emulatorProviderOf(value, path) },
+            emulator = providers[EMULATOR_PROVIDER]?.let { value ->
+                val options = providerOptions(value, EMULATOR_PROVIDER, path)
+                EmulatorProvider(preferredAvd = optionalName(options, EMULATOR_PROVIDER, AVD_FIELD, path))
+            },
+            iosSimulator = providers[IOS_SIMULATOR_PROVIDER]?.let { value ->
+                val options = providerOptions(value, IOS_SIMULATOR_PROVIDER, path)
+                IosSimulatorProvider(
+                    device = optionalName(options, IOS_SIMULATOR_PROVIDER, DEVICE_FIELD, path),
+                    runtime = optionalName(options, IOS_SIMULATOR_PROVIDER, RUNTIME_FIELD, path),
+                )
+            },
         )
     }
 
-    private fun emulatorProviderOf(value: JsonElement, path: Path): EmulatorProvider {
-        val invalid = { detail: String -> WorktreeError.InvalidRepositoryConfig(path.toString(), detail) }
-        val options = value as? JsonObject ?: throw invalid("\"$PROVIDERS_FIELD.$EMULATOR_PROVIDER\" must be an object")
-        val avd = when (val field = options[AVD_FIELD]) {
+    private fun providerOptions(value: JsonElement, provider: String, path: Path): JsonObject =
+        value as? JsonObject
+            ?: throw WorktreeError.InvalidRepositoryConfig(path.toString(), "\"$PROVIDERS_FIELD.$provider\" must be an object")
+
+    private fun optionalName(options: JsonObject, provider: String, field: String, path: Path): String? {
+        val invalid = WorktreeError.InvalidRepositoryConfig(
+            path.toString(),
+            "\"$PROVIDERS_FIELD.$provider.$field\" must be a non-empty string",
+        )
+        return when (val value = options[field]) {
             null, is JsonNull -> null
-            is JsonPrimitive -> field.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
-                ?: throw invalid("\"$PROVIDERS_FIELD.$EMULATOR_PROVIDER.$AVD_FIELD\" must be an AVD name")
-            else -> throw invalid("\"$PROVIDERS_FIELD.$EMULATOR_PROVIDER.$AVD_FIELD\" must be an AVD name")
+            is JsonPrimitive -> value.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() } ?: throw invalid
+            else -> throw invalid
         }
-        return EmulatorProvider(preferredAvd = avd)
     }
 
     private fun readWorktreeInclude(path: Path): List<String> {
@@ -155,6 +170,9 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         const val GRADLE_PROVIDER = "gradle"
         const val EMULATOR_PROVIDER = "emulator"
         const val AVD_FIELD = "avd"
+        const val IOS_SIMULATOR_PROVIDER = "ios-simulator"
+        const val DEVICE_FIELD = "device"
+        const val RUNTIME_FIELD = "runtime"
         const val ENV_FIELD = "env"
         const val ENV_FILE_FIELD = "envFile"
     }

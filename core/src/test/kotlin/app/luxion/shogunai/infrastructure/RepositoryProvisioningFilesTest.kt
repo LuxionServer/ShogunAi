@@ -2,6 +2,7 @@ package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.GradleProvider
+import app.luxion.shogunai.domain.model.IosSimulatorProvider
 import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.WorktreeError
@@ -111,6 +112,27 @@ class RepositoryProvisioningFilesTest {
 
         configFile.writeText("""{ "providers": { "emulator": {} } }""")
         assertEquals(EmulatorProvider(), files.read(repository.toString()).providers.emulator)
+    }
+
+    @Test
+    fun `reads the iOS simulator provider with and without preferences`() {
+        configFile.writeText("""{ "providers": { "ios-simulator": { "device": "iPhone 16", "runtime": "iOS 18.5" } } }""")
+        assertEquals(IosSimulatorProvider("iPhone 16", "iOS 18.5"), files.read(repository.toString()).providers.iosSimulator)
+
+        configFile.writeText("""{ "providers": { "ios-simulator": {} } }""")
+        assertEquals(IosSimulatorProvider(), files.read(repository.toString()).providers.iosSimulator)
+    }
+
+    @Test
+    fun `fails with InvalidRepositoryConfig on an invalid iOS simulator provider`() {
+        listOf(
+            """{ "providers": { "ios-simulator": true } }""",
+            """{ "providers": { "ios-simulator": { "device": 16 } } }""",
+            """{ "providers": { "ios-simulator": { "runtime": "" } } }""",
+        ).forEach { content ->
+            configFile.writeText(content)
+            assertFailsWith<WorktreeError.InvalidRepositoryConfig>(content) { files.read(repository.toString()) }
+        }
     }
 
     @Test

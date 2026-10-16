@@ -22,7 +22,7 @@ Un worktree aísla ficheros, no puertos. Cuando el repositorio declara variables
 - `shogun env` imprime las variables del worktree actual como líneas `export` (`--format dotenv` o `json` para otras herramientas), así que `eval "$(shogun env)"` las define en una shell.
 - `envFile` (opcional) se escribe en cada worktree al crearlo o provisionarlo, en formato dotenv, para las herramientas que leen uno. Nunca se escribe sobre un fichero que Git versiona, así que añádelo a `.gitignore`.
 
-En repositorios Android, `"providers": { "emulator": {} }` añade `ANDROID_SERIAL=emulator-<puerto>` al entorno de cada worktree, así que `./gradlew installDebug` y `connectedAndroidTest` solo usan el emulador de ese worktree. Los agentes lo arrancan con `shogun emulator start` (espera a que el emulador termine de arrancar); los ajustes de AVD y ventana están en la sección "Emuladores de Android" del README.
+En repositorios Android, `"providers": { "emulator": {} }` añade `ANDROID_SERIAL=emulator-<puerto>` al entorno de cada worktree, así que `./gradlew installDebug` y `connectedAndroidTest` solo usan el emulador de ese worktree. Los agentes lo arrancan con `shogun emulator start` (espera a que el emulador termine de arrancar); los ajustes de AVD y ventana están en la sección "Emuladores de Android" del README. Del mismo modo, `"providers": { "ios-simulator": {} }` da a cada worktree su propio simulador de iOS e `IOS_SIMULATOR_UDID`; los agentes lo arrancan con `shogun simulator start` y compilan con `xcodebuild -destination "id=$IOS_SIMULATOR_UDID"`, y los tests KMP lo usan cuando el script de build (o el init script de la máquina) lo pasa a `device` (README, "Simuladores de iOS").
 
 Las recetas de abajo muestran cómo recibe cada agente estas variables.
 
@@ -52,7 +52,7 @@ Qué pasa entonces:
 - Ejecutar otra vez `claude -w TASK-123` reutiliza ese worktree.
 - Cuando Claude Code elimina el worktree (eliges eliminarlo al salir, o no tenía cambios), `shogun` lo elimina y borra su rama solo si está mergeada; una rama con trabajo se conserva.
 - Con este hook Claude Code deja de procesar `.worktreeinclude` por su cuenta; lo lee ShogunAi, así que sus archivos se siguen copiando.
-- `SessionStart` añade las variables `env` del worktree al `CLAUDE_ENV_FILE` de la sesión, así que todos los comandos Bash que ejecuta Claude las ven (`$PORT`), y le dice a Claude qué valores usa este worktree, incluido cómo arrancar su emulador cuando el repositorio usa el provider de emulador. Funciona en cualquier sesión que arranque dentro de un worktree, también sin `--worktree`, y no hace nada en repositorios sin `env`.
+- `SessionStart` añade las variables `env` del worktree al `CLAUDE_ENV_FILE` de la sesión, así que todos los comandos Bash que ejecuta Claude las ven (`$PORT`), y le dice a Claude qué valores usa este worktree, incluido cómo arrancar su emulador o su simulador de iOS cuando el repositorio usa esos providers. Funciona en cualquier sesión que arranque dentro de un worktree, también sin `--worktree`, y no hace nada en repositorios sin `env`.
 
 El worktree nuevo parte del commit actual del checkout principal, como los worktrees creados desde ShogunAi, y el ajuste `worktree.baseRef` de Claude Code no se aplica. Comprobado con Claude Code 2.1.301.
 

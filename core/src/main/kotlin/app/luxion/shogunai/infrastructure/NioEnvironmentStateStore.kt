@@ -36,26 +36,41 @@ class NioEnvironmentStateStore(
         return ports.mapNotNull { (key, value) -> (value as? JsonPrimitive)?.intOrNull?.let { key to it } }.toMap()
     }
 
-    override fun writePorts(adminDirectory: String, ports: Map<String, Int>) {
+    override fun writePorts(adminDirectory: String, ports: Map<String, Int>) =
+        writeField(adminDirectory, PORTS_FIELD, ports.mapValues { JsonPrimitive(it.value) })
+
+    override fun readResources(adminDirectory: String): Map<String, String> {
+        val resources = readObject(stateFile(Path.of(adminDirectory)))[RESOURCES_FIELD] as? JsonObject ?: return emptyMap()
+        return resources.mapNotNull { (key, value) ->
+            (value as? JsonPrimitive)?.takeIf { it.isString }?.content?.let { key to it }
+        }.toMap()
+    }
+
+    override fun writeResources(adminDirectory: String, resources: Map<String, String>) =
+        writeField(adminDirectory, RESOURCES_FIELD, resources.mapValues { JsonPrimitive(it.value) })
+
+    override fun reservedPortsOnMachine(commonDirectory: String): Set<Int> =
+        machineAdminDirectories(commonDirectory).flatMap { readPorts(it).values }.toSet()
+
+    override fun recordedResourcesOnMachine(commonDirectory: String, key: String): Set<String> =
+        machineAdminDirectories(commonDirectory).mapNotNull { readResources(it)[key] }.toSet()
+
+    private fun writeField(adminDirectory: String, field: String, values: Map<String, JsonPrimitive>) {
         val file = stateFile(Path.of(adminDirectory))
         val state = readObject(file)
-        val updated = if (ports.isEmpty()) {
-            JsonObject(state - PORTS_FIELD)
-        } else {
-            JsonObject(state + (PORTS_FIELD to JsonObject(ports.mapValues { JsonPrimitive(it.value) })))
-        }
+        val updated = if (values.isEmpty()) JsonObject(state - field) else JsonObject(state + (field to JsonObject(values)))
         if (updated.isEmpty()) Files.deleteIfExists(file) else writeAtomically(file, updated)
         val indexed = readIndex()
         val normalized = Path.of(adminDirectory).toAbsolutePath().normalize().toString()
-        writeIndex(if (ports.isEmpty()) indexed - normalized else indexed + normalized)
+        writeIndex(if (file.exists()) indexed + normalized else indexed - normalized)
     }
 
-    override fun reservedPortsOnMachine(commonDirectory: String): Set<Int> {
+    private fun machineAdminDirectories(commonDirectory: String): List<String> {
         val indexed = readIndex()
         val live = indexed.filter { stateFile(Path.of(it)).exists() }.toSet()
         if (live != indexed) writeIndex(live)
-        val directories = repositoryAdminDirectories(Path.of(commonDirectory)).map { it.toString() } + live
-        return directories.flatMap { readPorts(it).values }.toSet()
+        return (repositoryAdminDirectories(Path.of(commonDirectory)).map { it.toAbsolutePath().normalize().toString() } + live)
+            .distinct()
     }
 
     override fun <T> withLock(block: () -> T): T {
@@ -116,6 +131,7 @@ class NioEnvironmentStateStore(
         const val INDEX_FILE_NAME = "reservations.json"
         const val LOCK_FILE_NAME = "reservations.lock"
         private const val PORTS_FIELD = "ports"
+        private const val RESOURCES_FIELD = "resources"
         private const val WORKTREES_FIELD = "worktrees"
         private val processLock = ReentrantLock()
     }

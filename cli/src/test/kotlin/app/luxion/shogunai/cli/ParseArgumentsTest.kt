@@ -102,6 +102,21 @@ class ParseArgumentsTest {
     }
 
     @Test
+    fun `simulator commands`() {
+        assertEquals(CliCommand.Simulator(SimulatorAction.STATUS), command("simulator", "status"))
+        assertEquals(
+            CliCommand.Simulator(SimulatorAction.START, "../TASK-1", "iPhone 16", "iOS 18.5"),
+            command("simulator", "start", "../TASK-1", "--device", "iPhone 16", "--runtime", "iOS 18.5"),
+        )
+        assertEquals("--device and --runtime only apply to 'simulator start'", usageError("simulator", "stop", "--device", "iPhone 16"))
+        assertEquals("'simulator' needs an action: start, stop, status or gradle-init", usageError("simulator"))
+        assertEquals(CliCommand.SimulatorGradleInit(install = true, confirmed = true), command("simulator", "gradle-init", "install", "--yes"))
+        assertEquals(CliCommand.SimulatorGradleInit(install = false), command("simulator", "gradle-init", "uninstall"))
+        assertEquals("'simulator gradle-init' needs install or uninstall", usageError("simulator", "gradle-init"))
+        assertEquals(CliCommand.Clean(confirmed = true, deleteSimulators = true), command("clean", "--yes", "--delete-simulators"))
+    }
+
+    @Test
     fun `env command`() {
         assertEquals(CliCommand.Env(), command("env"))
         assertEquals(CliCommand.Env("../TASK-123", EnvironmentFormat.JSON), command("env", "../TASK-123", "--format", "json"))

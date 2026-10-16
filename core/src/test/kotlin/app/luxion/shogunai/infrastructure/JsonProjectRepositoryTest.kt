@@ -3,6 +3,7 @@ package app.luxion.shogunai.infrastructure
 import app.luxion.shogunai.domain.model.EmulatorSettings
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.SimulatorSettings
 import java.nio.file.Files
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.deleteExisting
@@ -81,6 +82,7 @@ class JsonProjectRepositoryTest {
 
         assertNull(project.config.mainBranch)
         assertEquals(EmulatorSettings(), project.config.emulator)
+        assertEquals(SimulatorSettings(), project.config.simulator)
     }
 
     @Test
@@ -93,11 +95,14 @@ class JsonProjectRepositoryTest {
                 worktreesRoot = "/home/dev/projects",
                 secretFiles = emptyList(),
                 emulator = EmulatorSettings(avd = "Medium_Phone_API_35", noWindow = true),
+                simulator = SimulatorSettings(device = "iPhone 16", runtime = "iOS 18.5"),
             ),
         )
 
         repository.save(project)
 
-        assertEquals(project.config.emulator, JsonProjectRepository(storagePath).list().single().config.emulator)
+        val loaded = JsonProjectRepository(storagePath).list().single().config
+        assertEquals(project.config.emulator, loaded.emulator)
+        assertEquals(project.config.simulator, loaded.simulator)
     }
 }

@@ -13,6 +13,7 @@ class ResolveWorktreeEnvironmentUseCase(
     private val provisioningSource: RepositoryProvisioningSource,
     private val stateStore: EnvironmentStateStore,
     private val portProbe: PortProbe,
+    private val contributions: ProviderContributions = ProviderContributions.DEFAULT,
 ) {
     suspend operator fun invoke(
         repositoryPath: String,
@@ -21,23 +22,65 @@ class ResolveWorktreeEnvironmentUseCase(
     ): Result<WorktreeEnvironment> = runCatching {
         val provisioning = provisioningSource.read(repositoryPath)
         val declaration = provisioning.environment
-        val contributions = providerContributions(provisioning.providers)
-        val requests = declaredPortRequests(declaration) + contributions.flatMap { it.ports }
-        if (declaration.isEmpty && contributions.isEmpty()) return@runCatching WorktreeEnvironment()
+        val contributed = contributions.forRepository(repositoryPath, provisioning.providers)
+        val requests = declaredPortRequests(declaration) + contributed.flatMap { it.ports }
+        val resourceRequests = contributed.flatMap { it.resources }
+        if (declaration.isEmpty && contributed.isEmpty()) return@runCatching WorktreeEnvironment()
         val directories = gitDirectories(worktreePath)
-        val keys = requests.map { it.key }.toSet()
+        val portKeys = requests.map { it.key }.toSet()
+        val resourceKeys = resourceRequests.map { it.key }.toSet()
         val ports = if (reserve) {
             stateStore.withLock { reservePorts(requests, directories) }
         } else {
-            stateStore.readPorts(directories.admin).filterKeys { it in keys }
+            stateStore.readPorts(directories.admin).filterKeys { it in portKeys }
         }
-        if (!keys.all { it in ports }) return@runCatching WorktreeEnvironment(ports = ports)
-        val worktreeName = normalizePath(worktreePath).substringAfterLast('/')
-        val declared = declaration.variables.map { it.name to it.render(worktreeName, ports) }
+        val resources = if (reserve) {
+            reserveResources(resourceRequests, directories, ResourceContext(folderName(repositoryPath), folderName(worktreePath)))
+        } else {
+            stateStore.readResources(directories.admin).filterKeys { it in resourceKeys }
+        }
+        if (!portKeys.all { it in ports } || !resourceKeys.all { it in resources }) {
+            return@runCatching WorktreeEnvironment(ports = ports, resources = resources)
+        }
+        val declared = declaration.variables.map { it.name to it.render(folderName(worktreePath), ports) }
         val declaredNames = declared.map { it.first }.toSet()
-        val contributed = contributions.flatMap { it.variables(ports) }.filterNot { it.first in declaredNames }
-        WorktreeEnvironment(variables = contributed + declared, ports = ports)
+        val reservations = EnvironmentReservations(ports, resources)
+        val fromProviders = contributed.flatMap { it.variables(reservations) }.filterNot { it.first in declaredNames }
+        WorktreeEnvironment(variables = fromProviders + declared, ports = ports, resources = resources)
     }
+
+    suspend fun recordedOnMachine(repositoryPath: String, key: String): Result<Set<String>> = runCatching {
+        stateStore.recordedResourcesOnMachine(gitDirectories(repositoryPath).common, key)
+    }
+
+    private suspend fun reserveResources(
+        requests: List<ResourceRequest>,
+        directories: GitDirectories,
+        context: ResourceContext,
+    ): Map<String, String> {
+        val resources = stateStore.readResources(directories.admin).filterKeys { key -> requests.any { it.key == key } }
+            .toMutableMap()
+        requests.forEach { request ->
+            val stored = resources[request.key]
+            if (stored != null && request.exists(stored)) return@forEach
+            val created = request.create(context)
+            val winner = stateStore.withLock {
+                val current = stateStore.readResources(directories.admin)
+                val recorded = current[request.key]
+                if (recorded != null && recorded != stored) {
+                    recorded
+                } else {
+                    stateStore.writeResources(directories.admin, current + (request.key to created))
+                    created
+                }
+            }
+            if (winner != created) request.discard(created)
+            resources[request.key] = winner
+        }
+        return resources
+    }
+
+    private fun folderName(path: String): String = normalizePath(path).substringAfterLast('/')
 
     private fun reservePorts(requests: List<PortRequest>, directories: GitDirectories): Map<String, Int> {
         val stored = stateStore.readPorts(directories.admin)

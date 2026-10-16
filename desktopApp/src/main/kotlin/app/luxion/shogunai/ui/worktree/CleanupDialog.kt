@@ -36,7 +36,7 @@ fun CleanupDialog(viewModel: WorktreeViewModel) {
         title = { Text(strings.cleanUpTitle) },
         text = {
             Column {
-                Text(strings.cleanUpMessage(candidates.size))
+                if (candidates.isNotEmpty()) Text(strings.cleanUpMessage(candidates.size))
                 candidates.forEach { worktree ->
                     Text(
                         listOfNotNull(worktree.path.substringAfterLast('/'), worktree.branch).joinToString(" · "),
@@ -72,6 +72,23 @@ fun CleanupDialog(viewModel: WorktreeViewModel) {
                             enabled = !viewModel.isCleaningUp,
                         )
                         Text(strings.alsoStopEmulators)
+                    }
+                }
+                if (viewModel.isSimulatorRepository) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = viewModel.cleanupDeleteSimulators,
+                            onCheckedChange = { viewModel.cleanupDeleteSimulators = it },
+                            enabled = !viewModel.isCleaningUp,
+                        )
+                        Text(strings.alsoDeleteSimulators)
+                    }
+                    if (viewModel.orphanedSimulators.isNotEmpty()) {
+                        Text(
+                            strings.orphanedSimulators(viewModel.orphanedSimulators.map { it.name }),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }

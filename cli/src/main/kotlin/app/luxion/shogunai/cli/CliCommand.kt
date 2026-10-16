@@ -21,6 +21,7 @@ sealed interface CliCommand {
         val deleteBranches: Boolean = false,
         val stopGradleDaemons: Boolean = false,
         val stopEmulators: Boolean = false,
+        val deleteSimulators: Boolean = false,
     ) : CliCommand
 
     data object Gradle : CliCommand
@@ -34,6 +35,13 @@ sealed interface CliCommand {
         val avd: String? = null,
         val noWindow: Boolean = false,
     ) : CliCommand
+    data class Simulator(
+        val action: SimulatorAction,
+        val path: String? = null,
+        val device: String? = null,
+        val runtime: String? = null,
+    ) : CliCommand
+    data class SimulatorGradleInit(val install: Boolean, val confirmed: Boolean = false) : CliCommand
     data class Env(val path: String? = null, val format: EnvironmentFormat = EnvironmentFormat.SH) : CliCommand
 }
 
@@ -58,6 +66,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "gradle" -> parseGradle(rest)
                 "env" -> parseEnv(rest)
                 "emulator" -> parseEmulator(rest)
+                "simulator" -> parseSimulator(rest)
                 else -> throw UsageException("unknown command '$name'")
             },
         )
@@ -113,12 +122,14 @@ private fun parseClean(rest: List<String>): CliCommand.Clean {
     var deleteBranches = false
     var stopGradleDaemons = false
     var stopEmulators = false
+    var deleteSimulators = false
     rest.forEach { argument ->
         when (argument) {
             "--yes", "-y" -> confirmed = true
             "--delete-branches" -> deleteBranches = true
             "--stop-gradle-daemons" -> stopGradleDaemons = true
             "--stop-emulators" -> stopEmulators = true
+            "--delete-simulators" -> deleteSimulators = true
             else -> throw UsageException("unknown argument '$argument' for 'clean'")
         }
     }
@@ -127,6 +138,7 @@ private fun parseClean(rest: List<String>): CliCommand.Clean {
         deleteBranches = deleteBranches,
         stopGradleDaemons = stopGradleDaemons,
         stopEmulators = stopEmulators,
+        deleteSimulators = deleteSimulators,
     )
 }
 
@@ -154,6 +166,51 @@ private fun parseHook(rest: List<String>): CliCommand {
 private const val HOOK_EVENTS = "worktree-create, worktree-remove or session-start"
 
 enum class EmulatorAction { START, STOP, STATUS }
+
+enum class SimulatorAction { START, STOP, STATUS }
+
+private fun parseSimulator(rest: List<String>): CliCommand {
+    val name = rest.firstOrNull() ?: throw UsageException("'simulator' needs an action: start, stop, status or gradle-init")
+    if (name == "gradle-init") return parseSimulatorGradleInit(rest.drop(1))
+    val action = SimulatorAction.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
+        ?: throw UsageException("unknown action '$name' for 'simulator', expected start, stop, status or gradle-init")
+    var path: String? = null
+    var device: String? = null
+    var runtime: String? = null
+    val remaining = ArrayDeque(rest.drop(1))
+    while (remaining.isNotEmpty()) {
+        when (val argument = remaining.removeFirst()) {
+            "--device" -> device = remaining.valueOf(argument)
+            "--runtime" -> runtime = remaining.valueOf(argument)
+            else -> {
+                if (argument.startsWith("-")) throw UsageException("unknown option '$argument' for 'simulator'")
+                if (path != null) throw UsageException("'simulator $name' takes at most one path")
+                path = argument
+            }
+        }
+    }
+    if (action != SimulatorAction.START && (device != null || runtime != null)) {
+        throw UsageException("--device and --runtime only apply to 'simulator start'")
+    }
+    return CliCommand.Simulator(action, path, device, runtime)
+}
+
+private fun parseSimulatorGradleInit(rest: List<String>): CliCommand.SimulatorGradleInit {
+    val install = when (rest.firstOrNull()) {
+        "install" -> true
+        "uninstall" -> false
+        null -> throw UsageException("'simulator gradle-init' needs install or uninstall")
+        else -> throw UsageException("unknown action '${rest.first()}' for 'simulator gradle-init', expected install or uninstall")
+    }
+    var confirmed = false
+    rest.drop(1).forEach { argument ->
+        when (argument) {
+            "--yes", "-y" -> confirmed = true
+            else -> throw UsageException("unknown argument '$argument' for 'simulator gradle-init'")
+        }
+    }
+    return CliCommand.SimulatorGradleInit(install, confirmed)
+}
 
 private fun parseEmulator(rest: List<String>): CliCommand.Emulator {
     val name = rest.firstOrNull() ?: throw UsageException("'emulator' needs an action: start, stop or status")

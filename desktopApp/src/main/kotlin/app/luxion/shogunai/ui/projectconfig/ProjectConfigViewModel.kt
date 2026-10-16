@@ -8,13 +8,23 @@ import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import androidx.lifecycle.viewModelScope
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
+import app.luxion.shogunai.SimulatorSetup
 import app.luxion.shogunai.domain.model.EmulatorSettings
+import app.luxion.shogunai.domain.model.SimulatorRuntime
+import app.luxion.shogunai.domain.model.SimulatorSettings
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.util.UUID
+
+sealed interface SimulatorSectionState {
+    data object Hidden : SimulatorSectionState
+    data object Loading : SimulatorSectionState
+    data class Available(val runtimes: List<SimulatorRuntime>, val testsWired: Boolean) : SimulatorSectionState
+    data class Failed(val error: Throwable) : SimulatorSectionState
+}
 
 sealed interface EmulatorSectionState {
     data object Hidden : EmulatorSectionState
@@ -29,6 +39,7 @@ class ProjectConfigViewModel(
     private val provisioningSource: RepositoryProvisioningSource,
     existingProject: Project?,
     private val loadAvds: suspend (repositoryPath: String) -> Result<List<String>> = { Result.success(emptyList()) },
+    private val simulatorSetup: SimulatorSetup = SimulatorSetup.NONE,
 ) : ViewModel() {
     private val existingId = existingProject?.id
 
@@ -56,6 +67,7 @@ class ProjectConfigViewModel(
             _baseRepositoryPath = value
             repositoryProvisioning = provisioningSource.stateFor(value)
             refreshEmulatorSection()
+            refreshSimulatorSection()
             if (value.isBlank()) return
             val offset = worktreesRootOffset
             val followsBase = offset != null &&
@@ -74,6 +86,16 @@ class ProjectConfigViewModel(
         private set
     private var emulatorLoad: Job? = null
 
+    var simulatorDevice by mutableStateOf(existingProject?.config?.simulator?.device)
+    var simulatorRuntime by mutableStateOf(existingProject?.config?.simulator?.runtime)
+
+    var simulatorSection by mutableStateOf<SimulatorSectionState>(SimulatorSectionState.Hidden)
+        private set
+    private var simulatorLoad: Job? = null
+
+    val simulatorSnippet: String get() = simulatorSetup.snippet
+    val simulatorInitScriptPath: String get() = simulatorSetup.initScriptPath
+
     private val initialName = name
     private val initialBaseRepositoryPath = baseRepositoryPath
     private val initialWorktreesRoot = worktreesRoot
@@ -83,10 +105,40 @@ class ProjectConfigViewModel(
     private val initialMainBranch = mainBranch
     private val initialEmulatorAvd = emulatorAvd
     private val initialEmulatorNoWindow = emulatorNoWindow
+    private val initialSimulatorDevice = simulatorDevice
+    private val initialSimulatorRuntime = simulatorRuntime
 
     init {
         refreshEmulatorSection()
+        refreshSimulatorSection()
     }
+
+    private fun refreshSimulatorSection() {
+        simulatorLoad?.cancel()
+        val repositoryPath = _baseRepositoryPath
+        if (repositoryPath.isBlank() || !simulatorSetup.isAvailable(repositoryPath)) {
+            simulatorSection = SimulatorSectionState.Hidden
+            return
+        }
+        simulatorSection = SimulatorSectionState.Loading
+        simulatorLoad = viewModelScope.launch {
+            simulatorSection = simulatorSetup.runtimes().fold(
+                onSuccess = { runtimes ->
+                    SimulatorSectionState.Available(
+                        runtimes = runtimes.filter { it.platform.equals("iOS", ignoreCase = true) },
+                        testsWired = simulatorSetup.isWired(repositoryPath),
+                    )
+                },
+                onFailure = { SimulatorSectionState.Failed(it) },
+            )
+        }
+    }
+
+    fun installSimulatorInitScript(): Result<Unit> =
+        simulatorSetup.installInitScript().onSuccess {
+            val current = simulatorSection
+            if (current is SimulatorSectionState.Available) simulatorSection = current.copy(testsWired = true)
+        }
 
     private fun refreshEmulatorSection() {
         emulatorLoad?.cancel()
@@ -125,7 +177,9 @@ class ProjectConfigViewModel(
             useHeadroom != initialUseHeadroom ||
             mainBranch != initialMainBranch ||
             emulatorAvd != initialEmulatorAvd ||
-            emulatorNoWindow != initialEmulatorNoWindow
+            emulatorNoWindow != initialEmulatorNoWindow ||
+            simulatorDevice != initialSimulatorDevice ||
+            simulatorRuntime != initialSimulatorRuntime
 
     val canMoveLocalFilesToRepository: Boolean
         get() = baseRepositoryPath.isNotBlank() &&
@@ -167,6 +221,7 @@ class ProjectConfigViewModel(
                 agentLaunchConfig = AgentLaunchConfig(agentCommand = agentCommand, useHeadroom = useHeadroom),
                 mainBranch = mainBranch.trim().ifEmpty { null },
                 emulator = EmulatorSettings(avd = emulatorAvd?.trim()?.ifEmpty { null }, noWindow = emulatorNoWindow),
+                simulator = SimulatorSettings(device = simulatorDevice, runtime = simulatorRuntime),
             ),
         )
         projectRepository.save(project)

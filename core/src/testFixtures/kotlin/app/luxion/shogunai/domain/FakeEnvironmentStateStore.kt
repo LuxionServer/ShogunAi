@@ -20,8 +20,20 @@ class FakeEnvironmentStateStore(
         if (ports.isEmpty()) portsByAdminDirectory.remove(adminDirectory) else portsByAdminDirectory[adminDirectory] = ports
     }
 
+    val resourcesByAdminDirectory = mutableMapOf<String, Map<String, String>>()
+
+    override fun readResources(adminDirectory: String): Map<String, String> = resourcesByAdminDirectory[adminDirectory].orEmpty()
+
+    override fun writeResources(adminDirectory: String, resources: Map<String, String>) {
+        writes++
+        if (resources.isEmpty()) resourcesByAdminDirectory.remove(adminDirectory) else resourcesByAdminDirectory[adminDirectory] = resources
+    }
+
     override fun reservedPortsOnMachine(commonDirectory: String): Set<Int> =
         portsByAdminDirectory.values.flatMap { it.values }.toSet()
+
+    override fun recordedResourcesOnMachine(commonDirectory: String, key: String): Set<String> =
+        resourcesByAdminDirectory.values.mapNotNull { it[key] }.toSet()
 
     override fun <T> withLock(block: () -> T): T {
         locks++

@@ -30,7 +30,7 @@ Alternative: a separate store per provider. The reservations file already disapp
 `providerContributions` becomes a `ProviderContributions` factory injected into `ResolveWorktreeEnvironmentUseCase`, built by the app and the CLI with what providers need: the `AppleSimulators` port, the project's machine settings for a repository (looked up in the project catalog) and whether the host is macOS. The emulator contribution moves into it unchanged; the iOS one exists only on macOS with the provider declared, and exports `IOS_SIMULATOR_UDID`.
 
 ### Declaration, settings and choice
-`RepositoryProviders.iosSimulator: IosSimulatorProvider?` (`device`, `runtime` preferences) is parsed like `emulator`. `ProjectConfig.simulator: SimulatorSettings(device, runtime)`. `chooseSimulator(requested, settings, preferred, available)` is pure: runtime by display name (`iOS 18.5`), case-insensitive, each level used only if installed; default runtime is the newest iOS one by version; device type by name among the runtime's `supportedDeviceTypes`, default the last iPhone in that list (Apple lists newer types later). No iOS runtime is `NoIosRuntime`.
+`RepositoryProviders.iosSimulator: IosSimulatorProvider?` (`device`, `runtime` preferences) is parsed like `emulator`. `ProjectConfig.simulator: SimulatorSettings(device, runtime)`. `chooseSimulator(requested, settings, preferred, available)` is pure: runtime by display name (`iOS 18.5`), case-insensitive, each level used only if installed; default runtime is the newest iOS one by version; device type by name among the runtime's `supportedDeviceTypes`, default the newest iPhone: highest model number in the name, then the shortest name (the base model, or the Pro when there's none). The first draft took the last iPhone in the list, assuming Apple lists newer types later; validation showed `simctl` lists them newest first (it picked an iPhone 11 on iOS 27), so the choice no longer depends on the order. No iOS runtime is `NoIosRuntime`.
 
 ### One port for Apple's simulators
 `AppleSimulators` in `domain/io`: `isSupported()` (macOS), `runtimes()` and `deviceTypes()`, `devices()` (UDID, name, state), `create(name, deviceTypeId, runtimeId)`, `boot(udid)`, `waitUntilBooted(udid, timeout)`, `shutdown(udid)`, `delete(udid)`. `SimctlAppleSimulators` runs `xcrun simctl list -j runtimes|devicetypes|devices`, `create`, `boot`, `bootstatus <udid> -b` (bounded by the timeout), `shutdown`, `delete` through `ShellCommandExecutor`. Booting an already booted device and shutting down a shut-down one are treated as success (simctl's "current state" errors).
@@ -39,20 +39,23 @@ Alternative: a separate store per provider. The reservations file already disapp
 `StartWorktreeSimulatorUseCase` (resolves with reservation, so the simulator exists, then boots and waits, 120 s), `StopWorktreeSimulatorUseCase`, `ReadSimulatorStatesUseCase` (recorded UDIDs without creating, one `devices()` call), `DeleteSimulatorsUseCase` (given UDIDs plus orphans: names starting with `ShogunAi · ` whose UDID isn't in `recordedResourcesOnMachine`). All return early or fail with `IosSimulatorProviderNotDeclared` like the emulator ones.
 
 ### KMP tests wiring
-`KmpTestWiring` port: `isWiredInRepository(repositoryPath)` scans `*.gradle.kts` and `*.gradle` up to four levels deep (skipping `build`, `.gradle`, `.git`, `node_modules`) for `IOS_SIMULATOR_UDID`; `isInitScriptInstalled()`, `installInitScript()`, `uninstallInitScript()` manage `$GRADLE_USER_HOME/init.d/shogunai-ios-simulator.gradle`. The init script is Groovy, so it can set the property without KGP on its classpath:
+`KmpTestWiring` port: `isWiredInRepository(repositoryPath)` scans `*.gradle.kts` and `*.gradle` up to four levels deep (skipping `build`, `.gradle`, `.git`, `node_modules`) for `IOS_SIMULATOR_UDID`; `isInitScriptInstalled()`, `installInitScript()`, `uninstallInitScript()` manage `$GRADLE_USER_HOME/init.d/shogunai-ios-simulator.init.gradle.kts`. The first draft was a Groovy init script, but on the validation machine every Groovy script failed to compile ("Unsupported class file major version 71": Gradle's Groovy can't read the running JDK's classes), while Kotlin DSL scripts work. The init script is therefore Kotlin DSL; KGP isn't on its classpath, so it matches the task by class name and sets the property through reflection:
 
-```groovy
-def udid = System.getenv("IOS_SIMULATOR_UDID")
-if (udid) {
+```kotlin
+val udid: String? = System.getenv("IOS_SIMULATOR_UDID")
+if (udid != null) {
     allprojects {
-        tasks.configureEach { task ->
-            if (task.class.name.startsWith("org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest")) {
-                task.device.set(udid)
+        tasks.configureEach {
+            if (javaClass.name.startsWith("org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest")) {
+                @Suppress("UNCHECKED_CAST")
+                (javaClass.getMethod("getDevice").invoke(this) as org.gradle.api.provider.Property<String>).set(udid)
             }
         }
     }
 }
 ```
+
+Uninstalling removes `init.d` too when nothing else is left in it.
 
 The repository snippet ShogunAi shows:
 
@@ -65,7 +68,7 @@ tasks.withType<org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimu
 Both are no-ops without the variable. `simulatorTestsWired = repository wired || init script installed`.
 
 ### CLI, desktop and cleanup
-Same shape as the emulator: `shogun simulator start|stop|status`, `shogun simulator gradle-init install|uninstall [--yes]` (prints the path and content, reads a `y` answer from standard input), `shogun clean --delete-simulators`; a `SimulatorLine` under the emulator line; the cleanup dialog option (checked) lists orphans and enables "Clean up" when only orphans exist; an "iOS simulator" configuration section with two dropdowns and the wiring panel (copy snippet; install with a confirmation dialog). UDIDs of removed worktrees are read before removal, since removal deletes their reservations. The `SessionStart` context adds: `Its iOS simulator is IOS_SIMULATOR_UDID=<udid>; boot it with 'shogun simulator start' and build with xcodebuild -destination "id=$IOS_SIMULATOR_UDID"`.
+Same shape as the emulator: `shogun simulator start|stop|status`, `shogun simulator gradle-init install|uninstall [--yes]` (prints the path and content, reads a `y` answer from standard input), `shogun clean --delete-simulators`; a `SimulatorLine` under the emulator line; the cleanup dialog option (checked) lists orphans and enables "Clean up" when only orphans exist; an "iOS simulator" configuration section with two dropdowns and the wiring panel (copy snippet; install with a confirmation dialog). UDIDs of removed worktrees are read before removal, since removal deletes their reservations, and orphans are looked for again after removal: validation showed that a worktree whose folder is already gone can't be resolved (`git rev-parse` has no folder to run in), so its simulator is only found once removal deletes its record and it becomes an orphan. The `SessionStart` context adds: `Its iOS simulator is IOS_SIMULATOR_UDID=<udid>; boot it with 'shogun simulator start' and build with xcodebuild -destination "id=$IOS_SIMULATOR_UDID"`.
 
 ## Risks / Trade-offs
 

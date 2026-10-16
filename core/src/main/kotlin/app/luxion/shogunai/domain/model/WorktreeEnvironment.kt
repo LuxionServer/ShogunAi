@@ -21,6 +21,7 @@ sealed interface TemplatePart {
 data class WorktreeEnvironment(
     val variables: List<Pair<String, String>> = emptyList(),
     val ports: Map<String, Int> = emptyMap(),
+    val resources: Map<String, String> = emptyMap(),
 ) {
     val isEmpty: Boolean get() = variables.isEmpty()
 }
