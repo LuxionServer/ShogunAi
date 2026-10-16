@@ -84,6 +84,15 @@ class ParseArgumentsTest {
     }
 
     @Test
+    fun `hook events`() {
+        assertEquals(CliCommand.HookWorktreeCreate, command("hook", "worktree-create"))
+        assertEquals(CliCommand.HookWorktreeRemove, command("hook", "worktree-remove"))
+        assertTrue(usageError("hook").contains("needs an event"))
+        assertTrue(usageError("hook", "session-start").contains("unknown hook 'session-start'"))
+        assertTrue(usageError("hook", "worktree-create", "extra").contains("takes no arguments"))
+    }
+
+    @Test
     fun `unknown command`() {
         assertEquals("unknown command 'frobnicate'", usageError("frobnicate"))
     }

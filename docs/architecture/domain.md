@@ -220,6 +220,10 @@ Copies `cd "<worktree path>" && <agent command>` to the clipboard, with the agen
 
 Finds the base repository (main worktree) that contains a directory, for front ends that start from a directory instead of a project, such as the CLI. It runs `git rev-parse --path-format=absolute --git-common-dir` there: the common `.git` folder is shared by every worktree, so its parent is the main worktree whether the directory is the main worktree, a subfolder or a linked worktree. Anything else (not a repository, a bare repository) is `RepositoryNotFound`.
 
+### `DeleteMergedBranchUseCase`
+
+Deletes a local branch with `git branch -d`, which Git refuses when the branch isn't merged, and returns whether it was deleted instead of failing. Used by the CLI's `WorktreeRemove` hook, where a kept branch is expected rather than an error.
+
 ### `ProvisionWorktreeUseCase`
 
 Applies the same files as creation (local files and the repository's provisioning, see `CreateWorktreeUseCase`) to an **existing** linked worktree, e.g. one created by another tool. The path must be one of the repository's worktrees (from `ListWorktreesUseCase`) and not the main one (`NotAWorktree`). Files are copied over existing ones, and it returns the copied relative paths. Unlike creation, a failed copy (`SecretCopyFailed`) doesn't remove anything: the worktree isn't ShogunAi's to delete. Creation and provisioning share the same copy function.

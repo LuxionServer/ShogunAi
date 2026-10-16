@@ -19,6 +19,7 @@ fun runShogun(args: Array<String>): Int {
         workingDirectory = System.getProperty("user.dir"),
         out = System.out,
         err = System.err,
+        readInput = { System.`in`.bufferedReader().readText() },
     ).run(args.toList())
     System.out.flush()
     System.err.flush()

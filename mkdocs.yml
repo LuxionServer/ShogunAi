@@ -67,10 +67,12 @@ plugins:
             Branches: Ramas
             Design decisions: Decisiones de diseño
             Roadmap: Roadmap
+            Using with agents: Uso con agentes
 
 nav:
   - Home: index.md
   - Getting started: getting-started.md
+  - Using with agents: agents.md
   - Architecture:
       - Overview: architecture/overview.md
       - Domain layer: architecture/domain.md

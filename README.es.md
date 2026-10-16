@@ -74,6 +74,21 @@ shogun clean --yes                 # elimina los worktrees mergeados o sin carpe
 
 Ejecuta `shogun help` para ver todas las opciones. Sin proyecto en la app, `shogun new` necesita `--worktrees-root <dir>`.
 
+### Con agentes de IA
+
+Haz que `claude --worktree` cree sus worktrees a través de ShogunAi añadiendo los hooks a `.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "WorktreeCreate": [{ "hooks": [{ "type": "command", "command": "shogun hook worktree-create" }] }],
+    "WorktreeRemove": [{ "hooks": [{ "type": "command", "command": "shogun hook worktree-remove" }] }]
+  }
+}
+```
+
+Las recetas para Cursor, Codex y cualquier otra herramienta están en [Uso con agentes](./docs/agents.es.md).
+
 ## Desarrollo
 
 ¿Quieres compilar el proyecto desde el código fuente o contribuir? Empieza por [`docs/getting-started.es.md`](./docs/getting-started.es.md).
