@@ -13,6 +13,7 @@ import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.CopyWorktreeLaunchCommandUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
@@ -92,6 +93,7 @@ class WorktreeViewModelTest {
             repair = RepairWorktreesUseCase(config, executor, FakeFileManager(existing = listOf(config.baseRepositoryPath))),
             resolveMainBranch = ResolveMainBranchUseCase(config, executor),
             readStatus = ReadWorktreeStatusUseCase(executor),
+            cleanUp = CleanUpWorktreesUseCase(config, executor),
         )
     }
 
@@ -679,6 +681,113 @@ class WorktreeViewModelTest {
 
         assertEquals(1, listCalls)
         assertIs<WorktreeStatusState.Loaded>(viewModel.statuses["/home/dev/projects/hotfix-security-patch"])
+    }
+
+    private val mergedPorcelain = """
+        worktree ${config.baseRepositoryPath}
+        HEAD aaa000
+        branch refs/heads/main
+
+        worktree $worktreePath
+        HEAD abc123
+        branch refs/heads/feature/TASK-123
+
+        worktree /home/dev/projects/TASK-456
+        HEAD def456
+        branch refs/heads/feature/TASK-456
+        locked agent session
+    """.trimIndent()
+
+    private fun mergedResponder(
+        executed: MutableList<List<String>> = mutableListOf(),
+        removeResult: (List<String>) -> CommandResult = { success(it) },
+    ): (List<String>) -> CommandResult = { command ->
+        executed += command
+        when {
+            command == listCommand -> success(command, mergedPorcelain)
+            command.getOrNull(1) == "symbolic-ref" -> success(command, stdout = "origin/main\n")
+            command == listOf("git", "rev-list", "--left-right", "--count", "origin/main...HEAD") -> success(command, stdout = "2\t0\n")
+            command.getOrNull(1) == "rev-list" -> failure(command, stderr = "no upstream")
+            command.take(3) == listOf("git", "worktree", "remove") -> removeResult(command)
+            else -> success(command)
+        }
+    }
+
+    @Test
+    fun `merged clean unlocked worktrees are cleanup candidates`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(useCases(mergedResponder()))
+        advanceUntilIdle()
+
+        assertEquals(listOf(worktreePath), viewModel.cleanupCandidates.map { it.path })
+    }
+
+    @Test
+    fun `cancelling the cleanup dialog runs nothing`() = runTest(dispatcher) {
+        val executed = mutableListOf<List<String>>()
+        val viewModel = WorktreeViewModel(useCases(mergedResponder(executed)))
+        advanceUntilIdle()
+        val before = executed.size
+
+        viewModel.openCleanup()
+        assertTrue(viewModel.isCleanupDialogOpen)
+        assertFalse(viewModel.cleanupDeleteBranches)
+        viewModel.dismissCleanup()
+        advanceUntilIdle()
+
+        assertFalse(viewModel.isCleanupDialogOpen)
+        assertEquals(before, executed.size)
+    }
+
+    @Test
+    fun `confirming the cleanup removes candidates, reports and reloads`() = runTest(dispatcher) {
+        val executed = mutableListOf<List<String>>()
+        val viewModel = WorktreeViewModel(useCases(mergedResponder(executed)))
+        advanceUntilIdle()
+        val listsBefore = executed.count { it == listCommand }
+
+        viewModel.openCleanup()
+        viewModel.confirmCleanup()
+        advanceUntilIdle()
+
+        assertTrue(executed.contains(listOf("git", "worktree", "remove", worktreePath)))
+        assertTrue(executed.none { it == listOf("git", "worktree", "remove", "/home/dev/projects/TASK-456") })
+        assertTrue(executed.none { it.take(3) == listOf("git", "branch", "-D") })
+        assertEquals(WorktreeSuccess.CleanedUp(1), viewModel.success)
+        assertNull(viewModel.cleanupIssues)
+        assertFalse(viewModel.isCleanupDialogOpen)
+        assertEquals(listsBefore + 1, executed.count { it == listCommand })
+    }
+
+    @Test
+    fun `confirming with branch deletion deletes the merged branch`() = runTest(dispatcher) {
+        val executed = mutableListOf<List<String>>()
+        val viewModel = WorktreeViewModel(useCases(mergedResponder(executed)))
+        advanceUntilIdle()
+
+        viewModel.openCleanup()
+        viewModel.cleanupDeleteBranches = true
+        viewModel.confirmCleanup()
+        advanceUntilIdle()
+
+        assertTrue(executed.contains(listOf("git", "branch", "-D", "feature/TASK-123")))
+    }
+
+    @Test
+    fun `a failed removal is kept as a cleanup issue`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(
+            useCases(mergedResponder(removeResult = { failure(it, exitCode = 128, stderr = "use --force to delete it") })),
+        )
+        advanceUntilIdle()
+
+        viewModel.openCleanup()
+        viewModel.confirmCleanup()
+        advanceUntilIdle()
+
+        assertEquals(WorktreeSuccess.CleanedUp(0), viewModel.success)
+        assertEquals(listOf(worktreePath), viewModel.cleanupIssues?.failures?.map { it.path })
+
+        viewModel.dismissCleanupIssues()
+        assertNull(viewModel.cleanupIssues)
     }
 
     @Test

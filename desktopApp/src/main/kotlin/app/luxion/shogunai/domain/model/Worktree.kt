@@ -6,4 +6,6 @@ data class Worktree(
     val head: String? = null,
     val isMain: Boolean = false,
     val isBare: Boolean = false,
+    val isLocked: Boolean = false,
+    val isPrunable: Boolean = false,
 )
