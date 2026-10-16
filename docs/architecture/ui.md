@@ -13,8 +13,8 @@ The top bar, above every screen, holds the language and theme selectors.
 | Screen | ViewModel | Responsibility |
 |---|---|---|
 | `ProjectListScreen` | `ProjectListViewModel` | Project catalog from `ProjectRepository`: search by name, A-Z / Z-A order, open, edit and delete (with confirmation). |
-| `ProjectConfigScreen` | `ProjectConfigViewModel` | Form for a `Project` (name, base repository path, worktrees root, secret files, agent command and Headroom switch); validates required fields and asks before discarding unsaved changes. |
-| `WorktreeScreen` | `WorktreeViewModel` | Lists the worktrees of the active project; creates them from a new or an existing branch, removes them (optionally deleting the branch, retrying with `--force` when Git asks for it) and copies their launch command. |
+| `ProjectConfigScreen` | `ProjectConfigViewModel` | Form for a `Project` (name, base repository path, worktrees root, main branch, secret files, agent command and Headroom switch); validates required fields and asks before discarding unsaved changes. |
+| `WorktreeScreen` | `WorktreeViewModel` | Lists the worktrees of the active project with their status; creates them from a new or an existing branch, removes them (optionally deleting the branch, retrying with `--force` when Git asks for it) and copies their launch command. |
 
 Each ViewModel uses `androidx.lifecycle` viewmodel-compose (`viewModelScope`) to call use cases without blocking the UI thread. Lists are reloaded when the window regains focus, so changes made outside the app (a branch created from the terminal, a worktree removed by hand) show up without pressing "Reload".
 
@@ -23,6 +23,16 @@ Each ViewModel uses `androidx.lifecycle` viewmodel-compose (`viewModelScope`) to
 `WorktreeViewModel` owns the transient "New worktree" form state (`taskId`, `branchType`, `createMode`, `selectedBranch`). `updateTaskId` applies the normalization (trim + whitespace runs collapsed to `-`) before storing the value, so the field always shows the already-normalized id while typing.
 
 In "Existing branch" mode the branches from `ListLocalBranchesUseCase` are shown in a `DropdownSelector` grouped by the segment before the first `/` (or "other" for branches without one). Branches that already have a worktree are rendered disabled and can't be selected, and "Create worktree" is only enabled for an available branch (`isSelectedBranchAvailable`).
+
+### Worktree status
+
+Each row shows its worktree's status under the branch name. `WorktreeViewModel` keeps it in `statuses`, a map from worktree path to `WorktreeStatusState` (`Loading`, `Loaded` or `Unavailable`):
+
+- Once the list is read, the main branch is resolved with `ResolveMainBranchUseCase` (exposed as `mainBranch`) and every worktree's status is read with `ReadWorktreeStatusUseCase`, at most 4 at a time. The list shows right away and each row shows a small progress indicator until its status arrives.
+- A worktree whose status can't be read (e.g. its folder was deleted) shows "Status unavailable" without affecting the others or the screen's error.
+- Reloading the list, including when the window regains focus, reads every status again; results from an older load are dropped. Creating a worktree reads only the new one's status, and removing one drops its status.
+
+`WorktreeStatusLine` renders the status as segments separated by `·` (`statusSegments`): uncommitted changes (only when there are any), `↑N ↓N upstream`, `↑N ↓N <main branch>` and the last commit date as relative time (`relativeTime`, in `RelativeTime.kt`). A merged branch shows a "merged into <main branch>" label in the primary color instead of its main branch divergence.
 
 ### Launch command
 

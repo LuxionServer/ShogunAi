@@ -7,7 +7,9 @@ import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
 import app.luxion.shogunai.domain.executor.CommandResult
+import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.BranchOption
+import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
@@ -16,8 +18,11 @@ import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.ListLocalBranchesUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
+import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.RepairWorktreesUseCase
+import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -67,8 +72,10 @@ class WorktreeViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun useCases(responder: (List<String>) -> CommandResult): WorktreeUseCases {
-        val executor = FakeShellCommandExecutor(responder)
+    private fun useCases(responder: (List<String>) -> CommandResult): WorktreeUseCases =
+        useCasesWith(FakeShellCommandExecutor(responder))
+
+    private fun useCasesWith(executor: ShellCommandExecutor): WorktreeUseCases {
         return WorktreeUseCases(
             list = ListWorktreesUseCase(config, executor),
             create = CreateWorktreeUseCase(config, executor, FakeFileManager()),
@@ -83,6 +90,8 @@ class WorktreeViewModelTest {
             remove = RemoveWorktreeUseCase(config, executor),
             copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, FakeClipboardWriter()),
             repair = RepairWorktreesUseCase(config, executor, FakeFileManager(existing = listOf(config.baseRepositoryPath))),
+            resolveMainBranch = ResolveMainBranchUseCase(config, executor),
+            readStatus = ReadWorktreeStatusUseCase(executor),
         )
     }
 
@@ -563,5 +572,128 @@ class WorktreeViewModelTest {
 
         viewModel.selectedBranch = null
         assertFalse(viewModel.isSelectedBranchAvailable)
+    }
+
+    private val statusCommand = listOf("git", "status", "--porcelain")
+
+    @Test
+    fun `statuses are read for every listed worktree`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(
+            useCases { command ->
+                when (command) {
+                    listCommand -> success(command, porcelainOutput)
+                    statusCommand -> success(command, stdout = " M build.gradle.kts\n?? notes.md\n")
+                    else -> success(command)
+                }
+            },
+        )
+        advanceUntilIdle()
+
+        val state = assertIs<WorktreeStatusState.Loaded>(viewModel.statuses[worktreePath])
+        assertEquals(2, state.status.uncommittedChanges)
+    }
+
+    @Test
+    fun `the list is shown while statuses are still loading`() = runTest(dispatcher) {
+        val statusGate = CompletableDeferred<Unit>()
+        val executor = object : ShellCommandExecutor {
+            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+                if (command == statusCommand) statusGate.await()
+                return if (command == listCommand) success(command, porcelainOutput) else success(command)
+            }
+        }
+        val viewModel = WorktreeViewModel(useCasesWith(executor))
+        advanceUntilIdle()
+
+        assertTrue(viewModel.worktrees.any { it.path == worktreePath })
+        assertEquals(WorktreeStatusState.Loading, viewModel.statuses[worktreePath])
+
+        statusGate.complete(Unit)
+        advanceUntilIdle()
+
+        assertIs<WorktreeStatusState.Loaded>(viewModel.statuses[worktreePath])
+    }
+
+    @Test
+    fun `a worktree whose status can't be read is unavailable without failing the list`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(
+            useCases { command ->
+                when (command) {
+                    listCommand -> success(command, porcelainOutput)
+                    statusCommand -> failure(command, exitCode = 128, stderr = "fatal: cannot change to directory")
+                    else -> success(command)
+                }
+            },
+        )
+        advanceUntilIdle()
+
+        assertEquals(WorktreeStatusState.Unavailable, viewModel.statuses[worktreePath])
+        assertNull(viewModel.error)
+        assertTrue(viewModel.worktrees.any { it.path == worktreePath })
+    }
+
+    @Test
+    fun `refresh reads the statuses again`() = runTest(dispatcher) {
+        var statusReads = 0
+        val viewModel = WorktreeViewModel(
+            useCases { command ->
+                when (command) {
+                    listCommand -> success(command, porcelainOutput)
+                    statusCommand -> {
+                        statusReads++
+                        success(command)
+                    }
+                    else -> success(command)
+                }
+            },
+        )
+        advanceUntilIdle()
+
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertEquals(2, statusReads)
+    }
+
+    @Test
+    fun `a created worktree gets its status without reloading the list`() = runTest(dispatcher) {
+        val branch = "hotfix/security-patch"
+        var listCalls = 0
+        val viewModel = WorktreeViewModel(
+            useCases { command ->
+                when {
+                    command == listCommand -> {
+                        listCalls++
+                        success(command, porcelainOutput)
+                    }
+                    command.getOrNull(1) == "branch" && command.getOrNull(2) == "--list" ->
+                        success(command, stdout = "  $branch\n")
+                    else -> success(command)
+                }
+            },
+        )
+        advanceUntilIdle()
+
+        viewModel.createFromBranch(branch)
+        advanceUntilIdle()
+
+        assertEquals(1, listCalls)
+        assertIs<WorktreeStatusState.Loaded>(viewModel.statuses["/home/dev/projects/hotfix-security-patch"])
+    }
+
+    @Test
+    fun `the resolved main branch is exposed`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(
+            useCases { command ->
+                when {
+                    command == listCommand -> success(command, porcelainOutput)
+                    command.getOrNull(1) == "symbolic-ref" -> success(command, stdout = "origin/main\n")
+                    else -> success(command)
+                }
+            },
+        )
+        advanceUntilIdle()
+
+        assertEquals(MainBranch("main", "origin/main"), viewModel.mainBranch)
     }
 }

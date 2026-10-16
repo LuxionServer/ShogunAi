@@ -7,6 +7,7 @@ import kotlin.io.path.deleteIfExists
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class JsonProjectRepositoryTest {
 
@@ -52,5 +53,29 @@ class JsonProjectRepositoryTest {
 
         assertEquals(1, projects.size)
         assertEquals("project-1", projects.single().id)
+    }
+
+    @Test
+    fun `loads a project stored without a main branch`() {
+        Files.writeString(
+            storagePath,
+            """
+            [
+                {
+                    "id": "project-1",
+                    "name": "Main",
+                    "config": {
+                        "baseRepositoryPath": "/home/dev/projects/main-repo",
+                        "worktreesRoot": "/home/dev/projects",
+                        "secretFiles": []
+                    }
+                }
+            ]
+            """.trimIndent(),
+        )
+
+        val project = repository.list().single()
+
+        assertNull(project.config.mainBranch)
     }
 }

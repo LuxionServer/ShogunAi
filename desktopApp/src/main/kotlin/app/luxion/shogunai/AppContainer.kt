@@ -12,8 +12,10 @@ import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.ListLocalBranchesUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
+import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.RepairWorktreesUseCase
+import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
 import app.luxion.shogunai.infrastructure.AwtClipboardWriter
 import app.luxion.shogunai.infrastructure.JsonLanguagePreferenceRepository
 import app.luxion.shogunai.infrastructure.JsonProjectRepository
@@ -39,6 +41,8 @@ class AppContainer {
         remove = RemoveWorktreeUseCase(config, shellCommandExecutor),
         copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboardWriter),
         repair = RepairWorktreesUseCase(config, shellCommandExecutor, fileManager),
+        resolveMainBranch = ResolveMainBranchUseCase(config, shellCommandExecutor),
+        readStatus = ReadWorktreeStatusUseCase(shellCommandExecutor),
     )
 }
 
@@ -50,4 +54,6 @@ data class WorktreeUseCases(
     val remove: RemoveWorktreeUseCase,
     val copyLaunchCommand: CopyWorktreeLaunchCommandUseCase,
     val repair: RepairWorktreesUseCase,
+    val resolveMainBranch: ResolveMainBranchUseCase,
+    val readStatus: ReadWorktreeStatusUseCase,
 )

@@ -13,8 +13,8 @@ La barra superior, encima de todas las pantallas, contiene los selectores de idi
 | Pantalla | ViewModel | Responsabilidad |
 |---|---|---|
 | `ProjectListScreen` | `ProjectListViewModel` | Catálogo de proyectos de `ProjectRepository`: búsqueda por nombre, orden A-Z / Z-A, abrir, editar y eliminar (con confirmación). |
-| `ProjectConfigScreen` | `ProjectConfigViewModel` | Formulario de un `Project` (nombre, ruta del repositorio base, carpeta raíz de worktrees, archivos de secretos, comando del agente y switch de Headroom); valida los campos requeridos y pregunta antes de descartar cambios sin guardar. |
-| `WorktreeScreen` | `WorktreeViewModel` | Lista los worktrees del proyecto activo; los crea desde una rama nueva o existente, los elimina (opcionalmente borrando la rama, y reintentando con `--force` cuando Git lo pide) y copia su comando de lanzamiento. |
+| `ProjectConfigScreen` | `ProjectConfigViewModel` | Formulario de un `Project` (nombre, ruta del repositorio base, carpeta raíz de worktrees, rama principal, archivos de secretos, comando del agente y switch de Headroom); valida los campos requeridos y pregunta antes de descartar cambios sin guardar. |
+| `WorktreeScreen` | `WorktreeViewModel` | Lista los worktrees del proyecto activo con su estado; los crea desde una rama nueva o existente, los elimina (opcionalmente borrando la rama, y reintentando con `--force` cuando Git lo pide) y copia su comando de lanzamiento. |
 
 Cada ViewModel usa `androidx.lifecycle` viewmodel-compose (`viewModelScope`) para llamar a los casos de uso sin bloquear el hilo de UI. Las listas se recargan cuando la ventana recupera el foco, así los cambios hechos fuera de la app (una rama creada desde la terminal, un worktree borrado a mano) aparecen sin pulsar "Recargar".
 
@@ -23,6 +23,16 @@ Cada ViewModel usa `androidx.lifecycle` viewmodel-compose (`viewModelScope`) par
 `WorktreeViewModel` posee el estado transitorio del formulario "Nuevo worktree" (`taskId`, `branchType`, `createMode`, `selectedBranch`). `updateTaskId` aplica la normalización (trim + colapso de espacios a `-`) antes de guardar el valor, así el campo siempre muestra el id ya normalizado mientras se escribe.
 
 En el modo "Rama existente" las ramas de `ListLocalBranchesUseCase` se muestran en un `DropdownSelector` agrupadas por el segmento anterior a la primera `/` (u "otras" para las ramas sin ella). Las ramas que ya tienen worktree aparecen deshabilitadas y no se pueden seleccionar, y "Crear worktree" solo se habilita con una rama disponible (`isSelectedBranchAvailable`).
+
+### Estado de los worktrees
+
+Cada fila muestra el estado de su worktree debajo del nombre de la rama. `WorktreeViewModel` lo guarda en `statuses`, un mapa de ruta del worktree a `WorktreeStatusState` (`Loading`, `Loaded` o `Unavailable`):
+
+- Una vez leída la lista, se resuelve la rama principal con `ResolveMainBranchUseCase` (expuesta como `mainBranch`) y se lee el estado de cada worktree con `ReadWorktreeStatusUseCase`, como mucho 4 a la vez. La lista aparece al momento y cada fila muestra un pequeño indicador de progreso hasta que llega su estado.
+- Un worktree cuyo estado no se puede leer (p. ej. porque se borró su carpeta) muestra "Estado no disponible" sin afectar a los demás ni al error de la pantalla.
+- Recargar la lista, también cuando la ventana recupera el foco, vuelve a leer todos los estados; los resultados de una carga anterior se descartan. Crear un worktree solo lee el estado del nuevo, y eliminarlo descarta su estado.
+
+`WorktreeStatusLine` pinta el estado como segmentos separados por `·` (`statusSegments`): cambios sin commitear (solo si los hay), `↑N ↓N upstream`, `↑N ↓N <rama principal>` y la fecha del último commit en tiempo relativo (`relativeTime`, en `RelativeTime.kt`). Una rama mergeada muestra la etiqueta "mergeada en <rama principal>" en el color primario en lugar de su divergencia con la rama principal.
 
 ### Comando de lanzamiento
 

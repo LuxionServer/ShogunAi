@@ -42,6 +42,7 @@ class ProjectConfigViewModel(
 
     var agentCommand by mutableStateOf(existingProject?.config?.agentLaunchConfig?.agentCommand ?: "claude")
     var useHeadroom by mutableStateOf(existingProject?.config?.agentLaunchConfig?.useHeadroom ?: true)
+    var mainBranch by mutableStateOf(existingProject?.config?.mainBranch.orEmpty())
 
     private val initialName = name
     private val initialBaseRepositoryPath = baseRepositoryPath
@@ -49,6 +50,7 @@ class ProjectConfigViewModel(
     private val initialSecretFiles = secretFiles
     private val initialAgentCommand = agentCommand
     private val initialUseHeadroom = useHeadroom
+    private val initialMainBranch = mainBranch
 
     val isValid: Boolean
         get() = name.isNotBlank() && baseRepositoryPath.isNotBlank()
@@ -59,7 +61,8 @@ class ProjectConfigViewModel(
             worktreesRoot != initialWorktreesRoot ||
             secretFiles != initialSecretFiles ||
             agentCommand != initialAgentCommand ||
-            useHeadroom != initialUseHeadroom
+            useHeadroom != initialUseHeadroom ||
+            mainBranch != initialMainBranch
 
     fun addSecretFile(fileName: String) {
         val normalized = normalizeSecretFile(baseRepositoryPath, fileName.trim())
@@ -82,6 +85,7 @@ class ProjectConfigViewModel(
                 worktreesRoot = worktreesRoot,
                 secretFiles = secretFiles,
                 agentLaunchConfig = AgentLaunchConfig(agentCommand = agentCommand, useHeadroom = useHeadroom),
+                mainBranch = mainBranch.trim().ifEmpty { null },
             ),
         )
         projectRepository.save(project)
