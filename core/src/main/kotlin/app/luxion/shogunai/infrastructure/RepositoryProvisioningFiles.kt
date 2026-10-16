@@ -1,6 +1,7 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
+import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.InvalidEnvironmentTemplate
@@ -119,7 +120,20 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
                 }
                 GradleProvider
             },
+            emulator = providers[EMULATOR_PROVIDER]?.let { value -> emulatorProviderOf(value, path) },
         )
+    }
+
+    private fun emulatorProviderOf(value: JsonElement, path: Path): EmulatorProvider {
+        val invalid = { detail: String -> WorktreeError.InvalidRepositoryConfig(path.toString(), detail) }
+        val options = value as? JsonObject ?: throw invalid("\"$PROVIDERS_FIELD.$EMULATOR_PROVIDER\" must be an object")
+        val avd = when (val field = options[AVD_FIELD]) {
+            null, is JsonNull -> null
+            is JsonPrimitive -> field.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
+                ?: throw invalid("\"$PROVIDERS_FIELD.$EMULATOR_PROVIDER.$AVD_FIELD\" must be an AVD name")
+            else -> throw invalid("\"$PROVIDERS_FIELD.$EMULATOR_PROVIDER.$AVD_FIELD\" must be an AVD name")
+        }
+        return EmulatorProvider(preferredAvd = avd)
     }
 
     private fun readWorktreeInclude(path: Path): List<String> {
@@ -139,6 +153,8 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         const val COPY_FIELD = "copy"
         const val PROVIDERS_FIELD = "providers"
         const val GRADLE_PROVIDER = "gradle"
+        const val EMULATOR_PROVIDER = "emulator"
+        const val AVD_FIELD = "avd"
         const val ENV_FIELD = "env"
         const val ENV_FILE_FIELD = "envFile"
     }

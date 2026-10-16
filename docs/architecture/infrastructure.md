@@ -20,9 +20,19 @@ Implementation of `FileManager` on top of `java.nio.file`. `copy` creates the de
 ## `NioEnvironmentStateStore` / `SocketPortProbe`
 
 - **State**: each worktree's reservations live in `shogunai-env.json` inside its Git administrative directory, as `{ "ports": { "PORT": 20001, "port:api": 20002 } }`. Git ignores files it doesn't know there and deletes the whole directory on `git worktree remove` and `prune`, so reservations go away with the worktree, whoever created it. Other fields of the object are kept for later providers; a file left without fields is deleted; an unreadable file counts as no reservations. Writes are atomic (temporary file and move).
-- **Repository listing**: the common directory's file (the main worktree) plus every `worktrees/*/shogunai-env.json`.
-- **Lock**: `withLock` takes an exclusive `FileChannel` lock on `<common-dir>/shogunai-env.lock`, so parallel creations, even from several processes (several Claude Code sessions), can't reserve the same port. A process-wide lock guards the file lock, and a nested call on the same thread runs directly.
+- **Machine listing**: the current repository's files (the common directory's, for the main worktree, plus every `worktrees/*/shogunai-env.json`) and every administrative directory in the machine index `~/.shogunai/reservations.json` (`{ "worktrees": [ … ] }`). Writing a worktree's ports adds its directory to the index, or removes it when it has none left; listing drops index entries whose state file is gone (the worktree was removed or pruned), so the index heals itself and ports of removed worktrees in any repository become free.
+- **Lock**: `withLock` takes an exclusive `FileChannel` lock on `~/.shogunai/reservations.lock`, so parallel creations, even from several processes (several Claude Code sessions) and different repositories, can't reserve the same port. A process-wide lock guards the file lock, and a nested call on the same thread runs directly.
 - **Free port**: `SocketPortProbe` binds a `ServerSocket` with `reuseAddress = false` on the wildcard address and on the loopback address; the port is free only if both succeed.
+
+## `LocalAndroidSdk`
+
+Implementation of `AndroidSdk` on the SDK's own tools:
+
+- **Locating**: the first of `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `sdk.dir` in the repository's `local.properties`, and the platform default (`~/Library/Android/sdk`, `~/Android/Sdk`, `%LOCALAPPDATA%\Android\Sdk`) that contains `emulator/emulator`; executables get `.exe` on Windows.
+- **AVDs**: `emulator -list-avds`, skipping the emulator's informational lines.
+- **States**: one `adb devices`, keeping `emulator-*` serials; an `offline` one is booting, a `device` one is running once `adb -s <serial> shell getprop sys.boot_completed` returns `1`.
+- **Start**: `emulator -avd <avd> -port <port> -read-only -no-boot-anim [-no-window]` through `ProcessBuilder`, not the command executor, because it must keep running after the caller (the CLI) exits; output goes to `~/.shogunai/logs/emulator-<port>.log`. `-read-only` is what lets one AVD run once per worktree; changes to the emulator's data are discarded when it exits.
+- **Stop**: `adb -s <serial> emu kill`.
 
 ## `ProcessGradleDaemonSource`
 
@@ -67,9 +77,10 @@ In `core/src/testFixtures/kotlin/app/luxion/shogunai/domain/`, `core`'s test fix
 - `FakeShellCommandExecutor` — substitutes `ShellCommandExecutor`: answers each argv with a canned `CommandResult` and records the commands run.
 - `FakeFileManager` — substitutes `FileManager` with an in-memory set of existing paths and properties files.
 - `FakeEnvironmentStateStore` / `FakePortProbe` — substitute the reservation store (in-memory reservations per administrative directory, counting writes and locks) and the port probe (a set of busy ports).
+- `FakeAndroidSdk` — substitutes `AndroidSdk` with AVDs, emulator states that move from booting to running after a number of polls, a missing-SDK switch, and records of starts and stops.
 - `FakeGradleDaemonSource` — substitutes `GradleDaemonSource` with a mutable list of daemons (or a failure) and counts the listings; `gradleDaemon(...)` and `kotlinDaemon(...)` build them.
 - `FakeClipboardWriter` — substitutes `ClipboardWriter`.
 - `FakeProjectRepository` — substitutes `ProjectRepository` in ViewModel tests.
 - `FakeRepositoryProvisioningSource` — substitutes `RepositoryProvisioningSource` with provisioning per repository path, unreadable repositories and failing writes, and records the patterns added.
 
-Thanks to the domain depending on interfaces, the use case tests (`*UseCaseTest`) and the ViewModel tests don't touch disk or launch real processes. The infrastructure itself is covered by `ProcessBuilderShellCommandExecutorTest`, `JsonProjectRepositoryTest`, `JsonSettingsFileTest`, `RepositoryProvisioningFilesTest`, `NioEnvironmentStateStoreTest` (temporary directories and a real listening socket) and `ProcessGradleDaemonSourceTest` (on real `ps` lines and daemon log excerpts), which do use real processes and temporary files.
+Thanks to the domain depending on interfaces, the use case tests (`*UseCaseTest`) and the ViewModel tests don't touch disk or launch real processes. The infrastructure itself is covered by `ProcessBuilderShellCommandExecutorTest`, `JsonProjectRepositoryTest`, `JsonSettingsFileTest`, `RepositoryProvisioningFilesTest`, `NioEnvironmentStateStoreTest` (temporary directories and a real listening socket), `LocalAndroidSdkTest` (SDK lookup order, real `adb devices` output, the built start command) and `ProcessGradleDaemonSourceTest` (on real `ps` lines and daemon log excerpts), which do use real processes and temporary files.

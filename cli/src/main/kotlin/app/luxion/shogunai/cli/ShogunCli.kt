@@ -3,12 +3,14 @@ package app.luxion.shogunai.cli
 import app.luxion.shogunai.BuildInfo
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.io.AndroidSdk
 import app.luxion.shogunai.domain.io.EnvironmentStateStore
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.GradleDaemonSource
 import app.luxion.shogunai.domain.io.PortProbe
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
+import app.luxion.shogunai.domain.model.ANDROID_SERIAL
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.DaemonKeptReason
 import app.luxion.shogunai.domain.model.DaemonKind
@@ -16,6 +18,7 @@ import app.luxion.shogunai.domain.model.DaemonOwner
 import app.luxion.shogunai.domain.model.DaemonProcess
 import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.DaemonStopReport
+import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.Worktree
@@ -32,12 +35,15 @@ import app.luxion.shogunai.domain.usecase.ListGradleDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.ProvisionWorktreeUseCase
+import app.luxion.shogunai.domain.usecase.ReadEmulatorStatesUseCase
 import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
 import app.luxion.shogunai.domain.usecase.ResolveRepositoryUseCase
 import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
+import app.luxion.shogunai.domain.usecase.StartWorktreeEmulatorUseCase
 import app.luxion.shogunai.domain.usecase.StopGradleDaemonsUseCase
+import app.luxion.shogunai.domain.usecase.StopWorktreeEmulatorUseCase
 import app.luxion.shogunai.domain.usecase.WriteEnvironmentFileUseCase
 import app.luxion.shogunai.domain.usecase.classifyOrigin
 import app.luxion.shogunai.domain.usecase.formatEnvironment
@@ -64,6 +70,7 @@ class ShogunCli(
     private val gradleUserHome: String,
     private val environmentStateStore: EnvironmentStateStore,
     private val portProbe: PortProbe,
+    private val androidSdk: AndroidSdk,
     private val workingDirectory: String,
     private val out: Appendable,
     private val err: Appendable,
@@ -78,6 +85,9 @@ class ShogunCli(
         resolveEnvironment,
         WriteEnvironmentFileUseCase(executor, fileManager, provisioningSource),
     )
+    private val startEmulator = StartWorktreeEmulatorUseCase(provisioningSource, resolveEnvironment, androidSdk)
+    private val stopEmulator = StopWorktreeEmulatorUseCase(provisioningSource, resolveEnvironment, androidSdk)
+    private val readEmulatorStates = ReadEmulatorStatesUseCase(provisioningSource, resolveEnvironment, androidSdk)
 
     fun run(args: List<String>): Int = when (val parsed = parseArguments(args)) {
         is ParsedArguments.UsageError -> {
@@ -100,6 +110,7 @@ class ShogunCli(
             CliCommand.HookWorktreeRemove -> hookWorktreeRemove()
             CliCommand.Gradle -> gradle()
             is CliCommand.Env -> env(command)
+            is CliCommand.Emulator -> emulator(command)
             CliCommand.HookSessionStart -> hookSessionStart()
             is CliCommand.GradleStop -> gradleStop(command)
         }
@@ -168,10 +179,12 @@ class ShogunCli(
             return EXIT_OK
         }
         val daemons = if (command.stopGradleDaemons) daemonsBeforeCleanup(worktrees) else emptyList()
+        val emulators = if (command.stopEmulators) emulatorsBeforeCleanup(config, candidates) else emptyMap()
         if (!command.confirmed) {
             candidates.forEach { out.line("would remove ${it.path}${if (it.isPrunable) " (folder missing)" else ""}") }
             idleDaemonsOfRemovedWorktrees(daemons, worktrees, candidates.map { it.path })
                 .forEach { out.line("would stop Gradle daemon $it") }
+            emulators.values.forEach { out.line("would stop emulator $it") }
             out.line("Run 'shogun clean --yes' to remove ${if (candidates.size == 1) "it" else "them"}.")
             return EXIT_OK
         }
@@ -181,7 +194,44 @@ class ShogunCli(
         report.failures.forEach { err.line("shogun: couldn't remove ${it.path}: ${it.error.message}") }
         val pids = idleDaemonsOfRemovedWorktrees(daemons, worktrees, report.removed)
         if (pids.isNotEmpty()) stopDaemonsAfterCleanup(pids)
+        val removedEmulators = report.removed.mapNotNull { emulators[it] }
+        if (removedEmulators.isNotEmpty()) stopEmulatorsAfterCleanup(config, removedEmulators)
         return if (report.failures.isEmpty()) EXIT_OK else EXIT_FAILURE
+    }
+
+    private suspend fun emulatorsBeforeCleanup(config: ProjectConfig, candidates: List<Worktree>): Map<String, String> =
+        readEmulatorStates(config, candidates)
+            .onFailure { err.line("shogun: couldn't read emulators: ${it.message}") }
+            .getOrDefault(emptyMap())
+            .filterValues { it.state != EmulatorState.STOPPED }
+            .mapValues { it.value.serial }
+
+    private suspend fun stopEmulatorsAfterCleanup(config: ProjectConfig, serials: List<String>) {
+        runCatching { stopEmulator.stopSerials(config, serials) }
+            .onSuccess { stopped -> stopped.forEach { out.line("stopped emulator ${it.serial}") } }
+            .onFailure { err.line("shogun: couldn't stop emulators: ${it.message}") }
+    }
+
+    private suspend fun emulator(command: CliCommand.Emulator): Int {
+        val target = absolute(command.path ?: workingDirectory)
+        val (config, worktree) = configAndWorktreeContaining(target)
+        val emulator = when (command.action) {
+            EmulatorAction.START ->
+                startEmulator(config, worktree.path, command.avd, command.noWindow.takeIf { it }).getOrThrow()
+            EmulatorAction.STOP -> stopEmulator(config, worktree.path).getOrThrow()
+            EmulatorAction.STATUS -> {
+                if (provisioningSource.read(config.baseRepositoryPath).providers.emulator == null) {
+                    throw WorktreeError.EmulatorProviderNotDeclared
+                }
+                readEmulatorStates(config, listOf(worktree)).getOrThrow()[worktree.path]
+            }
+        }
+        if (emulator == null) {
+            out.line("No emulator port reserved for this worktree yet; 'shogun emulator start' reserves one and starts it.")
+        } else {
+            out.line("${emulator.serial} ${emulator.state.name.lowercase()}")
+        }
+        return EXIT_OK
     }
 
     private suspend fun daemonsBeforeCleanup(worktrees: List<Worktree>): List<GradleDaemon> =
@@ -217,18 +267,27 @@ class ShogunCli(
             File(path).appendText(formatEnvironment(environment, EnvironmentFormat.SH))
         }
         val variables = environment.variables.joinToString(", ") { (name, value) -> "$name=$value" }
-        out.line("ShogunAi environment of worktree ${File(worktree.path).name}: $variables")
+        val emulatorHint = environment.variables.toMap()[ANDROID_SERIAL]
+            ?.takeIf { provisioningSource.read(repository).providers.emulator != null }
+            ?.let { serial -> ". Its Android emulator is $ANDROID_SERIAL=$serial; start it with 'shogun emulator start' before installing the app or running instrumented tests" }
+            .orEmpty()
+        out.line("ShogunAi environment of worktree ${File(worktree.path).name}: $variables$emulatorHint")
         return EXIT_OK
     }
 
     private suspend fun worktreeContaining(directory: String): Pair<String, Worktree> {
+        val (config, worktree) = configAndWorktreeContaining(directory)
+        return config.baseRepositoryPath to worktree
+    }
+
+    private suspend fun configAndWorktreeContaining(directory: String): Pair<ProjectConfig, Worktree> {
         val config = configFor(directory)
         val canonicalDirectory = runCatching { canonicalPath(directory) }.getOrDefault(directory)
         val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
         val canonical = worktrees.associateBy { runCatching { canonicalPath(it.path) }.getOrDefault(it.path) }
         val owner = owningWorktree(canonicalDirectory, canonical.map { (path, worktree) -> worktree.copy(path = path) })
             ?: throw WorktreeError.NotAWorktree(directory)
-        return config.baseRepositoryPath to canonical.getValue(owner.path)
+        return config to canonical.getValue(owner.path)
     }
 
     private suspend fun gradle(): Int {
@@ -442,14 +501,18 @@ class ShogunCli(
                   --worktrees-root <dir>  Folder for the worktree when the repository has no ShogunAi project
               provision [<path>]          Copy the declared files into an existing worktree (default: current directory)
               status                      List the repository's worktrees with their state
-              clean [--yes] [--delete-branches] [--stop-gradle-daemons]
+              clean [--yes] [--delete-branches] [--stop-gradle-daemons] [--stop-emulators]
                                           List merged or missing worktrees; remove them with --yes
-                                          (--stop-gradle-daemons: also stop their idle Gradle daemons)
+                                          (--stop-gradle-daemons / --stop-emulators: also stop their idle
+                                          Gradle daemons / their emulators)
               gradle                      List the Gradle and Kotlin daemons with their memory, state and worktree
               gradle stop [<pid>...]      Stop idle daemons (all of them, or only the given ones); busy ones are kept
               hook worktree-create       Claude Code WorktreeCreate hook: create and provision the worktree, print its path
               hook worktree-remove        Claude Code WorktreeRemove hook: remove the worktree, delete its branch if merged
               hook session-start          Claude Code SessionStart hook: export the worktree's environment to the session
+              emulator start|stop|status [<path>] [--avd <name>] [--no-window]
+                                          Start (and wait for), stop or show the worktree's Android emulator
+                                          (repositories with "providers": { "emulator": {} } in .shogunai.json)
               env [<path>] [--format sh|dotenv|json]
                                           Print the worktree's environment from .shogunai.json "env"
                                           (sh prints export lines for: eval "$(shogun env)")

@@ -7,6 +7,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
+import kotlin.io.path.readText
 import kotlin.io.path.writeText
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -16,40 +17,63 @@ import kotlin.test.assertTrue
 
 class NioEnvironmentStateStoreTest {
 
-    private val common: Path = Files.createTempDirectory("main-repo-git")
+    private val root: Path = Files.createTempDirectory("environment-state")
+    private val machine: Path = root.resolve("machine")
+    private val common: Path = root.resolve("main-repo/.git").createDirectories()
     private val linked: Path = common.resolve("worktrees/TASK-123").createDirectories()
-    private val store = NioEnvironmentStateStore()
+    private val otherCommon: Path = root.resolve("other-repo/.git").createDirectories()
+    private val otherLinked: Path = otherCommon.resolve("worktrees/TASK-9").createDirectories()
+    private val store = NioEnvironmentStateStore(machine)
 
     @AfterTest
     fun cleanUp() {
-        common.toFile().deleteRecursively()
+        root.toFile().deleteRecursively()
     }
 
     @Test
     fun `writes and reads a worktree's ports keeping other fields`() {
-        linked.resolve(NioEnvironmentStateStore.STATE_FILE_NAME).writeText("""{ "emulator": "emulator-5556" }""")
+        linked.resolve(NioEnvironmentStateStore.STATE_FILE_NAME).writeText("""{ "note": "kept" }""")
 
         store.writePorts(linked.toString(), mapOf("PORT" to 20000, "port:api" to 20001))
 
         assertEquals(mapOf("PORT" to 20000, "port:api" to 20001), store.readPorts(linked.toString()))
-        assertTrue(Files.readString(linked.resolve(NioEnvironmentStateStore.STATE_FILE_NAME)).contains("emulator-5556"))
+        assertTrue(linked.resolve(NioEnvironmentStateStore.STATE_FILE_NAME).readText().contains("kept"))
     }
 
     @Test
-    fun `removing every port deletes a file left empty`() {
+    fun `removing every port deletes a file left empty and unindexes it`() {
         store.writePorts(linked.toString(), mapOf("PORT" to 20000))
 
         store.writePorts(linked.toString(), emptyMap())
 
         assertFalse(linked.resolve(NioEnvironmentStateStore.STATE_FILE_NAME).exists())
+        assertFalse(machine.resolve(NioEnvironmentStateStore.INDEX_FILE_NAME).readText().contains("TASK-123"))
     }
 
     @Test
-    fun `lists the reservations of the main and every linked worktree`() {
+    fun `reservations count across repositories on the machine`() {
         store.writePorts(common.toString(), mapOf("PORT" to 20000))
         store.writePorts(linked.toString(), mapOf("PORT" to 20001))
+        store.writePorts(otherLinked.toString(), mapOf("PORT" to 20002, "emulator" to 5554))
 
-        assertEquals(setOf(20000, 20001), store.reservedPortsOfRepository(common.toString()))
+        assertEquals(setOf(20000, 20001, 20002, 5554), store.reservedPortsOnMachine(common.toString()))
+    }
+
+    @Test
+    fun `a removed worktree of another repository frees its ports and leaves the index`() {
+        store.writePorts(otherLinked.toString(), mapOf("PORT" to 20002))
+
+        otherLinked.toFile().deleteRecursively()
+
+        assertEquals(emptySet(), store.reservedPortsOnMachine(common.toString()))
+        assertFalse(machine.resolve(NioEnvironmentStateStore.INDEX_FILE_NAME).readText().contains("TASK-9"))
+    }
+
+    @Test
+    fun `the current repository counts even before it's indexed`() {
+        linked.resolve(NioEnvironmentStateStore.STATE_FILE_NAME).writeText("""{ "ports": { "PORT": 20007 } }""")
+
+        assertEquals(setOf(20007), store.reservedPortsOnMachine(common.toString()))
     }
 
     @Test
@@ -60,11 +84,11 @@ class NioEnvironmentStateStoreTest {
     }
 
     @Test
-    fun `runs a block under the repository lock`() {
-        val result = store.withLock(common.toString()) { store.withLock(common.toString()) { 42 } }
+    fun `runs a block under the machine lock, also nested`() {
+        val result = store.withLock { store.withLock { 42 } }
 
         assertEquals(42, result)
-        assertTrue(common.resolve(NioEnvironmentStateStore.LOCK_FILE_NAME).exists())
+        assertTrue(machine.resolve(NioEnvironmentStateStore.LOCK_FILE_NAME).exists())
     }
 
     @Test

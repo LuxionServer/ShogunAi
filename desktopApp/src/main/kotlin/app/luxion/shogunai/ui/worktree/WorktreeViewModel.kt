@@ -9,10 +9,12 @@ import app.luxion.shogunai.WorktreeUseCases
 import app.luxion.shogunai.domain.model.BranchOption
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.DaemonStopReport
+import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
+import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeStatus
 import app.luxion.shogunai.domain.usecase.CleanupReport
@@ -75,6 +77,14 @@ class WorktreeViewModel(
     var cleanupIssues by mutableStateOf<CleanupReport?>(null)
         private set
     var cleanupStopGradleDaemons by mutableStateOf(true)
+    var cleanupStopEmulators by mutableStateOf(true)
+
+    var isEmulatorRepository by mutableStateOf(false)
+        private set
+    var emulators by mutableStateOf<Map<String, WorktreeEmulator>>(emptyMap())
+        private set
+    var startingEmulators by mutableStateOf<Set<String>>(emptySet())
+        private set
 
     var isGradleRepository by mutableStateOf(false)
         private set
@@ -156,6 +166,7 @@ class WorktreeViewModel(
             val detected = useCases.detectAgents(worktrees).getOrNull()
             agents = detected
             if (isGradleRepository && !isStoppingDaemons) loadGradleDaemons(listGeneration, worktrees)
+            if (isEmulatorRepository) loadEmulators(listGeneration, worktrees)
         }
     }
 
@@ -198,12 +209,48 @@ class WorktreeViewModel(
         }
         loadGradleSection(generation, listed)
         loadPorts(generation, listed)
+        loadEmulatorSection(generation, listed)
         viewModelScope.launch {
             for (worktree in listed) {
                 val size = useCases.measureSize(worktree, listed).getOrNull()
                 if (generation != listGeneration) return@launch
                 if (size != null) sizes = sizes + (worktree.path to size)
             }
+        }
+    }
+
+    private fun loadEmulatorSection(generation: Int, listed: List<Worktree>) {
+        isEmulatorRepository = useCases.emulator.declared()
+        if (!isEmulatorRepository) {
+            emulators = emptyMap()
+            return
+        }
+        viewModelScope.launch { loadEmulators(generation, listed) }
+    }
+
+    private suspend fun loadEmulators(generation: Int, listed: List<Worktree>) {
+        val loaded = useCases.emulator.readStates(listed).getOrNull() ?: return
+        if (generation == listGeneration) emulators = loaded
+    }
+
+    fun startEmulator(worktree: Worktree) {
+        if (worktree.path in startingEmulators) return
+        startingEmulators = startingEmulators + worktree.path
+        viewModelScope.launch {
+            try {
+                useCases.emulator.start(worktree.path).onFailure { error = it }
+                loadEmulators(listGeneration, worktrees)
+                loadPorts(listGeneration, worktrees)
+            } finally {
+                startingEmulators = startingEmulators - worktree.path
+            }
+        }
+    }
+
+    fun stopEmulator(worktree: Worktree) {
+        viewModelScope.launch {
+            useCases.emulator.stop(worktree.path).onFailure { error = it }
+            loadEmulators(listGeneration, worktrees)
         }
     }
 
@@ -375,6 +422,7 @@ class WorktreeViewModel(
         if (cleanupCandidates.isEmpty()) return
         cleanupDeleteBranches = false
         cleanupStopGradleDaemons = true
+        cleanupStopEmulators = true
         isCleanupDialogOpen = true
     }
 
@@ -386,6 +434,11 @@ class WorktreeViewModel(
         val candidates = cleanupCandidates
         val listed = worktrees
         val stopDaemons = isGradleRepository && cleanupStopGradleDaemons
+        val emulatorsBefore = if (isEmulatorRepository && cleanupStopEmulators) {
+            emulators.filter { (path, emulator) -> emulator.state != EmulatorState.STOPPED && candidates.any { it.path == path } }
+        } else {
+            emptyMap()
+        }
         viewModelScope.launch {
             isCleaningUp = true
             try {
@@ -394,10 +447,17 @@ class WorktreeViewModel(
                     .onSuccess { report ->
                         error = null
                         val daemonReport = stopDaemonsOfRemovedWorktrees(daemonsBefore, listed, report.removed)
+                        val removedSerials = report.removed.mapNotNull { emulatorsBefore[it]?.serial }
+                        val stoppedEmulators = if (removedSerials.isEmpty()) {
+                            0
+                        } else {
+                            useCases.emulator.stopSerials(removedSerials).getOrNull()?.size ?: 0
+                        }
                         success = WorktreeSuccess.CleanedUp(
                             removedCount = report.removed.size,
                             stoppedDaemons = daemonReport?.stopped?.size ?: 0,
                             keptDaemons = daemonReport?.kept?.size ?: 0,
+                            stoppedEmulators = stoppedEmulators,
                         )
                         cleanupIssues = report.takeIf { it.failures.isNotEmpty() || it.keptBranches.isNotEmpty() }
                     }
@@ -464,6 +524,7 @@ sealed interface WorktreeSuccess {
         val removedCount: Int,
         val stoppedDaemons: Int = 0,
         val keptDaemons: Int = 0,
+        val stoppedEmulators: Int = 0,
     ) : WorktreeSuccess
 }
 

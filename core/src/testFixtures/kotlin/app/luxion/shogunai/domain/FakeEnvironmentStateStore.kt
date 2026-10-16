@@ -20,11 +20,10 @@ class FakeEnvironmentStateStore(
         if (ports.isEmpty()) portsByAdminDirectory.remove(adminDirectory) else portsByAdminDirectory[adminDirectory] = ports
     }
 
-    override fun reservedPortsOfRepository(commonDirectory: String): Set<Int> =
-        portsByAdminDirectory.filterKeys { it == commonDirectory || it.startsWith("$commonDirectory/") }
-            .values.flatMap { it.values }.toSet()
+    override fun reservedPortsOnMachine(commonDirectory: String): Set<Int> =
+        portsByAdminDirectory.values.flatMap { it.values }.toSet()
 
-    override fun <T> withLock(commonDirectory: String, block: () -> T): T {
+    override fun <T> withLock(block: () -> T): T {
         locks++
         return block()
     }

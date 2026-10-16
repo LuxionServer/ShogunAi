@@ -14,6 +14,7 @@ Configuration of a repository that worktrees are created against. It's what make
 | `worktreesRoot` | Parent folder where worktrees are created. |
 | `secretFiles` | "Local files": exact paths, relative to the base repository or absolute, copied into each new worktree on this machine only (e.g. `local.properties`). What the repository itself declares lives in `.shogunai.json` (see `RepositoryProvisioning`). |
 | `agentLaunchConfig` | Agent command included in the launch command copied for a worktree (`AgentLaunchConfig`, see below). |
+| `emulator` | `EmulatorSettings` for this machine: the AVD to use (`null` means automatic) and `noWindow`. Only used when the repository declares the emulator provider; never stored in the repository. |
 | `mainBranch` | Optional branch that worktrees are compared against to show their status (e.g. `develop`). `null` means it's detected from the repository (see `ResolveMainBranchUseCase`). |
 
 Path helpers:
@@ -61,7 +62,7 @@ What the repository declares that each new worktree needs, read from files at th
 |---|---|
 | `copyPatterns` | The `copy` list of `.shogunai.json`. |
 | `worktreeIncludePatterns` | The lines of `.worktreeinclude` (Claude Code's file), skipping blank lines and `#` comments. |
-| `providers` | The `providers` object of `.shogunai.json`: the providers the repository turns on, each keyed by its id with an object of options. Today only `gradle` (`GradleProvider`, no options yet), which makes the [Gradle daemons](#gradle-daemons) visible for the repository. Unknown ids are ignored. |
+| `providers` | The `providers` object of `.shogunai.json`: the providers the repository turns on, each keyed by its id with an object of options. `gradle` (`GradleProvider`, no options yet) makes the [Gradle daemons](#gradle-daemons) visible for the repository; `emulator` (`EmulatorProvider`, optional `avd` the repository prefers) gives each worktree its own [Android emulator](#android-emulator). Unknown ids are ignored. |
 | `environment` | The `env` object and `envFile` of `.shogunai.json`, as an `EnvironmentDeclaration` (see [Worktree environment](#worktree-environment)). |
 
 `allPatterns` is their union without duplicates. Patterns use Git's ignore-pattern syntax, relative to the repository root: `local.properties` matches at any depth, `/local.properties` only at the root, `.idea/runConfigurations/` a whole folder, `.env*` a glob.
@@ -86,6 +87,15 @@ Variables each worktree gets, declared in `.shogunai.json` (`WorktreeEnvironment
 - `EnvironmentDeclaration` — the `variables` in file order and the optional `envFile`, a path relative to the worktree root that must stay inside it. `portKeys` lists the ports the declaration needs.
 - `EnvironmentVariable` — a valid variable name (letters, digits and `_`, not starting with a digit) and its template, parsed when the file is read into `TemplatePart`s: `Literal`, `WorktreeName` (`${worktree}`, the worktree's folder name) and `Port(key)`. `${port}` is keyed by the variable's own name, so each variable gets its own port; `${port:<key>}` is keyed `port:<key>`, shared by every variable that uses it (`:` can't appear in a variable name, so the keys never collide). `$$` is a literal `$`; any other `${…}` throws `InvalidEnvironmentTemplate`, which reading turns into `InvalidRepositoryConfig`.
 - `WorktreeEnvironment` — a resolved environment: the rendered `variables` and the `ports` reserved for the worktree.
+
+### Android emulator
+
+The emulator provider (`Emulator.kt`) only acts for repositories that declare `"providers": { "emulator": {} }`; for any other repository nothing looks for the SDK, runs `adb` or adds variables.
+
+- `EmulatorSettings` — the machine settings stored in `ProjectConfig.emulator`.
+- `chooseAvd(requested, settings, preferred, available)` — the AVD to start: the one requested for this start, else the machine setting, else the repository's preferred AVD if this machine has it, else the first available one; `null` when there's none.
+- Each worktree reserves the console port key `emulator` among the even ports 5554–5584 (the range `adb` scans), with the next port (the emulator's adb port) also free, and gets `ANDROID_SERIAL=emulator-<port>` (`emulatorSerial`). Android's Gradle plugin reads `ANDROID_SERIAL` in `installDebug`, `uninstall*` and `connectedAndroidTest` to use only that device.
+- `SdkLocation` (SDK root, `emulator` and `adb` executables), `EmulatorState` (`STOPPED`, `BOOTING`, `RUNNING`) and `WorktreeEmulator` (serial and state) describe what the [Android SDK port](#androidsdk) reports.
 
 ### Gradle daemons
 
@@ -178,8 +188,8 @@ Reads the repository's provisioning (throwing `InvalidRepositoryConfig` for an u
 interface EnvironmentStateStore {
     fun readPorts(adminDirectory: String): Map<String, Int>
     fun writePorts(adminDirectory: String, ports: Map<String, Int>)
-    fun reservedPortsOfRepository(commonDirectory: String): Set<Int>
-    fun <T> withLock(commonDirectory: String, block: () -> T): T
+    fun reservedPortsOnMachine(commonDirectory: String): Set<Int>
+    fun <T> withLock(block: () -> T): T
 }
 
 interface PortProbe {
@@ -187,7 +197,21 @@ interface PortProbe {
 }
 ```
 
-`EnvironmentStateStore` keeps each worktree's reserved ports in Git's administrative directory for that worktree (`.git/worktrees/<id>/` for a linked one, `.git/` for the main one), lists every reservation of the repository, and runs a block while holding the repository's reservation lock. `PortProbe` tells whether a port is free on the machine.
+`EnvironmentStateStore` keeps each worktree's reserved ports in Git's administrative directory for that worktree (`.git/worktrees/<id>/` for a linked one, `.git/` for the main one), lists every reservation on the machine (this repository's worktrees plus every worktree of any repository ShogunAi has stored reservations for), and runs a block while holding the machine's reservation lock. `PortProbe` tells whether a port is free on the machine.
+
+### `AndroidSdk`
+
+```kotlin
+interface AndroidSdk {
+    fun locate(repositoryPath: String): SdkLocation
+    suspend fun listAvds(sdk: SdkLocation): List<String>
+    suspend fun deviceStates(sdk: SdkLocation): Map<String, EmulatorState>
+    fun startEmulator(sdk: SdkLocation, avd: String, consolePort: Int, noWindow: Boolean)
+    suspend fun stopEmulator(sdk: SdkLocation, serial: String)
+}
+```
+
+Everything the emulator provider needs from the Android SDK, used only for repositories that declare the provider: finding the SDK (`AndroidSdkNotFound` with the places checked), listing AVDs, the state of every running emulator in one call, starting an emulator detached on a console port, and stopping one. Tool errors are `AndroidToolFailed`.
 
 ### `GradleDaemonSource`
 
@@ -291,13 +315,21 @@ Re-links the base repository and its worktrees after they were moved on disk. Gi
 
 ### `ResolveWorktreeEnvironmentUseCase`
 
-Resolves a worktree's environment from the base repository's declaration. An empty declaration returns an empty `WorktreeEnvironment` without running any command. Otherwise it finds the worktree's administrative and common Git directories (`git rev-parse --path-format=absolute --git-dir --git-common-dir` in the worktree) and, while holding the repository's lock:
+Resolves a worktree's environment from the base repository's declaration and the providers it declares. Each needed port is a `PortRequest` (a key, candidate ports, ports that must also be free, and the error when none is left): declared `${port}` keys ask for 20000–29999 (`declaredPortRequests`); providers add theirs through `EnvironmentContribution`s (`providerContributions`), together with the variables they derive from their ports. With nothing declared and no contributing provider it returns an empty `WorktreeEnvironment` without running any command. Otherwise it finds the worktree's administrative and common Git directories (`git rev-parse --path-format=absolute --git-dir --git-common-dir` in the worktree) and, while holding the machine's lock:
 
-1. keeps the worktree's stored ports whose keys the declaration still uses, releasing the rest;
-2. reserves each missing key at the lowest port from 20000 to 29999 that no worktree of the repository has reserved and `PortProbe` reports free (`NoFreePort` if none is);
+1. keeps the worktree's stored ports whose keys are still requested, releasing the rest;
+2. reserves each missing key at the first candidate that, together with its extra ports, no worktree on the machine has reserved and `PortProbe` reports free (otherwise the request's error, e.g. `NoFreePort`);
 3. writes the reservations only if they changed.
 
-A reserved port is never checked again, because the worktree's own server is expected to listen on it. With `reserve = false` (used to show ports without side effects) it only reads the stored ports, without locking or writing, and returns no variables until every port is reserved. `formatEnvironment` renders the variables as `sh` (`export NAME='value'`, single quotes with `'\''` escaping, safe for `eval`), `dotenv` (`NAME=value`, double-quoted and escaped unless the value is plain) or `json`.
+Provider variables come first and declared `env` variables override a provider variable with the same name. A reserved port is never checked again, because the worktree's own server is expected to listen on it. With `reserve = false` (used to show ports without side effects) it only reads the stored ports, without locking or writing, and returns no variables until every port is reserved. `formatEnvironment` renders the variables as `sh` (`export NAME='value'`, single quotes with `'\''` escaping, safe for `eval`), `dotenv` (`NAME=value`, double-quoted and escaped unless the value is plain) or `json`.
+
+### Emulator use cases
+
+All three fail with `EmulatorProviderNotDeclared` (or return nothing, for the states) when the repository doesn't declare the emulator provider, before touching the SDK.
+
+- `StartWorktreeEmulatorUseCase(config, worktreePath, avd?, noWindow?)` resolves the worktree's environment (reserving its emulator port if needed), returns at once if its serial is already running, otherwise starts the AVD from `chooseAvd` (`NoAvdAvailable` if none) with the window setting from the call or the project, unless it's already booting, and polls `deviceStates` every 2 s until it's running. After 180 s it fails with `EmulatorBootTimeout` and leaves the emulator booting. The pause is injected, so tests don't wait.
+- `StopWorktreeEmulatorUseCase(config, worktreePath)` reads the worktree's emulator port without reserving; with none reserved there's nothing to stop. `stopSerials` stops the given serials that are running, which the cleanup uses with serials read before removing worktrees.
+- `ReadEmulatorStatesUseCase(config, worktrees)` maps each worktree with a reserved emulator port to its serial and state, from stored reservations and a single `deviceStates` call; worktrees without a reservation are left out.
 
 ### Gradle daemon use cases
 

@@ -111,6 +111,24 @@ shogun clean --yes --stop-gradle-daemons  # para también los daemons ociosos de
 
 Inspeccionar los daemons necesita `ps` (macOS y Linux).
 
+## Emuladores de Android
+
+Las builds de Android instalan en todos los dispositivos conectados salvo que `ANDROID_SERIAL` indique uno, así que los agentes de worktrees en paralelo se pisan los emuladores. Activa el provider de emulador para que cada worktree tenga el suyo:
+
+```json
+{ "providers": { "emulator": { "avd": "Pixel_8_API_35" } } }
+```
+
+`avd` es opcional: la AVD que prefiere este repositorio cuando la máquina la tiene. Cada worktree reserva entonces un puerto de emulador y recibe `ANDROID_SERIAL=emulator-<puerto>` en su entorno (`shogun env`, el hook `SessionStart`, `envFile`). Los emuladores solo arrancan cuando lo pides:
+
+```bash
+shogun emulator start      # arranca el emulador de este worktree (solo lectura, así una AVD sirve a todos) y espera
+shogun emulator status     # emulator-5556 running
+shogun emulator stop
+```
+
+En cada máquina, la configuración del proyecto elige la AVD (o la deja automática) y si arranca sin ventana; `--avd` y `--no-window` las sustituyen en un arranque. La lista de worktrees muestra cada emulador con Arrancar y Parar, y "Limpiar" (o `shogun clean --stop-emulators`) para los emuladores de los worktrees que elimina. El SDK se busca en `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `sdk.dir` de `local.properties` o la ubicación por defecto de Android Studio. Los repositorios sin el provider no ven nada de esto.
+
 ## Desarrollo
 
 ¿Quieres compilar el proyecto desde el código fuente o contribuir? Empieza por [`docs/getting-started.es.md`](./docs/getting-started.es.md).

@@ -12,7 +12,7 @@ Esa dirección se construye en tres capas:
 |---|---|---|
 | **Motor y CLI** | La base | Provisionado de worktrees definido en el repositorio (`.shogunai.json`) y un comando `shogun` que usan la app de escritorio, los agentes y sus hooks, con un entorno por worktree (puertos reservados y variables) que llega a la shell de cada agente. **Disponible**; el provisionado más completo está planificado. |
 | **Torre de control** | La vista | La app de escritorio muestra el estado de todos los worktrees, incluidos los creados por otras herramientas, los mantiene limpios y sigue los cambios según ocurren. **Disponible.** |
-| **Android, KMP y JVM** | El contenido | Provisionado para los stacks en los que más cuesta preparar un worktree: Gradle, secretos locales, emuladores e IDEs. **Empezado**: los repositorios Gradle muestran sus daemons y pueden parar los ociosos. |
+| **Android, KMP y JVM** | El contenido | Provisionado para los stacks en los que más cuesta preparar un worktree: Gradle, secretos locales, emuladores e IDEs. **Empezado**: los repositorios Gradle muestran sus daemons y pueden parar los ociosos, y los repositorios Android pueden dar a cada worktree su propio emulador. |
 
 ```mermaid
 graph LR
@@ -40,7 +40,7 @@ Provisionado para los stacks en los que un worktree recién creado está más le
 
 - `local.properties`, keystores y `google-services.json`.
 - Ajustes de Gradle por worktree (memoria del daemon, tiempo de inactividad), para que los worktrees en paralelo no multipliquen el uso de memoria, entregados con el entorno por worktree.
-- Un emulador o simulador asignado por worktree, con su serial entregado con el entorno por worktree.
+- Un simulador de iOS por worktree para proyectos KMP, con el mismo mecanismo de providers que el emulador de Android.
 - «Abrir en Android Studio» en el worktree correcto.
 
 ### Elegir la base de un worktree nuevo

@@ -1,5 +1,6 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
@@ -8,7 +9,9 @@ import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
+import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import java.nio.file.Files
@@ -36,6 +39,7 @@ class EnvironmentCommandsTest {
         branch refs/heads/feature/TASK-123
     """.trimIndent()
 
+    private val androidSdk = FakeAndroidSdk()
     private val out = StringBuilder()
     private val err = StringBuilder()
     private val store = FakeEnvironmentStateStore()
@@ -81,6 +85,7 @@ class EnvironmentCommandsTest {
         gradleUserHome = "/home/dev/.gradle",
         environmentStateStore = store,
         portProbe = FakePortProbe(),
+        androidSdk = androidSdk,
         workingDirectory = workingDirectory,
         out = out,
         err = err,
@@ -88,6 +93,48 @@ class EnvironmentCommandsTest {
         canonicalPath = { it.trimEnd('/') },
         environmentVariable = { environment[it] },
     )
+
+    private fun withEmulator() = FakeRepositoryProvisioningSource(
+        byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(emulator = EmulatorProvider()))),
+    )
+
+    @Test
+    fun `emulator start boots the worktree's emulator and status reports it`() {
+        val start = cli(withEmulator()).run(listOf("emulator", "start", "--no-window"))
+
+        assertEquals(0, start, err.toString())
+        assertEquals(listOf(FakeAndroidSdk.Started("Medium_Phone_API_35", 5554, noWindow = true)), androidSdk.started)
+
+        assertEquals(0, cli(withEmulator()).run(listOf("emulator", "stop")))
+        assertEquals(0, cli(withEmulator()).run(listOf("emulator", "status", linked)))
+        assertEquals("emulator-5554 running\nemulator-5554 stopped\nemulator-5554 stopped\n", out.toString())
+    }
+
+    @Test
+    fun `emulator status before any reservation says how to start one`() {
+        assertEquals(0, cli(withEmulator()).run(listOf("emulator", "status")))
+        assertTrue(out.startsWith("No emulator port reserved"), out.toString())
+        assertTrue(androidSdk.started.isEmpty())
+    }
+
+    @Test
+    fun `emulator commands fail without the provider and never touch the SDK`() {
+        val exitCode = cli(declaring("PORT" to "\${port}")).run(listOf("emulator", "start"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("\"providers\": { \"emulator\": {} }"), err.toString())
+        assertEquals(0, androidSdk.locates)
+    }
+
+    @Test
+    fun `session-start tells Claude how to start the emulator`() {
+        val exitCode = cli(withEmulator(), input = """{"cwd": "$linked"}""").run(listOf("hook", "session-start"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("export ANDROID_SERIAL='emulator-5554'\n", envFile.readText())
+        assertTrue(out.contains("ANDROID_SERIAL=emulator-5554; start it with 'shogun emulator start'"), out.toString())
+        assertEquals(0, androidSdk.locates)
+    }
 
     @Test
     fun `env prints export lines for the current worktree`() {

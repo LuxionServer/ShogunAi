@@ -1,6 +1,7 @@
 package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.infrastructure.JsonProjectRepository
+import app.luxion.shogunai.infrastructure.LocalAndroidSdk
 import app.luxion.shogunai.infrastructure.NioEnvironmentStateStore
 import app.luxion.shogunai.infrastructure.NioFileManager
 import app.luxion.shogunai.infrastructure.ProcessBuilderShellCommandExecutor
@@ -17,15 +18,17 @@ fun main(args: Array<String>) {
 fun runShogun(args: Array<String>): Int {
     val executor = ProcessBuilderShellCommandExecutor()
     val gradleUserHome = defaultGradleUserHome()
+    val fileManager = NioFileManager()
     val exitCode = ShogunCli(
         executor = executor,
-        fileManager = NioFileManager(),
+        fileManager = fileManager,
         projectRepository = JsonProjectRepository(),
         provisioningSource = RepositoryProvisioningFiles(),
         daemonSource = ProcessGradleDaemonSource(executor, gradleUserHome),
         gradleUserHome = gradleUserHome,
         environmentStateStore = NioEnvironmentStateStore(),
         portProbe = SocketPortProbe(),
+        androidSdk = LocalAndroidSdk(executor, fileManager),
         workingDirectory = System.getProperty("user.dir"),
         out = System.out,
         err = System.err,

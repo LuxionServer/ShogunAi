@@ -20,9 +20,19 @@ Implementación de `FileManager` sobre `java.nio.file`. `copy` crea las carpetas
 ## `NioEnvironmentStateStore` / `SocketPortProbe`
 
 - **Estado**: las reservas de cada worktree viven en `shogunai-env.json` dentro de su directorio de administración de Git, como `{ "ports": { "PORT": 20001, "port:api": 20002 } }`. Git ignora ahí los ficheros que no conoce y borra el directorio entero con `git worktree remove` y `prune`, así que las reservas desaparecen con el worktree, lo haya creado quien lo haya creado. Los demás campos del objeto se conservan para futuros providers; un fichero que se queda sin campos se borra; un fichero ilegible cuenta como sin reservas. Las escrituras son atómicas (fichero temporal y movimiento).
-- **Listado del repositorio**: el fichero del directorio común (el worktree principal) más cada `worktrees/*/shogunai-env.json`.
-- **Lock**: `withLock` toma un lock exclusivo de `FileChannel` sobre `<dir-común>/shogunai-env.lock`, para que creaciones en paralelo, incluso desde varios procesos (varias sesiones de Claude Code), no reserven el mismo puerto. Un lock de proceso protege el lock del fichero, y una llamada anidada en el mismo hilo se ejecuta directamente.
+- **Listado de la máquina**: los ficheros del repositorio actual (el del directorio común, para el worktree principal, más cada `worktrees/*/shogunai-env.json`) y cada directorio de administración del índice de la máquina `~/.shogunai/reservations.json` (`{ "worktrees": [ … ] }`). Escribir los puertos de un worktree añade su directorio al índice, o lo quita cuando ya no tiene ninguno; al listar se descartan las entradas cuyo fichero de estado ya no existe (el worktree se eliminó o se podó), así que el índice se repara solo y los puertos de worktrees eliminados de cualquier repositorio quedan libres.
+- **Lock**: `withLock` toma un lock exclusivo de `FileChannel` sobre `~/.shogunai/reservations.lock`, para que creaciones en paralelo, incluso desde varios procesos (varias sesiones de Claude Code) y repositorios distintos, no reserven el mismo puerto. Un lock de proceso protege el lock del fichero, y una llamada anidada en el mismo hilo se ejecuta directamente.
 - **Puerto libre**: `SocketPortProbe` hace `bind` de un `ServerSocket` con `reuseAddress = false` en la dirección comodín y en la de loopback; el puerto está libre solo si ambos funcionan.
+
+## `LocalAndroidSdk`
+
+Implementación de `AndroidSdk` sobre las herramientas del propio SDK:
+
+- **Localización**: el primero de `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `sdk.dir` del `local.properties` del repositorio y la ubicación por defecto de la plataforma (`~/Library/Android/sdk`, `~/Android/Sdk`, `%LOCALAPPDATA%\Android\Sdk`) que contenga `emulator/emulator`; en Windows los ejecutables llevan `.exe`.
+- **AVDs**: `emulator -list-avds`, saltando las líneas informativas del emulador.
+- **Estados**: un único `adb devices`, quedándose con los seriales `emulator-*`; uno `offline` está arrancando, y uno `device` está en marcha cuando `adb -s <serial> shell getprop sys.boot_completed` devuelve `1`.
+- **Arranque**: `emulator -avd <avd> -port <puerto> -read-only -no-boot-anim [-no-window]` con `ProcessBuilder`, no con el ejecutor de comandos, porque tiene que seguir en marcha cuando termina quien lo llamó (el CLI); la salida va a `~/.shogunai/logs/emulator-<puerto>.log`. `-read-only` es lo que permite ejecutar una AVD una vez por worktree; los cambios en los datos del emulador se descartan al salir.
+- **Parada**: `adb -s <serial> emu kill`.
 
 ## `ProcessGradleDaemonSource`
 
@@ -67,9 +77,10 @@ En `core/src/testFixtures/kotlin/app/luxion/shogunai/domain/`, los test fixtures
 - `FakeShellCommandExecutor` — sustituye `ShellCommandExecutor`: responde a cada argv con un `CommandResult` preparado y registra los comandos ejecutados.
 - `FakeFileManager` — sustituye `FileManager` con un conjunto en memoria de rutas existentes y ficheros de propiedades.
 - `FakeEnvironmentStateStore` / `FakePortProbe` — sustituyen el almacén de reservas (reservas en memoria por directorio de administración, contando escrituras y locks) y la comprobación de puertos (un conjunto de puertos ocupados).
+- `FakeAndroidSdk` — sustituye `AndroidSdk` con AVDs, estados de emulador que pasan de arrancando a en marcha tras un número de consultas, un interruptor de SDK ausente y registro de arranques y paradas.
 - `FakeGradleDaemonSource` — sustituye `GradleDaemonSource` con una lista mutable de daemons (o un fallo) y cuenta los listados; `gradleDaemon(...)` y `kotlinDaemon(...)` los construyen.
 - `FakeClipboardWriter` — sustituye `ClipboardWriter`.
 - `FakeProjectRepository` — sustituye `ProjectRepository` en los tests de ViewModels.
 - `FakeRepositoryProvisioningSource` — sustituye `RepositoryProvisioningSource` con provisionado por ruta de repositorio, repositorios ilegibles y escrituras que fallan, y registra los patrones añadidos.
 
-Gracias a que el dominio depende de interfaces, los tests de casos de uso (`*UseCaseTest`) y los de ViewModels no tocan disco ni lanzan procesos reales. La propia infraestructura se cubre con `ProcessBuilderShellCommandExecutorTest`, `JsonProjectRepositoryTest`, `JsonSettingsFileTest`, `RepositoryProvisioningFilesTest`, `NioEnvironmentStateStoreTest` (directorios temporales y un socket real escuchando) y `ProcessGradleDaemonSourceTest` (sobre líneas reales de `ps` y fragmentos de logs de daemons), que sí usan procesos reales y ficheros temporales.
+Gracias a que el dominio depende de interfaces, los tests de casos de uso (`*UseCaseTest`) y los de ViewModels no tocan disco ni lanzan procesos reales. La propia infraestructura se cubre con `ProcessBuilderShellCommandExecutorTest`, `JsonProjectRepositoryTest`, `JsonSettingsFileTest`, `RepositoryProvisioningFilesTest`, `NioEnvironmentStateStoreTest` (directorios temporales y un socket real escuchando), `LocalAndroidSdkTest` (orden de búsqueda del SDK, salida real de `adb devices`, el comando de arranque) y `ProcessGradleDaemonSourceTest` (sobre líneas reales de `ps` y fragmentos de logs de daemons), que sí usan procesos reales y ficheros temporales.

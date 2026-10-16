@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.EmulatorUseCases
 import app.luxion.shogunai.GradleUseCases
 import app.luxion.shogunai.WorktreeUseCases
 import app.luxion.shogunai.domain.FakeClipboardWriter
@@ -25,6 +26,8 @@ import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
+import app.luxion.shogunai.domain.model.WorktreeEmulator
+import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.CopyWorktreeLaunchCommandUseCase
@@ -125,6 +128,7 @@ class WorktreeViewModelTest {
             measureSize = MeasureWorktreeSizeUseCase(fileManager, dispatcher),
             readFingerprint = ReadGitMetadataFingerprintUseCase(config, fileManager, dispatcher),
             readPorts = { worktree -> Result.success(portsByWorktree[worktree.path].orEmpty()) },
+            emulator = EmulatorUseCases.NONE,
             gradle = gradleUseCases(executor),
         )
     }
@@ -1220,5 +1224,97 @@ class WorktreeViewModelTest {
 
         assertEquals(emptyMap(), viewModel.ports)
         assertEquals(0, store.writes)
+    }
+
+    private class RecordingEmulators(
+        val declared: Boolean = true,
+        initial: Map<String, WorktreeEmulator> = emptyMap(),
+    ) {
+        var states = initial
+        var reads = 0
+        val started = mutableListOf<String>()
+        val stopped = mutableListOf<String>()
+        val stoppedSerials = mutableListOf<String>()
+
+        fun useCases() = EmulatorUseCases(
+            declared = { declared },
+            readStates = { reads++; Result.success(states) },
+            start = { path ->
+                started += path
+                val emulator = WorktreeEmulator("emulator-5554", EmulatorState.RUNNING)
+                states = states + (path to emulator)
+                Result.success(emulator)
+            },
+            stop = { path ->
+                stopped += path
+                states = states + (path to WorktreeEmulator("emulator-5554", EmulatorState.STOPPED))
+                Result.success(states[path])
+            },
+            stopSerials = { serials -> stoppedSerials += serials; Result.success(serials.map { WorktreeEmulator(it, EmulatorState.STOPPED) }) },
+        )
+    }
+
+    @Test
+    fun `repositories without the emulator provider never read emulators`() = runTest(dispatcher) {
+        val emulators = RecordingEmulators(declared = false)
+        val viewModel = WorktreeViewModel(useCases(listingResponder()).copy(emulator = emulators.useCases()))
+        advanceUntilIdle()
+
+        assertFalse(viewModel.isEmulatorRepository)
+        assertEquals(0, emulators.reads)
+        assertEquals(emptyMap(), viewModel.emulators)
+    }
+
+    @Test
+    fun `emulator states are loaded and can be started and stopped from the row`() = runTest(dispatcher) {
+        val emulators = RecordingEmulators(initial = mapOf(worktreePath to WorktreeEmulator("emulator-5554", EmulatorState.STOPPED)))
+        val viewModel = WorktreeViewModel(useCases(listingResponder()).copy(emulator = emulators.useCases()))
+        advanceUntilIdle()
+
+        assertTrue(viewModel.isEmulatorRepository)
+        assertEquals(EmulatorState.STOPPED, viewModel.emulators[worktreePath]?.state)
+
+        viewModel.startEmulator(worktree)
+        assertTrue(worktreePath in viewModel.startingEmulators)
+        advanceUntilIdle()
+
+        assertEquals(listOf(worktreePath), emulators.started)
+        assertEquals(EmulatorState.RUNNING, viewModel.emulators[worktreePath]?.state)
+        assertTrue(viewModel.startingEmulators.isEmpty())
+
+        viewModel.stopEmulator(worktree)
+        advanceUntilIdle()
+
+        assertEquals(listOf(worktreePath), emulators.stopped)
+        assertEquals(EmulatorState.STOPPED, viewModel.emulators[worktreePath]?.state)
+    }
+
+    @Test
+    fun `cleanup stops the running emulators of removed worktrees`() = runTest(dispatcher) {
+        val emulators = RecordingEmulators(initial = mapOf(worktreePath to WorktreeEmulator("emulator-5556", EmulatorState.RUNNING)))
+        val viewModel = WorktreeViewModel(useCases(mergedResponder()).copy(emulator = emulators.useCases()))
+        advanceUntilIdle()
+
+        viewModel.openCleanup()
+        assertTrue(viewModel.cleanupStopEmulators)
+        viewModel.confirmCleanup()
+        advanceUntilIdle()
+
+        assertEquals(listOf("emulator-5556"), emulators.stoppedSerials)
+        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1, stoppedEmulators = 1), viewModel.success)
+    }
+
+    @Test
+    fun `cleanup without the emulator option stops none`() = runTest(dispatcher) {
+        val emulators = RecordingEmulators(initial = mapOf(worktreePath to WorktreeEmulator("emulator-5556", EmulatorState.RUNNING)))
+        val viewModel = WorktreeViewModel(useCases(mergedResponder()).copy(emulator = emulators.useCases()))
+        advanceUntilIdle()
+
+        viewModel.openCleanup()
+        viewModel.cleanupStopEmulators = false
+        viewModel.confirmCleanup()
+        advanceUntilIdle()
+
+        assertTrue(emulators.stoppedSerials.isEmpty())
     }
 }

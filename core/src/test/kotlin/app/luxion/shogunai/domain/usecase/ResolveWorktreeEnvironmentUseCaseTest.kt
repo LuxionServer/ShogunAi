@@ -4,7 +4,9 @@ import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
+import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
+import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.WorktreeEnvironment
 import app.luxion.shogunai.domain.model.WorktreeError
@@ -159,6 +161,58 @@ class ResolveWorktreeEnvironmentUseCaseTest {
         val second = useCase(source, store)(repository, other).getOrThrow().ports.getValue("PORT")
 
         assertNotEquals(first, second)
+    }
+
+    private fun withEmulator(vararg variables: Pair<String, String>) = FakeRepositoryProvisioningSource(
+        byRepository = mapOf(
+            repository to RepositoryProvisioning(
+                providers = RepositoryProviders(emulator = EmulatorProvider()),
+                environment = EnvironmentDeclaration(variables.map { (name, value) -> parseEnvironmentVariable(name, value) }),
+            ),
+        ),
+    )
+
+    @Test
+    fun `ports are unique across repositories on the machine`() = runTest {
+        val store = FakeEnvironmentStateStore(mapOf("/home/dev/other-repo/.git/worktrees/TASK-9" to mapOf("PORT" to 20000)))
+
+        val environment = useCase(declaring("PORT" to "\${port}"), store)(repository, task).getOrThrow()
+
+        assertEquals(mapOf("PORT" to 20001), environment.ports)
+    }
+
+    @Test
+    fun `the emulator provider adds the worktree's serial`() = runTest {
+        val environment = useCase(withEmulator())(repository, task).getOrThrow()
+
+        assertEquals(listOf("ANDROID_SERIAL" to "emulator-5554"), environment.variables)
+        assertEquals(mapOf("emulator" to 5554), environment.ports)
+    }
+
+    @Test
+    fun `emulator ports are even, skip a busy adb port and differ between worktrees`() = runTest {
+        val store = FakeEnvironmentStateStore()
+        val probe = FakePortProbe(busy = setOf(5555))
+
+        val first = useCase(withEmulator(), store, probe)(repository, task).getOrThrow()
+        val second = useCase(withEmulator(), store, probe)(repository, other).getOrThrow()
+
+        assertEquals("emulator-5556", first.variables.toMap()["ANDROID_SERIAL"])
+        assertEquals("emulator-5558", second.variables.toMap()["ANDROID_SERIAL"])
+    }
+
+    @Test
+    fun `fails when every emulator port is taken`() = runTest {
+        val probe = FakePortProbe(busy = (5554..5585).toSet())
+
+        assertIs<WorktreeError.NoEmulatorPort>(useCase(withEmulator(), probe = probe)(repository, task).exceptionOrNull())
+    }
+
+    @Test
+    fun `a declared ANDROID_SERIAL wins over the provider`() = runTest {
+        val environment = useCase(withEmulator("ANDROID_SERIAL" to "emulator-5600"))(repository, task).getOrThrow()
+
+        assertEquals(listOf("ANDROID_SERIAL" to "emulator-5600"), environment.variables)
     }
 
     @Test

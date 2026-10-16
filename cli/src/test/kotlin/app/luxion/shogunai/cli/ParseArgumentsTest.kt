@@ -86,6 +86,22 @@ class ParseArgumentsTest {
     }
 
     @Test
+    fun `emulator command`() {
+        assertEquals(CliCommand.Emulator(EmulatorAction.START), command("emulator", "start"))
+        assertEquals(
+            CliCommand.Emulator(EmulatorAction.START, "../TASK-123", "Pixel_8_API_35", noWindow = true),
+            command("emulator", "start", "../TASK-123", "--avd", "Pixel_8_API_35", "--no-window"),
+        )
+        assertEquals(CliCommand.Emulator(EmulatorAction.STATUS, "../TASK-123"), command("emulator", "status", "../TASK-123"))
+        assertEquals(CliCommand.Emulator(EmulatorAction.STOP), command("emulator", "STOP"))
+        assertEquals("'emulator' needs an action: start, stop or status", usageError("emulator"))
+        assertEquals("unknown action 'restart' for 'emulator', expected start, stop or status", usageError("emulator", "restart"))
+        assertEquals("--avd and --no-window only apply to 'emulator start'", usageError("emulator", "stop", "--no-window"))
+        assertEquals("--avd needs a value", usageError("emulator", "start", "--avd"))
+        assertEquals(CliCommand.Clean(confirmed = true, stopEmulators = true), command("clean", "--yes", "--stop-emulators"))
+    }
+
+    @Test
     fun `env command`() {
         assertEquals(CliCommand.Env(), command("env"))
         assertEquals(CliCommand.Env("../TASK-123", EnvironmentFormat.JSON), command("env", "../TASK-123", "--format", "json"))

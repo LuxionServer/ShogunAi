@@ -42,12 +42,12 @@ interface AndroidSdk {
     fun locate(repositoryPath: String): SdkLocation          // throws AndroidSdkNotFound(checked)
     suspend fun listAvds(sdk: SdkLocation): List<String>
     suspend fun deviceStates(sdk: SdkLocation): Map<String, EmulatorState>
-    fun startEmulator(sdk: SdkLocation, avd: String, port: Int, noWindow: Boolean, logFile: String)
+    fun startEmulator(sdk: SdkLocation, avd: String, consolePort: Int, noWindow: Boolean)
     suspend fun stopEmulator(sdk: SdkLocation, serial: String)
 }
 ```
 
-`LocalAndroidSdk` resolves the SDK in the spec's order (reading `local.properties` with `FileManager.readProperties`), runs `emulator -list-avds`, `adb devices` and `adb -s <serial> shell getprop sys.boot_completed` (only for emulators listed as `device`) and `adb -s <serial> emu kill` through `ShellCommandExecutor`, adding `.exe` on Windows. Starting uses `ProcessBuilder` directly, not the executor, because the process must outlive the caller: `emulator -avd <avd> -port <P> -read-only -no-boot-anim [-no-window]`, output redirected to `emulator.log` in the worktree's administrative directory, not waited for. `deviceStates` makes one `adb devices` call for all worktrees.
+`LocalAndroidSdk` resolves the SDK in the spec's order (reading `local.properties` with `FileManager.readProperties`), runs `emulator -list-avds`, `adb devices` and `adb -s <serial> shell getprop sys.boot_completed` (only for emulators listed as `device`) and `adb -s <serial> emu kill` through `ShellCommandExecutor`, adding `.exe` on Windows. Starting uses `ProcessBuilder` directly, not the executor, because the process must outlive the caller: `emulator -avd <avd> -port <P> -read-only -no-boot-anim [-no-window]`, output appended to `~/.shogunai/logs/emulator-<port>.log` (decided by the implementation rather than passed in, so the domain doesn't deal with log paths), not waited for. `deviceStates` makes one `adb devices` call for all worktrees. A failing tool is `AndroidToolFailed` (command, exit code, output).
 
 ### Emulator use cases
 `StartWorktreeEmulatorUseCase` resolves the environment (reserving the port if needed), returns early when `deviceStates` already shows the serial running, chooses the AVD, starts it and polls `deviceStates` every 2 s until running or 180 s pass (`EmulatorBootTimeout`, emulator left running). `StopWorktreeEmulatorUseCase` and `ReadEmulatorStatesUseCase` (serials of the listed worktrees from stored reservations, read-only, plus one `deviceStates`) complete the set. The poll delay is injected so tests don't wait.
@@ -56,7 +56,7 @@ interface AndroidSdk {
 Removing a worktree deletes its administrative directory and its reservations, so the desktop view model and `shogun clean` read the serials of the candidates before removing, then stop the ones still running after the removals, like Gradle daemons. Results join the cleanup report, never its failures.
 
 ### Desktop
-`WorktreeViewModel` loads emulator states only when the repository declares the provider, in the overview load and on each auto-refresh tick without changes (one `adb devices`), and exposes `startEmulator(worktree)` / `stopEmulator(worktree)` with a per-worktree "starting" flag. The row adds a line: `Emulator · running` with Stop, or `stopped` with Start. `ProjectConfigViewModel` lists AVDs only when the repository declares the provider and shows "SDK not found" with the checked locations otherwise.
+`WorktreeViewModel` loads emulator states only when the repository declares the provider, in the overview load and on each auto-refresh tick without changes (one `adb devices`), and exposes `startEmulator(worktree)` / `stopEmulator(worktree)` with a per-worktree "starting" flag. The row adds a line: `Emulator · emulator-5556 · running` with Stop, or `stopped` with Start; the reserved-ports line leaves out the emulator's key, since this line already shows the serial. `ProjectConfigViewModel` lists AVDs only when the repository declares the provider and shows "SDK not found" with the checked locations otherwise.
 
 ### CLI and session context
 `CliCommand.Emulator(action, path, avd, noWindow)` and `Clean.stopEmulators`. `hook session-start` adds `; start its emulator (ANDROID_SERIAL=…) with: shogun emulator start` to the context line when the provider is declared.
@@ -68,6 +68,7 @@ Removing a worktree deletes its administrative directory and its reservations, s
 - [The detached emulator keeps running after the CLI exits] → Intended; Stop, cleanup and the row stop it.
 - [Boot time varies (cold boot without snapshots in read-only)] → 180 s timeout and the emulator keeps booting after a timeout; status shows "booting".
 - [Machine index file grows with stale entries] → Every read drops entries whose state file is gone and rewrites the index under the lock.
+- [Right after two emulators boot, the first `installDebug` can fail because the `adb` server restarts ("protocol fault … Connection reset by peer"), seen once while validating] → It's `adb`'s own behaviour, not ShogunAi's; a retry succeeds. Installs were confirmed to reach only the worktree's emulator from both worktrees.
 - [16 emulator ports] → Enough for parallel agents in practice; exhausting them is a clear error.
 
 ## Migration Plan

@@ -9,6 +9,8 @@ import app.luxion.shogunai.domain.executor.ClipboardWriter
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.Worktree
+import app.luxion.shogunai.domain.model.WorktreeEmulator
+import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.usecase.CheckGradleBuildCacheUseCase
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.CopyWorktreeLaunchCommandUseCase
@@ -25,7 +27,10 @@ import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.RepairWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
+import app.luxion.shogunai.domain.usecase.ReadEmulatorStatesUseCase
 import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
+import app.luxion.shogunai.domain.usecase.StartWorktreeEmulatorUseCase
+import app.luxion.shogunai.domain.usecase.StopWorktreeEmulatorUseCase
 import app.luxion.shogunai.domain.usecase.WriteEnvironmentFileUseCase
 import app.luxion.shogunai.domain.usecase.StopGradleDaemonsUseCase
 import app.luxion.shogunai.infrastructure.AwtClipboardWriter
@@ -33,6 +38,7 @@ import app.luxion.shogunai.infrastructure.JsonLanguagePreferenceRepository
 import app.luxion.shogunai.infrastructure.JsonProjectRepository
 import app.luxion.shogunai.infrastructure.JsonSettingsFile
 import app.luxion.shogunai.infrastructure.JsonThemePreferenceRepository
+import app.luxion.shogunai.infrastructure.LocalAndroidSdk
 import app.luxion.shogunai.infrastructure.NioEnvironmentStateStore
 import app.luxion.shogunai.infrastructure.NioFileManager
 import app.luxion.shogunai.infrastructure.ProcessBuilderShellCommandExecutor
@@ -58,6 +64,14 @@ class AppContainer {
         NioEnvironmentStateStore(),
         SocketPortProbe(),
     )
+    private val androidSdk = LocalAndroidSdk(shellCommandExecutor, fileManager)
+    private val startEmulator = StartWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)
+    private val stopEmulator = StopWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)
+    private val readEmulatorStates = ReadEmulatorStatesUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)
+
+    suspend fun loadAvds(repositoryPath: String): Result<List<String>> =
+        runCatching { androidSdk.listAvds(androidSdk.locate(repositoryPath)) }
+
     private val prepareEnvironment = PrepareWorktreeEnvironmentUseCase(
         resolveEnvironment,
         WriteEnvironmentFileUseCase(shellCommandExecutor, fileManager, repositoryProvisioningSource),
@@ -86,6 +100,16 @@ class AppContainer {
         readPorts = { worktree ->
             resolveEnvironment(config.baseRepositoryPath, worktree.path, reserve = false).map { it.ports }
         },
+        emulator = EmulatorUseCases(
+            declared = {
+                runCatching { repositoryProvisioningSource.read(config.baseRepositoryPath).providers.emulator != null }
+                    .getOrDefault(false)
+            },
+            readStates = { worktrees -> readEmulatorStates(config, worktrees) },
+            start = { worktreePath -> startEmulator(config, worktreePath) },
+            stop = { worktreePath -> stopEmulator(config, worktreePath) },
+            stopSerials = { serials -> runCatching { stopEmulator.stopSerials(config, serials) } },
+        ),
         gradle = GradleUseCases(
             declaresProvider = {
                 runCatching { repositoryProvisioningSource.read(config.baseRepositoryPath).providers.gradle != null }
@@ -113,8 +137,27 @@ data class WorktreeUseCases(
     val measureSize: MeasureWorktreeSizeUseCase,
     val readFingerprint: ReadGitMetadataFingerprintUseCase,
     val readPorts: suspend (Worktree) -> Result<Map<String, Int>>,
+    val emulator: EmulatorUseCases,
     val gradle: GradleUseCases,
 )
+
+data class EmulatorUseCases(
+    val declared: () -> Boolean,
+    val readStates: suspend (List<Worktree>) -> Result<Map<String, WorktreeEmulator>>,
+    val start: suspend (String) -> Result<WorktreeEmulator>,
+    val stop: suspend (String) -> Result<WorktreeEmulator?>,
+    val stopSerials: suspend (List<String>) -> Result<List<WorktreeEmulator>>,
+) {
+    companion object {
+        val NONE = EmulatorUseCases(
+            declared = { false },
+            readStates = { Result.success(emptyMap()) },
+            start = { Result.failure(WorktreeError.EmulatorProviderNotDeclared) },
+            stop = { Result.success(null) },
+            stopSerials = { Result.success(emptyList()) },
+        )
+    }
+}
 
 data class GradleUseCases(
     val declaresProvider: () -> Boolean,

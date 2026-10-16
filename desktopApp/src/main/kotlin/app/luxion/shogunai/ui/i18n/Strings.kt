@@ -104,6 +104,20 @@ interface Strings {
     fun worktreesCleanedUp(count: Int): String
     fun cleanupFailed(path: String, detail: String): String
     fun branchKept(branch: String): String
+    val emulatorSection: String
+    val emulatorSectionDescription: String
+    val emulatorAvdLabel: String
+    val emulatorAutomaticAvd: String
+    fun emulatorMissingAvd(name: String): String
+    val emulatorNoWindowLabel: String
+    val emulatorLabel: String
+    val emulatorStopped: String
+    val emulatorBooting: String
+    val emulatorRunning: String
+    val startEmulator: String
+    val stopEmulator: String
+    val alsoStopEmulators: String
+    fun emulatorsStopped(count: Int): String
     val alsoStopIdleGradleDaemons: String
     val gradleDaemonsTitle: String
     fun gradleDaemonsSummary(count: Int, totalMemory: String): String
@@ -147,6 +161,12 @@ interface Strings {
     fun commandCouldNotStart(command: List<String>): String
     fun processListingFailed(command: List<String>, exitCode: Int): String
     fun noFreePort(from: Int, to: Int): String
+    fun noEmulatorPort(from: Int, to: Int): String
+    fun androidSdkNotFound(checked: List<String>): String
+    val noAvdAvailable: String
+    fun emulatorBootTimeout(serial: String, seconds: Long): String
+    val emulatorProviderNotDeclared: String
+    fun androidToolFailed(command: List<String>, exitCode: Int): String
     fun environmentFileTracked(path: String): String
     fun environmentFileWriteFailed(path: String, detail: String?): String
     fun unexpectedError(detail: String?): String
@@ -182,6 +202,13 @@ private fun Strings.worktreeErrorMessage(error: WorktreeError): String = when (e
     is WorktreeError.BranchAlreadyCheckedOut -> branchAlreadyCheckedOut(error.branch, error.path)
     is WorktreeError.ProcessListingFailed -> processListingFailed(error.command, error.exitCode)
     is WorktreeError.NoFreePort -> noFreePort(error.from, error.to)
+    is WorktreeError.NoEmulatorPort -> noEmulatorPort(error.from, error.to)
+    is WorktreeError.AndroidSdkNotFound -> androidSdkNotFound(error.checked)
+    WorktreeError.NoAvdAvailable -> noAvdAvailable
+    is WorktreeError.EmulatorBootTimeout -> emulatorBootTimeout(error.serial, error.seconds)
+    WorktreeError.EmulatorProviderNotDeclared -> emulatorProviderNotDeclared
+    is WorktreeError.AndroidToolFailed -> androidToolFailed(error.command, error.exitCode) +
+        if (error.output.isNotBlank()) "\n${error.output}" else ""
     is WorktreeError.EnvironmentFileTracked -> environmentFileTracked(error.path)
     is WorktreeError.EnvironmentFileWriteFailed -> environmentFileWriteFailed(error.path, error.cause?.message)
 }

@@ -6,15 +6,29 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
+import androidx.lifecycle.viewModelScope
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
+import app.luxion.shogunai.domain.model.EmulatorSettings
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.WorktreeError
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import java.util.UUID
+
+sealed interface EmulatorSectionState {
+    data object Hidden : EmulatorSectionState
+    data object Loading : EmulatorSectionState
+    data class Available(val avds: List<String>) : EmulatorSectionState
+    data class SdkNotFound(val checked: List<String>) : EmulatorSectionState
+    data class Failed(val error: Throwable) : EmulatorSectionState
+}
 
 class ProjectConfigViewModel(
     private val projectRepository: ProjectRepository,
     private val provisioningSource: RepositoryProvisioningSource,
     existingProject: Project?,
+    private val loadAvds: suspend (repositoryPath: String) -> Result<List<String>> = { Result.success(emptyList()) },
 ) : ViewModel() {
     private val existingId = existingProject?.id
 
@@ -41,6 +55,7 @@ class ProjectConfigViewModel(
         set(value) {
             _baseRepositoryPath = value
             repositoryProvisioning = provisioningSource.stateFor(value)
+            refreshEmulatorSection()
             if (value.isBlank()) return
             val offset = worktreesRootOffset
             val followsBase = offset != null &&
@@ -52,6 +67,12 @@ class ProjectConfigViewModel(
     var agentCommand by mutableStateOf(existingProject?.config?.agentLaunchConfig?.agentCommand ?: "claude")
     var useHeadroom by mutableStateOf(existingProject?.config?.agentLaunchConfig?.useHeadroom ?: true)
     var mainBranch by mutableStateOf(existingProject?.config?.mainBranch.orEmpty())
+    var emulatorAvd by mutableStateOf(existingProject?.config?.emulator?.avd)
+    var emulatorNoWindow by mutableStateOf(existingProject?.config?.emulator?.noWindow ?: false)
+
+    var emulatorSection by mutableStateOf<EmulatorSectionState>(EmulatorSectionState.Hidden)
+        private set
+    private var emulatorLoad: Job? = null
 
     private val initialName = name
     private val initialBaseRepositoryPath = baseRepositoryPath
@@ -60,6 +81,36 @@ class ProjectConfigViewModel(
     private val initialAgentCommand = agentCommand
     private val initialUseHeadroom = useHeadroom
     private val initialMainBranch = mainBranch
+    private val initialEmulatorAvd = emulatorAvd
+    private val initialEmulatorNoWindow = emulatorNoWindow
+
+    init {
+        refreshEmulatorSection()
+    }
+
+    private fun refreshEmulatorSection() {
+        emulatorLoad?.cancel()
+        val repositoryPath = _baseRepositoryPath
+        val declared = (repositoryProvisioning as? RepositoryProvisioningState.Declared)?.provisioning?.providers?.emulator
+            ?: runCatching { provisioningSource.read(repositoryPath).providers.emulator }.getOrNull()
+        if (repositoryPath.isBlank() || declared == null) {
+            emulatorSection = EmulatorSectionState.Hidden
+            return
+        }
+        emulatorSection = EmulatorSectionState.Loading
+        emulatorLoad = viewModelScope.launch {
+            emulatorSection = loadAvds(repositoryPath).fold(
+                onSuccess = { EmulatorSectionState.Available(it) },
+                onFailure = { error ->
+                    if (error is WorktreeError.AndroidSdkNotFound) {
+                        EmulatorSectionState.SdkNotFound(error.checked)
+                    } else {
+                        EmulatorSectionState.Failed(error)
+                    }
+                },
+            )
+        }
+    }
 
     val isValid: Boolean
         get() = name.isNotBlank() && baseRepositoryPath.isNotBlank()
@@ -72,7 +123,9 @@ class ProjectConfigViewModel(
             pendingRepositoryPatterns.isNotEmpty() ||
             agentCommand != initialAgentCommand ||
             useHeadroom != initialUseHeadroom ||
-            mainBranch != initialMainBranch
+            mainBranch != initialMainBranch ||
+            emulatorAvd != initialEmulatorAvd ||
+            emulatorNoWindow != initialEmulatorNoWindow
 
     val canMoveLocalFilesToRepository: Boolean
         get() = baseRepositoryPath.isNotBlank() &&
@@ -113,6 +166,7 @@ class ProjectConfigViewModel(
                 secretFiles = secretFiles,
                 agentLaunchConfig = AgentLaunchConfig(agentCommand = agentCommand, useHeadroom = useHeadroom),
                 mainBranch = mainBranch.trim().ifEmpty { null },
+                emulator = EmulatorSettings(avd = emulatorAvd?.trim()?.ifEmpty { null }, noWindow = emulatorNoWindow),
             ),
         )
         projectRepository.save(project)

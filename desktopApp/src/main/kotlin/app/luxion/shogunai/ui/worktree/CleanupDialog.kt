@@ -64,6 +64,16 @@ fun CleanupDialog(viewModel: WorktreeViewModel) {
                         Text(strings.alsoStopIdleGradleDaemons)
                     }
                 }
+                if (viewModel.isEmulatorRepository) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = viewModel.cleanupStopEmulators,
+                            onCheckedChange = { viewModel.cleanupStopEmulators = it },
+                            enabled = !viewModel.isCleaningUp,
+                        )
+                        Text(strings.alsoStopEmulators)
+                    }
+                }
             }
         },
         confirmButton = {
