@@ -16,10 +16,33 @@ data class PortRequest(
     val exhausted: () -> WorktreeError,
 )
 
-data class EnvironmentContribution(
-    val ports: List<PortRequest>,
-    val variables: (Map<String, Int>) -> List<Pair<String, String>>,
+data class ResourceContext(val repositoryFolder: String, val worktreeFolder: String)
+
+data class ResourceRequest(
+    val key: String,
+    val exists: suspend (String) -> Boolean,
+    val create: suspend (ResourceContext) -> String,
+    val discard: suspend (String) -> Unit,
 )
+
+data class EnvironmentReservations(
+    val ports: Map<String, Int> = emptyMap(),
+    val resources: Map<String, String> = emptyMap(),
+)
+
+data class EnvironmentContribution(
+    val ports: List<PortRequest> = emptyList(),
+    val resources: List<ResourceRequest> = emptyList(),
+    val variables: (EnvironmentReservations) -> List<Pair<String, String>>,
+)
+
+fun interface ProviderContributions {
+    fun forRepository(repositoryPath: String, providers: RepositoryProviders): List<EnvironmentContribution>
+
+    companion object {
+        val DEFAULT = ProviderContributions { _, providers -> listOfNotNull(providers.emulator?.let { emulatorContribution }) }
+    }
+}
 
 const val FIRST_VARIABLE_PORT = 20000
 const val LAST_VARIABLE_PORT = 29999
@@ -31,11 +54,7 @@ fun declaredPortRequests(declaration: EnvironmentDeclaration): List<PortRequest>
         }
     }
 
-fun providerContributions(providers: RepositoryProviders): List<EnvironmentContribution> = listOfNotNull(
-    providers.emulator?.let { emulatorContribution },
-)
-
-private val emulatorContribution = EnvironmentContribution(
+val emulatorContribution = EnvironmentContribution(
     ports = listOf(
         PortRequest(
             key = EMULATOR_PORT_KEY,
@@ -44,5 +63,5 @@ private val emulatorContribution = EnvironmentContribution(
             exhausted = { WorktreeError.NoEmulatorPort(FIRST_EMULATOR_PORT, LAST_EMULATOR_PORT) },
         ),
     ),
-    variables = { ports -> listOf(ANDROID_SERIAL to emulatorSerial(ports.getValue(EMULATOR_PORT_KEY))) },
+    variables = { reservations -> listOf(ANDROID_SERIAL to emulatorSerial(reservations.ports.getValue(EMULATOR_PORT_KEY))) },
 )

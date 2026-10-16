@@ -215,6 +215,97 @@ class ResolveWorktreeEnvironmentUseCaseTest {
         assertEquals(listOf("ANDROID_SERIAL" to "emulator-5600"), environment.variables)
     }
 
+    private class RecordingSimulators {
+        val existing = mutableSetOf<String>()
+        val created = mutableListOf<ResourceContext>()
+        val discarded = mutableListOf<String>()
+        var beforeCreate: () -> Unit = {}
+
+        val contributions = ProviderContributions { _, _ ->
+            listOf(
+                EnvironmentContribution(
+                    resources = listOf(
+                        ResourceRequest(
+                            key = "ios-simulator",
+                            exists = { it in existing },
+                            create = { context ->
+                                beforeCreate()
+                                created += context
+                                "UDID-${created.size}".also { existing += it }
+                            },
+                            discard = { discarded += it; existing -= it },
+                        ),
+                    ),
+                    variables = { listOf("IOS_SIMULATOR_UDID" to it.resources.getValue("ios-simulator")) },
+                ),
+            )
+        }
+    }
+
+    private fun withSimulators(simulators: RecordingSimulators, store: FakeEnvironmentStateStore, source: FakeRepositoryProvisioningSource = declaring()) =
+        ResolveWorktreeEnvironmentUseCase(gitExecutor(), source, store, FakePortProbe(), simulators.contributions)
+
+    @Test
+    fun `a provider resource is created once with the repository and worktree names`() = runTest {
+        val simulators = RecordingSimulators()
+        val store = FakeEnvironmentStateStore()
+
+        val first = withSimulators(simulators, store)(repository, task).getOrThrow()
+        val second = withSimulators(simulators, store)(repository, task).getOrThrow()
+
+        assertEquals(listOf("IOS_SIMULATOR_UDID" to "UDID-1"), first.variables)
+        assertEquals(first, second)
+        assertEquals(listOf(ResourceContext("main-repo", "TASK-123")), simulators.created)
+    }
+
+    @Test
+    fun `reading without reserving never creates a resource`() = runTest {
+        val simulators = RecordingSimulators()
+
+        val environment = withSimulators(simulators, FakeEnvironmentStateStore())(repository, task, reserve = false).getOrThrow()
+
+        assertEquals(WorktreeEnvironment(), environment)
+        assertTrue(simulators.created.isEmpty())
+    }
+
+    @Test
+    fun `a resource that no longer exists is created again`() = runTest {
+        val simulators = RecordingSimulators()
+        val store = FakeEnvironmentStateStore()
+        withSimulators(simulators, store)(repository, task).getOrThrow()
+        simulators.existing.clear()
+
+        val environment = withSimulators(simulators, store)(repository, task).getOrThrow()
+
+        assertEquals(mapOf("ios-simulator" to "UDID-2"), environment.resources)
+        assertEquals(mapOf("ios-simulator" to "UDID-2"), store.readResources("$common/worktrees/TASK-123"))
+    }
+
+    @Test
+    fun `the loser of a concurrent creation discards its own resource`() = runTest {
+        val simulators = RecordingSimulators()
+        val store = FakeEnvironmentStateStore()
+        simulators.beforeCreate = {
+            store.writeResources("$common/worktrees/TASK-123", mapOf("ios-simulator" to "UDID-OTHER"))
+            simulators.existing += "UDID-OTHER"
+        }
+
+        val environment = withSimulators(simulators, store)(repository, task).getOrThrow()
+
+        assertEquals(mapOf("ios-simulator" to "UDID-OTHER"), environment.resources)
+        assertEquals(listOf("UDID-1"), simulators.discarded)
+    }
+
+    @Test
+    fun `a declared variable wins over a provider resource variable`() = runTest {
+        val simulators = RecordingSimulators()
+
+        val environment = withSimulators(simulators, FakeEnvironmentStateStore(), declaring("IOS_SIMULATOR_UDID" to "MINE"))(repository, task)
+            .getOrThrow()
+
+        assertEquals(listOf("IOS_SIMULATOR_UDID" to "MINE"), environment.variables)
+    }
+
     @Test
     fun `formats for sh, dotenv and json with escaping`() {
         val environment = WorktreeEnvironment(variables = listOf("PORT" to "20000", "GREETING" to "it's \"\$HOME\" now"))

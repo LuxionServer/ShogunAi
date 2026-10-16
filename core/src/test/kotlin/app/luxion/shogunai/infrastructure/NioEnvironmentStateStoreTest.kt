@@ -77,6 +77,32 @@ class NioEnvironmentStateStoreTest {
     }
 
     @Test
+    fun `keeps resources next to ports and indexes worktrees that only have resources`() {
+        store.writePorts(linked.toString(), mapOf("PORT" to 20000))
+        store.writeResources(linked.toString(), mapOf("ios-simulator" to "UDID-1"))
+        store.writeResources(otherLinked.toString(), mapOf("ios-simulator" to "UDID-2"))
+
+        assertEquals(mapOf("PORT" to 20000), store.readPorts(linked.toString()))
+        assertEquals(mapOf("ios-simulator" to "UDID-1"), store.readResources(linked.toString()))
+        assertEquals(setOf("UDID-1", "UDID-2"), store.recordedResourcesOnMachine(common.toString(), "ios-simulator"))
+
+        store.writePorts(linked.toString(), emptyMap())
+        assertEquals(mapOf("ios-simulator" to "UDID-1"), store.readResources(linked.toString()))
+        assertTrue(machine.resolve(NioEnvironmentStateStore.INDEX_FILE_NAME).readText().contains("TASK-123"))
+
+        otherLinked.toFile().deleteRecursively()
+        assertEquals(setOf("UDID-1"), store.recordedResourcesOnMachine(common.toString(), "ios-simulator"))
+    }
+
+    @Test
+    fun `old state files without resources still load`() {
+        linked.resolve(NioEnvironmentStateStore.STATE_FILE_NAME).writeText("""{ "ports": { "PORT": 20001 } }""")
+
+        assertEquals(emptyMap(), store.readResources(linked.toString()))
+        assertEquals(mapOf("PORT" to 20001), store.readPorts(linked.toString()))
+    }
+
+    @Test
     fun `an unreadable state file counts as no reservations`() {
         linked.resolve(NioEnvironmentStateStore.STATE_FILE_NAME).writeText("{ not json")
 

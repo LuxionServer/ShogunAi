@@ -71,6 +71,25 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
                 if (output.isNotBlank()) "\n$output" else "",
         )
 
+    object NoIosRuntime : WorktreeError(
+        "No iOS simulator runtime is installed. Install one from Xcode's Settings > Components and try again.",
+    )
+
+    class SimulatorBootTimeout(val name: String, val seconds: Long) :
+        WorktreeError("The simulator \"$name\" didn't finish booting within $seconds s; it's still starting")
+
+    object IosSimulatorProviderNotDeclared : WorktreeError(
+        "This repository doesn't use the iOS simulator provider. Add \"providers\": { \"ios-simulator\": {} } to .shogunai.json.",
+    )
+
+    object IosSimulatorsNotSupported : WorktreeError("iOS simulators need macOS with Xcode installed.")
+
+    class AppleToolFailed(val command: List<String>, val exitCode: Int, val output: String) :
+        WorktreeError(
+            "Xcode tool failed (exit code $exitCode): ${command.joinToString(" ")}" +
+                if (output.isNotBlank()) "\n$output" else "",
+        )
+
     object EmulatorProviderNotDeclared : WorktreeError(
         "This repository doesn't use the emulator provider. Add \"providers\": { \"emulator\": {} } to .shogunai.json.",
     )

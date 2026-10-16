@@ -129,6 +129,32 @@ shogun emulator stop
 
 En cada máquina, la configuración del proyecto elige la AVD (o la deja automática) y si arranca sin ventana; `--avd` y `--no-window` las sustituyen en un arranque. La lista de worktrees muestra cada emulador con Arrancar y Parar, y "Limpiar" (o `shogun clean --stop-emulators`) para los emuladores de los worktrees que elimina. El SDK se busca en `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `sdk.dir` de `local.properties` o la ubicación por defecto de Android Studio. Los repositorios sin el provider no ven nada de esto.
 
+## Simuladores de iOS
+
+Si no, los agentes en paralelo de un proyecto KMP o iOS comparten los mismos simuladores. Activa el provider de simulador de iOS (solo macOS) para que cada worktree tenga el suyo:
+
+```json
+{ "providers": { "ios-simulator": { "device": "iPhone 16", "runtime": "iOS 18.5" } } }
+```
+
+Las dos opciones son preferencias opcionales que se usan si la máquina las tiene. Cada worktree recibe un simulador nuevo (creado, nunca clonado: unos 17 MB, 360 MB tras arrancar) llamado `ShogunAi · <repositorio> · <worktree>`, y `IOS_SIMULATOR_UDID` en su entorno. Compila para él con `xcodebuild -destination "id=$IOS_SIMULATOR_UDID"`.
+
+```bash
+shogun simulator start     # crea si hace falta y arranca el simulador de este worktree, esperando a que esté listo
+shogun simulator status    # su estado, y si los tests KMP lo usan
+shogun simulator stop
+```
+
+Los tests de simulador iOS de KMP eligen el dispositivo en el script de build, así que añade esto al `build.gradle.kts` del módulo:
+
+```kotlin
+tasks.withType<org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest>().configureEach {
+    providers.environmentVariable("IOS_SIMULATOR_UDID").orNull?.let { device.set(it) }
+}
+```
+
+Si prefieres no tocar el repositorio, `shogun simulator gradle-init install` (o el botón de la configuración del proyecto) instala un init script de Gradle que hace lo mismo en todos los proyectos de esta máquina, tras preguntar. La configuración del proyecto también elige el tipo de dispositivo y el runtime por máquina. "Limpiar" (o `shogun clean --delete-simulators`) borra los simuladores de los worktrees eliminados y los de ShogunAi cuyo worktree ya no existe. Los repositorios sin el provider no ven nada de esto.
+
 ## Desarrollo
 
 ¿Quieres compilar el proyecto desde el código fuente o contribuir? Empieza por [`docs/getting-started.es.md`](./docs/getting-started.es.md).

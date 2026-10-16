@@ -37,6 +37,11 @@ class StringsTest {
             WorktreeError.EmulatorProviderNotDeclared to "\"providers\": { \"emulator\": {} }",
             WorktreeError.NoAvdAvailable to "Device Manager",
             WorktreeError.NoFreePort(20000, 29999) to "29999",
+            WorktreeError.NoIosRuntime to "Xcode",
+            WorktreeError.SimulatorBootTimeout("ShogunAi · main-repo · TASK-123", 120) to "ShogunAi · main-repo · TASK-123",
+            WorktreeError.IosSimulatorProviderNotDeclared to "\"providers\": { \"ios-simulator\": {} }",
+            WorktreeError.IosSimulatorsNotSupported to "macOS",
+            WorktreeError.AppleToolFailed(listOf("xcrun", "simctl", "boot"), 1, "") to "xcrun simctl boot",
             WorktreeError.EnvironmentFileTracked(".env") to ".env",
         )
         errors.forEach { (error, expectedData) ->

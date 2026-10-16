@@ -2,10 +2,12 @@ package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.BuildInfo
 import app.luxion.shogunai.domain.FakeAndroidSdk
+import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
+import app.luxion.shogunai.domain.FakeKmpTestWiring
 import app.luxion.shogunai.domain.FakeGradleDaemonSource.Companion.gradleDaemon
 import app.luxion.shogunai.domain.FakeGradleDaemonSource.Companion.kotlinDaemon
 import app.luxion.shogunai.domain.FakeProjectRepository
@@ -16,6 +18,7 @@ import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleProvider
+import app.luxion.shogunai.domain.model.IosSimulatorProvider
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RepositoryProviders
@@ -89,6 +92,8 @@ class ShogunCliTest {
     private val environmentStore = FakeEnvironmentStateStore()
 
     private val androidSdk = FakeAndroidSdk()
+    private val appleSimulators = FakeAppleSimulators()
+    private val kmpTestWiring = FakeKmpTestWiring()
     private val out = StringBuilder()
     private val err = StringBuilder()
 
@@ -110,6 +115,8 @@ class ShogunCliTest {
         environmentStateStore = environmentStore,
         portProbe = FakePortProbe(),
         androidSdk = androidSdk,
+        appleSimulators = appleSimulators,
+        kmpTestWiring = kmpTestWiring,
         workingDirectory = workingDirectory,
         out = out,
         err = err,
@@ -435,6 +442,43 @@ class ShogunCliTest {
         assertEquals(0, exitCode, err.toString())
         assertTrue(out.contains("stopped emulator emulator-5556\n"), out.toString())
         assertEquals(listOf("emulator-5556"), androidSdk.stopped)
+    }
+
+    @Test
+    fun `clean deletes the simulators of removed worktrees and orphans`() {
+        environmentStore.resourcesByAdminDirectory["$base/.git/worktrees/TASK-1"] = mapOf("ios-simulator" to "SIM-MERGED")
+        environmentStore.resourcesByAdminDirectory["$base/.git/worktrees/spike"] = mapOf("ios-simulator" to "SIM-SPIKE")
+        appleSimulators.addExisting("SIM-MERGED", "ShogunAi · main-repo · TASK-1")
+        appleSimulators.addExisting("SIM-SPIKE", "ShogunAi · main-repo · spike")
+        appleSimulators.addExisting("SIM-ORPHAN", "ShogunAi · main-repo · TASK-0")
+        appleSimulators.addExisting("SIM-USER", "iPhone 16")
+        val executor = repositoryExecutor { command, directory ->
+            if ("--git-dir" in command) {
+                val admin = when (directory) {
+                    merged -> "$base/.git/worktrees/TASK-1"
+                    dirty -> "$base/.git/worktrees/spike"
+                    else -> "$base/.git"
+                }
+                Executor.ok(command, "$admin\n$base/.git\n")
+            } else {
+                null
+            }
+        }
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(iosSimulator = IosSimulatorProvider()))),
+        )
+
+        cli(executor, provisioning = provisioning).run(listOf("clean", "--delete-simulators"))
+        assertTrue(out.contains("would delete simulator ShogunAi · main-repo · TASK-1 (SIM-MERGED)"), out.toString())
+        assertTrue(out.contains("would delete orphaned simulator ShogunAi · main-repo · TASK-0 (SIM-ORPHAN)"), out.toString())
+        assertTrue(appleSimulators.deleted.isEmpty())
+        out.clear()
+
+        val exitCode = cli(executor, provisioning = provisioning).run(listOf("clean", "--yes", "--delete-simulators"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf("SIM-MERGED", "SIM-ORPHAN"), appleSimulators.deleted)
+        assertTrue(out.contains("deleted simulator SIM-ORPHAN"), out.toString())
     }
 
     @Test

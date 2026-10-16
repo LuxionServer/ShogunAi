@@ -1,9 +1,11 @@
 package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.domain.FakeAndroidSdk
+import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
+import app.luxion.shogunai.domain.FakeKmpTestWiring
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
@@ -11,6 +13,7 @@ import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
+import app.luxion.shogunai.domain.model.IosSimulatorProvider
 import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
@@ -40,6 +43,8 @@ class EnvironmentCommandsTest {
     """.trimIndent()
 
     private val androidSdk = FakeAndroidSdk()
+    private val appleSimulators = FakeAppleSimulators()
+    private val kmpTestWiring = FakeKmpTestWiring()
     private val out = StringBuilder()
     private val err = StringBuilder()
     private val store = FakeEnvironmentStateStore()
@@ -86,6 +91,8 @@ class EnvironmentCommandsTest {
         environmentStateStore = store,
         portProbe = FakePortProbe(),
         androidSdk = androidSdk,
+        appleSimulators = appleSimulators,
+        kmpTestWiring = kmpTestWiring,
         workingDirectory = workingDirectory,
         out = out,
         err = err,
@@ -97,6 +104,74 @@ class EnvironmentCommandsTest {
     private fun withEmulator() = FakeRepositoryProvisioningSource(
         byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(emulator = EmulatorProvider()))),
     )
+
+    private fun withSimulator() = FakeRepositoryProvisioningSource(
+        byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(iosSimulator = IosSimulatorProvider()))),
+    )
+
+    @Test
+    fun `simulator start creates and boots the worktree's simulator`() {
+        val exitCode = cli(withSimulator()).run(listOf("simulator", "start", "--device", "iPhone 16"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("UDID-1 booted  ShogunAi · main-repo · TASK-123\n", out.toString())
+        assertEquals("ShogunAi · main-repo · TASK-123", appleSimulators.created.single().name)
+    }
+
+    @Test
+    fun `simulator status says how to wire KMP tests and stop shuts it down`() {
+        cli(withSimulator()).run(listOf("simulator", "start"))
+        out.clear()
+
+        assertEquals(0, cli(withSimulator()).run(listOf("simulator", "status")))
+        assertTrue(out.startsWith("UDID-1 booted"), out.toString())
+        assertTrue(out.contains("KMP simulator tests don't use this worktree's simulator yet"), out.toString())
+        assertTrue(out.contains("shogun simulator gradle-init install"), out.toString())
+        out.clear()
+
+        kmpTestWiring.wiredRepositories = setOf(base)
+        cli(withSimulator()).run(listOf("simulator", "status"))
+        assertTrue(out.contains("KMP simulator tests use this worktree's simulator."), out.toString())
+        out.clear()
+
+        assertEquals(0, cli(withSimulator()).run(listOf("simulator", "stop")))
+        assertEquals("UDID-1 shutdown  ShogunAi · main-repo · TASK-123\n", out.toString())
+    }
+
+    @Test
+    fun `simulator commands fail without the provider and never run Apple tools`() {
+        val exitCode = cli(declaring("PORT" to "\${port}")).run(listOf("simulator", "start"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("\"providers\": { \"ios-simulator\": {} }"), err.toString())
+        assertEquals(0, appleSimulators.calls)
+    }
+
+    @Test
+    fun `gradle-init installs only after confirmation and uninstalls`() {
+        assertEquals(0, cli(declaring(), input = "n\n").run(listOf("simulator", "gradle-init", "install")))
+        assertTrue(out.contains("Nothing installed."), out.toString())
+        assertEquals(0, kmpTestWiring.installs)
+
+        assertEquals(0, cli(declaring(), input = "y\n").run(listOf("simulator", "gradle-init", "install")))
+        assertEquals(1, kmpTestWiring.installs)
+
+        assertEquals(0, cli(declaring()).run(listOf("simulator", "gradle-init", "install", "--yes")))
+        assertEquals(2, kmpTestWiring.installs)
+
+        cli(declaring()).run(listOf("simulator", "gradle-init", "uninstall"))
+        assertFalse(kmpTestWiring.installed)
+    }
+
+    @Test
+    fun `session-start tells Claude about its iOS simulator`() {
+        val exitCode = cli(withSimulator(), input = """{"cwd": "$linked"}""").run(listOf("hook", "session-start"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("export IOS_SIMULATOR_UDID='UDID-1'\n", envFile.readText())
+        assertTrue(out.contains("boot it with 'shogun simulator start'"), out.toString())
+        assertTrue(out.contains("xcodebuild -destination \"id=\$IOS_SIMULATOR_UDID\""), out.toString())
+    }
 
     @Test
     fun `emulator start boots the worktree's emulator and status reports it`() {

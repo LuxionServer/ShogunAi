@@ -14,6 +14,7 @@ Configuration of a repository that worktrees are created against. It's what make
 | `worktreesRoot` | Parent folder where worktrees are created. |
 | `secretFiles` | "Local files": exact paths, relative to the base repository or absolute, copied into each new worktree on this machine only (e.g. `local.properties`). What the repository itself declares lives in `.shogunai.json` (see `RepositoryProvisioning`). |
 | `agentLaunchConfig` | Agent command included in the launch command copied for a worktree (`AgentLaunchConfig`, see below). |
+| `simulator` | `SimulatorSettings` for this machine: the iOS simulator's device type and runtime (`null` means automatic). Only used when the repository declares the iOS simulator provider; never stored in the repository. |
 | `emulator` | `EmulatorSettings` for this machine: the AVD to use (`null` means automatic) and `noWindow`. Only used when the repository declares the emulator provider; never stored in the repository. |
 | `mainBranch` | Optional branch that worktrees are compared against to show their status (e.g. `develop`). `null` means it's detected from the repository (see `ResolveMainBranchUseCase`). |
 
@@ -62,7 +63,7 @@ What the repository declares that each new worktree needs, read from files at th
 |---|---|
 | `copyPatterns` | The `copy` list of `.shogunai.json`. |
 | `worktreeIncludePatterns` | The lines of `.worktreeinclude` (Claude Code's file), skipping blank lines and `#` comments. |
-| `providers` | The `providers` object of `.shogunai.json`: the providers the repository turns on, each keyed by its id with an object of options. `gradle` (`GradleProvider`, no options yet) makes the [Gradle daemons](#gradle-daemons) visible for the repository; `emulator` (`EmulatorProvider`, optional `avd` the repository prefers) gives each worktree its own [Android emulator](#android-emulator). Unknown ids are ignored. |
+| `providers` | The `providers` object of `.shogunai.json`: the providers the repository turns on, each keyed by its id with an object of options. `gradle` (`GradleProvider`, no options yet) makes the [Gradle daemons](#gradle-daemons) visible for the repository; `emulator` (`EmulatorProvider`, optional `avd` the repository prefers) gives each worktree its own [Android emulator](#android-emulator); `ios-simulator` (`IosSimulatorProvider`, optional `device` and `runtime` preferences) gives each worktree its own [iOS simulator](#ios-simulator). Unknown ids are ignored. |
 | `environment` | The `env` object and `envFile` of `.shogunai.json`, as an `EnvironmentDeclaration` (see [Worktree environment](#worktree-environment)). |
 
 `allPatterns` is their union without duplicates. Patterns use Git's ignore-pattern syntax, relative to the repository root: `local.properties` matches at any depth, `/local.properties` only at the root, `.idea/runConfigurations/` a whole folder, `.env*` a glob.
@@ -96,6 +97,15 @@ The emulator provider (`Emulator.kt`) only acts for repositories that declare `"
 - `chooseAvd(requested, settings, preferred, available)` — the AVD to start: the one requested for this start, else the machine setting, else the repository's preferred AVD if this machine has it, else the first available one; `null` when there's none.
 - Each worktree reserves the console port key `emulator` among the even ports 5554–5584 (the range `adb` scans), with the next port (the emulator's adb port) also free, and gets `ANDROID_SERIAL=emulator-<port>` (`emulatorSerial`). Android's Gradle plugin reads `ANDROID_SERIAL` in `installDebug`, `uninstall*` and `connectedAndroidTest` to use only that device.
 - `SdkLocation` (SDK root, `emulator` and `adb` executables), `EmulatorState` (`STOPPED`, `BOOTING`, `RUNNING`) and `WorktreeEmulator` (serial and state) describe what the [Android SDK port](#androidsdk) reports.
+
+### iOS simulator
+
+The iOS simulator provider (`IosSimulator.kt`) only acts on macOS for repositories that declare `"providers": { "ios-simulator": {} }`.
+
+- `SimulatorSettings` — the machine settings stored in `ProjectConfig.simulator`.
+- `SimulatorRuntime` / `SimulatorDeviceType` — what Xcode has installed, as `simctl` reports it (identifier, display name, version, platform, and the device types a runtime supports).
+- `chooseSimulator(requested, settings, preferred, runtimes)` — the runtime by display name (`iOS 18.5`, case-insensitive) from the first of this operation, the machine setting and the repository's preference that is installed, else the newest iOS runtime by version; then the device type by name among the runtime's iPhone and iPad types in the same order, else its newest iPhone: the highest model number in the name, and among those the shortest name (the base model, or the Pro when there's no base), whatever order Apple lists them in. `null` without an iOS runtime.
+- Each worktree keeps the resource `ios-simulator`, the UDID of a simulator created for it and named `ShogunAi · <repository folder> · <worktree folder>` (`worktreeSimulatorName`), and gets `IOS_SIMULATOR_UDID=<UDID>` in its environment. The `ShogunAi · ` prefix is how orphaned simulators are told apart from the user's own.
 
 ### Gradle daemons
 
@@ -188,7 +198,10 @@ Reads the repository's provisioning (throwing `InvalidRepositoryConfig` for an u
 interface EnvironmentStateStore {
     fun readPorts(adminDirectory: String): Map<String, Int>
     fun writePorts(adminDirectory: String, ports: Map<String, Int>)
+    fun readResources(adminDirectory: String): Map<String, String>
+    fun writeResources(adminDirectory: String, resources: Map<String, String>)
     fun reservedPortsOnMachine(commonDirectory: String): Set<Int>
+    fun recordedResourcesOnMachine(commonDirectory: String, key: String): Set<String>
     fun <T> withLock(block: () -> T): T
 }
 
@@ -197,7 +210,7 @@ interface PortProbe {
 }
 ```
 
-`EnvironmentStateStore` keeps each worktree's reserved ports in Git's administrative directory for that worktree (`.git/worktrees/<id>/` for a linked one, `.git/` for the main one), lists every reservation on the machine (this repository's worktrees plus every worktree of any repository ShogunAi has stored reservations for), and runs a block while holding the machine's reservation lock. `PortProbe` tells whether a port is free on the machine.
+`EnvironmentStateStore` keeps each worktree's reserved ports and provider resources (such as a simulator's UDID) in Git's administrative directory for that worktree (`.git/worktrees/<id>/` for a linked one, `.git/` for the main one), lists every reservation on the machine (this repository's worktrees plus every worktree of any repository ShogunAi has stored reservations for), and runs a block while holding the machine's reservation lock. `PortProbe` tells whether a port is free on the machine.
 
 ### `AndroidSdk`
 
@@ -212,6 +225,30 @@ interface AndroidSdk {
 ```
 
 Everything the emulator provider needs from the Android SDK, used only for repositories that declare the provider: finding the SDK (`AndroidSdkNotFound` with the places checked), listing AVDs, the state of every running emulator in one call, starting an emulator detached on a console port, and stopping one. Tool errors are `AndroidToolFailed`.
+
+### `AppleSimulators` / `KmpTestWiring`
+
+```kotlin
+interface AppleSimulators {
+    fun isSupported(): Boolean
+    suspend fun runtimes(): List<SimulatorRuntime>
+    suspend fun devices(): List<SimulatorDevice>
+    suspend fun create(name: String, deviceTypeIdentifier: String, runtimeIdentifier: String): String
+    suspend fun boot(udid: String)
+    suspend fun shutdown(udid: String)
+    suspend fun delete(udid: String)
+}
+
+interface KmpTestWiring {
+    fun isWiredInRepository(repositoryPath: String): Boolean
+    fun isInitScriptInstalled(): Boolean
+    fun initScriptPath(): String
+    fun installInitScript()
+    fun uninstallInitScript()
+}
+```
+
+`AppleSimulators` is everything the iOS simulator provider needs from Xcode's simulators, used only on macOS for repositories that declare the provider: installed runtimes (with the device types each supports), existing devices with their state, and creating, booting, shutting down and deleting one. Tool errors are `AppleToolFailed`. `KmpTestWiring` tells whether the repository's Gradle build scripts pass `IOS_SIMULATOR_UDID` to KMP's simulator tests, and installs or removes the machine-wide Gradle init script that does it for every project.
 
 ### `GradleDaemonSource`
 
@@ -315,13 +352,24 @@ Re-links the base repository and its worktrees after they were moved on disk. Gi
 
 ### `ResolveWorktreeEnvironmentUseCase`
 
-Resolves a worktree's environment from the base repository's declaration and the providers it declares. Each needed port is a `PortRequest` (a key, candidate ports, ports that must also be free, and the error when none is left): declared `${port}` keys ask for 20000–29999 (`declaredPortRequests`); providers add theirs through `EnvironmentContribution`s (`providerContributions`), together with the variables they derive from their ports. With nothing declared and no contributing provider it returns an empty `WorktreeEnvironment` without running any command. Otherwise it finds the worktree's administrative and common Git directories (`git rev-parse --path-format=absolute --git-dir --git-common-dir` in the worktree) and, while holding the machine's lock:
+Resolves a worktree's environment from the base repository's declaration and the providers it declares. Each needed port is a `PortRequest` (a key, candidate ports, ports that must also be free, and the error when none is left): declared `${port}` keys ask for 20000–29999 (`declaredPortRequests`); providers add theirs through `EnvironmentContribution`s, given by the injected `ProviderContributions` factory (`DEFAULT` knows the emulator; the app and the CLI pass one that also builds the iOS simulator's, which needs the `AppleSimulators` port and the project's machine settings), together with the variables they derive from their ports. With nothing declared and no contributing provider it returns an empty `WorktreeEnvironment` without running any command. Otherwise it finds the worktree's administrative and common Git directories (`git rev-parse --path-format=absolute --git-dir --git-common-dir` in the worktree) and, while holding the machine's lock:
 
 1. keeps the worktree's stored ports whose keys are still requested, releasing the rest;
 2. reserves each missing key at the first candidate that, together with its extra ports, no worktree on the machine has reserved and `PortProbe` reports free (otherwise the request's error, e.g. `NoFreePort`);
 3. writes the reservations only if they changed.
 
-Provider variables come first and declared `env` variables override a provider variable with the same name. A reserved port is never checked again, because the worktree's own server is expected to listen on it. With `reserve = false` (used to show ports without side effects) it only reads the stored ports, without locking or writing, and returns no variables until every port is reserved. `formatEnvironment` renders the variables as `sh` (`export NAME='value'`, single quotes with `'\''` escaping, safe for `eval`), `dotenv` (`NAME=value`, double-quoted and escaped unless the value is plain) or `json`.
+Contributions can also ask for resources (`ResourceRequest`: a key, and how to check, create and discard one). With reservation, a stored resource that still `exists` is kept; otherwise one is created outside the lock (creating a simulator runs `xcrun` for about a second) and recorded under it, and if another process recorded one in the meantime, the new one is discarded and the recorded one used. Without reservation resources are only read. Provider variables come first and declared `env` variables override a provider variable with the same name. A reserved port is never checked again, because the worktree's own server is expected to listen on it. With `reserve = false` (used to show ports without side effects) it only reads the stored ports, without locking or writing, and returns no variables until every port is reserved. `formatEnvironment` renders the variables as `sh` (`export NAME='value'`, single quotes with `'\''` escaping, safe for `eval`), `dotenv` (`NAME=value`, double-quoted and escaped unless the value is plain) or `json`.
+
+### iOS simulator use cases
+
+The provider's contribution comes from `MachineProviderContributions`, which the app and the CLI inject into `ResolveWorktreeEnvironmentUseCase`: the emulator's, plus, on macOS for repositories that declare `ios-simulator`, a resource request whose `create` picks the device type and runtime with `chooseSimulator` (this operation, the project's `SimulatorSettings`, the repository's preferences; `NoIosRuntime` if none) and runs `simctl create` with `worktreeSimulatorName`, whose `exists` checks the device list, and whose `discard` deletes it. `requesting(settings)` returns the same factory with this operation's device type and runtime.
+
+- `StartWorktreeSimulatorUseCase(config, worktreePath, requested)` resolves the environment through a creating resolver (so the simulator exists), boots it unless it's already booted, and polls `devices()` every second until it's booted; after 120 s it fails with `SimulatorBootTimeout` and leaves it booting.
+- `StopWorktreeSimulatorUseCase` reads the recorded UDID without creating and shuts the simulator down if it's running; with none recorded there's nothing to stop.
+- `ReadSimulatorStatesUseCase` maps each worktree with a recorded, existing simulator to its UDID, name and state, from one `devices()` call.
+- `DeleteSimulatorsUseCase` deletes the given simulators that still exist (shutting them down first), and `orphans(config)` lists the simulators named with the `ShogunAi · ` prefix whose UDID no worktree on the machine has recorded (`recordedOnMachine`). Simulators without the prefix are never touched.
+
+All of them fail with `IosSimulatorProviderNotDeclared` or `IosSimulatorsNotSupported` (or return nothing, for the states and orphans) when the repository doesn't declare the provider or the host isn't macOS, before running `xcrun`.
 
 ### Emulator use cases
 

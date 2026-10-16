@@ -4,9 +4,11 @@ import app.luxion.shogunai.BuildInfo
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.AndroidSdk
+import app.luxion.shogunai.domain.io.AppleSimulators
 import app.luxion.shogunai.domain.io.EnvironmentStateStore
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.GradleDaemonSource
+import app.luxion.shogunai.domain.io.KmpTestWiring
 import app.luxion.shogunai.domain.io.PortProbe
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
@@ -20,30 +22,40 @@ import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.DaemonStopReport
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleDaemon
+import app.luxion.shogunai.domain.model.IOS_SIMULATOR_UDID
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.SimulatorDevice
+import app.luxion.shogunai.domain.model.SimulatorSettings
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeOrigin
+import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.model.WorktreeStatus
 import app.luxion.shogunai.domain.usecase.CheckGradleBuildCacheUseCase
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.DeleteMergedBranchUseCase
+import app.luxion.shogunai.domain.usecase.DeleteSimulatorsUseCase
 import app.luxion.shogunai.domain.usecase.EnvironmentFormat
 import app.luxion.shogunai.domain.usecase.ListGradleDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
+import app.luxion.shogunai.domain.usecase.MachineProviderContributions
 import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
+import app.luxion.shogunai.domain.usecase.ProviderContributions
 import app.luxion.shogunai.domain.usecase.ProvisionWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.ReadEmulatorStatesUseCase
+import app.luxion.shogunai.domain.usecase.ReadSimulatorStatesUseCase
 import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
 import app.luxion.shogunai.domain.usecase.ResolveRepositoryUseCase
 import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.StartWorktreeEmulatorUseCase
+import app.luxion.shogunai.domain.usecase.StartWorktreeSimulatorUseCase
 import app.luxion.shogunai.domain.usecase.StopGradleDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.StopWorktreeEmulatorUseCase
+import app.luxion.shogunai.domain.usecase.StopWorktreeSimulatorUseCase
 import app.luxion.shogunai.domain.usecase.WriteEnvironmentFileUseCase
 import app.luxion.shogunai.domain.usecase.classifyOrigin
 import app.luxion.shogunai.domain.usecase.formatEnvironment
@@ -52,14 +64,15 @@ import app.luxion.shogunai.domain.usecase.normalizeTaskId
 import app.luxion.shogunai.domain.usecase.owningWorktree
 import app.luxion.shogunai.domain.usecase.selectCleanupCandidates
 import app.luxion.shogunai.domain.usecase.totalResidentMemory
-import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
+import app.luxion.shogunai.infrastructure.FileKmpTestWiring
 import java.io.File
 import java.time.Duration
 import java.time.Instant
 import java.util.Locale
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 class ShogunCli(
     private val executor: ShellCommandExecutor,
@@ -71,6 +84,8 @@ class ShogunCli(
     private val environmentStateStore: EnvironmentStateStore,
     private val portProbe: PortProbe,
     private val androidSdk: AndroidSdk,
+    private val appleSimulators: AppleSimulators,
+    private val kmpTestWiring: KmpTestWiring,
     private val workingDirectory: String,
     private val out: Appendable,
     private val err: Appendable,
@@ -79,8 +94,21 @@ class ShogunCli(
     private val now: () -> Instant = Instant::now,
     private val environmentVariable: (String) -> String? = System::getenv,
 ) {
-    private val resolveEnvironment =
-        ResolveWorktreeEnvironmentUseCase(executor, provisioningSource, environmentStateStore, portProbe)
+    private val contributions = MachineProviderContributions(appleSimulators, ::simulatorSettingsFor)
+    private val resolveEnvironment = resolverWith(contributions)
+    private val startSimulator = StartWorktreeSimulatorUseCase(provisioningSource, appleSimulators, { repository, worktree, requested ->
+        resolverWith(contributions.requesting(requested))(repository, worktree)
+    })
+    private val stopSimulator = StopWorktreeSimulatorUseCase(provisioningSource, appleSimulators, resolveEnvironment)
+    private val readSimulatorStates = ReadSimulatorStatesUseCase(provisioningSource, appleSimulators, resolveEnvironment)
+    private val deleteSimulators = DeleteSimulatorsUseCase(provisioningSource, appleSimulators, resolveEnvironment)
+
+    private fun resolverWith(factory: ProviderContributions) =
+        ResolveWorktreeEnvironmentUseCase(executor, provisioningSource, environmentStateStore, portProbe, factory)
+
+    private fun simulatorSettingsFor(repositoryPath: String): SimulatorSettings =
+        projectRepository.list().firstOrNull { sameDirectory(it.config.baseRepositoryPath, repositoryPath) }
+            ?.config?.simulator ?: SimulatorSettings()
     private val prepareEnvironment = PrepareWorktreeEnvironmentUseCase(
         resolveEnvironment,
         WriteEnvironmentFileUseCase(executor, fileManager, provisioningSource),
@@ -111,6 +139,8 @@ class ShogunCli(
             CliCommand.Gradle -> gradle()
             is CliCommand.Env -> env(command)
             is CliCommand.Emulator -> emulator(command)
+            is CliCommand.Simulator -> simulator(command)
+            is CliCommand.SimulatorGradleInit -> simulatorGradleInit(command)
             CliCommand.HookSessionStart -> hookSessionStart()
             is CliCommand.GradleStop -> gradleStop(command)
         }
@@ -174,7 +204,8 @@ class ShogunCli(
             .mapNotNull { worktree -> readStatus(worktree, mainBranch).getOrNull()?.let { worktree.path to it } }
             .toMap()
         val candidates = selectCleanupCandidates(worktrees, statuses)
-        if (candidates.isEmpty()) {
+        val simulators = if (command.deleteSimulators) simulatorsBeforeCleanup(config, candidates) else SimulatorCleanup()
+        if (candidates.isEmpty() && simulators.orphans.isEmpty()) {
             out.line("Nothing to clean up.")
             return EXIT_OK
         }
@@ -185,6 +216,8 @@ class ShogunCli(
             idleDaemonsOfRemovedWorktrees(daemons, worktrees, candidates.map { it.path })
                 .forEach { out.line("would stop Gradle daemon $it") }
             emulators.values.forEach { out.line("would stop emulator $it") }
+            simulators.byWorktree.values.forEach { out.line("would delete simulator ${it.name} (${it.udid})") }
+            simulators.orphans.forEach { out.line("would delete orphaned simulator ${it.name} (${it.udid})") }
             out.line("Run 'shogun clean --yes' to remove ${if (candidates.size == 1) "it" else "them"}.")
             return EXIT_OK
         }
@@ -196,7 +229,89 @@ class ShogunCli(
         if (pids.isNotEmpty()) stopDaemonsAfterCleanup(pids)
         val removedEmulators = report.removed.mapNotNull { emulators[it] }
         if (removedEmulators.isNotEmpty()) stopEmulatorsAfterCleanup(config, removedEmulators)
+        if (command.deleteSimulators) {
+            val orphansNow = deleteSimulators.orphans(config).getOrDefault(simulators.orphans)
+            val removedSimulators = report.removed.mapNotNull { simulators.byWorktree[it]?.udid } + orphansNow.map { it.udid }
+            if (removedSimulators.isNotEmpty()) deleteSimulatorsAfterCleanup(removedSimulators.distinct())
+        }
         return if (report.failures.isEmpty()) EXIT_OK else EXIT_FAILURE
+    }
+
+    private data class SimulatorCleanup(
+        val byWorktree: Map<String, WorktreeSimulator> = emptyMap(),
+        val orphans: List<SimulatorDevice> = emptyList(),
+    )
+
+    private suspend fun simulatorsBeforeCleanup(config: ProjectConfig, candidates: List<Worktree>): SimulatorCleanup =
+        SimulatorCleanup(
+            byWorktree = readSimulatorStates(config, candidates)
+                .onFailure { err.line("shogun: couldn't read simulators: ${it.message}") }
+                .getOrDefault(emptyMap()),
+            orphans = deleteSimulators.orphans(config)
+                .onFailure { err.line("shogun: couldn't look for orphaned simulators: ${it.message}") }
+                .getOrDefault(emptyList()),
+        )
+
+    private suspend fun deleteSimulatorsAfterCleanup(udids: List<String>) {
+        deleteSimulators(udids)
+            .onSuccess { deleted -> deleted.forEach { out.line("deleted simulator $it") } }
+            .onFailure { err.line("shogun: couldn't delete simulators: ${it.message}") }
+    }
+
+    private suspend fun simulator(command: CliCommand.Simulator): Int {
+        val (config, worktree) = configAndWorktreeContaining(absolute(command.path ?: workingDirectory))
+        val simulator = when (command.action) {
+            SimulatorAction.START ->
+                startSimulator(config, worktree.path, SimulatorSettings(command.device, command.runtime)).getOrThrow()
+            SimulatorAction.STOP -> stopSimulator(config, worktree.path).getOrThrow()
+            SimulatorAction.STATUS -> {
+                if (provisioningSource.read(config.baseRepositoryPath).providers.iosSimulator == null) {
+                    throw WorktreeError.IosSimulatorProviderNotDeclared
+                }
+                if (!appleSimulators.isSupported()) throw WorktreeError.IosSimulatorsNotSupported
+                readSimulatorStates(config, listOf(worktree)).getOrThrow()[worktree.path]
+            }
+        }
+        if (simulator == null) {
+            out.line("No simulator for this worktree yet; 'shogun simulator start' creates and boots one.")
+        } else {
+            out.line("${simulator.udid} ${simulator.state.name.lowercase()}  ${simulator.name}")
+        }
+        if (command.action == SimulatorAction.STATUS) printKmpWiring(config)
+        return EXIT_OK
+    }
+
+    private fun printKmpWiring(config: ProjectConfig) {
+        if (kmpTestWiring.isWiredInRepository(config.baseRepositoryPath) || kmpTestWiring.isInitScriptInstalled()) {
+            out.line("KMP simulator tests use this worktree's simulator.")
+            return
+        }
+        out.line("KMP simulator tests don't use this worktree's simulator yet. Add this to the module's build.gradle.kts:")
+        out.line(FileKmpTestWiring.REPOSITORY_SNIPPET)
+        out.line("or run 'shogun simulator gradle-init install' to do it for every project on this machine.")
+    }
+
+    private fun simulatorGradleInit(command: CliCommand.SimulatorGradleInit): Int {
+        val path = kmpTestWiring.initScriptPath()
+        if (!command.install) {
+            kmpTestWiring.uninstallInitScript()
+            out.line("Removed $path")
+            return EXIT_OK
+        }
+        out.line("This writes $path, which makes the iOS simulator tests of every Gradle project on this machine")
+        out.line("run on the simulator in IOS_SIMULATOR_UDID when that variable is set:")
+        out.line(FileKmpTestWiring.INIT_SCRIPT.trimEnd())
+        if (!command.confirmed) {
+            out.append("Install it? [y/N] ")
+            val answer = readInput().trim().lowercase()
+            if (answer != "y" && answer != "yes") {
+                out.line("Nothing installed.")
+                return EXIT_OK
+            }
+        }
+        kmpTestWiring.installInitScript()
+        out.line("Installed $path")
+        return EXIT_OK
     }
 
     private suspend fun emulatorsBeforeCleanup(config: ProjectConfig, candidates: List<Worktree>): Map<String, String> =
@@ -271,7 +386,14 @@ class ShogunCli(
             ?.takeIf { provisioningSource.read(repository).providers.emulator != null }
             ?.let { serial -> ". Its Android emulator is $ANDROID_SERIAL=$serial; start it with 'shogun emulator start' before installing the app or running instrumented tests" }
             .orEmpty()
-        out.line("ShogunAi environment of worktree ${File(worktree.path).name}: $variables$emulatorHint")
+        val simulatorHint = environment.variables.toMap()[IOS_SIMULATOR_UDID]
+            ?.takeIf { provisioningSource.read(repository).providers.iosSimulator != null }
+            ?.let { udid ->
+                ". Its iOS simulator is $IOS_SIMULATOR_UDID=$udid; boot it with 'shogun simulator start' and build with " +
+                    "xcodebuild -destination \"id=\$$IOS_SIMULATOR_UDID\""
+            }
+            .orEmpty()
+        out.line("ShogunAi environment of worktree ${File(worktree.path).name}: $variables$emulatorHint$simulatorHint")
         return EXIT_OK
     }
 
@@ -501,15 +623,21 @@ class ShogunCli(
                   --worktrees-root <dir>  Folder for the worktree when the repository has no ShogunAi project
               provision [<path>]          Copy the declared files into an existing worktree (default: current directory)
               status                      List the repository's worktrees with their state
-              clean [--yes] [--delete-branches] [--stop-gradle-daemons] [--stop-emulators]
+              clean [--yes] [--delete-branches] [--stop-gradle-daemons] [--stop-emulators] [--delete-simulators]
                                           List merged or missing worktrees; remove them with --yes
                                           (--stop-gradle-daemons / --stop-emulators: also stop their idle
-                                          Gradle daemons / their emulators)
+                                          Gradle daemons / their emulators; --delete-simulators: also delete
+                                          their iOS simulators and orphaned ShogunAi simulators)
               gradle                      List the Gradle and Kotlin daemons with their memory, state and worktree
               gradle stop [<pid>...]      Stop idle daemons (all of them, or only the given ones); busy ones are kept
               hook worktree-create       Claude Code WorktreeCreate hook: create and provision the worktree, print its path
               hook worktree-remove        Claude Code WorktreeRemove hook: remove the worktree, delete its branch if merged
               hook session-start          Claude Code SessionStart hook: export the worktree's environment to the session
+              simulator start|stop|status [<path>] [--device <type>] [--runtime <runtime>]
+                                          Boot (and wait for), shut down or show the worktree's iOS simulator
+                                          (repositories with "providers": { "ios-simulator": {} } in .shogunai.json)
+              simulator gradle-init install|uninstall [--yes]
+                                          Make every project's KMP iOS simulator tests use IOS_SIMULATOR_UDID
               emulator start|stop|status [<path>] [--avd <name>] [--no-window]
                                           Start (and wait for), stop or show the worktree's Android emulator
                                           (repositories with "providers": { "emulator": {} } in .shogunai.json)

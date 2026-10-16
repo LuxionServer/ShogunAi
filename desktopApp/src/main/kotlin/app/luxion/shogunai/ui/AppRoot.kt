@@ -94,6 +94,7 @@ fun AppRoot(appContainer: AppContainer) {
                                     appContainer.repositoryProvisioningSource,
                                     current.existingProject,
                                     appContainer::loadAvds,
+                                    appContainer.simulatorSetup,
                                 )
                             }
                             ProjectConfigScreen(

@@ -1,10 +1,12 @@
 package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.domain.FakeAndroidSdk
+import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
+import app.luxion.shogunai.domain.FakeKmpTestWiring
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.executor.CommandResult
@@ -55,6 +57,8 @@ class HookCommandsTest {
     }
 
     private val androidSdk = FakeAndroidSdk()
+    private val appleSimulators = FakeAppleSimulators()
+    private val kmpTestWiring = FakeKmpTestWiring()
     private val out = StringBuilder()
     private val err = StringBuilder()
 
@@ -77,6 +81,8 @@ class HookCommandsTest {
         environmentStateStore = environmentStore,
         portProbe = FakePortProbe(),
         androidSdk = androidSdk,
+        appleSimulators = appleSimulators,
+        kmpTestWiring = kmpTestWiring,
         workingDirectory = "/",
         out = out,
         err = err,

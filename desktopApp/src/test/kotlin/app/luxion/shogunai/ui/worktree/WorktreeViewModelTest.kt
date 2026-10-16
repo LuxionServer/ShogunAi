@@ -2,6 +2,7 @@ package app.luxion.shogunai.ui.worktree
 
 import app.luxion.shogunai.EmulatorUseCases
 import app.luxion.shogunai.GradleUseCases
+import app.luxion.shogunai.SimulatorUseCases
 import app.luxion.shogunai.WorktreeUseCases
 import app.luxion.shogunai.domain.FakeClipboardWriter
 import app.luxion.shogunai.domain.FakeFileManager
@@ -26,6 +27,9 @@ import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
+import app.luxion.shogunai.domain.model.WorktreeSimulator
+import app.luxion.shogunai.domain.model.SimulatorState
+import app.luxion.shogunai.domain.model.SimulatorDevice
 import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.WorktreeError
@@ -129,6 +133,7 @@ class WorktreeViewModelTest {
             readFingerprint = ReadGitMetadataFingerprintUseCase(config, fileManager, dispatcher),
             readPorts = { worktree -> Result.success(portsByWorktree[worktree.path].orEmpty()) },
             emulator = EmulatorUseCases.NONE,
+            simulator = SimulatorUseCases.NONE,
             gradle = gradleUseCases(executor),
         )
     }
@@ -1316,5 +1321,108 @@ class WorktreeViewModelTest {
         advanceUntilIdle()
 
         assertTrue(emulators.stoppedSerials.isEmpty())
+    }
+
+    private class RecordingSimulators(
+        val declared: Boolean = true,
+        initial: Map<String, WorktreeSimulator> = emptyMap(),
+        var orphans: List<SimulatorDevice> = emptyList(),
+    ) {
+        var states = initial
+        var reads = 0
+        val started = mutableListOf<String>()
+        val stopped = mutableListOf<String>()
+        val deleted = mutableListOf<String>()
+
+        fun useCases() = SimulatorUseCases(
+            declared = { declared },
+            readStates = { reads++; Result.success(states) },
+            start = { path ->
+                started += path
+                val simulator = WorktreeSimulator("UDID-1", "ShogunAi · main-repo · TASK-123", SimulatorState.BOOTED)
+                states = states + (path to simulator)
+                Result.success(simulator)
+            },
+            stop = { path ->
+                stopped += path
+                states = states.mapValues { (key, value) -> if (key == path) value.copy(state = SimulatorState.SHUTDOWN) else value }
+                Result.success(states[path])
+            },
+            orphans = { Result.success(orphans) },
+            delete = { udids -> deleted += udids; Result.success(udids) },
+        )
+    }
+
+    @Test
+    fun `repositories without the iOS simulator provider never read simulators`() = runTest(dispatcher) {
+        val simulators = RecordingSimulators(declared = false)
+        val viewModel = WorktreeViewModel(useCases(listingResponder()).copy(simulator = simulators.useCases()))
+        advanceUntilIdle()
+
+        assertFalse(viewModel.isSimulatorRepository)
+        assertEquals(0, simulators.reads)
+    }
+
+    @Test
+    fun `simulators are loaded and can be started and stopped from the row`() = runTest(dispatcher) {
+        val simulators = RecordingSimulators()
+        val viewModel = WorktreeViewModel(useCases(listingResponder()).copy(simulator = simulators.useCases()))
+        advanceUntilIdle()
+        assertTrue(viewModel.isSimulatorRepository)
+
+        viewModel.startSimulator(worktree)
+        assertTrue(worktreePath in viewModel.startingSimulators)
+        advanceUntilIdle()
+        assertEquals(SimulatorState.BOOTED, viewModel.simulators[worktreePath]?.state)
+        assertTrue(viewModel.startingSimulators.isEmpty())
+
+        viewModel.stopSimulator(worktree)
+        advanceUntilIdle()
+        assertEquals(listOf(worktreePath), simulators.stopped)
+        assertEquals(SimulatorState.SHUTDOWN, viewModel.simulators[worktreePath]?.state)
+    }
+
+    @Test
+    fun `cleanup deletes the simulators of removed worktrees and orphans`() = runTest(dispatcher) {
+        val simulators = RecordingSimulators(
+            initial = mapOf(worktreePath to WorktreeSimulator("SIM-1", "ShogunAi · main-repo · TASK-123", SimulatorState.SHUTDOWN)),
+            orphans = listOf(SimulatorDevice("SIM-ORPHAN", "ShogunAi · main-repo · TASK-0", SimulatorState.SHUTDOWN)),
+        )
+        val viewModel = WorktreeViewModel(useCases(mergedResponder()).copy(simulator = simulators.useCases()))
+        advanceUntilIdle()
+
+        viewModel.openCleanup()
+        assertTrue(viewModel.cleanupDeleteSimulators)
+        viewModel.confirmCleanup()
+        advanceUntilIdle()
+
+        assertEquals(listOf("SIM-1", "SIM-ORPHAN"), simulators.deleted)
+        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1, deletedSimulators = 2), viewModel.success)
+    }
+
+    @Test
+    fun `cleanup looks for orphans again after removing, catching simulators it couldn't read before`() = runTest(dispatcher) {
+        val simulators = RecordingSimulators()
+        val viewModel = WorktreeViewModel(useCases(mergedResponder()).copy(simulator = simulators.useCases()))
+        advanceUntilIdle()
+        viewModel.openCleanup()
+        simulators.orphans = listOf(SimulatorDevice("SIM-GONE", "ShogunAi · main-repo · TASK-123", SimulatorState.BOOTED))
+
+        viewModel.confirmCleanup()
+        advanceUntilIdle()
+
+        assertEquals(listOf("SIM-GONE"), simulators.deleted)
+    }
+
+    @Test
+    fun `orphaned simulators alone enable the cleanup`() = runTest(dispatcher) {
+        val simulators = RecordingSimulators(orphans = listOf(SimulatorDevice("SIM-ORPHAN", "ShogunAi · main-repo · TASK-0", SimulatorState.SHUTDOWN)))
+        val viewModel = WorktreeViewModel(useCases(listingResponder()).copy(simulator = simulators.useCases()))
+        advanceUntilIdle()
+
+        assertTrue(viewModel.cleanupCandidates.isEmpty())
+        assertTrue(viewModel.canCleanUp)
+        viewModel.openCleanup()
+        assertTrue(viewModel.isCleanupDialogOpen)
     }
 }

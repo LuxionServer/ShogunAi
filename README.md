@@ -129,6 +129,32 @@ shogun emulator stop
 
 On each machine, the project configuration chooses the AVD (or leaves it automatic) and whether it runs without a window; `--avd` and `--no-window` override them for one start. The worktree list shows each emulator with Start and Stop, and "Clean up" (or `shogun clean --stop-emulators`) stops the emulators of the worktrees it removes. The SDK is found through `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `sdk.dir` in `local.properties` or Android Studio's default location. Repositories without the provider never see any of this.
 
+## iOS simulators
+
+Parallel agents on a KMP or iOS project would otherwise share the same simulators. Turn on the iOS simulator provider (macOS only) to give each worktree its own:
+
+```json
+{ "providers": { "ios-simulator": { "device": "iPhone 16", "runtime": "iOS 18.5" } } }
+```
+
+Both options are optional preferences used when the machine has them. Each worktree gets a new simulator (created, never cloned: about 17 MB, 360 MB once booted) named `ShogunAi · <repository> · <worktree>`, and `IOS_SIMULATOR_UDID` in its environment. Build for it with `xcodebuild -destination "id=$IOS_SIMULATOR_UDID"`.
+
+```bash
+shogun simulator start     # create if needed and boot this worktree's simulator, waiting for it
+shogun simulator status    # its state, and whether the KMP tests use it
+shogun simulator stop
+```
+
+KMP's iOS simulator tests pick their device in the build script, so add this to the module's `build.gradle.kts`:
+
+```kotlin
+tasks.withType<org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest>().configureEach {
+    providers.environmentVariable("IOS_SIMULATOR_UDID").orNull?.let { device.set(it) }
+}
+```
+
+If you'd rather not touch the repository, `shogun simulator gradle-init install` (or the button in the project configuration) installs a Gradle init script that does the same for every project on this machine, after asking. The project configuration also chooses the device type and runtime per machine. "Clean up" (or `shogun clean --delete-simulators`) deletes the simulators of removed worktrees and ShogunAi simulators whose worktree is gone. Repositories without the provider never see any of this.
+
 ## Development
 
 Want to build the project from source or contribute? Start with [`docs/getting-started.md`](./docs/getting-started.md).

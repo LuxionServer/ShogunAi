@@ -104,6 +104,28 @@ interface Strings {
     fun worktreesCleanedUp(count: Int): String
     fun cleanupFailed(path: String, detail: String): String
     fun branchKept(branch: String): String
+    val simulatorSection: String
+    val simulatorSectionDescription: String
+    val simulatorRuntimeLabel: String
+    val simulatorDeviceLabel: String
+    val simulatorAutomatic: String
+    fun notOnThisMachine(name: String): String
+    val simulatorTestsWired: String
+    val simulatorTestsNotWired: String
+    val copySnippet: String
+    val installInitScript: String
+    val installInitScriptTitle: String
+    fun installInitScriptMessage(path: String): String
+    val install: String
+    val simulatorLabel: String
+    val simulatorShutdown: String
+    val simulatorBooting: String
+    val simulatorBooted: String
+    val startSimulator: String
+    val stopSimulator: String
+    val alsoDeleteSimulators: String
+    fun orphanedSimulators(names: List<String>): String
+    fun simulatorsDeleted(count: Int): String
     val emulatorSection: String
     val emulatorSectionDescription: String
     val emulatorAvdLabel: String
@@ -166,6 +188,11 @@ interface Strings {
     val noAvdAvailable: String
     fun emulatorBootTimeout(serial: String, seconds: Long): String
     val emulatorProviderNotDeclared: String
+    val noIosRuntime: String
+    fun simulatorBootTimeout(name: String, seconds: Long): String
+    val iosSimulatorProviderNotDeclared: String
+    val iosSimulatorsNotSupported: String
+    fun appleToolFailed(command: List<String>, exitCode: Int): String
     fun androidToolFailed(command: List<String>, exitCode: Int): String
     fun environmentFileTracked(path: String): String
     fun environmentFileWriteFailed(path: String, detail: String?): String
@@ -207,6 +234,12 @@ private fun Strings.worktreeErrorMessage(error: WorktreeError): String = when (e
     WorktreeError.NoAvdAvailable -> noAvdAvailable
     is WorktreeError.EmulatorBootTimeout -> emulatorBootTimeout(error.serial, error.seconds)
     WorktreeError.EmulatorProviderNotDeclared -> emulatorProviderNotDeclared
+    WorktreeError.NoIosRuntime -> noIosRuntime
+    is WorktreeError.SimulatorBootTimeout -> simulatorBootTimeout(error.name, error.seconds)
+    WorktreeError.IosSimulatorProviderNotDeclared -> iosSimulatorProviderNotDeclared
+    WorktreeError.IosSimulatorsNotSupported -> iosSimulatorsNotSupported
+    is WorktreeError.AppleToolFailed -> appleToolFailed(error.command, error.exitCode) +
+        if (error.output.isNotBlank()) "\n${error.output}" else ""
     is WorktreeError.AndroidToolFailed -> androidToolFailed(error.command, error.exitCode) +
         if (error.output.isNotBlank()) "\n${error.output}" else ""
     is WorktreeError.EnvironmentFileTracked -> environmentFileTracked(error.path)
