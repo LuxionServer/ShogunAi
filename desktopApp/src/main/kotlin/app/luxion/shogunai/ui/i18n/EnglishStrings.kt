@@ -164,6 +164,12 @@ object EnglishStrings : Strings {
     override val stopIdleDaemons = "Stop idle daemons"
     override val gradleBuildCacheOff =
         "Gradle's build cache is off: add org.gradle.caching=true to gradle.properties so a new worktree reuses what other worktrees already built."
+    override fun gradleWorktreeSettings(daemonHeap: String?, idleTimeoutMinutes: Int?, kotlinDaemonHeap: String?) =
+        "Worktree builds: " + listOfNotNull(
+            daemonHeap?.let { "$it heap" },
+            idleTimeoutMinutes?.let { "idle after $it min" },
+            kotlinDaemonHeap?.let { "Kotlin $it" },
+        ).joinToString(" · ")
     override fun daemonsStopped(stopped: Int, kept: Int, failed: Int) = listOfNotNull(
         if (stopped == 1) "1 daemon stopped" else "$stopped daemons stopped",
         kept.takeIf { it > 0 }?.let { if (it == 1) "1 kept because it's in use" else "$it kept because they're in use" },

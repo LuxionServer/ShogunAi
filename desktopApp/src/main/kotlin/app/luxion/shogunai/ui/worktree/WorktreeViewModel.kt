@@ -11,6 +11,7 @@ import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.DaemonStopReport
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleDaemon
+import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
@@ -106,6 +107,8 @@ class WorktreeViewModel(
     var gradleDaemons by mutableStateOf<GradleDaemonsState>(GradleDaemonsState.Loading)
         private set
     var isGradleBuildCacheEnabled by mutableStateOf(true)
+        private set
+    var gradleSettings by mutableStateOf<GradleProvider?>(null)
         private set
     var isStoppingDaemons by mutableStateOf(false)
         private set
@@ -327,8 +330,10 @@ class WorktreeViewModel(
     }
 
     private fun loadGradleSection(generation: Int, listed: List<Worktree>) {
-        isGradleRepository = useCases.gradle.declaresProvider()
-        if (!isGradleRepository) return
+        val provider = useCases.gradle.provider()
+        isGradleRepository = provider != null
+        gradleSettings = provider?.takeIf { it.hasSettings }
+        if (provider == null) return
         isGradleBuildCacheEnabled = useCases.gradle.isBuildCacheEnabled()
         viewModelScope.launch { loadGradleDaemons(generation, listed) }
     }

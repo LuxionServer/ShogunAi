@@ -109,6 +109,21 @@ shogun gradle stop                 # stop every idle daemon (or only the given p
 shogun clean --yes --stop-gradle-daemons  # also stop the idle daemons of the removed worktrees
 ```
 
+### Daemon memory and lifetime per worktree
+
+Parallel builds can't share a busy daemon, so three agents building at once start three daemons, each with the heap your `gradle.properties` asks for, and they stay alive for three hours. The provider can bound the daemons that worktree builds start:
+
+```json
+{ "providers": { "gradle": { "daemonMaxHeap": "2g", "idleTimeoutMinutes": 30, "kotlinDaemonMaxHeap": "1g" } } }
+```
+
+Every setting is optional. Memory sizes are a number followed by `k`, `m` or `g`; the timeout is in minutes. With at least one, every worktree's environment (the main one included) gets the same `GRADLE_OPTS`, which overrides `gradle.properties` for builds started from that shell. `daemonMaxHeap` only replaces `-Xmx`: the other `org.gradle.jvmargs` of your user `gradle.properties`, or else the repository's, are kept. The "Gradle daemons" section shows the settings in effect.
+
+- It reaches agents like any [per-worktree variable](./docs/agents.md#per-worktree-environment). A `GRADLE_OPTS` you set yourself in that shell is replaced; declare it in `env` instead and it takes precedence over the provider's.
+- Builds started from Android Studio or IntelliJ don't inherit the agent's shell: they keep using `gradle.properties` and don't share daemons with agent builds. Put the limits in `gradle.properties` too if you want them everywhere.
+- New settings apply to new daemons; idle daemons started with other arguments aren't reused and time out on their own, or stop them from the section.
+- The quoting is designed for Windows' `gradlew.bat` too, but has only been verified on macOS.
+
 Daemon inspection needs `ps` (macOS and Linux).
 
 ## Android emulators

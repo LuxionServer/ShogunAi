@@ -102,7 +102,44 @@ class RepositoryProvisioningFilesTest {
     fun `reads the gradle provider and ignores unknown providers`() {
         configFile.writeText("""{ "providers": { "gradle": {}, "xcode": {} } }""")
 
-        assertEquals(RepositoryProviders(gradle = GradleProvider), files.read(repository.toString()).providers)
+        assertEquals(RepositoryProviders(gradle = GradleProvider()), files.read(repository.toString()).providers)
+    }
+
+    @Test
+    fun `reads the gradle provider settings`() {
+        configFile.writeText(
+            """{ "providers": { "gradle": { "daemonMaxHeap": "2g", "idleTimeoutMinutes": 30, "kotlinDaemonMaxHeap": "1024M" } } }""",
+        )
+
+        val gradle = files.read(repository.toString()).providers.gradle
+
+        assertEquals(GradleProvider(daemonMaxHeap = "2g", idleTimeoutMinutes = 30, kotlinDaemonMaxHeap = "1024M"), gradle)
+        assertEquals(true, gradle?.hasSettings)
+    }
+
+    @Test
+    fun `declares the gradle provider without settings`() {
+        configFile.writeText("""{ "providers": { "gradle": {} } }""")
+
+        assertEquals(false, files.read(repository.toString()).providers.gradle?.hasSettings)
+    }
+
+    @Test
+    fun `fails with InvalidRepositoryConfig on invalid gradle provider settings`() {
+        listOf(
+            """{ "providers": { "gradle": { "daemonMaxHeap": "2 GB" } } }""",
+            """{ "providers": { "gradle": { "daemonMaxHeap": "" } } }""",
+            """{ "providers": { "gradle": { "daemonMaxHeap": "2048" } } }""",
+            """{ "providers": { "gradle": { "kotlinDaemonMaxHeap": 1 } } }""",
+            """{ "providers": { "gradle": { "idleTimeoutMinutes": 0 } } }""",
+            """{ "providers": { "gradle": { "idleTimeoutMinutes": -5 } } }""",
+            """{ "providers": { "gradle": { "idleTimeoutMinutes": 1.5 } } }""",
+            """{ "providers": { "gradle": { "idleTimeoutMinutes": "30" } } }""",
+        ).forEach { content ->
+            configFile.writeText(content)
+            val error = assertFailsWith<WorktreeError.InvalidRepositoryConfig>(content) { files.read(repository.toString()) }
+            assertEquals(true, error.message.orEmpty().contains("providers.gradle."), content)
+        }
     }
 
     @Test
@@ -218,7 +255,7 @@ class RepositoryProvisioningFilesTest {
         files.addCopyPatterns(repository.toString(), listOf("/local.properties"))
 
         val provisioning = files.read(repository.toString())
-        assertEquals(RepositoryProviders(gradle = GradleProvider), provisioning.providers)
+        assertEquals(RepositoryProviders(gradle = GradleProvider()), provisioning.providers)
         assertEquals(listOf("/local.properties"), provisioning.copyPatterns)
     }
 

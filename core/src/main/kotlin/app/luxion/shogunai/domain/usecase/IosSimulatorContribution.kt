@@ -14,10 +14,14 @@ class MachineProviderContributions(
     private val simulators: AppleSimulators,
     private val simulatorSettingsFor: (repositoryPath: String) -> SimulatorSettings,
     private val requestedSimulator: SimulatorSettings = SimulatorSettings(),
+    private val gradleJvmArgsFor: (repositoryPath: String) -> String? = { null },
 ) : ProviderContributions {
 
     override fun forRepository(repositoryPath: String, providers: RepositoryProviders): List<EnvironmentContribution> =
         listOfNotNull(
+            providers.gradle?.takeIf { it.hasSettings }?.let { settings ->
+                gradleSettingsContribution(settings, gradleJvmArgsFor(repositoryPath))
+            },
             providers.emulator?.let { emulatorContribution },
             providers.iosSimulator?.takeIf { simulators.isSupported() }?.let { preferred ->
                 iosSimulatorContribution(simulators, preferred, simulatorSettingsFor(repositoryPath), requestedSimulator)
@@ -25,7 +29,7 @@ class MachineProviderContributions(
         )
 
     fun requesting(simulator: SimulatorSettings): MachineProviderContributions =
-        MachineProviderContributions(simulators, simulatorSettingsFor, simulator)
+        MachineProviderContributions(simulators, simulatorSettingsFor, simulator, gradleJvmArgsFor)
 }
 
 fun iosSimulatorContribution(

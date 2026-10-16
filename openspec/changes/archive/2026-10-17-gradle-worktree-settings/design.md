@@ -43,7 +43,7 @@ The arguments are read from the base repository, not from each worktree's checko
 The contribution doesn't depend on the worktree, so it applies to the main worktree too. Builds an agent starts from the main checkout then share daemons with builds in linked worktrees. The trade-off: those daemons aren't reused by IDE builds, which use the unmodified `gradle.properties` (see Risks).
 
 ### Wiring
-`MachineProviderContributions` gains the `FileManager` and the Gradle user home (both already built in `AppContainer` and `ShogunCli` for the build cache notice) and adds the Gradle contribution when `providers.gradle?.hasSettings` is true. It has no ports or resources, only `variables`. The CLI needs no change beyond construction.
+`MachineProviderContributions` gains `gradleJvmArgsFor: (repositoryPath) -> String?`, which `AppContainer` and `ShogunCli` build from the `FileManager` and Gradle user home they already have for the build cache notice (`effectiveGradleJvmArgs`), and adds the Gradle contribution when `providers.gradle?.hasSettings` is true. The function defaults to no arguments, so tests that don't care about Gradle construct it as before. It has no ports or resources, only `variables`. The CLI needs no change beyond construction.
 
 ### Settings on the worktree screen
 The Gradle daemons section state gains the declared `GradleProvider` and shows one line, e.g. "Worktree builds: 2 GB heap · idle after 30 min · Kotlin 1 GB", in English and Spanish, only when settings exist. Memory sizes are displayed as written (`2g` → "2 GB", `1024m` → "1024 MB").

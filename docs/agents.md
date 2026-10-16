@@ -24,6 +24,8 @@ A worktree isolates files, not ports. When the repository declares variables in 
 
 For Android repositories, `"providers": { "emulator": {} }` adds `ANDROID_SERIAL=emulator-<port>` to every worktree's environment, so `./gradlew installDebug` and `connectedAndroidTest` only use that worktree's emulator. Agents start it with `shogun emulator start` (it waits until the emulator has booted); see the README's "Android emulators" section for the AVD and window settings. Likewise, `"providers": { "ios-simulator": {} }` gives each worktree its own iOS simulator and `IOS_SIMULATOR_UDID`; agents boot it with `shogun simulator start` and build with `xcodebuild -destination "id=$IOS_SIMULATOR_UDID"`, and KMP tests use it once the build script (or the machine-wide init script) passes it to `device` (README, "iOS simulators").
 
+For Gradle repositories, settings in the Gradle provider (`"providers": { "gradle": { "daemonMaxHeap": "2g", "idleTimeoutMinutes": 30 } }`) add the same `GRADLE_OPTS` to every worktree's environment, so the daemons that agents' builds start use that heap and idle timeout instead of the ones in `gradle.properties`, and can be shared between worktrees. It replaces a `GRADLE_OPTS` already set in the shell, and doesn't reach builds started from an IDE (README, "Daemon memory and lifetime per worktree").
+
 The recipes below show how each agent gets these variables.
 
 ## Claude Code

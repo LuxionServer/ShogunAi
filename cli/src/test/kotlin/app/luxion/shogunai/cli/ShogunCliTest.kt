@@ -178,7 +178,7 @@ class ShogunCliTest {
     @Test
     fun `gradle prints the build cache notice for a gradle repository without it`() {
         val provisioning = FakeRepositoryProvisioningSource(
-            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(gradle = GradleProvider))),
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(gradle = GradleProvider()))),
         )
 
         cli(repositoryExecutor(), provisioning = provisioning).run(listOf("gradle"))
@@ -189,7 +189,7 @@ class ShogunCliTest {
     @Test
     fun `gradle omits the notice when the cache is on or the provider isn't declared`() {
         val provisioning = FakeRepositoryProvisioningSource(
-            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(gradle = GradleProvider))),
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(gradle = GradleProvider()))),
         )
         val cached = FakeFileManager(
             existing = listOf(base),

@@ -109,6 +109,21 @@ shogun gradle stop                 # para todos los daemons ociosos (o solo los 
 shogun clean --yes --stop-gradle-daemons  # para también los daemons ociosos de los worktrees eliminados
 ```
 
+### Memoria y vida de los daemons por worktree
+
+Las builds en paralelo no pueden compartir un daemon ocupado, así que tres agentes compilando a la vez arrancan tres daemons, cada uno con el heap que pide tu `gradle.properties`, y siguen vivos tres horas. El provider puede acotar los daemons que arrancan las builds de los worktrees:
+
+```json
+{ "providers": { "gradle": { "daemonMaxHeap": "2g", "idleTimeoutMinutes": 30, "kotlinDaemonMaxHeap": "1g" } } }
+```
+
+Todos los ajustes son opcionales. Los tamaños de memoria son un número seguido de `k`, `m` o `g`; el timeout va en minutos. Con al menos uno, el entorno de cada worktree (el principal incluido) recibe el mismo `GRADLE_OPTS`, que se impone a `gradle.properties` en las builds lanzadas desde esa shell. `daemonMaxHeap` solo sustituye `-Xmx`: se conservan los demás `org.gradle.jvmargs` de tu `gradle.properties` de usuario o, si no hay, los del repositorio. La sección "Daemons de Gradle" muestra los ajustes en vigor.
+
+- Llega a los agentes como cualquier [variable por worktree](./docs/agents.es.md#entorno-por-worktree). Un `GRADLE_OPTS` que pongas tú en esa shell se sustituye; decláralo en `env` y tendrá prioridad sobre el del provider.
+- Las builds lanzadas desde Android Studio o IntelliJ no heredan la shell del agente: siguen usando `gradle.properties` y no comparten daemons con las builds de los agentes. Pon también los límites en `gradle.properties` si los quieres en todas partes.
+- Los ajustes nuevos se aplican a daemons nuevos; los daemons ociosos arrancados con otros argumentos no se reutilizan y caducan solos, o puedes pararlos desde la sección.
+- El entrecomillado está pensado también para `gradlew.bat` de Windows, pero solo se ha verificado en macOS.
+
 Inspeccionar los daemons necesita `ps` (macOS y Linux).
 
 ## Emuladores de Android

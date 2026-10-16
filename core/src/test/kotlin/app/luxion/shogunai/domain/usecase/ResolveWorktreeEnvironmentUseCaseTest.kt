@@ -4,8 +4,11 @@ import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
+import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
+import app.luxion.shogunai.domain.model.GradleProvider
+import app.luxion.shogunai.domain.model.SimulatorSettings
 import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.WorktreeEnvironment
@@ -213,6 +216,48 @@ class ResolveWorktreeEnvironmentUseCaseTest {
         val environment = useCase(withEmulator("ANDROID_SERIAL" to "emulator-5600"))(repository, task).getOrThrow()
 
         assertEquals(listOf("ANDROID_SERIAL" to "emulator-5600"), environment.variables)
+    }
+
+    private fun withGradle(settings: GradleProvider, vararg variables: Pair<String, String>) = FakeRepositoryProvisioningSource(
+        byRepository = mapOf(
+            repository to RepositoryProvisioning(
+                providers = RepositoryProviders(gradle = settings),
+                environment = EnvironmentDeclaration(variables.map { (name, value) -> parseEnvironmentVariable(name, value) }),
+            ),
+        ),
+    )
+
+    private val gradleContributions = MachineProviderContributions(
+        FakeAppleSimulators(),
+        { SimulatorSettings() },
+        gradleJvmArgsFor = { "-Xmx6g -Dfile.encoding=UTF-8" },
+    )
+
+    private fun withGradleContributions(source: FakeRepositoryProvisioningSource) =
+        ResolveWorktreeEnvironmentUseCase(gitExecutor(), source, FakeEnvironmentStateStore(), FakePortProbe(), gradleContributions)
+
+    @Test
+    fun `the gradle provider adds the same GRADLE_OPTS to every worktree`() = runTest {
+        val resolve = withGradleContributions(withGradle(GradleProvider(daemonMaxHeap = "2g", idleTimeoutMinutes = 30)))
+
+        val expected = listOf(
+            "GRADLE_OPTS" to "-Dorg.gradle.jvmargs=\"-Xmx2g -Dfile.encoding=UTF-8\" -Dorg.gradle.daemon.idletimeout=1800000",
+        )
+        assertEquals(expected, resolve(repository, repository).getOrThrow().variables)
+        assertEquals(expected, resolve(repository, task).getOrThrow().variables)
+        assertEquals(expected, resolve(repository, other).getOrThrow().variables)
+    }
+
+    @Test
+    fun `the gradle provider without settings adds nothing`() = runTest {
+        assertEquals(emptyList(), withGradleContributions(withGradle(GradleProvider()))(repository, task).getOrThrow().variables)
+    }
+
+    @Test
+    fun `a declared GRADLE_OPTS wins over the gradle provider`() = runTest {
+        val source = withGradle(GradleProvider(idleTimeoutMinutes = 30), "GRADLE_OPTS" to "-Dmine=1")
+
+        assertEquals(listOf("GRADLE_OPTS" to "-Dmine=1"), withGradleContributions(source)(repository, task).getOrThrow().variables)
     }
 
     private class RecordingSimulators {
