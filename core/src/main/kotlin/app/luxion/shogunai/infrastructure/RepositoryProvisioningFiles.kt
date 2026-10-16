@@ -1,7 +1,10 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
+import app.luxion.shogunai.domain.model.EnvironmentDeclaration
 import app.luxion.shogunai.domain.model.GradleProvider
+import app.luxion.shogunai.domain.model.InvalidEnvironmentTemplate
+import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.WorktreeError
@@ -31,7 +34,40 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
             copyPatterns = config?.let { copyPatternsOf(it, configPath) }.orEmpty(),
             worktreeIncludePatterns = readWorktreeInclude(root.resolve(RepositoryProvisioning.WORKTREE_INCLUDE_FILE_NAME)),
             providers = config?.let { providersOf(it, configPath) } ?: RepositoryProviders(),
+            environment = config?.let { environmentOf(it, configPath) } ?: EnvironmentDeclaration(),
         )
+    }
+
+    private fun environmentOf(config: JsonObject, path: Path): EnvironmentDeclaration {
+        val invalid = { detail: String -> WorktreeError.InvalidRepositoryConfig(path.toString(), detail) }
+        val variables = when (val field = config[ENV_FIELD]) {
+            null, is JsonNull -> emptyList()
+            is JsonObject -> field.map { (name, value) ->
+                val primitive = value as? JsonPrimitive
+                if (primitive == null || !primitive.isString) throw invalid("\"$ENV_FIELD.$name\" must be a string")
+                try {
+                    parseEnvironmentVariable(name, primitive.content)
+                } catch (error: InvalidEnvironmentTemplate) {
+                    throw invalid(error.message.orEmpty())
+                }
+            }
+            else -> throw invalid("\"$ENV_FIELD\" must be an object")
+        }
+        val envFile = when (val field = config[ENV_FILE_FIELD]) {
+            null, is JsonNull -> null
+            is JsonPrimitive -> field.takeIf { it.isString }?.content?.takeIf(::isInsideWorktree)
+                ?: throw invalid("\"$ENV_FILE_FIELD\" must be a relative path inside the worktree")
+            else -> throw invalid("\"$ENV_FILE_FIELD\" must be a relative path inside the worktree")
+        }
+        return EnvironmentDeclaration(variables = variables, envFile = envFile)
+    }
+
+    private fun isInsideWorktree(relative: String): Boolean {
+        if (relative.isBlank()) return false
+        val path = runCatching { Path.of(relative) }.getOrNull() ?: return false
+        if (path.isAbsolute || relative.startsWith("/") || relative.startsWith("\\")) return false
+        val normalized = path.normalize()
+        return normalized.toString().isNotEmpty() && !normalized.startsWith("..")
     }
 
     override fun addCopyPatterns(repositoryPath: String, patterns: List<String>) {
@@ -103,5 +139,7 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         const val COPY_FIELD = "copy"
         const val PROVIDERS_FIELD = "providers"
         const val GRADLE_PROVIDER = "gradle"
+        const val ENV_FIELD = "env"
+        const val ENV_FILE_FIELD = "envFile"
     }
 }

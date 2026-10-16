@@ -70,6 +70,7 @@ shogun new --branch hotfix/login   # worktree para una rama existente
 shogun provision ../otro-worktree  # copia los archivos declarados en un worktree creado por otra herramienta
 shogun status                      # todos los worktrees con sus cambios, divergencia y si están mergeados
 shogun clean --yes                 # elimina los worktrees mergeados o sin carpeta (sin --yes solo los lista)
+eval "$(shogun env)"               # carga las variables de este worktree desde "env" en .shogunai.json (puertos, …)
 ```
 
 Ejecuta `shogun help` para ver todas las opciones. Sin proyecto en la app, `shogun new` necesita `--worktrees-root <dir>`.
@@ -82,12 +83,13 @@ Haz que `claude --worktree` cree sus worktrees a través de ShogunAi añadiendo 
 {
   "hooks": {
     "WorktreeCreate": [{ "hooks": [{ "type": "command", "command": "shogun hook worktree-create" }] }],
-    "WorktreeRemove": [{ "hooks": [{ "type": "command", "command": "shogun hook worktree-remove" }] }]
+    "WorktreeRemove": [{ "hooks": [{ "type": "command", "command": "shogun hook worktree-remove" }] }],
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "shogun hook session-start" }] }]
   }
 }
 ```
 
-Las recetas para Cursor, Codex y cualquier otra herramienta están en [Uso con agentes](./docs/agents.es.md).
+`SessionStart` da a cada sesión las variables propias de su worktree, como el puerto de un servidor de desarrollo, declaradas en `.shogunai.json` (`"env": { "PORT": "${port}" }`). Las recetas para Cursor, Codex, direnv y cualquier otra herramienta están en [Uso con agentes](./docs/agents.es.md).
 
 ## Repositorios Gradle
 

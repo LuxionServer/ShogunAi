@@ -11,6 +11,7 @@ class ProvisionWorktreeUseCase(
     private val executor: ShellCommandExecutor,
     private val fileManager: FileManager,
     private val provisioningSource: RepositoryProvisioningSource,
+    private val environment: WorktreeEnvironmentPreparer = WorktreeEnvironmentPreparer.NONE,
 ) {
     suspend operator fun invoke(worktreePath: String): Result<List<String>> = runCatching {
         val target = normalizePath(worktreePath)
@@ -21,5 +22,6 @@ class ProvisionWorktreeUseCase(
 
         val repositoryFiles = checkProvisioningAndResolveFiles(config, executor, fileManager, provisioningSource)
         copyProvisionedFiles(config, fileManager, worktree.path, repositoryFiles)
+            .also { environment.prepare(config.baseRepositoryPath, worktree.path) }
     }
 }

@@ -4,6 +4,12 @@ import app.luxion.shogunai.GradleUseCases
 import app.luxion.shogunai.WorktreeUseCases
 import app.luxion.shogunai.domain.FakeClipboardWriter
 import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
+import app.luxion.shogunai.domain.model.parseEnvironmentVariable
+import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.domain.model.EnvironmentDeclaration
+import app.luxion.shogunai.domain.FakePortProbe
+import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
 import app.luxion.shogunai.domain.FakeGradleDaemonSource.Companion.gradleDaemon
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
@@ -118,9 +124,12 @@ class WorktreeViewModelTest {
             detectAgents = DetectRunningAgentsUseCase(config, executor),
             measureSize = MeasureWorktreeSizeUseCase(fileManager, dispatcher),
             readFingerprint = ReadGitMetadataFingerprintUseCase(config, fileManager, dispatcher),
+            readPorts = { worktree -> Result.success(portsByWorktree[worktree.path].orEmpty()) },
             gradle = gradleUseCases(executor),
         )
     }
+
+    private var portsByWorktree: Map<String, Map<String, Int>> = emptyMap()
 
     private fun gradleUseCases(
         executor: ShellCommandExecutor,
@@ -1167,5 +1176,49 @@ class WorktreeViewModelTest {
 
         assertTrue(executed.none { it.first() == "kill" })
         assertEquals(WorktreeSuccess.CleanedUp(1), viewModel.success)
+    }
+
+    @Test
+    fun `reserved ports are shown per worktree`() = runTest(dispatcher) {
+        portsByWorktree = mapOf(worktreePath to mapOf("PORT" to 20001, "port:api" to 20002))
+        val viewModel = WorktreeViewModel(useCases(listingResponder()))
+        advanceUntilIdle()
+
+        assertEquals(mapOf(worktreePath to mapOf("PORT" to 20001, "port:api" to 20002)), viewModel.ports)
+        assertEquals("PORT 20001 · api 20002", portsLabel(viewModel.ports.getValue(worktreePath)))
+    }
+
+    @Test
+    fun `opening the screen reserves no port`() = runTest(dispatcher) {
+        val executor = FakeShellCommandExecutor { command ->
+            when {
+                command == listCommand -> success(command, porcelainOutput)
+                "--git-dir" in command ->
+                    success(command, "/home/dev/projects/main-repo/.git/worktrees/TASK-123\n/home/dev/projects/main-repo/.git\n")
+                else -> success(command)
+            }
+        }
+        val store = FakeEnvironmentStateStore()
+        val resolve = ResolveWorktreeEnvironmentUseCase(
+            executor,
+            FakeRepositoryProvisioningSource(
+                byRepository = mapOf(
+                    config.baseRepositoryPath to RepositoryProvisioning(
+                        environment = EnvironmentDeclaration(listOf(parseEnvironmentVariable("PORT", "\${port}"))),
+                    ),
+                ),
+            ),
+            store,
+            FakePortProbe(),
+        )
+        val viewModel = WorktreeViewModel(
+            useCasesWith(executor).copy(
+                readPorts = { worktree -> resolve(config.baseRepositoryPath, worktree.path, reserve = false).map { it.ports } },
+            ),
+        )
+        advanceUntilIdle()
+
+        assertEquals(emptyMap(), viewModel.ports)
+        assertEquals(0, store.writes)
     }
 }

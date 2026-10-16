@@ -17,6 +17,13 @@ Implementation of `ShellCommandExecutor` on top of `ProcessBuilder`. Robustness 
 
 Implementation of `FileManager` on top of `java.nio.file`. `copy` creates the destination's missing parent folders and uses `REPLACE_EXISTING` and `COPY_ATTRIBUTES`. `directorySize` walks the tree with `Files.walkFileTree` without following symlinks, adds up regular file sizes, skips the excluded folders and ignores files it can't read. `modificationStamps` walks the same way and records each entry's last-modified time. `readProperties` loads the file with `java.util.Properties`. Works the same on every supported OS.
 
+## `NioEnvironmentStateStore` / `SocketPortProbe`
+
+- **State**: each worktree's reservations live in `shogunai-env.json` inside its Git administrative directory, as `{ "ports": { "PORT": 20001, "port:api": 20002 } }`. Git ignores files it doesn't know there and deletes the whole directory on `git worktree remove` and `prune`, so reservations go away with the worktree, whoever created it. Other fields of the object are kept for later providers; a file left without fields is deleted; an unreadable file counts as no reservations. Writes are atomic (temporary file and move).
+- **Repository listing**: the common directory's file (the main worktree) plus every `worktrees/*/shogunai-env.json`.
+- **Lock**: `withLock` takes an exclusive `FileChannel` lock on `<common-dir>/shogunai-env.lock`, so parallel creations, even from several processes (several Claude Code sessions), can't reserve the same port. A process-wide lock guards the file lock, and a nested call on the same thread runs directly.
+- **Free port**: `SocketPortProbe` binds a `ServerSocket` with `reuseAddress = false` on the wildcard address and on the loopback address; the port is free only if both succeed.
+
 ## `ProcessGradleDaemonSource`
 
 Implementation of `GradleDaemonSource` that doesn't depend on a Gradle binary or on Gradle's internal registry format:
@@ -29,7 +36,7 @@ Implementation of `GradleDaemonSource` that doesn't depend on a Gradle binary or
 
 Implementation of `RepositoryProvisioningSource` on `java.nio.file` and `kotlinx.serialization`, over `<repo>/.shogunai.json` and `<repo>/.worktreeinclude`.
 
-- **Reading**: a missing or blank `.shogunai.json` means no patterns. The file is parsed as a generic JSON object, so unknown fields are ignored; invalid JSON, a non-object root, a `copy` that isn't a list of strings, or a `providers` (or a known provider in it) that isn't an object throw `InvalidRepositoryConfig`. Unknown provider ids are skipped.
+- **Reading**: a missing or blank `.shogunai.json` means no patterns. The file is parsed as a generic JSON object, so unknown fields are ignored; invalid JSON, a non-object root, a `copy` that isn't a list of strings, or a `providers` (or a known provider in it) that isn't an object throw `InvalidRepositoryConfig`. Unknown provider ids are skipped. `env` must be an object of strings whose templates parse (`parseEnvironmentVariable`), and `envFile` a string with a relative path that doesn't leave the worktree once normalized.
 - **Writing** (`addCopyPatterns`): reads the object, replaces only `copy` (existing patterns first, new ones appended without duplicates) and writes it back pretty-printed, atomically (temporary file in the same folder + `ATOMIC_MOVE`), so other fields survive. It refuses to rewrite a file it can't parse.
 
 Pattern matching is left to Git (`git ls-files --others --ignored -z -x <pattern>…`, see the domain's `CreateWorktreeUseCase`), so it follows the gitignore rules exactly, including their limits: a file can't be re-included with `!` if its parent folder is excluded (`.idea/` + `!.idea/workspace.xml` still lists `workspace.xml`; use `.idea/*` instead). Try a pattern from the base repository with the same command:
@@ -59,9 +66,10 @@ In `core/src/testFixtures/kotlin/app/luxion/shogunai/domain/`, `core`'s test fix
 
 - `FakeShellCommandExecutor` — substitutes `ShellCommandExecutor`: answers each argv with a canned `CommandResult` and records the commands run.
 - `FakeFileManager` — substitutes `FileManager` with an in-memory set of existing paths and properties files.
+- `FakeEnvironmentStateStore` / `FakePortProbe` — substitute the reservation store (in-memory reservations per administrative directory, counting writes and locks) and the port probe (a set of busy ports).
 - `FakeGradleDaemonSource` — substitutes `GradleDaemonSource` with a mutable list of daemons (or a failure) and counts the listings; `gradleDaemon(...)` and `kotlinDaemon(...)` build them.
 - `FakeClipboardWriter` — substitutes `ClipboardWriter`.
 - `FakeProjectRepository` — substitutes `ProjectRepository` in ViewModel tests.
 - `FakeRepositoryProvisioningSource` — substitutes `RepositoryProvisioningSource` with provisioning per repository path, unreadable repositories and failing writes, and records the patterns added.
 
-Thanks to the domain depending on interfaces, the use case tests (`*UseCaseTest`) and the ViewModel tests don't touch disk or launch real processes. The infrastructure itself is covered by `ProcessBuilderShellCommandExecutorTest`, `JsonProjectRepositoryTest`, `JsonSettingsFileTest`, `RepositoryProvisioningFilesTest` and `ProcessGradleDaemonSourceTest` (on real `ps` lines and daemon log excerpts), which do use real processes and temporary files.
+Thanks to the domain depending on interfaces, the use case tests (`*UseCaseTest`) and the ViewModel tests don't touch disk or launch real processes. The infrastructure itself is covered by `ProcessBuilderShellCommandExecutorTest`, `JsonProjectRepositoryTest`, `JsonSettingsFileTest`, `RepositoryProvisioningFilesTest`, `NioEnvironmentStateStoreTest` (temporary directories and a real listening socket) and `ProcessGradleDaemonSourceTest` (on real `ps` lines and daemon log excerpts), which do use real processes and temporary files.

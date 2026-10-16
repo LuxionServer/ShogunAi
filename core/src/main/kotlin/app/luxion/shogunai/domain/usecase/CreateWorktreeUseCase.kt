@@ -13,6 +13,7 @@ class CreateWorktreeUseCase(
     private val executor: ShellCommandExecutor,
     private val fileManager: FileManager,
     private val provisioningSource: RepositoryProvisioningSource,
+    private val environment: WorktreeEnvironmentPreparer = WorktreeEnvironmentPreparer.NONE,
 ) {
     suspend operator fun invoke(taskId: String, branchType: BranchType): Result<Worktree> =
         runCatching {
@@ -42,6 +43,7 @@ class CreateWorktreeUseCase(
                 addArgs = listOf("git", "worktree", "add", worktreePath, "-b", branch),
                 branchToDeleteOnLfsFailure = branch,
                 repositoryFiles = repositoryFiles,
+                environment = environment,
             )
         }
 }

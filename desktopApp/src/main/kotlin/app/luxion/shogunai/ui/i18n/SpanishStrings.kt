@@ -156,6 +156,11 @@ object SpanishStrings : Strings {
     override fun branchNotFound(branch: String) = "No se encontró la rama: $branch"
     override fun branchAlreadyCheckedOut(branch: String, path: String?) =
         "La rama '$branch' ya está en uso" + if (path != null) " en $path" else ""
+    override fun noFreePort(from: Int, to: Int) = "No queda ningún puerto libre entre $from y $to para este worktree"
+    override fun environmentFileTracked(path: String) =
+        "El fichero de entorno \"$path\" está versionado en Git, así que no se ha sobrescrito"
+    override fun environmentFileWriteFailed(path: String, detail: String?) =
+        "No se pudo escribir el fichero de entorno \"$path\"" + if (detail.isNullOrBlank()) "" else ": $detail"
     override fun processListingFailed(command: List<String>, exitCode: Int) =
         "No se pudieron listar los procesos (código de salida $exitCode): ${command.joinToString(" ")}"
     override fun commandCouldNotStart(command: List<String>) =

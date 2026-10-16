@@ -13,4 +13,6 @@ interface FileManager {
     fun modificationStamps(path: String): List<Pair<String, Long>>
 
     fun readProperties(path: String): Map<String, String>
+
+    fun writeText(path: String, text: String)
 }

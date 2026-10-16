@@ -1,7 +1,9 @@
 package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.BuildInfo
+import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
 import app.luxion.shogunai.domain.FakeGradleDaemonSource.Companion.gradleDaemon
 import app.luxion.shogunai.domain.FakeGradleDaemonSource.Companion.kotlinDaemon
@@ -81,6 +83,8 @@ class ShogunCliTest {
         }
     }
 
+    private val environmentStore = FakeEnvironmentStateStore()
+
     private val out = StringBuilder()
     private val err = StringBuilder()
 
@@ -99,6 +103,8 @@ class ShogunCliTest {
         provisioningSource = provisioning,
         daemonSource = daemons,
         gradleUserHome = gradleUserHome,
+        environmentStateStore = environmentStore,
+        portProbe = FakePortProbe(),
         workingDirectory = workingDirectory,
         out = out,
         err = err,

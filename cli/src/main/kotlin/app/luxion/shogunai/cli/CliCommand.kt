@@ -1,6 +1,7 @@
 package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.domain.model.BranchType
+import app.luxion.shogunai.domain.usecase.EnvironmentFormat
 
 sealed interface CliCommand {
     data object Help : CliCommand
@@ -25,6 +26,8 @@ sealed interface CliCommand {
     data class GradleStop(val pids: List<Long> = emptyList()) : CliCommand
     data object HookWorktreeCreate : CliCommand
     data object HookWorktreeRemove : CliCommand
+    data object HookSessionStart : CliCommand
+    data class Env(val path: String? = null, val format: EnvironmentFormat = EnvironmentFormat.SH) : CliCommand
 }
 
 sealed interface ParsedArguments {
@@ -46,6 +49,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "clean" -> parseClean(rest)
                 "hook" -> parseHook(rest)
                 "gradle" -> parseGradle(rest)
+                "env" -> parseEnv(rest)
                 else -> throw UsageException("unknown command '$name'")
             },
         )
@@ -122,13 +126,37 @@ private fun parseGradle(rest: List<String>): CliCommand {
 }
 
 private fun parseHook(rest: List<String>): CliCommand {
-    val event = rest.firstOrNull() ?: throw UsageException("'hook' needs an event: worktree-create or worktree-remove")
+    val event = rest.firstOrNull() ?: throw UsageException("'hook' needs an event: $HOOK_EVENTS")
     val command = when (event) {
         "worktree-create" -> CliCommand.HookWorktreeCreate
         "worktree-remove" -> CliCommand.HookWorktreeRemove
-        else -> throw UsageException("unknown hook '$event', expected worktree-create or worktree-remove")
+        "session-start" -> CliCommand.HookSessionStart
+        else -> throw UsageException("unknown hook '$event', expected $HOOK_EVENTS")
     }
     return noArguments("hook $event", rest.drop(1), command)
+}
+
+private const val HOOK_EVENTS = "worktree-create, worktree-remove or session-start"
+
+private fun parseEnv(rest: List<String>): CliCommand.Env {
+    var path: String? = null
+    var format = EnvironmentFormat.SH
+    val remaining = ArrayDeque(rest)
+    while (remaining.isNotEmpty()) {
+        when (val argument = remaining.removeFirst()) {
+            "--format" -> {
+                val value = remaining.valueOf(argument)
+                format = EnvironmentFormat.entries.firstOrNull { it.name.equals(value, ignoreCase = true) }
+                    ?: throw UsageException("unknown format '$value' for 'env', expected sh, dotenv or json")
+            }
+            else -> {
+                if (argument.startsWith("-")) throw UsageException("unknown option '$argument' for 'env'")
+                if (path != null) throw UsageException("'env' takes at most one path")
+                path = argument
+            }
+        }
+    }
+    return CliCommand.Env(path, format)
 }
 
 private fun ArrayDeque<String>.valueOf(option: String): String {

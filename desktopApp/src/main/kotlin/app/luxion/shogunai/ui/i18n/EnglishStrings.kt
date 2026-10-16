@@ -156,6 +156,11 @@ object EnglishStrings : Strings {
     override fun branchNotFound(branch: String) = "Branch not found: $branch"
     override fun branchAlreadyCheckedOut(branch: String, path: String?) =
         "Branch '$branch' is already checked out" + if (path != null) " at $path" else ""
+    override fun noFreePort(from: Int, to: Int) = "No free port left between $from and $to for this worktree"
+    override fun environmentFileTracked(path: String) =
+        "The environment file \"$path\" is tracked by Git, so it wasn't overwritten"
+    override fun environmentFileWriteFailed(path: String, detail: String?) =
+        "Couldn't write the environment file \"$path\"" + if (detail.isNullOrBlank()) "" else ": $detail"
     override fun processListingFailed(command: List<String>, exitCode: Int) =
         "Couldn't list processes (exit code $exitCode): ${command.joinToString(" ")}"
     override fun commandCouldNotStart(command: List<String>) =

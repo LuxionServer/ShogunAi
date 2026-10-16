@@ -40,7 +40,7 @@ While `WorktreeScreen` is shown, a `DisposableEffect` calls `WorktreeViewModel.s
 
 ### Worktree overview
 
-`WorktreeScreen` receives the project's `ProjectConfig` to classify each row's origin with `classifyOrigin`. After each list load, `WorktreeViewModel` also runs `DetectRunningAgentsUseCase` once (`agents`, `null` when processes can't be listed) and measures every worktree's size one at a time with `MeasureWorktreeSizeUseCase` (`sizes`, added up in `totalSize`); stale results are dropped with `listGeneration`.
+`WorktreeScreen` receives the project's `ProjectConfig` to classify each row's origin with `classifyOrigin`. After each list load, `WorktreeViewModel` also runs `DetectRunningAgentsUseCase` once (`agents`, `null` when processes can't be listed) and measures every worktree's size one at a time with `MeasureWorktreeSizeUseCase` (`sizes`, added up in `totalSize`); stale results are dropped with `listGeneration`. It also reads each worktree's reserved ports (`ports`, through `WorktreeUseCases.readPorts`, which resolves the environment with `reserve = false`, so opening the screen never reserves a port) and `WorktreeOverviewLine` shows them after the size with `portsLabel` (`PORT 20001 · api 20002`).
 
 - `WorktreeBranchLine` shows, after the branch and the "locked" label, the origin (ShogunAi, Claude Code or other location) in muted text and each running agent as "● name" in the success color.
 - `WorktreeOverviewLine`, under the status, shows the size (`formatSize`, binary units with one decimal) and an "inactive" label when `isInactive` holds.

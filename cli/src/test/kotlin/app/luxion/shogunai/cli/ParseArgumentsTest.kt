@@ -1,6 +1,7 @@
 package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.domain.model.BranchType
+import app.luxion.shogunai.domain.usecase.EnvironmentFormat
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -85,6 +86,17 @@ class ParseArgumentsTest {
     }
 
     @Test
+    fun `env command`() {
+        assertEquals(CliCommand.Env(), command("env"))
+        assertEquals(CliCommand.Env("../TASK-123", EnvironmentFormat.JSON), command("env", "../TASK-123", "--format", "json"))
+        assertEquals(CliCommand.Env(null, EnvironmentFormat.DOTENV), command("env", "--format", "DOTENV"))
+        assertEquals("unknown format 'yaml' for 'env', expected sh, dotenv or json", usageError("env", "--format", "yaml"))
+        assertEquals("--format needs a value", usageError("env", "--format"))
+        assertEquals("'env' takes at most one path", usageError("env", "a", "b"))
+        assertEquals("unknown option '--all' for 'env'", usageError("env", "--all"))
+    }
+
+    @Test
     fun `gradle commands`() {
         assertEquals(CliCommand.Gradle, command("gradle"))
         assertEquals(CliCommand.GradleStop(), command("gradle", "stop"))
@@ -99,7 +111,8 @@ class ParseArgumentsTest {
         assertEquals(CliCommand.HookWorktreeCreate, command("hook", "worktree-create"))
         assertEquals(CliCommand.HookWorktreeRemove, command("hook", "worktree-remove"))
         assertTrue(usageError("hook").contains("needs an event"))
-        assertTrue(usageError("hook", "session-start").contains("unknown hook 'session-start'"))
+        assertEquals(CliCommand.HookSessionStart, command("hook", "session-start"))
+        assertTrue(usageError("hook", "stop").contains("unknown hook 'stop'"))
         assertTrue(usageError("hook", "worktree-create", "extra").contains("takes no arguments"))
     }
 

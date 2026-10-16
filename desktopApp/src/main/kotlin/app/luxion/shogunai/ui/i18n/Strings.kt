@@ -146,6 +146,9 @@ interface Strings {
     fun branchAlreadyCheckedOut(branch: String, path: String?): String
     fun commandCouldNotStart(command: List<String>): String
     fun processListingFailed(command: List<String>, exitCode: Int): String
+    fun noFreePort(from: Int, to: Int): String
+    fun environmentFileTracked(path: String): String
+    fun environmentFileWriteFailed(path: String, detail: String?): String
     fun unexpectedError(detail: String?): String
 }
 
@@ -178,4 +181,7 @@ private fun Strings.worktreeErrorMessage(error: WorktreeError): String = when (e
     is WorktreeError.BranchNotFound -> branchNotFound(error.branch)
     is WorktreeError.BranchAlreadyCheckedOut -> branchAlreadyCheckedOut(error.branch, error.path)
     is WorktreeError.ProcessListingFailed -> processListingFailed(error.command, error.exitCode)
+    is WorktreeError.NoFreePort -> noFreePort(error.from, error.to)
+    is WorktreeError.EnvironmentFileTracked -> environmentFileTracked(error.path)
+    is WorktreeError.EnvironmentFileWriteFailed -> environmentFileWriteFailed(error.path, error.cause?.message)
 }

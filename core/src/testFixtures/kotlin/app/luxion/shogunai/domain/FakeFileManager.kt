@@ -13,6 +13,15 @@ class FakeFileManager(
 
     override fun readProperties(path: String): Map<String, String> = properties[path].orEmpty()
 
+    val writtenTexts = mutableMapOf<String, String>()
+    var failWrites = false
+
+    override fun writeText(path: String, text: String) {
+        if (failWrites) throw IOException("escritura fallida de $path")
+        writtenTexts[path] = text
+        paths += path
+    }
+
     val stamps = mutableMapOf<String, Long>()
 
     override fun isDirectory(path: String): Boolean = path in directories

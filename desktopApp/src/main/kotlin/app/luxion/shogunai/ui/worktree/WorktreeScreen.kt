@@ -314,6 +314,7 @@ fun WorktreeScreen(
                 origin = classifyOrigin(worktree, projectConfig),
                 agents = agents,
                 size = viewModel.sizes[worktree.path],
+                ports = viewModel.ports[worktree.path].orEmpty(),
                 isInactive = isInactive(worktree, (status as? WorktreeStatusState.Loaded)?.status, agents, Instant.now()),
                 isCopied = viewModel.copiedWorktreePath == worktree.path,
                 onRemove = { viewModel.requestRemoval(worktree) },
@@ -394,6 +395,7 @@ private fun WorktreeRow(
     origin: WorktreeOrigin?,
     agents: List<RunningAgent>,
     size: Long?,
+    ports: Map<String, Int>,
     isInactive: Boolean,
     isCopied: Boolean,
     onRemove: () -> Unit,
@@ -411,7 +413,7 @@ private fun WorktreeRow(
                 Text(strings.folderMissing, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             } else {
                 WorktreeStatusLine(status, mainBranchName)
-                WorktreeOverviewLine(size, isInactive)
+                WorktreeOverviewLine(size, isInactive, ports)
             }
         }
         Row {

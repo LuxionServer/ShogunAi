@@ -28,6 +28,15 @@ class NioFileManager : FileManager {
 
     override fun isDirectory(path: String): Boolean = Files.isDirectory(Path.of(path))
 
+    override fun writeText(path: String, text: String) {
+        val file = Path.of(path)
+        val parent = file.toAbsolutePath().parent
+        Files.createDirectories(parent)
+        val tempFile = Files.createTempFile(parent, ".${file.fileName}", ".tmp")
+        Files.writeString(tempFile, text)
+        Files.move(tempFile, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+    }
+
     override fun readProperties(path: String): Map<String, String> {
         val file = Path.of(path)
         if (!Files.isRegularFile(file)) return emptyMap()
