@@ -16,15 +16,14 @@ That direction is built in three layers:
 
 ```mermaid
 graph LR
-    A["Shared core and repository configuration"] --> B["shogun CLI and agent hooks"]
+    A["Repository configuration"] --> B["shogun CLI and agent hooks"]
     A --> D["Android, KMP and JVM provisioning"]
 ```
 
 ## Planned
 
-### Shared core and repository configuration
+### Repository configuration
 
-- Extract the domain and infrastructure into a `core` module, so the desktop app and the CLI share the same use cases.
 - Split the configuration in two: the machine-specific part (where the repository lives, where worktrees go, which agent you use) stays in `~/.shogunai/`; what each worktree needs is defined in a `.shogunai.json` versioned in the repository, without absolute paths, so a team can share it.
 - Read `.worktreeinclude` too, so repositories already prepared for Claude Code work without extra setup.
 - Richer provisioning in that file:

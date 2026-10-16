@@ -1,6 +1,6 @@
 # UI layer
 
-Lives in `desktopApp/src/main/kotlin/app/luxion/shogunai/ui`, plus `AppContainer.kt` at the package root.
+Lives in the `desktopApp` module: `desktopApp/src/main/kotlin/app/luxion/shogunai/ui`, plus `AppContainer.kt` at the package root. It uses the domain and infrastructure from the `core` module.
 
 ## Navigation
 

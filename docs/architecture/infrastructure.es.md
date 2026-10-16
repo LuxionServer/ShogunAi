@@ -1,6 +1,6 @@
 # Capa de infraestructura
 
-Vive en `desktopApp/src/main/kotlin/app/luxion/shogunai/infrastructure`. Implementa los puertos definidos en el dominio.
+Vive en `core/src/main/kotlin/app/luxion/shogunai/infrastructure`, salvo `AwtClipboardWriter`, que necesita el toolkit de escritorio y se queda en `desktopApp` con el mismo paquete. Implementa los puertos definidos en el dominio.
 
 ## `ProcessBuilderShellCommandExecutor`
 
@@ -19,7 +19,7 @@ Implementación de `FileManager` sobre `java.nio.file`. `copy` usa `REPLACE_EXIS
 
 ## `AwtClipboardWriter`
 
-Implementación de `ClipboardWriter` con el portapapeles del sistema de AWT (`Toolkit.getDefaultToolkit().systemClipboard`), envuelta en `runCatching`.
+En `desktopApp`. Implementación de `ClipboardWriter` con el portapapeles del sistema de AWT (`Toolkit.getDefaultToolkit().systemClipboard`), envuelta en `runCatching`.
 
 ## Catálogo de proyectos (`projects.json`)
 
@@ -34,7 +34,7 @@ Implementación de `ClipboardWriter` con el portapapeles del sistema de AWT (`To
 
 ## Dobles de test
 
-En `desktopApp/src/test/kotlin/app/luxion/shogunai/domain/`:
+En `core/src/testFixtures/kotlin/app/luxion/shogunai/domain/`, los test fixtures de `core`, que usan los tests de `core` y los de `desktopApp` (`testImplementation(testFixtures(project(":core")))`):
 
 - `FakeShellCommandExecutor` — sustituye `ShellCommandExecutor`: responde a cada argv con un `CommandResult` preparado y registra los comandos ejecutados.
 - `FakeFileManager` — sustituye `FileManager` con un conjunto en memoria de rutas existentes.

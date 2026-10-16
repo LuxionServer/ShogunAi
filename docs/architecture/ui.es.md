@@ -1,6 +1,6 @@
 # Capa de UI
 
-Vive en `desktopApp/src/main/kotlin/app/luxion/shogunai/ui`, más `AppContainer.kt` en la raíz del paquete.
+Vive en el módulo `desktopApp`: `desktopApp/src/main/kotlin/app/luxion/shogunai/ui`, más `AppContainer.kt` en la raíz del paquete. Usa el dominio y la infraestructura del módulo `core`.
 
 ## Navegación
 

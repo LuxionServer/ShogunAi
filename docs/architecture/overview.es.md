@@ -4,21 +4,31 @@ ShogunAi es una aplicación de **escritorio Kotlin/JVM** construida con **Compos
 
 ## Módulos
 
-Hay un único módulo de Gradle, **`desktopApp`**: la aplicación de escritorio (Compose Desktop), la UI (pantallas y ViewModels) y **todo el dominio y la infraestructura del flujo de worktrees**.
+Hay dos módulos de Gradle:
 
-!!! note "¿Por qué no hay un módulo `shared` aparte?"
-    La plantilla del proyecto generó un módulo Kotlin Multiplatform `shared` vacío, y se eliminó porque nada lo usaba. No hay targets iOS, Android ni WASM en este proyecto: meter lógica de dominio en un módulo "compartido" que en la práctica solo corre en un target añadiría una capa de indirección sin beneficio real. Si algún día aparece un segundo target real, se puede extraer un módulo compartido en ese momento. Ver [decisiones de diseño](../decisions/index.md).
+| Módulo | Qué contiene | Depende de |
+|---|---|---|
+| **`core`** | El dominio (modelos, puertos, casos de uso) y la infraestructura que implementa sus puertos: procesos, ficheros, el catálogo JSON y las preferencias. Kotlin/JVM puro, sin Compose ni AWT. | Corrutinas, `kotlinx.serialization` |
+| **`desktopApp`** | La aplicación de escritorio: UI Compose (pantallas y ViewModels), `AppContainer`, el punto de entrada y `AwtClipboardWriter`, la única implementación de un puerto que necesita el toolkit de escritorio. | `core`, Compose Desktop |
 
-## Capas dentro de `desktopApp`
+`core` existe para que un segundo frontal —la herramienta de línea de comandos `shogun` prevista— pueda ejecutar los mismos casos de uso sin arrastrar la UI de escritorio. Los paquetes no cambiaron al extraerlo (`app.luxion.shogunai.domain…`, `app.luxion.shogunai.infrastructure…`); lo que mantiene la UI fuera de `core` es el límite del módulo. Los dobles de prueba viven en los test fixtures de `core`, compartidos por los tests de ambos módulos.
+
+!!! note "Por qué ahora un módulo `core`"
+    El módulo `shared` vacío de la plantilla se eliminó en la primera iteración porque solo la app de escritorio lo iba a usar (ver [decisiones de diseño](../decisions/index.md)). Eso cambió con el CLI `shogun`, un segundo target real, y `core` se extrajo en el cambio `extract-core-module` (`openspec/changes/archive/`).
+
+## Capas
 
 ```
-desktopApp/src/main/kotlin/app/luxion/shogunai/
+core/src/main/kotlin/app/luxion/shogunai/
 ├── domain/           # modelos, puertos y casos de uso — sin dependencias de infraestructura
-│   ├── model/        # ProjectConfig, Project, AgentLaunchConfig, BranchType, BranchOption, Worktree, WorktreeError, ThemeMode, AppLanguage
+│   ├── model/        # ProjectConfig, Project, AgentLaunchConfig, Worktree, WorktreeStatus, WorktreeError, ThemeMode, AppLanguage…
 │   ├── executor/     # puertos ShellCommandExecutor y ClipboardWriter + CommandResult
 │   ├── io/           # puertos FileManager, ProjectRepository, ThemePreferenceRepository, LanguagePreferenceRepository
-│   └── usecase/      # Create/CreateFromBranch/List/ListLocalBranches/Remove/Repair de worktrees, CopyWorktreeLaunchCommand
-├── infrastructure/   # implementaciones concretas de los puertos de dominio
+│   └── usecase/      # crear, listar, eliminar, reparar y limpiar worktrees, su estado, tamaño y agentes, copiar el comando de lanzamiento
+└── infrastructure/   # implementaciones concretas de los puertos de dominio
+
+desktopApp/src/main/kotlin/app/luxion/shogunai/
+├── infrastructure/   # AwtClipboardWriter
 ├── ui/               # pantallas Compose, ViewModels y navegación
 ├── AppContainer.kt   # cablea dominio + infraestructura para la UI, sin DI framework
 └── main.kt           # punto de entrada de la app Compose Desktop

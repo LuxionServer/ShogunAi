@@ -1,6 +1,6 @@
 # Capa de dominio
 
-Vive en `desktopApp/src/main/kotlin/app/luxion/shogunai/domain`. No depende de ninguna implementación concreta de infraestructura.
+Vive en `core/src/main/kotlin/app/luxion/shogunai/domain`. No depende de ninguna implementación concreta de infraestructura.
 
 ## Modelos
 
