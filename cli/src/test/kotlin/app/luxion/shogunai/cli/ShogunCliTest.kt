@@ -1,6 +1,7 @@
 package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.BuildInfo
+import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakePortProbe
@@ -12,6 +13,8 @@ import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.DaemonState
+import app.luxion.shogunai.domain.model.EmulatorProvider
+import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -85,6 +88,7 @@ class ShogunCliTest {
 
     private val environmentStore = FakeEnvironmentStateStore()
 
+    private val androidSdk = FakeAndroidSdk()
     private val out = StringBuilder()
     private val err = StringBuilder()
 
@@ -105,6 +109,7 @@ class ShogunCliTest {
         gradleUserHome = gradleUserHome,
         environmentStateStore = environmentStore,
         portProbe = FakePortProbe(),
+        androidSdk = androidSdk,
         workingDirectory = workingDirectory,
         out = out,
         err = err,
@@ -395,6 +400,41 @@ class ShogunCliTest {
         assertEquals(0, exitCode)
         assertEquals("would remove $merged\nRun 'shogun clean --yes' to remove it.\n", out.toString())
         assertFalse(executor.calls.any { it.first.take(3) == listOf("git", "worktree", "remove") })
+    }
+
+    @Test
+    fun `clean stops the emulators of removed worktrees`() {
+        val adminOfMerged = "$base/.git/worktrees/TASK-1"
+        environmentStore.portsByAdminDirectory[adminOfMerged] = mapOf("emulator" to 5556)
+        environmentStore.portsByAdminDirectory["$base/.git/worktrees/spike"] = mapOf("emulator" to 5558)
+        androidSdk.states["emulator-5556"] = EmulatorState.RUNNING
+        androidSdk.states["emulator-5558"] = EmulatorState.RUNNING
+        val executor = repositoryExecutor { command, directory ->
+            if ("--git-dir" in command) {
+                val admin = when (directory) {
+                    merged -> adminOfMerged
+                    dirty -> "$base/.git/worktrees/spike"
+                    else -> "$base/.git"
+                }
+                Executor.ok(command, "$admin\n$base/.git\n")
+            } else {
+                null
+            }
+        }
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(emulator = EmulatorProvider()))),
+        )
+
+        cli(executor, provisioning = provisioning).run(listOf("clean", "--stop-emulators"))
+        assertTrue(out.contains("would stop emulator emulator-5556\n"), out.toString())
+        assertTrue(androidSdk.stopped.isEmpty())
+        out.clear()
+
+        val exitCode = cli(executor, provisioning = provisioning).run(listOf("clean", "--yes", "--stop-emulators"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.contains("stopped emulator emulator-5556\n"), out.toString())
+        assertEquals(listOf("emulator-5556"), androidSdk.stopped)
     }
 
     @Test

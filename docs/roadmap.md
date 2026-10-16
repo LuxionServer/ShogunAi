@@ -12,7 +12,7 @@ That direction is built in three layers:
 |---|---|---|
 | **Engine and CLI** | The foundation | Worktree provisioning defined in the repository (`.shogunai.json`) and a `shogun` command that the desktop app, agents and their hooks all use, including a per-worktree environment (reserved ports and variables) delivered to each agent's shell. **Available**; richer provisioning is planned. |
 | **Control tower** | The view | The desktop app shows the state of every worktree, including the ones created by other tools, keeps them clean and follows changes as they happen. **Available.** |
-| **Android, KMP and JVM** | The content | Provisioning for the stacks where a worktree is hardest to prepare: Gradle, local secrets, emulators and IDEs. **Started**: Gradle repositories show their daemons and can stop the idle ones. |
+| **Android, KMP and JVM** | The content | Provisioning for the stacks where a worktree is hardest to prepare: Gradle, local secrets, emulators and IDEs. **Started**: Gradle repositories show their daemons and can stop the idle ones, and Android repositories can give each worktree its own emulator. |
 
 ```mermaid
 graph LR
@@ -40,7 +40,7 @@ Provisioning for the stacks where a fresh worktree is furthest from building:
 
 - `local.properties`, keystores and `google-services.json`.
 - Gradle settings per worktree (daemon memory, idle timeout), so parallel worktrees don't multiply memory usage, delivered through the per-worktree environment.
-- An emulator or simulator assigned per worktree, its serial delivered through the per-worktree environment.
+- An iOS simulator per worktree for KMP projects, through the same provider mechanism as the Android emulator.
 - "Open in Android Studio" on the right worktree.
 
 ### Choosing the base of a new worktree

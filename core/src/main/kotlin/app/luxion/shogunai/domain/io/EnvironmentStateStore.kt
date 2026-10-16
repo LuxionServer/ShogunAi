@@ -6,9 +6,9 @@ interface EnvironmentStateStore {
 
     fun writePorts(adminDirectory: String, ports: Map<String, Int>)
 
-    fun reservedPortsOfRepository(commonDirectory: String): Set<Int>
+    fun reservedPortsOnMachine(commonDirectory: String): Set<Int>
 
-    fun <T> withLock(commonDirectory: String, block: () -> T): T
+    fun <T> withLock(block: () -> T): T
 }
 
 interface PortProbe {

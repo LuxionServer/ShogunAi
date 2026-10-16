@@ -52,6 +52,14 @@ The "Clean up" button next to the "Worktrees" title is enabled when `cleanupCand
 
 When the repository declares the Gradle provider, the dialog also offers "Also stop their idle Gradle daemons", checked by default (`cleanupStopGradleDaemons`): stopping an idle daemon only costs a restart on the next build. Before cleaning up, `confirmCleanup` lists the daemons with the worktrees as they were; after the removals it stops the idle ones whose last build was in a removed worktree (`idleDaemonsOfRemovedWorktrees`, `StopGradleDaemonsUseCase`). The success message then adds how many daemons were stopped and kept. A daemon that can't be listed or stopped never turns the cleanup into a failure.
 
+### Android emulators
+
+Only for repositories whose `.shogunai.json` declares the emulator provider (`EmulatorUseCases.declared`, read on every list load); otherwise nothing below is shown and no Android tool runs.
+
+- **Worktree row**: `WorktreeViewModel` loads `emulators` (`ReadEmulatorStatesUseCase`, one `adb devices` for all rows, no reservation) after each list load and on each auto-refresh tick without changes. `EmulatorLine` shows `Emulator · emulator-5556 · running` with Stop, or Start when stopped or not reserved yet. `startEmulator(worktree)` marks the worktree in `startingEmulators` (a progress indicator replaces the button), runs `StartWorktreeEmulatorUseCase` (which reserves the port if needed and waits for the boot), then reloads emulators and ports; errors go to the screen's error banner.
+- **Cleanup**: the dialog adds "Also stop their emulators", checked by default (`cleanupStopEmulators`). The serials of the candidates' running emulators are taken from the loaded states before removing (removal deletes their reservations) and stopped after (`stopSerials`); the success message adds how many were stopped.
+- **Project configuration**: `EmulatorSettingsSection` shows the "Android emulator" section when `ProjectConfigViewModel.emulatorSection` isn't `Hidden`: the AVD list loaded in the background through `AppContainer.loadAvds` (with "Automatic" first, and a saved AVD the machine lacks marked as missing), the "Run without a window" switch, and the SDK-not-found message with the places checked. The settings are saved in `ProjectConfig.emulator` and count as unsaved changes. The section follows the base repository path as it's edited.
+
 ### Gradle daemons
 
 When `.shogunai.json` declares `"providers": { "gradle": {} }` (`GradleUseCases.declaresProvider`, read on every list load), `WorktreeScreen` shows `GradleDaemonsSection` below the worktree list. `WorktreeViewModel` loads `gradleDaemons` (`Loading`, `Loaded` or `Unavailable` when processes can't be listed) with `ListGradleDaemonsUseCase` after each list load and on every auto-refresh check without changes, like the running agents, and reads `isGradleBuildCacheEnabled` with `CheckGradleBuildCacheUseCase`.

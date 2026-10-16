@@ -4,7 +4,6 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.EnvironmentStateStore
 import app.luxion.shogunai.domain.io.PortProbe
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
-import app.luxion.shogunai.domain.model.EnvironmentDeclaration
 import app.luxion.shogunai.domain.model.WorktreeEnvironment
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.render
@@ -20,36 +19,41 @@ class ResolveWorktreeEnvironmentUseCase(
         worktreePath: String,
         reserve: Boolean = true,
     ): Result<WorktreeEnvironment> = runCatching {
-        val declaration = provisioningSource.read(repositoryPath).environment
-        if (declaration.isEmpty) return@runCatching WorktreeEnvironment()
+        val provisioning = provisioningSource.read(repositoryPath)
+        val declaration = provisioning.environment
+        val contributions = providerContributions(provisioning.providers)
+        val requests = declaredPortRequests(declaration) + contributions.flatMap { it.ports }
+        if (declaration.isEmpty && contributions.isEmpty()) return@runCatching WorktreeEnvironment()
         val directories = gitDirectories(worktreePath)
+        val keys = requests.map { it.key }.toSet()
         val ports = if (reserve) {
-            stateStore.withLock(directories.common) { reservePorts(declaration, directories) }
+            stateStore.withLock { reservePorts(requests, directories) }
         } else {
-            stateStore.readPorts(directories.admin).filterKeys { it in declaration.portKeys }
+            stateStore.readPorts(directories.admin).filterKeys { it in keys }
         }
+        if (!keys.all { it in ports }) return@runCatching WorktreeEnvironment(ports = ports)
         val worktreeName = normalizePath(worktreePath).substringAfterLast('/')
-        WorktreeEnvironment(
-            variables = if (declaration.portKeys.all { it in ports }) {
-                declaration.variables.map { it.name to it.render(worktreeName, ports) }
-            } else {
-                emptyList()
-            },
-            ports = ports,
-        )
+        val declared = declaration.variables.map { it.name to it.render(worktreeName, ports) }
+        val declaredNames = declared.map { it.first }.toSet()
+        val contributed = contributions.flatMap { it.variables(ports) }.filterNot { it.first in declaredNames }
+        WorktreeEnvironment(variables = contributed + declared, ports = ports)
     }
 
-    private fun reservePorts(declaration: EnvironmentDeclaration, directories: GitDirectories): Map<String, Int> {
+    private fun reservePorts(requests: List<PortRequest>, directories: GitDirectories): Map<String, Int> {
         val stored = stateStore.readPorts(directories.admin)
-        val kept = stored.filterKeys { it in declaration.portKeys }
-        val taken = (stateStore.reservedPortsOfRepository(directories.common) - stored.values.toSet() + kept.values)
+        val keys = requests.map { it.key }.toSet()
+        val kept = stored.filterKeys { it in keys }
+        val taken = (stateStore.reservedPortsOnMachine(directories.common) - stored.values.toSet() + kept.values)
             .toMutableSet()
         val reserved = kept.toMutableMap()
-        declaration.portKeys.filterNot { it in reserved }.forEach { key ->
-            val port = (FIRST_PORT..LAST_PORT).firstOrNull { it !in taken && portProbe.isFree(it) }
-                ?: throw WorktreeError.NoFreePort(FIRST_PORT, LAST_PORT)
-            reserved[key] = port
+        requests.filterNot { it.key in reserved }.forEach { request ->
+            val port = request.candidates.firstOrNull { candidate ->
+                val needed = listOf(candidate) + request.alsoFree(candidate)
+                needed.none { it in taken } && needed.all(portProbe::isFree)
+            } ?: throw request.exhausted()
+            reserved[request.key] = port
             taken += port
+            taken += request.alsoFree(port)
         }
         if (reserved != stored) stateStore.writePorts(directories.admin, reserved)
         return reserved
@@ -68,8 +72,8 @@ class ResolveWorktreeEnvironmentUseCase(
     private data class GitDirectories(val admin: String, val common: String)
 
     companion object {
-        const val FIRST_PORT = 20000
-        const val LAST_PORT = 29999
+        const val FIRST_PORT = FIRST_VARIABLE_PORT
+        const val LAST_PORT = LAST_VARIABLE_PORT
     }
 }
 

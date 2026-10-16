@@ -139,3 +139,18 @@ Creating a worktree (on a new or an existing branch) and provisioning an existin
 #### Scenario: Provisioning an existing worktree
 - **WHEN** a worktree created by another tool is provisioned in a repository that declares `env` and `envFile`
 - **THEN** its ports are reserved and the environment file is written
+
+### Requirement: Declare the emulator provider
+The system SHALL read `providers.emulator` in `.shogunai.json` as an object with an optional string `avd`, the AVD the repository prefers. A non-object value or a non-string `avd` SHALL make the file invalid.
+
+#### Scenario: Provider with a preferred AVD
+- **WHEN** `.shogunai.json` contains `{ "providers": { "emulator": { "avd": "Pixel_8_API_35" } } }`
+- **THEN** the repository declares the emulator provider preferring `Pixel_8_API_35`
+
+#### Scenario: Provider without options
+- **WHEN** `.shogunai.json` contains `{ "providers": { "emulator": {} } }`
+- **THEN** the repository declares the emulator provider with no preferred AVD
+
+#### Scenario: Invalid declaration
+- **WHEN** `providers.emulator` is `true` or its `avd` is `35`
+- **THEN** the file is reported as invalid with an error that names `.shogunai.json`

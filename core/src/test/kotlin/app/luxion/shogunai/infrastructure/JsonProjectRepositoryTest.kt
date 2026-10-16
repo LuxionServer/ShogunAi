@@ -1,5 +1,8 @@
 package app.luxion.shogunai.infrastructure
 
+import app.luxion.shogunai.domain.model.EmulatorSettings
+import app.luxion.shogunai.domain.model.Project
+import app.luxion.shogunai.domain.model.ProjectConfig
 import java.nio.file.Files
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.deleteExisting
@@ -77,5 +80,24 @@ class JsonProjectRepositoryTest {
         val project = repository.list().single()
 
         assertNull(project.config.mainBranch)
+        assertEquals(EmulatorSettings(), project.config.emulator)
+    }
+
+    @Test
+    fun `keeps the emulator settings of a project`() {
+        val project = Project(
+            id = "project-1",
+            name = "Main",
+            config = ProjectConfig(
+                baseRepositoryPath = "/home/dev/projects/main-repo",
+                worktreesRoot = "/home/dev/projects",
+                secretFiles = emptyList(),
+                emulator = EmulatorSettings(avd = "Medium_Phone_API_35", noWindow = true),
+            ),
+        )
+
+        repository.save(project)
+
+        assertEquals(project.config.emulator, JsonProjectRepository(storagePath).list().single().config.emulator)
     }
 }

@@ -20,6 +20,7 @@ sealed interface CliCommand {
         val confirmed: Boolean = false,
         val deleteBranches: Boolean = false,
         val stopGradleDaemons: Boolean = false,
+        val stopEmulators: Boolean = false,
     ) : CliCommand
 
     data object Gradle : CliCommand
@@ -27,6 +28,12 @@ sealed interface CliCommand {
     data object HookWorktreeCreate : CliCommand
     data object HookWorktreeRemove : CliCommand
     data object HookSessionStart : CliCommand
+    data class Emulator(
+        val action: EmulatorAction,
+        val path: String? = null,
+        val avd: String? = null,
+        val noWindow: Boolean = false,
+    ) : CliCommand
     data class Env(val path: String? = null, val format: EnvironmentFormat = EnvironmentFormat.SH) : CliCommand
 }
 
@@ -50,6 +57,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "hook" -> parseHook(rest)
                 "gradle" -> parseGradle(rest)
                 "env" -> parseEnv(rest)
+                "emulator" -> parseEmulator(rest)
                 else -> throw UsageException("unknown command '$name'")
             },
         )
@@ -104,15 +112,22 @@ private fun parseClean(rest: List<String>): CliCommand.Clean {
     var confirmed = false
     var deleteBranches = false
     var stopGradleDaemons = false
+    var stopEmulators = false
     rest.forEach { argument ->
         when (argument) {
             "--yes", "-y" -> confirmed = true
             "--delete-branches" -> deleteBranches = true
             "--stop-gradle-daemons" -> stopGradleDaemons = true
+            "--stop-emulators" -> stopEmulators = true
             else -> throw UsageException("unknown argument '$argument' for 'clean'")
         }
     }
-    return CliCommand.Clean(confirmed = confirmed, deleteBranches = deleteBranches, stopGradleDaemons = stopGradleDaemons)
+    return CliCommand.Clean(
+        confirmed = confirmed,
+        deleteBranches = deleteBranches,
+        stopGradleDaemons = stopGradleDaemons,
+        stopEmulators = stopEmulators,
+    )
 }
 
 private fun parseGradle(rest: List<String>): CliCommand {
@@ -137,6 +152,33 @@ private fun parseHook(rest: List<String>): CliCommand {
 }
 
 private const val HOOK_EVENTS = "worktree-create, worktree-remove or session-start"
+
+enum class EmulatorAction { START, STOP, STATUS }
+
+private fun parseEmulator(rest: List<String>): CliCommand.Emulator {
+    val name = rest.firstOrNull() ?: throw UsageException("'emulator' needs an action: start, stop or status")
+    val action = EmulatorAction.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
+        ?: throw UsageException("unknown action '$name' for 'emulator', expected start, stop or status")
+    var path: String? = null
+    var avd: String? = null
+    var noWindow = false
+    val remaining = ArrayDeque(rest.drop(1))
+    while (remaining.isNotEmpty()) {
+        when (val argument = remaining.removeFirst()) {
+            "--avd" -> avd = remaining.valueOf(argument)
+            "--no-window" -> noWindow = true
+            else -> {
+                if (argument.startsWith("-")) throw UsageException("unknown option '$argument' for 'emulator'")
+                if (path != null) throw UsageException("'emulator $name' takes at most one path")
+                path = argument
+            }
+        }
+    }
+    if (action != EmulatorAction.START && (avd != null || noWindow)) {
+        throw UsageException("--avd and --no-window only apply to 'emulator start'")
+    }
+    return CliCommand.Emulator(action, path, avd, noWindow)
+}
 
 private fun parseEnv(rest: List<String>): CliCommand.Env {
     var path: String? = null

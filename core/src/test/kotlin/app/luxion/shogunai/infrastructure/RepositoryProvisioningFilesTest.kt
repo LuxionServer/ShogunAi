@@ -1,5 +1,6 @@
 package app.luxion.shogunai.infrastructure
 
+import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
@@ -101,6 +102,27 @@ class RepositoryProvisioningFilesTest {
         configFile.writeText("""{ "providers": { "gradle": {}, "xcode": {} } }""")
 
         assertEquals(RepositoryProviders(gradle = GradleProvider), files.read(repository.toString()).providers)
+    }
+
+    @Test
+    fun `reads the emulator provider with and without a preferred AVD`() {
+        configFile.writeText("""{ "providers": { "emulator": { "avd": "Pixel_8_API_35" } } }""")
+        assertEquals(EmulatorProvider("Pixel_8_API_35"), files.read(repository.toString()).providers.emulator)
+
+        configFile.writeText("""{ "providers": { "emulator": {} } }""")
+        assertEquals(EmulatorProvider(), files.read(repository.toString()).providers.emulator)
+    }
+
+    @Test
+    fun `fails with InvalidRepositoryConfig on an invalid emulator provider`() {
+        listOf(
+            """{ "providers": { "emulator": true } }""",
+            """{ "providers": { "emulator": { "avd": 35 } } }""",
+            """{ "providers": { "emulator": { "avd": "" } } }""",
+        ).forEach { content ->
+            configFile.writeText(content)
+            assertFailsWith<WorktreeError.InvalidRepositoryConfig>(content) { files.read(repository.toString()) }
+        }
     }
 
     @Test

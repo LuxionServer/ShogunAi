@@ -18,6 +18,9 @@ data class RepositoryProvisioning(
 
 data class RepositoryProviders(
     val gradle: GradleProvider? = null,
+    val emulator: EmulatorProvider? = null,
 )
 
 data object GradleProvider
+
+data class EmulatorProvider(val preferredAvd: String? = null)

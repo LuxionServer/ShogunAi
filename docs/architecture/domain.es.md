@@ -14,6 +14,7 @@ Configuración de un repositorio sobre el que se crean worktrees. Es el punto qu
 | `worktreesRoot` | Carpeta padre donde se crean los worktrees. |
 | `secretFiles` | "Archivos locales": rutas exactas, relativas al repositorio base o absolutas, que se copian a cada nuevo worktree solo en esta máquina (p. ej. `local.properties`). Lo que declara el propio repositorio vive en `.shogunai.json` (ver `RepositoryProvisioning`). |
 | `agentLaunchConfig` | Comando del agente que se incluye en el comando de lanzamiento copiado para un worktree (`AgentLaunchConfig`, ver abajo). |
+| `emulator` | `EmulatorSettings` de esta máquina: la AVD que usar (`null` significa automática) y `noWindow`. Solo se usa cuando el repositorio declara el provider de emulador; nunca se guarda en el repositorio. |
 | `mainBranch` | Rama opcional contra la que se comparan los worktrees para mostrar su estado (p. ej. `develop`). `null` significa que se detecta a partir del repositorio (ver `ResolveMainBranchUseCase`). |
 
 Helpers de rutas:
@@ -61,7 +62,7 @@ Lo que el repositorio declara que necesita cada nuevo worktree, leído de ficher
 |---|---|
 | `copyPatterns` | La lista `copy` de `.shogunai.json`. |
 | `worktreeIncludePatterns` | Las líneas de `.worktreeinclude` (el fichero de Claude Code), sin líneas en blanco ni comentarios `#`. |
-| `providers` | El objeto `providers` de `.shogunai.json`: los providers que activa el repositorio, cada uno con su id como clave y un objeto de opciones. Hoy solo `gradle` (`GradleProvider`, todavía sin opciones), que hace visibles los [daemons de Gradle](#daemons-de-gradle) del repositorio. Los ids desconocidos se ignoran. |
+| `providers` | El objeto `providers` de `.shogunai.json`: los providers que activa el repositorio, cada uno con su id como clave y un objeto de opciones. `gradle` (`GradleProvider`, todavía sin opciones) hace visibles los [daemons de Gradle](#daemons-de-gradle) del repositorio; `emulator` (`EmulatorProvider`, con un `avd` opcional que prefiere el repositorio) da a cada worktree su propio [emulador de Android](#emulador-de-android). Los ids desconocidos se ignoran. |
 | `environment` | El objeto `env` y el `envFile` de `.shogunai.json`, como un `EnvironmentDeclaration` (ver [Entorno del worktree](#entorno-del-worktree)). |
 
 `allPatterns` es su unión sin duplicados. Los patrones usan la sintaxis de patrones de ignore de Git, relativos a la raíz del repositorio: `local.properties` coincide a cualquier profundidad, `/local.properties` solo en la raíz, `.idea/runConfigurations/` una carpeta entera, `.env*` un glob.
@@ -86,6 +87,15 @@ Variables que recibe cada worktree, declaradas en `.shogunai.json` (`WorktreeEnv
 - `EnvironmentDeclaration` — las `variables` en el orden del fichero y el `envFile` opcional, una ruta relativa a la raíz del worktree que no puede salir de él. `portKeys` lista los puertos que necesita la declaración.
 - `EnvironmentVariable` — un nombre de variable válido (letras, dígitos y `_`, sin empezar por dígito) y su plantilla, convertida al leer el fichero en `TemplatePart`s: `Literal`, `WorktreeName` (`${worktree}`, el nombre de la carpeta del worktree) y `Port(key)`. `${port}` usa como clave el nombre de la propia variable, así que cada variable tiene su puerto; `${port:<clave>}` usa la clave `port:<clave>`, compartida por todas las variables que la usan (`:` no puede aparecer en un nombre de variable, así que las claves nunca chocan). `$$` es un `$` literal; cualquier otro `${…}` lanza `InvalidEnvironmentTemplate`, que la lectura convierte en `InvalidRepositoryConfig`.
 - `WorktreeEnvironment` — un entorno resuelto: las `variables` ya renderizadas y los `ports` reservados para el worktree.
+
+### Emulador de Android
+
+El provider de emulador (`Emulator.kt`) solo actúa en repositorios que declaran `"providers": { "emulator": {} }`; para cualquier otro repositorio nada busca el SDK, ejecuta `adb` ni añade variables.
+
+- `EmulatorSettings` — los ajustes de máquina guardados en `ProjectConfig.emulator`.
+- `chooseAvd(requested, settings, preferred, available)` — la AVD que arrancar: la pedida para este arranque; si no, el ajuste de la máquina; si no, la AVD preferida del repositorio si esta máquina la tiene; si no, la primera disponible; `null` cuando no hay ninguna.
+- Cada worktree reserva la clave de puerto de consola `emulator` entre los puertos pares 5554–5584 (el rango que explora `adb`), con el puerto siguiente (el puerto adb del emulador) también libre, y recibe `ANDROID_SERIAL=emulator-<puerto>` (`emulatorSerial`). El plugin de Android para Gradle lee `ANDROID_SERIAL` en `installDebug`, `uninstall*` y `connectedAndroidTest` para usar solo ese dispositivo.
+- `SdkLocation` (raíz del SDK, ejecutables `emulator` y `adb`), `EmulatorState` (`STOPPED`, `BOOTING`, `RUNNING`) y `WorktreeEmulator` (serial y estado) describen lo que informa el [puerto del SDK de Android](#androidsdk).
 
 ### Daemons de Gradle
 
@@ -178,8 +188,8 @@ Lee el provisionado del repositorio (lanzando `InvalidRepositoryConfig` si `.sho
 interface EnvironmentStateStore {
     fun readPorts(adminDirectory: String): Map<String, Int>
     fun writePorts(adminDirectory: String, ports: Map<String, Int>)
-    fun reservedPortsOfRepository(commonDirectory: String): Set<Int>
-    fun <T> withLock(commonDirectory: String, block: () -> T): T
+    fun reservedPortsOnMachine(commonDirectory: String): Set<Int>
+    fun <T> withLock(block: () -> T): T
 }
 
 interface PortProbe {
@@ -187,7 +197,21 @@ interface PortProbe {
 }
 ```
 
-`EnvironmentStateStore` guarda los puertos reservados de cada worktree en el directorio de administración que Git tiene para ese worktree (`.git/worktrees/<id>/` para uno enlazado, `.git/` para el principal), lista todas las reservas del repositorio y ejecuta un bloque con el lock de reservas del repositorio. `PortProbe` indica si un puerto está libre en la máquina.
+`EnvironmentStateStore` guarda los puertos reservados de cada worktree en el directorio de administración que Git tiene para ese worktree (`.git/worktrees/<id>/` para uno enlazado, `.git/` para el principal), lista todas las reservas de la máquina (los worktrees de este repositorio más los de cualquier repositorio para el que ShogunAi haya guardado reservas) y ejecuta un bloque con el lock de reservas de la máquina. `PortProbe` indica si un puerto está libre en la máquina.
+
+### `AndroidSdk`
+
+```kotlin
+interface AndroidSdk {
+    fun locate(repositoryPath: String): SdkLocation
+    suspend fun listAvds(sdk: SdkLocation): List<String>
+    suspend fun deviceStates(sdk: SdkLocation): Map<String, EmulatorState>
+    fun startEmulator(sdk: SdkLocation, avd: String, consolePort: Int, noWindow: Boolean)
+    suspend fun stopEmulator(sdk: SdkLocation, serial: String)
+}
+```
+
+Todo lo que el provider de emulador necesita del SDK de Android, usado solo en repositorios que declaran el provider: encontrar el SDK (`AndroidSdkNotFound` con los sitios revisados), listar las AVDs, el estado de todos los emuladores en marcha en una sola llamada, arrancar un emulador desacoplado en un puerto de consola y pararlo. Los errores de las herramientas son `AndroidToolFailed`.
 
 ### `GradleDaemonSource`
 
@@ -291,13 +315,21 @@ Vuelve a enlazar el repositorio base y sus worktrees después de moverlos en dis
 
 ### `ResolveWorktreeEnvironmentUseCase`
 
-Resuelve el entorno de un worktree a partir de la declaración del repositorio base. Una declaración vacía devuelve un `WorktreeEnvironment` vacío sin ejecutar ningún comando. Si no, busca los directorios de Git de administración y común del worktree (`git rev-parse --path-format=absolute --git-dir --git-common-dir` dentro del worktree) y, con el lock del repositorio:
+Resuelve el entorno de un worktree a partir de la declaración del repositorio base y de los providers que declara. Cada puerto necesario es un `PortRequest` (una clave, los puertos candidatos, los que también tienen que estar libres y el error cuando no queda ninguno): las claves `${port}` declaradas piden 20000–29999 (`declaredPortRequests`); los providers añaden las suyas con `EnvironmentContribution`s (`providerContributions`), junto con las variables que derivan de sus puertos. Sin nada declarado y sin providers que aporten, devuelve un `WorktreeEnvironment` vacío sin ejecutar ningún comando. Si no, busca los directorios de Git de administración y común del worktree (`git rev-parse --path-format=absolute --git-dir --git-common-dir` dentro del worktree) y, con el lock de la máquina:
 
-1. conserva los puertos guardados del worktree cuyas claves sigue usando la declaración y libera el resto;
-2. reserva cada clave que falte en el puerto más bajo entre 20000 y 29999 que ningún worktree del repositorio tenga reservado y que `PortProbe` dé por libre (`NoFreePort` si no queda ninguno);
+1. conserva los puertos guardados del worktree cuyas claves se siguen pidiendo y libera el resto;
+2. reserva cada clave que falte en el primer candidato que, junto con sus puertos adicionales, ningún worktree de la máquina tenga reservado y `PortProbe` dé por libre (si no, el error de la petición, p. ej. `NoFreePort`);
 3. escribe las reservas solo si han cambiado.
 
-Un puerto reservado no se vuelve a comprobar, porque se espera que el propio servidor del worktree esté escuchando en él. Con `reserve = false` (para mostrar los puertos sin efectos secundarios) solo lee los puertos guardados, sin lock ni escritura, y no devuelve variables hasta que todos los puertos estén reservados. `formatEnvironment` presenta las variables como `sh` (`export NOMBRE='valor'`, comillas simples con escape `'\''`, seguro para `eval`), `dotenv` (`NOMBRE=valor`, entre comillas dobles y escapado salvo que el valor sea simple) o `json`.
+Las variables de los providers van primero y las variables declaradas en `env` sustituyen a una del provider con el mismo nombre. Un puerto reservado no se vuelve a comprobar, porque se espera que el propio servidor del worktree esté escuchando en él. Con `reserve = false` (para mostrar los puertos sin efectos secundarios) solo lee los puertos guardados, sin lock ni escritura, y no devuelve variables hasta que todos los puertos estén reservados. `formatEnvironment` presenta las variables como `sh` (`export NOMBRE='valor'`, comillas simples con escape `'\''`, seguro para `eval`), `dotenv` (`NOMBRE=valor`, entre comillas dobles y escapado salvo que el valor sea simple) o `json`.
+
+### Casos de uso del emulador
+
+Los tres fallan con `EmulatorProviderNotDeclared` (o no devuelven nada, en el caso de los estados) cuando el repositorio no declara el provider de emulador, antes de tocar el SDK.
+
+- `StartWorktreeEmulatorUseCase(config, worktreePath, avd?, noWindow?)` resuelve el entorno del worktree (reservando su puerto de emulador si hace falta), vuelve enseguida si su serial ya está en marcha y, si no, arranca la AVD de `chooseAvd` (`NoAvdAvailable` si no hay ninguna) con el ajuste de ventana de la llamada o del proyecto, salvo que ya esté arrancando, y consulta `deviceStates` cada 2 s hasta que está en marcha. A los 180 s falla con `EmulatorBootTimeout` y deja el emulador arrancando. La pausa se inyecta, así que los tests no esperan.
+- `StopWorktreeEmulatorUseCase(config, worktreePath)` lee el puerto de emulador del worktree sin reservar; si no hay ninguno reservado no hay nada que parar. `stopSerials` para los seriales indicados que estén en marcha, y la limpieza lo usa con seriales leídos antes de eliminar los worktrees.
+- `ReadEmulatorStatesUseCase(config, worktrees)` asocia cada worktree con puerto de emulador reservado a su serial y su estado, a partir de las reservas guardadas y una sola llamada a `deviceStates`; los worktrees sin reserva no aparecen.
 
 ### Casos de uso de los daemons de Gradle
 

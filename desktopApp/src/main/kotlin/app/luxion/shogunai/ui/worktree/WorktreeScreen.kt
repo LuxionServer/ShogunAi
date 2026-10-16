@@ -43,6 +43,7 @@ import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
+import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.WorktreeOrigin
 import app.luxion.shogunai.domain.usecase.classifyOrigin
 import app.luxion.shogunai.domain.usecase.isInactive
@@ -163,6 +164,7 @@ fun WorktreeScreen(
                     } else {
                         null
                     },
+                    success.stoppedEmulators.takeIf { it > 0 }?.let(strings::emulatorsStopped),
                 ).joinToString(" · ")
             }
             LaunchedEffect(success) {
@@ -315,6 +317,11 @@ fun WorktreeScreen(
                 agents = agents,
                 size = viewModel.sizes[worktree.path],
                 ports = viewModel.ports[worktree.path].orEmpty(),
+                showEmulator = viewModel.isEmulatorRepository,
+                emulator = viewModel.emulators[worktree.path],
+                isStartingEmulator = worktree.path in viewModel.startingEmulators,
+                onStartEmulator = { viewModel.startEmulator(worktree) },
+                onStopEmulator = { viewModel.stopEmulator(worktree) },
                 isInactive = isInactive(worktree, (status as? WorktreeStatusState.Loaded)?.status, agents, Instant.now()),
                 isCopied = viewModel.copiedWorktreePath == worktree.path,
                 onRemove = { viewModel.requestRemoval(worktree) },
@@ -396,6 +403,11 @@ private fun WorktreeRow(
     agents: List<RunningAgent>,
     size: Long?,
     ports: Map<String, Int>,
+    showEmulator: Boolean,
+    emulator: WorktreeEmulator?,
+    isStartingEmulator: Boolean,
+    onStartEmulator: () -> Unit,
+    onStopEmulator: () -> Unit,
     isInactive: Boolean,
     isCopied: Boolean,
     onRemove: () -> Unit,
@@ -414,6 +426,7 @@ private fun WorktreeRow(
             } else {
                 WorktreeStatusLine(status, mainBranchName)
                 WorktreeOverviewLine(size, isInactive, ports)
+                if (showEmulator) EmulatorLine(emulator, isStartingEmulator, onStartEmulator, onStopEmulator)
             }
         }
         Row {

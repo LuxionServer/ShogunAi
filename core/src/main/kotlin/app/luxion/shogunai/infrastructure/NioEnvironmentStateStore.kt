@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.io.EnvironmentStateStore
 import app.luxion.shogunai.domain.io.PortProbe
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -24,59 +25,78 @@ import kotlin.io.path.isDirectory
 import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.readText
 
-class NioEnvironmentStateStore : EnvironmentStateStore {
+class NioEnvironmentStateStore(
+    private val machineDirectory: Path = Path.of(System.getProperty("user.home"), ".shogunai"),
+) : EnvironmentStateStore {
 
     private val json = Json { prettyPrint = true }
 
     override fun readPorts(adminDirectory: String): Map<String, Int> {
-        val ports = readState(stateFile(Path.of(adminDirectory)))[PORTS_FIELD] as? JsonObject ?: return emptyMap()
+        val ports = readObject(stateFile(Path.of(adminDirectory)))[PORTS_FIELD] as? JsonObject ?: return emptyMap()
         return ports.mapNotNull { (key, value) -> (value as? JsonPrimitive)?.intOrNull?.let { key to it } }.toMap()
     }
 
     override fun writePorts(adminDirectory: String, ports: Map<String, Int>) {
         val file = stateFile(Path.of(adminDirectory))
-        val state = readState(file)
+        val state = readObject(file)
         val updated = if (ports.isEmpty()) {
             JsonObject(state - PORTS_FIELD)
         } else {
             JsonObject(state + (PORTS_FIELD to JsonObject(ports.mapValues { JsonPrimitive(it.value) })))
         }
-        if (updated.isEmpty()) {
-            Files.deleteIfExists(file)
-            return
-        }
-        val tempFile = Files.createTempFile(file.parent, ".shogunai-env", ".json.tmp")
-        Files.writeString(tempFile, json.encodeToString(JsonElement.serializer(), updated) + "\n")
-        Files.move(tempFile, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+        if (updated.isEmpty()) Files.deleteIfExists(file) else writeAtomically(file, updated)
+        val indexed = readIndex()
+        val normalized = Path.of(adminDirectory).toAbsolutePath().normalize().toString()
+        writeIndex(if (ports.isEmpty()) indexed - normalized else indexed + normalized)
     }
 
-    override fun reservedPortsOfRepository(commonDirectory: String): Set<Int> {
-        val common = Path.of(commonDirectory)
+    override fun reservedPortsOnMachine(commonDirectory: String): Set<Int> {
+        val indexed = readIndex()
+        val live = indexed.filter { stateFile(Path.of(it)).exists() }.toSet()
+        if (live != indexed) writeIndex(live)
+        val directories = repositoryAdminDirectories(Path.of(commonDirectory)).map { it.toString() } + live
+        return directories.flatMap { readPorts(it).values }.toSet()
+    }
+
+    override fun <T> withLock(block: () -> T): T {
+        if (processLock.isHeldByCurrentThread) return block()
+        return processLock.withLock {
+            Files.createDirectories(machineDirectory)
+            FileChannel.open(
+                machineDirectory.resolve(LOCK_FILE_NAME),
+                StandardOpenOption.CREATE,
+                StandardOpenOption.WRITE,
+            ).use { channel ->
+                channel.lock().use { block() }
+            }
+        }
+    }
+
+    private fun repositoryAdminDirectories(common: Path): List<Path> {
         val linked = common.resolve("worktrees")
             .takeIf { it.isDirectory() }
             ?.listDirectoryEntries()
             ?.filter { it.isDirectory() }
             .orEmpty()
-        return (listOf(common) + linked).flatMap { readPorts(it.toString()).values }.toSet()
+        return listOf(common) + linked
     }
-
-    override fun <T> withLock(commonDirectory: String, block: () -> T): T {
-        if (processLock.isHeldByCurrentThread) return block()
-        return processLock.withLock { withFileLock(commonDirectory, block) }
-    }
-
-    private fun <T> withFileLock(commonDirectory: String, block: () -> T): T =
-        FileChannel.open(
-            Path.of(commonDirectory).resolve(LOCK_FILE_NAME),
-            StandardOpenOption.CREATE,
-            StandardOpenOption.WRITE,
-        ).use { channel ->
-            channel.lock().use { block() }
-        }
 
     private fun stateFile(adminDirectory: Path): Path = adminDirectory.resolve(STATE_FILE_NAME)
 
-    private fun readState(file: Path): JsonObject {
+    private fun indexFile(): Path = machineDirectory.resolve(INDEX_FILE_NAME)
+
+    private fun readIndex(): Set<String> {
+        val entries = readObject(indexFile())[WORKTREES_FIELD] as? JsonArray ?: return emptySet()
+        return entries.mapNotNull { (it as? JsonPrimitive)?.takeIf { primitive -> primitive.isString }?.content }.toSet()
+    }
+
+    private fun writeIndex(entries: Set<String>) {
+        if (entries == readIndex()) return
+        Files.createDirectories(machineDirectory)
+        writeAtomically(indexFile(), JsonObject(mapOf(WORKTREES_FIELD to JsonArray(entries.sorted().map(::JsonPrimitive)))))
+    }
+
+    private fun readObject(file: Path): JsonObject {
         if (!file.exists()) return JsonObject(emptyMap())
         return try {
             Json.parseToJsonElement(file.readText()) as? JsonObject ?: JsonObject(emptyMap())
@@ -85,10 +105,18 @@ class NioEnvironmentStateStore : EnvironmentStateStore {
         }
     }
 
+    private fun writeAtomically(file: Path, content: JsonObject) {
+        val tempFile = Files.createTempFile(file.parent, ".${file.fileName}", ".tmp")
+        Files.writeString(tempFile, json.encodeToString(JsonElement.serializer(), content) + "\n")
+        Files.move(tempFile, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+    }
+
     companion object {
         const val STATE_FILE_NAME = "shogunai-env.json"
-        const val LOCK_FILE_NAME = "shogunai-env.lock"
+        const val INDEX_FILE_NAME = "reservations.json"
+        const val LOCK_FILE_NAME = "reservations.lock"
         private const val PORTS_FIELD = "ports"
+        private const val WORKTREES_FIELD = "worktrees"
         private val processLock = ReentrantLock()
     }
 }

@@ -30,6 +30,14 @@ class StringsTest {
             WorktreeError.BranchNotFound("feature/TASK-123") to "feature/TASK-123",
             WorktreeError.BranchAlreadyCheckedOut("feature/TASK-123", "~/projects/TASK-123") to "~/projects/TASK-123",
             WorktreeError.ProcessListingFailed(listOf("lsof", "-d", "cwd"), 1) to "lsof -d cwd",
+            WorktreeError.NoEmulatorPort(5554, 5584) to "5584",
+            WorktreeError.AndroidSdkNotFound(listOf("ANDROID_HOME (/opt/sdk)")) to "ANDROID_HOME (/opt/sdk)",
+            WorktreeError.EmulatorBootTimeout("emulator-5556", 180) to "emulator-5556",
+            WorktreeError.AndroidToolFailed(listOf("adb", "devices"), 1, "") to "adb devices",
+            WorktreeError.EmulatorProviderNotDeclared to "\"providers\": { \"emulator\": {} }",
+            WorktreeError.NoAvdAvailable to "Device Manager",
+            WorktreeError.NoFreePort(20000, 29999) to "29999",
+            WorktreeError.EnvironmentFileTracked(".env") to ".env",
         )
         errors.forEach { (error, expectedData) ->
             val english = EnglishStrings.worktreeError(error)

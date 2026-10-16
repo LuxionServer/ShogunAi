@@ -1,5 +1,6 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakePortProbe
@@ -53,6 +54,7 @@ class HookCommandsTest {
         }
     }
 
+    private val androidSdk = FakeAndroidSdk()
     private val out = StringBuilder()
     private val err = StringBuilder()
 
@@ -74,6 +76,7 @@ class HookCommandsTest {
         gradleUserHome = "/home/dev/.gradle",
         environmentStateStore = environmentStore,
         portProbe = FakePortProbe(),
+        androidSdk = androidSdk,
         workingDirectory = "/",
         out = out,
         err = err,

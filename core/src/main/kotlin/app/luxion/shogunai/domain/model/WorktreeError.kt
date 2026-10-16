@@ -52,6 +52,29 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class NoFreePort(val from: Int, val to: Int) :
         WorktreeError("No free port left between $from and $to for this worktree")
 
+    class NoEmulatorPort(val from: Int, val to: Int) :
+        WorktreeError("No emulator port left between $from and $to; stop or remove other worktrees' emulators")
+
+    class AndroidSdkNotFound(val checked: List<String>) :
+        WorktreeError("Android SDK not found. Checked: ${checked.joinToString()}")
+
+    object NoAvdAvailable : WorktreeError(
+        "No Android Virtual Device found. Create one in Android Studio's Device Manager and try again.",
+    )
+
+    class EmulatorBootTimeout(val serial: String, val seconds: Long) :
+        WorktreeError("$serial didn't finish booting within $seconds s; it's still starting")
+
+    class AndroidToolFailed(val command: List<String>, val exitCode: Int, val output: String) :
+        WorktreeError(
+            "Android tool failed (exit code $exitCode): ${command.joinToString(" ")}" +
+                if (output.isNotBlank()) "\n$output" else "",
+        )
+
+    object EmulatorProviderNotDeclared : WorktreeError(
+        "This repository doesn't use the emulator provider. Add \"providers\": { \"emulator\": {} } to .shogunai.json.",
+    )
+
     class EnvironmentFileTracked(val path: String) :
         WorktreeError("Won't write the environment file over $path because Git tracks it")
 

@@ -111,6 +111,24 @@ shogun clean --yes --stop-gradle-daemons  # also stop the idle daemons of the re
 
 Daemon inspection needs `ps` (macOS and Linux).
 
+## Android emulators
+
+Android builds install on every connected device unless `ANDROID_SERIAL` names one, so agents in parallel worktrees step on each other's emulators. Turn on the emulator provider to give each worktree its own:
+
+```json
+{ "providers": { "emulator": { "avd": "Pixel_8_API_35" } } }
+```
+
+`avd` is optional: the AVD this repository prefers when the machine has it. Each worktree then reserves an emulator port and gets `ANDROID_SERIAL=emulator-<port>` in its environment (`shogun env`, the `SessionStart` hook, `envFile`). Emulators only start when you ask:
+
+```bash
+shogun emulator start      # start this worktree's emulator (read-only, so one AVD serves every worktree) and wait for it
+shogun emulator status     # emulator-5556 running
+shogun emulator stop
+```
+
+On each machine, the project configuration chooses the AVD (or leaves it automatic) and whether it runs without a window; `--avd` and `--no-window` override them for one start. The worktree list shows each emulator with Start and Stop, and "Clean up" (or `shogun clean --stop-emulators`) stops the emulators of the worktrees it removes. The SDK is found through `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `sdk.dir` in `local.properties` or Android Studio's default location. Repositories without the provider never see any of this.
+
 ## Development
 
 Want to build the project from source or contribute? Start with [`docs/getting-started.md`](./docs/getting-started.md).

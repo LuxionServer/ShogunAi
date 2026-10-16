@@ -105,6 +105,21 @@ object EnglishStrings : Strings {
     override fun worktreesCleanedUp(count: Int) = if (count == 1) "1 worktree cleaned up" else "$count worktrees cleaned up"
     override fun cleanupFailed(path: String, detail: String) = "Couldn't remove \"$path\": $detail"
     override fun branchKept(branch: String) = "Branch \"$branch\" kept: it isn't merged into the main branch"
+    override val emulatorSection = "Android emulator"
+    override val emulatorSectionDescription =
+        "This repository gives each worktree its own emulator (ANDROID_SERIAL). These settings apply to this machine only."
+    override val emulatorAvdLabel = "AVD"
+    override val emulatorAutomaticAvd = "Automatic (the repository's preferred AVD, or the first one)"
+    override fun emulatorMissingAvd(name: String) = "$name (not on this machine)"
+    override val emulatorNoWindowLabel = "Run without a window"
+    override val emulatorLabel = "Emulator"
+    override val emulatorStopped = "stopped"
+    override val emulatorBooting = "booting"
+    override val emulatorRunning = "running"
+    override val startEmulator = "Start"
+    override val stopEmulator = "Stop"
+    override val alsoStopEmulators = "Also stop their emulators"
+    override fun emulatorsStopped(count: Int) = if (count == 1) "1 emulator stopped" else "$count emulators stopped"
     override val alsoStopIdleGradleDaemons = "Also stop their idle Gradle daemons"
     override val gradleDaemonsTitle = "Gradle daemons"
     override fun gradleDaemonsSummary(count: Int, totalMemory: String) =
@@ -157,6 +172,17 @@ object EnglishStrings : Strings {
     override fun branchAlreadyCheckedOut(branch: String, path: String?) =
         "Branch '$branch' is already checked out" + if (path != null) " at $path" else ""
     override fun noFreePort(from: Int, to: Int) = "No free port left between $from and $to for this worktree"
+    override fun noEmulatorPort(from: Int, to: Int) =
+        "No emulator port left between $from and $to; stop or remove other worktrees' emulators"
+    override fun androidSdkNotFound(checked: List<String>) = "Android SDK not found. Checked: ${checked.joinToString()}"
+    override val noAvdAvailable =
+        "No Android Virtual Device found. Create one in Android Studio's Device Manager and try again."
+    override fun emulatorBootTimeout(serial: String, seconds: Long) =
+        "$serial didn't finish booting within $seconds s; it's still starting"
+    override fun androidToolFailed(command: List<String>, exitCode: Int) =
+        "Android tool failed (exit code $exitCode): ${command.joinToString(" ")}"
+    override val emulatorProviderNotDeclared =
+        "This repository doesn't use the emulator provider. Add \"providers\": { \"emulator\": {} } to .shogunai.json."
     override fun environmentFileTracked(path: String) =
         "The environment file \"$path\" is tracked by Git, so it wasn't overwritten"
     override fun environmentFileWriteFailed(path: String, detail: String?) =

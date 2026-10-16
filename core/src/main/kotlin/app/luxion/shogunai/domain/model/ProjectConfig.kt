@@ -9,6 +9,7 @@ data class ProjectConfig(
     val secretFiles: List<String>,
     val agentLaunchConfig: AgentLaunchConfig = AgentLaunchConfig(),
     val mainBranch: String? = null,
+    val emulator: EmulatorSettings = EmulatorSettings(),
 ) {
     fun worktreePathFor(taskId: String): String = joinPath(worktreesRoot, taskId)
 
