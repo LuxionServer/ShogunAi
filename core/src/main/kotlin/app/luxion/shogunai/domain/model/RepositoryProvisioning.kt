@@ -22,7 +22,13 @@ data class RepositoryProviders(
     val iosSimulator: IosSimulatorProvider? = null,
 )
 
-data object GradleProvider
+data class GradleProvider(
+    val daemonMaxHeap: String? = null,
+    val idleTimeoutMinutes: Int? = null,
+    val kotlinDaemonMaxHeap: String? = null,
+) {
+    val hasSettings: Boolean get() = daemonMaxHeap != null || idleTimeoutMinutes != null || kotlinDaemonMaxHeap != null
+}
 
 data class EmulatorProvider(val preferredAvd: String? = null)
 

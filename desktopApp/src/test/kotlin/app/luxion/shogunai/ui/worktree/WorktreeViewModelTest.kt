@@ -23,6 +23,7 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.BranchOption
 import app.luxion.shogunai.domain.model.DaemonOwner
 import app.luxion.shogunai.domain.model.DaemonState
+import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
@@ -143,10 +144,10 @@ class WorktreeViewModelTest {
     private fun gradleUseCases(
         executor: ShellCommandExecutor,
         source: FakeGradleDaemonSource = FakeGradleDaemonSource(),
-        declaresProvider: Boolean = false,
+        provider: GradleProvider? = null,
         buildCacheEnabled: Boolean = true,
     ) = GradleUseCases(
-        declaresProvider = { declaresProvider },
+        provider = { provider },
         listDaemons = ListGradleDaemonsUseCase(source, FakeFileManager(existing = listOf(config.baseRepositoryPath, worktreePath))),
         stopDaemons = StopGradleDaemonsUseCase(source, executor),
         isBuildCacheEnabled = { buildCacheEnabled },
@@ -156,10 +157,11 @@ class WorktreeViewModelTest {
         responder: (List<String>) -> CommandResult,
         source: FakeGradleDaemonSource,
         buildCacheEnabled: Boolean = true,
+        provider: GradleProvider = GradleProvider(),
     ): WorktreeUseCases {
         val executor = FakeShellCommandExecutor(responder)
         return useCasesWith(executor).copy(
-            gradle = gradleUseCases(executor, source, declaresProvider = true, buildCacheEnabled = buildCacheEnabled),
+            gradle = gradleUseCases(executor, source, provider = provider, buildCacheEnabled = buildCacheEnabled),
         )
     }
 
@@ -1092,6 +1094,25 @@ class WorktreeViewModelTest {
         assertFalse(viewModel.isGradleBuildCacheEnabled)
         val daemons = assertIs<GradleDaemonsState.Loaded>(viewModel.gradleDaemons).daemons
         assertEquals(DaemonOwner.Worktree(worktreePath), daemons.single().owner)
+    }
+
+    @Test
+    fun `gradle settings are exposed only when declared`() = runTest(dispatcher) {
+        val settings = GradleProvider(daemonMaxHeap = "2g", idleTimeoutMinutes = 30)
+        val declared = WorktreeViewModel(gradleRepository(listingResponder(), FakeGradleDaemonSource(), provider = settings))
+        val bare = WorktreeViewModel(gradleRepository(listingResponder(), FakeGradleDaemonSource()))
+        advanceUntilIdle()
+
+        assertEquals(settings, declared.gradleSettings)
+        assertTrue(bare.isGradleRepository)
+        assertNull(bare.gradleSettings)
+    }
+
+    @Test
+    fun `memory settings are shown with their unit`() {
+        assertEquals("2 GB", formatMemorySetting("2g"))
+        assertEquals("1024 MB", formatMemorySetting("1024M"))
+        assertEquals("512 KB", formatMemorySetting("512k"))
     }
 
     @Test

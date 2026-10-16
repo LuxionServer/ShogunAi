@@ -7,6 +7,7 @@ import app.luxion.shogunai.domain.io.LanguagePreferenceRepository
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.io.ThemePreferenceRepository
+import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.SimulatorDevice
 import app.luxion.shogunai.domain.model.SimulatorRuntime
@@ -26,6 +27,7 @@ import app.luxion.shogunai.domain.usecase.ListGradleDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.ListLocalBranchesUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.MachineProviderContributions
+import app.luxion.shogunai.domain.usecase.effectiveGradleJvmArgs
 import app.luxion.shogunai.domain.usecase.MeasureWorktreeSizeUseCase
 import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.ProviderContributions
@@ -74,7 +76,11 @@ class AppContainer {
     private val portProbe = SocketPortProbe()
     private val appleSimulators = SimctlAppleSimulators(shellCommandExecutor)
     private val kmpTestWiring = FileKmpTestWiring(gradleUserHome)
-    private val contributions = MachineProviderContributions(appleSimulators, ::simulatorSettingsFor)
+    private val contributions = MachineProviderContributions(
+        appleSimulators,
+        ::simulatorSettingsFor,
+        gradleJvmArgsFor = { repository -> effectiveGradleJvmArgs(fileManager, gradleUserHome, repository) },
+    )
     private val resolveEnvironment = resolverWith(contributions)
     private val startSimulator = StartWorktreeSimulatorUseCase(repositoryProvisioningSource, appleSimulators, { repository, worktree, requested ->
         resolverWith(contributions.requesting(requested))(repository, worktree)
@@ -166,9 +172,8 @@ class AppContainer {
             delete = { udids -> deleteSimulators(udids) },
         ),
         gradle = GradleUseCases(
-            declaresProvider = {
-                runCatching { repositoryProvisioningSource.read(config.baseRepositoryPath).providers.gradle != null }
-                    .getOrDefault(false)
+            provider = {
+                runCatching { repositoryProvisioningSource.read(config.baseRepositoryPath).providers.gradle }.getOrNull()
             },
             listDaemons = ListGradleDaemonsUseCase(gradleDaemonSource, fileManager),
             stopDaemons = StopGradleDaemonsUseCase(gradleDaemonSource, shellCommandExecutor),
@@ -256,7 +261,7 @@ data class EmulatorUseCases(
 }
 
 data class GradleUseCases(
-    val declaresProvider: () -> Boolean,
+    val provider: () -> GradleProvider?,
     val listDaemons: ListGradleDaemonsUseCase,
     val stopDaemons: StopGradleDaemonsUseCase,
     val isBuildCacheEnabled: () -> Boolean,

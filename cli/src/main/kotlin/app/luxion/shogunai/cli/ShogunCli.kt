@@ -41,6 +41,7 @@ import app.luxion.shogunai.domain.usecase.EnvironmentFormat
 import app.luxion.shogunai.domain.usecase.ListGradleDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.MachineProviderContributions
+import app.luxion.shogunai.domain.usecase.effectiveGradleJvmArgs
 import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.ProviderContributions
 import app.luxion.shogunai.domain.usecase.ProvisionWorktreeUseCase
@@ -94,7 +95,11 @@ class ShogunCli(
     private val now: () -> Instant = Instant::now,
     private val environmentVariable: (String) -> String? = System::getenv,
 ) {
-    private val contributions = MachineProviderContributions(appleSimulators, ::simulatorSettingsFor)
+    private val contributions = MachineProviderContributions(
+        appleSimulators,
+        ::simulatorSettingsFor,
+        gradleJvmArgsFor = { repository -> effectiveGradleJvmArgs(fileManager, gradleUserHome, repository) },
+    )
     private val resolveEnvironment = resolverWith(contributions)
     private val startSimulator = StartWorktreeSimulatorUseCase(provisioningSource, appleSimulators, { repository, worktree, requested ->
         resolverWith(contributions.requesting(requested))(repository, worktree)

@@ -42,6 +42,15 @@ fun GradleDaemonsSection(viewModel: WorktreeViewModel, modifier: Modifier = Modi
             GradleDaemonsState.Unavailable -> SecondaryText(strings.gradleDaemonsUnavailable)
             is GradleDaemonsState.Loaded -> LoadedDaemons(state.daemons, viewModel)
         }
+        viewModel.gradleSettings?.let { settings ->
+            SecondaryText(
+                strings.gradleWorktreeSettings(
+                    settings.daemonMaxHeap?.let(::formatMemorySetting),
+                    settings.idleTimeoutMinutes,
+                    settings.kotlinDaemonMaxHeap?.let(::formatMemorySetting),
+                ),
+            )
+        }
         viewModel.daemonStopReport?.let { report ->
             DaemonStopMessage(report, onDismiss = { viewModel.dismissDaemonStopReport() })
         }
@@ -130,6 +139,15 @@ private fun DaemonStopMessage(report: DaemonStopReport, onDismiss: () -> Unit) {
 @Composable
 private fun SecondaryText(text: String) {
     Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+fun formatMemorySetting(size: String): String {
+    val unit = when (size.last().lowercaseChar()) {
+        'g' -> "GB"
+        'm' -> "MB"
+        else -> "KB"
+    }
+    return "${size.dropLast(1)} $unit"
 }
 
 private fun daemonTitle(daemon: GradleDaemon, strings: Strings): String = when (daemon.process.kind) {

@@ -113,13 +113,12 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
             ?: throw WorktreeError.InvalidRepositoryConfig(path.toString(), "\"$PROVIDERS_FIELD\" must be an object")
         return RepositoryProviders(
             gradle = providers[GRADLE_PROVIDER]?.let { value ->
-                if (value !is JsonObject) {
-                    throw WorktreeError.InvalidRepositoryConfig(
-                        path.toString(),
-                        "\"$PROVIDERS_FIELD.$GRADLE_PROVIDER\" must be an object",
-                    )
-                }
-                GradleProvider
+                val options = providerOptions(value, GRADLE_PROVIDER, path)
+                GradleProvider(
+                    daemonMaxHeap = optionalMemorySize(options, DAEMON_MAX_HEAP_FIELD, path),
+                    idleTimeoutMinutes = optionalPositiveWholeNumber(options, IDLE_TIMEOUT_MINUTES_FIELD, path),
+                    kotlinDaemonMaxHeap = optionalMemorySize(options, KOTLIN_DAEMON_MAX_HEAP_FIELD, path),
+                )
             },
             emulator = providers[EMULATOR_PROVIDER]?.let { value ->
                 val options = providerOptions(value, EMULATOR_PROVIDER, path)
@@ -151,6 +150,31 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         }
     }
 
+    private fun optionalMemorySize(options: JsonObject, field: String, path: Path): String? {
+        val invalid = WorktreeError.InvalidRepositoryConfig(
+            path.toString(),
+            "\"$PROVIDERS_FIELD.$GRADLE_PROVIDER.$field\" must be a memory size such as \"2g\" or \"512m\"",
+        )
+        return when (val value = options[field]) {
+            null, is JsonNull -> null
+            is JsonPrimitive -> value.takeIf { it.isString }?.content?.takeIf(MEMORY_SIZE::matches) ?: throw invalid
+            else -> throw invalid
+        }
+    }
+
+    private fun optionalPositiveWholeNumber(options: JsonObject, field: String, path: Path): Int? {
+        val invalid = WorktreeError.InvalidRepositoryConfig(
+            path.toString(),
+            "\"$PROVIDERS_FIELD.$GRADLE_PROVIDER.$field\" must be a positive whole number",
+        )
+        return when (val value = options[field]) {
+            null, is JsonNull -> null
+            is JsonPrimitive -> value.takeIf { !it.isString && WHOLE_NUMBER.matches(it.content) }
+                ?.content?.toIntOrNull()?.takeIf { it > 0 } ?: throw invalid
+            else -> throw invalid
+        }
+    }
+
     private fun readWorktreeInclude(path: Path): List<String> {
         if (!path.exists()) return emptyList()
         return path.readLines()
@@ -168,6 +192,11 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         const val COPY_FIELD = "copy"
         const val PROVIDERS_FIELD = "providers"
         const val GRADLE_PROVIDER = "gradle"
+        const val DAEMON_MAX_HEAP_FIELD = "daemonMaxHeap"
+        const val IDLE_TIMEOUT_MINUTES_FIELD = "idleTimeoutMinutes"
+        const val KOTLIN_DAEMON_MAX_HEAP_FIELD = "kotlinDaemonMaxHeap"
+        val MEMORY_SIZE = Regex("[0-9]+[kKmMgG]")
+        val WHOLE_NUMBER = Regex("[0-9]+")
         const val EMULATOR_PROVIDER = "emulator"
         const val AVD_FIELD = "avd"
         const val IOS_SIMULATOR_PROVIDER = "ios-simulator"

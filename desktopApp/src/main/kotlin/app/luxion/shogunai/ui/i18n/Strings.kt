@@ -155,6 +155,7 @@ interface Strings {
     val stopDaemon: String
     val stopIdleDaemons: String
     val gradleBuildCacheOff: String
+    fun gradleWorktreeSettings(daemonHeap: String?, idleTimeoutMinutes: Int?, kotlinDaemonHeap: String?): String
     fun daemonsStopped(stopped: Int, kept: Int, failed: Int): String
     val justNow: String
     fun minutesAgo(count: Long): String
