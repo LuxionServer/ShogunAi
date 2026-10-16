@@ -18,10 +18,10 @@ That direction is built in three layers:
 graph LR
     A["Shared core and repository configuration"] --> B["shogun CLI and agent hooks"]
     A --> D["Android, KMP and JVM provisioning"]
-    C["Worktree status"] --> E["Cleanup and full overview"]
+    E["Cleanup and full overview"]
 ```
 
-The worktree status doesn't depend on the engine, so it can be built in parallel with it.
+The control tower builds on the worktree status the app already shows, not on the engine, so it can be built in parallel with it.
 
 ## Planned
 
@@ -44,10 +44,9 @@ The worktree status doesn't depend on the engine, so it can be built in parallel
 
 ### Control tower
 
-Today the worktree list only shows each worktree's path and branch. When several agents work in parallel, you need to see which ones are finished and which ones are still dirty without opening a terminal.
+The worktree list already shows each worktree's status (pending changes, divergence, last commit, merged state). On top of it:
 
-- **Worktree status**: uncommitted changes (`git status --porcelain`), commits ahead of and behind its upstream and the main branch (`git rev-list --count`), date of the last commit, and whether its branch is already merged into the main branch.
-- **Cleanup**: one action to remove every worktree whose branch is already merged, optionally deleting the branches too, and `git worktree prune` for worktrees whose folder no longer exists. Depends on the worktree status.
+- **Cleanup**: one action to remove every worktree whose branch is already merged, optionally deleting the branches too, and `git worktree prune` for worktrees whose folder no longer exists.
 - **Full overview**: every worktree of the repository, including the ones created by other tools (`claude --worktree`, other worktree managers, IDEs), whether an agent process is running in it, and its disk usage. Flags orphaned and inactive worktrees.
 - Automatic refresh by watching the repository's worktrees, instead of reloading by hand.
 
