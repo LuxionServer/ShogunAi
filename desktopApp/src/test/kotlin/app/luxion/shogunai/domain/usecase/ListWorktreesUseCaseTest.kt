@@ -74,4 +74,33 @@ class ListWorktreesUseCaseTest {
 
         assertTrue(useCase().getOrThrow().isEmpty())
     }
+
+    @Test
+    fun `flags locked and prunable worktrees with or without a reason`() {
+        val worktrees = parseWorktreeList(
+            """
+            worktree /home/dev/projects/TASK-1
+            HEAD aaa111
+            branch refs/heads/feature/TASK-1
+            locked
+
+            worktree /home/dev/projects/TASK-2
+            HEAD bbb222
+            branch refs/heads/feature/TASK-2
+            locked agent session
+
+            worktree /home/dev/projects/TASK-3
+            HEAD ccc333
+            branch refs/heads/feature/TASK-3
+            prunable gitdir file points to non-existent location
+
+            worktree /home/dev/projects/TASK-4
+            HEAD ddd444
+            branch refs/heads/feature/TASK-4
+            """.trimIndent(),
+        )
+
+        assertEquals(listOf(true, true, false, false), worktrees.map { it.isLocked })
+        assertEquals(listOf(false, false, true, false), worktrees.map { it.isPrunable })
+    }
 }

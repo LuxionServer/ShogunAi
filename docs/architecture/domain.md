@@ -44,7 +44,7 @@ Enum `FEATURE` / `FIX`, each with a `prefix` (`"feature"` / `"fix"`) prepended t
 
 ### `Worktree` / `BranchOption`
 
-- `Worktree` — an active worktree as reported by `git worktree list`: `path`, `branch` (`null` if `detached`), `head`, `isMain`, `isBare`.
+- `Worktree` — an active worktree as reported by `git worktree list`: `path`, `branch` (`null` if `detached`), `head`, `isMain`, `isBare`, `isLocked` (a `locked` line, e.g. a worktree an agent session is using) and `isPrunable` (a `prunable` line: its folder no longer exists).
 - `BranchOption` — a local branch offered when creating a worktree from an existing branch: `name` and `isCheckedOut` (already checked out in the base repository or another worktree).
 
 ### `WorktreeStatus` / `MainBranch` / `Divergence`
@@ -154,6 +154,12 @@ Reads a `WorktreeStatus`, running each command in the worktree's own folder:
 - `git log -1 --format=%ct` — last commit date, `null` if there are no commits.
 
 Squash and rebase merges aren't detected as merged, and remote-tracking branches are only as fresh as the user's last fetch.
+
+### `CleanUpWorktreesUseCase`
+
+`selectCleanupCandidates(worktrees, statuses)` picks the worktrees to clean up: not main, not locked, and either prunable or merged into the main branch with no uncommitted changes. Worktrees without a loaded status are never picked.
+
+`CleanUpWorktreesUseCase` takes those candidates, the `MainBranch` and whether to delete branches, and returns a `CleanupReport` (`removed`, `keptBranches`, `failures`). Each existing worktree is removed with `git worktree remove` (never `--force`), and missing ones with a single `git worktree prune`. A failing step is recorded and the rest continue. Then the branches of every removed worktree, pruned ones included, are deleted only if `git merge-base --is-ancestor <branch> <main ref>` still succeeds, and then with `git branch -D`: `-d` checks against the base repository's `HEAD`, which in a git-flow repository may not contain a branch merged into `develop`.
 
 ### `RemoveWorktreeUseCase`
 

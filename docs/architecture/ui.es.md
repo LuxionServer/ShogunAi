@@ -29,10 +29,14 @@ En el modo "Rama existente" las ramas de `ListLocalBranchesUseCase` se muestran 
 Cada fila muestra el estado de su worktree debajo del nombre de la rama. `WorktreeViewModel` lo guarda en `statuses`, un mapa de ruta del worktree a `WorktreeStatusState` (`Loading`, `Loaded` o `Unavailable`):
 
 - Una vez leída la lista, se resuelve la rama principal con `ResolveMainBranchUseCase` (expuesta como `mainBranch`) y se lee el estado de cada worktree con `ReadWorktreeStatusUseCase`, como mucho 4 a la vez. La lista aparece al momento y cada fila muestra un pequeño indicador de progreso hasta que llega su estado.
-- Un worktree cuyo estado no se puede leer (p. ej. porque se borró su carpeta) muestra "Estado no disponible" sin afectar a los demás ni al error de la pantalla.
+- Un worktree cuyo estado no se puede leer muestra "Estado no disponible" sin afectar a los demás ni al error de la pantalla. Un worktree que ha perdido su carpeta (`isPrunable`) muestra en su lugar "Carpeta no encontrada", y uno bloqueado (`isLocked`, p. ej. en uso por una sesión de un agente) muestra la etiqueta "bloqueado" junto a su rama.
 - Recargar la lista, también cuando la ventana recupera el foco, vuelve a leer todos los estados; los resultados de una carga anterior se descartan. Crear un worktree solo lee el estado del nuevo, y eliminarlo descarta su estado.
 
 `WorktreeStatusLine` pinta el estado como segmentos separados por `·` (`statusSegments`): cambios sin commitear (solo si los hay), `↑N ↓N upstream`, `↑N ↓N <rama principal>` y la fecha del último commit en tiempo relativo (`relativeTime`, en `RelativeTime.kt`). Una rama mergeada muestra la etiqueta "mergeada en <rama principal>" en el color primario en lugar de su divergencia con la rama principal.
+
+### Limpiar worktrees
+
+El botón "Limpiar", junto al título "Worktrees", se habilita cuando `cleanupCandidates` (calculado con `selectCleanupCandidates` sobre los worktrees listados y sus estados cargados) no está vacío. Abre `CleanupDialog`, que lista los candidatos por nombre de carpeta y rama, y ofrece "Borrar también sus ramas locales", desmarcado por defecto. Al confirmar se ejecuta `CleanUpWorktreesUseCase`, se muestra un indicador de progreso con las acciones del diálogo deshabilitadas, y después se cierra el diálogo, se muestra "N worktrees limpiados" como mensaje de éxito y se recarga la lista. Los fallos y las ramas conservadas quedan visibles en `CleanupIssues` hasta que se cierran.
 
 ### Comando de lanzamiento
 

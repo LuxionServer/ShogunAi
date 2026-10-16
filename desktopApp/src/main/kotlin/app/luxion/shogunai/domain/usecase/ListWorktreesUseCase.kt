@@ -28,14 +28,25 @@ internal fun parseWorktreeList(porcelain: String): List<Worktree> {
     var head: String? = null
     var branch: String? = null
     var bare = false
+    var locked = false
+    var prunable = false
 
     fun flush() {
         val currentPath = path ?: return
-        worktrees += Worktree(path = currentPath, branch = branch, head = head, isBare = bare)
+        worktrees += Worktree(
+            path = currentPath,
+            branch = branch,
+            head = head,
+            isBare = bare,
+            isLocked = locked,
+            isPrunable = prunable,
+        )
         path = null
         head = null
         branch = null
         bare = false
+        locked = false
+        prunable = false
     }
 
     porcelain.lineSequence().forEach { line ->
@@ -49,6 +60,8 @@ internal fun parseWorktreeList(porcelain: String): List<Worktree> {
                 branch = line.removePrefix("branch ").removePrefix("refs/heads/").trim()
             line == "bare" -> bare = true
             line == "detached" -> branch = null
+            line == "locked" || line.startsWith("locked ") -> locked = true
+            line == "prunable" || line.startsWith("prunable ") -> prunable = true
         }
     }
     flush()

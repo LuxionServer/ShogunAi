@@ -144,6 +144,7 @@ fun WorktreeScreen(
             val message = when (success) {
                 is WorktreeSuccess.Created -> strings.worktreeCreated(success.path)
                 WorktreeSuccess.RepairedAfterMove -> strings.worktreesRepairedAfterMove
+                is WorktreeSuccess.CleanedUp -> strings.worktreesCleanedUp(success.removedCount)
             }
             LaunchedEffect(success) {
                 delay(4000)
@@ -261,7 +262,21 @@ fun WorktreeScreen(
             }
         }
 
-        Text(strings.worktreesTitle, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = Spacing.lg))
+        viewModel.cleanupIssues?.let { report ->
+            CleanupIssues(report, onDismiss = { viewModel.dismissCleanupIssues() })
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = Spacing.lg),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(strings.worktreesTitle, style = MaterialTheme.typography.titleMedium)
+            OutlinedButton(
+                onClick = { viewModel.openCleanup() },
+                enabled = viewModel.cleanupCandidates.isNotEmpty() && !viewModel.isCleaningUp,
+            ) { Text(strings.cleanUp) }
+        }
         viewModel.worktrees.forEach { worktree ->
             WorktreeRow(
                 worktree = worktree,
@@ -273,6 +288,10 @@ fun WorktreeScreen(
             )
             HorizontalDivider()
         }
+    }
+
+    if (viewModel.isCleanupDialogOpen) {
+        CleanupDialog(viewModel)
     }
 
     viewModel.worktreePendingRemoval?.let { worktree ->
@@ -347,8 +366,22 @@ private fun WorktreeRow(
     ) {
         Column(modifier = Modifier.weight(1f).padding(end = Spacing.sm)) {
             Text(worktree.path, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(worktree.branch ?: strings.detachedHead, style = MaterialTheme.typography.bodySmall)
-            WorktreeStatusLine(status, mainBranchName)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(worktree.branch ?: strings.detachedHead, style = MaterialTheme.typography.bodySmall)
+                if (worktree.isLocked) {
+                    Text(
+                        strings.locked,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier.padding(start = Spacing.sm),
+                    )
+                }
+            }
+            if (worktree.isPrunable) {
+                Text(strings.folderMissing, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            } else {
+                WorktreeStatusLine(status, mainBranchName)
+            }
         }
         Row {
             OutlinedButton(onClick = onCopyLaunchCommand, modifier = Modifier.padding(end = Spacing.sm)) {

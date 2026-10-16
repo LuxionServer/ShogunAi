@@ -18,7 +18,7 @@ That direction is built in three layers:
 graph LR
     A["Shared core and repository configuration"] --> B["shogun CLI and agent hooks"]
     A --> D["Android, KMP and JVM provisioning"]
-    E["Cleanup and full overview"]
+    E["Full worktree overview"]
 ```
 
 The control tower builds on the worktree status the app already shows, not on the engine, so it can be built in parallel with it.
@@ -44,9 +44,8 @@ The control tower builds on the worktree status the app already shows, not on th
 
 ### Control tower
 
-The worktree list already shows each worktree's status (pending changes, divergence, last commit, merged state). On top of it:
+The worktree list already shows each worktree's status (pending changes, divergence, last commit, merged state) and cleans up merged and missing worktrees in one action. On top of it:
 
-- **Cleanup**: one action to remove every worktree whose branch is already merged, optionally deleting the branches too, and `git worktree prune` for worktrees whose folder no longer exists.
 - **Full overview**: every worktree of the repository, including the ones created by other tools (`claude --worktree`, other worktree managers, IDEs), whether an agent process is running in it, and its disk usage. Flags orphaned and inactive worktrees.
 - Automatic refresh by watching the repository's worktrees, instead of reloading by hand.
 

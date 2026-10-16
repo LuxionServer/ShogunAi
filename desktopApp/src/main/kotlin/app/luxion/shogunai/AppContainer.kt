@@ -7,6 +7,7 @@ import app.luxion.shogunai.domain.io.ThemePreferenceRepository
 import app.luxion.shogunai.domain.executor.ClipboardWriter
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.CopyWorktreeLaunchCommandUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
@@ -43,6 +44,7 @@ class AppContainer {
         repair = RepairWorktreesUseCase(config, shellCommandExecutor, fileManager),
         resolveMainBranch = ResolveMainBranchUseCase(config, shellCommandExecutor),
         readStatus = ReadWorktreeStatusUseCase(shellCommandExecutor),
+        cleanUp = CleanUpWorktreesUseCase(config, shellCommandExecutor),
     )
 }
 
@@ -56,4 +58,5 @@ data class WorktreeUseCases(
     val repair: RepairWorktreesUseCase,
     val resolveMainBranch: ResolveMainBranchUseCase,
     val readStatus: ReadWorktreeStatusUseCase,
+    val cleanUp: CleanUpWorktreesUseCase,
 )

@@ -82,6 +82,15 @@ interface Strings {
     val upstream: String
     fun mergedInto(branch: String): String
     val statusUnavailable: String
+    val folderMissing: String
+    val locked: String
+    val cleanUp: String
+    val cleanUpTitle: String
+    fun cleanUpMessage(count: Int): String
+    val alsoDeleteLocalBranches: String
+    fun worktreesCleanedUp(count: Int): String
+    fun cleanupFailed(path: String, detail: String): String
+    fun branchKept(branch: String): String
     val justNow: String
     fun minutesAgo(count: Long): String
     fun hoursAgo(count: Long): String

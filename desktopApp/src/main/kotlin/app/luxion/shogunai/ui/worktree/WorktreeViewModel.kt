@@ -12,7 +12,9 @@ import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeStatus
+import app.luxion.shogunai.domain.usecase.CleanupReport
 import app.luxion.shogunai.domain.usecase.isValidGitRefSegment
+import app.luxion.shogunai.domain.usecase.selectCleanupCandidates
 import app.luxion.shogunai.domain.usecase.normalizeTaskId
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -40,6 +42,16 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
     var mainBranch by mutableStateOf<MainBranch?>(null)
         private set
     private val statusReadPermits = Semaphore(MAX_PARALLEL_STATUS_READS)
+
+    val cleanupCandidates: List<Worktree>
+        get() = selectCleanupCandidates(worktrees, loadedStatuses())
+    var isCleanupDialogOpen by mutableStateOf(false)
+        private set
+    var cleanupDeleteBranches by mutableStateOf(false)
+    var isCleaningUp by mutableStateOf(false)
+        private set
+    var cleanupIssues by mutableStateOf<CleanupReport?>(null)
+        private set
 
     var localBranches by mutableStateOf<List<BranchOption>>(emptyList())
         private set
@@ -229,6 +241,43 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
         pendingRemoval = null
     }
 
+    fun openCleanup() {
+        if (cleanupCandidates.isEmpty()) return
+        cleanupDeleteBranches = false
+        isCleanupDialogOpen = true
+    }
+
+    fun dismissCleanup() {
+        if (!isCleaningUp) isCleanupDialogOpen = false
+    }
+
+    fun confirmCleanup() {
+        val candidates = cleanupCandidates
+        viewModelScope.launch {
+            isCleaningUp = true
+            try {
+                useCases.cleanUp(candidates, mainBranch, cleanupDeleteBranches)
+                    .onSuccess { report ->
+                        error = null
+                        success = WorktreeSuccess.CleanedUp(report.removed.size)
+                        cleanupIssues = report.takeIf { it.failures.isNotEmpty() || it.keptBranches.isNotEmpty() }
+                    }
+                    .onFailure { error = it }
+            } finally {
+                isCleaningUp = false
+                isCleanupDialogOpen = false
+            }
+            refresh()
+        }
+    }
+
+    fun dismissCleanupIssues() {
+        cleanupIssues = null
+    }
+
+    private fun loadedStatuses(): Map<String, WorktreeStatus> =
+        statuses.mapNotNull { (path, state) -> (state as? WorktreeStatusState.Loaded)?.let { path to it.status } }.toMap()
+
     fun dismissError() {
         error = null
     }
@@ -261,4 +310,5 @@ sealed interface WorktreeStatusState {
 sealed interface WorktreeSuccess {
     data class Created(val path: String) : WorktreeSuccess
     data object RepairedAfterMove : WorktreeSuccess
+    data class CleanedUp(val removedCount: Int) : WorktreeSuccess
 }
