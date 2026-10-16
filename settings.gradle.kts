@@ -32,4 +32,5 @@ plugins {
 }
 
 include(":core")
+include(":cli")
 include(":desktopApp")

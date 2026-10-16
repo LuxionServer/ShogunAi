@@ -20,8 +20,9 @@ graph LR
       1. creates and pushes the `vX.X.X` tag on the merge commit (the version comes from the branch name, no need to write it twice),
       2. creates the GitHub Release in **draft** mode with auto-generated notes (only once, before building),
       3. builds the installers on macOS Apple Silicon, macOS Intel, Windows and Linux (`packageReleaseDmg`/`Msi`/`Deb`) passing that version and uploads each one as an asset of that release, which stays in draft while the parallel upload is in progress. Each macOS `.dmg` gets its architecture suffix (`-arm64`/`-x64`) right after the build, taken from the runner's own architecture,
-      4. once all four installers are uploaded, publishes the release (takes it out of draft),
-      5. regenerates the Homebrew Cask from `.github/homebrew/shogunai.rb` with the new version and the `sha256` of both `.dmg` files, and pushes it to the `LuxionServer/homebrew-shogunai` tap.
+      4. in parallel, builds the standalone command-line tool once on Linux (`:cli:distZip`, see [Command-line tool](../architecture/cli.md)) and uploads `shogun-X.X.X.zip` to the same draft,
+      5. once all four installers and the zip are uploaded, publishes the release (takes it out of draft),
+      6. regenerates the Homebrew Cask from `.github/homebrew/shogunai.rb` with the new version and the `sha256` of both `.dmg` files, and pushes it to the `LuxionServer/homebrew-shogunai` tap. The Cask installs the app and links its launcher as the `shogun` command.
 
 All of step 4 happens in a single CI run, with no manual intervention. The release is created as a draft and only published at the end because an already-published release is immutable for GitHub (it rejects new assets), and because generating the notes only once avoids duplicates if each matrix build regenerated them on its own.
 

@@ -113,8 +113,35 @@ jobs:
           fail_on_unmatched_files: true
           draft: true
 
+  build-cli:
+    needs: [resolve-version, create-release]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.ref }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: corretto
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build CLI zip
+        run: ./gradlew :cli:distZip -PappVersion=${{ needs.resolve-version.outputs.version }}
+
+      - name: Upload asset to draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.resolve-version.outputs.version }}
+          files: cli/build/distributions/shogun-${{ needs.resolve-version.outputs.version }}.zip
+          fail_on_unmatched_files: true
+          draft: true
+
   publish-release:
-    needs: [resolve-version, build]
+    needs: [resolve-version, build, build-cli]
     runs-on: ubuntu-latest
     steps:
       - name: Publish release

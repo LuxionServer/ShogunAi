@@ -82,6 +82,8 @@ User preferences: `LIGHT` / `DARK` / `SYSTEM` and `ENGLISH` / `SPANISH`. They're
 - `WorktreeAlreadyExists` — there's already a directory at the destination path.
 - `InvalidTaskId` — the task id isn't a valid Git ref segment once normalized.
 - `SecretFileNotFound` — local files are missing in the base repo.
+- `RepositoryNotFound` — the directory isn't inside a Git repository with a working tree (used by the CLI).
+- `NotAWorktree` — the path given to provision is the main worktree or isn't one of the repository's worktrees.
 - `InvalidRepositoryConfig` — `.shogunai.json` exists but isn't valid JSON, isn't an object, or its `copy` isn't a list of strings; keeps the file path and the detail.
 - `GitCommandFailed` — a Git command returned a non-zero exit code; keeps the command, exit code and Git's error output.
 - `SecretCopyFailed` — copying local or repository files failed after the worktree had already been created.
@@ -213,6 +215,14 @@ Runs `git worktree remove [--force] <path>` and, optionally, `git branch -d <bra
 ### `CopyWorktreeLaunchCommandUseCase`
 
 Copies `cd "<worktree path>" && <agent command>` to the clipboard, with the agent command from `AgentLaunchConfig.resolvedCommand()`, so the user pastes it in the terminal of their choice.
+
+### `ResolveRepositoryUseCase`
+
+Finds the base repository (main worktree) that contains a directory, for front ends that start from a directory instead of a project, such as the CLI. It runs `git rev-parse --path-format=absolute --git-common-dir` there: the common `.git` folder is shared by every worktree, so its parent is the main worktree whether the directory is the main worktree, a subfolder or a linked worktree. Anything else (not a repository, a bare repository) is `RepositoryNotFound`.
+
+### `ProvisionWorktreeUseCase`
+
+Applies the same files as creation (local files and the repository's provisioning, see `CreateWorktreeUseCase`) to an **existing** linked worktree, e.g. one created by another tool. The path must be one of the repository's worktrees (from `ListWorktreesUseCase`) and not the main one (`NotAWorktree`). Files are copied over existing ones, and it returns the copied relative paths. Unlike creation, a failed copy (`SecretCopyFailed`) doesn't remove anything: the worktree isn't ShogunAi's to delete. Creation and provisioning share the same copy function.
 
 ### `RepairWorktreesUseCase`
 

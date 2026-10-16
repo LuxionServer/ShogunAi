@@ -11,6 +11,7 @@ Orquestador de escritorio que automatiza la creación y gestión de **Git worktr
 - Gestiona varios proyectos desde un catálogo, cada uno con su propia configuración (repositorio base, carpeta de worktrees, comando del agente).
 - Copia el comando para arrancar tu agente de IA en un worktree (`cd <worktree> && claude`, opcionalmente envuelto con Headroom), listo para pegar en cualquier terminal.
 - Si mueves un repositorio, actualiza su ruta en el proyecto y la app vuelve a enlazar sus worktrees (`git worktree repair`).
+- Incluye el comando `shogun`, para crear, provisionar, consultar y limpiar worktrees desde un terminal, un script o un hook de un agente.
 
 ## Instalación
 
@@ -37,6 +38,12 @@ Descarga el instalador para tu sistema operativo desde la [última versión publ
 
 Instálalo como cualquier otra app de escritorio y ábrelo. No necesitas tener JDK ni herramientas de desarrollo instaladas: el instalador incluye su propio runtime.
 
+### El comando `shogun`
+
+- **Homebrew**: se instala con el Cask; `shogun --version` funciona en un terminal nuevo.
+- **Linux (`.deb`)**: el lanzador de la app es el comando. Enlázalo una vez: `sudo ln -s /opt/shogunai/bin/ShogunAi /usr/local/bin/shogun`.
+- **Windows, o sin instalar la app**: descarga `shogun-<versión>.zip` de la release, descomprímelo y añade su carpeta `bin` al `PATH`. Necesita Java 21 o posterior.
+
 ## Uso básico
 
 1. **Crea un proyecto** — al abrir la app por primera vez verás el catálogo de proyectos vacío. Pulsa "Nuevo proyecto" e indica un nombre, la ruta del repositorio base y la carpeta donde se crearán los worktrees. Opcionalmente añade archivos locales que deben copiarse a cada worktree nuevo en esta máquina.
@@ -52,6 +59,20 @@ Instálalo como cualquier otra app de escritorio y ábrelo. No necesitas tener J
 5. **Elimina un worktree** — cuando termines una tarea, elimínalo desde la lista, con la opción de borrar también la rama local. El worktree principal no se puede eliminar.
 
 La app está en inglés por defecto; puedes cambiarla a español desde el selector de idioma de la barra superior (junto al selector de tema). La elección se recuerda entre reinicios.
+
+## Línea de comandos
+
+`shogun` trabaja sobre el repositorio Git que contiene el directorio actual, usando su proyecto de la app de escritorio si lo hay:
+
+```bash
+shogun new TASK-123                # worktree nuevo en feature/TASK-123, provisionado; imprime su ruta
+shogun new --branch hotfix/login   # worktree para una rama existente
+shogun provision ../otro-worktree  # copia los archivos declarados en un worktree creado por otra herramienta
+shogun status                      # todos los worktrees con sus cambios, divergencia y si están mergeados
+shogun clean --yes                 # elimina los worktrees mergeados o sin carpeta (sin --yes solo los lista)
+```
+
+Ejecuta `shogun help` para ver todas las opciones. Sin proyecto en la app, `shogun new` necesita `--worktrees-root <dir>`.
 
 ## Desarrollo
 

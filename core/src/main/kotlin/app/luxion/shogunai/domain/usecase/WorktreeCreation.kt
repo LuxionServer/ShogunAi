@@ -77,16 +77,31 @@ private suspend fun copySecretsOrRollback(
     repositoryFiles: List<String>,
 ) {
     try {
-        (config.secretFiles + repositoryFiles).distinct().forEach { fileName ->
+        copyProvisionedFiles(config, fileManager, worktreePath, repositoryFiles)
+    } catch (copyError: WorktreeError.SecretCopyFailed) {
+        removeIncompleteWorktreeIgnoringResult(config, executor, worktreePath)
+        throw copyError
+    }
+}
+
+internal fun copyProvisionedFiles(
+    config: ProjectConfig,
+    fileManager: FileManager,
+    worktreePath: String,
+    repositoryFiles: List<String>,
+): List<String> {
+    val files = (config.secretFiles + repositoryFiles).distinct()
+    try {
+        files.forEach { fileName ->
             fileManager.copy(
                 source = config.baseSecretPath(fileName),
                 destination = joinPath(worktreePath, fileName),
             )
         }
     } catch (copyError: Exception) {
-        removeIncompleteWorktreeIgnoringResult(config, executor, worktreePath)
         throw WorktreeError.SecretCopyFailed(copyError)
     }
+    return files
 }
 
 private suspend fun removeIncompleteWorktreeIgnoringResult(

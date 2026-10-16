@@ -23,6 +23,12 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
             if (errorOutput.isNotBlank()) "\n$errorOutput" else "",
     )
 
+    class RepositoryNotFound(val path: String) :
+        WorktreeError("No Git repository found at $path")
+
+    class NotAWorktree(val path: String) :
+        WorktreeError("$path is not a linked worktree of this repository")
+
     class InvalidRepositoryConfig(val path: String, val detail: String?) :
         WorktreeError("Can't read $path" + if (detail.isNullOrBlank()) "" else ": $detail")
 

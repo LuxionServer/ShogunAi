@@ -82,6 +82,8 @@ Preferencias del usuario: `LIGHT` / `DARK` / `SYSTEM` y `ENGLISH` / `SPANISH`. S
 - `WorktreeAlreadyExists` — ya hay un directorio en la ruta destino.
 - `InvalidTaskId` — el id de tarea no es un segmento de ref de Git válido una vez normalizado.
 - `SecretFileNotFound` — faltan archivos locales en el repo base.
+- `RepositoryNotFound` — el directorio no está dentro de un repositorio Git con árbol de trabajo (lo usa el CLI).
+- `NotAWorktree` — la ruta a provisionar es el worktree principal o no es uno de los worktrees del repositorio.
 - `InvalidRepositoryConfig` — `.shogunai.json` existe pero no es JSON válido, no es un objeto o su `copy` no es una lista de strings; guarda la ruta del fichero y el detalle.
 - `GitCommandFailed` — un comando de Git devolvió un código de salida distinto de cero; guarda el comando, el código de salida y la salida de error de Git.
 - `SecretCopyFailed` — la copia de archivos locales o del repositorio falló después de haber creado ya el worktree.
@@ -213,6 +215,14 @@ Ejecuta `git worktree remove [--force] <path>` y, opcionalmente, `git branch -d 
 ### `CopyWorktreeLaunchCommandUseCase`
 
 Copia al portapapeles `cd "<ruta del worktree>" && <comando del agente>`, con el comando del agente de `AgentLaunchConfig.resolvedCommand()`, para que el usuario lo pegue en la terminal que prefiera.
+
+### `ResolveRepositoryUseCase`
+
+Encuentra el repositorio base (worktree principal) que contiene un directorio, para los frontales que parten de un directorio en vez de un proyecto, como el CLI. Ejecuta ahí `git rev-parse --path-format=absolute --git-common-dir`: la carpeta `.git` común la comparten todos los worktrees, así que su padre es el worktree principal tanto si el directorio es el worktree principal, una subcarpeta o un worktree enlazado. Cualquier otra cosa (no es un repositorio, es un repositorio bare) es `RepositoryNotFound`.
+
+### `ProvisionWorktreeUseCase`
+
+Aplica los mismos archivos que la creación (archivos locales y provisionado del repositorio, ver `CreateWorktreeUseCase`) a un worktree enlazado **ya existente**, p. ej. uno creado por otra herramienta. La ruta tiene que ser uno de los worktrees del repositorio (según `ListWorktreesUseCase`) y no el principal (`NotAWorktree`). Los archivos se copian encima de los que haya, y devuelve las rutas relativas copiadas. A diferencia de la creación, una copia fallida (`SecretCopyFailed`) no elimina nada: el worktree no es de ShogunAi como para borrarlo. Creación y provisionado comparten la misma función de copia.
 
 ### `RepairWorktreesUseCase`
 

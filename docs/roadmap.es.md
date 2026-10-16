@@ -16,7 +16,7 @@ Esa dirección se construye en tres capas:
 
 ```mermaid
 graph LR
-    A["Configuración del repositorio"] --> B["CLI shogun y hooks de agentes"]
+    A["Configuración del repositorio"] --> B["Hooks de agentes"]
     A --> D["Provisionado Android, KMP y JVM"]
 ```
 
@@ -30,11 +30,10 @@ Provisionado más completo en el `.shogunai.json` del repositorio:
 - Enlazar un secreto con un symlink en vez de copiarlo, para que al rotarlo se actualice en todos los worktrees.
 - Detectar secretos de un worktree que difieren de los del repositorio base.
 
-### Herramienta de línea de comandos `shogun`
+### Hooks de agentes
 
-- `shogun new`, `shogun provision <ruta>`, `shogun status` y `shogun clean`, sobre los mismos casos de uso que la app de escritorio.
-- Utilizable desde los hooks de los agentes: por ejemplo, `shogun provision` como hook `WorktreeCreate` de Claude Code, para que `claude --worktree` deje el worktree listo según `.shogunai.json`. Recetas equivalentes para otros agentes.
-- Se distribuye junto a la app de escritorio, incluido el Cask de Homebrew.
+- `shogun` como hook `WorktreeCreate` de Claude Code, para que `claude --worktree` deje el worktree listo según `.shogunai.json`. Recetas equivalentes para otros agentes.
+- Una salida legible por máquinas (`--json`) para los comandos que necesiten los scripts.
 
 ### Provisionado Android, KMP y JVM
 

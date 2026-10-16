@@ -122,6 +122,8 @@ object EnglishStrings : Strings {
     override fun secretFilesNotFound(files: List<String>, basePath: String) =
         "Local files not found in $basePath: ${files.joinToString()}"
     override fun invalidRepositoryConfig(path: String, detail: String?) = "Can't read $path" + detail.asSuffix()
+    override fun repositoryNotFound(path: String) = "No Git repository found at $path"
+    override fun notAWorktree(path: String) = "$path is not a linked worktree of this repository"
     override fun gitCommandFailed(command: List<String>, exitCode: Int) =
         "Git command failed (exit code $exitCode): ${command.joinToString(" ")}"
     override fun secretCopyFailed(detail: String?) = "Failed to copy files into the worktree" + detail.asSuffix()

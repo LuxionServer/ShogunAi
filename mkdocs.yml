@@ -62,6 +62,7 @@ plugins:
             Domain layer: Capa de dominio
             Infrastructure layer: Capa de infraestructura
             UI layer: Capa de UI
+            Command-line tool: Línea de comandos
             Development process: Proceso de desarrollo
             Branches: Ramas
             Design decisions: Decisiones de diseño
@@ -75,6 +76,7 @@ nav:
       - Domain layer: architecture/domain.md
       - Infrastructure layer: architecture/infrastructure.md
       - UI layer: architecture/ui.md
+      - Command-line tool: architecture/cli.md
   - Development process:
       - Branches: process/branching.md
       - OpenSpec: process/openspec.md
