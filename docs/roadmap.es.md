@@ -11,7 +11,7 @@ Esa dirección se construye en tres capas:
 | Capa | Papel | Qué aporta |
 |---|---|---|
 | **Motor y CLI** | La base | Provisionado de worktrees definido en el repositorio (`.shogunai.json`) y un comando `shogun` que usan la app de escritorio, los agentes y sus hooks. |
-| **Torre de control** | La vista | La app de escritorio muestra el estado de todos los worktrees, incluidos los creados por otras herramientas, y los mantiene limpios. |
+| **Torre de control** | La vista | La app de escritorio muestra el estado de todos los worktrees, incluidos los creados por otras herramientas, los mantiene limpios y sigue los cambios según ocurren. **Disponible.** |
 | **Android, KMP y JVM** | El contenido | Provisionado para los stacks en los que más cuesta preparar un worktree: Gradle, secretos locales, emuladores e IDEs. |
 
 ```mermaid
@@ -19,8 +19,6 @@ graph LR
     A["Núcleo compartido y configuración del repositorio"] --> B["CLI shogun y hooks de agentes"]
     A --> D["Provisionado Android, KMP y JVM"]
 ```
-
-Lo que queda de la torre de control no depende del motor, así que puede construirse en paralelo.
 
 ## Planificado
 
@@ -40,12 +38,6 @@ Lo que queda de la torre de control no depende del motor, así que puede constru
 - `shogun new`, `shogun provision <ruta>`, `shogun status` y `shogun clean`, sobre los mismos casos de uso que la app de escritorio.
 - Utilizable desde los hooks de los agentes: por ejemplo, `shogun provision` como hook `WorktreeCreate` de Claude Code, para que `claude --worktree` deje el worktree listo según `.shogunai.json`. Recetas equivalentes para otros agentes.
 - Se distribuye junto a la app de escritorio, incluido el Cask de Homebrew.
-
-### Torre de control
-
-La lista de worktrees ya muestra, para cada worktree lo haya creado quien lo haya creado, su estado, su origen, los agentes que se ejecutan en él, cuánto disco ocupa y si está inactivo, y limpia en una sola acción los mergeados y los que han perdido su carpeta. Sobre eso:
-
-- Refresco automático vigilando los worktrees del repositorio, en lugar de recargar a mano.
 
 ### Provisionado Android, KMP y JVM
 

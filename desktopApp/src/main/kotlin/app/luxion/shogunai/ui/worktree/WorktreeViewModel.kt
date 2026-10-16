@@ -17,12 +17,21 @@ import app.luxion.shogunai.domain.usecase.CleanupReport
 import app.luxion.shogunai.domain.usecase.isValidGitRefSegment
 import app.luxion.shogunai.domain.usecase.selectCleanupCandidates
 import app.luxion.shogunai.domain.usecase.normalizeTaskId
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 
-class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
+class WorktreeViewModel(
+    private val useCases: WorktreeUseCases,
+    private val autoRefreshInterval: Duration = AUTO_REFRESH_INTERVAL,
+) : ViewModel() {
+    private var watchJob: Job? = null
+    private var lastFingerprint: List<Pair<String, Long>>? = null
+
     var worktrees by mutableStateOf<List<Worktree>>(emptyList())
         private set
     var isLoading by mutableStateOf(false)
@@ -94,10 +103,41 @@ class WorktreeViewModel(private val useCases: WorktreeUseCases) : ViewModel() {
         val generation = ++listGeneration
         viewModelScope.launch {
             isLoading = true
+            lastFingerprint = useCases.readFingerprint().getOrNull() ?: lastFingerprint
             applyListResult(generation, useCases.list())
         }
         if (createMode == CreateMode.EXISTING_BRANCH) {
             loadLocalBranches()
+        }
+    }
+
+    fun startWatching() {
+        watchJob?.cancel()
+        watchJob = viewModelScope.launch {
+            while (true) {
+                delay(autoRefreshInterval)
+                if (!isBusy) checkForChanges()
+            }
+        }
+    }
+
+    fun stopWatching() {
+        watchJob?.cancel()
+        watchJob = null
+    }
+
+    private val isBusy: Boolean
+        get() = isLoading || isCreating || isRemoving || isCleaningUp
+
+    private suspend fun checkForChanges() {
+        val fingerprint = useCases.readFingerprint().getOrNull() ?: return
+        val previous = lastFingerprint
+        lastFingerprint = fingerprint
+        if (previous != null && fingerprint != previous) {
+            refresh()
+        } else {
+            val detected = useCases.detectAgents(worktrees).getOrNull()
+            agents = detected
         }
     }
 
@@ -323,6 +363,7 @@ private fun Throwable.suggestsForceRetry(): Boolean =
 
 private const val COPIED_FEEDBACK_DURATION_MS = 2000L
 private const val MAX_PARALLEL_STATUS_READS = 4
+private val AUTO_REFRESH_INTERVAL = 3.seconds
 
 enum class CreateMode { NEW_BRANCH, EXISTING_BRANCH }
 

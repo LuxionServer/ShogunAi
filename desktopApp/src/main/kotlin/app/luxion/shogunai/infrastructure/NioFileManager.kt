@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.io.FileManager
 import java.io.IOException
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.SimpleFileVisitor
 import java.nio.file.StandardCopyOption
@@ -20,6 +21,31 @@ class NioFileManager : FileManager {
             StandardCopyOption.REPLACE_EXISTING,
             StandardCopyOption.COPY_ATTRIBUTES,
         )
+    }
+
+    override fun isDirectory(path: String): Boolean = Files.isDirectory(Path.of(path))
+
+    override fun modificationStamps(path: String): List<Pair<String, Long>> {
+        val root = Path.of(path)
+        if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) return emptyList()
+        val stamps = mutableListOf<Pair<String, Long>>()
+        Files.walkFileTree(
+            root,
+            object : SimpleFileVisitor<Path>() {
+                override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
+                    stamps += dir.toString() to attrs.lastModifiedTime().toMillis()
+                    return FileVisitResult.CONTINUE
+                }
+
+                override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+                    stamps += file.toString() to attrs.lastModifiedTime().toMillis()
+                    return FileVisitResult.CONTINUE
+                }
+
+                override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult = FileVisitResult.CONTINUE
+            },
+        )
+        return stamps
     }
 
     override fun directorySize(path: String, excluding: Set<String>): Long {

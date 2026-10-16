@@ -11,7 +11,7 @@ That direction is built in three layers:
 | Layer | Role | What it brings |
 |---|---|---|
 | **Engine and CLI** | The foundation | Worktree provisioning defined in the repository (`.shogunai.json`) and a `shogun` command that the desktop app, agents and their hooks all use. |
-| **Control tower** | The view | The desktop app shows the state of every worktree, including the ones created by other tools, and keeps them clean. |
+| **Control tower** | The view | The desktop app shows the state of every worktree, including the ones created by other tools, keeps them clean and follows changes as they happen. **Available.** |
 | **Android, KMP and JVM** | The content | Provisioning for the stacks where a worktree is hardest to prepare: Gradle, local secrets, emulators and IDEs. |
 
 ```mermaid
@@ -19,8 +19,6 @@ graph LR
     A["Shared core and repository configuration"] --> B["shogun CLI and agent hooks"]
     A --> D["Android, KMP and JVM provisioning"]
 ```
-
-What's left of the control tower doesn't depend on the engine, so it can be built in parallel with it.
 
 ## Planned
 
@@ -40,12 +38,6 @@ What's left of the control tower doesn't depend on the engine, so it can be buil
 - `shogun new`, `shogun provision <path>`, `shogun status` and `shogun clean`, on top of the same use cases as the desktop app.
 - Usable from agent hooks: for example, `shogun provision` as Claude Code's `WorktreeCreate` hook, so `claude --worktree` leaves the worktree ready according to `.shogunai.json`. Equivalent recipes for other agents.
 - Shipped alongside the desktop app, including the Homebrew Cask.
-
-### Control tower
-
-The worktree list already shows, for every worktree whoever created it, its status, origin, running agents, disk usage and whether it's inactive, and cleans up merged and missing worktrees in one action. On top of it:
-
-- Automatic refresh by watching the repository's worktrees, instead of reloading by hand.
 
 ### Android, KMP and JVM provisioning
 
