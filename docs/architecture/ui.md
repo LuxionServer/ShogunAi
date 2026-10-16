@@ -13,7 +13,7 @@ The top bar, above every screen, holds the language and theme selectors.
 | Screen | ViewModel | Responsibility |
 |---|---|---|
 | `ProjectListScreen` | `ProjectListViewModel` | Project catalog from `ProjectRepository`: search by name, A-Z / Z-A order, open, edit and delete (with confirmation). |
-| `ProjectConfigScreen` | `ProjectConfigViewModel` | Form for a `Project` (name, base repository path, worktrees root, main branch, secret files, agent command and Headroom switch); validates required fields and asks before discarding unsaved changes. |
+| `ProjectConfigScreen` | `ProjectConfigViewModel` | Form for a `Project` (name, base repository path, worktrees root, main branch, the repository's provisioning, local files, agent command and Headroom switch); validates required fields and asks before discarding unsaved changes. |
 | `WorktreeScreen` | `WorktreeViewModel` | Lists the worktrees of the active project with their status; creates them from a new or an existing branch, removes them (optionally deleting the branch, retrying with `--force` when Git asks for it) and copies their launch command. |
 
 Each ViewModel uses `androidx.lifecycle` viewmodel-compose (`viewModelScope`) to call use cases without blocking the UI thread. Lists are reloaded when the window regains focus, so changes made outside the app (a branch created from the terminal, a worktree removed by hand) show up without pressing "Reload".
@@ -54,11 +54,20 @@ The "Clean up" button next to the "Worktrees" title is enabled when `cleanupCand
 
 Each worktree row has a "Copy command" button that calls `WorktreeViewModel.copyLaunchCommand(worktree)`; the button shows a "Copied" state for a couple of seconds. The command (`cd "<path>" && <agent command>`) is pasted by the user in the terminal of their choice.
 
+### Repository provisioning and local files
+
+The configuration form has two file sections:
+
+- **From the repository** (read-only): the patterns of the base repository's `.shogunai.json` and `.worktreeinclude`, each with the file it comes from. `ProjectConfigViewModel.repositoryProvisioning` holds a `RepositoryProvisioningState` (`None`, `Declared`, or `Unreadable` with the file and the parse error), read through `RepositoryProvisioningSource` when the form opens and every time the base repository path changes.
+- **Local files**: the project's `secretFiles`, exact paths stored only in `~/.shogunai/projects.json`.
+
+"Move to .shogunai.json" (`moveLocalFilesToRepository`) is offered when some local file is inside the repository (relative, not starting with `..`) and `.shogunai.json` isn't unreadable. It turns those entries into patterns anchored to the root (`local.properties` → `/local.properties`), lists them under "From the repository" marked "on save", and removes them from the local list; absolute entries stay local. Nothing is written yet: pending patterns count as an unsaved change, so cancelling discards them. `save()` returns `Result<Project>`: it first appends the pending patterns with `addCopyPatterns`, then saves the project; if writing the repository file fails, the project isn't saved and the screen shows the error above the buttons, keeping the form open.
+
 ### Moving a repository
 
 When the user edits a project because its repository moved on disk:
 
-- `ProjectConfigViewModel` turns absolute secret file entries inside the base repository into relative ones, so they follow the repository.
+- `ProjectConfigViewModel` turns absolute local file entries inside the base repository into relative ones, so they follow the repository.
 - Changing the base repository path also moves the worktrees root when it was inside the repository, its parent or a sibling folder, unless the user edited it by hand (`RepositoryRelocation.kt`).
 - After saving with a different base path or worktrees root, `AppRoot` opens the worktree screen with the previous worktrees root, and `WorktreeViewModel.repairAfterMove` runs `RepairWorktreesUseCase` before listing. A failed repair stays visible as an error.
 - The form and worktree ViewModels are keyed by the project's configuration, not only its id, so an edited project never reuses use cases bound to the old paths.
@@ -71,7 +80,7 @@ List loads are tagged with a generation number: a result is only applied if no n
 - **`SegmentedSelector<T>`**: segmented control (`SingleChoiceSegmentedButtonRow`/`SegmentedButton`) for a small, fixed set of options that should all be visible at once (e.g. `CreateMode`, `BranchType`). Labels are sized to their full text (`Modifier.width(IntrinsicSize.Max)`): the row sizes its segments from their minimum intrinsic width, which for plain text is only its longest word.
 - **`DropdownSelector<T>`**: dropdown (`ExposedDropdownMenuBox`) for longer or dynamically loaded lists, with optional collapsible groups (`groupBy`) and disabled options (`enabled`), which are ignored whatever the input method.
 - **`SectionCard`**: titled `OutlinedCard`, used to group sections of a long form (every section of `ProjectConfigScreen`, and the "New worktree" block of `WorktreeScreen`).
-- **Keyboard shortcuts** (`KeyboardShortcuts.kt`): `onEnterKey` triggers the main action of a text field (e.g. adding a secret file), and `onNewItemShortcut` binds Cmd+N (macOS) / Ctrl+N (other systems) to "New project" and "Create worktree".
+- **Keyboard shortcuts** (`KeyboardShortcuts.kt`): `onEnterKey` triggers the main action of a text field (e.g. adding a local file), and `onNewItemShortcut` binds Cmd+N (macOS) / Ctrl+N (other systems) to "New project" and "Create worktree".
 
 ## Theme (`ui/theme`)
 
@@ -83,7 +92,7 @@ Instantiates `JsonProjectRepository`, the settings repositories, `NioFileManager
 
 ## `FilePicker`
 
-Wraps `JFileChooser` for the "Browse…" buttons on the configuration screen (base repo path, worktrees folder, secret files). Chosen over a native Compose picker because Compose Desktop doesn't ship one and `JFileChooser` is already available on the JVM target with no new dependencies. `relativeToBase` converts the absolute path of a chosen secret file into the path relative to the repo that `ProjectConfig.secretFiles` expects.
+Wraps `JFileChooser` for the "Browse…" buttons on the configuration screen (base repo path, worktrees folder, local files). Chosen over a native Compose picker because Compose Desktop doesn't ship one and `JFileChooser` is already available on the JVM target with no new dependencies. `relativeToBase` converts the absolute path of a chosen local file into the path relative to the repo that `ProjectConfig.secretFiles` expects.
 
 ## Languages (`ui/i18n`)
 

@@ -19,6 +19,17 @@ class NioFileManagerTest {
     }
 
     @Test
+    fun `copy creates the missing parent folders of the destination`() {
+        val source = root.resolve("repo/.idea/runConfigurations").createDirectories().resolve("App.xml")
+        source.writeBytes(ByteArray(10))
+        val destination = root.resolve("worktree/.idea/runConfigurations/App.xml")
+
+        fileManager.copy(source.toString(), destination.toString())
+
+        assertEquals(10L, Files.size(destination))
+    }
+
+    @Test
     fun `adds up regular files, skipping excluded folders and not following symlinks`() {
         val repo = root.resolve("repo").createDirectories()
         repo.resolve("a.txt").writeBytes(ByteArray(100))

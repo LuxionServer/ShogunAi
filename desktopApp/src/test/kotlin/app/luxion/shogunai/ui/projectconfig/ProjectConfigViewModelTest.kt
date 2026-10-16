@@ -1,15 +1,22 @@
 package app.luxion.shogunai.ui.projectconfig
 
 import app.luxion.shogunai.domain.FakeProjectRepository
+import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ProjectConfigViewModelTest {
+
+    private val basePath = "/home/dev/projects/main-repo"
+    private var provisioningSource = FakeRepositoryProvisioningSource()
+    private val projectRepository = FakeProjectRepository()
 
     private fun projectWith(
         secretFiles: List<String> = emptyList(),
@@ -26,14 +33,14 @@ class ProjectConfigViewModelTest {
         ),
     )
 
-    private fun viewModelFor(project: Project?) = ProjectConfigViewModel(FakeProjectRepository(), project)
+    private fun viewModelFor(project: Project?) = ProjectConfigViewModel(projectRepository, provisioningSource, project)
 
     @Test
     fun `relative secret files follow the base repository when it moves`() {
         val viewModel = viewModelFor(projectWith(listOf("local.properties", "app/secrets.properties")))
 
         viewModel.baseRepositoryPath = "/home/dev/moved/main-repo"
-        val saved = viewModel.save()
+        val saved = viewModel.save().getOrThrow()
 
         assertEquals("/home/dev/moved/main-repo", saved.config.baseRepositoryPath)
         assertEquals(listOf("local.properties", "app/secrets.properties"), saved.config.secretFiles)
@@ -47,7 +54,7 @@ class ProjectConfigViewModelTest {
         )
 
         viewModel.baseRepositoryPath = "/home/dev/moved/main-repo"
-        val saved = viewModel.save()
+        val saved = viewModel.save().getOrThrow()
 
         assertEquals(listOf("local.properties", "app/key.json"), saved.config.secretFiles)
     }
@@ -169,7 +176,7 @@ class ProjectConfigViewModelTest {
             baseRepositoryPath = "/home/dev/projects/main-repo"
         }
 
-        assertNull(viewModel.save().config.mainBranch)
+        assertNull(viewModel.save().getOrThrow().config.mainBranch)
     }
 
     @Test
@@ -178,7 +185,7 @@ class ProjectConfigViewModelTest {
 
         viewModel.mainBranch = "  develop "
 
-        assertEquals("develop", viewModel.save().config.mainBranch)
+        assertEquals("develop", viewModel.save().getOrThrow().config.mainBranch)
     }
 
     @Test
@@ -187,7 +194,7 @@ class ProjectConfigViewModelTest {
 
         viewModel.mainBranch = "   "
 
-        assertNull(viewModel.save().config.mainBranch)
+        assertNull(viewModel.save().getOrThrow().config.mainBranch)
     }
 
     @Test
@@ -198,5 +205,100 @@ class ProjectConfigViewModelTest {
         viewModel.mainBranch = "main"
 
         assertTrue(viewModel.hasUnsavedChanges)
+    }
+
+    @Test
+    fun `shows the provisioning the repository declares`() {
+        val declared = RepositoryProvisioning(copyPatterns = listOf("local.properties"), worktreeIncludePatterns = listOf(".env"))
+        provisioningSource = FakeRepositoryProvisioningSource(byRepository = mapOf(basePath to declared))
+
+        val viewModel = viewModelFor(projectWith())
+
+        assertEquals(RepositoryProvisioningState.Declared(declared), viewModel.repositoryProvisioning)
+    }
+
+    @Test
+    fun `shows nothing declared for a repository without provisioning files`() {
+        assertEquals(RepositoryProvisioningState.None, viewModelFor(projectWith()).repositoryProvisioning)
+    }
+
+    @Test
+    fun `reloads the provisioning when the base repository path changes`() {
+        val other = RepositoryProvisioning(copyPatterns = listOf(".env*"))
+        provisioningSource = FakeRepositoryProvisioningSource(byRepository = mapOf("/home/dev/projects/other-repo" to other))
+        val viewModel = viewModelFor(projectWith())
+
+        viewModel.baseRepositoryPath = "/home/dev/projects/other-repo"
+
+        assertEquals(RepositoryProvisioningState.Declared(other), viewModel.repositoryProvisioning)
+    }
+
+    @Test
+    fun `reports an unreadable repository file and offers no move`() {
+        provisioningSource = FakeRepositoryProvisioningSource(unreadable = setOf(basePath))
+
+        val viewModel = viewModelFor(projectWith(listOf("local.properties")))
+
+        assertIs<RepositoryProvisioningState.Unreadable>(viewModel.repositoryProvisioning)
+        assertFalse(viewModel.canMoveLocalFilesToRepository)
+        viewModel.moveLocalFilesToRepository()
+        assertEquals(listOf("local.properties"), viewModel.secretFiles)
+    }
+
+    @Test
+    fun `moving local files anchors the ones inside the repository and keeps the rest local`() {
+        val viewModel = viewModelFor(
+            projectWith(listOf("local.properties", "app/google-services.json", "/etc/keys/release.jks", "../shared/key.json")),
+        )
+
+        viewModel.moveLocalFilesToRepository()
+
+        assertEquals(listOf("/local.properties", "/app/google-services.json"), viewModel.pendingRepositoryPatterns)
+        assertEquals(listOf("/etc/keys/release.jks", "../shared/key.json"), viewModel.secretFiles)
+        assertTrue(viewModel.hasUnsavedChanges)
+        assertTrue(provisioningSource.addedPatterns.isEmpty(), "nothing is written before saving")
+    }
+
+    @Test
+    fun `saving writes the moved patterns to the repository before the project`() {
+        val viewModel = viewModelFor(projectWith(listOf("local.properties", "/etc/keys/release.jks")))
+        viewModel.moveLocalFilesToRepository()
+
+        val saved = viewModel.save().getOrThrow()
+
+        assertEquals(listOf(basePath to listOf("/local.properties")), provisioningSource.addedPatterns)
+        assertEquals(listOf("/etc/keys/release.jks"), saved.config.secretFiles)
+        assertEquals(saved, projectRepository.list().single())
+        assertEquals(emptyList(), viewModel.pendingRepositoryPatterns)
+    }
+
+    @Test
+    fun `a failed write leaves the project unchanged`() {
+        provisioningSource = FakeRepositoryProvisioningSource(failWritesFor = setOf(basePath))
+        val viewModel = viewModelFor(projectWith(listOf("local.properties")))
+        viewModel.moveLocalFilesToRepository()
+
+        val result = viewModel.save()
+
+        assertTrue(result.isFailure)
+        assertTrue(projectRepository.list().isEmpty())
+        assertEquals(listOf("/local.properties"), viewModel.pendingRepositoryPatterns)
+    }
+
+    @Test
+    fun `nothing to move without local files inside the repository`() {
+        assertFalse(viewModelFor(projectWith()).canMoveLocalFilesToRepository)
+        assertFalse(viewModelFor(projectWith(listOf("/etc/keys/release.jks"))).canMoveLocalFilesToRepository)
+        assertTrue(viewModelFor(projectWith(listOf("local.properties"))).canMoveLocalFilesToRepository)
+    }
+
+    @Test
+    fun `saving without moving never writes to the repository`() {
+        val viewModel = viewModelFor(projectWith(listOf("local.properties")))
+        viewModel.name = "Renamed"
+
+        viewModel.save().getOrThrow()
+
+        assertTrue(provisioningSource.addedPatterns.isEmpty())
     }
 }

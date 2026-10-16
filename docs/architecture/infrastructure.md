@@ -15,7 +15,20 @@ Implementation of `ShellCommandExecutor` on top of `ProcessBuilder`. Robustness 
 
 ## `NioFileManager`
 
-Implementation of `FileManager` on top of `java.nio.file`. `copy` uses `REPLACE_EXISTING` and `COPY_ATTRIBUTES`. `directorySize` walks the tree with `Files.walkFileTree` without following symlinks, adds up regular file sizes, skips the excluded folders and ignores files it can't read. `modificationStamps` walks the same way and records each entry's last-modified time. Works the same on every supported OS.
+Implementation of `FileManager` on top of `java.nio.file`. `copy` creates the destination's missing parent folders and uses `REPLACE_EXISTING` and `COPY_ATTRIBUTES`. `directorySize` walks the tree with `Files.walkFileTree` without following symlinks, adds up regular file sizes, skips the excluded folders and ignores files it can't read. `modificationStamps` walks the same way and records each entry's last-modified time. Works the same on every supported OS.
+
+## `RepositoryProvisioningFiles`
+
+Implementation of `RepositoryProvisioningSource` on `java.nio.file` and `kotlinx.serialization`, over `<repo>/.shogunai.json` and `<repo>/.worktreeinclude`.
+
+- **Reading**: a missing or blank `.shogunai.json` means no patterns. The file is parsed as a generic JSON object, so unknown fields are ignored; invalid JSON, a non-object root or a `copy` that isn't a list of strings throw `InvalidRepositoryConfig`.
+- **Writing** (`addCopyPatterns`): reads the object, replaces only `copy` (existing patterns first, new ones appended without duplicates) and writes it back pretty-printed, atomically (temporary file in the same folder + `ATOMIC_MOVE`), so other fields survive. It refuses to rewrite a file it can't parse.
+
+Pattern matching is left to Git (`git ls-files --others --ignored -z -x <pattern>…`, see the domain's `CreateWorktreeUseCase`), so it follows the gitignore rules exactly, including their limits: a file can't be re-included with `!` if its parent folder is excluded (`.idea/` + `!.idea/workspace.xml` still lists `workspace.xml`; use `.idea/*` instead). Try a pattern from the base repository with the same command:
+
+```bash
+git ls-files --others --ignored -x '/local.properties' -x '.env*' -x '.idea/runConfigurations/'
+```
 
 ## `AwtClipboardWriter`
 
@@ -40,5 +53,6 @@ In `core/src/testFixtures/kotlin/app/luxion/shogunai/domain/`, `core`'s test fix
 - `FakeFileManager` — substitutes `FileManager` with an in-memory set of existing paths.
 - `FakeClipboardWriter` — substitutes `ClipboardWriter`.
 - `FakeProjectRepository` — substitutes `ProjectRepository` in ViewModel tests.
+- `FakeRepositoryProvisioningSource` — substitutes `RepositoryProvisioningSource` with provisioning per repository path, unreadable repositories and failing writes, and records the patterns added.
 
-Thanks to the domain depending on interfaces, the use case tests (`*UseCaseTest`) and the ViewModel tests don't touch disk or launch real processes. The infrastructure itself is covered by `ProcessBuilderShellCommandExecutorTest`, `JsonProjectRepositoryTest` and `JsonSettingsFileTest`, which do use real processes and temporary files.
+Thanks to the domain depending on interfaces, the use case tests (`*UseCaseTest`) and the ViewModel tests don't touch disk or launch real processes. The infrastructure itself is covered by `ProcessBuilderShellCommandExecutorTest`, `JsonProjectRepositoryTest`, `JsonSettingsFileTest` and `RepositoryProvisioningFilesTest`, which do use real processes and temporary files.

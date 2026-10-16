@@ -3,6 +3,7 @@ package app.luxion.shogunai
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.LanguagePreferenceRepository
 import app.luxion.shogunai.domain.io.ProjectRepository
+import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.io.ThemePreferenceRepository
 import app.luxion.shogunai.domain.executor.ClipboardWriter
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
@@ -27,6 +28,7 @@ import app.luxion.shogunai.infrastructure.JsonSettingsFile
 import app.luxion.shogunai.infrastructure.JsonThemePreferenceRepository
 import app.luxion.shogunai.infrastructure.NioFileManager
 import app.luxion.shogunai.infrastructure.ProcessBuilderShellCommandExecutor
+import app.luxion.shogunai.infrastructure.RepositoryProvisioningFiles
 
 class AppContainer {
     val projectRepository: ProjectRepository = JsonProjectRepository()
@@ -36,11 +38,12 @@ class AppContainer {
     private val fileManager: FileManager = NioFileManager()
     private val shellCommandExecutor: ShellCommandExecutor = ProcessBuilderShellCommandExecutor()
     private val clipboardWriter: ClipboardWriter = AwtClipboardWriter()
+    val repositoryProvisioningSource: RepositoryProvisioningSource = RepositoryProvisioningFiles()
 
     fun worktreeUseCases(config: ProjectConfig): WorktreeUseCases = WorktreeUseCases(
         list = ListWorktreesUseCase(config, shellCommandExecutor),
-        create = CreateWorktreeUseCase(config, shellCommandExecutor, fileManager),
-        createFromBranch = CreateWorktreeFromBranchUseCase(config, shellCommandExecutor, fileManager),
+        create = CreateWorktreeUseCase(config, shellCommandExecutor, fileManager, repositoryProvisioningSource),
+        createFromBranch = CreateWorktreeFromBranchUseCase(config, shellCommandExecutor, fileManager, repositoryProvisioningSource),
         listLocalBranches = ListLocalBranchesUseCase(config, shellCommandExecutor),
         remove = RemoveWorktreeUseCase(config, shellCommandExecutor),
         copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboardWriter),

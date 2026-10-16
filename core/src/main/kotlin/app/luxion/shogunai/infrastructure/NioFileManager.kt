@@ -15,9 +15,11 @@ class NioFileManager : FileManager {
     override fun exists(path: String): Boolean = Files.exists(Path.of(path))
 
     override fun copy(source: String, destination: String) {
+        val destinationPath = Path.of(destination)
+        destinationPath.parent?.let { Files.createDirectories(it) }
         Files.copy(
             Path.of(source),
-            Path.of(destination),
+            destinationPath,
             StandardCopyOption.REPLACE_EXISTING,
             StandardCopyOption.COPY_ATTRIBUTES,
         )

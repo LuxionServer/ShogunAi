@@ -1,11 +1,13 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -40,7 +42,7 @@ class CreateWorktreeFromBranchUseCaseTest {
     fun `creates worktree and copies secret files on success`() = runTest {
         val exec = executor()
         val fileManager = FakeFileManager(existing = baseWithSecrets)
-        val useCase = CreateWorktreeFromBranchUseCase(config, exec, fileManager)
+        val useCase = CreateWorktreeFromBranchUseCase(config, exec, fileManager, FakeRepositoryProvisioningSource())
 
         val worktree = useCase(branch).getOrThrow()
 
@@ -61,7 +63,7 @@ class CreateWorktreeFromBranchUseCaseTest {
         val exec = FakeShellCommandExecutor {
             if (it.getOrNull(1) == "branch" && it.getOrNull(2) == "--list") success(it, stdout = "") else success(it)
         }
-        val useCase = CreateWorktreeFromBranchUseCase(config, exec, FakeFileManager(existing = baseWithSecrets))
+        val useCase = CreateWorktreeFromBranchUseCase(config, exec, FakeFileManager(existing = baseWithSecrets), FakeRepositoryProvisioningSource())
 
         val error = useCase(branch).exceptionOrNull()
 
@@ -80,7 +82,7 @@ class CreateWorktreeFromBranchUseCaseTest {
             )
         })
         val fileManager = FakeFileManager(existing = baseWithSecrets)
-        val useCase = CreateWorktreeFromBranchUseCase(config, exec, fileManager)
+        val useCase = CreateWorktreeFromBranchUseCase(config, exec, fileManager, FakeRepositoryProvisioningSource())
 
         val error = useCase(branch).exceptionOrNull()
 
@@ -94,7 +96,7 @@ class CreateWorktreeFromBranchUseCaseTest {
     fun `fails when destination worktree already exists`() = runTest {
         val exec = executor()
         val fileManager = FakeFileManager(existing = baseWithSecrets + worktreePath)
-        val useCase = CreateWorktreeFromBranchUseCase(config, exec, fileManager)
+        val useCase = CreateWorktreeFromBranchUseCase(config, exec, fileManager, FakeRepositoryProvisioningSource())
 
         val error = useCase(branch).exceptionOrNull()
 
@@ -108,7 +110,7 @@ class CreateWorktreeFromBranchUseCaseTest {
         val fileManager = FakeFileManager(
             existing = listOf(config.baseRepositoryPath, config.baseSecretPath("local.properties")),
         )
-        val useCase = CreateWorktreeFromBranchUseCase(config, exec, fileManager)
+        val useCase = CreateWorktreeFromBranchUseCase(config, exec, fileManager, FakeRepositoryProvisioningSource())
 
         val error = useCase(branch).exceptionOrNull()
 
@@ -127,7 +129,7 @@ class CreateWorktreeFromBranchUseCaseTest {
             )
         })
         val fileManager = FakeFileManager(existing = baseWithSecrets)
-        val useCase = CreateWorktreeFromBranchUseCase(config, exec, fileManager)
+        val useCase = CreateWorktreeFromBranchUseCase(config, exec, fileManager, FakeRepositoryProvisioningSource())
 
         val error = useCase(branch).exceptionOrNull()
 
@@ -150,7 +152,7 @@ class CreateWorktreeFromBranchUseCaseTest {
             existing = baseWithSecrets,
             failCopyFor = setOf(config.baseSecretPath("local.properties")),
         )
-        val useCase = CreateWorktreeFromBranchUseCase(config, exec, fileManager)
+        val useCase = CreateWorktreeFromBranchUseCase(config, exec, fileManager, FakeRepositoryProvisioningSource())
 
         val error = useCase(branch).exceptionOrNull()
 
@@ -165,7 +167,7 @@ class CreateWorktreeFromBranchUseCaseTest {
     @Test
     fun `fails when branch is blank`() = runTest {
         val exec = executor()
-        val useCase = CreateWorktreeFromBranchUseCase(config, exec, FakeFileManager(baseWithSecrets))
+        val useCase = CreateWorktreeFromBranchUseCase(config, exec, FakeFileManager(baseWithSecrets), FakeRepositoryProvisioningSource())
 
         val error = useCase("   ").exceptionOrNull()
 
@@ -183,11 +185,43 @@ class CreateWorktreeFromBranchUseCaseTest {
                 else -> success(it)
             }
         }
-        val useCase = CreateWorktreeFromBranchUseCase(config, exec, FakeFileManager(existing = baseWithSecrets))
+        val useCase = CreateWorktreeFromBranchUseCase(config, exec, FakeFileManager(existing = baseWithSecrets), FakeRepositoryProvisioningSource())
 
         val worktree = useCase(prefixedBranch).getOrThrow()
 
         assertEquals(prefixedWorktreePath, worktree.path)
         assertTrue(exec.executed("git", "worktree", "add", prefixedWorktreePath, prefixedBranch))
+    }
+
+    @Test
+    fun `copies the files selected by the repository patterns`() = runTest {
+        val exec = FakeShellCommandExecutor {
+            when {
+                it.getOrNull(1) == "branch" && it.getOrNull(2) == "--list" -> success(it, stdout = "  $branch\n")
+                it.getOrNull(1) == "ls-files" -> success(it, stdout = ".env\u0000")
+                else -> success(it)
+            }
+        }
+        val fileManager = FakeFileManager(existing = baseWithSecrets)
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(config.baseRepositoryPath to RepositoryProvisioning(copyPatterns = listOf(".env"))),
+        )
+        val useCase = CreateWorktreeFromBranchUseCase(config, exec, fileManager, provisioning)
+
+        useCase(branch).getOrThrow()
+
+        assertEquals(config.baseSecretPath(".env") to "$worktreePath/.env", fileManager.copied.last())
+    }
+
+    @Test
+    fun `fails before creating anything when the repository config is invalid`() = runTest {
+        val exec = executor()
+        val provisioning = FakeRepositoryProvisioningSource(unreadable = setOf(config.baseRepositoryPath))
+        val useCase = CreateWorktreeFromBranchUseCase(config, exec, FakeFileManager(existing = baseWithSecrets), provisioning)
+
+        val error = useCase(branch).exceptionOrNull()
+
+        assertIs<WorktreeError.InvalidRepositoryConfig>(error)
+        assertFalse(exec.executedCommands.any { it.getOrNull(1) == "worktree" })
     }
 }

@@ -20,7 +20,7 @@ interface Strings {
     val collapse: String
 
     val selectFolderDialogTitle: String
-    val selectSecretFilesDialogTitle: String
+    val selectLocalFilesDialogTitle: String
 
     val projectsTitle: String
     val newProject: String
@@ -42,9 +42,17 @@ interface Strings {
     val worktreesRootLabel: String
     val mainBranchLabel: String
     val mainBranchPlaceholder: String
-    val secretFilesSection: String
-    val removeSecretFile: String
-    val newSecretFileLabel: String
+    val localFilesSection: String
+    val removeLocalFile: String
+    val newLocalFileLabel: String
+    val localFilesDescription: String
+    val repositoryProvisioningSection: String
+    val repositoryProvisioningDescription: String
+    val repositoryProvisioningEmpty: String
+    fun repositoryConfigUnreadable(path: String): String
+    val moveToRepositoryConfig: String
+    val pendingSave: String
+    fun saveFailed(detail: String?): String
     val add: String
     val agentSection: String
     val agentCommandLabel: String
@@ -111,6 +119,7 @@ interface Strings {
     fun worktreeAlreadyExists(path: String): String
     fun invalidTaskIdError(rawInput: String): String
     fun secretFilesNotFound(files: List<String>, basePath: String): String
+    fun invalidRepositoryConfig(path: String, detail: String?): String
     fun gitCommandFailed(command: List<String>, exitCode: Int): String
     fun secretCopyFailed(detail: String?): String
     fun clipboardWriteFailed(detail: String?): String
@@ -140,6 +149,7 @@ private fun Strings.worktreeErrorMessage(error: WorktreeError): String = when (e
     is WorktreeError.WorktreeAlreadyExists -> worktreeAlreadyExists(error.path)
     is WorktreeError.InvalidTaskId -> invalidTaskIdError(error.rawInput)
     is WorktreeError.SecretFileNotFound -> secretFilesNotFound(error.files, error.basePath)
+    is WorktreeError.InvalidRepositoryConfig -> invalidRepositoryConfig(error.path, error.detail)
     is WorktreeError.GitCommandFailed -> gitCommandFailed(error.command, error.exitCode) +
         if (error.errorOutput.isNotBlank()) "\n${error.errorOutput}" else ""
     is WorktreeError.SecretCopyFailed -> secretCopyFailed(error.cause?.message)

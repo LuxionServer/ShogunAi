@@ -13,7 +13,7 @@ La barra superior, encima de todas las pantallas, contiene los selectores de idi
 | Pantalla | ViewModel | Responsabilidad |
 |---|---|---|
 | `ProjectListScreen` | `ProjectListViewModel` | Catálogo de proyectos de `ProjectRepository`: búsqueda por nombre, orden A-Z / Z-A, abrir, editar y eliminar (con confirmación). |
-| `ProjectConfigScreen` | `ProjectConfigViewModel` | Formulario de un `Project` (nombre, ruta del repositorio base, carpeta raíz de worktrees, rama principal, archivos de secretos, comando del agente y switch de Headroom); valida los campos requeridos y pregunta antes de descartar cambios sin guardar. |
+| `ProjectConfigScreen` | `ProjectConfigViewModel` | Formulario de un `Project` (nombre, ruta del repositorio base, carpeta raíz de worktrees, rama principal, el provisionado del repositorio, archivos locales, comando del agente y switch de Headroom); valida los campos requeridos y pregunta antes de descartar cambios sin guardar. |
 | `WorktreeScreen` | `WorktreeViewModel` | Lista los worktrees del proyecto activo con su estado; los crea desde una rama nueva o existente, los elimina (opcionalmente borrando la rama, y reintentando con `--force` cuando Git lo pide) y copia su comando de lanzamiento. |
 
 Cada ViewModel usa `androidx.lifecycle` viewmodel-compose (`viewModelScope`) para llamar a los casos de uso sin bloquear el hilo de UI. Las listas se recargan cuando la ventana recupera el foco, así los cambios hechos fuera de la app (una rama creada desde la terminal, un worktree borrado a mano) aparecen sin pulsar "Recargar".
@@ -54,11 +54,20 @@ El botón "Limpiar", junto al título "Worktrees", se habilita cuando `cleanupCa
 
 Cada fila de worktree tiene un botón "Copiar comando" que llama a `WorktreeViewModel.copyLaunchCommand(worktree)`; el botón muestra "Copiado" durante un par de segundos. El usuario pega el comando (`cd "<ruta>" && <comando del agente>`) en la terminal que prefiera.
 
+### Provisionado del repositorio y archivos locales
+
+El formulario de configuración tiene dos secciones de archivos:
+
+- **Del repositorio** (solo lectura): los patrones de `.shogunai.json` y `.worktreeinclude` del repositorio base, cada uno con el fichero del que viene. `ProjectConfigViewModel.repositoryProvisioning` guarda un `RepositoryProvisioningState` (`None`, `Declared`, o `Unreadable` con el fichero y el error de lectura), leído a través de `RepositoryProvisioningSource` al abrir el formulario y cada vez que cambia la ruta del repositorio base.
+- **Archivos locales**: los `secretFiles` del proyecto, rutas exactas guardadas solo en `~/.shogunai/projects.json`.
+
+"Mover a .shogunai.json" (`moveLocalFilesToRepository`) se ofrece cuando algún archivo local está dentro del repositorio (relativo, sin empezar por `..`) y `.shogunai.json` no está ilegible. Convierte esas entradas en patrones anclados a la raíz (`local.properties` → `/local.properties`), los muestra en "Del repositorio" marcados "al guardar" y los quita de la lista local; las entradas absolutas se quedan como locales. Todavía no se escribe nada: los patrones pendientes cuentan como cambio sin guardar, así que cancelar los descarta. `save()` devuelve `Result<Project>`: primero añade los patrones pendientes con `addCopyPatterns` y después guarda el proyecto; si falla la escritura del fichero del repositorio, el proyecto no se guarda y la pantalla muestra el error sobre los botones, sin cerrar el formulario.
+
 ### Mover un repositorio
 
 Cuando el usuario edita un proyecto porque su repositorio se movió en disco:
 
-- `ProjectConfigViewModel` convierte en relativas las entradas absolutas de archivos de secretos que están dentro del repositorio base, para que sigan al repositorio.
+- `ProjectConfigViewModel` convierte en relativas las entradas absolutas de archivos locales que están dentro del repositorio base, para que sigan al repositorio.
 - Cambiar la ruta del repositorio base también mueve la carpeta raíz de worktrees cuando estaba dentro del repositorio, era su carpeta padre o una carpeta hermana, salvo que el usuario la haya editado a mano (`RepositoryRelocation.kt`).
 - Al guardar con otra ruta base u otra carpeta raíz de worktrees, `AppRoot` abre la pantalla de worktrees con la carpeta raíz anterior, y `WorktreeViewModel.repairAfterMove` ejecuta `RepairWorktreesUseCase` antes de listar. Si la reparación falla, el error queda visible.
 - Los ViewModels del formulario y de la pantalla de worktrees se identifican por la configuración del proyecto, no solo por su id, así un proyecto editado nunca reutiliza casos de uso ligados a las rutas antiguas.
@@ -71,7 +80,7 @@ Las cargas de la lista llevan un número de generación: un resultado solo se ap
 - **`SegmentedSelector<T>`**: control segmentado (`SingleChoiceSegmentedButtonRow`/`SegmentedButton`) para un conjunto pequeño y fijo de opciones siempre visibles (p. ej. `CreateMode`, `BranchType`). Las etiquetas se dimensionan a su texto completo (`Modifier.width(IntrinsicSize.Max)`): la fila calcula el ancho de sus segmentos a partir de su ancho mínimo intrínseco, que para un texto normal es solo su palabra más larga.
 - **`DropdownSelector<T>`**: dropdown (`ExposedDropdownMenuBox`) para listas más largas o cargadas dinámicamente, con grupos plegables opcionales (`groupBy`) y opciones deshabilitadas (`enabled`), que se ignoran sea cual sea el método de entrada.
 - **`SectionCard`**: `OutlinedCard` con título, usada para agrupar secciones de un formulario largo (todas las secciones de `ProjectConfigScreen`, y el bloque "Nuevo worktree" de `WorktreeScreen`).
-- **Atajos de teclado** (`KeyboardShortcuts.kt`): `onEnterKey` lanza la acción principal de un campo de texto (p. ej. añadir un archivo de secretos), y `onNewItemShortcut` asocia Cmd+N (macOS) / Ctrl+N (otros sistemas) a "Nuevo proyecto" y "Crear worktree".
+- **Atajos de teclado** (`KeyboardShortcuts.kt`): `onEnterKey` lanza la acción principal de un campo de texto (p. ej. añadir un archivo local), y `onNewItemShortcut` asocia Cmd+N (macOS) / Ctrl+N (otros sistemas) a "Nuevo proyecto" y "Crear worktree".
 
 ## Tema (`ui/theme`)
 
@@ -83,7 +92,7 @@ Instancia `JsonProjectRepository`, los repositorios de preferencias, `NioFileMan
 
 ## `FilePicker`
 
-Envuelve `JFileChooser` para los botones "Examinar…" de la pantalla de configuración (ruta del repo base, carpeta de worktrees, archivos de secretos). Se eligió sobre un selector nativo de Compose porque Compose Desktop no trae uno y `JFileChooser` ya está disponible en el target JVM sin dependencias nuevas. `relativeToBase` convierte la ruta absoluta de un archivo de secretos elegido a la forma relativa al repo que espera `ProjectConfig.secretFiles`.
+Envuelve `JFileChooser` para los botones "Examinar…" de la pantalla de configuración (ruta del repo base, carpeta de worktrees, archivos locales). Se eligió sobre un selector nativo de Compose porque Compose Desktop no trae uno y `JFileChooser` ya está disponible en el target JVM sin dependencias nuevas. `relativeToBase` convierte la ruta absoluta de un archivo local elegido a la forma relativa al repo que espera `ProjectConfig.secretFiles`.
 
 ## Idiomas (`ui/i18n`)
 

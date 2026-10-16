@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import app.luxion.shogunai.domain.io.ProjectRepository
+import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -12,6 +13,7 @@ import java.util.UUID
 
 class ProjectConfigViewModel(
     private val projectRepository: ProjectRepository,
+    private val provisioningSource: RepositoryProvisioningSource,
     existingProject: Project?,
 ) : ViewModel() {
     private val existingId = existingProject?.id
@@ -25,6 +27,12 @@ class ProjectConfigViewModel(
     )
         private set
 
+    var repositoryProvisioning by mutableStateOf(provisioningSource.stateFor(_baseRepositoryPath))
+        private set
+
+    var pendingRepositoryPatterns by mutableStateOf(emptyList<String>())
+        private set
+
     private val worktreesRootOffset = worktreesRootOffset(_baseRepositoryPath, worktreesRoot)
     private var lastNonBlankBaseRepositoryPath = _baseRepositoryPath
 
@@ -32,6 +40,7 @@ class ProjectConfigViewModel(
         get() = _baseRepositoryPath
         set(value) {
             _baseRepositoryPath = value
+            repositoryProvisioning = provisioningSource.stateFor(value)
             if (value.isBlank()) return
             val offset = worktreesRootOffset
             val followsBase = offset != null &&
@@ -60,9 +69,15 @@ class ProjectConfigViewModel(
             baseRepositoryPath != initialBaseRepositoryPath ||
             worktreesRoot != initialWorktreesRoot ||
             secretFiles != initialSecretFiles ||
+            pendingRepositoryPatterns.isNotEmpty() ||
             agentCommand != initialAgentCommand ||
             useHeadroom != initialUseHeadroom ||
             mainBranch != initialMainBranch
+
+    val canMoveLocalFilesToRepository: Boolean
+        get() = baseRepositoryPath.isNotBlank() &&
+            repositoryProvisioning !is RepositoryProvisioningState.Unreadable &&
+            secretFiles.any(::isInsideRepository)
 
     fun addSecretFile(fileName: String) {
         val normalized = normalizeSecretFile(baseRepositoryPath, fileName.trim())
@@ -73,10 +88,22 @@ class ProjectConfigViewModel(
         secretFiles = secretFiles - fileName
     }
 
+    fun moveLocalFilesToRepository() {
+        if (!canMoveLocalFilesToRepository) return
+        val movable = secretFiles.filter(::isInsideRepository)
+        pendingRepositoryPatterns = (pendingRepositoryPatterns + movable.map(::anchoredPattern)).distinct()
+        secretFiles = secretFiles - movable.toSet()
+    }
+
     private fun String.isSameDirectoryAs(other: String): Boolean =
         trimEnd('/', '\\') == other.trimEnd('/', '\\')
 
-    fun save(): Project {
+    fun save(): Result<Project> = runCatching {
+        if (pendingRepositoryPatterns.isNotEmpty()) {
+            provisioningSource.addCopyPatterns(baseRepositoryPath, pendingRepositoryPatterns)
+            pendingRepositoryPatterns = emptyList()
+            repositoryProvisioning = provisioningSource.stateFor(baseRepositoryPath)
+        }
         val project = Project(
             id = existingId ?: UUID.randomUUID().toString(),
             name = name,
@@ -89,6 +116,6 @@ class ProjectConfigViewModel(
             ),
         )
         projectRepository.save(project)
-        return project
+        project
     }
 }
