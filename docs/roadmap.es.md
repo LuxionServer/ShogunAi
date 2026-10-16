@@ -18,10 +18,10 @@ Esa dirección se construye en tres capas:
 graph LR
     A["Núcleo compartido y configuración del repositorio"] --> B["CLI shogun y hooks de agentes"]
     A --> D["Provisionado Android, KMP y JVM"]
-    C["Estado de los worktrees"] --> E["Limpieza y vista completa"]
+    E["Limpieza y vista completa"]
 ```
 
-El estado de los worktrees no depende del motor, así que puede construirse en paralelo.
+La torre de control se apoya en el estado de los worktrees que la app ya muestra, no en el motor, así que puede construirse en paralelo.
 
 ## Planificado
 
@@ -44,10 +44,9 @@ El estado de los worktrees no depende del motor, así que puede construirse en p
 
 ### Torre de control
 
-Hoy la lista de worktrees solo muestra la ruta y la rama de cada uno. Cuando varios agentes trabajan en paralelo, hace falta ver cuáles han terminado y cuáles siguen con cambios sin abrir una terminal.
+La lista de worktrees ya muestra el estado de cada uno (cambios pendientes, divergencia, último commit, si está mergeado). Sobre eso:
 
-- **Estado de los worktrees**: cambios sin commitear (`git status --porcelain`), commits por delante y por detrás de su upstream y de la rama principal (`git rev-list --count`), fecha del último commit y si su rama ya está mergeada en la rama principal.
-- **Limpieza**: una acción para eliminar todos los worktrees cuya rama ya está mergeada, borrando opcionalmente también las ramas, y `git worktree prune` para los worktrees cuya carpeta ya no existe. Depende del estado de los worktrees.
+- **Limpieza**: una acción para eliminar todos los worktrees cuya rama ya está mergeada, borrando opcionalmente también las ramas, y `git worktree prune` para los worktrees cuya carpeta ya no existe.
 - **Vista completa**: todos los worktrees del repositorio, incluidos los creados por otras herramientas (`claude --worktree`, otros gestores de worktrees, IDEs), si hay un proceso de agente ejecutándose en cada uno y cuánto disco ocupa. Señala los worktrees huérfanos e inactivos.
 - Refresco automático vigilando los worktrees del repositorio, en lugar de recargar a mano.
 
