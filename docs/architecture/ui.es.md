@@ -34,6 +34,10 @@ Cada fila muestra el estado de su worktree debajo del nombre de la rama. `Worktr
 
 `WorktreeStatusLine` pinta el estado como segmentos separados por `·` (`statusSegments`): cambios sin commitear (solo si los hay), `↑N ↓N upstream`, `↑N ↓N <rama principal>` y la fecha del último commit en tiempo relativo (`relativeTime`, en `RelativeTime.kt`). Una rama mergeada muestra la etiqueta "mergeada en <rama principal>" en el color primario en lugar de su divergencia con la rama principal.
 
+### Refresco automático
+
+Mientras se muestra `WorktreeScreen`, un `DisposableEffect` llama a `WorktreeViewModel.startWatching()`, y a `stopWatching()` cuando sale de la composición. Cada 3 segundos el ViewModel lee `ReadGitMetadataFingerprintUseCase`: si la huella difiere de la anterior llama a `refresh()`; si no, solo vuelve a ejecutar `DetectRunningAgentsUseCase`, así los agentes que arrancan o terminan aparecen sin una recarga completa. La comprobación se salta mientras la lista se está cargando o hay una acción de crear, eliminar o limpiar en curso. `refresh()` guarda la huella de la que parte, así que una recarga provocada por la propia app no se repite en la siguiente comprobación. El refresco al recuperar el foco y la recarga manual siguen funcionando como antes.
+
 ### Vista completa de worktrees
 
 `WorktreeScreen` recibe la `ProjectConfig` del proyecto para clasificar el origen de cada fila con `classifyOrigin`. Tras cada carga de la lista, `WorktreeViewModel` ejecuta además `DetectRunningAgentsUseCase` una vez (`agents`, `null` cuando no se pueden listar los procesos) y mide el tamaño de cada worktree de uno en uno con `MeasureWorktreeSizeUseCase` (`sizes`, sumados en `totalSize`); los resultados de una carga anterior se descartan con `listGeneration`.

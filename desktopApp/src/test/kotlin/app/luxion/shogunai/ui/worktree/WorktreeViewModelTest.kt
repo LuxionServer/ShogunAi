@@ -20,6 +20,7 @@ import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.DetectRunningAgentsUseCase
 import app.luxion.shogunai.domain.usecase.MeasureWorktreeSizeUseCase
+import app.luxion.shogunai.domain.usecase.ReadGitMetadataFingerprintUseCase
 import app.luxion.shogunai.domain.usecase.ListLocalBranchesUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
@@ -29,7 +30,11 @@ import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -102,6 +107,7 @@ class WorktreeViewModelTest {
             cleanUp = CleanUpWorktreesUseCase(config, executor),
             detectAgents = DetectRunningAgentsUseCase(config, executor),
             measureSize = MeasureWorktreeSizeUseCase(fileManager, dispatcher),
+            readFingerprint = ReadGitMetadataFingerprintUseCase(config, fileManager, dispatcher),
         )
     }
 
@@ -584,7 +590,7 @@ class WorktreeViewModelTest {
         assertFalse(viewModel.isSelectedBranchAvailable)
     }
 
-    private val statusCommand = listOf("git", "status", "--porcelain")
+    private val statusCommand = listOf("git", "--no-optional-locks", "status", "--porcelain")
 
     @Test
     fun `statuses are read for every listed worktree`() = runTest(dispatcher) {
@@ -853,6 +859,141 @@ class WorktreeViewModelTest {
         advanceUntilIdle()
 
         assertEquals(4, fileManager.sizeRequests.size)
+    }
+
+    private val gitDir = "${config.baseRepositoryPath}/.git"
+
+    private fun watchedFiles() = FakeFileManager(directories = setOf(gitDir)).apply {
+        stamps["$gitDir/HEAD"] = 1
+        stamps["$gitDir/refs/heads/main"] = 1
+    }
+
+    private class Counters {
+        var lists = 0
+        var lsof = 0
+    }
+
+    private fun countingResponder(counters: Counters): (List<String>) -> CommandResult = { command ->
+        when {
+            command == listCommand -> {
+                counters.lists++
+                success(command, porcelainOutput)
+            }
+            command.first() == "lsof" -> {
+                counters.lsof++
+                success(command)
+            }
+            else -> success(command)
+        }
+    }
+
+    private fun TestScope.tick() {
+        advanceTimeBy(3.seconds)
+        runCurrent()
+    }
+
+    @Test
+    fun `a change in the git metadata reloads the list on the next check`() = runTest(dispatcher) {
+        val files = watchedFiles()
+        val counters = Counters()
+        val viewModel = WorktreeViewModel(useCasesWithFiles(files, countingResponder(counters)))
+        advanceUntilIdle()
+        viewModel.startWatching()
+
+        tick()
+        assertEquals(1, counters.lists)
+
+        files.stamps["$gitDir/refs/heads/main"] = 2
+        tick()
+        advanceTimeBy(1.seconds)
+        runCurrent()
+        viewModel.stopWatching()
+
+        assertEquals(2, counters.lists)
+    }
+
+    @Test
+    fun `without changes only agents are detected again`() = runTest(dispatcher) {
+        val counters = Counters()
+        val viewModel = WorktreeViewModel(useCasesWithFiles(watchedFiles(), countingResponder(counters)))
+        advanceUntilIdle()
+        val lsofAfterLoad = counters.lsof
+        viewModel.startWatching()
+
+        tick()
+        tick()
+        viewModel.stopWatching()
+
+        assertEquals(1, counters.lists)
+        assertEquals(lsofAfterLoad + 2, counters.lsof)
+    }
+
+    @Test
+    fun `no checks run after stopWatching`() = runTest(dispatcher) {
+        val files = watchedFiles()
+        val counters = Counters()
+        val viewModel = WorktreeViewModel(useCasesWithFiles(files, countingResponder(counters)))
+        advanceUntilIdle()
+        val lsofAfterLoad = counters.lsof
+        viewModel.startWatching()
+        viewModel.stopWatching()
+
+        files.stamps["$gitDir/HEAD"] = 2
+        tick()
+        tick()
+
+        assertEquals(1, counters.lists)
+        assertEquals(lsofAfterLoad, counters.lsof)
+    }
+
+    @Test
+    fun `a reload by the app itself doesn't trigger a second one`() = runTest(dispatcher) {
+        val files = watchedFiles()
+        val counters = Counters()
+        val viewModel = WorktreeViewModel(useCasesWithFiles(files, countingResponder(counters)))
+        advanceUntilIdle()
+        viewModel.startWatching()
+
+        files.stamps["$gitDir/refs/heads/main"] = 2
+        viewModel.refresh()
+        runCurrent()
+        tick()
+        tick()
+        viewModel.stopWatching()
+
+        assertEquals(2, counters.lists)
+    }
+
+    @Test
+    fun `checks are skipped while an action is running`() = runTest(dispatcher) {
+        val files = watchedFiles()
+        val counters = Counters()
+        val removeGate = CompletableDeferred<Unit>()
+        val responder = countingResponder(counters)
+        val executor = object : ShellCommandExecutor {
+            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+                if (command == removeCommand) removeGate.await()
+                return responder(command)
+            }
+        }
+        val viewModel = WorktreeViewModel(useCasesWith(executor, files))
+        advanceUntilIdle()
+        val lsofAfterLoad = counters.lsof
+        viewModel.startWatching()
+
+        viewModel.remove(worktree, branchToDelete = null)
+        runCurrent()
+        files.stamps["$gitDir/HEAD"] = 2
+        tick()
+        tick()
+
+        assertTrue(viewModel.isRemoving)
+        assertEquals(1, counters.lists)
+        assertEquals(lsofAfterLoad, counters.lsof)
+
+        removeGate.complete(Unit)
+        viewModel.stopWatching()
+        runCurrent()
     }
 
     @Test

@@ -33,4 +33,22 @@ class NioFileManagerTest {
 
         assertEquals(150L, size)
     }
+
+    @Test
+    fun `modification stamps cover nested entries, a single file and a missing path`() {
+        val refs = root.resolve("refs").createDirectories()
+        refs.resolve("heads/feature").createDirectories().resolve("TASK-1").writeBytes(ByteArray(1))
+        val head = root.resolve("HEAD")
+        head.writeBytes(ByteArray(1))
+
+        val refsStamps = fileManager.modificationStamps(refs.toString()).map { it.first }.toSet()
+
+        assertEquals(
+            setOf(refs, refs.resolve("heads"), refs.resolve("heads/feature"), refs.resolve("heads/feature/TASK-1"))
+                .map { it.toString() }.toSet(),
+            refsStamps,
+        )
+        assertEquals(listOf(head.toString()), fileManager.modificationStamps(head.toString()).map { it.first })
+        assertEquals(emptyList(), fileManager.modificationStamps(root.resolve("missing").toString()))
+    }
 }

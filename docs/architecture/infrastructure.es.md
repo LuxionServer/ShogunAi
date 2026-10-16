@@ -15,7 +15,7 @@ Implementación de `ShellCommandExecutor` sobre `ProcessBuilder`. Detalles de ro
 
 ## `NioFileManager`
 
-Implementación de `FileManager` sobre `java.nio.file`. `copy` usa `REPLACE_EXISTING` y `COPY_ATTRIBUTES`. `directorySize` recorre el árbol con `Files.walkFileTree` sin seguir enlaces simbólicos, suma el tamaño de los archivos regulares, se salta las carpetas excluidas e ignora los archivos que no puede leer. Funciona igual en todos los sistemas operativos soportados.
+Implementación de `FileManager` sobre `java.nio.file`. `copy` usa `REPLACE_EXISTING` y `COPY_ATTRIBUTES`. `directorySize` recorre el árbol con `Files.walkFileTree` sin seguir enlaces simbólicos, suma el tamaño de los archivos regulares, se salta las carpetas excluidas e ignora los archivos que no puede leer. `modificationStamps` recorre el árbol del mismo modo y anota la fecha de modificación de cada entrada. Funciona igual en todos los sistemas operativos soportados.
 
 ## `AwtClipboardWriter`
 

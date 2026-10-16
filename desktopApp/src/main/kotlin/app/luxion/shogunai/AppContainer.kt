@@ -15,6 +15,7 @@ import app.luxion.shogunai.domain.usecase.DetectRunningAgentsUseCase
 import app.luxion.shogunai.domain.usecase.ListLocalBranchesUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.MeasureWorktreeSizeUseCase
+import app.luxion.shogunai.domain.usecase.ReadGitMetadataFingerprintUseCase
 import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.RepairWorktreesUseCase
@@ -49,6 +50,7 @@ class AppContainer {
         cleanUp = CleanUpWorktreesUseCase(config, shellCommandExecutor),
         detectAgents = DetectRunningAgentsUseCase(config, shellCommandExecutor),
         measureSize = MeasureWorktreeSizeUseCase(fileManager),
+        readFingerprint = ReadGitMetadataFingerprintUseCase(config, fileManager),
     )
 }
 
@@ -65,4 +67,5 @@ data class WorktreeUseCases(
     val cleanUp: CleanUpWorktreesUseCase,
     val detectAgents: DetectRunningAgentsUseCase,
     val measureSize: MeasureWorktreeSizeUseCase,
+    val readFingerprint: ReadGitMetadataFingerprintUseCase,
 )

@@ -20,7 +20,7 @@ class ReadWorktreeStatusUseCaseTest {
     private val worktree = Worktree(path = "/home/dev/projects/TASK-123", branch = "feature/TASK-123")
     private val mainBranch = MainBranch("develop", "origin/develop")
 
-    private val statusCommand = listOf("git", "status", "--porcelain")
+    private val statusCommand = listOf("git", "--no-optional-locks", "status", "--porcelain")
     private val upstreamCommand = listOf("git", "rev-list", "--left-right", "--count", "@{upstream}...HEAD")
     private val mainBranchCommand = listOf("git", "rev-list", "--left-right", "--count", "origin/develop...HEAD")
     private val lastCommitCommand = listOf("git", "log", "-1", "--format=%ct")

@@ -15,7 +15,7 @@ Implementation of `ShellCommandExecutor` on top of `ProcessBuilder`. Robustness 
 
 ## `NioFileManager`
 
-Implementation of `FileManager` on top of `java.nio.file`. `copy` uses `REPLACE_EXISTING` and `COPY_ATTRIBUTES`. `directorySize` walks the tree with `Files.walkFileTree` without following symlinks, adds up regular file sizes, skips the excluded folders and ignores files it can't read. Works the same on every supported OS.
+Implementation of `FileManager` on top of `java.nio.file`. `copy` uses `REPLACE_EXISTING` and `COPY_ATTRIBUTES`. `directorySize` walks the tree with `Files.walkFileTree` without following symlinks, adds up regular file sizes, skips the excluded folders and ignores files it can't read. `modificationStamps` walks the same way and records each entry's last-modified time. Works the same on every supported OS.
 
 ## `AwtClipboardWriter`
 

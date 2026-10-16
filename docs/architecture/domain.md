@@ -95,10 +95,12 @@ interface FileManager {
     fun exists(path: String): Boolean
     fun copy(source: String, destination: String)
     fun directorySize(path: String, excluding: Set<String> = emptySet()): Long
+    fun isDirectory(path: String): Boolean
+    fun modificationStamps(path: String): List<Pair<String, Long>>
 }
 ```
 
-Abstracts the filesystem so that copying secrets and measuring worktrees is unit-testable without touching disk. `directorySize` adds up the regular files under `path`, skipping the folders in `excluding`.
+Abstracts the filesystem so that copying secrets and measuring worktrees is unit-testable without touching disk. `directorySize` adds up the regular files under `path`, skipping the folders in `excluding`. `modificationStamps` returns every file and folder under `path` (or `path` itself if it's a file) with its last-modified time, and nothing if it doesn't exist.
 
 ### `ClipboardWriter`
 
@@ -149,7 +151,7 @@ Resolves the `MainBranch` once per list load, from the base repository and witho
 
 Reads a `WorktreeStatus`, running each command in the worktree's own folder:
 
-- `git status --porcelain` — uncommitted changes. It's the only required command: if it fails (e.g. the folder is gone), the whole status fails.
+- `git --no-optional-locks status --porcelain` — uncommitted changes. Optional locks are disabled so `git status` never rewrites the index; otherwise reading statuses would change the metadata that auto refresh watches. It's the only required command: if it fails (e.g. the folder is gone), the whole status fails.
 - `git rev-list --left-right --count @{upstream}...HEAD` — upstream divergence, skipped on a detached HEAD and `null` if there's no upstream.
 - `git rev-list --left-right --count <main ref>...HEAD` — main branch divergence, skipped when there's no main branch or the worktree is on it.
 - `git log -1 --format=%ct` — last commit date, `null` if there are no commits.
@@ -168,6 +170,7 @@ Squash and rebase merges aren't detected as merged, and remote-tracking branches
 - `isInactive(worktree, status, agents, now)` is true for a non-main worktree with no uncommitted changes, no running agents and a last commit older than `INACTIVITY_THRESHOLD` (14 days).
 - `DetectRunningAgentsUseCase` returns the `RunningAgent`s per worktree path. It runs `lsof -d cwd -F pcn` once to get every process's working directory, assigns each process to the worktree with the longest path containing it (so a process in `.claude/worktrees/<name>` isn't attributed to the main worktree), and runs `ps -o pid=,comm=` for those processes. Their executable's file name is matched against the known agent CLIs (`claude`, `codex`, `gemini`, `cursor-agent`, `opencode`, `aider`, `copilot`) and the project's own agent command. The `lsof` command name isn't used because Claude Code renames its process to its version. If `lsof` or `ps` fail (e.g. on Windows), it fails with `WorktreeError.ProcessListingFailed`.
 - `MeasureWorktreeSizeUseCase` returns a worktree's size with `FileManager.directorySize`, on the IO dispatcher, excluding every other listed worktree nested inside it. It returns `null` for a missing folder.
+- `ReadGitMetadataFingerprintUseCase` returns a fingerprint of the main repository's Git metadata: the sorted (path relative to `.git`, last-modified time) pairs of `HEAD`, `index`, `packed-refs`, `FETCH_HEAD` and everything under `refs` and `worktrees`, read on the IO dispatcher. Commits, checkouts, locks, fetches and worktrees added or removed by any tool change it; `objects` isn't included. It's empty when `<baseRepositoryPath>/.git` isn't a directory.
 
 ### `RemoveWorktreeUseCase`
 

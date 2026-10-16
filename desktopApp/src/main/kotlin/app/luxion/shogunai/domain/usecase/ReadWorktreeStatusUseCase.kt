@@ -23,7 +23,7 @@ class ReadWorktreeStatusUseCase(
     }
 
     private suspend fun uncommittedChanges(worktree: Worktree): Int {
-        val result = git(worktree, "status", "--porcelain")
+        val result = git(worktree, "--no-optional-locks", "status", "--porcelain")
         if (!result.isSuccess) {
             throw WorktreeError.GitCommandFailed(result.command, result.exitCode, result.stderr)
         }

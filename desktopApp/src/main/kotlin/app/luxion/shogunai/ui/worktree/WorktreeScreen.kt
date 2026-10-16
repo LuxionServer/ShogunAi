@@ -28,6 +28,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -71,6 +72,10 @@ fun WorktreeScreen(
     onBack: () -> Unit,
 ) {
     val strings = LocalStrings.current
+    DisposableEffect(viewModel) {
+        viewModel.startWatching()
+        onDispose { viewModel.stopWatching() }
+    }
     LaunchedEffect(viewModel.createMode) {
         if (viewModel.createMode == CreateMode.EXISTING_BRANCH) {
             viewModel.loadLocalBranches()

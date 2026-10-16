@@ -7,7 +7,15 @@ class FakeFileManager(
     existing: Collection<String> = emptyList(),
     private val failCopyFor: Set<String> = emptySet(),
     private val sizes: Map<String, Long> = emptyMap(),
+    private val directories: Set<String> = emptySet(),
 ) : FileManager {
+
+    val stamps = mutableMapOf<String, Long>()
+
+    override fun isDirectory(path: String): Boolean = path in directories
+
+    override fun modificationStamps(path: String): List<Pair<String, Long>> =
+        stamps.filterKeys { it == path || it.startsWith("$path/") }.toList()
 
     private val paths = existing.toMutableSet()
     val copied = mutableListOf<Pair<String, String>>()

@@ -34,6 +34,10 @@ Each row shows its worktree's status under the branch name. `WorktreeViewModel` 
 
 `WorktreeStatusLine` renders the status as segments separated by `·` (`statusSegments`): uncommitted changes (only when there are any), `↑N ↓N upstream`, `↑N ↓N <main branch>` and the last commit date as relative time (`relativeTime`, in `RelativeTime.kt`). A merged branch shows a "merged into <main branch>" label in the primary color instead of its main branch divergence.
 
+### Auto refresh
+
+While `WorktreeScreen` is shown, a `DisposableEffect` calls `WorktreeViewModel.startWatching()`, and `stopWatching()` when it leaves the composition. Every 3 seconds the ViewModel reads `ReadGitMetadataFingerprintUseCase`: if the fingerprint differs from the last one it calls `refresh()`; otherwise it only runs `DetectRunningAgentsUseCase` again, so agents starting or ending show up without a full reload. A check is skipped while the list is loading or a create, remove or cleanup action is running. `refresh()` stores the fingerprint it starts from, so a reload triggered by the app itself isn't repeated on the next check. Focus and manual reloads keep working as before.
+
 ### Worktree overview
 
 `WorktreeScreen` receives the project's `ProjectConfig` to classify each row's origin with `classifyOrigin`. After each list load, `WorktreeViewModel` also runs `DetectRunningAgentsUseCase` once (`agents`, `null` when processes can't be listed) and measures every worktree's size one at a time with `MeasureWorktreeSizeUseCase` (`sizes`, added up in `totalSize`); stale results are dropped with `listGeneration`.

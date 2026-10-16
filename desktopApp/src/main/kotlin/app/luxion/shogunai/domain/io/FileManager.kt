@@ -7,4 +7,8 @@ interface FileManager {
     fun copy(source: String, destination: String)
 
     fun directorySize(path: String, excluding: Set<String> = emptySet()): Long
+
+    fun isDirectory(path: String): Boolean
+
+    fun modificationStamps(path: String): List<Pair<String, Long>>
 }
