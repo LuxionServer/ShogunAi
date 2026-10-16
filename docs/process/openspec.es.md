@@ -14,7 +14,7 @@ graph LR
 1. **Explorar** (opcional, `/opsx:explore`) — pensar en voz alta, comparar opciones, dibujar diagramas. No se escribe código ni se compromete nada; solo se puede capturar en artefactos si el usuario lo pide.
 2. **Proponer** (`/opsx:propose "<descripción>"`) — crea `openspec/changes/<nombre>/` con `proposal.md` (qué y por qué), `design.md` (cómo) y `tasks.md` (pasos de implementación).
 3. **Aplicar** (`/opsx:apply <nombre>`) — implementa las tareas de `tasks.md` una a una, marcándolas `[x]` según se completan. Si aparece un problema de diseño a mitad de implementación, se pausa y se actualiza el artefacto en vez de improvisar.
-4. **Archivar** (`/opsx:archive <nombre>`) — mueve el cambio completo a `openspec/changes/archive/YYYY-MM-DD-<nombre>/` y sincroniza los deltas de spec con `openspec/specs/<capability>/spec.md`.
+4. **Archivar** (`/opsx:archive <nombre>`) — mueve el cambio completo a `openspec/changes/archive/YYYY-MM-DD-<nombre>/` y sincroniza los deltas de spec con `openspec/specs/<capability>/spec.md`. En este proyecto un cambio se archiva **en cuanto su implementación está probada y validada, antes de abrir su pull request**, en la misma rama: el archivado, las specs sincronizadas y la actualización del roadmap se revisan y se mergean junto con el código, en vez de en una pull request posterior. Si la revisión pide cambios, se aplican sobre el cambio ya archivado.
 
 ## Estructura en disco
 

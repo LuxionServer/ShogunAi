@@ -27,6 +27,7 @@ Rules:
 - `docs/` (mkdocs) is for humans: it explains the *what* and *why* of the system, without single-session jargon. It's bilingual: English is the default (`page.md`) and every page has its Spanish translation (`page.es.md`); update both when you change one.
 - This file (`AGENTS.md`) is for agents only: style and process rules, not project content. If you're going to add an architecture explanation or a decision, it goes in `docs/` or OpenSpec, not here.
 - Non-trivial changes are planned with OpenSpec (`/opsx:propose` → `/opsx:apply` → `/opsx:archive`) before being implemented — see `docs/process/openspec.md`.
+- Archive a change (`/opsx:archive`) right after its implementation is tested and validated, in the same branch and **before** opening the pull request, so the archive, synced specs and roadmap update ship in that pull request. Don't leave archiving for a follow-up pull request after merge.
 
 ## Commands
 
