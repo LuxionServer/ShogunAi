@@ -17,6 +17,13 @@ Implementación de `ShellCommandExecutor` sobre `ProcessBuilder`. Detalles de ro
 
 Implementación de `FileManager` sobre `java.nio.file`. `copy` crea las carpetas padre que falten en el destino y usa `REPLACE_EXISTING` y `COPY_ATTRIBUTES`. `directorySize` recorre el árbol con `Files.walkFileTree` sin seguir enlaces simbólicos, suma el tamaño de los archivos regulares, se salta las carpetas excluidas e ignora los archivos que no puede leer. `modificationStamps` recorre el árbol del mismo modo y anota la fecha de modificación de cada entrada. `readProperties` carga el fichero con `java.util.Properties`. Funciona igual en todos los sistemas operativos soportados.
 
+## `NioEnvironmentStateStore` / `SocketPortProbe`
+
+- **Estado**: las reservas de cada worktree viven en `shogunai-env.json` dentro de su directorio de administración de Git, como `{ "ports": { "PORT": 20001, "port:api": 20002 } }`. Git ignora ahí los ficheros que no conoce y borra el directorio entero con `git worktree remove` y `prune`, así que las reservas desaparecen con el worktree, lo haya creado quien lo haya creado. Los demás campos del objeto se conservan para futuros providers; un fichero que se queda sin campos se borra; un fichero ilegible cuenta como sin reservas. Las escrituras son atómicas (fichero temporal y movimiento).
+- **Listado del repositorio**: el fichero del directorio común (el worktree principal) más cada `worktrees/*/shogunai-env.json`.
+- **Lock**: `withLock` toma un lock exclusivo de `FileChannel` sobre `<dir-común>/shogunai-env.lock`, para que creaciones en paralelo, incluso desde varios procesos (varias sesiones de Claude Code), no reserven el mismo puerto. Un lock de proceso protege el lock del fichero, y una llamada anidada en el mismo hilo se ejecuta directamente.
+- **Puerto libre**: `SocketPortProbe` hace `bind` de un `ServerSocket` con `reuseAddress = false` en la dirección comodín y en la de loopback; el puerto está libre solo si ambos funcionan.
+
 ## `ProcessGradleDaemonSource`
 
 Implementación de `GradleDaemonSource` que no depende de un binario de Gradle ni del formato interno de su registro:
@@ -29,7 +36,7 @@ Implementación de `GradleDaemonSource` que no depende de un binario de Gradle n
 
 Implementación de `RepositoryProvisioningSource` sobre `java.nio.file` y `kotlinx.serialization`, sobre `<repo>/.shogunai.json` y `<repo>/.worktreeinclude`.
 
-- **Lectura**: un `.shogunai.json` inexistente o vacío significa que no hay patrones. El fichero se parsea como un objeto JSON genérico, así que los campos desconocidos se ignoran; un JSON inválido, una raíz que no es un objeto, un `copy` que no es una lista de strings, o un `providers` (o un provider conocido dentro de él) que no es un objeto lanzan `InvalidRepositoryConfig`. Los ids de provider desconocidos se saltan.
+- **Lectura**: un `.shogunai.json` inexistente o vacío significa que no hay patrones. El fichero se parsea como un objeto JSON genérico, así que los campos desconocidos se ignoran; un JSON inválido, una raíz que no es un objeto, un `copy` que no es una lista de strings, o un `providers` (o un provider conocido dentro de él) que no es un objeto lanzan `InvalidRepositoryConfig`. Los ids de provider desconocidos se saltan. `env` tiene que ser un objeto de strings cuyas plantillas se puedan interpretar (`parseEnvironmentVariable`), y `envFile` un string con una ruta relativa que no salga del worktree una vez normalizada.
 - **Escritura** (`addCopyPatterns`): lee el objeto, sustituye solo `copy` (primero los patrones existentes, después los nuevos sin duplicados) y lo vuelve a escribir con formato, de forma atómica (fichero temporal en la misma carpeta + `ATOMIC_MOVE`), así que los demás campos se conservan. Se niega a reescribir un fichero que no puede parsear.
 
 La coincidencia de patrones se deja a Git (`git ls-files --others --ignored -z -x <patrón>…`, ver `CreateWorktreeUseCase` en el dominio), así que sigue exactamente las reglas de gitignore, incluidos sus límites: no se puede reincluir un fichero con `!` si su carpeta padre está excluida (`.idea/` + `!.idea/workspace.xml` sigue listando `workspace.xml`; usa `.idea/*` en su lugar). Puedes probar un patrón desde el repositorio base con el mismo comando:
@@ -59,9 +66,10 @@ En `core/src/testFixtures/kotlin/app/luxion/shogunai/domain/`, los test fixtures
 
 - `FakeShellCommandExecutor` — sustituye `ShellCommandExecutor`: responde a cada argv con un `CommandResult` preparado y registra los comandos ejecutados.
 - `FakeFileManager` — sustituye `FileManager` con un conjunto en memoria de rutas existentes y ficheros de propiedades.
+- `FakeEnvironmentStateStore` / `FakePortProbe` — sustituyen el almacén de reservas (reservas en memoria por directorio de administración, contando escrituras y locks) y la comprobación de puertos (un conjunto de puertos ocupados).
 - `FakeGradleDaemonSource` — sustituye `GradleDaemonSource` con una lista mutable de daemons (o un fallo) y cuenta los listados; `gradleDaemon(...)` y `kotlinDaemon(...)` los construyen.
 - `FakeClipboardWriter` — sustituye `ClipboardWriter`.
 - `FakeProjectRepository` — sustituye `ProjectRepository` en los tests de ViewModels.
 - `FakeRepositoryProvisioningSource` — sustituye `RepositoryProvisioningSource` con provisionado por ruta de repositorio, repositorios ilegibles y escrituras que fallan, y registra los patrones añadidos.
 
-Gracias a que el dominio depende de interfaces, los tests de casos de uso (`*UseCaseTest`) y los de ViewModels no tocan disco ni lanzan procesos reales. La propia infraestructura se cubre con `ProcessBuilderShellCommandExecutorTest`, `JsonProjectRepositoryTest`, `JsonSettingsFileTest`, `RepositoryProvisioningFilesTest` y `ProcessGradleDaemonSourceTest` (sobre líneas reales de `ps` y fragmentos de logs de daemons), que sí usan procesos reales y ficheros temporales.
+Gracias a que el dominio depende de interfaces, los tests de casos de uso (`*UseCaseTest`) y los de ViewModels no tocan disco ni lanzan procesos reales. La propia infraestructura se cubre con `ProcessBuilderShellCommandExecutorTest`, `JsonProjectRepositoryTest`, `JsonSettingsFileTest`, `RepositoryProvisioningFilesTest`, `NioEnvironmentStateStoreTest` (directorios temporales y un socket real escuchando) y `ProcessGradleDaemonSourceTest` (sobre líneas reales de `ps` y fragmentos de logs de daemons), que sí usan procesos reales y ficheros temporales.

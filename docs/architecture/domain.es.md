@@ -62,6 +62,7 @@ Lo que el repositorio declara que necesita cada nuevo worktree, leído de ficher
 | `copyPatterns` | La lista `copy` de `.shogunai.json`. |
 | `worktreeIncludePatterns` | Las líneas de `.worktreeinclude` (el fichero de Claude Code), sin líneas en blanco ni comentarios `#`. |
 | `providers` | El objeto `providers` de `.shogunai.json`: los providers que activa el repositorio, cada uno con su id como clave y un objeto de opciones. Hoy solo `gradle` (`GradleProvider`, todavía sin opciones), que hace visibles los [daemons de Gradle](#daemons-de-gradle) del repositorio. Los ids desconocidos se ignoran. |
+| `environment` | El objeto `env` y el `envFile` de `.shogunai.json`, como un `EnvironmentDeclaration` (ver [Entorno del worktree](#entorno-del-worktree)). |
 
 `allPatterns` es su unión sin duplicados. Los patrones usan la sintaxis de patrones de ignore de Git, relativos a la raíz del repositorio: `local.properties` coincide a cualquier profundidad, `/local.properties` solo en la raíz, `.idea/runConfigurations/` una carpeta entera, `.env*` un glob.
 
@@ -70,6 +71,21 @@ Lo que el repositorio declara que necesita cada nuevo worktree, leído de ficher
 ```
 
 Los campos desconocidos de `.shogunai.json` se ignoran, para que versiones posteriores puedan añadir campos sin romper las anteriores.
+
+### Entorno del worktree
+
+Variables que recibe cada worktree, declaradas en `.shogunai.json` (`WorktreeEnvironment.kt`):
+
+```json
+{
+  "env": { "PORT": "${port}", "API_URL": "http://localhost:${port:api}", "APP_SUFFIX": "-${worktree}" },
+  "envFile": ".env.shogunai"
+}
+```
+
+- `EnvironmentDeclaration` — las `variables` en el orden del fichero y el `envFile` opcional, una ruta relativa a la raíz del worktree que no puede salir de él. `portKeys` lista los puertos que necesita la declaración.
+- `EnvironmentVariable` — un nombre de variable válido (letras, dígitos y `_`, sin empezar por dígito) y su plantilla, convertida al leer el fichero en `TemplatePart`s: `Literal`, `WorktreeName` (`${worktree}`, el nombre de la carpeta del worktree) y `Port(key)`. `${port}` usa como clave el nombre de la propia variable, así que cada variable tiene su puerto; `${port:<clave>}` usa la clave `port:<clave>`, compartida por todas las variables que la usan (`:` no puede aparecer en un nombre de variable, así que las claves nunca chocan). `$$` es un `$` literal; cualquier otro `${…}` lanza `InvalidEnvironmentTemplate`, que la lectura convierte en `InvalidRepositoryConfig`.
+- `WorktreeEnvironment` — un entorno resuelto: las `variables` ya renderizadas y los `ports` reservados para el worktree.
 
 ### Daemons de Gradle
 
@@ -94,7 +110,9 @@ Preferencias del usuario: `LIGHT` / `DARK` / `SYSTEM` y `ENGLISH` / `SPANISH`. S
 - `SecretFileNotFound` — faltan archivos locales en el repo base.
 - `RepositoryNotFound` — el directorio no está dentro de un repositorio Git con árbol de trabajo (lo usa el CLI).
 - `NotAWorktree` — la ruta a provisionar es el worktree principal o no es uno de los worktrees del repositorio.
-- `InvalidRepositoryConfig` — `.shogunai.json` existe pero no es JSON válido, no es un objeto, su `copy` no es una lista de strings, o su `providers` (o un provider conocido dentro de él) no es un objeto; guarda la ruta del fichero y el detalle.
+- `InvalidRepositoryConfig` — `.shogunai.json` existe pero no es JSON válido, no es un objeto, su `copy` no es una lista de strings, su `providers` (o un provider conocido dentro de él) no es un objeto, o su `env` o `envFile` no son válidos; guarda la ruta del fichero y el detalle.
+- `NoFreePort` — todos los puertos entre 20000 y 29999 están reservados u ocupados.
+- `EnvironmentFileTracked` — el `envFile` declarado es un fichero que Git versiona en el worktree, así que no se sobrescribe.
 - `GitCommandFailed` — un comando de Git devolvió un código de salida distinto de cero; guarda el comando, el código de salida y la salida de error de Git.
 - `SecretCopyFailed` — la copia de archivos locales o del repositorio falló después de haber creado ya el worktree.
 - `ClipboardWriteFailed` — no se pudo copiar el comando de lanzamiento al portapapeles.
@@ -154,6 +172,23 @@ interface RepositoryProvisioningSource {
 
 Lee el provisionado del repositorio (lanzando `InvalidRepositoryConfig` si `.shogunai.json` no se puede leer) y añade patrones a `copy`, que es como la pantalla de configuración mueve los archivos locales al repositorio.
 
+### `EnvironmentStateStore` / `PortProbe`
+
+```kotlin
+interface EnvironmentStateStore {
+    fun readPorts(adminDirectory: String): Map<String, Int>
+    fun writePorts(adminDirectory: String, ports: Map<String, Int>)
+    fun reservedPortsOfRepository(commonDirectory: String): Set<Int>
+    fun <T> withLock(commonDirectory: String, block: () -> T): T
+}
+
+interface PortProbe {
+    fun isFree(port: Int): Boolean
+}
+```
+
+`EnvironmentStateStore` guarda los puertos reservados de cada worktree en el directorio de administración que Git tiene para ese worktree (`.git/worktrees/<id>/` para uno enlazado, `.git/` para el principal), lista todas las reservas del repositorio y ejecuta un bloque con el lock de reservas del repositorio. `PortProbe` indica si un puerto está libre en la máquina.
+
 ### `GradleDaemonSource`
 
 ```kotlin
@@ -180,10 +215,11 @@ Crea un worktree en una rama **nueva** `<tipo>/<taskId>`. Primero normaliza el i
 1. **Validaciones previas** (repo base existe, destino libre, archivos locales presentes) y **resolución de los archivos del repositorio** — se hacen *antes* de tocar Git para no dejar un worktree a medias.
 2. `git worktree add <path> -b <branch>`.
 3. Copia de los archivos locales y después de los del repositorio al nuevo directorio, en las mismas rutas relativas.
+4. Preparación de su entorno con el `WorktreeEnvironmentPreparer` que recibe: `PrepareWorktreeEnvironmentUseCase` lo resuelve reservando puertos (`ResolveWorktreeEnvironmentUseCase`) y, si se declara `envFile`, `WriteEnvironmentFileUseCase` lo escribe en formato dotenv, negándose a sobrescribir un fichero que Git versiona (`git ls-files --error-unmatch`, `EnvironmentFileTracked`) e informando de los fallos de escritura como `EnvironmentFileWriteFailed`. El preparador es `WorktreeEnvironmentPreparer.NONE` por defecto, en lo que se apoyan los tests que no tratan del entorno; la app y el CLI siempre pasan el real.
 
 Para resolver los archivos del repositorio se lee `RepositoryProvisioning` y, si declara algún patrón, se ejecuta `git ls-files --others --ignored -z -x <patrón>…`: todos los archivos que Git no versiona y coinciden con un patrón (los versionados ya llegan con el checkout). Sin patrones no se ejecuta ningún comando de Git. Un `.shogunai.json` ilegible (`InvalidRepositoryConfig`) o un `git ls-files` que falla (`GitCommandFailed`) detienen la creación antes de crear nada. Los archivos locales se comprueban de forma estricta (`SecretFileNotFound`) y los patrones de forma laxa: un patrón sin coincidencias no copia nada.
 
-Si la copia falla **después** de crear el worktree, se revierte con `git worktree remove --force` (best-effort) antes de propagar `SecretCopyFailed`. Si `git worktree add` falla porque falta `git-lfs`, se eliminan el worktree a medio crear y su rama nueva y se devuelve `GitLfsNotFound`.
+Si la copia o la preparación del entorno fallan **después** de crear el worktree, se revierte con `git worktree remove --force` (best-effort) antes de propagar el error. Si `git worktree add` falla porque falta `git-lfs`, se eliminan el worktree a medio crear y su rama nueva y se devuelve `GitLfsNotFound`.
 
 ### `CreateWorktreeFromBranchUseCase`
 
@@ -247,11 +283,21 @@ Borra una rama local con `git branch -d`, que Git rechaza cuando la rama no est�
 
 ### `ProvisionWorktreeUseCase`
 
-Aplica los mismos archivos que la creación (archivos locales y provisionado del repositorio, ver `CreateWorktreeUseCase`) a un worktree enlazado **ya existente**, p. ej. uno creado por otra herramienta. La ruta tiene que ser uno de los worktrees del repositorio (según `ListWorktreesUseCase`) y no el principal (`NotAWorktree`). Los archivos se copian encima de los que haya, y devuelve las rutas relativas copiadas. A diferencia de la creación, una copia fallida (`SecretCopyFailed`) no elimina nada: el worktree no es de ShogunAi como para borrarlo. Creación y provisionado comparten la misma función de copia.
+Aplica los mismos archivos que la creación (archivos locales y provisionado del repositorio, ver `CreateWorktreeUseCase`) a un worktree enlazado **ya existente**, p. ej. uno creado por otra herramienta. La ruta tiene que ser uno de los worktrees del repositorio (según `ListWorktreesUseCase`) y no el principal (`NotAWorktree`). Los archivos se copian encima de los que haya, y devuelve las rutas relativas copiadas. El entorno se prepara igual (reservando puertos para un worktree creado por otra herramienta). A diferencia de la creación, una copia o un entorno fallidos no eliminan nada: el worktree no es de ShogunAi como para borrarlo. Creación y provisionado comparten la misma función de copia.
 
 ### `RepairWorktreesUseCase`
 
 Vuelve a enlazar el repositorio base y sus worktrees después de moverlos en disco. Git guarda rutas absolutas en ambos sentidos (`<worktree>/.git` apunta al repositorio base y `.git/worktrees/<nombre>/gitdir` apunta de vuelta), así que un movimiento las rompe. Ejecuta `git worktree repair` desde el (nuevo) repositorio base; los worktrees que ya no existen en su ruta antigua pero sí en la misma posición relativa bajo el nuevo `worktreesRoot` se pasan como argumentos, para que Git arregle ambos sentidos. La UI lo ejecuta tras guardar un proyecto cuya ruta del repositorio base o carpeta raíz de worktrees cambió.
+
+### `ResolveWorktreeEnvironmentUseCase`
+
+Resuelve el entorno de un worktree a partir de la declaración del repositorio base. Una declaración vacía devuelve un `WorktreeEnvironment` vacío sin ejecutar ningún comando. Si no, busca los directorios de Git de administración y común del worktree (`git rev-parse --path-format=absolute --git-dir --git-common-dir` dentro del worktree) y, con el lock del repositorio:
+
+1. conserva los puertos guardados del worktree cuyas claves sigue usando la declaración y libera el resto;
+2. reserva cada clave que falte en el puerto más bajo entre 20000 y 29999 que ningún worktree del repositorio tenga reservado y que `PortProbe` dé por libre (`NoFreePort` si no queda ninguno);
+3. escribe las reservas solo si han cambiado.
+
+Un puerto reservado no se vuelve a comprobar, porque se espera que el propio servidor del worktree esté escuchando en él. Con `reserve = false` (para mostrar los puertos sin efectos secundarios) solo lee los puertos guardados, sin lock ni escritura, y no devuelve variables hasta que todos los puertos estén reservados. `formatEnvironment` presenta las variables como `sh` (`export NOMBRE='valor'`, comillas simples con escape `'\''`, seguro para `eval`), `dotenv` (`NOMBRE=valor`, entre comillas dobles y escapado salvo que el valor sea simple) o `json`.
 
 ### Casos de uso de los daemons de Gradle
 

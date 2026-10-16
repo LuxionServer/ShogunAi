@@ -3,8 +3,10 @@ package app.luxion.shogunai.cli
 import app.luxion.shogunai.BuildInfo
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.io.EnvironmentStateStore
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.GradleDaemonSource
+import app.luxion.shogunai.domain.io.PortProbe
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.model.BranchType
@@ -25,17 +27,23 @@ import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.DeleteMergedBranchUseCase
+import app.luxion.shogunai.domain.usecase.EnvironmentFormat
 import app.luxion.shogunai.domain.usecase.ListGradleDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
+import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.ProvisionWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
 import app.luxion.shogunai.domain.usecase.ResolveRepositoryUseCase
+import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.StopGradleDaemonsUseCase
+import app.luxion.shogunai.domain.usecase.WriteEnvironmentFileUseCase
 import app.luxion.shogunai.domain.usecase.classifyOrigin
+import app.luxion.shogunai.domain.usecase.formatEnvironment
 import app.luxion.shogunai.domain.usecase.idleDaemonsOfRemovedWorktrees
 import app.luxion.shogunai.domain.usecase.normalizeTaskId
+import app.luxion.shogunai.domain.usecase.owningWorktree
 import app.luxion.shogunai.domain.usecase.selectCleanupCandidates
 import app.luxion.shogunai.domain.usecase.totalResidentMemory
 import kotlinx.coroutines.runBlocking
@@ -54,13 +62,23 @@ class ShogunCli(
     private val provisioningSource: RepositoryProvisioningSource,
     private val daemonSource: GradleDaemonSource,
     private val gradleUserHome: String,
+    private val environmentStateStore: EnvironmentStateStore,
+    private val portProbe: PortProbe,
     private val workingDirectory: String,
     private val out: Appendable,
     private val err: Appendable,
     private val readInput: () -> String = { "" },
     private val canonicalPath: (String) -> String = { File(it).canonicalPath },
     private val now: () -> Instant = Instant::now,
+    private val environmentVariable: (String) -> String? = System::getenv,
 ) {
+    private val resolveEnvironment =
+        ResolveWorktreeEnvironmentUseCase(executor, provisioningSource, environmentStateStore, portProbe)
+    private val prepareEnvironment = PrepareWorktreeEnvironmentUseCase(
+        resolveEnvironment,
+        WriteEnvironmentFileUseCase(executor, fileManager, provisioningSource),
+    )
+
     fun run(args: List<String>): Int = when (val parsed = parseArguments(args)) {
         is ParsedArguments.UsageError -> {
             err.line("shogun: ${parsed.message}")
@@ -81,6 +99,8 @@ class ShogunCli(
             CliCommand.HookWorktreeCreate -> hookWorktreeCreate()
             CliCommand.HookWorktreeRemove -> hookWorktreeRemove()
             CliCommand.Gradle -> gradle()
+            is CliCommand.Env -> env(command)
+            CliCommand.HookSessionStart -> hookSessionStart()
             is CliCommand.GradleStop -> gradleStop(command)
         }
     } catch (error: WorktreeError) {
@@ -99,9 +119,12 @@ class ShogunCli(
             return EXIT_USAGE
         }
         val worktree = if (command.branch != null) {
-            CreateWorktreeFromBranchUseCase(config, executor, fileManager, provisioningSource)(command.branch)
+            CreateWorktreeFromBranchUseCase(config, executor, fileManager, provisioningSource, prepareEnvironment)(command.branch)
         } else {
-            CreateWorktreeUseCase(config, executor, fileManager, provisioningSource)(command.taskId.orEmpty(), command.branchType)
+            CreateWorktreeUseCase(config, executor, fileManager, provisioningSource, prepareEnvironment)(
+                command.taskId.orEmpty(),
+                command.branchType,
+            )
         }.getOrThrow()
         out.line(worktree.path)
         return EXIT_OK
@@ -113,7 +136,7 @@ class ShogunCli(
         val worktree = ListWorktreesUseCase(config, executor)().getOrThrow()
             .firstOrNull { sameDirectory(it.path, target) }
             ?: throw WorktreeError.NotAWorktree(target)
-        ProvisionWorktreeUseCase(config, executor, fileManager, provisioningSource)(worktree.path).getOrThrow()
+        ProvisionWorktreeUseCase(config, executor, fileManager, provisioningSource, prepareEnvironment)(worktree.path).getOrThrow()
             .forEach { out.line(it) }
         return EXIT_OK
     }
@@ -173,6 +196,39 @@ class ShogunCli(
                 report.failures.forEach { err.line("shogun: couldn't stop Gradle daemon ${it.pid}: ${it.detail}") }
             }
             .onFailure { err.line("shogun: couldn't stop Gradle daemons: ${it.message}") }
+    }
+
+    private suspend fun env(command: CliCommand.Env): Int {
+        val target = absolute(command.path ?: workingDirectory)
+        val (repository, worktree) = worktreeContaining(target)
+        val environment = resolveEnvironment(repository, worktree.path).getOrThrow()
+        out.append(formatEnvironment(environment, command.format).takeIf { !environment.isEmpty }.orEmpty())
+        return EXIT_OK
+    }
+
+    private suspend fun hookSessionStart(): Int {
+        val input = hookInput("session-start") ?: return EXIT_USAGE
+        val directory = input.string("cwd") ?: workingDirectory
+        if (ResolveRepositoryUseCase(executor)(directory).isFailure) return EXIT_OK
+        val (repository, worktree) = worktreeContaining(directory)
+        val environment = resolveEnvironment(repository, worktree.path).getOrThrow()
+        if (environment.isEmpty) return EXIT_OK
+        environmentVariable(CLAUDE_ENV_FILE)?.takeIf { it.isNotBlank() }?.let { path ->
+            File(path).appendText(formatEnvironment(environment, EnvironmentFormat.SH))
+        }
+        val variables = environment.variables.joinToString(", ") { (name, value) -> "$name=$value" }
+        out.line("ShogunAi environment of worktree ${File(worktree.path).name}: $variables")
+        return EXIT_OK
+    }
+
+    private suspend fun worktreeContaining(directory: String): Pair<String, Worktree> {
+        val config = configFor(directory)
+        val canonicalDirectory = runCatching { canonicalPath(directory) }.getOrDefault(directory)
+        val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
+        val canonical = worktrees.associateBy { runCatching { canonicalPath(it.path) }.getOrDefault(it.path) }
+        val owner = owningWorktree(canonicalDirectory, canonical.map { (path, worktree) -> worktree.copy(path = path) })
+            ?: throw WorktreeError.NotAWorktree(directory)
+        return config.baseRepositoryPath to canonical.getValue(owner.path)
     }
 
     private suspend fun gradle(): Int {
@@ -252,7 +308,7 @@ class ShogunCli(
         val existing = ListWorktreesUseCase(config, executor)().getOrThrow()
             .firstOrNull { !it.isMain && sameDirectory(it.path, target) }
         val path = existing?.path
-            ?: CreateWorktreeUseCase(config, executor, fileManager, provisioningSource)(name, BranchType.FEATURE).getOrThrow().path
+            ?: CreateWorktreeUseCase(config, executor, fileManager, provisioningSource, prepareEnvironment)(name, BranchType.FEATURE).getOrThrow().path
         out.line(path)
         return EXIT_OK
     }
@@ -351,6 +407,7 @@ class ShogunCli(
         const val EXIT_FAILURE = 1
         const val EXIT_USAGE = 2
         private const val CLAUDE_CODE_WORKTREES = ".claude/worktrees"
+        private const val CLAUDE_ENV_FILE = "CLAUDE_ENV_FILE"
 
         const val BUILD_CACHE_NOTICE =
             "Gradle's build cache is off: add org.gradle.caching=true to gradle.properties so a new worktree " +
@@ -392,6 +449,10 @@ class ShogunCli(
               gradle stop [<pid>...]      Stop idle daemons (all of them, or only the given ones); busy ones are kept
               hook worktree-create       Claude Code WorktreeCreate hook: create and provision the worktree, print its path
               hook worktree-remove        Claude Code WorktreeRemove hook: remove the worktree, delete its branch if merged
+              hook session-start          Claude Code SessionStart hook: export the worktree's environment to the session
+              env [<path>] [--format sh|dotenv|json]
+                                          Print the worktree's environment from .shogunai.json "env"
+                                          (sh prints export lines for: eval "$(shogun env)")
               help                        Show this help
               --version                   Show the version
 

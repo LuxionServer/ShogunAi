@@ -10,7 +10,7 @@ Esa dirección se construye en tres capas:
 
 | Capa | Papel | Qué aporta |
 |---|---|---|
-| **Motor y CLI** | La base | Provisionado de worktrees definido en el repositorio (`.shogunai.json`) y un comando `shogun` que usan la app de escritorio, los agentes y sus hooks. **Disponible**; el provisionado más completo está planificado. |
+| **Motor y CLI** | La base | Provisionado de worktrees definido en el repositorio (`.shogunai.json`) y un comando `shogun` que usan la app de escritorio, los agentes y sus hooks, con un entorno por worktree (puertos reservados y variables) que llega a la shell de cada agente. **Disponible**; el provisionado más completo está planificado. |
 | **Torre de control** | La vista | La app de escritorio muestra el estado de todos los worktrees, incluidos los creados por otras herramientas, los mantiene limpios y sigue los cambios según ocurren. **Disponible.** |
 | **Android, KMP y JVM** | El contenido | Provisionado para los stacks en los que más cuesta preparar un worktree: Gradle, secretos locales, emuladores e IDEs. **Empezado**: los repositorios Gradle muestran sus daemons y pueden parar los ociosos. |
 
@@ -18,7 +18,6 @@ Esa dirección se construye en tres capas:
 graph LR
     A["Configuración del repositorio"] --> B["Salida del CLI para scripts"]
     A --> D["Provisionado Android, KMP y JVM"]
-    E["Entorno por worktree para agentes"] --> D
 ```
 
 ## Planificado
@@ -40,13 +39,9 @@ Provisionado más completo en el `.shogunai.json` del repositorio:
 Provisionado para los stacks en los que un worktree recién creado está más lejos de compilar:
 
 - `local.properties`, keystores y `google-services.json`.
-- Ajustes de Gradle por worktree (memoria del daemon, tiempo de inactividad), para que los worktrees en paralelo no multipliquen el uso de memoria. Necesita el entorno por worktree de más abajo.
-- Un emulador o simulador asignado por worktree. Necesita el entorno por worktree de más abajo.
+- Ajustes de Gradle por worktree (memoria del daemon, tiempo de inactividad), para que los worktrees en paralelo no multipliquen el uso de memoria, entregados con el entorno por worktree.
+- Un emulador o simulador asignado por worktree, con su serial entregado con el entorno por worktree.
 - «Abrir en Android Studio» en el worktree correcto.
-
-### Entorno por worktree para agentes
-
-ShogunAi no arranca los agentes, así que lo que un worktree necesita en su shell (el serial del emulador, puertos, opciones de Gradle) tiene que llegar al agente por otra vía. Un entorno por worktree calculado por `shogun` y entregado con los mecanismos de cada agente, como un hook `SessionStart` de Claude Code, un `.envrc` generado para direnv o `eval "$(shogun env)"` para cualquier otra herramienta.
 
 ### Elegir la base de un worktree nuevo
 

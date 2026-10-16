@@ -60,6 +60,8 @@ class WorktreeViewModel(
         private set
     var sizes by mutableStateOf<Map<String, Long>>(emptyMap())
         private set
+    var ports by mutableStateOf<Map<String, Map<String, Int>>>(emptyMap())
+        private set
     val totalSize: Long
         get() = sizes.values.sum()
 
@@ -195,12 +197,22 @@ class WorktreeViewModel(
             if (generation == listGeneration) agents = detected
         }
         loadGradleSection(generation, listed)
+        loadPorts(generation, listed)
         viewModelScope.launch {
             for (worktree in listed) {
                 val size = useCases.measureSize(worktree, listed).getOrNull()
                 if (generation != listGeneration) return@launch
                 if (size != null) sizes = sizes + (worktree.path to size)
             }
+        }
+    }
+
+    private fun loadPorts(generation: Int, listed: List<Worktree>) {
+        viewModelScope.launch {
+            val loaded = listed.filterNot { it.isPrunable }.mapNotNull { worktree ->
+                useCases.readPorts(worktree).getOrNull()?.takeIf { it.isNotEmpty() }?.let { worktree.path to it }
+            }.toMap()
+            if (generation == listGeneration) ports = loaded
         }
     }
 

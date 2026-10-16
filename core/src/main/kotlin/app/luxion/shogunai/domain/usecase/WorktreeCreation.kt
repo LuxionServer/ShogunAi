@@ -43,6 +43,7 @@ internal suspend fun addWorktreeAndCopySecrets(
     addArgs: List<String>,
     branchToDeleteOnLfsFailure: String?,
     repositoryFiles: List<String>,
+    environment: WorktreeEnvironmentPreparer,
 ): Worktree {
     val add = executor.execute(command = addArgs, workingDirectory = config.baseRepositoryPath)
     if (!add.isSuccess) {
@@ -65,8 +66,23 @@ internal suspend fun addWorktreeAndCopySecrets(
     }
 
     copySecretsOrRollback(config, executor, fileManager, worktreePath, repositoryFiles)
+    prepareEnvironmentOrRollback(config, executor, environment, worktreePath)
 
     return Worktree(path = worktreePath, branch = branch)
+}
+
+private suspend fun prepareEnvironmentOrRollback(
+    config: ProjectConfig,
+    executor: ShellCommandExecutor,
+    environment: WorktreeEnvironmentPreparer,
+    worktreePath: String,
+) {
+    try {
+        environment.prepare(config.baseRepositoryPath, worktreePath)
+    } catch (error: Exception) {
+        removeIncompleteWorktreeIgnoringResult(config, executor, worktreePath)
+        throw error
+    }
 }
 
 private suspend fun copySecretsOrRollback(

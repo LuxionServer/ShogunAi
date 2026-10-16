@@ -311,4 +311,38 @@ class CreateWorktreeUseCaseTest {
         assertIs<WorktreeError.SecretCopyFailed>(error)
         assertTrue(executor.executed("git", "worktree", "remove", "--force", worktreePath))
     }
+
+    @Test
+    fun `prepares the new worktree's environment after copying files`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+        val prepared = mutableListOf<Pair<String, String>>()
+        val useCase = CreateWorktreeUseCase(
+            config,
+            executor,
+            FakeFileManager(baseWithSecrets),
+            FakeRepositoryProvisioningSource(),
+            environment = { repository, worktree -> prepared += repository to worktree },
+        )
+
+        useCase("TASK-123", BranchType.FEATURE).getOrThrow()
+
+        assertEquals(listOf(config.baseRepositoryPath to worktreePath), prepared)
+    }
+
+    @Test
+    fun `a failed environment removes the new worktree`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+        val useCase = CreateWorktreeUseCase(
+            config,
+            executor,
+            FakeFileManager(baseWithSecrets),
+            FakeRepositoryProvisioningSource(),
+            environment = { _, _ -> throw WorktreeError.NoFreePort(20000, 29999) },
+        )
+
+        val error = useCase("TASK-123", BranchType.FEATURE).exceptionOrNull()
+
+        assertIs<WorktreeError.NoFreePort>(error)
+        assertTrue(executor.executed("git", "worktree", "remove", "--force", worktreePath))
+    }
 }

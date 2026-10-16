@@ -94,4 +94,26 @@ class ProvisionWorktreeUseCaseTest {
 
         assertIs<WorktreeError.SecretFileNotFound>(error)
     }
+
+    @Test
+    fun `prepares the environment of an existing worktree and keeps it on failure`() = runTest {
+        val prepared = mutableListOf<String>()
+        val fileManager = FakeFileManager(existing = listOf("$base/local.properties"))
+        ProvisionWorktreeUseCase(config, executor(), fileManager, provisioning, environment = { _, worktree -> prepared += worktree })(linked)
+            .getOrThrow()
+
+        assertEquals(listOf(linked), prepared)
+
+        val failingExecutor = executor()
+        val error = ProvisionWorktreeUseCase(
+            config,
+            failingExecutor,
+            fileManager,
+            provisioning,
+            environment = { _, _ -> throw WorktreeError.NoFreePort(20000, 29999) },
+        )(linked).exceptionOrNull()
+
+        assertIs<WorktreeError.NoFreePort>(error)
+        assertFalse(failingExecutor.executedCommands.any { it.take(3) == listOf("git", "worktree", "remove") })
+    }
 }

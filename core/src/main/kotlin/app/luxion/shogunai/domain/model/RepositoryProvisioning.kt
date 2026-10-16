@@ -4,6 +4,7 @@ data class RepositoryProvisioning(
     val copyPatterns: List<String> = emptyList(),
     val worktreeIncludePatterns: List<String> = emptyList(),
     val providers: RepositoryProviders = RepositoryProviders(),
+    val environment: EnvironmentDeclaration = EnvironmentDeclaration(),
 ) {
     val allPatterns: List<String> get() = (copyPatterns + worktreeIncludePatterns).distinct()
 

@@ -46,7 +46,7 @@ class DetectRunningAgentsUseCase(
     }
 }
 
-internal fun owningWorktree(cwd: String, worktrees: List<Worktree>): Worktree? {
+fun owningWorktree(cwd: String, worktrees: List<Worktree>): Worktree? {
     val path = normalizePath(cwd)
     return worktrees
         .filter { isInside(path, normalizePath(it.path)) }

@@ -62,6 +62,7 @@ What the repository declares that each new worktree needs, read from files at th
 | `copyPatterns` | The `copy` list of `.shogunai.json`. |
 | `worktreeIncludePatterns` | The lines of `.worktreeinclude` (Claude Code's file), skipping blank lines and `#` comments. |
 | `providers` | The `providers` object of `.shogunai.json`: the providers the repository turns on, each keyed by its id with an object of options. Today only `gradle` (`GradleProvider`, no options yet), which makes the [Gradle daemons](#gradle-daemons) visible for the repository. Unknown ids are ignored. |
+| `environment` | The `env` object and `envFile` of `.shogunai.json`, as an `EnvironmentDeclaration` (see [Worktree environment](#worktree-environment)). |
 
 `allPatterns` is their union without duplicates. Patterns use Git's ignore-pattern syntax, relative to the repository root: `local.properties` matches at any depth, `/local.properties` only at the root, `.idea/runConfigurations/` a whole folder, `.env*` a glob.
 
@@ -70,6 +71,21 @@ What the repository declares that each new worktree needs, read from files at th
 ```
 
 Unknown fields of `.shogunai.json` are ignored, so later versions can add fields without breaking older ones.
+
+### Worktree environment
+
+Variables each worktree gets, declared in `.shogunai.json` (`WorktreeEnvironment.kt`):
+
+```json
+{
+  "env": { "PORT": "${port}", "API_URL": "http://localhost:${port:api}", "APP_SUFFIX": "-${worktree}" },
+  "envFile": ".env.shogunai"
+}
+```
+
+- `EnvironmentDeclaration` — the `variables` in file order and the optional `envFile`, a path relative to the worktree root that must stay inside it. `portKeys` lists the ports the declaration needs.
+- `EnvironmentVariable` — a valid variable name (letters, digits and `_`, not starting with a digit) and its template, parsed when the file is read into `TemplatePart`s: `Literal`, `WorktreeName` (`${worktree}`, the worktree's folder name) and `Port(key)`. `${port}` is keyed by the variable's own name, so each variable gets its own port; `${port:<key>}` is keyed `port:<key>`, shared by every variable that uses it (`:` can't appear in a variable name, so the keys never collide). `$$` is a literal `$`; any other `${…}` throws `InvalidEnvironmentTemplate`, which reading turns into `InvalidRepositoryConfig`.
+- `WorktreeEnvironment` — a resolved environment: the rendered `variables` and the `ports` reserved for the worktree.
 
 ### Gradle daemons
 
@@ -94,7 +110,9 @@ User preferences: `LIGHT` / `DARK` / `SYSTEM` and `ENGLISH` / `SPANISH`. They're
 - `SecretFileNotFound` — local files are missing in the base repo.
 - `RepositoryNotFound` — the directory isn't inside a Git repository with a working tree (used by the CLI).
 - `NotAWorktree` — the path given to provision is the main worktree or isn't one of the repository's worktrees.
-- `InvalidRepositoryConfig` — `.shogunai.json` exists but isn't valid JSON, isn't an object, its `copy` isn't a list of strings, or its `providers` (or a known provider in it) isn't an object; keeps the file path and the detail.
+- `InvalidRepositoryConfig` — `.shogunai.json` exists but isn't valid JSON, isn't an object, its `copy` isn't a list of strings, its `providers` (or a known provider in it) isn't an object, or its `env` or `envFile` is invalid; keeps the file path and the detail.
+- `NoFreePort` — every port from 20000 to 29999 is reserved or busy.
+- `EnvironmentFileTracked` — the declared `envFile` is a file Git tracks in the worktree, so it isn't overwritten.
 - `GitCommandFailed` — a Git command returned a non-zero exit code; keeps the command, exit code and Git's error output.
 - `SecretCopyFailed` — copying local or repository files failed after the worktree had already been created.
 - `ClipboardWriteFailed` — the launch command couldn't be copied to the clipboard.
@@ -154,6 +172,23 @@ interface RepositoryProvisioningSource {
 
 Reads the repository's provisioning (throwing `InvalidRepositoryConfig` for an unreadable `.shogunai.json`) and appends patterns to `copy`, which is how the configuration screen moves local files into the repository.
 
+### `EnvironmentStateStore` / `PortProbe`
+
+```kotlin
+interface EnvironmentStateStore {
+    fun readPorts(adminDirectory: String): Map<String, Int>
+    fun writePorts(adminDirectory: String, ports: Map<String, Int>)
+    fun reservedPortsOfRepository(commonDirectory: String): Set<Int>
+    fun <T> withLock(commonDirectory: String, block: () -> T): T
+}
+
+interface PortProbe {
+    fun isFree(port: Int): Boolean
+}
+```
+
+`EnvironmentStateStore` keeps each worktree's reserved ports in Git's administrative directory for that worktree (`.git/worktrees/<id>/` for a linked one, `.git/` for the main one), lists every reservation of the repository, and runs a block while holding the repository's reservation lock. `PortProbe` tells whether a port is free on the machine.
+
 ### `GradleDaemonSource`
 
 ```kotlin
@@ -180,10 +215,11 @@ Creates a worktree on a **new** branch `<type>/<taskId>`. The task id is normali
 1. **Upfront validations** (base repo exists, destination free, local files present) and **resolving the repository's files** — done *before* touching Git so as not to leave a half-done worktree.
 2. `git worktree add <path> -b <branch>`.
 3. Copying the local files and then the repository's files into the new directory, at the same relative paths.
+4. Preparing its environment through the `WorktreeEnvironmentPreparer` it receives: `PrepareWorktreeEnvironmentUseCase` resolves it with reservation (`ResolveWorktreeEnvironmentUseCase`) and, when `envFile` is declared, `WriteEnvironmentFileUseCase` writes it in dotenv format, refusing a file Git tracks (`git ls-files --error-unmatch`, `EnvironmentFileTracked`) and reporting write errors as `EnvironmentFileWriteFailed`. The preparer defaults to `WorktreeEnvironmentPreparer.NONE`, which tests that don't exercise the environment rely on; the app and the CLI always pass the real one.
 
 Resolving the repository's files reads `RepositoryProvisioning` and, if it declares any pattern, runs `git ls-files --others --ignored -z -x <pattern>…`: every file not tracked by Git that matches a pattern (tracked files already come with the checkout). Without patterns no Git command runs. An unreadable `.shogunai.json` (`InvalidRepositoryConfig`) or a failing `git ls-files` (`GitCommandFailed`) stops creation before anything is created. Local files are checked strictly (`SecretFileNotFound`), patterns leniently: a pattern with no match copies nothing.
 
-If copying fails **after** the worktree was created, it's rolled back with `git worktree remove --force` (best-effort) before propagating `SecretCopyFailed`. If `git worktree add` fails because `git-lfs` is missing, the half-created worktree and its new branch are removed and `GitLfsNotFound` is returned.
+If copying or preparing the environment fails **after** the worktree was created, it's rolled back with `git worktree remove --force` (best-effort) before propagating the error. If `git worktree add` fails because `git-lfs` is missing, the half-created worktree and its new branch are removed and `GitLfsNotFound` is returned.
 
 ### `CreateWorktreeFromBranchUseCase`
 
@@ -247,11 +283,21 @@ Deletes a local branch with `git branch -d`, which Git refuses when the branch i
 
 ### `ProvisionWorktreeUseCase`
 
-Applies the same files as creation (local files and the repository's provisioning, see `CreateWorktreeUseCase`) to an **existing** linked worktree, e.g. one created by another tool. The path must be one of the repository's worktrees (from `ListWorktreesUseCase`) and not the main one (`NotAWorktree`). Files are copied over existing ones, and it returns the copied relative paths. Unlike creation, a failed copy (`SecretCopyFailed`) doesn't remove anything: the worktree isn't ShogunAi's to delete. Creation and provisioning share the same copy function.
+Applies the same files as creation (local files and the repository's provisioning, see `CreateWorktreeUseCase`) to an **existing** linked worktree, e.g. one created by another tool. The path must be one of the repository's worktrees (from `ListWorktreesUseCase`) and not the main one (`NotAWorktree`). Files are copied over existing ones, the environment is prepared the same way (reserving ports for a worktree another tool created), and it returns the copied relative paths. Unlike creation, a failed copy or environment doesn't remove anything: the worktree isn't ShogunAi's to delete. Creation and provisioning share the same copy function.
 
 ### `RepairWorktreesUseCase`
 
 Re-links the base repository and its worktrees after they were moved on disk. Git stores absolute paths in both directions (`<worktree>/.git` points to the base repository and `.git/worktrees/<name>/gitdir` points back), so a move breaks them. It runs `git worktree repair` from the (new) base repository; worktrees that no longer exist at their old path but do exist at the same relative location under the new `worktreesRoot` are passed as arguments, so Git fixes both directions. The UI runs it after saving a project whose base repository path or worktrees root changed.
+
+### `ResolveWorktreeEnvironmentUseCase`
+
+Resolves a worktree's environment from the base repository's declaration. An empty declaration returns an empty `WorktreeEnvironment` without running any command. Otherwise it finds the worktree's administrative and common Git directories (`git rev-parse --path-format=absolute --git-dir --git-common-dir` in the worktree) and, while holding the repository's lock:
+
+1. keeps the worktree's stored ports whose keys the declaration still uses, releasing the rest;
+2. reserves each missing key at the lowest port from 20000 to 29999 that no worktree of the repository has reserved and `PortProbe` reports free (`NoFreePort` if none is);
+3. writes the reservations only if they changed.
+
+A reserved port is never checked again, because the worktree's own server is expected to listen on it. With `reserve = false` (used to show ports without side effects) it only reads the stored ports, without locking or writing, and returns no variables until every port is reserved. `formatEnvironment` renders the variables as `sh` (`export NAME='value'`, single quotes with `'\''` escaping, safe for `eval`), `dotenv` (`NAME=value`, double-quoted and escaped unless the value is plain) or `json`.
 
 ### Gradle daemon use cases
 

@@ -19,6 +19,17 @@ class NioFileManagerTest {
     }
 
     @Test
+    fun `writes text creating folders and replacing the previous contents`() {
+        val file = root.resolve("worktree/config/.env.shogunai")
+
+        fileManager.writeText(file.toString(), "PORT=20000\n")
+        fileManager.writeText(file.toString(), "PORT=20001\n")
+
+        assertEquals("PORT=20001\n", Files.readString(file))
+        assertEquals(listOf(".env.shogunai"), Files.list(file.parent).use { stream -> stream.map { it.fileName.toString() }.toList() })
+    }
+
+    @Test
     fun `reads properties and treats a missing file as empty`() {
         val file = root.resolve("gradle.properties")
         file.writeBytes("org.gradle.caching=true\n# comment\norg.gradle.jvmargs=-Xmx2g\n".toByteArray())

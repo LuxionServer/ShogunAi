@@ -40,7 +40,7 @@ Mientras se muestra `WorktreeScreen`, un `DisposableEffect` llama a `WorktreeVie
 
 ### Vista completa de worktrees
 
-`WorktreeScreen` recibe la `ProjectConfig` del proyecto para clasificar el origen de cada fila con `classifyOrigin`. Tras cada carga de la lista, `WorktreeViewModel` ejecuta además `DetectRunningAgentsUseCase` una vez (`agents`, `null` cuando no se pueden listar los procesos) y mide el tamaño de cada worktree de uno en uno con `MeasureWorktreeSizeUseCase` (`sizes`, sumados en `totalSize`); los resultados de una carga anterior se descartan con `listGeneration`.
+`WorktreeScreen` recibe la `ProjectConfig` del proyecto para clasificar el origen de cada fila con `classifyOrigin`. Tras cada carga de la lista, `WorktreeViewModel` ejecuta además `DetectRunningAgentsUseCase` una vez (`agents`, `null` cuando no se pueden listar los procesos) y mide el tamaño de cada worktree de uno en uno con `MeasureWorktreeSizeUseCase` (`sizes`, sumados en `totalSize`); los resultados de una carga anterior se descartan con `listGeneration`. También lee los puertos reservados de cada worktree (`ports`, con `WorktreeUseCases.readPorts`, que resuelve el entorno con `reserve = false`, así que abrir la pantalla nunca reserva un puerto) y `WorktreeOverviewLine` los muestra después del tamaño con `portsLabel` (`PORT 20001 · api 20002`).
 
 - `WorktreeBranchLine` muestra, tras la rama y la etiqueta "bloqueado", el origen (ShogunAi, Claude Code u otra ubicación) en texto atenuado y cada agente en ejecución como "● nombre" en el color de éxito.
 - `WorktreeOverviewLine`, bajo el estado, muestra el tamaño (`formatSize`, unidades binarias con un decimal) y la etiqueta "inactivo" cuando se cumple `isInactive`.

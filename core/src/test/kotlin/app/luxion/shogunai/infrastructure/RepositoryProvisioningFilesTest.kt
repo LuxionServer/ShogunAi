@@ -124,6 +124,50 @@ class RepositoryProvisioningFilesTest {
     }
 
     @Test
+    fun `reads the environment and its file in declaration order`() {
+        configFile.writeText("""{ "env": { "PORT": "${'$'}{port}", "APP_SUFFIX": "-${'$'}{worktree}" }, "envFile": ".env.shogunai" }""")
+
+        val environment = files.read(repository.toString()).environment
+
+        assertEquals(listOf("PORT", "APP_SUFFIX"), environment.variables.map { it.name })
+        assertEquals(".env.shogunai", environment.envFile)
+    }
+
+    @Test
+    fun `declares an empty environment without the field`() {
+        configFile.writeText("""{ "copy": [".env"] }""")
+
+        assertTrue(files.read(repository.toString()).environment.isEmpty)
+    }
+
+    @Test
+    fun `fails with InvalidRepositoryConfig on an invalid environment`() {
+        listOf(
+            """{ "env": ["PORT"] }""",
+            """{ "env": { "PORT": 3000 } }""",
+            """{ "env": { "1PORT": "x" } }""",
+            """{ "env": { "A": "${'$'}{branch}" } }""",
+            """{ "envFile": "/tmp/shared.env" }""",
+            """{ "envFile": "../shared.env" }""",
+            """{ "envFile": 3 }""",
+        ).forEach { content ->
+            configFile.writeText(content)
+            assertFailsWith<WorktreeError.InvalidRepositoryConfig>(content) { files.read(repository.toString()) }
+        }
+    }
+
+    @Test
+    fun `keeps the environment when adding patterns`() {
+        configFile.writeText("""{ "env": { "PORT": "${'$'}{port}" }, "envFile": ".env.shogunai" }""")
+
+        files.addCopyPatterns(repository.toString(), listOf("/local.properties"))
+
+        val environment = files.read(repository.toString()).environment
+        assertEquals(listOf("PORT"), environment.variables.map { it.name })
+        assertEquals(".env.shogunai", environment.envFile)
+    }
+
+    @Test
     fun `keeps providers when adding patterns`() {
         configFile.writeText("""{ "providers": { "gradle": {} } }""")
 

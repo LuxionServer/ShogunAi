@@ -49,6 +49,15 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class ProcessListingFailed(val command: List<String>, val exitCode: Int) :
         WorktreeError("Couldn't list processes (exit code $exitCode): ${command.joinToString(" ")}")
 
+    class NoFreePort(val from: Int, val to: Int) :
+        WorktreeError("No free port left between $from and $to for this worktree")
+
+    class EnvironmentFileTracked(val path: String) :
+        WorktreeError("Won't write the environment file over $path because Git tracks it")
+
+    class EnvironmentFileWriteFailed(val path: String, cause: Throwable) :
+        WorktreeError("Failed to write the environment file $path: ${cause.message}", cause)
+
     class BranchAlreadyCheckedOut(val branch: String, val path: String?) :
         WorktreeError(
             "Branch '$branch' is already checked out" + if (path != null) " at $path" else "",

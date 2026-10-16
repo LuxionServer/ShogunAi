@@ -8,6 +8,7 @@ import app.luxion.shogunai.domain.io.ThemePreferenceRepository
 import app.luxion.shogunai.domain.executor.ClipboardWriter
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.usecase.CheckGradleBuildCacheUseCase
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.CopyWorktreeLaunchCommandUseCase
@@ -22,17 +23,22 @@ import app.luxion.shogunai.domain.usecase.ReadGitMetadataFingerprintUseCase
 import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.RepairWorktreesUseCase
+import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
+import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
+import app.luxion.shogunai.domain.usecase.WriteEnvironmentFileUseCase
 import app.luxion.shogunai.domain.usecase.StopGradleDaemonsUseCase
 import app.luxion.shogunai.infrastructure.AwtClipboardWriter
 import app.luxion.shogunai.infrastructure.JsonLanguagePreferenceRepository
 import app.luxion.shogunai.infrastructure.JsonProjectRepository
 import app.luxion.shogunai.infrastructure.JsonSettingsFile
 import app.luxion.shogunai.infrastructure.JsonThemePreferenceRepository
+import app.luxion.shogunai.infrastructure.NioEnvironmentStateStore
 import app.luxion.shogunai.infrastructure.NioFileManager
 import app.luxion.shogunai.infrastructure.ProcessBuilderShellCommandExecutor
 import app.luxion.shogunai.infrastructure.ProcessGradleDaemonSource
 import app.luxion.shogunai.infrastructure.RepositoryProvisioningFiles
+import app.luxion.shogunai.infrastructure.SocketPortProbe
 import app.luxion.shogunai.infrastructure.defaultGradleUserHome
 
 class AppContainer {
@@ -46,11 +52,27 @@ class AppContainer {
     val repositoryProvisioningSource: RepositoryProvisioningSource = RepositoryProvisioningFiles()
     private val gradleUserHome = defaultGradleUserHome()
     private val gradleDaemonSource = ProcessGradleDaemonSource(shellCommandExecutor, gradleUserHome)
+    private val resolveEnvironment = ResolveWorktreeEnvironmentUseCase(
+        shellCommandExecutor,
+        repositoryProvisioningSource,
+        NioEnvironmentStateStore(),
+        SocketPortProbe(),
+    )
+    private val prepareEnvironment = PrepareWorktreeEnvironmentUseCase(
+        resolveEnvironment,
+        WriteEnvironmentFileUseCase(shellCommandExecutor, fileManager, repositoryProvisioningSource),
+    )
 
     fun worktreeUseCases(config: ProjectConfig): WorktreeUseCases = WorktreeUseCases(
         list = ListWorktreesUseCase(config, shellCommandExecutor),
-        create = CreateWorktreeUseCase(config, shellCommandExecutor, fileManager, repositoryProvisioningSource),
-        createFromBranch = CreateWorktreeFromBranchUseCase(config, shellCommandExecutor, fileManager, repositoryProvisioningSource),
+        create = CreateWorktreeUseCase(config, shellCommandExecutor, fileManager, repositoryProvisioningSource, prepareEnvironment),
+        createFromBranch = CreateWorktreeFromBranchUseCase(
+            config,
+            shellCommandExecutor,
+            fileManager,
+            repositoryProvisioningSource,
+            prepareEnvironment,
+        ),
         listLocalBranches = ListLocalBranchesUseCase(config, shellCommandExecutor),
         remove = RemoveWorktreeUseCase(config, shellCommandExecutor),
         copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboardWriter),
@@ -61,6 +83,9 @@ class AppContainer {
         detectAgents = DetectRunningAgentsUseCase(config, shellCommandExecutor),
         measureSize = MeasureWorktreeSizeUseCase(fileManager),
         readFingerprint = ReadGitMetadataFingerprintUseCase(config, fileManager),
+        readPorts = { worktree ->
+            resolveEnvironment(config.baseRepositoryPath, worktree.path, reserve = false).map { it.ports }
+        },
         gradle = GradleUseCases(
             declaresProvider = {
                 runCatching { repositoryProvisioningSource.read(config.baseRepositoryPath).providers.gradle != null }
@@ -87,6 +112,7 @@ data class WorktreeUseCases(
     val detectAgents: DetectRunningAgentsUseCase,
     val measureSize: MeasureWorktreeSizeUseCase,
     val readFingerprint: ReadGitMetadataFingerprintUseCase,
+    val readPorts: suspend (Worktree) -> Result<Map<String, Int>>,
     val gradle: GradleUseCases,
 )
 

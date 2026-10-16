@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeOrigin
+import app.luxion.shogunai.domain.model.portKeyLabel
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.Strings
@@ -34,22 +35,33 @@ fun WorktreeBranchLine(worktree: Worktree, origin: WorktreeOrigin?, agents: List
 }
 
 @Composable
-fun WorktreeOverviewLine(size: Long?, isInactive: Boolean) {
-    if (size == null && !isInactive) return
+fun WorktreeOverviewLine(size: Long?, isInactive: Boolean, ports: Map<String, Int> = emptyMap()) {
+    if (size == null && !isInactive && ports.isEmpty()) return
     val strings = LocalStrings.current
     val style = MaterialTheme.typography.bodySmall
     Row(verticalAlignment = Alignment.CenterVertically) {
         size?.let { Text(formatSize(it), style = style, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        if (ports.isNotEmpty()) {
+            Text(
+                portsLabel(ports),
+                style = style,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = if (size != null) labelPadding else Modifier,
+            )
+        }
         if (isInactive) {
             Text(
                 strings.inactive,
                 style = style,
                 color = MaterialTheme.colorScheme.tertiary,
-                modifier = if (size != null) labelPadding else Modifier,
+                modifier = if (size != null || ports.isNotEmpty()) labelPadding else Modifier,
             )
         }
     }
 }
+
+fun portsLabel(ports: Map<String, Int>): String =
+    ports.entries.sortedBy { it.value }.joinToString(" · ") { (key, port) -> "${portKeyLabel(key)} $port" }
 
 private val labelPadding = Modifier.padding(start = Spacing.sm)
 
