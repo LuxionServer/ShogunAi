@@ -118,6 +118,14 @@ fun ProjectConfigScreen(
                     Text(strings.browse)
                 }
             }
+            OutlinedTextField(
+                value = viewModel.mainBranch,
+                onValueChange = { viewModel.mainBranch = it },
+                label = { Text(strings.mainBranchLabel) },
+                placeholder = { Text(strings.mainBranchPlaceholder) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
 
         SectionCard(title = strings.secretFilesSection) {

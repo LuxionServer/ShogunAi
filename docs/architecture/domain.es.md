@@ -14,6 +14,7 @@ Configuración de un repositorio sobre el que se crean worktrees. Es el punto qu
 | `worktreesRoot` | Carpeta padre donde se crean los worktrees. |
 | `secretFiles` | Archivos de credenciales locales a copiar a cada nuevo worktree (p. ej. `local.properties`), relativos al repositorio base. |
 | `agentLaunchConfig` | Comando del agente que se incluye en el comando de lanzamiento copiado para un worktree (`AgentLaunchConfig`, ver abajo). |
+| `mainBranch` | Rama opcional contra la que se comparan los worktrees para mostrar su estado (p. ej. `develop`). `null` significa que se detecta a partir del repositorio (ver `ResolveMainBranchUseCase`). |
 
 Helpers de rutas:
 
@@ -45,6 +46,12 @@ Enum `FEATURE` / `FIX`, cada uno con un `prefix` (`"feature"` / `"fix"`) que se 
 
 - `Worktree` — un worktree activo tal como lo reporta `git worktree list`: `path`, `branch` (`null` si está en `detached`), `head`, `isMain`, `isBare`.
 - `BranchOption` — una rama local ofrecida al crear un worktree desde una rama existente: `name` e `isCheckedOut` (ya en uso en el repositorio base o en otro worktree).
+
+### `WorktreeStatus` / `MainBranch` / `Divergence`
+
+- `MainBranch` — la rama contra la que se comparan los worktrees: su `name` (`develop`) y la `ref` usada en los comandos de Git (`origin/develop`, o `develop` cuando no hay rama remota de seguimiento).
+- `Divergence` — commits `ahead` (por delante) y `behind` (por detrás) respecto a otra rama.
+- `WorktreeStatus` — el estado de un worktree: `uncommittedChanges`, las divergencias `upstream` y `mainBranch` (`null` cuando no aplican) y `lastCommitAt`. `isMerged` es derivado: la rama no tiene nada que le falte a la rama principal (`ahead == 0`) y la rama principal ha avanzado más allá de ella (`behind > 0`), así que una rama recién creada no aparece como mergeada.
 
 ### `ThemeMode` / `AppLanguage`
 
@@ -132,6 +139,21 @@ Lista las ramas locales (`git for-each-ref --format=%(refname:short) refs/heads`
 ### `ListWorktreesUseCase`
 
 Ejecuta `git worktree list --porcelain` (formato estable pensado para parsear, a diferencia de la salida legible por defecto) y parsea el resultado con `parseWorktreeList`. Marca `isMain = true` en el worktree cuya ruta coincide con `config.baseRepositoryPath`.
+
+### `ResolveMainBranchUseCase`
+
+Resuelve la `MainBranch` una vez por carga de la lista, desde el repositorio base y sin acceso a red: `config.mainBranch` si está definida; si no, la rama por defecto del remoto `origin` (`git symbolic-ref refs/remotes/origin/HEAD`), y como alternativa una `main` local y después `master`. Una rama con nombre se compara a través de `origin/<nombre>` cuando esa ref existe (`git rev-parse --verify`), porque los merges suelen llegar antes al remoto, y a través de la rama local en caso contrario. Devuelve `null` cuando no se puede resolver nada.
+
+### `ReadWorktreeStatusUseCase`
+
+Lee un `WorktreeStatus`, ejecutando cada comando en la carpeta del propio worktree:
+
+- `git status --porcelain` — cambios sin commitear. Es el único comando obligatorio: si falla (p. ej. la carpeta ya no existe), falla todo el estado.
+- `git rev-list --left-right --count @{upstream}...HEAD` — divergencia con el upstream; se omite con HEAD separado y es `null` si no hay upstream.
+- `git rev-list --left-right --count <ref principal>...HEAD` — divergencia con la rama principal; se omite cuando no hay rama principal o el worktree está en ella.
+- `git log -1 --format=%ct` — fecha del último commit, `null` si no hay commits.
+
+Los merges por squash o rebase no se detectan como mergeados, y las ramas remotas de seguimiento están tan actualizadas como el último fetch del usuario.
 
 ### `RemoveWorktreeUseCase`
 

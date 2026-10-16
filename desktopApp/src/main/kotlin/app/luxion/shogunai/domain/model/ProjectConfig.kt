@@ -8,6 +8,7 @@ data class ProjectConfig(
     val worktreesRoot: String,
     val secretFiles: List<String>,
     val agentLaunchConfig: AgentLaunchConfig = AgentLaunchConfig(),
+    val mainBranch: String? = null,
 ) {
     fun worktreePathFor(taskId: String): String = joinPath(worktreesRoot, taskId)
 

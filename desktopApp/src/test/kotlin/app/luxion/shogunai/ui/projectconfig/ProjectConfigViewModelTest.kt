@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ProjectConfigViewModelTest {
@@ -13,6 +14,7 @@ class ProjectConfigViewModelTest {
     private fun projectWith(
         secretFiles: List<String> = emptyList(),
         worktreesRoot: String = "/home/dev/projects",
+        mainBranch: String? = null,
     ) = Project(
         id = "p",
         name = "Project",
@@ -20,6 +22,7 @@ class ProjectConfigViewModelTest {
             baseRepositoryPath = "/home/dev/projects/main-repo",
             worktreesRoot = worktreesRoot,
             secretFiles = secretFiles,
+            mainBranch = mainBranch,
         ),
     )
 
@@ -155,6 +158,44 @@ class ProjectConfigViewModelTest {
         val viewModel = viewModelFor(projectWith())
 
         viewModel.name = "Renamed"
+
+        assertTrue(viewModel.hasUnsavedChanges)
+    }
+
+    @Test
+    fun `a new project has no main branch by default`() {
+        val viewModel = viewModelFor(null).apply {
+            name = "Project"
+            baseRepositoryPath = "/home/dev/projects/main-repo"
+        }
+
+        assertNull(viewModel.save().config.mainBranch)
+    }
+
+    @Test
+    fun `the main branch is saved trimmed`() {
+        val viewModel = viewModelFor(projectWith())
+
+        viewModel.mainBranch = "  develop "
+
+        assertEquals("develop", viewModel.save().config.mainBranch)
+    }
+
+    @Test
+    fun `a blank main branch is saved as not set`() {
+        val viewModel = viewModelFor(projectWith(mainBranch = "develop"))
+
+        viewModel.mainBranch = "   "
+
+        assertNull(viewModel.save().config.mainBranch)
+    }
+
+    @Test
+    fun `editing the main branch marks the form as having unsaved changes`() {
+        val viewModel = viewModelFor(projectWith(mainBranch = "develop"))
+        assertFalse(viewModel.hasUnsavedChanges)
+
+        viewModel.mainBranch = "main"
 
         assertTrue(viewModel.hasUnsavedChanges)
     }

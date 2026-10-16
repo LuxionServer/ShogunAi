@@ -14,6 +14,7 @@ Configuration of a repository that worktrees are created against. It's what make
 | `worktreesRoot` | Parent folder where worktrees are created. |
 | `secretFiles` | Local credential files to copy into each new worktree (e.g. `local.properties`), relative to the base repository. |
 | `agentLaunchConfig` | Agent command included in the launch command copied for a worktree (`AgentLaunchConfig`, see below). |
+| `mainBranch` | Optional branch that worktrees are compared against to show their status (e.g. `develop`). `null` means it's detected from the repository (see `ResolveMainBranchUseCase`). |
 
 Path helpers:
 
@@ -45,6 +46,12 @@ Enum `FEATURE` / `FIX`, each with a `prefix` (`"feature"` / `"fix"`) prepended t
 
 - `Worktree` — an active worktree as reported by `git worktree list`: `path`, `branch` (`null` if `detached`), `head`, `isMain`, `isBare`.
 - `BranchOption` — a local branch offered when creating a worktree from an existing branch: `name` and `isCheckedOut` (already checked out in the base repository or another worktree).
+
+### `WorktreeStatus` / `MainBranch` / `Divergence`
+
+- `MainBranch` — the branch worktrees are compared against: its `name` (`develop`) and the `ref` used in Git commands (`origin/develop`, or `develop` when there's no remote-tracking branch).
+- `Divergence` — commits `ahead` and `behind` with respect to another branch.
+- `WorktreeStatus` — the state of one worktree: `uncommittedChanges`, `upstream` and `mainBranch` divergences (`null` when they don't apply) and `lastCommitAt`. `isMerged` is derived: the branch has nothing the main branch lacks (`ahead == 0`) and the main branch has moved past it (`behind > 0`), so a freshly created branch isn't reported as merged.
 
 ### `ThemeMode` / `AppLanguage`
 
@@ -132,6 +139,21 @@ Lists local branches (`git for-each-ref --format=%(refname:short) refs/heads`) a
 ### `ListWorktreesUseCase`
 
 Runs `git worktree list --porcelain` (a stable format meant to be parsed, unlike the default human-readable output) and parses the result with `parseWorktreeList`. Marks `isMain = true` on the worktree whose path matches `config.baseRepositoryPath`.
+
+### `ResolveMainBranchUseCase`
+
+Resolves the `MainBranch` once per list load, from the base repository and without network access: `config.mainBranch` if set, otherwise the `origin` remote's default branch (`git symbolic-ref refs/remotes/origin/HEAD`), falling back to a local `main` and then `master`. A named branch is compared through `origin/<name>` when that ref exists (`git rev-parse --verify`), because merges usually reach the remote first, and through the local branch otherwise. Returns `null` when nothing can be resolved.
+
+### `ReadWorktreeStatusUseCase`
+
+Reads a `WorktreeStatus`, running each command in the worktree's own folder:
+
+- `git status --porcelain` — uncommitted changes. It's the only required command: if it fails (e.g. the folder is gone), the whole status fails.
+- `git rev-list --left-right --count @{upstream}...HEAD` — upstream divergence, skipped on a detached HEAD and `null` if there's no upstream.
+- `git rev-list --left-right --count <main ref>...HEAD` — main branch divergence, skipped when there's no main branch or the worktree is on it.
+- `git log -1 --format=%ct` — last commit date, `null` if there are no commits.
+
+Squash and rebase merges aren't detected as merged, and remote-tracking branches are only as fresh as the user's last fetch.
 
 ### `RemoveWorktreeUseCase`
 

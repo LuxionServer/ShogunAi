@@ -265,6 +265,8 @@ fun WorktreeScreen(
         viewModel.worktrees.forEach { worktree ->
             WorktreeRow(
                 worktree = worktree,
+                status = viewModel.statuses[worktree.path],
+                mainBranchName = viewModel.mainBranch?.name,
                 isCopied = viewModel.copiedWorktreePath == worktree.path,
                 onRemove = { viewModel.requestRemoval(worktree) },
                 onCopyLaunchCommand = { viewModel.copyLaunchCommand(worktree) },
@@ -330,7 +332,14 @@ fun WorktreeScreen(
 }
 
 @Composable
-private fun WorktreeRow(worktree: Worktree, isCopied: Boolean, onRemove: () -> Unit, onCopyLaunchCommand: () -> Unit) {
+private fun WorktreeRow(
+    worktree: Worktree,
+    status: WorktreeStatusState?,
+    mainBranchName: String?,
+    isCopied: Boolean,
+    onRemove: () -> Unit,
+    onCopyLaunchCommand: () -> Unit,
+) {
     val strings = LocalStrings.current
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.sm),
@@ -339,6 +348,7 @@ private fun WorktreeRow(worktree: Worktree, isCopied: Boolean, onRemove: () -> U
         Column(modifier = Modifier.weight(1f).padding(end = Spacing.sm)) {
             Text(worktree.path, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(worktree.branch ?: strings.detachedHead, style = MaterialTheme.typography.bodySmall)
+            WorktreeStatusLine(status, mainBranchName)
         }
         Row {
             OutlinedButton(onClick = onCopyLaunchCommand, modifier = Modifier.padding(end = Spacing.sm)) {

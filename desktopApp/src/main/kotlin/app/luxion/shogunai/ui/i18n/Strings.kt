@@ -40,6 +40,8 @@ interface Strings {
     val baseRepositoryPathLabel: String
     val baseRepositoryPathEmptyError: String
     val worktreesRootLabel: String
+    val mainBranchLabel: String
+    val mainBranchPlaceholder: String
     val secretFilesSection: String
     val removeSecretFile: String
     val newSecretFileLabel: String
@@ -76,6 +78,16 @@ interface Strings {
     fun alsoDeleteLocalBranch(branch: String): String
     val forceRemove: String
     val detachedHead: String
+    fun uncommittedChanges(count: Int): String
+    val upstream: String
+    fun mergedInto(branch: String): String
+    val statusUnavailable: String
+    val justNow: String
+    fun minutesAgo(count: Long): String
+    fun hoursAgo(count: Long): String
+    fun daysAgo(count: Long): String
+    fun monthsAgo(count: Long): String
+    fun yearsAgo(count: Long): String
     val copied: String
     val copyCommand: String
     fun worktreeCreated(path: String): String
