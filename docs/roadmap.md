@@ -16,7 +16,7 @@ That direction is built in three layers:
 
 ```mermaid
 graph LR
-    A["Repository configuration"] --> B["shogun CLI and agent hooks"]
+    A["Repository configuration"] --> B["Agent hooks"]
     A --> D["Android, KMP and JVM provisioning"]
 ```
 
@@ -30,11 +30,10 @@ Richer provisioning in the repository's `.shogunai.json`:
 - Symlinking a secret instead of copying it, so a rotated secret updates every worktree.
 - Detection of secrets in a worktree that differ from the base repository's.
 
-### `shogun` command-line tool
+### Agent hooks
 
-- `shogun new`, `shogun provision <path>`, `shogun status` and `shogun clean`, on top of the same use cases as the desktop app.
-- Usable from agent hooks: for example, `shogun provision` as Claude Code's `WorktreeCreate` hook, so `claude --worktree` leaves the worktree ready according to `.shogunai.json`. Equivalent recipes for other agents.
-- Shipped alongside the desktop app, including the Homebrew Cask.
+- `shogun` as Claude Code's `WorktreeCreate` hook, so `claude --worktree` leaves the worktree ready according to `.shogunai.json`. Equivalent recipes for other agents.
+- A machine-readable output (`--json`) for the commands that scripts need.
 
 ### Android, KMP and JVM provisioning
 

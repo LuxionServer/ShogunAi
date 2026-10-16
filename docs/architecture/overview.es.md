@@ -1,17 +1,18 @@
 # Visión general
 
-ShogunAi es una aplicación de **escritorio Kotlin/JVM** construida con **Compose Multiplatform** (Compose Desktop).
+ShogunAi es una aplicación de **escritorio Kotlin/JVM** construida con **Compose Multiplatform** (Compose Desktop), más la herramienta de línea de comandos `shogun`.
 
 ## Módulos
 
-Hay dos módulos de Gradle:
+Hay tres módulos de Gradle:
 
 | Módulo | Qué contiene | Depende de |
 |---|---|---|
 | **`core`** | El dominio (modelos, puertos, casos de uso) y la infraestructura que implementa sus puertos: procesos, ficheros, el catálogo JSON y las preferencias. Kotlin/JVM puro, sin Compose ni AWT. | Corrutinas, `kotlinx.serialization` |
-| **`desktopApp`** | La aplicación de escritorio: UI Compose (pantallas y ViewModels), `AppContainer`, el punto de entrada y `AwtClipboardWriter`, la única implementación de un puerto que necesita el toolkit de escritorio. | `core`, Compose Desktop |
+| **`desktopApp`** | La aplicación de escritorio: UI Compose (pantallas y ViewModels), `AppContainer`, el punto de entrada y `AwtClipboardWriter`, la única implementación de un puerto que necesita el toolkit de escritorio. | `core`, `cli`, Compose Desktop |
+| **`cli`** | El comando `shogun`: el parsing de argumentos y los cuatro comandos (`new`, `provision`, `status`, `clean`) sobre `core`. El lanzador de la app de escritorio lo ejecuta cuando recibe argumentos. | `core` |
 
-`core` existe para que un segundo frontal —la herramienta de línea de comandos `shogun` prevista— pueda ejecutar los mismos casos de uso sin arrastrar la UI de escritorio. Los paquetes no cambiaron al extraerlo (`app.luxion.shogunai.domain…`, `app.luxion.shogunai.infrastructure…`); lo que mantiene la UI fuera de `core` es el límite del módulo. Los dobles de prueba viven en los test fixtures de `core`, compartidos por los tests de ambos módulos.
+`core` existe para que un segundo frontal —la herramienta de línea de comandos `shogun`— pueda ejecutar los mismos casos de uso sin arrastrar la UI de escritorio. Los paquetes no cambiaron al extraerlo (`app.luxion.shogunai.domain…`, `app.luxion.shogunai.infrastructure…`); lo que mantiene la UI fuera de `core` es el límite del módulo. Los dobles de prueba viven en los test fixtures de `core`, compartidos por los tests de todos los módulos.
 
 !!! note "Por qué ahora un módulo `core`"
     El módulo `shared` vacío de la plantilla se eliminó en la primera iteración porque solo la app de escritorio lo iba a usar (ver [decisiones de diseño](../decisions/index.md)). Eso cambió con el CLI `shogun`, un segundo target real, y `core` se extrajo en el cambio `extract-core-module` (`openspec/changes/archive/`).
@@ -31,7 +32,12 @@ desktopApp/src/main/kotlin/app/luxion/shogunai/
 ├── infrastructure/   # AwtClipboardWriter
 ├── ui/               # pantallas Compose, ViewModels y navegación
 ├── AppContainer.kt   # cablea dominio + infraestructura para la UI, sin DI framework
-└── main.kt           # punto de entrada de la app Compose Desktop
+└── main.kt           # punto de entrada: ejecuta el CLI con argumentos, abre la ventana sin ellos
+
+cli/src/main/kotlin/app/luxion/shogunai/cli/
+├── CliCommand.kt     # parsing de argumentos a un CliCommand sellado
+├── ShogunCli.kt      # ejecuta cada comando sobre los casos de uso de core
+└── Main.kt           # punto de entrada independiente (runShogun)
 ```
 
 El dominio se define en términos de **puertos** (interfaces) y no conoce `ProcessBuilder` ni `java.nio.file` directamente; eso permite sustituir cada puerto por un doble de prueba (`FakeShellCommandExecutor`, `FakeFileManager`) en los tests de casos de uso, sin tocar disco ni lanzar procesos reales.
@@ -41,3 +47,4 @@ Ver el detalle de cada capa:
 - [Capa de dominio](domain.md)
 - [Capa de infraestructura](infrastructure.md)
 - [Capa de UI](ui.md)
+- [Línea de comandos](cli.md)

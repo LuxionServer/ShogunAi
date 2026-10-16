@@ -11,3 +11,36 @@ dependencies {
     testImplementation(libs.kotlin.testJunit)
     testImplementation(libs.kotlinx.coroutinesTest)
 }
+
+val generatedBuildInfoDir = layout.buildDirectory.dir("generated/buildInfo")
+
+val generateBuildInfo = tasks.register("generateBuildInfo") {
+    val appVersion = (findProperty("appVersion") as String?) ?: "0.0.0"
+    val outputDir = generatedBuildInfoDir
+    inputs.property("appVersion", appVersion)
+    outputs.dir(outputDir)
+    doLast {
+        val packageDir = outputDir.get().asFile.resolve("app/luxion/shogunai")
+        packageDir.mkdirs()
+        packageDir.resolve("BuildInfo.kt").writeText(
+            """
+            package app.luxion.shogunai
+
+            object BuildInfo {
+                const val VERSION = "$appVersion"
+            }
+
+            """.trimIndent(),
+        )
+    }
+}
+
+sourceSets {
+    main {
+        kotlin.srcDir(generatedBuildInfoDir)
+    }
+}
+
+tasks.named("compileKotlin") {
+    dependsOn(generateBuildInfo)
+}

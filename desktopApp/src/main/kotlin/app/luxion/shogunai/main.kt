@@ -3,11 +3,19 @@ package app.luxion.shogunai
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
+import app.luxion.shogunai.cli.runShogun
 import app.luxion.shogunai.ui.AppRoot
 import java.awt.Taskbar
 import java.awt.Toolkit
+import kotlin.system.exitProcess
 
-fun main() = application {
+fun main(args: Array<String>) {
+    val cliArguments = args.filterNot { it.startsWith("-psn_") }
+    if (cliArguments.isNotEmpty()) exitProcess(runShogun(cliArguments.toTypedArray()))
+    openWindow()
+}
+
+private fun openWindow() = application {
     setDockIcon()
     val appContainer = AppContainer()
     Window(

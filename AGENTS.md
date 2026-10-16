@@ -34,6 +34,7 @@ Rules:
 ```bash
 ./gradlew :desktopApp:run            # run the app
 ./gradlew :desktopApp:hotRun --auto  # run with hot reload
+./gradlew :cli:run --args="status"   # run the shogun CLI
 ./gradlew test                       # run tests for all modules
 mkdocs serve                         # serve the docs locally
 ```

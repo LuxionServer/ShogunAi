@@ -23,7 +23,7 @@ cd ShogunAi
 ./gradlew :desktopApp:hotRun --auto  # hot reload
 ```
 
-También puedes usar el run widget del IDE.
+También puedes usar el run widget del IDE. Para probar el comando `shogun` sin empaquetar: `./gradlew :cli:run --args="status"` (trabaja sobre el repositorio desde el que se ejecuta Gradle).
 
 ## Ejecutar los tests
 
@@ -33,7 +33,7 @@ También puedes usar el run widget del IDE.
 
 ## Orientarte en el código
 
-El proyecto es una app de escritorio Kotlin/JVM construida con Compose Multiplatform, en dos módulos de Gradle. `core` contiene el dominio y la infraestructura, sin nada de UI; `desktopApp` contiene la UI Compose y lo cablea todo:
+El proyecto es una app de escritorio Kotlin/JVM construida con Compose Multiplatform, más la herramienta de línea de comandos `shogun`, en tres módulos de Gradle. `core` contiene el dominio y la infraestructura, sin nada de UI; `desktopApp` contiene la UI Compose y lo cablea todo; `cli` es el comando:
 
 ```
 core/src/main/kotlin/app/luxion/shogunai/
@@ -44,9 +44,11 @@ desktopApp/src/main/kotlin/app/luxion/shogunai/
 ├── ui/               # pantallas Compose, ViewModels y navegación
 ├── AppContainer.kt   # cablea dominio + infraestructura, sin framework de DI
 └── main.kt           # punto de entrada
+
+cli/src/main/kotlin/app/luxion/shogunai/cli/  # el comando shogun
 ```
 
-Para el detalle de cada capa: [Capa de dominio](architecture/domain.md), [Capa de infraestructura](architecture/infrastructure.md), [Capa de UI](architecture/ui.md).
+Para el detalle de cada capa: [Capa de dominio](architecture/domain.md), [Capa de infraestructura](architecture/infrastructure.md), [Capa de UI](architecture/ui.md), [Línea de comandos](architecture/cli.md).
 
 ## Cómo se planifican los cambios
 
