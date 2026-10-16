@@ -18,6 +18,7 @@ En desarrollo activo y publicado como app de escritorio (ver el README para inst
 | Entender cómo está organizado el código | [Arquitectura › Visión general](architecture/overview.md) |
 | Ver los modelos y casos de uso del dominio | [Arquitectura › Capa de dominio](architecture/domain.md) |
 | Ver cómo se implementan los puertos (Git, ficheros) | [Arquitectura › Capa de infraestructura](architecture/infrastructure.md) |
+| Saber de qué rama partir y hacia dónde abrir una PR | [Proceso de desarrollo › Ramas](process/branching.md) |
 | Entender cómo se planifican los cambios | [Proceso de desarrollo › OpenSpec](process/openspec.md) |
 | Saber por qué se tomó tal decisión | [Decisiones de diseño](decisions/index.md) |
 | Ver qué está previsto | [Roadmap](roadmap.md) |
