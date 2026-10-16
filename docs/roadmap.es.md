@@ -2,23 +2,63 @@
 
 Ideas aceptadas para el futuro de ShogunAi, agrupadas por tema. Esta página marca una dirección, no un compromiso de fechas: cada punto se convierte en un cambio de OpenSpec (`/opsx:propose`) cuando se aborda, y su diseño se decide allí. Cuando un cambio se archiva, su punto se elimina de esta página.
 
+## Dirección
+
+ShogunAi está evolucionando de una app de escritorio que crea worktrees a **la capa de worktrees para cualquier agente de IA**: prepara cada worktree para que esté listo para compilar y te da una vista de todos ellos, los haya creado quien los haya creado. No incrusta terminales ni ejecuta agentes; Claude, Codex o cualquier otro agente lo sigue haciendo, dentro de los worktrees que ShogunAi prepara y supervisa.
+
+Esa dirección se construye en tres capas:
+
+| Capa | Papel | Qué aporta |
+|---|---|---|
+| **Motor y CLI** | La base | Provisionado de worktrees definido en el repositorio (`.shogunai.json`) y un comando `shogun` que usan la app de escritorio, los agentes y sus hooks. |
+| **Torre de control** | La vista | La app de escritorio muestra el estado de todos los worktrees, incluidos los creados por otras herramientas, y los mantiene limpios. |
+| **Android, KMP y JVM** | El contenido | Provisionado para los stacks en los que más cuesta preparar un worktree: Gradle, secretos locales, emuladores e IDEs. |
+
+```mermaid
+graph LR
+    A["Núcleo compartido y configuración del repositorio"] --> B["CLI shogun y hooks de agentes"]
+    A --> D["Provisionado Android, KMP y JVM"]
+    C["Estado de los worktrees"] --> E["Limpieza y vista completa"]
+```
+
+El estado de los worktrees no depende del motor, así que puede construirse en paralelo.
+
 ## Planificado
 
-### Estado de los worktrees de un vistazo
+### Núcleo compartido y configuración del repositorio
 
-Hoy la lista de worktrees solo muestra la ruta y la rama de cada uno. Cuando varios agentes trabajan en paralelo, hace falta ver cuáles han terminado y cuáles siguen con cambios sin abrir una terminal. Cada worktree mostraría:
+- Extraer el dominio y la infraestructura a un módulo `core`, para que la app de escritorio y el CLI compartan los mismos casos de uso.
+- Separar la configuración en dos: la parte de cada máquina (dónde está el repositorio, dónde van los worktrees, qué agente usas) sigue en `~/.shogunai/`; lo que necesita cada worktree se define en un `.shogunai.json` versionado en el repositorio, sin rutas absolutas, para que un equipo pueda compartirlo.
+- Leer también `.worktreeinclude`, para que los repositorios ya preparados para Claude Code funcionen sin configuración extra.
+- Provisionado más completo en ese fichero:
+    - Un hook post-creación ejecutado como argv (p. ej. `npm install`, `direnv allow`).
+    - Carpetas y patrones glob a copiar (p. ej. `.env*`, `.idea/runConfigurations`), no solo archivos sueltos.
+    - Enlazar un secreto con un symlink en vez de copiarlo, para que al rotarlo se actualice en todos los worktrees.
+    - Detectar secretos de un worktree que difieren de los del repositorio base.
 
-- Cambios sin commitear (`git status --porcelain`).
-- Commits por delante y por detrás de su upstream y de la rama principal (`git rev-list --count`).
-- Fecha del último commit.
-- Si su rama ya está mergeada en la rama principal.
+### Herramienta de línea de comandos `shogun`
 
-### Limpieza de worktrees obsoletos
+- `shogun new`, `shogun provision <ruta>`, `shogun status` y `shogun clean`, sobre los mismos casos de uso que la app de escritorio.
+- Utilizable desde los hooks de los agentes: por ejemplo, `shogun provision` como hook `WorktreeCreate` de Claude Code, para que `claude --worktree` deje el worktree listo según `.shogunai.json`. Recetas equivalentes para otros agentes.
+- Se distribuye junto a la app de escritorio, incluido el Cask de Homebrew.
 
-- Una acción para eliminar todos los worktrees cuya rama ya está mergeada, borrando opcionalmente también las ramas.
-- `git worktree prune` para los worktrees cuya carpeta ya no existe.
+### Torre de control
 
-Depende del estado de los worktrees para saber qué ramas están mergeadas.
+Hoy la lista de worktrees solo muestra la ruta y la rama de cada uno. Cuando varios agentes trabajan en paralelo, hace falta ver cuáles han terminado y cuáles siguen con cambios sin abrir una terminal.
+
+- **Estado de los worktrees**: cambios sin commitear (`git status --porcelain`), commits por delante y por detrás de su upstream y de la rama principal (`git rev-list --count`), fecha del último commit y si su rama ya está mergeada en la rama principal.
+- **Limpieza**: una acción para eliminar todos los worktrees cuya rama ya está mergeada, borrando opcionalmente también las ramas, y `git worktree prune` para los worktrees cuya carpeta ya no existe. Depende del estado de los worktrees.
+- **Vista completa**: todos los worktrees del repositorio, incluidos los creados por otras herramientas (`claude --worktree`, otros gestores de worktrees, IDEs), si hay un proceso de agente ejecutándose en cada uno y cuánto disco ocupa. Señala los worktrees huérfanos e inactivos.
+- Refresco automático vigilando los worktrees del repositorio, en lugar de recargar a mano.
+
+### Provisionado Android, KMP y JVM
+
+Provisionado para los stacks en los que un worktree recién creado está más lejos de compilar:
+
+- `local.properties`, keystores y `google-services.json`.
+- Cache y daemon de Gradle compartidos o controlados por worktree, para que los worktrees en paralelo no multipliquen el uso de memoria y disco.
+- Un emulador o simulador asignado por worktree.
+- «Abrir en Android Studio» en el worktree correcto.
 
 ### Elegir la base de un worktree nuevo
 
@@ -26,15 +66,6 @@ Hoy una rama nueva parte del `HEAD` del repositorio base, así que crear un work
 
 - Elegir la rama base (`develop`, `main`, …) al crear un worktree, con un `git fetch` previo opcional.
 - Crear un worktree desde una rama remota (`origin/...`), no solo desde las locales.
-
-### Provisionado de worktrees más completo
-
-Copiar archivos de secretos es solo una parte de dejar un worktree listo para compilar. Cada proyecto podría configurar además:
-
-- Un hook post-creación ejecutado como argv (p. ej. `npm install`, `direnv allow`).
-- Carpetas y patrones glob a copiar (p. ej. `.env*`, `.idea/runConfigurations`), no solo archivos sueltos.
-- Enlazar un secreto con un symlink en vez de copiarlo, para que al rotarlo se actualice en todos los worktrees.
-- Detectar secretos de un worktree que difieren de los del repositorio base.
 
 ### Lanzar el agente y las herramientas directamente
 
@@ -51,8 +82,6 @@ Hay quien alterna entre agentes de IA en una misma tarea, por ejemplo cuando a u
 
 - Icono en la barra de menús / bandeja del sistema con los proyectos y worktrees recientes.
 - Paleta de comandos (`⌘K` / `Ctrl+K`) para saltar a cualquier proyecto o worktree.
-- Refresco automático vigilando los worktrees del repositorio, en lugar de recargar a mano.
-- Importar y exportar la configuración de un proyecto sin rutas absolutas, p. ej. un `.shogunai.json` en el repositorio que defina sus secretos y hooks, para que un equipo pueda compartirla.
 
 ### Distribución
 
@@ -66,6 +95,10 @@ Hay quien alterna entre agentes de IA en una misma tarea, por ejemplo cuando a u
 Crear un worktree desde un issue de GitHub o una tarea de un gestor (derivando el id y el título de la tarea) y mostrar el estado del pull request de cada rama (abierto, en revisión, CI en rojo, mergeado). El valor está claro, pero el modelo de integración todavía no: qué proveedores, cómo autenticarse y cuánto depender de CLIs externas como `gh`. Hay que pensarlo más antes de convertirlo en un cambio.
 
 ## Fuera de alcance por ahora
+
+### Ejecutar agentes dentro de la app
+
+ShogunAi no incrusta terminales ni gestiona sesiones de agentes: los agentes y los terminales ya lo hacen bien. Se centra en los worktrees en los que trabajan.
 
 ### Firma y notarización en macOS
 
