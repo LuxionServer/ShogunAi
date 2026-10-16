@@ -37,6 +37,9 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class BranchNotFound(val branch: String) :
         WorktreeError("Branch not found: $branch")
 
+    class ProcessListingFailed(val command: List<String>, val exitCode: Int) :
+        WorktreeError("Couldn't list processes (exit code $exitCode): ${command.joinToString(" ")}")
+
     class BranchAlreadyCheckedOut(val branch: String, val path: String?) :
         WorktreeError(
             "Branch '$branch' is already checked out" + if (path != null) " at $path" else "",

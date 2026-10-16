@@ -28,6 +28,7 @@ class StringsTest {
             WorktreeError.SecretFileNotFound(listOf("local.properties"), "~/projects/main-repo") to "local.properties",
             WorktreeError.BranchNotFound("feature/TASK-123") to "feature/TASK-123",
             WorktreeError.BranchAlreadyCheckedOut("feature/TASK-123", "~/projects/TASK-123") to "~/projects/TASK-123",
+            WorktreeError.ProcessListingFailed(listOf("lsof", "-d", "cwd"), 1) to "lsof -d cwd",
         )
         errors.forEach { (error, expectedData) ->
             val english = EnglishStrings.worktreeError(error)

@@ -124,6 +124,7 @@ fun AppRoot(appContainer: AppContainer) {
                             }
                             WorktreeScreen(
                                 projectName = current.project.name,
+                                projectConfig = current.project.config,
                                 viewModel = viewModel,
                                 onBack = { screen = Screen.ProjectList },
                             )

@@ -11,12 +11,15 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.BranchOption
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.CopyWorktreeLaunchCommandUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
+import app.luxion.shogunai.domain.usecase.DetectRunningAgentsUseCase
+import app.luxion.shogunai.domain.usecase.MeasureWorktreeSizeUseCase
 import app.luxion.shogunai.domain.usecase.ListLocalBranchesUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
@@ -76,7 +79,10 @@ class WorktreeViewModelTest {
     private fun useCases(responder: (List<String>) -> CommandResult): WorktreeUseCases =
         useCasesWith(FakeShellCommandExecutor(responder))
 
-    private fun useCasesWith(executor: ShellCommandExecutor): WorktreeUseCases {
+    private fun useCasesWithFiles(fileManager: FakeFileManager, responder: (List<String>) -> CommandResult): WorktreeUseCases =
+        useCasesWith(FakeShellCommandExecutor(responder), fileManager)
+
+    private fun useCasesWith(executor: ShellCommandExecutor, fileManager: FakeFileManager = FakeFileManager()): WorktreeUseCases {
         return WorktreeUseCases(
             list = ListWorktreesUseCase(config, executor),
             create = CreateWorktreeUseCase(config, executor, FakeFileManager()),
@@ -94,6 +100,8 @@ class WorktreeViewModelTest {
             resolveMainBranch = ResolveMainBranchUseCase(config, executor),
             readStatus = ReadWorktreeStatusUseCase(executor),
             cleanUp = CleanUpWorktreesUseCase(config, executor),
+            detectAgents = DetectRunningAgentsUseCase(config, executor),
+            measureSize = MeasureWorktreeSizeUseCase(fileManager, dispatcher),
         )
     }
 
@@ -788,6 +796,63 @@ class WorktreeViewModelTest {
 
         viewModel.dismissCleanupIssues()
         assertNull(viewModel.cleanupIssues)
+    }
+
+    @Test
+    fun `running agents are detected for the listed worktrees`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(
+            useCases { command ->
+                when (command.first()) {
+                    "lsof" -> success(command, stdout = "p42\nc2.1.301\nfcwd\nn$worktreePath/src\n")
+                    "ps" -> success(command, stdout = "42 /usr/local/bin/claude\n")
+                    else -> if (command == listCommand) success(command, porcelainOutput) else success(command)
+                }
+            },
+        )
+        advanceUntilIdle()
+
+        assertEquals(mapOf(worktreePath to listOf(RunningAgent("claude"))), viewModel.agents)
+    }
+
+    @Test
+    fun `agents are unknown when processes can't be listed`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(
+            useCases { command ->
+                when {
+                    command.first() == "lsof" -> failure(command, exitCode = 127, stderr = "lsof: not found")
+                    command == listCommand -> success(command, porcelainOutput)
+                    else -> success(command)
+                }
+            },
+        )
+        advanceUntilIdle()
+
+        assertNull(viewModel.agents)
+        assertNull(viewModel.error)
+    }
+
+    @Test
+    fun `sizes are measured for every worktree and added up, and measured again on reload`() = runTest(dispatcher) {
+        val otherPath = "/home/dev/projects/TASK-456"
+        val fileManager = FakeFileManager(
+            existing = listOf(worktreePath, otherPath),
+            sizes = mapOf(worktreePath to 1000L, otherPath to 500L),
+        )
+        val porcelain = "$porcelainOutput\n\nworktree $otherPath\nHEAD def456\nbranch refs/heads/feature/TASK-456"
+        val viewModel = WorktreeViewModel(
+            useCasesWithFiles(fileManager) { command ->
+                if (command == listCommand) success(command, porcelain) else success(command)
+            },
+        )
+        advanceUntilIdle()
+
+        assertEquals(mapOf(worktreePath to 1000L, otherPath to 500L), viewModel.sizes)
+        assertEquals(1500L, viewModel.totalSize)
+
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertEquals(4, fileManager.sizeRequests.size)
     }
 
     @Test

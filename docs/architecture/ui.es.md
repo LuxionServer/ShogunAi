@@ -34,6 +34,14 @@ Cada fila muestra el estado de su worktree debajo del nombre de la rama. `Worktr
 
 `WorktreeStatusLine` pinta el estado como segmentos separados por `·` (`statusSegments`): cambios sin commitear (solo si los hay), `↑N ↓N upstream`, `↑N ↓N <rama principal>` y la fecha del último commit en tiempo relativo (`relativeTime`, en `RelativeTime.kt`). Una rama mergeada muestra la etiqueta "mergeada en <rama principal>" en el color primario en lugar de su divergencia con la rama principal.
 
+### Vista completa de worktrees
+
+`WorktreeScreen` recibe la `ProjectConfig` del proyecto para clasificar el origen de cada fila con `classifyOrigin`. Tras cada carga de la lista, `WorktreeViewModel` ejecuta además `DetectRunningAgentsUseCase` una vez (`agents`, `null` cuando no se pueden listar los procesos) y mide el tamaño de cada worktree de uno en uno con `MeasureWorktreeSizeUseCase` (`sizes`, sumados en `totalSize`); los resultados de una carga anterior se descartan con `listGeneration`.
+
+- `WorktreeBranchLine` muestra, tras la rama y la etiqueta "bloqueado", el origen (ShogunAi, Claude Code u otra ubicación) en texto atenuado y cada agente en ejecución como "● nombre" en el color de éxito.
+- `WorktreeOverviewLine`, bajo el estado, muestra el tamaño (`formatSize`, unidades binarias con un decimal) y la etiqueta "inactivo" cuando se cumple `isInactive`.
+- El título "Worktrees" va seguido de "N worktrees · <tamaño total>".
+
 ### Limpiar worktrees
 
 El botón "Limpiar", junto al título "Worktrees", se habilita cuando `cleanupCandidates` (calculado con `selectCleanupCandidates` sobre los worktrees listados y sus estados cargados) no está vacío. Abre `CleanupDialog`, que lista los candidatos por nombre de carpeta y rama, y ofrece "Borrar también sus ramas locales", desmarcado por defecto. Al confirmar se ejecuta `CleanUpWorktreesUseCase`, se muestra un indicador de progreso con las acciones del diálogo deshabilitadas, y después se cierra el diálogo, se muestra "N worktrees limpiados" como mensaje de éxito y se recarga la lista. Los fallos y las ramas conservadas quedan visibles en `CleanupIssues` hasta que se cierran.

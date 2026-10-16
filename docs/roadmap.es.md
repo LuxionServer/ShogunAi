@@ -18,10 +18,9 @@ Esa dirección se construye en tres capas:
 graph LR
     A["Núcleo compartido y configuración del repositorio"] --> B["CLI shogun y hooks de agentes"]
     A --> D["Provisionado Android, KMP y JVM"]
-    E["Vista completa de worktrees"]
 ```
 
-La torre de control se apoya en el estado de los worktrees que la app ya muestra, no en el motor, así que puede construirse en paralelo.
+Lo que queda de la torre de control no depende del motor, así que puede construirse en paralelo.
 
 ## Planificado
 
@@ -44,9 +43,8 @@ La torre de control se apoya en el estado de los worktrees que la app ya muestra
 
 ### Torre de control
 
-La lista de worktrees ya muestra el estado de cada uno (cambios pendientes, divergencia, último commit, si está mergeado) y limpia en una sola acción los mergeados y los que han perdido su carpeta. Sobre eso:
+La lista de worktrees ya muestra, para cada worktree lo haya creado quien lo haya creado, su estado, su origen, los agentes que se ejecutan en él, cuánto disco ocupa y si está inactivo, y limpia en una sola acción los mergeados y los que han perdido su carpeta. Sobre eso:
 
-- **Vista completa**: todos los worktrees del repositorio, incluidos los creados por otras herramientas (`claude --worktree`, otros gestores de worktrees, IDEs), si hay un proceso de agente ejecutándose en cada uno y cuánto disco ocupa. Señala los worktrees huérfanos e inactivos.
 - Refresco automático vigilando los worktrees del repositorio, en lugar de recargar a mano.
 
 ### Provisionado Android, KMP y JVM
