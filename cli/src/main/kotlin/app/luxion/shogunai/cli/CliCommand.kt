@@ -15,7 +15,14 @@ sealed interface CliCommand {
 
     data class Provision(val path: String? = null) : CliCommand
     data object Status : CliCommand
-    data class Clean(val confirmed: Boolean = false, val deleteBranches: Boolean = false) : CliCommand
+    data class Clean(
+        val confirmed: Boolean = false,
+        val deleteBranches: Boolean = false,
+        val stopGradleDaemons: Boolean = false,
+    ) : CliCommand
+
+    data object Gradle : CliCommand
+    data class GradleStop(val pids: List<Long> = emptyList()) : CliCommand
     data object HookWorktreeCreate : CliCommand
     data object HookWorktreeRemove : CliCommand
 }
@@ -38,6 +45,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "status" -> noArguments(name, rest, CliCommand.Status)
                 "clean" -> parseClean(rest)
                 "hook" -> parseHook(rest)
+                "gradle" -> parseGradle(rest)
                 else -> throw UsageException("unknown command '$name'")
             },
         )
@@ -91,14 +99,26 @@ private fun parseProvision(rest: List<String>): CliCommand.Provision {
 private fun parseClean(rest: List<String>): CliCommand.Clean {
     var confirmed = false
     var deleteBranches = false
+    var stopGradleDaemons = false
     rest.forEach { argument ->
         when (argument) {
             "--yes", "-y" -> confirmed = true
             "--delete-branches" -> deleteBranches = true
+            "--stop-gradle-daemons" -> stopGradleDaemons = true
             else -> throw UsageException("unknown argument '$argument' for 'clean'")
         }
     }
-    return CliCommand.Clean(confirmed = confirmed, deleteBranches = deleteBranches)
+    return CliCommand.Clean(confirmed = confirmed, deleteBranches = deleteBranches, stopGradleDaemons = stopGradleDaemons)
+}
+
+private fun parseGradle(rest: List<String>): CliCommand {
+    val subcommand = rest.firstOrNull() ?: return CliCommand.Gradle
+    if (subcommand != "stop") throw UsageException("unknown subcommand '$subcommand' for 'gradle', expected stop")
+    val pids = rest.drop(1).map { argument ->
+        argument.toLongOrNull()?.takeIf { it > 0 }
+            ?: throw UsageException("'gradle stop' takes process ids, got '$argument'")
+    }
+    return CliCommand.GradleStop(pids)
 }
 
 private fun parseHook(rest: List<String>): CliCommand {

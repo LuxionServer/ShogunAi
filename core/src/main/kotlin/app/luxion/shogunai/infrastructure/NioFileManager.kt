@@ -9,6 +9,7 @@ import java.nio.file.Path
 import java.nio.file.SimpleFileVisitor
 import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.BasicFileAttributes
+import java.util.Properties
 
 class NioFileManager : FileManager {
 
@@ -26,6 +27,18 @@ class NioFileManager : FileManager {
     }
 
     override fun isDirectory(path: String): Boolean = Files.isDirectory(Path.of(path))
+
+    override fun readProperties(path: String): Map<String, String> {
+        val file = Path.of(path)
+        if (!Files.isRegularFile(file)) return emptyMap()
+        val properties = Properties()
+        try {
+            Files.newBufferedReader(file).use(properties::load)
+        } catch (error: IOException) {
+            return emptyMap()
+        }
+        return properties.stringPropertyNames().associateWith(properties::getProperty)
+    }
 
     override fun modificationStamps(path: String): List<Pair<String, Long>> {
         val root = Path.of(path)

@@ -1,6 +1,7 @@
 package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.FakeGradleDaemonSource
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.executor.CommandResult
@@ -65,6 +66,8 @@ class HookCommandsTest {
         provisioningSource = FakeRepositoryProvisioningSource(
             byRepository = mapOf(base to RepositoryProvisioning(worktreeIncludePatterns = listOf(".env"))),
         ),
+        daemonSource = FakeGradleDaemonSource(),
+        gradleUserHome = "/home/dev/.gradle",
         workingDirectory = "/",
         out = out,
         err = err,

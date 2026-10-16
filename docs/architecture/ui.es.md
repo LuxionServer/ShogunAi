@@ -50,6 +50,14 @@ Mientras se muestra `WorktreeScreen`, un `DisposableEffect` llama a `WorktreeVie
 
 El botón "Limpiar", junto al título "Worktrees", se habilita cuando `cleanupCandidates` (calculado con `selectCleanupCandidates` sobre los worktrees listados y sus estados cargados) no está vacío. Abre `CleanupDialog`, que lista los candidatos por nombre de carpeta y rama, y ofrece "Borrar también sus ramas locales", desmarcado por defecto. Al confirmar se ejecuta `CleanUpWorktreesUseCase`, se muestra un indicador de progreso con las acciones del diálogo deshabilitadas, y después se cierra el diálogo, se muestra "N worktrees limpiados" como mensaje de éxito y se recarga la lista. Los fallos y las ramas conservadas quedan visibles en `CleanupIssues` hasta que se cierran.
 
+Cuando el repositorio declara el provider de Gradle, el diálogo ofrece también "Parar también sus daemons de Gradle ociosos", marcado por defecto (`cleanupStopGradleDaemons`): parar un daemon ocioso solo cuesta un arranque en la siguiente build. Antes de limpiar, `confirmCleanup` lista los daemons con los worktrees tal como estaban; después de las eliminaciones para los ociosos cuya última build fue en un worktree eliminado (`idleDaemonsOfRemovedWorktrees`, `StopGradleDaemonsUseCase`). El mensaje de éxito añade entonces cuántos daemons se pararon y cuántos se conservaron. Un daemon que no se puede listar o parar nunca convierte la limpieza en un fallo.
+
+### Daemons de Gradle
+
+Cuando `.shogunai.json` declara `"providers": { "gradle": {} }` (`GradleUseCases.declaresProvider`, que se lee en cada carga de la lista), `WorktreeScreen` muestra `GradleDaemonsSection` debajo de la lista de worktrees. `WorktreeViewModel` carga `gradleDaemons` (`Loading`, `Loaded` o `Unavailable` cuando no se pueden listar los procesos) con `ListGradleDaemonsUseCase` después de cada carga de la lista y en cada comprobación del refresco automático sin cambios, igual que los agentes en ejecución, y lee `isGradleBuildCacheEnabled` con `CheckGradleBuildCacheUseCase`.
+
+La sección muestra el número de daemons y su memoria total, una fila por daemon (tipo y versión, PID, memoria, "ocupado" / "ocioso · hace 12 minutos" / "estado desconocido", y el nombre de la carpeta del worktree, "worktree eliminado" u "otro proyecto"), un botón "Parar" por fila y "Parar los ociosos". Un botón solo se habilita para los daemons que las reglas de parada permiten (`isStoppable`: un daemon de Gradle ocioso, o uno de Kotlin mientras ningún daemon de Gradle está ocupado o en estado desconocido); `StopGradleDaemonsUseCase` vuelve a comprobar el estado de todos modos. El resultado (`daemonStopReport`) queda visible hasta que se cierra, y la lista se recarga. Sin la caché de build, una nota informativa explica cómo activarla.
+
 ### Comando de lanzamiento
 
 Cada fila de worktree tiene un botón "Copiar comando" que llama a `WorktreeViewModel.copyLaunchCommand(worktree)`; el botón muestra "Copiado" durante un par de segundos. El usuario pega el comando (`cd "<ruta>" && <comando del agente>`) en la terminal que prefiera.
@@ -88,7 +96,7 @@ Las cargas de la lista llevan un número de generación: un resultado solo se ap
 
 ## `AppContainer`
 
-Instancia `JsonProjectRepository`, los repositorios de preferencias, `NioFileManager`, `ProcessBuilderShellCommandExecutor` y `AwtClipboardWriter` una sola vez al arrancar la app. Los casos de uso de worktrees dependen de un proyecto, así que `worktreeUseCases(config)` construye un `WorktreeUseCases` para la `ProjectConfig` seleccionada. No hay framework de DI.
+Instancia `JsonProjectRepository`, los repositorios de preferencias, `NioFileManager`, `ProcessBuilderShellCommandExecutor` y `AwtClipboardWriter` una sola vez al arrancar la app. Los casos de uso de worktrees dependen de un proyecto, así que `worktreeUseCases(config)` construye un `WorktreeUseCases` para la `ProjectConfig` seleccionada, incluidos sus `GradleUseCases` sobre un único `ProcessGradleDaemonSource`. No hay framework de DI.
 
 ## `FilePicker`
 

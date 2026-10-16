@@ -105,6 +105,28 @@ object SpanishStrings : Strings {
     override fun worktreesCleanedUp(count: Int) = if (count == 1) "1 worktree limpiado" else "$count worktrees limpiados"
     override fun cleanupFailed(path: String, detail: String) = "No se pudo eliminar \"$path\": $detail"
     override fun branchKept(branch: String) = "Rama \"$branch\" conservada: no está mergeada en la rama principal"
+    override val alsoStopIdleGradleDaemons = "Parar también sus daemons de Gradle ociosos"
+    override val gradleDaemonsTitle = "Daemons de Gradle"
+    override fun gradleDaemonsSummary(count: Int, totalMemory: String) =
+        (if (count == 1) "1 daemon" else "$count daemons") + " · $totalMemory"
+    override val noGradleDaemons = "No hay daemons de Gradle ni de Kotlin en ejecución"
+    override val gradleDaemonsUnavailable = "No se pueden inspeccionar los daemons en este sistema"
+    override fun gradleDaemonLabel(version: String?) = listOfNotNull("Gradle", version).joinToString(" ")
+    override val kotlinDaemonLabel = "Compilador de Kotlin"
+    override val daemonBusy = "ocupado"
+    override fun daemonIdle(since: String) = "ocioso · $since"
+    override val daemonStateUnknown = "estado desconocido"
+    override val daemonOwnerRemoved = "worktree eliminado"
+    override val daemonOwnerOther = "otro proyecto"
+    override val stopDaemon = "Parar"
+    override val stopIdleDaemons = "Parar los ociosos"
+    override val gradleBuildCacheOff =
+        "La caché de build de Gradle está desactivada: añade org.gradle.caching=true a gradle.properties para que un worktree nuevo reutilice lo que otros worktrees ya compilaron."
+    override fun daemonsStopped(stopped: Int, kept: Int, failed: Int) = listOfNotNull(
+        if (stopped == 1) "1 daemon parado" else "$stopped daemons parados",
+        kept.takeIf { it > 0 }?.let { if (it == 1) "1 conservado porque está en uso" else "$it conservados porque están en uso" },
+        failed.takeIf { it > 0 }?.let { if (it == 1) "1 no se pudo parar" else "$it no se pudieron parar" },
+    ).joinToString(", ")
     override val justNow = "ahora mismo"
     override fun minutesAgo(count: Long) = if (count == 1L) "hace 1 minuto" else "hace $count minutos"
     override fun hoursAgo(count: Long) = if (count == 1L) "hace 1 hora" else "hace $count horas"

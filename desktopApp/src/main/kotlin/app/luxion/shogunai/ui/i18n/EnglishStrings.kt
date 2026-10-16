@@ -105,6 +105,28 @@ object EnglishStrings : Strings {
     override fun worktreesCleanedUp(count: Int) = if (count == 1) "1 worktree cleaned up" else "$count worktrees cleaned up"
     override fun cleanupFailed(path: String, detail: String) = "Couldn't remove \"$path\": $detail"
     override fun branchKept(branch: String) = "Branch \"$branch\" kept: it isn't merged into the main branch"
+    override val alsoStopIdleGradleDaemons = "Also stop their idle Gradle daemons"
+    override val gradleDaemonsTitle = "Gradle daemons"
+    override fun gradleDaemonsSummary(count: Int, totalMemory: String) =
+        (if (count == 1) "1 daemon" else "$count daemons") + " · $totalMemory"
+    override val noGradleDaemons = "No Gradle or Kotlin daemons running"
+    override val gradleDaemonsUnavailable = "Daemons can't be inspected on this system"
+    override fun gradleDaemonLabel(version: String?) = listOfNotNull("Gradle", version).joinToString(" ")
+    override val kotlinDaemonLabel = "Kotlin compiler"
+    override val daemonBusy = "busy"
+    override fun daemonIdle(since: String) = "idle · $since"
+    override val daemonStateUnknown = "state unknown"
+    override val daemonOwnerRemoved = "removed worktree"
+    override val daemonOwnerOther = "other project"
+    override val stopDaemon = "Stop"
+    override val stopIdleDaemons = "Stop idle daemons"
+    override val gradleBuildCacheOff =
+        "Gradle's build cache is off: add org.gradle.caching=true to gradle.properties so a new worktree reuses what other worktrees already built."
+    override fun daemonsStopped(stopped: Int, kept: Int, failed: Int) = listOfNotNull(
+        if (stopped == 1) "1 daemon stopped" else "$stopped daemons stopped",
+        kept.takeIf { it > 0 }?.let { if (it == 1) "1 kept because it's in use" else "$it kept because they're in use" },
+        failed.takeIf { it > 0 }?.let { if (it == 1) "1 couldn't be stopped" else "$it couldn't be stopped" },
+    ).joinToString(", ")
     override val justNow = "just now"
     override fun minutesAgo(count: Long) = if (count == 1L) "1 minute ago" else "$count minutes ago"
     override fun hoursAgo(count: Long) = if (count == 1L) "1 hour ago" else "$count hours ago"

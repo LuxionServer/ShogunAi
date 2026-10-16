@@ -2,13 +2,20 @@ package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.BuildInfo
 import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.FakeGradleDaemonSource
+import app.luxion.shogunai.domain.FakeGradleDaemonSource.Companion.gradleDaemon
+import app.luxion.shogunai.domain.FakeGradleDaemonSource.Companion.kotlinDaemon
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.model.DaemonState
+import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -84,16 +91,177 @@ class ShogunCliTest {
         provisioning: FakeRepositoryProvisioningSource = FakeRepositoryProvisioningSource(),
         workingDirectory: String = base,
         canonicalPath: (String) -> String = { it.trimEnd('/') },
+        daemons: FakeGradleDaemonSource = FakeGradleDaemonSource(),
     ) = ShogunCli(
         executor = executor,
         fileManager = fileManager,
         projectRepository = FakeProjectRepository(projects),
         provisioningSource = provisioning,
+        daemonSource = daemons,
+        gradleUserHome = gradleUserHome,
         workingDirectory = workingDirectory,
         out = out,
         err = err,
         canonicalPath = canonicalPath,
+        now = { now },
     )
+
+    private val gradleUserHome = "/home/dev/.gradle"
+    private val now = Instant.parse("2026-10-16T11:00:00Z")
+    private val idleSinceTenMinutes = DaemonState.Idle(Instant.parse("2026-10-16T10:50:00Z"))
+
+    @Test
+    fun `gradle lists daemons with their state, worktree and total memory`() {
+        val daemons = FakeGradleDaemonSource(
+            listOf(
+                gradleDaemon(10, idleSinceTenMinutes, lastBuildDirectory = merged, memoryBytes = 1_073_741_824),
+                gradleDaemon(11, DaemonState.Busy, lastBuildDirectory = "/home/dev/projects/gone", memoryBytes = 1_073_741_824),
+                kotlinDaemon(12, memoryBytes = 536_870_912),
+            ),
+        )
+        val fileManager = FakeFileManager(existing = listOf(base, merged))
+
+        val exitCode = cli(repositoryExecutor(), fileManager = fileManager, daemons = daemons).run(listOf("gradle"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            """
+            10  gradle 9.6.1  memory=1.0 GB  state=idle  idle-for=10m  worktree=$merged
+            11  gradle 9.6.1  memory=1.0 GB  state=busy  worktree=removed
+            12  kotlin  memory=512.0 MB
+            total  memory=2.5 GB  daemons=3
+
+            """.trimIndent(),
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `gradle without daemons says so`() {
+        val exitCode = cli(repositoryExecutor()).run(listOf("gradle"))
+
+        assertEquals(0, exitCode)
+        assertEquals("No Gradle or Kotlin daemons running.\n", out.toString())
+    }
+
+    @Test
+    fun `gradle works outside a repository without a worktree column`() {
+        val executor = Executor { command, _ ->
+            if (command.containsAll(listOf("rev-parse", "--git-common-dir"))) Executor.fail(command, "not a git repository") else null
+        }
+        val daemons = FakeGradleDaemonSource(listOf(gradleDaemon(10, DaemonState.Busy, lastBuildDirectory = merged)))
+
+        val exitCode = cli(executor, daemons = daemons, workingDirectory = "/tmp").run(listOf("gradle"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.startsWith("10  gradle 9.6.1  memory=953.7 MB  state=busy\n"), out.toString())
+    }
+
+    @Test
+    fun `gradle prints the build cache notice for a gradle repository without it`() {
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(gradle = GradleProvider))),
+        )
+
+        cli(repositoryExecutor(), provisioning = provisioning).run(listOf("gradle"))
+
+        assertTrue(out.endsWith(ShogunCli.BUILD_CACHE_NOTICE + "\n"), out.toString())
+    }
+
+    @Test
+    fun `gradle omits the notice when the cache is on or the provider isn't declared`() {
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(gradle = GradleProvider))),
+        )
+        val cached = FakeFileManager(
+            existing = listOf(base),
+            properties = mapOf("$base/gradle.properties" to mapOf("org.gradle.caching" to "true")),
+        )
+
+        cli(repositoryExecutor(), provisioning = provisioning, fileManager = cached).run(listOf("gradle"))
+        cli(repositoryExecutor()).run(listOf("gradle"))
+
+        assertFalse(out.contains(ShogunCli.BUILD_CACHE_NOTICE), out.toString())
+    }
+
+    @Test
+    fun `gradle stop stops idle daemons and keeps busy ones`() {
+        val daemons = FakeGradleDaemonSource(
+            listOf(
+                gradleDaemon(10, idleSinceTenMinutes),
+                gradleDaemon(11, idleSinceTenMinutes),
+                gradleDaemon(12, DaemonState.Busy),
+            ),
+        )
+        val executor = repositoryExecutor()
+
+        val exitCode = cli(executor, daemons = daemons).run(listOf("gradle", "stop"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("stopped 10  gradle 9.6.1\nstopped 11  gradle 9.6.1\nkept 12  gradle  (busy)\n", out.toString())
+        assertTrue(executor.ran("kill", "10"))
+        assertFalse(executor.ran("kill", "12"))
+    }
+
+    @Test
+    fun `gradle stop of a busy daemon keeps it and exits with 0`() {
+        val daemons = FakeGradleDaemonSource(listOf(gradleDaemon(4242, DaemonState.Busy)))
+
+        val exitCode = cli(repositoryExecutor(), daemons = daemons).run(listOf("gradle", "stop", "4242"))
+
+        assertEquals(0, exitCode)
+        assertEquals("kept 4242  gradle  (busy)\n", out.toString())
+    }
+
+    @Test
+    fun `gradle stop of a process that isn't a daemon exits with 1`() {
+        val exitCode = cli(repositoryExecutor()).run(listOf("gradle", "stop", "99999"))
+
+        assertEquals(1, exitCode)
+        assertEquals("shogun: 99999 isn't a Gradle or Kotlin daemon\n", err.toString())
+    }
+
+    @Test
+    fun `clean stops the idle daemons of removed worktrees`() {
+        val daemons = FakeGradleDaemonSource(
+            listOf(gradleDaemon(10, idleSinceTenMinutes, lastBuildDirectory = merged), gradleDaemon(11, idleSinceTenMinutes, lastBuildDirectory = base)),
+        )
+        val executor = repositoryExecutor()
+
+        val exitCode = cli(executor, daemons = daemons).run(listOf("clean", "--yes", "--stop-gradle-daemons"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.contains("removed $merged\n"), out.toString())
+        assertTrue(out.contains("stopped 10  gradle 9.6.1\n"), out.toString())
+        assertTrue(executor.ran("kill", "10"))
+        assertFalse(executor.ran("kill", "11"))
+    }
+
+    @Test
+    fun `clean without the option stops no daemon`() {
+        val daemons = FakeGradleDaemonSource(listOf(gradleDaemon(10, idleSinceTenMinutes, lastBuildDirectory = merged)))
+        val executor = repositoryExecutor()
+
+        cli(executor, daemons = daemons).run(listOf("clean", "--yes"))
+
+        assertFalse(executor.calls.any { it.first.first() == "kill" })
+        assertEquals(0, daemons.listings)
+    }
+
+    @Test
+    fun `clean with the option but without yes lists the daemons it would stop`() {
+        val daemons = FakeGradleDaemonSource(listOf(gradleDaemon(10, idleSinceTenMinutes, lastBuildDirectory = merged)))
+        val executor = repositoryExecutor()
+
+        val exitCode = cli(executor, daemons = daemons).run(listOf("clean", "--stop-gradle-daemons"))
+
+        assertEquals(0, exitCode)
+        assertEquals(
+            "would remove $merged\nwould stop Gradle daemon 10\nRun 'shogun clean --yes' to remove it.\n",
+            out.toString(),
+        )
+        assertFalse(executor.calls.any { it.first.first() == "kill" })
+    }
 
     @Test
     fun `new prints only the worktree path and uses the project's folder`() {

@@ -54,6 +54,16 @@ fun CleanupDialog(viewModel: WorktreeViewModel) {
                     )
                     Text(strings.alsoDeleteLocalBranches)
                 }
+                if (viewModel.isGradleRepository) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = viewModel.cleanupStopGradleDaemons,
+                            onCheckedChange = { viewModel.cleanupStopGradleDaemons = it },
+                            enabled = !viewModel.isCleaningUp,
+                        )
+                        Text(strings.alsoStopIdleGradleDaemons)
+                    }
+                }
             }
         },
         confirmButton = {

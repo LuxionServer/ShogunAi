@@ -1,5 +1,7 @@
 package app.luxion.shogunai.infrastructure
 
+import app.luxion.shogunai.domain.model.GradleProvider
+import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.serialization.json.Json
@@ -92,6 +94,44 @@ class RepositoryProvisioningFilesTest {
 
         configFile.writeText("""[".env"]""")
         assertFailsWith<WorktreeError.InvalidRepositoryConfig> { files.read(repository.toString()) }
+    }
+
+    @Test
+    fun `reads the gradle provider and ignores unknown providers`() {
+        configFile.writeText("""{ "providers": { "gradle": {}, "xcode": {} } }""")
+
+        assertEquals(RepositoryProviders(gradle = GradleProvider), files.read(repository.toString()).providers)
+    }
+
+    @Test
+    fun `declares no provider without the field or the file`() {
+        assertEquals(RepositoryProviders(), files.read(repository.toString()).providers)
+
+        configFile.writeText("""{ "copy": [".env"] }""")
+        assertEquals(RepositoryProviders(), files.read(repository.toString()).providers)
+
+        configFile.writeText("""{ "providers": { "xcode": true } }""")
+        assertEquals(RepositoryProviders(), files.read(repository.toString()).providers)
+    }
+
+    @Test
+    fun `fails with InvalidRepositoryConfig when providers or a known provider is not an object`() {
+        configFile.writeText("""{ "providers": ["gradle"] }""")
+        assertFailsWith<WorktreeError.InvalidRepositoryConfig> { files.read(repository.toString()) }
+
+        configFile.writeText("""{ "providers": { "gradle": true } }""")
+        assertFailsWith<WorktreeError.InvalidRepositoryConfig> { files.read(repository.toString()) }
+    }
+
+    @Test
+    fun `keeps providers when adding patterns`() {
+        configFile.writeText("""{ "providers": { "gradle": {} } }""")
+
+        files.addCopyPatterns(repository.toString(), listOf("/local.properties"))
+
+        val provisioning = files.read(repository.toString())
+        assertEquals(RepositoryProviders(gradle = GradleProvider), provisioning.providers)
+        assertEquals(listOf("/local.properties"), provisioning.copyPatterns)
     }
 
     @Test

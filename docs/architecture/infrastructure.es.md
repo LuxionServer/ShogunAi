@@ -15,13 +15,21 @@ Implementación de `ShellCommandExecutor` sobre `ProcessBuilder`. Detalles de ro
 
 ## `NioFileManager`
 
-Implementación de `FileManager` sobre `java.nio.file`. `copy` crea las carpetas padre que falten en el destino y usa `REPLACE_EXISTING` y `COPY_ATTRIBUTES`. `directorySize` recorre el árbol con `Files.walkFileTree` sin seguir enlaces simbólicos, suma el tamaño de los archivos regulares, se salta las carpetas excluidas e ignora los archivos que no puede leer. `modificationStamps` recorre el árbol del mismo modo y anota la fecha de modificación de cada entrada. Funciona igual en todos los sistemas operativos soportados.
+Implementación de `FileManager` sobre `java.nio.file`. `copy` crea las carpetas padre que falten en el destino y usa `REPLACE_EXISTING` y `COPY_ATTRIBUTES`. `directorySize` recorre el árbol con `Files.walkFileTree` sin seguir enlaces simbólicos, suma el tamaño de los archivos regulares, se salta las carpetas excluidas e ignora los archivos que no puede leer. `modificationStamps` recorre el árbol del mismo modo y anota la fecha de modificación de cada entrada. `readProperties` carga el fichero con `java.util.Properties`. Funciona igual en todos los sistemas operativos soportados.
+
+## `ProcessGradleDaemonSource`
+
+Implementación de `GradleDaemonSource` que no depende de un binario de Gradle ni del formato interno de su registro:
+
+- **Procesos**: ejecuta `ps -A -ww -o pid=,rss=,command=` y se queda con los procesos cuyos argumentos contienen `org.gradle.launcher.daemon.bootstrap.GradleDaemon` (el argumento siguiente es la versión de Gradle) u `org.jetbrains.kotlin.daemon.KotlinCompileDaemon`. `rss` se convierte de KiB a bytes. Si `ps` falla (p. ej. en Windows) lanza `ProcessListingFailed`.
+- **Estado**: cada daemon de Gradle escribe `$GRADLE_USER_HOME/daemon/<versión>/daemon-<pid>.out.log` (`GRADLE_USER_HOME` es `~/.gradle` por defecto). Se recorre hacia atrás el último MiB de ese log buscando el último `Marking the daemon as busy|idle` (con su fecha, para `Idle(since)`; cualquier otro estado cuenta como ocupado) y el último `Received command: Build{…, currentDir=<ruta>}`, que da el último directorio de build: el directorio desde el que se lanzó el cliente de Gradle, así que un `./gradlew -p <worktree>` lanzado desde otro sitio se atribuye a donde se lanzó. Ambas líneas se registran a nivel INFO en cada build. Un log que falta o no se puede leer, o sin marcas en ese tramo, da `Unknown`, que nunca permite parar.
+- No se usan `--status` ni `--stop` de Gradle: solo ven los daemons de la versión de Gradle que los ejecuta, y `--stop` para también los ocupados.
 
 ## `RepositoryProvisioningFiles`
 
 Implementación de `RepositoryProvisioningSource` sobre `java.nio.file` y `kotlinx.serialization`, sobre `<repo>/.shogunai.json` y `<repo>/.worktreeinclude`.
 
-- **Lectura**: un `.shogunai.json` inexistente o vacío significa que no hay patrones. El fichero se parsea como un objeto JSON genérico, así que los campos desconocidos se ignoran; un JSON inválido, una raíz que no es un objeto o un `copy` que no es una lista de strings lanzan `InvalidRepositoryConfig`.
+- **Lectura**: un `.shogunai.json` inexistente o vacío significa que no hay patrones. El fichero se parsea como un objeto JSON genérico, así que los campos desconocidos se ignoran; un JSON inválido, una raíz que no es un objeto, un `copy` que no es una lista de strings, o un `providers` (o un provider conocido dentro de él) que no es un objeto lanzan `InvalidRepositoryConfig`. Los ids de provider desconocidos se saltan.
 - **Escritura** (`addCopyPatterns`): lee el objeto, sustituye solo `copy` (primero los patrones existentes, después los nuevos sin duplicados) y lo vuelve a escribir con formato, de forma atómica (fichero temporal en la misma carpeta + `ATOMIC_MOVE`), así que los demás campos se conservan. Se niega a reescribir un fichero que no puede parsear.
 
 La coincidencia de patrones se deja a Git (`git ls-files --others --ignored -z -x <patrón>…`, ver `CreateWorktreeUseCase` en el dominio), así que sigue exactamente las reglas de gitignore, incluidos sus límites: no se puede reincluir un fichero con `!` si su carpeta padre está excluida (`.idea/` + `!.idea/workspace.xml` sigue listando `workspace.xml`; usa `.idea/*` en su lugar). Puedes probar un patrón desde el repositorio base con el mismo comando:
@@ -50,9 +58,10 @@ En `desktopApp`. Implementación de `ClipboardWriter` con el portapapeles del si
 En `core/src/testFixtures/kotlin/app/luxion/shogunai/domain/`, los test fixtures de `core`, que usan los tests de `core` y los de `desktopApp` (`testImplementation(testFixtures(project(":core")))`):
 
 - `FakeShellCommandExecutor` — sustituye `ShellCommandExecutor`: responde a cada argv con un `CommandResult` preparado y registra los comandos ejecutados.
-- `FakeFileManager` — sustituye `FileManager` con un conjunto en memoria de rutas existentes.
+- `FakeFileManager` — sustituye `FileManager` con un conjunto en memoria de rutas existentes y ficheros de propiedades.
+- `FakeGradleDaemonSource` — sustituye `GradleDaemonSource` con una lista mutable de daemons (o un fallo) y cuenta los listados; `gradleDaemon(...)` y `kotlinDaemon(...)` los construyen.
 - `FakeClipboardWriter` — sustituye `ClipboardWriter`.
 - `FakeProjectRepository` — sustituye `ProjectRepository` en los tests de ViewModels.
 - `FakeRepositoryProvisioningSource` — sustituye `RepositoryProvisioningSource` con provisionado por ruta de repositorio, repositorios ilegibles y escrituras que fallan, y registra los patrones añadidos.
 
-Gracias a que el dominio depende de interfaces, los tests de casos de uso (`*UseCaseTest`) y los de ViewModels no tocan disco ni lanzan procesos reales. La propia infraestructura se cubre con `ProcessBuilderShellCommandExecutorTest`, `JsonProjectRepositoryTest`, `JsonSettingsFileTest` y `RepositoryProvisioningFilesTest`, que sí usan procesos reales y ficheros temporales.
+Gracias a que el dominio depende de interfaces, los tests de casos de uso (`*UseCaseTest`) y los de ViewModels no tocan disco ni lanzan procesos reales. La propia infraestructura se cubre con `ProcessBuilderShellCommandExecutorTest`, `JsonProjectRepositoryTest`, `JsonSettingsFileTest`, `RepositoryProvisioningFilesTest` y `ProcessGradleDaemonSourceTest` (sobre líneas reales de `ps` y fragmentos de logs de daemons), que sí usan procesos reales y ficheros temporales.

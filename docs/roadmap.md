@@ -12,12 +12,13 @@ That direction is built in three layers:
 |---|---|---|
 | **Engine and CLI** | The foundation | Worktree provisioning defined in the repository (`.shogunai.json`) and a `shogun` command that the desktop app, agents and their hooks all use. **Available**; richer provisioning is planned. |
 | **Control tower** | The view | The desktop app shows the state of every worktree, including the ones created by other tools, keeps them clean and follows changes as they happen. **Available.** |
-| **Android, KMP and JVM** | The content | Provisioning for the stacks where a worktree is hardest to prepare: Gradle, local secrets, emulators and IDEs. |
+| **Android, KMP and JVM** | The content | Provisioning for the stacks where a worktree is hardest to prepare: Gradle, local secrets, emulators and IDEs. **Started**: Gradle repositories show their daemons and can stop the idle ones. |
 
 ```mermaid
 graph LR
     A["Repository configuration"] --> B["Command-line output for scripts"]
     A --> D["Android, KMP and JVM provisioning"]
+    E["Per-worktree environment for agents"] --> D
 ```
 
 ## Planned
@@ -39,9 +40,13 @@ Richer provisioning in the repository's `.shogunai.json`:
 Provisioning for the stacks where a fresh worktree is furthest from building:
 
 - `local.properties`, keystores and `google-services.json`.
-- Gradle's cache and daemon shared or controlled per worktree, so parallel worktrees don't multiply memory and disk usage.
-- An emulator or simulator assigned per worktree.
+- Gradle settings per worktree (daemon memory, idle timeout), so parallel worktrees don't multiply memory usage. Needs the per-worktree environment below.
+- An emulator or simulator assigned per worktree. Needs the per-worktree environment below.
 - "Open in Android Studio" on the right worktree.
+
+### Per-worktree environment for agents
+
+ShogunAi doesn't start the agents, so anything a worktree needs in its shell (the emulator serial, ports, Gradle options) has to reach the agent some other way. A per-worktree environment computed by `shogun` and delivered through the agent's own mechanisms, such as a Claude Code `SessionStart` hook, a generated `.envrc` for direnv, or `eval "$(shogun env)"` for any other tool.
 
 ### Choosing the base of a new worktree
 

@@ -50,6 +50,14 @@ While `WorktreeScreen` is shown, a `DisposableEffect` calls `WorktreeViewModel.s
 
 The "Clean up" button next to the "Worktrees" title is enabled when `cleanupCandidates` (from `selectCleanupCandidates` over the listed worktrees and their loaded statuses) isn't empty. It opens `CleanupDialog`, which lists the candidates by folder name and branch and offers "Also delete their local branches", unchecked by default. Confirming runs `CleanUpWorktreesUseCase`, shows a progress indicator with the dialog's actions disabled, then closes the dialog, shows "N worktrees cleaned up" as a success message and reloads the list. Failures and kept branches stay visible in `CleanupIssues` until dismissed.
 
+When the repository declares the Gradle provider, the dialog also offers "Also stop their idle Gradle daemons", checked by default (`cleanupStopGradleDaemons`): stopping an idle daemon only costs a restart on the next build. Before cleaning up, `confirmCleanup` lists the daemons with the worktrees as they were; after the removals it stops the idle ones whose last build was in a removed worktree (`idleDaemonsOfRemovedWorktrees`, `StopGradleDaemonsUseCase`). The success message then adds how many daemons were stopped and kept. A daemon that can't be listed or stopped never turns the cleanup into a failure.
+
+### Gradle daemons
+
+When `.shogunai.json` declares `"providers": { "gradle": {} }` (`GradleUseCases.declaresProvider`, read on every list load), `WorktreeScreen` shows `GradleDaemonsSection` below the worktree list. `WorktreeViewModel` loads `gradleDaemons` (`Loading`, `Loaded` or `Unavailable` when processes can't be listed) with `ListGradleDaemonsUseCase` after each list load and on every auto-refresh check without changes, like the running agents, and reads `isGradleBuildCacheEnabled` with `CheckGradleBuildCacheUseCase`.
+
+The section shows the number of daemons and their total memory, one row per daemon (kind and version, PID, memory, "busy" / "idle · 12 minutes ago" / "state unknown", and the worktree's folder name, "removed worktree" or "other project"), a "Stop" button per row and "Stop idle daemons". A button is enabled only for daemons the stop rules allow (`isStoppable`: an idle Gradle daemon, or a Kotlin daemon while no Gradle daemon is busy or unknown); `StopGradleDaemonsUseCase` checks the state again anyway. The result (`daemonStopReport`) stays visible until dismissed, and the list is reloaded. Without the build cache, an informational note explains how to turn it on.
+
 ### Launch command
 
 Each worktree row has a "Copy command" button that calls `WorktreeViewModel.copyLaunchCommand(worktree)`; the button shows a "Copied" state for a couple of seconds. The command (`cd "<path>" && <agent command>`) is pasted by the user in the terminal of their choice.
@@ -88,7 +96,7 @@ List loads are tagged with a generation number: a result is only applied if no n
 
 ## `AppContainer`
 
-Instantiates `JsonProjectRepository`, the settings repositories, `NioFileManager`, `ProcessBuilderShellCommandExecutor` and `AwtClipboardWriter` once at app startup. The worktree use cases are scoped to a project, so `worktreeUseCases(config)` builds a `WorktreeUseCases` bundle for the selected `ProjectConfig`. There's no DI framework.
+Instantiates `JsonProjectRepository`, the settings repositories, `NioFileManager`, `ProcessBuilderShellCommandExecutor` and `AwtClipboardWriter` once at app startup. The worktree use cases are scoped to a project, so `worktreeUseCases(config)` builds a `WorktreeUseCases` bundle for the selected `ProjectConfig`, including its `GradleUseCases` over a single `ProcessGradleDaemonSource`. There's no DI framework.
 
 ## `FilePicker`
 

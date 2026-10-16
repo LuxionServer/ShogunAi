@@ -4,43 +4,62 @@ import app.luxion.shogunai.BuildInfo
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
+import app.luxion.shogunai.domain.io.GradleDaemonSource
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.model.BranchType
+import app.luxion.shogunai.domain.model.DaemonKeptReason
+import app.luxion.shogunai.domain.model.DaemonKind
+import app.luxion.shogunai.domain.model.DaemonOwner
+import app.luxion.shogunai.domain.model.DaemonProcess
+import app.luxion.shogunai.domain.model.DaemonState
+import app.luxion.shogunai.domain.model.DaemonStopReport
+import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeOrigin
 import app.luxion.shogunai.domain.model.WorktreeStatus
+import app.luxion.shogunai.domain.usecase.CheckGradleBuildCacheUseCase
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.DeleteMergedBranchUseCase
+import app.luxion.shogunai.domain.usecase.ListGradleDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.ProvisionWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
 import app.luxion.shogunai.domain.usecase.ResolveRepositoryUseCase
+import app.luxion.shogunai.domain.usecase.StopGradleDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.classifyOrigin
+import app.luxion.shogunai.domain.usecase.idleDaemonsOfRemovedWorktrees
 import app.luxion.shogunai.domain.usecase.normalizeTaskId
 import app.luxion.shogunai.domain.usecase.selectCleanupCandidates
+import app.luxion.shogunai.domain.usecase.totalResidentMemory
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import java.io.File
+import java.time.Duration
+import java.time.Instant
+import java.util.Locale
 
 class ShogunCli(
     private val executor: ShellCommandExecutor,
     private val fileManager: FileManager,
     private val projectRepository: ProjectRepository,
     private val provisioningSource: RepositoryProvisioningSource,
+    private val daemonSource: GradleDaemonSource,
+    private val gradleUserHome: String,
     private val workingDirectory: String,
     private val out: Appendable,
     private val err: Appendable,
     private val readInput: () -> String = { "" },
     private val canonicalPath: (String) -> String = { File(it).canonicalPath },
+    private val now: () -> Instant = Instant::now,
 ) {
     fun run(args: List<String>): Int = when (val parsed = parseArguments(args)) {
         is ParsedArguments.UsageError -> {
@@ -61,6 +80,8 @@ class ShogunCli(
             is CliCommand.Clean -> clean(command)
             CliCommand.HookWorktreeCreate -> hookWorktreeCreate()
             CliCommand.HookWorktreeRemove -> hookWorktreeRemove()
+            CliCommand.Gradle -> gradle()
+            is CliCommand.GradleStop -> gradleStop(command)
         }
     } catch (error: WorktreeError) {
         err.line("shogun: ${error.message}")
@@ -123,8 +144,11 @@ class ShogunCli(
             out.line("Nothing to clean up.")
             return EXIT_OK
         }
+        val daemons = if (command.stopGradleDaemons) daemonsBeforeCleanup(worktrees) else emptyList()
         if (!command.confirmed) {
             candidates.forEach { out.line("would remove ${it.path}${if (it.isPrunable) " (folder missing)" else ""}") }
+            idleDaemonsOfRemovedWorktrees(daemons, worktrees, candidates.map { it.path })
+                .forEach { out.line("would stop Gradle daemon $it") }
             out.line("Run 'shogun clean --yes' to remove ${if (candidates.size == 1) "it" else "them"}.")
             return EXIT_OK
         }
@@ -132,8 +156,87 @@ class ShogunCli(
         report.removed.forEach { out.line("removed $it") }
         report.keptBranches.forEach { out.line("kept branch $it (not merged)") }
         report.failures.forEach { err.line("shogun: couldn't remove ${it.path}: ${it.error.message}") }
+        val pids = idleDaemonsOfRemovedWorktrees(daemons, worktrees, report.removed)
+        if (pids.isNotEmpty()) stopDaemonsAfterCleanup(pids)
         return if (report.failures.isEmpty()) EXIT_OK else EXIT_FAILURE
     }
+
+    private suspend fun daemonsBeforeCleanup(worktrees: List<Worktree>): List<GradleDaemon> =
+        ListGradleDaemonsUseCase(daemonSource, fileManager)(worktrees)
+            .onFailure { err.line("shogun: couldn't list Gradle daemons: ${it.message}") }
+            .getOrDefault(emptyList())
+
+    private suspend fun stopDaemonsAfterCleanup(pids: List<Long>) {
+        StopGradleDaemonsUseCase(daemonSource, executor)(pids)
+            .onSuccess { report ->
+                printStopReport(report)
+                report.failures.forEach { err.line("shogun: couldn't stop Gradle daemon ${it.pid}: ${it.detail}") }
+            }
+            .onFailure { err.line("shogun: couldn't stop Gradle daemons: ${it.message}") }
+    }
+
+    private suspend fun gradle(): Int {
+        val repository = ResolveRepositoryUseCase(executor)(workingDirectory).getOrNull()
+        val worktrees = repository?.let { ListWorktreesUseCase(configFor(workingDirectory), executor)().getOrNull() }
+        val daemons = ListGradleDaemonsUseCase(daemonSource, fileManager)(worktrees).getOrThrow()
+        if (daemons.isEmpty()) {
+            out.line("No Gradle or Kotlin daemons running.")
+        } else {
+            daemons.forEach { out.line(daemonLine(it, attributed = worktrees != null)) }
+            out.line("total  memory=${formatMemory(totalResidentMemory(daemons))}  daemons=${daemons.size}")
+        }
+        if (repository != null && declaresGradle(repository) &&
+            !CheckGradleBuildCacheUseCase(fileManager, gradleUserHome)(repository)
+        ) {
+            out.line(BUILD_CACHE_NOTICE)
+        }
+        return EXIT_OK
+    }
+
+    private suspend fun gradleStop(command: CliCommand.GradleStop): Int {
+        val report = StopGradleDaemonsUseCase(daemonSource, executor)(command.pids.ifEmpty { null }).getOrThrow()
+        if (command.pids.isEmpty() && report.stopped.isEmpty() && report.kept.isEmpty() && report.failures.isEmpty()) {
+            out.line("No Gradle or Kotlin daemons running.")
+        }
+        printStopReport(report)
+        report.notDaemons.forEach { err.line("shogun: $it isn't a Gradle or Kotlin daemon") }
+        report.failures.forEach { err.line("shogun: couldn't stop ${it.pid}: ${it.detail}") }
+        return if (report.notDaemons.isEmpty() && report.failures.isEmpty()) EXIT_OK else EXIT_FAILURE
+    }
+
+    private fun printStopReport(report: DaemonStopReport) {
+        report.stopped.forEach { out.line("stopped ${it.pid}  ${kindLabel(it)}") }
+        report.kept.forEach { out.line("kept ${it.pid}  ${it.kind.label}  (${it.reason.label})") }
+    }
+
+    private fun declaresGradle(repository: String): Boolean =
+        runCatching { provisioningSource.read(repository).providers.gradle != null }.getOrDefault(false)
+
+    private fun daemonLine(daemon: GradleDaemon, attributed: Boolean): String {
+        val process = daemon.process
+        val details = buildList {
+            add(kindLabel(process))
+            add("memory=${formatMemory(process.residentMemoryBytes)}")
+            when (val state = process.state) {
+                DaemonState.Busy -> add("state=busy")
+                is DaemonState.Idle -> add("state=idle  idle-for=${formatDuration(Duration.between(state.since, now()))}")
+                DaemonState.Unknown -> add("state=unknown")
+                DaemonState.Untracked -> Unit
+            }
+            if (attributed) {
+                when (val owner = daemon.owner) {
+                    is DaemonOwner.Worktree -> add("worktree=${owner.path}")
+                    DaemonOwner.RemovedWorktree -> add("worktree=removed")
+                    DaemonOwner.OtherProject -> add("worktree=other-project")
+                    null -> Unit
+                }
+            }
+        }
+        return (listOf(process.pid.toString()) + details).joinToString("  ")
+    }
+
+    private fun kindLabel(process: DaemonProcess): String =
+        listOfNotNull(process.kind.label, process.gradleVersion).joinToString(" ")
 
     private suspend fun hookWorktreeCreate(): Int {
         val input = hookInput("worktree-create") ?: return EXIT_USAGE
@@ -230,11 +333,48 @@ class ShogunCli(
             WorktreeOrigin.OTHER -> "other"
         }
 
+    private val DaemonKind.label: String
+        get() = when (this) {
+            DaemonKind.GRADLE -> "gradle"
+            DaemonKind.KOTLIN -> "kotlin"
+        }
+
+    private val DaemonKeptReason.label: String
+        get() = when (this) {
+            DaemonKeptReason.BUSY -> "busy"
+            DaemonKeptReason.STATE_UNKNOWN -> "state unknown"
+            DaemonKeptReason.BUILD_RUNNING -> "a Gradle build is running"
+        }
+
     companion object {
         const val EXIT_OK = 0
         const val EXIT_FAILURE = 1
         const val EXIT_USAGE = 2
         private const val CLAUDE_CODE_WORKTREES = ".claude/worktrees"
+
+        const val BUILD_CACHE_NOTICE =
+            "Gradle's build cache is off: add org.gradle.caching=true to gradle.properties so a new worktree " +
+                "reuses what other worktrees already built."
+
+        fun formatMemory(bytes: Long): String {
+            val units = listOf("B", "KB", "MB", "GB", "TB")
+            var value = bytes.toDouble()
+            var unit = 0
+            while (value >= 1024 && unit < units.lastIndex) {
+                value /= 1024
+                unit++
+            }
+            return if (unit == 0) "$bytes B" else String.format(Locale.ROOT, "%.1f %s", value, units[unit])
+        }
+
+        fun formatDuration(duration: Duration): String {
+            val minutes = duration.toMinutes().coerceAtLeast(0)
+            return when {
+                minutes < 60 -> "${minutes}m"
+                minutes < 24 * 60 -> "${minutes / 60}h${(minutes % 60).toString().padStart(2, '0')}m"
+                else -> "${minutes / (24 * 60)}d"
+            }
+        }
 
         val USAGE = """
             Usage: shogun <command> [options]
@@ -245,9 +385,12 @@ class ShogunCli(
                   --worktrees-root <dir>  Folder for the worktree when the repository has no ShogunAi project
               provision [<path>]          Copy the declared files into an existing worktree (default: current directory)
               status                      List the repository's worktrees with their state
-              clean [--yes] [--delete-branches]
+              clean [--yes] [--delete-branches] [--stop-gradle-daemons]
                                           List merged or missing worktrees; remove them with --yes
-              hook worktree-create        Claude Code WorktreeCreate hook: create and provision the worktree, print its path
+                                          (--stop-gradle-daemons: also stop their idle Gradle daemons)
+              gradle                      List the Gradle and Kotlin daemons with their memory, state and worktree
+              gradle stop [<pid>...]      Stop idle daemons (all of them, or only the given ones); busy ones are kept
+              hook worktree-create       Claude Code WorktreeCreate hook: create and provision the worktree, print its path
               hook worktree-remove        Claude Code WorktreeRemove hook: remove the worktree, delete its branch if merged
               help                        Show this help
               --version                   Show the version

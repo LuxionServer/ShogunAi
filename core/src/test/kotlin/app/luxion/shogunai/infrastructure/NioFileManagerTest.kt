@@ -19,6 +19,18 @@ class NioFileManagerTest {
     }
 
     @Test
+    fun `reads properties and treats a missing file as empty`() {
+        val file = root.resolve("gradle.properties")
+        file.writeBytes("org.gradle.caching=true\n# comment\norg.gradle.jvmargs=-Xmx2g\n".toByteArray())
+
+        assertEquals(
+            mapOf("org.gradle.caching" to "true", "org.gradle.jvmargs" to "-Xmx2g"),
+            fileManager.readProperties(file.toString()),
+        )
+        assertEquals(emptyMap(), fileManager.readProperties(root.resolve("missing.properties").toString()))
+    }
+
+    @Test
     fun `copy creates the missing parent folders of the destination`() {
         val source = root.resolve("repo/.idea/runConfigurations").createDirectories().resolve("App.xml")
         source.writeBytes(ByteArray(10))

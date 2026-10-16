@@ -8,7 +8,10 @@ class FakeFileManager(
     private val failCopyFor: Set<String> = emptySet(),
     private val sizes: Map<String, Long> = emptyMap(),
     private val directories: Set<String> = emptySet(),
+    private val properties: Map<String, Map<String, String>> = emptyMap(),
 ) : FileManager {
+
+    override fun readProperties(path: String): Map<String, String> = properties[path].orEmpty()
 
     val stamps = mutableMapOf<String, Long>()
 
