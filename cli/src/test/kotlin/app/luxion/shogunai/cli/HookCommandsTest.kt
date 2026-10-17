@@ -5,16 +5,19 @@ import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeDerivedDataSource
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.FakeHerdrConfigSource
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
 import app.luxion.shogunai.domain.FakeKmpTestWiring
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
+import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -70,12 +73,14 @@ class HookCommandsTest {
         input: String,
         projects: List<Project> = listOf(project),
         existing: List<String> = listOf(base),
+        environment: Map<String, String> = emptyMap(),
+        provisioning: RepositoryProvisioning = RepositoryProvisioning(worktreeIncludePatterns = listOf(".env")),
     ) = ShogunCli(
         executor = executor,
         fileManager = FakeFileManager(existing = existing),
         projectRepository = FakeProjectRepository(projects),
         provisioningSource = FakeRepositoryProvisioningSource(
-            byRepository = mapOf(base to RepositoryProvisioning(worktreeIncludePatterns = listOf(".env"))),
+            byRepository = mapOf(base to provisioning),
         ),
         daemonSource = FakeGradleDaemonSource(),
         gradleUserHome = "/home/dev/.gradle",
@@ -85,11 +90,14 @@ class HookCommandsTest {
         appleSimulators = appleSimulators,
         kmpTestWiring = kmpTestWiring,
         derivedDataSource = FakeDerivedDataSource(),
+        herdrConfig = FakeHerdrConfigSource(),
         workingDirectory = "/",
         out = out,
         err = err,
         readInput = { input },
         canonicalPath = { it.trimEnd('/') },
+        environmentVariable = { environment[it] },
+        userHome = "/home/dev",
     )
 
     private fun createInput(name: String, cwd: String = base) =
@@ -189,5 +197,147 @@ class HookCommandsTest {
 
         assertEquals(1, exitCode)
         assertFalse(executor.calls.any { it.first.take(3) == listOf("git", "worktree", "remove") })
+    }
+
+    private val herdrWorktree = "/home/dev/.herdr/worktrees/main-repo/feature-task-7"
+
+    private fun herdrEvent(path: String = herdrWorktree) =
+        """{"event":"worktree.created","data":{"type":"worktree_created","workspace":{"workspace_id":"w_2","label":"feature-task-7"},""" +
+            """"worktree":{"path":"$path","branch":"feature/TASK-7","is_bare":false,"is_detached":false,"is_prunable":false,"is_linked_worktree":true,"label":"feature-task-7"}}}"""
+
+    private fun herdrEnvironment(event: String = "worktree.created", json: String? = herdrEvent()) =
+        listOfNotNull("HERDR_PLUGIN_EVENT" to event, json?.let { "HERDR_PLUGIN_EVENT_JSON" to it }).toMap()
+
+    private fun Executor.notifications() = calls.map { it.first }.filter { it.getOrNull(1) == "notification" }
+
+    @Test
+    fun `herdr provisions the worktree of a worktree created event`() {
+        val executor = Executor(porcelain(herdrWorktree to "feature/TASK-7"))
+
+        val exitCode = cli(executor, "", environment = herdrEnvironment()).run(listOf("hook", "herdr"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(".env\n", out.toString())
+        assertTrue(executor.calls.any { it.first.getOrNull(1) == "rev-parse" && it.second == herdrWorktree }, "resolves the repository from the worktree")
+    }
+
+    @Test
+    fun `herdr copies nothing for a repository without ShogunAi configuration`() {
+        val executor = Executor(porcelain(herdrWorktree to "feature/TASK-7")) { command ->
+            if (command.getOrNull(1) == "ls-files") CommandResult(command, 0, "", "") else null
+        }
+
+        val exitCode = cli(executor, "", projects = emptyList(), environment = herdrEnvironment(), provisioning = RepositoryProvisioning())
+            .run(listOf("hook", "herdr"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("", out.toString())
+        assertTrue(executor.notifications().isEmpty())
+    }
+
+    @Test
+    fun `herdr notifies through Herdr when the worktree is outside the project's worktrees folder`() {
+        val executor = Executor(porcelain(herdrWorktree to "feature/TASK-7"))
+
+        val exitCode = cli(executor, "", environment = herdrEnvironment() + ("HERDR_BIN_PATH" to "/opt/herdr/bin/herdr"))
+            .run(listOf("hook", "herdr"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            listOf(
+                listOf(
+                    "/opt/herdr/bin/herdr", "notification", "show", "ShogunAi",
+                    "--body", "feature-task-7 is outside ~/projects/worktrees; create worktrees from ShogunAi",
+                ),
+            ),
+            executor.notifications(),
+        )
+    }
+
+    @Test
+    fun `herdr notifies with the herdr command when HERDR_BIN_PATH isn't set`() {
+        val executor = Executor(porcelain(herdrWorktree to "feature/TASK-7"))
+
+        cli(executor, "", environment = herdrEnvironment()).run(listOf("hook", "herdr"))
+
+        assertEquals("herdr", executor.notifications().single().first())
+    }
+
+    @Test
+    fun `herdr doesn't notify for a worktree inside the project's worktrees folder`() {
+        val path = "$worktreesRoot/TASK-7"
+        val executor = Executor(porcelain(path to "feature/TASK-7"))
+
+        val exitCode = cli(executor, "", environment = herdrEnvironment(json = herdrEvent(path))).run(listOf("hook", "herdr"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(executor.notifications().isEmpty())
+    }
+
+    @Test
+    fun `herdr notes a failing notification and still succeeds`() {
+        val executor = Executor(porcelain(herdrWorktree to "feature/TASK-7")) { command ->
+            if (command.getOrNull(1) == "notification") CommandResult(command, 1, "", "server_not_running") else null
+        }
+
+        val exitCode = cli(executor, "", environment = herdrEnvironment()).run(listOf("hook", "herdr"))
+
+        assertEquals(0, exitCode)
+        assertEquals(".env\n", out.toString())
+        assertTrue(err.contains("couldn't show Herdr's notification: server_not_running"), err.toString())
+    }
+
+    @Test
+    fun `herdr notes a notification command that can't start and still succeeds`() {
+        val executor = Executor(porcelain(herdrWorktree to "feature/TASK-7")) { command ->
+            if (command.getOrNull(1) == "notification") throw CommandExecutionException(command, IOException("No such file")) else null
+        }
+
+        val exitCode = cli(executor, "", environment = herdrEnvironment()).run(listOf("hook", "herdr"))
+
+        assertEquals(0, exitCode)
+        assertTrue(err.contains("couldn't show Herdr's notification"), err.toString())
+    }
+
+    @Test
+    fun `herdr ignores other events`() {
+        val executor = Executor(porcelain())
+
+        val exitCode = cli(executor, "", environment = herdrEnvironment(event = "worktree.removed")).run(listOf("hook", "herdr"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(executor.calls.isEmpty())
+    }
+
+    @Test
+    fun `herdr rejects a missing or invalid event`() {
+        val executor = Executor(porcelain())
+
+        assertEquals(2, cli(executor, "").run(listOf("hook", "herdr")))
+        assertTrue(err.contains("HERDR_PLUGIN_EVENT isn't set"), err.toString())
+        err.clear()
+
+        assertEquals(2, cli(executor, "", environment = herdrEnvironment(json = null)).run(listOf("hook", "herdr")))
+        assertTrue(err.contains("HERDR_PLUGIN_EVENT_JSON isn't set"), err.toString())
+        err.clear()
+
+        assertEquals(2, cli(executor, "", environment = herdrEnvironment(json = "nope")).run(listOf("hook", "herdr")))
+        assertTrue(err.contains("isn't JSON"), err.toString())
+        err.clear()
+
+        assertEquals(2, cli(executor, "", environment = herdrEnvironment(json = """{"event":"worktree.created","data":{}}""")).run(listOf("hook", "herdr")))
+        assertTrue(err.contains("data.worktree.path"), err.toString())
+        assertTrue(executor.calls.isEmpty())
+    }
+
+    @Test
+    fun `herdr fails with 1 when the path isn't a worktree of its repository`() {
+        val executor = Executor(porcelain())
+
+        val exitCode = cli(executor, "", environment = herdrEnvironment()).run(listOf("hook", "herdr"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("is not a linked worktree"), err.toString())
+        assertEquals("", out.toString())
     }
 }

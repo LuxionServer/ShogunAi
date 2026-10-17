@@ -107,6 +107,10 @@ El provider de simulador de iOS (`IosSimulator.kt`) solo actúa en macOS y en re
 - `chooseSimulator(requested, settings, preferred, runtimes)` — el runtime por nombre visible (`iOS 18.5`, sin distinguir mayúsculas) a partir del primero de esta operación, el ajuste de máquina y la preferencia del repositorio que esté instalado; si no, el runtime de iOS más reciente por versión. Después, el tipo de dispositivo por nombre entre los iPhone e iPad del runtime en el mismo orden; si no, su iPhone más reciente: el número de modelo más alto del nombre y, entre esos, el nombre más corto (el modelo base, o el Pro si no hay base), sea cual sea el orden en que Apple los liste. `null` sin runtime de iOS.
 - Cada worktree guarda el recurso `ios-simulator`, el UDID de un simulador creado para él con el nombre `ShogunAi · <carpeta del repositorio> · <carpeta del worktree>` (`worktreeSimulatorName`), y recibe `IOS_SIMULATOR_UDID=<UDID>` en su entorno. El prefijo `ShogunAi · ` es lo que distingue los simuladores huérfanos de los del usuario.
 
+### Herdr
+
+`Herdr.kt` contiene lo que informa el [puerto de Herdr](#herdrclient): `HerdrWorktreeOpening` (id del workspace, id de su pane raíz y si Herdr ya tenía abierto el worktree), además de `HerdrOpening` (`OPENED`, `FOCUSED`), el resultado de abrir un worktree en Herdr.
+
 ### Daemons de Gradle
 
 Lo que el provider de Gradle observa en la máquina (`GradleDaemon.kt`):
@@ -148,6 +152,8 @@ Preferencias del usuario: `LIGHT` / `DARK` / `SYSTEM` y `ENGLISH` / `SPANISH`. S
 - `GitLfsNotFound` — el repositorio usa Git LFS pero `git-lfs` no está instalado.
 - `BranchNotFound` — la rama existente pedida no existe en local.
 - `BranchAlreadyCheckedOut` — la rama ya está en uso en otro worktree o en el repositorio base.
+- `HerdrNotInstalled` — no se encuentra el comando `herdr`.
+- `HerdrCommandFailed` — falló un comando de `herdr`; guarda el comando y el mensaje de Herdr (por ejemplo, que no hay servidor de Herdr en marcha).
 
 ## Puertos
 
@@ -263,6 +269,29 @@ interface KmpTestWiring {
 
 `AppleSimulators` es todo lo que el provider de simulador de iOS necesita de los simuladores de Xcode, usado solo en macOS y en repositorios que declaran el provider: los runtimes instalados (con los tipos de dispositivo que admite cada uno), los dispositivos existentes con su estado, y crear, arrancar, mostrar en el visor de simuladores de Xcode (Simulator o Device Hub), apagar y borrar uno. Los errores de las herramientas son `AppleToolFailed`. `KmpTestWiring` indica si los scripts de Gradle del repositorio aplican el plugin de Kotlin Multiplatform, si pasan `IOS_SIMULATOR_UDID` a los tests de simulador de KMP, e instala o quita el init script de Gradle para toda la máquina que lo hace en todos los proyectos.
 
+### `HerdrConfigSource`
+
+```kotlin
+interface HerdrConfigSource {
+    fun worktreesRoot(): String
+}
+```
+
+Dónde crea [Herdr](https://herdr.dev) sus worktrees, para distinguirlos de otras ubicaciones. Nunca falla: si no hay una configuración legible devuelve la carpeta por defecto de Herdr.
+
+### `HerdrClient`
+
+```kotlin
+interface HerdrClient {
+    suspend fun openWorktree(repository: String, path: String, label: String): HerdrWorktreeOpening
+    suspend fun splitPane(paneId: String, cwd: String, environment: List<Pair<String, String>>): String
+    suspend fun closePane(paneId: String)
+    suspend fun runInPane(paneId: String, command: String)
+}
+```
+
+Las pocas operaciones de [Herdr](https://herdr.dev) que ShogunAi usa para abrir ahí un worktree: abrir un worktree existente como workspace enfocado agrupado bajo su repositorio (o enfocarlo si ya está abierto), dividir un pane en otro enfocado cuya shell arranca en un directorio con variables extra, cerrar un pane y enviar un comando a un pane. Los ids de pane no se guardan, porque Herdr los renumera cuando se mueven los panes. Los errores son `HerdrNotInstalled` y `HerdrCommandFailed`.
+
 ### `GradleDaemonSource`
 
 ```kotlin
@@ -345,7 +374,7 @@ Los merges por squash o rebase no se detectan como mergeados, y las ramas remota
 
 ### Vista completa de worktrees
 
-- `classifyOrigin(worktree, config)` devuelve el `WorktreeOrigin` de un worktree que no es el principal: `CLAUDE_CODE` si su ruta está dentro de una carpeta `.claude/worktrees/` (se comprueba primero, porque esa carpeta puede estar dentro de la raíz de worktrees), `SHOGUNAI` si está dentro de `config.worktreesRoot` y `OTHER` en otro caso. Las rutas se comparan con separadores `/` y sin barra final, así que también funcionan las de Windows.
+- `classifyOrigin(worktree, config, herdrWorktreesRoot)` devuelve el `WorktreeOrigin` de un worktree que no es el principal: `CLAUDE_CODE` si su ruta está dentro de una carpeta `.claude/worktrees/` (se comprueba primero, porque esa carpeta puede estar dentro de la raíz de worktrees), `HERDR` si está dentro de la carpeta de worktrees de Herdr (cuando se indica, leída con [`HerdrConfigSource`](#herdrconfigsource)), `SHOGUNAI` si está dentro de `config.worktreesRoot` y `OTHER` en otro caso. Las rutas se comparan con separadores `/` y sin barra final, así que también funcionan las de Windows.
 - `isInactive(worktree, status, agents, now)` es verdadero para un worktree que no es el principal, sin cambios sin commitear, sin agentes en ejecución y con su último commit más antiguo que `INACTIVITY_THRESHOLD` (14 días).
 - `DetectRunningAgentsUseCase` devuelve los `RunningAgent` por ruta de worktree. Ejecuta `lsof -d cwd -F pcn` una vez para obtener el directorio de trabajo de cada proceso, asigna cada proceso al worktree con la ruta más larga que lo contiene (así un proceso en `.claude/worktrees/<nombre>` no se atribuye al worktree principal) y ejecuta `ps -o pid=,comm=` para esos procesos. El nombre del ejecutable se compara con los CLIs de agentes conocidos (`claude`, `codex`, `gemini`, `cursor-agent`, `opencode`, `aider`, `copilot`) y con el comando de agente del propio proyecto. No se usa el nombre que da `lsof` porque Claude Code renombra su proceso con su versión. Si `lsof` o `ps` fallan (p. ej. en Windows), falla con `WorktreeError.ProcessListingFailed`.
 - `MeasureWorktreeSizeUseCase` devuelve el tamaño de un worktree con `FileManager.directorySize`, en el dispatcher de IO, excluyendo cualquier otro worktree listado que esté anidado dentro. Devuelve `null` si la carpeta no existe.
@@ -361,6 +390,10 @@ Ejecuta `git worktree remove [--force] <path>` y, opcionalmente, `git branch -d 
 ### `CopyWorktreeLaunchCommandUseCase`
 
 Copia al portapapeles `cd "<ruta del worktree>" && <comando del agente>`, con el comando del agente de `AgentLaunchConfig.resolvedCommand()`, para que el usuario lo pegue en la terminal que prefiera.
+
+### `OpenWorktreeInHerdrUseCase`
+
+Abre un worktree en Herdr con su entorno y el agente del proyecto. Pide a Herdr que abra el worktree del repositorio base del proyecto, con el nombre de su carpeta; si Herdr ya lo tenía abierto, ese workspace queda enfocado y devuelve `FOCUSED` sin tocar sus panes. Si no, resuelve el entorno del worktree (el mismo que `shogun env`, con las variables de los proveedores como `ANDROID_SERIAL`, reservando puertos si hace falta); si no está vacío, divide el pane raíz en otro cuya shell arranca en el worktree con esas variables y cierra el raíz, para que el workspace se quede con un único pane. Después ejecuta `AgentLaunchConfig.resolvedCommand()` en ese pane y devuelve `OPENED`.
 
 ### `ResolveRepositoryUseCase`
 

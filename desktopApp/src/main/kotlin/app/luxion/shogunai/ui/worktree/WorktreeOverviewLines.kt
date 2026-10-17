@@ -59,5 +59,6 @@ fun portsLabel(ports: Map<String, Int>): String =
 private fun WorktreeOrigin.label(strings: Strings): String = when (this) {
     WorktreeOrigin.SHOGUNAI -> strings.originShogunAi
     WorktreeOrigin.CLAUDE_CODE -> strings.originClaudeCode
+    WorktreeOrigin.HERDR -> strings.originHerdr
     WorktreeOrigin.OTHER -> strings.originOther
 }

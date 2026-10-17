@@ -47,6 +47,32 @@ class WorktreeOverviewTest {
     }
 
     @Test
+    fun `a worktree inside Herdr's worktrees folder comes from Herdr`() {
+        val worktree = worktreeAt("/home/dev/.herdr/worktrees/main-repo/feature-task-1")
+
+        assertEquals(WorktreeOrigin.HERDR, classifyOrigin(worktree, config, herdrWorktreesRoot = "/home/dev/.herdr/worktrees"))
+    }
+
+    @Test
+    fun `Herdr's folder inside the worktrees folder still reads as Herdr`() {
+        val worktree = worktreeAt("/home/dev/projects/herdr/main-repo/feature-task-1")
+
+        assertEquals(WorktreeOrigin.HERDR, classifyOrigin(worktree, config, herdrWorktreesRoot = "/home/dev/projects/herdr/"))
+    }
+
+    @Test
+    fun `a Claude Code worktree inside Herdr's folder still reads as Claude Code`() {
+        val worktree = worktreeAt("/home/dev/.herdr/worktrees/main-repo/.claude/worktrees/task")
+
+        assertEquals(WorktreeOrigin.CLAUDE_CODE, classifyOrigin(worktree, config, herdrWorktreesRoot = "/home/dev/.herdr/worktrees"))
+    }
+
+    @Test
+    fun `without Herdr's folder a worktree there is in another location`() {
+        assertEquals(WorktreeOrigin.OTHER, classifyOrigin(worktreeAt("/home/dev/.herdr/worktrees/main-repo/x"), config))
+    }
+
+    @Test
     fun `the main worktree has no origin`() {
         val main = Worktree(path = config.baseRepositoryPath, branch = "develop", isMain = true)
 

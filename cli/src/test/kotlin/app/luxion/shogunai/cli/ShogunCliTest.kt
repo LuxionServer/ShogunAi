@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeDerivedDataSource
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.FakeHerdrConfigSource
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
 import app.luxion.shogunai.domain.FakeKmpTestWiring
@@ -108,6 +109,7 @@ class ShogunCliTest {
         canonicalPath: (String) -> String = { it.trimEnd('/') },
         daemons: FakeGradleDaemonSource = FakeGradleDaemonSource(),
         derivedDataSource: FakeDerivedDataSource = FakeDerivedDataSource(),
+        herdrWorktreesRoot: String = "/home/dev/.herdr/worktrees",
     ) = ShogunCli(
         executor = executor,
         fileManager = fileManager,
@@ -121,6 +123,7 @@ class ShogunCliTest {
         appleSimulators = appleSimulators,
         kmpTestWiring = kmpTestWiring,
         derivedDataSource = derivedDataSource,
+        herdrConfig = FakeHerdrConfigSource(herdrWorktreesRoot),
         workingDirectory = workingDirectory,
         out = out,
         err = err,
@@ -400,6 +403,14 @@ class ShogunCliTest {
             ),
             out.lines().filter { it.isNotEmpty() },
         )
+    }
+
+    @Test
+    fun `status shows worktrees inside Herdr's folder as created by Herdr`() {
+        val exitCode = cli(repositoryExecutor(), herdrWorktreesRoot = worktreesRoot).run(listOf("status"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.lines().contains("$merged  feature/TASK-1  origin=herdr  changes=0  merged"), out.toString())
     }
 
     @Test

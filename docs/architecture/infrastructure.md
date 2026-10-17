@@ -39,6 +39,14 @@ Implementation of `AndroidSdk` on the SDK's own tools:
 - **Start**: `emulator -avd <avd> -port <port> -read-only -no-boot-anim [-no-window]` through `ProcessBuilder`, not the command executor, because it must keep running after the caller (the CLI) exits; output goes to `~/.shogunai/logs/emulator-<port>.log`. `-read-only` is what lets one AVD run once per worktree; changes to the emulator's data are discarded when it exits.
 - **Stop**: `adb -s <serial> emu kill`.
 
+## `HerdrConfigFile`
+
+Implementation of `HerdrConfigSource`. It reads Herdr's `config.toml` from the same place Herdr does: `HERDR_CONFIG_PATH`, else `$XDG_CONFIG_HOME/herdr/`, else `%APPDATA%\herdr\` on Windows, else `~/.config/herdr/`. A small line reader takes the `directory` key of the `[worktrees]` table (basic or literal string, trailing comments allowed) and expands a leading `~`; it's not a full TOML parser, since that's the only key ShogunAi needs. A missing, unreadable or unparseable file, or no such key, gives Herdr's default, `~/.herdr/worktrees`.
+
+## `CliHerdrClient`
+
+Implementation of `HerdrClient` on the `herdr` command, through `ShellCommandExecutor` with argument lists: `worktree open --cwd <repository> --path <worktree> --label … --focus`, `pane split <pane> --direction right --cwd … --env NAME=value… --focus`, `pane close <pane>` and `pane run <pane> <command>`. It reads only the fields it needs from Herdr's JSON (`result.workspace.workspace_id`, `result.root_pane.pane_id`, `result.already_open`, `result.pane.pane_id`), so other fields can change. The binary is `~/.local/bin/herdr` or `~/.cargo/bin/herdr` when they exist (where Herdr's install script and `cargo install` put it, which a Finder-launched app's `PATH` lacks), else `herdr` from the `PATH` (`herdr.exe` on Windows). A command that can't start is `HerdrNotInstalled`; a non-zero exit or an `error` object is `HerdrCommandFailed` with Herdr's `error.message`, taken from the JSON on standard output or standard error (where Herdr writes its errors), or the raw standard error when it isn't JSON. Herdr doesn't start a server for these commands, so with none running the message asks to run `herdr`.
+
 ## `ProcessGradleDaemonSource`
 
 Implementation of `GradleDaemonSource` that doesn't depend on a Gradle binary or on Gradle's internal registry format:
@@ -93,6 +101,8 @@ In `core/src/testFixtures/kotlin/app/luxion/shogunai/domain/`, `core`'s test fix
 - `FakeFileManager` — substitutes `FileManager` with an in-memory set of existing paths and properties files.
 - `FakeEnvironmentStateStore` / `FakePortProbe` — substitute the reservation store (in-memory reservations per administrative directory, counting writes and locks) and the port probe (a set of busy ports).
 - `FakeAppleSimulators` / `FakeKmpTestWiring` — substitute the simulators (runtimes, devices that boot after a number of polls, records of creations, boots, windows shown (or a failure to show them), shutdowns and deletions, a macOS switch) and the KMP wiring.
+- `FakeHerdrConfigSource` — returns a fixed Herdr worktrees folder.
+- `FakeHerdrClient` — records opened worktrees, split and closed panes and commands run, reports the worktrees it's given as already open, and can fail opening or running with a given error.
 - `FakeAndroidSdk` — substitutes `AndroidSdk` with AVDs, emulator states that move from booting to running after a number of polls, a missing-SDK switch, and records of starts and stops.
 - `FakeGradleDaemonSource` — substitutes `GradleDaemonSource` with a mutable list of daemons (or a failure) and counts the listings; `gradleDaemon(...)` and `kotlinDaemon(...)` build them.
 - `FakeDerivedDataSource` — substitutes `DerivedDataSource` with folders, existing projects, unmounted volumes, a compilation cache size, a macOS switch and failing deletions, and records the deletions; `derivedData(...)` builds a folder.

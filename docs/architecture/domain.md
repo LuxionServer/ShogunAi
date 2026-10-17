@@ -107,6 +107,10 @@ The iOS simulator provider (`IosSimulator.kt`) only acts on macOS for repositori
 - `chooseSimulator(requested, settings, preferred, runtimes)` — the runtime by display name (`iOS 18.5`, case-insensitive) from the first of this operation, the machine setting and the repository's preference that is installed, else the newest iOS runtime by version; then the device type by name among the runtime's iPhone and iPad types in the same order, else its newest iPhone: the highest model number in the name, and among those the shortest name (the base model, or the Pro when there's no base), whatever order Apple lists them in. `null` without an iOS runtime.
 - Each worktree keeps the resource `ios-simulator`, the UDID of a simulator created for it and named `ShogunAi · <repository folder> · <worktree folder>` (`worktreeSimulatorName`), and gets `IOS_SIMULATOR_UDID=<UDID>` in its environment. The `ShogunAi · ` prefix is how orphaned simulators are told apart from the user's own.
 
+### Herdr
+
+`Herdr.kt` holds what the [Herdr port](#herdrclient) reports: `HerdrWorktreeOpening` (workspace id, its root pane id and whether Herdr already had the worktree open), plus `HerdrOpening` (`OPENED`, `FOCUSED`), the outcome of opening a worktree in Herdr.
+
 ### Gradle daemons
 
 What the Gradle provider observes on the machine (`GradleDaemon.kt`):
@@ -148,6 +152,8 @@ User preferences: `LIGHT` / `DARK` / `SYSTEM` and `ENGLISH` / `SPANISH`. They're
 - `GitLfsNotFound` — the repository uses Git LFS but `git-lfs` isn't installed.
 - `BranchNotFound` — the requested existing branch doesn't exist locally.
 - `BranchAlreadyCheckedOut` — the branch is already checked out in another worktree or in the base repository.
+- `HerdrNotInstalled` — the `herdr` command wasn't found.
+- `HerdrCommandFailed` — a `herdr` command failed; keeps the command and Herdr's message (e.g. no Herdr server running).
 
 ## Ports
 
@@ -263,6 +269,29 @@ interface KmpTestWiring {
 
 `AppleSimulators` is everything the iOS simulator provider needs from Xcode's simulators, used only on macOS for repositories that declare the provider: installed runtimes (with the device types each supports), existing devices with their state, and creating, booting, showing in Xcode's simulator viewer (Simulator or Device Hub), shutting down and deleting one. Tool errors are `AppleToolFailed`. `KmpTestWiring` tells whether the repository's Gradle build scripts apply the Kotlin Multiplatform plugin, whether they pass `IOS_SIMULATOR_UDID` to KMP's simulator tests, and installs or removes the machine-wide Gradle init script that does it for every project.
 
+### `HerdrConfigSource`
+
+```kotlin
+interface HerdrConfigSource {
+    fun worktreesRoot(): String
+}
+```
+
+Where [Herdr](https://herdr.dev) creates its worktrees, so they can be told apart from other locations. It never fails: without a readable configuration it returns Herdr's default folder.
+
+### `HerdrClient`
+
+```kotlin
+interface HerdrClient {
+    suspend fun openWorktree(repository: String, path: String, label: String): HerdrWorktreeOpening
+    suspend fun splitPane(paneId: String, cwd: String, environment: List<Pair<String, String>>): String
+    suspend fun closePane(paneId: String)
+    suspend fun runInPane(paneId: String, command: String)
+}
+```
+
+The few [Herdr](https://herdr.dev) operations ShogunAi uses to open a worktree there: open an existing worktree as a focused workspace grouped under its repository (or focus it if it's already open), split a pane into a focused one whose shell starts in a directory with extra variables, close a pane, and submit a command in a pane. Pane ids aren't stored, since Herdr renumbers them when panes move. Errors are `HerdrNotInstalled` and `HerdrCommandFailed`.
+
 ### `GradleDaemonSource`
 
 ```kotlin
@@ -345,7 +374,7 @@ Squash and rebase merges aren't detected as merged, and remote-tracking branches
 
 ### Worktree overview
 
-- `classifyOrigin(worktree, config)` returns the `WorktreeOrigin` of a non-main worktree: `CLAUDE_CODE` if its path is inside a `.claude/worktrees/` folder (checked first, since that folder can be inside the worktrees root), `SHOGUNAI` if it's inside `config.worktreesRoot`, `OTHER` otherwise. Paths are compared with `/` separators and without trailing slashes, so Windows paths work too.
+- `classifyOrigin(worktree, config, herdrWorktreesRoot)` returns the `WorktreeOrigin` of a non-main worktree: `CLAUDE_CODE` if its path is inside a `.claude/worktrees/` folder (checked first, since that folder can be inside the worktrees root), `HERDR` if it's inside Herdr's worktrees folder (when one is given, read through [`HerdrConfigSource`](#herdrconfigsource)), `SHOGUNAI` if it's inside `config.worktreesRoot`, `OTHER` otherwise. Paths are compared with `/` separators and without trailing slashes, so Windows paths work too.
 - `isInactive(worktree, status, agents, now)` is true for a non-main worktree with no uncommitted changes, no running agents and a last commit older than `INACTIVITY_THRESHOLD` (14 days).
 - `DetectRunningAgentsUseCase` returns the `RunningAgent`s per worktree path. It runs `lsof -d cwd -F pcn` once to get every process's working directory, assigns each process to the worktree with the longest path containing it (so a process in `.claude/worktrees/<name>` isn't attributed to the main worktree), and runs `ps -o pid=,comm=` for those processes. Their executable's file name is matched against the known agent CLIs (`claude`, `codex`, `gemini`, `cursor-agent`, `opencode`, `aider`, `copilot`) and the project's own agent command. The `lsof` command name isn't used because Claude Code renames its process to its version. If `lsof` or `ps` fail (e.g. on Windows), it fails with `WorktreeError.ProcessListingFailed`.
 - `MeasureWorktreeSizeUseCase` returns a worktree's size with `FileManager.directorySize`, on the IO dispatcher, excluding every other listed worktree nested inside it. It returns `null` for a missing folder.
@@ -361,6 +390,10 @@ Runs `git worktree remove [--force] <path>` and, optionally, `git branch -d <bra
 ### `CopyWorktreeLaunchCommandUseCase`
 
 Copies `cd "<worktree path>" && <agent command>` to the clipboard, with the agent command from `AgentLaunchConfig.resolvedCommand()`, so the user pastes it in the terminal of their choice.
+
+### `OpenWorktreeInHerdrUseCase`
+
+Opens a worktree in Herdr with its environment and the project's agent. It asks Herdr to open the worktree for the project's base repository, labelled with its folder name; if Herdr already had it open, that workspace is now focused and it returns `FOCUSED` without touching its panes. Otherwise it resolves the worktree's environment (the same as `shogun env`, provider variables such as `ANDROID_SERIAL` included, reserving ports if needed); when it isn't empty, it splits the root pane into one whose shell starts in the worktree with those variables and closes the root pane, so the workspace keeps a single pane. Then it runs `AgentLaunchConfig.resolvedCommand()` in that pane and returns `OPENED`.
 
 ### `ResolveRepositoryUseCase`
 

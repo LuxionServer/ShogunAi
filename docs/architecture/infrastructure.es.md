@@ -39,6 +39,14 @@ Implementación de `AndroidSdk` sobre las herramientas del propio SDK:
 - **Arranque**: `emulator -avd <avd> -port <puerto> -read-only -no-boot-anim [-no-window]` con `ProcessBuilder`, no con el ejecutor de comandos, porque tiene que seguir en marcha cuando termina quien lo llamó (el CLI); la salida va a `~/.shogunai/logs/emulator-<puerto>.log`. `-read-only` es lo que permite ejecutar una AVD una vez por worktree; los cambios en los datos del emulador se descartan al salir.
 - **Parada**: `adb -s <serial> emu kill`.
 
+## `HerdrConfigFile`
+
+Implementación de `HerdrConfigSource`. Lee el `config.toml` de Herdr del mismo sitio que Herdr: `HERDR_CONFIG_PATH`, si no `$XDG_CONFIG_HOME/herdr/`, si no `%APPDATA%\herdr\` en Windows y si no `~/.config/herdr/`. Un lector de líneas sencillo toma la clave `directory` de la tabla `[worktrees]` (cadena básica o literal, admite comentarios al final) y expande la `~` inicial; no es un parser de TOML completo, porque es la única clave que ShogunAi necesita. Si el fichero falta, no se puede leer o no se entiende, o no tiene esa clave, se usa la carpeta por defecto de Herdr, `~/.herdr/worktrees`.
+
+## `CliHerdrClient`
+
+Implementación de `HerdrClient` sobre el comando `herdr`, con `ShellCommandExecutor` y listas de argumentos: `worktree open --cwd <repositorio> --path <worktree> --label … --focus`, `pane split <pane> --direction right --cwd … --env NOMBRE=valor… --focus`, `pane close <pane>` y `pane run <pane> <comando>`. Del JSON de Herdr solo lee los campos que necesita (`result.workspace.workspace_id`, `result.root_pane.pane_id`, `result.already_open`, `result.pane.pane_id`), así que los demás pueden cambiar. El binario es `~/.local/bin/herdr` o `~/.cargo/bin/herdr` si existen (donde lo dejan el script de instalación de Herdr y `cargo install`, que no están en el `PATH` de una app abierta desde Finder) y, si no, `herdr` del `PATH` (`herdr.exe` en Windows). Un comando que no puede arrancar es `HerdrNotInstalled`; una salida distinta de cero o un objeto `error` es `HerdrCommandFailed` con el `error.message` de Herdr, sacado del JSON de la salida estándar o de la de error (donde Herdr escribe sus errores), o la salida de error tal cual si no es JSON. Herdr no arranca un servidor para estos comandos, así que si no hay ninguno en marcha el mensaje pide ejecutar `herdr`.
+
 ## `ProcessGradleDaemonSource`
 
 Implementación de `GradleDaemonSource` que no depende de un binario de Gradle ni del formato interno de su registro:
@@ -93,6 +101,8 @@ En `core/src/testFixtures/kotlin/app/luxion/shogunai/domain/`, los test fixtures
 - `FakeFileManager` — sustituye `FileManager` con un conjunto en memoria de rutas existentes y ficheros de propiedades.
 - `FakeEnvironmentStateStore` / `FakePortProbe` — sustituyen el almacén de reservas (reservas en memoria por directorio de administración, contando escrituras y locks) y la comprobación de puertos (un conjunto de puertos ocupados).
 - `FakeAppleSimulators` / `FakeKmpTestWiring` — sustituyen los simuladores (runtimes, dispositivos que arrancan tras un número de consultas, registro de creaciones, arranques, ventanas mostradas (o un fallo al mostrarlas), apagados y borrados, un interruptor de macOS) y el cableado KMP.
+- `FakeHerdrConfigSource` — devuelve una carpeta de worktrees de Herdr fija.
+- `FakeHerdrClient` — registra los worktrees abiertos, los panes divididos y cerrados y los comandos ejecutados, da por abiertos los worktrees que se le indican y puede hacer fallar la apertura o la ejecución con un error dado.
 - `FakeAndroidSdk` — sustituye `AndroidSdk` con AVDs, estados de emulador que pasan de arrancando a en marcha tras un número de consultas, un interruptor de SDK ausente y registro de arranques y paradas.
 - `FakeGradleDaemonSource` — sustituye `GradleDaemonSource` con una lista mutable de daemons (o un fallo) y cuenta los listados; `gradleDaemon(...)` y `kotlinDaemon(...)` los construyen.
 - `FakeDerivedDataSource` — sustituye `DerivedDataSource` con carpetas, proyectos existentes, volúmenes no montados, un tamaño de caché de compilación, un interruptor de macOS y borrados que fallan, y registra los borrados; `derivedData(...)` construye una carpeta.

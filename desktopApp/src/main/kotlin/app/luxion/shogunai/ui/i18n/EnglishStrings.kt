@@ -113,6 +113,7 @@ object EnglishStrings : Strings {
     override val folderMissing = "Folder missing"
     override val originShogunAi = "ShogunAi"
     override val originClaudeCode = "Claude Code"
+    override val originHerdr = "Herdr"
     override val originOther = "other location"
     override val inactive = "inactive"
     override fun worktreesSummary(count: Int, totalSize: String) =
@@ -225,6 +226,9 @@ object EnglishStrings : Strings {
     override val copyCommand = "Copy command"
     override fun worktreeCreated(path: String) = "Worktree \"$path\" created"
     override val worktreesRepairedAfterMove = "Worktrees repaired after moving the repository"
+    override val openInHerdr = "Open in Herdr"
+    override fun openedInHerdr(name: String) = "Opened \"$name\" in Herdr with its agent"
+    override fun focusedInHerdr(name: String) = "\"$name\" was already open in Herdr; switched to its workspace"
 
     override fun baseRepositoryNotFound(path: String) = "Base repository doesn't exist: $path"
     override fun worktreeAlreadyExists(path: String) = "Worktree directory already exists: $path"
@@ -250,6 +254,8 @@ object EnglishStrings : Strings {
     override fun androidSdkNotFound(checked: List<String>) = "Android SDK not found. Checked: ${checked.joinToString()}"
     override val noAvdAvailable =
         "No Android Virtual Device found. Create one in Android Studio's Device Manager and try again."
+    override val herdrNotInstalled = "Herdr isn't installed. Install it from https://herdr.dev and try again."
+    override fun herdrCommandFailed(detail: String) = "Couldn't open the worktree in Herdr: $detail"
     override fun emulatorBootTimeout(serial: String, seconds: Long) =
         "$serial didn't finish booting within $seconds s; it's still starting"
     override fun androidToolFailed(command: List<String>, exitCode: Int) =
