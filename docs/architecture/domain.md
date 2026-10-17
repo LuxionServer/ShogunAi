@@ -333,7 +333,7 @@ The worktree use cases are built per project (they receive its `ProjectConfig`) 
 Creates a worktree on a **new** branch `<type>/<taskId>`. The task id is normalized first (`normalizeTaskId`: trimmed, whitespace runs replaced with `-`) and validated as a Git ref segment. Then, in this order:
 
 1. **Upfront validations** (base repo exists, destination free, local files present) and **resolving the repository's files** — done *before* touching Git so as not to leave a half-done worktree.
-2. `git worktree add <path> -b <branch>`.
+2. `git worktree add <path> -b <branch> [<startPoint>]`. The caller resolves the optional start point to a commit id with `ResolveStartPointUseCase` (`git rev-parse --verify --quiet <ref>^{commit}` in its own directory, failing with `StartPointNotFound`), so `HEAD` means the worktree the command runs in even though Git runs in the base repository. Without one (the desktop app), the branch starts at the base repository's HEAD.
 3. Copying the local files and then the repository's files into the new directory, at the same relative paths.
 4. Preparing its environment through the `WorktreeEnvironmentPreparer` it receives: `PrepareWorktreeEnvironmentUseCase` resolves it with reservation (`ResolveWorktreeEnvironmentUseCase`) and, when `envFile` is declared, `WriteEnvironmentFileUseCase` writes it in dotenv format, refusing a file Git tracks (`git ls-files --error-unmatch`, `EnvironmentFileTracked`) and reporting write errors as `EnvironmentFileWriteFailed`. The preparer defaults to `WorktreeEnvironmentPreparer.NONE`, which tests that don't exercise the environment rely on; the app and the CLI always pass the real one.
 

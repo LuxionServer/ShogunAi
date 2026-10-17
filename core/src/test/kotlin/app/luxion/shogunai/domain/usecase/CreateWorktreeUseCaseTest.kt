@@ -52,6 +52,19 @@ class CreateWorktreeUseCaseTest {
     }
 
     @Test
+    fun `appends the start point after the branch when given`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+        val fileManager = FakeFileManager(existing = baseWithSecrets)
+        val useCase = CreateWorktreeUseCase(config, executor, fileManager, FakeRepositoryProvisioningSource())
+
+        useCase("TASK-123", BranchType.FEATURE, startPoint = "abc123").getOrThrow()
+
+        assertTrue(
+            executor.executed("git", "worktree", "add", worktreePath, "-b", "feature/TASK-123", "abc123"),
+        )
+    }
+
+    @Test
     fun `uses fix prefix for fix branches`() = runTest {
         val executor = FakeShellCommandExecutor { success(it) }
         val useCase = CreateWorktreeUseCase(config, executor, FakeFileManager(baseWithSecrets), FakeRepositoryProvisioningSource())

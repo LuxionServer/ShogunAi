@@ -15,7 +15,7 @@ class CreateWorktreeUseCase(
     private val provisioningSource: RepositoryProvisioningSource,
     private val environment: WorktreeEnvironmentPreparer = WorktreeEnvironmentPreparer.NONE,
 ) {
-    suspend operator fun invoke(taskId: String, branchType: BranchType): Result<Worktree> =
+    suspend operator fun invoke(taskId: String, branchType: BranchType, startPoint: String? = null): Result<Worktree> =
         runCatching {
             val id = normalizeTaskId(taskId)
             if (!isValidGitRefSegment(id)) {
@@ -40,7 +40,7 @@ class CreateWorktreeUseCase(
                 fileManager = fileManager,
                 worktreePath = worktreePath,
                 branch = branch,
-                addArgs = listOf("git", "worktree", "add", worktreePath, "-b", branch),
+                addArgs = listOf("git", "worktree", "add", worktreePath, "-b", branch) + listOfNotNull(startPoint),
                 branchToDeleteOnLfsFailure = branch,
                 repositoryFiles = repositoryFiles,
                 environment = environment,

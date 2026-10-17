@@ -230,6 +230,7 @@ object SpanishStrings : Strings {
     override val gitLfsNotFound =
         "El repositorio requiere Git LFS pero 'git-lfs' no está instalado. Instálalo desde https://git-lfs.com y vuelve a intentarlo."
     override fun branchNotFound(branch: String) = "No se encontró la rama: $branch"
+    override fun startPointNotFound(ref: String) = "\"$ref\" no es un commit"
     override fun branchAlreadyCheckedOut(branch: String, path: String?) =
         "La rama '$branch' ya está en uso" + if (path != null) " en $path" else ""
     override fun noFreePort(from: Int, to: Int) = "No queda ningún puerto libre entre $from y $to para este worktree"

@@ -304,6 +304,49 @@ class ShogunCliTest {
     }
 
     @Test
+    fun `new from a linked worktree starts at that worktree's HEAD`() {
+        val executor = repositoryExecutor { command, directory ->
+            if (command == listOf("git", "rev-parse", "--verify", "--quiet", "HEAD^{commit}") && directory == merged) {
+                Executor.ok(command, "epic1234\n")
+            } else {
+                null
+            }
+        }
+
+        val exitCode = cli(executor, workingDirectory = merged).run(listOf("new", "TASK-123"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(executor.ran("git", "worktree", "add", "$worktreesRoot/TASK-123", "-b", "feature/TASK-123", "epic1234"))
+    }
+
+    @Test
+    fun `new with from starts at the ref`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command == listOf("git", "rev-parse", "--verify", "--quiet", "epic/redesign^{commit}")) {
+                Executor.ok(command, "epic1234\n")
+            } else {
+                null
+            }
+        }
+
+        val exitCode = cli(executor).run(listOf("new", "TASK-123", "--from", "epic/redesign"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(executor.ran("git", "worktree", "add", "$worktreesRoot/TASK-123", "-b", "feature/TASK-123", "epic1234"))
+    }
+
+    @Test
+    fun `new with an unknown from creates nothing and exits with 1`() {
+        val executor = repositoryExecutor()
+
+        val exitCode = cli(executor).run(listOf("new", "TASK-123", "--from", "missing-branch"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("missing-branch"))
+        assertFalse(executor.calls.any { "add" in it.first })
+    }
+
+    @Test
     fun `new from an existing branch`() {
         val executor = repositoryExecutor { command, _ ->
             if (command.take(3) == listOf("git", "branch", "--list")) Executor.ok(command, "  hotfix/login\n") else null
@@ -583,6 +626,7 @@ class ShogunCliTest {
     fun `help and version`() {
         assertEquals(0, cli(repositoryExecutor()).run(listOf("help")))
         assertTrue(out.startsWith("Usage: shogun <command>"))
+        assertTrue(out.contains("new <task-id> [--fix] [--from <ref>]"))
         out.clear()
 
         assertEquals(0, cli(repositoryExecutor()).run(listOf("--version")))

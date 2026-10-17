@@ -12,6 +12,7 @@ sealed interface CliCommand {
         val branch: String? = null,
         val branchType: BranchType = BranchType.FEATURE,
         val worktreesRoot: String? = null,
+        val from: String? = null,
     ) : CliCommand
 
     data class Provision(val path: String? = null) : CliCommand
@@ -93,10 +94,12 @@ private fun parseNew(rest: List<String>): CliCommand.New {
     var branch: String? = null
     var fix = false
     var worktreesRoot: String? = null
+    var from: String? = null
     val remaining = ArrayDeque(rest)
     while (remaining.isNotEmpty()) {
         when (val argument = remaining.removeFirst()) {
             "--fix" -> fix = true
+            "--from" -> from = remaining.valueOf(argument)
             "--branch" -> branch = remaining.valueOf(argument)
             "--worktrees-root" -> worktreesRoot = remaining.valueOf(argument)
             else -> {
@@ -109,11 +112,13 @@ private fun parseNew(rest: List<String>): CliCommand.New {
     if (taskId == null && branch == null) throw UsageException("'new' needs a task id or --branch <branch>")
     if (taskId != null && branch != null) throw UsageException("'new' takes either a task id or --branch, not both")
     if (fix && branch != null) throw UsageException("--fix only applies to a new branch, not to --branch")
+    if (from != null && branch != null) throw UsageException("--from only applies to a new branch, not to --branch")
     return CliCommand.New(
         taskId = taskId,
         branch = branch,
         branchType = if (fix) BranchType.FIX else BranchType.FEATURE,
         worktreesRoot = worktreesRoot,
+        from = from,
     )
 }
 
