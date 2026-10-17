@@ -158,6 +158,18 @@ interface Strings {
     fun gradleWorktreeSettings(daemonHeap: String?, idleTimeoutMinutes: Int?, kotlinDaemonHeap: String?): String
     fun daemonsStopped(stopped: Int, kept: Int, failed: Int): String
     val justNow: String
+
+    val xcodeDerivedDataTitle: String
+    val xcodeDerivedDataUnavailable: String
+    val noDerivedDataFolders: String
+    fun derivedDataSummary(count: Int, totalSize: String): String
+    fun derivedDataOrphans(count: Int, size: String): String
+    val deleteOrphans: String
+    fun derivedDataOnUnavailableVolumes(count: Int): String
+    fun derivedDataCompilationCache(size: String): String
+    fun derivedDataDeleted(count: Int, freed: String): String
+    val alsoDeleteDerivedData: String
+    fun orphanedDerivedData(count: Int, size: String): String
     fun minutesAgo(count: Long): String
     fun hoursAgo(count: Long): String
     fun daysAgo(count: Long): String

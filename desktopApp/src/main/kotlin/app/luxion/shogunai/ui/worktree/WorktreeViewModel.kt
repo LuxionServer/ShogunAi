@@ -9,6 +9,9 @@ import app.luxion.shogunai.WorktreeUseCases
 import app.luxion.shogunai.domain.model.BranchOption
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.DaemonStopReport
+import app.luxion.shogunai.domain.model.DerivedDataDeletion
+import app.luxion.shogunai.domain.model.DerivedDataFolder
+import app.luxion.shogunai.domain.model.DerivedDataListing
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.model.GradleProvider
@@ -93,7 +96,9 @@ class WorktreeViewModel(
         private set
 
     val canCleanUp: Boolean
-        get() = cleanupCandidates.isNotEmpty() || (isSimulatorRepository && orphanedSimulators.isNotEmpty())
+        get() = cleanupCandidates.isNotEmpty() ||
+            (isSimulatorRepository && orphanedSimulators.isNotEmpty()) ||
+            (isXcodeRepository && derivedDataOrphans.isNotEmpty())
 
     var isEmulatorRepository by mutableStateOf(false)
         private set
@@ -114,6 +119,19 @@ class WorktreeViewModel(
         private set
     var daemonStopReport by mutableStateOf<DaemonStopReport?>(null)
         private set
+
+    var isXcodeRepository by mutableStateOf(false)
+        private set
+    var derivedData by mutableStateOf<DerivedDataState>(DerivedDataState.Loading)
+        private set
+    var isDeletingOrphans by mutableStateOf(false)
+        private set
+    var derivedDataDeletionReport by mutableStateOf<DerivedDataDeletion?>(null)
+        private set
+    var cleanupDeleteDerivedData by mutableStateOf(true)
+
+    val derivedDataOrphans: List<DerivedDataFolder>
+        get() = (derivedData as? DerivedDataState.Loaded)?.listing?.orphans.orEmpty()
 
     var localBranches by mutableStateOf<List<BranchOption>>(emptyList())
         private set
@@ -230,6 +248,7 @@ class WorktreeViewModel(
         loadPorts(generation, listed)
         loadEmulatorSection(generation, listed)
         loadSimulatorSection(generation, listed)
+        loadXcodeSection(generation, listed)
         viewModelScope.launch {
             for (worktree in listed) {
                 val size = useCases.measureSize(worktree, listed).getOrNull()
@@ -342,6 +361,39 @@ class WorktreeViewModel(
         val state = useCases.gradle.listDaemons(listed)
             .fold(onSuccess = { GradleDaemonsState.Loaded(it) }, onFailure = { GradleDaemonsState.Unavailable })
         if (generation == listGeneration) gradleDaemons = state
+    }
+
+    private fun loadXcodeSection(generation: Int, listed: List<Worktree>) {
+        val provider = useCases.xcode.provider()?.takeIf { useCases.xcode.supported() }
+        isXcodeRepository = provider != null
+        if (provider == null) return
+        viewModelScope.launch { loadDerivedData(generation, listed, provider.compilationCache) }
+    }
+
+    private suspend fun loadDerivedData(generation: Int, listed: List<Worktree>, includeCompilationCache: Boolean) {
+        derivedData = DerivedDataState.Loading
+        val state = useCases.xcode.list(listed, includeCompilationCache)
+            .fold(onSuccess = { DerivedDataState.Loaded(it) }, onFailure = { DerivedDataState.Unavailable })
+        if (generation == listGeneration) derivedData = state
+    }
+
+    fun deleteOrphanedDerivedData() {
+        if (isDeletingOrphans) return
+        isDeletingOrphans = true
+        viewModelScope.launch {
+            try {
+                useCases.xcode.deleteOrphans()
+                    .onSuccess { derivedDataDeletionReport = it }
+                    .onFailure { error = it }
+                loadXcodeSection(listGeneration, worktrees)
+            } finally {
+                isDeletingOrphans = false
+            }
+        }
+    }
+
+    fun dismissDerivedDataDeletionReport() {
+        derivedDataDeletionReport = null
     }
 
     fun stopGradleDaemon(pid: Long) = stopGradleDaemons(listOf(pid))
@@ -492,6 +544,7 @@ class WorktreeViewModel(
         cleanupStopGradleDaemons = true
         cleanupStopEmulators = true
         cleanupDeleteSimulators = true
+        cleanupDeleteDerivedData = true
         isCleanupDialogOpen = true
     }
 
@@ -504,6 +557,7 @@ class WorktreeViewModel(
         val listed = worktrees
         val stopDaemons = isGradleRepository && cleanupStopGradleDaemons
         val deleteSimulators = isSimulatorRepository && cleanupDeleteSimulators
+        val deleteDerivedData = isXcodeRepository && cleanupDeleteDerivedData
         val simulatorsToDelete = if (deleteSimulators) {
             simulators.filterKeys { path -> candidates.any { it.path == path } }.mapValues { it.value.udid }
         } else {
@@ -534,12 +588,19 @@ class WorktreeViewModel(
                         } else {
                             0
                         }
+                        val deletedDerivedData = if (deleteDerivedData) {
+                            useCases.xcode.deleteOrphans().getOrNull()
+                        } else {
+                            null
+                        }
                         success = WorktreeSuccess.CleanedUp(
                             removedCount = report.removed.size,
                             stoppedDaemons = daemonReport?.stopped?.size ?: 0,
                             keptDaemons = daemonReport?.kept?.size ?: 0,
                             stoppedEmulators = stoppedEmulators,
                             deletedSimulators = deletedSimulators,
+                            deletedDerivedDataFolders = deletedDerivedData?.deleted?.size ?: 0,
+                            derivedDataBytesFreed = deletedDerivedData?.bytesFreed ?: 0,
                         )
                         cleanupIssues = report.takeIf { it.failures.isNotEmpty() || it.keptBranches.isNotEmpty() }
                     }
@@ -608,6 +669,8 @@ sealed interface WorktreeSuccess {
         val keptDaemons: Int = 0,
         val stoppedEmulators: Int = 0,
         val deletedSimulators: Int = 0,
+        val deletedDerivedDataFolders: Int = 0,
+        val derivedDataBytesFreed: Long = 0,
     ) : WorktreeSuccess
 }
 
@@ -615,4 +678,10 @@ sealed interface GradleDaemonsState {
     data object Loading : GradleDaemonsState
     data class Loaded(val daemons: List<GradleDaemon>) : GradleDaemonsState
     data object Unavailable : GradleDaemonsState
+}
+
+sealed interface DerivedDataState {
+    data object Loading : DerivedDataState
+    data class Loaded(val listing: DerivedDataListing) : DerivedDataState
+    data object Unavailable : DerivedDataState
 }

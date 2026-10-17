@@ -3,6 +3,7 @@ package app.luxion.shogunai.cli
 import app.luxion.shogunai.BuildInfo
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeAppleSimulators
+import app.luxion.shogunai.domain.FakeDerivedDataSource
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakePortProbe
@@ -23,6 +24,7 @@ import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.domain.model.XcodeProvider
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -105,6 +107,7 @@ class ShogunCliTest {
         workingDirectory: String = base,
         canonicalPath: (String) -> String = { it.trimEnd('/') },
         daemons: FakeGradleDaemonSource = FakeGradleDaemonSource(),
+        derivedDataSource: FakeDerivedDataSource = FakeDerivedDataSource(),
     ) = ShogunCli(
         executor = executor,
         fileManager = fileManager,
@@ -117,6 +120,7 @@ class ShogunCliTest {
         androidSdk = androidSdk,
         appleSimulators = appleSimulators,
         kmpTestWiring = kmpTestWiring,
+        derivedDataSource = derivedDataSource,
         workingDirectory = workingDirectory,
         out = out,
         err = err,
@@ -532,5 +536,203 @@ class ShogunCliTest {
 
         assertEquals(2, exitCode)
         assertEquals("shogun: unknown command 'frobnicate'\nRun 'shogun help' for usage.\n", err.toString())
+    }
+
+    @Test
+    fun `xcode lists derived data for worktrees and orphans summary`() {
+        val firstProject = "$base/iosApp/iosApp.xcodeproj"
+        val secondProject = "$merged/iosApp/iosApp.xcodeproj"
+        val orphanProject = "/home/dev/projects/gone/Gone.xcodeproj"
+        val derivedData = FakeDerivedDataSource(
+            existing = listOf(
+                FakeDerivedDataSource.derivedData("Main-hash", firstProject, sizeBytes = 1_073_741_824L),
+                FakeDerivedDataSource.derivedData("Merged-hash", secondProject, sizeBytes = 536_870_912L),
+                FakeDerivedDataSource.derivedData("Gone-hash", orphanProject, sizeBytes = 2_147_483_648L),
+            ),
+            existingProjects = setOf(firstProject, secondProject),
+        )
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(xcode = XcodeProvider()))),
+        )
+        val fileManager = FakeFileManager(existing = listOf(base, merged))
+
+        val exitCode = cli(repositoryExecutor(), fileManager = fileManager, provisioning = provisioning, derivedDataSource = derivedData)
+            .run(listOf("xcode"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            """
+            $base  1.0 GB
+            $merged  512.0 MB
+            orphans: 1 (2.0 GB)
+            """.trimIndent() + "\n",
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `xcode reports provider is not active when not declared`() {
+        val exitCode = cli(repositoryExecutor()).run(listOf("xcode"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("The Xcode provider isn't active.\n", out.toString())
+    }
+
+    @Test
+    fun `xcode lists compilation cache size when declared`() {
+        val derivedData = FakeDerivedDataSource(existing = emptyList(), cacheBytes = 1_073_741_824L)
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(xcode = XcodeProvider(compilationCache = true)))),
+        )
+
+        val exitCode = cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData)
+            .run(listOf("xcode"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            """
+            orphans: 0 (0 B)
+            compilation cache: 1.0 GB
+            """.trimIndent() + "\n",
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `xcode lists folders on unavailable volumes`() {
+        val folder = FakeDerivedDataSource.derivedData("Vol-hash", "/Volumes/Work/App.xcodeproj")
+        val derivedData = FakeDerivedDataSource(
+            existing = listOf(folder),
+            unavailableVolumes = setOf("/Volumes/Work"),
+        )
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(xcode = XcodeProvider()))),
+        )
+
+        val exitCode = cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData)
+            .run(listOf("xcode"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            """
+            orphans: 0 (0 B)
+            folders on unavailable volumes: 1
+            """.trimIndent() + "\n",
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `xcode clean deletes orphaned derived data folders and reports space freed`() {
+        val first = FakeDerivedDataSource.derivedData("Gone1-hash", "/home/dev/projects/gone1/App.xcodeproj", 1_073_741_824L)
+        val second = FakeDerivedDataSource.derivedData("Gone2-hash", "/home/dev/projects/gone2/App.xcodeproj", 1_073_741_824L)
+        val derivedData = FakeDerivedDataSource(existing = listOf(first, second))
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(xcode = XcodeProvider()))),
+        )
+
+        val exitCode = cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData)
+            .run(listOf("xcode", "clean"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf(first.path, second.path), derivedData.deleted)
+        assertEquals(
+            """
+            deleted ${first.path}
+            deleted ${second.path}
+            freed 2.0 GB
+            """.trimIndent() + "\n",
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `xcode clean reports nothing to delete when no folder is orphaned`() {
+        val derivedData = FakeDerivedDataSource(existing = emptyList())
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(xcode = XcodeProvider()))),
+        )
+
+        val exitCode = cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData)
+            .run(listOf("xcode", "clean"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("Nothing to delete.\n", out.toString())
+        assertTrue(derivedData.deleted.isEmpty())
+    }
+
+    @Test
+    fun `xcode clean reports deletion failures on stderr and exits with 1`() {
+        val orphan = FakeDerivedDataSource.derivedData("Stuck-hash", "/home/dev/projects/gone/App.xcodeproj")
+        val derivedData = FakeDerivedDataSource(existing = listOf(orphan), failDeletionFor = setOf(orphan.path))
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(xcode = XcodeProvider()))),
+        )
+
+        val exitCode = cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData)
+            .run(listOf("xcode", "clean"))
+
+        assertEquals(1, exitCode)
+        assertEquals("shogun: couldn't delete ${orphan.path}: can't delete ${orphan.path}\n", err.toString())
+    }
+
+    @Test
+    fun `clean with delete derived data removes worktrees and deletes their derived data`() {
+        val mergedProject = "$merged/iosApp/iosApp.xcodeproj"
+        val folder = FakeDerivedDataSource.derivedData("Merged-hash", mergedProject)
+        val derivedData = FakeDerivedDataSource(
+            existing = listOf(folder),
+            existingProjects = setOf(mergedProject),
+        )
+        val executor = repositoryExecutor { command, _ ->
+            if (command.take(3) == listOf("git", "worktree", "remove")) {
+                derivedData.existingProjects -= mergedProject
+                Executor.ok(command)
+            } else {
+                null
+            }
+        }
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(xcode = XcodeProvider()))),
+        )
+
+        val exitCode = cli(executor, provisioning = provisioning, derivedDataSource = derivedData)
+            .run(listOf("clean", "--yes", "--delete-derived-data"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.contains("removed $merged\n"), out.toString())
+        assertTrue(out.contains("deleted DerivedData ${folder.path}\n"), out.toString())
+        assertEquals(listOf(folder.path), derivedData.deleted)
+    }
+
+    @Test
+    fun `clean without delete derived data touches no derived data`() {
+        val mergedProject = "$merged/iosApp/iosApp.xcodeproj"
+        val folder = FakeDerivedDataSource.derivedData("Merged-hash", mergedProject)
+        val derivedData = FakeDerivedDataSource(existing = listOf(folder))
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(xcode = XcodeProvider()))),
+        )
+
+        cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData)
+            .run(listOf("clean", "--yes"))
+
+        assertTrue(derivedData.deleted.isEmpty())
+    }
+
+    @Test
+    fun `clean with delete derived data without yes lists orphans that would be deleted`() {
+        val orphan = FakeDerivedDataSource.derivedData("Gone-hash", "/home/dev/projects/gone/App.xcodeproj")
+        val derivedData = FakeDerivedDataSource(existing = listOf(orphan))
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(xcode = XcodeProvider()))),
+        )
+
+        val exitCode = cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData)
+            .run(listOf("clean", "--delete-derived-data"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.contains("would delete orphaned DerivedData ${orphan.path}\n"), out.toString())
+        assertTrue(derivedData.deleted.isEmpty())
     }
 }

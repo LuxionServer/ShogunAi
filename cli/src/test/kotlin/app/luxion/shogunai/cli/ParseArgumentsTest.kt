@@ -83,6 +83,15 @@ class ParseArgumentsTest {
         assertEquals(CliCommand.Clean(confirmed = true, deleteBranches = true), command("clean", "--delete-branches", "-y"))
         assertEquals("unknown argument '--all' for 'clean'", usageError("clean", "--all"))
         assertEquals(CliCommand.Clean(confirmed = true, stopGradleDaemons = true), command("clean", "--yes", "--stop-gradle-daemons"))
+        assertEquals(CliCommand.Clean(confirmed = true, deleteDerivedData = true), command("clean", "--yes", "--delete-derived-data"))
+    }
+
+    @Test
+    fun `xcode commands`() {
+        assertEquals(CliCommand.Xcode, command("xcode"))
+        assertEquals(CliCommand.XcodeClean, command("xcode", "clean"))
+        assertEquals("unknown subcommand 'build' for 'xcode', expected clean", usageError("xcode", "build"))
+        assertEquals("'xcode clean' takes no arguments, got 'extra'", usageError("xcode", "clean", "extra"))
     }
 
     @Test

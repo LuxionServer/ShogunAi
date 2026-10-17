@@ -12,7 +12,7 @@ Esa dirección se construye en tres capas:
 |---|---|---|
 | **Motor y CLI** | La base | Provisionado de worktrees definido en el repositorio (`.shogunai.json`) y un comando `shogun` que usan la app de escritorio, los agentes y sus hooks, con un entorno por worktree (puertos reservados y variables) que llega a la shell de cada agente. **Disponible**; el provisionado más completo está planificado. |
 | **Torre de control** | La vista | La app de escritorio muestra el estado de todos los worktrees, incluidos los creados por otras herramientas, los mantiene limpios y sigue los cambios según ocurren. **Disponible.** |
-| **Android, KMP y JVM** | El contenido | Provisionado para los stacks en los que más cuesta preparar un worktree: Gradle, secretos locales, emuladores e IDEs. **Empezado**: los repositorios Gradle muestran sus daemons, pueden parar los ociosos y acotar la memoria y la vida de los daemons que arrancan los agentes, los repositorios Android pueden dar a cada worktree su propio emulador, y los KMP e iOS su propio simulador de iOS. |
+| **Android, KMP y JVM** | El contenido | Provisionado para los stacks en los que más cuesta preparar un worktree: Gradle, secretos locales, emuladores e IDEs. **Empezado**: los repositorios Gradle muestran sus daemons, pueden parar los ociosos y acotar la memoria y la vida de los daemons que arrancan los agentes, los repositorios Android pueden dar a cada worktree su propio emulador, los KMP e iOS su propio simulador de iOS, y los repositorios Xcode ven y limpian sus DerivedData y comparten compilaciones entre worktrees. |
 
 ```mermaid
 graph LR
@@ -39,7 +39,6 @@ Provisionado más completo en el `.shogunai.json` del repositorio:
 Provisionado para los stacks en los que un worktree recién creado está más lejos de compilar:
 
 - `local.properties`, keystores y `google-services.json`.
-- Los datos derivados de Xcode (`DerivedData`) por worktree, para que las compilaciones iOS en paralelo no compartan ni invaliden los productos de compilación de las demás.
 - «Abrir en Android Studio» en el worktree correcto.
 
 ### Elegir la base de un worktree nuevo

@@ -22,6 +22,13 @@ class FakeFileManager(
         paths += path
     }
 
+    override fun readText(path: String): String? = writtenTexts[path]
+
+    fun delete(path: String) {
+        paths -= path
+        writtenTexts.remove(path)
+    }
+
     val stamps = mutableMapOf<String, Long>()
 
     override fun isDirectory(path: String): Boolean = path in directories

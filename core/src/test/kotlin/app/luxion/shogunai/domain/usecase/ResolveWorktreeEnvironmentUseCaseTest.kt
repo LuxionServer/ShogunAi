@@ -5,6 +5,8 @@ import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeAppleSimulators
+import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
 import app.luxion.shogunai.domain.model.GradleProvider
@@ -13,10 +15,12 @@ import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.WorktreeEnvironment
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.XcodeProvider
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
@@ -258,6 +262,119 @@ class ResolveWorktreeEnvironmentUseCaseTest {
         val source = withGradle(GradleProvider(idleTimeoutMinutes = 30), "GRADLE_OPTS" to "-Dmine=1")
 
         assertEquals(listOf("GRADLE_OPTS" to "-Dmine=1"), withGradleContributions(source)(repository, task).getOrThrow().variables)
+    }
+
+    private fun withXcode(compilationCache: Boolean = true, vararg variables: Pair<String, String>) =
+        FakeRepositoryProvisioningSource(
+            byRepository = mapOf(
+                repository to RepositoryProvisioning(
+                    providers = RepositoryProviders(xcode = XcodeProvider(compilationCache = compilationCache)),
+                    environment = EnvironmentDeclaration(variables.map { (name, value) -> parseEnvironmentVariable(name, value) }),
+                ),
+            ),
+        )
+
+    private fun xcodeContributions(
+        fileManager: FileManager = FakeFileManager(),
+        userHome: String = "/home/dev",
+        isMac: Boolean = true,
+    ) = MachineProviderContributions(
+        FakeAppleSimulators(),
+        { SimulatorSettings() },
+        fileManager = fileManager,
+        userHome = userHome,
+        isMac = isMac,
+    )
+
+    private fun withXcodeContributions(
+        source: FakeRepositoryProvisioningSource,
+        store: FakeEnvironmentStateStore = FakeEnvironmentStateStore(),
+        fileManager: FileManager = FakeFileManager(),
+        userHome: String = "/home/dev",
+        isMac: Boolean = true,
+    ) = ResolveWorktreeEnvironmentUseCase(
+        gitExecutor(),
+        source,
+        store,
+        FakePortProbe(),
+        xcodeContributions(fileManager, userHome, isMac),
+    )
+
+    @Test
+    fun `the xcode provider with compilation cache sets the variable and writes the xcconfig file`() = runTest {
+        val fileManager = FakeFileManager()
+        val store = FakeEnvironmentStateStore()
+        val resolve = withXcodeContributions(withXcode(compilationCache = true), store = store, fileManager = fileManager)
+
+        val environment = resolve(repository, task).getOrThrow()
+
+        val expectedPath = "/home/dev/.shogunai/xcode/compilation-cache.xcconfig"
+        assertEquals(listOf("XCODE_XCCONFIG_FILE" to expectedPath), environment.variables)
+        assertEquals(mapOf("xcode-compilation-cache" to expectedPath), environment.resources)
+        assertEquals(XCODE_COMPILATION_CACHE_CONTENT, fileManager.writtenTexts[expectedPath])
+        assertEquals(mapOf("xcode-compilation-cache" to expectedPath), store.readResources("$common/worktrees/TASK-123"))
+    }
+
+    @Test
+    fun `the xcode provider without compilation cache contributes nothing`() = runTest {
+        val fileManager = FakeFileManager()
+        val resolve = withXcodeContributions(withXcode(compilationCache = false), fileManager = fileManager)
+
+        val environment = resolve(repository, task).getOrThrow()
+
+        assertEquals(emptyList(), environment.variables)
+        assertTrue(fileManager.writtenTexts.isEmpty())
+    }
+
+    @Test
+    fun `the xcode compilation cache contributes nothing when not on macOS`() = runTest {
+        val fileManager = FakeFileManager()
+        val resolve = withXcodeContributions(withXcode(compilationCache = true), fileManager = fileManager, isMac = false)
+
+        val environment = resolve(repository, task).getOrThrow()
+
+        assertEquals(emptyList(), environment.variables)
+        assertTrue(fileManager.writtenTexts.isEmpty())
+    }
+
+    @Test
+    fun `resolving xcode compilation cache without reserving never writes the file`() = runTest {
+        val fileManager = FakeFileManager()
+        val resolve = withXcodeContributions(withXcode(compilationCache = true), fileManager = fileManager)
+
+        val environment = resolve(repository, task, reserve = false).getOrThrow()
+
+        assertEquals(WorktreeEnvironment(), environment)
+        assertTrue(fileManager.writtenTexts.isEmpty())
+    }
+
+    @Test
+    fun `the xcconfig file is re-created when deleted`() = runTest {
+        val fileManager = FakeFileManager()
+        val store = FakeEnvironmentStateStore()
+        val resolve = withXcodeContributions(withXcode(compilationCache = true), store = store, fileManager = fileManager)
+        val expectedPath = "/home/dev/.shogunai/xcode/compilation-cache.xcconfig"
+
+        resolve(repository, task).getOrThrow()
+        assertEquals(XCODE_COMPILATION_CACHE_CONTENT, fileManager.writtenTexts[expectedPath])
+
+        fileManager.delete(expectedPath)
+        assertFalse(fileManager.exists(expectedPath))
+
+        resolve(repository, task).getOrThrow()
+        assertTrue(fileManager.exists(expectedPath))
+        assertEquals(XCODE_COMPILATION_CACHE_CONTENT, fileManager.writtenTexts[expectedPath])
+    }
+
+    @Test
+    fun `a declared XCODE_XCCONFIG_FILE wins over the xcode provider`() = runTest {
+        val fileManager = FakeFileManager()
+        val source = withXcode(compilationCache = true, "XCODE_XCCONFIG_FILE" to "/custom/path.xcconfig")
+        val resolve = withXcodeContributions(source, fileManager = fileManager)
+
+        val environment = resolve(repository, task).getOrThrow()
+
+        assertEquals(listOf("XCODE_XCCONFIG_FILE" to "/custom/path.xcconfig"), environment.variables)
     }
 
     private class RecordingSimulators {

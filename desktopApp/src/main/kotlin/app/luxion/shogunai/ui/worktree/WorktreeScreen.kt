@@ -167,6 +167,9 @@ fun WorktreeScreen(
                     },
                     success.stoppedEmulators.takeIf { it > 0 }?.let(strings::emulatorsStopped),
                     success.deletedSimulators.takeIf { it > 0 }?.let(strings::simulatorsDeleted),
+                    success.deletedDerivedDataFolders.takeIf { it > 0 }?.let {
+                        strings.derivedDataDeleted(it, formatSize(success.derivedDataBytesFreed))
+                    },
                 ).joinToString(" · ")
             }
             LaunchedEffect(success) {
@@ -338,6 +341,9 @@ fun WorktreeScreen(
         }
         if (viewModel.isGradleRepository) {
             GradleDaemonsSection(viewModel, modifier = Modifier.padding(vertical = Spacing.lg))
+        }
+        if (viewModel.isXcodeRepository) {
+            XcodeDerivedDataSection(viewModel, modifier = Modifier.padding(vertical = Spacing.lg))
         }
     }
 

@@ -2,6 +2,7 @@ package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeAppleSimulators
+import app.luxion.shogunai.domain.FakeDerivedDataSource
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
@@ -93,6 +94,7 @@ class EnvironmentCommandsTest {
         androidSdk = androidSdk,
         appleSimulators = appleSimulators,
         kmpTestWiring = kmpTestWiring,
+        derivedDataSource = FakeDerivedDataSource(),
         workingDirectory = workingDirectory,
         out = out,
         err = err,

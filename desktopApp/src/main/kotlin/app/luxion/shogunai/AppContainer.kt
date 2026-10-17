@@ -16,13 +16,16 @@ import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeSimulator
+import app.luxion.shogunai.domain.model.XcodeProvider
 import app.luxion.shogunai.domain.usecase.CheckGradleBuildCacheUseCase
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.CopyWorktreeLaunchCommandUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
+import app.luxion.shogunai.domain.usecase.DeleteOrphanedDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.DeleteSimulatorsUseCase
 import app.luxion.shogunai.domain.usecase.DetectRunningAgentsUseCase
+import app.luxion.shogunai.domain.usecase.ListDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.ListGradleDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.ListLocalBranchesUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
@@ -52,6 +55,7 @@ import app.luxion.shogunai.infrastructure.JsonProjectRepository
 import app.luxion.shogunai.infrastructure.JsonSettingsFile
 import app.luxion.shogunai.infrastructure.JsonThemePreferenceRepository
 import app.luxion.shogunai.infrastructure.LocalAndroidSdk
+import app.luxion.shogunai.infrastructure.MacDerivedDataSource
 import app.luxion.shogunai.infrastructure.NioEnvironmentStateStore
 import app.luxion.shogunai.infrastructure.NioFileManager
 import app.luxion.shogunai.infrastructure.ProcessBuilderShellCommandExecutor
@@ -72,6 +76,11 @@ class AppContainer {
     val repositoryProvisioningSource: RepositoryProvisioningSource = RepositoryProvisioningFiles()
     private val gradleUserHome = defaultGradleUserHome()
     private val gradleDaemonSource = ProcessGradleDaemonSource(shellCommandExecutor, gradleUserHome)
+    private val derivedDataSource = MacDerivedDataSource(
+        shellCommandExecutor,
+        fileManager,
+        home = System.getProperty("user.home"),
+    )
     private val environmentStateStore = NioEnvironmentStateStore()
     private val portProbe = SocketPortProbe()
     private val appleSimulators = SimctlAppleSimulators(shellCommandExecutor)
@@ -80,6 +89,9 @@ class AppContainer {
         appleSimulators,
         ::simulatorSettingsFor,
         gradleJvmArgsFor = { repository -> effectiveGradleJvmArgs(fileManager, gradleUserHome, repository) },
+        fileManager = fileManager,
+        userHome = System.getProperty("user.home"),
+        isMac = derivedDataSource.isSupported(),
     )
     private val resolveEnvironment = resolverWith(contributions)
     private val startSimulator = StartWorktreeSimulatorUseCase(repositoryProvisioningSource, appleSimulators, { repository, worktree, requested ->
@@ -179,6 +191,14 @@ class AppContainer {
             stopDaemons = StopGradleDaemonsUseCase(gradleDaemonSource, shellCommandExecutor),
             isBuildCacheEnabled = { CheckGradleBuildCacheUseCase(fileManager, gradleUserHome)(config.baseRepositoryPath) },
         ),
+        xcode = XcodeUseCases(
+            provider = {
+                runCatching { repositoryProvisioningSource.read(config.baseRepositoryPath).providers.xcode }.getOrNull()
+            },
+            supported = derivedDataSource::isSupported,
+            list = ListDerivedDataUseCase(derivedDataSource),
+            deleteOrphans = DeleteOrphanedDerivedDataUseCase(derivedDataSource),
+        ),
     )
 }
 
@@ -200,6 +220,7 @@ data class WorktreeUseCases(
     val emulator: EmulatorUseCases,
     val simulator: SimulatorUseCases,
     val gradle: GradleUseCases,
+    val xcode: XcodeUseCases,
 )
 
 data class SimulatorUseCases(
@@ -265,4 +286,11 @@ data class GradleUseCases(
     val listDaemons: ListGradleDaemonsUseCase,
     val stopDaemons: StopGradleDaemonsUseCase,
     val isBuildCacheEnabled: () -> Boolean,
+)
+
+data class XcodeUseCases(
+    val provider: () -> XcodeProvider?,
+    val supported: () -> Boolean,
+    val list: ListDerivedDataUseCase,
+    val deleteOrphans: DeleteOrphanedDerivedDataUseCase,
 )

@@ -5,6 +5,7 @@ import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.AndroidSdk
 import app.luxion.shogunai.domain.io.AppleSimulators
+import app.luxion.shogunai.domain.io.DerivedDataSource
 import app.luxion.shogunai.domain.io.EnvironmentStateStore
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.GradleDaemonSource
@@ -13,6 +14,7 @@ import app.luxion.shogunai.domain.io.PortProbe
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.model.ANDROID_SERIAL
+import app.luxion.shogunai.domain.model.AttributedDerivedData
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.DaemonKeptReason
 import app.luxion.shogunai.domain.model.DaemonKind
@@ -20,6 +22,8 @@ import app.luxion.shogunai.domain.model.DaemonOwner
 import app.luxion.shogunai.domain.model.DaemonProcess
 import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.DaemonStopReport
+import app.luxion.shogunai.domain.model.DerivedDataFolder
+import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.model.IOS_SIMULATOR_UDID
@@ -31,13 +35,16 @@ import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeOrigin
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.model.WorktreeStatus
+import app.luxion.shogunai.domain.model.XcodeProvider
 import app.luxion.shogunai.domain.usecase.CheckGradleBuildCacheUseCase
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.DeleteMergedBranchUseCase
+import app.luxion.shogunai.domain.usecase.DeleteOrphanedDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.DeleteSimulatorsUseCase
 import app.luxion.shogunai.domain.usecase.EnvironmentFormat
+import app.luxion.shogunai.domain.usecase.ListDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.ListGradleDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.MachineProviderContributions
@@ -87,6 +94,7 @@ class ShogunCli(
     private val androidSdk: AndroidSdk,
     private val appleSimulators: AppleSimulators,
     private val kmpTestWiring: KmpTestWiring,
+    private val derivedDataSource: DerivedDataSource,
     private val workingDirectory: String,
     private val out: Appendable,
     private val err: Appendable,
@@ -94,12 +102,18 @@ class ShogunCli(
     private val canonicalPath: (String) -> String = { File(it).canonicalPath },
     private val now: () -> Instant = Instant::now,
     private val environmentVariable: (String) -> String? = System::getenv,
+    private val userHome: String = System.getProperty("user.home"),
 ) {
     private val contributions = MachineProviderContributions(
         appleSimulators,
         ::simulatorSettingsFor,
         gradleJvmArgsFor = { repository -> effectiveGradleJvmArgs(fileManager, gradleUserHome, repository) },
+        fileManager = fileManager,
+        userHome = userHome,
+        isMac = derivedDataSource.isSupported(),
     )
+    private val listDerivedData = ListDerivedDataUseCase(derivedDataSource)
+    private val deleteOrphanedDerivedData = DeleteOrphanedDerivedDataUseCase(derivedDataSource)
     private val resolveEnvironment = resolverWith(contributions)
     private val startSimulator = StartWorktreeSimulatorUseCase(provisioningSource, appleSimulators, { repository, worktree, requested ->
         resolverWith(contributions.requesting(requested))(repository, worktree)
@@ -148,6 +162,8 @@ class ShogunCli(
             is CliCommand.SimulatorGradleInit -> simulatorGradleInit(command)
             CliCommand.HookSessionStart -> hookSessionStart()
             is CliCommand.GradleStop -> gradleStop(command)
+            CliCommand.Xcode -> xcode()
+            CliCommand.XcodeClean -> xcodeClean()
         }
     } catch (error: WorktreeError) {
         err.line("shogun: ${error.message}")
@@ -210,7 +226,14 @@ class ShogunCli(
             .toMap()
         val candidates = selectCleanupCandidates(worktrees, statuses)
         val simulators = if (command.deleteSimulators) simulatorsBeforeCleanup(config, candidates) else SimulatorCleanup()
-        if (candidates.isEmpty() && simulators.orphans.isEmpty()) {
+        val derivedDataOrphans = if (command.deleteDerivedData && derivedDataSource.isSupported() && xcodeProvider(config.baseRepositoryPath) != null) {
+            listDerivedData(worktrees, includeCompilationCache = false)
+                .onFailure { err.line("shogun: couldn't list DerivedData: ${it.message}") }
+                .getOrNull()?.orphans.orEmpty()
+        } else {
+            emptyList()
+        }
+        if (candidates.isEmpty() && simulators.orphans.isEmpty() && derivedDataOrphans.isEmpty()) {
             out.line("Nothing to clean up.")
             return EXIT_OK
         }
@@ -223,6 +246,7 @@ class ShogunCli(
             emulators.values.forEach { out.line("would stop emulator $it") }
             simulators.byWorktree.values.forEach { out.line("would delete simulator ${it.name} (${it.udid})") }
             simulators.orphans.forEach { out.line("would delete orphaned simulator ${it.name} (${it.udid})") }
+            derivedDataOrphans.forEach { out.line("would delete orphaned DerivedData ${it.path}") }
             out.line("Run 'shogun clean --yes' to remove ${if (candidates.size == 1) "it" else "them"}.")
             return EXIT_OK
         }
@@ -239,7 +263,22 @@ class ShogunCli(
             val removedSimulators = report.removed.mapNotNull { simulators.byWorktree[it]?.udid } + orphansNow.map { it.udid }
             if (removedSimulators.isNotEmpty()) deleteSimulatorsAfterCleanup(removedSimulators.distinct())
         }
-        return if (report.failures.isEmpty()) EXIT_OK else EXIT_FAILURE
+        var derivedDataFailed = false
+        if (command.deleteDerivedData && derivedDataSource.isSupported() && xcodeProvider(config.baseRepositoryPath) != null) {
+            deleteOrphanedDerivedData()
+                .onSuccess { deletion ->
+                    deletion.deleted.forEach { out.line("deleted DerivedData ${it.path}") }
+                    deletion.failures.forEach {
+                        derivedDataFailed = true
+                        err.line("shogun: couldn't delete DerivedData ${it.path}: ${it.detail}")
+                    }
+                }
+                .onFailure {
+                    derivedDataFailed = true
+                    err.line("shogun: couldn't delete DerivedData: ${it.message}")
+                }
+        }
+        return if (report.failures.isEmpty() && !derivedDataFailed) EXIT_OK else EXIT_FAILURE
     }
 
     private data class SimulatorCleanup(
@@ -451,6 +490,55 @@ class ShogunCli(
         report.kept.forEach { out.line("kept ${it.pid}  ${it.kind.label}  (${it.reason.label})") }
     }
 
+    private suspend fun xcode(): Int {
+        val repository = ResolveRepositoryUseCase(executor)(workingDirectory).getOrNull()
+        val provider = repository?.let { xcodeProvider(it) }
+        if (repository == null || provider == null || !derivedDataSource.isSupported()) {
+            out.line("The Xcode provider isn't active.")
+            return EXIT_OK
+        }
+        val config = configFor(workingDirectory)
+        val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
+        val listing = listDerivedData(worktrees, includeCompilationCache = provider.compilationCache).getOrThrow()
+        listing.ofWorktrees().forEach { item ->
+            val worktree = (item.owner as DerivedDataOwner.Worktree).path
+            out.line("$worktree  ${formatMemory(item.folder.sizeBytes)}")
+        }
+        val orphans = listing.orphans
+        out.line("orphans: ${orphans.size} (${formatMemory(orphans.sumOf { it.sizeBytes })})")
+        val unavailableCount = listing.folders.count { it.owner == DerivedDataOwner.UnavailableVolume }
+        if (unavailableCount > 0) {
+            out.line("folders on unavailable volumes: $unavailableCount")
+        }
+        if (provider.compilationCache) {
+            out.line("compilation cache: ${formatMemory(listing.compilationCacheBytes ?: 0L)}")
+        }
+        return EXIT_OK
+    }
+
+    private suspend fun xcodeClean(): Int {
+        val repository = ResolveRepositoryUseCase(executor)(workingDirectory).getOrNull()
+        val provider = repository?.let { xcodeProvider(it) }
+        if (repository == null || provider == null || !derivedDataSource.isSupported()) {
+            out.line("The Xcode provider isn't active.")
+            return EXIT_OK
+        }
+        val deletion = deleteOrphanedDerivedData().getOrThrow()
+        if (deletion.deleted.isEmpty() && deletion.failures.isEmpty()) {
+            out.line("Nothing to delete.")
+            return EXIT_OK
+        }
+        deletion.deleted.forEach { out.line("deleted ${it.path}") }
+        if (deletion.deleted.isNotEmpty()) {
+            out.line("freed ${formatMemory(deletion.bytesFreed)}")
+        }
+        deletion.failures.forEach { err.line("shogun: couldn't delete ${it.path}: ${it.detail}") }
+        return if (deletion.failures.isEmpty()) EXIT_OK else EXIT_FAILURE
+    }
+
+    private fun xcodeProvider(repository: String): XcodeProvider? =
+        runCatching { provisioningSource.read(repository).providers.xcode }.getOrNull()
+
     private fun declaresGradle(repository: String): Boolean =
         runCatching { provisioningSource.read(repository).providers.gradle != null }.getOrDefault(false)
 
@@ -629,12 +717,16 @@ class ShogunCli(
               provision [<path>]          Copy the declared files into an existing worktree (default: current directory)
               status                      List the repository's worktrees with their state
               clean [--yes] [--delete-branches] [--stop-gradle-daemons] [--stop-emulators] [--delete-simulators]
+                    [--delete-derived-data]
                                           List merged or missing worktrees; remove them with --yes
                                           (--stop-gradle-daemons / --stop-emulators: also stop their idle
                                           Gradle daemons / their emulators; --delete-simulators: also delete
-                                          their iOS simulators and orphaned ShogunAi simulators)
+                                          their iOS simulators and orphaned ShogunAi simulators;
+                                          --delete-derived-data: also delete orphaned Xcode DerivedData)
               gradle                      List the Gradle and Kotlin daemons with their memory, state and worktree
               gradle stop [<pid>...]      Stop idle daemons (all of them, or only the given ones); busy ones are kept
+              xcode                       List Xcode DerivedData folders of the worktrees, orphans and compilation cache
+              xcode clean                 Delete orphaned Xcode DerivedData folders on the machine
               hook worktree-create       Claude Code WorktreeCreate hook: create and provision the worktree, print its path
               hook worktree-remove        Claude Code WorktreeRemove hook: remove the worktree, delete its branch if merged
               hook session-start          Claude Code SessionStart hook: export the worktree's environment to the session
