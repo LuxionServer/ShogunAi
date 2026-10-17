@@ -23,7 +23,6 @@ class SelectorTest {
 
     @Test
     fun `merges a group split by a sibling that sorts in between`() {
-        // '-' sorts before '/', so "feature-old" lands between "feature" and "feature/..." branches.
         val branches = listOf("feature", "feature-old", "feature/TASK-123")
 
         assertEquals(

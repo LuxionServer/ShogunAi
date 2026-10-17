@@ -23,7 +23,7 @@ cd ShogunAi
 ./gradlew :desktopApp:hotRun --auto  # hot reload
 ```
 
-You can also use the IDE's run widget.
+You can also use the IDE's run widget. To try the `shogun` command without packaging: `./gradlew :cli:run --args="status"` (it works on the repository Gradle runs from).
 
 ## Run the tests
 
@@ -33,20 +33,22 @@ You can also use the IDE's run widget.
 
 ## Finding your way around the code
 
-The project is Kotlin Multiplatform with a single real target (desktop JVM). All the domain, infrastructure, and UI live in `desktopApp`:
+The project is a Kotlin/JVM desktop app built with Compose Multiplatform, plus the `shogun` command-line tool, in three Gradle modules. `core` holds the domain and the infrastructure, without any UI; `desktopApp` holds the Compose UI and wires everything together; `cli` is the command:
 
 ```
-desktopApp/src/main/kotlin/app/luxion/shogunai/
+core/src/main/kotlin/app/luxion/shogunai/
 ├── domain/           # models, ports (interfaces), and use cases
-├── infrastructure/   # concrete implementations of the ports (Git, filesystem)
+└── infrastructure/   # concrete implementations of the ports (Git, filesystem)
+
+desktopApp/src/main/kotlin/app/luxion/shogunai/
 ├── ui/               # Compose screens, ViewModels, and navigation
 ├── AppContainer.kt   # wires domain + infrastructure, no DI framework
 └── main.kt           # entry point
+
+cli/src/main/kotlin/app/luxion/shogunai/cli/  # the shogun command
 ```
 
-`shared` is declared but has no content of its own (see [Architecture › Overview](architecture/overview.md) for why).
-
-For the detail of each layer: [Domain layer](architecture/domain.md), [Infrastructure layer](architecture/infrastructure.md), [UI layer](architecture/ui.md).
+For the detail of each layer: [Domain layer](architecture/domain.md), [Infrastructure layer](architecture/infrastructure.md), [UI layer](architecture/ui.md), [Command-line tool](architecture/cli.md).
 
 ## How changes are planned
 

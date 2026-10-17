@@ -26,8 +26,23 @@ class StringsTest {
             WorktreeError.WorktreeAlreadyExists("~/projects/TASK-123") to "~/projects/TASK-123",
             WorktreeError.InvalidTaskId("bad..id") to "bad..id",
             WorktreeError.SecretFileNotFound(listOf("local.properties"), "~/projects/main-repo") to "local.properties",
+            WorktreeError.InvalidRepositoryConfig("~/projects/main-repo/.shogunai.json", "unexpected token") to "~/projects/main-repo/.shogunai.json",
             WorktreeError.BranchNotFound("feature/TASK-123") to "feature/TASK-123",
             WorktreeError.BranchAlreadyCheckedOut("feature/TASK-123", "~/projects/TASK-123") to "~/projects/TASK-123",
+            WorktreeError.ProcessListingFailed(listOf("lsof", "-d", "cwd"), 1) to "lsof -d cwd",
+            WorktreeError.NoEmulatorPort(5554, 5584) to "5584",
+            WorktreeError.AndroidSdkNotFound(listOf("ANDROID_HOME (/opt/sdk)")) to "ANDROID_HOME (/opt/sdk)",
+            WorktreeError.EmulatorBootTimeout("emulator-5556", 180) to "emulator-5556",
+            WorktreeError.AndroidToolFailed(listOf("adb", "devices"), 1, "") to "adb devices",
+            WorktreeError.EmulatorProviderNotDeclared to "\"providers\": { \"emulator\": {} }",
+            WorktreeError.NoAvdAvailable to "Device Manager",
+            WorktreeError.NoFreePort(20000, 29999) to "29999",
+            WorktreeError.NoIosRuntime to "Xcode",
+            WorktreeError.SimulatorBootTimeout("ShogunAi · main-repo · TASK-123", 120) to "ShogunAi · main-repo · TASK-123",
+            WorktreeError.IosSimulatorProviderNotDeclared to "\"providers\": { \"ios-simulator\": {} }",
+            WorktreeError.IosSimulatorsNotSupported to "macOS",
+            WorktreeError.AppleToolFailed(listOf("xcrun", "simctl", "boot"), 1, "") to "xcrun simctl boot",
+            WorktreeError.EnvironmentFileTracked(".env") to ".env",
         )
         errors.forEach { (error, expectedData) ->
             val english = EnglishStrings.worktreeError(error)

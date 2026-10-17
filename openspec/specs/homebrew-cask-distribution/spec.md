@@ -2,7 +2,9 @@
 
 ## Purpose
 Lets macOS users install and update the app with Homebrew, with the Cask kept in sync with every published release.
+
 ## Requirements
+
 ### Requirement: Instalación vía Homebrew Cask
 El sistema SHALL ofrecer un Cask de Homebrew en el tap `LuxionServer/homebrew-shogunai` que instale la última versión publicada de la app en macOS a partir del `.dmg` de la GitHub Release correspondiente.
 
@@ -28,3 +30,14 @@ El sistema SHALL actualizar automáticamente la versión y el `sha256` del Cask 
 #### Scenario: Falla la autenticación contra el tap
 - **WHEN** el token usado para escribir en `LuxionServer/homebrew-shogunai` es inválido o ha expirado
 - **THEN** el job falla de forma visible en GitHub Actions, sin afectar la publicación de la release ya completada
+
+### Requirement: Install the shogun command with the Cask
+The Cask SHALL link the desktop app's executable as `shogun` in Homebrew's `bin` folder, so installing the app also installs the command line tool, and uninstalling removes both.
+
+#### Scenario: Command available after install
+- **WHEN** the user runs `brew install --cask shogunai`
+- **THEN** `shogun --version` works from a new terminal and prints the installed version
+
+#### Scenario: Uninstall
+- **WHEN** the user runs `brew uninstall --cask shogunai`
+- **THEN** the `shogun` link is removed together with the app

@@ -28,4 +28,44 @@ class ProjectListViewModelTest {
 
         assertEquals(listOf(projectB), viewModel.projects)
     }
+
+    @Test
+    fun `search filters projects by name ignoring case`() {
+        val viewModel = ProjectListViewModel(FakeProjectRepository(initialProjects = listOf(projectA, projectB)))
+
+        viewModel.searchQuery = "project b"
+
+        assertEquals(listOf(projectB), viewModel.visibleProjects)
+    }
+
+    @Test
+    fun `clearing the search shows every project again`() {
+        val viewModel = ProjectListViewModel(FakeProjectRepository(initialProjects = listOf(projectA, projectB)))
+        viewModel.searchQuery = "project b"
+
+        viewModel.searchQuery = ""
+
+        assertEquals(listOf(projectA, projectB), viewModel.visibleProjects)
+    }
+
+    @Test
+    fun `sorting reorders the visible projects without changing the loaded order`() {
+        val viewModel = ProjectListViewModel(FakeProjectRepository(initialProjects = listOf(projectA, projectB)))
+
+        viewModel.sortOrder = ProjectSortOrder.NAME_DESC
+
+        assertEquals(listOf(projectB, projectA), viewModel.visibleProjects)
+        assertEquals(listOf(projectA, projectB), viewModel.projects)
+    }
+
+    @Test
+    fun `deleting a project removes it from the repository and the list`() {
+        val repository = FakeProjectRepository(initialProjects = listOf(projectA, projectB))
+        val viewModel = ProjectListViewModel(repository)
+
+        viewModel.deleteProject(projectA)
+
+        assertEquals(listOf(projectB), viewModel.projects)
+        assertEquals(listOf(projectB), repository.list())
+    }
 }

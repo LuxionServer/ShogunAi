@@ -7,20 +7,22 @@ How a new version of the desktop installer (`.dmg`/`.msi`/`.deb`) is cut and pub
 ```mermaid
 graph LR
     A["Create branch release/X.X.X"] --> B["Push to release/X.X.X"]
-    B --> C["Validate Release Branch (tests)"]
+    B --> C["Tests"]
     C --> D["PR release/X.X.X → main"]
     D --> E["Merge"]
     E --> F["Release: tag vX.X.X + build + publish"]
 ```
 
 1. **Create the branch** `release/X.X.X` (where `X.X.X` is the version to publish) from `main`.
-2. **Validate** — every push to `release/**` triggers the `Validate Release Branch` workflow (`.github/workflows/validate-release-branch.yml`), which runs `./gradlew test`. Used to iterate and fix issues before opening the PR.
+2. **Validate** — every push to `release/**` triggers the `Tests` workflow (`.github/workflows/tests.yml`), which runs `./gradlew test`. Used to iterate and fix issues before opening the PR. The same workflow also runs on every pull request targeting `develop` or an `epic/**` branch and every push to them, so regressions are caught before they reach a release branch.
 3. **Open the PR** from `release/X.X.X` to `main` and review it like any other.
 4. **Merge** — when a PR whose source branch matches `release/*` is merged, the `Release` workflow (`.github/workflows/release.yml`):
       1. creates and pushes the `vX.X.X` tag on the merge commit (the version comes from the branch name, no need to write it twice),
       2. creates the GitHub Release in **draft** mode with auto-generated notes (only once, before building),
-      3. builds the installers on macOS/Windows/Linux (`packageReleaseDmg`/`Msi`/`Deb`) passing that version and uploads each one as an asset of that release, which stays in draft while the parallel upload is in progress,
-      4. once all three installers are uploaded, publishes the release (takes it out of draft).
+      3. builds the installers on macOS Apple Silicon, macOS Intel, Windows and Linux (`packageReleaseDmg`/`Msi`/`Deb`) passing that version and uploads each one as an asset of that release, which stays in draft while the parallel upload is in progress. Each macOS `.dmg` gets its architecture suffix (`-arm64`/`-x64`) right after the build, taken from the runner's own architecture,
+      4. in parallel, builds the standalone command-line tool once on Linux (`:cli:distZip`, see [Command-line tool](../architecture/cli.md)) and uploads `shogun-X.X.X.zip` to the same draft,
+      5. once all four installers and the zip are uploaded, publishes the release (takes it out of draft),
+      6. regenerates the Homebrew Cask from `.github/homebrew/shogunai.rb` with the new version and the `sha256` of both `.dmg` files, and pushes it to the `LuxionServer/homebrew-shogunai` tap. The Cask installs the app and links its launcher as the `shogun` command.
 
 All of step 4 happens in a single CI run, with no manual intervention. The release is created as a draft and only published at the end because an already-published release is immutable for GitHub (it rejects new assets), and because generating the notes only once avoids duplicates if each matrix build regenerated them on its own.
 

@@ -1,0 +1,107 @@
+package app.luxion.shogunai.domain.model
+
+sealed class WorktreeError(message: String, cause: Throwable? = null) : Exception(message, cause) {
+
+    class BaseRepositoryNotFound(val path: String) :
+        WorktreeError("Base repository doesn't exist: $path")
+
+    class WorktreeAlreadyExists(val path: String) :
+        WorktreeError("Worktree directory already exists: $path")
+
+    class InvalidTaskId(val rawInput: String) :
+        WorktreeError("Invalid task id: \"$rawInput\"")
+
+    class SecretFileNotFound(val files: List<String>, val basePath: String) :
+        WorktreeError("Secret files not found in $basePath: ${files.joinToString()}")
+
+    class GitCommandFailed(
+        val command: List<String>,
+        val exitCode: Int,
+        val errorOutput: String,
+    ) : WorktreeError(
+        "Git command failed (exit code $exitCode): ${command.joinToString(" ")}" +
+            if (errorOutput.isNotBlank()) "\n$errorOutput" else "",
+    )
+
+    class RepositoryNotFound(val path: String) :
+        WorktreeError("No Git repository found at $path")
+
+    class NotAWorktree(val path: String) :
+        WorktreeError("$path is not a linked worktree of this repository")
+
+    class InvalidRepositoryConfig(val path: String, val detail: String?) :
+        WorktreeError("Can't read $path" + if (detail.isNullOrBlank()) "" else ": $detail")
+
+    class SecretCopyFailed(cause: Throwable) :
+        WorktreeError("Failed to copy secret files: ${cause.message}", cause)
+
+    class ClipboardWriteFailed(cause: Throwable) :
+        WorktreeError("Failed to copy the launch command to the clipboard: ${cause.message}", cause)
+
+    object GitLfsNotFound : WorktreeError(
+        "The repository requires Git LFS but 'git-lfs' isn't installed. " +
+            "Install it from https://git-lfs.com and try again.",
+    )
+
+    class BranchNotFound(val branch: String) :
+        WorktreeError("Branch not found: $branch")
+
+    class ProcessListingFailed(val command: List<String>, val exitCode: Int) :
+        WorktreeError("Couldn't list processes (exit code $exitCode): ${command.joinToString(" ")}")
+
+    class NoFreePort(val from: Int, val to: Int) :
+        WorktreeError("No free port left between $from and $to for this worktree")
+
+    class NoEmulatorPort(val from: Int, val to: Int) :
+        WorktreeError("No emulator port left between $from and $to; stop or remove other worktrees' emulators")
+
+    class AndroidSdkNotFound(val checked: List<String>) :
+        WorktreeError("Android SDK not found. Checked: ${checked.joinToString()}")
+
+    object NoAvdAvailable : WorktreeError(
+        "No Android Virtual Device found. Create one in Android Studio's Device Manager and try again.",
+    )
+
+    class EmulatorBootTimeout(val serial: String, val seconds: Long) :
+        WorktreeError("$serial didn't finish booting within $seconds s; it's still starting")
+
+    class AndroidToolFailed(val command: List<String>, val exitCode: Int, val output: String) :
+        WorktreeError(
+            "Android tool failed (exit code $exitCode): ${command.joinToString(" ")}" +
+                if (output.isNotBlank()) "\n$output" else "",
+        )
+
+    object NoIosRuntime : WorktreeError(
+        "No iOS simulator runtime is installed. Install one from Xcode's Settings > Components and try again.",
+    )
+
+    class SimulatorBootTimeout(val name: String, val seconds: Long) :
+        WorktreeError("The simulator \"$name\" didn't finish booting within $seconds s; it's still starting")
+
+    object IosSimulatorProviderNotDeclared : WorktreeError(
+        "This repository doesn't use the iOS simulator provider. Add \"providers\": { \"ios-simulator\": {} } to .shogunai.json.",
+    )
+
+    object IosSimulatorsNotSupported : WorktreeError("iOS simulators need macOS with Xcode installed.")
+
+    class AppleToolFailed(val command: List<String>, val exitCode: Int, val output: String) :
+        WorktreeError(
+            "Xcode tool failed (exit code $exitCode): ${command.joinToString(" ")}" +
+                if (output.isNotBlank()) "\n$output" else "",
+        )
+
+    object EmulatorProviderNotDeclared : WorktreeError(
+        "This repository doesn't use the emulator provider. Add \"providers\": { \"emulator\": {} } to .shogunai.json.",
+    )
+
+    class EnvironmentFileTracked(val path: String) :
+        WorktreeError("Won't write the environment file over $path because Git tracks it")
+
+    class EnvironmentFileWriteFailed(val path: String, cause: Throwable) :
+        WorktreeError("Failed to write the environment file $path: ${cause.message}", cause)
+
+    class BranchAlreadyCheckedOut(val branch: String, val path: String?) :
+        WorktreeError(
+            "Branch '$branch' is already checked out" + if (path != null) " at $path" else "",
+        )
+}
