@@ -6,15 +6,19 @@ Covers managing the worktrees of the active project: listing, creating from new 
 ## Requirements
 
 ### Requirement: List worktrees for the active project
-The system SHALL show the active project's worktrees on the worktree management screen using `ListWorktreesUseCase`, including path, branch, and whether each is the main worktree.
+The system SHALL show the active project's worktrees on the worktree management view using `ListWorktreesUseCase`, one row per worktree. Each row SHALL show the branch as its main label (or that the worktree is detached), and the worktree's folder name as secondary information. The main worktree SHALL be listed first and marked distinctly.
 
 #### Scenario: Worktrees loaded successfully
-- **WHEN** the worktree management screen opens for a project
-- **THEN** it invokes `ListWorktreesUseCase` and displays the returned worktrees, marking the main worktree distinctly
+- **WHEN** the worktree management view opens for a project
+- **THEN** it invokes `ListWorktreesUseCase` and displays the returned worktrees, with the main worktree first and marked distinctly
 
 #### Scenario: Listing fails
 - **WHEN** `ListWorktreesUseCase` returns a failed `Result` (e.g. `WorktreeError.GitCommandFailed`)
-- **THEN** the screen shows an error message derived from the `WorktreeError` instead of a worktree list
+- **THEN** the view shows an error message derived from the `WorktreeError` instead of a worktree list
+
+#### Scenario: Branch as the main label
+- **WHEN** a worktree at `~/projects/main-repo-worktrees/TASK-123` has the branch `feature/TASK-123`
+- **THEN** its row shows `feature/TASK-123` as the main label and `TASK-123` as secondary information, without the full path
 
 ### Requirement: Create a worktree for a task
 The system SHALL let the user create a new worktree in the "New worktree" dialog by entering a task id and choosing a branch type (`feature` or `fix`), using `CreateWorktreeUseCase`. Before creating the worktree, the task id SHALL be normalized (trimmed, internal whitespace runs replaced with `-`) and validated as a Git-ref-safe identifier; if the normalized id is still invalid, the use case SHALL fail with `WorktreeError.InvalidTaskId` instead of attempting the Git command. While `CreateWorktreeUseCase` is running, the dialog SHALL show a loading indicator and disable its inputs, the new/existing-branch mode toggle and its "Create worktree" and "Cancel" actions until the call completes.
@@ -48,10 +52,10 @@ The system SHALL let the user create a new worktree in the "New worktree" dialog
 - **THEN** the dialog shows a loading indicator and its inputs, the mode toggle and its "Create worktree" and "Cancel" actions are disabled, preventing a duplicate submission until the call completes
 
 ### Requirement: Remove a worktree
-The system SHALL let the user remove a non-main worktree from the list, using `RemoveWorktreeUseCase`, with an option to also delete its local branch. Clicking the remove action SHALL always show a confirmation dialog before any Git command runs, with a checkbox labeled to delete the local branch as well, unchecked by default; the branch is only passed to `RemoveWorktreeUseCase` as `branchToDelete` if the user checks it. When the removal fails because the worktree has uncommitted or untracked changes, the system SHALL update the same dialog to offer a force retry, reusing the user's branch-deletion choice, instead of leaving the user with no recourse. While `RemoveWorktreeUseCase` is running (initial attempt or force retry), the dialog SHALL show a loading indicator and disable both its confirm and cancel actions until the call completes.
+The system SHALL let the user remove a non-main worktree, using `RemoveWorktreeUseCase`, with an option to also delete its local branch. The removal SHALL be started from the worktree's detail, its row's context menu or the delete shortcut. Starting it SHALL always show a confirmation dialog before any Git command runs, with a checkbox labeled to delete the local branch as well, unchecked by default; the branch is only passed to `RemoveWorktreeUseCase` as `branchToDelete` if the user checks it. When the removal fails because the worktree has uncommitted or untracked changes, the system SHALL update the same dialog to offer a force retry, reusing the user's branch-deletion choice, instead of leaving the user with no recourse. While `RemoveWorktreeUseCase` is running (initial attempt or force retry), the dialog SHALL show a loading indicator and disable both its confirm and cancel actions until the call completes.
 
 #### Scenario: Confirmation dialog shown before removing
-- **WHEN** the user activates the remove action for a non-main worktree
+- **WHEN** the user activates "Delete worktree" for a non-main worktree from its detail, its context menu or the shortcut
 - **THEN** the app shows a confirmation dialog with a "delete local branch" checkbox unchecked by default, and does not invoke `RemoveWorktreeUseCase` until the user confirms
 
 #### Scenario: Successful removal without deleting the branch
@@ -68,7 +72,7 @@ The system SHALL let the user remove a non-main worktree from the list, using `R
 
 #### Scenario: Removal fails for a reason unrelated to uncommitted changes
 - **WHEN** `RemoveWorktreeUseCase` returns a failed `Result` whose error does not indicate that `--force` would resolve it
-- **THEN** the screen shows an error message and keeps the worktree in the displayed list, without escalating the dialog to a force-retry state
+- **THEN** the app shows an error message and keeps the worktree in the displayed list, without escalating the dialog to a force-retry state
 
 #### Scenario: Removal fails because the worktree has uncommitted or untracked changes
 - **WHEN** `RemoveWorktreeUseCase` returns a failed `Result` whose `WorktreeError.GitCommandFailed` indicates the worktree needs `--force` to be removed
@@ -87,8 +91,8 @@ The system SHALL let the user remove a non-main worktree from the list, using `R
 - **THEN** the confirmation dialog does not show the "delete local branch" checkbox
 
 #### Scenario: Main worktree cannot be removed
-- **WHEN** the user views the main worktree entry in the list
-- **THEN** the screen does not offer a remove action for it
+- **WHEN** the user selects the main worktree or opens its row's context menu
+- **THEN** neither the detail nor the context menu offers a delete action, and the delete shortcut does nothing
 
 #### Scenario: Removal is in progress
 - **WHEN** the user confirms removal (initial attempt or force retry) and `RemoveWorktreeUseCase` has not yet returned
@@ -254,3 +258,10 @@ The project view SHALL offer a "New worktree" action in its header that opens th
 #### Scenario: Enter creates
 - **WHEN** the dialog has a valid task id and the user presses Enter
 - **THEN** the worktree is created, same as activating "Create worktree"
+
+### Requirement: Open the project's settings from its view
+The worktree management view SHALL offer a "Project settings" action in its header that opens the project's configuration.
+
+#### Scenario: Open settings
+- **WHEN** the user activates "Project settings" in a project's worktree view
+- **THEN** the content area shows that project's configuration, pre-filled with its current data

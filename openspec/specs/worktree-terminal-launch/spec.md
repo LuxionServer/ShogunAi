@@ -2,12 +2,14 @@
 
 ## Purpose
 Lets the user start working on a worktree by copying the command that opens it and runs the configured AI agent, ready to paste in any terminal.
+
 ## Requirements
+
 ### Requirement: Copy the worktree launch command to the clipboard
-The system SHALL let the user copy, to the system clipboard, the shell command needed to start working on a worktree from the worktree management screen, via `CopyWorktreeLaunchCommandUseCase`. The copied command SHALL change into the worktree's directory and then run the project's resolved agent launch command (`ProjectConfig.agentLaunchConfig`), without launching any terminal process or terminal emulator on the user's behalf. The worktree path SHALL be wrapped in double quotes so the copied command is valid when pasted into `cmd.exe`, PowerShell, bash, or zsh alike.
+The system SHALL let the user copy, to the system clipboard, the shell command needed to start working on a worktree, via `CopyWorktreeLaunchCommandUseCase`, from the worktree's detail, its row's hover action, its row's context menu or the copy shortcut. The copied command SHALL change into the worktree's directory and then run the project's resolved agent launch command (`ProjectConfig.agentLaunchConfig`), without launching any terminal process or terminal emulator on the user's behalf. The worktree path SHALL be wrapped in double quotes so the copied command is valid when pasted into `cmd.exe`, PowerShell, bash, or zsh alike.
 
 #### Scenario: Successful copy
-- **WHEN** the user clicks the worktree row's action to copy the launch command
+- **WHEN** the user activates "Copy launch command" for a worktree from any of the places that offer it
 - **THEN** the app writes `cd "<worktree path>" && <resolved agent command>` to the system clipboard
 
 #### Scenario: Default agent command wraps Headroom

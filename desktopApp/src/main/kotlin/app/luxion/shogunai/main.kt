@@ -2,11 +2,14 @@ package app.luxion.shogunai
 
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.key
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
@@ -63,20 +66,30 @@ private fun openWindow() = application {
         onDispose { }
     }
 
+    val clearWorktreeSelection = remember { mutableStateOf<(() -> Unit)?>(null) }
     Window(
         onCloseRequest = quit,
         state = windowState,
         title = "ShogunAi",
         icon = painterResource("icons/icon.png"),
+        onPreviewKeyEvent = { event ->
+            if (event.key == Key.Escape) clearWorktreeSelection.value?.invoke()
+            false
+        },
     ) {
         LaunchedEffect(Unit) { window.minimumSize = MinimumWindowSize }
         val shellViewModel = viewModel {
             ShellViewModel(appContainer.projectRepository, appContainer.shellPreferenceRepository)
         }
+        val worktreeActions = shellViewModel.worktreeActions
+        SideEffect { clearWorktreeSelection.value = worktreeActions?.onClearSelection }
         AppMenuBar(
             strings = appearance.strings,
             onAddProject = shellViewModel::addProject,
             onNewWorktree = shellViewModel::requestNewWorktree.takeIf { shellViewModel.canCreateWorktree },
+            onCopySelectedLaunchCommand = worktreeActions?.onCopySelectedLaunchCommand,
+            onDeleteSelectedWorktree = worktreeActions?.onDeleteSelectedWorktree,
+            onClearSelection = worktreeActions?.onClearSelection,
             onReload = shellViewModel::reload,
             onToggleSidebar = shellViewModel::toggleSidebar,
             onPreferences = openPreferences,
