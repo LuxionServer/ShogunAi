@@ -7,6 +7,9 @@ class FakeHerdrClient(
     private val alreadyOpen: Set<String> = emptySet(),
     private val failure: Throwable? = null,
     private val runFailure: Throwable? = null,
+    private val openWorkspaces: Map<String, String> = emptyMap(),
+    private val listFailure: Throwable? = null,
+    private val closeFailures: Map<String, Throwable> = emptyMap(),
 ) : HerdrClient {
 
     data class Split(val paneId: String, val cwd: String, val environment: List<Pair<String, String>>)
@@ -14,6 +17,9 @@ class FakeHerdrClient(
     val opened = mutableListOf<Triple<String, String, String>>()
     val splits = mutableListOf<Split>()
     val closed = mutableListOf<String>()
+    val closedWorkspaces = mutableListOf<String>()
+    var listings = 0
+        private set
     val ran = mutableListOf<Pair<String, String>>()
 
     override suspend fun openWorktree(repository: String, path: String, label: String): HerdrWorktreeOpening {
@@ -35,5 +41,16 @@ class FakeHerdrClient(
     override suspend fun runInPane(paneId: String, command: String) {
         runFailure?.let { throw it }
         ran += paneId to command
+    }
+
+    override suspend fun openWorktreeWorkspaces(repository: String): Map<String, String> {
+        listings++
+        listFailure?.let { throw it }
+        return openWorkspaces
+    }
+
+    override suspend fun closeWorkspace(workspaceId: String) {
+        closeFailures[workspaceId]?.let { throw it }
+        closedWorkspaces += workspaceId
     }
 }

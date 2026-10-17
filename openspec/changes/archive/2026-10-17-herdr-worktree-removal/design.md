@@ -63,11 +63,15 @@ The plugin manifest gains a second `[[events]]` entry, `on = "worktree.removed"`
 1. Reads `data.worktree.path` and `data.worktree.branch` (exit code 2 when the path is missing, as for `worktree.created`).
 2. Finds the repository: `data.workspace.worktree.repo_root` when present, otherwise the ShogunAi project whose worktrees folder contains the path. With neither, it notes on standard error that the repository couldn't be found and exits with code 0.
 3. Acts only when the repository has a ShogunAi project: in other repositories Herdr's choice of keeping the branch is respected. Without a branch (detached worktree) there's nothing to do.
-4. Deletes the branch with `DeleteMergedBranchUseCase`, as `shogun hook worktree-remove` does; when Git refuses because it isn't merged, it notes `shogun: kept branch <branch> because it isn't merged` on standard error. Both exit with code 0; a Git failure for another reason exits with code 1. `herdr plugin log` keeps the output.
+4. Deletes the branch with `DeleteMergedBranchUseCase`, as `shogun hook worktree-remove` does; when Git refuses because it isn't merged, it notes `shogun: kept branch <branch> because it isn't merged` on standard error. Both exit with code 0; `DeleteMergedBranchUseCase` reports any refusal by Git as "not merged", as `shogun hook worktree-remove` does. `herdr plugin log` keeps the output.
 
 No loop between the two directions: ShogunAi's `workspace close` emits `workspace.closed`, which the plugin doesn't handle, and the hook never calls Herdr.
 
 *Alternative:* `git branch -D` when `forced` is false. Rejected: a clean worktree can still sit on unmerged commits; `-d` lets Git decide, as everywhere else.
+
+## Validated against Herdr 0.9.5
+
+Checked in an isolated Herdr session with a locally built `shogun` on its `PATH`: `shogun hook worktree-remove` on an opened worktree closed its workspace and Herdr ran no plugin hook; `herdr worktree remove` on a merged worktree ran `shogun hook herdr` with `worktree.removed` and deleted its branch. One detail differs from the envelope described above: the event JSON's own `event` field is `worktree_removed` (underscore), while `HERDR_PLUGIN_EVENT` is `worktree.removed`; `shogun hook herdr` dispatches on the environment variable only. `herdr workspace close` on a worktree's workspace needs no `--group` (it was only required for the main checkout's workspace, which has linked worktree workspaces).
 
 ## Risks / Trade-offs
 

@@ -20,6 +20,7 @@ import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.model.XcodeProvider
 import app.luxion.shogunai.domain.usecase.CheckGradleBuildCacheUseCase
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
+import app.luxion.shogunai.domain.usecase.CloseHerdrWorkspacesUseCase
 import app.luxion.shogunai.domain.usecase.CopyWorktreeLaunchCommandUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
@@ -162,12 +163,12 @@ class AppContainer {
             prepareEnvironment,
         ),
         listLocalBranches = ListLocalBranchesUseCase(config, shellCommandExecutor),
-        remove = RemoveWorktreeUseCase(config, shellCommandExecutor),
+        remove = RemoveWorktreeUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient)),
         copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboardWriter),
         repair = RepairWorktreesUseCase(config, shellCommandExecutor, fileManager),
         resolveMainBranch = ResolveMainBranchUseCase(config, shellCommandExecutor),
         readStatus = ReadWorktreeStatusUseCase(shellCommandExecutor),
-        cleanUp = CleanUpWorktreesUseCase(config, shellCommandExecutor),
+        cleanUp = CleanUpWorktreesUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient)),
         detectAgents = DetectRunningAgentsUseCase(config, shellCommandExecutor),
         measureSize = MeasureWorktreeSizeUseCase(fileManager),
         readFingerprint = ReadGitMetadataFingerprintUseCase(config, fileManager),
@@ -195,6 +196,7 @@ class AppContainer {
         herdr = HerdrUseCases(
             worktreesRoot = { runCatching { herdrConfig.worktreesRoot() }.getOrNull() },
             open = OpenWorktreeInHerdrUseCase(config, herdrClient, resolveEnvironment)::invoke,
+            openWorkspaces = CloseHerdrWorkspacesUseCase(config, herdrClient)::openWorkspaces,
         ),
         gradle = GradleUseCases(
             provider = {
@@ -260,6 +262,7 @@ data class SimulatorUseCases(
 data class HerdrUseCases(
     val worktreesRoot: () -> String?,
     val open: suspend (Worktree) -> Result<HerdrOpening>,
+    val openWorkspaces: suspend (List<String>) -> Map<String, String> = { emptyMap() },
 ) {
     companion object {
         val NONE = HerdrUseCases(

@@ -297,6 +297,10 @@ fun WorktreeScreen(
             CleanupIssues(report, onDismiss = { viewModel.dismissCleanupIssues() })
         }
 
+        if (viewModel.herdrCloseFailures.isNotEmpty()) {
+            HerdrCloseFailures(viewModel.herdrCloseFailures, onDismiss = { viewModel.dismissHerdrCloseFailures() })
+        }
+
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = Spacing.lg),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -372,6 +376,13 @@ fun WorktreeScreen(
                             strings.removeWorktreeMessage(worktree.path)
                         },
                     )
+                    if (viewModel.pendingRemovalOpenInHerdr) {
+                        Text(
+                            strings.herdrWorkspaceWillClose,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(top = Spacing.sm),
+                        )
+                    }
                     worktree.branch?.let { branch ->
                         Row(
                             verticalAlignment = Alignment.CenterVertically,

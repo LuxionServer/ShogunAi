@@ -97,4 +97,18 @@ class StringsTest {
         assertEquals("English", EnglishStrings.languageName)
         assertEquals("Español", SpanishStrings.languageName)
     }
+
+    @Test
+    fun `the Herdr close warning and notices are translated and keep their data`() {
+        val english = EnglishStrings.herdrCloseFailed("~/projects/TASK-123", "workspace w2 not found")
+        val spanish = SpanishStrings.herdrCloseFailed("~/projects/TASK-123", "workspace w2 not found")
+
+        listOf(english, spanish).forEach {
+            assertTrue(it.contains("~/projects/TASK-123") && it.contains("workspace w2 not found"), it)
+        }
+        assertNotEquals(english, spanish)
+        assertNotEquals(EnglishStrings.herdrWorkspaceWillClose, SpanishStrings.herdrWorkspaceWillClose)
+        assertNotEquals(EnglishStrings.herdrCleanupNotice, SpanishStrings.herdrCleanupNotice)
+        assertNotEquals(EnglishStrings.openInHerdrMark, SpanishStrings.openInHerdrMark)
+    }
 }

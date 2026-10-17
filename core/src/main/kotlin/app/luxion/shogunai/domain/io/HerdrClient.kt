@@ -11,4 +11,8 @@ interface HerdrClient {
     suspend fun closePane(paneId: String)
 
     suspend fun runInPane(paneId: String, command: String)
+
+    suspend fun openWorktreeWorkspaces(repository: String): Map<String, String>
+
+    suspend fun closeWorkspace(workspaceId: String)
 }

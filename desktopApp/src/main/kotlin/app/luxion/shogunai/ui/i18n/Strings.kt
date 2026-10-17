@@ -105,6 +105,10 @@ interface Strings {
     fun worktreesCleanedUp(count: Int): String
     fun cleanupFailed(path: String, detail: String): String
     fun branchKept(branch: String): String
+    val herdrWorkspaceWillClose: String
+    val herdrCleanupNotice: String
+    val openInHerdrMark: String
+    fun herdrCloseFailed(path: String, detail: String): String
     val simulatorSection: String
     val simulatorSectionDescription: String
     val simulatorRuntimeLabel: String

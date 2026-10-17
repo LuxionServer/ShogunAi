@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeDerivedDataSource
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakeHerdrConfigSource
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
@@ -19,6 +20,7 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EmulatorState
+import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.IosSimulatorProvider
 import app.luxion.shogunai.domain.model.Project
@@ -110,6 +112,7 @@ class ShogunCliTest {
         daemons: FakeGradleDaemonSource = FakeGradleDaemonSource(),
         derivedDataSource: FakeDerivedDataSource = FakeDerivedDataSource(),
         herdrWorktreesRoot: String = "/home/dev/.herdr/worktrees",
+        herdr: FakeHerdrClient = FakeHerdrClient(),
     ) = ShogunCli(
         executor = executor,
         fileManager = fileManager,
@@ -129,6 +132,7 @@ class ShogunCliTest {
         err = err,
         canonicalPath = canonicalPath,
         now = { now },
+        herdr = herdr,
     )
 
     private val gradleUserHome = "/home/dev/.gradle"
@@ -411,6 +415,50 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertTrue(out.lines().contains("$merged  feature/TASK-1  origin=herdr  changes=0  merged"), out.toString())
+    }
+
+    @Test
+    fun `clean without yes lists the Herdr workspaces it would close`() {
+        val herdr = FakeHerdrClient(openWorkspaces = mapOf(merged to "w2"))
+
+        val exitCode = cli(repositoryExecutor(), herdr = herdr).run(listOf("clean"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            "would remove $merged\nwould close Herdr workspace of $merged\nRun 'shogun clean --yes' to remove it.\n",
+            out.toString(),
+        )
+        assertTrue(herdr.closedWorkspaces.isEmpty())
+    }
+
+    @Test
+    fun `clean without yes prints nothing about Herdr when it isn't available`() {
+        val herdr = FakeHerdrClient(listFailure = WorktreeError.HerdrNotInstalled)
+
+        cli(repositoryExecutor(), herdr = herdr).run(listOf("clean"))
+
+        assertEquals("would remove $merged\nRun 'shogun clean --yes' to remove it.\n", out.toString())
+    }
+
+    @Test
+    fun `clean with yes closes the Herdr workspaces of the removed worktrees`() {
+        val herdr = FakeHerdrClient(openWorkspaces = mapOf(merged to "w2"))
+
+        val exitCode = cli(repositoryExecutor(), herdr = herdr).run(listOf("clean", "--yes"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf("w2"), herdr.closedWorkspaces)
+    }
+
+    @Test
+    fun `clean with yes reports a failing Herdr close and still exits with 0`() {
+        val failure = WorktreeError.HerdrCommandFailed(listOf("herdr"), "workspace w2 not found")
+        val herdr = FakeHerdrClient(openWorkspaces = mapOf(merged to "w2"), closeFailures = mapOf("w2" to failure))
+
+        val exitCode = cli(repositoryExecutor(), herdr = herdr).run(listOf("clean", "--yes"))
+
+        assertEquals(0, exitCode)
+        assertTrue(err.contains("shogun: couldn't close the Herdr workspace of $merged: workspace w2 not found\n"), err.toString())
     }
 
     @Test

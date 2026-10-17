@@ -5,6 +5,7 @@ import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeDerivedDataSource
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakeHerdrConfigSource
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
@@ -17,6 +18,7 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.domain.model.WorktreeError
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -75,6 +77,7 @@ class HookCommandsTest {
         existing: List<String> = listOf(base),
         environment: Map<String, String> = emptyMap(),
         provisioning: RepositoryProvisioning = RepositoryProvisioning(worktreeIncludePatterns = listOf(".env")),
+        herdr: FakeHerdrClient = FakeHerdrClient(),
     ) = ShogunCli(
         executor = executor,
         fileManager = FakeFileManager(existing = existing),
@@ -98,6 +101,7 @@ class HookCommandsTest {
         canonicalPath = { it.trimEnd('/') },
         environmentVariable = { environment[it] },
         userHome = "/home/dev",
+        herdr = herdr,
     )
 
     private fun createInput(name: String, cwd: String = base) =
@@ -187,6 +191,44 @@ class HookCommandsTest {
 
         assertEquals(0, exitCode)
         assertEquals("shogun: kept branch feature/TASK-123 because it isn't merged\n", err.toString())
+    }
+
+    @Test
+    fun `worktree-remove closes the Herdr workspace of the removed worktree`() {
+        val path = "$worktreesRoot/TASK-123"
+        val herdr = FakeHerdrClient(openWorkspaces = mapOf(path to "w2"))
+
+        val exitCode = cli(Executor(porcelain(path to "feature/TASK-123")), """{"worktree_path":"$path"}""", existing = listOf(base, path), herdr = herdr)
+            .run(listOf("hook", "worktree-remove"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf("w2"), herdr.closedWorkspaces)
+        assertEquals("", err.toString())
+    }
+
+    @Test
+    fun `worktree-remove works when Herdr isn't available`() {
+        val path = "$worktreesRoot/TASK-123"
+        val herdr = FakeHerdrClient(listFailure = WorktreeError.HerdrNotInstalled)
+
+        val exitCode = cli(Executor(porcelain(path to "feature/TASK-123")), """{"worktree_path":"$path"}""", existing = listOf(base, path), herdr = herdr)
+            .run(listOf("hook", "worktree-remove"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("", err.toString())
+    }
+
+    @Test
+    fun `worktree-remove reports a failing Herdr close without changing the exit code`() {
+        val path = "$worktreesRoot/TASK-123"
+        val failure = WorktreeError.HerdrCommandFailed(listOf("herdr"), "workspace w2 not found")
+        val herdr = FakeHerdrClient(openWorkspaces = mapOf(path to "w2"), closeFailures = mapOf("w2" to failure))
+
+        val exitCode = cli(Executor(porcelain(path to "feature/TASK-123")), """{"worktree_path":"$path"}""", existing = listOf(base, path), herdr = herdr)
+            .run(listOf("hook", "worktree-remove"))
+
+        assertEquals(0, exitCode)
+        assertEquals("shogun: couldn't close the Herdr workspace of $path: workspace w2 not found\n", err.toString())
     }
 
     @Test
@@ -339,5 +381,102 @@ class HookCommandsTest {
         assertEquals(1, exitCode)
         assertTrue(err.contains("is not a linked worktree"), err.toString())
         assertEquals("", out.toString())
+    }
+
+    private val removedPath = "/home/dev/projects/worktrees/TASK-9"
+
+    private fun removedEvent() = checkNotNull(javaClass.getResource("/herdr/worktree-removed-event.json")).readText().trim()
+
+    private fun removedEnvironment(json: String? = removedEvent()) = herdrEnvironment(event = "worktree.removed", json = json)
+
+    private fun Executor.branchDeletions() = calls.map { it.first }.filter { it.take(3) == listOf("git", "branch", "-d") }
+
+    @Test
+    fun `herdr deletes the merged branch of a removed worktree`() {
+        val executor = Executor(porcelain())
+
+        val exitCode = cli(executor, "", environment = removedEnvironment()).run(listOf("hook", "herdr"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf(listOf("git", "branch", "-d", "feature/TASK-9")), executor.branchDeletions())
+        assertEquals(base, executor.calls.single { it.first.take(3) == listOf("git", "branch", "-d") }.second)
+        assertEquals("", err.toString())
+    }
+
+    @Test
+    fun `herdr keeps the branch of a removed worktree that isn't merged`() {
+        val executor = Executor(porcelain()) { command ->
+            if (command.take(3) == listOf("git", "branch", "-d")) CommandResult(command, 1, "", "not fully merged") else null
+        }
+
+        val exitCode = cli(executor, "", environment = removedEnvironment()).run(listOf("hook", "herdr"))
+
+        assertEquals(0, exitCode)
+        assertEquals("shogun: kept branch feature/TASK-9 because it isn't merged\n", err.toString())
+    }
+
+    @Test
+    fun `herdr leaves the branches of repositories without a ShogunAi project alone`() {
+        val executor = Executor(porcelain())
+
+        val exitCode = cli(executor, "", projects = emptyList(), environment = removedEnvironment()).run(listOf("hook", "herdr"))
+
+        assertEquals(0, exitCode)
+        assertTrue(executor.branchDeletions().isEmpty())
+    }
+
+    @Test
+    fun `herdr does nothing for a removed detached worktree`() {
+        val executor = Executor(porcelain())
+        val detached = removedEvent().replace("\"branch\":\"feature/TASK-9\",", "")
+
+        val exitCode = cli(executor, "", environment = removedEnvironment(detached)).run(listOf("hook", "herdr"))
+
+        assertEquals(0, exitCode)
+        assertTrue(executor.branchDeletions().isEmpty())
+    }
+
+    @Test
+    fun `herdr finds the repository from the projects when the event has no workspace`() {
+        val executor = Executor(porcelain())
+        val withoutWorkspace = """{"event":"worktree_removed","data":{"type":"worktree_removed","worktree":{"path":"$removedPath","branch":"feature/TASK-9"}}}"""
+
+        val exitCode = cli(executor, "", environment = removedEnvironment(withoutWorkspace)).run(listOf("hook", "herdr"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf(listOf("git", "branch", "-d", "feature/TASK-9")), executor.branchDeletions())
+    }
+
+    @Test
+    fun `herdr notes when the repository of a removed worktree can't be found`() {
+        val executor = Executor(porcelain())
+        val elsewhere = """{"event":"worktree_removed","data":{"type":"worktree_removed","worktree":{"path":"/home/dev/elsewhere/TASK-9","branch":"feature/TASK-9"}}}"""
+
+        val exitCode = cli(executor, "", environment = removedEnvironment(elsewhere)).run(listOf("hook", "herdr"))
+
+        assertEquals(0, exitCode)
+        assertTrue(err.contains("couldn't find the repository"), err.toString())
+        assertTrue(executor.branchDeletions().isEmpty())
+    }
+
+    @Test
+    fun `herdr fails with 2 when a removed event has no path`() {
+        val executor = Executor(porcelain())
+
+        val exitCode = cli(executor, "", environment = removedEnvironment("""{"event":"worktree_removed","data":{}}""")).run(listOf("hook", "herdr"))
+
+        assertEquals(2, exitCode)
+        assertTrue(err.contains("data.worktree.path"), err.toString())
+    }
+
+    @Test
+    fun `herdr never calls Herdr when handling a removed worktree`() {
+        val executor = Executor(porcelain())
+        val herdr = FakeHerdrClient()
+
+        cli(executor, "", environment = removedEnvironment(), herdr = herdr).run(listOf("hook", "herdr"))
+
+        assertEquals(0, herdr.listings)
+        assertTrue(executor.notifications().isEmpty())
     }
 }
