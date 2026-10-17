@@ -59,6 +59,7 @@ import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
 import app.luxion.shogunai.domain.usecase.ResolveRepositoryUseCase
+import app.luxion.shogunai.domain.usecase.ResolveStartPointUseCase
 import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.StartWorktreeEmulatorUseCase
 import app.luxion.shogunai.domain.usecase.StartWorktreeSimulatorUseCase
@@ -186,13 +187,24 @@ class ShogunCli(
         val worktree = if (command.branch != null) {
             CreateWorktreeFromBranchUseCase(config, executor, fileManager, provisioningSource, prepareEnvironment)(command.branch)
         } else {
+            val startPoint = resolveStartPoint(workingDirectory, command.from)
             CreateWorktreeUseCase(config, executor, fileManager, provisioningSource, prepareEnvironment)(
                 command.taskId.orEmpty(),
                 command.branchType,
+                startPoint,
             )
         }.getOrThrow()
         out.line(worktree.path)
         return EXIT_OK
+    }
+
+    private suspend fun resolveStartPoint(directory: String, from: String?): String? {
+        val resolve = ResolveStartPointUseCase(executor)
+        return if (from != null) {
+            resolve(directory, from).getOrThrow()
+        } else {
+            resolve(directory, "HEAD").getOrNull()
+        }
     }
 
     private suspend fun provision(command: CliCommand.Provision): Int =
@@ -593,7 +605,7 @@ class ShogunCli(
         val existing = ListWorktreesUseCase(config, executor)().getOrThrow()
             .firstOrNull { !it.isMain && sameDirectory(it.path, target) }
         val path = existing?.path
-            ?: CreateWorktreeUseCase(config, executor, fileManager, provisioningSource, prepareEnvironment)(name, BranchType.FEATURE).getOrThrow().path
+            ?: CreateWorktreeUseCase(config, executor, fileManager, provisioningSource, prepareEnvironment)(name, BranchType.FEATURE, resolveStartPoint(directory, null)).getOrThrow().path
         out.line(path)
         return EXIT_OK
     }
@@ -756,7 +768,9 @@ class ShogunCli(
             Usage: shogun <command> [options]
 
             Commands:
-              new <task-id> [--fix]       Create a worktree on a new feature/ (or fix/) branch and print its path
+              new <task-id> [--fix] [--from <ref>]
+                                          Create a worktree on a new feature/ (or fix/) branch and print its path;
+                                          the branch starts at the current worktree's HEAD unless --from is given
               new --branch <branch>       Create a worktree for an existing local branch and print its path
                   --worktrees-root <dir>  Folder for the worktree when the repository has no ShogunAi project
               provision [<path>]          Copy the declared files into an existing worktree (default: current directory)
