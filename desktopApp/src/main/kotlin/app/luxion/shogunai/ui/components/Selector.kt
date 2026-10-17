@@ -44,6 +44,7 @@ fun <T> SegmentedSelector(
                 selected = selected == option,
                 onClick = { onSelect(option) },
                 enabled = enabled,
+                modifier = Modifier.handPointer(enabled),
                 shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
                 icon = {},
                 label = {
@@ -91,7 +92,7 @@ fun <T> DropdownSelector(
             placeholder = { Text(placeholder) },
             label = fieldLabel?.let { { Text(it) } },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
+            modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth().handPointer(),
         )
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             groupOptions(options, groupBy).forEach { (group, groupOptions) ->
@@ -106,6 +107,7 @@ fun <T> DropdownSelector(
                             )
                         },
                         onClick = { expandedGroups[group] = !isExpanded },
+                        modifier = Modifier.handPointer(),
                     )
                 }
 
@@ -114,6 +116,7 @@ fun <T> DropdownSelector(
                         DropdownMenuItem(
                             text = { Text(label(option)) },
                             enabled = enabled(option),
+                            modifier = Modifier.handPointer(enabled(option)),
                             onClick = {
                                 if (enabled(option)) {
                                     onSelect(option)
