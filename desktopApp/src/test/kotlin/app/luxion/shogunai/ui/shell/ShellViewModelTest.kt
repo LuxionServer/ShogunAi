@@ -139,6 +139,21 @@ class ShellViewModelTest {
     }
 
     @Test
+    fun `worktree shortcuts are requested only from a project view`() {
+        val viewModel = viewModel()
+        viewModel.selectProject(mobile)
+
+        viewModel.requestCopyLaunchCommand()
+        viewModel.requestDeleteWorktree()
+        viewModel.addProject()
+        viewModel.requestCopyLaunchCommand()
+        viewModel.requestDeleteWorktree()
+
+        assertEquals(1, viewModel.copyLaunchCommandRequests)
+        assertEquals(1, viewModel.deleteWorktreeRequests)
+    }
+
+    @Test
     fun `cancel from the empty state returns to the empty state`() {
         val viewModel = ShellViewModel(FakeProjectRepository(), preferences)
         viewModel.addProject()

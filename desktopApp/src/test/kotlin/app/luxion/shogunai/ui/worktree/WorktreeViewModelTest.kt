@@ -416,7 +416,7 @@ class WorktreeViewModelTest {
         viewModel.remove(worktree, branchToDelete = null)
         advanceUntilIdle()
 
-        assertEquals(worktree, viewModel.worktreePendingRemoval)
+        assertEquals(worktreePath, viewModel.worktreePendingRemoval?.path)
         assertTrue(viewModel.pendingRemovalRequiresForce)
         assertNull(viewModel.error)
         assertTrue(viewModel.worktrees.any { it.path == worktreePath })
@@ -1837,5 +1837,141 @@ class WorktreeViewModelTest {
         assertIs<WorktreeError.HerdrNotInstalled>(viewModel.error)
         assertNull(viewModel.success)
         assertTrue(viewModel.openingInHerdr.isEmpty())
+    }
+
+    private val mainWorktreePath = config.baseRepositoryPath
+
+    @Test
+    fun `selecting a worktree keeps it selected across a reload`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(useCases(mergedResponder()))
+        advanceUntilIdle()
+
+        viewModel.select(worktreePath)
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertEquals(worktreePath, viewModel.selectedWorktreePath)
+    }
+
+    @Test
+    fun `the selection is cleared when the worktree is no longer listed`() = runTest(dispatcher) {
+        var output = mergedPorcelain
+        val viewModel = WorktreeViewModel(
+            useCases { command -> if (command == listCommand) success(command, output) else success(command) },
+        )
+        advanceUntilIdle()
+        viewModel.select(worktreePath)
+
+        output = "worktree $mainWorktreePath\nHEAD aaa000\nbranch refs/heads/main"
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertNull(viewModel.selectedWorktreePath)
+    }
+
+    @Test
+    fun `the main worktree is listed first and the keyboard moves the selection without passing the ends`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(useCases(mergedResponder()))
+        advanceUntilIdle()
+
+        assertEquals(mainWorktreePath, viewModel.worktrees.first().path)
+
+        viewModel.selectPrevious()
+        assertEquals(mainWorktreePath, viewModel.selectedWorktreePath)
+        viewModel.selectPrevious()
+        assertEquals(mainWorktreePath, viewModel.selectedWorktreePath)
+        viewModel.selectNext()
+        assertEquals(viewModel.worktrees[1].path, viewModel.selectedWorktreePath)
+        repeat(viewModel.worktrees.size) { viewModel.selectNext() }
+        assertEquals(viewModel.worktrees.last().path, viewModel.selectedWorktreePath)
+
+        viewModel.clearSelection()
+        assertNull(viewModel.selectedWorktreePath)
+    }
+
+    @Test
+    fun `selecting a path that is not listed changes nothing`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(useCases(mergedResponder()))
+        advanceUntilIdle()
+
+        viewModel.select("/home/dev/projects/unknown")
+
+        assertNull(viewModel.selectedWorktreePath)
+    }
+
+    @Test
+    fun `removing the selected worktree clears the selection`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(useCases(mergedResponder()))
+        advanceUntilIdle()
+        viewModel.select(worktreePath)
+
+        viewModel.remove(worktree, branchToDelete = null)
+        advanceUntilIdle()
+
+        assertNull(viewModel.selectedWorktreePath)
+    }
+
+    @Test
+    fun `a failed emulator start is reported on its worktree and not on the view`() = runTest(dispatcher) {
+        val emulators = RecordingEmulators(initial = mapOf(worktreePath to WorktreeEmulator("emulator-5554", EmulatorState.STOPPED)))
+        val failure = IOException("no emulator")
+        val failing = emulators.useCases().copy(start = { Result.failure(failure) })
+        val viewModel = WorktreeViewModel(useCases(listingResponder()).copy(emulator = failing))
+        advanceUntilIdle()
+
+        viewModel.startEmulator(worktree)
+        advanceUntilIdle()
+
+        assertEquals(failure, viewModel.actionErrors[worktreePath])
+        assertNull(viewModel.error)
+
+        viewModel.dismissActionError(worktreePath)
+        assertTrue(viewModel.actionErrors.isEmpty())
+    }
+
+    @Test
+    fun `the shortcuts act on the selected worktree`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(useCases(mergedResponder()))
+        advanceUntilIdle()
+
+        viewModel.copySelectedLaunchCommand()
+        viewModel.requestSelectedRemoval()
+        advanceUntilIdle()
+        assertTrue(clipboard.writtenText.isEmpty())
+        assertNull(viewModel.worktreePendingRemoval)
+
+        viewModel.select(worktreePath)
+        viewModel.copySelectedLaunchCommand()
+        viewModel.requestSelectedRemoval()
+        advanceUntilIdle()
+
+        assertEquals(1, clipboard.writtenText.size)
+        assertEquals(worktreePath, viewModel.worktreePendingRemoval?.path)
+    }
+
+    @Test
+    fun `the main worktree cannot be removed from the shortcut`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(useCases(mergedResponder()))
+        advanceUntilIdle()
+        viewModel.select(mainWorktreePath)
+
+        viewModel.requestSelectedRemoval()
+
+        assertNull(viewModel.worktreePendingRemoval)
+    }
+
+    @Test
+    fun `the shortcuts do nothing while a dialog is open`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(useCases(mergedResponder()))
+        advanceUntilIdle()
+        viewModel.select(worktreePath)
+        viewModel.openCreateDialog()
+
+        viewModel.copySelectedLaunchCommand()
+        viewModel.requestSelectedRemoval()
+        advanceUntilIdle()
+
+        assertTrue(clipboard.writtenText.isEmpty())
+        assertNull(viewModel.worktreePendingRemoval)
     }
 }

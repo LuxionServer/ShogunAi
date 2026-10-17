@@ -23,6 +23,10 @@ class ShellViewModel(
         private set
     var newWorktreeRequests by mutableIntStateOf(0)
         private set
+    var copyLaunchCommandRequests by mutableIntStateOf(0)
+        private set
+    var deleteWorktreeRequests by mutableIntStateOf(0)
+        private set
     val canCreateWorktree: Boolean get() = destination is ShellDestination.Project
     var isWindowNarrow by mutableStateOf(false)
         private set
@@ -50,6 +54,14 @@ class ShellViewModel(
 
     fun requestNewWorktree() {
         if (canCreateWorktree) newWorktreeRequests++
+    }
+
+    fun requestCopyLaunchCommand() {
+        if (canCreateWorktree) copyLaunchCommandRequests++
+    }
+
+    fun requestDeleteWorktree() {
+        if (canCreateWorktree) deleteWorktreeRequests++
     }
 
     fun selectProject(project: Project) = select(ShellDestination.Project(project.id))

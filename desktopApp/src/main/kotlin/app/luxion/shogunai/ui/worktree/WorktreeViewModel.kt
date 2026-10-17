@@ -56,6 +56,10 @@ class WorktreeViewModel(
         private set
     var copiedWorktreePath by mutableStateOf<String?>(null)
         private set
+    var selectedWorktreePath by mutableStateOf<String?>(null)
+        private set
+    var actionErrors by mutableStateOf<Map<String, Throwable>>(emptyMap())
+        private set
     var success by mutableStateOf<WorktreeSuccess?>(null)
         private set
 
@@ -233,9 +237,48 @@ class WorktreeViewModel(
     private fun applyListResult(generation: Int, result: Result<List<Worktree>>) {
         if (generation != listGeneration) return
         result
-            .onSuccess { worktrees = it; error = null; loadStatuses(generation, it) }
+            .onSuccess {
+                worktrees = orderedForList(it)
+                error = null
+                clearSelectionIfUnlisted()
+                loadStatuses(generation, worktrees)
+            }
             .onFailure { error = it }
         isLoading = false
+    }
+
+    val selectedWorktree: Worktree?
+        get() = worktrees.firstOrNull { it.path == selectedWorktreePath }
+
+    fun select(path: String) {
+        if (worktrees.any { it.path == path }) selectedWorktreePath = path
+    }
+
+    fun clearSelection() {
+        selectedWorktreePath = null
+    }
+
+    fun selectNext() = moveSelection(step = 1)
+
+    fun selectPrevious() = moveSelection(step = -1)
+
+    private fun moveSelection(step: Int) {
+        if (worktrees.isEmpty()) return
+        val current = worktrees.indexOfFirst { it.path == selectedWorktreePath }
+        val target = if (current < 0) 0 else (current + step).coerceIn(0, worktrees.lastIndex)
+        selectedWorktreePath = worktrees[target].path
+    }
+
+    private fun clearSelectionIfUnlisted() {
+        if (worktrees.none { it.path == selectedWorktreePath }) selectedWorktreePath = null
+    }
+
+    fun dismissActionError(path: String) {
+        actionErrors = actionErrors - path
+    }
+
+    private fun failAction(path: String, failure: Throwable) {
+        actionErrors = actionErrors + (path to failure)
     }
 
     private fun loadStatuses(generation: Int, listed: List<Worktree>) {
@@ -301,7 +344,7 @@ class WorktreeViewModel(
         startingSimulators = startingSimulators + worktree.path
         viewModelScope.launch {
             try {
-                useCases.simulator.start(worktree.path).onFailure { error = it }
+                useCases.simulator.start(worktree.path).onFailure { failAction(worktree.path, it) }
                 loadSimulators(listGeneration, worktrees)
             } finally {
                 startingSimulators = startingSimulators - worktree.path
@@ -311,7 +354,7 @@ class WorktreeViewModel(
 
     fun stopSimulator(worktree: Worktree) {
         viewModelScope.launch {
-            useCases.simulator.stop(worktree.path).onFailure { error = it }
+            useCases.simulator.stop(worktree.path).onFailure { failAction(worktree.path, it) }
             loadSimulators(listGeneration, worktrees)
         }
     }
@@ -335,7 +378,7 @@ class WorktreeViewModel(
         startingEmulators = startingEmulators + worktree.path
         viewModelScope.launch {
             try {
-                useCases.emulator.start(worktree.path).onFailure { error = it }
+                useCases.emulator.start(worktree.path).onFailure { failAction(worktree.path, it) }
                 loadEmulators(listGeneration, worktrees)
                 loadPorts(listGeneration, worktrees)
             } finally {
@@ -346,7 +389,7 @@ class WorktreeViewModel(
 
     fun stopEmulator(worktree: Worktree) {
         viewModelScope.launch {
-            useCases.emulator.stop(worktree.path).onFailure { error = it }
+            useCases.emulator.stop(worktree.path).onFailure { failAction(worktree.path, it) }
             loadEmulators(listGeneration, worktrees)
         }
     }
@@ -522,6 +565,8 @@ class WorktreeViewModel(
                         worktrees = worktrees.filterNot { it.path == worktree.path }
                         statuses = statuses - worktree.path
                         sizes = sizes - worktree.path
+                        actionErrors = actionErrors - worktree.path
+                        clearSelectionIfUnlisted()
                         error = null
                         pendingRemoval = null
                     }
@@ -550,13 +595,26 @@ class WorktreeViewModel(
         viewModelScope.launch {
             useCases.copyLaunchCommand(worktree.path)
                 .onSuccess {
-                    error = null
+                    dismissActionError(worktree.path)
                     copiedWorktreePath = worktree.path
                     delay(COPIED_FEEDBACK_DURATION_MS)
                     if (copiedWorktreePath == worktree.path) copiedWorktreePath = null
                 }
-                .onFailure { error = it }
+                .onFailure { failAction(worktree.path, it) }
         }
+    }
+
+    val isDialogOpen: Boolean
+        get() = isCreateDialogOpen || isCleanupDialogOpen || pendingRemoval != null
+
+    fun copySelectedLaunchCommand() {
+        if (isDialogOpen) return
+        selectedWorktree?.let(::copyLaunchCommand)
+    }
+
+    fun requestSelectedRemoval() {
+        if (isDialogOpen) return
+        selectedWorktree?.takeUnless { it.isMain }?.let(::requestRemoval)
     }
 
     fun openInHerdr(worktree: Worktree) {
@@ -577,7 +635,10 @@ class WorktreeViewModel(
     }
 
     fun copyLastCreatedLaunchCommand() {
-        lastCreatedWorktree?.let(::copyLaunchCommand)
+        lastCreatedWorktree?.let { worktree ->
+            select(worktree.path)
+            copyLaunchCommand(worktree)
+        }
     }
 
     fun confirmPendingRemoval() {

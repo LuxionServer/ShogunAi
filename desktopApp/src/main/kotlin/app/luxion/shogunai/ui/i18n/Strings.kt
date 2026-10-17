@@ -118,6 +118,19 @@ interface Strings {
     fun worktreesSummary(count: Int, totalSize: String): String
     val locked: String
     val cleanUp: String
+    val deleteWorktree: String
+    val copyPath: String
+    val closeDetail: String
+    val mergedChip: String
+    val mainWorktree: String
+    val deviceChip: String
+    val detailStatusSection: String
+    val detailAgentsSection: String
+    val detailEnvironmentSection: String
+    val detailDevicesSection: String
+    val detailDiskSection: String
+    val agentRunning: String
+    fun cleanableCount(count: Int): String
     val cleanUpTitle: String
     fun cleanUpMessage(count: Int): String
     val alsoDeleteLocalBranches: String

@@ -14,7 +14,7 @@ Success messages are transient and don't move the layout: the shell owns one `Ap
 
 `main.kt` adds the desktop conventions around the shell:
 
-- A `MenuBar` (`AppMenuBar`) with File (New worktree while a project view is active, Add project; Preferences and Quit off macOS), View (Reload, Toggle sidebar) and Help (About, off macOS), labelled from `Strings` so it follows the language. On macOS, `java.awt.Desktop` handlers put About and Settings… in the ShogunAi menu, and a quit handler saves the window bounds before Cmd+Q quits.
+- A `MenuBar` (`AppMenuBar`) with File (New worktree, Copy launch command and Delete worktree while a project view is active, Add project; Preferences and Quit off macOS), View (Reload, Toggle sidebar) and Help (About, off macOS), labelled from `Strings` so it follows the language. On macOS, `java.awt.Desktop` handlers put About and Settings… in the ShogunAi menu, and a quit handler saves the window bounds before Cmd+Q quits.
 - `PreferencesWindow` (theme mode and language, a single instance brought to the front when reopened) and `AboutWindow` (icon, name, `BuildInfo.VERSION`, repository link). Every window reads the same `Appearance` holder, so a change applies to all of them at once.
 - The window's bounds and maximized state are saved as `windowBounds` when it closes and restored on startup; bounds that don't intersect any connected display open the window centered instead. The minimum size is 720×480.
 
@@ -24,7 +24,7 @@ Success messages are transient and don't move the layout: the shell owns one `Ap
 |---|---|---|
 | `AppShell` | `ShellViewModel` | Sidebar with the project catalog from `ProjectRepository` (alphabetical; add, edit and remove with confirmation) and the content area for the selected destination. |
 | `ProjectConfigScreen` | `ProjectConfigViewModel` | Form for a `Project` (name, base repository path, worktrees root, main branch, the repository's provisioning, local files, agent command and Headroom switch); validates required fields and asks before discarding unsaved changes. |
-| `WorktreeScreen` | `WorktreeViewModel` | Lists the worktrees of the active project with their status; creates them from a new or an existing branch, removes them (optionally deleting the branch, retrying with `--force` when Git asks for it) and copies their launch command. |
+| `WorktreeScreen` | `WorktreeViewModel` | A list and a detail pane for the active project's worktrees; creates them from a new or an existing branch, removes them (optionally deleting the branch, retrying with `--force` when Git asks for it) and copies their launch command. |
 
 Each ViewModel uses `androidx.lifecycle` viewmodel-compose (`viewModelScope`) to call use cases without blocking the UI thread. Lists are reloaded when the window regains focus, so changes made outside the app (a branch created from the terminal, a worktree removed by hand) show up without pressing "Reload". `ProjectConfigViewModel` lives in a `ViewModelStore` of its own for each visit of the configuration screen (`rememberScreenViewModelStoreOwner`), cleared when the screen leaves the composition, so every visit starts from the saved project and rereads the repository.
 
@@ -38,15 +38,26 @@ While creating, the dialog shows `InlineProgress` and disables its inputs, the m
 
 In "Existing branch" mode the branches from `ListLocalBranchesUseCase` are shown in a `DropdownSelector` grouped by the segment before the first `/` (or "other" for branches without one). Branches that already have a worktree are rendered disabled and can't be selected, and "Create worktree" is only enabled for an available branch (`isSelectedBranchAvailable`).
 
+### Worktree list and detail
+
+`WorktreeScreen` lays the project view out as a header (project name, "New worktree", "Clean up", "Project settings" and reload), the notices, and two panes:
+
+- **List** (`WorktreeListPane`): a `LazyColumn` keyed by worktree path, with the main worktree first (`orderedForList`). Each row (`WorktreeRow`) is built from a `WorktreeRowModel`, a pure function of the worktree, its status, agents, devices and origin (`worktreeRowModel`): the branch as the main label, the folder name and origin as secondary text, a leading indicator for the most urgent state (folder missing > agent running > uncommitted changes > merged > inactive > clean), chips in a fixed order that only appear when they apply (agent, changes `✎3`, `↑2 ↓5` against the main branch, merged, inactive, locked, device) and the last commit time. Hovering a row reveals a copy-launch-command icon, and a context menu offers copy launch command, copy path and delete (not for the main worktree). The Gradle and DerivedData sections stay at the end of the list until they move to the Machine section.
+- **Detail** (`WorktreeDetailPane`, 360 dp): the selected worktree's branch, origin chips, selectable path with a copy action, the actions (copy launch command, open in Herdr, delete), a per-worktree error `Notice` (`actionErrors`) and the sections that have content: status, agents, environment (ports), devices and disk. With nothing selected it shows `ProjectSummary`: the worktree count, the total size and the cleanup candidates with "Clean up".
+
+`WorktreeViewModel.selectedWorktreePath` holds the selection by path; it survives reloads and is cleared when the worktree is no longer listed or is removed. Up and down move it (`selectNext`, `selectPrevious`) while the list has focus, and Escape clears it. Below 760 dp of content width the detail opens as a sheet over the list, with a scrim, and closing it clears the selection.
+
+Cmd/Ctrl+Shift+C (copy launch command) and Cmd/Ctrl+Backspace (delete, never for the main worktree) are menu items, so they work wherever the focus is: `ShellViewModel` counts their requests, like the new worktree request, and `WorktreeViewModel.copySelectedLaunchCommand()` and `requestSelectedRemoval()` ignore them while a dialog is open, so Cmd+Backspace never reaches a text field.
+
 ### Worktree status
 
-Each row shows its worktree's status under the branch name. `WorktreeViewModel` keeps it in `statuses`, a map from worktree path to `WorktreeStatusState` (`Loading`, `Loaded` or `Unavailable`):
+Each row shows its worktree's status in compact form, and the detail pane shows it in full. `WorktreeViewModel` keeps it in `statuses`, a map from worktree path to `WorktreeStatusState` (`Loading`, `Loaded` or `Unavailable`):
 
 - Once the list is read, the main branch is resolved with `ResolveMainBranchUseCase` (exposed as `mainBranch`) and every worktree's status is read with `ReadWorktreeStatusUseCase`, at most 4 at a time. The list shows right away and each row shows a small progress indicator until its status arrives.
-- A worktree whose status can't be read shows "Status unavailable" without affecting the others or the screen's error. A worktree whose folder is gone (`isPrunable`) shows "Folder missing" instead, and a locked one (`isLocked`, e.g. in use by an agent session) shows a neutral "locked" chip next to its branch.
+- A worktree whose status can't be read shows "Status unavailable" without affecting the others or the screen's error. A worktree whose folder is gone (`isPrunable`) shows a "Folder missing" chip instead, and a locked one (`isLocked`, e.g. in use by an agent session) shows a neutral "locked" chip.
 - Reloading the list, including when the window regains focus, reads every status again; results from an older load are dropped. Creating a worktree reads only the new one's status, and removing one drops its status.
 
-`WorktreeStatusLine` renders the status as status chips followed by segments separated by `·` (`statusSegments`). Uncommitted changes (only when there are any) are a warning chip, and a merged branch shows a "merged into <main branch>" success chip instead of its main branch divergence. The segments are `↑N ↓N upstream`, `↑N ↓N <main branch>` and the last commit date as relative time (`relativeTime`, in `RelativeTime.kt`).
+The detail pane renders the status as chips followed by segments (`statusSegments`): uncommitted changes (a warning chip, only when there are any), a "merged into <main branch>" success chip instead of the main branch divergence for a merged branch, and `↑N ↓N upstream`, `↑N ↓N <main branch>` and the last commit date as relative time (`relativeTime`, in `RelativeTime.kt`). The row shows the same information as chips (see "Worktree list and detail").
 
 ### Auto refresh
 
@@ -54,15 +65,15 @@ While `WorktreeScreen` is shown, a `DisposableEffect` calls `WorktreeViewModel.s
 
 ### Worktree overview
 
-`WorktreeScreen` receives the project's `ProjectConfig` to classify each row's origin with `classifyOrigin`, together with Herdr's worktrees folder, which `WorktreeViewModel` reads on each list load (`herdrWorktreesRoot`, through `WorktreeUseCases.herdr`). After each list load, `WorktreeViewModel` also runs `DetectRunningAgentsUseCase` once (`agents`, `null` when processes can't be listed) and measures every worktree's size one at a time with `MeasureWorktreeSizeUseCase` (`sizes`, added up in `totalSize`); stale results are dropped with `listGeneration`. It also reads each worktree's reserved ports (`ports`, through `WorktreeUseCases.readPorts`, which resolves the environment with `reserve = false`, so opening the screen never reserves a port) and `WorktreeOverviewLine` shows them after the size with `portsLabel` (`PORT 20001 · api 20002`).
+`WorktreeScreen` receives the project's `ProjectConfig` to classify each worktree's origin with `classifyOrigin`, together with Herdr's worktrees folder, which `WorktreeViewModel` reads on each list load (`herdrWorktreesRoot`, through `WorktreeUseCases.herdr`). After each list load, `WorktreeViewModel` also runs `DetectRunningAgentsUseCase` once (`agents`, `null` when processes can't be listed) and measures every worktree's size one at a time with `MeasureWorktreeSizeUseCase` (`sizes`, added up in `totalSize`); stale results are dropped with `listGeneration`. It also reads each worktree's reserved ports (`ports`, through `WorktreeUseCases.readPorts`, which resolves the environment with `reserve = false`, so opening the screen never reserves a port); the detail lists them with `portEntries` (`PORT 20001`, `api 20002`).
 
-- `WorktreeBranchLine` shows, after the branch and the "locked" label, the origin (ShogunAi, Claude Code, Herdr or other location) in muted text and each running agent as an info chip with its name.
-- `WorktreeOverviewLine`, under the status, shows the size (`formatSize`, binary units with one decimal) and an "inactive" label when `isInactive` holds.
-- The "Worktrees" title is followed by "N worktrees · <total size>".
+- The row shows the origin (ShogunAi, Claude Code, Herdr or other location) in muted text after the folder name, and an info chip with the agents' names while any is running.
+- The detail shows the origin, the running agents, the size (`formatSize`, binary units with one decimal) and an "inactive" chip when `isInactive` holds.
+- The project summary, shown in the detail pane when nothing is selected, reads "N worktrees · <total size>".
 
 ### Cleaning up worktrees
 
-The "Clean up" button next to the "Worktrees" title is enabled when `cleanupCandidates` (from `selectCleanupCandidates` over the listed worktrees and their loaded statuses) isn't empty. It opens `CleanupDialog`, which lists the candidates by folder name and branch and offers "Also delete their local branches", unchecked by default. Confirming runs `CleanUpWorktreesUseCase`, shows a progress indicator with the dialog's actions disabled, then closes the dialog, shows "N worktrees cleaned up" as a success message and reloads the list. Failures and kept branches stay visible in `CleanupIssues` until dismissed.
+The "Clean up" button in the header and the summary is enabled when `cleanupCandidates` (from `selectCleanupCandidates` over the listed worktrees and their loaded statuses) isn't empty. It opens `CleanupDialog`, which lists the candidates by folder name and branch and offers "Also delete their local branches", unchecked by default. Confirming runs `CleanUpWorktreesUseCase`, shows a progress indicator with the dialog's actions disabled, then closes the dialog, shows "N worktrees cleaned up" as a success message and reloads the list. Failures and kept branches stay visible in `CleanupIssues` until dismissed.
 
 When the repository declares the Gradle provider, the dialog also offers "Also stop the idle Gradle daemons of the worktrees being removed", checked by default (`cleanupStopGradleDaemons`): stopping an idle daemon only costs a restart on the next build. Before cleaning up, `confirmCleanup` lists the daemons with the worktrees as they were; after the removals it stops the idle ones whose last build was in a removed worktree (`idleDaemonsOfRemovedWorktrees`, `StopGradleDaemonsUseCase`). The success message then adds how many daemons were stopped and kept. A daemon that can't be listed or stopped never turns the cleanup into a failure.
 
@@ -70,7 +81,7 @@ When the repository declares the Gradle provider, the dialog also offers "Also s
 
 Only for repositories whose `.shogunai.json` declares the emulator provider (`EmulatorUseCases.declared`, read on every list load); otherwise nothing below is shown and no Android tool runs.
 
-- **Worktree row**: `WorktreeViewModel` loads `emulators` (`ReadEmulatorStatesUseCase`, one `adb devices` for all rows, no reservation) after each list load and on each auto-refresh tick without changes. `EmulatorLine` shows `Emulator · emulator-5556 · running` with Stop, or Start when stopped or not reserved yet. `startEmulator(worktree)` marks the worktree in `startingEmulators` (a progress indicator replaces the button), runs `StartWorktreeEmulatorUseCase` (which reserves the port if needed and waits for the boot), then reloads emulators and ports; errors go to the screen's error banner.
+- **Worktree detail**: `WorktreeViewModel` loads `emulators` (`ReadEmulatorStatesUseCase`, one `adb devices` for all worktrees, no reservation) after each list load and on each auto-refresh tick without changes. The detail's "Devices" section shows `EmulatorLine`: `Emulator · emulator-5556 · running` with Stop, or Start when stopped or not reserved yet; the row only shows a device chip while it is booting or running. `startEmulator(worktree)` marks the worktree in `startingEmulators` (a progress indicator replaces the button), runs `StartWorktreeEmulatorUseCase` (which reserves the port if needed and waits for the boot), then reloads emulators and ports; errors go to the worktree's `actionErrors`.
 - **Cleanup**: the dialog adds "Also stop the emulators of the worktrees being removed", checked by default (`cleanupStopEmulators`). The serials of the candidates' running emulators are taken from the loaded states before removing (removal deletes their reservations) and stopped after (`stopSerials`); the success message adds how many were stopped.
 - **Project configuration**: `EmulatorSettingsSection` shows the "Android emulator" section when `ProjectConfigViewModel.emulatorSection` isn't `Hidden`: the AVD list loaded in the background through `AppContainer.loadAvds` (with "Automatic" first, and a saved AVD the machine lacks marked as missing), the "Run without a window" switch, and the SDK-not-found message with the places checked. The settings are saved in `ProjectConfig.emulator` and count as unsaved changes. The section follows the base repository path as it's edited.
 
@@ -78,13 +89,13 @@ Only for repositories whose `.shogunai.json` declares the emulator provider (`Em
 
 Only on macOS and for repositories whose `.shogunai.json` declares the iOS simulator provider (`SimulatorUseCases.declared`, read on every list load); otherwise nothing below is shown and no Xcode tool runs.
 
-- **Worktree row**: `WorktreeViewModel` loads `simulators` (`ReadSimulatorStatesUseCase`, one `simctl list devices` for all rows, nothing created) after each list load. `SimulatorLine` shows `iOS simulator · booted` with Stop, or Start when it's shut down or doesn't exist yet. `startSimulator(worktree)` marks the worktree in `startingSimulators`, runs `StartWorktreeSimulatorUseCase` (which creates the simulator if needed, waits for the boot and opens it in Simulator or Device Hub) and reloads the states; errors go to the screen's error banner.
+- **Worktree detail**: `WorktreeViewModel` loads `simulators` (`ReadSimulatorStatesUseCase`, one `simctl list devices` for all worktrees, nothing created) after each list load. The detail's "Devices" section shows `SimulatorLine`: `iOS simulator · booted` with Stop, or Start when it's shut down or doesn't exist yet; the row only shows a device chip while it is booting or booted. `startSimulator(worktree)` marks the worktree in `startingSimulators`, runs `StartWorktreeSimulatorUseCase` (which creates the simulator if needed, waits for the boot and opens it in Simulator or Device Hub) and reloads the states; errors go to the worktree's `actionErrors`.
 - **Cleanup**: the dialog adds "Also delete the iOS simulators of the worktrees being removed, and orphaned ShogunAi simulators", checked by default (`cleanupDeleteSimulators`), and lists the orphaned ShogunAi simulators (`orphanedSimulators`, loaded with the list) that will be deleted too. "Clean up" is enabled when there are orphans even without candidates (`canCleanUp`). The candidates' UDIDs are taken from the loaded states before removing and deleted after, with the orphans, looked for again after removing (a worktree whose folder was already gone has no readable simulator before, and becomes an orphan once removed); the success message adds how many were deleted.
 - **Project configuration**: `SimulatorSettingsSection` shows the "iOS simulator" section when `ProjectConfigViewModel.simulatorSection` isn't `Hidden`: runtime and device dropdowns built from the machine's iOS runtimes (`AppContainer.simulatorSetup`, "Automatic" first, a saved name the machine lacks marked as missing), and, in a Kotlin Multiplatform repository whose KMP tests aren't wired (`KmpTestWiring`), the repository snippet with Copy and "Install for every project on this machine", which installs the Gradle init script only after a confirmation dialog. The settings are saved in `ProjectConfig.simulator` and count as unsaved changes.
 
 ### Open in Herdr
 
-Each worktree row whose folder exists has an "Open in Herdr" button before "Copy command". `openInHerdr(worktree)` marks the worktree in `openingInHerdr` (the button is disabled meanwhile) and runs `WorktreeUseCases.herdr.open` (`OpenWorktreeInHerdrUseCase`, built in `AppContainer` with `CliHerdrClient`) with that worktree. The success message says the worktree was opened with its agent, or that it was already open and Herdr switched to it (`WorktreeSuccess.OpenedInHerdr`); a missing `herdr` or a failing command goes to the error banner, with the link to herdr.dev or Herdr's own message.
+Each worktree whose folder exists has an "Open in Herdr" button in its detail, after "Copy launch command". `openInHerdr(worktree)` marks the worktree in `openingInHerdr` (the button is disabled meanwhile) and runs `WorktreeUseCases.herdr.open` (`OpenWorktreeInHerdrUseCase`, built in `AppContainer` with `CliHerdrClient`) with that worktree. The success message says the worktree was opened with its agent, or that it was already open and Herdr switched to it (`WorktreeSuccess.OpenedInHerdr`); a missing `herdr` or a failing command goes to the error banner, with the link to herdr.dev or Herdr's own message.
 
 ### Gradle daemons
 
@@ -101,7 +112,7 @@ Only on macOS and for repositories whose `.shogunai.json` declares the Xcode pro
 
 ### Launch command
 
-Each worktree row has a "Copy command" button that calls `WorktreeViewModel.copyLaunchCommand(worktree)`; the button shows a "Copied" state for a couple of seconds. The command (`cd "<path>" && <agent command>`) is pasted by the user in the terminal of their choice.
+The detail's primary "Copy launch command" button, the row's hover icon, its context menu and Cmd/Ctrl+Shift+C all call `WorktreeViewModel.copyLaunchCommand(worktree)`; the button shows a "Copied" state for a couple of seconds. The user pastes the command (`cd "<path>" && <agent command>`) in the terminal of their choice.
 
 ### Repository provisioning and local files
 

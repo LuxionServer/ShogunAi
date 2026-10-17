@@ -107,6 +107,9 @@ private fun ShellContent(appContainer: AppContainer, viewModel: ShellViewModel) 
                 destination.previousWorktreesRoot,
                 viewModel.reloadRequests,
                 viewModel.newWorktreeRequests,
+                viewModel.copyLaunchCommandRequests,
+                viewModel.deleteWorktreeRequests,
+                onOpenProjectSettings = { viewModel.editProject(project) },
             )
         }
         is ShellDestination.ProjectSettings -> viewModel.projectFor(destination)?.let { project ->
@@ -123,6 +126,9 @@ private fun ProjectWorktrees(
     previousWorktreesRoot: String?,
     reloadRequests: Int,
     newWorktreeRequests: Int,
+    copyLaunchCommandRequests: Int,
+    deleteWorktreeRequests: Int,
+    onOpenProjectSettings: () -> Unit,
 ) {
     val viewModelKey = "${project.id}-${project.config.hashCode()}"
     val viewModel = viewModel(key = viewModelKey) {
@@ -146,10 +152,19 @@ private fun ProjectWorktrees(
     LaunchedEffect(newWorktreeRequests) {
         if (newWorktreeRequests != newWorktreeRequestsOnEntry) viewModel.openCreateDialog()
     }
+    val copyRequestsOnEntry = remember(viewModelKey) { copyLaunchCommandRequests }
+    LaunchedEffect(copyLaunchCommandRequests) {
+        if (copyLaunchCommandRequests != copyRequestsOnEntry) viewModel.copySelectedLaunchCommand()
+    }
+    val deleteRequestsOnEntry = remember(viewModelKey) { deleteWorktreeRequests }
+    LaunchedEffect(deleteWorktreeRequests) {
+        if (deleteWorktreeRequests != deleteRequestsOnEntry) viewModel.requestSelectedRemoval()
+    }
     WorktreeScreen(
         projectName = project.name,
         projectConfig = project.config,
         viewModel = viewModel,
+        onOpenProjectSettings = onOpenProjectSettings,
     )
 }
 
