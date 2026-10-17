@@ -135,7 +135,7 @@ class WorktreeViewModelTest {
             ),
             listLocalBranches = ListLocalBranchesUseCase(config, executor),
             remove = RemoveWorktreeUseCase(config, executor),
-            copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, FakeClipboardWriter()),
+            copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboard),
             repair = RepairWorktreesUseCase(config, executor, FakeFileManager(existing = listOf(config.baseRepositoryPath))),
             resolveMainBranch = ResolveMainBranchUseCase(config, executor),
             readStatus = ReadWorktreeStatusUseCase(executor),
@@ -152,6 +152,7 @@ class WorktreeViewModelTest {
     }
 
     private var portsByWorktree: Map<String, Map<String, Int>> = emptyMap()
+    private val clipboard = FakeClipboardWriter()
 
     private fun xcodeUseCases(source: DerivedDataSource, provider: XcodeProvider? = null) = XcodeUseCases(
         provider = { provider },
@@ -260,18 +261,109 @@ class WorktreeViewModelTest {
         viewModel.createFromBranch(branch)
         advanceUntilIdle()
 
-        assertEquals(branch, assertIs<WorktreeError.BranchNotFound>(viewModel.error).branch)
+        assertEquals(branch, assertIs<WorktreeError.BranchNotFound>(viewModel.createError).branch)
+        assertNull(viewModel.error)
         assertTrue(viewModel.worktrees.none { it.branch == branch })
     }
 
     @Test
-    fun `dismissError clears the error message`() = runTest(dispatcher) {
+    fun `opening the create dialog resets the form fields`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(useCases(listingResponder()))
+        advanceUntilIdle()
+        viewModel.openCreateDialog()
+        viewModel.updateTaskId("TASK-456")
+        viewModel.selectedBranch = "hotfix/security-patch"
+        viewModel.dismissCreateDialog()
+
+        viewModel.openCreateDialog()
+
+        assertTrue(viewModel.isCreateDialogOpen)
+        assertEquals("", viewModel.taskId)
+        assertNull(viewModel.selectedBranch)
+        assertNull(viewModel.createError)
+    }
+
+    @Test
+    fun `a failed creation keeps the dialog open with the task id and its error`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(useCases(listingResponder()))
+        advanceUntilIdle()
+        viewModel.openCreateDialog()
+        viewModel.updateTaskId("TASK-456")
+
+        viewModel.confirmCreate()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.isCreateDialogOpen)
+        assertEquals("TASK-456", viewModel.taskId)
+        assertIs<WorktreeError.BaseRepositoryNotFound>(viewModel.createError)
+        assertNull(viewModel.error)
+        assertNull(viewModel.success)
+    }
+
+    @Test
+    fun `a successful creation closes the dialog and remembers the new worktree`() = runTest(dispatcher) {
         val branch = "hotfix/security-patch"
         val viewModel = WorktreeViewModel(
             useCases { command ->
                 when {
                     command == listCommand -> success(command, porcelainOutput)
-                    command.getOrNull(1) == "branch" && command.getOrNull(2) == "--list" -> success(command, stdout = "")
+                    command.getOrNull(1) == "branch" && command.getOrNull(2) == "--list" ->
+                        success(command, stdout = "  $branch\n")
+                    else -> success(command)
+                }
+            },
+        )
+        advanceUntilIdle()
+        viewModel.openCreateDialog()
+
+        viewModel.createFromBranch(branch)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.isCreateDialogOpen)
+        assertEquals("/home/dev/projects/hotfix-security-patch", viewModel.lastCreatedWorktree?.path)
+        assertEquals(WorktreeSuccess.Created("/home/dev/projects/hotfix-security-patch"), viewModel.success)
+    }
+
+    @Test
+    fun `dismissing the create dialog is ignored while creating`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(useCases(listingResponder()))
+        advanceUntilIdle()
+        viewModel.openCreateDialog()
+        viewModel.updateTaskId("TASK-456")
+
+        viewModel.confirmCreate()
+        viewModel.dismissCreateDialog()
+
+        assertTrue(viewModel.isCreating)
+        assertTrue(viewModel.isCreateDialogOpen)
+        advanceUntilIdle()
+    }
+
+    @Test
+    fun `confirmCreate does nothing with an invalid task id`() = runTest(dispatcher) {
+        val executed = mutableListOf<List<String>>()
+        val viewModel = WorktreeViewModel(useCases(listingResponder(executed)))
+        advanceUntilIdle()
+        viewModel.openCreateDialog()
+        viewModel.updateTaskId("bad..id")
+
+        viewModel.confirmCreate()
+        advanceUntilIdle()
+
+        assertFalse(viewModel.isCreating)
+        assertNull(viewModel.createError)
+        assertTrue(executed.none { it.take(3) == listOf("git", "worktree", "add") })
+    }
+
+    @Test
+    fun `copying from the creation message copies the new worktree's launch command`() = runTest(dispatcher) {
+        val branch = "hotfix/security-patch"
+        val viewModel = WorktreeViewModel(
+            useCases { command ->
+                when {
+                    command == listCommand -> success(command, porcelainOutput)
+                    command.getOrNull(1) == "branch" && command.getOrNull(2) == "--list" ->
+                        success(command, stdout = "  $branch\n")
                     else -> success(command)
                 }
             },
@@ -279,6 +371,26 @@ class WorktreeViewModelTest {
         advanceUntilIdle()
         viewModel.createFromBranch(branch)
         advanceUntilIdle()
+
+        viewModel.copyLastCreatedLaunchCommand()
+        advanceUntilIdle()
+
+        assertEquals(1, clipboard.writtenText.size)
+        assertTrue(clipboard.writtenText.single().startsWith("cd \"/home/dev/projects/hotfix-security-patch\" && "))
+    }
+
+    @Test
+    fun `dismissError clears the error message`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(
+            useCases { command ->
+                when (command) {
+                    listCommand -> failure(command, stderr = "not a git repository")
+                    else -> success(command)
+                }
+            },
+        )
+        advanceUntilIdle()
+        assertIs<WorktreeError>(viewModel.error)
 
         viewModel.dismissError()
 

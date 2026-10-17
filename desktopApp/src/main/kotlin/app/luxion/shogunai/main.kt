@@ -76,6 +76,7 @@ private fun openWindow() = application {
         AppMenuBar(
             strings = appearance.strings,
             onAddProject = shellViewModel::addProject,
+            onNewWorktree = shellViewModel::requestNewWorktree.takeIf { shellViewModel.canCreateWorktree },
             onReload = shellViewModel::reload,
             onToggleSidebar = shellViewModel::toggleSidebar,
             onPreferences = openPreferences,

@@ -34,15 +34,14 @@ En curso en la rama `epic/ui-redesign`. La app de escritorio ha crecido funciona
 
 Está planificado en estos cambios de OpenSpec, que se implementan en este orden:
 
-1. `create-worktree-dialog`: crear un worktree en un diálogo (Cmd/Ctrl+N) que después ofrece copiar el comando de lanzamiento.
-2. `worktree-list-detail`: filas de una línea y un panel de detalle, con la configuración del proyecto accesible desde su vista.
-3. `all-worktrees-view`: los worktrees de todos los proyectos en una vista, con filtros por proyecto y por texto.
-4. `active-worktrees-view`: la vista "Activos", la agrupación por estado y los contadores de actividad en la barra lateral.
-5. `machine-resources-view`: la sección "Máquina", que sustituye a las secciones de Gradle y DerivedData de la vista del proyecto.
-6. `project-settings-view`: la configuración del proyecto en secciones con una barra de guardado, y añadir un proyecto a partir de la carpeta de su repositorio.
-7. `providers-configuration`: activar los providers, fijar sus opciones y el entorno por worktree desde la configuración, escribiendo `.shogunai.json`.
-8. `understandable-errors`: cada error dice qué ha fallado y qué hacer después, con la salida técnica guardada en "Detalles técnicos".
-9. `command-palette`: Cmd/Ctrl+K para saltar a cualquier vista, proyecto o worktree, o ejecutar una acción.
+1. `worktree-list-detail`: filas de una línea y un panel de detalle, con la configuración del proyecto accesible desde su vista.
+2. `all-worktrees-view`: los worktrees de todos los proyectos en una vista, con filtros por proyecto y por texto.
+3. `active-worktrees-view`: la vista "Activos", la agrupación por estado y los contadores de actividad en la barra lateral.
+4. `machine-resources-view`: la sección "Máquina", que sustituye a las secciones de Gradle y DerivedData de la vista del proyecto.
+5. `project-settings-view`: la configuración del proyecto en secciones con una barra de guardado, y añadir un proyecto a partir de la carpeta de su repositorio.
+6. `providers-configuration`: activar los providers, fijar sus opciones y el entorno por worktree desde la configuración, escribiendo `.shogunai.json`.
+7. `understandable-errors`: cada error dice qué ha fallado y qué hacer después, con la salida técnica guardada en "Detalles técnicos".
+8. `command-palette`: Cmd/Ctrl+K para saltar a cualquier vista, proyecto o worktree, o ejecutar una acción.
 
 Cada cambio quita su línea de esta lista cuando se archiva.
 

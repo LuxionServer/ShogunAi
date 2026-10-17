@@ -12,6 +12,7 @@ import app.luxion.shogunai.ui.isMacOs
 fun FrameWindowScope.AppMenuBar(
     strings: Strings,
     onAddProject: () -> Unit,
+    onNewWorktree: (() -> Unit)?,
     onReload: () -> Unit,
     onToggleSidebar: () -> Unit,
     onPreferences: () -> Unit,
@@ -20,6 +21,7 @@ fun FrameWindowScope.AppMenuBar(
 ) {
     MenuBar {
         Menu(strings.menuFile) {
+            onNewWorktree?.let { Item(strings.newWorktree, shortcut = shortcut(Key.N), onClick = it) }
             Item(strings.addProject, shortcut = shortcut(Key.N, shift = true), onClick = onAddProject)
             if (!isMacOs) {
                 Separator()

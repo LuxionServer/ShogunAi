@@ -10,9 +10,11 @@ The selected project is saved as `lastDestination` in `settings.json` and restor
 
 The sidebar is 240 dp wide, and becomes a 64 dp rail (each project's initial with a tooltip) when the window is narrower than 900 dp or the user collapses it (View > Toggle sidebar, Cmd/Ctrl+Backslash). The manual choice is saved as `sidebarCollapsed` and only applies to wide windows; toggling on a narrow window expands it until the width changes. Each project row has a context menu with Edit project and Remove project.
 
+Success messages are transient and don't move the layout: the shell owns one `AppMessages` (a `SnackbarHostState` shown at the bottom of the content area) and provides it as `LocalAppMessages`. `show(message, action)` replaces the current message, keeps it 4 seconds, or 8 seconds when it has an action (`MessageAction`, e.g. "Copy launch command"), and runs the action when it's activated. Errors stay as `Notice` in the view.
+
 `main.kt` adds the desktop conventions around the shell:
 
-- A `MenuBar` (`AppMenuBar`) with File (Add project; Preferences and Quit off macOS), View (Reload, Toggle sidebar) and Help (About, off macOS), labelled from `Strings` so it follows the language. On macOS, `java.awt.Desktop` handlers put About and Settings… in the ShogunAi menu, and a quit handler saves the window bounds before Cmd+Q quits.
+- A `MenuBar` (`AppMenuBar`) with File (New worktree while a project view is active, Add project; Preferences and Quit off macOS), View (Reload, Toggle sidebar) and Help (About, off macOS), labelled from `Strings` so it follows the language. On macOS, `java.awt.Desktop` handlers put About and Settings… in the ShogunAi menu, and a quit handler saves the window bounds before Cmd+Q quits.
 - `PreferencesWindow` (theme mode and language, a single instance brought to the front when reopened) and `AboutWindow` (icon, name, `BuildInfo.VERSION`, repository link). Every window reads the same `Appearance` holder, so a change applies to all of them at once.
 - The window's bounds and maximized state are saved as `windowBounds` when it closes and restored on startup; bounds that don't intersect any connected display open the window centered instead. The minimum size is 720×480.
 
@@ -28,7 +30,11 @@ Each ViewModel uses `androidx.lifecycle` viewmodel-compose (`viewModelScope`) to
 
 ### Creating worktrees
 
-`WorktreeViewModel` owns the transient "New worktree" form state (`taskId`, `branchType`, `createMode`, `selectedBranch`). `updateTaskId` applies the normalization (trim + whitespace runs collapsed to `-`) before storing the value, so the field always shows the already-normalized id while typing.
+Worktrees are created in `CreateWorktreeDialog`, opened from the "New worktree" action in the project view's header, from File > New worktree or with Cmd/Ctrl+N (`onNewItemShortcut` on the view, and `ShellViewModel.newWorktreeRequests` for the menu item, which only exists while a project view is active). `WorktreeViewModel` owns the dialog's state: `isCreateDialogOpen`, the form fields (`taskId`, `branchType`, `createMode`, `selectedBranch`), `createError` and `lastCreatedWorktree`. `openCreateDialog()` resets the task id, the selected branch and the error, so the fields are reset on open and never on close. `confirmCreate()` creates only when `canCreate` holds (a valid task id, or an available branch), which is also what the "Create worktree" button and Enter in the task id field check.
+
+While creating, the dialog shows `InlineProgress` and disables its inputs, the mode selector and both actions, and `dismissCreateDialog()` is ignored, so Escape and clicking outside do nothing. A failure keeps the dialog open with the entered values and shows the error as a `Notice` inside it (`createError`, separate from the view's `error`). A success closes the dialog, adds the worktree to the list and sets `lastCreatedWorktree` and `success`, which the screen turns into "Worktree created: <folder>" with a "Copy launch command" action (`copyLastCreatedLaunchCommand()`).
+
+`updateTaskId` applies the normalization (trim + whitespace runs collapsed to `-`) before storing the value, so the field always shows the already-normalized id while typing.
 
 In "Existing branch" mode the branches from `ListLocalBranchesUseCase` are shown in a `DropdownSelector` grouped by the segment before the first `/` (or "other" for branches without one). Branches that already have a worktree are rendered disabled and can't be selected, and "Create worktree" is only enabled for an available branch (`isSelectedBranchAvailable`).
 
@@ -122,8 +128,8 @@ List loads are tagged with a generation number: a result is only applied if no n
 - **`Spacing`**: spacing scale (`xxs=2dp`, `xs=4dp`, `sm=8dp`, `md=16dp`, `lg=24dp`, `xl=32dp`) used instead of ad hoc `dp` values. Component-internal sizes, such as icon sizes, are named constants.
 - **`SegmentedSelector<T>`**: segmented control (`SingleChoiceSegmentedButtonRow`/`SegmentedButton`) for a small, fixed set of options that should all be visible at once (e.g. `CreateMode`, `BranchType`). Labels are sized to their full text (`Modifier.width(IntrinsicSize.Max)`): the row sizes its segments from their minimum intrinsic width, which for plain text is only its longest word.
 - **`DropdownSelector<T>`**: dropdown (`ExposedDropdownMenuBox`) for longer or dynamically loaded lists, with optional collapsible groups (`groupBy`) and disabled options (`enabled`), which are ignored whatever the input method.
-- **`SectionCard`**: titled `OutlinedCard`, used to group sections of a long form (every section of `ProjectConfigScreen`, and the "New worktree" block of `WorktreeScreen`).
-- **Keyboard shortcuts** (`KeyboardShortcuts.kt`): `onEnterKey` triggers the main action of a text field (e.g. adding a local file), and `onNewItemShortcut` binds Cmd+N (macOS) / Ctrl+N (other systems) to "New project" and "Create worktree".
+- **`SectionCard`**: titled `OutlinedCard`, used to group sections of a long form (every section of `ProjectConfigScreen`).
+- **Keyboard shortcuts** (`KeyboardShortcuts.kt`): `onEnterKey` triggers the main action of a text field (e.g. adding a local file), and `onNewItemShortcut` binds Cmd+N (macOS) / Ctrl+N (other systems) to opening the "New worktree" dialog.
 
 ## Theme (`ui/theme`)
 
@@ -183,6 +189,6 @@ The UI is available in English (default) and Spanish. Every visible text lives i
 - `Appearance` loads the stored `AppLanguage` (`LanguagePreferenceRepository`) and `AppearanceScope` provides the active table with `CompositionLocalProvider(LocalStrings provides ...)` in every window: switching language recomposes texts, including the menu bar, without recreating ViewModels or losing screen state.
 - Composables read texts with `val strings = LocalStrings.current`. Non-composable code (such as `FilePicker`) receives the already-translated text as a parameter.
 - The language selector in Preferences shows each language by its own name ("English", "Español").
-- ViewModels expose data, not messages: `WorktreeViewModel` exposes `error: Throwable?` and `success: WorktreeSuccess?` (worktree created, worktrees repaired after a move), and the screen formats them with `strings.worktreeError(error)` and the matching `Strings` text. `worktreeError` is exhaustive over the sealed `WorktreeError` hierarchy, so a new variant doesn't compile until it's translated; a process that can't start (`CommandExecutionException`) gets its own message, and anything else falls back to a generic one. Git's error output is shown as-is, untranslated.
+- ViewModels expose data, not messages: `WorktreeViewModel` exposes `error: Throwable?` and `success: WorktreeSuccess?` (worktree created, worktrees repaired after a move, worktree opened in Herdr, cleanup done), and the screen formats them with `strings.worktreeError(error)` and the matching `Strings` text. `worktreeError` is exhaustive over the sealed `WorktreeError` hierarchy, so a new variant doesn't compile until it's translated; a process that can't start (`CommandExecutionException`) gets its own message, and anything else falls back to a generic one. Git's error output is shown as-is, untranslated.
 
 **Adding a text**: declare the member in `Strings` and implement it in every language (the compiler flags any missing one). **Adding a language**: new `AppLanguage` value, new `object` implementing `Strings`, and its branch in `AppLanguage.strings()`.
