@@ -14,6 +14,8 @@ Esa dirección se construye en tres capas:
 | **Torre de control** | La vista | La app de escritorio muestra el estado de todos los worktrees, incluidos los creados por otras herramientas, los mantiene limpios y sigue los cambios según ocurren. **Disponible.** |
 | **Android, KMP y JVM** | El contenido | Provisionado para los stacks en los que más cuesta preparar un worktree: Gradle, secretos locales, emuladores e IDEs. **Empezado**: los repositorios Gradle muestran sus daemons, pueden parar los ociosos y acotar la memoria y la vida de los daemons que arrancan los agentes, los repositorios Android pueden dar a cada worktree su propio emulador, los KMP e iOS su propio simulador de iOS, y los repositorios Xcode ven y limpian sus DerivedData y comparten compilaciones entre worktrees. |
 
+Se conecta con las herramientas que ejecutan agentes en vez de sustituirlas: los hooks de worktree y de sesión de Claude Code, y [Herdr](https://herdr.dev), el multiplexor de terminal para agentes, cuyos worktrees provisiona un plugin de ShogunAi y en el que la app de escritorio abre un worktree con su entorno y su agente. **Disponible.**
+
 ```mermaid
 graph LR
     A["Configuración del repositorio"] --> B["Salida del CLI para scripts"]
@@ -75,6 +77,7 @@ Hoy una rama nueva parte del `HEAD` del repositorio base, así que crear un work
 Copiar el comando de lanzamiento sigue siendo la opción por defecto, pero la app también podría abrirlo directamente con integraciones concretas y fiables en lugar de un lanzamiento genérico de terminal:
 
 - Terminales: iTerm2 y Terminal en macOS, Windows Terminal, tmux y Zellij.
+- El estado de los agentes de Herdr (trabajando, bloqueado, terminado) en cada fila de worktree, leído de su API, ahora que los worktrees se pueden abrir en Herdr.
 - «Abrir en IDE» (VS Code, IntelliJ IDEA, Android Studio) y «Abrir carpeta».
 
 ### Modo multiagente

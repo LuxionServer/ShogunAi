@@ -152,6 +152,7 @@ class ParseArgumentsTest {
         assertEquals(CliCommand.HookWorktreeRemove, command("hook", "worktree-remove"))
         assertTrue(usageError("hook").contains("needs an event"))
         assertEquals(CliCommand.HookSessionStart, command("hook", "session-start"))
+        assertEquals(CliCommand.HookHerdr, command("hook", "herdr"))
         assertTrue(usageError("hook", "stop").contains("unknown hook 'stop'"))
         assertTrue(usageError("hook", "worktree-create", "extra").contains("takes no arguments"))
     }

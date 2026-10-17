@@ -62,6 +62,26 @@ Claude Code only runs a repository's project hooks once you've trusted its folde
 
 The new worktree starts from the main checkout's current commit, like worktrees created from ShogunAi, and Claude Code's `worktree.baseRef` setting doesn't apply. Checked with Claude Code 2.1.301.
 
+## Herdr
+
+[Herdr](https://herdr.dev) is a terminal multiplexer for AI agents: it keeps their sessions running in the background and shows which one is working, blocked or done. Herdr runs the agents and ShogunAi creates and prepares the worktrees they work in.
+
+**Recommended flow.** Create the worktree from ShogunAi (the desktop app or `shogun new`), so it lands in the project's worktrees folder, provisioned, with its ports and environment. Then use the "Open in Herdr" action of its row in the desktop app: Herdr opens it as a worktree of its repository, grouped under the repository's space like its own "Open worktree…", focused, with a single pane whose shell already has the worktree's environment (`PORT`, `ANDROID_SERIAL`, …, everything `shogun env` prints), and runs the project's agent command there, the same command "Copy command" copies. If Herdr already has that worktree open, the action only focuses it and doesn't type anything into its panes. Herdr's server must be running (`herdr`); the action calls `herdr` directly and doesn't need `shogun` on any `PATH`.
+
+Don't use Herdr's "New worktree" (or `herdr worktree create`) for ShogunAi projects: Herdr always places those checkouts in its own folder (`~/.herdr/worktrees/<repo>/<branch>`, or the `[worktrees] directory` of its `config.toml`), outside the project's worktrees folder, and ShogunAi lists them with the Herdr origin.
+
+**Rescue path: the ShogunAi plugin for Herdr.** For worktrees created from Herdr anyway, by mistake or by an agent through Herdr's API, install the plugin once:
+
+```bash
+herdr plugin install LuxionServer/ShogunAi/integrations/herdr
+```
+
+On every worktree Herdr creates, it runs `shogun hook herdr`, which provisions it like `shogun provision` does: files from `.shogunai.json` and `.worktreeinclude`, your project's local files, reserved ports and `envFile`. When the repository has a ShogunAi project and the worktree is outside its worktrees folder, it also shows a Herdr notification saying so and recommending creating worktrees from ShogunAi.
+
+- The plugin runs `shogun`, so it must be on the `PATH` of the shell you start Herdr from (Herdr's background server keeps that shell's environment; restart it with `herdr server stop` after installing `shogun`). `herdr plugin log` shows each run with the files it copied, or the error.
+- Herdr opens the new workspace a moment before the plugin runs; an agent you start instantly could find the files still being copied.
+- The plugin doesn't type anything into the new workspace's shell. Its variables reach agents the usual way: Claude Code's `SessionStart` hook above, the `envFile`, or `direnv` (see below).
+
 ## Cursor
 
 Cursor's parallel agents run the setup commands in `.cursor/worktrees.json` inside each new worktree. Provision it there:

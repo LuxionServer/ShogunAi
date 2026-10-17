@@ -1,6 +1,7 @@
 package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.infrastructure.FileKmpTestWiring
+import app.luxion.shogunai.infrastructure.HerdrConfigFile
 import app.luxion.shogunai.infrastructure.JsonProjectRepository
 import app.luxion.shogunai.infrastructure.LocalAndroidSdk
 import app.luxion.shogunai.infrastructure.MacDerivedDataSource
@@ -37,6 +38,7 @@ fun runShogun(args: Array<String>): Int {
         appleSimulators = SimctlAppleSimulators(executor),
         kmpTestWiring = FileKmpTestWiring(gradleUserHome),
         derivedDataSource = derivedDataSource,
+        herdrConfig = HerdrConfigFile(),
         workingDirectory = System.getProperty("user.dir"),
         out = System.out,
         err = System.err,

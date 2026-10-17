@@ -71,5 +71,6 @@ private val labelPadding = Modifier.padding(start = Spacing.sm)
 private fun WorktreeOrigin.label(strings: Strings): String = when (this) {
     WorktreeOrigin.SHOGUNAI -> strings.originShogunAi
     WorktreeOrigin.CLAUDE_CODE -> strings.originClaudeCode
+    WorktreeOrigin.HERDR -> strings.originHerdr
     WorktreeOrigin.OTHER -> strings.originOther
 }

@@ -5,6 +5,7 @@ import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeDerivedDataSource
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.FakeHerdrConfigSource
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
 import app.luxion.shogunai.domain.FakeKmpTestWiring
 import app.luxion.shogunai.domain.FakePortProbe
@@ -95,6 +96,7 @@ class EnvironmentCommandsTest {
         appleSimulators = appleSimulators,
         kmpTestWiring = kmpTestWiring,
         derivedDataSource = FakeDerivedDataSource(),
+        herdrConfig = FakeHerdrConfigSource(),
         workingDirectory = workingDirectory,
         out = out,
         err = err,

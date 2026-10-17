@@ -9,6 +9,7 @@ import app.luxion.shogunai.domain.io.DerivedDataSource
 import app.luxion.shogunai.domain.io.EnvironmentStateStore
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.GradleDaemonSource
+import app.luxion.shogunai.domain.io.HerdrConfigSource
 import app.luxion.shogunai.domain.io.KmpTestWiring
 import app.luxion.shogunai.domain.io.PortProbe
 import app.luxion.shogunai.domain.io.ProjectRepository
@@ -95,6 +96,7 @@ class ShogunCli(
     private val appleSimulators: AppleSimulators,
     private val kmpTestWiring: KmpTestWiring,
     private val derivedDataSource: DerivedDataSource,
+    private val herdrConfig: HerdrConfigSource,
     private val workingDirectory: String,
     private val out: Appendable,
     private val err: Appendable,
@@ -161,6 +163,7 @@ class ShogunCli(
             is CliCommand.Simulator -> simulator(command)
             is CliCommand.SimulatorGradleInit -> simulatorGradleInit(command)
             CliCommand.HookSessionStart -> hookSessionStart()
+            CliCommand.HookHerdr -> hookHerdr()
             is CliCommand.GradleStop -> gradleStop(command)
             CliCommand.Xcode -> xcode()
             CliCommand.XcodeClean -> xcodeClean()
@@ -192,14 +195,17 @@ class ShogunCli(
         return EXIT_OK
     }
 
-    private suspend fun provision(command: CliCommand.Provision): Int {
-        val target = absolute(command.path ?: workingDirectory)
+    private suspend fun provision(command: CliCommand.Provision): Int =
+        provisionWorktreeAt(absolute(command.path ?: workingDirectory))
+
+    private suspend fun provisionWorktreeAt(target: String, onProvisioned: suspend (Worktree, ProjectConfig) -> Unit = { _, _ -> }): Int {
         val config = configFor(target)
         val worktree = ListWorktreesUseCase(config, executor)().getOrThrow()
             .firstOrNull { sameDirectory(it.path, target) }
             ?: throw WorktreeError.NotAWorktree(target)
         ProvisionWorktreeUseCase(config, executor, fileManager, provisioningSource, prepareEnvironment)(worktree.path).getOrThrow()
             .forEach { out.line(it) }
+        onProvisioned(worktree, config)
         return EXIT_OK
     }
 
@@ -208,9 +214,10 @@ class ShogunCli(
         val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
         val mainBranch = ResolveMainBranchUseCase(config, executor)().getOrNull()
         val readStatus = ReadWorktreeStatusUseCase(executor)
+        val herdrWorktreesRoot = herdrConfig.worktreesRoot()
         worktrees.forEach { worktree ->
             val status = if (worktree.isPrunable) null else readStatus(worktree, mainBranch).getOrNull()
-            out.line(statusLine(worktree, status, config))
+            out.line(statusLine(worktree, status, config, herdrWorktreesRoot))
         }
         return EXIT_OK
     }
@@ -609,6 +616,35 @@ class ShogunCli(
         return EXIT_OK
     }
 
+    private suspend fun hookHerdr(): Int {
+        val event = environmentVariable(HERDR_PLUGIN_EVENT)?.takeIf { it.isNotBlank() }
+            ?: return hookUsageError("herdr", "$HERDR_PLUGIN_EVENT isn't set; run it from Herdr's plugin")
+        if (event != HERDR_WORKTREE_CREATED) return EXIT_OK
+        val json = environmentVariable(HERDR_PLUGIN_EVENT_JSON)
+            ?: return hookUsageError("herdr", "$HERDR_PLUGIN_EVENT_JSON isn't set")
+        val envelope = runCatching { Json.parseToJsonElement(json) }.getOrNull() as? JsonObject
+            ?: return hookUsageError("herdr", "$HERDR_PLUGIN_EVENT_JSON isn't JSON")
+        val path = ((envelope["data"] as? JsonObject)?.get("worktree") as? JsonObject)?.string("path")
+            ?: return hookUsageError("herdr", "the event has no \"data.worktree.path\"")
+        return provisionWorktreeAt(path, ::flagOutsideWorktreesRoot)
+    }
+
+    private suspend fun flagOutsideWorktreesRoot(worktree: Worktree, config: ProjectConfig) {
+        if (config.worktreesRoot.isBlank() || classifyOrigin(worktree, config) == WorktreeOrigin.SHOGUNAI) return
+        val body = "${File(worktree.path).name} is outside ${displayPath(config.worktreesRoot)}; create worktrees from ShogunAi"
+        val herdr = environmentVariable(HERDR_BIN_PATH)?.takeIf { it.isNotBlank() } ?: "herdr"
+        val failure = try {
+            val result = executor.execute(listOf(herdr, "notification", "show", "ShogunAi", "--body", body))
+            if (result.isSuccess) null else result.stderr.trim().ifEmpty { "exit code ${result.exitCode}" }
+        } catch (error: CommandExecutionException) {
+            error.message
+        }
+        failure?.let { err.line("shogun: hook herdr: couldn't show Herdr's notification: $it") }
+    }
+
+    private fun displayPath(path: String): String =
+        if (path == userHome || path.startsWith("$userHome/")) "~" + path.removePrefix(userHome) else path
+
     private fun hookInput(event: String): JsonObject? {
         val text = readInput()
         val parsed = runCatching { Json.parseToJsonElement(text) }.getOrNull() as? JsonObject
@@ -631,11 +667,11 @@ class ShogunCli(
         return if (worktreesRoot != null) config.copy(worktreesRoot = worktreesRoot) else config
     }
 
-    private fun statusLine(worktree: Worktree, status: WorktreeStatus?, config: ProjectConfig): String {
+    private fun statusLine(worktree: Worktree, status: WorktreeStatus?, config: ProjectConfig, herdrWorktreesRoot: String): String {
         val details = buildList {
             add(worktree.branch ?: "(detached)")
             if (worktree.isMain) add("main")
-            classifyOrigin(worktree, config)?.let { add("origin=${it.label}") }
+            classifyOrigin(worktree, config, herdrWorktreesRoot)?.let { add("origin=${it.label}") }
             if (worktree.isLocked) add("locked")
             when {
                 worktree.isPrunable -> add("folder-missing")
@@ -664,6 +700,7 @@ class ShogunCli(
         get() = when (this) {
             WorktreeOrigin.SHOGUNAI -> "shogunai"
             WorktreeOrigin.CLAUDE_CODE -> "claude-code"
+            WorktreeOrigin.HERDR -> "herdr"
             WorktreeOrigin.OTHER -> "other"
         }
 
@@ -686,6 +723,10 @@ class ShogunCli(
         const val EXIT_USAGE = 2
         private const val CLAUDE_CODE_WORKTREES = ".claude/worktrees"
         private const val CLAUDE_ENV_FILE = "CLAUDE_ENV_FILE"
+        private const val HERDR_PLUGIN_EVENT = "HERDR_PLUGIN_EVENT"
+        private const val HERDR_PLUGIN_EVENT_JSON = "HERDR_PLUGIN_EVENT_JSON"
+        private const val HERDR_WORKTREE_CREATED = "worktree.created"
+        private const val HERDR_BIN_PATH = "HERDR_BIN_PATH"
 
         const val BUILD_CACHE_NOTICE =
             "Gradle's build cache is off: add org.gradle.caching=true to gradle.properties so a new worktree " +
@@ -734,6 +775,7 @@ class ShogunCli(
               hook worktree-create       Claude Code WorktreeCreate hook: create and provision the worktree, print its path
               hook worktree-remove        Claude Code WorktreeRemove hook: remove the worktree, delete its branch if merged
               hook session-start          Claude Code SessionStart hook: export the worktree's environment to the session
+              hook herdr                  Herdr plugin hook: provision the worktree of a worktree.created event
               simulator start|stop|status [<path>] [--device <type>] [--runtime <runtime>]
                                           Boot (and wait for), shut down or show the worktree's iOS simulator
                                           (repositories with "providers": { "ios-simulator": {} } in .shogunai.json)

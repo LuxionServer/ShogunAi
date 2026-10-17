@@ -104,4 +104,11 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
         WorktreeError(
             "Branch '$branch' is already checked out" + if (path != null) " at $path" else "",
         )
+
+    object HerdrNotInstalled : WorktreeError(
+        "Herdr isn't installed: the herdr command wasn't found. Install it from https://herdr.dev",
+    )
+
+    class HerdrCommandFailed(val command: List<String>, val detail: String) :
+        WorktreeError("Herdr couldn't open the worktree: $detail")
 }

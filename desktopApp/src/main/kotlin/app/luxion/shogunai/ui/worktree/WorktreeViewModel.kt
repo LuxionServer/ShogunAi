@@ -15,6 +15,7 @@ import app.luxion.shogunai.domain.model.DerivedDataListing
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.model.GradleProvider
+import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
@@ -69,6 +70,10 @@ class WorktreeViewModel(
     var sizes by mutableStateOf<Map<String, Long>>(emptyMap())
         private set
     var ports by mutableStateOf<Map<String, Map<String, Int>>>(emptyMap())
+        private set
+    var herdrWorktreesRoot by mutableStateOf<String?>(null)
+        private set
+    var openingInHerdr by mutableStateOf<Set<String>>(emptySet())
         private set
     val totalSize: Long
         get() = sizes.values.sum()
@@ -240,6 +245,7 @@ class WorktreeViewModel(
 
     private fun loadOverview(generation: Int, listed: List<Worktree>) {
         sizes = emptyMap()
+        herdrWorktreesRoot = useCases.herdr.worktreesRoot()
         viewModelScope.launch {
             val detected = useCases.detectAgents(listed).getOrNull()
             if (generation == listGeneration) agents = detected
@@ -528,6 +534,23 @@ class WorktreeViewModel(
         }
     }
 
+    fun openInHerdr(worktree: Worktree) {
+        if (worktree.path in openingInHerdr) return
+        openingInHerdr = openingInHerdr + worktree.path
+        viewModelScope.launch {
+            try {
+                useCases.herdr.open(worktree)
+                    .onSuccess { opening ->
+                        error = null
+                        success = WorktreeSuccess.OpenedInHerdr(worktree.path, focused = opening == HerdrOpening.FOCUSED)
+                    }
+                    .onFailure { error = it }
+            } finally {
+                openingInHerdr = openingInHerdr - worktree.path
+            }
+        }
+    }
+
     fun confirmPendingRemoval() {
         val pending = pendingRemoval ?: return
         val branchToDelete = pending.worktree.branch.takeIf { pending.deleteBranch }
@@ -663,6 +686,7 @@ sealed interface WorktreeStatusState {
 sealed interface WorktreeSuccess {
     data class Created(val path: String) : WorktreeSuccess
     data object RepairedAfterMove : WorktreeSuccess
+    data class OpenedInHerdr(val path: String, val focused: Boolean) : WorktreeSuccess
     data class CleanedUp(
         val removedCount: Int,
         val stoppedDaemons: Int = 0,
