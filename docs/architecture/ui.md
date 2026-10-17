@@ -29,10 +29,10 @@ In "Existing branch" mode the branches from `ListLocalBranchesUseCase` are shown
 Each row shows its worktree's status under the branch name. `WorktreeViewModel` keeps it in `statuses`, a map from worktree path to `WorktreeStatusState` (`Loading`, `Loaded` or `Unavailable`):
 
 - Once the list is read, the main branch is resolved with `ResolveMainBranchUseCase` (exposed as `mainBranch`) and every worktree's status is read with `ReadWorktreeStatusUseCase`, at most 4 at a time. The list shows right away and each row shows a small progress indicator until its status arrives.
-- A worktree whose status can't be read shows "Status unavailable" without affecting the others or the screen's error. A worktree whose folder is gone (`isPrunable`) shows "Folder missing" instead, and a locked one (`isLocked`, e.g. in use by an agent session) shows a "locked" label next to its branch.
+- A worktree whose status can't be read shows "Status unavailable" without affecting the others or the screen's error. A worktree whose folder is gone (`isPrunable`) shows "Folder missing" instead, and a locked one (`isLocked`, e.g. in use by an agent session) shows a neutral "locked" chip next to its branch.
 - Reloading the list, including when the window regains focus, reads every status again; results from an older load are dropped. Creating a worktree reads only the new one's status, and removing one drops its status.
 
-`WorktreeStatusLine` renders the status as segments separated by `·` (`statusSegments`): uncommitted changes (only when there are any), `↑N ↓N upstream`, `↑N ↓N <main branch>` and the last commit date as relative time (`relativeTime`, in `RelativeTime.kt`). A merged branch shows a "merged into <main branch>" label in the primary color instead of its main branch divergence.
+`WorktreeStatusLine` renders the status as status chips followed by segments separated by `·` (`statusSegments`). Uncommitted changes (only when there are any) are a warning chip, and a merged branch shows a "merged into <main branch>" success chip instead of its main branch divergence. The segments are `↑N ↓N upstream`, `↑N ↓N <main branch>` and the last commit date as relative time (`relativeTime`, in `RelativeTime.kt`).
 
 ### Auto refresh
 
@@ -42,7 +42,7 @@ While `WorktreeScreen` is shown, a `DisposableEffect` calls `WorktreeViewModel.s
 
 `WorktreeScreen` receives the project's `ProjectConfig` to classify each row's origin with `classifyOrigin`. After each list load, `WorktreeViewModel` also runs `DetectRunningAgentsUseCase` once (`agents`, `null` when processes can't be listed) and measures every worktree's size one at a time with `MeasureWorktreeSizeUseCase` (`sizes`, added up in `totalSize`); stale results are dropped with `listGeneration`. It also reads each worktree's reserved ports (`ports`, through `WorktreeUseCases.readPorts`, which resolves the environment with `reserve = false`, so opening the screen never reserves a port) and `WorktreeOverviewLine` shows them after the size with `portsLabel` (`PORT 20001 · api 20002`).
 
-- `WorktreeBranchLine` shows, after the branch and the "locked" label, the origin (ShogunAi, Claude Code or other location) in muted text and each running agent as "● name" in the success color.
+- `WorktreeBranchLine` shows, after the branch and the "locked" label, the origin (ShogunAi, Claude Code or other location) in muted text and each running agent as an info chip with its name.
 - `WorktreeOverviewLine`, under the status, shows the size (`formatSize`, binary units with one decimal) and an "inactive" label when `isInactive` holds.
 - The "Worktrees" title is followed by "N worktrees · <total size>".
 
@@ -107,7 +107,7 @@ List loads are tagged with a generation number: a result is only applied if no n
 
 ## Shared components (`ui/components`)
 
-- **`Spacing`**: spacing scale (`xs=4dp`, `sm=8dp`, `md=16dp`, `lg=24dp`) used instead of ad hoc `dp` values.
+- **`Spacing`**: spacing scale (`xxs=2dp`, `xs=4dp`, `sm=8dp`, `md=16dp`, `lg=24dp`, `xl=32dp`) used instead of ad hoc `dp` values. Component-internal sizes, such as icon sizes, are named constants.
 - **`SegmentedSelector<T>`**: segmented control (`SingleChoiceSegmentedButtonRow`/`SegmentedButton`) for a small, fixed set of options that should all be visible at once (e.g. `CreateMode`, `BranchType`). Labels are sized to their full text (`Modifier.width(IntrinsicSize.Max)`): the row sizes its segments from their minimum intrinsic width, which for plain text is only its longest word.
 - **`DropdownSelector<T>`**: dropdown (`ExposedDropdownMenuBox`) for longer or dynamically loaded lists, with optional collapsible groups (`groupBy`) and disabled options (`enabled`), which are ignored whatever the input method.
 - **`SectionCard`**: titled `OutlinedCard`, used to group sections of a long form (every section of `ProjectConfigScreen`, and the "New worktree" block of `WorktreeScreen`).
@@ -116,6 +116,45 @@ List loads are tagged with a generation number: a result is only applied if no n
 ## Theme (`ui/theme`)
 
 `ShogunAiTheme` applies the light or dark color scheme from the stored `ThemeMode`, chosen with `ThemeModeToggle` in the top bar. In `SYSTEM` mode, `rememberSystemInDarkTheme` polls the OS theme every second, because Compose Desktop's `isSystemInDarkTheme()` doesn't react to changes while the app is open.
+
+## Design system
+
+The theme and the shared components form the app's design system. Screens use its tokens and components instead of literal colors, sizes or per-screen copies.
+
+### Palette
+
+Every Material 3 color role of the light and dark schemes is defined by the app (`ShogunLightColorScheme`, `ShogunDarkColorScheme` in `Theme.kt`), so no dialog, menu or selected control falls back to Material's baseline purple. The roles come from one cool neutral ramp (`Neutral*` in `Color.kt`) and one brand accent. The brand red is `primary`: it's used for the main action of a view and for brand marks, never to convey a status. It's slightly darker in the light scheme, so white text on it stays readable.
+
+Status colors are separate tokens with one meaning each, exposed as `ShogunTheme.status` (`ShogunStatusColors`). Each status has a `color` for text and icons, an `onColor`, and a `container`/`onContainer` pair for chips and notices:
+
+| Status | Meaning | Examples |
+|---|---|---|
+| success | done or healthy | merged, device running, operation succeeded |
+| warning | needs your attention, not broken | uncommitted changes, inactive |
+| info | work in progress | agent running, device booting |
+| danger | failed or destructive | errors, missing folder, delete actions |
+| neutral | plain state | locked, device stopped |
+
+The mapping from worktree indicators and device states to a status lives in `StatusMapping.kt`.
+
+Contrast is checked by tests, not by eye: `ThemeContrastTest` uses `contrastRatio` (WCAG relative luminance) to assert that text reaches 4.5:1 and outlines 3:1 on every surface, in both schemes, and `ColorSchemeTest` asserts that no role keeps Material's baseline value.
+
+### Type
+
+The app bundles Geist for UI text and Geist Mono for data, in weights 400, 500 and 600, under `desktopApp/src/main/resources/fonts/` with their SIL Open Font License (`OFL.txt`). Bundling them makes text render the same on macOS, Windows and Linux. Every `Typography` slot uses Geist, with sizes tuned for a dense desktop tool. `ShogunTheme.typography` adds two styles for data, `data` and `dataSmall`, in Geist Mono with tabular figures: paths, branches, ports, PIDs, sizes, counts and relative times use them, so values that refresh don't shift the layout.
+
+### Shapes and focus
+
+`ShogunShapes` sets the corner radius scale (`extraSmall` 4, `small` 6, `medium` 10, `large` 14, `extraLarge` 20 dp). The theme raises the focused state layer of Material's ripple, so keyboard focus is visible on every Material control.
+
+### Shared components
+
+- **`InlineProgress`**: the one inline spinner, in `Small` and `Medium` sizes.
+- **`Notice`**: error, warning, success and info messages with their status icon and color, the message and a dismiss action. It has a `details` slot for extra content.
+- **`StatusChip`**: a compact label on a status container color, with an optional icon.
+- **`DangerButton`, `DangerTextButton`**: destructive actions, where they're offered and in the confirmation that follows. **`NeutralTextButton`** is the text button for neutral actions such as "Cancel", so the brand color stays reserved for main actions.
+- **`IconAction`**: an icon-only action whose label is both its tooltip and its accessible description.
+- **`Modifier.interactive`**: makes a custom row or header clickable, with a hover state, the hand pointer and a focus ring (`Modifier.focusRing`).
 
 ## `AppContainer`
 

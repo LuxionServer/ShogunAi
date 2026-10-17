@@ -19,10 +19,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalWindowInfo
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.luxion.shogunai.AppContainer
 import app.luxion.shogunai.BuildInfo
+import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.i18n.LanguageToggle
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.strings
@@ -31,6 +31,7 @@ import app.luxion.shogunai.ui.projectconfig.ProjectConfigViewModel
 import app.luxion.shogunai.ui.projectlist.ProjectListScreen
 import app.luxion.shogunai.ui.projectlist.ProjectListViewModel
 import app.luxion.shogunai.ui.theme.ShogunAiTheme
+import app.luxion.shogunai.ui.theme.ShogunTheme
 import app.luxion.shogunai.ui.theme.ThemeModeToggle
 import app.luxion.shogunai.ui.worktree.WorktreeScreen
 import app.luxion.shogunai.ui.worktree.WorktreeViewModel
@@ -48,7 +49,7 @@ fun AppRoot(appContainer: AppContainer) {
         ShogunAiTheme(themeMode) {
             Column(modifier = Modifier.fillMaxSize()) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md, vertical = Spacing.xs),
                     horizontalArrangement = Arrangement.End,
                 ) {
                     LanguageToggle(
@@ -139,12 +140,12 @@ fun AppRoot(appContainer: AppContainer) {
                 }
 
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md, vertical = Spacing.xs),
                     horizontalArrangement = Arrangement.End,
                 ) {
                     Text(
                         "v${BuildInfo.VERSION}",
-                        style = MaterialTheme.typography.labelSmall,
+                        style = ShogunTheme.typography.dataSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }

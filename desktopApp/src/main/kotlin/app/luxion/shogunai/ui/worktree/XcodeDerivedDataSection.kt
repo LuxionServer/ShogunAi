@@ -5,29 +5,26 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.AttributedDerivedData
 import app.luxion.shogunai.domain.model.DerivedDataDeletion
 import app.luxion.shogunai.domain.model.DerivedDataListing
 import app.luxion.shogunai.domain.model.DerivedDataOwner
+import app.luxion.shogunai.ui.components.DangerTextButton
+import app.luxion.shogunai.ui.components.InlineProgress
+import app.luxion.shogunai.ui.components.Notice
+import app.luxion.shogunai.ui.components.NoticeKind
 import app.luxion.shogunai.ui.components.SectionCard
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.Strings
+import app.luxion.shogunai.ui.theme.ShogunTheme
 import java.time.Instant
 
 @Composable
@@ -35,7 +32,7 @@ fun XcodeDerivedDataSection(viewModel: WorktreeViewModel, modifier: Modifier = M
     val strings = LocalStrings.current
     SectionCard(title = strings.xcodeDerivedDataTitle, modifier = modifier) {
         when (val state = viewModel.derivedData) {
-            DerivedDataState.Loading -> CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            DerivedDataState.Loading -> InlineProgress()
             DerivedDataState.Unavailable -> SecondaryText(strings.xcodeDerivedDataUnavailable)
             is DerivedDataState.Loaded -> LoadedDerivedData(listing = state.listing, viewModel = viewModel)
         }
@@ -59,7 +56,7 @@ private fun LoadedDerivedData(listing: DerivedDataListing, viewModel: WorktreeVi
         DerivedDataRow(attributed)
     }
     if (worktreeFolders.isNotEmpty()) {
-        SecondaryText(
+        DataText(
             strings.derivedDataSummary(worktreeFolders.size, formatSize(worktreeFolders.sumOf { it.folder.sizeBytes })),
         )
     }
@@ -68,12 +65,12 @@ private fun LoadedDerivedData(listing: DerivedDataListing, viewModel: WorktreeVi
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        SecondaryText(strings.derivedDataOrphans(orphans.size, formatSize(orphans.sumOf { it.sizeBytes })))
+        DataText(strings.derivedDataOrphans(orphans.size, formatSize(orphans.sumOf { it.sizeBytes })))
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (viewModel.isDeletingOrphans) {
-                CircularProgressIndicator(modifier = Modifier.padding(end = Spacing.sm).size(20.dp), strokeWidth = 2.dp)
+                InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
             }
-            OutlinedButton(
+            DangerTextButton(
                 onClick = { viewModel.deleteOrphanedDerivedData() },
                 enabled = !viewModel.isDeletingOrphans && orphans.isNotEmpty(),
             ) { Text(strings.deleteOrphans) }
@@ -83,40 +80,36 @@ private fun LoadedDerivedData(listing: DerivedDataListing, viewModel: WorktreeVi
         SecondaryText(strings.derivedDataOnUnavailableVolumes(unavailableVolumeFolders.size))
     }
     listing.compilationCacheBytes?.let { cacheBytes ->
-        SecondaryText(strings.derivedDataCompilationCache(formatSize(cacheBytes)))
+        DataText(strings.derivedDataCompilationCache(formatSize(cacheBytes)))
     }
 }
 
 @Composable
 private fun DerivedDataRow(attributed: AttributedDerivedData) {
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.xs)) {
-        Text(worktreeName(attributed), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        SecondaryText(derivedDataDetails(attributed, LocalStrings.current, Instant.now()))
+        Text(worktreeName(attributed), style = ShogunTheme.typography.data, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        DataText(derivedDataDetails(attributed, LocalStrings.current, Instant.now()))
     }
 }
 
 @Composable
 private fun DerivedDataDeletionMessage(report: DerivedDataDeletion, onDismiss: () -> Unit) {
     val strings = LocalStrings.current
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            strings.derivedDataDeleted(report.deleted.size, formatSize(report.bytesFreed)),
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.weight(1f),
-        )
-        IconButton(onClick = onDismiss) {
-            Icon(Icons.Default.Close, contentDescription = strings.closeMessage)
-        }
-    }
+    Notice(
+        kind = NoticeKind.SUCCESS,
+        message = strings.derivedDataDeleted(report.deleted.size, formatSize(report.bytesFreed)),
+        onDismiss = onDismiss,
+    )
 }
 
 @Composable
 private fun SecondaryText(text: String) {
     Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+@Composable
+private fun DataText(text: String) {
+    Text(text, style = ShogunTheme.typography.dataSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 private fun worktreeName(attributed: AttributedDerivedData): String =

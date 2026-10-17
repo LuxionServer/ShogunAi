@@ -3,20 +3,20 @@ package app.luxion.shogunai.ui.projectconfig
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.ui.components.DropdownSelector
+import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.SectionCard
 import app.luxion.shogunai.ui.components.Spacing
+import app.luxion.shogunai.ui.components.handPointer
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.worktreeError
+import app.luxion.shogunai.ui.theme.ShogunTheme
 
 private data class AvdOption(val name: String?)
 
@@ -32,15 +32,15 @@ fun EmulatorSettingsSection(viewModel: ProjectConfigViewModel) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         when (state) {
-            EmulatorSectionState.Loading -> CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            EmulatorSectionState.Loading -> InlineProgress()
             is EmulatorSectionState.SdkNotFound -> Text(
                 strings.androidSdkNotFound(state.checked),
-                color = MaterialTheme.colorScheme.error,
+                color = ShogunTheme.status.danger.color,
                 style = MaterialTheme.typography.bodySmall,
             )
             is EmulatorSectionState.Failed -> Text(
                 strings.worktreeError(state.error),
-                color = MaterialTheme.colorScheme.error,
+                color = ShogunTheme.status.danger.color,
                 style = MaterialTheme.typography.bodySmall,
             )
             is EmulatorSectionState.Available -> {
@@ -65,7 +65,7 @@ fun EmulatorSettingsSection(viewModel: ProjectConfigViewModel) {
             EmulatorSectionState.Hidden -> Unit
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Switch(checked = viewModel.emulatorNoWindow, onCheckedChange = { viewModel.emulatorNoWindow = it })
+            Switch(checked = viewModel.emulatorNoWindow, onCheckedChange = { viewModel.emulatorNoWindow = it }, modifier = Modifier.handPointer())
             Text(strings.emulatorNoWindowLabel, modifier = Modifier.padding(start = Spacing.sm))
         }
     }

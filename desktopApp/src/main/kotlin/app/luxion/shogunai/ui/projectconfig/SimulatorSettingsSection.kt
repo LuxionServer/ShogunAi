@@ -3,13 +3,9 @@ package app.luxion.shogunai.ui.projectconfig
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -18,14 +14,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.SimulatorRuntime
 import app.luxion.shogunai.ui.components.DropdownSelector
+import app.luxion.shogunai.ui.components.InlineProgress
+import app.luxion.shogunai.ui.components.NeutralTextButton
+import app.luxion.shogunai.ui.components.PrimaryButton
+import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.SectionCard
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.worktreeError
+import app.luxion.shogunai.ui.theme.ShogunTheme
 
 private data class NamedOption(val name: String?)
 
@@ -41,10 +40,10 @@ fun SimulatorSettingsSection(viewModel: ProjectConfigViewModel) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         when (state) {
-            SimulatorSectionState.Loading -> CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            SimulatorSectionState.Loading -> InlineProgress()
             is SimulatorSectionState.Failed -> Text(
                 strings.worktreeError(state.error),
-                color = MaterialTheme.colorScheme.error,
+                color = ShogunTheme.status.danger.color,
                 style = MaterialTheme.typography.bodySmall,
             )
             is SimulatorSectionState.Available -> AvailableSimulatorSettings(viewModel, state)
@@ -78,7 +77,7 @@ private fun AvailableSimulatorSettings(viewModel: ProjectConfigViewModel, state:
     )
     if (!state.kotlinMultiplatform) return
     if (state.testsWired) {
-        Text(strings.simulatorTestsWired, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+        Text(strings.simulatorTestsWired, style = MaterialTheme.typography.bodySmall, color = ShogunTheme.status.success.color)
     } else {
         KmpWiringPanel(viewModel)
     }
@@ -92,16 +91,16 @@ private fun KmpWiringPanel(viewModel: ProjectConfigViewModel) {
     var copied by remember { mutableStateOf(false) }
     var installError by remember { mutableStateOf<Throwable?>(null) }
     Text(strings.simulatorTestsNotWired, style = MaterialTheme.typography.bodySmall)
-    Text(viewModel.simulatorSnippet, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace))
+    Text(viewModel.simulatorSnippet, style = ShogunTheme.typography.dataSmall)
     Row {
-        OutlinedButton(
+        SecondaryButton(
             onClick = { clipboard.setText(AnnotatedString(viewModel.simulatorSnippet)); copied = true },
             modifier = Modifier.padding(end = Spacing.sm),
         ) { Text(if (copied) strings.copied else strings.copySnippet) }
-        OutlinedButton(onClick = { confirming = true }) { Text(strings.installInitScript) }
+        SecondaryButton(onClick = { confirming = true }) { Text(strings.installInitScript) }
     }
     installError?.let {
-        Text(strings.worktreeError(it), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        Text(strings.worktreeError(it), color = ShogunTheme.status.danger.color, style = MaterialTheme.typography.bodySmall)
     }
     if (confirming) {
         AlertDialog(
@@ -109,12 +108,12 @@ private fun KmpWiringPanel(viewModel: ProjectConfigViewModel) {
             title = { Text(strings.installInitScriptTitle) },
             text = { Text(strings.installInitScriptMessage(viewModel.simulatorInitScriptPath)) },
             confirmButton = {
-                TextButton(onClick = {
+                PrimaryButton(onClick = {
                     confirming = false
                     installError = viewModel.installSimulatorInitScript().exceptionOrNull()
                 }) { Text(strings.install) }
             },
-            dismissButton = { TextButton(onClick = { confirming = false }) { Text(strings.cancel) } },
+            dismissButton = { NeutralTextButton(onClick = { confirming = false }) { Text(strings.cancel) } },
         )
     }
 }

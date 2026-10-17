@@ -1,6 +1,5 @@
 package app.luxion.shogunai.ui.projectlist
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,16 +13,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,11 +25,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.Project
+import app.luxion.shogunai.ui.components.DangerButton
+import app.luxion.shogunai.ui.components.IconAction
+import app.luxion.shogunai.ui.components.NeutralTextButton
+import app.luxion.shogunai.ui.components.PrimaryButton
+import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.SegmentedSelector
-import app.luxion.shogunai.ui.i18n.LocalStrings
+import app.luxion.shogunai.ui.components.Spacing
+import app.luxion.shogunai.ui.components.interactive
 import app.luxion.shogunai.ui.components.onNewItemShortcut
+import app.luxion.shogunai.ui.i18n.LocalStrings
+import app.luxion.shogunai.ui.theme.ShogunTheme
 
 private fun ProjectSortOrder.label(): String = when (this) {
     ProjectSortOrder.NAME_ASC -> "A-Z"
@@ -53,7 +54,7 @@ fun ProjectListScreen(
     var projectPendingDeletion by remember { mutableStateOf<Project?>(null) }
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp)
+        modifier = Modifier.fillMaxSize().padding(Spacing.md)
             .verticalScroll(rememberScrollState())
             .onNewItemShortcut(action = onNewProject),
     ) {
@@ -63,10 +64,10 @@ fun ProjectListScreen(
         ) {
             Text(strings.projectsTitle, style = MaterialTheme.typography.headlineSmall)
             Row {
-                OutlinedButton(onClick = { viewModel.refresh() }, modifier = Modifier.padding(end = 8.dp)) {
+                SecondaryButton(onClick = { viewModel.refresh() }, modifier = Modifier.padding(end = Spacing.sm)) {
                     Text(strings.reload)
                 }
-                Button(onClick = onNewProject) {
+                PrimaryButton(onClick = onNewProject) {
                     Text(strings.newProject)
                 }
             }
@@ -74,14 +75,15 @@ fun ProjectListScreen(
 
         if (viewModel.projects.isNotEmpty()) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = Spacing.md),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 OutlinedTextField(
                     value = viewModel.searchQuery,
                     onValueChange = { viewModel.searchQuery = it },
                     label = { Text(strings.search) },
+                    singleLine = true,
                     modifier = Modifier.weight(1f),
                 )
                 SegmentedSelector(
@@ -95,32 +97,33 @@ fun ProjectListScreen(
 
         when {
             viewModel.projects.isEmpty() -> {
-                Box(modifier = Modifier.fillMaxWidth().padding(top = 32.dp), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.fillMaxWidth().padding(top = Spacing.xl), contentAlignment = Alignment.Center) {
                     Text(strings.noProjectsYet)
                 }
             }
             viewModel.visibleProjects.isEmpty() -> {
-                Box(modifier = Modifier.fillMaxWidth().padding(top = 32.dp), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.fillMaxWidth().padding(top = Spacing.xl), contentAlignment = Alignment.Center) {
                     Text(strings.noProjectsMatch(viewModel.searchQuery))
                 }
             }
             else -> {
-                Column(modifier = Modifier.padding(top = 16.dp)) {
+                Column(modifier = Modifier.padding(top = Spacing.md)) {
                     viewModel.visibleProjects.forEach { project ->
                         ListItem(
                             headlineContent = { Text(project.name) },
-                            supportingContent = { Text(project.config.baseRepositoryPath) },
+                            supportingContent = { Text(project.config.baseRepositoryPath, style = ShogunTheme.typography.dataSmall) },
                             trailingContent = {
                                 Row {
-                                    IconButton(onClick = { onEditProject(project) }) {
-                                        Icon(Icons.Default.Edit, contentDescription = strings.editProject)
-                                    }
-                                    IconButton(onClick = { projectPendingDeletion = project }) {
-                                        Icon(Icons.Default.Delete, contentDescription = strings.deleteProject)
-                                    }
+                                    IconAction(Icons.Default.Edit, strings.editProject, onClick = { onEditProject(project) })
+                                    IconAction(
+                                        icon = Icons.Default.Delete,
+                                        label = strings.deleteProject,
+                                        onClick = { projectPendingDeletion = project },
+                                        tint = ShogunTheme.status.danger.color,
+                                    )
                                 }
                             },
-                            modifier = Modifier.fillMaxWidth().clickable { onSelectProject(project) },
+                            modifier = Modifier.fillMaxWidth().interactive { onSelectProject(project) },
                         )
                         HorizontalDivider()
                     }
@@ -135,7 +138,7 @@ fun ProjectListScreen(
             title = { Text(strings.deleteProjectTitle) },
             text = { Text(strings.deleteProjectMessage(project.name)) },
             confirmButton = {
-                TextButton(onClick = {
+                DangerButton(onClick = {
                     viewModel.deleteProject(project)
                     projectPendingDeletion = null
                 }) {
@@ -143,7 +146,7 @@ fun ProjectListScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { projectPendingDeletion = null }) {
+                NeutralTextButton(onClick = { projectPendingDeletion = null }) {
                     Text(strings.cancel)
                 }
             },

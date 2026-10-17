@@ -29,10 +29,10 @@ En el modo "Rama existente" las ramas de `ListLocalBranchesUseCase` se muestran 
 Cada fila muestra el estado de su worktree debajo del nombre de la rama. `WorktreeViewModel` lo guarda en `statuses`, un mapa de ruta del worktree a `WorktreeStatusState` (`Loading`, `Loaded` o `Unavailable`):
 
 - Una vez leída la lista, se resuelve la rama principal con `ResolveMainBranchUseCase` (expuesta como `mainBranch`) y se lee el estado de cada worktree con `ReadWorktreeStatusUseCase`, como mucho 4 a la vez. La lista aparece al momento y cada fila muestra un pequeño indicador de progreso hasta que llega su estado.
-- Un worktree cuyo estado no se puede leer muestra "Estado no disponible" sin afectar a los demás ni al error de la pantalla. Un worktree que ha perdido su carpeta (`isPrunable`) muestra en su lugar "Carpeta no encontrada", y uno bloqueado (`isLocked`, p. ej. en uso por una sesión de un agente) muestra la etiqueta "bloqueado" junto a su rama.
+- Un worktree cuyo estado no se puede leer muestra "Estado no disponible" sin afectar a los demás ni al error de la pantalla. Un worktree que ha perdido su carpeta (`isPrunable`) muestra en su lugar "Carpeta no encontrada", y uno bloqueado (`isLocked`, p. ej. en uso por una sesión de un agente) muestra un chip neutro "bloqueado" junto a su rama.
 - Recargar la lista, también cuando la ventana recupera el foco, vuelve a leer todos los estados; los resultados de una carga anterior se descartan. Crear un worktree solo lee el estado del nuevo, y eliminarlo descarta su estado.
 
-`WorktreeStatusLine` pinta el estado como segmentos separados por `·` (`statusSegments`): cambios sin commitear (solo si los hay), `↑N ↓N upstream`, `↑N ↓N <rama principal>` y la fecha del último commit en tiempo relativo (`relativeTime`, en `RelativeTime.kt`). Una rama mergeada muestra la etiqueta "mergeada en <rama principal>" en el color primario en lugar de su divergencia con la rama principal.
+`WorktreeStatusLine` pinta el estado como chips de estado seguidos de segmentos separados por `·` (`statusSegments`). Los cambios sin commitear (solo si los hay) son un chip de aviso, y una rama mergeada muestra un chip de éxito "mergeada en <rama principal>" en lugar de su divergencia con la rama principal. Los segmentos son `↑N ↓N upstream`, `↑N ↓N <rama principal>` y la fecha del último commit en tiempo relativo (`relativeTime`, en `RelativeTime.kt`).
 
 ### Refresco automático
 
@@ -42,7 +42,7 @@ Mientras se muestra `WorktreeScreen`, un `DisposableEffect` llama a `WorktreeVie
 
 `WorktreeScreen` recibe la `ProjectConfig` del proyecto para clasificar el origen de cada fila con `classifyOrigin`. Tras cada carga de la lista, `WorktreeViewModel` ejecuta además `DetectRunningAgentsUseCase` una vez (`agents`, `null` cuando no se pueden listar los procesos) y mide el tamaño de cada worktree de uno en uno con `MeasureWorktreeSizeUseCase` (`sizes`, sumados en `totalSize`); los resultados de una carga anterior se descartan con `listGeneration`. También lee los puertos reservados de cada worktree (`ports`, con `WorktreeUseCases.readPorts`, que resuelve el entorno con `reserve = false`, así que abrir la pantalla nunca reserva un puerto) y `WorktreeOverviewLine` los muestra después del tamaño con `portsLabel` (`PORT 20001 · api 20002`).
 
-- `WorktreeBranchLine` muestra, tras la rama y la etiqueta "bloqueado", el origen (ShogunAi, Claude Code u otra ubicación) en texto atenuado y cada agente en ejecución como "● nombre" en el color de éxito.
+- `WorktreeBranchLine` muestra, tras la rama y la etiqueta "bloqueado", el origen (ShogunAi, Claude Code u otra ubicación) en texto atenuado y cada agente en ejecución como un chip de información con su nombre.
 - `WorktreeOverviewLine`, bajo el estado, muestra el tamaño (`formatSize`, unidades binarias con un decimal) y la etiqueta "inactivo" cuando se cumple `isInactive`.
 - El título "Worktrees" va seguido de "N worktrees · <tamaño total>".
 
@@ -107,7 +107,7 @@ Las cargas de la lista llevan un número de generación: un resultado solo se ap
 
 ## Componentes compartidos (`ui/components`)
 
-- **`Spacing`**: escala de espaciado (`xs=4dp`, `sm=8dp`, `md=16dp`, `lg=24dp`) usada en vez de valores `dp` sueltos.
+- **`Spacing`**: escala de espaciado (`xxs=2dp`, `xs=4dp`, `sm=8dp`, `md=16dp`, `lg=24dp`, `xl=32dp`) usada en vez de valores `dp` sueltos. Los tamaños internos de los componentes, como los de los iconos, son constantes con nombre.
 - **`SegmentedSelector<T>`**: control segmentado (`SingleChoiceSegmentedButtonRow`/`SegmentedButton`) para un conjunto pequeño y fijo de opciones siempre visibles (p. ej. `CreateMode`, `BranchType`). Las etiquetas se dimensionan a su texto completo (`Modifier.width(IntrinsicSize.Max)`): la fila calcula el ancho de sus segmentos a partir de su ancho mínimo intrínseco, que para un texto normal es solo su palabra más larga.
 - **`DropdownSelector<T>`**: dropdown (`ExposedDropdownMenuBox`) para listas más largas o cargadas dinámicamente, con grupos plegables opcionales (`groupBy`) y opciones deshabilitadas (`enabled`), que se ignoran sea cual sea el método de entrada.
 - **`SectionCard`**: `OutlinedCard` con título, usada para agrupar secciones de un formulario largo (todas las secciones de `ProjectConfigScreen`, y el bloque "Nuevo worktree" de `WorktreeScreen`).
@@ -116,6 +116,45 @@ Las cargas de la lista llevan un número de generación: un resultado solo se ap
 ## Tema (`ui/theme`)
 
 `ShogunAiTheme` aplica el esquema de colores claro u oscuro según el `ThemeMode` guardado, que se elige con `ThemeModeToggle` en la barra superior. En modo `SYSTEM`, `rememberSystemInDarkTheme` consulta el tema del sistema operativo cada segundo, porque `isSystemInDarkTheme()` de Compose Desktop no reacciona a cambios con la app abierta.
+
+## Sistema de diseño
+
+El tema y los componentes compartidos forman el sistema de diseño de la app. Las pantallas usan sus tokens y componentes en vez de colores o tamaños literales o de copias por pantalla.
+
+### Paleta
+
+La app define todos los roles de color de Material 3 de los esquemas claro y oscuro (`ShogunLightColorScheme`, `ShogunDarkColorScheme` en `Theme.kt`), así que ningún diálogo, menú o control seleccionado cae en el morado base de Material. Los roles salen de una gama de neutros fríos (`Neutral*` en `Color.kt`) y un único color de marca. El rojo de marca es `primary`: se usa para la acción principal de una vista y para elementos de marca, nunca para indicar un estado. En el esquema claro es algo más oscuro, para que el texto blanco encima siga siendo legible.
+
+Los colores de estado son tokens aparte, cada uno con un único significado, expuestos como `ShogunTheme.status` (`ShogunStatusColors`). Cada estado tiene un `color` para texto e iconos, un `onColor` y un par `container`/`onContainer` para chips y avisos:
+
+| Estado | Significado | Ejemplos |
+|---|---|---|
+| success | hecho o sano | mergeada, dispositivo en marcha, operación correcta |
+| warning | requiere tu atención, sin estar roto | cambios sin commitear, inactivo |
+| info | trabajo en curso | agente trabajando, dispositivo arrancando |
+| danger | fallido o destructivo | errores, carpeta que falta, acciones de borrado |
+| neutral | estado sin más | bloqueado, dispositivo parado |
+
+La correspondencia entre indicadores de worktree y estados de dispositivo y su estado vive en `StatusMapping.kt`.
+
+El contraste lo comprueban los tests, no el ojo: `ThemeContrastTest` usa `contrastRatio` (luminancia relativa WCAG) para asegurar que el texto llega a 4,5:1 y los contornos a 3:1 sobre cada superficie, en los dos esquemas, y `ColorSchemeTest` asegura que ningún rol conserva el valor base de Material.
+
+### Tipografía
+
+La app incluye Geist para el texto de la interfaz y Geist Mono para los datos, en pesos 400, 500 y 600, en `desktopApp/src/main/resources/fonts/` con su licencia SIL Open Font License (`OFL.txt`). Al incluirlas, el texto se ve igual en macOS, Windows y Linux. Todos los estilos de `Typography` usan Geist, con tamaños ajustados a una herramienta de escritorio densa. `ShogunTheme.typography` añade dos estilos para datos, `data` y `dataSmall`, en Geist Mono con cifras tabulares: los usan las rutas, ramas, puertos, PIDs, tamaños, recuentos y tiempos relativos, así los valores que se refrescan no mueven el diseño.
+
+### Formas y foco
+
+`ShogunShapes` fija la escala de radios de esquina (`extraSmall` 4, `small` 6, `medium` 10, `large` 14, `extraLarge` 20 dp). El tema refuerza la capa de estado de foco del ripple de Material, para que el foco del teclado se vea en todos los controles de Material.
+
+### Componentes compartidos
+
+- **`InlineProgress`**: el único indicador de progreso en línea, en tamaños `Small` y `Medium`.
+- **`Notice`**: mensajes de error, aviso, éxito e información con el icono y el color de su estado, el mensaje y una acción para cerrarlo. Tiene un hueco `details` para contenido adicional.
+- **`StatusChip`**: una etiqueta compacta sobre el color contenedor de un estado, con icono opcional.
+- **`DangerButton`, `DangerTextButton`**: acciones destructivas, tanto donde se ofrecen como en la confirmación que les sigue. **`NeutralTextButton`** es el botón de texto para acciones neutras como "Cancelar", para reservar el color de marca a las acciones principales.
+- **`IconAction`**: una acción solo con icono cuya etiqueta es a la vez su tooltip y su descripción accesible.
+- **`Modifier.interactive`**: hace clicable una fila o cabecera propia, con estado hover, el puntero de mano y un anillo de foco (`Modifier.focusRing`).
 
 ## `AppContainer`
 

@@ -11,22 +11,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Error
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -44,14 +36,24 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeEmulator
-import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.model.WorktreeOrigin
+import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.usecase.classifyOrigin
 import app.luxion.shogunai.domain.usecase.isInactive
+import app.luxion.shogunai.ui.components.DangerButton
+import app.luxion.shogunai.ui.components.DangerTextButton
 import app.luxion.shogunai.ui.components.DropdownSelector
+import app.luxion.shogunai.ui.components.InlineProgress
+import app.luxion.shogunai.ui.components.NeutralTextButton
+import app.luxion.shogunai.ui.components.Notice
+import app.luxion.shogunai.ui.components.NoticeKind
+import app.luxion.shogunai.ui.components.PrimaryButton
+import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.SectionCard
 import app.luxion.shogunai.ui.components.SegmentedSelector
 import app.luxion.shogunai.ui.components.Spacing
+import app.luxion.shogunai.ui.components.StatusChip
+import app.luxion.shogunai.ui.components.handPointer
 import app.luxion.shogunai.ui.components.onEnterKey
 import app.luxion.shogunai.ui.components.onNewItemShortcut
 import app.luxion.shogunai.ui.i18n.LocalStrings
@@ -118,40 +120,24 @@ fun WorktreeScreen(
             Text(projectName, style = MaterialTheme.typography.headlineSmall)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (viewModel.isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.padding(end = Spacing.sm).size(20.dp),
-                        strokeWidth = 2.dp,
-                    )
+                    InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
                 }
-                OutlinedButton(
+                SecondaryButton(
                     onClick = { viewModel.refresh() },
                     enabled = !viewModel.isLoading,
                     modifier = Modifier.padding(end = Spacing.sm),
                 ) { Text(strings.reload) }
-                OutlinedButton(onClick = onBack) { Text(strings.projectsTitle) }
+                SecondaryButton(onClick = onBack) { Text(strings.projectsTitle) }
             }
         }
 
         viewModel.error?.let { error ->
-            val message = strings.worktreeError(error)
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Error,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(end = Spacing.sm),
-                    )
-                    Text(message, color = MaterialTheme.colorScheme.error)
-                }
-                IconButton(onClick = { viewModel.dismissError() }) {
-                    Icon(Icons.Default.Close, contentDescription = strings.closeError)
-                }
-            }
+            Notice(
+                kind = NoticeKind.ERROR,
+                message = strings.worktreeError(error),
+                onDismiss = { viewModel.dismissError() },
+                modifier = Modifier.padding(top = Spacing.sm),
+            )
         }
 
         viewModel.success?.let { success ->
@@ -176,24 +162,12 @@ fun WorktreeScreen(
                 delay(4000)
                 viewModel.dismissSuccess()
             }
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        tint = ShogunTheme.extendedColors.success,
-                        modifier = Modifier.padding(end = Spacing.sm),
-                    )
-                    Text(message, color = ShogunTheme.extendedColors.success)
-                }
-                IconButton(onClick = { viewModel.dismissSuccess() }) {
-                    Icon(Icons.Default.Close, contentDescription = strings.closeMessage)
-                }
-            }
+            Notice(
+                kind = NoticeKind.SUCCESS,
+                message = message,
+                onDismiss = { viewModel.dismissSuccess() },
+                modifier = Modifier.padding(top = Spacing.sm),
+            )
         }
 
         SectionCard(
@@ -216,6 +190,8 @@ fun WorktreeScreen(
                         value = viewModel.taskId,
                         onValueChange = { viewModel.updateTaskId(it) },
                         label = { Text(strings.taskIdLabel) },
+                        textStyle = ShogunTheme.typography.data,
+                        singleLine = true,
                         supportingText = { Text(strings.taskIdHint) },
                         isError = viewModel.taskId.isNotBlank() && !viewModel.isTaskIdValid(viewModel.taskId),
                         modifier = Modifier.fillMaxWidth().onEnterKey(enabled = isTaskIdValid, action = createNewBranchWorktree),
@@ -223,7 +199,7 @@ fun WorktreeScreen(
                     if (viewModel.taskId.isNotBlank() && !viewModel.isTaskIdValid(viewModel.taskId)) {
                         Text(
                             strings.invalidTaskId,
-                            color = MaterialTheme.colorScheme.error,
+                            color = ShogunTheme.status.danger.color,
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
@@ -236,12 +212,9 @@ fun WorktreeScreen(
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (viewModel.isCreating) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.padding(end = Spacing.sm).size(20.dp),
-                                strokeWidth = 2.dp,
-                            )
+                            InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
                         }
-                        Button(
+                        PrimaryButton(
                             onClick = createWorktree,
                             enabled = isCreateEnabled && !viewModel.isCreating,
                         ) {
@@ -252,10 +225,7 @@ fun WorktreeScreen(
                 CreateMode.EXISTING_BRANCH -> {
                     when {
                         viewModel.isLoadingBranches -> Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.padding(end = Spacing.sm).size(20.dp),
-                                strokeWidth = 2.dp,
-                            )
+                            InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
                             Text(strings.loadingBranches)
                         }
                         viewModel.localBranches.isEmpty() -> Text(strings.noBranchesAvailable)
@@ -272,12 +242,9 @@ fun WorktreeScreen(
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (viewModel.isCreating) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.padding(end = Spacing.sm).size(20.dp),
-                                strokeWidth = 2.dp,
-                            )
+                            InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
                         }
-                        Button(
+                        PrimaryButton(
                             onClick = createWorktree,
                             enabled = isCreateEnabled && !viewModel.isCreating,
                         ) {
@@ -301,12 +268,12 @@ fun WorktreeScreen(
                 Text(strings.worktreesTitle, style = MaterialTheme.typography.titleMedium)
                 Text(
                     strings.worktreesSummary(viewModel.worktrees.size, formatSize(viewModel.totalSize)),
-                    style = MaterialTheme.typography.bodySmall,
+                    style = ShogunTheme.typography.dataSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = Spacing.sm),
                 )
             }
-            OutlinedButton(
+            DangerTextButton(
                 onClick = { viewModel.openCleanup() },
                 enabled = viewModel.canCleanUp && !viewModel.isCleaningUp,
             ) { Text(strings.cleanUp) }
@@ -373,6 +340,7 @@ fun WorktreeScreen(
                             Checkbox(
                                 checked = viewModel.pendingRemovalDeleteBranch,
                                 onCheckedChange = { viewModel.setPendingRemovalDeleteBranch(it) },
+                                modifier = Modifier.handPointer(),
                             )
                             Text(strings.alsoDeleteLocalBranch(branch))
                         }
@@ -382,12 +350,9 @@ fun WorktreeScreen(
             confirmButton = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (viewModel.isRemoving) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.padding(end = Spacing.sm).size(20.dp),
-                            strokeWidth = 2.dp,
-                        )
+                        InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
                     }
-                    TextButton(
+                    DangerButton(
                         onClick = { viewModel.confirmPendingRemoval() },
                         enabled = !viewModel.isRemoving,
                     ) {
@@ -396,7 +361,7 @@ fun WorktreeScreen(
                 }
             },
             dismissButton = {
-                TextButton(
+                NeutralTextButton(
                     onClick = { viewModel.dismissPendingRemoval() },
                     enabled = !viewModel.isRemoving,
                 ) {
@@ -436,11 +401,14 @@ private fun WorktreeRow(
         modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.sm),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Column(modifier = Modifier.weight(1f).padding(end = Spacing.sm)) {
-            Text(worktree.path, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column(
+            modifier = Modifier.weight(1f).padding(end = Spacing.sm),
+            verticalArrangement = Arrangement.spacedBy(Spacing.xxs),
+        ) {
+            Text(worktree.path, style = ShogunTheme.typography.data, maxLines = 1, overflow = TextOverflow.Ellipsis)
             WorktreeBranchLine(worktree, origin, agents)
             if (worktree.isPrunable) {
-                Text(strings.folderMissing, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                StatusChip(WorktreeIndicator.FOLDER_MISSING.status(), strings.folderMissing)
             } else {
                 WorktreeStatusLine(status, mainBranchName)
                 WorktreeOverviewLine(size, isInactive, ports)
@@ -449,19 +417,21 @@ private fun WorktreeRow(
             }
         }
         Row {
-            OutlinedButton(onClick = onCopyLaunchCommand, modifier = Modifier.padding(end = Spacing.sm)) {
+            SecondaryButton(onClick = onCopyLaunchCommand, modifier = Modifier.padding(end = Spacing.sm)) {
                 Icon(
                     imageVector = if (isCopied) Icons.Default.Check else Icons.Default.ContentCopy,
                     contentDescription = null,
-                    modifier = Modifier.size(18.dp).padding(end = Spacing.sm),
+                    modifier = Modifier.padding(end = Spacing.sm).size(ButtonIconSize),
                 )
                 Text(if (isCopied) strings.copied else strings.copyCommand)
             }
             if (!worktree.isMain) {
-                OutlinedButton(onClick = onRemove) {
+                DangerTextButton(onClick = onRemove) {
                     Text(strings.delete)
                 }
             }
         }
     }
 }
+
+private val ButtonIconSize = 18.dp

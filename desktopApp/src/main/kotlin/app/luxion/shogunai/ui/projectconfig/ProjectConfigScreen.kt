@@ -13,11 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -33,12 +29,19 @@ import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.ui.FilePicker
+import app.luxion.shogunai.ui.components.IconAction
+import app.luxion.shogunai.ui.components.Notice
+import app.luxion.shogunai.ui.components.NoticeKind
+import app.luxion.shogunai.ui.components.PrimaryButton
+import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.SectionCard
 import app.luxion.shogunai.ui.components.Spacing
+import app.luxion.shogunai.ui.components.handPointer
 import app.luxion.shogunai.ui.components.onEnterKey
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.worktreeError
 import app.luxion.shogunai.ui.relativeToBase
+import app.luxion.shogunai.ui.theme.ShogunTheme
 
 @Composable
 fun ProjectConfigScreen(
@@ -65,6 +68,7 @@ fun ProjectConfigScreen(
                 value = viewModel.name,
                 onValueChange = { viewModel.name = it },
                 label = { Text(strings.nameLabel) },
+                singleLine = true,
                 isError = viewModel.name.isBlank(),
                 supportingText = if (viewModel.name.isBlank()) {
                     { Text(strings.nameEmptyError) }
@@ -87,6 +91,8 @@ fun ProjectConfigScreen(
                     value = viewModel.baseRepositoryPath,
                     onValueChange = { viewModel.baseRepositoryPath = it },
                     label = { Text(strings.baseRepositoryPathLabel) },
+                    textStyle = ShogunTheme.typography.data,
+                    singleLine = true,
                     isError = viewModel.baseRepositoryPath.isBlank(),
                     supportingText = if (viewModel.baseRepositoryPath.isBlank()) {
                         { Text(strings.baseRepositoryPathEmptyError) }
@@ -95,7 +101,7 @@ fun ProjectConfigScreen(
                     },
                     modifier = Modifier.weight(1f).onEnterKey(action = pickBaseRepositoryPath),
                 )
-                OutlinedButton(
+                SecondaryButton(
                     onClick = pickBaseRepositoryPath,
                     modifier = Modifier.padding(start = Spacing.sm),
                 ) {
@@ -113,9 +119,11 @@ fun ProjectConfigScreen(
                     value = viewModel.worktreesRoot,
                     onValueChange = { viewModel.worktreesRoot = it },
                     label = { Text(strings.worktreesRootLabel) },
+                    textStyle = ShogunTheme.typography.data,
+                    singleLine = true,
                     modifier = Modifier.weight(1f).onEnterKey(action = pickWorktreesRoot),
                 )
-                OutlinedButton(
+                SecondaryButton(
                     onClick = pickWorktreesRoot,
                     modifier = Modifier.padding(start = Spacing.sm),
                 ) {
@@ -126,6 +134,7 @@ fun ProjectConfigScreen(
                 value = viewModel.mainBranch,
                 onValueChange = { viewModel.mainBranch = it },
                 label = { Text(strings.mainBranchLabel) },
+                textStyle = ShogunTheme.typography.data,
                 placeholder = { Text(strings.mainBranchPlaceholder) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
@@ -150,17 +159,20 @@ fun ProjectConfigScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            LazyColumn(modifier = Modifier.heightIn(max = 160.dp)) {
+            LazyColumn(modifier = Modifier.heightIn(max = LocalFilesListMaxHeight)) {
                 items(viewModel.secretFiles) { file ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(file)
-                        IconButton(onClick = { viewModel.removeSecretFile(file) }) {
-                            Icon(Icons.Default.Close, contentDescription = strings.removeLocalFile)
-                        }
+                        Text(file, style = ShogunTheme.typography.data)
+                        IconAction(
+                            icon = Icons.Default.Close,
+                            label = strings.removeLocalFile,
+                            onClick = { viewModel.removeSecretFile(file) },
+                            tint = ShogunTheme.status.danger.color,
+                        )
                     }
                 }
             }
@@ -173,15 +185,17 @@ fun ProjectConfigScreen(
                     value = newSecretFile,
                     onValueChange = { newSecretFile = it },
                     label = { Text(strings.newLocalFileLabel) },
+                    textStyle = ShogunTheme.typography.data,
+                    singleLine = true,
                     modifier = Modifier.weight(1f).onEnterKey(action = addSecretFile),
                 )
-                Button(
+                SecondaryButton(
                     onClick = addSecretFile,
                     modifier = Modifier.padding(start = Spacing.sm),
                 ) {
                     Text(strings.add)
                 }
-                OutlinedButton(
+                SecondaryButton(
                     onClick = {
                         FilePicker.pickFiles(viewModel.baseRepositoryPath, strings.selectLocalFilesDialogTitle).forEach { absolutePath ->
                             viewModel.addSecretFile(relativeToBase(viewModel.baseRepositoryPath, absolutePath))
@@ -193,7 +207,7 @@ fun ProjectConfigScreen(
                 }
             }
             if (viewModel.canMoveLocalFilesToRepository) {
-                OutlinedButton(onClick = viewModel::moveLocalFilesToRepository) {
+                SecondaryButton(onClick = viewModel::moveLocalFilesToRepository) {
                     Text(strings.moveToRepositoryConfig)
                 }
             }
@@ -204,10 +218,12 @@ fun ProjectConfigScreen(
                 value = viewModel.agentCommand,
                 onValueChange = { viewModel.agentCommand = it },
                 label = { Text(strings.agentCommandLabel) },
+                textStyle = ShogunTheme.typography.data,
+                singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Switch(checked = viewModel.useHeadroom, onCheckedChange = { viewModel.useHeadroom = it })
+                Switch(checked = viewModel.useHeadroom, onCheckedChange = { viewModel.useHeadroom = it }, modifier = Modifier.handPointer())
                 Text(strings.useHeadroomLabel, modifier = Modifier.padding(start = Spacing.sm))
             }
             Text(
@@ -221,14 +237,14 @@ fun ProjectConfigScreen(
         SimulatorSettingsSection(viewModel)
 
         saveError?.let { error ->
-            Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.fillMaxWidth())
+            Notice(kind = NoticeKind.ERROR, message = error, onDismiss = { saveError = null })
         }
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            OutlinedButton(onClick = requestCancel, modifier = Modifier.padding(end = Spacing.sm)) {
+            SecondaryButton(onClick = requestCancel, modifier = Modifier.padding(end = Spacing.sm)) {
                 Text(strings.cancel)
             }
-            Button(
+            PrimaryButton(
                 onClick = {
                     viewModel.save()
                         .onSuccess { saveError = null; onSaved(it) }
@@ -247,7 +263,7 @@ fun ProjectConfigScreen(
             title = { Text(strings.discardChangesTitle) },
             text = { Text(strings.discardChangesMessage) },
             confirmButton = {
-                Button(onClick = {
+                PrimaryButton(onClick = {
                     showDiscardChangesDialog = false
                     onCancel()
                 }) {
@@ -255,7 +271,7 @@ fun ProjectConfigScreen(
                 }
             },
             dismissButton = {
-                OutlinedButton(onClick = { showDiscardChangesDialog = false }) {
+                SecondaryButton(onClick = { showDiscardChangesDialog = false }) {
                     Text(strings.keepEditing)
                 }
             },
@@ -277,7 +293,7 @@ private fun RepositoryProvisioningList(
     when {
         state is RepositoryProvisioningState.Unreadable -> Text(
             strings.repositoryConfigUnreadable(state.path) + (state.detail?.let { "\n$it" } ?: ""),
-            color = MaterialTheme.colorScheme.error,
+            color = ShogunTheme.status.danger.color,
         )
         rows.isEmpty() -> Text(strings.repositoryProvisioningEmpty)
     }
@@ -287,12 +303,14 @@ private fun RepositoryProvisioningList(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(pattern)
+            Text(pattern, style = ShogunTheme.typography.data)
             Text(
                 source,
-                style = MaterialTheme.typography.bodySmall,
+                style = ShogunTheme.typography.dataSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
 }
+
+private val LocalFilesListMaxHeight = 160.dp

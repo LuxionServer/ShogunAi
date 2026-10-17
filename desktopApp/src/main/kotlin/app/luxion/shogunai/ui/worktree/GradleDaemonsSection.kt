@@ -7,14 +7,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -27,10 +23,15 @@ import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.DaemonStopReport
 import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.usecase.totalResidentMemory
+import app.luxion.shogunai.ui.components.InlineProgress
+import app.luxion.shogunai.ui.components.Notice
+import app.luxion.shogunai.ui.components.NoticeKind
+import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.SectionCard
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.Strings
+import app.luxion.shogunai.ui.theme.ShogunTheme
 import java.time.Instant
 
 @Composable
@@ -38,12 +39,12 @@ fun GradleDaemonsSection(viewModel: WorktreeViewModel, modifier: Modifier = Modi
     val strings = LocalStrings.current
     SectionCard(title = strings.gradleDaemonsTitle, modifier = modifier) {
         when (val state = viewModel.gradleDaemons) {
-            GradleDaemonsState.Loading -> CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            GradleDaemonsState.Loading -> InlineProgress()
             GradleDaemonsState.Unavailable -> SecondaryText(strings.gradleDaemonsUnavailable)
             is GradleDaemonsState.Loaded -> LoadedDaemons(state.daemons, viewModel)
         }
         viewModel.gradleSettings?.let { settings ->
-            SecondaryText(
+            DataText(
                 strings.gradleWorktreeSettings(
                     settings.daemonMaxHeap?.let(::formatMemorySetting),
                     settings.idleTimeoutMinutes,
@@ -60,7 +61,7 @@ fun GradleDaemonsSection(viewModel: WorktreeViewModel, modifier: Modifier = Modi
                     Icons.Default.Info,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(end = Spacing.sm).size(18.dp),
+                    modifier = Modifier.padding(end = Spacing.sm).size(InfoIconSize),
                 )
                 SecondaryText(strings.gradleBuildCacheOff)
             }
@@ -80,12 +81,12 @@ private fun LoadedDaemons(daemons: List<GradleDaemon>, viewModel: WorktreeViewMo
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        SecondaryText(strings.gradleDaemonsSummary(daemons.size, formatSize(totalResidentMemory(daemons))))
+        DataText(strings.gradleDaemonsSummary(daemons.size, formatSize(totalResidentMemory(daemons))))
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (viewModel.isStoppingDaemons) {
-                CircularProgressIndicator(modifier = Modifier.padding(end = Spacing.sm).size(20.dp), strokeWidth = 2.dp)
+                InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
             }
-            OutlinedButton(
+            SecondaryButton(
                 onClick = { viewModel.stopIdleGradleDaemons() },
                 enabled = !viewModel.isStoppingDaemons && daemons.any { it.isStoppable(daemons) },
             ) { Text(strings.stopIdleDaemons) }
@@ -110,36 +111,34 @@ private fun DaemonRow(daemon: GradleDaemon, canStop: Boolean, onStop: () -> Unit
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f).padding(end = Spacing.sm)) {
-            Text(daemonTitle(daemon, strings), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            SecondaryText(daemonDetails(daemon, strings, Instant.now()))
+            Text(daemonTitle(daemon, strings), style = ShogunTheme.typography.data, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            DataText(daemonDetails(daemon, strings, Instant.now()))
         }
-        OutlinedButton(onClick = onStop, enabled = canStop) { Text(strings.stopDaemon) }
+        SecondaryButton(onClick = onStop, enabled = canStop) { Text(strings.stopDaemon) }
     }
 }
 
 @Composable
 private fun DaemonStopMessage(report: DaemonStopReport, onDismiss: () -> Unit) {
     val strings = LocalStrings.current
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            strings.daemonsStopped(report.stopped.size, report.kept.size, report.failures.size),
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.weight(1f),
-        )
-        IconButton(onClick = onDismiss) {
-            Icon(Icons.Default.Close, contentDescription = strings.closeMessage)
-        }
-    }
+    Notice(
+        kind = if (report.failures.isEmpty()) NoticeKind.SUCCESS else NoticeKind.WARNING,
+        message = strings.daemonsStopped(report.stopped.size, report.kept.size, report.failures.size),
+        onDismiss = onDismiss,
+    )
 }
 
 @Composable
 private fun SecondaryText(text: String) {
     Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
+
+@Composable
+private fun DataText(text: String) {
+    Text(text, style = ShogunTheme.typography.dataSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+private val InfoIconSize = 18.dp
 
 fun formatMemorySetting(size: String): String {
     val unit = when (size.last().lowercaseChar()) {
