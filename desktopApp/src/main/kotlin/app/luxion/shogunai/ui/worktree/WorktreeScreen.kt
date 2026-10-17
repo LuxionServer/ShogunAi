@@ -14,28 +14,34 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.ui.components.DangerButton
 import app.luxion.shogunai.ui.components.DangerTextButton
+import app.luxion.shogunai.ui.components.DropdownSelector
 import app.luxion.shogunai.ui.components.IconAction
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.NeutralTextButton
-import app.luxion.shogunai.ui.components.Notice
-import app.luxion.shogunai.ui.components.NoticeKind
 import app.luxion.shogunai.ui.components.PrimaryButton
 import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.Spacing
@@ -43,191 +49,265 @@ import app.luxion.shogunai.ui.components.handPointer
 import app.luxion.shogunai.ui.components.onNewItemShortcut
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.Strings
-import app.luxion.shogunai.ui.i18n.worktreeError
 import app.luxion.shogunai.ui.shell.LocalAppMessages
 import app.luxion.shogunai.ui.shell.MessageAction
 import java.io.File
 
 @Composable
 fun WorktreeScreen(
-    projectName: String,
-    projectConfig: ProjectConfig,
-    viewModel: WorktreeViewModel,
-    onOpenProjectSettings: () -> Unit,
+    board: WorktreeBoard,
+    onSelectFilter: (String?) -> Unit,
+    onOpenProjectSettings: (Project) -> Unit,
 ) {
     val strings = LocalStrings.current
-    DisposableEffect(viewModel) {
-        viewModel.startWatching()
-        onDispose { viewModel.stopWatching() }
+    DisposableEffect(board) {
+        board.startWatching()
+        onDispose { board.stopWatching() }
     }
     val messages = LocalAppMessages.current
-    LaunchedEffect(viewModel.success) {
-        val success = viewModel.success ?: return@LaunchedEffect
-        messages.show(strings.successMessage(success), success.action(strings, viewModel))
-        viewModel.dismissSuccess()
+    LaunchedEffect(board.pendingSuccess) {
+        val pending = board.pendingSuccess ?: return@LaunchedEffect
+        messages.show(strings.successMessage(pending.success), pending.action(strings, board))
+        board.dismissSuccess(pending)
     }
+    val filteredProject = board.shownProjects.singleOrNull()?.takeIf { board.isFiltered }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .onNewItemShortcut(enabled = !viewModel.isCreateDialogOpen) { viewModel.openCreateDialog() },
+            .onNewItemShortcut(enabled = !board.isCreateDialogOpen) { board.openCreateDialog() },
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md, vertical = Spacing.md),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(projectName, style = MaterialTheme.typography.headlineSmall)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (viewModel.isLoading) {
-                    InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
-                }
-                SecondaryButton(
-                    onClick = { viewModel.refresh() },
-                    enabled = !viewModel.isLoading,
-                    modifier = Modifier.padding(end = Spacing.sm),
-                ) { Text(strings.reload) }
+            Text(
+                filteredProject?.name ?: strings.allWorktrees,
+                style = MaterialTheme.typography.headlineSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            if (board.shownProjects.any { it.id.let(board::holder)?.isLoading == true }) InlineProgress()
+            SecondaryButton(onClick = { board.refreshShown() }) { Text(strings.reload) }
+            filteredProject?.let { project ->
                 IconAction(
                     icon = Icons.Default.Settings,
                     label = strings.projectConfigTitle,
-                    onClick = onOpenProjectSettings,
-                    modifier = Modifier.padding(end = Spacing.sm),
+                    onClick = { onOpenProjectSettings(project) },
                 )
-                DangerTextButton(
-                    onClick = { viewModel.openCleanup() },
-                    enabled = viewModel.canCleanUp && !viewModel.isCleaningUp,
-                    modifier = Modifier.padding(end = Spacing.sm),
-                ) { Text(strings.cleanUp) }
-                PrimaryButton(onClick = { viewModel.openCreateDialog() }) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(ButtonIconSize))
-                    Text(strings.newWorktree, modifier = Modifier.padding(start = Spacing.sm))
-                }
+            }
+            DangerTextButton(onClick = { board.openCleanup() }, enabled = board.canCleanUp()) { Text(strings.cleanUp) }
+            PrimaryButton(onClick = { board.openCreateDialog() }, enabled = board.projects.isNotEmpty()) {
+                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(ButtonIconSize))
+                Text(strings.newWorktree, modifier = Modifier.padding(start = Spacing.sm))
             }
         }
 
-        viewModel.error?.let { error ->
-            Notice(
-                kind = NoticeKind.ERROR,
-                message = strings.worktreeError(error),
-                onDismiss = { viewModel.dismissError() },
-                modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm),
-            )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = Spacing.md, end = Spacing.md, bottom = Spacing.md),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ProjectFilter(board, onSelectFilter)
+            TextFilterField(board)
         }
 
-        viewModel.cleanupIssues?.let { report ->
-            CleanupIssues(report, onDismiss = { viewModel.dismissCleanupIssues() })
-        }
-
-        WorktreeContent(projectConfig, viewModel, modifier = Modifier.weight(1f).fillMaxWidth())
+        WorktreeContent(board, onOpenProjectSettings, modifier = Modifier.weight(1f).fillMaxWidth())
     }
 
-    if (viewModel.isCreateDialogOpen) {
-        CreateWorktreeDialog(viewModel)
+    if (board.isCreateDialogOpen) {
+        CreateWorktreeDialog(board)
     }
 
-    if (viewModel.isCleanupDialogOpen) {
-        CleanupDialog(viewModel)
+    if (board.isCleanupDialogOpen) {
+        CleanupDialog(board)
     }
 
-    viewModel.worktreePendingRemoval?.let { worktree ->
-        val requiresForce = viewModel.pendingRemovalRequiresForce
-        AlertDialog(
-            onDismissRequest = { viewModel.dismissPendingRemoval() },
-            title = { Text(if (requiresForce) strings.forceRemoveTitle else strings.removeWorktreeTitle) },
-            text = {
-                Column {
-                    Text(
-                        if (requiresForce) {
-                            strings.forceRemoveMessage(worktree.path)
-                        } else {
-                            strings.removeWorktreeMessage(worktree.path)
-                        },
-                    )
-                    worktree.branch?.let { branch ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(top = Spacing.sm),
-                        ) {
-                            Checkbox(
-                                checked = viewModel.pendingRemovalDeleteBranch,
-                                onCheckedChange = { viewModel.setPendingRemovalDeleteBranch(it) },
-                                modifier = Modifier.handPointer(),
-                            )
-                            Text(strings.alsoDeleteLocalBranch(branch))
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (viewModel.isRemoving) {
-                        InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
-                    }
-                    DangerButton(
-                        onClick = { viewModel.confirmPendingRemoval() },
-                        enabled = !viewModel.isRemoving,
+    board.pendingRemoval?.let { holder -> RemoveWorktreeDialog(holder) }
+}
+
+@Composable
+private fun ProjectFilter(board: WorktreeBoard, onSelectFilter: (String?) -> Unit) {
+    val strings = LocalStrings.current
+    val options = listOf<Project?>(null) + board.projects
+    DropdownSelector(
+        options = options,
+        selected = board.projects.firstOrNull { it.id == board.projectFilter },
+        onSelect = { onSelectFilter(it?.id) },
+        label = { it?.name ?: strings.allProjects },
+        placeholder = strings.allProjects,
+        modifier = Modifier.width(FilterFieldWidth),
+    )
+}
+
+@Composable
+private fun TextFilterField(board: WorktreeBoard) {
+    val strings = LocalStrings.current
+    val focusRequester = remember { FocusRequester() }
+    val findRequestsOnEntry = remember { board.findRequests }
+    LaunchedEffect(board.findRequests) {
+        if (board.findRequests != findRequestsOnEntry) focusRequester.requestFocus()
+    }
+    OutlinedTextField(
+        value = board.textFilter,
+        onValueChange = board::updateTextFilter,
+        placeholder = { Text(strings.filterWorktreesPlaceholder, style = MaterialTheme.typography.bodySmall) },
+        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(ButtonIconSize)) },
+        trailingIcon = if (board.textFilter.isNotEmpty()) {
+            { IconAction(icon = Icons.Default.Close, label = strings.clearFilter, onClick = board::clearTextFilter) }
+        } else {
+            null
+        },
+        textStyle = MaterialTheme.typography.bodySmall,
+        singleLine = true,
+        modifier = Modifier
+            .width(FilterFieldWidth)
+            .focusRequester(focusRequester),
+    )
+}
+
+@Composable
+private fun RemoveWorktreeDialog(holder: ProjectWorktrees) {
+    val strings = LocalStrings.current
+    val worktree = holder.worktreePendingRemoval ?: return
+    val requiresForce = holder.pendingRemovalRequiresForce
+    AlertDialog(
+        onDismissRequest = { holder.dismissPendingRemoval() },
+        title = { Text(if (requiresForce) strings.forceRemoveTitle else strings.removeWorktreeTitle) },
+        text = {
+            Column {
+                Text(
+                    if (requiresForce) {
+                        strings.forceRemoveMessage(worktree.path)
+                    } else {
+                        strings.removeWorktreeMessage(worktree.path)
+                    },
+                )
+                worktree.branch?.let { branch ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(top = Spacing.sm),
                     ) {
-                        Text(if (requiresForce) strings.forceRemove else strings.delete)
+                        Checkbox(
+                            checked = holder.pendingRemovalDeleteBranch,
+                            onCheckedChange = { holder.setPendingRemovalDeleteBranch(it) },
+                            modifier = Modifier.handPointer(),
+                        )
+                        Text(strings.alsoDeleteLocalBranch(branch))
                     }
                 }
-            },
-            dismissButton = {
-                NeutralTextButton(
-                    onClick = { viewModel.dismissPendingRemoval() },
-                    enabled = !viewModel.isRemoving,
-                ) {
-                    Text(strings.cancel)
+            }
+        },
+        confirmButton = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (holder.isRemoving) {
+                    InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
                 }
-            },
-        )
-    }
+                DangerButton(
+                    onClick = { holder.confirmPendingRemoval() },
+                    enabled = !holder.isRemoving,
+                ) {
+                    Text(if (requiresForce) strings.forceRemove else strings.delete)
+                }
+            }
+        },
+        dismissButton = {
+            NeutralTextButton(
+                onClick = { holder.dismissPendingRemoval() },
+                enabled = !holder.isRemoving,
+            ) {
+                Text(strings.cancel)
+            }
+        },
+    )
 }
 
 @Composable
 private fun WorktreeContent(
-    projectConfig: ProjectConfig,
-    viewModel: WorktreeViewModel,
+    board: WorktreeBoard,
+    onOpenProjectSettings: (Project) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier) {
         val narrow = maxWidth < WorktreeDetailOverlayThreshold
-        val selected = viewModel.selectedWorktree
+        val selected = board.selectedWorktree
+        val list: @Composable (Modifier) -> Unit = { listModifier ->
+            if (board.hasNoMatch) {
+                NoMatch(onClear = board::clearTextFilter, modifier = listModifier)
+            } else {
+                WorktreeListPane(board, onOpenProjectSettings, listModifier)
+            }
+        }
         if (narrow && selected != null) {
             Box(Modifier.fillMaxSize()) {
-                WorktreeListPane(viewModel, projectConfig, Modifier.fillMaxSize())
+                list(Modifier.fillMaxSize())
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(WorktreeOverlayScrim)
-                        .clickable(onClick = viewModel::clearSelection),
+                        .clickable(onClick = board::clearSelection),
                 )
-                WorktreeDetailPane(
-                    worktree = selected,
-                    projectConfig = projectConfig,
-                    viewModel = viewModel,
-                    modifier = Modifier.align(Alignment.CenterEnd).width(WorktreeDetailWidth),
-                )
+                SelectedDetail(board, selected, Modifier.align(Alignment.CenterEnd).width(WorktreeDetailWidth))
             }
         } else {
             Row(Modifier.fillMaxSize()) {
-                WorktreeListPane(viewModel, projectConfig, Modifier.weight(1f))
+                list(Modifier.weight(1f))
                 VerticalDivider()
                 if (selected != null) {
-                    WorktreeDetailPane(
-                        worktree = selected,
-                        projectConfig = projectConfig,
-                        viewModel = viewModel,
-                        modifier = Modifier.width(WorktreeDetailWidth),
-                    )
+                    SelectedDetail(board, selected, Modifier.width(WorktreeDetailWidth))
                 } else if (!narrow) {
-                    ProjectSummary(viewModel, modifier = Modifier.width(WorktreeDetailWidth))
+                    ViewSummary(board, modifier = Modifier.width(WorktreeDetailWidth))
                 }
             }
         }
     }
 }
 
+@Composable
+private fun SelectedDetail(board: WorktreeBoard, selected: SelectedWorktree, modifier: Modifier) {
+    WorktreeDetailPane(
+        worktree = selected.worktree,
+        projectConfig = selected.project.config,
+        viewModel = selected.holder,
+        projectName = selected.project.name.takeIf { !board.isFiltered },
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun ViewSummary(board: WorktreeBoard, modifier: Modifier) {
+    val holders = board.shownProjects.mapNotNull { board.holder(it.id) }
+    ProjectSummary(
+        worktreeCount = holders.sumOf { it.worktrees.size },
+        totalSize = holders.sumOf { it.totalSize },
+        cleanupCandidateCount = holders.sumOf { it.cleanupCandidates.size },
+        canCleanUp = board.canCleanUp(),
+        onCleanUp = { board.openCleanup() },
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun NoMatch(onClear: () -> Unit, modifier: Modifier) {
+    val strings = LocalStrings.current
+    Column(
+        modifier = modifier.fillMaxSize().padding(Spacing.xl),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Spacing.md, Alignment.CenterVertically),
+    ) {
+        Text(
+            strings.noWorktreeMatches,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SecondaryButton(onClick = onClear) { Text(strings.clearFilter) }
+    }
+}
+
 private val ButtonIconSize = 18.dp
+private val FilterFieldWidth = 240.dp
 private val WorktreeDetailWidth = 360.dp
 private val WorktreeDetailOverlayThreshold = 760.dp
 private val WorktreeOverlayScrim = Color(0x66000000)
@@ -254,7 +334,9 @@ private fun Strings.successMessage(success: WorktreeSuccess): String = when (suc
     ).joinToString(" · ")
 }
 
-private fun WorktreeSuccess.action(strings: Strings, viewModel: WorktreeViewModel): MessageAction? = when (this) {
-    is WorktreeSuccess.Created -> MessageAction(strings.copyLaunchCommand) { viewModel.copyLastCreatedLaunchCommand() }
+private fun PendingSuccess.action(strings: Strings, board: WorktreeBoard): MessageAction? = when (success) {
+    is WorktreeSuccess.Created -> projectId?.let(board::holder)?.let { holder ->
+        MessageAction(strings.copyLaunchCommand) { holder.copyLastCreatedLaunchCommand() }
+    }
     else -> null
 }

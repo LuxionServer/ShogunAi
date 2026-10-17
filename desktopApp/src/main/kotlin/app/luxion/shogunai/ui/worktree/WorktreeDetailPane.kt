@@ -55,8 +55,9 @@ import java.time.Instant
 fun WorktreeDetailPane(
     worktree: Worktree,
     projectConfig: ProjectConfig,
-    viewModel: WorktreeViewModel,
+    viewModel: ProjectWorktrees,
     modifier: Modifier = Modifier,
+    projectName: String? = null,
 ) {
     val strings = LocalStrings.current
     val status = viewModel.statuses[worktree.path]
@@ -72,6 +73,15 @@ fun WorktreeDetailPane(
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            projectName?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = valueColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     worktree.branch ?: strings.detachedHead,

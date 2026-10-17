@@ -77,6 +77,8 @@ class JsonSettingsFileTest {
         assertNull(shellRepository.loadLastDestination())
         assertNull(shellRepository.loadWindowBounds())
         assertFalse(shellRepository.loadSidebarCollapsed())
+        assertTrue(shellRepository.loadCollapsedProjects().isEmpty())
+        assertNull(shellRepository.loadLastCreateProject())
         assertEquals(ThemeMode.DARK, themeRepository.load())
     }
 
@@ -129,5 +131,18 @@ class JsonSettingsFileTest {
         assertFalse(reloaded.loadSidebarCollapsed())
         assertEquals(bounds, reloaded.loadWindowBounds())
         assertEquals(ThemeMode.LIGHT, themeRepository.load())
+    }
+
+    @Test
+    fun `collapsed projects and the last create project are remembered with the other keys`() {
+        shellRepository.saveLastDestination("all")
+
+        shellRepository.saveCollapsedProjects(setOf("main-repo", "api"))
+        shellRepository.saveLastCreateProject("api")
+
+        val reloaded = JsonShellPreferenceRepository(JsonSettingsFile(storagePath))
+        assertEquals(setOf("api", "main-repo"), reloaded.loadCollapsedProjects())
+        assertEquals("api", reloaded.loadLastCreateProject())
+        assertEquals("all", reloaded.loadLastDestination())
     }
 }

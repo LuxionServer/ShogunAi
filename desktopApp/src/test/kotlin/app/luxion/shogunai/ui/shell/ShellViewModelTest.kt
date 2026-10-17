@@ -32,24 +32,53 @@ class ShellViewModelTest {
     }
 
     @Test
-    fun `restores the saved project`() {
+    fun `a project saved by the previous version opens the view filtered to it`() {
         preferences.lastDestination = "project:mobile"
 
-        assertEquals(ShellDestination.Project("mobile"), viewModel().destination)
+        assertEquals(ShellDestination.All(projectFilter = "mobile"), viewModel().destination)
     }
 
     @Test
-    fun `falls back to the first project when the saved one was deleted`() {
+    fun `restores all worktrees`() {
+        preferences.lastDestination = "all"
+
+        assertEquals(ShellDestination.All(), viewModel().destination)
+    }
+
+    @Test
+    fun `opens all worktrees without a saved destination`() {
+        assertEquals(ShellDestination.All(), viewModel().destination)
+    }
+
+    @Test
+    fun `falls back to all worktrees when the saved project was deleted`() {
         preferences.lastDestination = "project:deleted"
 
-        assertEquals(ShellDestination.Project("api"), viewModel().destination)
+        assertEquals(ShellDestination.All(), viewModel().destination)
     }
 
     @Test
-    fun `falls back to the first project when the saved value is unknown`() {
+    fun `falls back to all worktrees when the saved value is unknown`() {
         preferences.lastDestination = "settings:api"
 
-        assertEquals(ShellDestination.Project("api"), viewModel().destination)
+        assertEquals(ShellDestination.All(), viewModel().destination)
+    }
+
+    @Test
+    fun `picking a filter saves it and all projects saves the unfiltered view`() {
+        val viewModel = viewModel()
+
+        viewModel.selectFilter("api")
+        assertEquals(ShellDestination.All(projectFilter = "api"), viewModel.destination)
+        assertEquals("project:api", preferences.lastDestination)
+
+        viewModel.selectFilter(null)
+        assertEquals(ShellDestination.All(), viewModel.destination)
+        assertEquals("all", preferences.lastDestination)
+
+        viewModel.selectProject(mobile)
+        viewModel.selectAll()
+        assertEquals(ShellDestination.All(), viewModel.destination)
     }
 
     @Test
@@ -66,7 +95,7 @@ class ShellViewModelTest {
 
         viewModel.selectProject(mobile)
 
-        assertEquals(ShellDestination.Project("mobile"), viewModel.destination)
+        assertEquals(ShellDestination.All(projectFilter = "mobile"), viewModel.destination)
         assertEquals("project:mobile", preferences.lastDestination)
     }
 
@@ -82,7 +111,7 @@ class ShellViewModelTest {
     }
 
     @Test
-    fun `removing the selected project selects the first remaining one`() {
+    fun `removing the filtered project goes back to all worktrees`() {
         val viewModel = viewModel()
         viewModel.selectProject(api)
 
@@ -90,7 +119,7 @@ class ShellViewModelTest {
 
         assertEquals(listOf(mainRepo, mobile), viewModel.projects)
         assertEquals(listOf(mobile, mainRepo), repository.list())
-        assertEquals(ShellDestination.Project("main-repo"), viewModel.destination)
+        assertEquals(ShellDestination.All(), viewModel.destination)
     }
 
     @Test
@@ -100,7 +129,7 @@ class ShellViewModelTest {
 
         viewModel.removeProject(api)
 
-        assertEquals(ShellDestination.Project("mobile"), viewModel.destination)
+        assertEquals(ShellDestination.All(projectFilter = "mobile"), viewModel.destination)
     }
 
     @Test
@@ -122,11 +151,11 @@ class ShellViewModelTest {
 
         viewModel.cancelForm()
 
-        assertEquals(ShellDestination.Project("mobile"), viewModel.destination)
+        assertEquals(ShellDestination.All(projectFilter = "mobile"), viewModel.destination)
     }
 
     @Test
-    fun `new worktree is requested only from a project view`() {
+    fun `new worktree is requested only from a worktree view`() {
         val viewModel = viewModel()
         viewModel.selectProject(mobile)
 
@@ -157,7 +186,7 @@ class ShellViewModelTest {
 
         viewModel.onProjectSaved(created, previous = null)
 
-        assertEquals(ShellDestination.Project("web"), viewModel.destination)
+        assertEquals(ShellDestination.All(projectFilter = "web"), viewModel.destination)
         assertTrue(created in viewModel.projects)
     }
 
@@ -170,7 +199,7 @@ class ShellViewModelTest {
 
         viewModel.onProjectSaved(moved, previous = api)
 
-        assertEquals(ShellDestination.Project("api", previousWorktreesRoot = "~/projects"), viewModel.destination)
+        assertEquals(ShellDestination.All("api", previousWorktreesRoot = "~/projects"), viewModel.destination)
     }
 
     @Test
@@ -192,7 +221,7 @@ class ShellViewModelTest {
 
         viewModel.refresh()
 
-        assertEquals(ShellDestination.Project("api"), viewModel.destination)
+        assertEquals(ShellDestination.All(), viewModel.destination)
     }
 
     @Test
@@ -252,22 +281,27 @@ class ShellViewModelTest {
     @Test
     fun `worktree actions are stored and cleared`() {
         val viewModel = viewModel()
+        var found = 0
         var copied = 0
         var deleted = 0
         var cleared = 0
 
         viewModel.updateWorktreeActions(
             WorktreeActions(
+                onFind = { found++ },
                 onCopySelectedLaunchCommand = { copied++ },
                 onDeleteSelectedWorktree = { deleted++ },
                 onClearSelection = { cleared++ },
+                onEscape = {},
             ),
         )
         val actions = viewModel.worktreeActions
+        actions?.onFind?.invoke()
         actions?.onCopySelectedLaunchCommand?.invoke()
         actions?.onDeleteSelectedWorktree?.invoke()
         actions?.onClearSelection?.invoke()
 
+        assertEquals(1, found)
         assertEquals(1, copied)
         assertEquals(1, deleted)
         assertEquals(1, cleared)

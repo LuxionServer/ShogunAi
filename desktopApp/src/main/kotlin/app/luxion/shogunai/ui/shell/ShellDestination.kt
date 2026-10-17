@@ -1,7 +1,7 @@
 package app.luxion.shogunai.ui.shell
 
 sealed interface ShellDestination {
-    data class Project(val projectId: String, val previousWorktreesRoot: String? = null) : ShellDestination
+    data class All(val projectFilter: String? = null, val previousWorktreesRoot: String? = null) : ShellDestination
     data class ProjectSettings(val projectId: String) : ShellDestination
     data object AddProject : ShellDestination
 
@@ -9,22 +9,24 @@ sealed interface ShellDestination {
 
     val referencedProjectId: String?
         get() = when (this) {
-            is Project -> projectId
+            is All -> projectFilter
             is ProjectSettings -> projectId
             AddProject -> null
         }
 
     fun storageKey(): String? = when (this) {
-        is Project -> PROJECT_PREFIX + projectId
+        is All -> projectFilter?.let { PROJECT_PREFIX + it } ?: ALL_KEY
         is ProjectSettings, AddProject -> null
     }
 
     companion object {
+        private const val ALL_KEY = "all"
         private const val PROJECT_PREFIX = "project:"
 
         fun fromStorageKey(key: String?): ShellDestination? = when {
-            key == null -> null
-            key.startsWith(PROJECT_PREFIX) -> key.removePrefix(PROJECT_PREFIX).takeIf { it.isNotEmpty() }?.let(::Project)
+            key == ALL_KEY -> All()
+            key?.startsWith(PROJECT_PREFIX) == true ->
+                key.removePrefix(PROJECT_PREFIX).takeIf { it.isNotEmpty() }?.let { All(projectFilter = it) }
             else -> null
         }
     }

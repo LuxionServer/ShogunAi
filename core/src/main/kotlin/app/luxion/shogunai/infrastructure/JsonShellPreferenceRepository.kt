@@ -24,4 +24,16 @@ class JsonShellPreferenceRepository(
     override fun saveSidebarCollapsed(collapsed: Boolean) {
         settingsFile.update { it.copy(sidebarCollapsed = collapsed) }
     }
+
+    override fun loadCollapsedProjects(): Set<String> = settingsFile.read().collapsedProjects.toSet()
+
+    override fun saveCollapsedProjects(projectIds: Set<String>) {
+        settingsFile.update { it.copy(collapsedProjects = projectIds.sorted()) }
+    }
+
+    override fun loadLastCreateProject(): String? = settingsFile.read().lastCreateProject
+
+    override fun saveLastCreateProject(projectId: String) {
+        settingsFile.update { it.copy(lastCreateProject = projectId) }
+    }
 }

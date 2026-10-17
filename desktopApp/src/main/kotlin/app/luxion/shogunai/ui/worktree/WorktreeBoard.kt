@@ -1,0 +1,406 @@
+package app.luxion.shogunai.ui.worktree
+
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import app.luxion.shogunai.WorktreeUseCases
+import app.luxion.shogunai.domain.io.ShellPreferenceRepository
+import app.luxion.shogunai.domain.model.BranchType
+import app.luxion.shogunai.domain.model.Project
+import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.RunningAgent
+import app.luxion.shogunai.domain.model.Worktree
+import app.luxion.shogunai.domain.usecase.AgentSearch
+import app.luxion.shogunai.domain.usecase.isValidGitRefSegment
+import app.luxion.shogunai.domain.usecase.normalizeTaskId
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
+
+class WorktreeBoard(
+    private val useCasesFor: (ProjectConfig) -> WorktreeUseCases,
+    private val detectAgents: suspend (List<AgentSearch>) -> Result<Map<String, List<RunningAgent>>>,
+    private val preferences: ShellPreferenceRepository,
+    private val autoRefreshInterval: Duration = AUTO_REFRESH_INTERVAL,
+) : ViewModel() {
+    private val listPermits = Semaphore(MAX_PARALLEL_LISTS)
+    private val sizeQueue = SizeQueue(viewModelScope)
+    private var entries by mutableStateOf<Map<String, Entry>>(emptyMap())
+    private var watchJob: Job? = null
+
+    var projects by mutableStateOf<List<Project>>(emptyList())
+        private set
+    var projectFilter by mutableStateOf<String?>(null)
+        private set
+    var textFilter by mutableStateOf("")
+        private set
+    var findRequests by mutableIntStateOf(0)
+        private set
+    var selected by mutableStateOf<WorktreeRef?>(null)
+        private set
+    var collapsedProjects by mutableStateOf(preferences.loadCollapsedProjects())
+        private set
+
+    var createProjectId by mutableStateOf<String?>(null)
+        private set
+    var createAsksForProject by mutableStateOf(false)
+        private set
+    var taskId by mutableStateOf("")
+        private set
+    var branchType by mutableStateOf(BranchType.FEATURE)
+    var createMode by mutableStateOf(CreateMode.NEW_BRANCH)
+        private set
+    var selectedBranch by mutableStateOf<String?>(null)
+
+    var cleanupScope by mutableStateOf<List<String>?>(null)
+        private set
+    var cleanupDeleteBranches by mutableStateOf(false)
+    var cleanupStopGradleDaemons by mutableStateOf(true)
+    var cleanupStopEmulators by mutableStateOf(true)
+    var cleanupDeleteSimulators by mutableStateOf(true)
+    var cleanupDeleteDerivedData by mutableStateOf(true)
+    var isCleaningUp by mutableStateOf(false)
+        private set
+    var cleanupSuccess by mutableStateOf<WorktreeSuccess.CleanedUp?>(null)
+        private set
+
+    val shownProjects: List<Project>
+        get() = projectFilter?.let { id -> projects.filter { it.id == id } } ?: projects
+
+    val isFiltered: Boolean
+        get() = projectFilter != null
+
+    val totalWorktreeCount: Int
+        get() = entries.values.sumOf { it.holder.worktrees.size }
+
+    val groups: List<WorktreeGroup>
+        get() = shownProjects.mapNotNull { project ->
+            val holder = holder(project.id) ?: return@mapNotNull null
+            val rows = filterWorktrees(holder.orderedWorktrees, textFilter)
+            if (isTextFiltering && rows.isEmpty()) return@mapNotNull null
+            WorktreeGroup(project, holder, rows, collapsed = project.id in collapsedProjects && !isFiltered)
+        }
+
+    val isTextFiltering: Boolean
+        get() = textFilter.isNotBlank()
+
+    val hasNoMatch: Boolean
+        get() = isTextFiltering && groups.isEmpty()
+
+    val selectedWorktree: SelectedWorktree?
+        get() {
+            val ref = selected ?: return null
+            val project = shownProjects.firstOrNull { it.id == ref.projectId } ?: return null
+            val holder = holder(project.id) ?: return null
+            val worktree = holder.orderedWorktrees.firstOrNull { it.path == ref.path } ?: return null
+            return SelectedWorktree(project, holder, worktree)
+        }
+
+    val isCreateDialogOpen: Boolean
+        get() = createProjectId != null
+
+    val createHolder: ProjectWorktrees?
+        get() = createProjectId?.let(::holder)
+
+    val isCleanupDialogOpen: Boolean
+        get() = cleanupScope != null
+
+    val cleanupProjects: List<WorktreeGroup>
+        get() = cleanupScope.orEmpty().mapNotNull { id ->
+            val project = projects.firstOrNull { it.id == id } ?: return@mapNotNull null
+            val holder = holder(id) ?: return@mapNotNull null
+            WorktreeGroup(project, holder, holder.cleanupCandidates, collapsed = false)
+        }
+
+    val pendingSuccess: PendingSuccess?
+        get() = cleanupSuccess?.let { PendingSuccess(null, it) }
+            ?: entries.entries.firstNotNullOfOrNull { (id, entry) -> entry.holder.success?.let { PendingSuccess(id, it) } }
+
+    val pendingRemoval: ProjectWorktrees?
+        get() = entries.values.firstOrNull { it.holder.worktreePendingRemoval != null }?.holder
+
+    fun holder(projectId: String): ProjectWorktrees? = entries[projectId]?.holder
+
+    fun syncCatalog(catalog: List<Project>) {
+        projects = catalog
+        val current = entries
+        val next = catalog.associate { project ->
+            val existing = current[project.id]
+            if (existing != null && existing.project.config == project.config) {
+                project.id to existing.copy(project = project)
+            } else {
+                existing?.dispose()
+                project.id to createEntry(project)
+            }
+        }
+        current.filterKeys { it !in next }.values.forEach { it.dispose() }
+        entries = next
+        if (selected?.projectId?.let { it !in next } == true) selected = null
+        if (projectFilter?.let { it !in next } == true) projectFilter = null
+        if (createProjectId?.let { it !in next } == true) createProjectId = null
+        cleanupScope = cleanupScope?.filter { it in next }?.takeIf { it.isNotEmpty() }
+        sizeQueue.prioritize(shownHolders())
+    }
+
+    private fun createEntry(project: Project): Entry {
+        val job = SupervisorJob(viewModelScope.coroutineContext[Job])
+        val holder = ProjectWorktrees(
+            useCases = useCasesFor(project.config),
+            scope = CoroutineScope(viewModelScope.coroutineContext + job),
+            listPermits = listPermits,
+            sizeQueue = sizeQueue,
+        )
+        holder.refresh()
+        return Entry(project, holder, job)
+    }
+
+    fun show(projectFilter: String?) {
+        this.projectFilter = projectFilter?.takeIf { id -> projects.any { it.id == id } }
+        sizeQueue.prioritize(shownHolders())
+    }
+
+    fun updateTextFilter(text: String) {
+        textFilter = text
+    }
+
+    fun clearTextFilter() {
+        textFilter = ""
+    }
+
+    fun requestFind() {
+        findRequests++
+    }
+
+    fun refreshShown() {
+        shownHolders().forEach { holder ->
+            holder.refresh()
+            if (isCreateDialogOpen && createHolder == holder && createMode == CreateMode.EXISTING_BRANCH) {
+                holder.loadLocalBranches()
+            }
+        }
+    }
+
+    fun repairAfterMove(projectId: String, previousWorktreesRoot: String) {
+        holder(projectId)?.repairAfterMove(previousWorktreesRoot)
+    }
+
+    fun startWatching() {
+        watchJob?.cancel()
+        watchJob = viewModelScope.launch {
+            var check: Job? = null
+            while (true) {
+                delay(autoRefreshInterval)
+                if (check?.isActive != true) check = launch { checkShownProjects() }
+            }
+        }
+    }
+
+    fun stopWatching() {
+        watchJob?.cancel()
+        watchJob = null
+    }
+
+    private suspend fun checkShownProjects() {
+        val unchanged = shownEntries()
+            .filterNot { it.holder.isBusy }
+            .filter { it.holder.checkFingerprint() == FingerprintCheck.UNCHANGED }
+        if (unchanged.isEmpty()) return
+        val searches = unchanged.map { AgentSearch(it.project.config.agentLaunchConfig.agentCommand, it.holder.worktrees) }
+        val detected = detectAgents(searches).getOrNull()
+        unchanged.forEach { entry ->
+            entry.holder.applyAgents(detected)
+            entry.holder.refreshDevices()
+        }
+    }
+
+    fun select(ref: WorktreeRef) {
+        selected = ref
+    }
+
+    fun clearSelection() {
+        selected = null
+    }
+
+    fun escape() {
+        if (textFilter.isNotEmpty()) clearTextFilter() else clearSelection()
+    }
+
+    fun selectNext() = moveSelection(1)
+
+    fun selectPrevious() = moveSelection(-1)
+
+    private fun moveSelection(step: Int) {
+        val visible = visibleRefs()
+        if (visible.isEmpty()) return
+        val index = visible.indexOf(selected)
+        val target = if (index < 0) {
+            if (step > 0) 0 else visible.lastIndex
+        } else {
+            (index + step).coerceIn(0, visible.lastIndex)
+        }
+        selected = visible[target]
+    }
+
+    fun visibleRefs(): List<WorktreeRef> =
+        groups.filterNot { it.collapsed }.flatMap { group -> group.worktrees.map { WorktreeRef(group.project.id, it.path) } }
+
+    fun toggleCollapsed(projectId: String) {
+        collapsedProjects = if (projectId in collapsedProjects) collapsedProjects - projectId else collapsedProjects + projectId
+        preferences.saveCollapsedProjects(collapsedProjects)
+        if (selected?.projectId == projectId && projectId in collapsedProjects) selected = null
+    }
+
+    fun openCreateDialog(projectId: String? = null) {
+        if (isCreateDialogOpen) return
+        val target = projectId ?: projectFilter ?: defaultCreateProject() ?: return
+        createAsksForProject = projectId == null && projectFilter == null
+        taskId = ""
+        selectedBranch = null
+        holder(target)?.dismissCreateError()
+        createProjectId = target
+        if (createMode == CreateMode.EXISTING_BRANCH) holder(target)?.loadLocalBranches()
+    }
+
+    private fun defaultCreateProject(): String? =
+        preferences.loadLastCreateProject()?.takeIf { id -> projects.any { it.id == id } } ?: projects.firstOrNull()?.id
+
+    fun selectCreateProject(projectId: String) {
+        if (createHolder?.isCreating == true || holder(projectId) == null) return
+        createProjectId = projectId
+        selectedBranch = null
+        holder(projectId)?.dismissCreateError()
+        if (createMode == CreateMode.EXISTING_BRANCH) holder(projectId)?.loadLocalBranches()
+    }
+
+    fun updateCreateMode(mode: CreateMode) {
+        createMode = mode
+        if (mode == CreateMode.EXISTING_BRANCH) createHolder?.loadLocalBranches()
+    }
+
+    fun updateTaskId(raw: String) {
+        taskId = normalizeTaskId(raw)
+    }
+
+    fun isTaskIdValid(taskId: String): Boolean = isValidGitRefSegment(normalizeTaskId(taskId))
+
+    val canCreate: Boolean
+        get() {
+            val holder = createHolder ?: return false
+            return !holder.isCreating && when (createMode) {
+                CreateMode.NEW_BRANCH -> taskId.isNotBlank() && isTaskIdValid(taskId)
+                CreateMode.EXISTING_BRANCH -> holder.isBranchAvailable(selectedBranch)
+            }
+        }
+
+    fun dismissCreateDialog() {
+        if (createHolder?.isCreating != true) createProjectId = null
+    }
+
+    fun confirmCreate() {
+        if (!canCreate) return
+        val projectId = createProjectId ?: return
+        val holder = holder(projectId) ?: return
+        val onCreated: (Worktree) -> Unit = {
+            preferences.saveLastCreateProject(projectId)
+            if (createProjectId == projectId) createProjectId = null
+        }
+        when (createMode) {
+            CreateMode.NEW_BRANCH -> holder.create(taskId, branchType, onCreated)
+            CreateMode.EXISTING_BRANCH -> selectedBranch?.let { holder.createFromBranch(it, onCreated) }
+        }
+    }
+
+    fun canCleanUp(projectId: String? = null): Boolean =
+        !isCleaningUp && cleanupTargets(projectId).isNotEmpty()
+
+    private fun cleanupTargets(projectId: String?): List<String> =
+        (projectId?.let(::listOf) ?: shownProjects.map { it.id }).filter { holder(it)?.canCleanUp == true }
+
+    fun openCleanup(projectId: String? = null) {
+        if (!canCleanUp(projectId)) return
+        cleanupDeleteBranches = false
+        cleanupStopGradleDaemons = true
+        cleanupStopEmulators = true
+        cleanupDeleteSimulators = true
+        cleanupDeleteDerivedData = true
+        cleanupScope = cleanupTargets(projectId)
+    }
+
+    fun dismissCleanup() {
+        if (!isCleaningUp) cleanupScope = null
+    }
+
+    fun confirmCleanup() {
+        val holders = cleanupProjects.map { it.holder }
+        if (holders.isEmpty() || isCleaningUp) return
+        val options = CleanupOptions(
+            deleteBranches = cleanupDeleteBranches,
+            stopGradleDaemons = cleanupStopGradleDaemons,
+            stopEmulators = cleanupStopEmulators,
+            deleteSimulators = cleanupDeleteSimulators,
+            deleteDerivedData = cleanupDeleteDerivedData,
+        )
+        isCleaningUp = true
+        viewModelScope.launch {
+            try {
+                cleanupSuccess = holders.mapNotNull { it.cleanUp(options) }.reduceOrNull { total, next -> total + next }
+            } finally {
+                isCleaningUp = false
+                cleanupScope = null
+            }
+        }
+    }
+
+    fun dismissSuccess(pending: PendingSuccess) {
+        if (pending.projectId == null) cleanupSuccess = null else holder(pending.projectId)?.dismissSuccess()
+    }
+
+    fun copySelectedLaunchCommand() {
+        if (isCreateDialogOpen) return
+        selectedWorktree?.let { it.holder.copyLaunchCommand(it.worktree) }
+    }
+
+    fun deleteSelectedWorktree() {
+        if (isCreateDialogOpen || isCleanupDialogOpen || pendingRemoval != null) return
+        selectedWorktree?.takeIf { !it.worktree.isMain }?.let { it.holder.requestRemoval(it.worktree) }
+    }
+
+    private fun shownEntries(): List<Entry> = shownProjects.mapNotNull { entries[it.id] }
+
+    private fun shownHolders(): Set<ProjectWorktrees> = shownEntries().map { it.holder }.toSet()
+
+    override fun onCleared() {
+        entries.values.forEach { it.dispose() }
+    }
+
+    private data class Entry(val project: Project, val holder: ProjectWorktrees, val job: Job) {
+        fun dispose() {
+            holder.dispose()
+            job.cancel()
+        }
+    }
+}
+
+data class WorktreeRef(val projectId: String, val path: String)
+
+data class WorktreeGroup(
+    val project: Project,
+    val holder: ProjectWorktrees,
+    val worktrees: List<Worktree>,
+    val collapsed: Boolean,
+)
+
+data class SelectedWorktree(val project: Project, val holder: ProjectWorktrees, val worktree: Worktree)
+
+data class PendingSuccess(val projectId: String?, val success: WorktreeSuccess)
+
+private const val MAX_PARALLEL_LISTS = 2
+private val AUTO_REFRESH_INTERVAL = 3.seconds

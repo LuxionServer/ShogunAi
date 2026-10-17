@@ -18,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material.icons.filled.ViewSidebar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -34,6 +35,7 @@ import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.WithTooltip
 import app.luxion.shogunai.ui.components.interactive
 import app.luxion.shogunai.ui.i18n.LocalStrings
+import app.luxion.shogunai.ui.theme.ShogunTheme
 
 val ExpandedSidebarWidth: Dp = 240.dp
 val RailSidebarWidth: Dp = 64.dp
@@ -44,7 +46,10 @@ private val RailItemSize = 36.dp
 fun Sidebar(
     projects: List<Project>,
     selectedProjectId: String?,
+    isAllSelected: Boolean,
+    totalWorktreeCount: Int,
     rail: Boolean,
+    onSelectAll: () -> Unit,
     onSelectProject: (Project) -> Unit,
     onEditProject: (Project) -> Unit,
     onRemoveProject: (Project) -> Unit,
@@ -77,7 +82,13 @@ fun Sidebar(
             horizontalAlignment = if (rail) Alignment.CenterHorizontally else Alignment.Start,
             verticalArrangement = Arrangement.spacedBy(Spacing.xxs),
         ) {
-            if (!rail) SectionLabel(strings.projectsTitle)
+            if (rail) {
+                RailViewItem(strings.allWorktrees, selected = isAllSelected, onClick = onSelectAll)
+            } else {
+                SectionLabel(strings.viewsTitle)
+                ViewRow(strings.allWorktrees, totalWorktreeCount, selected = isAllSelected, onClick = onSelectAll)
+                SectionLabel(strings.projectsTitle)
+            }
             projects.forEach { project ->
                 ProjectContextMenu(
                     onEdit = { onEditProject(project) },
@@ -112,6 +123,63 @@ private fun SectionLabel(text: String) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(start = Spacing.md, end = Spacing.md, top = Spacing.sm, bottom = Spacing.xs),
     )
+}
+
+@Composable
+private fun ViewRow(label: String, count: Int, selected: Boolean, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.sm)
+            .height(SidebarRowHeight)
+            .interactive(onClick = onClick)
+            .background(if (selected) colors.secondaryContainer else colors.surfaceContainerLow)
+            .padding(horizontal = Spacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+    ) {
+        Icon(
+            Icons.Default.ViewList,
+            contentDescription = null,
+            tint = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
+            modifier = Modifier.size(16.dp),
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (selected) colors.onSecondaryContainer else colors.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            count.toString(),
+            style = ShogunTheme.typography.dataSmall,
+            color = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun RailViewItem(label: String, selected: Boolean, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    WithTooltip(label = label) {
+        Box(
+            modifier = Modifier
+                .size(RailItemSize)
+                .interactive(shape = MaterialTheme.shapes.small, onClick = onClick)
+                .background(if (selected) colors.secondaryContainer else colors.surfaceContainerLow),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Default.ViewList,
+                contentDescription = label,
+                tint = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
 }
 
 @Composable

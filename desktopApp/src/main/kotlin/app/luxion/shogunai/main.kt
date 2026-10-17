@@ -66,14 +66,14 @@ private fun openWindow() = application {
         onDispose { }
     }
 
-    val clearWorktreeSelection = remember { mutableStateOf<(() -> Unit)?>(null) }
+    val escapeWorktreeView = remember { mutableStateOf<(() -> Unit)?>(null) }
     Window(
         onCloseRequest = quit,
         state = windowState,
         title = "ShogunAi",
         icon = painterResource("icons/icon.png"),
         onPreviewKeyEvent = { event ->
-            if (event.key == Key.Escape) clearWorktreeSelection.value?.invoke()
+            if (event.key == Key.Escape) escapeWorktreeView.value?.invoke()
             false
         },
     ) {
@@ -82,11 +82,12 @@ private fun openWindow() = application {
             ShellViewModel(appContainer.projectRepository, appContainer.shellPreferenceRepository)
         }
         val worktreeActions = shellViewModel.worktreeActions
-        SideEffect { clearWorktreeSelection.value = worktreeActions?.onClearSelection }
+        SideEffect { escapeWorktreeView.value = worktreeActions?.onEscape }
         AppMenuBar(
             strings = appearance.strings,
             onAddProject = shellViewModel::addProject,
             onNewWorktree = shellViewModel::requestNewWorktree.takeIf { shellViewModel.canCreateWorktree },
+            onFind = worktreeActions?.onFind,
             onCopySelectedLaunchCommand = worktreeActions?.onCopySelectedLaunchCommand,
             onDeleteSelectedWorktree = worktreeActions?.onDeleteSelectedWorktree,
             onClearSelection = worktreeActions?.onClearSelection,

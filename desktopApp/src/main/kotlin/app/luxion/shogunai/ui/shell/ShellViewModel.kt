@@ -23,7 +23,7 @@ class ShellViewModel(
         private set
     var newWorktreeRequests by mutableIntStateOf(0)
         private set
-    val canCreateWorktree: Boolean get() = destination is ShellDestination.Project
+    val canCreateWorktree: Boolean get() = destination is ShellDestination.All
     var isWindowNarrow by mutableStateOf(false)
         private set
     private var expandedWhileNarrow by mutableStateOf(false)
@@ -59,7 +59,11 @@ class ShellViewModel(
         worktreeActions = actions
     }
 
-    fun selectProject(project: Project) = select(ShellDestination.Project(project.id))
+    fun selectProject(project: Project) = select(ShellDestination.All(projectFilter = project.id))
+
+    fun selectAll() = select(ShellDestination.All())
+
+    fun selectFilter(projectId: String?) = select(ShellDestination.All(projectFilter = projectId))
 
     fun addProject() = openForm(ShellDestination.AddProject)
 
@@ -74,7 +78,7 @@ class ShellViewModel(
         val moved = previous != null &&
             (previous.config.baseRepositoryPath != saved.config.baseRepositoryPath ||
                 previous.config.worktreesRoot != saved.config.worktreesRoot)
-        select(ShellDestination.Project(saved.id, previous?.config?.worktreesRoot?.takeIf { moved }))
+        select(ShellDestination.All(saved.id, previous?.config?.worktreesRoot?.takeIf { moved }))
     }
 
     fun removeProject(project: Project) {
@@ -111,17 +115,21 @@ class ShellViewModel(
         target?.storageKey()?.let(shellPreferences::saveLastDestination)
     }
 
-    private fun isAvailable(destination: ShellDestination): Boolean =
-        destination.referencedProjectId?.let { id -> projects.any { it.id == id } } ?: true
+    private fun isAvailable(destination: ShellDestination): Boolean = when {
+        destination is ShellDestination.All && projects.isEmpty() -> false
+        else -> destination.referencedProjectId?.let { id -> projects.any { it.id == id } } ?: true
+    }
 
     private fun fallbackDestination(): ShellDestination? =
-        projects.firstOrNull()?.let { ShellDestination.Project(it.id) }
+        if (projects.isEmpty()) null else ShellDestination.All()
 
     private fun loadProjects(): List<Project> = projectRepository.list().sortedBy { it.name.lowercase() }
 }
 
 data class WorktreeActions(
+    val onFind: () -> Unit,
     val onCopySelectedLaunchCommand: () -> Unit,
     val onDeleteSelectedWorktree: () -> Unit,
     val onClearSelection: () -> Unit,
+    val onEscape: () -> Unit,
 )

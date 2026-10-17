@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
@@ -65,6 +66,17 @@ class ListWorktreesUseCaseTest {
         val error = useCase().exceptionOrNull()
 
         assertIs<WorktreeError.GitCommandFailed>(error)
+    }
+
+    @Test
+    fun `a missing base repository is reported without running git`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it, stdout = porcelain) }
+        val useCase = ListWorktreesUseCase(config, executor, FakeFileManager())
+
+        val error = useCase().exceptionOrNull()
+
+        assertEquals(config.baseRepositoryPath, assertIs<WorktreeError.BaseRepositoryNotFound>(error).path)
+        assertTrue(executor.executedCommands.isEmpty())
     }
 
     @Test

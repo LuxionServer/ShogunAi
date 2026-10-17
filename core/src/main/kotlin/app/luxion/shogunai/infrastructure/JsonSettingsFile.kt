@@ -50,5 +50,7 @@ class JsonSettingsFile(
         val lastDestination: String? = null,
         val windowBounds: WindowBounds? = null,
         val sidebarCollapsed: Boolean = false,
+        val collapsedProjects: List<String> = emptyList(),
+        val lastCreateProject: String? = null,
     )
 }

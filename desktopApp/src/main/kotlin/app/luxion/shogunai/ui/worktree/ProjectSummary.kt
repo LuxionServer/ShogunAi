@@ -14,7 +14,14 @@ import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.theme.ShogunTheme
 
 @Composable
-fun ProjectSummary(viewModel: WorktreeViewModel, modifier: Modifier = Modifier) {
+fun ProjectSummary(
+    worktreeCount: Int,
+    totalSize: Long,
+    cleanupCandidateCount: Int,
+    canCleanUp: Boolean,
+    onCleanUp: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val strings = LocalStrings.current
     Column(
         modifier = modifier
@@ -24,22 +31,19 @@ fun ProjectSummary(viewModel: WorktreeViewModel, modifier: Modifier = Modifier) 
     ) {
         Text(strings.worktreesTitle, style = MaterialTheme.typography.titleMedium)
         Text(
-            strings.worktreesSummary(viewModel.orderedWorktrees.size, formatSize(viewModel.totalSize)),
+            strings.worktreesSummary(worktreeCount, formatSize(totalSize)),
             style = ShogunTheme.typography.dataSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        if (viewModel.cleanupCandidates.isNotEmpty()) {
+        if (cleanupCandidateCount > 0) {
             Text(
-                strings.cleanupCandidatesSummary(viewModel.cleanupCandidates.size),
+                strings.cleanupCandidatesSummary(cleanupCandidateCount),
                 style = ShogunTheme.typography.dataSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        if (viewModel.canCleanUp) {
-            DangerTextButton(
-                onClick = viewModel::openCleanup,
-                enabled = !viewModel.isCleaningUp,
-            ) {
+        if (canCleanUp) {
+            DangerTextButton(onClick = onCleanUp) {
                 Text(strings.cleanUp, style = MaterialTheme.typography.bodySmall)
             }
         }

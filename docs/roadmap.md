@@ -34,13 +34,12 @@ In progress on the `epic/ui-redesign` branch. The desktop app grew one feature a
 
 It's planned as these OpenSpec changes, implemented in this order:
 
-1. `all-worktrees-view`: every project's worktrees in one view, with project and text filters.
-2. `active-worktrees-view`: the "Active" view, grouping by state and activity counts in the sidebar.
-3. `machine-resources-view`: the "Machine" section, replacing the Gradle and DerivedData sections of the project view.
-4. `project-settings-view`: project settings in sections with a save bar, and adding a project from its repository folder.
-5. `providers-configuration`: turning providers on, setting their options and the per-worktree environment from the settings, writing `.shogunai.json`.
-6. `understandable-errors`: every error says what failed and what to do next, with the technical output kept behind "Technical details".
-7. `command-palette`: Cmd/Ctrl+K to jump to any view, project or worktree, or run an action.
+1. `active-worktrees-view`: the "Active" view, grouping by state and activity counts in the sidebar.
+2. `machine-resources-view`: the "Machine" section, replacing the Gradle and DerivedData sections of the project view.
+3. `project-settings-view`: project settings in sections with a save bar, and adding a project from its repository folder.
+4. `providers-configuration`: turning providers on, setting their options and the per-worktree environment from the settings, writing `.shogunai.json`.
+5. `understandable-errors`: every error says what failed and what to do next, with the technical output kept behind "Technical details".
+6. `command-palette`: Cmd/Ctrl+K to jump to any view, project or worktree, or run an action.
 
 Each change removes its line from this list when it's archived.
 

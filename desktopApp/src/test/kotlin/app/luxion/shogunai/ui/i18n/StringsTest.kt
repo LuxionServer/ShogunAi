@@ -47,6 +47,24 @@ class StringsTest {
     }
 
     @Test
+    fun `the worktree view strings are translated and differ between languages`() {
+        val english = EnglishStrings
+        val spanish = SpanishStrings
+        assertEquals("All worktrees", english.allWorktrees)
+        assertEquals("Todos los worktrees", spanish.allWorktrees)
+        assertNotEquals(english.viewsTitle, spanish.viewsTitle)
+        assertNotEquals(english.allProjects, spanish.allProjects)
+        assertNotEquals(english.projectLabel, spanish.projectLabel)
+        assertNotEquals(english.filterWorktreesPlaceholder, spanish.filterWorktreesPlaceholder)
+        assertNotEquals(english.noWorktreeMatches, spanish.noWorktreeMatches)
+        assertNotEquals(english.clearFilter, spanish.clearFilter)
+        assertNotEquals(english.menuFind, spanish.menuFind)
+        assertNotEquals(english.loadingWorktrees, spanish.loadingWorktrees)
+        assertEquals("1 worktree", english.worktreeCount(1))
+        assertEquals("3 worktrees", spanish.worktreeCount(3))
+    }
+
+    @Test
     fun `domain errors are translated and keep their data`() {
         val errors = listOf(
             WorktreeError.BaseRepositoryNotFound("~/projects/main-repo") to "~/projects/main-repo",

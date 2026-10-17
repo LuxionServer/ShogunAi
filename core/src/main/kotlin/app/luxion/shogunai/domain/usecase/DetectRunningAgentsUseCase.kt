@@ -7,10 +7,14 @@ import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 
 class DetectRunningAgentsUseCase(
-    private val config: ProjectConfig,
     private val executor: ShellCommandExecutor,
 ) {
-    suspend operator fun invoke(worktrees: List<Worktree>): Result<Map<String, List<RunningAgent>>> = runCatching {
+    suspend operator fun invoke(config: ProjectConfig, worktrees: List<Worktree>): Result<Map<String, List<RunningAgent>>> =
+        invoke(listOf(AgentSearch(config.agentLaunchConfig.agentCommand, worktrees)))
+
+    suspend operator fun invoke(searches: List<AgentSearch>): Result<Map<String, List<RunningAgent>>> = runCatching {
+        val worktrees = searches.flatMap { it.worktrees }
+        if (worktrees.isEmpty()) return@runCatching emptyMap()
         val processes = run("lsof", "-d", "cwd", "-F", "pcn").let(::parseLsofWorkingDirectories)
         val worktreeByPid = processes.mapNotNull { (pid, cwd) ->
             owningWorktree(cwd, worktrees)?.let { pid to it.path }
@@ -19,19 +23,22 @@ class DetectRunningAgentsUseCase(
 
         val executables = run("ps", "-o", "pid=,comm=", "-p", worktreeByPid.keys.joinToString(","))
             .let(::parsePsExecutables)
-        val agentNames = KNOWN_AGENTS + listOfNotNull(projectAgentName())
+        val agentNamesByPath = searches.flatMap { search ->
+            val names = KNOWN_AGENTS + listOfNotNull(agentName(search.agentCommand))
+            search.worktrees.map { it.path to names }
+        }.toMap()
 
         executables.mapNotNull { (pid, executable) ->
             val name = executable.substringAfterLast('/')
             val path = worktreeByPid[pid]
-            if (path != null && name in agentNames) path to RunningAgent(name) else null
+            if (path != null && name in agentNamesByPath[path].orEmpty()) path to RunningAgent(name) else null
         }
             .groupBy({ it.first }, { it.second })
             .mapValues { (_, agents) -> agents.distinct() }
     }
 
-    private fun projectAgentName(): String? =
-        config.agentLaunchConfig.agentCommand.trim().substringBefore(' ').substringAfterLast('/').ifEmpty { null }
+    private fun agentName(agentCommand: String): String? =
+        agentCommand.trim().substringBefore(' ').substringAfterLast('/').ifEmpty { null }
 
     private suspend fun run(vararg command: String): String {
         val result = executor.execute(command.toList())
@@ -45,6 +52,8 @@ class DetectRunningAgentsUseCase(
         val KNOWN_AGENTS = setOf("claude", "codex", "gemini", "cursor-agent", "opencode", "aider", "copilot")
     }
 }
+
+data class AgentSearch(val agentCommand: String, val worktrees: List<Worktree>)
 
 fun owningWorktree(cwd: String, worktrees: List<Worktree>): Worktree? {
     val path = normalizePath(cwd)

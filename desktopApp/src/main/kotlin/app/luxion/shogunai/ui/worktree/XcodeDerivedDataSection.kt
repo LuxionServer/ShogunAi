@@ -28,7 +28,7 @@ import app.luxion.shogunai.ui.theme.ShogunTheme
 import java.time.Instant
 
 @Composable
-fun XcodeDerivedDataSection(viewModel: WorktreeViewModel, modifier: Modifier = Modifier) {
+fun XcodeDerivedDataSection(viewModel: ProjectWorktrees, modifier: Modifier = Modifier) {
     val strings = LocalStrings.current
     SectionCard(title = strings.xcodeDerivedDataTitle, modifier = modifier) {
         when (val state = viewModel.derivedData) {
@@ -43,7 +43,7 @@ fun XcodeDerivedDataSection(viewModel: WorktreeViewModel, modifier: Modifier = M
 }
 
 @Composable
-private fun LoadedDerivedData(listing: DerivedDataListing, viewModel: WorktreeViewModel) {
+private fun LoadedDerivedData(listing: DerivedDataListing, viewModel: ProjectWorktrees) {
     val strings = LocalStrings.current
     val worktreeFolders = listing.ofWorktrees()
     val orphans = listing.orphans

@@ -11,6 +11,7 @@ import app.luxion.shogunai.domain.io.ThemePreferenceRepository
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.SimulatorDevice
 import app.luxion.shogunai.domain.model.SimulatorRuntime
 import app.luxion.shogunai.domain.model.SimulatorSettings
@@ -149,13 +150,15 @@ class AppContainer {
     suspend fun loadAvds(repositoryPath: String): Result<List<String>> =
         runCatching { androidSdk.listAvds(androidSdk.locate(repositoryPath)) }
 
+    val detectRunningAgents = DetectRunningAgentsUseCase(shellCommandExecutor)
+
     private val prepareEnvironment = PrepareWorktreeEnvironmentUseCase(
         resolveEnvironment,
         WriteEnvironmentFileUseCase(shellCommandExecutor, fileManager, repositoryProvisioningSource),
     )
 
     fun worktreeUseCases(config: ProjectConfig): WorktreeUseCases = WorktreeUseCases(
-        list = ListWorktreesUseCase(config, shellCommandExecutor),
+        list = ListWorktreesUseCase(config, shellCommandExecutor, fileManager),
         create = CreateWorktreeUseCase(config, shellCommandExecutor, fileManager, repositoryProvisioningSource, prepareEnvironment),
         createFromBranch = CreateWorktreeFromBranchUseCase(
             config,
@@ -171,7 +174,7 @@ class AppContainer {
         resolveMainBranch = ResolveMainBranchUseCase(config, shellCommandExecutor),
         readStatus = ReadWorktreeStatusUseCase(shellCommandExecutor),
         cleanUp = CleanUpWorktreesUseCase(config, shellCommandExecutor),
-        detectAgents = DetectRunningAgentsUseCase(config, shellCommandExecutor),
+        detectAgents = { worktrees -> detectRunningAgents(config, worktrees) },
         measureSize = MeasureWorktreeSizeUseCase(fileManager),
         readFingerprint = ReadGitMetadataFingerprintUseCase(config, fileManager),
         readPorts = { worktree ->
@@ -229,7 +232,7 @@ data class WorktreeUseCases(
     val resolveMainBranch: ResolveMainBranchUseCase,
     val readStatus: ReadWorktreeStatusUseCase,
     val cleanUp: CleanUpWorktreesUseCase,
-    val detectAgents: DetectRunningAgentsUseCase,
+    val detectAgents: suspend (List<Worktree>) -> Result<Map<String, List<RunningAgent>>>,
     val measureSize: MeasureWorktreeSizeUseCase,
     val readFingerprint: ReadGitMetadataFingerprintUseCase,
     val readPorts: suspend (Worktree) -> Result<Map<String, Int>>,

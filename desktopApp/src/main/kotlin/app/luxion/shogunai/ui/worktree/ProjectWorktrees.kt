@@ -3,8 +3,6 @@ package app.luxion.shogunai.ui.worktree
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import app.luxion.shogunai.WorktreeUseCases
 import app.luxion.shogunai.domain.model.BranchOption
 import app.luxion.shogunai.domain.model.BranchType
@@ -26,29 +24,28 @@ import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeStatus
 import app.luxion.shogunai.domain.usecase.CleanupReport
 import app.luxion.shogunai.domain.usecase.idleDaemonsOfRemovedWorktrees
-import app.luxion.shogunai.domain.usecase.isValidGitRefSegment
 import app.luxion.shogunai.domain.usecase.selectCleanupCandidates
-import app.luxion.shogunai.domain.usecase.normalizeTaskId
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 
-class WorktreeViewModel(
+class ProjectWorktrees(
     private val useCases: WorktreeUseCases,
-    private val autoRefreshInterval: Duration = AUTO_REFRESH_INTERVAL,
-) : ViewModel() {
-    private var watchJob: Job? = null
+    private val scope: CoroutineScope,
+    private val listPermits: Semaphore = Semaphore(1),
+    private val sizeQueue: SizeQueue = SizeQueue(scope),
+) {
     private var lastFingerprint: List<Pair<String, Long>>? = null
 
     var worktrees by mutableStateOf<List<Worktree>>(emptyList())
         private set
-    var selectedWorktreePath by mutableStateOf<String?>(null)
-        private set
     var isLoading by mutableStateOf(false)
+        private set
+    var hasLoaded by mutableStateOf(false)
+        private set
+    var listFailure by mutableStateOf<Throwable?>(null)
         private set
     var isCreating by mutableStateOf(false)
         private set
@@ -67,8 +64,9 @@ class WorktreeViewModel(
     val orderedWorktrees: List<Worktree>
         get() = orderMainFirst(worktrees)
 
-    val selectedWorktree: Worktree?
-        get() = selectedWorktreePath?.let { path -> orderedWorktrees.firstOrNull { it.path == path } }
+    val loadState: ProjectLoadState
+        get() = listFailure?.let(ProjectLoadState::Failed)
+            ?: if (hasLoaded) ProjectLoadState.Loaded else ProjectLoadState.Loading
 
     var statuses by mutableStateOf<Map<String, WorktreeStatusState>>(emptyMap())
         private set
@@ -91,16 +89,10 @@ class WorktreeViewModel(
 
     val cleanupCandidates: List<Worktree>
         get() = selectCleanupCandidates(worktrees, loadedStatuses())
-    var isCleanupDialogOpen by mutableStateOf(false)
-        private set
-    var cleanupDeleteBranches by mutableStateOf(false)
     var isCleaningUp by mutableStateOf(false)
         private set
     var cleanupIssues by mutableStateOf<CleanupReport?>(null)
         private set
-    var cleanupStopGradleDaemons by mutableStateOf(true)
-    var cleanupStopEmulators by mutableStateOf(true)
-    var cleanupDeleteSimulators by mutableStateOf(true)
 
     var isSimulatorRepository by mutableStateOf(false)
         private set
@@ -144,7 +136,6 @@ class WorktreeViewModel(
         private set
     var derivedDataDeletionReport by mutableStateOf<DerivedDataDeletion?>(null)
         private set
-    var cleanupDeleteDerivedData by mutableStateOf(true)
 
     val derivedDataOrphans: List<DerivedDataFolder>
         get() = (derivedData as? DerivedDataState.Loaded)?.listing?.orphans.orEmpty()
@@ -154,13 +145,6 @@ class WorktreeViewModel(
     var isLoadingBranches by mutableStateOf(false)
         private set
 
-    var taskId by mutableStateOf("")
-        private set
-    var branchType by mutableStateOf(BranchType.FEATURE)
-    var createMode by mutableStateOf(CreateMode.NEW_BRANCH)
-    var selectedBranch by mutableStateOf<String?>(null)
-    var isCreateDialogOpen by mutableStateOf(false)
-        private set
     var createError by mutableStateOf<Throwable?>(null)
         private set
     var lastCreatedWorktree by mutableStateOf<Worktree?>(null)
@@ -176,65 +160,49 @@ class WorktreeViewModel(
     val pendingRemovalRequiresForce: Boolean
         get() = pendingRemoval?.requiresForce ?: false
 
-    init {
-        refresh()
-    }
-
-    fun updateTaskId(raw: String) {
-        taskId = normalizeTaskId(raw)
-    }
-
     fun refresh() {
         val generation = ++listGeneration
-        viewModelScope.launch {
-            isLoading = true
-            lastFingerprint = useCases.readFingerprint().getOrNull() ?: lastFingerprint
-            applyListResult(generation, useCases.list())
-        }
-        if (createMode == CreateMode.EXISTING_BRANCH) {
-            loadLocalBranches()
-        }
-    }
-
-    fun startWatching() {
-        watchJob?.cancel()
-        watchJob = viewModelScope.launch {
-            while (true) {
-                delay(autoRefreshInterval)
-                if (!isBusy) checkForChanges()
+        isLoading = true
+        scope.launch {
+            val result = listPermits.withPermit {
+                lastFingerprint = useCases.readFingerprint().getOrNull() ?: lastFingerprint
+                useCases.list()
             }
+            applyListResult(generation, result)
         }
     }
 
-    fun stopWatching() {
-        watchJob?.cancel()
-        watchJob = null
-    }
-
-    private val isBusy: Boolean
+    val isBusy: Boolean
         get() = isLoading || isCreating || isRemoving || isCleaningUp
 
-    private suspend fun checkForChanges() {
-        val fingerprint = useCases.readFingerprint().getOrNull() ?: return
+    suspend fun checkFingerprint(): FingerprintCheck {
+        val fingerprint = useCases.readFingerprint().getOrNull() ?: return FingerprintCheck.UNREADABLE
         val previous = lastFingerprint
         lastFingerprint = fingerprint
         if (previous != null && fingerprint != previous) {
             refresh()
-        } else {
-            val detected = useCases.detectAgents(worktrees).getOrNull()
-            agents = detected
-            if (isGradleRepository && !isStoppingDaemons) loadGradleDaemons(listGeneration, worktrees)
-            if (isEmulatorRepository) loadEmulators(listGeneration, worktrees)
-            if (isSimulatorRepository) loadSimulators(listGeneration, worktrees)
+            return FingerprintCheck.RELOADED
         }
+        return FingerprintCheck.UNCHANGED
+    }
+
+    fun applyAgents(detected: Map<String, List<RunningAgent>>?) {
+        val paths = worktrees.map { it.path }.toSet()
+        agents = detected?.filterKeys { it in paths }
+    }
+
+    suspend fun refreshDevices() {
+        if (isGradleRepository && !isStoppingDaemons) loadGradleDaemons(listGeneration, worktrees)
+        if (isEmulatorRepository) loadEmulators(listGeneration, worktrees)
+        if (isSimulatorRepository) loadSimulators(listGeneration, worktrees)
     }
 
     fun repairAfterMove(previousWorktreesRoot: String) {
         val generation = ++listGeneration
-        viewModelScope.launch {
-            isLoading = true
+        isLoading = true
+        scope.launch {
             val repair = useCases.repair(previousWorktreesRoot)
-            applyListResult(generation, useCases.list())
+            applyListResult(generation, listPermits.withPermit { useCases.list() })
             repair
                 .onSuccess { success = WorktreeSuccess.RepairedAfterMove }
                 .onFailure { error = it }
@@ -246,17 +214,17 @@ class WorktreeViewModel(
         result
             .onSuccess {
                 worktrees = it
-                error = null
-                if (it.none { worktree -> worktree.path == selectedWorktreePath }) selectedWorktreePath = null
+                listFailure = null
                 loadStatuses(generation, it)
             }
-            .onFailure { error = it }
+            .onFailure { listFailure = it }
+        hasLoaded = true
         isLoading = false
     }
 
     private fun loadStatuses(generation: Int, listed: List<Worktree>) {
         statuses = listed.associate { it.path to WorktreeStatusState.Loading }
-        viewModelScope.launch {
+        scope.launch {
             val resolved = useCases.resolveMainBranch().getOrNull()
             if (generation != listGeneration) return@launch
             mainBranch = resolved
@@ -268,7 +236,7 @@ class WorktreeViewModel(
     private fun loadOverview(generation: Int, listed: List<Worktree>) {
         sizes = emptyMap()
         herdrWorktreesRoot = useCases.herdr.worktreesRoot()
-        viewModelScope.launch {
+        scope.launch {
             val detected = useCases.detectAgents(listed).getOrNull()
             if (generation == listGeneration) agents = detected
         }
@@ -277,13 +245,16 @@ class WorktreeViewModel(
         loadEmulatorSection(generation, listed)
         loadSimulatorSection(generation, listed)
         loadXcodeSection(generation, listed)
-        viewModelScope.launch {
-            for (worktree in listed) {
-                val size = useCases.measureSize(worktree, listed).getOrNull()
-                if (generation != listGeneration) return@launch
-                if (size != null) sizes = sizes + (worktree.path to size)
-            }
-        }
+        sizeQueue.submit(
+            owner = this,
+            worktrees = listed,
+            measure = { worktree -> useCases.measureSize(worktree, listed).getOrNull() },
+            deliver = { path, size -> if (generation == listGeneration) sizes = sizes + (path to size) },
+        )
+    }
+
+    fun dispose() {
+        sizeQueue.cancel(this)
     }
 
     private fun loadSimulatorSection(generation: Int, listed: List<Worktree>) {
@@ -293,7 +264,7 @@ class WorktreeViewModel(
             orphanedSimulators = emptyList()
             return
         }
-        viewModelScope.launch {
+        scope.launch {
             loadSimulators(generation, listed)
             val orphans = useCases.simulator.orphans().getOrNull() ?: return@launch
             if (generation == listGeneration) orphanedSimulators = orphans
@@ -315,7 +286,7 @@ class WorktreeViewModel(
     fun startSimulator(worktree: Worktree) {
         if (worktree.path in startingSimulators) return
         startingSimulators = startingSimulators + worktree.path
-        viewModelScope.launch {
+        scope.launch {
             try {
                 useCases.simulator.start(worktree.path).onFailure { recordActionError(worktree.path, it) }
                 loadSimulators(listGeneration, worktrees)
@@ -326,7 +297,7 @@ class WorktreeViewModel(
     }
 
     fun stopSimulator(worktree: Worktree) {
-        viewModelScope.launch {
+        scope.launch {
             useCases.simulator.stop(worktree.path).onFailure { recordActionError(worktree.path, it) }
             loadSimulators(listGeneration, worktrees)
         }
@@ -338,7 +309,7 @@ class WorktreeViewModel(
             emulators = emptyMap()
             return
         }
-        viewModelScope.launch { loadEmulators(generation, listed) }
+        scope.launch { loadEmulators(generation, listed) }
     }
 
     private suspend fun loadEmulators(generation: Int, listed: List<Worktree>) {
@@ -349,7 +320,7 @@ class WorktreeViewModel(
     fun startEmulator(worktree: Worktree) {
         if (worktree.path in startingEmulators) return
         startingEmulators = startingEmulators + worktree.path
-        viewModelScope.launch {
+        scope.launch {
             try {
                 useCases.emulator.start(worktree.path).onFailure { recordActionError(worktree.path, it) }
                 loadEmulators(listGeneration, worktrees)
@@ -361,14 +332,14 @@ class WorktreeViewModel(
     }
 
     fun stopEmulator(worktree: Worktree) {
-        viewModelScope.launch {
+        scope.launch {
             useCases.emulator.stop(worktree.path).onFailure { recordActionError(worktree.path, it) }
             loadEmulators(listGeneration, worktrees)
         }
     }
 
     private fun loadPorts(generation: Int, listed: List<Worktree>) {
-        viewModelScope.launch {
+        scope.launch {
             val loaded = listed.filterNot { it.isPrunable }.mapNotNull { worktree ->
                 useCases.readPorts(worktree).getOrNull()?.takeIf { it.isNotEmpty() }?.let { worktree.path to it }
             }.toMap()
@@ -382,7 +353,7 @@ class WorktreeViewModel(
         gradleSettings = provider?.takeIf { it.hasSettings }
         if (provider == null) return
         isGradleBuildCacheEnabled = useCases.gradle.isBuildCacheEnabled()
-        viewModelScope.launch { loadGradleDaemons(generation, listed) }
+        scope.launch { loadGradleDaemons(generation, listed) }
     }
 
     private suspend fun loadGradleDaemons(generation: Int, listed: List<Worktree>) {
@@ -395,7 +366,7 @@ class WorktreeViewModel(
         val provider = useCases.xcode.provider()?.takeIf { useCases.xcode.supported() }
         isXcodeRepository = provider != null
         if (provider == null) return
-        viewModelScope.launch { loadDerivedData(generation, listed, provider.compilationCache) }
+        scope.launch { loadDerivedData(generation, listed, provider.compilationCache) }
     }
 
     private suspend fun loadDerivedData(generation: Int, listed: List<Worktree>, includeCompilationCache: Boolean) {
@@ -408,7 +379,7 @@ class WorktreeViewModel(
     fun deleteOrphanedDerivedData() {
         if (isDeletingOrphans) return
         isDeletingOrphans = true
-        viewModelScope.launch {
+        scope.launch {
             try {
                 useCases.xcode.deleteOrphans()
                     .onSuccess { derivedDataDeletionReport = it }
@@ -430,7 +401,7 @@ class WorktreeViewModel(
 
     private fun stopGradleDaemons(pids: List<Long>?) {
         if (isStoppingDaemons) return
-        viewModelScope.launch {
+        scope.launch {
             isStoppingDaemons = true
             try {
                 useCases.gradle.stopDaemons(pids)
@@ -450,7 +421,7 @@ class WorktreeViewModel(
     private fun loadStatusOf(worktree: Worktree) {
         val generation = listGeneration
         statuses = statuses + (worktree.path to WorktreeStatusState.Loading)
-        viewModelScope.launch { readStatus(generation, worktree, mainBranch) }
+        scope.launch { readStatus(generation, worktree, mainBranch) }
     }
 
     private suspend fun readStatus(generation: Int, worktree: Worktree, mainBranch: MainBranch?) {
@@ -459,56 +430,29 @@ class WorktreeViewModel(
         if (generation == listGeneration) statuses = statuses + (worktree.path to state)
     }
 
-    fun isTaskIdValid(taskId: String): Boolean = isValidGitRefSegment(normalizeTaskId(taskId))
-
-    val isSelectedBranchAvailable: Boolean
-        get() = localBranches.any { it.name == selectedBranch && !it.isCheckedOut }
-
-    val canCreate: Boolean
-        get() = !isCreating && when (createMode) {
-            CreateMode.NEW_BRANCH -> taskId.isNotBlank() && isTaskIdValid(taskId)
-            CreateMode.EXISTING_BRANCH -> isSelectedBranchAvailable
-        }
-
-    fun openCreateDialog() {
-        if (isCreateDialogOpen) return
-        taskId = ""
-        selectedBranch = null
-        createError = null
-        isCreateDialogOpen = true
-    }
+    fun isBranchAvailable(branch: String?): Boolean =
+        localBranches.any { it.name == branch && !it.isCheckedOut }
 
     fun dismissCreateError() {
         createError = null
     }
 
-    fun dismissCreateDialog() {
-        if (!isCreating) isCreateDialogOpen = false
-    }
+    fun create(taskId: String, branchType: BranchType, onCreated: (Worktree) -> Unit = {}) =
+        runCreation(onCreated) { useCases.create(taskId, branchType) }
 
-    fun confirmCreate() {
-        if (!canCreate) return
-        when (createMode) {
-            CreateMode.NEW_BRANCH -> create(taskId, branchType)
-            CreateMode.EXISTING_BRANCH -> selectedBranch?.let(::createFromBranch)
-        }
-    }
-
-    fun create(taskId: String, branchType: BranchType) = runCreation { useCases.create(taskId, branchType) }
-
-    private fun runCreation(creation: suspend () -> Result<Worktree>) {
+    private fun runCreation(onCreated: (Worktree) -> Unit, creation: suspend () -> Result<Worktree>) {
         if (isCreating) return
         isCreating = true
         createError = null
-        viewModelScope.launch {
+        scope.launch {
             try {
                 creation()
                     .onSuccess { worktree ->
                         worktrees = worktrees + worktree
                         lastCreatedWorktree = worktree
                         success = WorktreeSuccess.Created(worktree.path)
-                        isCreateDialogOpen = false
                         loadStatusOf(worktree)
+                        onCreated(worktree)
                     }
                     .onFailure { createError = it }
             } finally {
@@ -518,7 +462,7 @@ class WorktreeViewModel(
     }
 
     fun loadLocalBranches() {
-        viewModelScope.launch {
+        scope.launch {
             isLoadingBranches = true
             useCases.listLocalBranches()
                 .onSuccess { localBranches = it; error = null }
@@ -527,16 +471,16 @@ class WorktreeViewModel(
         }
     }
 
-    fun createFromBranch(branch: String) = runCreation { useCases.createFromBranch(branch) }
+    fun createFromBranch(branch: String, onCreated: (Worktree) -> Unit = {}) =
+        runCreation(onCreated) { useCases.createFromBranch(branch) }
 
     fun remove(worktree: Worktree, branchToDelete: String?, force: Boolean = false) {
-        viewModelScope.launch {
+        scope.launch {
             isRemoving = true
             try {
                 useCases.remove(worktree.path, branchToDelete, force)
                     .onSuccess {
                         worktrees = worktrees.filterNot { it.path == worktree.path }
-                        if (selectedWorktreePath == worktree.path) selectedWorktreePath = null
                         statuses = statuses - worktree.path
                         sizes = sizes - worktree.path
                         error = null
@@ -564,7 +508,7 @@ class WorktreeViewModel(
     }
 
     fun copyLaunchCommand(worktree: Worktree) {
-        viewModelScope.launch {
+        scope.launch {
             useCases.copyLaunchCommand(worktree.path)
                 .onSuccess {
                     error = null
@@ -580,7 +524,7 @@ class WorktreeViewModel(
     fun openInHerdr(worktree: Worktree) {
         if (worktree.path in openingInHerdr) return
         openingInHerdr = openingInHerdr + worktree.path
-        viewModelScope.launch {
+        scope.launch {
             try {
                 useCases.herdr.open(worktree)
                     .onSuccess { opening ->
@@ -612,79 +556,64 @@ class WorktreeViewModel(
         pendingRemoval = null
     }
 
-    fun openCleanup() {
-        if (!canCleanUp) return
-        cleanupDeleteBranches = false
-        cleanupStopGradleDaemons = true
-        cleanupStopEmulators = true
-        cleanupDeleteSimulators = true
-        cleanupDeleteDerivedData = true
-        isCleanupDialogOpen = true
-    }
-
-    fun dismissCleanup() {
-        if (!isCleaningUp) isCleanupDialogOpen = false
-    }
-
-    fun confirmCleanup() {
+    suspend fun cleanUp(options: CleanupOptions): WorktreeSuccess.CleanedUp? {
         val candidates = cleanupCandidates
         val listed = worktrees
-        val stopDaemons = isGradleRepository && cleanupStopGradleDaemons
-        val deleteSimulators = isSimulatorRepository && cleanupDeleteSimulators
-        val deleteDerivedData = isXcodeRepository && cleanupDeleteDerivedData
+        val stopDaemons = isGradleRepository && options.stopGradleDaemons
+        val deleteSimulators = isSimulatorRepository && options.deleteSimulators
+        val deleteDerivedData = isXcodeRepository && options.deleteDerivedData
         val simulatorsToDelete = if (deleteSimulators) {
             simulators.filterKeys { path -> candidates.any { it.path == path } }.mapValues { it.value.udid }
         } else {
             emptyMap()
         }
         val knownOrphans = orphanedSimulators
-        val emulatorsBefore = if (isEmulatorRepository && cleanupStopEmulators) {
+        val emulatorsBefore = if (isEmulatorRepository && options.stopEmulators) {
             emulators.filter { (path, emulator) -> emulator.state != EmulatorState.STOPPED && candidates.any { it.path == path } }
         } else {
             emptyMap()
         }
-        viewModelScope.launch {
-            isCleaningUp = true
-            try {
-                val daemonsBefore = if (stopDaemons) useCases.gradle.listDaemons(listed).getOrNull().orEmpty() else emptyList()
-                useCases.cleanUp(candidates, mainBranch, cleanupDeleteBranches)
-                    .onSuccess { report ->
-                        error = null
-                        val daemonReport = stopDaemonsOfRemovedWorktrees(daemonsBefore, listed, report.removed)
-                        val removedSerials = report.removed.mapNotNull { emulatorsBefore[it]?.serial }
-                        val stoppedEmulators = if (removedSerials.isEmpty()) {
-                            0
-                        } else {
-                            useCases.emulator.stopSerials(removedSerials).getOrNull()?.size ?: 0
-                        }
-                        val deletedSimulators = if (deleteSimulators) {
-                            deleteSimulatorsAfterCleanup(report.removed.mapNotNull { simulatorsToDelete[it] }, knownOrphans)
-                        } else {
-                            0
-                        }
-                        val deletedDerivedData = if (deleteDerivedData) {
-                            useCases.xcode.deleteOrphans().getOrNull()
-                        } else {
-                            null
-                        }
-                        success = WorktreeSuccess.CleanedUp(
-                            removedCount = report.removed.size,
-                            stoppedDaemons = daemonReport?.stopped?.size ?: 0,
-                            keptDaemons = daemonReport?.kept?.size ?: 0,
-                            stoppedEmulators = stoppedEmulators,
-                            deletedSimulators = deletedSimulators,
-                            deletedDerivedDataFolders = deletedDerivedData?.deleted?.size ?: 0,
-                            derivedDataBytesFreed = deletedDerivedData?.bytesFreed ?: 0,
-                        )
-                        cleanupIssues = report.takeIf { it.failures.isNotEmpty() || it.keptBranches.isNotEmpty() }
+        isCleaningUp = true
+        var cleanedUp: WorktreeSuccess.CleanedUp? = null
+        try {
+            val daemonsBefore = if (stopDaemons) useCases.gradle.listDaemons(listed).getOrNull().orEmpty() else emptyList()
+            useCases.cleanUp(candidates, mainBranch, options.deleteBranches)
+                .onSuccess { report ->
+                    error = null
+                    val daemonReport = stopDaemonsOfRemovedWorktrees(daemonsBefore, listed, report.removed)
+                    val removedSerials = report.removed.mapNotNull { emulatorsBefore[it]?.serial }
+                    val stoppedEmulators = if (removedSerials.isEmpty()) {
+                        0
+                    } else {
+                        useCases.emulator.stopSerials(removedSerials).getOrNull()?.size ?: 0
                     }
-                    .onFailure { error = it }
-            } finally {
-                isCleaningUp = false
-                isCleanupDialogOpen = false
-            }
-            refresh()
+                    val deletedSimulators = if (deleteSimulators) {
+                        deleteSimulatorsAfterCleanup(report.removed.mapNotNull { simulatorsToDelete[it] }, knownOrphans)
+                    } else {
+                        0
+                    }
+                    val deletedDerivedData = if (deleteDerivedData) {
+                        useCases.xcode.deleteOrphans().getOrNull()
+                    } else {
+                        null
+                    }
+                    cleanedUp = WorktreeSuccess.CleanedUp(
+                        removedCount = report.removed.size,
+                        stoppedDaemons = daemonReport?.stopped?.size ?: 0,
+                        keptDaemons = daemonReport?.kept?.size ?: 0,
+                        stoppedEmulators = stoppedEmulators,
+                        deletedSimulators = deletedSimulators,
+                        deletedDerivedDataFolders = deletedDerivedData?.deleted?.size ?: 0,
+                        derivedDataBytesFreed = deletedDerivedData?.bytesFreed ?: 0,
+                    )
+                    cleanupIssues = report.takeIf { it.failures.isNotEmpty() || it.keptBranches.isNotEmpty() }
+                }
+                .onFailure { error = it }
+        } finally {
+            isCleaningUp = false
         }
+        refresh()
+        return cleanedUp
     }
 
     private suspend fun stopDaemonsOfRemovedWorktrees(
@@ -712,40 +641,8 @@ class WorktreeViewModel(
         success = null
     }
 
-    fun select(path: String) {
-        selectedWorktreePath = path
-    }
-
-    fun clearSelection() {
-        selectedWorktreePath = null
-    }
-
-    fun selectNext() {
-        val ordered = orderedWorktrees
-        if (ordered.isEmpty()) return
-        val index = ordered.indexOfFirst { it.path == selectedWorktreePath }
-        select(ordered[(index + 1).coerceIn(0, ordered.lastIndex)].path)
-    }
-
-    fun selectPrevious() {
-        val ordered = orderedWorktrees
-        if (ordered.isEmpty()) return
-        val index = ordered.indexOfFirst { it.path == selectedWorktreePath }
-        select(ordered[(index - 1).coerceAtLeast(0)].path)
-    }
-
     fun dismissActionError(path: String) {
         actionErrors = actionErrors - path
-    }
-
-    fun copySelectedLaunchCommand() {
-        if (isCreateDialogOpen) return
-        selectedWorktree?.let(::copyLaunchCommand)
-    }
-
-    fun deleteSelectedWorktree() {
-        if (isCreateDialogOpen || isCleanupDialogOpen || worktreePendingRemoval != null) return
-        selectedWorktree?.takeIf { !it.isMain }?.let(::requestRemoval)
     }
 
     private fun recordActionError(path: String, failure: Throwable) {
@@ -764,9 +661,24 @@ private fun Throwable.suggestsForceRetry(): Boolean =
 
 private const val COPIED_FEEDBACK_DURATION_MS = 2000L
 private const val MAX_PARALLEL_STATUS_READS = 4
-private val AUTO_REFRESH_INTERVAL = 3.seconds
 
 enum class CreateMode { NEW_BRANCH, EXISTING_BRANCH }
+
+enum class FingerprintCheck { RELOADED, UNCHANGED, UNREADABLE }
+
+sealed interface ProjectLoadState {
+    data object Loading : ProjectLoadState
+    data object Loaded : ProjectLoadState
+    data class Failed(val error: Throwable) : ProjectLoadState
+}
+
+data class CleanupOptions(
+    val deleteBranches: Boolean = false,
+    val stopGradleDaemons: Boolean = true,
+    val stopEmulators: Boolean = true,
+    val deleteSimulators: Boolean = true,
+    val deleteDerivedData: Boolean = true,
+)
 
 sealed interface WorktreeStatusState {
     data object Loading : WorktreeStatusState
@@ -786,7 +698,17 @@ sealed interface WorktreeSuccess {
         val deletedSimulators: Int = 0,
         val deletedDerivedDataFolders: Int = 0,
         val derivedDataBytesFreed: Long = 0,
-    ) : WorktreeSuccess
+    ) : WorktreeSuccess {
+        operator fun plus(other: CleanedUp) = CleanedUp(
+            removedCount = removedCount + other.removedCount,
+            stoppedDaemons = stoppedDaemons + other.stoppedDaemons,
+            keptDaemons = keptDaemons + other.keptDaemons,
+            stoppedEmulators = stoppedEmulators + other.stoppedEmulators,
+            deletedSimulators = deletedSimulators + other.deletedSimulators,
+            deletedDerivedDataFolders = deletedDerivedDataFolders + other.deletedDerivedDataFolders,
+            derivedDataBytesFreed = derivedDataBytesFreed + other.derivedDataBytesFreed,
+        )
+    }
 }
 
 sealed interface GradleDaemonsState {
