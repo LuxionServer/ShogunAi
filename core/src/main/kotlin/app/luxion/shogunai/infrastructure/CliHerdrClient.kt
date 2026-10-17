@@ -46,7 +46,9 @@ class CliHerdrClient(
 
     fun executable(): String {
         val name = if (osName.startsWith("Windows", ignoreCase = true)) "herdr.exe" else "herdr"
-        return USER_BIN_FOLDERS.map { File(File(userHome, it), name).path }.firstOrNull(isFile) ?: name
+        val candidates = USER_BIN_FOLDERS.map { File(File(userHome, it), name).path } +
+            SYSTEM_BIN_FOLDERS.map { File(it, name).path }
+        return candidates.firstOrNull(isFile) ?: name
     }
 
     private fun command(arguments: List<String>): List<String> = listOf(executable()) + arguments
@@ -82,5 +84,6 @@ class CliHerdrClient(
 
     companion object {
         private val USER_BIN_FOLDERS = listOf(".local/bin", ".cargo/bin")
+        private val SYSTEM_BIN_FOLDERS = listOf("/opt/homebrew/bin", "/usr/local/bin")
     }
 }
