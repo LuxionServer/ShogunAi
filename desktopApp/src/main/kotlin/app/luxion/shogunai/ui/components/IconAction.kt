@@ -24,13 +24,10 @@ private val TooltipOffset = DpOffset(0.dp, 8.dp)
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun IconAction(
-    icon: ImageVector,
+fun WithTooltip(
     label: String,
-    onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    tint: Color = LocalContentColor.current,
+    content: @Composable () -> Unit,
 ) {
     TooltipArea(
         tooltip = {
@@ -49,7 +46,20 @@ fun IconAction(
         delayMillis = TooltipDelayMillis,
         tooltipPlacement = TooltipPlacement.ComponentRect(offset = TooltipOffset),
         modifier = modifier,
-    ) {
+        content = content,
+    )
+}
+
+@Composable
+fun IconAction(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    tint: Color = LocalContentColor.current,
+) {
+    WithTooltip(label = label, modifier = modifier) {
         IconButton(
             onClick = onClick,
             enabled = enabled,

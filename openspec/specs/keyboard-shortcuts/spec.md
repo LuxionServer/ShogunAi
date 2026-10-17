@@ -6,16 +6,16 @@ Keyboard shortcuts for frequent actions, so creating a project or a worktree doe
 ## Requirements
 
 ### Requirement: Global keyboard shortcuts for frequent actions
-The system SHALL let the user trigger frequent actions via keyboard shortcuts instead of requiring a mouse click: creating a new project from the project list screen, and creating a new worktree from the worktree management screen.
+The system SHALL let the user trigger frequent actions via keyboard shortcuts instead of requiring a mouse click: adding a project from anywhere in the main window, and creating a new worktree from the worktree management view.
 
 #### Scenario: New project shortcut
-- **WHEN** the project list screen is active and the user presses the "new project" shortcut (Cmd/Ctrl+N)
-- **THEN** the app navigates to the project configuration screen with an empty form, same as clicking "New project"
+- **WHEN** the main window is focused and the user presses the "add project" shortcut (Shift+Cmd/Ctrl+N)
+- **THEN** the content area shows the project configuration form, empty, same as activating "Add project"
 
 #### Scenario: New worktree shortcut
-- **WHEN** the worktree management screen is active, the create-worktree form has valid input, and the user presses the "new worktree" shortcut (Cmd/Ctrl+N)
+- **WHEN** the worktree management view is active, the create-worktree form has valid input, and the user presses the "new worktree" shortcut (Cmd/Ctrl+N)
 - **THEN** the app creates a worktree using the current create-worktree form state, same as clicking "Create worktree"
 
 #### Scenario: Shortcut ignored with invalid input
-- **WHEN** the worktree management screen is active, the create-worktree form does not have valid input (e.g. blank or invalid task id), and the user presses the "new worktree" shortcut
+- **WHEN** the worktree management view is active, the create-worktree form does not have valid input (e.g. blank or invalid task id), and the user presses the "new worktree" shortcut
 - **THEN** no worktree creation is attempted, consistent with the "Create worktree" button being disabled

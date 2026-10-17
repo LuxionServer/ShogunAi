@@ -23,14 +23,33 @@ interface Strings {
     val selectLocalFilesDialogTitle: String
 
     val projectsTitle: String
-    val newProject: String
-    val search: String
-    val noProjectsYet: String
-    fun noProjectsMatch(query: String): String
+    val addProject: String
     val editProject: String
-    val deleteProject: String
-    val deleteProjectTitle: String
-    fun deleteProjectMessage(projectName: String): String
+    val removeProject: String
+    val removeProjectTitle: String
+    fun removeProjectMessage(projectName: String): String
+    val remove: String
+    val emptyStateTitle: String
+    val emptyStateMessage: String
+    val collapseSidebar: String
+    val expandSidebar: String
+
+    val menuFile: String
+    val menuView: String
+    val menuHelp: String
+    val menuPreferences: String
+    val menuQuit: String
+    val menuToggleSidebar: String
+    val menuAbout: String
+
+    val preferencesTitle: String
+    val appearanceLabel: String
+    val languageLabel: String
+
+    val aboutTitle: String
+    val aboutTagline: String
+    fun aboutVersion(version: String): String
+    val aboutRepositoryLink: String
 
     val projectConfigTitle: String
     val identitySection: String

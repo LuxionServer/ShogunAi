@@ -4,15 +4,23 @@ Lives in the `desktopApp` module: `desktopApp/src/main/kotlin/app/luxion/shoguna
 
 ## Navigation
 
-No `navigation-compose`: `AppRoot` holds a `var screen by remember { mutableStateOf<Screen>(...) }` and does a `when` over a `sealed class Screen` (`ProjectList`, `ProjectConfigForm`, `WorktreeManagement`) to decide which screen to compose. Enough for three linear screens with no deep linking or complex back-stack.
+No `navigation-compose`: the main window is a shell (`ui/shell/AppShell`) with a persistent `Sidebar` and a content area. `ShellViewModel` owns the selected `ShellDestination` (`Project`, `ProjectSettings`, `AddProject`), the project catalog (sorted alphabetically) and the sidebar state, and the content area does a `when` over the destination. A sidebar app has no meaningful back stack: Cancel on a form returns to the destination selected before it, and saving selects the saved project. With no destination (no projects), the content area shows the first-launch empty state.
 
-The top bar, above every screen, holds the language and theme selectors.
+The selected project is saved as `lastDestination` in `settings.json` and restored on startup; forms are never restored, and a project that no longer exists falls back to the first one. The catalog is re-read when the window regains focus and on View > Reload, which also bumps `reloadRequests` so the shown view reloads its data.
+
+The sidebar is 240 dp wide, and becomes a 64 dp rail (each project's initial with a tooltip) when the window is narrower than 900 dp or the user collapses it (View > Toggle sidebar, Cmd/Ctrl+Backslash). The manual choice is saved as `sidebarCollapsed` and only applies to wide windows; toggling on a narrow window expands it until the width changes. Each project row has a context menu with Edit project and Remove project.
+
+`main.kt` adds the desktop conventions around the shell:
+
+- A `MenuBar` (`AppMenuBar`) with File (Add project; Preferences and Quit off macOS), View (Reload, Toggle sidebar) and Help (About, off macOS), labelled from `Strings` so it follows the language. On macOS, `java.awt.Desktop` handlers put About and Settings… in the ShogunAi menu, and a quit handler saves the window bounds before Cmd+Q quits.
+- `PreferencesWindow` (theme mode and language, a single instance brought to the front when reopened) and `AboutWindow` (icon, name, `BuildInfo.VERSION`, repository link). Every window reads the same `Appearance` holder, so a change applies to all of them at once.
+- The window's bounds and maximized state are saved as `windowBounds` when it closes and restored on startup; bounds that don't intersect any connected display open the window centered instead. The minimum size is 720×480.
 
 ## Screens and ViewModels
 
 | Screen | ViewModel | Responsibility |
 |---|---|---|
-| `ProjectListScreen` | `ProjectListViewModel` | Project catalog from `ProjectRepository`: search by name, A-Z / Z-A order, open, edit and delete (with confirmation). |
+| `AppShell` | `ShellViewModel` | Sidebar with the project catalog from `ProjectRepository` (alphabetical; add, edit and remove with confirmation) and the content area for the selected destination. |
 | `ProjectConfigScreen` | `ProjectConfigViewModel` | Form for a `Project` (name, base repository path, worktrees root, main branch, the repository's provisioning, local files, agent command and Headroom switch); validates required fields and asks before discarding unsaved changes. |
 | `WorktreeScreen` | `WorktreeViewModel` | Lists the worktrees of the active project with their status; creates them from a new or an existing branch, removes them (optionally deleting the branch, retrying with `--force` when Git asks for it) and copies their launch command. |
 
@@ -100,7 +108,7 @@ When the user edits a project because its repository moved on disk:
 
 - `ProjectConfigViewModel` turns absolute local file entries inside the base repository into relative ones, so they follow the repository.
 - Changing the base repository path also moves the worktrees root when it was inside the repository, its parent or a sibling folder, unless the user edited it by hand (`RepositoryRelocation.kt`).
-- After saving with a different base path or worktrees root, `AppRoot` opens the worktree screen with the previous worktrees root, and `WorktreeViewModel.repairAfterMove` runs `RepairWorktreesUseCase` before listing. A failed repair stays visible as an error.
+- After saving with a different base path or worktrees root, `ShellViewModel.onProjectSaved` selects the project with the previous worktrees root, and `WorktreeViewModel.repairAfterMove` runs `RepairWorktreesUseCase` before listing. A failed repair stays visible as an error.
 - The form and worktree ViewModels are keyed by the project's configuration, not only its id, so an edited project never reuses use cases bound to the old paths.
 
 List loads are tagged with a generation number: a result is only applied if no newer load started meanwhile, so a slow earlier load can't overwrite a newer state (or clear a newer error).
@@ -115,7 +123,7 @@ List loads are tagged with a generation number: a result is only applied if no n
 
 ## Theme (`ui/theme`)
 
-`ShogunAiTheme` applies the light or dark color scheme from the stored `ThemeMode`, chosen with `ThemeModeToggle` in the top bar. In `SYSTEM` mode, `rememberSystemInDarkTheme` polls the OS theme every second, because Compose Desktop's `isSystemInDarkTheme()` doesn't react to changes while the app is open.
+`ShogunAiTheme` applies the light or dark color scheme from the stored `ThemeMode`, chosen in the Preferences window. In `SYSTEM` mode, `rememberSystemInDarkTheme` polls the OS theme every second, because Compose Desktop's `isSystemInDarkTheme()` doesn't react to changes while the app is open.
 
 ## Design system
 
@@ -168,9 +176,9 @@ Wraps `JFileChooser` for the "Browse…" buttons on the configuration screen (ba
 
 The UI is available in English (default) and Spanish. Every visible text lives in `interface Strings`, with one implementation per language (`EnglishStrings`, `SpanishStrings`); texts with parameters are functions (`deleteProjectMessage(projectName)`), so arguments are checked at compile time.
 
-- `AppRoot` loads the stored `AppLanguage` (`LanguagePreferenceRepository`) and provides the active table with `CompositionLocalProvider(LocalStrings provides language.strings())` above the screen `when`: switching language recomposes texts without recreating ViewModels or losing screen state.
+- `Appearance` loads the stored `AppLanguage` (`LanguagePreferenceRepository`) and `AppearanceScope` provides the active table with `CompositionLocalProvider(LocalStrings provides ...)` in every window: switching language recomposes texts, including the menu bar, without recreating ViewModels or losing screen state.
 - Composables read texts with `val strings = LocalStrings.current`. Non-composable code (such as `FilePicker`) receives the already-translated text as a parameter.
-- `LanguageToggle`, next to `ThemeModeToggle` in the top bar, shows each language by its own name ("English", "Español").
+- The language selector in Preferences shows each language by its own name ("English", "Español").
 - ViewModels expose data, not messages: `WorktreeViewModel` exposes `error: Throwable?` and `success: WorktreeSuccess?` (worktree created, worktrees repaired after a move), and the screen formats them with `strings.worktreeError(error)` and the matching `Strings` text. `worktreeError` is exhaustive over the sealed `WorktreeError` hierarchy, so a new variant doesn't compile until it's translated; a process that can't start (`CommandExecutionException`) gets its own message, and anything else falls back to a generic one. Git's error output is shown as-is, untranslated.
 
 **Adding a text**: declare the member in `Strings` and implement it in every language (the compiler flags any missing one). **Adding a language**: new `AppLanguage` value, new `object` implementing `Strings`, and its branch in `AppLanguage.strings()`.

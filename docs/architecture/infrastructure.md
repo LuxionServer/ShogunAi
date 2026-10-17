@@ -80,7 +80,7 @@ In `desktopApp`. Implementation of `ClipboardWriter` with AWT's system clipboard
 
 ## User preferences (`settings.json`)
 
-`JsonSettingsFile` is the `~/.shogunai/settings.json` file, shared by `JsonThemePreferenceRepository` (`ThemePreferenceRepository` port) and `JsonLanguagePreferenceRepository` (`LanguagePreferenceRepository` port). It stores `{ "themeMode": ..., "language": ... }`.
+`JsonSettingsFile` is the `~/.shogunai/settings.json` file, shared by `JsonThemePreferenceRepository` (`ThemePreferenceRepository` port), `JsonLanguagePreferenceRepository` (`LanguagePreferenceRepository` port) and `JsonShellPreferenceRepository` (`ShellPreferenceRepository` port). It stores `{ "themeMode": ..., "language": ..., "lastDestination": ..., "windowBounds": ..., "sidebarCollapsed": ... }`; the last three are optional, so a file written by an older version opens on the first project with default bounds.
 
 - **Each save only rewrites its own field**: `update` reads the current contents, applies the change and writes the whole file atomically (same pattern as `JsonProjectRepository`). Changing the language doesn't overwrite the theme and vice versa.
 - **Defaults**: `SYSTEM` for the theme and `ENGLISH` for the language when the file is missing, empty or unparseable. Files written by older versions (only `themeMode`) are read fine: the language takes its default.

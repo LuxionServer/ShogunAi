@@ -1,29 +1,97 @@
 package app.luxion.shogunai
 
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
+import androidx.lifecycle.viewmodel.compose.viewModel
 import app.luxion.shogunai.cli.runShogun
-import app.luxion.shogunai.ui.AppRoot
+import app.luxion.shogunai.ui.shell.AboutWindow
+import app.luxion.shogunai.ui.shell.AppMenuBar
+import app.luxion.shogunai.ui.shell.AppShell
+import app.luxion.shogunai.ui.shell.Appearance
+import app.luxion.shogunai.ui.shell.AppearanceScope
+import app.luxion.shogunai.ui.shell.PreferencesWindow
+import app.luxion.shogunai.ui.shell.ShellViewModel
+import app.luxion.shogunai.ui.shell.installMacAppMenuHandlers
+import app.luxion.shogunai.ui.shell.rememberRestoredWindowState
+import app.luxion.shogunai.ui.shell.saveWindowBounds
+import java.awt.Dimension
 import java.awt.Taskbar
 import java.awt.Toolkit
 import kotlin.system.exitProcess
 
+private val MinimumWindowSize = Dimension(720, 480)
+
 fun main(args: Array<String>) {
     val cliArguments = args.filterNot { it.startsWith("-psn_") }
     if (cliArguments.isNotEmpty()) exitProcess(runShogun(cliArguments.toTypedArray()))
+    System.setProperty("apple.laf.useScreenMenuBar", "true")
+    System.setProperty("apple.awt.application.name", "ShogunAi")
     openWindow()
 }
 
 private fun openWindow() = application {
-    setDockIcon()
-    val appContainer = AppContainer()
+    val appContainer = remember { AppContainer() }
+    val appearance = remember {
+        Appearance(appContainer.themePreferenceRepository, appContainer.languagePreferenceRepository)
+    }
+    var preferencesOpen by remember { mutableStateOf(false) }
+    var preferencesFrontRequests by remember { mutableIntStateOf(0) }
+    var aboutOpen by remember { mutableStateOf(false) }
+    val openPreferences: () -> Unit = {
+        if (preferencesOpen) preferencesFrontRequests++ else preferencesOpen = true
+    }
+    val windowState = rememberRestoredWindowState(appContainer.shellPreferenceRepository)
+    val quit = {
+        saveWindowBounds(windowState, appContainer.shellPreferenceRepository)
+        exitApplication()
+    }
+    DisposableEffect(Unit) {
+        setDockIcon()
+        installMacAppMenuHandlers(
+            onAbout = { aboutOpen = true },
+            onPreferences = openPreferences,
+            beforeQuit = { saveWindowBounds(windowState, appContainer.shellPreferenceRepository) },
+        )
+        onDispose { }
+    }
+
     Window(
-        onCloseRequest = ::exitApplication,
+        onCloseRequest = quit,
+        state = windowState,
         title = "ShogunAi",
         icon = painterResource("icons/icon.png"),
     ) {
-        AppRoot(appContainer)
+        LaunchedEffect(Unit) { window.minimumSize = MinimumWindowSize }
+        val shellViewModel = viewModel {
+            ShellViewModel(appContainer.projectRepository, appContainer.shellPreferenceRepository)
+        }
+        AppMenuBar(
+            strings = appearance.strings,
+            onAddProject = shellViewModel::addProject,
+            onReload = shellViewModel::reload,
+            onToggleSidebar = shellViewModel::toggleSidebar,
+            onPreferences = openPreferences,
+            onAbout = { aboutOpen = true },
+            onQuit = quit,
+        )
+        AppearanceScope(appearance) {
+            AppShell(appContainer, shellViewModel)
+        }
+    }
+
+    if (preferencesOpen) {
+        PreferencesWindow(appearance, preferencesFrontRequests, onClose = { preferencesOpen = false })
+    }
+    if (aboutOpen) {
+        AboutWindow(appearance, onClose = { aboutOpen = false })
     }
 }
 

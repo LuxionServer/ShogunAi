@@ -2,6 +2,7 @@ package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.model.ThemeMode
+import app.luxion.shogunai.domain.model.WindowBounds
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -46,5 +47,8 @@ class JsonSettingsFile(
     data class Settings(
         val themeMode: ThemeMode = ThemeMode.SYSTEM,
         val language: AppLanguage = AppLanguage.ENGLISH,
+        val lastDestination: String? = null,
+        val windowBounds: WindowBounds? = null,
+        val sidebarCollapsed: Boolean = false,
     )
 }

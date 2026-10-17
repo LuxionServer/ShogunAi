@@ -73,7 +73,6 @@ fun WorktreeScreen(
     projectName: String,
     projectConfig: ProjectConfig,
     viewModel: WorktreeViewModel,
-    onBack: () -> Unit,
 ) {
     val strings = LocalStrings.current
     DisposableEffect(viewModel) {
@@ -125,9 +124,7 @@ fun WorktreeScreen(
                 SecondaryButton(
                     onClick = { viewModel.refresh() },
                     enabled = !viewModel.isLoading,
-                    modifier = Modifier.padding(end = Spacing.sm),
                 ) { Text(strings.reload) }
-                SecondaryButton(onClick = onBack) { Text(strings.projectsTitle) }
             }
         }
 
