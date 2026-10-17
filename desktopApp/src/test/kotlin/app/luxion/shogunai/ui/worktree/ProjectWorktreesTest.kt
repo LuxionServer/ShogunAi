@@ -59,7 +59,11 @@ import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.RepairWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
 import app.luxion.shogunai.domain.usecase.StopGradleDaemonsUseCase
+import app.luxion.shogunai.domain.FakeShellPreferenceRepository
+import app.luxion.shogunai.domain.model.Project
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -81,7 +85,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-class WorktreeViewModelTest {
+class ProjectWorktreesTest {
 
     private val dispatcher = StandardTestDispatcher()
 
@@ -115,6 +119,25 @@ class WorktreeViewModelTest {
         Dispatchers.resetMain()
     }
 
+    private fun projectWorktrees(useCases: WorktreeUseCases): ProjectWorktrees =
+        ProjectWorktrees(useCases, CoroutineScope(SupervisorJob() + dispatcher)).also { it.refresh() }
+
+    private val project = Project(id = "main-repo", name = "main-repo", config = config)
+
+    private fun board(useCases: WorktreeUseCases): WorktreeBoard = WorktreeBoard(
+        useCasesFor = { useCases },
+        detectAgents = { searches -> useCases.detectAgents(searches.flatMap { it.worktrees }) },
+        preferences = FakeShellPreferenceRepository(),
+    ).also {
+        it.syncCatalog(listOf(project))
+        it.show(null)
+    }
+
+    private val WorktreeBoard.project: ProjectWorktrees
+        get() = holder(this@ProjectWorktreesTest.project.id)!!
+
+    private fun WorktreeBoard.selectPath(path: String) = select(WorktreeRef(this@ProjectWorktreesTest.project.id, path))
+
     private fun useCases(responder: (List<String>) -> CommandResult): WorktreeUseCases =
         useCasesWith(FakeShellCommandExecutor(responder))
 
@@ -140,7 +163,7 @@ class WorktreeViewModelTest {
             resolveMainBranch = ResolveMainBranchUseCase(config, executor),
             readStatus = ReadWorktreeStatusUseCase(executor),
             cleanUp = CleanUpWorktreesUseCase(config, executor),
-            detectAgents = DetectRunningAgentsUseCase(config, executor),
+            detectAgents = { worktrees -> DetectRunningAgentsUseCase(executor)(config, worktrees) },
             measureSize = MeasureWorktreeSizeUseCase(fileManager, dispatcher),
             readFingerprint = ReadGitMetadataFingerprintUseCase(config, fileManager, dispatcher),
             readPorts = { worktree -> Result.success(portsByWorktree[worktree.path].orEmpty()) },
@@ -224,7 +247,7 @@ class WorktreeViewModelTest {
     fun `createFromBranch adds the worktree on success`() = runTest(dispatcher) {
         val branch = "hotfix/security-patch"
         val branchWorktreePath = "/home/dev/projects/hotfix-security-patch"
-        val viewModel = WorktreeViewModel(
+        val viewModel = projectWorktrees(
             useCases { command ->
                 when {
                     command == listCommand -> success(command, porcelainOutput)
@@ -247,7 +270,7 @@ class WorktreeViewModelTest {
     @Test
     fun `createFromBranch sets error when the branch doesn't exist`() = runTest(dispatcher) {
         val branch = "hotfix/security-patch"
-        val viewModel = WorktreeViewModel(
+        val viewModel = projectWorktrees(
             useCases { command ->
                 when {
                     command == listCommand -> success(command, porcelainOutput)
@@ -268,45 +291,46 @@ class WorktreeViewModelTest {
 
     @Test
     fun `opening the create dialog resets the form fields`() = runTest(dispatcher) {
-        val viewModel = WorktreeViewModel(useCases(listingResponder()))
+        val board = board(useCases(listingResponder()))
         advanceUntilIdle()
-        viewModel.openCreateDialog()
-        viewModel.updateTaskId("TASK-456")
-        viewModel.selectedBranch = "hotfix/security-patch"
-        viewModel.dismissCreateDialog()
+        board.openCreateDialog()
+        board.updateTaskId("TASK-456")
+        board.selectedBranch = "hotfix/security-patch"
+        board.dismissCreateDialog()
 
-        viewModel.openCreateDialog()
+        board.openCreateDialog()
 
-        assertTrue(viewModel.isCreateDialogOpen)
-        assertEquals("", viewModel.taskId)
-        assertNull(viewModel.selectedBranch)
-        assertNull(viewModel.createError)
+        assertTrue(board.isCreateDialogOpen)
+        assertEquals("", board.taskId)
+        assertNull(board.selectedBranch)
+        assertNull(board.project.createError)
     }
 
     @Test
     fun `a failed creation keeps the dialog open with the task id and its error`() = runTest(dispatcher) {
-        val viewModel = WorktreeViewModel(useCases(listingResponder()))
+        val board = board(useCases(listingResponder()))
         advanceUntilIdle()
-        viewModel.openCreateDialog()
-        viewModel.updateTaskId("TASK-456")
+        board.openCreateDialog()
+        board.updateTaskId("TASK-456")
 
-        viewModel.confirmCreate()
+        board.confirmCreate()
         advanceUntilIdle()
 
-        assertTrue(viewModel.isCreateDialogOpen)
-        assertEquals("TASK-456", viewModel.taskId)
-        assertIs<WorktreeError.BaseRepositoryNotFound>(viewModel.createError)
-        assertNull(viewModel.error)
-        assertNull(viewModel.success)
+        assertTrue(board.isCreateDialogOpen)
+        assertEquals("TASK-456", board.taskId)
+        assertIs<WorktreeError.BaseRepositoryNotFound>(board.project.createError)
+        assertNull(board.project.error)
+        assertNull(board.project.success)
     }
 
     @Test
     fun `a successful creation closes the dialog and remembers the new worktree`() = runTest(dispatcher) {
         val branch = "hotfix/security-patch"
-        val viewModel = WorktreeViewModel(
+        val board = board(
             useCases { command ->
                 when {
                     command == listCommand -> success(command, porcelainOutput)
+                    command == forEachRefCommand -> success(command, stdout = "$branch\n")
                     command.getOrNull(1) == "branch" && command.getOrNull(2) == "--list" ->
                         success(command, stdout = "  $branch\n")
                     else -> success(command)
@@ -314,51 +338,54 @@ class WorktreeViewModelTest {
             },
         )
         advanceUntilIdle()
-        viewModel.openCreateDialog()
+        board.openCreateDialog()
+        board.updateCreateMode(CreateMode.EXISTING_BRANCH)
+        advanceUntilIdle()
+        board.selectedBranch = branch
 
-        viewModel.createFromBranch(branch)
+        board.confirmCreate()
         advanceUntilIdle()
 
-        assertFalse(viewModel.isCreateDialogOpen)
-        assertEquals("/home/dev/projects/hotfix-security-patch", viewModel.lastCreatedWorktree?.path)
-        assertEquals(WorktreeSuccess.Created("/home/dev/projects/hotfix-security-patch"), viewModel.success)
+        assertFalse(board.isCreateDialogOpen)
+        assertEquals("/home/dev/projects/hotfix-security-patch", board.project.lastCreatedWorktree?.path)
+        assertEquals(WorktreeSuccess.Created("/home/dev/projects/hotfix-security-patch"), board.project.success)
     }
 
     @Test
     fun `dismissing the create dialog is ignored while creating`() = runTest(dispatcher) {
-        val viewModel = WorktreeViewModel(useCases(listingResponder()))
+        val board = board(useCases(listingResponder()))
         advanceUntilIdle()
-        viewModel.openCreateDialog()
-        viewModel.updateTaskId("TASK-456")
+        board.openCreateDialog()
+        board.updateTaskId("TASK-456")
 
-        viewModel.confirmCreate()
-        viewModel.dismissCreateDialog()
+        board.confirmCreate()
+        board.dismissCreateDialog()
 
-        assertTrue(viewModel.isCreating)
-        assertTrue(viewModel.isCreateDialogOpen)
+        assertTrue(board.project.isCreating)
+        assertTrue(board.isCreateDialogOpen)
         advanceUntilIdle()
     }
 
     @Test
     fun `confirmCreate does nothing with an invalid task id`() = runTest(dispatcher) {
         val executed = mutableListOf<List<String>>()
-        val viewModel = WorktreeViewModel(useCases(listingResponder(executed)))
+        val board = board(useCases(listingResponder(executed)))
         advanceUntilIdle()
-        viewModel.openCreateDialog()
-        viewModel.updateTaskId("bad..id")
+        board.openCreateDialog()
+        board.updateTaskId("bad..id")
 
-        viewModel.confirmCreate()
+        board.confirmCreate()
         advanceUntilIdle()
 
-        assertFalse(viewModel.isCreating)
-        assertNull(viewModel.createError)
+        assertFalse(board.project.isCreating)
+        assertNull(board.project.createError)
         assertTrue(executed.none { it.take(3) == listOf("git", "worktree", "add") })
     }
 
     @Test
     fun `copying from the creation message copies the new worktree's launch command`() = runTest(dispatcher) {
         val branch = "hotfix/security-patch"
-        val viewModel = WorktreeViewModel(
+        val viewModel = projectWorktrees(
             useCases { command ->
                 when {
                     command == listCommand -> success(command, porcelainOutput)
@@ -381,14 +408,17 @@ class WorktreeViewModelTest {
 
     @Test
     fun `dismissError clears the error message`() = runTest(dispatcher) {
-        val viewModel = WorktreeViewModel(
+        val viewModel = projectWorktrees(
             useCases { command ->
                 when (command) {
-                    listCommand -> failure(command, stderr = "not a git repository")
+                    listCommand -> success(command, porcelainOutput)
+                    removeCommand -> failure(command, stderr = "permission denied")
                     else -> success(command)
                 }
             },
         )
+        advanceUntilIdle()
+        viewModel.remove(worktree, branchToDelete = null)
         advanceUntilIdle()
         assertIs<WorktreeError>(viewModel.error)
 
@@ -399,7 +429,7 @@ class WorktreeViewModelTest {
 
     @Test
     fun `sets pending removal in force state when remove fails suggesting force`() = runTest(dispatcher) {
-        val viewModel = WorktreeViewModel(
+        val viewModel = projectWorktrees(
             useCases { command ->
                 when (command) {
                     listCommand -> success(command, porcelainOutput)
@@ -424,7 +454,7 @@ class WorktreeViewModelTest {
 
     @Test
     fun `sets error when remove fails for a reason unrelated to force`() = runTest(dispatcher) {
-        val viewModel = WorktreeViewModel(
+        val viewModel = projectWorktrees(
             useCases { command ->
                 when (command) {
                     listCommand -> success(command, porcelainOutput)
@@ -445,7 +475,7 @@ class WorktreeViewModelTest {
 
     @Test
     fun `confirmPendingRemoval retries with force and clears pending state on success`() = runTest(dispatcher) {
-        val viewModel = WorktreeViewModel(
+        val viewModel = projectWorktrees(
             useCases { command ->
                 when (command) {
                     listCommand -> success(command, porcelainOutput)
@@ -469,7 +499,7 @@ class WorktreeViewModelTest {
     @Test
     fun `confirmPendingRemoval keeps the branch when the checkbox is unchecked`() = runTest(dispatcher) {
         val executedCommands = mutableListOf<List<String>>()
-        val viewModel = WorktreeViewModel(
+        val viewModel = projectWorktrees(
             useCases { command ->
                 executedCommands += command
                 when (command) {
@@ -492,7 +522,7 @@ class WorktreeViewModelTest {
     @Test
     fun `confirmPendingRemoval deletes the branch when the checkbox is checked`() = runTest(dispatcher) {
         val executedCommands = mutableListOf<List<String>>()
-        val viewModel = WorktreeViewModel(
+        val viewModel = projectWorktrees(
             useCases { command ->
                 executedCommands += command
                 when (command) {
@@ -516,7 +546,7 @@ class WorktreeViewModelTest {
     @Test
     fun `force-eligible failure preserves the chosen deleteBranch value`() = runTest(dispatcher) {
         val executedCommands = mutableListOf<List<String>>()
-        val viewModel = WorktreeViewModel(
+        val viewModel = projectWorktrees(
             useCases { command ->
                 executedCommands += command
                 when (command) {
@@ -553,7 +583,7 @@ class WorktreeViewModelTest {
             HEAD def456
             branch refs/heads/feature/TASK-456
         """.trimIndent()
-        val viewModel = WorktreeViewModel(
+        val viewModel = projectWorktrees(
             useCases { command ->
                 when (command) {
                     listCommand -> {
@@ -576,9 +606,9 @@ class WorktreeViewModelTest {
     }
 
     @Test
-    fun `refresh surfaces a failure via error when ListWorktreesUseCase fails`() = runTest(dispatcher) {
+    fun `a failed list is kept as the project's load failure`() = runTest(dispatcher) {
         var listCallCount = 0
-        val viewModel = WorktreeViewModel(
+        val viewModel = projectWorktrees(
             useCases { command ->
                 when (command) {
                     listCommand -> {
@@ -590,19 +620,21 @@ class WorktreeViewModelTest {
             },
         )
         advanceUntilIdle()
-        assertNull(viewModel.error)
+        assertEquals(ProjectLoadState.Loaded, viewModel.loadState)
 
         viewModel.refresh()
         advanceUntilIdle()
 
-        val error = assertIs<WorktreeError.GitCommandFailed>(viewModel.error)
+        val failed = assertIs<ProjectLoadState.Failed>(viewModel.loadState)
+        val error = assertIs<WorktreeError.GitCommandFailed>(failed.error)
         assertTrue(error.errorOutput.contains("not a git repository"))
+        assertNull(viewModel.error)
     }
 
     @Test
     fun `refresh also reloads local branches when create mode is existing branch`() = runTest(dispatcher) {
         var forEachRefCallCount = 0
-        val viewModel = WorktreeViewModel(
+        val board = board(
             useCases { command ->
                 when (command) {
                     listCommand -> success(command, porcelainOutput)
@@ -615,12 +647,12 @@ class WorktreeViewModelTest {
             },
         )
         advanceUntilIdle()
-        viewModel.createMode = CreateMode.EXISTING_BRANCH
-        viewModel.loadLocalBranches()
+        board.openCreateDialog()
+        board.updateCreateMode(CreateMode.EXISTING_BRANCH)
         advanceUntilIdle()
         assertEquals(1, forEachRefCallCount)
 
-        viewModel.refresh()
+        board.refreshShown()
         advanceUntilIdle()
 
         assertEquals(2, forEachRefCallCount)
@@ -629,14 +661,14 @@ class WorktreeViewModelTest {
                 BranchOption("feature/TASK-123", isCheckedOut = true),
                 BranchOption("hotfix/security-patch", isCheckedOut = false),
             ),
-            viewModel.localBranches,
+            board.project.localBranches,
         )
     }
 
     @Test
     fun `refresh does not reload local branches when create mode is new branch`() = runTest(dispatcher) {
         var forEachRefCallCount = 0
-        val viewModel = WorktreeViewModel(
+        val board = board(
             useCases { command ->
                 when (command) {
                     listCommand -> success(command, porcelainOutput)
@@ -649,9 +681,10 @@ class WorktreeViewModelTest {
             },
         )
         advanceUntilIdle()
-        assertEquals(CreateMode.NEW_BRANCH, viewModel.createMode)
+        board.openCreateDialog()
+        assertEquals(CreateMode.NEW_BRANCH, board.createMode)
 
-        viewModel.refresh()
+        board.refreshShown()
         advanceUntilIdle()
 
         assertEquals(0, forEachRefCallCount)
@@ -659,17 +692,17 @@ class WorktreeViewModelTest {
 
     @Test
     fun `updateTaskId normalizes whitespace to a single dash and trims`() = runTest(dispatcher) {
-        val viewModel = WorktreeViewModel(useCases { command -> success(command) })
+        val board = board(useCases { command -> success(command) })
         advanceUntilIdle()
 
-        viewModel.updateTaskId("  TASK   123  ")
+        board.updateTaskId("  TASK   123  ")
 
-        assertEquals("TASK-123", viewModel.taskId)
+        assertEquals("TASK-123", board.taskId)
     }
 
     @Test
     fun `loadLocalBranches populates localBranches flagging already checked out branches`() = runTest(dispatcher) {
-        val viewModel = WorktreeViewModel(
+        val viewModel = projectWorktrees(
             useCases { command ->
                 when (command) {
                     listCommand -> success(command, porcelainOutput)
@@ -696,7 +729,7 @@ class WorktreeViewModelTest {
     @Test
     fun `dismissPendingRemoval clears pending state without executing another command`() = runTest(dispatcher) {
         val executedCommands = mutableListOf<List<String>>()
-        val viewModel = WorktreeViewModel(
+        val viewModel = projectWorktrees(
             useCases { command ->
                 executedCommands += command
                 when (command) {
@@ -721,7 +754,7 @@ class WorktreeViewModelTest {
     @Test
     fun `dismissPendingRemoval cancels before any command runs`() = runTest(dispatcher) {
         val executedCommands = mutableListOf<List<String>>()
-        val viewModel = WorktreeViewModel(
+        val viewModel = projectWorktrees(
             useCases { command ->
                 executedCommands += command
                 when (command) {
@@ -744,7 +777,7 @@ class WorktreeViewModelTest {
 
     @Test
     fun `repairAfterMove keeps the repair failure visible after reloading the list`() = runTest(dispatcher) {
-        val viewModel = WorktreeViewModel(
+        val viewModel = projectWorktrees(
             useCases { command ->
                 when {
                     command.take(3) == repairCommandPrefix -> failure(command, exitCode = 128, stderr = "fatal: not a git repository")
@@ -766,7 +799,7 @@ class WorktreeViewModelTest {
 
     @Test
     fun `repairAfterMove reports success and lists the worktrees`() = runTest(dispatcher) {
-        val viewModel = WorktreeViewModel(
+        val viewModel = projectWorktrees(
             useCases { command ->
                 when (command) {
                     listCommand -> success(command, porcelainOutput)
@@ -785,7 +818,7 @@ class WorktreeViewModelTest {
 
     @Test
     fun `isSelectedBranchAvailable is true only for a loaded branch without a worktree`() = runTest(dispatcher) {
-        val viewModel = WorktreeViewModel(
+        val board = board(
             useCases { command ->
                 when (command) {
                     listCommand -> success(command, porcelainOutput)
@@ -794,27 +827,27 @@ class WorktreeViewModelTest {
                 }
             },
         )
-        viewModel.loadLocalBranches()
+        board.project.loadLocalBranches()
         advanceUntilIdle()
 
-        viewModel.selectedBranch = "develop"
-        assertTrue(viewModel.isSelectedBranchAvailable)
+        board.selectedBranch = "develop"
+        assertTrue(board.project.isBranchAvailable(board.selectedBranch))
 
-        viewModel.selectedBranch = "feature/TASK-123"
-        assertFalse(viewModel.isSelectedBranchAvailable)
+        board.selectedBranch = "feature/TASK-123"
+        assertFalse(board.project.isBranchAvailable(board.selectedBranch))
 
-        viewModel.selectedBranch = "missing"
-        assertFalse(viewModel.isSelectedBranchAvailable)
+        board.selectedBranch = "missing"
+        assertFalse(board.project.isBranchAvailable(board.selectedBranch))
 
-        viewModel.selectedBranch = null
-        assertFalse(viewModel.isSelectedBranchAvailable)
+        board.selectedBranch = null
+        assertFalse(board.project.isBranchAvailable(board.selectedBranch))
     }
 
     private val statusCommand = listOf("git", "--no-optional-locks", "status", "--porcelain")
 
     @Test
     fun `statuses are read for every listed worktree`() = runTest(dispatcher) {
-        val viewModel = WorktreeViewModel(
+        val viewModel = projectWorktrees(
             useCases { command ->
                 when (command) {
                     listCommand -> success(command, porcelainOutput)
@@ -838,7 +871,7 @@ class WorktreeViewModelTest {
                 return if (command == listCommand) success(command, porcelainOutput) else success(command)
             }
         }
-        val viewModel = WorktreeViewModel(useCasesWith(executor))
+        val viewModel = projectWorktrees(useCasesWith(executor))
         advanceUntilIdle()
 
         assertTrue(viewModel.worktrees.any { it.path == worktreePath })
@@ -852,7 +885,7 @@ class WorktreeViewModelTest {
 
     @Test
     fun `a worktree whose status can't be read is unavailable without failing the list`() = runTest(dispatcher) {
-        val viewModel = WorktreeViewModel(
+        val viewModel = projectWorktrees(
             useCases { command ->
                 when (command) {
                     listCommand -> success(command, porcelainOutput)
@@ -871,7 +904,7 @@ class WorktreeViewModelTest {
     @Test
     fun `refresh reads the statuses again`() = runTest(dispatcher) {
         var statusReads = 0
-        val viewModel = WorktreeViewModel(
+        val viewModel = projectWorktrees(
             useCases { command ->
                 when (command) {
                     listCommand -> success(command, porcelainOutput)
@@ -895,7 +928,7 @@ class WorktreeViewModelTest {
     fun `a created worktree gets its status without reloading the list`() = runTest(dispatcher) {
         val branch = "hotfix/security-patch"
         var listCalls = 0
-        val viewModel = WorktreeViewModel(
+        val viewModel = projectWorktrees(
             useCases { command ->
                 when {
                     command == listCommand -> {
@@ -949,7 +982,7 @@ class WorktreeViewModelTest {
 
     @Test
     fun `merged clean unlocked worktrees are cleanup candidates`() = runTest(dispatcher) {
-        val viewModel = WorktreeViewModel(useCases(mergedResponder()))
+        val viewModel = projectWorktrees(useCases(mergedResponder()))
         advanceUntilIdle()
 
         assertEquals(listOf(worktreePath), viewModel.cleanupCandidates.map { it.path })
@@ -958,49 +991,49 @@ class WorktreeViewModelTest {
     @Test
     fun `cancelling the cleanup dialog runs nothing`() = runTest(dispatcher) {
         val executed = mutableListOf<List<String>>()
-        val viewModel = WorktreeViewModel(useCases(mergedResponder(executed)))
+        val board = board(useCases(mergedResponder(executed)))
         advanceUntilIdle()
         val before = executed.size
 
-        viewModel.openCleanup()
-        assertTrue(viewModel.isCleanupDialogOpen)
-        assertFalse(viewModel.cleanupDeleteBranches)
-        viewModel.dismissCleanup()
+        board.openCleanup()
+        assertTrue(board.isCleanupDialogOpen)
+        assertFalse(board.cleanupDeleteBranches)
+        board.dismissCleanup()
         advanceUntilIdle()
 
-        assertFalse(viewModel.isCleanupDialogOpen)
+        assertFalse(board.isCleanupDialogOpen)
         assertEquals(before, executed.size)
     }
 
     @Test
     fun `confirming the cleanup removes candidates, reports and reloads`() = runTest(dispatcher) {
         val executed = mutableListOf<List<String>>()
-        val viewModel = WorktreeViewModel(useCases(mergedResponder(executed)))
+        val board = board(useCases(mergedResponder(executed)))
         advanceUntilIdle()
         val listsBefore = executed.count { it == listCommand }
 
-        viewModel.openCleanup()
-        viewModel.confirmCleanup()
+        board.openCleanup()
+        board.confirmCleanup()
         advanceUntilIdle()
 
         assertTrue(executed.contains(listOf("git", "worktree", "remove", worktreePath)))
         assertTrue(executed.none { it == listOf("git", "worktree", "remove", "/home/dev/projects/TASK-456") })
         assertTrue(executed.none { it.take(3) == listOf("git", "branch", "-D") })
-        assertEquals(WorktreeSuccess.CleanedUp(1), viewModel.success)
-        assertNull(viewModel.cleanupIssues)
-        assertFalse(viewModel.isCleanupDialogOpen)
+        assertEquals(WorktreeSuccess.CleanedUp(1), board.cleanupSuccess)
+        assertNull(board.project.cleanupIssues)
+        assertFalse(board.isCleanupDialogOpen)
         assertEquals(listsBefore + 1, executed.count { it == listCommand })
     }
 
     @Test
     fun `confirming with branch deletion deletes the merged branch`() = runTest(dispatcher) {
         val executed = mutableListOf<List<String>>()
-        val viewModel = WorktreeViewModel(useCases(mergedResponder(executed)))
+        val board = board(useCases(mergedResponder(executed)))
         advanceUntilIdle()
 
-        viewModel.openCleanup()
-        viewModel.cleanupDeleteBranches = true
-        viewModel.confirmCleanup()
+        board.openCleanup()
+        board.cleanupDeleteBranches = true
+        board.confirmCleanup()
         advanceUntilIdle()
 
         assertTrue(executed.contains(listOf("git", "branch", "-D", "feature/TASK-123")))
@@ -1008,25 +1041,25 @@ class WorktreeViewModelTest {
 
     @Test
     fun `a failed removal is kept as a cleanup issue`() = runTest(dispatcher) {
-        val viewModel = WorktreeViewModel(
+        val board = board(
             useCases(mergedResponder(removeResult = { failure(it, exitCode = 128, stderr = "use --force to delete it") })),
         )
         advanceUntilIdle()
 
-        viewModel.openCleanup()
-        viewModel.confirmCleanup()
+        board.openCleanup()
+        board.confirmCleanup()
         advanceUntilIdle()
 
-        assertEquals(WorktreeSuccess.CleanedUp(0), viewModel.success)
-        assertEquals(listOf(worktreePath), viewModel.cleanupIssues?.failures?.map { it.path })
+        assertEquals(WorktreeSuccess.CleanedUp(0), board.cleanupSuccess)
+        assertEquals(listOf(worktreePath), board.project.cleanupIssues?.failures?.map { it.path })
 
-        viewModel.dismissCleanupIssues()
-        assertNull(viewModel.cleanupIssues)
+        board.project.dismissCleanupIssues()
+        assertNull(board.project.cleanupIssues)
     }
 
     @Test
     fun `running agents are detected for the listed worktrees`() = runTest(dispatcher) {
-        val viewModel = WorktreeViewModel(
+        val viewModel = projectWorktrees(
             useCases { command ->
                 when (command.first()) {
                     "lsof" -> success(command, stdout = "p42\nc2.1.301\nfcwd\nn$worktreePath/src\n")
@@ -1042,7 +1075,7 @@ class WorktreeViewModelTest {
 
     @Test
     fun `agents are unknown when processes can't be listed`() = runTest(dispatcher) {
-        val viewModel = WorktreeViewModel(
+        val viewModel = projectWorktrees(
             useCases { command ->
                 when {
                     command.first() == "lsof" -> failure(command, exitCode = 127, stderr = "lsof: not found")
@@ -1065,7 +1098,7 @@ class WorktreeViewModelTest {
             sizes = mapOf(worktreePath to 1000L, otherPath to 500L),
         )
         val porcelain = "$porcelainOutput\n\nworktree $otherPath\nHEAD def456\nbranch refs/heads/feature/TASK-456"
-        val viewModel = WorktreeViewModel(
+        val viewModel = projectWorktrees(
             useCasesWithFiles(fileManager) { command ->
                 if (command == listCommand) success(command, porcelain) else success(command)
             },
@@ -1116,9 +1149,9 @@ class WorktreeViewModelTest {
     fun `a change in the git metadata reloads the list on the next check`() = runTest(dispatcher) {
         val files = watchedFiles()
         val counters = Counters()
-        val viewModel = WorktreeViewModel(useCasesWithFiles(files, countingResponder(counters)))
+        val board = board(useCasesWithFiles(files, countingResponder(counters)))
         advanceUntilIdle()
-        viewModel.startWatching()
+        board.startWatching()
 
         tick()
         assertEquals(1, counters.lists)
@@ -1127,7 +1160,7 @@ class WorktreeViewModelTest {
         tick()
         advanceTimeBy(1.seconds)
         runCurrent()
-        viewModel.stopWatching()
+        board.stopWatching()
 
         assertEquals(2, counters.lists)
     }
@@ -1135,14 +1168,14 @@ class WorktreeViewModelTest {
     @Test
     fun `without changes only agents are detected again`() = runTest(dispatcher) {
         val counters = Counters()
-        val viewModel = WorktreeViewModel(useCasesWithFiles(watchedFiles(), countingResponder(counters)))
+        val board = board(useCasesWithFiles(watchedFiles(), countingResponder(counters)))
         advanceUntilIdle()
         val lsofAfterLoad = counters.lsof
-        viewModel.startWatching()
+        board.startWatching()
 
         tick()
         tick()
-        viewModel.stopWatching()
+        board.stopWatching()
 
         assertEquals(1, counters.lists)
         assertEquals(lsofAfterLoad + 2, counters.lsof)
@@ -1152,11 +1185,11 @@ class WorktreeViewModelTest {
     fun `no checks run after stopWatching`() = runTest(dispatcher) {
         val files = watchedFiles()
         val counters = Counters()
-        val viewModel = WorktreeViewModel(useCasesWithFiles(files, countingResponder(counters)))
+        val board = board(useCasesWithFiles(files, countingResponder(counters)))
         advanceUntilIdle()
         val lsofAfterLoad = counters.lsof
-        viewModel.startWatching()
-        viewModel.stopWatching()
+        board.startWatching()
+        board.stopWatching()
 
         files.stamps["$gitDir/HEAD"] = 2
         tick()
@@ -1170,16 +1203,16 @@ class WorktreeViewModelTest {
     fun `a reload by the app itself doesn't trigger a second one`() = runTest(dispatcher) {
         val files = watchedFiles()
         val counters = Counters()
-        val viewModel = WorktreeViewModel(useCasesWithFiles(files, countingResponder(counters)))
+        val board = board(useCasesWithFiles(files, countingResponder(counters)))
         advanceUntilIdle()
-        viewModel.startWatching()
+        board.startWatching()
 
         files.stamps["$gitDir/refs/heads/main"] = 2
-        viewModel.refresh()
+        board.project.refresh()
         runCurrent()
         tick()
         tick()
-        viewModel.stopWatching()
+        board.stopWatching()
 
         assertEquals(2, counters.lists)
     }
@@ -1196,29 +1229,29 @@ class WorktreeViewModelTest {
                 return responder(command)
             }
         }
-        val viewModel = WorktreeViewModel(useCasesWith(executor, files))
+        val board = board(useCasesWith(executor, files))
         advanceUntilIdle()
         val lsofAfterLoad = counters.lsof
-        viewModel.startWatching()
+        board.startWatching()
 
-        viewModel.remove(worktree, branchToDelete = null)
+        board.project.remove(worktree, branchToDelete = null)
         runCurrent()
         files.stamps["$gitDir/HEAD"] = 2
         tick()
         tick()
 
-        assertTrue(viewModel.isRemoving)
+        assertTrue(board.project.isRemoving)
         assertEquals(1, counters.lists)
         assertEquals(lsofAfterLoad, counters.lsof)
 
         removeGate.complete(Unit)
-        viewModel.stopWatching()
+        board.stopWatching()
         runCurrent()
     }
 
     @Test
     fun `the resolved main branch is exposed`() = runTest(dispatcher) {
-        val viewModel = WorktreeViewModel(
+        val viewModel = projectWorktrees(
             useCases { command ->
                 when {
                     command == listCommand -> success(command, porcelainOutput)
@@ -1236,7 +1269,7 @@ class WorktreeViewModelTest {
     fun `repositories without the gradle provider don't list daemons`() = runTest(dispatcher) {
         val source = FakeGradleDaemonSource(listOf(gradleDaemon(10, idle)))
         val executor = FakeShellCommandExecutor(listingResponder())
-        val viewModel = WorktreeViewModel(useCasesWith(executor).copy(gradle = gradleUseCases(executor, source)))
+        val viewModel = projectWorktrees(useCasesWith(executor).copy(gradle = gradleUseCases(executor, source)))
         advanceUntilIdle()
 
         assertFalse(viewModel.isGradleRepository)
@@ -1246,7 +1279,7 @@ class WorktreeViewModelTest {
     @Test
     fun `gradle repositories list daemons with their worktree and the build cache state`() = runTest(dispatcher) {
         val source = FakeGradleDaemonSource(listOf(gradleDaemon(10, idle, lastBuildDirectory = worktreePath)))
-        val viewModel = WorktreeViewModel(gradleRepository(listingResponder(), source, buildCacheEnabled = false))
+        val viewModel = projectWorktrees(gradleRepository(listingResponder(), source, buildCacheEnabled = false))
         advanceUntilIdle()
 
         assertTrue(viewModel.isGradleRepository)
@@ -1258,8 +1291,8 @@ class WorktreeViewModelTest {
     @Test
     fun `gradle settings are exposed only when declared`() = runTest(dispatcher) {
         val settings = GradleProvider(daemonMaxHeap = "2g", idleTimeoutMinutes = 30)
-        val declared = WorktreeViewModel(gradleRepository(listingResponder(), FakeGradleDaemonSource(), provider = settings))
-        val bare = WorktreeViewModel(gradleRepository(listingResponder(), FakeGradleDaemonSource()))
+        val declared = projectWorktrees(gradleRepository(listingResponder(), FakeGradleDaemonSource(), provider = settings))
+        val bare = projectWorktrees(gradleRepository(listingResponder(), FakeGradleDaemonSource()))
         advanceUntilIdle()
 
         assertEquals(settings, declared.gradleSettings)
@@ -1277,7 +1310,7 @@ class WorktreeViewModelTest {
     @Test
     fun `daemons are unavailable when processes can't be listed`() = runTest(dispatcher) {
         val source = FakeGradleDaemonSource(failure = WorktreeError.ProcessListingFailed(listOf("ps"), 1))
-        val viewModel = WorktreeViewModel(gradleRepository(listingResponder(), source))
+        val viewModel = projectWorktrees(gradleRepository(listingResponder(), source))
         advanceUntilIdle()
 
         assertEquals(GradleDaemonsState.Unavailable, viewModel.gradleDaemons)
@@ -1288,7 +1321,7 @@ class WorktreeViewModelTest {
     fun `stopping idle daemons keeps busy ones, reports and reloads`() = runTest(dispatcher) {
         val executed = mutableListOf<List<String>>()
         val source = FakeGradleDaemonSource(listOf(gradleDaemon(10, idle), gradleDaemon(11, DaemonState.Busy)))
-        val viewModel = WorktreeViewModel(gradleRepository(listingResponder(executed), source))
+        val viewModel = projectWorktrees(gradleRepository(listingResponder(executed), source))
         advanceUntilIdle()
         val listingsBefore = source.listings
 
@@ -1312,17 +1345,17 @@ class WorktreeViewModelTest {
                 gradleDaemon(11, idle, lastBuildDirectory = config.baseRepositoryPath),
             ),
         )
-        val viewModel = WorktreeViewModel(gradleRepository(mergedResponder(executed), source))
+        val board = board(gradleRepository(mergedResponder(executed), source))
         advanceUntilIdle()
 
-        viewModel.openCleanup()
-        assertTrue(viewModel.cleanupStopGradleDaemons)
-        viewModel.confirmCleanup()
+        board.openCleanup()
+        assertTrue(board.cleanupStopGradleDaemons)
+        board.confirmCleanup()
         advanceUntilIdle()
 
         assertTrue(executed.contains(listOf("kill", "10")))
         assertFalse(executed.contains(listOf("kill", "11")))
-        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1, stoppedDaemons = 1), viewModel.success)
+        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1, stoppedDaemons = 1), board.cleanupSuccess)
     }
 
     @Test
@@ -1330,7 +1363,7 @@ class WorktreeViewModelTest {
         val executed = mutableListOf<List<String>>()
         val source = FakeGradleDaemonSource(listOf(gradleDaemon(10, idle, lastBuildDirectory = worktreePath)))
         val merged = mergedResponder(executed)
-        val viewModel = WorktreeViewModel(
+        val board = board(
             gradleRepository(
                 { command ->
                     if (command.take(3) == listOf("git", "worktree", "remove")) {
@@ -1343,34 +1376,34 @@ class WorktreeViewModelTest {
         )
         advanceUntilIdle()
 
-        viewModel.openCleanup()
-        viewModel.confirmCleanup()
+        board.openCleanup()
+        board.confirmCleanup()
         advanceUntilIdle()
 
         assertFalse(executed.contains(listOf("kill", "10")))
-        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1, keptDaemons = 1), viewModel.success)
+        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1, keptDaemons = 1), board.cleanupSuccess)
     }
 
     @Test
     fun `cleanup without the option stops no daemon`() = runTest(dispatcher) {
         val executed = mutableListOf<List<String>>()
         val source = FakeGradleDaemonSource(listOf(gradleDaemon(10, idle, lastBuildDirectory = worktreePath)))
-        val viewModel = WorktreeViewModel(gradleRepository(mergedResponder(executed), source))
+        val board = board(gradleRepository(mergedResponder(executed), source))
         advanceUntilIdle()
 
-        viewModel.openCleanup()
-        viewModel.cleanupStopGradleDaemons = false
-        viewModel.confirmCleanup()
+        board.openCleanup()
+        board.cleanupStopGradleDaemons = false
+        board.confirmCleanup()
         advanceUntilIdle()
 
         assertTrue(executed.none { it.first() == "kill" })
-        assertEquals(WorktreeSuccess.CleanedUp(1), viewModel.success)
+        assertEquals(WorktreeSuccess.CleanedUp(1), board.cleanupSuccess)
     }
 
     @Test
     fun `reserved ports are shown per worktree`() = runTest(dispatcher) {
         portsByWorktree = mapOf(worktreePath to mapOf("PORT" to 20001, "port:api" to 20002))
-        val viewModel = WorktreeViewModel(useCases(listingResponder()))
+        val viewModel = projectWorktrees(useCases(listingResponder()))
         advanceUntilIdle()
 
         assertEquals(mapOf(worktreePath to mapOf("PORT" to 20001, "port:api" to 20002)), viewModel.ports)
@@ -1400,7 +1433,7 @@ class WorktreeViewModelTest {
             store,
             FakePortProbe(),
         )
-        val viewModel = WorktreeViewModel(
+        val viewModel = projectWorktrees(
             useCasesWith(executor).copy(
                 readPorts = { worktree -> resolve(config.baseRepositoryPath, worktree.path, reserve = false).map { it.ports } },
             ),
@@ -1442,7 +1475,7 @@ class WorktreeViewModelTest {
     @Test
     fun `repositories without the emulator provider never read emulators`() = runTest(dispatcher) {
         val emulators = RecordingEmulators(declared = false)
-        val viewModel = WorktreeViewModel(useCases(listingResponder()).copy(emulator = emulators.useCases()))
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(emulator = emulators.useCases()))
         advanceUntilIdle()
 
         assertFalse(viewModel.isEmulatorRepository)
@@ -1453,7 +1486,7 @@ class WorktreeViewModelTest {
     @Test
     fun `emulator states are loaded and can be started and stopped from the row`() = runTest(dispatcher) {
         val emulators = RecordingEmulators(initial = mapOf(worktreePath to WorktreeEmulator("emulator-5554", EmulatorState.STOPPED)))
-        val viewModel = WorktreeViewModel(useCases(listingResponder()).copy(emulator = emulators.useCases()))
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(emulator = emulators.useCases()))
         advanceUntilIdle()
 
         assertTrue(viewModel.isEmulatorRepository)
@@ -1477,27 +1510,27 @@ class WorktreeViewModelTest {
     @Test
     fun `cleanup stops the running emulators of removed worktrees`() = runTest(dispatcher) {
         val emulators = RecordingEmulators(initial = mapOf(worktreePath to WorktreeEmulator("emulator-5556", EmulatorState.RUNNING)))
-        val viewModel = WorktreeViewModel(useCases(mergedResponder()).copy(emulator = emulators.useCases()))
+        val board = board(useCases(mergedResponder()).copy(emulator = emulators.useCases()))
         advanceUntilIdle()
 
-        viewModel.openCleanup()
-        assertTrue(viewModel.cleanupStopEmulators)
-        viewModel.confirmCleanup()
+        board.openCleanup()
+        assertTrue(board.cleanupStopEmulators)
+        board.confirmCleanup()
         advanceUntilIdle()
 
         assertEquals(listOf("emulator-5556"), emulators.stoppedSerials)
-        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1, stoppedEmulators = 1), viewModel.success)
+        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1, stoppedEmulators = 1), board.cleanupSuccess)
     }
 
     @Test
     fun `cleanup without the emulator option stops none`() = runTest(dispatcher) {
         val emulators = RecordingEmulators(initial = mapOf(worktreePath to WorktreeEmulator("emulator-5556", EmulatorState.RUNNING)))
-        val viewModel = WorktreeViewModel(useCases(mergedResponder()).copy(emulator = emulators.useCases()))
+        val board = board(useCases(mergedResponder()).copy(emulator = emulators.useCases()))
         advanceUntilIdle()
 
-        viewModel.openCleanup()
-        viewModel.cleanupStopEmulators = false
-        viewModel.confirmCleanup()
+        board.openCleanup()
+        board.cleanupStopEmulators = false
+        board.confirmCleanup()
         advanceUntilIdle()
 
         assertTrue(emulators.stoppedSerials.isEmpty())
@@ -1536,7 +1569,7 @@ class WorktreeViewModelTest {
     @Test
     fun `repositories without the iOS simulator provider never read simulators`() = runTest(dispatcher) {
         val simulators = RecordingSimulators(declared = false)
-        val viewModel = WorktreeViewModel(useCases(listingResponder()).copy(simulator = simulators.useCases()))
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(simulator = simulators.useCases()))
         advanceUntilIdle()
 
         assertFalse(viewModel.isSimulatorRepository)
@@ -1546,7 +1579,7 @@ class WorktreeViewModelTest {
     @Test
     fun `simulators are loaded and can be started and stopped from the row`() = runTest(dispatcher) {
         val simulators = RecordingSimulators()
-        val viewModel = WorktreeViewModel(useCases(listingResponder()).copy(simulator = simulators.useCases()))
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(simulator = simulators.useCases()))
         advanceUntilIdle()
         assertTrue(viewModel.isSimulatorRepository)
 
@@ -1568,27 +1601,27 @@ class WorktreeViewModelTest {
             initial = mapOf(worktreePath to WorktreeSimulator("SIM-1", "ShogunAi · main-repo · TASK-123", SimulatorState.SHUTDOWN)),
             orphans = listOf(SimulatorDevice("SIM-ORPHAN", "ShogunAi · main-repo · TASK-0", SimulatorState.SHUTDOWN)),
         )
-        val viewModel = WorktreeViewModel(useCases(mergedResponder()).copy(simulator = simulators.useCases()))
+        val board = board(useCases(mergedResponder()).copy(simulator = simulators.useCases()))
         advanceUntilIdle()
 
-        viewModel.openCleanup()
-        assertTrue(viewModel.cleanupDeleteSimulators)
-        viewModel.confirmCleanup()
+        board.openCleanup()
+        assertTrue(board.cleanupDeleteSimulators)
+        board.confirmCleanup()
         advanceUntilIdle()
 
         assertEquals(listOf("SIM-1", "SIM-ORPHAN"), simulators.deleted)
-        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1, deletedSimulators = 2), viewModel.success)
+        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1, deletedSimulators = 2), board.cleanupSuccess)
     }
 
     @Test
     fun `cleanup looks for orphans again after removing, catching simulators it couldn't read before`() = runTest(dispatcher) {
         val simulators = RecordingSimulators()
-        val viewModel = WorktreeViewModel(useCases(mergedResponder()).copy(simulator = simulators.useCases()))
+        val board = board(useCases(mergedResponder()).copy(simulator = simulators.useCases()))
         advanceUntilIdle()
-        viewModel.openCleanup()
+        board.openCleanup()
         simulators.orphans = listOf(SimulatorDevice("SIM-GONE", "ShogunAi · main-repo · TASK-123", SimulatorState.BOOTED))
 
-        viewModel.confirmCleanup()
+        board.confirmCleanup()
         advanceUntilIdle()
 
         assertEquals(listOf("SIM-GONE"), simulators.deleted)
@@ -1597,13 +1630,13 @@ class WorktreeViewModelTest {
     @Test
     fun `orphaned simulators alone enable the cleanup`() = runTest(dispatcher) {
         val simulators = RecordingSimulators(orphans = listOf(SimulatorDevice("SIM-ORPHAN", "ShogunAi · main-repo · TASK-0", SimulatorState.SHUTDOWN)))
-        val viewModel = WorktreeViewModel(useCases(listingResponder()).copy(simulator = simulators.useCases()))
+        val board = board(useCases(listingResponder()).copy(simulator = simulators.useCases()))
         advanceUntilIdle()
 
-        assertTrue(viewModel.cleanupCandidates.isEmpty())
-        assertTrue(viewModel.canCleanUp)
-        viewModel.openCleanup()
-        assertTrue(viewModel.isCleanupDialogOpen)
+        assertTrue(board.project.cleanupCandidates.isEmpty())
+        assertTrue(board.project.canCleanUp)
+        board.openCleanup()
+        assertTrue(board.isCleanupDialogOpen)
     }
 
     @Test
@@ -1611,7 +1644,7 @@ class WorktreeViewModelTest {
         val source = CountingDerivedDataSource(
             FakeDerivedDataSource(existing = listOf(FakeDerivedDataSource.derivedData("Orphan-1", "/gone/App.xcodeproj"))),
         )
-        val viewModel = WorktreeViewModel(useCases(listingResponder()).copy(xcode = xcodeUseCases(source)))
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(xcode = xcodeUseCases(source)))
         advanceUntilIdle()
 
         assertFalse(viewModel.isXcodeRepository)
@@ -1626,7 +1659,7 @@ class WorktreeViewModelTest {
                 existing = listOf(FakeDerivedDataSource.derivedData("Orphan-1", "/gone/App.xcodeproj")),
             ),
         )
-        val viewModel = WorktreeViewModel(xcodeRepository(listingResponder(), source))
+        val viewModel = projectWorktrees(xcodeRepository(listingResponder(), source))
         advanceUntilIdle()
 
         assertFalse(viewModel.isXcodeRepository)
@@ -1646,7 +1679,7 @@ class WorktreeViewModelTest {
                 cacheBytes = 300_000_000L,
             ),
         )
-        val viewModel = WorktreeViewModel(
+        val viewModel = projectWorktrees(
             xcodeRepository(listingResponder(), source, provider = XcodeProvider(compilationCache = true)),
         )
         advanceUntilIdle()
@@ -1664,14 +1697,14 @@ class WorktreeViewModelTest {
     @Test
     fun `an auto-refresh check without changes doesn't reload derived data`() = runTest(dispatcher) {
         val source = CountingDerivedDataSource(FakeDerivedDataSource())
-        val viewModel = WorktreeViewModel(xcodeRepository(listingResponder(), source))
+        val board = board(xcodeRepository(listingResponder(), source))
         advanceUntilIdle()
         assertEquals(1, source.listings)
 
-        viewModel.startWatching()
+        board.startWatching()
         tick()
         tick()
-        viewModel.stopWatching()
+        board.stopWatching()
 
         assertEquals(1, source.listings)
     }
@@ -1684,7 +1717,7 @@ class WorktreeViewModelTest {
         val source = CountingDerivedDataSource(
             FakeDerivedDataSource(existing = listOf(worktreeFolder, orphan), existingProjects = setOf(project)),
         )
-        val viewModel = WorktreeViewModel(xcodeRepository(listingResponder(), source))
+        val viewModel = projectWorktrees(xcodeRepository(listingResponder(), source))
         advanceUntilIdle()
         assertTrue(viewModel.derivedDataOrphans.isNotEmpty())
 
@@ -1711,19 +1744,19 @@ class WorktreeViewModelTest {
         val source = CountingDerivedDataSource(
             FakeDerivedDataSource(existing = listOf(worktreeFolder, orphan), existingProjects = setOf(project)),
         )
-        val viewModel = WorktreeViewModel(xcodeRepository(mergedResponder(), source.source))
+        val board = board(xcodeRepository(mergedResponder(), source.source))
         advanceUntilIdle()
 
-        viewModel.openCleanup()
-        assertTrue(viewModel.cleanupDeleteDerivedData)
+        board.openCleanup()
+        assertTrue(board.cleanupDeleteDerivedData)
         source.source.existingProjects = emptySet()
-        viewModel.confirmCleanup()
+        board.confirmCleanup()
         advanceUntilIdle()
 
         assertEquals(setOf(worktreeFolder.path, orphan.path), source.source.deleted.toSet())
         assertEquals(
             WorktreeSuccess.CleanedUp(removedCount = 1, deletedDerivedDataFolders = 2, derivedDataBytesFreed = 2_700_000_000L),
-            viewModel.success,
+            board.cleanupSuccess,
         )
     }
 
@@ -1731,67 +1764,67 @@ class WorktreeViewModelTest {
     fun `cleanup without the option deletes no derived data`() = runTest(dispatcher) {
         val orphan = FakeDerivedDataSource.derivedData("Orphan-1", "/gone/App.xcodeproj", 700_000_000L)
         val source = CountingDerivedDataSource(FakeDerivedDataSource(existing = listOf(orphan)))
-        val viewModel = WorktreeViewModel(xcodeRepository(mergedResponder(), source.source))
+        val board = board(xcodeRepository(mergedResponder(), source.source))
         advanceUntilIdle()
 
-        viewModel.openCleanup()
-        viewModel.cleanupDeleteDerivedData = false
-        viewModel.confirmCleanup()
+        board.openCleanup()
+        board.cleanupDeleteDerivedData = false
+        board.confirmCleanup()
         advanceUntilIdle()
 
         assertTrue(source.source.deleted.isEmpty())
-        assertEquals(WorktreeSuccess.CleanedUp(1), viewModel.success)
+        assertEquals(WorktreeSuccess.CleanedUp(1), board.cleanupSuccess)
     }
 
     @Test
     fun `a failing derived data deletion doesn't fail the cleanup`() = runTest(dispatcher) {
-        val viewModel = WorktreeViewModel(
+        val board = board(
             useCasesWith(FakeShellCommandExecutor(mergedResponder()))
                 .copy(xcode = xcodeUseCases(ThrowingDerivedDataSource(IOException("disk error")), XcodeProvider())),
         )
         advanceUntilIdle()
 
-        assertTrue(viewModel.isXcodeRepository)
-        viewModel.openCleanup()
-        viewModel.confirmCleanup()
+        assertTrue(board.project.isXcodeRepository)
+        board.openCleanup()
+        board.confirmCleanup()
         advanceUntilIdle()
 
-        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1), viewModel.success)
+        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1), board.cleanupSuccess)
     }
 
     @Test
     fun `orphaned derived data alone enables the cleanup`() = runTest(dispatcher) {
         val orphan = FakeDerivedDataSource.derivedData("Orphan-1", "/gone/App.xcodeproj", 700_000_000L)
         val source = CountingDerivedDataSource(FakeDerivedDataSource(existing = listOf(orphan)))
-        val viewModel = WorktreeViewModel(xcodeRepository(listingResponder(), source.source))
+        val board = board(xcodeRepository(listingResponder(), source.source))
         advanceUntilIdle()
 
-        assertTrue(viewModel.cleanupCandidates.isEmpty())
-        assertTrue(viewModel.canCleanUp)
-        viewModel.openCleanup()
-        assertTrue(viewModel.isCleanupDialogOpen)
+        assertTrue(board.project.cleanupCandidates.isEmpty())
+        assertTrue(board.project.canCleanUp)
+        board.openCleanup()
+        assertTrue(board.isCleanupDialogOpen)
     }
 
     @Test
     fun `cleanup without the xcode provider deletes no derived data`() = runTest(dispatcher) {
         val orphan = FakeDerivedDataSource.derivedData("Orphan-1", "/gone/App.xcodeproj", 700_000_000L)
         val source = CountingDerivedDataSource(FakeDerivedDataSource(existing = listOf(orphan)))
-        val viewModel = WorktreeViewModel(useCases(mergedResponder()).copy(xcode = xcodeUseCases(source)))
+        val board = board(useCases(mergedResponder()).copy(xcode = xcodeUseCases(source)))
         advanceUntilIdle()
 
-        viewModel.openCleanup()
-        viewModel.confirmCleanup()
+        board.openCleanup()
+        board.confirmCleanup()
         advanceUntilIdle()
 
         assertEquals(0, source.listings)
         assertTrue(source.source.deleted.isEmpty())
-        assertFalse(viewModel.isXcodeRepository)
+        assertFalse(board.project.isXcodeRepository)
     }
 
     @Test
     fun `Herdr's worktrees folder is loaded with the list to classify origins`() = runTest(dispatcher) {
         val herdr = HerdrUseCases.NONE.copy(worktreesRoot = { "/home/dev/.herdr/worktrees" })
-        val viewModel = WorktreeViewModel(useCases(listingResponder()).copy(herdr = herdr))
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
         advanceUntilIdle()
 
         assertEquals("/home/dev/.herdr/worktrees", viewModel.herdrWorktreesRoot)
@@ -1801,7 +1834,7 @@ class WorktreeViewModelTest {
     fun `opening in Herdr passes the worktree and reports the opening`() = runTest(dispatcher) {
         val calls = mutableListOf<Worktree>()
         val herdr = HerdrUseCases.NONE.copy(open = { target -> calls += target; Result.success(HerdrOpening.OPENED) })
-        val viewModel = WorktreeViewModel(useCases(listingResponder()).copy(herdr = herdr))
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
         advanceUntilIdle()
         val target = viewModel.worktrees.first { it.path == worktreePath }
 
@@ -1817,7 +1850,7 @@ class WorktreeViewModelTest {
     @Test
     fun `an already open worktree is reported as focused`() = runTest(dispatcher) {
         val herdr = HerdrUseCases.NONE.copy(open = { Result.success(HerdrOpening.FOCUSED) })
-        val viewModel = WorktreeViewModel(useCases(listingResponder()).copy(herdr = herdr))
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
         advanceUntilIdle()
 
         viewModel.openInHerdr(viewModel.worktrees.first { it.path == worktreePath })
@@ -1828,7 +1861,7 @@ class WorktreeViewModelTest {
 
     @Test
     fun `a Herdr failure is recorded for the worktree`() = runTest(dispatcher) {
-        val viewModel = WorktreeViewModel(useCases(listingResponder()))
+        val viewModel = projectWorktrees(useCases(listingResponder()))
         advanceUntilIdle()
 
         viewModel.openInHerdr(viewModel.worktrees.first { it.path == worktreePath })
@@ -1843,7 +1876,7 @@ class WorktreeViewModelTest {
     @Test
     fun `the selection survives a reload that keeps the worktree`() = runTest(dispatcher) {
         var listCalls = 0
-        val viewModel = WorktreeViewModel(useCases { command ->
+        val board = board(useCases { command ->
             if (command == listCommand) {
                 listCalls++
                 success(command, porcelainOutput)
@@ -1853,12 +1886,12 @@ class WorktreeViewModelTest {
         })
         advanceUntilIdle()
 
-        viewModel.select(worktreePath)
-        viewModel.refresh()
+        board.selectPath(worktreePath)
+        board.project.refresh()
         advanceUntilIdle()
 
         assertEquals(2, listCalls)
-        assertEquals(worktreePath, viewModel.selectedWorktreePath)
+        assertEquals(worktreePath, board.selectedWorktree?.worktree?.path)
     }
 
     @Test
@@ -1869,7 +1902,7 @@ class WorktreeViewModelTest {
             HEAD aaa000
             branch refs/heads/main
         """.trimIndent()
-        val viewModel = WorktreeViewModel(useCases { command ->
+        val board = board(useCases { command ->
             if (command == listCommand) {
                 listCalls++
                 success(command, if (listCalls == 1) porcelainOutput else gonePorcelain)
@@ -1879,46 +1912,46 @@ class WorktreeViewModelTest {
         })
         advanceUntilIdle()
 
-        viewModel.select(worktreePath)
-        viewModel.refresh()
+        board.selectPath(worktreePath)
+        board.project.refresh()
         advanceUntilIdle()
 
-        assertNull(viewModel.selectedWorktreePath)
-        assertEquals(config.baseRepositoryPath, viewModel.orderedWorktrees.single().path)
+        assertNull(board.selectedWorktree?.worktree?.path)
+        assertEquals(config.baseRepositoryPath, board.project.orderedWorktrees.single().path)
     }
 
     @Test
     fun `arrow navigation moves between worktrees and stops at the ends`() = runTest(dispatcher) {
-        val viewModel = WorktreeViewModel(useCases(mergedResponder()))
+        val board = board(useCases(mergedResponder()))
         advanceUntilIdle()
         val first = config.baseRepositoryPath
         val third = "/home/dev/projects/TASK-456"
 
-        viewModel.selectNext()
-        assertEquals(first, viewModel.selectedWorktreePath)
+        board.selectNext()
+        assertEquals(first, board.selectedWorktree?.worktree?.path)
 
-        viewModel.selectNext()
-        assertEquals(worktreePath, viewModel.selectedWorktreePath)
+        board.selectNext()
+        assertEquals(worktreePath, board.selectedWorktree?.worktree?.path)
 
-        viewModel.selectNext()
-        assertEquals(third, viewModel.selectedWorktreePath)
+        board.selectNext()
+        assertEquals(third, board.selectedWorktree?.worktree?.path)
 
-        viewModel.selectNext()
-        assertEquals(third, viewModel.selectedWorktreePath)
+        board.selectNext()
+        assertEquals(third, board.selectedWorktree?.worktree?.path)
 
-        viewModel.selectPrevious()
-        assertEquals(worktreePath, viewModel.selectedWorktreePath)
+        board.selectPrevious()
+        assertEquals(worktreePath, board.selectedWorktree?.worktree?.path)
 
-        viewModel.selectPrevious()
-        assertEquals(first, viewModel.selectedWorktreePath)
+        board.selectPrevious()
+        assertEquals(first, board.selectedWorktree?.worktree?.path)
 
-        viewModel.selectPrevious()
-        assertEquals(first, viewModel.selectedWorktreePath)
+        board.selectPrevious()
+        assertEquals(first, board.selectedWorktree?.worktree?.path)
     }
 
     @Test
     fun `dismissing an action error only clears that worktree's error`() = runTest(dispatcher) {
-        val viewModel = WorktreeViewModel(useCases(listingResponder()))
+        val viewModel = projectWorktrees(useCases(listingResponder()))
         advanceUntilIdle()
 
         viewModel.openInHerdr(viewModel.worktrees.first { it.path == worktreePath })
@@ -1937,7 +1970,7 @@ class WorktreeViewModelTest {
             stop = { Result.success(WorktreeEmulator("emulator-5554", EmulatorState.STOPPED)) },
             stopSerials = { Result.success(emptyList()) },
         )
-        val viewModel = WorktreeViewModel(useCases(listingResponder()).copy(emulator = emulators))
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(emulator = emulators))
         advanceUntilIdle()
 
         viewModel.startEmulator(worktree)
@@ -1950,14 +1983,14 @@ class WorktreeViewModelTest {
 
     @Test
     fun `copying the selected launch command requires a selection`() = runTest(dispatcher) {
-        val viewModel = WorktreeViewModel(useCases(listingResponder()))
+        val board = board(useCases(listingResponder()))
         advanceUntilIdle()
 
-        viewModel.copySelectedLaunchCommand()
+        board.copySelectedLaunchCommand()
         assertTrue(clipboard.writtenText.isEmpty())
 
-        viewModel.select(worktreePath)
-        viewModel.copySelectedLaunchCommand()
+        board.selectPath(worktreePath)
+        board.copySelectedLaunchCommand()
         advanceUntilIdle()
 
         assertEquals(1, clipboard.writtenText.size)
@@ -1966,15 +1999,15 @@ class WorktreeViewModelTest {
 
     @Test
     fun `deleting the selected worktree only opens the dialog for non-main worktrees`() = runTest(dispatcher) {
-        val viewModel = WorktreeViewModel(useCases(mergedResponder()))
+        val board = board(useCases(mergedResponder()))
         advanceUntilIdle()
 
-        viewModel.select(config.baseRepositoryPath)
-        viewModel.deleteSelectedWorktree()
-        assertNull(viewModel.worktreePendingRemoval)
+        board.selectPath(config.baseRepositoryPath)
+        board.deleteSelectedWorktree()
+        assertNull(board.project.worktreePendingRemoval)
 
-        viewModel.select(worktreePath)
-        viewModel.deleteSelectedWorktree()
-        assertEquals(worktreePath, viewModel.worktreePendingRemoval?.path)
+        board.selectPath(worktreePath)
+        board.deleteSelectedWorktree()
+        assertEquals(worktreePath, board.project.worktreePendingRemoval?.path)
     }
 }

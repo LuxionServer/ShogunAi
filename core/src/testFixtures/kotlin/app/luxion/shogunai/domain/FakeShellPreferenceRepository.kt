@@ -7,6 +7,8 @@ class FakeShellPreferenceRepository(
     var lastDestination: String? = null,
     var windowBounds: WindowBounds? = null,
     var sidebarCollapsed: Boolean = false,
+    var collapsedProjects: Set<String> = emptySet(),
+    var lastCreateProject: String? = null,
 ) : ShellPreferenceRepository {
 
     override fun loadLastDestination(): String? = lastDestination
@@ -25,5 +27,17 @@ class FakeShellPreferenceRepository(
 
     override fun saveSidebarCollapsed(collapsed: Boolean) {
         sidebarCollapsed = collapsed
+    }
+
+    override fun loadCollapsedProjects(): Set<String> = collapsedProjects
+
+    override fun saveCollapsedProjects(projectIds: Set<String>) {
+        collapsedProjects = projectIds
+    }
+
+    override fun loadLastCreateProject(): String? = lastCreateProject
+
+    override fun saveLastCreateProject(projectId: String) {
+        lastCreateProject = projectId
     }
 }

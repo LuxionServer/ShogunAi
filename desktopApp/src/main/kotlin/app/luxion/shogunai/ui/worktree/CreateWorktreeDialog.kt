@@ -46,14 +46,12 @@ private fun CreateMode.label(strings: Strings): String = when (this) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CreateWorktreeDialog(viewModel: WorktreeViewModel) {
+fun CreateWorktreeDialog(board: WorktreeBoard) {
     val strings = LocalStrings.current
-    val isCreating = viewModel.isCreating
-    LaunchedEffect(viewModel.createMode) {
-        if (viewModel.createMode == CreateMode.EXISTING_BRANCH) viewModel.loadLocalBranches()
-    }
+    val holder = board.createHolder ?: return
+    val isCreating = holder.isCreating
     BasicAlertDialog(
-        onDismissRequest = { viewModel.dismissCreateDialog() },
+        onDismissRequest = { board.dismissCreateDialog() },
         properties = DialogProperties(dismissOnBackPress = !isCreating, dismissOnClickOutside = !isCreating),
     ) {
         Surface(
@@ -66,22 +64,23 @@ fun CreateWorktreeDialog(viewModel: WorktreeViewModel) {
                 verticalArrangement = Arrangement.spacedBy(Spacing.md),
             ) {
                 Text(strings.newWorktree, style = MaterialTheme.typography.headlineSmall)
+                if (board.createAsksForProject) ProjectField(board, isCreating)
                 SegmentedSelector(
                     options = CreateMode.entries,
-                    selected = viewModel.createMode,
-                    onSelect = { viewModel.createMode = it },
+                    selected = board.createMode,
+                    onSelect = { board.updateCreateMode(it) },
                     label = { it.label(strings) },
                     enabled = !isCreating,
                 )
-                when (viewModel.createMode) {
-                    CreateMode.NEW_BRANCH -> NewBranchFields(viewModel)
-                    CreateMode.EXISTING_BRANCH -> ExistingBranchField(viewModel)
+                when (board.createMode) {
+                    CreateMode.NEW_BRANCH -> NewBranchFields(board, holder)
+                    CreateMode.EXISTING_BRANCH -> ExistingBranchField(board, holder)
                 }
-                viewModel.createError?.let { error ->
+                holder.createError?.let { error ->
                     Notice(
                         kind = NoticeKind.ERROR,
                         message = strings.worktreeError(error),
-                        onDismiss = { viewModel.dismissCreateError() },
+                        onDismiss = { holder.dismissCreateError() },
                     )
                 }
                 Row(
@@ -90,10 +89,10 @@ fun CreateWorktreeDialog(viewModel: WorktreeViewModel) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (isCreating) InlineProgress()
-                    NeutralTextButton(onClick = { viewModel.dismissCreateDialog() }, enabled = !isCreating) {
+                    NeutralTextButton(onClick = { board.dismissCreateDialog() }, enabled = !isCreating) {
                         Text(strings.cancel)
                     }
-                    PrimaryButton(onClick = { viewModel.confirmCreate() }, enabled = viewModel.canCreate) {
+                    PrimaryButton(onClick = { board.confirmCreate() }, enabled = board.canCreate) {
                         Text(strings.createWorktree)
                     }
                 }
@@ -103,53 +102,68 @@ fun CreateWorktreeDialog(viewModel: WorktreeViewModel) {
 }
 
 @Composable
-private fun NewBranchFields(viewModel: WorktreeViewModel) {
+private fun ProjectField(board: WorktreeBoard, isCreating: Boolean) {
     val strings = LocalStrings.current
-    val focusRequester = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focusRequester.requestFocus() }
-    val isInvalid = viewModel.taskId.isNotBlank() && !viewModel.isTaskIdValid(viewModel.taskId)
-    OutlinedTextField(
-        value = viewModel.taskId,
-        onValueChange = { viewModel.updateTaskId(it) },
-        label = { Text(strings.taskIdLabel) },
-        textStyle = ShogunTheme.typography.data,
-        singleLine = true,
-        enabled = !viewModel.isCreating,
-        isError = isInvalid,
-        supportingText = { Text(if (isInvalid) strings.invalidTaskId else strings.taskIdHint) },
-        modifier = Modifier.fillMaxWidth()
-            .focusRequester(focusRequester)
-            .onEnterKey(enabled = viewModel.canCreate) { viewModel.confirmCreate() },
-    )
-    SegmentedSelector(
-        options = BranchType.entries,
-        selected = viewModel.branchType,
-        onSelect = { viewModel.branchType = it },
-        label = { it.prefix },
-        enabled = !viewModel.isCreating,
+    DropdownSelector(
+        options = board.projects,
+        selected = board.projects.find { it.id == board.createProjectId },
+        onSelect = { board.selectCreateProject(it.id) },
+        label = { it.name },
+        placeholder = strings.projectLabel,
+        fieldLabel = strings.projectLabel,
+        fieldEnabled = !isCreating,
+        modifier = Modifier.fillMaxWidth(),
     )
 }
 
 @Composable
-private fun ExistingBranchField(viewModel: WorktreeViewModel) {
+private fun NewBranchFields(board: WorktreeBoard, holder: ProjectWorktrees) {
+    val strings = LocalStrings.current
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    val isInvalid = board.taskId.isNotBlank() && !board.isTaskIdValid(board.taskId)
+    OutlinedTextField(
+        value = board.taskId,
+        onValueChange = { board.updateTaskId(it) },
+        label = { Text(strings.taskIdLabel) },
+        textStyle = ShogunTheme.typography.data,
+        singleLine = true,
+        enabled = !holder.isCreating,
+        isError = isInvalid,
+        supportingText = { Text(if (isInvalid) strings.invalidTaskId else strings.taskIdHint) },
+        modifier = Modifier.fillMaxWidth()
+            .focusRequester(focusRequester)
+            .onEnterKey(enabled = board.canCreate) { board.confirmCreate() },
+    )
+    SegmentedSelector(
+        options = BranchType.entries,
+        selected = board.branchType,
+        onSelect = { board.branchType = it },
+        label = { it.prefix },
+        enabled = !holder.isCreating,
+    )
+}
+
+@Composable
+private fun ExistingBranchField(board: WorktreeBoard, holder: ProjectWorktrees) {
     val strings = LocalStrings.current
     val branchGroupExpansion = remember { mutableStateMapOf<String, Boolean>() }
     when {
-        viewModel.isLoadingBranches -> Row(verticalAlignment = Alignment.CenterVertically) {
+        holder.isLoadingBranches -> Row(verticalAlignment = Alignment.CenterVertically) {
             InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
             Text(strings.loadingBranches)
         }
-        viewModel.localBranches.isEmpty() -> Text(strings.noBranchesAvailable)
+        holder.localBranches.isEmpty() -> Text(strings.noBranchesAvailable)
         else -> DropdownSelector(
-            options = viewModel.localBranches,
-            selected = viewModel.localBranches.find { it.name == viewModel.selectedBranch },
-            onSelect = { viewModel.selectedBranch = it.name },
+            options = holder.localBranches,
+            selected = holder.localBranches.find { it.name == board.selectedBranch },
+            onSelect = { board.selectedBranch = it.name },
             enabled = { !it.isCheckedOut },
             label = { if (it.isCheckedOut) strings.branchAlreadyHasWorktree(it.name) else it.name },
             placeholder = strings.selectBranchPlaceholder,
             groupBy = { it.name.substringBefore('/', strings.otherBranchesGroup) },
             expandedGroups = branchGroupExpansion,
-            fieldEnabled = !viewModel.isCreating,
+            fieldEnabled = !holder.isCreating,
             modifier = Modifier.fillMaxWidth(),
         )
     }

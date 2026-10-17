@@ -99,6 +99,16 @@ interface Strings {
     val selectBranchPlaceholder: String
     val otherBranchesGroup: String
     val worktreesTitle: String
+    val viewsTitle: String
+    val allWorktrees: String
+    val allProjects: String
+    val projectLabel: String
+    val filterWorktreesPlaceholder: String
+    val noWorktreeMatches: String
+    val clearFilter: String
+    val menuFind: String
+    val loadingWorktrees: String
+    fun worktreeCount(count: Int): String
     val removeWorktreeTitle: String
     fun removeWorktreeMessage(path: String): String
     val forceRemoveTitle: String

@@ -73,7 +73,7 @@ class DetectRunningAgentsUseCaseTest {
 
     @Test
     fun `agents are attributed to the deepest worktree containing their working directory`() = runTest {
-        val agents = DetectRunningAgentsUseCase(config, executor())(worktrees).getOrThrow()
+        val agents = DetectRunningAgentsUseCase(executor())(config, worktrees).getOrThrow()
 
         assertEquals(listOf(RunningAgent("claude")), agents[nested.path])
         assertEquals(listOf(RunningAgent("codex")), agents[main.path])
@@ -84,7 +84,7 @@ class DetectRunningAgentsUseCaseTest {
     fun `only processes inside some worktree are inspected with ps`() = runTest {
         val executor = executor()
 
-        DetectRunningAgentsUseCase(config, executor)(worktrees).getOrThrow()
+        DetectRunningAgentsUseCase(executor)(config, worktrees).getOrThrow()
 
         val ps = executor.executedCommands.single { it.first() == "ps" }
         assertEquals(setOf("100", "101", "102", "103", "104"), ps.last().split(",").toSet())
@@ -98,7 +98,7 @@ class DetectRunningAgentsUseCaseTest {
             ps = "300 /opt/tools/my-agent",
         )
 
-        val agents = DetectRunningAgentsUseCase(custom, executor)(worktrees).getOrThrow()
+        val agents = DetectRunningAgentsUseCase(executor)(custom, worktrees).getOrThrow()
 
         assertEquals(listOf(RunningAgent("my-agent")), agents[sibling.path])
     }
@@ -107,7 +107,7 @@ class DetectRunningAgentsUseCaseTest {
     fun `no process inside a worktree skips ps`() = runTest {
         val executor = executor(lsof = "p1\nczsh\nfcwd\nn/somewhere/else")
 
-        val agents = DetectRunningAgentsUseCase(config, executor)(worktrees).getOrThrow()
+        val agents = DetectRunningAgentsUseCase(executor)(config, worktrees).getOrThrow()
 
         assertTrue(agents.isEmpty())
         assertTrue(executor.executedCommands.none { it.first() == "ps" })
@@ -115,8 +115,38 @@ class DetectRunningAgentsUseCaseTest {
 
     @Test
     fun `a failing lsof fails the detection`() = runTest {
-        val error = DetectRunningAgentsUseCase(config, executor(failLsof = true))(worktrees).exceptionOrNull()
+        val error = DetectRunningAgentsUseCase(executor(failLsof = true))(config, worktrees).exceptionOrNull()
 
         assertIs<WorktreeError.ProcessListingFailed>(error)
+    }
+
+    @Test
+    fun `one detection attributes agents across projects with each project's own agent`() = runTest {
+        val api = Worktree(path = "/home/dev/projects/api", branch = "main", isMain = true)
+        val executor = executor(
+            lsof = "p300\ncmy-agent\nfcwd\nn${sibling.path}\np301\ncmy-agent\nfcwd\nn${api.path}\np302\ncclaude\nfcwd\nn${api.path}",
+            ps = "300 /opt/tools/my-agent\n301 /opt/tools/my-agent\n302 claude",
+        )
+
+        val agents = DetectRunningAgentsUseCase(executor)(
+            listOf(
+                AgentSearch("/opt/tools/my-agent", worktrees),
+                AgentSearch("claude", listOf(api)),
+            ),
+        ).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("my-agent")), agents[sibling.path])
+        assertEquals(listOf(RunningAgent("claude")), agents[api.path])
+        assertEquals(1, executor.executedCommands.count { it.first() == "lsof" })
+    }
+
+    @Test
+    fun `nothing to search runs no command`() = runTest {
+        val executor = executor()
+
+        val agents = DetectRunningAgentsUseCase(executor)(emptyList()).getOrThrow()
+
+        assertTrue(agents.isEmpty())
+        assertTrue(executor.executedCommands.isEmpty())
     }
 }

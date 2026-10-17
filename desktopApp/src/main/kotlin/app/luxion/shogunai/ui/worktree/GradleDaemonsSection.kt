@@ -35,7 +35,7 @@ import app.luxion.shogunai.ui.theme.ShogunTheme
 import java.time.Instant
 
 @Composable
-fun GradleDaemonsSection(viewModel: WorktreeViewModel, modifier: Modifier = Modifier) {
+fun GradleDaemonsSection(viewModel: ProjectWorktrees, modifier: Modifier = Modifier) {
     val strings = LocalStrings.current
     SectionCard(title = strings.gradleDaemonsTitle, modifier = modifier) {
         when (val state = viewModel.gradleDaemons) {
@@ -70,7 +70,7 @@ fun GradleDaemonsSection(viewModel: WorktreeViewModel, modifier: Modifier = Modi
 }
 
 @Composable
-private fun LoadedDaemons(daemons: List<GradleDaemon>, viewModel: WorktreeViewModel) {
+private fun LoadedDaemons(daemons: List<GradleDaemon>, viewModel: ProjectWorktrees) {
     val strings = LocalStrings.current
     if (daemons.isEmpty()) {
         SecondaryText(strings.noGradleDaemons)

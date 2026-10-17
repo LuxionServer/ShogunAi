@@ -9,4 +9,8 @@ interface ShellPreferenceRepository {
     fun saveWindowBounds(bounds: WindowBounds)
     fun loadSidebarCollapsed(): Boolean
     fun saveSidebarCollapsed(collapsed: Boolean)
+    fun loadCollapsedProjects(): Set<String>
+    fun saveCollapsedProjects(projectIds: Set<String>)
+    fun loadLastCreateProject(): String?
+    fun saveLastCreateProject(projectId: String)
 }

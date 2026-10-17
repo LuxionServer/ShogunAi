@@ -39,8 +39,8 @@ import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.projectconfig.ProjectConfigScreen
 import app.luxion.shogunai.ui.projectconfig.ProjectConfigViewModel
 import app.luxion.shogunai.ui.rememberScreenViewModelStoreOwner
+import app.luxion.shogunai.ui.worktree.WorktreeBoard
 import app.luxion.shogunai.ui.worktree.WorktreeScreen
-import app.luxion.shogunai.ui.worktree.WorktreeViewModel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
@@ -52,12 +52,23 @@ private val EmptyStateMaxWidth = 420.dp
 fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel) {
     var projectPendingRemoval by remember { mutableStateOf<Project?>(null) }
     val messages = rememberAppMessages()
+    val board = viewModel {
+        WorktreeBoard(
+            useCasesFor = appContainer::worktreeUseCases,
+            detectAgents = appContainer.detectRunningAgents::invoke,
+            preferences = appContainer.shellPreferenceRepository,
+        )
+    }
+    LaunchedEffect(viewModel.projects) { board.syncCatalog(viewModel.projects) }
     val windowInfo = LocalWindowInfo.current
     LaunchedEffect(windowInfo) {
         snapshotFlow { windowInfo.isWindowFocused }
             .drop(1)
             .filter { it }
-            .collectLatest { viewModel.refresh() }
+            .collectLatest {
+                viewModel.refresh()
+                board.refreshShown()
+            }
     }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -68,7 +79,10 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel) {
             Sidebar(
                 projects = viewModel.projects,
                 selectedProjectId = viewModel.destination?.referencedProjectId,
+                isAllSelected = viewModel.destination == ShellDestination.All(),
+                totalWorktreeCount = board.totalWorktreeCount,
                 rail = viewModel.isRail,
+                onSelectAll = viewModel::selectAll,
                 onSelectProject = viewModel::selectProject,
                 onEditProject = viewModel::editProject,
                 onRemoveProject = { projectPendingRemoval = it },
@@ -78,7 +92,7 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel) {
             VerticalDivider(modifier = Modifier.fillMaxHeight())
             Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
                 CompositionLocalProvider(LocalAppMessages provides messages) {
-                    ShellContent(appContainer, viewModel)
+                    ShellContent(appContainer, viewModel, board)
                 }
                 AppMessagesHost(messages, modifier = Modifier.align(Alignment.BottomCenter))
             }
@@ -98,19 +112,10 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel) {
 }
 
 @Composable
-private fun ShellContent(appContainer: AppContainer, viewModel: ShellViewModel) {
+private fun ShellContent(appContainer: AppContainer, viewModel: ShellViewModel, board: WorktreeBoard) {
     when (val destination = viewModel.destination) {
         null -> EmptyState(onAddProject = viewModel::addProject)
-        is ShellDestination.Project -> viewModel.projectFor(destination)?.let { project ->
-            ProjectWorktrees(
-                appContainer,
-                project,
-                destination.previousWorktreesRoot,
-                viewModel.reloadRequests,
-                viewModel.newWorktreeRequests,
-                viewModel,
-            )
-        }
+        is ShellDestination.All -> WorktreeView(destination, viewModel, board)
         is ShellDestination.ProjectSettings -> viewModel.projectFor(destination)?.let { project ->
             key(destination) { ProjectForm(appContainer, viewModel, existingProject = project) }
         }
@@ -119,51 +124,37 @@ private fun ShellContent(appContainer: AppContainer, viewModel: ShellViewModel) 
 }
 
 @Composable
-private fun ProjectWorktrees(
-    appContainer: AppContainer,
-    project: Project,
-    previousWorktreesRoot: String?,
-    reloadRequests: Int,
-    newWorktreeRequests: Int,
-    shellViewModel: ShellViewModel,
-) {
-    val viewModelKey = "${project.id}-${project.config.hashCode()}"
-    val worktreeViewModel = viewModel(key = viewModelKey) {
-        WorktreeViewModel(appContainer.worktreeUseCases(project.config))
+private fun WorktreeView(destination: ShellDestination.All, shellViewModel: ShellViewModel, board: WorktreeBoard) {
+    LaunchedEffect(destination, board.projects) {
+        board.show(destination.projectFilter)
+        val projectId = destination.projectFilter
+        val previousRoot = destination.previousWorktreesRoot
+        if (projectId != null && previousRoot != null) board.repairAfterMove(projectId, previousRoot)
     }
-    DisposableEffect(worktreeViewModel) {
+    DisposableEffect(board) {
         shellViewModel.updateWorktreeActions(
             WorktreeActions(
-                onCopySelectedLaunchCommand = worktreeViewModel::copySelectedLaunchCommand,
-                onDeleteSelectedWorktree = worktreeViewModel::deleteSelectedWorktree,
-                onClearSelection = worktreeViewModel::clearSelection,
+                onFind = board::requestFind,
+                onCopySelectedLaunchCommand = board::copySelectedLaunchCommand,
+                onDeleteSelectedWorktree = board::deleteSelectedWorktree,
+                onClearSelection = board::clearSelection,
+                onEscape = board::escape,
             ),
         )
         onDispose { shellViewModel.updateWorktreeActions(null) }
     }
-    val windowInfo = LocalWindowInfo.current
-    LaunchedEffect(viewModelKey) {
-        previousWorktreesRoot?.let(worktreeViewModel::repairAfterMove) ?: worktreeViewModel.refresh()
+    val reloadRequestsOnEntry = remember { shellViewModel.reloadRequests }
+    LaunchedEffect(shellViewModel.reloadRequests) {
+        if (shellViewModel.reloadRequests != reloadRequestsOnEntry) board.refreshShown()
     }
-    LaunchedEffect(viewModelKey, windowInfo) {
-        snapshotFlow { windowInfo.isWindowFocused }
-            .drop(1)
-            .filter { it }
-            .collectLatest { worktreeViewModel.refresh() }
-    }
-    val reloadRequestsOnEntry = remember(viewModelKey) { reloadRequests }
-    LaunchedEffect(reloadRequests) {
-        if (reloadRequests != reloadRequestsOnEntry) worktreeViewModel.refresh()
-    }
-    val newWorktreeRequestsOnEntry = remember(viewModelKey) { newWorktreeRequests }
-    LaunchedEffect(newWorktreeRequests) {
-        if (newWorktreeRequests != newWorktreeRequestsOnEntry) worktreeViewModel.openCreateDialog()
+    val newWorktreeRequestsOnEntry = remember { shellViewModel.newWorktreeRequests }
+    LaunchedEffect(shellViewModel.newWorktreeRequests) {
+        if (shellViewModel.newWorktreeRequests != newWorktreeRequestsOnEntry) board.openCreateDialog()
     }
     WorktreeScreen(
-        projectName = project.name,
-        projectConfig = project.config,
-        viewModel = worktreeViewModel,
-        onOpenProjectSettings = { shellViewModel.editProject(project) },
+        board = board,
+        onSelectFilter = shellViewModel::selectFilter,
+        onOpenProjectSettings = shellViewModel::editProject,
     )
 }
 
