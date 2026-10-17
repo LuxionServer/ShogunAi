@@ -18,14 +18,35 @@ object SpanishStrings : Strings {
     override val selectLocalFilesDialogTitle = "Selecciona archivos locales"
 
     override val projectsTitle = "Proyectos"
-    override val newProject = "Nuevo proyecto"
-    override val search = "Buscar"
-    override val noProjectsYet = "No hay proyectos todavía. Crea uno para empezar."
-    override fun noProjectsMatch(query: String) = "Ningún proyecto coincide con \"$query\"."
+    override val addProject = "Añadir proyecto"
     override val editProject = "Editar proyecto"
-    override val deleteProject = "Eliminar proyecto"
-    override val deleteProjectTitle = "¿Eliminar proyecto?"
-    override fun deleteProjectMessage(projectName: String) = "Se eliminará \"$projectName\" de la lista de proyectos."
+    override val removeProject = "Quitar proyecto"
+    override val removeProjectTitle = "¿Quitar proyecto?"
+    override fun removeProjectMessage(projectName: String) =
+        "Se quitará \"$projectName\" de ShogunAi. Su repositorio y sus worktrees se quedan en el disco."
+    override val remove = "Quitar"
+    override val emptyStateTitle = "Añade tu primer proyecto"
+    override val emptyStateMessage =
+        "Un proyecto es un repositorio Git cuyos worktrees gestiona ShogunAi: dónde se crean, qué ficheros locales reciben y qué agente los abre."
+    override val collapseSidebar = "Contraer barra lateral"
+    override val expandSidebar = "Expandir barra lateral"
+
+    override val menuFile = "Archivo"
+    override val menuView = "Ver"
+    override val menuHelp = "Ayuda"
+    override val menuPreferences = "Preferencias…"
+    override val menuQuit = "Salir"
+    override val menuToggleSidebar = "Mostrar u ocultar barra lateral"
+    override val menuAbout = "Acerca de ShogunAi"
+
+    override val preferencesTitle = "Preferencias"
+    override val appearanceLabel = "Apariencia"
+    override val languageLabel = "Idioma"
+
+    override val aboutTitle = "Acerca de ShogunAi"
+    override val aboutTagline = "La capa de worktrees para cualquier agente de IA."
+    override fun aboutVersion(version: String) = "Versión $version"
+    override val aboutRepositoryLink = "Ver en GitHub"
 
     override val projectConfigTitle = "Configuración de proyecto"
     override val identitySection = "Identidad"

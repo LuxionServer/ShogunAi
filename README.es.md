@@ -46,8 +46,8 @@ Instálalo como cualquier otra app de escritorio y ábrelo. No necesitas tener J
 
 ## Uso básico
 
-1. **Crea un proyecto** — al abrir la app por primera vez verás el catálogo de proyectos vacío. Pulsa "Nuevo proyecto" e indica un nombre, la ruta del repositorio base y la carpeta donde se crearán los worktrees. Opcionalmente añade archivos locales que deben copiarse a cada worktree nuevo en esta máquina.
-2. **Entra a un proyecto** — selecciónalo desde el catálogo para ver sus worktrees existentes.
+1. **Crea un proyecto** — al abrir la app por primera vez te ofrece añadir uno. Pulsa "Añadir proyecto" (también en la barra lateral y en Archivo, Mayús+Cmd/Ctrl+N) e indica un nombre, la ruta del repositorio base y la carpeta donde se crearán los worktrees. Opcionalmente añade archivos locales que deben copiarse a cada worktree nuevo en esta máquina.
+2. **Entra a un proyecto** — selecciónalo en la barra lateral para ver sus worktrees existentes. Con clic derecho puedes editarlo o quitarlo; quitar un proyecto nunca toca su repositorio ni sus worktrees.
 3. **Crea un worktree** — indica el id de la tarea y el tipo de rama (`feature` o `fix`); la app crea el worktree, la rama y copia los archivos que declaran el repositorio y el proyecto. Para trabajar en una rama que ya tienes, cambia a "Rama existente" y elígela de la lista.
    Para compartir lo que necesita un worktree con todo el que clone el repositorio, añade un `.shogunai.json` en su raíz con patrones al estilo gitignore; cada archivo que Git no versiona y coincide con alguno se copia a cada worktree nuevo, en la misma ruta. Un `.worktreeinclude` (el fichero de Claude Code) se lee igual. El botón "Mover a .shogunai.json" de la configuración del proyecto escribe ahí tus archivos locales.
 
@@ -58,7 +58,7 @@ Instálalo como cualquier otra app de escritorio y ábrelo. No necesitas tener J
 4. **Ponte a trabajar** — pulsa "Copiar comando" en un worktree y pégalo en tu terminal para abrir allí tu agente de IA.
 5. **Elimina un worktree** — cuando termines una tarea, elimínalo desde la lista, con la opción de borrar también la rama local. El worktree principal no se puede eliminar.
 
-La app está en inglés por defecto; puedes cambiarla a español desde el selector de idioma de la barra superior (junto al selector de tema). La elección se recuerda entre reinicios.
+La app está en inglés por defecto; puedes cambiarla a español en Preferencias (Ajustes… en el menú ShogunAi en macOS, Archivo > Preferencias en el resto, Cmd/Ctrl+Coma), junto al tema. La elección se recuerda entre reinicios, igual que el último proyecto abierto, el tamaño y la posición de la ventana y si la barra lateral está contraída (Ver > Mostrar u ocultar barra lateral, Cmd/Ctrl+Barra invertida).
 
 ## Línea de comandos
 

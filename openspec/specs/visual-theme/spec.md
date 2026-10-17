@@ -36,11 +36,11 @@ The app SHALL support three theme modes: `Light`, `Dark` and `Automatic`. In `Au
 - **THEN** the app updates its `colorScheme` without needing a restart
 
 ### Requirement: Theme mode selection from the UI
-The app SHALL expose a control reachable from every screen (`ProjectListScreen`, `ProjectConfigScreen`, `WorktreeScreen`) that lets the user choose between Light, Dark and Automatic.
+The app SHALL let the user choose between Light, Dark and Automatic in the Preferences window.
 
 #### Scenario: User changes the theme mode
-- **WHEN** the user selects a different mode in the theme control
-- **THEN** the app applies the new `colorScheme` immediately, without restarting
+- **WHEN** the user selects a different mode in Preferences
+- **THEN** the app applies the new `colorScheme` immediately to every open window, without restarting
 
 ### Requirement: Theme preference persistence
 The app SHALL remember the theme mode chosen by the user across app restarts. If there is no stored preference (first launch, or a missing/corrupt preference file), the default mode SHALL be Automatic.

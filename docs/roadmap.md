@@ -32,16 +32,15 @@ In progress on the `epic/ui-redesign` branch. The desktop app grew one feature a
 
 It's planned as these OpenSpec changes, implemented in this order:
 
-1. `app-shell-layout`: the window with a sidebar, application menu, Preferences and About, replacing the project list screen.
-2. `create-worktree-dialog`: creating a worktree in a dialog (Cmd/Ctrl+N) that offers copying the launch command afterwards.
-3. `worktree-list-detail`: one-line rows and a detail pane, with the project's settings reachable from its view.
-4. `all-worktrees-view`: every project's worktrees in one view, with project and text filters.
-5. `active-worktrees-view`: the "Active" view, grouping by state and activity counts in the sidebar.
-6. `machine-resources-view`: the "Machine" section, replacing the Gradle and DerivedData sections of the project view.
-7. `project-settings-view`: project settings in sections with a save bar, and adding a project from its repository folder.
-8. `providers-configuration`: turning providers on, setting their options and the per-worktree environment from the settings, writing `.shogunai.json`.
-9. `understandable-errors`: every error says what failed and what to do next, with the technical output kept behind "Technical details".
-10. `command-palette`: Cmd/Ctrl+K to jump to any view, project or worktree, or run an action.
+1. `create-worktree-dialog`: creating a worktree in a dialog (Cmd/Ctrl+N) that offers copying the launch command afterwards.
+2. `worktree-list-detail`: one-line rows and a detail pane, with the project's settings reachable from its view.
+3. `all-worktrees-view`: every project's worktrees in one view, with project and text filters.
+4. `active-worktrees-view`: the "Active" view, grouping by state and activity counts in the sidebar.
+5. `machine-resources-view`: the "Machine" section, replacing the Gradle and DerivedData sections of the project view.
+6. `project-settings-view`: project settings in sections with a save bar, and adding a project from its repository folder.
+7. `providers-configuration`: turning providers on, setting their options and the per-worktree environment from the settings, writing `.shogunai.json`.
+8. `understandable-errors`: every error says what failed and what to do next, with the technical output kept behind "Technical details".
+9. `command-palette`: Cmd/Ctrl+K to jump to any view, project or worktree, or run an action.
 
 Each change removes its line from this list when it's archived.
 

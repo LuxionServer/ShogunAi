@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.LanguagePreferenceRepository
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
+import app.luxion.shogunai.domain.io.ShellPreferenceRepository
 import app.luxion.shogunai.domain.io.ThemePreferenceRepository
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -53,6 +54,7 @@ import app.luxion.shogunai.infrastructure.FileKmpTestWiring
 import app.luxion.shogunai.infrastructure.JsonLanguagePreferenceRepository
 import app.luxion.shogunai.infrastructure.JsonProjectRepository
 import app.luxion.shogunai.infrastructure.JsonSettingsFile
+import app.luxion.shogunai.infrastructure.JsonShellPreferenceRepository
 import app.luxion.shogunai.infrastructure.JsonThemePreferenceRepository
 import app.luxion.shogunai.infrastructure.LocalAndroidSdk
 import app.luxion.shogunai.infrastructure.MacDerivedDataSource
@@ -70,6 +72,7 @@ class AppContainer {
     private val settingsFile = JsonSettingsFile()
     val themePreferenceRepository: ThemePreferenceRepository = JsonThemePreferenceRepository(settingsFile)
     val languagePreferenceRepository: LanguagePreferenceRepository = JsonLanguagePreferenceRepository(settingsFile)
+    val shellPreferenceRepository: ShellPreferenceRepository = JsonShellPreferenceRepository(settingsFile)
     private val fileManager: FileManager = NioFileManager()
     private val shellCommandExecutor: ShellCommandExecutor = ProcessBuilderShellCommandExecutor()
     private val clipboardWriter: ClipboardWriter = AwtClipboardWriter()

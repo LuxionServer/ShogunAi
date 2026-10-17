@@ -4,15 +4,23 @@ Vive en el módulo `desktopApp`: `desktopApp/src/main/kotlin/app/luxion/shogunai
 
 ## Navegación
 
-Sin `navigation-compose`: `AppRoot` guarda un `var screen by remember { mutableStateOf<Screen>(...) }` y hace `when` sobre un `sealed class Screen` (`ProjectList`, `ProjectConfigForm`, `WorktreeManagement`) para decidir qué pantalla componer. Suficiente para tres pantallas lineales sin deep linking ni back-stack complejo.
+Sin `navigation-compose`: la ventana principal es un shell (`ui/shell/AppShell`) con una `Sidebar` persistente y un área de contenido. `ShellViewModel` guarda el `ShellDestination` seleccionado (`Project`, `ProjectSettings`, `AddProject`), el catálogo de proyectos (en orden alfabético) y el estado de la barra lateral, y el área de contenido hace `when` sobre el destino. Una app con barra lateral no tiene un back stack con sentido: Cancelar en un formulario vuelve al destino que había antes, y guardar selecciona el proyecto guardado. Sin destino (sin proyectos), el área de contenido muestra el estado vacío del primer arranque.
 
-La barra superior, encima de todas las pantallas, contiene los selectores de idioma y de tema.
+El proyecto seleccionado se guarda como `lastDestination` en `settings.json` y se restaura al arrancar; los formularios nunca se restauran, y un proyecto que ya no existe deja paso al primero. El catálogo se vuelve a leer cuando la ventana recupera el foco y con Ver > Recargar, que además incrementa `reloadRequests` para que la vista mostrada recargue sus datos.
+
+La barra lateral mide 240 dp y pasa a ser un rail de 64 dp (la inicial de cada proyecto con un tooltip) cuando la ventana mide menos de 900 dp o el usuario la contrae (Ver > Mostrar u ocultar barra lateral, Cmd/Ctrl+Barra invertida). La elección manual se guarda como `sidebarCollapsed` y solo se aplica a ventanas anchas; alternarla en una ventana estrecha la expande hasta que cambia el ancho. Cada fila de proyecto tiene un menú contextual con Editar proyecto y Quitar proyecto.
+
+`main.kt` añade las convenciones de escritorio alrededor del shell:
+
+- Un `MenuBar` (`AppMenuBar`) con Archivo (Añadir proyecto; Preferencias y Salir fuera de macOS), Ver (Recargar, Mostrar u ocultar barra lateral) y Ayuda (Acerca de, fuera de macOS), con etiquetas de `Strings` para que siga el idioma. En macOS, los handlers de `java.awt.Desktop` ponen Acerca de y Ajustes… en el menú ShogunAi, y un handler de salida guarda los bounds de la ventana antes de que Cmd+Q cierre la app.
+- `PreferencesWindow` (modo de tema e idioma, una sola instancia que se trae al frente al reabrirla) y `AboutWindow` (icono, nombre, `BuildInfo.VERSION`, enlace al repositorio). Todas las ventanas leen el mismo `Appearance`, así que un cambio se aplica a todas a la vez.
+- Los bounds y el estado maximizado de la ventana se guardan como `windowBounds` al cerrarla y se restauran al arrancar; si no intersecan con ninguna pantalla conectada, la ventana se abre centrada. El tamaño mínimo es 720×480.
 
 ## Pantallas y ViewModels
 
 | Pantalla | ViewModel | Responsabilidad |
 |---|---|---|
-| `ProjectListScreen` | `ProjectListViewModel` | Catálogo de proyectos de `ProjectRepository`: búsqueda por nombre, orden A-Z / Z-A, abrir, editar y eliminar (con confirmación). |
+| `AppShell` | `ShellViewModel` | Barra lateral con el catálogo de proyectos de `ProjectRepository` (alfabético; añadir, editar y quitar con confirmación) y el área de contenido del destino seleccionado. |
 | `ProjectConfigScreen` | `ProjectConfigViewModel` | Formulario de un `Project` (nombre, ruta del repositorio base, carpeta raíz de worktrees, rama principal, el provisionado del repositorio, archivos locales, comando del agente y switch de Headroom); valida los campos requeridos y pregunta antes de descartar cambios sin guardar. |
 | `WorktreeScreen` | `WorktreeViewModel` | Lista los worktrees del proyecto activo con su estado; los crea desde una rama nueva o existente, los elimina (opcionalmente borrando la rama, y reintentando con `--force` cuando Git lo pide) y copia su comando de lanzamiento. |
 
@@ -100,7 +108,7 @@ Cuando el usuario edita un proyecto porque su repositorio se movió en disco:
 
 - `ProjectConfigViewModel` convierte en relativas las entradas absolutas de archivos locales que están dentro del repositorio base, para que sigan al repositorio.
 - Cambiar la ruta del repositorio base también mueve la carpeta raíz de worktrees cuando estaba dentro del repositorio, era su carpeta padre o una carpeta hermana, salvo que el usuario la haya editado a mano (`RepositoryRelocation.kt`).
-- Al guardar con otra ruta base u otra carpeta raíz de worktrees, `AppRoot` abre la pantalla de worktrees con la carpeta raíz anterior, y `WorktreeViewModel.repairAfterMove` ejecuta `RepairWorktreesUseCase` antes de listar. Si la reparación falla, el error queda visible.
+- Al guardar con otra ruta base u otra carpeta raíz de worktrees, `ShellViewModel.onProjectSaved` selecciona el proyecto con la carpeta raíz anterior, y `WorktreeViewModel.repairAfterMove` ejecuta `RepairWorktreesUseCase` antes de listar. Si la reparación falla, el error queda visible.
 - Los ViewModels del formulario y de la pantalla de worktrees se identifican por la configuración del proyecto, no solo por su id, así un proyecto editado nunca reutiliza casos de uso ligados a las rutas antiguas.
 
 Las cargas de la lista llevan un número de generación: un resultado solo se aplica si no ha empezado otra carga más reciente entretanto, así una carga anterior lenta no puede pisar un estado más nuevo (ni borrar un error más nuevo).
@@ -115,7 +123,7 @@ Las cargas de la lista llevan un número de generación: un resultado solo se ap
 
 ## Tema (`ui/theme`)
 
-`ShogunAiTheme` aplica el esquema de colores claro u oscuro según el `ThemeMode` guardado, que se elige con `ThemeModeToggle` en la barra superior. En modo `SYSTEM`, `rememberSystemInDarkTheme` consulta el tema del sistema operativo cada segundo, porque `isSystemInDarkTheme()` de Compose Desktop no reacciona a cambios con la app abierta.
+`ShogunAiTheme` aplica el esquema de colores claro u oscuro según el `ThemeMode` guardado, que se elige en la ventana de Preferencias. En modo `SYSTEM`, `rememberSystemInDarkTheme` consulta el tema del sistema operativo cada segundo, porque `isSystemInDarkTheme()` de Compose Desktop no reacciona a cambios con la app abierta.
 
 ## Sistema de diseño
 
@@ -168,9 +176,9 @@ Envuelve `JFileChooser` para los botones "Examinar…" de la pantalla de configu
 
 La interfaz está disponible en inglés (por defecto) y español. Todos los textos visibles viven en `interface Strings`, con una implementación por idioma (`EnglishStrings`, `SpanishStrings`); los textos con parámetros son funciones (`deleteProjectMessage(projectName)`), así los argumentos se comprueban al compilar.
 
-- `AppRoot` carga el `AppLanguage` guardado (`LanguagePreferenceRepository`) y provee la tabla activa con `CompositionLocalProvider(LocalStrings provides language.strings())` por encima del `when` de pantallas: cambiar de idioma recompone los textos sin recrear ViewModels ni perder el estado de la pantalla.
+- `Appearance` carga el `AppLanguage` guardado (`LanguagePreferenceRepository`) y `AppearanceScope` provee la tabla activa con `CompositionLocalProvider(LocalStrings provides ...)` en cada ventana: cambiar de idioma recompone los textos, incluida la barra de menús, sin recrear ViewModels ni perder el estado de la pantalla.
 - Los composables leen los textos con `val strings = LocalStrings.current`. El código no composable (como `FilePicker`) recibe el texto ya traducido como parámetro.
-- `LanguageToggle`, junto a `ThemeModeToggle` en la barra superior, muestra cada idioma por su propio nombre ("English", "Español").
+- El selector de idioma de Preferencias muestra cada idioma por su propio nombre ("English", "Español").
 - Los ViewModels exponen datos, no mensajes: `WorktreeViewModel` expone `error: Throwable?` y `success: WorktreeSuccess?` (worktree creado, worktrees reparados tras mover el repositorio), y la pantalla los formatea con `strings.worktreeError(error)` y el texto correspondiente de `Strings`. `worktreeError` es exhaustivo sobre la jerarquía sellada `WorktreeError`, así una variante nueva no compila hasta que se traduce; un proceso que no puede arrancar (`CommandExecutionException`) tiene su propio mensaje, y cualquier otro error usa uno genérico. La salida de error de Git se muestra tal cual, sin traducir.
 
 **Añadir un texto**: declarar el miembro en `Strings` e implementarlo en cada idioma (el compilador señala cualquiera que falte). **Añadir un idioma**: nuevo valor en `AppLanguage`, nuevo `object` que implemente `Strings` y su rama en `AppLanguage.strings()`.

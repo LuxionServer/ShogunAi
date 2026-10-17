@@ -18,14 +18,35 @@ object EnglishStrings : Strings {
     override val selectLocalFilesDialogTitle = "Select local files"
 
     override val projectsTitle = "Projects"
-    override val newProject = "New project"
-    override val search = "Search"
-    override val noProjectsYet = "No projects yet. Create one to get started."
-    override fun noProjectsMatch(query: String) = "No project matches \"$query\"."
+    override val addProject = "Add project"
     override val editProject = "Edit project"
-    override val deleteProject = "Delete project"
-    override val deleteProjectTitle = "Delete project?"
-    override fun deleteProjectMessage(projectName: String) = "\"$projectName\" will be removed from the project list."
+    override val removeProject = "Remove project"
+    override val removeProjectTitle = "Remove project?"
+    override fun removeProjectMessage(projectName: String) =
+        "\"$projectName\" will be removed from ShogunAi. Its repository and worktrees stay on disk."
+    override val remove = "Remove"
+    override val emptyStateTitle = "Add your first project"
+    override val emptyStateMessage =
+        "A project is a Git repository whose worktrees ShogunAi manages: where they're created, which local files they get and which agent opens them."
+    override val collapseSidebar = "Collapse sidebar"
+    override val expandSidebar = "Expand sidebar"
+
+    override val menuFile = "File"
+    override val menuView = "View"
+    override val menuHelp = "Help"
+    override val menuPreferences = "Preferences…"
+    override val menuQuit = "Quit"
+    override val menuToggleSidebar = "Toggle sidebar"
+    override val menuAbout = "About ShogunAi"
+
+    override val preferencesTitle = "Preferences"
+    override val appearanceLabel = "Appearance"
+    override val languageLabel = "Language"
+
+    override val aboutTitle = "About ShogunAi"
+    override val aboutTagline = "The worktree layer for any AI agent."
+    override fun aboutVersion(version: String) = "Version $version"
+    override val aboutRepositoryLink = "View on GitHub"
 
     override val projectConfigTitle = "Project settings"
     override val identitySection = "Identity"
