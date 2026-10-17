@@ -8,6 +8,7 @@ import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.io.ThemePreferenceRepository
 import app.luxion.shogunai.domain.model.GradleProvider
+import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.SimulatorDevice
 import app.luxion.shogunai.domain.model.SimulatorRuntime
@@ -35,6 +36,7 @@ import app.luxion.shogunai.domain.usecase.MeasureWorktreeSizeUseCase
 import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.ProviderContributions
 import app.luxion.shogunai.domain.usecase.ReadEmulatorStatesUseCase
+import app.luxion.shogunai.domain.usecase.OpenWorktreeInHerdrUseCase
 import app.luxion.shogunai.domain.usecase.ReadGitMetadataFingerprintUseCase
 import app.luxion.shogunai.domain.usecase.ReadSimulatorStatesUseCase
 import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
@@ -50,6 +52,8 @@ import app.luxion.shogunai.domain.usecase.StopWorktreeSimulatorUseCase
 import app.luxion.shogunai.domain.usecase.WriteEnvironmentFileUseCase
 import app.luxion.shogunai.infrastructure.AwtClipboardWriter
 import app.luxion.shogunai.infrastructure.FileKmpTestWiring
+import app.luxion.shogunai.infrastructure.CliHerdrClient
+import app.luxion.shogunai.infrastructure.HerdrConfigFile
 import app.luxion.shogunai.infrastructure.JsonLanguagePreferenceRepository
 import app.luxion.shogunai.infrastructure.JsonProjectRepository
 import app.luxion.shogunai.infrastructure.JsonSettingsFile
@@ -133,6 +137,8 @@ class AppContainer {
         override val initScriptPath: String get() = kmpTestWiring.initScriptPath()
     }
     private val androidSdk = LocalAndroidSdk(shellCommandExecutor, fileManager)
+    private val herdrConfig = HerdrConfigFile()
+    private val herdrClient = CliHerdrClient(shellCommandExecutor)
     private val startEmulator = StartWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)
     private val stopEmulator = StopWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)
     private val readEmulatorStates = ReadEmulatorStatesUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)
@@ -186,6 +192,10 @@ class AppContainer {
             orphans = { deleteSimulators.orphans(config) },
             delete = { udids -> deleteSimulators(udids) },
         ),
+        herdr = HerdrUseCases(
+            worktreesRoot = { runCatching { herdrConfig.worktreesRoot() }.getOrNull() },
+            open = OpenWorktreeInHerdrUseCase(config, herdrClient, resolveEnvironment)::invoke,
+        ),
         gradle = GradleUseCases(
             provider = {
                 runCatching { repositoryProvisioningSource.read(config.baseRepositoryPath).providers.gradle }.getOrNull()
@@ -224,6 +234,7 @@ data class WorktreeUseCases(
     val simulator: SimulatorUseCases,
     val gradle: GradleUseCases,
     val xcode: XcodeUseCases,
+    val herdr: HerdrUseCases = HerdrUseCases.NONE,
 )
 
 data class SimulatorUseCases(
@@ -242,6 +253,18 @@ data class SimulatorUseCases(
             stop = { Result.success(null) },
             orphans = { Result.success(emptyList()) },
             delete = { Result.success(emptyList()) },
+        )
+    }
+}
+
+data class HerdrUseCases(
+    val worktreesRoot: () -> String?,
+    val open: suspend (Worktree) -> Result<HerdrOpening>,
+) {
+    companion object {
+        val NONE = HerdrUseCases(
+            worktreesRoot = { null },
+            open = { Result.failure(WorktreeError.HerdrNotInstalled) },
         )
     }
 }

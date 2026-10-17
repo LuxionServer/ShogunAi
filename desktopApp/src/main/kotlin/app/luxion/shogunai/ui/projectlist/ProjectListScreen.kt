@@ -61,7 +61,6 @@ fun ProjectListScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(strings.projectsTitle, style = MaterialTheme.typography.headlineSmall)
             Row {
                 OutlinedButton(onClick = { viewModel.refresh() }, modifier = Modifier.padding(end = 8.dp)) {
                     Text(strings.reload)

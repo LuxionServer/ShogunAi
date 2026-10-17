@@ -12,11 +12,12 @@ val INACTIVITY_THRESHOLD: Duration = Duration.ofDays(14)
 
 private const val CLAUDE_CODE_WORKTREES = "/.claude/worktrees/"
 
-fun classifyOrigin(worktree: Worktree, config: ProjectConfig): WorktreeOrigin? {
+fun classifyOrigin(worktree: Worktree, config: ProjectConfig, herdrWorktreesRoot: String? = null): WorktreeOrigin? {
     if (worktree.isMain) return null
     val path = normalizePath(worktree.path)
     return when {
         CLAUDE_CODE_WORKTREES in "$path/" -> WorktreeOrigin.CLAUDE_CODE
+        herdrWorktreesRoot != null && isInside(path, normalizePath(herdrWorktreesRoot)) -> WorktreeOrigin.HERDR
         isInside(path, normalizePath(config.worktreesRoot)) -> WorktreeOrigin.SHOGUNAI
         else -> WorktreeOrigin.OTHER
     }

@@ -93,6 +93,7 @@ interface Strings {
     val folderMissing: String
     val originShogunAi: String
     val originClaudeCode: String
+    val originHerdr: String
     val originOther: String
     val inactive: String
     fun worktreesSummary(count: Int, totalSize: String): String
@@ -179,6 +180,9 @@ interface Strings {
     val copyCommand: String
     fun worktreeCreated(path: String): String
     val worktreesRepairedAfterMove: String
+    val openInHerdr: String
+    fun openedInHerdr(name: String): String
+    fun focusedInHerdr(name: String): String
 
     fun baseRepositoryNotFound(path: String): String
     fun worktreeAlreadyExists(path: String): String
@@ -199,6 +203,8 @@ interface Strings {
     fun noEmulatorPort(from: Int, to: Int): String
     fun androidSdkNotFound(checked: List<String>): String
     val noAvdAvailable: String
+    val herdrNotInstalled: String
+    fun herdrCommandFailed(detail: String): String
     fun emulatorBootTimeout(serial: String, seconds: Long): String
     val emulatorProviderNotDeclared: String
     val noIosRuntime: String
@@ -245,6 +251,8 @@ private fun Strings.worktreeErrorMessage(error: WorktreeError): String = when (e
     is WorktreeError.NoEmulatorPort -> noEmulatorPort(error.from, error.to)
     is WorktreeError.AndroidSdkNotFound -> androidSdkNotFound(error.checked)
     WorktreeError.NoAvdAvailable -> noAvdAvailable
+    WorktreeError.HerdrNotInstalled -> herdrNotInstalled
+    is WorktreeError.HerdrCommandFailed -> herdrCommandFailed(error.detail)
     is WorktreeError.EmulatorBootTimeout -> emulatorBootTimeout(error.serial, error.seconds)
     WorktreeError.EmulatorProviderNotDeclared -> emulatorProviderNotDeclared
     WorktreeError.NoIosRuntime -> noIosRuntime

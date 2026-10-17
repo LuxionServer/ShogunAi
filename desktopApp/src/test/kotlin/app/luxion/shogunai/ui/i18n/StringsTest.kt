@@ -43,6 +43,8 @@ class StringsTest {
             WorktreeError.IosSimulatorsNotSupported to "macOS",
             WorktreeError.AppleToolFailed(listOf("xcrun", "simctl", "boot"), 1, "") to "xcrun simctl boot",
             WorktreeError.EnvironmentFileTracked(".env") to ".env",
+            WorktreeError.HerdrNotInstalled to "https://herdr.dev",
+            WorktreeError.HerdrCommandFailed(listOf("herdr", "pane", "list"), "no herdr server is running") to "no herdr server is running",
         )
         errors.forEach { (error, expectedData) ->
             val english = EnglishStrings.worktreeError(error)

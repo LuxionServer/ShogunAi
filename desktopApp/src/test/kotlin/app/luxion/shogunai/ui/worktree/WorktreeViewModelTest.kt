@@ -2,7 +2,9 @@ package app.luxion.shogunai.ui.worktree
 
 import app.luxion.shogunai.EmulatorUseCases
 import app.luxion.shogunai.GradleUseCases
+import app.luxion.shogunai.HerdrUseCases
 import app.luxion.shogunai.SimulatorUseCases
+import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.WorktreeUseCases
 import app.luxion.shogunai.XcodeUseCases
 import app.luxion.shogunai.domain.FakeClipboardWriter
@@ -1672,5 +1674,56 @@ class WorktreeViewModelTest {
         assertEquals(0, source.listings)
         assertTrue(source.source.deleted.isEmpty())
         assertFalse(viewModel.isXcodeRepository)
+    }
+
+    @Test
+    fun `Herdr's worktrees folder is loaded with the list to classify origins`() = runTest(dispatcher) {
+        val herdr = HerdrUseCases.NONE.copy(worktreesRoot = { "/home/dev/.herdr/worktrees" })
+        val viewModel = WorktreeViewModel(useCases(listingResponder()).copy(herdr = herdr))
+        advanceUntilIdle()
+
+        assertEquals("/home/dev/.herdr/worktrees", viewModel.herdrWorktreesRoot)
+    }
+
+    @Test
+    fun `opening in Herdr passes the worktree and reports the opening`() = runTest(dispatcher) {
+        val calls = mutableListOf<Worktree>()
+        val herdr = HerdrUseCases.NONE.copy(open = { target -> calls += target; Result.success(HerdrOpening.OPENED) })
+        val viewModel = WorktreeViewModel(useCases(listingResponder()).copy(herdr = herdr))
+        advanceUntilIdle()
+        val target = viewModel.worktrees.first { it.path == worktreePath }
+
+        viewModel.openInHerdr(target)
+        assertTrue(worktreePath in viewModel.openingInHerdr)
+        advanceUntilIdle()
+
+        assertEquals(target, calls.single())
+        assertEquals(WorktreeSuccess.OpenedInHerdr(worktreePath, focused = false), viewModel.success)
+        assertTrue(viewModel.openingInHerdr.isEmpty())
+    }
+
+    @Test
+    fun `an already open worktree is reported as focused`() = runTest(dispatcher) {
+        val herdr = HerdrUseCases.NONE.copy(open = { Result.success(HerdrOpening.FOCUSED) })
+        val viewModel = WorktreeViewModel(useCases(listingResponder()).copy(herdr = herdr))
+        advanceUntilIdle()
+
+        viewModel.openInHerdr(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+
+        assertEquals(WorktreeSuccess.OpenedInHerdr(worktreePath, focused = true), viewModel.success)
+    }
+
+    @Test
+    fun `a Herdr failure is shown as the error`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(useCases(listingResponder()))
+        advanceUntilIdle()
+
+        viewModel.openInHerdr(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+
+        assertIs<WorktreeError.HerdrNotInstalled>(viewModel.error)
+        assertNull(viewModel.success)
+        assertTrue(viewModel.openingInHerdr.isEmpty())
     }
 }
