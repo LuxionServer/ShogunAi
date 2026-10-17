@@ -22,22 +22,29 @@ graph LR
 
 ## Planned
 
-### Worktree screen redesign
+### Desktop app redesign
 
-With every provider on, a worktree row now carries status, origin, agents, size, ports, emulator and simulator, and the screen also holds the Gradle daemon and DerivedData sections. A redesign of the screen:
+In progress on the `epic/ui-redesign` branch. The desktop app grew one feature at a time without a design: one project at a time, crowded worktree rows, machine resources at the bottom of a project's list and errors shown as raw command output. The redesign turns it into a control tower built around three panes:
 
-- Rows that don't crowd or cut their buttons, with the branch as the main label and the folder as secondary information.
-- Emulator and simulator lines only where they're relevant (running, or on demand), instead of on every row of a repository that declares the provider.
-- A better place for the Gradle daemons and DerivedData sections than the bottom of the worktree list.
-- A direct way to edit the project from its worktree screen.
+- **Sidebar**: "Active" (the main view: worktrees with an agent working, work waiting for you, or still in progress, across every project), "All worktrees" (every project, where selecting a project filters the view), the projects, and a "Machine" section with Gradle daemons, Android emulators, iOS simulators and Xcode DerivedData across every project.
+- **List**: one line per worktree, with the branch as its label and compact indicators for what matters.
+- **Detail**: everything about the selected worktree and its actions.
 
-### Providers configuration screen
+It's planned as these OpenSpec changes, implemented in this order:
 
-Providers, `env` and `envFile` are declared by editing `.shogunai.json` by hand, which few users will do. A configuration screen to turn providers on and set their options (Gradle heap and idle timeout, preferred AVD, simulator device, Xcode compilation cache) and the per-worktree environment, writing the repository's file like the local files move already does.
+1. `ui-design-foundations`: a complete color system with one meaning per status color, checked contrast, bundled fonts with a monospaced style for data, and shared components.
+2. `app-shell-layout`: the window with a sidebar, application menu, Preferences and About, replacing the project list screen.
+3. `create-worktree-dialog`: creating a worktree in a dialog (Cmd/Ctrl+N) that offers copying the launch command afterwards.
+4. `worktree-list-detail`: one-line rows and a detail pane, with the project's settings reachable from its view.
+5. `all-worktrees-view`: every project's worktrees in one view, with project and text filters.
+6. `active-worktrees-view`: the "Active" view, grouping by state and activity counts in the sidebar.
+7. `machine-resources-view`: the "Machine" section, replacing the Gradle and DerivedData sections of the project view.
+8. `project-settings-view`: project settings in sections with a save bar, and adding a project from its repository folder.
+9. `providers-configuration`: turning providers on, setting their options and the per-worktree environment from the settings, writing `.shogunai.json`.
+10. `understandable-errors`: every error says what failed and what to do next, with the technical output kept behind "Technical details".
+11. `command-palette`: Cmd/Ctrl+K to jump to any view, project or worktree, or run an action.
 
-### Understandable errors
-
-Errors are often shown as raw command output (a Git or `simctl` message with its exit code). Each error should say in plain words what failed and what to do next, keeping the raw output available for those who need it.
+Each change removes its line from this list when it's archived.
 
 ### Guided onboarding demo
 
@@ -84,7 +91,6 @@ Some users switch between AI agents on the same task, for example when one of th
 ### Desktop ergonomics
 
 - Menu bar / system tray icon with recent projects and worktrees.
-- Command palette (`⌘K` / `Ctrl+K`) to jump to any project or worktree.
 
 ### Distribution
 

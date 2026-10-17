@@ -1,0 +1,64 @@
+# Spec Delta
+
+## Purpose
+
+Gives the user one keyboard entry point to every view, project, worktree and frequent action of the app, so getting somewhere or running something doesn't depend on where it sits in the window.
+
+## ADDED Requirements
+
+### Requirement: Open the command palette
+Cmd/Ctrl+K and View > Command palette SHALL open the command palette over the main window with its search field focused, from any view. Escape, or clicking outside it, SHALL close it without running anything.
+
+#### Scenario: Open and close
+- **WHEN** the user presses Cmd/Ctrl+K in any view and then Escape
+- **THEN** the palette opens with the search field focused, then closes, and the view is unchanged
+
+### Requirement: What the palette searches
+The palette SHALL search the views (Active, All worktrees, each visible machine resource, Preferences), every saved project, the worktrees of every saved project, and the actions "Add project", "New worktree in <project>", "Settings of <project>", "Clean up", "Reload" and "Toggle sidebar".
+
+#### Scenario: Find a worktree of another project
+- **WHEN** the user is in the view filtered to `main-repo` and types `TASK-9`
+- **THEN** the palette lists the worktree `feature/TASK-9` of `api`
+
+### Requirement: Matching and ranking
+Results SHALL match when the typed characters appear in order in the result's name, branch, folder or project, ignoring case, gaps allowed. Results SHALL be ranked: exact or prefix matches first, then matches at word starts (after `/`, `-`, `_` or a space), then any other match, and ties SHALL go to the most recently used item.
+
+#### Scenario: Prefix beats subsequence
+- **WHEN** the user types `api` with the project `api` and a worktree `fix/rapid-ui` saved
+- **THEN** the project `api` is listed before `fix/rapid-ui`
+
+#### Scenario: Gaps allowed
+- **WHEN** the user types `ft9`
+- **THEN** `feature/TASK-9` is listed
+
+### Requirement: Recent items with an empty query
+With an empty query, the palette SHALL list the items run most recently from it, most recent first, up to 20, remembered across restarts. Before anything has been run, it SHALL list the views.
+
+#### Scenario: Reopen after use
+- **WHEN** the user ran "Settings of api" from the palette and opens it again
+- **THEN** "Settings of api" is the first result before typing
+
+### Requirement: Results show their context
+Each result SHALL show its kind (view, project, worktree or action), its context when it has one (for a worktree, its project and state indicator), and the keyboard shortcut of the action when it has one.
+
+#### Scenario: Worktree result
+- **WHEN** a worktree result is listed
+- **THEN** it shows the branch, its project's name and its state indicator, marked as a worktree
+
+### Requirement: Run results from the keyboard
+The up and down arrows SHALL move through the results, Enter SHALL run the highlighted result's main action and close the palette, and Cmd/Ctrl+Enter on a worktree SHALL copy its launch command. The main actions are opening a view, opening a project's worktree view, selecting a worktree in "All worktrees", and running an action.
+
+#### Scenario: Select a worktree
+- **WHEN** the user highlights `feature/TASK-9` of `api` and presses Enter
+- **THEN** the palette closes and "All worktrees" opens with that worktree selected and its detail shown
+
+#### Scenario: Copy from the palette
+- **WHEN** the user highlights a worktree and presses Cmd/Ctrl+Enter
+- **THEN** its launch command is copied, the palette closes and a confirmation is shown
+
+### Requirement: No destructive actions
+The palette SHALL NOT offer any action that deletes or removes something.
+
+#### Scenario: Search for delete
+- **WHEN** the user types `delete`
+- **THEN** no result deletes a worktree, a project, a simulator or DerivedData
