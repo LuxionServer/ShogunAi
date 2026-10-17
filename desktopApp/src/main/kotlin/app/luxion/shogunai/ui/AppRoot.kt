@@ -88,7 +88,7 @@ fun AppRoot(appContainer: AppContainer) {
                         }
 
                         is Screen.ProjectConfigForm -> {
-                            val viewModel = viewModel(key = current.existingProject?.let { "${it.id}-${it.hashCode()}" } ?: "new-project") {
+                            val viewModel = viewModel(viewModelStoreOwner = rememberScreenViewModelStoreOwner()) {
                                 ProjectConfigViewModel(
                                     appContainer.projectRepository,
                                     appContainer.repositoryProvisioningSource,

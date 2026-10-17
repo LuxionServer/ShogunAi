@@ -30,7 +30,11 @@ class SimulatorSettingsTest {
     private val ios = SimulatorRuntime("com.apple.CoreSimulator.SimRuntime.iOS-18-5", "iOS 18.5", "18.5", "iOS", listOf(iphone))
     private val watch = SimulatorRuntime("com.apple.CoreSimulator.SimRuntime.watchOS-11-5", "watchOS 11.5", "11.5", "watchOS", emptyList())
 
-    private class FakeSetup(private val repository: String, var wired: Boolean = false) : SimulatorSetup {
+    private class FakeSetup(
+        private val repository: String,
+        var wired: Boolean = false,
+        var kotlinMultiplatform: Boolean = true,
+    ) : SimulatorSetup {
         var runtimeReads = 0
         var installs = 0
         var runtimes: List<SimulatorRuntime> = emptyList()
@@ -41,6 +45,7 @@ class SimulatorSettingsTest {
             return Result.success(runtimes)
         }
         override fun isWired(repositoryPath: String) = wired
+        override fun usesKotlinMultiplatform(repositoryPath: String) = kotlinMultiplatform
         override fun installInitScript(): Result<Unit> {
             installs++
             wired = true
@@ -86,7 +91,16 @@ class SimulatorSettingsTest {
         assertEquals(SimulatorSectionState.Loading, viewModel.simulatorSection)
         advanceUntilIdle()
 
-        assertEquals(SimulatorSectionState.Available(listOf(ios), testsWired = false), viewModel.simulatorSection)
+        assertEquals(SimulatorSectionState.Available(listOf(ios), testsWired = false, kotlinMultiplatform = true), viewModel.simulatorSection)
+    }
+
+    @Test
+    fun `repositories without Kotlin Multiplatform get no KMP wiring`() = runTest(dispatcher) {
+        setup.kotlinMultiplatform = false
+        val viewModel = viewModel(project(kmp))
+        advanceUntilIdle()
+
+        assertEquals(SimulatorSectionState.Available(listOf(ios), testsWired = false, kotlinMultiplatform = false), viewModel.simulatorSection)
     }
 
     @Test
@@ -97,7 +111,7 @@ class SimulatorSettingsTest {
         viewModel.installSimulatorInitScript().getOrThrow()
 
         assertEquals(1, setup.installs)
-        assertEquals(SimulatorSectionState.Available(listOf(ios), testsWired = true), viewModel.simulatorSection)
+        assertEquals(SimulatorSectionState.Available(listOf(ios), testsWired = true, kotlinMultiplatform = true), viewModel.simulatorSection)
     }
 
     @Test

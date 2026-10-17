@@ -41,6 +41,28 @@ class FileKmpTestWiringTest {
     }
 
     @Test
+    fun `detects the Kotlin Multiplatform plugin by id or version catalog alias`() {
+        val byId = root.resolve("by-id").createDirectories()
+        byId.resolve("shared").createDirectories().resolve("build.gradle.kts").writeText("""plugins { kotlin("multiplatform") }""")
+        val byAlias = root.resolve("by-alias").createDirectories()
+        byAlias.resolve("composeApp").createDirectories().resolve("build.gradle.kts")
+            .writeText("plugins { alias(libs.plugins.kotlinMultiplatform) }")
+
+        assertTrue(wiring.usesKotlinMultiplatform(byId.toString()))
+        assertTrue(wiring.usesKotlinMultiplatform(byAlias.toString()))
+    }
+
+    @Test
+    fun `a JVM-only build or a repository without Gradle isn't Kotlin Multiplatform`() {
+        repository.resolve("build.gradle.kts").writeText("""plugins { kotlin("jvm") }""")
+        val xcodeOnly = root.resolve("xcode-only").createDirectories()
+        xcodeOnly.resolve("App.xcodeproj").createDirectories().resolve("project.pbxproj").writeText("// multiplatform")
+
+        assertFalse(wiring.usesKotlinMultiplatform(repository.toString()))
+        assertFalse(wiring.usesKotlinMultiplatform(xcodeOnly.toString()))
+    }
+
+    @Test
     fun `installs and uninstalls the init script in the Gradle user home`() {
         assertFalse(wiring.isInitScriptInstalled())
 

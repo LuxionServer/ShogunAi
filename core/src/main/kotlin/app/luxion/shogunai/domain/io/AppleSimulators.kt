@@ -15,6 +15,8 @@ interface AppleSimulators {
 
     suspend fun boot(udid: String)
 
+    suspend fun show(udid: String)
+
     suspend fun shutdown(udid: String)
 
     suspend fun delete(udid: String)

@@ -22,7 +22,11 @@ import java.util.UUID
 sealed interface SimulatorSectionState {
     data object Hidden : SimulatorSectionState
     data object Loading : SimulatorSectionState
-    data class Available(val runtimes: List<SimulatorRuntime>, val testsWired: Boolean) : SimulatorSectionState
+    data class Available(
+        val runtimes: List<SimulatorRuntime>,
+        val testsWired: Boolean,
+        val kotlinMultiplatform: Boolean,
+    ) : SimulatorSectionState
     data class Failed(val error: Throwable) : SimulatorSectionState
 }
 
@@ -127,6 +131,7 @@ class ProjectConfigViewModel(
                     SimulatorSectionState.Available(
                         runtimes = runtimes.filter { it.platform.equals("iOS", ignoreCase = true) },
                         testsWired = simulatorSetup.isWired(repositoryPath),
+                        kotlinMultiplatform = simulatorSetup.usesKotlinMultiplatform(repositoryPath),
                     )
                 },
                 onFailure = { SimulatorSectionState.Failed(it) },

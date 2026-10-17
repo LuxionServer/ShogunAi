@@ -33,6 +33,14 @@ class SimctlAppleSimulators(
         simctl("boot", udid, toleratedState = "Booted")
     }
 
+    override suspend fun show(udid: String) {
+        val simulatorApp = listOf("open", "-b", SIMULATOR_BUNDLE_ID, "--args", "-CurrentDeviceUDID", udid)
+        if (executor.execute(simulatorApp).isSuccess) return
+        val deviceHub = listOf("open", "-b", DEVICE_HUB_BUNDLE_ID)
+        val result = executor.execute(deviceHub)
+        if (!result.isSuccess) throw WorktreeError.AppleToolFailed(deviceHub, result.exitCode, result.stderr.trim())
+    }
+
     override suspend fun shutdown(udid: String) {
         simctl("shutdown", udid, toleratedState = "Shutdown")
     }
@@ -49,6 +57,11 @@ class SimctlAppleSimulators(
             throw WorktreeError.AppleToolFailed(command, result.exitCode, result.stderr.trim())
         }
         return result
+    }
+
+    private companion object {
+        const val SIMULATOR_BUNDLE_ID = "com.apple.iphonesimulator"
+        const val DEVICE_HUB_BUNDLE_ID = "com.apple.dt.Devices"
     }
 }
 

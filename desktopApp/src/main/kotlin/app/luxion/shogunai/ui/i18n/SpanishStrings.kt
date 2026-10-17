@@ -128,7 +128,7 @@ object SpanishStrings : Strings {
     override val simulatorBooted = "arrancado"
     override val startSimulator = "Arrancar"
     override val stopSimulator = "Apagar"
-    override val alsoDeleteSimulators = "Borrar también sus simuladores de iOS"
+    override val alsoDeleteSimulators = "Borrar también los simuladores de iOS de los worktrees que se eliminan y los simuladores huérfanos de ShogunAi"
     override fun orphanedSimulators(names: List<String>) =
         "Simuladores cuyo worktree ya no existe, que también se borran: ${names.joinToString()}"
     override fun simulatorsDeleted(count: Int) = if (count == 1) "1 simulador borrado" else "$count simuladores borrados"
@@ -145,9 +145,9 @@ object SpanishStrings : Strings {
     override val emulatorRunning = "en marcha"
     override val startEmulator = "Arrancar"
     override val stopEmulator = "Parar"
-    override val alsoStopEmulators = "Parar también sus emuladores"
+    override val alsoStopEmulators = "Parar también los emuladores de los worktrees que se eliminan"
     override fun emulatorsStopped(count: Int) = if (count == 1) "1 emulador parado" else "$count emuladores parados"
-    override val alsoStopIdleGradleDaemons = "Parar también sus daemons de Gradle ociosos"
+    override val alsoStopIdleGradleDaemons = "Parar también los daemons de Gradle ociosos de los worktrees que se eliminan"
     override val gradleDaemonsTitle = "Daemons de Gradle"
     override fun gradleDaemonsSummary(count: Int, totalMemory: String) =
         (if (count == 1) "1 daemon" else "$count daemons") + " · $totalMemory"

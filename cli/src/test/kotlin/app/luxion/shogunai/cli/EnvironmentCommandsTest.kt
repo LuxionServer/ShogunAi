@@ -118,6 +118,7 @@ class EnvironmentCommandsTest {
         assertEquals(0, exitCode, err.toString())
         assertEquals("UDID-1 booted  ShogunAi · main-repo · TASK-123\n", out.toString())
         assertEquals("ShogunAi · main-repo · TASK-123", appleSimulators.created.single().name)
+        assertEquals(listOf("UDID-1"), appleSimulators.shown)
     }
 
     @Test
@@ -138,6 +139,16 @@ class EnvironmentCommandsTest {
 
         assertEquals(0, cli(withSimulator()).run(listOf("simulator", "stop")))
         assertEquals("UDID-1 shutdown  ShogunAi · main-repo · TASK-123\n", out.toString())
+    }
+
+    @Test
+    fun `simulator status says nothing about KMP outside Kotlin Multiplatform`() {
+        kmpTestWiring.nonMultiplatformRepositories = setOf(base)
+        cli(withSimulator()).run(listOf("simulator", "start"))
+        out.clear()
+
+        assertEquals(0, cli(withSimulator()).run(listOf("simulator", "status")))
+        assertEquals("UDID-1 booted  ShogunAi · main-repo · TASK-123\n", out.toString())
     }
 
     @Test
@@ -210,6 +221,7 @@ class EnvironmentCommandsTest {
         assertEquals(0, exitCode, err.toString())
         assertEquals("export ANDROID_SERIAL='emulator-5554'\n", envFile.readText())
         assertTrue(out.contains("ANDROID_SERIAL=emulator-5554; start it with 'shogun emulator start'"), out.toString())
+        assertTrue(out.contains("never run 'adb kill-server' or 'adb start-server'"), out.toString())
         assertEquals(0, androidSdk.locates)
     }
 

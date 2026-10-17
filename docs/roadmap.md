@@ -22,6 +22,27 @@ graph LR
 
 ## Planned
 
+### Worktree screen redesign
+
+With every provider on, a worktree row now carries status, origin, agents, size, ports, emulator and simulator, and the screen also holds the Gradle daemon and DerivedData sections. A redesign of the screen:
+
+- Rows that don't crowd or cut their buttons, with the branch as the main label and the folder as secondary information.
+- Emulator and simulator lines only where they're relevant (running, or on demand), instead of on every row of a repository that declares the provider.
+- A better place for the Gradle daemons and DerivedData sections than the bottom of the worktree list.
+- A direct way to edit the project from its worktree screen.
+
+### Providers configuration screen
+
+Providers, `env` and `envFile` are declared by editing `.shogunai.json` by hand, which few users will do. A configuration screen to turn providers on and set their options (Gradle heap and idle timeout, preferred AVD, simulator device, Xcode compilation cache) and the per-worktree environment, writing the repository's file like the local files move already does.
+
+### Understandable errors
+
+Errors are often shown as raw command output (a Git or `simctl` message with its exit code). Each error should say in plain words what failed and what to do next, keeping the raw output available for those who need it.
+
+### Guided onboarding demo
+
+A first-run walkthrough built on the review done before merging the worktree layer: the app creates a throwaway sample repository with worktrees in every state, and opens an agent with a prepared prompt that walks the user through each feature (status, cleanup, provisioning, the CLI, hooks, environment and providers), one step at a time.
+
 ### Repository configuration
 
 Richer provisioning in the repository's `.shogunai.json`:
@@ -40,6 +61,7 @@ Provisioning for the stacks where a fresh worktree is furthest from building:
 
 - `local.properties`, keystores and `google-services.json`.
 - "Open in Android Studio" on the right worktree.
+- Showing the emulators ShogunAi starts inside Android Studio's Running Devices window, as the ones Android Studio starts itself, so several of them can be arranged in one window. It needs a spike: Android Studio may embed an external emulator started with the options it uses itself.
 
 ### Choosing the base of a new worktree
 

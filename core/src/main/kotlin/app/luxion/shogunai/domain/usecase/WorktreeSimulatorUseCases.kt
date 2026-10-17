@@ -38,6 +38,7 @@ class StartWorktreeSimulatorUseCase(
             pause(pollIntervalMs)
             waited += pollIntervalMs
         }
+        runCatching { simulators.show(udid) }
         WorktreeSimulator(udid, device.name, SimulatorState.BOOTED)
     }
 

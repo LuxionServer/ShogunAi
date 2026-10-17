@@ -123,6 +123,9 @@ class AppContainer {
         override fun isWired(repositoryPath: String): Boolean =
             kmpTestWiring.isWiredInRepository(repositoryPath) || kmpTestWiring.isInitScriptInstalled()
 
+        override fun usesKotlinMultiplatform(repositoryPath: String): Boolean =
+            kmpTestWiring.usesKotlinMultiplatform(repositoryPath)
+
         override fun installInitScript(): Result<Unit> = runCatching { kmpTestWiring.installInitScript() }
 
         override val snippet: String = FileKmpTestWiring.REPOSITORY_SNIPPET
@@ -247,6 +250,7 @@ interface SimulatorSetup {
     fun isAvailable(repositoryPath: String): Boolean
     suspend fun runtimes(): Result<List<SimulatorRuntime>>
     fun isWired(repositoryPath: String): Boolean
+    fun usesKotlinMultiplatform(repositoryPath: String): Boolean
     fun installInitScript(): Result<Unit>
     val snippet: String
     val initScriptPath: String
@@ -256,6 +260,7 @@ interface SimulatorSetup {
             override fun isAvailable(repositoryPath: String) = false
             override suspend fun runtimes(): Result<List<SimulatorRuntime>> = Result.success(emptyList())
             override fun isWired(repositoryPath: String) = false
+            override fun usesKotlinMultiplatform(repositoryPath: String) = false
             override fun installInitScript(): Result<Unit> = Result.success(Unit)
             override val snippet: String = ""
             override val initScriptPath: String = ""

@@ -326,6 +326,7 @@ class ShogunCli(
     }
 
     private fun printKmpWiring(config: ProjectConfig) {
+        if (!kmpTestWiring.usesKotlinMultiplatform(config.baseRepositoryPath)) return
         if (kmpTestWiring.isWiredInRepository(config.baseRepositoryPath) || kmpTestWiring.isInitScriptInstalled()) {
             out.line("KMP simulator tests use this worktree's simulator.")
             return
@@ -428,7 +429,10 @@ class ShogunCli(
         val variables = environment.variables.joinToString(", ") { (name, value) -> "$name=$value" }
         val emulatorHint = environment.variables.toMap()[ANDROID_SERIAL]
             ?.takeIf { provisioningSource.read(repository).providers.emulator != null }
-            ?.let { serial -> ". Its Android emulator is $ANDROID_SERIAL=$serial; start it with 'shogun emulator start' before installing the app or running instrumented tests" }
+            ?.let { serial ->
+                ". Its Android emulator is $ANDROID_SERIAL=$serial; start it with 'shogun emulator start' before installing the app or running instrumented tests. " +
+                    "The adb server is shared with other worktrees' agents: never run 'adb kill-server' or 'adb start-server', and don't pass -s, -e or -d to adb, so every command goes to $ANDROID_SERIAL"
+            }
             .orEmpty()
         val simulatorHint = environment.variables.toMap()[IOS_SIMULATOR_UDID]
             ?.takeIf { provisioningSource.read(repository).providers.iosSimulator != null }

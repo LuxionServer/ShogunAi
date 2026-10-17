@@ -22,6 +22,27 @@ graph LR
 
 ## Planificado
 
+### Rediseño de la pantalla de worktrees
+
+Con todos los providers activos, una fila de worktree lleva ahora estado, origen, agentes, tamaño, puertos, emulador y simulador, y la pantalla tiene además las secciones de daemons de Gradle y de DerivedData. Un rediseño de la pantalla:
+
+- Filas que no se amontonen ni corten sus botones, con la rama como etiqueta principal y la carpeta como información secundaria.
+- Líneas de emulador y simulador solo donde aportan (en marcha, o bajo demanda), en vez de en cada fila de un repositorio que declara el provider.
+- Un sitio mejor para las secciones de daemons de Gradle y DerivedData que el final de la lista de worktrees.
+- Una forma directa de editar el proyecto desde su pantalla de worktrees.
+
+### Pantalla de configuración de providers
+
+Los providers, `env` y `envFile` se declaran editando `.shogunai.json` a mano, y pocos usuarios lo harán. Una pantalla de configuración para activar los providers y fijar sus opciones (heap y tiempo de inactividad de Gradle, AVD preferida, dispositivo del simulador, caché de compilación de Xcode) y el entorno por worktree, escribiendo el fichero del repositorio como ya lo hace mover los archivos locales.
+
+### Errores comprensibles
+
+Los errores se muestran a menudo como la salida en crudo de un comando (un mensaje de Git o de `simctl` con su código de salida). Cada error debería decir con palabras claras qué ha fallado y qué hacer después, manteniendo la salida en crudo disponible para quien la necesite.
+
+### Demo guiada de bienvenida
+
+Un recorrido de primer uso basado en la revisión hecha antes de mergear la capa de worktrees: la app crea un repositorio de ejemplo desechable con worktrees en todos los estados y abre un agente con un prompt preparado que guía al usuario por cada funcionalidad (estado, limpieza, provisionado, el CLI, los hooks, el entorno y los providers), paso a paso.
+
 ### Configuración del repositorio
 
 Provisionado más completo en el `.shogunai.json` del repositorio:
@@ -40,6 +61,7 @@ Provisionado para los stacks en los que un worktree recién creado está más le
 
 - `local.properties`, keystores y `google-services.json`.
 - «Abrir en Android Studio» en el worktree correcto.
+- Mostrar los emuladores que arranca ShogunAi dentro de la ventana Running Devices de Android Studio, como los que arranca el propio Android Studio, para poder ordenar varios en una sola ventana. Necesita un spike: Android Studio podría incrustar un emulador externo arrancado con las mismas opciones que usa él.
 
 ### Elegir la base de un worktree nuevo
 

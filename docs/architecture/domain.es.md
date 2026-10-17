@@ -246,12 +246,14 @@ interface AppleSimulators {
     suspend fun devices(): List<SimulatorDevice>
     suspend fun create(name: String, deviceTypeIdentifier: String, runtimeIdentifier: String): String
     suspend fun boot(udid: String)
+    suspend fun show(udid: String)
     suspend fun shutdown(udid: String)
     suspend fun delete(udid: String)
 }
 
 interface KmpTestWiring {
     fun isWiredInRepository(repositoryPath: String): Boolean
+    fun usesKotlinMultiplatform(repositoryPath: String): Boolean
     fun isInitScriptInstalled(): Boolean
     fun initScriptPath(): String
     fun installInitScript()
@@ -259,7 +261,7 @@ interface KmpTestWiring {
 }
 ```
 
-`AppleSimulators` es todo lo que el provider de simulador de iOS necesita de los simuladores de Xcode, usado solo en macOS y en repositorios que declaran el provider: los runtimes instalados (con los tipos de dispositivo que admite cada uno), los dispositivos existentes con su estado, y crear, arrancar, apagar y borrar uno. Los errores de las herramientas son `AppleToolFailed`. `KmpTestWiring` indica si los scripts de Gradle del repositorio pasan `IOS_SIMULATOR_UDID` a los tests de simulador de KMP, e instala o quita el init script de Gradle para toda la máquina que lo hace en todos los proyectos.
+`AppleSimulators` es todo lo que el provider de simulador de iOS necesita de los simuladores de Xcode, usado solo en macOS y en repositorios que declaran el provider: los runtimes instalados (con los tipos de dispositivo que admite cada uno), los dispositivos existentes con su estado, y crear, arrancar, mostrar en el visor de simuladores de Xcode (Simulator o Device Hub), apagar y borrar uno. Los errores de las herramientas son `AppleToolFailed`. `KmpTestWiring` indica si los scripts de Gradle del repositorio aplican el plugin de Kotlin Multiplatform, si pasan `IOS_SIMULATOR_UDID` a los tests de simulador de KMP, e instala o quita el init script de Gradle para toda la máquina que lo hace en todos los proyectos.
 
 ### `GradleDaemonSource`
 

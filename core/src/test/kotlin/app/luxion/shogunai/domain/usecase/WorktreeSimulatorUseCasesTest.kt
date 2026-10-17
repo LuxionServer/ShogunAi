@@ -144,6 +144,26 @@ class WorktreeSimulatorUseCasesTest {
         assertEquals(FakeAppleSimulators.IOS_18_5.identifier, simulators.created.single().runtime)
         assertEquals(listOf("UDID-1"), simulators.booted)
         assertTrue(pauses.isNotEmpty())
+        assertEquals(listOf("UDID-1"), simulators.shown)
+    }
+
+    @Test
+    fun `starting a booted simulator shows it again`() = runTest {
+        start()(config, task).getOrThrow()
+        start()(config, task).getOrThrow()
+
+        assertEquals(listOf("UDID-1"), simulators.booted)
+        assertEquals(listOf("UDID-1", "UDID-1"), simulators.shown)
+    }
+
+    @Test
+    fun `a window that can't be opened doesn't fail the start`() = runTest {
+        simulators.showFailure = IllegalStateException("Simulator.app not found")
+
+        val simulator = start()(config, task).getOrThrow()
+
+        assertEquals(SimulatorState.BOOTED, simulator.state)
+        assertTrue(simulators.shown.isEmpty())
     }
 
     @Test

@@ -155,8 +155,8 @@ Parallel agents on a KMP or iOS project would otherwise share the same simulator
 Both options are optional preferences used when the machine has them. Each worktree gets a new simulator (created, never cloned: about 17 MB, 360 MB once booted) named `ShogunAi · <repository> · <worktree>`, and `IOS_SIMULATOR_UDID` in its environment. Build for it with `xcodebuild -destination "id=$IOS_SIMULATOR_UDID"`.
 
 ```bash
-shogun simulator start     # create if needed and boot this worktree's simulator, waiting for it
-shogun simulator status    # its state, and whether the KMP tests use it
+shogun simulator start     # create if needed, boot this worktree's simulator and open it (Simulator, or Device Hub in Xcode 27)
+shogun simulator status    # its state, and in a KMP repository whether its tests use it
 shogun simulator stop
 ```
 

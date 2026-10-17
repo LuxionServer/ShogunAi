@@ -76,6 +76,7 @@ private fun AvailableSimulatorSettings(viewModel: ProjectConfigViewModel, state:
         fieldLabel = strings.simulatorDeviceLabel,
         modifier = Modifier.fillMaxWidth(),
     )
+    if (!state.kotlinMultiplatform) return
     if (state.testsWired) {
         Text(strings.simulatorTestsWired, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
     } else {
