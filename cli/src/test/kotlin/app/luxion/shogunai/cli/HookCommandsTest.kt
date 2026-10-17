@@ -116,6 +116,24 @@ class HookCommandsTest {
     }
 
     @Test
+    fun `worktree-create from a session in a linked worktree starts at that worktree's HEAD`() {
+        val linked = "/home/dev/projects/epic-redesign"
+        val executor = Executor(porcelain(linked to "epic/redesign")) { command ->
+            if (command == listOf("git", "rev-parse", "--verify", "--quiet", "HEAD^{commit}")) {
+                CommandResult(command, 0, "epic1234\n", "")
+            } else {
+                null
+            }
+        }
+
+        val exitCode = cli(executor, createInput("TASK-123", cwd = linked)).run(listOf("hook", "worktree-create"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(executor.ran("git", "worktree", "add", "$worktreesRoot/TASK-123", "-b", "feature/TASK-123", "epic1234"))
+        assertTrue(executor.calls.any { it.first.getOrNull(2) == "--verify" && it.second == linked })
+    }
+
+    @Test
     fun `worktree-create without a project uses Claude Code's folder`() {
         val executor = Executor(porcelain())
 

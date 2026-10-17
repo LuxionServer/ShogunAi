@@ -8,9 +8,11 @@ class FakeShellCommandExecutor(
 ) : ShellCommandExecutor {
 
     val executedCommands = mutableListOf<List<String>>()
+    val workingDirectories = mutableListOf<String?>()
 
     override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
         executedCommands += command
+        workingDirectories += workingDirectory
         return responder(command)
     }
 

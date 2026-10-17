@@ -28,6 +28,7 @@ class StringsTest {
             WorktreeError.SecretFileNotFound(listOf("local.properties"), "~/projects/main-repo") to "local.properties",
             WorktreeError.InvalidRepositoryConfig("~/projects/main-repo/.shogunai.json", "unexpected token") to "~/projects/main-repo/.shogunai.json",
             WorktreeError.BranchNotFound("feature/TASK-123") to "feature/TASK-123",
+            WorktreeError.StartPointNotFound("epic/redesign") to "epic/redesign",
             WorktreeError.BranchAlreadyCheckedOut("feature/TASK-123", "~/projects/TASK-123") to "~/projects/TASK-123",
             WorktreeError.ProcessListingFailed(listOf("lsof", "-d", "cwd"), 1) to "lsof -d cwd",
             WorktreeError.NoEmulatorPort(5554, 5584) to "5584",
