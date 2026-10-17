@@ -148,6 +148,12 @@ class WorktreeViewModel(
     var branchType by mutableStateOf(BranchType.FEATURE)
     var createMode by mutableStateOf(CreateMode.NEW_BRANCH)
     var selectedBranch by mutableStateOf<String?>(null)
+    var isCreateDialogOpen by mutableStateOf(false)
+        private set
+    var createError by mutableStateOf<Throwable?>(null)
+        private set
+    var lastCreatedWorktree by mutableStateOf<Worktree?>(null)
+        private set
 
     private var listGeneration = 0
 
@@ -442,18 +448,53 @@ class WorktreeViewModel(
     val isSelectedBranchAvailable: Boolean
         get() = localBranches.any { it.name == selectedBranch && !it.isCheckedOut }
 
-    fun create(taskId: String, branchType: BranchType) {
+    val canCreate: Boolean
+        get() = !isCreating && when (createMode) {
+            CreateMode.NEW_BRANCH -> taskId.isNotBlank() && isTaskIdValid(taskId)
+            CreateMode.EXISTING_BRANCH -> isSelectedBranchAvailable
+        }
+
+    fun openCreateDialog() {
+        if (isCreateDialogOpen) return
+        taskId = ""
+        selectedBranch = null
+        createError = null
+        isCreateDialogOpen = true
+    }
+
+    fun dismissCreateError() {
+        createError = null
+    }
+
+    fun dismissCreateDialog() {
+        if (!isCreating) isCreateDialogOpen = false
+    }
+
+    fun confirmCreate() {
+        if (!canCreate) return
+        when (createMode) {
+            CreateMode.NEW_BRANCH -> create(taskId, branchType)
+            CreateMode.EXISTING_BRANCH -> selectedBranch?.let(::createFromBranch)
+        }
+    }
+
+    fun create(taskId: String, branchType: BranchType) = runCreation { useCases.create(taskId, branchType) }
+
+    private fun runCreation(creation: suspend () -> Result<Worktree>) {
+        if (isCreating) return
+        isCreating = true
+        createError = null
         viewModelScope.launch {
-            isCreating = true
             try {
-                useCases.create(taskId, branchType)
+                creation()
                     .onSuccess { worktree ->
                         worktrees = worktrees + worktree
-                        error = null
+                        lastCreatedWorktree = worktree
                         success = WorktreeSuccess.Created(worktree.path)
+                        isCreateDialogOpen = false
                         loadStatusOf(worktree)
                     }
-                    .onFailure { error = it }
+                    .onFailure { createError = it }
             } finally {
                 isCreating = false
             }
@@ -470,23 +511,7 @@ class WorktreeViewModel(
         }
     }
 
-    fun createFromBranch(branch: String) {
-        viewModelScope.launch {
-            isCreating = true
-            try {
-                useCases.createFromBranch(branch)
-                    .onSuccess { worktree ->
-                        worktrees = worktrees + worktree
-                        error = null
-                        success = WorktreeSuccess.Created(worktree.path)
-                        loadStatusOf(worktree)
-                    }
-                    .onFailure { error = it }
-            } finally {
-                isCreating = false
-            }
-        }
-    }
+    fun createFromBranch(branch: String) = runCreation { useCases.createFromBranch(branch) }
 
     fun remove(worktree: Worktree, branchToDelete: String?, force: Boolean = false) {
         viewModelScope.launch {
@@ -549,6 +574,10 @@ class WorktreeViewModel(
                 openingInHerdr = openingInHerdr - worktree.path
             }
         }
+    }
+
+    fun copyLastCreatedLaunchCommand() {
+        lastCreatedWorktree?.let(::copyLaunchCommand)
     }
 
     fun confirmPendingRemoval() {

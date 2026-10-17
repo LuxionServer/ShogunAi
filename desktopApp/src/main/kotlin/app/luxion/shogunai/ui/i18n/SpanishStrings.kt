@@ -85,7 +85,7 @@ object SpanishStrings : Strings {
 
     override val closeError = "Cerrar error"
     override val closeMessage = "Cerrar mensaje"
-    override val newWorktreeSection = "Nuevo worktree"
+    override val newWorktree = "Nuevo worktree"
     override val newBranchMode = "Rama nueva"
     override val existingBranchMode = "Rama existente"
     override val taskIdLabel = "Id de tarea"
@@ -225,7 +225,8 @@ object SpanishStrings : Strings {
     override fun yearsAgo(count: Long) = if (count == 1L) "hace 1 año" else "hace $count años"
     override val copied = "Copiado"
     override val copyCommand = "Copiar comando"
-    override fun worktreeCreated(path: String) = "Worktree \"$path\" creado"
+    override val copyLaunchCommand = "Copiar comando de lanzamiento"
+    override fun worktreeCreated(folder: String) = "Worktree creado: $folder"
     override val worktreesRepairedAfterMove = "Worktrees reparados tras mover el repositorio"
     override val openInHerdr = "Abrir en Herdr"
     override fun openedInHerdr(name: String) = "\"$name\" abierto en Herdr con su agente"

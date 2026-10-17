@@ -85,7 +85,7 @@ interface Strings {
 
     val closeError: String
     val closeMessage: String
-    val newWorktreeSection: String
+    val newWorktree: String
     val newBranchMode: String
     val existingBranchMode: String
     val taskIdLabel: String
@@ -197,7 +197,8 @@ interface Strings {
     fun yearsAgo(count: Long): String
     val copied: String
     val copyCommand: String
-    fun worktreeCreated(path: String): String
+    val copyLaunchCommand: String
+    fun worktreeCreated(folder: String): String
     val worktreesRepairedAfterMove: String
     val openInHerdr: String
     fun openedInHerdr(name: String): String

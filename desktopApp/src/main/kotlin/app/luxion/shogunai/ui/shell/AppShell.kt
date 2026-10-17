@@ -14,6 +14,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -49,6 +50,7 @@ private val EmptyStateMaxWidth = 420.dp
 @Composable
 fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel) {
     var projectPendingRemoval by remember { mutableStateOf<Project?>(null) }
+    val messages = rememberAppMessages()
     val windowInfo = LocalWindowInfo.current
     LaunchedEffect(windowInfo) {
         snapshotFlow { windowInfo.isWindowFocused }
@@ -74,7 +76,10 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel) {
             )
             VerticalDivider(modifier = Modifier.fillMaxHeight())
             Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                ShellContent(appContainer, viewModel)
+                CompositionLocalProvider(LocalAppMessages provides messages) {
+                    ShellContent(appContainer, viewModel)
+                }
+                AppMessagesHost(messages, modifier = Modifier.align(Alignment.BottomCenter))
             }
         }
     }
@@ -96,7 +101,13 @@ private fun ShellContent(appContainer: AppContainer, viewModel: ShellViewModel) 
     when (val destination = viewModel.destination) {
         null -> EmptyState(onAddProject = viewModel::addProject)
         is ShellDestination.Project -> viewModel.projectFor(destination)?.let { project ->
-            ProjectWorktrees(appContainer, project, destination.previousWorktreesRoot, viewModel.reloadRequests)
+            ProjectWorktrees(
+                appContainer,
+                project,
+                destination.previousWorktreesRoot,
+                viewModel.reloadRequests,
+                viewModel.newWorktreeRequests,
+            )
         }
         is ShellDestination.ProjectSettings -> viewModel.projectFor(destination)?.let { project ->
             key(destination) { ProjectForm(appContainer, viewModel, existingProject = project) }
@@ -111,6 +122,7 @@ private fun ProjectWorktrees(
     project: Project,
     previousWorktreesRoot: String?,
     reloadRequests: Int,
+    newWorktreeRequests: Int,
 ) {
     val viewModelKey = "${project.id}-${project.config.hashCode()}"
     val viewModel = viewModel(key = viewModelKey) {
@@ -129,6 +141,10 @@ private fun ProjectWorktrees(
     val reloadRequestsOnEntry = remember(viewModelKey) { reloadRequests }
     LaunchedEffect(reloadRequests) {
         if (reloadRequests != reloadRequestsOnEntry) viewModel.refresh()
+    }
+    val newWorktreeRequestsOnEntry = remember(viewModelKey) { newWorktreeRequests }
+    LaunchedEffect(newWorktreeRequests) {
+        if (newWorktreeRequests != newWorktreeRequestsOnEntry) viewModel.openCreateDialog()
     }
     WorktreeScreen(
         projectName = project.name,

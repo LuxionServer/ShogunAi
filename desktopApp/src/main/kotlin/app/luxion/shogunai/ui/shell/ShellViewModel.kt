@@ -21,6 +21,9 @@ class ShellViewModel(
         private set
     var reloadRequests by mutableIntStateOf(0)
         private set
+    var newWorktreeRequests by mutableIntStateOf(0)
+        private set
+    val canCreateWorktree: Boolean get() = destination is ShellDestination.Project
     var isWindowNarrow by mutableStateOf(false)
         private set
     private var expandedWhileNarrow by mutableStateOf(false)
@@ -43,6 +46,10 @@ class ShellViewModel(
     fun reload() {
         refresh()
         reloadRequests++
+    }
+
+    fun requestNewWorktree() {
+        if (canCreateWorktree) newWorktreeRequests++
     }
 
     fun selectProject(project: Project) = select(ShellDestination.Project(project.id))

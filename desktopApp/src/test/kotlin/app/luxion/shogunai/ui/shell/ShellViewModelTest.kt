@@ -126,6 +126,19 @@ class ShellViewModelTest {
     }
 
     @Test
+    fun `new worktree is requested only from a project view`() {
+        val viewModel = viewModel()
+        viewModel.selectProject(mobile)
+
+        viewModel.requestNewWorktree()
+        viewModel.addProject()
+        viewModel.requestNewWorktree()
+
+        assertEquals(1, viewModel.newWorktreeRequests)
+        assertFalse(viewModel.canCreateWorktree)
+    }
+
+    @Test
     fun `cancel from the empty state returns to the empty state`() {
         val viewModel = ShellViewModel(FakeProjectRepository(), preferences)
         viewModel.addProject()

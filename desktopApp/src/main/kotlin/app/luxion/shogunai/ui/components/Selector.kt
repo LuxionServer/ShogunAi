@@ -73,6 +73,7 @@ fun <T> DropdownSelector(
     groupBy: (T) -> String? = { null },
     expandedGroups: MutableMap<String, Boolean> = remember { mutableStateMapOf() },
     fieldLabel: String? = null,
+    fieldEnabled: Boolean = true,
 ) {
     var expanded by remember { mutableStateOf(false) }
 
@@ -82,17 +83,18 @@ fun <T> DropdownSelector(
 
     ExposedDropdownMenuBox(
         expanded = expanded,
-        onExpandedChange = { expanded = it },
+        onExpandedChange = { expanded = it && fieldEnabled },
         modifier = modifier,
     ) {
         OutlinedTextField(
             value = selected?.let(label) ?: "",
             onValueChange = {},
             readOnly = true,
+            enabled = fieldEnabled,
             placeholder = { Text(placeholder) },
             label = fieldLabel?.let { { Text(it) } },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth().handPointer(),
+            modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, fieldEnabled).fillMaxWidth().handPointer(fieldEnabled),
         )
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             groupOptions(options, groupBy).forEach { (group, groupOptions) ->

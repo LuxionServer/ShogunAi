@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.AlertDialog
@@ -17,21 +18,14 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
@@ -42,32 +36,24 @@ import app.luxion.shogunai.domain.usecase.classifyOrigin
 import app.luxion.shogunai.domain.usecase.isInactive
 import app.luxion.shogunai.ui.components.DangerButton
 import app.luxion.shogunai.ui.components.DangerTextButton
-import app.luxion.shogunai.ui.components.DropdownSelector
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.Notice
 import app.luxion.shogunai.ui.components.NoticeKind
 import app.luxion.shogunai.ui.components.PrimaryButton
 import app.luxion.shogunai.ui.components.SecondaryButton
-import app.luxion.shogunai.ui.components.SectionCard
-import app.luxion.shogunai.ui.components.SegmentedSelector
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.StatusChip
 import app.luxion.shogunai.ui.components.handPointer
-import app.luxion.shogunai.ui.components.onEnterKey
 import app.luxion.shogunai.ui.components.onNewItemShortcut
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.i18n.worktreeError
+import app.luxion.shogunai.ui.shell.LocalAppMessages
+import app.luxion.shogunai.ui.shell.MessageAction
 import app.luxion.shogunai.ui.theme.ShogunTheme
-import kotlinx.coroutines.delay
 import java.io.File
 import java.time.Instant
-
-private fun CreateMode.label(strings: Strings): String = when (this) {
-    CreateMode.NEW_BRANCH -> strings.newBranchMode
-    CreateMode.EXISTING_BRANCH -> strings.existingBranchMode
-}
 
 @Composable
 fun WorktreeScreen(
@@ -80,37 +66,17 @@ fun WorktreeScreen(
         viewModel.startWatching()
         onDispose { viewModel.stopWatching() }
     }
-    LaunchedEffect(viewModel.createMode) {
-        if (viewModel.createMode == CreateMode.EXISTING_BRANCH) {
-            viewModel.loadLocalBranches()
-        }
-    }
-
-    val branchGroupExpansion = remember { mutableStateMapOf<String, Boolean>() }
-    var isCreateSectionExpanded by remember { mutableStateOf(true) }
-
-    val isTaskIdValid = viewModel.taskId.isNotBlank() && viewModel.isTaskIdValid(viewModel.taskId)
-    val createNewBranchWorktree = {
-        viewModel.create(viewModel.taskId, viewModel.branchType)
-        viewModel.updateTaskId("")
-    }
-    val createFromSelectedBranch = {
-        viewModel.selectedBranch?.let { viewModel.createFromBranch(it) }
-        viewModel.selectedBranch = null
-    }
-    val isCreateEnabled = when (viewModel.createMode) {
-        CreateMode.NEW_BRANCH -> isTaskIdValid
-        CreateMode.EXISTING_BRANCH -> viewModel.isSelectedBranchAvailable
-    }
-    val createWorktree = when (viewModel.createMode) {
-        CreateMode.NEW_BRANCH -> createNewBranchWorktree
-        CreateMode.EXISTING_BRANCH -> createFromSelectedBranch
+    val messages = LocalAppMessages.current
+    LaunchedEffect(viewModel.success) {
+        val success = viewModel.success ?: return@LaunchedEffect
+        messages.show(strings.successMessage(success), success.action(strings, viewModel))
+        viewModel.dismissSuccess()
     }
 
     Column(
         modifier = Modifier.fillMaxSize().padding(Spacing.md)
             .verticalScroll(rememberScrollState())
-            .onNewItemShortcut(enabled = isCreateEnabled && !viewModel.isCreating, action = createWorktree),
+            .onNewItemShortcut(enabled = !viewModel.isCreateDialogOpen) { viewModel.openCreateDialog() },
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -125,7 +91,12 @@ fun WorktreeScreen(
                 SecondaryButton(
                     onClick = { viewModel.refresh() },
                     enabled = !viewModel.isLoading,
+                    modifier = Modifier.padding(end = Spacing.sm),
                 ) { Text(strings.reload) }
+                PrimaryButton(onClick = { viewModel.openCreateDialog() }) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.padding(end = Spacing.sm).size(ButtonIconSize))
+                    Text(strings.newWorktree)
+                }
             }
         }
 
@@ -136,125 +107,6 @@ fun WorktreeScreen(
                 onDismiss = { viewModel.dismissError() },
                 modifier = Modifier.padding(top = Spacing.sm),
             )
-        }
-
-        viewModel.success?.let { success ->
-            val message = when (success) {
-                is WorktreeSuccess.Created -> strings.worktreeCreated(success.path)
-                WorktreeSuccess.RepairedAfterMove -> strings.worktreesRepairedAfterMove
-                is WorktreeSuccess.OpenedInHerdr -> {
-                    val name = File(success.path).name
-                    if (success.focused) strings.focusedInHerdr(name) else strings.openedInHerdr(name)
-                }
-                is WorktreeSuccess.CleanedUp -> listOfNotNull(
-                    strings.worktreesCleanedUp(success.removedCount),
-                    if (success.stoppedDaemons + success.keptDaemons > 0) {
-                        strings.daemonsStopped(success.stoppedDaemons, success.keptDaemons, failed = 0)
-                    } else {
-                        null
-                    },
-                    success.stoppedEmulators.takeIf { it > 0 }?.let(strings::emulatorsStopped),
-                    success.deletedSimulators.takeIf { it > 0 }?.let(strings::simulatorsDeleted),
-                    success.deletedDerivedDataFolders.takeIf { it > 0 }?.let {
-                        strings.derivedDataDeleted(it, formatSize(success.derivedDataBytesFreed))
-                    },
-                ).joinToString(" · ")
-            }
-            LaunchedEffect(success) {
-                delay(4000)
-                viewModel.dismissSuccess()
-            }
-            Notice(
-                kind = NoticeKind.SUCCESS,
-                message = message,
-                onDismiss = { viewModel.dismissSuccess() },
-                modifier = Modifier.padding(top = Spacing.sm),
-            )
-        }
-
-        SectionCard(
-            title = strings.newWorktreeSection,
-            modifier = Modifier.padding(top = Spacing.md),
-            collapsible = true,
-            expanded = isCreateSectionExpanded,
-            onExpandedChange = { isCreateSectionExpanded = it },
-        ) {
-            SegmentedSelector(
-                options = CreateMode.entries,
-                selected = viewModel.createMode,
-                onSelect = { viewModel.createMode = it },
-                label = { it.label(strings) },
-                enabled = !viewModel.isCreating,
-            )
-            when (viewModel.createMode) {
-                CreateMode.NEW_BRANCH -> {
-                    OutlinedTextField(
-                        value = viewModel.taskId,
-                        onValueChange = { viewModel.updateTaskId(it) },
-                        label = { Text(strings.taskIdLabel) },
-                        textStyle = ShogunTheme.typography.data,
-                        singleLine = true,
-                        supportingText = { Text(strings.taskIdHint) },
-                        isError = viewModel.taskId.isNotBlank() && !viewModel.isTaskIdValid(viewModel.taskId),
-                        modifier = Modifier.fillMaxWidth().onEnterKey(enabled = isTaskIdValid, action = createNewBranchWorktree),
-                    )
-                    if (viewModel.taskId.isNotBlank() && !viewModel.isTaskIdValid(viewModel.taskId)) {
-                        Text(
-                            strings.invalidTaskId,
-                            color = ShogunTheme.status.danger.color,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                    SegmentedSelector(
-                        options = BranchType.entries,
-                        selected = viewModel.branchType,
-                        onSelect = { viewModel.branchType = it },
-                        label = { it.prefix },
-                        enabled = !viewModel.isCreating,
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (viewModel.isCreating) {
-                            InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
-                        }
-                        PrimaryButton(
-                            onClick = createWorktree,
-                            enabled = isCreateEnabled && !viewModel.isCreating,
-                        ) {
-                            Text(strings.createWorktree)
-                        }
-                    }
-                }
-                CreateMode.EXISTING_BRANCH -> {
-                    when {
-                        viewModel.isLoadingBranches -> Row(verticalAlignment = Alignment.CenterVertically) {
-                            InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
-                            Text(strings.loadingBranches)
-                        }
-                        viewModel.localBranches.isEmpty() -> Text(strings.noBranchesAvailable)
-                        else -> DropdownSelector(
-                            options = viewModel.localBranches,
-                            selected = viewModel.localBranches.find { it.name == viewModel.selectedBranch },
-                            onSelect = { viewModel.selectedBranch = it.name },
-                            enabled = { !it.isCheckedOut },
-                            label = { if (it.isCheckedOut) strings.branchAlreadyHasWorktree(it.name) else it.name },
-                            placeholder = strings.selectBranchPlaceholder,
-                            groupBy = { it.name.substringBefore('/', strings.otherBranchesGroup) },
-                            expandedGroups = branchGroupExpansion,
-                        )
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (viewModel.isCreating) {
-                            InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
-                        }
-                        PrimaryButton(
-                            onClick = createWorktree,
-                            enabled = isCreateEnabled && !viewModel.isCreating,
-                        ) {
-                            Text(strings.createWorktree)
-                        }
-                    }
-                }
-            }
         }
 
         viewModel.cleanupIssues?.let { report ->
@@ -316,6 +168,10 @@ fun WorktreeScreen(
         if (viewModel.isXcodeRepository) {
             XcodeDerivedDataSection(viewModel, modifier = Modifier.padding(vertical = Spacing.lg))
         }
+    }
+
+    if (viewModel.isCreateDialogOpen) {
+        CreateWorktreeDialog(viewModel)
     }
 
     if (viewModel.isCleanupDialogOpen) {
@@ -448,3 +304,30 @@ private fun WorktreeRow(
 }
 
 private val ButtonIconSize = 18.dp
+
+private fun Strings.successMessage(success: WorktreeSuccess): String = when (success) {
+    is WorktreeSuccess.Created -> worktreeCreated(File(success.path).name)
+    WorktreeSuccess.RepairedAfterMove -> worktreesRepairedAfterMove
+    is WorktreeSuccess.OpenedInHerdr -> {
+        val name = File(success.path).name
+        if (success.focused) focusedInHerdr(name) else openedInHerdr(name)
+    }
+    is WorktreeSuccess.CleanedUp -> listOfNotNull(
+        worktreesCleanedUp(success.removedCount),
+        if (success.stoppedDaemons + success.keptDaemons > 0) {
+            daemonsStopped(success.stoppedDaemons, success.keptDaemons, failed = 0)
+        } else {
+            null
+        },
+        success.stoppedEmulators.takeIf { it > 0 }?.let(::emulatorsStopped),
+        success.deletedSimulators.takeIf { it > 0 }?.let(::simulatorsDeleted),
+        success.deletedDerivedDataFolders.takeIf { it > 0 }?.let {
+            derivedDataDeleted(it, formatSize(success.derivedDataBytesFreed))
+        },
+    ).joinToString(" · ")
+}
+
+private fun WorktreeSuccess.action(strings: Strings, viewModel: WorktreeViewModel): MessageAction? = when (this) {
+    is WorktreeSuccess.Created -> MessageAction(strings.copyLaunchCommand) { viewModel.copyLastCreatedLaunchCommand() }
+    else -> null
+}
