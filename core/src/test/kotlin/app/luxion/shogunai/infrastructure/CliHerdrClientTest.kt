@@ -141,6 +141,11 @@ class CliHerdrClientTest {
             "/home/dev/.local/bin/herdr",
             client(executor, files = setOf("/home/dev/.local/bin/herdr", "/home/dev/.cargo/bin/herdr")).executable(),
         )
+        assertEquals("/opt/homebrew/bin/herdr", client(executor, files = setOf("/opt/homebrew/bin/herdr")).executable())
+        assertEquals(
+            "/home/dev/.cargo/bin/herdr",
+            client(executor, files = setOf("/opt/homebrew/bin/herdr", "/home/dev/.cargo/bin/herdr")).executable(),
+        )
         assertEquals("herdr.exe", client(executor, osName = "Windows 11").executable())
     }
 }
