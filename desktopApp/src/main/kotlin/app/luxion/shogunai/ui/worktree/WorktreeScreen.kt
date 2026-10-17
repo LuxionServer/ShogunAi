@@ -59,6 +59,7 @@ import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.i18n.worktreeError
 import app.luxion.shogunai.ui.theme.ShogunTheme
 import kotlinx.coroutines.delay
+import java.io.File
 import java.time.Instant
 
 private fun CreateMode.label(strings: Strings): String = when (this) {
@@ -158,6 +159,10 @@ fun WorktreeScreen(
             val message = when (success) {
                 is WorktreeSuccess.Created -> strings.worktreeCreated(success.path)
                 WorktreeSuccess.RepairedAfterMove -> strings.worktreesRepairedAfterMove
+                is WorktreeSuccess.OpenedInHerdr -> {
+                    val name = File(success.path).name
+                    if (success.focused) strings.focusedInHerdr(name) else strings.openedInHerdr(name)
+                }
                 is WorktreeSuccess.CleanedUp -> listOfNotNull(
                     strings.worktreesCleanedUp(success.removedCount),
                     if (success.stoppedDaemons + success.keptDaemons > 0) {
@@ -318,7 +323,7 @@ fun WorktreeScreen(
                 worktree = worktree,
                 status = status,
                 mainBranchName = viewModel.mainBranch?.name,
-                origin = classifyOrigin(worktree, projectConfig),
+                origin = classifyOrigin(worktree, projectConfig, viewModel.herdrWorktreesRoot),
                 agents = agents,
                 size = viewModel.sizes[worktree.path],
                 ports = viewModel.ports[worktree.path].orEmpty(),
@@ -336,6 +341,8 @@ fun WorktreeScreen(
                 isCopied = viewModel.copiedWorktreePath == worktree.path,
                 onRemove = { viewModel.requestRemoval(worktree) },
                 onCopyLaunchCommand = { viewModel.copyLaunchCommand(worktree) },
+                isOpeningInHerdr = worktree.path in viewModel.openingInHerdr,
+                onOpenInHerdr = { viewModel.openInHerdr(worktree) },
             )
             HorizontalDivider()
         }
@@ -430,6 +437,8 @@ private fun WorktreeRow(
     isCopied: Boolean,
     onRemove: () -> Unit,
     onCopyLaunchCommand: () -> Unit,
+    isOpeningInHerdr: Boolean,
+    onOpenInHerdr: () -> Unit,
 ) {
     val strings = LocalStrings.current
     Row(
@@ -449,6 +458,13 @@ private fun WorktreeRow(
             }
         }
         Row {
+            if (!worktree.isPrunable) {
+                OutlinedButton(
+                    onClick = onOpenInHerdr,
+                    enabled = !isOpeningInHerdr,
+                    modifier = Modifier.padding(end = Spacing.sm),
+                ) { Text(strings.openInHerdr) }
+            }
             OutlinedButton(onClick = onCopyLaunchCommand, modifier = Modifier.padding(end = Spacing.sm)) {
                 Icon(
                     imageVector = if (isCopied) Icons.Default.Check else Icons.Default.ContentCopy,

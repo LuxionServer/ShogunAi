@@ -33,6 +33,7 @@ sealed interface CliCommand {
     data object HookWorktreeCreate : CliCommand
     data object HookWorktreeRemove : CliCommand
     data object HookSessionStart : CliCommand
+    data object HookHerdr : CliCommand
     data class Emulator(
         val action: EmulatorAction,
         val path: String? = null,
@@ -173,12 +174,13 @@ private fun parseHook(rest: List<String>): CliCommand {
         "worktree-create" -> CliCommand.HookWorktreeCreate
         "worktree-remove" -> CliCommand.HookWorktreeRemove
         "session-start" -> CliCommand.HookSessionStart
+        "herdr" -> CliCommand.HookHerdr
         else -> throw UsageException("unknown hook '$event', expected $HOOK_EVENTS")
     }
     return noArguments("hook $event", rest.drop(1), command)
 }
 
-private const val HOOK_EVENTS = "worktree-create, worktree-remove or session-start"
+private const val HOOK_EVENTS = "worktree-create, worktree-remove, session-start or herdr"
 
 enum class EmulatorAction { START, STOP, STATUS }
 

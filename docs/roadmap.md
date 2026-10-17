@@ -14,6 +14,8 @@ That direction is built in three layers:
 | **Control tower** | The view | The desktop app shows the state of every worktree, including the ones created by other tools, keeps them clean and follows changes as they happen. **Available.** |
 | **Android, KMP and JVM** | The content | Provisioning for the stacks where a worktree is hardest to prepare: Gradle, local secrets, emulators and IDEs. **Started**: Gradle repositories show their daemons, can stop the idle ones and bound the memory and lifetime of the daemons agents start, Android repositories can give each worktree its own emulator, KMP and iOS repositories its own iOS simulator, and Xcode repositories see and clean up their DerivedData and share compilations between worktrees. |
 
+It plugs into the tools that run agents rather than replacing them: Claude Code's worktree and session hooks, and [Herdr](https://herdr.dev), the terminal multiplexer for agents, whose worktrees a ShogunAi plugin provisions and where the desktop app opens a worktree with its environment and agent. **Available.**
+
 ```mermaid
 graph LR
     A["Repository configuration"] --> B["Command-line output for scripts"]
@@ -75,6 +77,7 @@ Today a new branch starts from the base repository's `HEAD`, so creating a workt
 Copying the launch command stays as the default, but the app could also open it directly with reliable, specific integrations instead of a generic terminal launch:
 
 - Terminals: iTerm2 and Terminal on macOS, Windows Terminal, tmux and Zellij.
+- Herdr's agent status (working, blocked, done) in each worktree row, read from its API, now that worktrees can be opened in Herdr.
 - "Open in IDE" (VS Code, IntelliJ IDEA, Android Studio) and "Open folder".
 
 ### Multi-agent mode

@@ -62,6 +62,26 @@ Claude Code solo ejecuta los hooks de proyecto de un repositorio cuando has acep
 
 El worktree nuevo parte del commit actual del checkout principal, como los worktrees creados desde ShogunAi, y el ajuste `worktree.baseRef` de Claude Code no se aplica. Comprobado con Claude Code 2.1.301.
 
+## Herdr
+
+[Herdr](https://herdr.dev) es un multiplexor de terminal para agentes de IA: mantiene sus sesiones en segundo plano y muestra cuál está trabajando, bloqueado o ha terminado. Herdr ejecuta los agentes y ShogunAi crea y prepara los worktrees en los que trabajan.
+
+**Flujo recomendado.** Crea el worktree desde ShogunAi (la app de escritorio o `shogun new`), para que quede en la carpeta de worktrees del proyecto, provisionado, con sus puertos y su entorno. Después usa la acción "Abrir en Herdr" de su fila en la app de escritorio: Herdr lo abre como worktree de su repositorio, agrupado bajo el espacio del repositorio como su propio "Open worktree…", enfocado, con un único panel cuya shell ya tiene el entorno del worktree (`PORT`, `ANDROID_SERIAL`, …, todo lo que imprime `shogun env`), y ejecuta ahí el comando del agente del proyecto, el mismo que copia "Copiar comando". Si Herdr ya tiene ese worktree abierto, la acción solo lo enfoca y no escribe nada en sus paneles. El servidor de Herdr tiene que estar en marcha (`herdr`); la acción llama directamente a `herdr` y no necesita `shogun` en ningún `PATH`.
+
+No uses el "New worktree" de Herdr (ni `herdr worktree create`) en proyectos de ShogunAi: Herdr coloca siempre esos checkouts en su propia carpeta (`~/.herdr/worktrees/<repo>/<rama>`, o el `[worktrees] directory` de su `config.toml`), fuera de la carpeta de worktrees del proyecto, y ShogunAi los muestra con el origen Herdr.
+
+**Camino de rescate: el plugin de ShogunAi para Herdr.** Para los worktrees que se creen desde Herdr de todos modos, por error o porque un agente usa la API de Herdr, instala una vez el plugin:
+
+```bash
+herdr plugin install LuxionServer/ShogunAi/integrations/herdr
+```
+
+En cada worktree que crea Herdr ejecuta `shogun hook herdr`, que lo provisiona igual que `shogun provision`: ficheros de `.shogunai.json` y `.worktreeinclude`, los ficheros locales de tu proyecto, puertos reservados y `envFile`. Cuando el repositorio tiene un proyecto de ShogunAi y el worktree queda fuera de su carpeta de worktrees, además muestra una notificación de Herdr que lo avisa y recomienda crear los worktrees desde ShogunAi.
+
+- El plugin ejecuta `shogun`, así que tiene que estar en el `PATH` de la shell desde la que arrancas Herdr (el servidor en segundo plano de Herdr conserva el entorno de esa shell; reinícialo con `herdr server stop` después de instalar `shogun`). `herdr plugin log` muestra cada ejecución con los ficheros copiados, o el error.
+- Herdr abre el workspace nuevo un instante antes de que se ejecute el plugin; un agente que arranques al momento podría encontrarse los ficheros todavía copiándose.
+- El plugin no escribe nada en la shell del workspace nuevo. Sus variables llegan a los agentes por los caminos de siempre: el hook `SessionStart` de Claude Code de arriba, el `envFile` o `direnv` (ver más abajo).
+
 ## Cursor
 
 Los agentes en paralelo de Cursor ejecutan los comandos de configuración de `.cursor/worktrees.json` dentro de cada worktree nuevo. Provisiónalo ahí:
