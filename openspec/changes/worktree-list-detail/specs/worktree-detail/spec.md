@@ -40,11 +40,15 @@ The detail pane SHALL show the selected worktree's branch (or that it is detache
 - **THEN** the worktree's full path is copied to the clipboard
 
 ### Requirement: Detail actions
-The detail pane SHALL offer "Copy launch command" as its primary action and, for every worktree except the main one, a "Delete worktree" action styled as destructive.
+The detail pane SHALL offer "Copy launch command" as its primary action, "Open in Herdr" as a secondary action that is disabled with a loading indicator while that worktree is being opened, and, for every worktree except the main one, a "Delete worktree" action styled as destructive.
 
 #### Scenario: Main worktree
 - **WHEN** the main worktree is selected
-- **THEN** the detail offers "Copy launch command" and no delete action
+- **THEN** the detail offers "Copy launch command" and "Open in Herdr", and no delete action
+
+#### Scenario: Opening in Herdr
+- **WHEN** the user activates "Open in Herdr" in the detail and Herdr hasn't answered yet
+- **THEN** the action shows a loading indicator and is disabled until the opening finishes
 
 ### Requirement: Project summary when nothing is selected
 When no worktree is selected, the detail pane SHALL show the project's summary: the number of worktrees, their total size, and how many can be cleaned up, with the "Clean up" action when there are any.
@@ -54,7 +58,7 @@ When no worktree is selected, the detail pane SHALL show the project's summary: 
 - **THEN** the detail pane shows five worktrees, their total size and two to clean up with a "Clean up" action
 
 ### Requirement: Row quick actions
-Hovering a row SHALL reveal a copy-launch-command icon action. Each row SHALL have a context menu with "Copy launch command", "Copy path" and, except for the main worktree, "Delete worktree".
+Hovering a row SHALL reveal a copy-launch-command icon action. Each row SHALL have a context menu with "Copy launch command", "Open in Herdr", "Copy path" and, except for the main worktree, "Delete worktree".
 
 #### Scenario: Copy from the row
 - **WHEN** the user hovers a row and activates its copy icon
@@ -62,7 +66,7 @@ Hovering a row SHALL reveal a copy-launch-command icon action. Each row SHALL ha
 
 #### Scenario: Context menu
 - **WHEN** the user opens the context menu of a non-main worktree's row
-- **THEN** it offers copy launch command, copy path and delete worktree
+- **THEN** it offers copy launch command, open in Herdr, copy path and delete worktree
 
 ### Requirement: Keyboard shortcuts on the selected worktree
 With a worktree selected, Cmd/Ctrl+Shift+C SHALL copy its launch command, and Cmd/Ctrl+Backspace SHALL open the delete confirmation for it unless it is the main worktree. Escape SHALL clear the selection.

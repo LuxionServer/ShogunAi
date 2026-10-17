@@ -8,17 +8,17 @@
 ## 2. Selection and actions in the ViewModel
 
 - [ ] 2.1 Add `selectedWorktreePath`, `select(path)`, `clearSelection()`, `selectNext()`/`selectPrevious()` and clearing of a path that's no longer listed after each load; verify with `WorktreeViewModelTest` cases for keeping the selection across a reload, clearing it when the worktree disappears, and moving past the ends.
-- [ ] 2.2 Add `actionErrors` per worktree path for start/stop emulator, start/stop simulator and copy failures, dismissible per worktree; verify with a `WorktreeViewModelTest` case that a failed emulator start sets the worktree's error and leaves the view-wide `error` empty.
+- [ ] 2.2 Add `actionErrors` per worktree path for start/stop emulator, start/stop simulator, copy and open-in-Herdr failures, dismissible per worktree; verify with a `WorktreeViewModelTest` case that a failed emulator start sets the worktree's error and leaves the view-wide `error` empty.
 
 ## 3. List pane
 
-- [ ] 3.1 Build `WorktreeRow` from the row model (indicator, monospaced branch, folder and origin, chips, relative time) with `Modifier.interactive`, selection background, hover copy `IconAction` and `ContextMenuArea`; verify in the running app with worktrees in every state.
+- [ ] 3.1 Build `WorktreeRow` from the row model (indicator, monospaced branch, folder and origin, chips, relative time) with `Modifier.interactive`, selection background, hover copy `IconAction` and `ContextMenuArea` (copy launch command, open in Herdr, copy path, delete for non-main worktrees); verify in the running app with worktrees in every state.
 - [ ] 3.2 Replace the `Column` + `forEach` with a `LazyColumn` keyed by path, with keyboard navigation and `animateScrollToItem`; verify in the running app that arrows move the selection and keep it visible, and that auto refresh doesn't reset the scroll.
 - [ ] 3.3 Rebuild the project header (name, "New worktree", "Clean up", "Project settings", reload) and wire "Project settings" to the shell's `ProjectSettings` destination; verify in the running app that it opens the project's configuration.
 
 ## 4. Detail pane
 
-- [ ] 4.1 Build `WorktreeDetailPane` with its header, action row and sections, omitting sections without content and showing devices only for repositories that declare the provider; verify in the running app with a repository that declares no provider and with one that declares the emulator provider.
+- [ ] 4.1 Build `WorktreeDetailPane` with its header, action row (copy launch command, open in Herdr with its loading state, delete) and sections, omitting sections without content and showing devices only for repositories that declare the provider; verify in the running app with a repository that declares no provider and with one that declares the emulator provider.
 - [ ] 4.2 Build `ProjectSummary` for the empty selection (count, total size, cleanup candidates with "Clean up"); verify in the running app.
 - [ ] 4.3 Add the overlay layout below 760 dp of content width, closing with Escape; verify in the running app at 700 dp and 1200 dp of content width, with the sidebar expanded and as a rail.
 - [ ] 4.4 Add Cmd/Ctrl+Shift+C, Cmd/Ctrl+Backspace and Escape as menu-bound shortcuts while a project view is active; verify in the running app, including that Cmd+Backspace does nothing on the main worktree and inside a text field.

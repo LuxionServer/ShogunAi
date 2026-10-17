@@ -8,8 +8,8 @@ With every provider on, a worktree row stacks up to six lines of small grey text
 
 - The worktree view becomes a list and a detail pane side by side. **BREAKING** (UI): rows lose their buttons and extra lines.
 - Each row is one line: a status indicator, the branch as the main label (monospaced), the folder name and origin as secondary text, and compact chips only for states that matter (agent running, uncommitted changes, ahead/behind, merged, inactive, locked, folder missing, device running), plus the last commit time. The main worktree is pinned first and marked.
-- Selecting a row (click or arrow keys) shows its detail: branch and full path (selectable, with copy), origin, full status, running agents, size, reserved ports, emulator and simulator controls (only for repositories that declare the provider), and the actions: copy launch command (primary) and delete (danger, not for the main worktree).
-- Row hover shows a copy-launch-command icon. A context menu offers copy launch command, copy path and delete. Keyboard: arrows move the selection, Cmd/Ctrl+Shift+C copies the launch command and Cmd/Ctrl+Backspace asks to delete.
+- Selecting a row (click or arrow keys) shows its detail: branch and full path (selectable, with copy), origin, full status, running agents, size, reserved ports, emulator and simulator controls (only for repositories that declare the provider), and the actions: copy launch command (primary), open in Herdr (secondary) and delete (danger, not for the main worktree).
+- Row hover shows a copy-launch-command icon. A context menu offers copy launch command, open in Herdr, copy path and delete. Keyboard: arrows move the selection, Cmd/Ctrl+Shift+C copies the launch command and Cmd/Ctrl+Backspace asks to delete.
 - With nothing selected, the detail pane shows the project's summary: worktree count, total size and cleanup candidates.
 - On narrow windows the detail pane opens over the list and closes with Escape.
 - The project view's header gets "Project settings", the roadmap's "direct way to edit the project from its worktree screen".
@@ -27,6 +27,7 @@ With every provider on, a worktree row stacks up to six lines of small grey text
 - `worktree-overview`: origin, size and ports move to the detail. Agents, inactivity and running devices show as row indicators with full information in the detail. Emulator and simulator controls live in the detail.
 - `worktree-status`: rows show a compact status, and the detail shows the full status.
 - `worktree-terminal-launch`: the launch command is copied from the detail, the row's hover action, the context menu or the keyboard.
+- `herdr-integration`: "Open in Herdr" moves from the row to the detail and the row's context menu.
 
 ## Impact
 
