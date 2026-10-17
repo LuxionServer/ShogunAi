@@ -22,22 +22,29 @@ graph LR
 
 ## Planificado
 
-### Rediseño de la pantalla de worktrees
+### Rediseño de la app de escritorio
 
-Con todos los providers activos, una fila de worktree lleva ahora estado, origen, agentes, tamaño, puertos, emulador y simulador, y la pantalla tiene además las secciones de daemons de Gradle y de DerivedData. Un rediseño de la pantalla:
+En curso en la rama `epic/ui-redesign`. La app de escritorio ha crecido funcionalidad a funcionalidad sin un diseño: un proyecto cada vez, filas de worktree abarrotadas, los recursos de la máquina al final de la lista de un proyecto y errores mostrados como la salida en crudo de un comando. El rediseño la convierte en una torre de control organizada en tres paneles:
 
-- Filas que no se amontonen ni corten sus botones, con la rama como etiqueta principal y la carpeta como información secundaria.
-- Líneas de emulador y simulador solo donde aportan (en marcha, o bajo demanda), en vez de en cada fila de un repositorio que declara el provider.
-- Un sitio mejor para las secciones de daemons de Gradle y DerivedData que el final de la lista de worktrees.
-- Una forma directa de editar el proyecto desde su pantalla de worktrees.
+- **Barra lateral**: "Activos" (la vista principal: los worktrees con un agente trabajando, trabajo esperándote o todavía en curso, de todos los proyectos), "Todos los worktrees" (todos los proyectos; al elegir un proyecto se filtra la vista), los proyectos, y una sección "Máquina" con los daemons de Gradle, los emuladores de Android, los simuladores de iOS y los DerivedData de Xcode de todos los proyectos.
+- **Lista**: una línea por worktree, con la rama como etiqueta e indicadores compactos para lo que importa.
+- **Detalle**: todo sobre el worktree seleccionado y sus acciones.
 
-### Pantalla de configuración de providers
+Está planificado en estos cambios de OpenSpec, que se implementan en este orden:
 
-Los providers, `env` y `envFile` se declaran editando `.shogunai.json` a mano, y pocos usuarios lo harán. Una pantalla de configuración para activar los providers y fijar sus opciones (heap y tiempo de inactividad de Gradle, AVD preferida, dispositivo del simulador, caché de compilación de Xcode) y el entorno por worktree, escribiendo el fichero del repositorio como ya lo hace mover los archivos locales.
+1. `ui-design-foundations`: un sistema de color completo con un único significado por color de estado, contraste comprobado, fuentes incluidas con un estilo monoespaciado para datos y componentes compartidos.
+2. `app-shell-layout`: la ventana con barra lateral, menú de la aplicación, Preferencias y Acerca de, en lugar de la pantalla de lista de proyectos.
+3. `create-worktree-dialog`: crear un worktree en un diálogo (Cmd/Ctrl+N) que después ofrece copiar el comando de lanzamiento.
+4. `worktree-list-detail`: filas de una línea y un panel de detalle, con la configuración del proyecto accesible desde su vista.
+5. `all-worktrees-view`: los worktrees de todos los proyectos en una vista, con filtros por proyecto y por texto.
+6. `active-worktrees-view`: la vista "Activos", la agrupación por estado y los contadores de actividad en la barra lateral.
+7. `machine-resources-view`: la sección "Máquina", que sustituye a las secciones de Gradle y DerivedData de la vista del proyecto.
+8. `project-settings-view`: la configuración del proyecto en secciones con una barra de guardado, y añadir un proyecto a partir de la carpeta de su repositorio.
+9. `providers-configuration`: activar los providers, fijar sus opciones y el entorno por worktree desde la configuración, escribiendo `.shogunai.json`.
+10. `understandable-errors`: cada error dice qué ha fallado y qué hacer después, con la salida técnica guardada en "Detalles técnicos".
+11. `command-palette`: Cmd/Ctrl+K para saltar a cualquier vista, proyecto o worktree, o ejecutar una acción.
 
-### Errores comprensibles
-
-Los errores se muestran a menudo como la salida en crudo de un comando (un mensaje de Git o de `simctl` con su código de salida). Cada error debería decir con palabras claras qué ha fallado y qué hacer después, manteniendo la salida en crudo disponible para quien la necesite.
+Cada cambio quita su línea de esta lista cuando se archiva.
 
 ### Demo guiada de bienvenida
 
@@ -84,7 +91,6 @@ Hay quien alterna entre agentes de IA en una misma tarea, por ejemplo cuando a u
 ### Ergonomía de escritorio
 
 - Icono en la barra de menús / bandeja del sistema con los proyectos y worktrees recientes.
-- Paleta de comandos (`⌘K` / `Ctrl+K`) para saltar a cualquier proyecto o worktree.
 
 ### Distribución
 
