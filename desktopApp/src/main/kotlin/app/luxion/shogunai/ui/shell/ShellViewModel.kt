@@ -52,6 +52,13 @@ class ShellViewModel(
         if (canCreateWorktree) newWorktreeRequests++
     }
 
+    var worktreeActions by mutableStateOf<WorktreeActions?>(null)
+        private set
+
+    fun updateWorktreeActions(actions: WorktreeActions?) {
+        worktreeActions = actions
+    }
+
     fun selectProject(project: Project) = select(ShellDestination.Project(project.id))
 
     fun addProject() = openForm(ShellDestination.AddProject)
@@ -112,3 +119,9 @@ class ShellViewModel(
 
     private fun loadProjects(): List<Project> = projectRepository.list().sortedBy { it.name.lowercase() }
 }
+
+data class WorktreeActions(
+    val onCopySelectedLaunchCommand: () -> Unit,
+    val onDeleteSelectedWorktree: () -> Unit,
+    val onClearSelection: () -> Unit,
+)

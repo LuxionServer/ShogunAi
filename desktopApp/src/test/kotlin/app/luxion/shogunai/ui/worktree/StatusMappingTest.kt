@@ -2,6 +2,7 @@ package app.luxion.shogunai.ui.worktree
 
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.SimulatorState
+import app.luxion.shogunai.ui.i18n.EnglishStrings
 import app.luxion.shogunai.ui.theme.Status
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -9,17 +10,16 @@ import kotlin.test.assertEquals
 class StatusMappingTest {
 
     @Test
-    fun `worktree indicators follow the status table`() {
+    fun `row indicators follow the status table`() {
         assertEquals(
             mapOf(
-                WorktreeIndicator.MERGED to Status.SUCCESS,
-                WorktreeIndicator.UNCOMMITTED_CHANGES to Status.WARNING,
-                WorktreeIndicator.INACTIVE to Status.WARNING,
-                WorktreeIndicator.AGENT_RUNNING to Status.INFO,
-                WorktreeIndicator.FOLDER_MISSING to Status.DANGER,
-                WorktreeIndicator.LOCKED to Status.NEUTRAL,
+                RowIndicator.FOLDER_MISSING to Status.DANGER,
+                RowIndicator.AGENT_RUNNING to Status.INFO,
+                RowIndicator.UNCOMMITTED_CHANGES to Status.WARNING,
+                RowIndicator.MERGED to Status.SUCCESS,
+                RowIndicator.INACTIVE to Status.NEUTRAL,
             ),
-            WorktreeIndicator.entries.associateWith { it.status() },
+            RowIndicator.entries.associateWith { it.status },
         )
     }
 
@@ -32,6 +32,18 @@ class StatusMappingTest {
         assertEquals(
             listOf(Status.SUCCESS, Status.INFO, Status.NEUTRAL),
             listOf(SimulatorState.BOOTED, SimulatorState.BOOTING, SimulatorState.SHUTDOWN).map { it.status() },
+        )
+    }
+
+    @Test
+    fun `device state labels are translated`() {
+        assertEquals(
+            listOf("stopped", "booting", "running"),
+            listOf(EmulatorState.STOPPED, EmulatorState.BOOTING, EmulatorState.RUNNING).map { emulatorStateLabel(it, EnglishStrings) },
+        )
+        assertEquals(
+            listOf("shut down", "booting", "booted"),
+            listOf(SimulatorState.SHUTDOWN, SimulatorState.BOOTING, SimulatorState.BOOTED).map { simulatorStateLabel(it, EnglishStrings) },
         )
     }
 }

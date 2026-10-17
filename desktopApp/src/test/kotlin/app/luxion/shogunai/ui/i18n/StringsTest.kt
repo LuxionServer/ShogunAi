@@ -20,6 +20,33 @@ class StringsTest {
     }
 
     @Test
+    fun `the worktree list strings are translated and differ between languages`() {
+        val english = EnglishStrings
+        val spanish = SpanishStrings
+
+        assertEquals("Worktree", english.menuWorktree)
+        assertEquals("Worktree", spanish.menuWorktree)
+        assertNotEquals(english.mainWorktree, spanish.mainWorktree)
+        assertEquals("main", english.mainWorktree)
+        assertEquals("Copy path", english.copyPath)
+        assertNotEquals(english.copyPath, spanish.copyPath)
+        assertEquals("Status", english.statusTitle)
+        assertNotEquals(english.statusTitle, spanish.statusTitle)
+        assertEquals("Agents", english.agentsTitle)
+        assertNotEquals(english.agentsTitle, spanish.agentsTitle)
+        assertEquals("Environment", english.environmentTitle)
+        assertNotEquals(english.environmentTitle, spanish.environmentTitle)
+        assertEquals("Devices", english.devicesTitle)
+        assertNotEquals(english.devicesTitle, spanish.devicesTitle)
+        assertEquals("Disk", english.diskTitle)
+        assertNotEquals(english.diskTitle, spanish.diskTitle)
+        assertEquals("Delete worktree", english.deleteWorktree)
+        assertNotEquals(english.deleteWorktree, spanish.deleteWorktree)
+        assertEquals("Clear selection", english.clearSelection)
+        assertNotEquals(english.clearSelection, spanish.clearSelection)
+    }
+
+    @Test
     fun `domain errors are translated and keep their data`() {
         val errors = listOf(
             WorktreeError.BaseRepositoryNotFound("~/projects/main-repo") to "~/projects/main-repo",
