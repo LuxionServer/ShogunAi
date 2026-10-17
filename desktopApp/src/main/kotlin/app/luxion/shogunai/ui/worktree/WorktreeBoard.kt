@@ -331,7 +331,9 @@ class WorktreeBoard(
         cleanupStopEmulators = true
         cleanupDeleteSimulators = true
         cleanupDeleteDerivedData = true
-        cleanupScope = cleanupTargets(projectId)
+        cleanupScope = cleanupTargets(projectId).also { targets ->
+            targets.forEach { holder(it)?.lookUpCleanupCandidatesInHerdr() }
+        }
     }
 
     fun dismissCleanup() {

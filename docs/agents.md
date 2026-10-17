@@ -78,6 +78,10 @@ herdr plugin install LuxionServer/ShogunAi/integrations/herdr
 
 On every worktree Herdr creates, it runs `shogun hook herdr`, which provisions it like `shogun provision` does: files from `.shogunai.json` and `.worktreeinclude`, your project's local files, reserved ports and `envFile`. When the repository has a ShogunAi project and the worktree is outside its worktrees folder, it also shows a Herdr notification saying so and recommending creating worktrees from ShogunAi.
 
+The plugin also listens to `worktree.removed`: when you remove a worktree from Herdr ("Remove worktree" or `herdr worktree remove`) in a repository with a ShogunAi project, `shogun hook herdr` deletes its branch if Git considers it merged, and keeps it otherwise, the same as removing from ShogunAi does. Run `herdr plugin update` to get this on an existing install.
+
+The other way round needs no plugin: removing a worktree from ShogunAi (the row's remove action, "Clean up", `shogun clean --yes` or Claude Code's removal) also closes its Herdr workspace, and the agent running there, once the worktree is removed. The dialogs say beforehand which worktrees are open in Herdr; if Herdr isn't installed or running, nothing changes, and if closing the workspace fails, the removal still counts and a warning shows Herdr's message.
+
 - The plugin runs `shogun`, so it must be on the `PATH` of the shell you start Herdr from (Herdr's background server keeps that shell's environment; restart it with `herdr server stop` after installing `shogun`). `herdr plugin log` shows each run with the files it copied, or the error.
 - Herdr opens the new workspace a moment before the plugin runs; an agent you start instantly could find the files still being copied.
 - The plugin doesn't type anything into the new workspace's shell. Its variables reach agents the usual way: Claude Code's `SessionStart` hook above, the `envFile`, or `direnv` (see below).

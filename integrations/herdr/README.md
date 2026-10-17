@@ -14,6 +14,8 @@ herdr plugin install LuxionServer/ShogunAi/integrations/herdr
 
 On Herdr's `worktree.created` event it runs `shogun hook herdr`, which provisions the new worktree exactly like `shogun provision <path>`: the files declared in the repository's `.shogunai.json` and `.worktreeinclude`, the local files of its ShogunAi project, its reserved ports and its environment file. When the repository has a ShogunAi project and the worktree is outside its worktrees folder, it also shows a Herdr notification recommending creating worktrees from ShogunAi.
 
+On Herdr's `worktree.removed` event (removing a worktree from Herdr's UI or `herdr worktree remove`) it runs the same command, which deletes the removed worktree's branch if Git considers it merged and keeps it otherwise, only in repositories with a ShogunAi project. Existing installs get this with `herdr plugin update`.
+
 Each run, with the files it copied or its error, shows up in:
 
 ```bash

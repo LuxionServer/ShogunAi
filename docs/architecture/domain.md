@@ -287,10 +287,12 @@ interface HerdrClient {
     suspend fun splitPane(paneId: String, cwd: String, environment: List<Pair<String, String>>): String
     suspend fun closePane(paneId: String)
     suspend fun runInPane(paneId: String, command: String)
+    suspend fun openWorktreeWorkspaces(repository: String): Map<String, String>
+    suspend fun closeWorkspace(workspaceId: String)
 }
 ```
 
-The few [Herdr](https://herdr.dev) operations ShogunAi uses to open a worktree there: open an existing worktree as a focused workspace grouped under its repository (or focus it if it's already open), split a pane into a focused one whose shell starts in a directory with extra variables, close a pane, and submit a command in a pane. Pane ids aren't stored, since Herdr renumbers them when panes move. Errors are `HerdrNotInstalled` and `HerdrCommandFailed`.
+The few [Herdr](https://herdr.dev) operations ShogunAi uses to open a worktree there and to close it again: `openWorktreeWorkspaces` returns, for the worktrees of a repository that Herdr has open, their path and workspace id; `closeWorkspace` closes a workspace and the processes in its panes. The rest: open an existing worktree as a focused workspace grouped under its repository (or focus it if it's already open), split a pane into a focused one whose shell starts in a directory with extra variables, close a pane, and submit a command in a pane. Pane ids aren't stored, since Herdr renumbers them when panes move. Errors are `HerdrNotInstalled` and `HerdrCommandFailed`.
 
 ### `GradleDaemonSource`
 
@@ -331,7 +333,7 @@ The worktree use cases are built per project (they receive its `ProjectConfig`) 
 Creates a worktree on a **new** branch `<type>/<taskId>`. The task id is normalized first (`normalizeTaskId`: trimmed, whitespace runs replaced with `-`) and validated as a Git ref segment. Then, in this order:
 
 1. **Upfront validations** (base repo exists, destination free, local files present) and **resolving the repository's files** — done *before* touching Git so as not to leave a half-done worktree.
-2. `git worktree add <path> -b <branch>`.
+2. `git worktree add <path> -b <branch> [<startPoint>]`. The caller resolves the optional start point to a commit id with `ResolveStartPointUseCase` (`git rev-parse --verify --quiet <ref>^{commit}` in its own directory, failing with `StartPointNotFound`), so `HEAD` means the worktree the command runs in even though Git runs in the base repository. Without one (the desktop app), the branch starts at the base repository's HEAD.
 3. Copying the local files and then the repository's files into the new directory, at the same relative paths.
 4. Preparing its environment through the `WorktreeEnvironmentPreparer` it receives: `PrepareWorktreeEnvironmentUseCase` resolves it with reservation (`ResolveWorktreeEnvironmentUseCase`) and, when `envFile` is declared, `WriteEnvironmentFileUseCase` writes it in dotenv format, refusing a file Git tracks (`git ls-files --error-unmatch`, `EnvironmentFileTracked`) and reporting write errors as `EnvironmentFileWriteFailed`. The preparer defaults to `WorktreeEnvironmentPreparer.NONE`, which tests that don't exercise the environment rely on; the app and the CLI always pass the real one.
 
@@ -370,7 +372,7 @@ Squash and rebase merges aren't detected as merged, and remote-tracking branches
 
 `selectCleanupCandidates(worktrees, statuses)` picks the worktrees to clean up: not main, not locked, and either prunable or merged into the main branch with no uncommitted changes. Worktrees without a loaded status are never picked.
 
-`CleanUpWorktreesUseCase` takes those candidates, the `MainBranch` and whether to delete branches, and returns a `CleanupReport` (`removed`, `keptBranches`, `failures`). Each existing worktree is removed with `git worktree remove` (never `--force`), and missing ones with a single `git worktree prune`. A failing step is recorded and the rest continue. Then the branches of every removed worktree, pruned ones included, are deleted only if `git merge-base --is-ancestor <branch> <main ref>` still succeeds, and then with `git branch -D`: `-d` checks against the base repository's `HEAD`, which in a git-flow repository may not contain a branch merged into `develop`.
+`CleanUpWorktreesUseCase` takes those candidates, the `MainBranch` and whether to delete branches, and returns a `CleanupReport` (`removed`, `keptBranches`, `failures`, `herdrFailures`). Each existing worktree is removed with `git worktree remove` (never `--force`), and missing ones with a single `git worktree prune`. A failing step is recorded and the rest continue. Then the branches of every removed worktree, pruned ones included, are deleted only if `git merge-base --is-ancestor <branch> <main ref>` still succeeds, and then with `git branch -D`: `-d` checks against the base repository's `HEAD`, which in a git-flow repository may not contain a branch merged into `develop`.
 
 ### Worktree overview
 
@@ -382,10 +384,14 @@ Squash and rebase merges aren't detected as merged, and remote-tracking branches
 
 ### `RemoveWorktreeUseCase`
 
-Runs `git worktree remove [--force] <path>` and, optionally, `git branch -d <branch>` to delete the local branch (safe delete, not `-D`).
+Runs `git worktree remove [--force] <path>` and, optionally, `git branch -d <branch>` to delete the local branch (safe delete, not `-D`). It returns a `WorktreeRemoval` whose `herdrFailure` is the error from closing the worktree's Herdr workspace, when that failed (see [`CloseHerdrWorkspacesUseCase`](#closeherdrworkspacesusecase)).
 
 !!! note
     Git doesn't allow removing a worktree from inside itself, which is another reason every command runs from the base repository.
+
+### `CloseHerdrWorkspacesUseCase`
+
+Closes the Herdr workspace of removed worktrees, in two steps around the removal. `openWorkspaces(paths)` makes one `worktree list` call for the base repository, before anything is removed (afterwards Git no longer lists the worktree), and returns the workspace id of each given path that Herdr has open, matching paths with `normalizePath`. Any failure (Herdr not installed or not running, an unexpected response) gives an empty map: if ShogunAi can't see Herdr there's nothing to close and nothing to report. `close(workspaces, removedPaths)` closes only the workspaces of the paths that were actually removed (pruned missing worktrees included) and returns a `CleanupFailure` for each close that failed instead of throwing. `RemoveWorktreeUseCase` and `CleanUpWorktreesUseCase` take it as an optional parameter and `null` leaves their behaviour unchanged; a Git failure closes nothing.
 
 ### `CopyWorktreeLaunchCommandUseCase`
 
