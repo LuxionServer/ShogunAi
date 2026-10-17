@@ -78,6 +78,10 @@ herdr plugin install LuxionServer/ShogunAi/integrations/herdr
 
 En cada worktree que crea Herdr ejecuta `shogun hook herdr`, que lo provisiona igual que `shogun provision`: ficheros de `.shogunai.json` y `.worktreeinclude`, los ficheros locales de tu proyecto, puertos reservados y `envFile`. Cuando el repositorio tiene un proyecto de ShogunAi y el worktree queda fuera de su carpeta de worktrees, además muestra una notificación de Herdr que lo avisa y recomienda crear los worktrees desde ShogunAi.
 
+El plugin también escucha `worktree.removed`: cuando quitas un worktree desde Herdr ("Remove worktree" o `herdr worktree remove`) en un repositorio con un proyecto de ShogunAi, `shogun hook herdr` borra su rama si Git la considera mergeada, y la conserva si no, igual que al eliminarlo desde ShogunAi. Ejecuta `herdr plugin update` para tenerlo en una instalación existente.
+
+En el otro sentido no hace falta el plugin: eliminar un worktree desde ShogunAi (la acción de eliminar de la fila, "Limpiar", `shogun clean --yes` o la eliminación de Claude Code) también cierra su workspace de Herdr, y el agente que se ejecuta en él, una vez eliminado el worktree. Los diálogos avisan antes de qué worktrees están abiertos en Herdr; si Herdr no está instalado o en marcha no cambia nada, y si falla el cierre del workspace la eliminación sigue contando y un aviso muestra el mensaje de Herdr.
+
 - El plugin ejecuta `shogun`, así que tiene que estar en el `PATH` de la shell desde la que arrancas Herdr (el servidor en segundo plano de Herdr conserva el entorno de esa shell; reinícialo con `herdr server stop` después de instalar `shogun`). `herdr plugin log` muestra cada ejecución con los ficheros copiados, o el error.
 - Herdr abre el workspace nuevo un instante antes de que se ejecute el plugin; un agente que arranques al momento podría encontrarse los ficheros todavía copiándose.
 - El plugin no escribe nada en la shell del workspace nuevo. Sus variables llegan a los agentes por los caminos de siempre: el hook `SessionStart` de Claude Code de arriba, el `envFile` o `direnv` (ver más abajo).
