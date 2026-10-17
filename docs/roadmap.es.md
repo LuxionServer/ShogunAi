@@ -2,23 +2,66 @@
 
 Ideas aceptadas para el futuro de ShogunAi, agrupadas por tema. Esta página marca una dirección, no un compromiso de fechas: cada punto se convierte en un cambio de OpenSpec (`/opsx:propose`) cuando se aborda, y su diseño se decide allí. Cuando un cambio se archiva, su punto se elimina de esta página.
 
+## Dirección
+
+ShogunAi está evolucionando de una app de escritorio que crea worktrees a **la capa de worktrees para cualquier agente de IA**: prepara cada worktree para que esté listo para compilar y te da una vista de todos ellos, los haya creado quien los haya creado. No incrusta terminales ni ejecuta agentes; Claude, Codex o cualquier otro agente lo sigue haciendo, dentro de los worktrees que ShogunAi prepara y supervisa.
+
+Esa dirección se construye en tres capas:
+
+| Capa | Papel | Qué aporta |
+|---|---|---|
+| **Motor y CLI** | La base | Provisionado de worktrees definido en el repositorio (`.shogunai.json`) y un comando `shogun` que usan la app de escritorio, los agentes y sus hooks, con un entorno por worktree (puertos reservados y variables) que llega a la shell de cada agente. **Disponible**; el provisionado más completo está planificado. |
+| **Torre de control** | La vista | La app de escritorio muestra el estado de todos los worktrees, incluidos los creados por otras herramientas, los mantiene limpios y sigue los cambios según ocurren. **Disponible.** |
+| **Android, KMP y JVM** | El contenido | Provisionado para los stacks en los que más cuesta preparar un worktree: Gradle, secretos locales, emuladores e IDEs. **Empezado**: los repositorios Gradle muestran sus daemons, pueden parar los ociosos y acotar la memoria y la vida de los daemons que arrancan los agentes, los repositorios Android pueden dar a cada worktree su propio emulador, los KMP e iOS su propio simulador de iOS, y los repositorios Xcode ven y limpian sus DerivedData y comparten compilaciones entre worktrees. |
+
+```mermaid
+graph LR
+    A["Configuración del repositorio"] --> B["Salida del CLI para scripts"]
+    A --> D["Provisionado Android, KMP y JVM"]
+```
+
 ## Planificado
 
-### Estado de los worktrees de un vistazo
+### Rediseño de la pantalla de worktrees
 
-Hoy la lista de worktrees solo muestra la ruta y la rama de cada uno. Cuando varios agentes trabajan en paralelo, hace falta ver cuáles han terminado y cuáles siguen con cambios sin abrir una terminal. Cada worktree mostraría:
+Con todos los providers activos, una fila de worktree lleva ahora estado, origen, agentes, tamaño, puertos, emulador y simulador, y la pantalla tiene además las secciones de daemons de Gradle y de DerivedData. Un rediseño de la pantalla:
 
-- Cambios sin commitear (`git status --porcelain`).
-- Commits por delante y por detrás de su upstream y de la rama principal (`git rev-list --count`).
-- Fecha del último commit.
-- Si su rama ya está mergeada en la rama principal.
+- Filas que no se amontonen ni corten sus botones, con la rama como etiqueta principal y la carpeta como información secundaria.
+- Líneas de emulador y simulador solo donde aportan (en marcha, o bajo demanda), en vez de en cada fila de un repositorio que declara el provider.
+- Un sitio mejor para las secciones de daemons de Gradle y DerivedData que el final de la lista de worktrees.
+- Una forma directa de editar el proyecto desde su pantalla de worktrees.
 
-### Limpieza de worktrees obsoletos
+### Pantalla de configuración de providers
 
-- Una acción para eliminar todos los worktrees cuya rama ya está mergeada, borrando opcionalmente también las ramas.
-- `git worktree prune` para los worktrees cuya carpeta ya no existe.
+Los providers, `env` y `envFile` se declaran editando `.shogunai.json` a mano, y pocos usuarios lo harán. Una pantalla de configuración para activar los providers y fijar sus opciones (heap y tiempo de inactividad de Gradle, AVD preferida, dispositivo del simulador, caché de compilación de Xcode) y el entorno por worktree, escribiendo el fichero del repositorio como ya lo hace mover los archivos locales.
 
-Depende del estado de los worktrees para saber qué ramas están mergeadas.
+### Errores comprensibles
+
+Los errores se muestran a menudo como la salida en crudo de un comando (un mensaje de Git o de `simctl` con su código de salida). Cada error debería decir con palabras claras qué ha fallado y qué hacer después, manteniendo la salida en crudo disponible para quien la necesite.
+
+### Demo guiada de bienvenida
+
+Un recorrido de primer uso basado en la revisión hecha antes de mergear la capa de worktrees: la app crea un repositorio de ejemplo desechable con worktrees en todos los estados y abre un agente con un prompt preparado que guía al usuario por cada funcionalidad (estado, limpieza, provisionado, el CLI, los hooks, el entorno y los providers), paso a paso.
+
+### Configuración del repositorio
+
+Provisionado más completo en el `.shogunai.json` del repositorio:
+
+- Un hook post-creación ejecutado como argv (p. ej. `npm install`, `direnv allow`).
+- Enlazar un secreto con un symlink en vez de copiarlo, para que al rotarlo se actualice en todos los worktrees.
+- Detectar secretos de un worktree que difieren de los del repositorio base.
+
+### Salida del CLI para scripts
+
+- Una salida legible por máquinas (`--json`) para los comandos de `shogun` que necesiten los scripts, empezando por `status`.
+
+### Provisionado Android, KMP y JVM
+
+Provisionado para los stacks en los que un worktree recién creado está más lejos de compilar:
+
+- `local.properties`, keystores y `google-services.json`.
+- «Abrir en Android Studio» en el worktree correcto.
+- Mostrar los emuladores que arranca ShogunAi dentro de la ventana Running Devices de Android Studio, como los que arranca el propio Android Studio, para poder ordenar varios en una sola ventana. Necesita un spike: Android Studio podría incrustar un emulador externo arrancado con las mismas opciones que usa él.
 
 ### Elegir la base de un worktree nuevo
 
@@ -26,15 +69,6 @@ Hoy una rama nueva parte del `HEAD` del repositorio base, así que crear un work
 
 - Elegir la rama base (`develop`, `main`, …) al crear un worktree, con un `git fetch` previo opcional.
 - Crear un worktree desde una rama remota (`origin/...`), no solo desde las locales.
-
-### Provisionado de worktrees más completo
-
-Copiar archivos de secretos es solo una parte de dejar un worktree listo para compilar. Cada proyecto podría configurar además:
-
-- Un hook post-creación ejecutado como argv (p. ej. `npm install`, `direnv allow`).
-- Carpetas y patrones glob a copiar (p. ej. `.env*`, `.idea/runConfigurations`), no solo archivos sueltos.
-- Enlazar un secreto con un symlink en vez de copiarlo, para que al rotarlo se actualice en todos los worktrees.
-- Detectar secretos de un worktree que difieren de los del repositorio base.
 
 ### Lanzar el agente y las herramientas directamente
 
@@ -51,8 +85,6 @@ Hay quien alterna entre agentes de IA en una misma tarea, por ejemplo cuando a u
 
 - Icono en la barra de menús / bandeja del sistema con los proyectos y worktrees recientes.
 - Paleta de comandos (`⌘K` / `Ctrl+K`) para saltar a cualquier proyecto o worktree.
-- Refresco automático vigilando los worktrees del repositorio, en lugar de recargar a mano.
-- Importar y exportar la configuración de un proyecto sin rutas absolutas, p. ej. un `.shogunai.json` en el repositorio que defina sus secretos y hooks, para que un equipo pueda compartirla.
 
 ### Distribución
 
@@ -66,6 +98,10 @@ Hay quien alterna entre agentes de IA en una misma tarea, por ejemplo cuando a u
 Crear un worktree desde un issue de GitHub o una tarea de un gestor (derivando el id y el título de la tarea) y mostrar el estado del pull request de cada rama (abierto, en revisión, CI en rojo, mergeado). El valor está claro, pero el modelo de integración todavía no: qué proveedores, cómo autenticarse y cuánto depender de CLIs externas como `gh`. Hay que pensarlo más antes de convertirlo en un cambio.
 
 ## Fuera de alcance por ahora
+
+### Ejecutar agentes dentro de la app
+
+ShogunAi no incrusta terminales ni gestiona sesiones de agentes: los agentes y los terminales ya lo hacen bien. Se centra en los worktrees en los que trabajan.
 
 ### Firma y notarización en macOS
 

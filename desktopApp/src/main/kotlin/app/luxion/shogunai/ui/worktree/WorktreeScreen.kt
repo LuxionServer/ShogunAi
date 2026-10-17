@@ -28,6 +28,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -39,7 +40,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.BranchType
+import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
+import app.luxion.shogunai.domain.model.WorktreeEmulator
+import app.luxion.shogunai.domain.model.WorktreeSimulator
+import app.luxion.shogunai.domain.model.WorktreeOrigin
+import app.luxion.shogunai.domain.usecase.classifyOrigin
+import app.luxion.shogunai.domain.usecase.isInactive
 import app.luxion.shogunai.ui.components.DropdownSelector
 import app.luxion.shogunai.ui.components.SectionCard
 import app.luxion.shogunai.ui.components.SegmentedSelector
@@ -51,6 +59,7 @@ import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.i18n.worktreeError
 import app.luxion.shogunai.ui.theme.ShogunTheme
 import kotlinx.coroutines.delay
+import java.time.Instant
 
 private fun CreateMode.label(strings: Strings): String = when (this) {
     CreateMode.NEW_BRANCH -> strings.newBranchMode
@@ -60,10 +69,15 @@ private fun CreateMode.label(strings: Strings): String = when (this) {
 @Composable
 fun WorktreeScreen(
     projectName: String,
+    projectConfig: ProjectConfig,
     viewModel: WorktreeViewModel,
     onBack: () -> Unit,
 ) {
     val strings = LocalStrings.current
+    DisposableEffect(viewModel) {
+        viewModel.startWatching()
+        onDispose { viewModel.stopWatching() }
+    }
     LaunchedEffect(viewModel.createMode) {
         if (viewModel.createMode == CreateMode.EXISTING_BRANCH) {
             viewModel.loadLocalBranches()
@@ -144,6 +158,19 @@ fun WorktreeScreen(
             val message = when (success) {
                 is WorktreeSuccess.Created -> strings.worktreeCreated(success.path)
                 WorktreeSuccess.RepairedAfterMove -> strings.worktreesRepairedAfterMove
+                is WorktreeSuccess.CleanedUp -> listOfNotNull(
+                    strings.worktreesCleanedUp(success.removedCount),
+                    if (success.stoppedDaemons + success.keptDaemons > 0) {
+                        strings.daemonsStopped(success.stoppedDaemons, success.keptDaemons, failed = 0)
+                    } else {
+                        null
+                    },
+                    success.stoppedEmulators.takeIf { it > 0 }?.let(strings::emulatorsStopped),
+                    success.deletedSimulators.takeIf { it > 0 }?.let(strings::simulatorsDeleted),
+                    success.deletedDerivedDataFolders.takeIf { it > 0 }?.let {
+                        strings.derivedDataDeleted(it, formatSize(success.derivedDataBytesFreed))
+                    },
+                ).joinToString(" · ")
             }
             LaunchedEffect(success) {
                 delay(4000)
@@ -261,16 +288,67 @@ fun WorktreeScreen(
             }
         }
 
-        Text(strings.worktreesTitle, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = Spacing.lg))
+        viewModel.cleanupIssues?.let { report ->
+            CleanupIssues(report, onDismiss = { viewModel.dismissCleanupIssues() })
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = Spacing.lg),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(strings.worktreesTitle, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    strings.worktreesSummary(viewModel.worktrees.size, formatSize(viewModel.totalSize)),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = Spacing.sm),
+                )
+            }
+            OutlinedButton(
+                onClick = { viewModel.openCleanup() },
+                enabled = viewModel.canCleanUp && !viewModel.isCleaningUp,
+            ) { Text(strings.cleanUp) }
+        }
         viewModel.worktrees.forEach { worktree ->
+            val status = viewModel.statuses[worktree.path]
+            val agents = viewModel.agents?.get(worktree.path).orEmpty()
             WorktreeRow(
                 worktree = worktree,
+                status = status,
+                mainBranchName = viewModel.mainBranch?.name,
+                origin = classifyOrigin(worktree, projectConfig),
+                agents = agents,
+                size = viewModel.sizes[worktree.path],
+                ports = viewModel.ports[worktree.path].orEmpty(),
+                showEmulator = viewModel.isEmulatorRepository,
+                emulator = viewModel.emulators[worktree.path],
+                isStartingEmulator = worktree.path in viewModel.startingEmulators,
+                onStartEmulator = { viewModel.startEmulator(worktree) },
+                onStopEmulator = { viewModel.stopEmulator(worktree) },
+                showSimulator = viewModel.isSimulatorRepository,
+                simulator = viewModel.simulators[worktree.path],
+                isStartingSimulator = worktree.path in viewModel.startingSimulators,
+                onStartSimulator = { viewModel.startSimulator(worktree) },
+                onStopSimulator = { viewModel.stopSimulator(worktree) },
+                isInactive = isInactive(worktree, (status as? WorktreeStatusState.Loaded)?.status, agents, Instant.now()),
                 isCopied = viewModel.copiedWorktreePath == worktree.path,
                 onRemove = { viewModel.requestRemoval(worktree) },
                 onCopyLaunchCommand = { viewModel.copyLaunchCommand(worktree) },
             )
             HorizontalDivider()
         }
+        if (viewModel.isGradleRepository) {
+            GradleDaemonsSection(viewModel, modifier = Modifier.padding(vertical = Spacing.lg))
+        }
+        if (viewModel.isXcodeRepository) {
+            XcodeDerivedDataSection(viewModel, modifier = Modifier.padding(vertical = Spacing.lg))
+        }
+    }
+
+    if (viewModel.isCleanupDialogOpen) {
+        CleanupDialog(viewModel)
     }
 
     viewModel.worktreePendingRemoval?.let { worktree ->
@@ -330,7 +408,29 @@ fun WorktreeScreen(
 }
 
 @Composable
-private fun WorktreeRow(worktree: Worktree, isCopied: Boolean, onRemove: () -> Unit, onCopyLaunchCommand: () -> Unit) {
+private fun WorktreeRow(
+    worktree: Worktree,
+    status: WorktreeStatusState?,
+    mainBranchName: String?,
+    origin: WorktreeOrigin?,
+    agents: List<RunningAgent>,
+    size: Long?,
+    ports: Map<String, Int>,
+    showEmulator: Boolean,
+    emulator: WorktreeEmulator?,
+    isStartingEmulator: Boolean,
+    onStartEmulator: () -> Unit,
+    onStopEmulator: () -> Unit,
+    showSimulator: Boolean,
+    simulator: WorktreeSimulator?,
+    isStartingSimulator: Boolean,
+    onStartSimulator: () -> Unit,
+    onStopSimulator: () -> Unit,
+    isInactive: Boolean,
+    isCopied: Boolean,
+    onRemove: () -> Unit,
+    onCopyLaunchCommand: () -> Unit,
+) {
     val strings = LocalStrings.current
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.sm),
@@ -338,7 +438,15 @@ private fun WorktreeRow(worktree: Worktree, isCopied: Boolean, onRemove: () -> U
     ) {
         Column(modifier = Modifier.weight(1f).padding(end = Spacing.sm)) {
             Text(worktree.path, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(worktree.branch ?: strings.detachedHead, style = MaterialTheme.typography.bodySmall)
+            WorktreeBranchLine(worktree, origin, agents)
+            if (worktree.isPrunable) {
+                Text(strings.folderMissing, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            } else {
+                WorktreeStatusLine(status, mainBranchName)
+                WorktreeOverviewLine(size, isInactive, ports)
+                if (showEmulator) EmulatorLine(emulator, isStartingEmulator, onStartEmulator, onStopEmulator)
+                if (showSimulator) SimulatorLine(simulator, isStartingSimulator, onStartSimulator, onStopSimulator)
+            }
         }
         Row {
             OutlinedButton(onClick = onCopyLaunchCommand, modifier = Modifier.padding(end = Spacing.sm)) {

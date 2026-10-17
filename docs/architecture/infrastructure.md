@@ -1,6 +1,6 @@
 # Infrastructure layer
 
-Lives in `desktopApp/src/main/kotlin/app/luxion/shogunai/infrastructure`. Implements the ports defined in the domain.
+Lives in `core/src/main/kotlin/app/luxion/shogunai/infrastructure`, except `AwtClipboardWriter`, which needs the desktop toolkit and stays in `desktopApp` under the same package. Implements the ports defined in the domain.
 
 ## `ProcessBuilderShellCommandExecutor`
 
@@ -15,11 +15,64 @@ Implementation of `ShellCommandExecutor` on top of `ProcessBuilder`. Robustness 
 
 ## `NioFileManager`
 
-Implementation of `FileManager` on top of `java.nio.file`. `copy` uses `REPLACE_EXISTING` and `COPY_ATTRIBUTES`. Works the same on every supported OS.
+Implementation of `FileManager` on top of `java.nio.file`. `copy` creates the destination's missing parent folders and uses `REPLACE_EXISTING` and `COPY_ATTRIBUTES`. `directorySize` walks the tree with `Files.walkFileTree` without following symlinks, adds up regular file sizes, skips the excluded folders and ignores files it can't read. `modificationStamps` walks the same way and records each entry's last-modified time. `readProperties` loads the file with `java.util.Properties`. Works the same on every supported OS.
+
+## `NioEnvironmentStateStore` / `SocketPortProbe`
+
+- **State**: each worktree's reservations live in `shogunai-env.json` inside its Git administrative directory, as `{ "ports": { "PORT": 20001, "port:api": 20002 }, "resources": { "ios-simulator": "<UDID>" } }`; files without `resources` load as before. Git ignores files it doesn't know there and deletes the whole directory on `git worktree remove` and `prune`, so reservations go away with the worktree, whoever created it. Other fields of the object are kept for later providers; a file left without fields is deleted; an unreadable file counts as no reservations. Writes are atomic (temporary file and move).
+- **Machine listing**: the current repository's files (the common directory's, for the main worktree, plus every `worktrees/*/shogunai-env.json`) and every administrative directory in the machine index `~/.shogunai/reservations.json` (`{ "worktrees": [ … ] }`). Writing a worktree's ports adds its directory to the index, or removes it when it has none left; listing drops index entries whose state file is gone (the worktree was removed or pruned), so the index heals itself and ports of removed worktrees in any repository become free.
+- **Lock**: `withLock` takes an exclusive `FileChannel` lock on `~/.shogunai/reservations.lock`, so parallel creations, even from several processes (several Claude Code sessions) and different repositories, can't reserve the same port. A process-wide lock guards the file lock, and a nested call on the same thread runs directly.
+- **Free port**: `SocketPortProbe` binds a `ServerSocket` with `reuseAddress = false` on the wildcard address and on the loopback address; the port is free only if both succeed.
+
+## `SimctlAppleSimulators` / `FileKmpTestWiring`
+
+- **Simulators**: `xcrun simctl list -j runtimes` (available runtimes with their `supportedDeviceTypes`) and `list -j devices` (`Booted`, `Shutdown`, anything else counts as booting), `create <name> <device type> <runtime>` (prints the UDID), `boot`, `shutdown`, `delete`, all through the command executor. `show` runs `open -b com.apple.iphonesimulator --args -CurrentDeviceUDID <udid>` and, if the Simulator app isn't installed (Xcode 27 replaced it with Device Hub), `open -b com.apple.dt.Devices`, so the device gets a window; `simctl boot` alone boots it headless. "Unable to boot/shutdown device in current state: Booted/Shutdown" counts as success. `isSupported()` is true only on macOS.
+- **KMP wiring**: the repository's `*.gradle.kts` and `*.gradle` files, up to five levels deep and skipping `build`, `.gradle`, `.git`, `.kotlin`, `.idea` and `node_modules`, are searched for `IOS_SIMULATOR_UDID`, and, with the same walk, for `multiplatform` (ignoring case) to tell a Kotlin Multiplatform repository, which covers `kotlin("multiplatform")`, the plugin id and version catalog aliases such as `libs.plugins.kotlinMultiplatform`. The init script is `$GRADLE_USER_HOME/init.d/shogunai-ios-simulator.init.gradle.kts`, in Kotlin DSL because Groovy scripts fail to compile on recent JDKs; since the Kotlin plugin isn't on its classpath it matches `KotlinNativeSimulatorTest` tasks by class name and sets `device` through reflection, and it does nothing when `IOS_SIMULATOR_UDID` isn't set. Uninstalling it also removes `init.d` if it's left empty. `REPOSITORY_SNIPPET` is the Kotlin DSL fragment shown to users.
+
+## `LocalAndroidSdk`
+
+Implementation of `AndroidSdk` on the SDK's own tools:
+
+- **Locating**: the first of `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `sdk.dir` in the repository's `local.properties`, and the platform default (`~/Library/Android/sdk`, `~/Android/Sdk`, `%LOCALAPPDATA%\Android\Sdk`) that contains `emulator/emulator`; executables get `.exe` on Windows.
+- **AVDs**: `emulator -list-avds`, skipping the emulator's informational lines.
+- **States**: one `adb devices`, keeping `emulator-*` serials; an `offline` one is booting, a `device` one is running once `adb -s <serial> shell getprop sys.boot_completed` returns `1`.
+- **Start**: `emulator -avd <avd> -port <port> -read-only -no-boot-anim [-no-window]` through `ProcessBuilder`, not the command executor, because it must keep running after the caller (the CLI) exits; output goes to `~/.shogunai/logs/emulator-<port>.log`. `-read-only` is what lets one AVD run once per worktree; changes to the emulator's data are discarded when it exits.
+- **Stop**: `adb -s <serial> emu kill`.
+
+## `ProcessGradleDaemonSource`
+
+Implementation of `GradleDaemonSource` that doesn't depend on a Gradle binary or on Gradle's internal registry format:
+
+- **Processes**: runs `ps -A -ww -o pid=,rss=,command=` and keeps the processes whose arguments contain `org.gradle.launcher.daemon.bootstrap.GradleDaemon` (the next argument is the Gradle version) or `org.jetbrains.kotlin.daemon.KotlinCompileDaemon`. `rss` is converted from KiB to bytes. A failing `ps` (e.g. on Windows) throws `ProcessListingFailed`.
+- **State**: each Gradle daemon writes `$GRADLE_USER_HOME/daemon/<version>/daemon-<pid>.out.log` (`GRADLE_USER_HOME` defaults to `~/.gradle`). The last 1 MiB of that log is scanned backwards for the latest `Marking the daemon as busy|idle` (with its timestamp, for `Idle(since)`; any other state counts as busy) and the latest `Received command: Build{…, currentDir=<path>}`, which gives the last build directory: the directory the Gradle client was started from, so `./gradlew -p <worktree>` run from elsewhere is attributed to where it was run. Both lines are logged at INFO level on every build. A missing or unreadable log, or no marker in that window, gives `Unknown`, which never allows stopping.
+- Gradle's own `--status` and `--stop` aren't used: they only see the daemons of the Gradle version that runs them, and `--stop` also stops busy ones.
+
+## `MacDerivedDataSource`
+
+Implementation of `DerivedDataSource` for macOS (`isSupported` checks `os.name`):
+
+- **Location**: `defaults read com.apple.dt.Xcode <key>` run as argv, first `IDEDerivedDataPathOverride`, then `IDECustomDerivedDataLocation` (keys confirmed in Xcode 27's `IDEFoundation`; a leading `~` is expanded); a failed `defaults` (key missing) falls back to `~/Library/Developer/Xcode/DerivedData`. A location that doesn't exist has no folders.
+- **Folders**: every direct child with a regular `info.plist` that has a `WorkspacePath`, parsed with the JDK's XML parser with external entities and DTDs off. A binary plist (`bplist00`) or an unreadable file is skipped, and so are Xcode's shared caches, which have none. `LastAccessedDate` gives `lastAccessed`; the size comes from `FileManager.directorySize`.
+- **Compilation cache**: `IDECustomCompilationCacheLocation` when set, else `<location>/CompilationCache.noindex`.
+- **Volumes**: a path under `/Volumes/<name>` is on an unavailable volume when that mount point doesn't exist.
+- **Deletion**: refuses any path that isn't a direct child of the current location or has no `info.plist`, then deletes the folder recursively.
+
+## `RepositoryProvisioningFiles`
+
+Implementation of `RepositoryProvisioningSource` on `java.nio.file` and `kotlinx.serialization`, over `<repo>/.shogunai.json` and `<repo>/.worktreeinclude`.
+
+- **Reading**: a missing or blank `.shogunai.json` means no patterns. The file is parsed as a generic JSON object, so unknown fields are ignored; invalid JSON, a non-object root, a `copy` that isn't a list of strings, or a `providers` (or a known provider in it) that isn't an object throw `InvalidRepositoryConfig`. Unknown provider ids are skipped. `env` must be an object of strings whose templates parse (`parseEnvironmentVariable`), and `envFile` a string with a relative path that doesn't leave the worktree once normalized.
+- **Writing** (`addCopyPatterns`): reads the object, replaces only `copy` (existing patterns first, new ones appended without duplicates) and writes it back pretty-printed, atomically (temporary file in the same folder + `ATOMIC_MOVE`), so other fields survive. It refuses to rewrite a file it can't parse.
+
+Pattern matching is left to Git (`git ls-files --others --ignored -z -x <pattern>…`, see the domain's `CreateWorktreeUseCase`), so it follows the gitignore rules exactly, including their limits: a file can't be re-included with `!` if its parent folder is excluded (`.idea/` + `!.idea/workspace.xml` still lists `workspace.xml`; use `.idea/*` instead). Try a pattern from the base repository with the same command:
+
+```bash
+git ls-files --others --ignored -x '/local.properties' -x '.env*' -x '.idea/runConfigurations/'
+```
 
 ## `AwtClipboardWriter`
 
-Implementation of `ClipboardWriter` with AWT's system clipboard (`Toolkit.getDefaultToolkit().systemClipboard`), wrapped in `runCatching`.
+In `desktopApp`. Implementation of `ClipboardWriter` with AWT's system clipboard (`Toolkit.getDefaultToolkit().systemClipboard`), wrapped in `runCatching`.
 
 ## Project catalog (`projects.json`)
 
@@ -34,11 +87,17 @@ Implementation of `ClipboardWriter` with AWT's system clipboard (`Toolkit.getDef
 
 ## Test doubles
 
-In `desktopApp/src/test/kotlin/app/luxion/shogunai/domain/`:
+In `core/src/testFixtures/kotlin/app/luxion/shogunai/domain/`, `core`'s test fixtures, used by `core`'s tests and by `desktopApp`'s tests (`testImplementation(testFixtures(project(":core")))`):
 
 - `FakeShellCommandExecutor` — substitutes `ShellCommandExecutor`: answers each argv with a canned `CommandResult` and records the commands run.
-- `FakeFileManager` — substitutes `FileManager` with an in-memory set of existing paths.
+- `FakeFileManager` — substitutes `FileManager` with an in-memory set of existing paths and properties files.
+- `FakeEnvironmentStateStore` / `FakePortProbe` — substitute the reservation store (in-memory reservations per administrative directory, counting writes and locks) and the port probe (a set of busy ports).
+- `FakeAppleSimulators` / `FakeKmpTestWiring` — substitute the simulators (runtimes, devices that boot after a number of polls, records of creations, boots, windows shown (or a failure to show them), shutdowns and deletions, a macOS switch) and the KMP wiring.
+- `FakeAndroidSdk` — substitutes `AndroidSdk` with AVDs, emulator states that move from booting to running after a number of polls, a missing-SDK switch, and records of starts and stops.
+- `FakeGradleDaemonSource` — substitutes `GradleDaemonSource` with a mutable list of daemons (or a failure) and counts the listings; `gradleDaemon(...)` and `kotlinDaemon(...)` build them.
+- `FakeDerivedDataSource` — substitutes `DerivedDataSource` with folders, existing projects, unmounted volumes, a compilation cache size, a macOS switch and failing deletions, and records the deletions; `derivedData(...)` builds a folder.
 - `FakeClipboardWriter` — substitutes `ClipboardWriter`.
 - `FakeProjectRepository` — substitutes `ProjectRepository` in ViewModel tests.
+- `FakeRepositoryProvisioningSource` — substitutes `RepositoryProvisioningSource` with provisioning per repository path, unreadable repositories and failing writes, and records the patterns added.
 
-Thanks to the domain depending on interfaces, the use case tests (`*UseCaseTest`) and the ViewModel tests don't touch disk or launch real processes. The infrastructure itself is covered by `ProcessBuilderShellCommandExecutorTest`, `JsonProjectRepositoryTest` and `JsonSettingsFileTest`, which do use real processes and temporary files.
+Thanks to the domain depending on interfaces, the use case tests (`*UseCaseTest`) and the ViewModel tests don't touch disk or launch real processes. The infrastructure itself is covered by `ProcessBuilderShellCommandExecutorTest`, `JsonProjectRepositoryTest`, `JsonSettingsFileTest`, `RepositoryProvisioningFilesTest`, `NioEnvironmentStateStoreTest` (temporary directories and a real listening socket), `LocalAndroidSdkTest` (SDK lookup order, real `adb devices` output, the built start command), `SimctlAppleSimulatorsTest` (real `simctl` JSON), `FileKmpTestWiringTest` (temporary repositories and Gradle user home) and `ProcessGradleDaemonSourceTest` (on real `ps` lines and daemon log excerpts), which do use real processes and temporary files.

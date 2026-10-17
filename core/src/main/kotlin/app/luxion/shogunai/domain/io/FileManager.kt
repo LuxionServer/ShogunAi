@@ -1,0 +1,20 @@
+package app.luxion.shogunai.domain.io
+
+interface FileManager {
+
+    fun exists(path: String): Boolean
+
+    fun copy(source: String, destination: String)
+
+    fun directorySize(path: String, excluding: Set<String> = emptySet()): Long
+
+    fun isDirectory(path: String): Boolean
+
+    fun modificationStamps(path: String): List<Pair<String, Long>>
+
+    fun readProperties(path: String): Map<String, String>
+
+    fun writeText(path: String, text: String)
+
+    fun readText(path: String): String?
+}

@@ -8,12 +8,13 @@ cask "shogunai" do
   dmg_version = "1." + version.split(".", 2).last
   url "https://github.com/LuxionServer/ShogunAi/releases/download/v#{version}/ShogunAi-#{dmg_version}-#{arch}.dmg"
   name "ShogunAi"
-  desc "Desktop orchestrator for isolated Git worktrees with automatic secrets provisioning"
+  desc "Worktree layer for AI agents: provision, inspect and clean Git worktrees"
   homepage "https://github.com/LuxionServer/ShogunAi"
 
   auto_updates false
 
   app "ShogunAi.app"
+  binary "#{appdir}/ShogunAi.app/Contents/MacOS/ShogunAi", target: "shogun"
 
   caveats <<~EOS
     ShogunAi is not notarized by Apple. If macOS blocks it on first launch

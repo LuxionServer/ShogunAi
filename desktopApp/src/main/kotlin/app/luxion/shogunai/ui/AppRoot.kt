@@ -88,8 +88,14 @@ fun AppRoot(appContainer: AppContainer) {
                         }
 
                         is Screen.ProjectConfigForm -> {
-                            val viewModel = viewModel(key = current.existingProject?.let { "${it.id}-${it.hashCode()}" } ?: "new-project") {
-                                ProjectConfigViewModel(appContainer.projectRepository, current.existingProject)
+                            val viewModel = viewModel(viewModelStoreOwner = rememberScreenViewModelStoreOwner()) {
+                                ProjectConfigViewModel(
+                                    appContainer.projectRepository,
+                                    appContainer.repositoryProvisioningSource,
+                                    current.existingProject,
+                                    appContainer::loadAvds,
+                                    appContainer.simulatorSetup,
+                                )
                             }
                             ProjectConfigScreen(
                                 viewModel = viewModel,
@@ -124,6 +130,7 @@ fun AppRoot(appContainer: AppContainer) {
                             }
                             WorktreeScreen(
                                 projectName = current.project.name,
+                                projectConfig = current.project.config,
                                 viewModel = viewModel,
                                 onBack = { screen = Screen.ProjectList },
                             )
