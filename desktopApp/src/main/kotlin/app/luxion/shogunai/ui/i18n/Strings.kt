@@ -37,6 +37,7 @@ interface Strings {
     val menuFile: String
     val menuView: String
     val menuHelp: String
+    val menuWorktree: String
     val menuPreferences: String
     val menuQuit: String
     val menuToggleSidebar: String
@@ -110,14 +111,24 @@ interface Strings {
     fun mergedInto(branch: String): String
     val statusUnavailable: String
     val folderMissing: String
+    val mainWorktree: String
     val originShogunAi: String
     val originClaudeCode: String
     val originHerdr: String
     val originOther: String
     val inactive: String
     fun worktreesSummary(count: Int, totalSize: String): String
+    fun cleanupCandidatesSummary(count: Int): String
     val locked: String
     val cleanUp: String
+    val copyPath: String
+    val statusTitle: String
+    val agentsTitle: String
+    val environmentTitle: String
+    val devicesTitle: String
+    val diskTitle: String
+    val deleteWorktree: String
+    val clearSelection: String
     val cleanUpTitle: String
     fun cleanUpMessage(count: Int): String
     val alsoDeleteLocalBranches: String

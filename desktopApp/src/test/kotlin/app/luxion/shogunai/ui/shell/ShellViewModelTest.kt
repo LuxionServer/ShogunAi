@@ -248,4 +248,32 @@ class ShellViewModelTest {
 
         assertTrue(viewModel.isRail)
     }
+
+    @Test
+    fun `worktree actions are stored and cleared`() {
+        val viewModel = viewModel()
+        var copied = 0
+        var deleted = 0
+        var cleared = 0
+
+        viewModel.updateWorktreeActions(
+            WorktreeActions(
+                onCopySelectedLaunchCommand = { copied++ },
+                onDeleteSelectedWorktree = { deleted++ },
+                onClearSelection = { cleared++ },
+            ),
+        )
+        val actions = viewModel.worktreeActions
+        actions?.onCopySelectedLaunchCommand?.invoke()
+        actions?.onDeleteSelectedWorktree?.invoke()
+        actions?.onClearSelection?.invoke()
+
+        assertEquals(1, copied)
+        assertEquals(1, deleted)
+        assertEquals(1, cleared)
+
+        viewModel.updateWorktreeActions(null)
+
+        assertNull(viewModel.worktreeActions)
+    }
 }

@@ -1827,15 +1827,154 @@ class WorktreeViewModelTest {
     }
 
     @Test
-    fun `a Herdr failure is shown as the error`() = runTest(dispatcher) {
+    fun `a Herdr failure is recorded for the worktree`() = runTest(dispatcher) {
         val viewModel = WorktreeViewModel(useCases(listingResponder()))
         advanceUntilIdle()
 
         viewModel.openInHerdr(viewModel.worktrees.first { it.path == worktreePath })
         advanceUntilIdle()
 
-        assertIs<WorktreeError.HerdrNotInstalled>(viewModel.error)
+        assertNull(viewModel.error)
+        assertIs<WorktreeError.HerdrNotInstalled>(viewModel.actionErrors[worktreePath])
         assertNull(viewModel.success)
         assertTrue(viewModel.openingInHerdr.isEmpty())
+    }
+
+    @Test
+    fun `the selection survives a reload that keeps the worktree`() = runTest(dispatcher) {
+        var listCalls = 0
+        val viewModel = WorktreeViewModel(useCases { command ->
+            if (command == listCommand) {
+                listCalls++
+                success(command, porcelainOutput)
+            } else {
+                success(command)
+            }
+        })
+        advanceUntilIdle()
+
+        viewModel.select(worktreePath)
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertEquals(2, listCalls)
+        assertEquals(worktreePath, viewModel.selectedWorktreePath)
+    }
+
+    @Test
+    fun `the selection is cleared when the selected worktree disappears`() = runTest(dispatcher) {
+        var listCalls = 0
+        val gonePorcelain = """
+            worktree ${config.baseRepositoryPath}
+            HEAD aaa000
+            branch refs/heads/main
+        """.trimIndent()
+        val viewModel = WorktreeViewModel(useCases { command ->
+            if (command == listCommand) {
+                listCalls++
+                success(command, if (listCalls == 1) porcelainOutput else gonePorcelain)
+            } else {
+                success(command)
+            }
+        })
+        advanceUntilIdle()
+
+        viewModel.select(worktreePath)
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertNull(viewModel.selectedWorktreePath)
+        assertEquals(config.baseRepositoryPath, viewModel.orderedWorktrees.single().path)
+    }
+
+    @Test
+    fun `arrow navigation moves between worktrees and stops at the ends`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(useCases(mergedResponder()))
+        advanceUntilIdle()
+        val first = config.baseRepositoryPath
+        val third = "/home/dev/projects/TASK-456"
+
+        viewModel.selectNext()
+        assertEquals(first, viewModel.selectedWorktreePath)
+
+        viewModel.selectNext()
+        assertEquals(worktreePath, viewModel.selectedWorktreePath)
+
+        viewModel.selectNext()
+        assertEquals(third, viewModel.selectedWorktreePath)
+
+        viewModel.selectNext()
+        assertEquals(third, viewModel.selectedWorktreePath)
+
+        viewModel.selectPrevious()
+        assertEquals(worktreePath, viewModel.selectedWorktreePath)
+
+        viewModel.selectPrevious()
+        assertEquals(first, viewModel.selectedWorktreePath)
+
+        viewModel.selectPrevious()
+        assertEquals(first, viewModel.selectedWorktreePath)
+    }
+
+    @Test
+    fun `dismissing an action error only clears that worktree's error`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(useCases(listingResponder()))
+        advanceUntilIdle()
+
+        viewModel.openInHerdr(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+
+        viewModel.dismissActionError(worktreePath)
+        assertNull(viewModel.actionErrors[worktreePath])
+    }
+
+    @Test
+    fun `a failed emulator start records an action error without failing the view`() = runTest(dispatcher) {
+        val emulators = EmulatorUseCases(
+            declared = { true },
+            readStates = { Result.success(emptyMap()) },
+            start = { Result.failure(IOException("no emulator")) },
+            stop = { Result.success(WorktreeEmulator("emulator-5554", EmulatorState.STOPPED)) },
+            stopSerials = { Result.success(emptyList()) },
+        )
+        val viewModel = WorktreeViewModel(useCases(listingResponder()).copy(emulator = emulators))
+        advanceUntilIdle()
+
+        viewModel.startEmulator(worktree)
+        advanceUntilIdle()
+
+        assertNull(viewModel.error)
+        assertIs<IOException>(viewModel.actionErrors[worktreePath])
+        assertTrue(viewModel.startingEmulators.isEmpty())
+    }
+
+    @Test
+    fun `copying the selected launch command requires a selection`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(useCases(listingResponder()))
+        advanceUntilIdle()
+
+        viewModel.copySelectedLaunchCommand()
+        assertTrue(clipboard.writtenText.isEmpty())
+
+        viewModel.select(worktreePath)
+        viewModel.copySelectedLaunchCommand()
+        advanceUntilIdle()
+
+        assertEquals(1, clipboard.writtenText.size)
+        assertTrue(clipboard.writtenText.single().startsWith("cd \"$worktreePath\" && "))
+    }
+
+    @Test
+    fun `deleting the selected worktree only opens the dialog for non-main worktrees`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(useCases(mergedResponder()))
+        advanceUntilIdle()
+
+        viewModel.select(config.baseRepositoryPath)
+        viewModel.deleteSelectedWorktree()
+        assertNull(viewModel.worktreePendingRemoval)
+
+        viewModel.select(worktreePath)
+        viewModel.deleteSelectedWorktree()
+        assertEquals(worktreePath, viewModel.worktreePendingRemoval?.path)
     }
 }

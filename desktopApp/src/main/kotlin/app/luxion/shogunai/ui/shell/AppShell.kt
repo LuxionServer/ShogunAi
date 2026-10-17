@@ -15,6 +15,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -107,6 +108,7 @@ private fun ShellContent(appContainer: AppContainer, viewModel: ShellViewModel) 
                 destination.previousWorktreesRoot,
                 viewModel.reloadRequests,
                 viewModel.newWorktreeRequests,
+                viewModel,
             )
         }
         is ShellDestination.ProjectSettings -> viewModel.projectFor(destination)?.let { project ->
@@ -123,33 +125,45 @@ private fun ProjectWorktrees(
     previousWorktreesRoot: String?,
     reloadRequests: Int,
     newWorktreeRequests: Int,
+    shellViewModel: ShellViewModel,
 ) {
     val viewModelKey = "${project.id}-${project.config.hashCode()}"
-    val viewModel = viewModel(key = viewModelKey) {
+    val worktreeViewModel = viewModel(key = viewModelKey) {
         WorktreeViewModel(appContainer.worktreeUseCases(project.config))
+    }
+    DisposableEffect(worktreeViewModel) {
+        shellViewModel.updateWorktreeActions(
+            WorktreeActions(
+                onCopySelectedLaunchCommand = worktreeViewModel::copySelectedLaunchCommand,
+                onDeleteSelectedWorktree = worktreeViewModel::deleteSelectedWorktree,
+                onClearSelection = worktreeViewModel::clearSelection,
+            ),
+        )
+        onDispose { shellViewModel.updateWorktreeActions(null) }
     }
     val windowInfo = LocalWindowInfo.current
     LaunchedEffect(viewModelKey) {
-        previousWorktreesRoot?.let(viewModel::repairAfterMove) ?: viewModel.refresh()
+        previousWorktreesRoot?.let(worktreeViewModel::repairAfterMove) ?: worktreeViewModel.refresh()
     }
     LaunchedEffect(viewModelKey, windowInfo) {
         snapshotFlow { windowInfo.isWindowFocused }
             .drop(1)
             .filter { it }
-            .collectLatest { viewModel.refresh() }
+            .collectLatest { worktreeViewModel.refresh() }
     }
     val reloadRequestsOnEntry = remember(viewModelKey) { reloadRequests }
     LaunchedEffect(reloadRequests) {
-        if (reloadRequests != reloadRequestsOnEntry) viewModel.refresh()
+        if (reloadRequests != reloadRequestsOnEntry) worktreeViewModel.refresh()
     }
     val newWorktreeRequestsOnEntry = remember(viewModelKey) { newWorktreeRequests }
     LaunchedEffect(newWorktreeRequests) {
-        if (newWorktreeRequests != newWorktreeRequestsOnEntry) viewModel.openCreateDialog()
+        if (newWorktreeRequests != newWorktreeRequestsOnEntry) worktreeViewModel.openCreateDialog()
     }
     WorktreeScreen(
         projectName = project.name,
         projectConfig = project.config,
-        viewModel = viewModel,
+        viewModel = worktreeViewModel,
+        onOpenProjectSettings = { shellViewModel.editProject(project) },
     )
 }
 
