@@ -170,6 +170,30 @@ tasks.withType<org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimu
 
 Si prefieres no tocar el repositorio, `shogun simulator gradle-init install` (o el botón de la configuración del proyecto) instala un init script de Gradle que hace lo mismo en todos los proyectos de esta máquina, tras preguntar. La configuración del proyecto también elige el tipo de dispositivo y el runtime por máquina. "Limpiar" (o `shogun clean --delete-simulators`) borra los simuladores de los worktrees eliminados y los de ShogunAi cuyo worktree ya no existe. Los repositorios sin el provider no ven nada de esto.
 
+## Repositorios Xcode
+
+Xcode guarda una carpeta de DerivedData por ruta de proyecto, así que cada worktree tiene la suya (varios gigabytes en una app real) y Xcode nunca borra la de un worktree eliminado. Activa el provider de Xcode (solo macOS):
+
+```json
+{ "providers": { "xcode": { "compilationCache": true } } }
+```
+
+La pantalla de worktrees muestra entonces una sección "DerivedData de Xcode" con la carpeta de cada worktree, su tamaño y su último acceso, y las carpetas huérfanas de la máquina: las de proyectos que ya no existen, las cree la herramienta que las cree. "Eliminar huérfanas" las borra, y "Limpiar" (marcado por defecto) también borra las huérfanas tras eliminar worktrees, incluidas las carpetas de los worktrees que elimina. Solo se borran carpetas huérfanas: nunca los DerivedData de un proyecto que sigue existiendo, nunca las cachés compartidas de Xcode (`CompilationCache.noindex`, `ModuleCache.noindex`, …) y nunca una carpeta cuyo proyecto está en un volumen no montado. ShogunAi busca los DerivedData en la ubicación por defecto de Xcode o en la personalizada de sus preferencias.
+
+```bash
+shogun xcode                               # carpetas de DerivedData de este repositorio, huérfanas y tamaño de la caché de compilación
+shogun xcode clean                         # borrar las carpetas huérfanas
+shogun clean --yes --delete-derived-data   # borrarlas también tras eliminar worktrees
+```
+
+`compilationCache` es opcional. Con él, ShogunAi escribe un `~/.shogunai/xcode/compilation-cache.xcconfig` de máquina que activa la caché de compilación de Xcode con prefix mapping de Swift y Clang, y el entorno de cada worktree recibe `XCODE_XCCONFIG_FILE` apuntando a él, así que el primer `xcodebuild` de un worktree nuevo reutiliza lo que los demás ya compilaron (en un proyecto de prueba, de 16,5 s a 1,8 s). La sección muestra el tamaño de la caché de compilación compartida, que Xcode hace crecer sin que ShogunAi la limite.
+
+- Necesita Xcode 26 o posterior y ayuda a proyectos `.xcodeproj` y `.xcworkspace`; los paquetes Swift no reutilizaron nada entre worktrees.
+- Llega a los agentes como cualquier [variable por worktree](./docs/agents.es.md#entorno-por-worktree). Un `XCODE_XCCONFIG_FILE` que pongas tú en esa shell se sustituye; decláralo en `env` y tendrá prioridad sobre el del provider.
+- Xcode abierto desde el Dock no hereda la shell del agente. Pon los ajustes de build en el proyecto si también quieres la caché ahí.
+
+Los repositorios sin el provider, y otros sistemas operativos, no ven nada de esto.
+
 ## Desarrollo
 
 ¿Quieres compilar el proyecto desde el código fuente o contribuir? Empieza por [`docs/getting-started.es.md`](./docs/getting-started.es.md).

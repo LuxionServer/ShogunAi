@@ -22,7 +22,11 @@ sealed interface CliCommand {
         val stopGradleDaemons: Boolean = false,
         val stopEmulators: Boolean = false,
         val deleteSimulators: Boolean = false,
+        val deleteDerivedData: Boolean = false,
     ) : CliCommand
+
+    data object Xcode : CliCommand
+    data object XcodeClean : CliCommand
 
     data object Gradle : CliCommand
     data class GradleStop(val pids: List<Long> = emptyList()) : CliCommand
@@ -64,6 +68,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "clean" -> parseClean(rest)
                 "hook" -> parseHook(rest)
                 "gradle" -> parseGradle(rest)
+                "xcode" -> parseXcode(rest)
                 "env" -> parseEnv(rest)
                 "emulator" -> parseEmulator(rest)
                 "simulator" -> parseSimulator(rest)
@@ -123,6 +128,7 @@ private fun parseClean(rest: List<String>): CliCommand.Clean {
     var stopGradleDaemons = false
     var stopEmulators = false
     var deleteSimulators = false
+    var deleteDerivedData = false
     rest.forEach { argument ->
         when (argument) {
             "--yes", "-y" -> confirmed = true
@@ -130,6 +136,7 @@ private fun parseClean(rest: List<String>): CliCommand.Clean {
             "--stop-gradle-daemons" -> stopGradleDaemons = true
             "--stop-emulators" -> stopEmulators = true
             "--delete-simulators" -> deleteSimulators = true
+            "--delete-derived-data" -> deleteDerivedData = true
             else -> throw UsageException("unknown argument '$argument' for 'clean'")
         }
     }
@@ -139,7 +146,15 @@ private fun parseClean(rest: List<String>): CliCommand.Clean {
         stopGradleDaemons = stopGradleDaemons,
         stopEmulators = stopEmulators,
         deleteSimulators = deleteSimulators,
+        deleteDerivedData = deleteDerivedData,
     )
+}
+
+private fun parseXcode(rest: List<String>): CliCommand {
+    val subcommand = rest.firstOrNull() ?: return CliCommand.Xcode
+    if (subcommand != "clean") throw UsageException("unknown subcommand '$subcommand' for 'xcode', expected clean")
+    rest.drop(1).firstOrNull()?.let { throw UsageException("'xcode clean' takes no arguments, got '$it'") }
+    return CliCommand.XcodeClean
 }
 
 private fun parseGradle(rest: List<String>): CliCommand {

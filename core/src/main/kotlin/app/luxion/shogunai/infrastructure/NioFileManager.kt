@@ -37,6 +37,11 @@ class NioFileManager : FileManager {
         Files.move(tempFile, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
     }
 
+    override fun readText(path: String): String? = runCatching {
+        val file = Path.of(path)
+        if (Files.isRegularFile(file)) Files.readString(file) else null
+    }.getOrNull()
+
     override fun readProperties(path: String): Map<String, String> {
         val file = Path.of(path)
         if (!Files.isRegularFile(file)) return emptyMap()

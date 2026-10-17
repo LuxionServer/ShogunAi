@@ -176,6 +176,26 @@ object SpanishStrings : Strings {
         failed.takeIf { it > 0 }?.let { if (it == 1) "1 no se pudo parar" else "$it no se pudieron parar" },
     ).joinToString(", ")
     override val justNow = "ahora mismo"
+
+    override val xcodeDerivedDataTitle = "DerivedData de Xcode"
+    override val xcodeDerivedDataUnavailable = "No se pueden inspeccionar los DerivedData en este sistema"
+    override val noDerivedDataFolders = "Aún no hay DerivedData para estos worktrees"
+    override fun derivedDataSummary(count: Int, totalSize: String) =
+        (if (count == 1) "1 carpeta de DerivedData" else "$count carpetas de DerivedData") + " · $totalSize"
+    override fun derivedDataOrphans(count: Int, size: String) =
+        if (count == 1) "1 carpeta huérfana · $size" else "$count carpetas huérfanas · $size"
+    override val deleteOrphans = "Eliminar huérfanas"
+    override fun derivedDataOnUnavailableVolumes(count: Int) =
+        if (count == 1) "1 carpeta está en un volumen no montado y se conserva"
+        else "$count carpetas están en volúmenes no montados y se conservan"
+    override fun derivedDataCompilationCache(size: String) = "Caché de compilación · $size"
+    override fun derivedDataDeleted(count: Int, freed: String) =
+        if (count == 1) "1 carpeta de DerivedData borrada · $freed liberados"
+        else "$count carpetas de DerivedData borradas · $freed liberados"
+    override val alsoDeleteDerivedData = "Borrar también los DerivedData de Xcode huérfanos"
+    override fun orphanedDerivedData(count: Int, size: String) =
+        if (count == 1) "DerivedData huérfanos, que también se borran: 1 carpeta · $size"
+        else "DerivedData huérfanos, que también se borran: $count carpetas · $size"
     override fun minutesAgo(count: Long) = if (count == 1L) "hace 1 minuto" else "hace $count minutos"
     override fun hoursAgo(count: Long) = if (count == 1L) "hace 1 hora" else "hace $count horas"
     override fun daysAgo(count: Long) = if (count == 1L) "hace 1 día" else "hace $count días"

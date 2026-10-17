@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.model.IosSimulatorProvider
 import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.XcodeProvider
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -100,7 +101,7 @@ class RepositoryProvisioningFilesTest {
 
     @Test
     fun `reads the gradle provider and ignores unknown providers`() {
-        configFile.writeText("""{ "providers": { "gradle": {}, "xcode": {} } }""")
+        configFile.writeText("""{ "providers": { "gradle": {}, "cocoapods": {} } }""")
 
         assertEquals(RepositoryProviders(gradle = GradleProvider()), files.read(repository.toString()).providers)
     }
@@ -139,6 +140,27 @@ class RepositoryProvisioningFilesTest {
             configFile.writeText(content)
             val error = assertFailsWith<WorktreeError.InvalidRepositoryConfig>(content) { files.read(repository.toString()) }
             assertEquals(true, error.message.orEmpty().contains("providers.gradle."), content)
+        }
+    }
+
+    @Test
+    fun `reads the xcode provider with and without compilation caching`() {
+        configFile.writeText("""{ "providers": { "xcode": { "compilationCache": true } } }""")
+        assertEquals(XcodeProvider(compilationCache = true), files.read(repository.toString()).providers.xcode)
+
+        configFile.writeText("""{ "providers": { "xcode": {} } }""")
+        assertEquals(XcodeProvider(), files.read(repository.toString()).providers.xcode)
+    }
+
+    @Test
+    fun `fails with InvalidRepositoryConfig on an invalid xcode provider`() {
+        listOf(
+            """{ "providers": { "xcode": true } }""",
+            """{ "providers": { "xcode": { "compilationCache": "yes" } } }""",
+            """{ "providers": { "xcode": { "compilationCache": 1 } } }""",
+        ).forEach { content ->
+            configFile.writeText(content)
+            assertFailsWith<WorktreeError.InvalidRepositoryConfig>(content) { files.read(repository.toString()) }
         }
     }
 
@@ -191,7 +213,7 @@ class RepositoryProvisioningFilesTest {
         configFile.writeText("""{ "copy": [".env"] }""")
         assertEquals(RepositoryProviders(), files.read(repository.toString()).providers)
 
-        configFile.writeText("""{ "providers": { "xcode": true } }""")
+        configFile.writeText("""{ "providers": { "cocoapods": true } }""")
         assertEquals(RepositoryProviders(), files.read(repository.toString()).providers)
     }
 

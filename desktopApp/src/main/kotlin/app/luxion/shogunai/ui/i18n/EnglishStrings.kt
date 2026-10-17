@@ -176,6 +176,25 @@ object EnglishStrings : Strings {
         failed.takeIf { it > 0 }?.let { if (it == 1) "1 couldn't be stopped" else "$it couldn't be stopped" },
     ).joinToString(", ")
     override val justNow = "just now"
+
+    override val xcodeDerivedDataTitle = "Xcode DerivedData"
+    override val xcodeDerivedDataUnavailable = "DerivedData can't be inspected on this system"
+    override val noDerivedDataFolders = "No DerivedData folders for these worktrees yet"
+    override fun derivedDataSummary(count: Int, totalSize: String) =
+        (if (count == 1) "1 DerivedData folder" else "$count DerivedData folders") + " · $totalSize"
+    override fun derivedDataOrphans(count: Int, size: String) =
+        if (count == 1) "1 orphaned folder · $size" else "$count orphaned folders · $size"
+    override val deleteOrphans = "Delete orphans"
+    override fun derivedDataOnUnavailableVolumes(count: Int) =
+        if (count == 1) "1 folder is on an unavailable volume and is kept"
+        else "$count folders are on unavailable volumes and are kept"
+    override fun derivedDataCompilationCache(size: String) = "Compilation cache · $size"
+    override fun derivedDataDeleted(count: Int, freed: String) =
+        if (count == 1) "1 DerivedData folder deleted · $freed freed" else "$count DerivedData folders deleted · $freed freed"
+    override val alsoDeleteDerivedData = "Also delete orphaned Xcode DerivedData"
+    override fun orphanedDerivedData(count: Int, size: String) =
+        if (count == 1) "Orphaned DerivedData, also deleted: 1 folder · $size"
+        else "Orphaned DerivedData, also deleted: $count folders · $size"
     override fun minutesAgo(count: Long) = if (count == 1L) "1 minute ago" else "$count minutes ago"
     override fun hoursAgo(count: Long) = if (count == 1L) "1 hour ago" else "$count hours ago"
     override fun daysAgo(count: Long) = if (count == 1L) "1 day ago" else "$count days ago"

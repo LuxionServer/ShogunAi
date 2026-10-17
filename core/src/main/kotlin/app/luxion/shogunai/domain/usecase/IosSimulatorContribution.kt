@@ -1,6 +1,7 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.io.AppleSimulators
+import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.model.IOS_SIMULATOR_KEY
 import app.luxion.shogunai.domain.model.IOS_SIMULATOR_UDID
 import app.luxion.shogunai.domain.model.IosSimulatorProvider
@@ -15,6 +16,9 @@ class MachineProviderContributions(
     private val simulatorSettingsFor: (repositoryPath: String) -> SimulatorSettings,
     private val requestedSimulator: SimulatorSettings = SimulatorSettings(),
     private val gradleJvmArgsFor: (repositoryPath: String) -> String? = { null },
+    private val fileManager: FileManager? = null,
+    private val userHome: String = System.getProperty("user.home").orEmpty(),
+    private val isMac: Boolean = System.getProperty("os.name").orEmpty().startsWith("Mac", ignoreCase = true),
 ) : ProviderContributions {
 
     override fun forRepository(repositoryPath: String, providers: RepositoryProviders): List<EnvironmentContribution> =
@@ -26,10 +30,22 @@ class MachineProviderContributions(
             providers.iosSimulator?.takeIf { simulators.isSupported() }?.let { preferred ->
                 iosSimulatorContribution(simulators, preferred, simulatorSettingsFor(repositoryPath), requestedSimulator)
             },
+            providers.xcode?.takeIf { it.compilationCache && isMac }?.let {
+                val manager = fileManager ?: return@let null
+                xcodeCompilationCacheContribution(manager, userHome)
+            },
         )
 
     fun requesting(simulator: SimulatorSettings): MachineProviderContributions =
-        MachineProviderContributions(simulators, simulatorSettingsFor, simulator, gradleJvmArgsFor)
+        MachineProviderContributions(
+            simulators,
+            simulatorSettingsFor,
+            simulator,
+            gradleJvmArgsFor,
+            fileManager,
+            userHome,
+            isMac,
+        )
 }
 
 fun iosSimulatorContribution(

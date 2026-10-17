@@ -15,4 +15,6 @@ interface FileManager {
     fun readProperties(path: String): Map<String, String>
 
     fun writeText(path: String, text: String)
+
+    fun readText(path: String): String?
 }

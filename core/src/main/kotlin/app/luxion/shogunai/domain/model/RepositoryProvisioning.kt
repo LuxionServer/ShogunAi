@@ -20,6 +20,7 @@ data class RepositoryProviders(
     val gradle: GradleProvider? = null,
     val emulator: EmulatorProvider? = null,
     val iosSimulator: IosSimulatorProvider? = null,
+    val xcode: XcodeProvider? = null,
 )
 
 data class GradleProvider(
@@ -33,3 +34,5 @@ data class GradleProvider(
 data class EmulatorProvider(val preferredAvd: String? = null)
 
 data class IosSimulatorProvider(val device: String? = null, val runtime: String? = null)
+
+data class XcodeProvider(val compilationCache: Boolean = false)

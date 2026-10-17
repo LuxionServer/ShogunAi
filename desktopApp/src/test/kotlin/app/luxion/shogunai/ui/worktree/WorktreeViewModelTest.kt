@@ -4,7 +4,9 @@ import app.luxion.shogunai.EmulatorUseCases
 import app.luxion.shogunai.GradleUseCases
 import app.luxion.shogunai.SimulatorUseCases
 import app.luxion.shogunai.WorktreeUseCases
+import app.luxion.shogunai.XcodeUseCases
 import app.luxion.shogunai.domain.FakeClipboardWriter
+import app.luxion.shogunai.domain.FakeDerivedDataSource
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
@@ -20,9 +22,12 @@ import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.io.DerivedDataSource
 import app.luxion.shogunai.domain.model.BranchOption
 import app.luxion.shogunai.domain.model.DaemonOwner
 import app.luxion.shogunai.domain.model.DaemonState
+import app.luxion.shogunai.domain.model.DerivedDataFolder
+import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -34,14 +39,17 @@ import app.luxion.shogunai.domain.model.SimulatorDevice
 import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.XcodeProvider
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.CopyWorktreeLaunchCommandUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.DetectRunningAgentsUseCase
+import app.luxion.shogunai.domain.usecase.DeleteOrphanedDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.MeasureWorktreeSizeUseCase
 import app.luxion.shogunai.domain.usecase.ReadGitMetadataFingerprintUseCase
 import app.luxion.shogunai.domain.usecase.ListGradleDaemonsUseCase
+import app.luxion.shogunai.domain.usecase.ListDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.ListLocalBranchesUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
@@ -61,6 +69,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import java.time.Instant
+import java.io.IOException
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -136,10 +145,46 @@ class WorktreeViewModelTest {
             emulator = EmulatorUseCases.NONE,
             simulator = SimulatorUseCases.NONE,
             gradle = gradleUseCases(executor),
+            xcode = xcodeUseCases(FakeDerivedDataSource()),
         )
     }
 
     private var portsByWorktree: Map<String, Map<String, Int>> = emptyMap()
+
+    private fun xcodeUseCases(source: DerivedDataSource, provider: XcodeProvider? = null) = XcodeUseCases(
+        provider = { provider },
+        supported = { source.isSupported() },
+        list = ListDerivedDataUseCase(source),
+        deleteOrphans = DeleteOrphanedDerivedDataUseCase(source),
+    )
+
+    private fun xcodeRepository(
+        responder: (List<String>) -> CommandResult,
+        source: DerivedDataSource = FakeDerivedDataSource(),
+        provider: XcodeProvider = XcodeProvider(),
+    ): WorktreeUseCases {
+        val executor = FakeShellCommandExecutor(responder)
+        return useCasesWith(executor).copy(xcode = xcodeUseCases(source, provider))
+    }
+
+    private class CountingDerivedDataSource(val source: FakeDerivedDataSource) : DerivedDataSource by source {
+        var listings = 0
+        override suspend fun folders(): List<DerivedDataFolder> {
+            listings++
+            return source.folders()
+        }
+    }
+
+    private class ThrowingDerivedDataSource(private val error: IOException) : DerivedDataSource {
+        override fun isSupported(): Boolean = true
+        override suspend fun folders(): List<DerivedDataFolder> = throw error
+        override suspend fun compilationCacheBytes(): Long? = null
+        override fun projectExists(workspacePath: String): Boolean = false
+        override fun isOnUnavailableVolume(workspacePath: String): Boolean = false
+        override suspend fun delete(folder: DerivedDataFolder) {}
+    }
+
+    private fun worktreeProject() = "$worktreePath/iosApp/App.xcodeproj"
 
     private fun gradleUseCases(
         executor: ShellCommandExecutor,
@@ -1445,5 +1490,187 @@ class WorktreeViewModelTest {
         assertTrue(viewModel.canCleanUp)
         viewModel.openCleanup()
         assertTrue(viewModel.isCleanupDialogOpen)
+    }
+
+    @Test
+    fun `repositories without the xcode provider never read derived data`() = runTest(dispatcher) {
+        val source = CountingDerivedDataSource(
+            FakeDerivedDataSource(existing = listOf(FakeDerivedDataSource.derivedData("Orphan-1", "/gone/App.xcodeproj"))),
+        )
+        val viewModel = WorktreeViewModel(useCases(listingResponder()).copy(xcode = xcodeUseCases(source)))
+        advanceUntilIdle()
+
+        assertFalse(viewModel.isXcodeRepository)
+        assertEquals(0, source.listings)
+    }
+
+    @Test
+    fun `the xcode provider is ignored when the source isn't supported`() = runTest(dispatcher) {
+        val source = CountingDerivedDataSource(
+            FakeDerivedDataSource(
+                supported = false,
+                existing = listOf(FakeDerivedDataSource.derivedData("Orphan-1", "/gone/App.xcodeproj")),
+            ),
+        )
+        val viewModel = WorktreeViewModel(xcodeRepository(listingResponder(), source))
+        advanceUntilIdle()
+
+        assertFalse(viewModel.isXcodeRepository)
+        assertFalse(viewModel.canCleanUp)
+        assertEquals(0, source.listings)
+    }
+
+    @Test
+    fun `xcode repositories load worktree folders and orphans`() = runTest(dispatcher) {
+        val project = worktreeProject()
+        val worktreeFolder = FakeDerivedDataSource.derivedData("TASK-123", project, 2_000_000_000L)
+        val orphan = FakeDerivedDataSource.derivedData("Orphan-1", "/gone/App.xcodeproj", 500_000_000L)
+        val source = CountingDerivedDataSource(
+            FakeDerivedDataSource(
+                existing = listOf(worktreeFolder, orphan),
+                existingProjects = setOf(project),
+                cacheBytes = 300_000_000L,
+            ),
+        )
+        val viewModel = WorktreeViewModel(
+            xcodeRepository(listingResponder(), source, provider = XcodeProvider(compilationCache = true)),
+        )
+        advanceUntilIdle()
+
+        assertTrue(viewModel.isXcodeRepository)
+        val listing = assertIs<DerivedDataState.Loaded>(viewModel.derivedData).listing
+        val attributed = listing.ofWorktrees().single()
+        assertEquals(worktreePath, (attributed.owner as DerivedDataOwner.Worktree).path)
+        assertEquals(2_000_000_000L, attributed.folder.sizeBytes)
+        assertEquals(listOf(orphan.path), listing.orphans.map { it.path })
+        assertEquals(300_000_000L, listing.compilationCacheBytes)
+        assertEquals(1, source.listings)
+    }
+
+    @Test
+    fun `an auto-refresh check without changes doesn't reload derived data`() = runTest(dispatcher) {
+        val source = CountingDerivedDataSource(FakeDerivedDataSource())
+        val viewModel = WorktreeViewModel(xcodeRepository(listingResponder(), source))
+        advanceUntilIdle()
+        assertEquals(1, source.listings)
+
+        viewModel.startWatching()
+        tick()
+        tick()
+        viewModel.stopWatching()
+
+        assertEquals(1, source.listings)
+    }
+
+    @Test
+    fun `deleteOrphanedDerivedData deletes orphans, reports and reloads the section`() = runTest(dispatcher) {
+        val project = worktreeProject()
+        val worktreeFolder = FakeDerivedDataSource.derivedData("TASK-123", project, 2_000_000_000L)
+        val orphan = FakeDerivedDataSource.derivedData("Orphan-1", "/gone/App.xcodeproj", 500_000_000L)
+        val source = CountingDerivedDataSource(
+            FakeDerivedDataSource(existing = listOf(worktreeFolder, orphan), existingProjects = setOf(project)),
+        )
+        val viewModel = WorktreeViewModel(xcodeRepository(listingResponder(), source))
+        advanceUntilIdle()
+        assertTrue(viewModel.derivedDataOrphans.isNotEmpty())
+
+        viewModel.deleteOrphanedDerivedData()
+        assertTrue(viewModel.isDeletingOrphans)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.isDeletingOrphans)
+        assertEquals(listOf(orphan.path), source.source.deleted)
+        assertEquals(3, source.listings)
+        assertEquals(listOf(orphan.path), viewModel.derivedDataDeletionReport?.deleted?.map { it.path })
+        assertEquals(500_000_000L, viewModel.derivedDataDeletionReport?.bytesFreed)
+        assertTrue(assertIs<DerivedDataState.Loaded>(viewModel.derivedData).listing.orphans.isEmpty())
+
+        viewModel.dismissDerivedDataDeletionReport()
+        assertNull(viewModel.derivedDataDeletionReport)
+    }
+
+    @Test
+    fun `cleanup deletes the removed worktrees' derived data and the orphans`() = runTest(dispatcher) {
+        val project = worktreeProject()
+        val worktreeFolder = FakeDerivedDataSource.derivedData("TASK-123", project, 2_000_000_000L)
+        val orphan = FakeDerivedDataSource.derivedData("Orphan-1", "/gone/App.xcodeproj", 700_000_000L)
+        val source = CountingDerivedDataSource(
+            FakeDerivedDataSource(existing = listOf(worktreeFolder, orphan), existingProjects = setOf(project)),
+        )
+        val viewModel = WorktreeViewModel(xcodeRepository(mergedResponder(), source.source))
+        advanceUntilIdle()
+
+        viewModel.openCleanup()
+        assertTrue(viewModel.cleanupDeleteDerivedData)
+        source.source.existingProjects = emptySet()
+        viewModel.confirmCleanup()
+        advanceUntilIdle()
+
+        assertEquals(setOf(worktreeFolder.path, orphan.path), source.source.deleted.toSet())
+        assertEquals(
+            WorktreeSuccess.CleanedUp(removedCount = 1, deletedDerivedDataFolders = 2, derivedDataBytesFreed = 2_700_000_000L),
+            viewModel.success,
+        )
+    }
+
+    @Test
+    fun `cleanup without the option deletes no derived data`() = runTest(dispatcher) {
+        val orphan = FakeDerivedDataSource.derivedData("Orphan-1", "/gone/App.xcodeproj", 700_000_000L)
+        val source = CountingDerivedDataSource(FakeDerivedDataSource(existing = listOf(orphan)))
+        val viewModel = WorktreeViewModel(xcodeRepository(mergedResponder(), source.source))
+        advanceUntilIdle()
+
+        viewModel.openCleanup()
+        viewModel.cleanupDeleteDerivedData = false
+        viewModel.confirmCleanup()
+        advanceUntilIdle()
+
+        assertTrue(source.source.deleted.isEmpty())
+        assertEquals(WorktreeSuccess.CleanedUp(1), viewModel.success)
+    }
+
+    @Test
+    fun `a failing derived data deletion doesn't fail the cleanup`() = runTest(dispatcher) {
+        val viewModel = WorktreeViewModel(
+            useCasesWith(FakeShellCommandExecutor(mergedResponder()))
+                .copy(xcode = xcodeUseCases(ThrowingDerivedDataSource(IOException("disk error")), XcodeProvider())),
+        )
+        advanceUntilIdle()
+
+        assertTrue(viewModel.isXcodeRepository)
+        viewModel.openCleanup()
+        viewModel.confirmCleanup()
+        advanceUntilIdle()
+
+        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1), viewModel.success)
+    }
+
+    @Test
+    fun `orphaned derived data alone enables the cleanup`() = runTest(dispatcher) {
+        val orphan = FakeDerivedDataSource.derivedData("Orphan-1", "/gone/App.xcodeproj", 700_000_000L)
+        val source = CountingDerivedDataSource(FakeDerivedDataSource(existing = listOf(orphan)))
+        val viewModel = WorktreeViewModel(xcodeRepository(listingResponder(), source.source))
+        advanceUntilIdle()
+
+        assertTrue(viewModel.cleanupCandidates.isEmpty())
+        assertTrue(viewModel.canCleanUp)
+        viewModel.openCleanup()
+        assertTrue(viewModel.isCleanupDialogOpen)
+    }
+
+    @Test
+    fun `cleanup without the xcode provider deletes no derived data`() = runTest(dispatcher) {
+        val orphan = FakeDerivedDataSource.derivedData("Orphan-1", "/gone/App.xcodeproj", 700_000_000L)
+        val source = CountingDerivedDataSource(FakeDerivedDataSource(existing = listOf(orphan)))
+        val viewModel = WorktreeViewModel(useCases(mergedResponder()).copy(xcode = xcodeUseCases(source)))
+        advanceUntilIdle()
+
+        viewModel.openCleanup()
+        viewModel.confirmCleanup()
+        advanceUntilIdle()
+
+        assertEquals(0, source.listings)
+        assertTrue(source.source.deleted.isEmpty())
+        assertFalse(viewModel.isXcodeRepository)
     }
 }

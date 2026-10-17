@@ -63,7 +63,7 @@ Lo que el repositorio declara que necesita cada nuevo worktree, leído de ficher
 |---|---|
 | `copyPatterns` | La lista `copy` de `.shogunai.json`. |
 | `worktreeIncludePatterns` | Las líneas de `.worktreeinclude` (el fichero de Claude Code), sin líneas en blanco ni comentarios `#`. |
-| `providers` | El objeto `providers` de `.shogunai.json`: los providers que activa el repositorio, cada uno con su id como clave y un objeto de opciones. `gradle` (`GradleProvider`, con `daemonMaxHeap`, `idleTimeoutMinutes` y `kotlinDaemonMaxHeap` opcionales) hace visibles los [daemons de Gradle](#daemons-de-gradle) del repositorio y, con ajustes, acota los daemons de las builds de los worktrees; `emulator` (`EmulatorProvider`, con un `avd` opcional que prefiere el repositorio) da a cada worktree su propio [emulador de Android](#emulador-de-android); `ios-simulator` (`IosSimulatorProvider`, con preferencias opcionales `device` y `runtime`) da a cada worktree su propio [simulador de iOS](#simulador-de-ios). Los ids desconocidos se ignoran. |
+| `providers` | El objeto `providers` de `.shogunai.json`: los providers que activa el repositorio, cada uno con su id como clave y un objeto de opciones. `gradle` (`GradleProvider`, con `daemonMaxHeap`, `idleTimeoutMinutes` y `kotlinDaemonMaxHeap` opcionales) hace visibles los [daemons de Gradle](#daemons-de-gradle) del repositorio y, con ajustes, acota los daemons de las builds de los worktrees; `emulator` (`EmulatorProvider`, con un `avd` opcional que prefiere el repositorio) da a cada worktree su propio [emulador de Android](#emulador-de-android); `ios-simulator` (`IosSimulatorProvider`, con preferencias opcionales `device` y `runtime`) da a cada worktree su propio [simulador de iOS](#simulador-de-ios); `xcode` (`XcodeProvider`, con `compilationCache` opcional) muestra y limpia los [DerivedData de Xcode](#deriveddata-de-xcode) y puede activar la caché de compilación. Los ids desconocidos se ignoran. |
 | `environment` | El objeto `env` y el `envFile` de `.shogunai.json`, como un `EnvironmentDeclaration` (ver [Entorno del worktree](#entorno-del-worktree)). |
 
 `allPatterns` es su unión sin duplicados. Los patrones usan la sintaxis de patrones de ignore de Git, relativos a la raíz del repositorio: `local.properties` coincide a cualquier profundidad, `/local.properties` solo en la raíz, `.idea/runConfigurations/` una carpeta entera, `.env*` un glob.
@@ -116,6 +116,15 @@ Lo que el provider de Gradle observa en la máquina (`GradleDaemon.kt`):
 - `GradleDaemon` — un `DaemonProcess` con su `owner` en un repositorio: `DaemonOwner.Worktree(path)`, `RemovedWorktree` (su último directorio de build ya no existe) u `OtherProject`; `null` para daemons de Kotlin, daemons sin directorio de build conocido o fuera de un repositorio.
 - `DaemonStopReport` — el resultado de una parada: `stopped`, `kept` (cada uno con un `DaemonKeptReason`: `BUSY`, `STATE_UNKNOWN` o `BUILD_RUNNING`), `notDaemons` (pids pedidos que no son daemons) y `failures`.
 
+### DerivedData de Xcode
+
+Lo que el provider de Xcode encuentra en la ubicación de DerivedData de Xcode (`DerivedData.kt`), solo en macOS y en repositorios que declaran `"providers": { "xcode": {} }`:
+
+- `DerivedDataFolder` — la carpeta de un proyecto: `path`, `workspacePath` (el `.xcodeproj`, `.xcworkspace` o paquete que registra su `info.plist`), `sizeBytes` y `lastAccessed`.
+- `DerivedDataOwner` — `Worktree(path)` (el worktree del repositorio que contiene el workspace, con los worktrees anidados resueltos), `OtherProject` (el workspace existe en otro sitio), `Orphaned` (el workspace ya no existe) o `UnavailableVolume` (el workspace está en un volumen no montado, así que no se distingue de un proyecto vivo).
+- `DerivedDataListing` — cada carpeta con su dueño (`AttributedDerivedData`) y el tamaño de la caché de compilación compartida cuando se pide; `orphans` y `ofWorktrees()` la filtran.
+- `DerivedDataDeletion` — el resultado de borrar huérfanas: `deleted`, `failures` (`DerivedDataDeletionFailure`: ruta y detalle) y `bytesFreed`.
+
 ### `ThemeMode` / `AppLanguage`
 
 Preferencias del usuario: `LIGHT` / `DARK` / `SYSTEM` y `ENGLISH` / `SPANISH`. Se guardan en `settings.json` (ver [Capa de infraestructura](infrastructure.md)).
@@ -166,10 +175,12 @@ interface FileManager {
     fun isDirectory(path: String): Boolean
     fun modificationStamps(path: String): List<Pair<String, Long>>
     fun readProperties(path: String): Map<String, String>
+    fun writeText(path: String, text: String)
+    fun readText(path: String): String?
 }
 ```
 
-Abstrae el sistema de archivos para que la copia de secretos y la medición de worktrees sean testeables sin tocar disco. `copy` crea las carpetas padre que falten en el destino. `directorySize` suma los archivos regulares bajo `path`, saltándose las carpetas de `excluding`. `modificationStamps` devuelve cada archivo y carpeta bajo `path` (o el propio `path` si es un archivo) con su fecha de modificación, y nada si no existe. `readProperties` lee un fichero de propiedades de Java (como `gradle.properties`), vacío si no existe o no se puede leer.
+Abstrae el sistema de archivos para que la copia de secretos y la medición de worktrees sean testeables sin tocar disco. `copy` crea las carpetas padre que falten en el destino. `directorySize` suma los archivos regulares bajo `path`, saltándose las carpetas de `excluding`. `modificationStamps` devuelve cada archivo y carpeta bajo `path` (o el propio `path` si es un archivo) con su fecha de modificación, y nada si no existe. `readProperties` lee un fichero de propiedades de Java (como `gradle.properties`), vacío si no existe o no se puede leer. `writeText` sustituye un fichero de forma atómica, creando sus carpetas; `readText` devuelve su contenido, o `null` si no existe o no se puede leer.
 
 ### `ClipboardWriter`
 
@@ -259,6 +270,21 @@ interface GradleDaemonSource {
 ```
 
 Lista los daemons de Gradle y de Kotlin que se ejecutan en la máquina con su estado, o falla con `ProcessListingFailed` cuando no se pueden listar los procesos.
+
+### `DerivedDataSource`
+
+```kotlin
+interface DerivedDataSource {
+    fun isSupported(): Boolean
+    suspend fun folders(): List<DerivedDataFolder>
+    suspend fun compilationCacheBytes(): Long?
+    fun projectExists(workspacePath: String): Boolean
+    fun isOnUnavailableVolume(workspacePath: String): Boolean
+    suspend fun delete(folder: DerivedDataFolder)
+}
+```
+
+Todo lo que el provider de Xcode necesita de los DerivedData de Xcode: si el sistema es macOS, las carpetas de proyecto de la ubicación actual (nunca las cachés compartidas de Xcode, que no tienen `info.plist`), el tamaño de la caché de compilación compartida (`null` si no existe), si un workspace sigue existiendo o está en un volumen no montado, y borrar una carpeta.
 
 ### Repositorios
 
@@ -388,3 +414,11 @@ Se usan cuando el repositorio declara el provider de Gradle (y desde `shogun gra
 - `idleDaemonsOfRemovedWorktrees` elige, de un listado tomado antes de una limpieza, los daemons de Gradle ociosos cuya última build fue en uno de los worktrees eliminados. La limpieza se los pasa a `StopGradleDaemonsUseCase`, cuya comprobación en el momento sigue conservando un daemon que se haya puesto ocupado.
 - `CheckGradleBuildCacheUseCase` indica si `org.gradle.caching=true` está en el `gradle.properties` del repositorio o en `$GRADLE_USER_HOME/gradle.properties`. Con la caché de build local de Gradle activada, un worktree nuevo reutiliza las salidas de tareas compiladas en otros worktrees, porque las claves de la caché no dependen de la ruta del checkout.
 - `gradleSettingsContribution` es la contribución del provider al entorno cuando `GradleProvider.hasSettings`: una sola variable, `GRADLE_OPTS`, que `gradleOpts` construye con `-Dorg.gradle.jvmargs="…"`, `-Dorg.gradle.daemon.idletimeout=<ms>` y `-Dorg.gradle.project.kotlin.daemon.jvmargs=-Xmx<tamaño>`, cada una solo si su ajuste está declarado. Las propiedades de sistema de `GRADLE_OPTS` se imponen a `gradle.properties`, también al del usuario. `gradleDaemonArguments` conserva los `org.gradle.jvmargs` efectivos (`effectiveGradleJvmArgs`: el `gradle.properties` del usuario o, si no, el del repositorio base) sustituyendo cada `-Xmx` por el heap declarado, o deja solo el heap cuando no hay argumentos o contienen comillas dobles. El valor no depende del worktree, así que los daemons de todos los worktrees son compatibles y se reutilizan entre ellos; un `GRADLE_OPTS` declarado en `env` gana, como cualquier variable de un provider.
+
+### Casos de uso de Xcode
+
+Se usan en macOS cuando el repositorio declara el provider de Xcode:
+
+- `ListDerivedDataUseCase(worktrees, includeCompilationCache)` atribuye cada carpeta de `DerivedDataSource`: un workspace que no existe es `UnavailableVolume` si su volumen no está montado y, si no, `Orphaned`; uno que existe pertenece al worktree de ruta más larga que lo contiene (`owningWorktree`, la misma regla que los agentes en ejecución y los daemons de Gradle) y, si no, a `OtherProject`. Las huérfanas son de toda la máquina: cuando su proyecto ya no existe, nada puede usar la carpeta, la creara la herramienta que la creara.
+- `DeleteOrphanedDerivedDataUseCase` vuelve a listar las carpetas, se queda con las que siguen huérfanas, comprueba cada workspace otra vez justo antes de borrar (un proyecto restaurado entretanto conserva su carpeta) y devuelve un `DerivedDataDeletion`; un fallo no detiene el resto. La carpeta de un worktree eliminado es huérfana por definición, así que la limpieza solo ejecuta este caso de uso después de eliminar.
+- `xcodeCompilationCacheContribution` es la contribución al entorno del provider cuando `XcodeProvider.compilationCache` está activo, en macOS (`MachineProviderContributions`): un recurso `xcode-compilation-cache` cuyo `create` escribe `~/.shogunai/xcode/compilation-cache.xcconfig` (`COMPILATION_CACHE_ENABLE_CACHING` y prefix mapping de Swift y Clang, cinco líneas `KEY = YES`) y cuyo `exists` comprueba que el fichero tiene ese contenido, más la variable `XCODE_XCCONFIG_FILE=<ruta>`. Al ser un recurso, solo se escribe al resolver con reserva y se vuelve a crear si se borra; el fichero es el mismo para todos los repositorios de la máquina. Un `XCODE_XCCONFIG_FILE` declarado en `env` gana.

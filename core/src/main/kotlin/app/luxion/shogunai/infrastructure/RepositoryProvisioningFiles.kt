@@ -10,6 +10,7 @@ import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.XcodeProvider
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -17,6 +18,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -131,6 +133,10 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
                     runtime = optionalName(options, IOS_SIMULATOR_PROVIDER, RUNTIME_FIELD, path),
                 )
             },
+            xcode = providers[XCODE_PROVIDER]?.let { value ->
+                val options = providerOptions(value, XCODE_PROVIDER, path)
+                XcodeProvider(compilationCache = optionalBoolean(options, XCODE_PROVIDER, COMPILATION_CACHE_FIELD, path) ?: false)
+            },
         )
     }
 
@@ -146,6 +152,15 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         return when (val value = options[field]) {
             null, is JsonNull -> null
             is JsonPrimitive -> value.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() } ?: throw invalid
+            else -> throw invalid
+        }
+    }
+
+    private fun optionalBoolean(options: JsonObject, provider: String, field: String, path: Path): Boolean? {
+        val invalid = WorktreeError.InvalidRepositoryConfig(path.toString(), "\"$PROVIDERS_FIELD.$provider.$field\" must be true or false")
+        return when (val value = options[field]) {
+            null, is JsonNull -> null
+            is JsonPrimitive -> value.takeIf { !it.isString }?.booleanOrNull ?: throw invalid
             else -> throw invalid
         }
     }
@@ -202,6 +217,8 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         const val IOS_SIMULATOR_PROVIDER = "ios-simulator"
         const val DEVICE_FIELD = "device"
         const val RUNTIME_FIELD = "runtime"
+        const val XCODE_PROVIDER = "xcode"
+        const val COMPILATION_CACHE_FIELD = "compilationCache"
         const val ENV_FIELD = "env"
         const val ENV_FILE_FIELD = "envFile"
     }

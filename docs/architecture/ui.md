@@ -74,6 +74,13 @@ When `.shogunai.json` declares `"providers": { "gradle": {} }` (`GradleUseCases.
 
 The section shows the number of daemons and their total memory, one row per daemon (kind and version, PID, memory, "busy" / "idle · 12 minutes ago" / "state unknown", and the worktree's folder name, "removed worktree" or "other project"), a "Stop" button per row and "Stop idle daemons". A button is enabled only for daemons the stop rules allow (`isStoppable`: an idle Gradle daemon, or a Kotlin daemon while no Gradle daemon is busy or unknown); `StopGradleDaemonsUseCase` checks the state again anyway. The result (`daemonStopReport`) stays visible until dismissed, and the list is reloaded. Without the build cache, an informational note explains how to turn it on. When the provider declares settings (`gradleSettings`), a line states them for worktree builds, e.g. "Worktree builds: 2 GB heap · idle after 30 min · Kotlin 1 GB" (`formatMemorySetting` turns `2g` into "2 GB").
 
+### Xcode DerivedData
+
+Only on macOS and for repositories whose `.shogunai.json` declares the Xcode provider (`XcodeUseCases.provider` and `supported`, read on every list load); otherwise nothing below is shown and no Xcode tool runs.
+
+- **Section**: `WorktreeViewModel` loads `derivedData` (`Loading`, `Loaded(listing)` or `Unavailable`) with `ListDerivedDataUseCase` after each list load, but not on the auto-refresh checks: measuring gigabytes of DerivedData on every check would be too expensive. `XcodeDerivedDataSection` shows the number of the worktrees' folders and their total size, one row per folder (worktree folder name, size, last access), the orphans' count and size with "Delete orphans" (disabled without orphans), the folders on unavailable volumes as information, and the shared compilation cache size when caching is declared. `deleteOrphanedDerivedData()` runs `DeleteOrphanedDerivedDataUseCase`, keeps the result in `derivedDataDeletionReport` until dismissed and reloads the section.
+- **Cleanup**: the dialog adds "Also delete orphaned Xcode DerivedData", checked by default (`cleanupDeleteDerivedData`), with the orphans already found. "Clean up" is enabled when there are orphans even without candidates (`canCleanUp`). After the removals, `DeleteOrphanedDerivedDataUseCase` deletes the orphans, the removed worktrees' folders included; the success message adds the folders deleted and the space freed.
+
 ### Launch command
 
 Each worktree row has a "Copy command" button that calls `WorktreeViewModel.copyLaunchCommand(worktree)`; the button shows a "Copied" state for a couple of seconds. The command (`cd "<path>" && <agent command>`) is pasted by the user in the terminal of their choice.

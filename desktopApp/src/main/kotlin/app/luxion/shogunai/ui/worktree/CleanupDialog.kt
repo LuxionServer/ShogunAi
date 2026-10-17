@@ -91,6 +91,26 @@ fun CleanupDialog(viewModel: WorktreeViewModel) {
                         )
                     }
                 }
+                if (viewModel.isXcodeRepository) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = viewModel.cleanupDeleteDerivedData,
+                            onCheckedChange = { viewModel.cleanupDeleteDerivedData = it },
+                            enabled = !viewModel.isCleaningUp,
+                        )
+                        Text(strings.alsoDeleteDerivedData)
+                    }
+                    if (viewModel.derivedDataOrphans.isNotEmpty()) {
+                        Text(
+                            strings.orphanedDerivedData(
+                                viewModel.derivedDataOrphans.size,
+                                formatSize(viewModel.derivedDataOrphans.sumOf { it.sizeBytes }),
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
         },
         confirmButton = {

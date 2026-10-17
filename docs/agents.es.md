@@ -26,6 +26,8 @@ En repositorios Android, `"providers": { "emulator": {} }` añade `ANDROID_SERIA
 
 En repositorios Gradle, los ajustes del provider de Gradle (`"providers": { "gradle": { "daemonMaxHeap": "2g", "idleTimeoutMinutes": 30 } }`) añaden el mismo `GRADLE_OPTS` al entorno de cada worktree, así que los daemons que arrancan las builds de los agentes usan ese heap y ese timeout de inactividad en vez de los de `gradle.properties`, y se pueden compartir entre worktrees. Sustituye un `GRADLE_OPTS` que ya tuviera la shell y no llega a las builds lanzadas desde un IDE (README, "Memoria y vida de los daemons por worktree").
 
+En repositorios Xcode, `"providers": { "xcode": { "compilationCache": true } }` añade `XCODE_XCCONFIG_FILE` al entorno de cada worktree, apuntando a un `.xcconfig` de máquina que activa la caché de compilación con prefix mapping, así que el primer `xcodebuild` de un agente en un worktree nuevo reutiliza lo que otros worktrees ya compilaron. Sustituye un `XCODE_XCCONFIG_FILE` que ya tuviera la shell, no llega a Xcode abierto desde el Dock y no ayuda a los paquetes Swift. Los agentes pueden consultar los DerivedData con `shogun xcode` y borrar las carpetas huérfanas con `shogun xcode clean` (README, "Repositorios Xcode").
+
 Las recetas de abajo muestran cómo recibe cada agente estas variables.
 
 ## Claude Code

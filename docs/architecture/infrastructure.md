@@ -47,6 +47,16 @@ Implementation of `GradleDaemonSource` that doesn't depend on a Gradle binary or
 - **State**: each Gradle daemon writes `$GRADLE_USER_HOME/daemon/<version>/daemon-<pid>.out.log` (`GRADLE_USER_HOME` defaults to `~/.gradle`). The last 1 MiB of that log is scanned backwards for the latest `Marking the daemon as busy|idle` (with its timestamp, for `Idle(since)`; any other state counts as busy) and the latest `Received command: Build{…, currentDir=<path>}`, which gives the last build directory: the directory the Gradle client was started from, so `./gradlew -p <worktree>` run from elsewhere is attributed to where it was run. Both lines are logged at INFO level on every build. A missing or unreadable log, or no marker in that window, gives `Unknown`, which never allows stopping.
 - Gradle's own `--status` and `--stop` aren't used: they only see the daemons of the Gradle version that runs them, and `--stop` also stops busy ones.
 
+## `MacDerivedDataSource`
+
+Implementation of `DerivedDataSource` for macOS (`isSupported` checks `os.name`):
+
+- **Location**: `defaults read com.apple.dt.Xcode <key>` run as argv, first `IDEDerivedDataPathOverride`, then `IDECustomDerivedDataLocation` (keys confirmed in Xcode 27's `IDEFoundation`; a leading `~` is expanded); a failed `defaults` (key missing) falls back to `~/Library/Developer/Xcode/DerivedData`. A location that doesn't exist has no folders.
+- **Folders**: every direct child with a regular `info.plist` that has a `WorkspacePath`, parsed with the JDK's XML parser with external entities and DTDs off. A binary plist (`bplist00`) or an unreadable file is skipped, and so are Xcode's shared caches, which have none. `LastAccessedDate` gives `lastAccessed`; the size comes from `FileManager.directorySize`.
+- **Compilation cache**: `IDECustomCompilationCacheLocation` when set, else `<location>/CompilationCache.noindex`.
+- **Volumes**: a path under `/Volumes/<name>` is on an unavailable volume when that mount point doesn't exist.
+- **Deletion**: refuses any path that isn't a direct child of the current location or has no `info.plist`, then deletes the folder recursively.
+
 ## `RepositoryProvisioningFiles`
 
 Implementation of `RepositoryProvisioningSource` on `java.nio.file` and `kotlinx.serialization`, over `<repo>/.shogunai.json` and `<repo>/.worktreeinclude`.
@@ -85,6 +95,7 @@ In `core/src/testFixtures/kotlin/app/luxion/shogunai/domain/`, `core`'s test fix
 - `FakeAppleSimulators` / `FakeKmpTestWiring` — substitute the simulators (runtimes, devices that boot after a number of polls, records of creations, boots, shutdowns and deletions, a macOS switch) and the KMP wiring.
 - `FakeAndroidSdk` — substitutes `AndroidSdk` with AVDs, emulator states that move from booting to running after a number of polls, a missing-SDK switch, and records of starts and stops.
 - `FakeGradleDaemonSource` — substitutes `GradleDaemonSource` with a mutable list of daemons (or a failure) and counts the listings; `gradleDaemon(...)` and `kotlinDaemon(...)` build them.
+- `FakeDerivedDataSource` — substitutes `DerivedDataSource` with folders, existing projects, unmounted volumes, a compilation cache size, a macOS switch and failing deletions, and records the deletions; `derivedData(...)` builds a folder.
 - `FakeClipboardWriter` — substitutes `ClipboardWriter`.
 - `FakeProjectRepository` — substitutes `ProjectRepository` in ViewModel tests.
 - `FakeRepositoryProvisioningSource` — substitutes `RepositoryProvisioningSource` with provisioning per repository path, unreadable repositories and failing writes, and records the patterns added.
