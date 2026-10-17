@@ -5,12 +5,15 @@ import app.luxion.shogunai.domain.io.KmpTestWiring
 class FakeKmpTestWiring(
     var wiredRepositories: Set<String> = emptySet(),
     var installed: Boolean = false,
+    var nonMultiplatformRepositories: Set<String> = emptySet(),
 ) : KmpTestWiring {
 
     var installs = 0
         private set
 
     override fun isWiredInRepository(repositoryPath: String): Boolean = repositoryPath in wiredRepositories
+
+    override fun usesKotlinMultiplatform(repositoryPath: String): Boolean = repositoryPath !in nonMultiplatformRepositories
 
     override fun isInitScriptInstalled(): Boolean = installed
 

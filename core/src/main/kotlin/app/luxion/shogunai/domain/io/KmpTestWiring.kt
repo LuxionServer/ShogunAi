@@ -4,6 +4,8 @@ interface KmpTestWiring {
 
     fun isWiredInRepository(repositoryPath: String): Boolean
 
+    fun usesKotlinMultiplatform(repositoryPath: String): Boolean
+
     fun isInitScriptInstalled(): Boolean
 
     fun initScriptPath(): String

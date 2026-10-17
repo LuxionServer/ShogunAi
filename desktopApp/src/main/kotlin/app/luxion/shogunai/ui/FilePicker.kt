@@ -7,6 +7,7 @@ object FilePicker {
     fun pickDirectory(initialPath: String, dialogTitle: String): String? {
         val chooser = JFileChooser(currentDirectoryOrNull(initialPath)).apply {
             fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+            isFileHidingEnabled = false
             this.dialogTitle = dialogTitle
         }
         return if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
@@ -19,6 +20,7 @@ object FilePicker {
     fun pickFiles(initialPath: String, dialogTitle: String): List<String> {
         val chooser = JFileChooser(currentDirectoryOrNull(initialPath)).apply {
             fileSelectionMode = JFileChooser.FILES_ONLY
+            isFileHidingEnabled = false
             isMultiSelectionEnabled = true
             this.dialogTitle = dialogTitle
         }

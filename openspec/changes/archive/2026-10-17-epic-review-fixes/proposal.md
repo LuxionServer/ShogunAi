@@ -7,9 +7,10 @@ A guided walkthrough of every feature of `epic/pivot`, done before merging it in
 ## What Changes
 
 - The project configuration screen reads the repository's state (provisioning patterns, emulator and iOS simulator sections) and starts from the saved project every time it's opened, instead of reusing the state of a previous visit.
-- Starting a worktree's iOS simulator, from the app or `shogun simulator start`, also opens Simulator.app showing that device, best effort: failing to open the window doesn't fail the start.
+- Starting a worktree's iOS simulator, from the app or `shogun simulator start`, also opens Xcode's simulator viewer showing that device (Simulator, or Device Hub from Xcode 27, which no longer ships Simulator), best effort: failing to open the window doesn't fail the start.
 - The file picker used for local files shows hidden files, so `.env`, `.env.local` and similar can be chosen.
 - The KMP test-wiring notice (config screen section and `shogun simulator status`) only appears when one of the repository's Gradle build scripts applies the Kotlin Multiplatform plugin.
+- The `SessionStart` context line of repositories with the emulator provider warns the agent that the adb server is shared with other worktrees: never restart it, and never pick a device other than `ANDROID_SERIAL`.
 - The cleanup dialog's emulator, simulator and Gradle daemon options say they only affect the worktrees being removed.
 - Docs: the agents page says Claude Code must trust the repository's folder before its project hooks run (English and Spanish).
 - Roadmap (English and Spanish): providers configuration screen, worktree screen redesign, understandable errors, guided onboarding demo, Android Studio Running Devices integration.
@@ -24,12 +25,12 @@ None.
 
 - `project-configuration`: the screen shows the repository's current state each time it's opened; local files can be picked among hidden files; the KMP notice only applies to Kotlin Multiplatform repositories.
 - `ios-simulator-provider`: starting a simulator opens its window; wiring is only suggested for Kotlin Multiplatform repositories.
-- `command-line-tool`: `shogun simulator status` only reports KMP wiring in Kotlin Multiplatform repositories.
+- `command-line-tool`: `shogun simulator status` only reports KMP wiring in Kotlin Multiplatform repositories; the emulator context line warns about the shared adb server.
 - `worktree-cleanup`: the dialog's provider options state that they only affect the removed worktrees.
 
 ## Impact
 
-- `core`: `AppleSimulators` port gains an operation to show a device's window, implemented with `open -a Simulator`; `KmpTestWiring` gains Kotlin Multiplatform detection; `StartWorktreeSimulatorUseCase` shows the window after booting.
-- `cli`: `simulator status` output.
+- `core`: `AppleSimulators` port gains an operation to show a device's window, implemented with `open` on the viewer's bundle id; `KmpTestWiring` gains Kotlin Multiplatform detection; `StartWorktreeSimulatorUseCase` shows the window after booting.
+- `cli`: `simulator status` output and the `session-start` emulator hint.
 - `desktopApp`: `AppRoot` creates a fresh `ProjectConfigViewModel` per visit; `FilePicker` shows hidden files; the simulator section hides the KMP panel for other repositories; cleanup strings in English and Spanish.
 - `docs/`: `agents.md`, `roadmap.md` and their Spanish translations.

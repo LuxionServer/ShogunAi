@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Boot, shut down and report a worktree's simulator
-Starting SHALL boot the worktree's simulator and wait until it has finished booting or a timeout passes; starting a booted one SHALL succeed without changes. Once booted, starting SHALL open the Simulator app showing that device, best effort: if the window can't be opened, the start still succeeds. Stopping SHALL shut it down, and stopping a shut-down one SHALL succeed without changes. The state SHALL be reported as shut down, booting or booted.
+Starting SHALL boot the worktree's simulator and wait until it has finished booting or a timeout passes; starting a booted one SHALL succeed without changes. Once booted, starting SHALL open Xcode's simulator viewer (the Simulator app, or Device Hub where Xcode no longer ships Simulator) showing that device, best effort: if the window can't be opened, the start still succeeds. Stopping SHALL shut it down, and stopping a shut-down one SHALL succeed without changes. The state SHALL be reported as shut down, booting or booted.
 
 #### Scenario: Start and wait
 - **WHEN** the user starts a worktree's shut-down simulator
@@ -9,14 +9,18 @@ Starting SHALL boot the worktree's simulator and wait until it has finished boot
 
 #### Scenario: Window shown
 - **WHEN** a worktree's simulator finishes booting after a start
-- **THEN** the Simulator app is opened showing that device
+- **THEN** Xcode's simulator viewer is opened showing that device
 
 #### Scenario: Start of a booted simulator
 - **WHEN** the user starts a worktree's simulator that is already booted
-- **THEN** it isn't booted again and the Simulator app is brought up showing it
+- **THEN** it isn't booted again and Xcode's simulator viewer is brought up showing it
+
+#### Scenario: Xcode without the Simulator app
+- **WHEN** a simulator boots on a machine whose Xcode ships Device Hub instead of the Simulator app
+- **THEN** Device Hub is opened, listing the worktree's simulator
 
 #### Scenario: Window can't be opened
-- **WHEN** the simulator boots but opening the Simulator app fails
+- **WHEN** the simulator boots but opening Xcode's simulator viewer fails
 - **THEN** the start succeeds and reports the simulator as booted
 
 #### Scenario: Stop

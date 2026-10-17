@@ -86,6 +86,7 @@ class SimctlAppleSimulatorsTest {
             simulators.create("ShogunAi · main-repo · TASK-1", "com.apple.CoreSimulator.SimDeviceType.iPhone-16", "com.apple.CoreSimulator.SimRuntime.iOS-18-5"),
         )
         simulators.boot("NEW-UDID")
+        simulators.show("NEW-UDID")
         simulators.shutdown("NEW-UDID")
         simulators.delete("NEW-UDID")
 
@@ -96,8 +97,32 @@ class SimctlAppleSimulatorsTest {
             ),
         )
         assertTrue(executor.executed("xcrun", "simctl", "boot", "NEW-UDID"))
+        assertTrue(executor.executed("open", "-b", "com.apple.iphonesimulator", "--args", "-CurrentDeviceUDID", "NEW-UDID"))
+        assertFalse(executor.executed("open", "-b", "com.apple.dt.Devices"))
         assertTrue(executor.executed("xcrun", "simctl", "shutdown", "NEW-UDID"))
         assertTrue(executor.executed("xcrun", "simctl", "delete", "NEW-UDID"))
+    }
+
+    @Test
+    fun `shows the device in Device Hub when the Simulator app isn't installed`() = runTest {
+        val executor = FakeShellCommandExecutor { command ->
+            if ("com.apple.iphonesimulator" in command) {
+                FakeShellCommandExecutor.failure(command, exitCode = 1, stderr = "Unable to find application")
+            } else {
+                FakeShellCommandExecutor.success(command)
+            }
+        }
+
+        SimctlAppleSimulators(executor, osName = "Mac OS X").show("NEW-UDID")
+
+        assertTrue(executor.executed("open", "-b", "com.apple.dt.Devices"))
+    }
+
+    @Test
+    fun `fails to show the device when neither app opens`() = runTest {
+        val executor = FakeShellCommandExecutor { command -> FakeShellCommandExecutor.failure(command, exitCode = 1, stderr = "Unable to find application") }
+
+        assertFailsWith<WorktreeError.AppleToolFailed> { SimctlAppleSimulators(executor, osName = "Mac OS X").show("NEW-UDID") }
     }
 
     @Test
