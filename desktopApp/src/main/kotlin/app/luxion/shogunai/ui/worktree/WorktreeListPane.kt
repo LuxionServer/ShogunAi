@@ -43,6 +43,7 @@ import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.interactive
 import app.luxion.shogunai.ui.i18n.LocalStrings
+import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.i18n.worktreeError
 import app.luxion.shogunai.ui.theme.ShogunTheme
 import java.time.Instant
@@ -58,7 +59,7 @@ fun WorktreeListPane(
     val items = listItems(board)
     LaunchedEffect(board.selected) {
         val selected = board.selected ?: return@LaunchedEffect
-        val index = items.indexOfFirst { it is ListItem.WorktreeItem && it.ref == selected }
+        val index = items.indexOfFirst { (it is ListItem.WorktreeItem && it.ref == selected) || (it is ListItem.StateRow && it.ref == selected) }
         if (index >= 0) listState.animateScrollToItem(index)
     }
     Box(
@@ -92,9 +93,17 @@ fun WorktreeListPane(
                     is ListItem.Header -> stickyHeader(key = item.key) {
                         ProjectGroupHeader(item.group, board, onOpenProjectSettings = { onOpenProjectSettings(item.group.project) })
                     }
+                    is ListItem.StateHeader -> stickyHeader(key = item.key) {
+                        StateGroupHeader(item.group.kind, item.group.items.size, board)
+                    }
+                    is ListItem.StateRow -> item(key = item.key) {
+                        val entry = item.entry
+                        WorktreeRowFor(board, entry.project, entry.holder, entry.worktree, projectName = entry.project.name)
+                        HorizontalDivider()
+                    }
                     is ListItem.GroupState -> item(key = item.key) { GroupState(item.group.holder) }
                     is ListItem.WorktreeItem -> item(key = item.key) {
-                        GroupWorktreeRow(board, item.group, item.worktree)
+                        WorktreeRowFor(board, item.group.project, item.group.holder, item.worktree, projectName = null)
                         HorizontalDivider()
                     }
                     is ListItem.Gradle -> item(key = item.key) { GradleDaemonsSection(item.group.holder) }
@@ -110,6 +119,15 @@ private sealed interface ListItem {
 
     data class Header(val group: WorktreeGroup) : ListItem {
         override val key = "header:${group.project.id}"
+    }
+
+    data class StateHeader(val group: StateGroup<WorktreeEntry>) : ListItem {
+        override val key = "state-header:${group.kind}"
+    }
+
+    data class StateRow(val group: StateGroup<WorktreeEntry>, val entry: WorktreeEntry) : ListItem {
+        val ref = entry.ref
+        override val key = "state-row:${entry.project.id}:${entry.worktree.path}"
     }
 
     data class GroupState(val group: WorktreeGroup) : ListItem {
@@ -130,7 +148,14 @@ private sealed interface ListItem {
     }
 }
 
-private fun listItems(board: WorktreeBoard): List<ListItem> = board.groups.flatMap { group ->
+private fun listItems(board: WorktreeBoard): List<ListItem> =
+    if (board.isGroupedByState) stateListItems(board) else projectListItems(board)
+
+private fun stateListItems(board: WorktreeBoard): List<ListItem> = board.stateGroups.flatMap { group ->
+    listOf<ListItem>(ListItem.StateHeader(group)) + group.items.map { ListItem.StateRow(group, it) }
+}
+
+private fun projectListItems(board: WorktreeBoard): List<ListItem> = board.groups.flatMap { group ->
     buildList {
         if (!board.isFiltered) add(ListItem.Header(group))
         if (group.collapsed) return@buildList
@@ -174,7 +199,7 @@ private fun ProjectGroupHeader(group: WorktreeGroup, board: WorktreeBoard, onOpe
             modifier = Modifier.weight(1f, fill = false),
         )
         Text(
-            strings.worktreeCount(holder.worktrees.size),
+            strings.worktreeCount(if (board.isActiveView) group.worktrees.size else holder.worktrees.size),
             style = ShogunTheme.typography.dataSmall,
             color = colors.onSurfaceVariant,
         )
@@ -238,11 +263,50 @@ private fun GroupState(holder: ProjectWorktrees) {
 }
 
 @Composable
-private fun GroupWorktreeRow(board: WorktreeBoard, group: WorktreeGroup, worktree: Worktree) {
+private fun StateGroupHeader(kind: StateGroupKind, count: Int, board: WorktreeBoard) {
+    val strings = LocalStrings.current
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.surfaceContainer)
+            .padding(horizontal = Spacing.md, vertical = Spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+    ) {
+        Text(kind.label(strings), style = MaterialTheme.typography.titleSmall)
+        Text(strings.worktreeCount(count), style = ShogunTheme.typography.dataSmall, color = colors.onSurfaceVariant)
+        Box(Modifier.weight(1f))
+        if (kind == StateGroupKind.MERGED) {
+            DangerTextButton(
+                onClick = { board.openCleanup() },
+                enabled = board.canCleanUp(),
+            ) { Text(strings.cleanUp, style = MaterialTheme.typography.bodySmall) }
+        }
+    }
+}
+
+private fun StateGroupKind.label(strings: Strings): String = when (this) {
+    StateGroupKind.AGENT_WORKING -> strings.groupAgentWorking
+    StateGroupKind.NEEDS_YOU -> strings.groupNeedsYou
+    StateGroupKind.IN_PROGRESS -> strings.groupInProgress
+    StateGroupKind.MERGED -> strings.groupMerged
+    StateGroupKind.INACTIVE -> strings.groupInactive
+    StateGroupKind.FOLDER_MISSING -> strings.groupFolderMissing
+    StateGroupKind.OTHER -> strings.groupOther
+}
+
+@Composable
+private fun WorktreeRowFor(
+    board: WorktreeBoard,
+    project: Project,
+    holder: ProjectWorktrees,
+    worktree: Worktree,
+    projectName: String?,
+) {
     val strings = LocalStrings.current
     val clipboard = LocalClipboardManager.current
-    val holder = group.holder
-    val ref = WorktreeRef(group.project.id, worktree.path)
+    val ref = WorktreeRef(project.id, worktree.path)
     WorktreeRow(
         model = worktreeRowModel(
             worktree = worktree,
@@ -251,13 +315,14 @@ private fun GroupWorktreeRow(board: WorktreeBoard, group: WorktreeGroup, worktre
             agents = holder.agents.orEmpty()[worktree.path].orEmpty(),
             emulator = holder.emulators[worktree.path]?.takeIf { holder.isEmulatorRepository },
             simulator = holder.simulators[worktree.path]?.takeIf { holder.isSimulatorRepository },
-            origin = classifyOrigin(worktree, group.project.config, holder.herdrWorktreesRoot),
+            origin = classifyOrigin(worktree, project.config, holder.herdrWorktreesRoot),
             now = Instant.now(),
             strings = strings,
         ),
         selected = board.selected == ref,
         isCopied = holder.copiedWorktreePath == worktree.path,
         isMain = worktree.isMain,
+        projectName = projectName,
         onSelect = { board.select(ref) },
         onCopyLaunchCommand = { holder.copyLaunchCommand(worktree) },
         onCopyPath = { clipboard.setText(AnnotatedString(worktree.path)) },

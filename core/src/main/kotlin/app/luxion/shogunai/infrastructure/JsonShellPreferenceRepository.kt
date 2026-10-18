@@ -1,6 +1,8 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.io.ShellPreferenceRepository
+import app.luxion.shogunai.domain.model.GroupedView
+import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.WindowBounds
 
 class JsonShellPreferenceRepository(
@@ -35,5 +37,21 @@ class JsonShellPreferenceRepository(
 
     override fun saveLastCreateProject(projectId: String) {
         settingsFile.update { it.copy(lastCreateProject = projectId) }
+    }
+
+    override fun loadGrouping(view: GroupedView): Grouping = settingsFile.read().grouping.of(view)
+
+    override fun saveGrouping(view: GroupedView, grouping: Grouping) {
+        settingsFile.update { it.copy(grouping = it.grouping.with(view, grouping)) }
+    }
+
+    private fun JsonSettingsFile.GroupingSettings.of(view: GroupedView): Grouping = when (view) {
+        GroupedView.ACTIVE -> active
+        GroupedView.ALL -> all
+    }
+
+    private fun JsonSettingsFile.GroupingSettings.with(view: GroupedView, grouping: Grouping) = when (view) {
+        GroupedView.ACTIVE -> copy(active = grouping)
+        GroupedView.ALL -> copy(all = grouping)
     }
 }

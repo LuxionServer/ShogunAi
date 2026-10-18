@@ -9,11 +9,16 @@ import androidx.lifecycle.viewModelScope
 import app.luxion.shogunai.WorktreeUseCases
 import app.luxion.shogunai.domain.io.ShellPreferenceRepository
 import app.luxion.shogunai.domain.model.BranchType
+import app.luxion.shogunai.domain.model.GroupedView
+import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
+import app.luxion.shogunai.domain.usecase.Activity
 import app.luxion.shogunai.domain.usecase.AgentSearch
+import app.luxion.shogunai.domain.usecase.isActive
+import app.luxion.shogunai.domain.usecase.worktreeActivity
 import app.luxion.shogunai.domain.usecase.isValidGitRefSegment
 import app.luxion.shogunai.domain.usecase.normalizeTaskId
 import kotlinx.coroutines.CoroutineScope
@@ -22,6 +27,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
+import java.time.Instant
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -30,6 +36,7 @@ class WorktreeBoard(
     private val detectAgents: suspend (List<AgentSearch>) -> Result<Map<String, List<RunningAgent>>>,
     private val preferences: ShellPreferenceRepository,
     private val autoRefreshInterval: Duration = AUTO_REFRESH_INTERVAL,
+    private val clock: () -> Instant = Instant::now,
 ) : ViewModel() {
     private val listPermits = Semaphore(MAX_PARALLEL_LISTS)
     private val sizeQueue = SizeQueue(viewModelScope)
@@ -40,6 +47,9 @@ class WorktreeBoard(
         private set
     var projectFilter by mutableStateOf<String?>(null)
         private set
+    var mode by mutableStateOf(GroupedView.ALL)
+        private set
+    private var groupings by mutableStateOf(GroupedView.entries.associateWith(preferences::loadGrouping))
     var textFilter by mutableStateOf("")
         private set
     var findRequests by mutableIntStateOf(0)
@@ -81,19 +91,75 @@ class WorktreeBoard(
     val totalWorktreeCount: Int
         get() = entries.values.sumOf { it.holder.worktrees.size }
 
+    val isActiveView: Boolean
+        get() = mode == GroupedView.ACTIVE
+
+    val grouping: Grouping
+        get() = groupings.getValue(mode)
+
     val groups: List<WorktreeGroup>
         get() = shownProjects.mapNotNull { project ->
             val holder = holder(project.id) ?: return@mapNotNull null
-            val rows = filterWorktrees(holder.orderedWorktrees, textFilter)
-            if (isTextFiltering && rows.isEmpty()) return@mapNotNull null
+            val rows = listedRows(project, holder)
+            if ((isTextFiltering || isActiveView) && rows.isEmpty()) return@mapNotNull null
             WorktreeGroup(project, holder, rows, collapsed = project.id in collapsedProjects && !isFiltered)
         }
+
+    val stateGroups: List<StateGroup<WorktreeEntry>>
+        get() = groupByState(
+            items = shownProjects.flatMap { project ->
+                val holder = holder(project.id) ?: return@flatMap emptyList()
+                filterWorktrees(holder.orderedWorktrees, textFilter).map { worktree ->
+                    ActivityItem(WorktreeEntry(project, holder, worktree), activityOf(holder, worktree))
+                }
+            },
+            includeInactive = !isActiveView,
+            isPinned = { it.ref == selected },
+        )
+
+    val isGroupedByState: Boolean
+        get() = grouping == Grouping.BY_STATE
+
+    private val isListEmpty: Boolean
+        get() = if (isGroupedByState) stateGroups.isEmpty() else groups.isEmpty()
+
+    val isReadingActivity: Boolean
+        get() = shownProjects.any { project ->
+            val holder = holder(project.id) ?: return@any false
+            (!holder.hasLoaded && holder.listFailure == null) ||
+                holder.statuses.values.any { it == WorktreeStatusState.Loading }
+        }
+
+    val isNothingActive: Boolean
+        get() = isActiveView && !isTextFiltering && !isReadingActivity && isListEmpty
+
+    val activeCount: Int
+        get() = entries.values.sumOf { activeCountOf(it.holder) }
+
+    fun activeCountOf(projectId: String): Int = holder(projectId)?.let(::activeCountOf) ?: 0
+
+    fun agentNamesOf(projectId: String): List<String> =
+        holder(projectId)?.agents.orEmpty().values.flatten().map { it.name }.distinct()
+
+    private fun activeCountOf(holder: ProjectWorktrees): Int =
+        holder.worktrees.count { activityOf(holder, it).isActive }
+
+    private fun activityOf(holder: ProjectWorktrees, worktree: Worktree): Activity {
+        val status = (holder.statuses[worktree.path] as? WorktreeStatusState.Loaded)?.status
+        return worktreeActivity(worktree, status, holder.agents?.get(worktree.path), clock())
+    }
+
+    private fun listedRows(project: Project, holder: ProjectWorktrees): List<Worktree> {
+        val rows = filterWorktrees(holder.orderedWorktrees, textFilter)
+        if (!isActiveView) return rows
+        return rows.filter { WorktreeRef(project.id, it.path) == selected || activityOf(holder, it).isActive }
+    }
 
     val isTextFiltering: Boolean
         get() = textFilter.isNotBlank()
 
     val hasNoMatch: Boolean
-        get() = isTextFiltering && groups.isEmpty()
+        get() = isTextFiltering && isListEmpty
 
     val selectedWorktree: SelectedWorktree?
         get() {
@@ -162,9 +228,15 @@ class WorktreeBoard(
         return Entry(project, holder, job)
     }
 
-    fun show(projectFilter: String?) {
-        this.projectFilter = projectFilter?.takeIf { id -> projects.any { it.id == id } }
+    fun show(projectFilter: String?, mode: GroupedView = GroupedView.ALL) {
+        this.mode = mode
+        this.projectFilter = projectFilter?.takeIf { id -> mode == GroupedView.ALL && projects.any { it.id == id } }
         sizeQueue.prioritize(shownHolders())
+    }
+
+    fun updateGrouping(grouping: Grouping) {
+        groupings = groupings + (mode to grouping)
+        preferences.saveGrouping(mode, grouping)
     }
 
     fun updateTextFilter(text: String) {
@@ -198,7 +270,7 @@ class WorktreeBoard(
             var check: Job? = null
             while (true) {
                 delay(autoRefreshInterval)
-                if (check?.isActive != true) check = launch { checkShownProjects() }
+                if (check?.isActive != true) check = launch { checkProjects() }
             }
         }
     }
@@ -208,8 +280,8 @@ class WorktreeBoard(
         watchJob = null
     }
 
-    private suspend fun checkShownProjects() {
-        val unchanged = shownEntries()
+    private suspend fun checkProjects() {
+        val unchanged = entries.values
             .filterNot { it.holder.isBusy }
             .filter { it.holder.checkFingerprint() == FingerprintCheck.UNCHANGED }
         if (unchanged.isEmpty()) return
@@ -250,7 +322,11 @@ class WorktreeBoard(
     }
 
     fun visibleRefs(): List<WorktreeRef> =
-        groups.filterNot { it.collapsed }.flatMap { group -> group.worktrees.map { WorktreeRef(group.project.id, it.path) } }
+        if (isGroupedByState) {
+            stateGroups.flatMap { group -> group.items.map { it.ref } }
+        } else {
+            groups.filterNot { it.collapsed }.flatMap { group -> group.worktrees.map { WorktreeRef(group.project.id, it.path) } }
+        }
 
     fun toggleCollapsed(projectId: String) {
         collapsedProjects = if (projectId in collapsedProjects) collapsedProjects - projectId else collapsedProjects + projectId
@@ -399,6 +475,10 @@ data class WorktreeGroup(
     val worktrees: List<Worktree>,
     val collapsed: Boolean,
 )
+
+data class WorktreeEntry(val project: Project, val holder: ProjectWorktrees, val worktree: Worktree) {
+    val ref = WorktreeRef(project.id, worktree.path)
+}
 
 data class SelectedWorktree(val project: Project, val holder: ProjectWorktrees, val worktree: Worktree)
 

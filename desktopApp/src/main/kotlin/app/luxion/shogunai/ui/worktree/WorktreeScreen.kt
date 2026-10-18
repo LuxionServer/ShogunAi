@@ -35,6 +35,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.ui.components.DangerButton
 import app.luxion.shogunai.ui.components.DangerTextButton
@@ -44,6 +45,7 @@ import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.PrimaryButton
 import app.luxion.shogunai.ui.components.SecondaryButton
+import app.luxion.shogunai.ui.components.SegmentedSelector
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.handPointer
 import app.luxion.shogunai.ui.components.onNewItemShortcut
@@ -58,6 +60,7 @@ fun WorktreeScreen(
     board: WorktreeBoard,
     onSelectFilter: (String?) -> Unit,
     onOpenProjectSettings: (Project) -> Unit,
+    onSeeAll: () -> Unit,
 ) {
     val strings = LocalStrings.current
     DisposableEffect(board) {
@@ -83,7 +86,7 @@ fun WorktreeScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                filteredProject?.name ?: strings.allWorktrees,
+                filteredProject?.name ?: if (board.isActiveView) strings.activeWorktrees else strings.allWorktrees,
                 style = MaterialTheme.typography.headlineSmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -110,11 +113,16 @@ fun WorktreeScreen(
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ProjectFilter(board, onSelectFilter)
+            if (!board.isActiveView) ProjectFilter(board, onSelectFilter)
             TextFilterField(board)
+            GroupingSelector(board)
+            if (board.isActiveView && board.isReadingActivity) {
+                InlineProgress()
+                Text(strings.readingWorktreeStatus, style = MaterialTheme.typography.bodySmall)
+            }
         }
 
-        WorktreeContent(board, onOpenProjectSettings, modifier = Modifier.weight(1f).fillMaxWidth())
+        WorktreeContent(board, onOpenProjectSettings, onSeeAll, modifier = Modifier.weight(1f).fillMaxWidth())
     }
 
     if (board.isCreateDialogOpen) {
@@ -126,6 +134,17 @@ fun WorktreeScreen(
     }
 
     board.pendingRemoval?.let { holder -> RemoveWorktreeDialog(holder) }
+}
+
+@Composable
+private fun GroupingSelector(board: WorktreeBoard) {
+    val strings = LocalStrings.current
+    SegmentedSelector(
+        options = Grouping.entries,
+        selected = board.grouping,
+        onSelect = board::updateGrouping,
+        label = { if (it == Grouping.BY_STATE) strings.groupByState else strings.groupByProject },
+    )
 }
 
 @Composable
@@ -235,13 +254,16 @@ private fun RemoveWorktreeDialog(holder: ProjectWorktrees) {
 private fun WorktreeContent(
     board: WorktreeBoard,
     onOpenProjectSettings: (Project) -> Unit,
+    onSeeAll: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier) {
         val narrow = maxWidth < WorktreeDetailOverlayThreshold
         val selected = board.selectedWorktree
         val list: @Composable (Modifier) -> Unit = { listModifier ->
-            if (board.hasNoMatch) {
+            if (board.isNothingActive) {
+                NothingActive(onNewWorktree = { board.openCreateDialog() }, onSeeAll = onSeeAll, modifier = listModifier)
+            } else if (board.hasNoMatch) {
                 NoMatch(onClear = board::clearTextFilter, modifier = listModifier)
             } else {
                 WorktreeListPane(board, onOpenProjectSettings, listModifier)
@@ -294,6 +316,27 @@ private fun ViewSummary(board: WorktreeBoard, modifier: Modifier) {
         onCleanUp = { board.openCleanup() },
         modifier = modifier,
     )
+}
+
+@Composable
+private fun NothingActive(onNewWorktree: () -> Unit, onSeeAll: () -> Unit, modifier: Modifier) {
+    val strings = LocalStrings.current
+    Column(
+        modifier = modifier.fillMaxSize().padding(Spacing.xl),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Spacing.md, Alignment.CenterVertically),
+    ) {
+        Text(strings.nothingActiveTitle, style = MaterialTheme.typography.headlineSmall)
+        Text(
+            strings.nothingActiveMessage,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            PrimaryButton(onClick = onNewWorktree) { Text(strings.newWorktree) }
+            SecondaryButton(onClick = onSeeAll) { Text(strings.seeAllWorktrees) }
+        }
+    }
 }
 
 @Composable

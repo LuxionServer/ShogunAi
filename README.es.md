@@ -47,7 +47,7 @@ Instálalo como cualquier otra app de escritorio y ábrelo. No necesitas tener J
 ## Uso básico
 
 1. **Crea un proyecto** — al abrir la app por primera vez te ofrece añadir uno. Pulsa "Añadir proyecto" (también en la barra lateral y en Archivo, Mayús+Cmd/Ctrl+N) e indica un nombre, la ruta del repositorio base y la carpeta donde se crearán los worktrees. Opcionalmente añade archivos locales que deben copiarse a cada worktree nuevo en esta máquina.
-2. **Entra a un proyecto** — selecciónalo en la barra lateral para ver sus worktrees existentes. Con clic derecho puedes editarlo o quitarlo; quitar un proyecto nunca toca su repositorio ni sus worktrees.
+2. **Mira qué pasa** — la app se abre en "Activos": los worktrees, de todos tus proyectos, con un agente trabajando, con trabajo esperándote o todavía en curso, agrupados por estado. "Todos los worktrees" lista todo, y al seleccionar un proyecto en la barra lateral ves sus worktrees. Con clic derecho puedes editarlo o quitarlo; quitar un proyecto nunca toca su repositorio ni sus worktrees.
 3. **Crea un worktree** — indica el id de la tarea y el tipo de rama (`feature` o `fix`); la app crea el worktree, la rama y copia los archivos que declaran el repositorio y el proyecto. Para trabajar en una rama que ya tienes, cambia a "Rama existente" y elígela de la lista.
    Para compartir lo que necesita un worktree con todo el que clone el repositorio, añade un `.shogunai.json` en su raíz con patrones al estilo gitignore; cada archivo que Git no versiona y coincide con alguno se copia a cada worktree nuevo, en la misma ruta. Un `.worktreeinclude` (el fichero de Claude Code) se lee igual. El botón "Mover a .shogunai.json" de la configuración del proyecto escribe ahí tus archivos locales.
 

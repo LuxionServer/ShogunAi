@@ -1,6 +1,8 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.model.AppLanguage
+import app.luxion.shogunai.domain.model.GroupedView
+import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.ThemeMode
 import app.luxion.shogunai.domain.model.WindowBounds
 import java.nio.file.Files
@@ -144,5 +146,20 @@ class JsonSettingsFileTest {
         assertEquals(setOf("api", "main-repo"), reloaded.loadCollapsedProjects())
         assertEquals("api", reloaded.loadLastCreateProject())
         assertEquals("all", reloaded.loadLastDestination())
+    }
+
+    @Test
+    fun `each view's grouping defaults and is remembered independently`() {
+        assertEquals(Grouping.BY_STATE, shellRepository.loadGrouping(GroupedView.ACTIVE))
+        assertEquals(Grouping.BY_PROJECT, shellRepository.loadGrouping(GroupedView.ALL))
+
+        shellRepository.saveGrouping(GroupedView.ACTIVE, Grouping.BY_PROJECT)
+
+        val reloaded = JsonShellPreferenceRepository(JsonSettingsFile(storagePath))
+        assertEquals(Grouping.BY_PROJECT, reloaded.loadGrouping(GroupedView.ACTIVE))
+        assertEquals(Grouping.BY_PROJECT, reloaded.loadGrouping(GroupedView.ALL))
+        reloaded.saveGrouping(GroupedView.ALL, Grouping.BY_STATE)
+        assertEquals(Grouping.BY_PROJECT, reloaded.loadGrouping(GroupedView.ACTIVE))
+        assertEquals(Grouping.BY_STATE, reloaded.loadGrouping(GroupedView.ALL))
     }
 }

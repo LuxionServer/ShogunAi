@@ -178,3 +178,10 @@ The cleanup dialog SHALL show each provider option (stop Gradle daemons, stop em
 #### Scenario: Mixed projects
 - **WHEN** the cleanup covers `api`, which declares the Gradle provider, and `web`, which doesn't
 - **THEN** the dialog offers stopping Gradle daemons, and only daemons of `api`'s removed worktrees are stopped
+
+### Requirement: Clean up from the merged group
+When a worktree view is grouped by state, the "Merged" group's header SHALL offer "Clean up", covering the cleanup candidates of the projects in the view, with the same confirmation as the view's "Clean up".
+
+#### Scenario: Clean up merged worktrees
+- **WHEN** "All worktrees" is grouped by state and the user activates "Clean up" on the "Merged" group
+- **THEN** the cleanup confirmation lists the candidates grouped by project, as the view's "Clean up" does

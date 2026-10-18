@@ -6,7 +6,7 @@ Keeps the worktree screen up to date with what happens in the repository while i
 ## Requirements
 
 ### Requirement: Reload when the repository's Git metadata changes
-While a worktree view is shown, the system SHALL check the Git metadata of every project shown in it every 3 seconds and reload that project's worktree list, statuses and overview when its metadata differs from the previous check. Projects whose metadata didn't change SHALL NOT be reloaded. The watched metadata is each main repository's `HEAD`, `index`, `packed-refs`, `FETCH_HEAD`, everything under `refs`, and everything under `worktrees`, which holds each linked worktree's `HEAD`, `index` and lock.
+While a worktree view is shown, the system SHALL check the Git metadata of every saved project every 3 seconds, whichever projects the view shows, and reload that project's worktree list, statuses and overview when its metadata differs from the previous check. Projects whose metadata didn't change SHALL NOT be reloaded. The watched metadata is each main repository's `HEAD`, `index`, `packed-refs`, `FETCH_HEAD`, everything under `refs`, and everything under `worktrees`, which holds each linked worktree's `HEAD`, `index` and lock.
 
 #### Scenario: Worktree created from a terminal
 - **WHEN** a worktree is added to a shown project's repository by another tool
@@ -25,7 +25,7 @@ While a worktree view is shown, the system SHALL check the Git metadata of every
 - **THEN** that project's list isn't reloaded, even if another shown project is
 
 ### Requirement: Refresh running agents on every check
-The system SHALL detect running agents again on every check, once for the worktrees of all shown projects, even when no Git metadata changed, so agents starting or ending in a worktree are shown without a full reload.
+The system SHALL detect running agents again on every check, once for the worktrees of all saved projects, even when no Git metadata changed, so agents starting or ending in a worktree are shown without a full reload.
 
 #### Scenario: Agent starts
 - **WHEN** an agent starts in a listed worktree and no Git metadata changes

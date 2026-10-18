@@ -47,7 +47,7 @@ Install it like any other desktop app and open it. You don't need a JDK or any d
 ## Basic usage
 
 1. **Create a project** — the first time you open the app it offers to add one. Click "Add project" (also in the sidebar and in File, Shift+Cmd/Ctrl+N) and enter a name, the path of the base repository and the folder where worktrees will be created. Optionally add local files that must be copied to each new worktree on this machine.
-2. **Open a project** — select it in the sidebar to see its existing worktrees. Right-click it to edit or remove it; removing a project never touches its repository or worktrees.
+2. **See what's going on** — the app opens on "Active": the worktrees, across all your projects, with an agent working, with work waiting for you or still in progress, grouped by state. "All worktrees" lists everything, and selecting a project in the sidebar shows its worktrees. Right-click it to edit or remove it; removing a project never touches its repository or worktrees.
 3. **Create a worktree** — enter the task id and the branch type (`feature` or `fix`); the app creates the worktree and the branch, and copies the files the repository and the project declare. To work on a branch you already have, switch to "Existing branch" and pick it from the list.
    To share what a worktree needs with everyone who clones the repository, add a `.shogunai.json` at its root with gitignore-style patterns; every file Git doesn't track that matches one is copied into each new worktree, at the same path. A `.worktreeinclude` (Claude Code's file) is read the same way. The "Move to .shogunai.json" button in the project configuration writes your local files into it.
 
