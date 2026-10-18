@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.shell
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -33,11 +34,12 @@ import app.luxion.shogunai.AppContainer
 import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.ui.components.DangerButton
+import app.luxion.shogunai.ui.components.FocusRingWidth
 import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.PrimaryButton
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.i18n.LocalStrings
-import app.luxion.shogunai.ui.projectconfig.ProjectConfigScreen
+import app.luxion.shogunai.ui.projectconfig.ProjectSettingsView
 import app.luxion.shogunai.ui.projectconfig.ProjectConfigViewModel
 import app.luxion.shogunai.ui.rememberScreenViewModelStoreOwner
 import app.luxion.shogunai.ui.worktree.WorktreeBoard
@@ -72,7 +74,19 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel) {
             }
     }
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+    val folderDrop = rememberFolderDropState()
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxSize()
+            .folderDropTarget(folderDrop) { folder -> viewModel.addProject(folder) }
+            .then(
+                if (folderDrop.hovering) {
+                    Modifier.border(FocusRingWidth, MaterialTheme.colorScheme.primary)
+                } else {
+                    Modifier
+                },
+            ),
+    ) {
         val narrow = maxWidth < NarrowWindowThreshold
         LaunchedEffect(narrow) { viewModel.onWindowWidthChanged(narrow) }
 
@@ -104,6 +118,10 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel) {
         }
     }
 
+    if (viewModel.isLeaveConfirmationPending) {
+        DiscardChangesDialog(onConfirm = viewModel::confirmLeave, onDismiss = viewModel::keepEditing)
+    }
+
     projectPendingRemoval?.let { project ->
         RemoveProjectDialog(
             project = project,
@@ -123,9 +141,11 @@ private fun ShellContent(appContainer: AppContainer, viewModel: ShellViewModel, 
         ShellDestination.Active -> WorktreeView(destination, viewModel, board)
         is ShellDestination.All -> WorktreeView(destination, viewModel, board)
         is ShellDestination.ProjectSettings -> viewModel.projectFor(destination)?.let { project ->
-            key(destination) { ProjectForm(appContainer, viewModel, existingProject = project) }
+            key(destination) { ProjectForm(appContainer, viewModel, existingProject = project, initialFolder = null) }
         }
-        ShellDestination.AddProject -> key(destination) { ProjectForm(appContainer, viewModel, existingProject = null) }
+        is ShellDestination.AddProject -> key(destination) {
+            ProjectForm(appContainer, viewModel, existingProject = null, initialFolder = destination.folder)
+        }
     }
 }
 
@@ -167,7 +187,12 @@ private fun WorktreeView(destination: ShellDestination, shellViewModel: ShellVie
 }
 
 @Composable
-private fun ProjectForm(appContainer: AppContainer, shellViewModel: ShellViewModel, existingProject: Project?) {
+private fun ProjectForm(
+    appContainer: AppContainer,
+    shellViewModel: ShellViewModel,
+    existingProject: Project?,
+    initialFolder: String?,
+) {
     val viewModel = viewModel(viewModelStoreOwner = rememberScreenViewModelStoreOwner()) {
         ProjectConfigViewModel(
             appContainer.projectRepository,
@@ -175,10 +200,16 @@ private fun ProjectForm(appContainer: AppContainer, shellViewModel: ShellViewMod
             existingProject,
             appContainer::loadAvds,
             appContainer.simulatorSetup,
+            appContainer::inspectRepository,
         )
     }
-    ProjectConfigScreen(
+    ProjectSettingsView(
         viewModel = viewModel,
+        saveRequests = shellViewModel.saveSettingsRequests,
+        initialFolder = initialFolder,
+        onAttachLeaveGuard = shellViewModel::attachLeaveGuard,
+        onDetachLeaveGuard = shellViewModel::detachLeaveGuard,
+        onCanSaveChanged = shellViewModel::updateCanSaveSettings,
         onSaved = { saved -> shellViewModel.onProjectSaved(saved, previous = existingProject) },
         onCancel = shellViewModel::cancelForm,
     )
@@ -203,6 +234,18 @@ private fun EmptyState(onAddProject: () -> Unit) {
             PrimaryButton(onClick = onAddProject) { Text(strings.addProject) }
         }
     }
+}
+
+@Composable
+private fun DiscardChangesDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    val strings = LocalStrings.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(strings.discardChangesTitle) },
+        text = { Text(strings.discardChangesMessage) },
+        confirmButton = { PrimaryButton(onClick = onConfirm) { Text(strings.discard) } },
+        dismissButton = { NeutralTextButton(onClick = onDismiss) { Text(strings.keepEditing) } },
+    )
 }
 
 @Composable

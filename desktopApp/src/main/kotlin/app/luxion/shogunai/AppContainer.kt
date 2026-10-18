@@ -46,6 +46,8 @@ import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.RepairWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
+import app.luxion.shogunai.domain.usecase.ResolveRepositoryUseCase
+import app.luxion.shogunai.ui.projectconfig.RepositoryInspection
 import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.StartWorktreeEmulatorUseCase
 import app.luxion.shogunai.domain.usecase.StartWorktreeSimulatorUseCase
@@ -150,6 +152,13 @@ class AppContainer {
 
     suspend fun loadAvds(repositoryPath: String): Result<List<String>> =
         runCatching { androidSdk.listAvds(androidSdk.locate(repositoryPath)) }
+
+    suspend fun inspectRepository(folder: String): Result<RepositoryInspection> =
+        ResolveRepositoryUseCase(shellCommandExecutor)(folder).map { topLevel ->
+            val config = ProjectConfig(baseRepositoryPath = topLevel, worktreesRoot = "", secretFiles = emptyList())
+            val mainBranch = ResolveMainBranchUseCase(config, shellCommandExecutor)().getOrNull()
+            RepositoryInspection(topLevel, mainBranch?.name)
+        }
 
     val detectRunningAgents = DetectRunningAgentsUseCase(shellCommandExecutor)
 

@@ -15,8 +15,10 @@ import app.luxion.shogunai.domain.model.SimulatorSettings
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.ui.shell.LeaveGuard
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import java.io.File
 import java.util.UUID
 
 sealed interface SimulatorSectionState {
@@ -38,16 +40,51 @@ sealed interface EmulatorSectionState {
     data class Failed(val error: Throwable) : EmulatorSectionState
 }
 
+enum class ProjectConfigField { NAME, BASE_REPOSITORY_PATH }
+
+data class RepositoryInspection(val topLevel: String, val mainBranch: String?)
+
+sealed interface SaveOutcome {
+    data class Saved(val project: Project) : SaveOutcome
+    data class Invalid(val firstInvalidField: ProjectConfigField) : SaveOutcome
+    data class Failed(val error: Throwable) : SaveOutcome
+}
+
 class ProjectConfigViewModel(
     private val projectRepository: ProjectRepository,
     private val provisioningSource: RepositoryProvisioningSource,
     existingProject: Project?,
     private val loadAvds: suspend (repositoryPath: String) -> Result<List<String>> = { Result.success(emptyList()) },
     private val simulatorSetup: SimulatorSetup = SimulatorSetup.NONE,
-) : ViewModel() {
+    private val inspectRepository: suspend (folder: String) -> Result<RepositoryInspection> = {
+        Result.failure(WorktreeError.RepositoryNotFound(it))
+    },
+) : ViewModel(), LeaveGuard {
     private val existingId = existingProject?.id
+    val isNewProject: Boolean = existingProject == null
 
-    var name by mutableStateOf(existingProject?.name ?: "")
+    private var _name by mutableStateOf(existingProject?.name ?: "")
+    private var touchedFields by mutableStateOf(emptySet<ProjectConfigField>())
+
+    var saveAttempted by mutableStateOf(false)
+        private set
+
+    var folderChosen by mutableStateOf(existingProject != null)
+        private set
+
+    var rejectedFolder by mutableStateOf<String?>(null)
+        private set
+
+    var detectedMainBranch by mutableStateOf<String?>(null)
+        private set
+
+    var name: String
+        get() = _name
+        set(value) {
+            _name = value
+            touch(ProjectConfigField.NAME)
+        }
+
     private var _baseRepositoryPath by mutableStateOf(existingProject?.config?.baseRepositoryPath ?: "")
     var worktreesRoot by mutableStateOf(existingProject?.config?.worktreesRoot ?: "")
 
@@ -69,6 +106,7 @@ class ProjectConfigViewModel(
         get() = _baseRepositoryPath
         set(value) {
             _baseRepositoryPath = value
+            touch(ProjectConfigField.BASE_REPOSITORY_PATH)
             repositoryProvisioning = provisioningSource.stateFor(value)
             refreshEmulatorSection()
             refreshSimulatorSection()
@@ -100,17 +138,17 @@ class ProjectConfigViewModel(
     val simulatorSnippet: String get() = simulatorSetup.snippet
     val simulatorInitScriptPath: String get() = simulatorSetup.initScriptPath
 
-    private val initialName = name
-    private val initialBaseRepositoryPath = baseRepositoryPath
-    private val initialWorktreesRoot = worktreesRoot
-    private val initialSecretFiles = secretFiles
-    private val initialAgentCommand = agentCommand
-    private val initialUseHeadroom = useHeadroom
-    private val initialMainBranch = mainBranch
-    private val initialEmulatorAvd = emulatorAvd
-    private val initialEmulatorNoWindow = emulatorNoWindow
-    private val initialSimulatorDevice = simulatorDevice
-    private val initialSimulatorRuntime = simulatorRuntime
+    private var initialName = name
+    private var initialBaseRepositoryPath = baseRepositoryPath
+    private var initialWorktreesRoot = worktreesRoot
+    private var initialSecretFiles = secretFiles
+    private var initialAgentCommand = agentCommand
+    private var initialUseHeadroom = useHeadroom
+    private var initialMainBranch = mainBranch
+    private var initialEmulatorAvd = emulatorAvd
+    private var initialEmulatorNoWindow = emulatorNoWindow
+    private var initialSimulatorDevice = simulatorDevice
+    private var initialSimulatorRuntime = simulatorRuntime
 
     init {
         refreshEmulatorSection()
@@ -170,9 +208,57 @@ class ProjectConfigViewModel(
     }
 
     val isValid: Boolean
-        get() = name.isNotBlank() && baseRepositoryPath.isNotBlank()
+        get() = firstInvalidField == null
 
-    val hasUnsavedChanges: Boolean
+    val firstInvalidField: ProjectConfigField?
+        get() = ProjectConfigField.entries.firstOrNull(::isInvalid)
+
+    fun isErrorVisible(field: ProjectConfigField): Boolean =
+        isInvalid(field) && (saveAttempted || field in touchedFields)
+
+    private fun isInvalid(field: ProjectConfigField): Boolean = when (field) {
+        ProjectConfigField.NAME -> name.isBlank()
+        ProjectConfigField.BASE_REPOSITORY_PATH -> baseRepositoryPath.isBlank()
+    }
+
+    private fun touch(field: ProjectConfigField) {
+        touchedFields = touchedFields + field
+    }
+
+    suspend fun chooseFolder(folder: String): Result<Unit> =
+        inspectRepository(folder).map { inspection ->
+            val repository = File(inspection.topLevel)
+            baseRepositoryPath = inspection.topLevel
+            name = repository.name
+            worktreesRoot = File(repository.parentFile, "${repository.name}-worktrees").path
+            detectedMainBranch = inspection.mainBranch
+            rejectedFolder = null
+            folderChosen = true
+            touchedFields = emptySet()
+            markPristine()
+        }.onFailure { rejectedFolder = folder }
+
+    fun dismissRejectedFolder() {
+        rejectedFolder = null
+    }
+
+    private fun markPristine() {
+        initialName = name
+        initialBaseRepositoryPath = baseRepositoryPath
+        initialWorktreesRoot = worktreesRoot
+        initialSecretFiles = secretFiles
+    }
+
+    fun submit(): SaveOutcome {
+        saveAttempted = true
+        firstInvalidField?.let { return SaveOutcome.Invalid(it) }
+        return save().fold(
+            onSuccess = { SaveOutcome.Saved(it) },
+            onFailure = { SaveOutcome.Failed(it) },
+        )
+    }
+
+    override val hasUnsavedChanges: Boolean
         get() = name != initialName ||
             baseRepositoryPath != initialBaseRepositoryPath ||
             worktreesRoot != initialWorktreesRoot ||
