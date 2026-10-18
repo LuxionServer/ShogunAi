@@ -370,10 +370,11 @@ class WorktreeBoard(
     val canCreate: Boolean
         get() {
             val holder = createHolder ?: return false
-            return !holder.isCreating && when (createMode) {
-                CreateMode.NEW_BRANCH -> taskId.isNotBlank() && isTaskIdValid(taskId)
-                CreateMode.EXISTING_BRANCH -> holder.isBranchAvailable(selectedBranch)
-            }
+            return !holder.isCreating && isCreateEnabled(
+                mode = createMode,
+                isTaskIdValid = taskId.isNotBlank() && isTaskIdValid(taskId),
+                isSelectedBranchAvailable = holder.isBranchAvailable(selectedBranch),
+            )
         }
 
     fun dismissCreateDialog() {
@@ -483,6 +484,15 @@ data class WorktreeEntry(val project: Project, val holder: ProjectWorktrees, val
 data class SelectedWorktree(val project: Project, val holder: ProjectWorktrees, val worktree: Worktree)
 
 data class PendingSuccess(val projectId: String?, val success: WorktreeSuccess)
+
+internal fun isCreateEnabled(
+    mode: CreateMode,
+    isTaskIdValid: Boolean,
+    isSelectedBranchAvailable: Boolean,
+): Boolean = when (mode) {
+    CreateMode.NEW_BRANCH -> isTaskIdValid
+    CreateMode.EXISTING_BRANCH -> isSelectedBranchAvailable
+}
 
 private const val MAX_PARALLEL_LISTS = 2
 private val AUTO_REFRESH_INTERVAL = 3.seconds
