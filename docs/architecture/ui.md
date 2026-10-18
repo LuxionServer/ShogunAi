@@ -14,7 +14,7 @@ Success messages are transient and don't move the layout: the shell owns one `Ap
 
 `main.kt` adds the desktop conventions around the shell:
 
-- A `MenuBar` (`AppMenuBar`) with File (New worktree while a worktree view is active, Add project; Preferences and Quit off macOS), View (Find while a worktree view is active, Reload, Toggle sidebar) and Help (About, off macOS), labelled from `Strings` so it follows the language. On macOS, `java.awt.Desktop` handlers put About and Settings… in the ShogunAi menu, and a quit handler saves the window bounds before Cmd+Q quits.
+- A `MenuBar` (`AppMenuBar`) with File (New worktree while a worktree view is active, Save while project settings have changes, Add project; Preferences and Quit off macOS), View (Find while a worktree view is active, Reload, Toggle sidebar) and Help (About, off macOS), labelled from `Strings` so it follows the language. On macOS, `java.awt.Desktop` handlers put About and Settings… in the ShogunAi menu, and a quit handler cancels the system quit and goes through the `LeaveGuard`, which saves the window bounds when it really quits.
 - `PreferencesWindow` (theme mode and language, a single instance brought to the front when reopened) and `AboutWindow` (icon, name, `BuildInfo.VERSION`, repository link). Every window reads the same `Appearance` holder, so a change applies to all of them at once.
 - The window's bounds and maximized state are saved as `windowBounds` when it closes and restored on startup; bounds that don't intersect any connected display open the window centered instead. The minimum size is 720×480.
 
@@ -128,6 +128,16 @@ Owners are computed from the board's worktree lists, never by running `git workt
 ### Launch command
 
 The detail's "Copy launch command" button, the row's hover icon and context menu, and Cmd/Ctrl+Shift+C on the selected worktree call `ProjectWorktrees.copyLaunchCommand(worktree)`; the row's icon shows a "Copied" state for a couple of seconds. The command (`cd "<path>" && <agent command>`) is pasted by the user in the terminal of their choice.
+
+### Project settings
+
+`ProjectSettingsView` (`ui/projectconfig`) hosts the `ProjectSettings` and `AddProject` destinations. It is a column limited to 720 dp, centered, with the sections General (name, base repository, worktrees folder, main branch), Worktree files (what the repository declares and the local files), Agent and, when the repository declares them, Android emulator and iOS simulator. Sections are separated by a heading, not cards, with each field's label above it and its help below. From 1000 dp of content width a section index sits on the left: activating an entry animates the scroll to the section, and the entry for the section in view is highlighted.
+
+`ProjectConfigViewModel` shows a required-field error only once the field was edited (`touchedFields`) or a save was attempted (`saveAttempted`), through `isErrorVisible`. "Save" is always enabled: `submit()` returns `SaveOutcome.Invalid` with the first invalid field, which the view focuses, or saves. A save bar slides in at the bottom while `hasUnsavedChanges` holds, with "Discard" and "Save"; while adding a project it always shows "Cancel" and "Add project". File > Save (Cmd/Ctrl+S) is enabled by `ShellViewModel.canSaveSettings`, which the view keeps up to date, and reaches the view through `saveSettingsRequests`.
+
+The view registers its `ProjectConfigViewModel` as the shell's `LeaveGuard`. `ShellViewModel.requestLeave` runs a navigation (sidebar, shortcuts, menu entries, "Discard") or the window close only when the guard has no unsaved changes; otherwise it keeps it as pending and `AppShell` asks to discard, with `confirmLeave` or `keepEditing` resolving it. The window's close request, File > Quit and the macOS quit handler all go through it.
+
+"Add project" starts by choosing the repository folder, with the picker or by dropping a folder on the window (`folderDropTarget`, which only accepts a single directory and outlines the window while hovering). `AppContainer.inspectRepository` resolves the folder to its repository's top level with `ResolveRepositoryUseCase` and detects the main branch with `ResolveMainBranchUseCase`; `ProjectConfigViewModel.chooseFolder` then prefills the name, the `<folder>-worktrees` folder next to the repository and the detected branch as the main branch placeholder. A folder that isn't a Git repository is rejected with a message and the form stays closed. The prefilled values count as the form's initial values, so an unedited prefilled form has no unsaved changes.
 
 ### Repository provisioning and local files
 

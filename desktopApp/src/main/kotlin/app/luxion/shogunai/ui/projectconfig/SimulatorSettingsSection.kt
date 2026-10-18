@@ -20,7 +20,6 @@ import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.PrimaryButton
 import app.luxion.shogunai.ui.components.SecondaryButton
-import app.luxion.shogunai.ui.components.SectionCard
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.worktreeError
@@ -29,11 +28,11 @@ import app.luxion.shogunai.ui.theme.ShogunTheme
 private data class NamedOption(val name: String?)
 
 @Composable
-fun SimulatorSettingsSection(viewModel: ProjectConfigViewModel) {
+fun SimulatorSettingsSection(viewModel: ProjectConfigViewModel, modifier: Modifier = Modifier) {
     val state = viewModel.simulatorSection
     if (state == SimulatorSectionState.Hidden) return
     val strings = LocalStrings.current
-    SectionCard(title = strings.simulatorSection) {
+    SettingsSection(title = strings.simulatorSection, modifier = modifier) {
         Text(
             strings.simulatorSectionDescription,
             style = MaterialTheme.typography.bodySmall,
@@ -84,7 +83,7 @@ private fun AvailableSimulatorSettings(viewModel: ProjectConfigViewModel, state:
 }
 
 @Composable
-private fun KmpWiringPanel(viewModel: ProjectConfigViewModel) {
+private fun KmpWiringPanel(viewModel: ProjectConfigViewModel, modifier: Modifier = Modifier) {
     val strings = LocalStrings.current
     val clipboard = LocalClipboardManager.current
     var confirming by remember { mutableStateOf(false) }

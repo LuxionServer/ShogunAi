@@ -30,6 +30,13 @@ class ShellViewModel(
     private var expandedWhileNarrow by mutableStateOf(false)
     val isRail: Boolean get() = if (isWindowNarrow) !expandedWhileNarrow else sidebarCollapsed
     private var destinationBeforeForm: ShellDestination? = null
+    private var leaveGuard: LeaveGuard? = null
+    private var pendingLeave by mutableStateOf<(() -> Unit)?>(null)
+    var canSaveSettings by mutableStateOf(false)
+        private set
+    var saveSettingsRequests by mutableIntStateOf(0)
+        private set
+    val isLeaveConfirmationPending: Boolean get() = pendingLeave != null
 
     init {
         projects = loadProjects()
@@ -60,25 +67,57 @@ class ShellViewModel(
         worktreeActions = actions
     }
 
-    fun selectProject(project: Project) = select(ShellDestination.All(projectFilter = project.id))
+    fun updateCanSaveSettings(canSave: Boolean) {
+        canSaveSettings = canSave
+    }
 
-    fun selectActive() = select(ShellDestination.Active)
+    fun requestSaveSettings() {
+        if (canSaveSettings) saveSettingsRequests++
+    }
 
-    fun selectAll() = select(ShellDestination.All())
+    fun attachLeaveGuard(guard: LeaveGuard) {
+        leaveGuard = guard
+    }
 
-    fun selectMachine(resource: MachineResource) = select(ShellDestination.Machine(resource))
+    fun detachLeaveGuard(guard: LeaveGuard) {
+        if (leaveGuard === guard) leaveGuard = null
+    }
 
-    fun selectFilter(projectId: String?) = select(ShellDestination.All(projectFilter = projectId))
+    fun confirmLeave() {
+        val leave = pendingLeave ?: return
+        pendingLeave = null
+        leaveGuard = null
+        leave()
+    }
 
-    fun addProject() = openForm(ShellDestination.AddProject)
+    fun keepEditing() {
+        pendingLeave = null
+    }
 
-    fun editProject(project: Project) = openForm(ShellDestination.ProjectSettings(project.id))
+    fun requestLeave(leave: () -> Unit) {
+        if (leaveGuard?.hasUnsavedChanges == true) pendingLeave = leave else leave()
+    }
 
-    fun cancelForm() {
+    fun selectProject(project: Project) = requestLeave { select(ShellDestination.All(projectFilter = project.id)) }
+
+    fun selectActive() = requestLeave { select(ShellDestination.Active) }
+
+    fun selectAll() = requestLeave { select(ShellDestination.All()) }
+
+    fun selectMachine(resource: MachineResource) = requestLeave { select(ShellDestination.Machine(resource)) }
+
+    fun selectFilter(projectId: String?) = requestLeave { select(ShellDestination.All(projectFilter = projectId)) }
+
+    fun addProject(folder: String? = null) = requestLeave { openForm(ShellDestination.AddProject(folder)) }
+
+    fun editProject(project: Project) = requestLeave { openForm(ShellDestination.ProjectSettings(project.id)) }
+
+    fun cancelForm() = requestLeave {
         select(destinationBeforeForm?.takeIf(::isAvailable) ?: fallbackDestination())
     }
 
     fun onProjectSaved(saved: Project, previous: Project?) {
+        leaveGuard = null
         projects = loadProjects()
         val moved = previous != null &&
             (previous.config.baseRepositoryPath != saved.config.baseRepositoryPath ||

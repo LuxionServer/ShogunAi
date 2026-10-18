@@ -11,7 +11,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import app.luxion.shogunai.ui.components.DropdownSelector
 import app.luxion.shogunai.ui.components.InlineProgress
-import app.luxion.shogunai.ui.components.SectionCard
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.handPointer
 import app.luxion.shogunai.ui.i18n.LocalStrings
@@ -21,11 +20,11 @@ import app.luxion.shogunai.ui.theme.ShogunTheme
 private data class AvdOption(val name: String?)
 
 @Composable
-fun EmulatorSettingsSection(viewModel: ProjectConfigViewModel) {
+fun EmulatorSettingsSection(viewModel: ProjectConfigViewModel, modifier: Modifier = Modifier) {
     val state = viewModel.emulatorSection
     if (state == EmulatorSectionState.Hidden) return
     val strings = LocalStrings.current
-    SectionCard(title = strings.emulatorSection) {
+    SettingsSection(title = strings.emulatorSection, modifier = modifier) {
         Text(
             strings.emulatorSectionDescription,
             style = MaterialTheme.typography.bodySmall,

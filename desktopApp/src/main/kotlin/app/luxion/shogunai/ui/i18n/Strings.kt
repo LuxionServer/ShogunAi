@@ -83,6 +83,20 @@ interface Strings {
     val discardChangesMessage: String
     val discard: String
     val keepEditing: String
+    val generalSection: String
+    val worktreeFilesSection: String
+    val nameHelp: String
+    val baseRepositoryPathHelp: String
+    val worktreesRootHelp: String
+    val mainBranchHelp: String
+    fun detectedMainBranch(branch: String): String
+    val unsavedChanges: String
+    val menuSave: String
+    val addProjectTitle: String
+    val addProjectIntro: String
+    val chooseRepositoryFolder: String
+    val dropRepositoryHint: String
+    fun notAGitRepository(path: String): String
 
     val closeError: String
     val closeMessage: String
