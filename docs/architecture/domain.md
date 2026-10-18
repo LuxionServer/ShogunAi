@@ -129,6 +129,10 @@ What the Xcode provider finds in Xcode's DerivedData location (`DerivedData.kt`)
 - `DerivedDataListing` — every folder with its owner (`AttributedDerivedData`) and the size of the shared compilation cache when asked for; `orphans` and `ofWorktrees()` filter it.
 - `DerivedDataDeletion` — the outcome of deleting orphans: `deleted`, `failures` (`DerivedDataDeletionFailure`: path and detail) and `bytesFreed`.
 
+### `WorktreeOrigin` / `RunningAgent`
+
+What the worktree overview shows about each worktree (`WorktreeOverview.kt`): `WorktreeOrigin` (`SHOGUNAI`, `CLAUDE_CODE`, `HERDR`, `OTHER`), the tool that created it as told by its location (`classifyOrigin`, see [Worktree overview](#worktree-overview)), and `RunningAgent`, the name of an agent CLI running in it.
+
 ### `ThemeMode` / `AppLanguage`
 
 User preferences: `LIGHT` / `DARK` / `SYSTEM` and `ENGLISH` / `SPANISH`. They're stored in `settings.json` (see [Infrastructure layer](infrastructure.md)).
@@ -143,8 +147,22 @@ User preferences: `LIGHT` / `DARK` / `SYSTEM` and `ENGLISH` / `SPANISH`. They're
 - `SecretFileNotFound` — local files are missing in the base repo.
 - `RepositoryNotFound` — the directory isn't inside a Git repository with a working tree (used by the CLI).
 - `NotAWorktree` — the path given to provision is the main worktree or isn't one of the repository's worktrees.
-- `InvalidRepositoryConfig` — `.shogunai.json` exists but isn't valid JSON, isn't an object, its `copy` isn't a list of strings, its `providers` (or a known provider in it) isn't an object, or its `env` or `envFile` is invalid; keeps the file path and the detail.
+- `InvalidRepositoryConfig` — `.shogunai.json` exists but isn't valid JSON, isn't an object, its `copy` isn't a list of strings, its `providers` (or a known provider in it) isn't an object, a provider option has the wrong type, or its `env` or `envFile` is invalid; keeps the file path and the detail.
 - `NoFreePort` — every port from 20000 to 29999 is reserved or busy.
+- `EnvironmentFileWriteFailed` — the declared `envFile` couldn't be written; keeps the path and the cause.
+- `StartPointNotFound` — the start point given to `shogun new --from` doesn't name a commit.
+- `ProcessListingFailed` — `lsof` or `ps` failed while detecting running agents (e.g. on Windows).
+- `NoEmulatorPort` — every emulator console port from 5554 to 5584 is reserved or busy.
+- `AndroidSdkNotFound` — the Android SDK wasn't found; keeps the places checked.
+- `NoAvdAvailable` — the machine has no Android Virtual Device.
+- `EmulatorBootTimeout` — the emulator didn't finish booting in time; it's left booting.
+- `AndroidToolFailed` — `emulator` or `adb` failed; keeps the command, exit code and output.
+- `EmulatorProviderNotDeclared` — an emulator command ran in a repository that doesn't declare the emulator provider.
+- `NoIosRuntime` — Xcode has no iOS simulator runtime installed.
+- `SimulatorBootTimeout` — the simulator didn't finish booting in time; it's left booting.
+- `IosSimulatorProviderNotDeclared` — a simulator command ran in a repository that doesn't declare the iOS simulator provider.
+- `IosSimulatorsNotSupported` — the host isn't macOS with Xcode.
+- `AppleToolFailed` — `xcrun simctl` or another Xcode tool failed; keeps the command, exit code and output.
 - `EnvironmentFileTracked` — the declared `envFile` is a file Git tracks in the worktree, so it isn't overwritten.
 - `GitCommandFailed` — a Git command returned a non-zero exit code; keeps the command, exit code and Git's error output.
 - `SecretCopyFailed` — copying local or repository files failed after the worktree had already been created.
@@ -401,6 +419,10 @@ Copies `cd "<worktree path>" && <agent command>` to the clipboard, with the agen
 
 Opens a worktree in Herdr with its environment and the project's agent. It asks Herdr to open the worktree for the project's base repository, labelled with its folder name; if Herdr already had it open, that workspace is now focused and it returns `FOCUSED` without touching its panes. Otherwise it resolves the worktree's environment (the same as `shogun env`, provider variables such as `ANDROID_SERIAL` included, reserving ports if needed); when it isn't empty, it splits the root pane into one whose shell starts in the worktree with those variables and closes the root pane, so the workspace keeps a single pane. Then it runs `AgentLaunchConfig.resolvedCommand()` in that pane and returns `OPENED`.
 
+### `ResolveStartPointUseCase`
+
+Resolves the ref a new branch starts from to a commit id with `git rev-parse --verify --quiet <ref>^{commit}`, run in the caller's directory, so `HEAD` means the worktree the command runs in and not the base repository. An unknown ref fails with `StartPointNotFound` before anything is created. Used by `shogun new` and the `WorktreeCreate` hook; the desktop app passes no start point.
+
 ### `ResolveRepositoryUseCase`
 
 Finds the base repository (main worktree) that contains a directory, for front ends that start from a directory instead of a project, such as the CLI. It runs `git rev-parse --path-format=absolute --git-common-dir` there: the common `.git` folder is shared by every worktree, so its parent is the main worktree whether the directory is the main worktree, a subfolder or a linked worktree. Anything else (not a repository, a bare repository) is `RepositoryNotFound`.
@@ -426,6 +448,10 @@ Resolves a worktree's environment from the base repository's declaration and the
 3. writes the reservations only if they changed.
 
 Contributions can also ask for resources (`ResourceRequest`: a key, and how to check, create and discard one). With reservation, a stored resource that still `exists` is kept; otherwise one is created outside the lock (creating a simulator runs `xcrun` for about a second) and recorded under it, and if another process recorded one in the meantime, the new one is discarded and the recorded one used. Without reservation resources are only read. Provider variables come first and declared `env` variables override a provider variable with the same name. A reserved port is never checked again, because the worktree's own server is expected to listen on it. With `reserve = false` (used to show ports without side effects) it only reads the stored ports, without locking or writing, and returns no variables until every port is reserved. `formatEnvironment` renders the variables as `sh` (`export NAME='value'`, single quotes with `'\''` escaping, safe for `eval`), `dotenv` (`NAME=value`, double-quoted and escaped unless the value is plain) or `json`.
+
+### `PrepareWorktreeEnvironmentUseCase` / `WriteEnvironmentFileUseCase`
+
+`PrepareWorktreeEnvironmentUseCase` is the `WorktreeEnvironmentPreparer` that creation and provisioning run once the files are copied: it resolves the worktree's environment with reservation and, when the declaration has an `envFile`, calls `WriteEnvironmentFileUseCase`. That one writes the variables in dotenv format at the declared path, refusing a file Git tracks (`git ls-files --error-unmatch`, `EnvironmentFileTracked`) and reporting write errors as `EnvironmentFileWriteFailed`. `WorktreeEnvironmentPreparer.NONE` does nothing, for tests that don't exercise the environment.
 
 ### iOS simulator use cases
 

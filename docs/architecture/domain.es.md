@@ -129,6 +129,10 @@ Lo que el provider de Xcode encuentra en la ubicación de DerivedData de Xcode (
 - `DerivedDataListing` — cada carpeta con su dueño (`AttributedDerivedData`) y el tamaño de la caché de compilación compartida cuando se pide; `orphans` y `ofWorktrees()` la filtran.
 - `DerivedDataDeletion` — el resultado de borrar huérfanas: `deleted`, `failures` (`DerivedDataDeletionFailure`: ruta y detalle) y `bytesFreed`.
 
+### `WorktreeOrigin` / `RunningAgent`
+
+Lo que la vista general de worktrees muestra de cada worktree (`WorktreeOverview.kt`): `WorktreeOrigin` (`SHOGUNAI`, `CLAUDE_CODE`, `HERDR`, `OTHER`), la herramienta que lo creó según su ubicación (`classifyOrigin`, ver [Vista completa de worktrees](#vista-completa-de-worktrees)), y `RunningAgent`, el nombre de un CLI de agente que se ejecuta en él.
+
 ### `ThemeMode` / `AppLanguage`
 
 Preferencias del usuario: `LIGHT` / `DARK` / `SYSTEM` y `ENGLISH` / `SPANISH`. Se guardan en `settings.json` (ver [Capa de infraestructura](infrastructure.md)).
@@ -143,8 +147,22 @@ Preferencias del usuario: `LIGHT` / `DARK` / `SYSTEM` y `ENGLISH` / `SPANISH`. S
 - `SecretFileNotFound` — faltan archivos locales en el repo base.
 - `RepositoryNotFound` — el directorio no está dentro de un repositorio Git con árbol de trabajo (lo usa el CLI).
 - `NotAWorktree` — la ruta a provisionar es el worktree principal o no es uno de los worktrees del repositorio.
-- `InvalidRepositoryConfig` — `.shogunai.json` existe pero no es JSON válido, no es un objeto, su `copy` no es una lista de strings, su `providers` (o un provider conocido dentro de él) no es un objeto, o su `env` o `envFile` no son válidos; guarda la ruta del fichero y el detalle.
+- `InvalidRepositoryConfig` — `.shogunai.json` existe pero no es JSON válido, no es un objeto, su `copy` no es una lista de strings, su `providers` (o un provider conocido dentro de él) no es un objeto, una opción de un provider tiene el tipo equivocado, o su `env` o `envFile` no son válidos; guarda la ruta del fichero y el detalle.
 - `NoFreePort` — todos los puertos entre 20000 y 29999 están reservados u ocupados.
+- `EnvironmentFileWriteFailed` — no se pudo escribir el `envFile` declarado; guarda la ruta y la causa.
+- `StartPointNotFound` — el punto de partida que se pasa a `shogun new --from` no identifica un commit.
+- `ProcessListingFailed` — `lsof` o `ps` fallaron al detectar los agentes en ejecución (p. ej. en Windows).
+- `NoEmulatorPort` — todos los puertos de consola de emulador entre 5554 y 5584 están reservados u ocupados.
+- `AndroidSdkNotFound` — no se encontró el Android SDK; guarda los sitios revisados.
+- `NoAvdAvailable` — la máquina no tiene ningún Android Virtual Device.
+- `EmulatorBootTimeout` — el emulador no terminó de arrancar a tiempo; se deja arrancando.
+- `AndroidToolFailed` — `emulator` o `adb` fallaron; guarda el comando, el código de salida y la salida.
+- `EmulatorProviderNotDeclared` — se ejecutó un comando de emulador en un repositorio que no declara el provider de emulador.
+- `NoIosRuntime` — Xcode no tiene instalado ningún runtime de simulador de iOS.
+- `SimulatorBootTimeout` — el simulador no terminó de arrancar a tiempo; se deja arrancando.
+- `IosSimulatorProviderNotDeclared` — se ejecutó un comando de simulador en un repositorio que no declara el provider de simulador de iOS.
+- `IosSimulatorsNotSupported` — el sistema no es macOS con Xcode.
+- `AppleToolFailed` — `xcrun simctl` u otra herramienta de Xcode falló; guarda el comando, el código de salida y la salida.
 - `EnvironmentFileTracked` — el `envFile` declarado es un fichero que Git versiona en el worktree, así que no se sobrescribe.
 - `GitCommandFailed` — un comando de Git devolvió un código de salida distinto de cero; guarda el comando, el código de salida y la salida de error de Git.
 - `SecretCopyFailed` — la copia de archivos locales o del repositorio falló después de haber creado ya el worktree.
@@ -401,6 +419,10 @@ Copia al portapapeles `cd "<ruta del worktree>" && <comando del agente>`, con el
 
 Abre un worktree en Herdr con su entorno y el agente del proyecto. Pide a Herdr que abra el worktree del repositorio base del proyecto, con el nombre de su carpeta; si Herdr ya lo tenía abierto, ese workspace queda enfocado y devuelve `FOCUSED` sin tocar sus panes. Si no, resuelve el entorno del worktree (el mismo que `shogun env`, con las variables de los proveedores como `ANDROID_SERIAL`, reservando puertos si hace falta); si no está vacío, divide el pane raíz en otro cuya shell arranca en el worktree con esas variables y cierra el raíz, para que el workspace se quede con un único pane. Después ejecuta `AgentLaunchConfig.resolvedCommand()` en ese pane y devuelve `OPENED`.
 
+### `ResolveStartPointUseCase`
+
+Resuelve la referencia de la que parte una rama nueva a un id de commit con `git rev-parse --verify --quiet <ref>^{commit}`, ejecutado en el directorio de quien llama, así que `HEAD` es el worktree donde se ejecuta el comando y no el repositorio base. Una referencia desconocida falla con `StartPointNotFound` antes de crear nada. Lo usan `shogun new` y el hook `WorktreeCreate`; la app de escritorio no pasa punto de partida.
+
 ### `ResolveRepositoryUseCase`
 
 Encuentra el repositorio base (worktree principal) que contiene un directorio, para los frontales que parten de un directorio en vez de un proyecto, como el CLI. Ejecuta ahí `git rev-parse --path-format=absolute --git-common-dir`: la carpeta `.git` común la comparten todos los worktrees, así que su padre es el worktree principal tanto si el directorio es el worktree principal, una subcarpeta o un worktree enlazado. Cualquier otra cosa (no es un repositorio, es un repositorio bare) es `RepositoryNotFound`.
@@ -426,6 +448,10 @@ Resuelve el entorno de un worktree a partir de la declaración del repositorio b
 3. escribe las reservas solo si han cambiado.
 
 Las aportaciones también pueden pedir recursos (`ResourceRequest`: una clave y cómo comprobar, crear y descartar uno). Al reservar, un recurso guardado que sigue existiendo (`exists`) se conserva; si no, se crea uno fuera del lock (crear un simulador ejecuta `xcrun` durante alrededor de un segundo) y se registra dentro de él, y si otro proceso registró uno mientras tanto, el nuevo se descarta y se usa el registrado. Sin reservar, los recursos solo se leen. Las variables de los providers van primero y las variables declaradas en `env` sustituyen a una del provider con el mismo nombre. Un puerto reservado no se vuelve a comprobar, porque se espera que el propio servidor del worktree esté escuchando en él. Con `reserve = false` (para mostrar los puertos sin efectos secundarios) solo lee los puertos guardados, sin lock ni escritura, y no devuelve variables hasta que todos los puertos estén reservados. `formatEnvironment` presenta las variables como `sh` (`export NOMBRE='valor'`, comillas simples con escape `'\''`, seguro para `eval`), `dotenv` (`NOMBRE=valor`, entre comillas dobles y escapado salvo que el valor sea simple) o `json`.
+
+### `PrepareWorktreeEnvironmentUseCase` / `WriteEnvironmentFileUseCase`
+
+`PrepareWorktreeEnvironmentUseCase` es el `WorktreeEnvironmentPreparer` que ejecutan la creación y el aprovisionamiento una vez copiados los archivos: resuelve el entorno del worktree reservando y, cuando la declaración tiene `envFile`, llama a `WriteEnvironmentFileUseCase`. Este escribe las variables en formato dotenv en la ruta declarada, negándose a escribir sobre un fichero que Git versiona (`git ls-files --error-unmatch`, `EnvironmentFileTracked`) y devolviendo los errores de escritura como `EnvironmentFileWriteFailed`. `WorktreeEnvironmentPreparer.NONE` no hace nada, para los tests que no prueban el entorno.
 
 ### Casos de uso del simulador de iOS
 

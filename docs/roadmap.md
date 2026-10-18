@@ -68,9 +68,9 @@ Provisioning for the stacks where a fresh worktree is furthest from building:
 
 ### Choosing the base of a new worktree
 
-Today a new branch starts from the base repository's `HEAD`, so creating a worktree from an up-to-date branch means going to another Git client first. Instead:
+`shogun new` and Claude Code's `WorktreeCreate` hook already start a new branch at the HEAD of the worktree they run in, and `shogun new --from <ref>` at any branch, tag or commit. The desktop app still starts it at the base repository's `HEAD`, so creating a worktree there from an up-to-date branch means going to another Git client first. Still planned:
 
-- Pick the base branch (`develop`, `main`, …) when creating a worktree, with an optional `git fetch` beforehand.
+- Pick the base branch (`develop`, `main`, …) when creating a worktree in the desktop app, with an optional `git fetch` beforehand.
 - Create a worktree from a remote branch (`origin/...`), not only from local ones.
 
 ### Launching the agent and tools directly

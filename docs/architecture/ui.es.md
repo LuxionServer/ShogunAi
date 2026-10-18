@@ -106,9 +106,9 @@ Solo en macOS y en repositorios cuyo `.shogunai.json` declara el provider de sim
 
 ### Abrir en Herdr
 
-Eliminar un worktree también cierra su workspace de Herdr: `requestRemoval` lo busca de la misma forma (`pendingRemovalOpenInHerdr`) y el diálogo de eliminar añade el aviso cuando está abierto; si el cierre falla se muestra el éxito de la eliminación junto con un aviso `HerdrCloseFailures` en el grupo del proyecto que nombra el worktree y el mensaje de Herdr.
-
 El detalle de un worktree cuya carpeta existe tiene un botón "Abrir en Herdr" después de "Copiar comando de lanzamiento", y el menú contextual de su fila tiene la misma acción. `openInHerdr(worktree)` marca el worktree en `openingInHerdr` (el botón se desactiva con un indicador de progreso mientras tanto) y ejecuta `WorktreeUseCases.herdr.open` (`OpenWorktreeInHerdrUseCase`, construido en `AppContainer` con `CliHerdrClient`) con ese worktree. El mensaje de éxito dice que el worktree se abrió con su agente, o que ya estaba abierto y Herdr ha cambiado a él (`WorktreeSuccess.OpenedInHerdr`); si falta `herdr` o falla un comando, va a los `actionErrors` del worktree, que se muestran en su detalle con el enlace a herdr.dev o el propio mensaje de Herdr.
+
+Eliminar un worktree también cierra su workspace de Herdr: `requestRemoval` lo busca igual que el diálogo de limpieza (`pendingRemovalOpenInHerdr`) y el diálogo de eliminar añade el aviso cuando está abierto; si el cierre falla se muestra el éxito de la eliminación junto con un aviso `HerdrCloseFailures` en el grupo del proyecto que nombra el worktree y el mensaje de Herdr.
 
 ### Daemons de Gradle
 
@@ -200,7 +200,16 @@ La app incluye Geist para el texto de la interfaz y Geist Mono para los datos, e
 
 ## `AppContainer`
 
-Instancia `JsonProjectRepository`, los repositorios de preferencias, `NioFileManager`, `ProcessBuilderShellCommandExecutor` y `AwtClipboardWriter` una sola vez al arrancar la app. Los casos de uso de worktrees dependen de un proyecto, así que `worktreeUseCases(config)` construye un `WorktreeUseCases` para la `ProjectConfig` seleccionada, incluidos sus `GradleUseCases` sobre un único `ProcessGradleDaemonSource`. No hay framework de DI.
+Construye una sola vez, al arrancar la app, todas las implementaciones de los puertos: `JsonProjectRepository`, `JsonSettingsFile` con los repositorios de tema e idioma, `NioFileManager`, `ProcessBuilderShellCommandExecutor`, `AwtClipboardWriter`, `RepositoryProvisioningFiles`, `ProcessGradleDaemonSource`, `MacDerivedDataSource`, `NioEnvironmentStateStore` con `SocketPortProbe`, `SimctlAppleSimulators`, `FileKmpTestWiring`, `LocalAndroidSdk`, `HerdrConfigFile` y `CliHerdrClient`. También construye las piezas de máquina que comparten todos los proyectos: `MachineProviderContributions` (que lee los ajustes de simulador de cada repositorio en su proyecto), el resolvedor y el preparador del entorno, y los casos de uso del simulador y del emulador.
+
+- La pantalla de configuración del proyecto recibe `simulatorSetup` (runtimes, conexión de KMP, el init script) y `loadAvds` para sus secciones de providers.
+- Los casos de uso de worktrees dependen de un proyecto, así que `worktreeUseCases(config)` construye un `WorktreeUseCases` para la `ProjectConfig` seleccionada, con sus `GradleUseCases`, `XcodeUseCases`, `EmulatorUseCases`, `SimulatorUseCases` y los casos de uso de Herdr sobre las implementaciones compartidas.
+
+No hay framework de DI.
+
+## `main.kt`
+
+El punto de entrada de la app empaquetada. Con argumentos (ignorando el antiguo `-psn_…` de macOS) ejecuta el [comando `shogun`](cli.md) y sale sin cargar AWT ni Compose, así que el lanzador de la app hace también de comando. Sin argumentos pone el icono del Dock donde la plataforma lo admite y abre la ventana con `AppRoot`.
 
 ## `FilePicker`
 

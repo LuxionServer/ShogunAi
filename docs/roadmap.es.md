@@ -68,9 +68,9 @@ Provisionado para los stacks en los que un worktree recién creado está más le
 
 ### Elegir la base de un worktree nuevo
 
-Hoy una rama nueva parte del `HEAD` del repositorio base, así que crear un worktree desde una rama actualizada obliga a pasar antes por otro cliente de Git. En su lugar:
+`shogun new` y el hook `WorktreeCreate` de Claude Code ya hacen que una rama nueva parta del HEAD del worktree donde se ejecutan, y `shogun new --from <ref>` de cualquier rama, tag o commit. La app de escritorio sigue partiendo del `HEAD` del repositorio base, así que crear allí un worktree desde una rama actualizada obliga a pasar antes por otro cliente de Git. Sigue previsto:
 
-- Elegir la rama base (`develop`, `main`, …) al crear un worktree, con un `git fetch` previo opcional.
+- Elegir la rama base (`develop`, `main`, …) al crear un worktree en la app de escritorio, con un `git fetch` previo opcional.
 - Crear un worktree desde una rama remota (`origin/...`), no solo desde las locales.
 
 ### Lanzar el agente y las herramientas directamente
