@@ -101,6 +101,23 @@ interface Strings {
     val worktreesTitle: String
     val viewsTitle: String
     val allWorktrees: String
+    val activeWorktrees: String
+    val groupAgentWorking: String
+    val groupNeedsYou: String
+    val groupInProgress: String
+    val groupMerged: String
+    val groupInactive: String
+    val groupFolderMissing: String
+    val groupOther: String
+    val groupByState: String
+    val groupByProject: String
+    val readingWorktreeStatus: String
+    val nothingActiveTitle: String
+    val nothingActiveMessage: String
+    val seeAllWorktrees: String
+    val menuActive: String
+    val menuAllWorktrees: String
+    fun agentsRunning(names: List<String>): String
     val allProjects: String
     val projectLabel: String
     val filterWorktreesPlaceholder: String

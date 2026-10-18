@@ -1,6 +1,7 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.model.AppLanguage
+import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.ThemeMode
 import app.luxion.shogunai.domain.model.WindowBounds
 import kotlinx.serialization.SerializationException
@@ -52,5 +53,12 @@ class JsonSettingsFile(
         val sidebarCollapsed: Boolean = false,
         val collapsedProjects: List<String> = emptyList(),
         val lastCreateProject: String? = null,
+        val grouping: GroupingSettings = GroupingSettings(),
+    )
+
+    @Serializable
+    data class GroupingSettings(
+        val active: Grouping = Grouping.BY_STATE,
+        val all: Grouping = Grouping.BY_PROJECT,
     )
 }

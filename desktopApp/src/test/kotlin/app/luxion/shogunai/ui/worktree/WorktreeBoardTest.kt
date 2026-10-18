@@ -18,6 +18,8 @@ import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.DaemonState
+import app.luxion.shogunai.domain.model.GroupedView
+import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -90,6 +92,7 @@ class WorktreeBoardTest {
     private var agentResult: Result<Map<String, List<RunningAgent>>> = Result.success(emptyMap())
     private var agentGate: CompletableDeferred<Unit>? = null
     private val executed = mutableListOf<List<String>>()
+    private var divergenceOutput = "2\t0\n"
 
     @BeforeTest
     fun setUp() {
@@ -143,7 +146,7 @@ class WorktreeBoardTest {
                     command == forEachRefCommand -> success(command, stdout = "main\nhotfix/fix\n")
                     command.getOrNull(1) == "symbolic-ref" -> success(command, stdout = "origin/main\n")
                     command == listOf("git", "rev-list", "--left-right", "--count", "origin/main...HEAD") ->
-                        success(command, stdout = "2\t0\n")
+                        success(command, stdout = divergenceOutput)
                     command.getOrNull(1) == "rev-list" -> failure(command, stderr = "no upstream")
                     command.take(3) == listOf("git", "worktree", "remove") -> {
                         removeGate?.await()
@@ -215,6 +218,95 @@ class WorktreeBoardTest {
         assertEquals(2, board.groups[0].worktrees.size)
         assertEquals(3, board.groups[1].worktrees.size)
         assertEquals(5, board.totalWorktreeCount)
+    }
+
+    @Test
+    fun `active lists the in progress worktrees of every project without the clean main worktrees`() = runTest(dispatcher) {
+        divergenceOutput = "0\t0\n"
+        val board = board()
+        advanceUntilIdle()
+
+        board.show(null, GroupedView.ACTIVE)
+
+        val paths = board.stateGroups.flatMap { group -> group.items.map { it.worktree.path } }
+        assertEquals(
+            setOf("/home/dev/projects/api-TASK-12", "/home/dev/projects/TASK-123", "/home/dev/projects/task-456"),
+            paths.toSet(),
+        )
+        assertEquals(listOf(StateGroupKind.IN_PROGRESS), board.stateGroups.map { it.kind })
+        assertEquals(3, board.activeCount)
+        assertEquals(1, board.activeCountOf("api"))
+        assertEquals(2, board.activeCountOf("main-repo"))
+    }
+
+    @Test
+    fun `an agent moves its worktree to the agent working group and shows in the project's agents`() = runTest(dispatcher) {
+        divergenceOutput = "0\t0\n"
+        agentResult = Result.success(mapOf("/home/dev/projects/api-TASK-12" to listOf(RunningAgent("codex"))))
+        val board = board()
+        advanceUntilIdle()
+        board.startWatching()
+        tick()
+        board.show(null, GroupedView.ACTIVE)
+
+        assertEquals(listOf(StateGroupKind.AGENT_WORKING, StateGroupKind.IN_PROGRESS), board.stateGroups.map { it.kind })
+        assertEquals(listOf("codex"), board.agentNamesOf("api"))
+        assertEquals(emptyList(), board.agentNamesOf("main-repo"))
+        board.stopWatching()
+    }
+
+    @Test
+    fun `a selected worktree that isn't active stays listed until it's deselected`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.show(null, GroupedView.ACTIVE)
+        val main = WorktreeRef("api", "/home/dev/projects/api")
+
+        board.select(main)
+
+        assertEquals(StateGroupKind.OTHER, board.stateGroups.last().kind)
+        assertTrue(main in board.visibleRefs())
+
+        board.clearSelection()
+
+        assertFalse(main in board.visibleRefs())
+    }
+
+    @Test
+    fun `all worktrees by state keeps every worktree listed`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+
+        board.updateGrouping(Grouping.BY_STATE)
+
+        assertEquals(5, board.stateGroups.sumOf { it.items.size })
+    }
+
+    @Test
+    fun `each view remembers its own grouping`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+
+        board.show(null, GroupedView.ACTIVE)
+        assertEquals(Grouping.BY_STATE, board.grouping)
+        board.updateGrouping(Grouping.BY_PROJECT)
+        board.show(null, GroupedView.ALL)
+
+        assertEquals(Grouping.BY_PROJECT, board.grouping)
+        assertEquals(Grouping.BY_PROJECT, preferences.loadGrouping(GroupedView.ACTIVE))
+        board.updateGrouping(Grouping.BY_STATE)
+        board.show(null, GroupedView.ACTIVE)
+        assertEquals(Grouping.BY_PROJECT, board.grouping)
+    }
+
+    @Test
+    fun `active shows the empty state once nothing is active`() = runTest(dispatcher) {
+        val board = board(listOf(api.project))
+        api.worktrees = emptyList()
+        board.show(null, GroupedView.ACTIVE)
+        advanceUntilIdle()
+
+        assertTrue(board.isNothingActive)
     }
 
     @Test
@@ -381,20 +473,21 @@ class WorktreeBoardTest {
     }
 
     @Test
-    fun `only the projects in the view are checked`() = runTest(dispatcher) {
+    fun `every project is checked even when the view is filtered`() = runTest(dispatcher) {
         val board = board()
         advanceUntilIdle()
         board.show("api")
-        mainRepo.touch()
         board.startWatching()
 
+        tick()
+        mainRepo.touch()
         tick()
         advanceTimeBy(1.seconds)
         runCurrent()
         board.stopWatching()
 
-        assertEquals(1, mainRepo.lists)
-        assertEquals(listOf("codex"), agentSearches.single().map { it.agentCommand })
+        assertEquals(2, mainRepo.lists)
+        assertEquals(listOf("codex", "claude"), agentSearches.first().map { it.agentCommand })
     }
 
     @Test

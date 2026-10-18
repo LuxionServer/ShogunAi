@@ -46,6 +46,7 @@ fun WorktreeRow(
     selected: Boolean,
     isCopied: Boolean,
     isMain: Boolean,
+    projectName: String? = null,
     onSelect: () -> Unit,
     onCopyLaunchCommand: () -> Unit,
     onCopyPath: () -> Unit,
@@ -97,7 +98,7 @@ fun WorktreeRow(
                         ),
                 )
                 Text(
-                    rowLabel(model),
+                    rowLabel(model, projectName),
                     style = ShogunTheme.typography.data,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -141,14 +142,14 @@ private val RowActionSlotSize = 28.dp
 private val RowActionIconSize = 16.dp
 
 @Composable
-private fun rowLabel(model: WorktreeRowModel): AnnotatedString {
+private fun rowLabel(model: WorktreeRowModel, projectName: String?): AnnotatedString {
     val secondary = ShogunTheme.typography.dataSmall.toSpanStyle()
         .copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
     return buildAnnotatedString {
         append(model.branchLabel)
         withStyle(secondary) {
             append("  ")
-            append(listOfNotNull(model.folderName, model.originLabel).joinToString(" · "))
+            append(listOfNotNull(model.folderName, model.originLabel, projectName).joinToString(" · "))
         }
     }
 }

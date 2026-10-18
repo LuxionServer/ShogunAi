@@ -40,7 +40,7 @@ A worktree that is selected in "Active" SHALL stay listed while it remains selec
 - **THEN** it stays in "Active", in the group for its new state, until the user selects something else
 
 ### Requirement: Group by state
-"Active" SHALL group its worktrees by state, in this order: "Agent working" (an agent is running), "Needs you" (uncommitted changes or commits not pushed to its upstream, and no agent), and "In progress" (any other active worktree). When "All worktrees" is grouped by state, it SHALL also show "Merged", "Inactive" and "Folder missing" groups after those. Empty groups SHALL be hidden.
+"Active" SHALL group its worktrees by state, in this order: "Agent working" (an agent is running), "Needs you" (uncommitted changes or commits not pushed to its upstream, and no agent), and "In progress" (any other active worktree). When "All worktrees" is grouped by state, it SHALL also show "Merged", "Inactive" and "Folder missing" groups after those, and a trailing "Other" group for the clean main worktrees and the worktrees whose status isn't read yet, so that no worktree disappears. Empty groups SHALL be hidden.
 
 #### Scenario: Active groups
 - **WHEN** one active worktree has an agent, one has uncommitted changes and one is clean and unmerged

@@ -1,5 +1,7 @@
 package app.luxion.shogunai.domain.io
 
+import app.luxion.shogunai.domain.model.GroupedView
+import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.WindowBounds
 
 interface ShellPreferenceRepository {
@@ -13,4 +15,6 @@ interface ShellPreferenceRepository {
     fun saveCollapsedProjects(projectIds: Set<String>)
     fun loadLastCreateProject(): String?
     fun saveLastCreateProject(projectId: String)
+    fun loadGrouping(view: GroupedView): Grouping
+    fun saveGrouping(view: GroupedView, grouping: Grouping)
 }

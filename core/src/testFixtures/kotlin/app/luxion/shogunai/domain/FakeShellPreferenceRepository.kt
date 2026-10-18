@@ -1,6 +1,8 @@
 package app.luxion.shogunai.domain
 
 import app.luxion.shogunai.domain.io.ShellPreferenceRepository
+import app.luxion.shogunai.domain.model.GroupedView
+import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.WindowBounds
 
 class FakeShellPreferenceRepository(
@@ -9,6 +11,7 @@ class FakeShellPreferenceRepository(
     var sidebarCollapsed: Boolean = false,
     var collapsedProjects: Set<String> = emptySet(),
     var lastCreateProject: String? = null,
+    val groupings: MutableMap<GroupedView, Grouping> = mutableMapOf(),
 ) : ShellPreferenceRepository {
 
     override fun loadLastDestination(): String? = lastDestination
@@ -39,5 +42,11 @@ class FakeShellPreferenceRepository(
 
     override fun saveLastCreateProject(projectId: String) {
         lastCreateProject = projectId
+    }
+
+    override fun loadGrouping(view: GroupedView): Grouping = groupings[view] ?: view.defaultGrouping
+
+    override fun saveGrouping(view: GroupedView, grouping: Grouping) {
+        groupings[view] = grouping
     }
 }

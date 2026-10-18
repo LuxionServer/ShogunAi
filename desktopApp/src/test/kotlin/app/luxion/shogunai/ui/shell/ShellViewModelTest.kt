@@ -46,22 +46,41 @@ class ShellViewModelTest {
     }
 
     @Test
-    fun `opens all worktrees without a saved destination`() {
-        assertEquals(ShellDestination.All(), viewModel().destination)
+    fun `restores active`() {
+        preferences.lastDestination = "active"
+
+        assertEquals(ShellDestination.Active, viewModel().destination)
     }
 
     @Test
-    fun `falls back to all worktrees when the saved project was deleted`() {
+    fun `selecting active saves it and allows creating a worktree`() {
+        val viewModel = viewModel()
+        viewModel.selectProject(api)
+
+        viewModel.selectActive()
+
+        assertEquals(ShellDestination.Active, viewModel.destination)
+        assertEquals("active", preferences.lastDestination)
+        assertTrue(viewModel.canCreateWorktree)
+    }
+
+    @Test
+    fun `opens active without a saved destination`() {
+        assertEquals(ShellDestination.Active, viewModel().destination)
+    }
+
+    @Test
+    fun `falls back to active when the saved project was deleted`() {
         preferences.lastDestination = "project:deleted"
 
-        assertEquals(ShellDestination.All(), viewModel().destination)
+        assertEquals(ShellDestination.Active, viewModel().destination)
     }
 
     @Test
-    fun `falls back to all worktrees when the saved value is unknown`() {
+    fun `falls back to active when the saved value is unknown`() {
         preferences.lastDestination = "settings:api"
 
-        assertEquals(ShellDestination.All(), viewModel().destination)
+        assertEquals(ShellDestination.Active, viewModel().destination)
     }
 
     @Test
@@ -111,7 +130,7 @@ class ShellViewModelTest {
     }
 
     @Test
-    fun `removing the filtered project goes back to all worktrees`() {
+    fun `removing the filtered project goes back to active`() {
         val viewModel = viewModel()
         viewModel.selectProject(api)
 
@@ -119,7 +138,7 @@ class ShellViewModelTest {
 
         assertEquals(listOf(mainRepo, mobile), viewModel.projects)
         assertEquals(listOf(mobile, mainRepo), repository.list())
-        assertEquals(ShellDestination.All(), viewModel.destination)
+        assertEquals(ShellDestination.Active, viewModel.destination)
     }
 
     @Test
@@ -221,7 +240,7 @@ class ShellViewModelTest {
 
         viewModel.refresh()
 
-        assertEquals(ShellDestination.All(), viewModel.destination)
+        assertEquals(ShellDestination.Active, viewModel.destination)
     }
 
     @Test

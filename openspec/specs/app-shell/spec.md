@@ -27,7 +27,7 @@ When no project is saved, the content area SHALL show an empty state that explai
 - **THEN** the content area shows the empty state with an action that opens the add-project form
 
 ### Requirement: Reopen the last view
-The app SHALL reopen on the view that was selected when it was last closed. If that view no longer exists (for example, a deleted project), it SHALL open on the first project, or on the empty state when there are none.
+The app SHALL reopen on the view that was selected when it was last closed. If that view no longer exists (for example, a deleted project), it SHALL open on "Active", or on the empty state when there are none.
 
 #### Scenario: Restart on a project
 - **WHEN** the user closes the app while `mobile` is selected and starts it again
@@ -35,7 +35,7 @@ The app SHALL reopen on the view that was selected when it was last closed. If t
 
 #### Scenario: Last project was deleted
 - **WHEN** the last selected project no longer exists at startup
-- **THEN** the app opens on the first project of the sidebar
+- **THEN** the app opens on "Active"
 
 ### Requirement: Restore the window's size and position
 The app SHALL restore the main window's size, position and maximized state from the previous session. If the saved position is outside every connected display, the window SHALL open centered on the main display.
@@ -94,3 +94,28 @@ The sidebar SHALL show a views section above the projects, with an "All worktree
 #### Scenario: Project entry is a filter
 - **WHEN** the user selects `api` in the sidebar
 - **THEN** the content area shows the worktree view with the project filter set to `api`
+
+### Requirement: Active is the main view
+The sidebar's views section SHALL list "Active" first, above "All worktrees", with the number of active worktrees. When no view was saved from a previous session, the app SHALL open on "Active".
+
+#### Scenario: First launch with projects
+- **WHEN** the app starts with saved projects and no saved view
+- **THEN** it opens on "Active"
+
+#### Scenario: Count
+- **WHEN** four worktrees are active across all projects
+- **THEN** the sidebar shows "Active" with 4
+
+### Requirement: Activity in the sidebar's projects
+Each project in the sidebar SHALL show its number of active worktrees, and an indicator in the info color when an agent is running in any of its worktrees. Projects with no active worktree SHALL show no count.
+
+#### Scenario: Project with an agent
+- **WHEN** `api` has two active worktrees and an agent running in one of them
+- **THEN** its sidebar entry shows 2 and the agent indicator
+
+### Requirement: Shortcuts for the views
+Cmd/Ctrl+1 SHALL open "Active" and Cmd/Ctrl+2 SHALL open "All worktrees", from anywhere in the main window, and both SHALL be listed in the View menu.
+
+#### Scenario: Jump to Active
+- **WHEN** the user is in a project's settings and presses Cmd/Ctrl+1
+- **THEN** the content area shows "Active", after the usual unsaved-changes confirmation if the settings had changes

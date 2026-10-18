@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.luxion.shogunai.AppContainer
+import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.ui.components.DangerButton
 import app.luxion.shogunai.ui.components.NeutralTextButton
@@ -79,9 +80,13 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel) {
             Sidebar(
                 projects = viewModel.projects,
                 selectedProjectId = viewModel.destination?.referencedProjectId,
+                isActiveSelected = viewModel.destination == ShellDestination.Active,
                 isAllSelected = viewModel.destination == ShellDestination.All(),
+                activeCount = board.activeCount,
                 totalWorktreeCount = board.totalWorktreeCount,
+                activityOf = { project -> ProjectActivity(board.activeCountOf(project.id), board.agentNamesOf(project.id)) },
                 rail = viewModel.isRail,
+                onSelectActive = viewModel::selectActive,
                 onSelectAll = viewModel::selectAll,
                 onSelectProject = viewModel::selectProject,
                 onEditProject = viewModel::editProject,
@@ -115,6 +120,7 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel) {
 private fun ShellContent(appContainer: AppContainer, viewModel: ShellViewModel, board: WorktreeBoard) {
     when (val destination = viewModel.destination) {
         null -> EmptyState(onAddProject = viewModel::addProject)
+        ShellDestination.Active -> WorktreeView(destination, viewModel, board)
         is ShellDestination.All -> WorktreeView(destination, viewModel, board)
         is ShellDestination.ProjectSettings -> viewModel.projectFor(destination)?.let { project ->
             key(destination) { ProjectForm(appContainer, viewModel, existingProject = project) }
@@ -124,11 +130,12 @@ private fun ShellContent(appContainer: AppContainer, viewModel: ShellViewModel, 
 }
 
 @Composable
-private fun WorktreeView(destination: ShellDestination.All, shellViewModel: ShellViewModel, board: WorktreeBoard) {
+private fun WorktreeView(destination: ShellDestination, shellViewModel: ShellViewModel, board: WorktreeBoard) {
     LaunchedEffect(destination, board.projects) {
-        board.show(destination.projectFilter)
-        val projectId = destination.projectFilter
-        val previousRoot = destination.previousWorktreesRoot
+        val all = destination as? ShellDestination.All
+        board.show(all?.projectFilter, if (all == null) GroupedView.ACTIVE else GroupedView.ALL)
+        val projectId = all?.projectFilter
+        val previousRoot = all?.previousWorktreesRoot
         if (projectId != null && previousRoot != null) board.repairAfterMove(projectId, previousRoot)
     }
     DisposableEffect(board) {
@@ -155,6 +162,7 @@ private fun WorktreeView(destination: ShellDestination.All, shellViewModel: Shel
         board = board,
         onSelectFilter = shellViewModel::selectFilter,
         onOpenProjectSettings = shellViewModel::editProject,
+        onSeeAll = shellViewModel::selectAll,
     )
 }
 

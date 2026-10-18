@@ -31,6 +31,32 @@ fun isInactive(worktree: Worktree, status: WorktreeStatus?, agents: List<Running
         Duration.between(lastCommitAt, now) > INACTIVITY_THRESHOLD
 }
 
+enum class Activity { AgentWorking, NeedsYou, InProgress, Merged, Inactive, Missing, Idle, Unknown }
+
+val Activity.isActive: Boolean
+    get() = this == Activity.AgentWorking || this == Activity.NeedsYou || this == Activity.InProgress
+
+fun worktreeActivity(worktree: Worktree, status: WorktreeStatus?, agents: List<RunningAgent>?, now: Instant): Activity {
+    if (!agents.isNullOrEmpty()) return Activity.AgentWorking
+    if (worktree.isPrunable) return Activity.Missing
+    if (status == null) return Activity.Unknown
+    if (status.uncommittedChanges > 0) return Activity.NeedsYou
+    return when {
+        worktree.isMain -> Activity.Idle
+        status.isMerged -> Activity.Merged
+        isInactive(worktree, status, agents, now) -> Activity.Inactive
+        hasUnpushedCommits(status) -> Activity.NeedsYou
+        else -> Activity.InProgress
+    }
+}
+
+private fun hasUnpushedCommits(status: WorktreeStatus): Boolean =
+    if (status.upstream != null) {
+        status.upstream.ahead > 0
+    } else {
+        (status.mainBranch?.ahead ?: 0) > 0
+    }
+
 internal fun normalizePath(path: String): String = path.replace('\\', '/').trimEnd('/')
 
 internal fun isInside(path: String, parent: String): Boolean =

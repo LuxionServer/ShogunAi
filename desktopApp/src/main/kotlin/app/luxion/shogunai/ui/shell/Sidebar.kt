@@ -18,6 +18,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material.icons.filled.ViewSidebar
 import androidx.compose.material3.Icon
@@ -35,20 +38,26 @@ import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.WithTooltip
 import app.luxion.shogunai.ui.components.interactive
 import app.luxion.shogunai.ui.i18n.LocalStrings
+import app.luxion.shogunai.ui.theme.Status
 import app.luxion.shogunai.ui.theme.ShogunTheme
 
 val ExpandedSidebarWidth: Dp = 240.dp
 val RailSidebarWidth: Dp = 64.dp
 private val SidebarRowHeight = 32.dp
 private val RailItemSize = 36.dp
+private val AgentDotSize = 8.dp
 
 @Composable
 fun Sidebar(
     projects: List<Project>,
     selectedProjectId: String?,
+    isActiveSelected: Boolean,
     isAllSelected: Boolean,
+    activeCount: Int,
     totalWorktreeCount: Int,
+    activityOf: (Project) -> ProjectActivity,
     rail: Boolean,
+    onSelectActive: () -> Unit,
     onSelectAll: () -> Unit,
     onSelectProject: (Project) -> Unit,
     onEditProject: (Project) -> Unit,
@@ -83,10 +92,12 @@ fun Sidebar(
             verticalArrangement = Arrangement.spacedBy(Spacing.xxs),
         ) {
             if (rail) {
-                RailViewItem(strings.allWorktrees, selected = isAllSelected, onClick = onSelectAll)
+                RailViewItem(strings.activeWorktrees, Icons.Default.Bolt, selected = isActiveSelected, onClick = onSelectActive)
+                RailViewItem(strings.allWorktrees, Icons.Default.ViewList, selected = isAllSelected, onClick = onSelectAll)
             } else {
                 SectionLabel(strings.viewsTitle)
-                ViewRow(strings.allWorktrees, totalWorktreeCount, selected = isAllSelected, onClick = onSelectAll)
+                ViewRow(strings.activeWorktrees, Icons.Default.Bolt, activeCount, selected = isActiveSelected, onClick = onSelectActive)
+                ViewRow(strings.allWorktrees, Icons.Default.ViewList, totalWorktreeCount, selected = isAllSelected, onClick = onSelectAll)
                 SectionLabel(strings.projectsTitle)
             }
             projects.forEach { project ->
@@ -97,7 +108,7 @@ fun Sidebar(
                     if (rail) {
                         RailProjectItem(project, selected = project.id == selectedProjectId) { onSelectProject(project) }
                     } else {
-                        ProjectRow(project, selected = project.id == selectedProjectId) { onSelectProject(project) }
+                        ProjectRow(project, activityOf(project), selected = project.id == selectedProjectId) { onSelectProject(project) }
                     }
                 }
             }
@@ -126,7 +137,7 @@ private fun SectionLabel(text: String) {
 }
 
 @Composable
-private fun ViewRow(label: String, count: Int, selected: Boolean, onClick: () -> Unit) {
+private fun ViewRow(label: String, icon: ImageVector, count: Int, selected: Boolean, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Row(
         modifier = Modifier
@@ -140,7 +151,7 @@ private fun ViewRow(label: String, count: Int, selected: Boolean, onClick: () ->
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
         Icon(
-            Icons.Default.ViewList,
+            icon,
             contentDescription = null,
             tint = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
             modifier = Modifier.size(16.dp),
@@ -162,7 +173,7 @@ private fun ViewRow(label: String, count: Int, selected: Boolean, onClick: () ->
 }
 
 @Composable
-private fun RailViewItem(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun RailViewItem(label: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     WithTooltip(label = label) {
         Box(
@@ -173,7 +184,7 @@ private fun RailViewItem(label: String, selected: Boolean, onClick: () -> Unit) 
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                Icons.Default.ViewList,
+                icon,
                 contentDescription = label,
                 tint = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
                 modifier = Modifier.size(20.dp),
@@ -197,9 +208,10 @@ private fun ProjectContextMenu(onEdit: () -> Unit, onRemove: () -> Unit, content
 }
 
 @Composable
-private fun ProjectRow(project: Project, selected: Boolean, onClick: () -> Unit) {
+private fun ProjectRow(project: Project, activity: ProjectActivity, selected: Boolean, onClick: () -> Unit) {
+    val strings = LocalStrings.current
     val colors = MaterialTheme.colorScheme
-    Box(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = Spacing.sm)
@@ -207,7 +219,8 @@ private fun ProjectRow(project: Project, selected: Boolean, onClick: () -> Unit)
             .interactive(onClick = onClick)
             .background(if (selected) colors.secondaryContainer else colors.surfaceContainerLow)
             .padding(horizontal = Spacing.sm),
-        contentAlignment = Alignment.CenterStart,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
         Text(
             project.name,
@@ -215,9 +228,28 @@ private fun ProjectRow(project: Project, selected: Boolean, onClick: () -> Unit)
             color = if (selected) colors.onSecondaryContainer else colors.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
         )
+        if (activity.agentNames.isNotEmpty()) {
+            WithTooltip(label = strings.agentsRunning(activity.agentNames)) {
+                Box(
+                    Modifier
+                        .size(AgentDotSize)
+                        .background(ShogunTheme.status.of(Status.INFO).color, CircleShape),
+                )
+            }
+        }
+        if (activity.activeCount > 0) {
+            Text(
+                activity.activeCount.toString(),
+                style = ShogunTheme.typography.dataSmall,
+                color = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
+            )
+        }
     }
 }
+
+data class ProjectActivity(val activeCount: Int, val agentNames: List<String>)
 
 @Composable
 private fun RailProjectItem(project: Project, selected: Boolean, onClick: () -> Unit) {

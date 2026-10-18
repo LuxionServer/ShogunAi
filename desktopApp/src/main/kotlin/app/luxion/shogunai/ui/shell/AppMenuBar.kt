@@ -17,6 +17,8 @@ fun FrameWindowScope.AppMenuBar(
     onCopySelectedLaunchCommand: (() -> Unit)?,
     onDeleteSelectedWorktree: (() -> Unit)?,
     onClearSelection: (() -> Unit)?,
+    onShowActive: (() -> Unit)?,
+    onShowAll: (() -> Unit)?,
     onReload: () -> Unit,
     onToggleSidebar: () -> Unit,
     onPreferences: () -> Unit,
@@ -40,6 +42,8 @@ fun FrameWindowScope.AppMenuBar(
             onClearSelection?.let { Item(strings.clearSelection, onClick = it) }
         }
         Menu(strings.menuView) {
+            onShowActive?.let { Item(strings.menuActive, shortcut = shortcut(Key.One), onClick = it) }
+            onShowAll?.let { Item(strings.menuAllWorktrees, shortcut = shortcut(Key.Two), onClick = it) }
             onFind?.let { Item(strings.menuFind, shortcut = shortcut(Key.F), onClick = it) }
             Item(strings.reload, shortcut = shortcut(Key.R), onClick = onReload)
             Item(strings.menuToggleSidebar, shortcut = shortcut(Key.Backslash), onClick = onToggleSidebar)

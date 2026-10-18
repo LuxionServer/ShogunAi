@@ -23,7 +23,7 @@ class ShellViewModel(
         private set
     var newWorktreeRequests by mutableIntStateOf(0)
         private set
-    val canCreateWorktree: Boolean get() = destination is ShellDestination.All
+    val canCreateWorktree: Boolean get() = destination is ShellDestination.All || destination == ShellDestination.Active
     var isWindowNarrow by mutableStateOf(false)
         private set
     private var expandedWhileNarrow by mutableStateOf(false)
@@ -60,6 +60,8 @@ class ShellViewModel(
     }
 
     fun selectProject(project: Project) = select(ShellDestination.All(projectFilter = project.id))
+
+    fun selectActive() = select(ShellDestination.Active)
 
     fun selectAll() = select(ShellDestination.All())
 
@@ -116,12 +118,12 @@ class ShellViewModel(
     }
 
     private fun isAvailable(destination: ShellDestination): Boolean = when {
-        destination is ShellDestination.All && projects.isEmpty() -> false
+        (destination is ShellDestination.All || destination == ShellDestination.Active) && projects.isEmpty() -> false
         else -> destination.referencedProjectId?.let { id -> projects.any { it.id == id } } ?: true
     }
 
     private fun fallbackDestination(): ShellDestination? =
-        if (projects.isEmpty()) null else ShellDestination.All()
+        if (projects.isEmpty()) null else ShellDestination.Active
 
     private fun loadProjects(): List<Project> = projectRepository.list().sortedBy { it.name.lowercase() }
 }
