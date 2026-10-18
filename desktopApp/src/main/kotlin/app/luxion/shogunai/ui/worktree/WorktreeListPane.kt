@@ -168,7 +168,7 @@ private fun projectListItems(board: WorktreeBoard): List<ListItem> = board.group
 }
 
 private val ProjectWorktrees.hasGroupState: Boolean
-    get() = loadState !is ProjectLoadState.Loaded || error != null || cleanupIssues != null
+    get() = loadState !is ProjectLoadState.Loaded || error != null || cleanupIssues != null || herdrCloseFailures.isNotEmpty()
 
 @Composable
 private fun ProjectGroupHeader(group: WorktreeGroup, board: WorktreeBoard, onOpenProjectSettings: () -> Unit) {
@@ -253,6 +253,11 @@ private fun GroupState(holder: ProjectWorktrees) {
     holder.cleanupIssues?.let { report ->
         Box(Modifier.padding(horizontal = Spacing.md)) {
             CleanupIssues(report, onDismiss = { holder.dismissCleanupIssues() })
+        }
+    }
+    if (holder.herdrCloseFailures.isNotEmpty()) {
+        Box(Modifier.padding(horizontal = Spacing.md)) {
+            HerdrCloseFailures(holder.herdrCloseFailures, onDismiss = { holder.dismissHerdrCloseFailures() })
         }
     }
 }

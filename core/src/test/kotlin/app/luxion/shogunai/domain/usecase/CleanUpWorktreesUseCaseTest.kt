@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
@@ -147,5 +148,49 @@ class CleanUpWorktreesUseCaseTest {
         assertEquals(listOf(first.path), report.failures.map { it.path })
         assertEquals(128, assertIs<WorktreeError.GitCommandFailed>(report.failures.single().error).exitCode)
         assertTrue(executor.executedCommands.none { it == listOf("git", "branch", "-D", "feature/TASK-1") })
+    }
+
+    @Test
+    fun `closes the Herdr workspaces of removed and pruned worktrees`() = runTest {
+        val herdr = FakeHerdrClient(openWorkspaces = mapOf(first.path to "w2", second.path to "w3", missing.path to "w4"))
+
+        val report = CleanUpWorktreesUseCase(config, executor(), CloseHerdrWorkspacesUseCase(config, herdr))(
+            listOf(first, second, missing),
+            mainBranch,
+            deleteBranches = false,
+        ).getOrThrow()
+
+        assertEquals(listOf("w2", "w3", "w4"), herdr.closedWorkspaces)
+        assertTrue(report.herdrFailures.isEmpty())
+    }
+
+    @Test
+    fun `keeps the workspace of a worktree whose removal failed`() = runTest {
+        val herdr = FakeHerdrClient(openWorkspaces = mapOf(first.path to "w2", second.path to "w3"))
+        val executor = executor(mapOf(listOf("git", "worktree", "remove", first.path) to { failure(it) }))
+
+        CleanUpWorktreesUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr))(
+            listOf(first, second),
+            mainBranch,
+            deleteBranches = false,
+        ).getOrThrow()
+
+        assertEquals(listOf("w3"), herdr.closedWorkspaces)
+    }
+
+    @Test
+    fun `a failing close is reported next to the removal`() = runTest {
+        val failure = WorktreeError.HerdrCommandFailed(listOf("herdr"), "workspace w2 not found")
+        val herdr = FakeHerdrClient(openWorkspaces = mapOf(first.path to "w2", second.path to "w3"), closeFailures = mapOf("w2" to failure))
+
+        val report = CleanUpWorktreesUseCase(config, executor(), CloseHerdrWorkspacesUseCase(config, herdr))(
+            listOf(first, second),
+            mainBranch,
+            deleteBranches = false,
+        ).getOrThrow()
+
+        assertEquals(listOf(first.path, second.path), report.removed)
+        assertEquals(listOf(first.path), report.herdrFailures.map { it.path })
+        assertEquals(listOf("w3"), herdr.closedWorkspaces)
     }
 }

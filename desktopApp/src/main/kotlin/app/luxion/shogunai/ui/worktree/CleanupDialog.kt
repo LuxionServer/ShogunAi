@@ -11,7 +11,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
+import app.luxion.shogunai.domain.usecase.CleanupFailure
 import app.luxion.shogunai.domain.usecase.CleanupReport
+import app.luxion.shogunai.domain.usecase.herdrDetail
 import app.luxion.shogunai.ui.components.DangerButton
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.NeutralTextButton
@@ -39,6 +41,14 @@ fun CleanupDialog(board: WorktreeBoard) {
         text = {
             Column {
                 if (candidateCount > 0) Text(strings.cleanUpMessage(candidateCount))
+                if (groups.any { group -> group.worktrees.any { it.path in group.holder.openInHerdrPaths } }) {
+                    Text(
+                        strings.herdrCleanupNotice,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = Spacing.xs),
+                    )
+                }
                 groups.filter { it.worktrees.isNotEmpty() }.forEach { group ->
                     if (showHeadings) {
                         Text(
@@ -49,7 +59,11 @@ fun CleanupDialog(board: WorktreeBoard) {
                     }
                     group.worktrees.forEach { worktree ->
                         Text(
-                            listOfNotNull(worktree.path.substringAfterLast('/'), worktree.branch).joinToString(" · "),
+                            listOfNotNull(
+                                worktree.path.substringAfterLast('/'),
+                                worktree.branch,
+                                strings.openInHerdrMark.takeIf { worktree.path in group.holder.openInHerdrPaths },
+                            ).joinToString(" · "),
                             style = ShogunTheme.typography.dataSmall,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -144,6 +158,17 @@ fun CleanupIssues(report: CleanupReport, onDismiss: () -> Unit) {
     Notice(
         kind = NoticeKind.WARNING,
         message = lines.joinToString("\n"),
+        onDismiss = onDismiss,
+        modifier = Modifier.padding(top = Spacing.sm),
+    )
+}
+
+@Composable
+fun HerdrCloseFailures(failures: List<CleanupFailure>, onDismiss: () -> Unit) {
+    val strings = LocalStrings.current
+    Notice(
+        kind = NoticeKind.WARNING,
+        message = failures.joinToString("\n") { strings.herdrCloseFailed(it.path, it.error.herdrDetail()) },
         onDismiss = onDismiss,
         modifier = Modifier.padding(top = Spacing.sm),
     )

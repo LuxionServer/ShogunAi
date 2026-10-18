@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.io.HerdrClient
 import app.luxion.shogunai.domain.model.HerdrWorktreeOpening
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -44,9 +45,25 @@ class CliHerdrClient(
         run(listOf("pane", "run", paneId, command))
     }
 
+    override suspend fun openWorktreeWorkspaces(repository: String): Map<String, String> {
+        val arguments = listOf("worktree", "list", "--cwd", repository)
+        val worktrees = run(arguments).field("worktrees") as? JsonArray ?: throw unexpectedResponse(arguments)
+        return worktrees.filterIsInstance<JsonObject>().mapNotNull { worktree ->
+            val path = worktree.string("path")
+            val workspaceId = worktree.string("open_workspace_id")
+            if (path != null && workspaceId != null) path to workspaceId else null
+        }.toMap()
+    }
+
+    override suspend fun closeWorkspace(workspaceId: String) {
+        run(listOf("workspace", "close", workspaceId))
+    }
+
     fun executable(): String {
         val name = if (osName.startsWith("Windows", ignoreCase = true)) "herdr.exe" else "herdr"
-        return USER_BIN_FOLDERS.map { File(File(userHome, it), name).path }.firstOrNull(isFile) ?: name
+        val candidates = USER_BIN_FOLDERS.map { File(File(userHome, it), name).path } +
+            SYSTEM_BIN_FOLDERS.map { File(it, name).path }
+        return candidates.firstOrNull(isFile) ?: name
     }
 
     private fun command(arguments: List<String>): List<String> = listOf(executable()) + arguments
@@ -82,5 +99,6 @@ class CliHerdrClient(
 
     companion object {
         private val USER_BIN_FOLDERS = listOf(".local/bin", ".cargo/bin")
+        private val SYSTEM_BIN_FOLDERS = listOf("/opt/homebrew/bin", "/usr/local/bin")
     }
 }

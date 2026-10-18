@@ -204,6 +204,13 @@ private fun RemoveWorktreeDialog(holder: ProjectWorktrees) {
                         strings.removeWorktreeMessage(worktree.path)
                     },
                 )
+                if (holder.pendingRemovalOpenInHerdr) {
+                    Text(
+                        strings.herdrWorkspaceWillClose,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = Spacing.sm),
+                    )
+                }
                 worktree.branch?.let { branch ->
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
