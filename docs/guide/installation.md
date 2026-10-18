@@ -18,6 +18,23 @@ Homebrew picks the installer for your Mac's architecture (Apple Silicon or Intel
     xattr -dr com.apple.quarantine "/Applications/ShogunAi.app"
     ```
 
+## Windows (winget)
+
+```powershell
+winget install LuxionServer.ShogunAi
+```
+
+`winget upgrade LuxionServer.ShogunAi` updates it to each new release. This installs the app only; for the `shogun` command see below.
+
+## Windows (Scoop)
+
+```powershell
+scoop bucket add shogunai https://github.com/LuxionServer/scoop-shogunai
+scoop install shogunai
+```
+
+Scoop installs the app without administrator rights, adds a Start menu shortcut and provides the `shogun` command, which uses the runtime bundled in the app (no Java needed). `scoop update shogunai` updates both.
+
 ## Manual download
 
 Download the installer for your operating system from the [latest release](https://github.com/LuxionServer/ShogunAi/releases/latest):
@@ -36,10 +53,11 @@ Install it like any other desktop app and open it.
 | How you installed ShogunAi | How to get `shogun` |
 |---|---|
 | Homebrew | Already installed with the Cask; `shogun --version` works in a new terminal. |
+| Scoop | Already installed with the app; `shogun --version` works in a new terminal, with no Java needed. |
 | Linux (`.deb`) | The app's launcher is the command. Link it once: `sudo ln -s /opt/shogunai/bin/ShogunAi /usr/local/bin/shogun`. |
-| Windows, or without installing the app | Download `shogun-<version>.zip` from the release, unzip it and add its `bin` folder to your `PATH`. It needs Java 21 or later. |
+| Windows (winget or `.msi`), or without installing the app | Download `shogun-<version>.zip` from the release, unzip it and add its `bin` folder to your `PATH`. It needs Java 21 or later. |
 
-The Windows `.msi` launcher has no console, so on Windows use the zip for the command. See the [command-line reference](cli.md) for what it does.
+The Windows `.msi` launcher has no console, so with winget or the `.msi` use the zip for the command, or install with Scoop instead. See the [command-line reference](cli.md) for what it does.
 
 ## Optional tools
 

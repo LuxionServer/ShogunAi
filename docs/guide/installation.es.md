@@ -18,6 +18,23 @@ Homebrew elige automáticamente el instalador para la arquitectura de tu Mac (Ap
     xattr -dr com.apple.quarantine "/Applications/ShogunAi.app"
     ```
 
+## Windows (winget)
+
+```powershell
+winget install LuxionServer.ShogunAi
+```
+
+`winget upgrade LuxionServer.ShogunAi` lo actualiza a cada nueva release. Esto instala solo la app; para el comando `shogun` consulta más abajo.
+
+## Windows (Scoop)
+
+```powershell
+scoop bucket add shogunai https://github.com/LuxionServer/scoop-shogunai
+scoop install shogunai
+```
+
+Scoop instala la app sin permisos de administrador, añade un acceso directo al menú Inicio y proporciona el comando `shogun`, que usa el runtime incluido en la app (no necesita Java). `scoop update shogunai` actualiza ambos.
+
 ## Descarga manual
 
 Descarga el instalador para tu sistema operativo desde la [última release](https://github.com/LuxionServer/ShogunAi/releases/latest):
@@ -36,10 +53,11 @@ Instálala como cualquier otra app de escritorio y ábrela.
 | Cómo instalaste ShogunAi | Cómo obtener `shogun` |
 |---|---|
 | Homebrew | Ya se instala con el Cask; `shogun --version` funciona en un terminal nuevo. |
+| Scoop | Ya se instala con la app; `shogun --version` funciona en un terminal nuevo, sin necesitar Java. |
 | Linux (`.deb`) | El lanzador de la app es el comando. Enlázalo una vez: `sudo ln -s /opt/shogunai/bin/ShogunAi /usr/local/bin/shogun`. |
-| Windows, o sin instalar la app | Descarga `shogun-<versión>.zip` de la release, descomprímelo y añade su carpeta `bin` al `PATH`. Necesita Java 21 o posterior. |
+| Windows (winget o `.msi`), o sin instalar la app | Descarga `shogun-<versión>.zip` de la release, descomprímelo y añade su carpeta `bin` al `PATH`. Necesita Java 21 o posterior. |
 
-El lanzador del `.msi` de Windows no tiene consola, así que en Windows usa el zip para el comando. Consulta la [referencia de la línea de comandos](cli.md) para ver qué hace.
+El lanzador del `.msi` de Windows no tiene consola, así que con winget o el `.msi` usa el zip para el comando, o instala con Scoop. Consulta la [referencia de la línea de comandos](cli.md) para ver qué hace.
 
 ## Herramientas opcionales
 

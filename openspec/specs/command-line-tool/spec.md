@@ -128,7 +128,7 @@ Every command SHALL work on the Git repository that contains the current directo
 - **THEN** it prints that the command is unknown, points to `shogun help` and exits with code 2
 
 ### Requirement: Install the command on each platform
-The `shogun` command SHALL be available from each release: on macOS and Linux through the desktop app's launcher, which runs the command instead of the window when it receives arguments, and on any platform with Java 21 or later through a `shogun-<version>.zip` attached to the release.
+The `shogun` command SHALL be available from each release: on macOS and Linux through the desktop app's launcher, which runs the command instead of the window when it receives arguments; on Windows through the Scoop manifest, which runs the command with the runtime bundled in the app; and on any platform with Java 21 or later through a `shogun-<version>.zip` attached to the release.
 
 #### Scenario: Desktop app launched with arguments
 - **WHEN** the desktop app's executable is run with `status` as argument
@@ -141,6 +141,10 @@ The `shogun` command SHALL be available from each release: on macOS and Linux th
 #### Scenario: Release assets
 - **WHEN** a release is published
 - **THEN** it includes `shogun-<version>.zip` with launch scripts for Unix and Windows
+
+#### Scenario: Windows through Scoop
+- **WHEN** a Windows user installs ShogunAi with `scoop install shogunai`
+- **THEN** `shogun status` works from a new terminal without Java installed
 
 ### Requirement: Create worktrees for Claude Code's WorktreeCreate hook
 `shogun hook worktree-create` SHALL read the hook's JSON from standard input and create a provisioned worktree named after its `name` field, on a `feature/<name>` branch starting at the HEAD of the worktree containing its `cwd` field, in the repository containing that `cwd`. It SHALL print the absolute worktree path as the last line of standard output, with any other message on standard error, and exit non-zero on failure.
