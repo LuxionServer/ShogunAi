@@ -1,500 +1,396 @@
 package app.luxion.shogunai.ui.worktree
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import app.luxion.shogunai.domain.model.BranchType
-import app.luxion.shogunai.domain.model.ProjectConfig
-import app.luxion.shogunai.domain.model.RunningAgent
-import app.luxion.shogunai.domain.model.Worktree
-import app.luxion.shogunai.domain.model.WorktreeEmulator
-import app.luxion.shogunai.domain.model.WorktreeSimulator
-import app.luxion.shogunai.domain.model.WorktreeOrigin
-import app.luxion.shogunai.domain.usecase.classifyOrigin
-import app.luxion.shogunai.domain.usecase.isInactive
+import app.luxion.shogunai.domain.model.Grouping
+import app.luxion.shogunai.domain.model.Project
+import app.luxion.shogunai.ui.components.DangerButton
+import app.luxion.shogunai.ui.components.DangerTextButton
 import app.luxion.shogunai.ui.components.DropdownSelector
-import app.luxion.shogunai.ui.components.SectionCard
+import app.luxion.shogunai.ui.components.IconAction
+import app.luxion.shogunai.ui.components.InlineProgress
+import app.luxion.shogunai.ui.components.NeutralTextButton
+import app.luxion.shogunai.ui.components.PrimaryButton
+import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.SegmentedSelector
 import app.luxion.shogunai.ui.components.Spacing
-import app.luxion.shogunai.ui.components.onEnterKey
+import app.luxion.shogunai.ui.components.handPointer
 import app.luxion.shogunai.ui.components.onNewItemShortcut
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.Strings
-import app.luxion.shogunai.ui.i18n.worktreeError
-import app.luxion.shogunai.ui.theme.ShogunTheme
-import kotlinx.coroutines.delay
+import app.luxion.shogunai.ui.machine.MachineResource
+import app.luxion.shogunai.ui.shell.LocalAppMessages
+import app.luxion.shogunai.ui.shell.MessageAction
 import java.io.File
-import java.time.Instant
-
-private fun CreateMode.label(strings: Strings): String = when (this) {
-    CreateMode.NEW_BRANCH -> strings.newBranchMode
-    CreateMode.EXISTING_BRANCH -> strings.existingBranchMode
-}
 
 @Composable
 fun WorktreeScreen(
-    projectName: String,
-    projectConfig: ProjectConfig,
-    viewModel: WorktreeViewModel,
-    onBack: () -> Unit,
+    board: WorktreeBoard,
+    onSelectFilter: (String?) -> Unit,
+    onOpenProjectSettings: (Project) -> Unit,
+    onSeeAll: () -> Unit,
+    onOpenMachine: (MachineResource) -> Unit,
 ) {
     val strings = LocalStrings.current
-    DisposableEffect(viewModel) {
-        viewModel.startWatching()
-        onDispose { viewModel.stopWatching() }
+    DisposableEffect(board) {
+        board.startWatching()
+        onDispose { board.stopWatching() }
     }
-    LaunchedEffect(viewModel.createMode) {
-        if (viewModel.createMode == CreateMode.EXISTING_BRANCH) {
-            viewModel.loadLocalBranches()
-        }
+    val messages = LocalAppMessages.current
+    LaunchedEffect(board.pendingSuccess) {
+        val pending = board.pendingSuccess ?: return@LaunchedEffect
+        messages.show(strings.successMessage(pending.success), pending.action(strings, board))
+        board.dismissSuccess(pending)
     }
-
-    val branchGroupExpansion = remember { mutableStateMapOf<String, Boolean>() }
-    var isCreateSectionExpanded by remember { mutableStateOf(true) }
-
-    val isTaskIdValid = viewModel.taskId.isNotBlank() && viewModel.isTaskIdValid(viewModel.taskId)
-    val createNewBranchWorktree = {
-        viewModel.create(viewModel.taskId, viewModel.branchType)
-        viewModel.updateTaskId("")
-    }
-    val createFromSelectedBranch = {
-        viewModel.selectedBranch?.let { viewModel.createFromBranch(it) }
-        viewModel.selectedBranch = null
-    }
-    val isCreateEnabled = isCreateEnabled(viewModel.createMode, isTaskIdValid, viewModel.isSelectedBranchAvailable)
-    val createWorktree = when (viewModel.createMode) {
-        CreateMode.NEW_BRANCH -> createNewBranchWorktree
-        CreateMode.EXISTING_BRANCH -> createFromSelectedBranch
-    }
+    val filteredProject = board.shownProjects.singleOrNull()?.takeIf { board.isFiltered }
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(Spacing.md)
-            .verticalScroll(rememberScrollState())
-            .onNewItemShortcut(enabled = isCreateEnabled && !viewModel.isCreating, action = createWorktree),
+        modifier = Modifier
+            .fillMaxSize()
+            .onNewItemShortcut(enabled = !board.isCreateDialogOpen) { board.openCreateDialog() },
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md, vertical = Spacing.md),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(projectName, style = MaterialTheme.typography.headlineSmall)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (viewModel.isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.padding(end = Spacing.sm).size(20.dp),
-                        strokeWidth = 2.dp,
-                    )
-                }
-                OutlinedButton(
-                    onClick = { viewModel.refresh() },
-                    enabled = !viewModel.isLoading,
-                    modifier = Modifier.padding(end = Spacing.sm),
-                ) { Text(strings.reload) }
-                OutlinedButton(onClick = onBack) { Text(strings.projectsTitle) }
-            }
-        }
-
-        viewModel.error?.let { error ->
-            val message = strings.worktreeError(error)
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Error,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(end = Spacing.sm),
-                    )
-                    Text(message, color = MaterialTheme.colorScheme.error)
-                }
-                IconButton(onClick = { viewModel.dismissError() }) {
-                    Icon(Icons.Default.Close, contentDescription = strings.closeError)
-                }
-            }
-        }
-
-        viewModel.success?.let { success ->
-            val message = when (success) {
-                is WorktreeSuccess.Created -> strings.worktreeCreated(success.path)
-                WorktreeSuccess.RepairedAfterMove -> strings.worktreesRepairedAfterMove
-                is WorktreeSuccess.OpenedInHerdr -> {
-                    val name = File(success.path).name
-                    if (success.focused) strings.focusedInHerdr(name) else strings.openedInHerdr(name)
-                }
-                is WorktreeSuccess.CleanedUp -> listOfNotNull(
-                    strings.worktreesCleanedUp(success.removedCount),
-                    if (success.stoppedDaemons + success.keptDaemons > 0) {
-                        strings.daemonsStopped(success.stoppedDaemons, success.keptDaemons, failed = 0)
-                    } else {
-                        null
-                    },
-                    success.stoppedEmulators.takeIf { it > 0 }?.let(strings::emulatorsStopped),
-                    success.deletedSimulators.takeIf { it > 0 }?.let(strings::simulatorsDeleted),
-                    success.deletedDerivedDataFolders.takeIf { it > 0 }?.let {
-                        strings.derivedDataDeleted(it, formatSize(success.derivedDataBytesFreed))
-                    },
-                ).joinToString(" · ")
-            }
-            LaunchedEffect(success) {
-                delay(4000)
-                viewModel.dismissSuccess()
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        tint = ShogunTheme.extendedColors.success,
-                        modifier = Modifier.padding(end = Spacing.sm),
-                    )
-                    Text(message, color = ShogunTheme.extendedColors.success)
-                }
-                IconButton(onClick = { viewModel.dismissSuccess() }) {
-                    Icon(Icons.Default.Close, contentDescription = strings.closeMessage)
-                }
-            }
-        }
-
-        SectionCard(
-            title = strings.newWorktreeSection,
-            modifier = Modifier.padding(top = Spacing.md),
-            collapsible = true,
-            expanded = isCreateSectionExpanded,
-            onExpandedChange = { isCreateSectionExpanded = it },
-        ) {
-            SegmentedSelector(
-                options = CreateMode.entries,
-                selected = viewModel.createMode,
-                onSelect = { viewModel.createMode = it },
-                label = { it.label(strings) },
-                enabled = !viewModel.isCreating,
+            Text(
+                filteredProject?.name ?: if (board.isActiveView) strings.activeWorktrees else strings.allWorktrees,
+                style = MaterialTheme.typography.headlineSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
-            when (viewModel.createMode) {
-                CreateMode.NEW_BRANCH -> {
-                    OutlinedTextField(
-                        value = viewModel.taskId,
-                        onValueChange = { viewModel.updateTaskId(it) },
-                        label = { Text(strings.taskIdLabel) },
-                        supportingText = { Text(strings.taskIdHint) },
-                        isError = viewModel.taskId.isNotBlank() && !viewModel.isTaskIdValid(viewModel.taskId),
-                        modifier = Modifier.fillMaxWidth().onEnterKey(enabled = isTaskIdValid, action = createNewBranchWorktree),
-                    )
-                    if (viewModel.taskId.isNotBlank() && !viewModel.isTaskIdValid(viewModel.taskId)) {
-                        Text(
-                            strings.invalidTaskId,
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                    SegmentedSelector(
-                        options = BranchType.entries,
-                        selected = viewModel.branchType,
-                        onSelect = { viewModel.branchType = it },
-                        label = { it.prefix },
-                        enabled = !viewModel.isCreating,
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (viewModel.isCreating) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.padding(end = Spacing.sm).size(20.dp),
-                                strokeWidth = 2.dp,
-                            )
-                        }
-                        Button(
-                            onClick = createWorktree,
-                            enabled = isCreateEnabled && !viewModel.isCreating,
-                        ) {
-                            Text(strings.createWorktree)
-                        }
-                    }
-                }
-                CreateMode.EXISTING_BRANCH -> {
-                    when {
-                        viewModel.isLoadingBranches -> Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.padding(end = Spacing.sm).size(20.dp),
-                                strokeWidth = 2.dp,
-                            )
-                            Text(strings.loadingBranches)
-                        }
-                        viewModel.localBranches.isEmpty() -> Text(strings.noBranchesAvailable)
-                        else -> DropdownSelector(
-                            options = viewModel.localBranches,
-                            selected = viewModel.localBranches.find { it.name == viewModel.selectedBranch },
-                            onSelect = { viewModel.selectedBranch = it.name },
-                            enabled = { !it.isCheckedOut },
-                            label = { if (it.isCheckedOut) strings.branchAlreadyHasWorktree(it.name) else it.name },
-                            placeholder = strings.selectBranchPlaceholder,
-                            groupBy = { it.name.substringBefore('/', strings.otherBranchesGroup) },
-                            expandedGroups = branchGroupExpansion,
-                        )
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (viewModel.isCreating) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.padding(end = Spacing.sm).size(20.dp),
-                                strokeWidth = 2.dp,
-                            )
-                        }
-                        Button(
-                            onClick = createWorktree,
-                            enabled = isCreateEnabled && !viewModel.isCreating,
-                        ) {
-                            Text(strings.createWorktree)
-                        }
-                    }
-                }
+            if (board.shownProjects.any { it.id.let(board::holder)?.isLoading == true }) InlineProgress()
+            SecondaryButton(onClick = { board.refreshShown() }) { Text(strings.reload) }
+            filteredProject?.let { project ->
+                IconAction(
+                    icon = Icons.Default.Settings,
+                    label = strings.projectConfigTitle,
+                    onClick = { onOpenProjectSettings(project) },
+                )
             }
-        }
-
-        viewModel.cleanupIssues?.let { report ->
-            CleanupIssues(report, onDismiss = { viewModel.dismissCleanupIssues() })
-        }
-
-        if (viewModel.herdrCloseFailures.isNotEmpty()) {
-            HerdrCloseFailures(viewModel.herdrCloseFailures, onDismiss = { viewModel.dismissHerdrCloseFailures() })
+            DangerTextButton(onClick = { board.openCleanup() }, enabled = board.canCleanUp()) { Text(strings.cleanUp) }
+            PrimaryButton(onClick = { board.openCreateDialog() }, enabled = board.projects.isNotEmpty()) {
+                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(ButtonIconSize))
+                Text(strings.newWorktree, modifier = Modifier.padding(start = Spacing.sm))
+            }
         }
 
         Row(
-            modifier = Modifier.fillMaxWidth().padding(top = Spacing.lg),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth().padding(start = Spacing.md, end = Spacing.md, bottom = Spacing.md),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(strings.worktreesTitle, style = MaterialTheme.typography.titleMedium)
-                Text(
-                    strings.worktreesSummary(viewModel.worktrees.size, formatSize(viewModel.totalSize)),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = Spacing.sm),
-                )
+            if (!board.isActiveView) ProjectFilter(board, onSelectFilter)
+            TextFilterField(board)
+            GroupingSelector(board)
+            if (board.isActiveView && board.isReadingActivity) {
+                InlineProgress()
+                Text(strings.readingWorktreeStatus, style = MaterialTheme.typography.bodySmall)
             }
-            OutlinedButton(
-                onClick = { viewModel.openCleanup() },
-                enabled = viewModel.canCleanUp && !viewModel.isCleaningUp,
-            ) { Text(strings.cleanUp) }
         }
-        viewModel.worktrees.forEach { worktree ->
-            val status = viewModel.statuses[worktree.path]
-            val agents = viewModel.agents?.get(worktree.path).orEmpty()
-            WorktreeRow(
-                worktree = worktree,
-                status = status,
-                mainBranchName = viewModel.mainBranch?.name,
-                origin = classifyOrigin(worktree, projectConfig, viewModel.herdrWorktreesRoot),
-                agents = agents,
-                size = viewModel.sizes[worktree.path],
-                ports = viewModel.ports[worktree.path].orEmpty(),
-                showEmulator = viewModel.isEmulatorRepository,
-                emulator = viewModel.emulators[worktree.path],
-                isStartingEmulator = worktree.path in viewModel.startingEmulators,
-                onStartEmulator = { viewModel.startEmulator(worktree) },
-                onStopEmulator = { viewModel.stopEmulator(worktree) },
-                showSimulator = viewModel.isSimulatorRepository,
-                simulator = viewModel.simulators[worktree.path],
-                isStartingSimulator = worktree.path in viewModel.startingSimulators,
-                onStartSimulator = { viewModel.startSimulator(worktree) },
-                onStopSimulator = { viewModel.stopSimulator(worktree) },
-                isInactive = isInactive(worktree, (status as? WorktreeStatusState.Loaded)?.status, agents, Instant.now()),
-                isCopied = viewModel.copiedWorktreePath == worktree.path,
-                onRemove = { viewModel.requestRemoval(worktree) },
-                onCopyLaunchCommand = { viewModel.copyLaunchCommand(worktree) },
-                isOpeningInHerdr = worktree.path in viewModel.openingInHerdr,
-                onOpenInHerdr = { viewModel.openInHerdr(worktree) },
-            )
-            HorizontalDivider()
-        }
-        if (viewModel.isGradleRepository) {
-            GradleDaemonsSection(viewModel, modifier = Modifier.padding(vertical = Spacing.lg))
-        }
-        if (viewModel.isXcodeRepository) {
-            XcodeDerivedDataSection(viewModel, modifier = Modifier.padding(vertical = Spacing.lg))
-        }
+
+        WorktreeContent(board, onOpenProjectSettings, onSeeAll, onOpenMachine, modifier = Modifier.weight(1f).fillMaxWidth())
     }
 
-    if (viewModel.isCleanupDialogOpen) {
-        CleanupDialog(viewModel)
+    if (board.isCreateDialogOpen) {
+        CreateWorktreeDialog(board)
     }
 
-    viewModel.worktreePendingRemoval?.let { worktree ->
-        val requiresForce = viewModel.pendingRemovalRequiresForce
-        AlertDialog(
-            onDismissRequest = { viewModel.dismissPendingRemoval() },
-            title = { Text(if (requiresForce) strings.forceRemoveTitle else strings.removeWorktreeTitle) },
-            text = {
-                Column {
+    if (board.isCleanupDialogOpen) {
+        CleanupDialog(board)
+    }
+
+    board.pendingRemoval?.let { holder -> RemoveWorktreeDialog(holder) }
+}
+
+@Composable
+private fun GroupingSelector(board: WorktreeBoard) {
+    val strings = LocalStrings.current
+    SegmentedSelector(
+        options = Grouping.entries,
+        selected = board.grouping,
+        onSelect = board::updateGrouping,
+        label = { if (it == Grouping.BY_STATE) strings.groupByState else strings.groupByProject },
+    )
+}
+
+@Composable
+private fun ProjectFilter(board: WorktreeBoard, onSelectFilter: (String?) -> Unit) {
+    val strings = LocalStrings.current
+    val options = listOf<Project?>(null) + board.projects
+    DropdownSelector(
+        options = options,
+        selected = board.projects.firstOrNull { it.id == board.projectFilter },
+        onSelect = { onSelectFilter(it?.id) },
+        label = { it?.name ?: strings.allProjects },
+        placeholder = strings.allProjects,
+        modifier = Modifier.width(FilterFieldWidth),
+    )
+}
+
+@Composable
+private fun TextFilterField(board: WorktreeBoard) {
+    val strings = LocalStrings.current
+    val focusRequester = remember { FocusRequester() }
+    val findRequestsOnEntry = remember { board.findRequests }
+    LaunchedEffect(board.findRequests) {
+        if (board.findRequests != findRequestsOnEntry) focusRequester.requestFocus()
+    }
+    OutlinedTextField(
+        value = board.textFilter,
+        onValueChange = board::updateTextFilter,
+        placeholder = { Text(strings.filterWorktreesPlaceholder, style = MaterialTheme.typography.bodySmall) },
+        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(ButtonIconSize)) },
+        trailingIcon = if (board.textFilter.isNotEmpty()) {
+            { IconAction(icon = Icons.Default.Close, label = strings.clearFilter, onClick = board::clearTextFilter) }
+        } else {
+            null
+        },
+        textStyle = MaterialTheme.typography.bodySmall,
+        singleLine = true,
+        modifier = Modifier
+            .width(FilterFieldWidth)
+            .focusRequester(focusRequester),
+    )
+}
+
+@Composable
+private fun RemoveWorktreeDialog(holder: ProjectWorktrees) {
+    val strings = LocalStrings.current
+    val worktree = holder.worktreePendingRemoval ?: return
+    val requiresForce = holder.pendingRemovalRequiresForce
+    AlertDialog(
+        onDismissRequest = { holder.dismissPendingRemoval() },
+        title = { Text(if (requiresForce) strings.forceRemoveTitle else strings.removeWorktreeTitle) },
+        text = {
+            Column {
+                Text(
+                    if (requiresForce) {
+                        strings.forceRemoveMessage(worktree.path)
+                    } else {
+                        strings.removeWorktreeMessage(worktree.path)
+                    },
+                )
+                if (holder.pendingRemovalOpenInHerdr) {
                     Text(
-                        if (requiresForce) {
-                            strings.forceRemoveMessage(worktree.path)
-                        } else {
-                            strings.removeWorktreeMessage(worktree.path)
-                        },
+                        strings.herdrWorkspaceWillClose,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = Spacing.sm),
                     )
-                    if (viewModel.pendingRemovalOpenInHerdr) {
-                        Text(
-                            strings.herdrWorkspaceWillClose,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.padding(top = Spacing.sm),
-                        )
-                    }
-                    worktree.branch?.let { branch ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(top = Spacing.sm),
-                        ) {
-                            Checkbox(
-                                checked = viewModel.pendingRemovalDeleteBranch,
-                                onCheckedChange = { viewModel.setPendingRemovalDeleteBranch(it) },
-                            )
-                            Text(strings.alsoDeleteLocalBranch(branch))
-                        }
-                    }
                 }
-            },
-            confirmButton = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (viewModel.isRemoving) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.padding(end = Spacing.sm).size(20.dp),
-                            strokeWidth = 2.dp,
-                        )
-                    }
-                    TextButton(
-                        onClick = { viewModel.confirmPendingRemoval() },
-                        enabled = !viewModel.isRemoving,
+                worktree.branch?.let { branch ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(top = Spacing.sm),
                     ) {
-                        Text(if (requiresForce) strings.forceRemove else strings.delete)
+                        Checkbox(
+                            checked = holder.pendingRemovalDeleteBranch,
+                            onCheckedChange = { holder.setPendingRemovalDeleteBranch(it) },
+                            modifier = Modifier.handPointer(),
+                        )
+                        Text(strings.alsoDeleteLocalBranch(branch))
                     }
                 }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { viewModel.dismissPendingRemoval() },
-                    enabled = !viewModel.isRemoving,
-                ) {
-                    Text(strings.cancel)
+            }
+        },
+        confirmButton = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (holder.isRemoving) {
+                    InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
                 }
-            },
-        )
+                DangerButton(
+                    onClick = { holder.confirmPendingRemoval() },
+                    enabled = !holder.isRemoving,
+                ) {
+                    Text(if (requiresForce) strings.forceRemove else strings.delete)
+                }
+            }
+        },
+        dismissButton = {
+            NeutralTextButton(
+                onClick = { holder.dismissPendingRemoval() },
+                enabled = !holder.isRemoving,
+            ) {
+                Text(strings.cancel)
+            }
+        },
+    )
+}
+
+@Composable
+private fun WorktreeContent(
+    board: WorktreeBoard,
+    onOpenProjectSettings: (Project) -> Unit,
+    onSeeAll: () -> Unit,
+    onOpenMachine: (MachineResource) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    BoxWithConstraints(modifier) {
+        val narrow = maxWidth < WorktreeDetailOverlayThreshold
+        val selected = board.selectedWorktree
+        val list: @Composable (Modifier) -> Unit = { listModifier ->
+            if (board.isNothingActive) {
+                NothingActive(onNewWorktree = { board.openCreateDialog() }, onSeeAll = onSeeAll, modifier = listModifier)
+            } else if (board.hasNoMatch) {
+                NoMatch(onClear = board::clearTextFilter, modifier = listModifier)
+            } else {
+                WorktreeListPane(board, onOpenProjectSettings, onOpenMachine, listModifier)
+            }
+        }
+        if (narrow && selected != null) {
+            Box(Modifier.fillMaxSize()) {
+                list(Modifier.fillMaxSize())
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(WorktreeOverlayScrim)
+                        .clickable(onClick = board::clearSelection),
+                )
+                SelectedDetail(board, selected, Modifier.align(Alignment.CenterEnd).width(WorktreeDetailWidth))
+            }
+        } else {
+            Row(Modifier.fillMaxSize()) {
+                list(Modifier.weight(1f))
+                VerticalDivider()
+                if (selected != null) {
+                    SelectedDetail(board, selected, Modifier.width(WorktreeDetailWidth))
+                } else if (!narrow) {
+                    ViewSummary(board, modifier = Modifier.width(WorktreeDetailWidth))
+                }
+            }
+        }
     }
 }
 
 @Composable
-private fun WorktreeRow(
-    worktree: Worktree,
-    status: WorktreeStatusState?,
-    mainBranchName: String?,
-    origin: WorktreeOrigin?,
-    agents: List<RunningAgent>,
-    size: Long?,
-    ports: Map<String, Int>,
-    showEmulator: Boolean,
-    emulator: WorktreeEmulator?,
-    isStartingEmulator: Boolean,
-    onStartEmulator: () -> Unit,
-    onStopEmulator: () -> Unit,
-    showSimulator: Boolean,
-    simulator: WorktreeSimulator?,
-    isStartingSimulator: Boolean,
-    onStartSimulator: () -> Unit,
-    onStopSimulator: () -> Unit,
-    isInactive: Boolean,
-    isCopied: Boolean,
-    onRemove: () -> Unit,
-    onCopyLaunchCommand: () -> Unit,
-    isOpeningInHerdr: Boolean,
-    onOpenInHerdr: () -> Unit,
-) {
+private fun SelectedDetail(board: WorktreeBoard, selected: SelectedWorktree, modifier: Modifier) {
+    WorktreeDetailPane(
+        worktree = selected.worktree,
+        projectConfig = selected.project.config,
+        viewModel = selected.holder,
+        projectName = selected.project.name.takeIf { !board.isFiltered },
+        projectId = selected.project.id,
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun ViewSummary(board: WorktreeBoard, modifier: Modifier) {
+    val holders = board.shownProjects.mapNotNull { board.holder(it.id) }
+    ProjectSummary(
+        worktreeCount = holders.sumOf { it.worktrees.size },
+        totalSize = holders.sumOf { it.totalSize },
+        cleanupCandidateCount = holders.sumOf { it.cleanupCandidates.size },
+        canCleanUp = board.canCleanUp(),
+        onCleanUp = { board.openCleanup() },
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun NothingActive(onNewWorktree: () -> Unit, onSeeAll: () -> Unit, modifier: Modifier) {
     val strings = LocalStrings.current
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.sm),
-        horizontalArrangement = Arrangement.SpaceBetween,
+    Column(
+        modifier = modifier.fillMaxSize().padding(Spacing.xl),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Spacing.md, Alignment.CenterVertically),
     ) {
-        Column(modifier = Modifier.weight(1f).padding(end = Spacing.sm)) {
-            Text(worktree.path, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            WorktreeBranchLine(worktree, origin, agents)
-            if (worktree.isPrunable) {
-                Text(strings.folderMissing, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-            } else {
-                WorktreeStatusLine(status, mainBranchName)
-                WorktreeOverviewLine(size, isInactive, ports)
-                if (showEmulator) EmulatorLine(emulator, isStartingEmulator, onStartEmulator, onStopEmulator)
-                if (showSimulator) SimulatorLine(simulator, isStartingSimulator, onStartSimulator, onStopSimulator)
-            }
-        }
-        Row {
-            if (!worktree.isPrunable) {
-                OutlinedButton(
-                    onClick = onOpenInHerdr,
-                    enabled = !isOpeningInHerdr,
-                    modifier = Modifier.padding(end = Spacing.sm),
-                ) { Text(strings.openInHerdr) }
-            }
-            OutlinedButton(onClick = onCopyLaunchCommand, modifier = Modifier.padding(end = Spacing.sm)) {
-                Icon(
-                    imageVector = if (isCopied) Icons.Default.Check else Icons.Default.ContentCopy,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp).padding(end = Spacing.sm),
-                )
-                Text(if (isCopied) strings.copied else strings.copyCommand)
-            }
-            if (!worktree.isMain) {
-                OutlinedButton(onClick = onRemove) {
-                    Text(strings.delete)
-                }
-            }
+        Text(strings.nothingActiveTitle, style = MaterialTheme.typography.headlineSmall)
+        Text(
+            strings.nothingActiveMessage,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            PrimaryButton(onClick = onNewWorktree) { Text(strings.newWorktree) }
+            SecondaryButton(onClick = onSeeAll) { Text(strings.seeAllWorktrees) }
         }
     }
 }
 
-internal fun isCreateEnabled(
-    mode: CreateMode,
-    isTaskIdValid: Boolean,
-    isSelectedBranchAvailable: Boolean,
-): Boolean = when (mode) {
-    CreateMode.NEW_BRANCH -> isTaskIdValid
-    CreateMode.EXISTING_BRANCH -> isSelectedBranchAvailable
+@Composable
+private fun NoMatch(onClear: () -> Unit, modifier: Modifier) {
+    val strings = LocalStrings.current
+    Column(
+        modifier = modifier.fillMaxSize().padding(Spacing.xl),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Spacing.md, Alignment.CenterVertically),
+    ) {
+        Text(
+            strings.noWorktreeMatches,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SecondaryButton(onClick = onClear) { Text(strings.clearFilter) }
+    }
+}
+
+private val ButtonIconSize = 18.dp
+private val FilterFieldWidth = 240.dp
+private val WorktreeDetailWidth = 360.dp
+private val WorktreeDetailOverlayThreshold = 760.dp
+private val WorktreeOverlayScrim = Color(0x66000000)
+
+private fun Strings.successMessage(success: WorktreeSuccess): String = when (success) {
+    is WorktreeSuccess.Created -> worktreeCreated(File(success.path).name)
+    WorktreeSuccess.RepairedAfterMove -> worktreesRepairedAfterMove
+    is WorktreeSuccess.OpenedInHerdr -> {
+        val name = File(success.path).name
+        if (success.focused) focusedInHerdr(name) else openedInHerdr(name)
+    }
+    is WorktreeSuccess.CleanedUp -> listOfNotNull(
+        worktreesCleanedUp(success.removedCount),
+        if (success.stoppedDaemons + success.keptDaemons > 0) {
+            daemonsStopped(success.stoppedDaemons, success.keptDaemons, failed = 0)
+        } else {
+            null
+        },
+        success.stoppedEmulators.takeIf { it > 0 }?.let(::emulatorsStopped),
+        success.deletedSimulators.takeIf { it > 0 }?.let(::simulatorsDeleted),
+        success.deletedDerivedDataFolders.takeIf { it > 0 }?.let {
+            derivedDataDeleted(it, formatSize(success.derivedDataBytesFreed))
+        },
+    ).joinToString(" · ")
+}
+
+private fun PendingSuccess.action(strings: Strings, board: WorktreeBoard): MessageAction? = when (success) {
+    is WorktreeSuccess.Created -> projectId?.let(board::holder)?.let { holder ->
+        MessageAction(strings.copyLaunchCommand) { holder.copyLastCreatedLaunchCommand() }
+    }
+    else -> null
 }

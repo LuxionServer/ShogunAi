@@ -88,7 +88,7 @@ En `desktopApp`. Implementación de `ClipboardWriter` con el portapapeles del si
 
 ## Preferencias de usuario (`settings.json`)
 
-`JsonSettingsFile` es el fichero `~/.shogunai/settings.json`, compartido por `JsonThemePreferenceRepository` (puerto `ThemePreferenceRepository`) y `JsonLanguagePreferenceRepository` (puerto `LanguagePreferenceRepository`). Guarda `{ "themeMode": ..., "language": ... }`.
+`JsonSettingsFile` es el fichero `~/.shogunai/settings.json`, compartido por `JsonThemePreferenceRepository` (puerto `ThemePreferenceRepository`), `JsonLanguagePreferenceRepository` (puerto `LanguagePreferenceRepository`) y `JsonShellPreferenceRepository` (puerto `ShellPreferenceRepository`). Guarda `{ "themeMode": ..., "language": ..., "lastDestination": ..., "windowBounds": ..., "sidebarCollapsed": ... }`; las tres últimas son opcionales, así que un fichero escrito por una versión anterior abre en el primer proyecto con los bounds por defecto.
 
 - **Cada guardado reescribe solo su campo**: `update` lee el contenido actual, aplica el cambio y escribe el fichero completo de forma atómica (mismo patrón que `JsonProjectRepository`). Así cambiar el idioma no pisa el tema y viceversa.
 - **Valores por defecto**: `SYSTEM` para el tema e `ENGLISH` para el idioma, si el fichero no existe, está vacío o no se puede parsear. Los ficheros escritos por versiones anteriores (solo `themeMode`) se leen sin problema: el idioma toma su valor por defecto.

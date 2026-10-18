@@ -2,9 +2,17 @@ package app.luxion.shogunai.ui.projectconfig
 
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
+import app.luxion.shogunai.domain.model.EnvironmentDeclaration
+import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.RepositoryConfigIssue
+import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.XcodeProvider
+import app.luxion.shogunai.domain.model.parseEnvironmentVariable
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -299,6 +307,284 @@ class ProjectConfigViewModelTest {
 
         viewModel.save().getOrThrow()
 
+        assertTrue(provisioningSource.addedPatterns.isEmpty())
+    }
+
+    private fun newProjectViewModel(
+        inspections: Map<String, RepositoryInspection> = emptyMap(),
+    ) = ProjectConfigViewModel(
+        projectRepository,
+        provisioningSource,
+        existingProject = null,
+        inspectRepository = { folder ->
+            inspections[folder]?.let { Result.success(it) } ?: Result.failure(WorktreeError.RepositoryNotFound(folder))
+        },
+    )
+
+    @Test
+    fun `an untouched new form shows no errors`() {
+        val viewModel = newProjectViewModel()
+
+        assertFalse(viewModel.isErrorVisible(ProjectConfigField.NAME))
+        assertFalse(viewModel.isErrorVisible(ProjectConfigField.BASE_REPOSITORY_PATH))
+    }
+
+    @Test
+    fun `emptying an edited name shows its error`() {
+        val viewModel = newProjectViewModel()
+
+        viewModel.name = "api"
+        assertFalse(viewModel.isErrorVisible(ProjectConfigField.NAME))
+        viewModel.name = ""
+
+        assertTrue(viewModel.isErrorVisible(ProjectConfigField.NAME))
+        assertFalse(viewModel.isErrorVisible(ProjectConfigField.BASE_REPOSITORY_PATH))
+    }
+
+    @Test
+    fun `saving with errors does not save and reports the first invalid field`() {
+        val viewModel = newProjectViewModel()
+
+        val outcome = viewModel.submit()
+
+        assertEquals(SaveOutcome.Invalid(ProjectConfigField.NAME), outcome)
+        assertTrue(viewModel.isErrorVisible(ProjectConfigField.NAME))
+        assertTrue(viewModel.isErrorVisible(ProjectConfigField.BASE_REPOSITORY_PATH))
+        assertTrue(projectRepository.list().isEmpty())
+    }
+
+    @Test
+    fun `saving a valid form saves the project`() {
+        val viewModel = newProjectViewModel()
+        viewModel.name = "api"
+        viewModel.baseRepositoryPath = "/home/dev/projects/api"
+
+        val outcome = viewModel.submit()
+
+        assertIs<SaveOutcome.Saved>(outcome)
+        assertEquals(1, projectRepository.list().size)
+    }
+
+    @Test
+    fun `choosing a repository prefills the name, a sibling worktrees folder and the detected main branch`() = runBlocking {
+        val viewModel = newProjectViewModel(
+            mapOf("/home/dev/projects/main-repo/app" to RepositoryInspection("/home/dev/projects/main-repo", "main")),
+        )
+
+        val result = viewModel.chooseFolder("/home/dev/projects/main-repo/app")
+
+        assertTrue(result.isSuccess)
+        assertTrue(viewModel.folderChosen)
+        assertEquals("main-repo", viewModel.name)
+        assertEquals("/home/dev/projects/main-repo", viewModel.baseRepositoryPath)
+        assertEquals("/home/dev/projects/main-repo-worktrees", viewModel.worktreesRoot)
+        assertEquals("main", viewModel.detectedMainBranch)
+        assertEquals("", viewModel.mainBranch)
+        assertFalse(viewModel.hasUnsavedChanges)
+        assertFalse(viewModel.isErrorVisible(ProjectConfigField.NAME))
+    }
+
+    @Test
+    fun `a folder that is not a repository is rejected and the form stays closed`() = runBlocking {
+        val viewModel = newProjectViewModel()
+
+        val result = viewModel.chooseFolder("/home/dev/projects/plain")
+
+        assertTrue(result.isFailure)
+        assertFalse(viewModel.folderChosen)
+        assertEquals("/home/dev/projects/plain", viewModel.rejectedFolder)
+        assertEquals("", viewModel.baseRepositoryPath)
+    }
+
+    @Test
+    fun `shows the providers and environment the repository declares`() {
+        val declared = RepositoryProvisioning(
+            providers = RepositoryProviders(gradle = GradleProvider(daemonMaxHeap = "2g", idleTimeoutMinutes = 30)),
+            environment = EnvironmentDeclaration(listOf(parseEnvironmentVariable("PORT", "\${port}")), envFile = ".env.shogunai"),
+        )
+        provisioningSource = FakeRepositoryProvisioningSource(byRepository = mapOf(basePath to declared))
+
+        val viewModel = viewModelFor(projectWith())
+
+        assertEquals(GradleDraft("2g", "30", ""), viewModel.repositoryDraft.gradle)
+        assertNull(viewModel.repositoryDraft.emulator)
+        assertEquals(listOf("PORT" to "\${port}"), viewModel.repositoryDraft.environment.map { it.name to it.template })
+        assertEquals(".env.shogunai", viewModel.repositoryDraft.envFile)
+        assertFalse(viewModel.hasUnsavedChanges)
+    }
+
+    @Test
+    fun `turning a provider on and off counts as an unsaved change`() {
+        val viewModel = viewModelFor(projectWith())
+
+        viewModel.setGradleEnabled(true)
+        assertTrue(viewModel.hasUnsavedChanges)
+        assertEquals(GradleDraft(), viewModel.repositoryDraft.gradle)
+
+        viewModel.setGradleEnabled(false)
+        assertFalse(viewModel.hasUnsavedChanges)
+    }
+
+    @Test
+    fun `invalid values are flagged and block saving`() {
+        val viewModel = viewModelFor(projectWith())
+        viewModel.setGradleEnabled(true)
+        viewModel.updateRepositoryDraft { it.copy(gradle = GradleDraft(daemonMaxHeap = "2 GB")) }
+
+        val outcome = viewModel.submit()
+
+        assertEquals(SaveOutcome.InvalidRepositoryConfig(RepositoryConfigField.GradleDaemonMaxHeap), outcome)
+        assertEquals(RepositoryConfigIssue.InvalidMemorySize, viewModel.repositoryDraft.issueFor(RepositoryConfigField.GradleDaemonMaxHeap))
+        assertTrue(projectRepository.list().isEmpty())
+    }
+
+    @Test
+    fun `flags invalid variable names, templates, duplicates and env files`() {
+        val viewModel = viewModelFor(projectWith())
+        viewModel.addEnvironmentRow()
+        viewModel.addEnvironmentRow()
+        val (first, second) = viewModel.repositoryDraft.environment.map { it.id }
+
+        viewModel.updateEnvironmentRow(first, name = "1PORT", template = "x")
+        viewModel.updateEnvironmentRow(second, name = "PORT", template = "\${branch}")
+        viewModel.updateRepositoryDraft { it.copy(envFile = "../shared.env") }
+
+        val draft = viewModel.repositoryDraft
+        assertEquals(RepositoryConfigIssue.InvalidVariableName, draft.issueFor(RepositoryConfigField.EnvironmentName(first)))
+        assertEquals(RepositoryConfigIssue.UnknownPlaceholder("branch"), draft.issueFor(RepositoryConfigField.EnvironmentTemplate(second)))
+        assertEquals(RepositoryConfigIssue.EnvFileOutsideWorktree, draft.issueFor(RepositoryConfigField.EnvFile))
+
+        viewModel.updateEnvironmentRow(first, name = "PORT")
+        assertEquals(
+            RepositoryConfigIssue.DuplicateVariableName,
+            viewModel.repositoryDraft.issueFor(RepositoryConfigField.EnvironmentName(second)),
+        )
+    }
+
+    @Test
+    fun `a malformed repository file disables the section`() {
+        provisioningSource = FakeRepositoryProvisioningSource(unreadable = setOf(basePath))
+        val viewModel = viewModelFor(projectWith())
+
+        viewModel.setGradleEnabled(true)
+        viewModel.addEnvironmentRow()
+
+        assertFalse(viewModel.repositoryConfigEditable)
+        assertNull(viewModel.repositoryDraft.gradle)
+        assertTrue(viewModel.repositoryDraft.environment.isEmpty())
+        assertFalse(viewModel.hasUnsavedChanges)
+    }
+
+    @Test
+    fun `the first save previews the file and nothing is saved until confirmed`() {
+        val viewModel = viewModelFor(projectWith())
+        viewModel.setGradleEnabled(true)
+
+        val outcome = viewModel.submit()
+
+        assertIs<SaveOutcome.NeedsPreview>(outcome)
+        assertTrue(provisioningSource.writtenEdits.isEmpty())
+        assertTrue(projectRepository.list().isEmpty())
+        assertTrue(viewModel.hasUnsavedChanges)
+    }
+
+    @Test
+    fun `confirming the preview writes the repository file then saves the project`() {
+        val viewModel = viewModelFor(projectWith())
+        viewModel.setGradleEnabled(true)
+        viewModel.updateRepositoryDraft { it.copy(gradle = GradleDraft(daemonMaxHeap = "2g", idleTimeoutMinutes = "30")) }
+
+        val outcome = viewModel.submit(previewConfirmed = true)
+
+        val saved = assertIs<SaveOutcome.Saved>(outcome)
+        assertTrue(saved.repositoryWritten)
+        val (path, edit) = provisioningSource.writtenEdits.single()
+        assertEquals(basePath, path)
+        assertEquals(GradleProvider(daemonMaxHeap = "2g", idleTimeoutMinutes = 30), edit.providers.gradle)
+        assertEquals(saved.project, projectRepository.list().single())
+        assertFalse(viewModel.hasUnsavedChanges)
+    }
+
+    @Test
+    fun `later saves in the same visit skip the preview`() {
+        val viewModel = viewModelFor(projectWith())
+        viewModel.setGradleEnabled(true)
+        viewModel.submit(previewConfirmed = true)
+
+        viewModel.setEmulatorEnabled(true)
+
+        assertIs<SaveOutcome.Saved>(viewModel.submit())
+        assertEquals(2, provisioningSource.writtenEdits.size)
+    }
+
+    @Test
+    fun `saving without repository changes never previews or writes the repository file`() {
+        val viewModel = viewModelFor(projectWith())
+        viewModel.name = "Renamed"
+
+        val outcome = viewModel.submit()
+
+        assertFalse(assertIs<SaveOutcome.Saved>(outcome).repositoryWritten)
+        assertTrue(provisioningSource.writtenEdits.isEmpty())
+    }
+
+    @Test
+    fun `a failed repository write keeps the project unsaved and the edits`() {
+        provisioningSource = FakeRepositoryProvisioningSource(failWritesFor = setOf(basePath))
+        val viewModel = viewModelFor(projectWith())
+        viewModel.setGradleEnabled(true)
+        viewModel.name = "Renamed"
+
+        val outcome = viewModel.submit(previewConfirmed = true)
+
+        assertIs<SaveOutcome.Failed>(outcome)
+        assertTrue(projectRepository.list().isEmpty())
+        assertTrue(viewModel.hasUnsavedChanges)
+        assertEquals(GradleDraft(), viewModel.repositoryDraft.gradle)
+    }
+
+    @Test
+    fun `a file changed on disk is not overwritten and offers to reload`() {
+        val viewModel = viewModelFor(projectWith())
+        viewModel.setGradleEnabled(true)
+        provisioningSource.currentFingerprint = "fingerprint-2"
+
+        val outcome = viewModel.submit(previewConfirmed = true)
+
+        assertIs<WorktreeError.RepositoryConfigChanged>(assertIs<SaveOutcome.Failed>(outcome).error)
+        assertTrue(viewModel.repositoryChangedOnDisk)
+        assertTrue(projectRepository.list().isEmpty())
+
+        viewModel.reloadRepositoryConfig()
+
+        assertFalse(viewModel.repositoryChangedOnDisk)
+        assertNull(viewModel.repositoryDraft.gradle)
+        assertFalse(viewModel.hasUnsavedChanges)
+    }
+
+    @Test
+    fun `providers hidden on this platform are kept when saving`() {
+        val declared = RepositoryProvisioning(providers = RepositoryProviders(xcode = XcodeProvider(compilationCache = true)))
+        provisioningSource = FakeRepositoryProvisioningSource(byRepository = mapOf(basePath to declared))
+        val viewModel = ProjectConfigViewModel(projectRepository, provisioningSource, projectWith(), supportsApplePlatforms = false)
+        viewModel.setGradleEnabled(true)
+
+        viewModel.submit(previewConfirmed = true)
+
+        assertEquals(XcodeProvider(compilationCache = true), provisioningSource.writtenEdits.single().second.providers.xcode)
+        assertFalse(viewModel.showsApplePlatformProviders)
+    }
+
+    @Test
+    fun `moved local files and provider changes are written together`() {
+        val viewModel = viewModelFor(projectWith(listOf("local.properties")))
+        viewModel.moveLocalFilesToRepository()
+        viewModel.setGradleEnabled(true)
+
+        viewModel.submit(previewConfirmed = true)
+
+        val edit = provisioningSource.writtenEdits.single().second
+        assertEquals(listOf("/local.properties"), edit.addCopyPatterns)
         assertTrue(provisioningSource.addedPatterns.isEmpty())
     }
 }

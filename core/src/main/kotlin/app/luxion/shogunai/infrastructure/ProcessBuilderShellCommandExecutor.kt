@@ -24,6 +24,7 @@ class ProcessBuilderShellCommandExecutor(
             val builder = ProcessBuilder(command)
                 .apply { workingDirectory?.let { directory(File(it)) } }
             builder.environment()["PATH"] = HomebrewPath.merge(builder.environment()["PATH"])
+            GitLocale.applyTo(command, builder.environment())
             builder.start()
         } catch (error: IOException) {
             throw CommandExecutionException(command, error)
@@ -53,5 +54,13 @@ internal object HomebrewPath {
     fun merge(currentPath: String?): String {
         val existingDirs = currentPath.orEmpty().split(File.pathSeparator).filter { it.isNotEmpty() }
         return (EXTRA_DIRS + existingDirs).distinct().joinToString(File.pathSeparator)
+    }
+}
+
+internal object GitLocale {
+    private const val GIT_EXECUTABLE = "git"
+
+    fun applyTo(command: List<String>, environment: MutableMap<String, String>) {
+        if (command.firstOrNull() == GIT_EXECUTABLE) environment["LC_ALL"] = "C"
     }
 }

@@ -6,7 +6,7 @@ Connects ShogunAi with Herdr, the terminal multiplexer for AI agents: ShogunAi w
 ## Requirements
 
 ### Requirement: Open a worktree in Herdr from the desktop app
-The worktree row SHALL offer an "Open in Herdr" action that opens the worktree in Herdr as a worktree of its repository, grouped under the repository's space, focused, with a single pane in the worktree whose shell has the worktree's environment, and runs the project's agent launch command in that pane.
+The worktree's detail and its row's context menu SHALL offer an "Open in Herdr" action that opens the worktree in Herdr as a worktree of its repository, grouped under the repository's space, focused, with a single pane in the worktree whose shell has the worktree's environment, and runs the project's agent launch command in that pane.
 
 #### Scenario: Worktree with an environment
 - **WHEN** the user opens in Herdr a worktree whose repository declares `env` or a provider that adds variables (e.g. the emulator provider)

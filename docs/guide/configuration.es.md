@@ -58,6 +58,12 @@ Opciones de los providers:
 
 Las claves y los providers desconocidos se ignoran. Un fichero que no es JSON válido, o una clave conocida con el tipo equivocado, hace que crear y provisionar worktrees falle con un mensaje que indica el fichero y el problema, sin crear nada.
 
+### Editarlo desde la app
+
+No hace falta escribir este archivo a mano. Los ajustes del proyecto tienen una sección "Configuración del repositorio" donde activas los providers con sus opciones, editas las variables de `env` (con ayuda sobre las plantillas `${port}`, `${port:key}` y `${worktree}`) y fijas la ruta de `envFile`. Los valores se comprueban mientras escribes con las mismas reglas de arriba. Antes del primer guardado que escribe el archivo, la app muestra el `.shogunai.json` resultante y recuerda que pertenece al repositorio y conviene hacer commit.
+
+Guardar solo cambia `providers`, `env`, `envFile` y, con "Mover a .shogunai.json", `copy`: cualquier otra clave, provider desconocido u opción desconocida de un provider se queda como estaba (las claves conservan su orden, la indentación se normaliza a dos espacios). La app nunca escribe sobre un archivo que no pudo leer, ni sobre uno que cambió en disco desde que se abrieron los ajustes: en el primer caso la sección explica el problema, en el segundo ofrece recargar. Los ajustes que solo valen para esta máquina (el AVD a usar, el modo sin ventana, el dispositivo y runtime del simulador) siguen en sus secciones, marcados como "Solo en esta máquina".
+
 ## `.worktreeinclude`
 
 El `.worktreeinclude` de Claude Code se lee como `copy`: un patrón al estilo gitignore por línea, saltando las líneas en blanco y las que empiezan por `#`. Se pueden usar los dos ficheros a la vez.

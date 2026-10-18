@@ -32,6 +32,9 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class InvalidRepositoryConfig(val path: String, val detail: String?) :
         WorktreeError("Can't read $path" + if (detail.isNullOrBlank()) "" else ": $detail")
 
+    class RepositoryConfigChanged(val path: String) :
+        WorktreeError("$path changed on disk since it was read")
+
     class SecretCopyFailed(cause: Throwable) :
         WorktreeError("Failed to copy secret files: ${cause.message}", cause)
 

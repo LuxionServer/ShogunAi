@@ -6,22 +6,26 @@ Covers managing the worktrees of the active project: listing, creating from new 
 ## Requirements
 
 ### Requirement: List worktrees for the active project
-The system SHALL show the active project's worktrees on the worktree management screen using `ListWorktreesUseCase`, including path, branch, and whether each is the main worktree.
+The system SHALL show the active project's worktrees on the worktree management view using `ListWorktreesUseCase`, one row per worktree. Each row SHALL show the branch as its main label (or that the worktree is detached), and the worktree's folder name as secondary information. The main worktree SHALL be listed first and marked distinctly.
 
 #### Scenario: Worktrees loaded successfully
-- **WHEN** the worktree management screen opens for a project
-- **THEN** it invokes `ListWorktreesUseCase` and displays the returned worktrees, marking the main worktree distinctly
+- **WHEN** the worktree management view opens for a project
+- **THEN** it invokes `ListWorktreesUseCase` and displays the returned worktrees, with the main worktree first and marked distinctly
 
 #### Scenario: Listing fails
 - **WHEN** `ListWorktreesUseCase` returns a failed `Result` (e.g. `WorktreeError.GitCommandFailed`)
-- **THEN** the screen shows an error message derived from the `WorktreeError` instead of a worktree list
+- **THEN** the view shows an error message derived from the `WorktreeError` instead of a worktree list
+
+#### Scenario: Branch as the main label
+- **WHEN** a worktree at `~/projects/main-repo-worktrees/TASK-123` has the branch `feature/TASK-123`
+- **THEN** its row shows `feature/TASK-123` as the main label and `TASK-123` as secondary information, without the full path
 
 ### Requirement: Create a worktree for a task
-The system SHALL let the user create a new worktree by entering a task id and choosing a branch type (`feature` or `fix`), using `CreateWorktreeUseCase`. Before creating the worktree, the task id SHALL be normalized (trimmed, internal whitespace runs replaced with `-`) and validated as a Git-ref-safe identifier; if the normalized id is still invalid, the use case SHALL fail with `WorktreeError.InvalidTaskId` instead of attempting the Git command. While `CreateWorktreeUseCase` is running, the screen SHALL show a loading indicator and disable the "Crear worktree" confirm action and the new/existing-branch mode toggle until the call completes.
+The system SHALL let the user create a new worktree in the "New worktree" dialog by entering a task id and choosing a branch type (`feature` or `fix`), using `CreateWorktreeUseCase`. Before creating the worktree, the task id SHALL be normalized (trimmed, internal whitespace runs replaced with `-`) and validated as a Git-ref-safe identifier; if the normalized id is still invalid, the use case SHALL fail with `WorktreeError.InvalidTaskId` instead of attempting the Git command. While `CreateWorktreeUseCase` is running, the dialog SHALL show a loading indicator and disable its inputs, the new/existing-branch mode toggle and its "Create worktree" and "Cancel" actions until the call completes.
 
 #### Scenario: Successful creation
-- **WHEN** the user enters a non-empty task id, selects a branch type, and confirms
-- **THEN** the app invokes `CreateWorktreeUseCase(taskId, branchType)` and, on success, adds the returned `Worktree` to the displayed list
+- **WHEN** the user enters a non-empty task id in the dialog, selects a branch type, and confirms
+- **THEN** the app invokes `CreateWorktreeUseCase(taskId, branchType)` and, on success, closes the dialog and adds the returned `Worktree` to the displayed list
 
 #### Scenario: Task id with spaces is normalized instead of failing
 - **WHEN** the user enters a task id containing spaces (e.g. `"TASK 123"`)
@@ -33,25 +37,25 @@ The system SHALL let the user create a new worktree by entering a task id and ch
 
 #### Scenario: Creation fails with a domain error
 - **WHEN** `CreateWorktreeUseCase` returns a failed `Result` (e.g. `WorktreeError.WorktreeAlreadyExists`, `WorktreeError.SecretFileNotFound`, `WorktreeError.BaseRepositoryNotFound`, `WorktreeError.GitLfsNotFound`, `WorktreeError.InvalidTaskId`)
-- **THEN** the screen shows an error message describing the failure and does not add a worktree to the list
+- **THEN** the dialog stays open with the values the user entered, shows an error message describing the failure inside the dialog, and no worktree is added to the list
 
 #### Scenario: Creation fails because Git LFS is required but not installed
 - **WHEN** `git worktree add` fails and its stderr indicates the repository's `post-checkout` hook could not find `git-lfs` on the user's `PATH`
 - **THEN** `CreateWorktreeUseCase` removes the partially created worktree (`git worktree remove --force`) and the branch Git already created (`git branch -D`), both best-effort, and returns a failed `Result` with `WorktreeError.GitLfsNotFound` instead of `WorktreeError.GitCommandFailed`, so a subsequent retry with the same task id does not hit `WorktreeAlreadyExists` or a "branch already exists" error
 
 #### Scenario: Task id field shows the normalized value while typing
-- **WHEN** the user types a task id containing spaces into the worktree creation field
+- **WHEN** the user types a task id containing spaces into the dialog's task id field
 - **THEN** the field displays the normalized value (spaces replaced with `-`) rather than the raw input with spaces
 
 #### Scenario: Creation is in progress
 - **WHEN** the user confirms worktree creation and `CreateWorktreeUseCase` has not yet returned
-- **THEN** the screen shows a loading indicator and the "Crear worktree" confirm action and the mode toggle are disabled, preventing a duplicate submission until the call completes
+- **THEN** the dialog shows a loading indicator and its inputs, the mode toggle and its "Create worktree" and "Cancel" actions are disabled, preventing a duplicate submission until the call completes
 
 ### Requirement: Remove a worktree
-The system SHALL let the user remove a non-main worktree from the list, using `RemoveWorktreeUseCase`, with an option to also delete its local branch. Clicking the remove action SHALL always show a confirmation dialog before any Git command runs, with a checkbox labeled to delete the local branch as well, unchecked by default; the branch is only passed to `RemoveWorktreeUseCase` as `branchToDelete` if the user checks it. When the removal fails because the worktree has uncommitted or untracked changes, the system SHALL update the same dialog to offer a force retry, reusing the user's branch-deletion choice, instead of leaving the user with no recourse. While `RemoveWorktreeUseCase` is running (initial attempt or force retry), the dialog SHALL show a loading indicator and disable both its confirm and cancel actions until the call completes.
+The system SHALL let the user remove a non-main worktree, using `RemoveWorktreeUseCase`, with an option to also delete its local branch. The removal SHALL be started from the worktree's detail, its row's context menu or the delete shortcut. Starting it SHALL always show a confirmation dialog before any Git command runs, with a checkbox labeled to delete the local branch as well, unchecked by default; the branch is only passed to `RemoveWorktreeUseCase` as `branchToDelete` if the user checks it. When the removal fails because the worktree has uncommitted or untracked changes, the system SHALL update the same dialog to offer a force retry, reusing the user's branch-deletion choice, instead of leaving the user with no recourse. While `RemoveWorktreeUseCase` is running (initial attempt or force retry), the dialog SHALL show a loading indicator and disable both its confirm and cancel actions until the call completes.
 
 #### Scenario: Confirmation dialog shown before removing
-- **WHEN** the user activates the remove action for a non-main worktree
+- **WHEN** the user activates "Delete worktree" for a non-main worktree from its detail, its context menu or the shortcut
 - **THEN** the app shows a confirmation dialog with a "delete local branch" checkbox unchecked by default, and does not invoke `RemoveWorktreeUseCase` until the user confirms
 
 #### Scenario: Successful removal without deleting the branch
@@ -68,7 +72,7 @@ The system SHALL let the user remove a non-main worktree from the list, using `R
 
 #### Scenario: Removal fails for a reason unrelated to uncommitted changes
 - **WHEN** `RemoveWorktreeUseCase` returns a failed `Result` whose error does not indicate that `--force` would resolve it
-- **THEN** the screen shows an error message and keeps the worktree in the displayed list, without escalating the dialog to a force-retry state
+- **THEN** the app shows an error message and keeps the worktree in the displayed list, without escalating the dialog to a force-retry state
 
 #### Scenario: Removal fails because the worktree has uncommitted or untracked changes
 - **WHEN** `RemoveWorktreeUseCase` returns a failed `Result` whose `WorktreeError.GitCommandFailed` indicates the worktree needs `--force` to be removed
@@ -87,18 +91,18 @@ The system SHALL let the user remove a non-main worktree from the list, using `R
 - **THEN** the confirmation dialog does not show the "delete local branch" checkbox
 
 #### Scenario: Main worktree cannot be removed
-- **WHEN** the user views the main worktree entry in the list
-- **THEN** the screen does not offer a remove action for it
+- **WHEN** the user selects the main worktree or opens its row's context menu
+- **THEN** neither the detail nor the context menu offers a delete action, and the delete shortcut does nothing
 
 #### Scenario: Removal is in progress
 - **WHEN** the user confirms removal (initial attempt or force retry) and `RemoveWorktreeUseCase` has not yet returned
 - **THEN** the dialog shows a loading indicator and both its confirm and cancel actions are disabled until the call completes
 
 ### Requirement: Reload the worktree list
-The system SHALL let the user manually trigger a fresh read of the active project's worktree list via a visible "Reload" action on the worktree management screen, SHALL automatically re-run this read every time the user navigates back to the worktree management screen for a project, and SHALL automatically re-run this read whenever the OS window regains focus while the worktree management screen is active, so that worktrees or branches deleted outside the app (e.g. via another Git client, or a branch deleted after merging a pull request) are reflected without restarting the app. Whenever the reload is triggered while the create-worktree form is in "Existing branch" mode, the system SHALL also reload the local branch list, so branches created or updated outside the app are reflected without restarting it.
+The system SHALL let the user manually trigger a fresh read of the active project's worktree list via a visible "Reload" action on the worktree management screen and via View > Reload, SHALL automatically re-run this read every time the user selects the project in the sidebar, and SHALL automatically re-run this read whenever the OS window regains focus while the worktree management screen is active, so that worktrees or branches deleted outside the app (e.g. via another Git client, or a branch deleted after merging a pull request) are reflected without restarting the app. Whenever the reload is triggered while the create-worktree form is in "Existing branch" mode, the system SHALL also reload the local branch list, so branches created or updated outside the app are reflected without restarting it.
 
 #### Scenario: User manually reloads the worktree list
-- **WHEN** the user activates the "Reload" action on the worktree management screen
+- **WHEN** the user activates the "Reload" action on the worktree management screen, or View > Reload while it is shown
 - **THEN** the app invokes `ListWorktreesUseCase` again and updates the displayed list to match its result
 
 #### Scenario: Manual reload also refreshes local branches in "Existing branch" mode
@@ -110,15 +114,15 @@ The system SHALL let the user manually trigger a fresh read of the active projec
 - **THEN** the app does not invoke `ListLocalBranchesUseCase`
 
 #### Scenario: Worktree screen re-entered after an external change
-- **WHEN** the user navigates away from a project's worktree management screen and back to it again
+- **WHEN** the user selects another view in the sidebar and then selects the project again
 - **THEN** the app invokes `ListWorktreesUseCase` again, so a worktree or branch removed externally while the user was away no longer appears in the displayed list
 
 #### Scenario: Application window regains focus while the worktree screen is active
-- **WHEN** the worktree management screen is the active screen and the application window transitions from unfocused to focused (e.g. the user switches back from another app)
+- **WHEN** the worktree management screen is the active view and the application window transitions from unfocused to focused (e.g. the user switches back from another app)
 - **THEN** the app invokes `ListWorktreesUseCase` again, so a worktree or branch removed externally while the app was unfocused no longer appears in the displayed list
 
 #### Scenario: Reload is in progress
-- **WHEN** a reload (manual or triggered by re-entering the screen) is in progress
+- **WHEN** a reload (manual or triggered by selecting the project) is in progress
 - **THEN** the screen shows a loading indicator and disables the manual "Reload" action until the reload completes
 
 #### Scenario: Reload fails
@@ -159,11 +163,11 @@ The system SHALL let the user see all local branches, using `ListLocalBranchesUs
 - **THEN** each group's expanded/collapsed state matches what the user last set, instead of resetting to collapsed
 
 ### Requirement: Create a worktree from an existing branch
-The system SHALL let the user create a new worktree for a branch that already exists locally, using `CreateWorktreeFromBranchUseCase`, instead of only being able to create worktrees for brand-new branches. The worktree's directory is derived from the branch name: if the branch starts with a known `BranchType` prefix (`feature/` or `fix/`), that prefix is stripped first; the remaining string then has every `/` replaced with `-`. While `CreateWorktreeFromBranchUseCase` is running, the screen SHALL show a loading indicator and disable the "Crear worktree" confirm action and the new/existing-branch mode toggle until the call completes.
+The system SHALL let the user create a new worktree for a branch that already exists locally, from the "Existing branch" mode of the "New worktree" dialog, using `CreateWorktreeFromBranchUseCase`, instead of only being able to create worktrees for brand-new branches. The worktree's directory is derived from the branch name: if the branch starts with a known `BranchType` prefix (`feature/` or `fix/`), that prefix is stripped first; the remaining string then has every `/` replaced with `-`. While `CreateWorktreeFromBranchUseCase` is running, the dialog SHALL show a loading indicator and disable its inputs, the new/existing-branch mode toggle and its actions until the call completes.
 
 #### Scenario: Successful creation
-- **WHEN** the user selects "Existing branch" mode, picks a branch not already checked out from the list, and confirms
-- **THEN** the app invokes `CreateWorktreeFromBranchUseCase(branch)`, which runs `git worktree add <path> <branch>` (without creating a new branch), copies the project's secret files into the new worktree, and on success adds the returned `Worktree` to the displayed list
+- **WHEN** the user selects "Existing branch" mode in the dialog, picks a branch not already checked out from the list, and confirms
+- **THEN** the app invokes `CreateWorktreeFromBranchUseCase(branch)`, which runs `git worktree add <path> <branch>` (without creating a new branch), copies the project's secret files into the new worktree, and on success closes the dialog and adds the returned `Worktree` to the displayed list
 
 #### Scenario: Directory matches the new-branch flow for a known branch type prefix
 - **WHEN** the requested branch starts with a known `BranchType` prefix, e.g. `feature/TASK-123`
@@ -175,7 +179,7 @@ The system SHALL let the user create a new worktree for a branch that already ex
 
 #### Scenario: Creation fails because the branch is already checked out elsewhere
 - **WHEN** `git worktree add` fails because the requested branch is already checked out in another worktree or in the base repository
-- **THEN** `CreateWorktreeFromBranchUseCase` returns a failed `Result` with `WorktreeError.BranchAlreadyCheckedOut` instead of `WorktreeError.GitCommandFailed`, and the screen shows an error message describing the conflict
+- **THEN** `CreateWorktreeFromBranchUseCase` returns a failed `Result` with `WorktreeError.BranchAlreadyCheckedOut` instead of `WorktreeError.GitCommandFailed`, and the dialog stays open showing an error message describing the conflict
 
 #### Scenario: Creation fails because the destination directory already exists
 - **WHEN** the derived branch name maps to a worktree directory that already exists
@@ -191,7 +195,7 @@ The system SHALL let the user create a new worktree for a branch that already ex
 
 #### Scenario: Creation from an existing branch is in progress
 - **WHEN** the user confirms creation from an existing branch and `CreateWorktreeFromBranchUseCase` has not yet returned
-- **THEN** the screen shows a loading indicator and the "Crear worktree" confirm action and the mode toggle are disabled, preventing a duplicate submission until the call completes
+- **THEN** the dialog shows a loading indicator and its inputs, the mode toggle and its actions are disabled, preventing a duplicate submission until the call completes
 
 ### Requirement: Repair worktrees after moving the repository
 The system SHALL re-link the base repository and its worktrees with `git worktree repair`, via `RepairWorktreesUseCase`, after the user saves an existing project with a different base repository path or worktrees root. The worktree management screen SHALL always use the project's current configuration.
@@ -227,11 +231,15 @@ The system SHALL let the user manually dismiss an error message shown on the wor
 - **THEN** the error message is hidden and no further action is taken
 
 ### Requirement: Show feedback when a worktree is created successfully
-The system SHALL show a visible, transient confirmation when a worktree is created successfully, in addition to adding it to the displayed list.
+The system SHALL show a visible, transient confirmation when a worktree is created successfully, in addition to adding it to the displayed list. The confirmation SHALL offer an action to copy the new worktree's launch command.
 
 #### Scenario: Worktree created successfully
 - **WHEN** a worktree is created successfully
-- **THEN** the screen shows a transient success message confirming the creation, which disappears automatically after a short delay
+- **THEN** the app shows a transient success message confirming the creation, which disappears automatically after a short delay
+
+#### Scenario: Copy the launch command from the confirmation
+- **WHEN** the user activates "Copy launch command" on the creation confirmation
+- **THEN** the new worktree's launch command is copied to the clipboard, as with the worktree's own copy action
 
 ### Requirement: Show a format hint for the task id field
 The system SHALL show a hint or example of the expected task id format next to the task id field, in addition to the existing invalid-format error message.
@@ -240,16 +248,23 @@ The system SHALL show a hint or example of the expected task id format next to t
 - **WHEN** the user has not yet entered an invalid task id
 - **THEN** the field shows a hint with an example of a valid task id format
 
-### Requirement: Collapse the "new worktree" form
-The system SHALL let the user collapse and expand the "New worktree" section of the worktree management screen, instead of it always occupying fixed vertical space.
+### Requirement: Open the new worktree dialog
+The project view SHALL offer a "New worktree" action in its header that opens the "New worktree" dialog with the first field focused. Escape or "Cancel" SHALL close the dialog without creating anything, and reopening it SHALL start from empty fields.
 
-#### Scenario: Collapse the form
-- **WHEN** the user activates the collapse control on the "New worktree" section
-- **THEN** the section's fields are hidden, leaving only its header visible
+#### Scenario: Open and cancel
+- **WHEN** the user activates "New worktree", types a task id and presses Escape
+- **THEN** the dialog closes, nothing is created, and opening it again shows an empty task id
 
-#### Scenario: Expand the form
-- **WHEN** the user activates the expand control on a collapsed "New worktree" section
-- **THEN** the section's fields become visible again
+#### Scenario: Enter creates
+- **WHEN** the dialog has a valid task id and the user presses Enter
+- **THEN** the worktree is created, same as activating "Create worktree"
+
+### Requirement: Open the project's settings from its view
+The worktree management view SHALL offer a "Project settings" action in its header that opens the project's configuration.
+
+#### Scenario: Open settings
+- **WHEN** the user activates "Project settings" in a project's worktree view
+- **THEN** the content area shows that project's configuration, pre-filled with its current data
 
 ### Requirement: Unavailable branches can't be selected
 The system SHALL prevent selecting, in the "Existing branch" dropdown, a branch that is already checked out in the base repository or in another worktree, whatever the input method (mouse, keyboard or assistive technologies), and SHALL keep the "Create worktree" action disabled while no available branch is selected.
@@ -261,3 +276,14 @@ The system SHALL prevent selecting, in the "Existing branch" dropdown, a branch 
 #### Scenario: Create action with an unavailable branch
 - **WHEN** the selected branch is not among the loaded local branches or is already checked out
 - **THEN** the "Create worktree" action is disabled
+
+### Requirement: Created worktree whose post-create command fails
+When the worktree is created but its post-create command fails, the "New worktree" dialog SHALL NOT offer to create it again. It SHALL show the error with its technical details, state that the worktree was created, add it to the list and offer to close the dialog and to copy its launch command.
+
+#### Scenario: Post-create command fails
+- **WHEN** the worktree is created and its post-create command exits with an error
+- **THEN** the dialog shows the error and its technical details, says the worktree exists, "Create worktree" is no longer available and the worktree is in the list
+
+#### Scenario: Copy the launch command after the failure
+- **WHEN** the user activates "Copy launch command" in that dialog
+- **THEN** the created worktree's launch command is copied

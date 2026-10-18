@@ -16,7 +16,7 @@ class StatusSegmentsTest {
         statusSegments(status, mainBranchName, now, EnglishStrings)
 
     @Test
-    fun `shows changes, divergences and the last commit date`() {
+    fun `shows divergences and the last commit date, leaving changes to their chip`() {
         val status = WorktreeStatus(
             uncommittedChanges = 3,
             upstream = Divergence(ahead = 2, behind = 0),
@@ -24,7 +24,7 @@ class StatusSegmentsTest {
             lastCommitAt = now.minus(Duration.ofDays(2)),
         )
 
-        assertEquals(listOf("3 changes", "↑2 upstream", "↑4 ↓1 develop", "2 days ago"), segments(status))
+        assertEquals(listOf("↑2 upstream", "↑4 ↓1 develop", "2 days ago"), segments(status))
     }
 
     @Test
