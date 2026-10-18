@@ -63,9 +63,17 @@ fun rankPaletteItems(items: List<PaletteItem>, query: String, recentIds: List<St
         .sortedWith(
             compareByDescending<Pair<PaletteItem, Int>> { it.second }
                 .thenBy { recency[it.first.id] ?: Int.MAX_VALUE }
+                .thenBy { it.first.kind.tieOrder() }
                 .thenBy { it.first.title.lowercase() },
         )
         .map { it.first }
+}
+
+private fun PaletteKind.tieOrder(): Int = when (this) {
+    PaletteKind.PROJECT -> 0
+    PaletteKind.VIEW -> 1
+    PaletteKind.ACTION -> 2
+    PaletteKind.WORKTREE -> 3
 }
 
 private fun bestScore(item: PaletteItem, query: String): Int? {

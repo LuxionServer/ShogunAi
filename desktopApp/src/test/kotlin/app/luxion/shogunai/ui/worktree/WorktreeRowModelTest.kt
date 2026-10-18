@@ -173,4 +173,12 @@ class WorktreeRowModelTest {
 
         assertEquals(listOf(RowChipKind.LOCKED), chipsOf(model))
     }
+
+    @Test
+    fun `row context puts the project before the origin so the origin truncates first`() {
+        val model = WorktreeRowModel("TASK-202", "TASK-202", "ShogunAi", null, emptyList(), false, null)
+
+        assertEquals("TASK-202 · mobile-app · ShogunAi", rowContext(model, "mobile-app"))
+        assertEquals("TASK-202 · ShogunAi", rowContext(model, null))
+    }
 }

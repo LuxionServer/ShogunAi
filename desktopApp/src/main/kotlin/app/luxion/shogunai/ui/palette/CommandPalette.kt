@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -42,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
@@ -72,6 +74,7 @@ private val ResultRowHeight = 40.dp
 private const val VisibleResults = 8
 private val KindIconSize = 16.dp
 private val IndicatorDotSize = 8.dp
+private val ContextMaxWidth = 200.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -87,8 +90,9 @@ fun CommandPalette(
     val results = remember(items, recentIds, query) { rankPaletteItems(items, query, recentIds) }
     val listState = rememberLazyListState()
     val focusRequester = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focusRequester.requestFocus() }
-    LaunchedEffect(highlighted) { if (results.isNotEmpty()) listState.animateScrollToItem(highlighted) }
+    var focusRequested by remember { mutableStateOf(false) }
+    LaunchedEffect(query) { listState.scrollToItem(0) }
+    LaunchedEffect(highlighted) { if (results.isNotEmpty()) listState.scrollToItem(highlighted.coerceIn(0, results.lastIndex)) }
 
     fun run(secondary: Boolean) {
         val item = results.getOrNull(highlighted) ?: return
@@ -121,6 +125,7 @@ fun CommandPalette(
                         modifier = Modifier
                             .weight(1f)
                             .focusRequester(focusRequester)
+                            .onGloballyPositioned { if (!focusRequested) focusRequested = runCatching { focusRequester.requestFocus() }.isSuccess }
                             .onPreviewKeyEvent { event ->
                                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                                 when (event.key) {
@@ -202,29 +207,34 @@ private fun ResultRow(item: PaletteItem, query: String, highlighted: Boolean, on
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
-        Icon(item.icon, contentDescription = item.kindLabel(strings), tint = colors.onSurfaceVariant, modifier = Modifier.size(KindIconSize))
-        Text(
-            highlight(item.title, query),
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (highlighted) colors.onSecondaryContainer else colors.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false),
-        )
-        item.indicator?.let {
-            Box(modifier = Modifier.size(IndicatorDotSize).background(ShogunTheme.status.of(it.status).color, CircleShape))
-        }
-        item.context?.let {
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+        ) {
+            Icon(item.icon, contentDescription = item.kindLabel(strings), tint = colors.onSurfaceVariant, modifier = Modifier.size(KindIconSize))
             Text(
-                it,
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.onSurfaceVariant,
+                highlight(item.title, query),
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (highlighted) colors.onSecondaryContainer else colors.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
             )
+            item.indicator?.let {
+                Box(modifier = Modifier.size(IndicatorDotSize).background(ShogunTheme.status.of(it.status).color, CircleShape))
+            }
+            item.context?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = ContextMaxWidth),
+                )
+            }
         }
-        Box(modifier = Modifier.weight(1f))
         item.shortcut?.let {
             Text(it, style = ShogunTheme.typography.dataSmall, color = colors.onSurfaceVariant)
         }

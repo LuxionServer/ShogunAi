@@ -160,7 +160,7 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel, onOpenPrefer
     }
 
     if (viewModel.isPaletteOpen) {
-        PaletteHost(viewModel, board, machine, onOpenPreferences)
+        PaletteHost(viewModel, board, machine, messages, onOpenPreferences)
     }
 
     if (viewModel.isLeaveConfirmationPending) {
@@ -180,7 +180,13 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel, onOpenPrefer
 }
 
 @Composable
-private fun PaletteHost(viewModel: ShellViewModel, board: WorktreeBoard, machine: MachineResources, onOpenPreferences: () -> Unit) {
+private fun PaletteHost(
+    viewModel: ShellViewModel,
+    board: WorktreeBoard,
+    machine: MachineResources,
+    messages: AppMessages,
+    onOpenPreferences: () -> Unit,
+) {
     val strings = LocalStrings.current
     val items = remember(viewModel.projects, board.paletteWorktrees, machine.visibleResources, board.canCleanUp(), strings) {
         buildPaletteIndex(
@@ -199,13 +205,19 @@ private fun PaletteHost(viewModel: ShellViewModel, board: WorktreeBoard, machine
         onRun = { item, action ->
             viewModel.closePalette()
             viewModel.rememberPaletteItem(item.id, knownIds)
-            runPaletteAction(action, viewModel, board, onOpenPreferences)
+            runPaletteAction(action, viewModel, board, onOpenPreferences) { messages.show(strings.copied) }
         },
         onDismiss = viewModel::closePalette,
     )
 }
 
-private fun runPaletteAction(action: PaletteAction, viewModel: ShellViewModel, board: WorktreeBoard, onOpenPreferences: () -> Unit) {
+private fun runPaletteAction(
+    action: PaletteAction,
+    viewModel: ShellViewModel,
+    board: WorktreeBoard,
+    onOpenPreferences: () -> Unit,
+    onCopied: () -> Unit,
+) {
     when (action) {
         is PaletteAction.Open -> viewModel.navigate(action.destination)
         is PaletteAction.SelectWorktree -> viewModel.navigate(ShellDestination.All()) {
@@ -213,7 +225,7 @@ private fun runPaletteAction(action: PaletteAction, viewModel: ShellViewModel, b
             if (action.ref.projectId in board.collapsedProjects) board.toggleCollapsed(action.ref.projectId)
             board.select(action.ref)
         }
-        is PaletteAction.CopyLaunchCommand -> board.copyLaunchCommand(action.ref)
+        is PaletteAction.CopyLaunchCommand -> board.copyLaunchCommand(action.ref, onCopied)
         is PaletteAction.NewWorktreeIn -> viewModel.navigate(ShellDestination.All(projectFilter = action.projectId)) {
             board.openCreateDialog(action.projectId)
         }

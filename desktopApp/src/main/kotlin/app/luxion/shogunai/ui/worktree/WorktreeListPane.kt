@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -63,7 +65,7 @@ fun WorktreeListPane(
     LaunchedEffect(board.selected) {
         val selected = board.selected ?: return@LaunchedEffect
         val index = items.indexOfFirst { (it is ListItem.WorktreeItem && it.ref == selected) || (it is ListItem.StateRow && it.ref == selected) }
-        if (index >= 0) listState.animateScrollToItem(index)
+        if (index >= 0) listState.bringIntoViewBelowHeader(index)
     }
     Box(
         modifier = modifier
@@ -119,6 +121,30 @@ fun WorktreeListPane(
         }
     }
 }
+
+private suspend fun LazyListState.bringIntoViewBelowHeader(index: Int) {
+    repeat(2) {
+        val info = layoutInfo
+        val headerHeight = info.visibleItemsInfo.firstOrNull { it.key.isHeaderKey() }?.size ?: 0
+        val bottom = info.viewportEndOffset - info.afterContentPadding
+        val item = info.visibleItemsInfo.firstOrNull { it.index == index }
+        if (item == null) {
+            scrollToItem(index, -headerHeight)
+        } else {
+            val delta = scrollDeltaToReveal(item.offset, item.size, headerHeight, bottom)
+            if (delta == 0) return
+            scrollBy(delta.toFloat())
+        }
+    }
+}
+
+internal fun scrollDeltaToReveal(itemOffset: Int, itemSize: Int, headerHeight: Int, viewportBottom: Int): Int = when {
+    itemOffset < headerHeight -> itemOffset - headerHeight
+    itemOffset + itemSize > viewportBottom -> itemOffset + itemSize - viewportBottom
+    else -> 0
+}
+
+private fun Any.isHeaderKey(): Boolean = this is String && (startsWith("header:") || startsWith("state-header:"))
 
 private sealed interface ListItem {
     val key: String

@@ -59,6 +59,16 @@ Copying the launch command stays as the default, but the app could also open it 
 
 Some users switch between AI agents on the same task, for example when one of them runs out of quota. A project would hold several agent commands instead of one (Claude, Antigravity, Codex, …), each with its default arguments, and the user would pick the agent when copying or launching the command. The current single-agent setup stays the default for users who don't need it.
 
+### Polish after the interface redesign
+
+Smaller findings from reviewing the redesigned interface end to end:
+
+- A branch with no commits of its own shows as "merged into main" and sits in "Needs you"; it should read as not started.
+- The save bar's "Discard" asks "Discard changes?" again; the button should be enough.
+- The "Project settings" title doesn't name the project.
+- The `link` and `hooks` fields of `.shogunai.json` aren't shown in a worktree's files section.
+- The Android emulators view shows "—" in its rows and has no column labels.
+
 ### Desktop ergonomics
 
 - Menu bar / system tray icon with recent projects and worktrees.

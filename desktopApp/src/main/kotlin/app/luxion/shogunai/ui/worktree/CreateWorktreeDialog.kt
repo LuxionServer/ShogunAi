@@ -27,6 +27,7 @@ import app.luxion.shogunai.ui.components.DropdownSelector
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.PrimaryButton
+import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.SegmentedSelector
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.onEnterKey
@@ -74,6 +75,9 @@ fun CreateWorktreeDialog(board: WorktreeBoard) {
                     CreateMode.NEW_BRANCH -> NewBranchFields(board, holder)
                     CreateMode.EXISTING_BRANCH -> ExistingBranchField(board, holder)
                 }
+                if (holder.createdWithErrorPath != null) {
+                    Text(strings.worktreeCreatedWithError, style = MaterialTheme.typography.bodyMedium)
+                }
                 holder.createError?.let { error ->
                     ErrorNotice(error = error, onDismiss = { holder.dismissCreateError() })
                 }
@@ -84,10 +88,14 @@ fun CreateWorktreeDialog(board: WorktreeBoard) {
                 ) {
                     if (isCreating) InlineProgress()
                     NeutralTextButton(onClick = { board.dismissCreateDialog() }, enabled = !isCreating) {
-                        Text(strings.cancel)
+                        Text(if (holder.createdWithErrorPath != null) strings.close else strings.cancel)
                     }
-                    PrimaryButton(onClick = { board.confirmCreate() }, enabled = board.canCreate) {
-                        Text(strings.createWorktree)
+                    if (holder.createdWithErrorPath != null) {
+                        SecondaryButton(onClick = holder::copyCreatedLaunchCommand) { Text(strings.copyLaunchCommand) }
+                    } else {
+                        PrimaryButton(onClick = { board.confirmCreate() }, enabled = board.canCreate) {
+                            Text(strings.createWorktree)
+                        }
                     }
                 }
             }

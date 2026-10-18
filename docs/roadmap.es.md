@@ -59,6 +59,16 @@ Copiar el comando de lanzamiento sigue siendo la opción por defecto, pero la ap
 
 Hay quien alterna entre agentes de IA en una misma tarea, por ejemplo cuando a uno se le agota la cuota. Un proyecto guardaría varios comandos de agente en vez de uno (Claude, Antigravity, Codex, …), cada uno con sus argumentos por defecto, y el usuario elegiría el agente al copiar o lanzar el comando. La configuración actual de un solo agente sigue siendo la opción por defecto para quien no lo necesite.
 
+### Pulido tras el rediseño de la interfaz
+
+Hallazgos menores de revisar de punta a punta la interfaz rediseñada:
+
+- Una rama sin commits propios aparece como «integrada en main» y queda en «Te necesitan»; debería leerse como no empezada.
+- El «Descartar» de la barra de guardado vuelve a preguntar «¿Descartar cambios?»; el botón debería bastar.
+- El título «Ajustes del proyecto» no nombra el proyecto.
+- Los campos `link` y `hooks` de `.shogunai.json` no se muestran en la sección de archivos de un worktree.
+- La vista de emuladores Android muestra «—» en sus filas y no tiene etiquetas de columna.
+
 ### Ergonomía de escritorio
 
 - Icono en la barra de menús / bandeja del sistema con los proyectos y worktrees recientes.

@@ -151,6 +151,8 @@ class ProjectWorktrees(
 
     var createError by mutableStateOf<Throwable?>(null)
         private set
+    var createdWithErrorPath by mutableStateOf<String?>(null)
+        private set
     var lastCreatedWorktree by mutableStateOf<Worktree?>(null)
         private set
 
@@ -399,6 +401,12 @@ class ProjectWorktrees(
 
     fun dismissCreateError() {
         createError = null
+        createdWithErrorPath = null
+    }
+
+    fun copyCreatedLaunchCommand() {
+        val path = createdWithErrorPath ?: return
+        scope.launch { useCases.copyLaunchCommand(path).onFailure { recordActionError(path, it) } }
     }
 
     fun create(taskId: String, branchType: BranchType, onCreated: (Worktree) -> Unit = {}) =
@@ -418,7 +426,13 @@ class ProjectWorktrees(
                         loadStatusOf(worktree)
                         onCreated(worktree)
                     }
-                    .onFailure { createError = it }
+                    .onFailure { failure ->
+                        createError = failure
+                        if (failure is WorktreeError.PostCreateCommandFailed) {
+                            createdWithErrorPath = failure.worktreePath
+                            refresh()
+                        }
+                    }
             } finally {
                 isCreating = false
             }
@@ -484,11 +498,12 @@ class ProjectWorktrees(
         pendingRemoval = pendingRemoval?.copy(deleteBranch = deleteBranch)
     }
 
-    fun copyLaunchCommand(worktree: Worktree) {
+    fun copyLaunchCommand(worktree: Worktree, onCopied: () -> Unit = {}) {
         scope.launch {
             useCases.copyLaunchCommand(worktree.path)
                 .onSuccess {
                     clearActionError(worktree.path)
+                    onCopied()
                     copiedWorktreePath = worktree.path
                     delay(COPIED_FEEDBACK_DURATION_MS)
                     copiedWorktreePath = null

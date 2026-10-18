@@ -25,9 +25,15 @@ import app.luxion.shogunai.ui.shell.ShellViewModel
 import app.luxion.shogunai.ui.shell.installMacAppMenuHandlers
 import app.luxion.shogunai.ui.shell.rememberRestoredWindowState
 import app.luxion.shogunai.ui.shell.saveWindowBounds
+import java.awt.AWTEvent
 import java.awt.Dimension
 import java.awt.Taskbar
 import java.awt.Toolkit
+import java.awt.Window as AwtWindow
+import java.awt.event.AWTEventListener
+import java.awt.event.WindowEvent
+import javax.swing.JFrame
+import javax.swing.SwingUtilities
 import kotlin.system.exitProcess
 
 private val MinimumWindowSize = Dimension(720, 480)
@@ -58,6 +64,28 @@ private fun openWindow() = application {
     }
     val shellViewModelHolder = remember { mutableStateOf<ShellViewModel?>(null) }
     val requestQuit = { shellViewModelHolder.value?.requestLeave(quit) ?: quit() }
+    val mainWindowHolder = remember { mutableStateOf<AwtWindow?>(null) }
+    val focusMainWindow: () -> Unit = {
+        mainWindowHolder.value?.takeIf { it.isShowing }?.let { window ->
+            window.toFront()
+            window.requestFocus()
+            (window as? JFrame)?.let { frame ->
+                val menuBar = frame.jMenuBar
+                frame.jMenuBar = null
+                frame.jMenuBar = menuBar
+            }
+        }
+    }
+    DisposableEffect(Unit) {
+        val closedWindowListener = AWTEventListener { event ->
+            val closed = event as? WindowEvent ?: return@AWTEventListener
+            if (closed.id == WindowEvent.WINDOW_CLOSED && closed.window !== mainWindowHolder.value) {
+                SwingUtilities.invokeLater { focusMainWindow() }
+            }
+        }
+        Toolkit.getDefaultToolkit().addAWTEventListener(closedWindowListener, AWTEvent.WINDOW_EVENT_MASK)
+        onDispose { Toolkit.getDefaultToolkit().removeAWTEventListener(closedWindowListener) }
+    }
     DisposableEffect(Unit) {
         setDockIcon()
         installMacAppMenuHandlers(
@@ -80,6 +108,7 @@ private fun openWindow() = application {
         },
     ) {
         LaunchedEffect(Unit) { window.minimumSize = MinimumWindowSize }
+        SideEffect { mainWindowHolder.value = window }
         val shellViewModel = viewModel {
             ShellViewModel(appContainer.projectRepository, appContainer.shellPreferenceRepository)
         }

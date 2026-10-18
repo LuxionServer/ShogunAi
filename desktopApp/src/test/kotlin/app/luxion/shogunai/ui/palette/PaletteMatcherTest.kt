@@ -76,6 +76,16 @@ class PaletteMatcherTest {
     }
 
     @Test
+    fun `a project is listed before a worktree when they tie`() {
+        val project = item("project:web-app", "web-app", kind = PaletteKind.PROJECT)
+        val main = item("worktree:main", "main · web-app")
+        val webMain = item("worktree:web", "web-app")
+
+        assertEquals(listOf(project, webMain), rankPaletteItems(listOf(webMain, project), "web", emptyList()))
+        assertEquals(project, rankPaletteItems(listOf(main, project), "web-app", emptyList()).first())
+    }
+
+    @Test
     fun `the most recent item wins a tie, then alphabetical order`() {
         val first = item("a", "alpha-1")
         val second = item("b", "alpha-2")
