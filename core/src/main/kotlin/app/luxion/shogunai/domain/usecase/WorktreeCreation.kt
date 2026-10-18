@@ -1,32 +1,54 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.io.FileManager
+import app.luxion.shogunai.domain.io.SymbolicLinksNotSupported
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.ProvisionMode
+import app.luxion.shogunai.domain.model.ProvisionedFile
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.joinPath
+
+internal data class ProvisionedFiles(
+    val copied: List<String> = emptyList(),
+    val linked: List<String> = emptyList(),
+    val postCreateCommands: List<List<String>> = emptyList(),
+)
 
 internal suspend fun checkProvisioningAndResolveFiles(
     config: ProjectConfig,
     executor: ShellCommandExecutor,
     fileManager: FileManager,
     provisioningSource: RepositoryProvisioningSource,
-): List<String> {
+): ProvisionedFiles {
     val missingSecrets = config.secretFiles.filterNot { fileManager.exists(config.baseSecretPath(it)) }
     if (missingSecrets.isNotEmpty()) {
         throw WorktreeError.SecretFileNotFound(missingSecrets, config.baseRepositoryPath)
     }
-    return resolveFilesToCopy(config, executor, provisioningSource)
+    return resolveProvisionedFiles(config, executor, provisioningSource)
 }
 
-internal suspend fun resolveFilesToCopy(
+internal suspend fun resolveProvisionedFiles(
     config: ProjectConfig,
     executor: ShellCommandExecutor,
     provisioningSource: RepositoryProvisioningSource,
+): ProvisionedFiles {
+    val provisioning = provisioningSource.read(config.baseRepositoryPath)
+    val linked = listUntrackedFiles(config, executor, provisioning.linkPatterns).filterNot { it in config.secretFiles }
+    val copied = (config.secretFiles + listUntrackedFiles(config, executor, provisioning.allPatterns))
+        .distinct()
+        .filterNot { it in linked }
+    return ProvisionedFiles(copied, linked, provisioning.postCreateCommands)
+}
+
+private suspend fun listUntrackedFiles(
+    config: ProjectConfig,
+    executor: ShellCommandExecutor,
+    patterns: List<String>,
 ): List<String> {
-    val patterns = provisioningSource.read(config.baseRepositoryPath).allPatterns
     if (patterns.isEmpty()) return emptyList()
     val command = listOf("git", "ls-files", "--others", "--ignored", "-z") + patterns.flatMap { listOf("-x", it) }
     val result = executor.execute(command = command, workingDirectory = config.baseRepositoryPath)
@@ -42,7 +64,7 @@ internal suspend fun addWorktreeAndCopySecrets(
     branch: String,
     addArgs: List<String>,
     branchToDeleteOnLfsFailure: String?,
-    repositoryFiles: List<String>,
+    provisioned: ProvisionedFiles,
     environment: WorktreeEnvironmentPreparer,
 ): Worktree {
     val add = executor.execute(command = addArgs, workingDirectory = config.baseRepositoryPath)
@@ -65,8 +87,9 @@ internal suspend fun addWorktreeAndCopySecrets(
         throw WorktreeError.GitCommandFailed(add.command, add.exitCode, add.stderr)
     }
 
-    copySecretsOrRollback(config, executor, fileManager, worktreePath, repositoryFiles)
+    copySecretsOrRollback(config, executor, fileManager, worktreePath, provisioned)
     prepareEnvironmentOrRollback(config, executor, environment, worktreePath)
+    runPostCreateCommands(executor, worktreePath, provisioned.postCreateCommands)
 
     return Worktree(path = worktreePath, branch = branch)
 }
@@ -90,34 +113,64 @@ private suspend fun copySecretsOrRollback(
     executor: ShellCommandExecutor,
     fileManager: FileManager,
     worktreePath: String,
-    repositoryFiles: List<String>,
+    provisioned: ProvisionedFiles,
 ) {
     try {
-        copyProvisionedFiles(config, fileManager, worktreePath, repositoryFiles)
+        applyProvisionedFiles(config, fileManager, worktreePath, provisioned)
     } catch (copyError: WorktreeError.SecretCopyFailed) {
         removeIncompleteWorktreeIgnoringResult(config, executor, worktreePath)
         throw copyError
     }
 }
 
-internal fun copyProvisionedFiles(
+internal fun applyProvisionedFiles(
     config: ProjectConfig,
     fileManager: FileManager,
     worktreePath: String,
-    repositoryFiles: List<String>,
-): List<String> {
-    val files = (config.secretFiles + repositoryFiles).distinct()
+    provisioned: ProvisionedFiles,
+): List<ProvisionedFile> {
     try {
-        files.forEach { fileName ->
-            fileManager.copy(
-                source = config.baseSecretPath(fileName),
-                destination = joinPath(worktreePath, fileName),
-            )
+        val copied = provisioned.copied.map { fileName ->
+            copyFromBase(config, fileManager, worktreePath, fileName)
+            ProvisionedFile(fileName, ProvisionMode.COPIED)
         }
+        val linked = provisioned.linked.map { fileName ->
+            try {
+                fileManager.createSymbolicLink(
+                    target = config.baseSecretPath(fileName),
+                    link = joinPath(worktreePath, fileName),
+                )
+                ProvisionedFile(fileName, ProvisionMode.LINKED)
+            } catch (unsupported: SymbolicLinksNotSupported) {
+                copyFromBase(config, fileManager, worktreePath, fileName)
+                ProvisionedFile(fileName, ProvisionMode.COPIED_INSTEAD_OF_LINKING)
+            }
+        }
+        return copied + linked
     } catch (copyError: Exception) {
         throw WorktreeError.SecretCopyFailed(copyError)
     }
-    return files
+}
+
+private fun copyFromBase(config: ProjectConfig, fileManager: FileManager, worktreePath: String, fileName: String) {
+    fileManager.copy(source = config.baseSecretPath(fileName), destination = joinPath(worktreePath, fileName))
+}
+
+internal suspend fun runPostCreateCommands(
+    executor: ShellCommandExecutor,
+    worktreePath: String,
+    commands: List<List<String>>,
+) {
+    commands.forEach { command ->
+        val result = try {
+            executor.execute(command = command, workingDirectory = worktreePath)
+        } catch (error: CommandExecutionException) {
+            throw WorktreeError.PostCreateCommandFailed(worktreePath, command, null, error.cause?.message ?: error.message.orEmpty())
+        }
+        if (!result.isSuccess) {
+            throw WorktreeError.PostCreateCommandFailed(worktreePath, command, result.exitCode, result.stderr)
+        }
+    }
 }
 
 private suspend fun removeIncompleteWorktreeIgnoringResult(

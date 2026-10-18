@@ -1,0 +1,16 @@
+{
+    "version": "@VERSION@",
+    "description": "Worktree layer for AI agents: provision, inspect and clean Git worktrees",
+    "homepage": "https://github.com/LuxionServer/ShogunAi",
+    "license": "GPL-3.0-only",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/LuxionServer/ShogunAi/releases/download/v@VERSION@/ShogunAi-@VERSION@.msi",
+            "hash": "@SHA256_MSI@"
+        }
+    },
+    "extract_dir": "ShogunAi",
+    "pre_install": "Set-Content -Path \"$dir\\shogun.cmd\" -Encoding ASCII -Value '@\"%~dp0runtime\\bin\\java.exe\" -cp \"%~dp0app\\*\" app.luxion.shogunai.MainKt %*'",
+    "bin": "shogun.cmd",
+    "shortcuts": [["ShogunAi.exe", "ShogunAi"]]
+}

@@ -1,0 +1,70 @@
+package app.luxion.shogunai.domain.usecase
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class GitFailureCauseTest {
+
+    @Test
+    fun `reconoce un index lock existente y su ruta`() {
+        val stderr = """
+            fatal: Unable to create '~/projects/main-repo/.git/index.lock': File exists.
+
+            Another git process seems to be running in this repository, e.g.
+            an editor opened by 'git commit'.
+        """.trimIndent()
+
+        assertEquals(GitFailureCause.LockFileExists("~/projects/main-repo/.git/index.lock"), classifyGitFailure(stderr))
+    }
+
+    @Test
+    fun `reconoce otro proceso de Git sin ruta`() {
+        val stderr = "fatal: Another git process seems to be running in this repository"
+
+        assertEquals(GitFailureCause.LockFileExists(null), classifyGitFailure(stderr))
+    }
+
+    @Test
+    fun `reconoce permiso denegado y su ruta`() {
+        val stderr = "fatal: could not create leading directories of '~/projects/task-1': Permission denied"
+
+        assertEquals(GitFailureCause.PermissionDenied("~/projects/task-1"), classifyGitFailure(stderr))
+    }
+
+    @Test
+    fun `reconoce permiso denegado sin ruta`() {
+        assertEquals(GitFailureCause.PermissionDenied(null), classifyGitFailure("error: Permission denied"))
+    }
+
+    @Test
+    fun `reconoce una carpeta que no es un repositorio`() {
+        val stderr = "fatal: not a git repository (or any of the parent directories): .git"
+
+        assertEquals(GitFailureCause.NotARepository, classifyGitFailure(stderr))
+    }
+
+    @Test
+    fun `reconoce una rama existente y su nombre`() {
+        assertEquals(
+            GitFailureCause.BranchExists("feature/TASK-123"),
+            classifyGitFailure("fatal: a branch named 'feature/TASK-123' already exists"),
+        )
+        assertEquals(
+            GitFailureCause.BranchExists("TASK-123"),
+            classifyGitFailure("fatal: A branch named 'TASK-123' already exists."),
+        )
+    }
+
+    @Test
+    fun `reconoce un worktree con cambios locales`() {
+        val stderr = "fatal: '~/projects/task-1' contains modified or untracked files, use --force to delete it"
+
+        assertEquals(GitFailureCause.LocalChanges, classifyGitFailure(stderr))
+    }
+
+    @Test
+    fun `un mensaje desconocido es Unknown`() {
+        assertEquals(GitFailureCause.Unknown, classifyGitFailure("fatal: something nobody expected"))
+        assertEquals(GitFailureCause.Unknown, classifyGitFailure(""))
+    }
+}

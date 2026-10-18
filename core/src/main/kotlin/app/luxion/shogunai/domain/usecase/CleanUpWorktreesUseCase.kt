@@ -12,6 +12,7 @@ data class CleanupReport(
     val removed: List<String>,
     val keptBranches: List<String>,
     val failures: List<CleanupFailure>,
+    val herdrFailures: List<CleanupFailure> = emptyList(),
 )
 
 data class CleanupFailure(val path: String, val error: WorktreeError)
@@ -27,12 +28,14 @@ private fun WorktreeStatus?.isCleanAndMerged(): Boolean =
 class CleanUpWorktreesUseCase(
     private val config: ProjectConfig,
     private val executor: ShellCommandExecutor,
+    private val closeHerdrWorkspaces: CloseHerdrWorkspacesUseCase? = null,
 ) {
     suspend operator fun invoke(
         candidates: List<Worktree>,
         mainBranch: MainBranch?,
         deleteBranches: Boolean,
     ): Result<CleanupReport> = runCatching {
+        val workspaces = closeHerdrWorkspaces?.openWorkspaces(candidates.map { it.path }).orEmpty()
         val keptBranches = mutableListOf<String>()
         val failures = mutableListOf<CleanupFailure>()
 
@@ -57,13 +60,20 @@ class CleanUpWorktreesUseCase(
             }
         }
 
+        val herdrFailures = closeHerdrWorkspaces?.close(workspaces, removedWorktrees.map { it.path }).orEmpty()
+
         if (deleteBranches) {
             removedWorktrees.mapNotNull { it.branch }.forEach { branch ->
                 if (!deleteIfContained(branch, mainBranch)) keptBranches += branch
             }
         }
 
-        CleanupReport(removed = removedWorktrees.map { it.path }, keptBranches = keptBranches, failures = failures)
+        CleanupReport(
+            removed = removedWorktrees.map { it.path },
+            keptBranches = keptBranches,
+            failures = failures,
+            herdrFailures = herdrFailures,
+        )
     }
 
     private suspend fun deleteIfContained(branch: String, mainBranch: MainBranch?): Boolean {

@@ -3,46 +3,38 @@ package app.luxion.shogunai.ui.projectconfig
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.ui.components.DropdownSelector
-import app.luxion.shogunai.ui.components.SectionCard
+import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.Spacing
+import app.luxion.shogunai.ui.components.handPointer
 import app.luxion.shogunai.ui.i18n.LocalStrings
-import app.luxion.shogunai.ui.i18n.worktreeError
+import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.ui.components.ErrorNotice
 
 private data class AvdOption(val name: String?)
 
 @Composable
-fun EmulatorSettingsSection(viewModel: ProjectConfigViewModel) {
+fun EmulatorSettingsSection(viewModel: ProjectConfigViewModel, modifier: Modifier = Modifier) {
     val state = viewModel.emulatorSection
     if (state == EmulatorSectionState.Hidden) return
     val strings = LocalStrings.current
-    SectionCard(title = strings.emulatorSection) {
+    SettingsSection(title = strings.emulatorSection, modifier = modifier) {
+        Text(strings.machineOnlyLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
         Text(
             strings.emulatorSectionDescription,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         when (state) {
-            EmulatorSectionState.Loading -> CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-            is EmulatorSectionState.SdkNotFound -> Text(
-                strings.androidSdkNotFound(state.checked),
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall,
-            )
-            is EmulatorSectionState.Failed -> Text(
-                strings.worktreeError(state.error),
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall,
-            )
+            EmulatorSectionState.Loading -> InlineProgress()
+            is EmulatorSectionState.SdkNotFound -> ErrorNotice(WorktreeError.AndroidSdkNotFound(state.checked), onDismiss = null)
+            is EmulatorSectionState.Failed -> ErrorNotice(state.error, onDismiss = null)
             is EmulatorSectionState.Available -> {
                 val options = listOf(AvdOption(null)) + (state.avds + listOfNotNull(viewModel.emulatorAvd))
                     .distinct()
@@ -65,7 +57,7 @@ fun EmulatorSettingsSection(viewModel: ProjectConfigViewModel) {
             EmulatorSectionState.Hidden -> Unit
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Switch(checked = viewModel.emulatorNoWindow, onCheckedChange = { viewModel.emulatorNoWindow = it })
+            Switch(checked = viewModel.emulatorNoWindow, onCheckedChange = { viewModel.emulatorNoWindow = it }, modifier = Modifier.handPointer())
             Text(strings.emulatorNoWindowLabel, modifier = Modifier.padding(start = Spacing.sm))
         }
     }

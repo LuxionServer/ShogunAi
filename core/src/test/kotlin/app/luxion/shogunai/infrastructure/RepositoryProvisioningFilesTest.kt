@@ -1,6 +1,8 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.model.EmulatorProvider
+import app.luxion.shogunai.domain.model.EnvironmentEntry
+import app.luxion.shogunai.domain.model.RepositoryConfigEdit
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.IosSimulatorProvider
 import app.luxion.shogunai.domain.model.RepositoryProviders
@@ -47,6 +49,78 @@ class RepositoryProvisioningFilesTest {
         val provisioning = files.read(repository.toString())
 
         assertEquals(listOf("local.properties", ".env*"), provisioning.copyPatterns)
+    }
+
+    @Test
+    fun `reads several post-creation commands`() {
+        configFile.writeText("""{ "hooks": { "postCreate": [["npm", "install"], ["direnv", "allow"]] } }""")
+
+        assertEquals(
+            listOf(listOf("npm", "install"), listOf("direnv", "allow")),
+            files.read(repository.toString()).postCreateCommands,
+        )
+    }
+
+    @Test
+    fun `reads a single post-creation command given as one argv`() {
+        configFile.writeText("""{ "hooks": { "postCreate": ["npm", "install"] } }""")
+
+        assertEquals(listOf(listOf("npm", "install")), files.read(repository.toString()).postCreateCommands)
+    }
+
+    @Test
+    fun `declares no post-creation command without hooks`() {
+        configFile.writeText("""{ "hooks": {} }""")
+        assertEquals(emptyList(), files.read(repository.toString()).postCreateCommands)
+
+        configFile.writeText("""{ "copy": [".env"] }""")
+        assertEquals(emptyList(), files.read(repository.toString()).postCreateCommands)
+    }
+
+    @Test
+    fun `fails with InvalidRepositoryConfig on invalid post-creation commands`() {
+        listOf(
+            """{ "hooks": { "postCreate": "npm install" } }""",
+            """{ "hooks": { "postCreate": [[]] } }""",
+            """{ "hooks": { "postCreate": [["npm", 1]] } }""",
+            """{ "hooks": { "postCreate": [["npm"], "ls"] } }""",
+            """{ "hooks": [] }""",
+        ).forEach { content ->
+            configFile.writeText(content)
+
+            val error = assertFailsWith<WorktreeError.InvalidRepositoryConfig>(content) { files.read(repository.toString()) }
+
+            assertTrue(error.path.endsWith(".shogunai.json"))
+        }
+    }
+
+    @Test
+    fun `reads link patterns`() {
+        configFile.writeText("""{ "link": ["/local.properties", "keys/"] }""")
+
+        assertEquals(listOf("/local.properties", "keys/"), files.read(repository.toString()).linkPatterns)
+    }
+
+    @Test
+    fun `fails with InvalidRepositoryConfig when link is not a list of strings`() {
+        configFile.writeText("""{ "link": "local.properties" }""")
+
+        assertFailsWith<WorktreeError.InvalidRepositoryConfig> { files.read(repository.toString()) }
+    }
+
+    @Test
+    fun `keeps hooks and link when adding patterns`() {
+        configFile.writeText("""{ "hooks": { "postCreate": [["npm", "install"]] }, "link": ["keys/"] }""")
+
+        files.addCopyPatterns(repository.toString(), listOf(".env"))
+
+        val written = Json.parseToJsonElement(configFile.readText()).jsonObject
+        assertEquals("keys/", written.getValue("link").jsonArray.single().jsonPrimitive.content)
+        assertEquals(
+            "npm",
+            written.getValue("hooks").jsonObject.getValue("postCreate").jsonArray.single().jsonArray.first().jsonPrimitive.content,
+        )
+        assertEquals(".env", written.getValue("copy").jsonArray.single().jsonPrimitive.content)
     }
 
     @Test
@@ -321,5 +395,214 @@ class RepositoryProvisioningFilesTest {
 
         assertTrue(configFile.exists())
         assertFalse(Files.list(repository).use { stream -> stream.anyMatch { it.fileName.toString().endsWith(".tmp") } })
+    }
+
+    private fun edit(
+        providers: RepositoryProviders = RepositoryProviders(),
+        environment: List<EnvironmentEntry> = emptyList(),
+        envFile: String? = null,
+    ) = RepositoryConfigEdit(providers = providers, environment = environment, envFile = envFile)
+
+    private fun write(edit: RepositoryConfigEdit) =
+        files.write(repository.toString(), edit, files.fingerprint(repository.toString()))
+
+    private fun written() = Json.parseToJsonElement(configFile.readText()).jsonObject
+
+    @Test
+    fun `turning a provider on creates the file with only that provider`() {
+        write(edit(providers = RepositoryProviders(gradle = GradleProvider())))
+
+        assertEquals(setOf("providers"), written().keys)
+        assertEquals(emptySet(), written().getValue("providers").jsonObject.getValue("gradle").jsonObject.keys)
+    }
+
+    @Test
+    fun `writes gradle options`() {
+        write(edit(providers = RepositoryProviders(gradle = GradleProvider(daemonMaxHeap = "2g", idleTimeoutMinutes = 30))))
+
+        val gradle = written().getValue("providers").jsonObject.getValue("gradle").jsonObject
+        assertEquals("2g", gradle.getValue("daemonMaxHeap").jsonPrimitive.content)
+        assertEquals("30", gradle.getValue("idleTimeoutMinutes").jsonPrimitive.content)
+        assertFalse("kotlinDaemonMaxHeap" in gradle)
+    }
+
+    @Test
+    fun `written provider options read back identically`() {
+        val providers = RepositoryProviders(
+            gradle = GradleProvider("2g", 30, "1g"),
+            emulator = EmulatorProvider("Pixel_8"),
+            iosSimulator = IosSimulatorProvider("iPhone 16", "iOS 18.0"),
+            xcode = XcodeProvider(compilationCache = true),
+        )
+
+        write(edit(providers = providers))
+
+        assertEquals(providers, files.read(repository.toString()).providers)
+    }
+
+    @Test
+    fun `turning a provider off removes only that provider`() {
+        configFile.writeText("""{ "providers": { "gradle": {}, "emulator": { "avd": "Pixel_8" } } }""")
+
+        write(edit(providers = RepositoryProviders(gradle = GradleProvider())))
+
+        val providers = written().getValue("providers").jsonObject
+        assertEquals(setOf("gradle"), providers.keys)
+    }
+
+    @Test
+    fun `turning the last provider off removes the providers field`() {
+        configFile.writeText("""{ "copy": [".env"], "providers": { "gradle": {} } }""")
+
+        write(edit())
+
+        assertEquals(listOf("copy"), written().keys.toList())
+    }
+
+    @Test
+    fun `keeps copy patterns, unknown fields, unknown providers and unknown options`() {
+        configFile.writeText(
+            """{ "copy": [".env"], "team": "mobile", "providers": { "cocoapods": { "x": 1 }, "gradle": { "future": true, "daemonMaxHeap": "1g" } } }""",
+        )
+
+        write(edit(providers = RepositoryProviders(gradle = GradleProvider(idleTimeoutMinutes = 10))))
+
+        val result = written()
+        assertEquals(listOf("copy", "team", "providers"), result.keys.toList())
+        assertEquals(".env", result.getValue("copy").jsonArray.single().jsonPrimitive.content)
+        assertEquals("mobile", result.getValue("team").jsonPrimitive.content)
+        val providers = result.getValue("providers").jsonObject
+        assertEquals(listOf("cocoapods", "gradle"), providers.keys.toList())
+        val gradle = providers.getValue("gradle").jsonObject
+        assertEquals("true", gradle.getValue("future").jsonPrimitive.content)
+        assertEquals("10", gradle.getValue("idleTimeoutMinutes").jsonPrimitive.content)
+        assertFalse("daemonMaxHeap" in gradle)
+    }
+
+    @Test
+    fun `keeps the position of fields it rewrites`() {
+        configFile.writeText("""{ "env": { "A": "1" }, "copy": [".env"], "envFile": ".env.old" }""")
+
+        write(edit(environment = listOf(EnvironmentEntry("B", "\${port}")), envFile = ".env.new"))
+
+        assertEquals(listOf("env", "copy", "envFile"), written().keys.toList())
+        assertEquals("\${port}", written().getValue("env").jsonObject.getValue("B").jsonPrimitive.content)
+    }
+
+    @Test
+    fun `creates the file with only the env field`() {
+        write(edit(environment = listOf(EnvironmentEntry("PORT", "\${port}"))))
+
+        assertEquals(setOf("env"), written().keys)
+    }
+
+    @Test
+    fun `writes the environment and its file`() {
+        write(edit(environment = listOf(EnvironmentEntry("PORT", "\${port}")), envFile = ".env.shogunai"))
+
+        val declaration = files.read(repository.toString()).environment
+        assertEquals(listOf("PORT"), declaration.variables.map { it.name })
+        assertEquals(".env.shogunai", declaration.envFile)
+    }
+
+    @Test
+    fun `clearing the environment removes env and envFile`() {
+        configFile.writeText("""{ "env": { "A": "1" }, "envFile": ".env", "copy": ["x"] }""")
+
+        write(edit())
+
+        assertEquals(listOf("copy"), written().keys.toList())
+    }
+
+    @Test
+    fun `writes nothing when there is nothing to declare and no file`() {
+        write(edit())
+
+        assertFalse(configFile.exists())
+    }
+
+    @Test
+    fun `adds copy patterns together with the other fields`() {
+        configFile.writeText("""{ "copy": [".env"] }""")
+
+        write(RepositoryConfigEdit(providers = RepositoryProviders(gradle = GradleProvider()), addCopyPatterns = listOf("/local.properties", ".env")))
+
+        assertEquals(
+            listOf(".env", "/local.properties"),
+            written().getValue("copy").jsonArray.map { it.jsonPrimitive.content },
+        )
+        assertTrue("providers" in written())
+    }
+
+    @Test
+    fun `preview shows the resulting file without writing it`() {
+        configFile.writeText("""{ "team": "mobile" }""")
+
+        val preview = files.preview(repository.toString(), edit(providers = RepositoryProviders(gradle = GradleProvider())))
+
+        assertTrue("\"team\": \"mobile\"" in preview)
+        assertTrue("\"gradle\"" in preview)
+        assertEquals("""{ "team": "mobile" }""", configFile.readText())
+    }
+
+    @Test
+    fun `refuses to write over a file it can't read`() {
+        val malformed = """{ "copy": [".env", }"""
+        configFile.writeText(malformed)
+        val fingerprint = files.fingerprint(repository.toString())
+
+        assertFailsWith<WorktreeError.InvalidRepositoryConfig> {
+            files.write(repository.toString(), edit(providers = RepositoryProviders(gradle = GradleProvider())), fingerprint)
+        }
+
+        assertEquals(malformed, configFile.readText())
+    }
+
+    @Test
+    fun `refuses to write when the file changed on disk`() {
+        configFile.writeText("""{ "copy": [".env"] }""")
+        val fingerprint = files.fingerprint(repository.toString())
+        configFile.writeText("""{ "copy": [".env", "other"] }""")
+
+        assertFailsWith<WorktreeError.RepositoryConfigChanged> {
+            files.write(repository.toString(), edit(providers = RepositoryProviders(gradle = GradleProvider())), fingerprint)
+        }
+
+        assertEquals("""{ "copy": [".env", "other"] }""", configFile.readText())
+    }
+
+    @Test
+    fun `refuses to write when the file was created meanwhile`() {
+        val fingerprint = files.fingerprint(repository.toString())
+        configFile.writeText("""{ "copy": [".env"] }""")
+
+        assertFailsWith<WorktreeError.RepositoryConfigChanged> {
+            files.write(repository.toString(), edit(environment = listOf(EnvironmentEntry("A", "1"))), fingerprint)
+        }
+
+        assertEquals("""{ "copy": [".env"] }""", configFile.readText())
+    }
+
+    @Test
+    fun `moving local files also refuses when the file changed on disk`() {
+        configFile.writeText("""{ "copy": [".env"] }""")
+        val fingerprint = files.fingerprint(repository.toString())
+        configFile.writeText("""{ "copy": [] }""")
+
+        assertFailsWith<WorktreeError.RepositoryConfigChanged> {
+            files.addCopyPatterns(repository.toString(), listOf("/local.properties"), fingerprint)
+        }
+    }
+
+    @Test
+    fun `fingerprint changes with the content and marks an absent file`() {
+        val absent = files.fingerprint(repository.toString())
+        configFile.writeText("{}")
+        val empty = files.fingerprint(repository.toString())
+        configFile.writeText("""{ "copy": [] }""")
+
+        assertEquals("absent", absent)
+        assertTrue(empty != absent)
+        assertTrue(files.fingerprint(repository.toString()) != empty)
     }
 }

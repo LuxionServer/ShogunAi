@@ -4,20 +4,29 @@ Orquestador de escritorio (Kotlin + Compose Multiplatform) para automatizar work
 
 - Creación y eliminación de **Git worktrees** aislados.
 - Aprovisionamiento de los archivos locales necesarios para compilar (p. ej. `local.properties` de Android), declarados en un `.shogunai.json` versionado en el repositorio o en `.worktreeinclude`.
-- Preparación del estado exacto que necesita un agente de IA (Copilot/Claude) para empezar a trabajar de inmediato en una tarea, sin cambios de contexto manuales.
+- Dar a cada worktree su propio entorno: puertos, un emulador de Android, un simulador de iOS, daemons de Gradle acotados y una caché de compilación de Xcode compartida.
+- Preparación del estado exacto que necesita un agente de IA (Claude Code, Codex, Cursor, Herdr…) para empezar a trabajar de inmediato en una tarea, sin cambios de contexto manuales.
 
 ## Estado del proyecto
 
-En desarrollo activo y publicado como app de escritorio (ver el README para instalarla). Gestiona un catálogo de proyectos y, para cada uno, crea worktrees desde ramas nuevas o existentes, les copia los archivos locales que declara el repositorio, copia el comando para lanzar un agente de IA en un worktree y repara los worktrees cuando se mueve el repositorio. La interfaz está en inglés y español. Ver [decisiones de diseño](decisions/index.md) para lo decidido antes de OpenSpec, y `openspec/changes/archive/` para cada cambio desde entonces.
+En desarrollo activo y publicado como app de escritorio con el comando `shogun` incluido (ver [Instalación](guide/installation.md)). Gestiona un catálogo de proyectos y, para cada uno, crea worktrees desde ramas nuevas o existentes y los provisiona, muestra su estado, origen, tamaño y agentes en ejecución, se actualiza solo y limpia los mergeados. Sus providers añaden emuladores y simuladores por worktree y gestionan los daemons de Gradle y los DerivedData de Xcode, y sus hooks permiten que Claude Code y Herdr creen worktrees a través de él. La interfaz está en inglés y español, con tema claro, oscuro o del sistema. Ver [decisiones de diseño](decisions/index.md) para lo decidido antes de OpenSpec, y `openspec/changes/archive/` para cada cambio desde entonces.
 
 ## Dónde mirar
 
 | Quiero... | Ir a |
 |---|---|
+| Instalar ShogunAi y el comando `shogun` | [Guía de uso › Instalación](guide/installation.md) |
+| Aprender a usar la app de escritorio | [Guía de uso › App de escritorio](guide/desktop-app.md) |
+| Consultar un comando u opción de `shogun` | [Guía de uso › Referencia de la línea de comandos](guide/cli.md) |
+| Escribir un `.shogunai.json` o encontrar un fichero que guarda ShogunAi | [Guía de uso › Configuración](guide/configuration.md) |
+| Configurar Gradle, emuladores de Android, simuladores de iOS o Xcode | [Guía de uso › Providers](guide/providers.md) |
+| Hacer que Claude Code, Herdr, Cursor o Codex creen worktrees provisionados | [Uso con agentes](agents.md) |
 | Aterrizar en el repo por primera vez (requisitos, cómo ejecutarlo, cómo orientarme) | [Primeros pasos](getting-started.md) |
 | Entender cómo está organizado el código | [Arquitectura › Visión general](architecture/overview.md) |
 | Ver los modelos y casos de uso del dominio | [Arquitectura › Capa de dominio](architecture/domain.md) |
-| Ver cómo se implementan los puertos (Git, ficheros) | [Arquitectura › Capa de infraestructura](architecture/infrastructure.md) |
+| Ver cómo se implementan los puertos (procesos, ficheros, simuladores, Herdr…) | [Arquitectura › Capa de infraestructura](architecture/infrastructure.md) |
+| Ver cómo funcionan las pantallas y los ViewModels | [Arquitectura › Capa de UI](architecture/ui.md) |
+| Ver cómo se construye y se distribuye el comando `shogun` | [Arquitectura › Línea de comandos](architecture/cli.md) |
 | Saber de qué rama partir y hacia dónde abrir una PR | [Proceso de desarrollo › Ramas](process/branching.md) |
 | Entender cómo se planifican los cambios | [Proceso de desarrollo › OpenSpec](process/openspec.md) |
 | Saber por qué se tomó tal decisión | [Decisiones de diseño](decisions/index.md) |
@@ -29,6 +38,7 @@ En desarrollo activo y publicado como app de escritorio (ver el README para inst
 ```bash
 ./gradlew :desktopApp:run          # ejecución estándar
 ./gradlew :desktopApp:hotRun --auto  # hot reload
+./gradlew :cli:run --args="status"   # el comando shogun
 ```
 
 ## Servir esta documentación en local

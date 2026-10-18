@@ -10,7 +10,7 @@ Hay tres módulos de Gradle:
 |---|---|---|
 | **`core`** | El dominio (modelos, puertos, casos de uso) y la infraestructura que implementa sus puertos: procesos, ficheros, el catálogo JSON y las preferencias. Kotlin/JVM puro, sin Compose ni AWT. | Corrutinas, `kotlinx.serialization` |
 | **`desktopApp`** | La aplicación de escritorio: UI Compose (pantallas y ViewModels), `AppContainer`, el punto de entrada y `AwtClipboardWriter`, la única implementación de un puerto que necesita el toolkit de escritorio. | `core`, `cli`, Compose Desktop |
-| **`cli`** | El comando `shogun`: el parsing de argumentos y los cuatro comandos (`new`, `provision`, `status`, `clean`) sobre `core`. El lanzador de la app de escritorio lo ejecuta cuando recibe argumentos. | `core` |
+| **`cli`** | El comando `shogun`: el parsing de argumentos y sus comandos (worktrees, entorno, providers y hooks de agentes; ver la [referencia de la línea de comandos](../guide/cli.md)) sobre `core`. El lanzador de la app de escritorio lo ejecuta cuando recibe argumentos. | `core` |
 
 `core` existe para que un segundo frontal —la herramienta de línea de comandos `shogun`— pueda ejecutar los mismos casos de uso sin arrastrar la UI de escritorio. Los paquetes no cambiaron al extraerlo (`app.luxion.shogunai.domain…`, `app.luxion.shogunai.infrastructure…`); lo que mantiene la UI fuera de `core` es el límite del módulo. Los dobles de prueba viven en los test fixtures de `core`, compartidos por los tests de todos los módulos.
 
@@ -22,11 +22,15 @@ Hay tres módulos de Gradle:
 ```
 core/src/main/kotlin/app/luxion/shogunai/
 ├── domain/           # modelos, puertos y casos de uso — sin dependencias de infraestructura
-│   ├── model/        # ProjectConfig, Project, AgentLaunchConfig, Worktree, WorktreeStatus, WorktreeError, ThemeMode, AppLanguage…
+│   ├── model/        # ProjectConfig, Worktree, WorktreeStatus, RepositoryProvisioning, WorktreeEnvironment, modelos de los providers, WorktreeError…
 │   ├── executor/     # puertos ShellCommandExecutor y ClipboardWriter + CommandResult
-│   ├── io/           # puertos FileManager, ProjectRepository, ThemePreferenceRepository, LanguagePreferenceRepository
-│   └── usecase/      # crear, listar, eliminar, reparar y limpiar worktrees, su estado, tamaño y agentes, copiar el comando de lanzamiento
+│   ├── io/           # puertos: FileManager, ProjectRepository, preferencias, RepositoryProvisioningSource,
+│   │                 #   EnvironmentStateStore, PortProbe, AndroidSdk, AppleSimulators, KmpTestWiring,
+│   │                 #   HerdrClient, HerdrConfigSource, GradleDaemonSource, DerivedDataSource
+│   └── usecase/      # worktrees (crear, listar, provisionar, eliminar, reparar, limpiar, estado, vista general),
+│                     #   entorno y puertos, providers (Gradle, emulador, simulador, Xcode), Herdr
 └── infrastructure/   # implementaciones concretas de los puertos de dominio
+core/build/generated/buildInfo/  # BuildInfo.VERSION, compartido por la app y el CLI
 
 desktopApp/src/main/kotlin/app/luxion/shogunai/
 ├── infrastructure/   # AwtClipboardWriter

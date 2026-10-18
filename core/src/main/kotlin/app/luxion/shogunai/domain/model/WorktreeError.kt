@@ -32,8 +32,21 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class InvalidRepositoryConfig(val path: String, val detail: String?) :
         WorktreeError("Can't read $path" + if (detail.isNullOrBlank()) "" else ": $detail")
 
+    class RepositoryConfigChanged(val path: String) :
+        WorktreeError("$path changed on disk since it was read")
+
     class SecretCopyFailed(cause: Throwable) :
         WorktreeError("Failed to copy secret files: ${cause.message}", cause)
+
+    class PostCreateCommandFailed(
+        val worktreePath: String,
+        val command: List<String>,
+        val exitCode: Int?,
+        val errorOutput: String,
+    ) : WorktreeError(
+        "Post-creation command failed" + (exitCode?.let { " (exit code $it)" } ?: "") + ": ${command.joinToString(" ")}" +
+            if (errorOutput.isNotBlank()) "\n$errorOutput" else "",
+    )
 
     class ClipboardWriteFailed(cause: Throwable) :
         WorktreeError("Failed to copy the launch command to the clipboard: ${cause.message}", cause)
@@ -45,6 +58,9 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
 
     class BranchNotFound(val branch: String) :
         WorktreeError("Branch not found: $branch")
+
+    class StartPointNotFound(val ref: String) :
+        WorktreeError("Start point doesn't name a commit: $ref")
 
     class ProcessListingFailed(val command: List<String>, val exitCode: Int) :
         WorktreeError("Couldn't list processes (exit code $exitCode): ${command.joinToString(" ")}")

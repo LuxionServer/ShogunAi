@@ -1,6 +1,5 @@
 package app.luxion.shogunai.ui.components
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -35,7 +34,7 @@ fun SectionCard(
         ) {
             if (collapsible) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().clickable { onExpandedChange(!expanded) },
+                    modifier = Modifier.fillMaxWidth().interactive { onExpandedChange(!expanded) },
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {

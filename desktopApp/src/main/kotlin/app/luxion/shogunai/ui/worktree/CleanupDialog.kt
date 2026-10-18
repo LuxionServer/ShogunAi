@@ -1,110 +1,110 @@
 package app.luxion.shogunai.ui.worktree
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
+import app.luxion.shogunai.domain.usecase.CleanupFailure
 import app.luxion.shogunai.domain.usecase.CleanupReport
+import app.luxion.shogunai.domain.usecase.herdrDetail
+import app.luxion.shogunai.ui.components.DangerButton
+import app.luxion.shogunai.ui.components.InlineProgress
+import app.luxion.shogunai.ui.components.NeutralTextButton
+import app.luxion.shogunai.ui.components.Notice
+import app.luxion.shogunai.ui.components.NoticeKind
 import app.luxion.shogunai.ui.components.Spacing
+import app.luxion.shogunai.ui.components.handPointer
 import app.luxion.shogunai.ui.i18n.LocalStrings
-import app.luxion.shogunai.ui.i18n.worktreeError
+import app.luxion.shogunai.ui.i18n.describe
+import app.luxion.shogunai.ui.theme.ShogunTheme
 
 @Composable
-fun CleanupDialog(viewModel: WorktreeViewModel) {
+fun CleanupDialog(board: WorktreeBoard) {
     val strings = LocalStrings.current
-    val candidates = viewModel.cleanupCandidates
+    val groups = board.cleanupProjects
+    val holders = groups.map { it.holder }
+    val candidateCount = groups.sumOf { it.worktrees.size }
+    val showHeadings = groups.size > 1 || !board.isFiltered
+    val enabled = !board.isCleaningUp
+    val orphanedSimulators = holders.filter { it.isSimulatorRepository }.flatMap { it.orphanedSimulators }
+    val derivedDataOrphans = holders.filter { it.isXcodeRepository }.flatMap { it.derivedDataOrphans }
     AlertDialog(
-        onDismissRequest = { viewModel.dismissCleanup() },
+        onDismissRequest = { board.dismissCleanup() },
         title = { Text(strings.cleanUpTitle) },
         text = {
             Column {
-                if (candidates.isNotEmpty()) Text(strings.cleanUpMessage(candidates.size))
-                candidates.forEach { worktree ->
+                if (candidateCount > 0) Text(strings.cleanUpMessage(candidateCount))
+                if (groups.any { group -> group.worktrees.any { it.path in group.holder.openInHerdrPaths } }) {
                     Text(
-                        listOfNotNull(worktree.path.substringAfterLast('/'), worktree.branch).joinToString(" · "),
+                        strings.herdrCleanupNotice,
                         style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(top = Spacing.xs),
                     )
                 }
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = Spacing.sm)) {
-                    Checkbox(
-                        checked = viewModel.cleanupDeleteBranches,
-                        onCheckedChange = { viewModel.cleanupDeleteBranches = it },
-                        enabled = !viewModel.isCleaningUp,
-                    )
-                    Text(strings.alsoDeleteLocalBranches)
-                }
-                if (viewModel.isGradleRepository) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = viewModel.cleanupStopGradleDaemons,
-                            onCheckedChange = { viewModel.cleanupStopGradleDaemons = it },
-                            enabled = !viewModel.isCleaningUp,
-                        )
-                        Text(strings.alsoStopIdleGradleDaemons)
-                    }
-                }
-                if (viewModel.isEmulatorRepository) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = viewModel.cleanupStopEmulators,
-                            onCheckedChange = { viewModel.cleanupStopEmulators = it },
-                            enabled = !viewModel.isCleaningUp,
-                        )
-                        Text(strings.alsoStopEmulators)
-                    }
-                }
-                if (viewModel.isSimulatorRepository) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = viewModel.cleanupDeleteSimulators,
-                            onCheckedChange = { viewModel.cleanupDeleteSimulators = it },
-                            enabled = !viewModel.isCleaningUp,
-                        )
-                        Text(strings.alsoDeleteSimulators)
-                    }
-                    if (viewModel.orphanedSimulators.isNotEmpty()) {
+                groups.filter { it.worktrees.isNotEmpty() }.forEach { group ->
+                    if (showHeadings) {
                         Text(
-                            strings.orphanedSimulators(viewModel.orphanedSimulators.map { it.name }),
+                            group.project.name,
+                            style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier.padding(top = Spacing.sm),
+                        )
+                    }
+                    group.worktrees.forEach { worktree ->
+                        Text(
+                            listOfNotNull(
+                                worktree.path.substringAfterLast('/'),
+                                worktree.branch,
+                                strings.openInHerdrMark.takeIf { worktree.path in group.holder.openInHerdrPaths },
+                            ).joinToString(" · "),
+                            style = ShogunTheme.typography.dataSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = Spacing.xs),
+                        )
+                    }
+                }
+                CleanupOption(strings.alsoDeleteLocalBranches, board.cleanupDeleteBranches, enabled, Modifier.padding(top = Spacing.sm)) {
+                    board.cleanupDeleteBranches = it
+                }
+                if (holders.any { it.isGradleRepository }) {
+                    CleanupOption(strings.alsoStopIdleGradleDaemons, board.cleanupStopGradleDaemons, enabled) {
+                        board.cleanupStopGradleDaemons = it
+                    }
+                }
+                if (holders.any { it.isEmulatorRepository }) {
+                    CleanupOption(strings.alsoStopEmulators, board.cleanupStopEmulators, enabled) {
+                        board.cleanupStopEmulators = it
+                    }
+                }
+                if (holders.any { it.isSimulatorRepository }) {
+                    CleanupOption(strings.alsoDeleteSimulators, board.cleanupDeleteSimulators, enabled) {
+                        board.cleanupDeleteSimulators = it
+                    }
+                    if (orphanedSimulators.isNotEmpty()) {
+                        Text(
+                            strings.orphanedSimulators(orphanedSimulators.map { it.name }),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
-                if (viewModel.isXcodeRepository) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = viewModel.cleanupDeleteDerivedData,
-                            onCheckedChange = { viewModel.cleanupDeleteDerivedData = it },
-                            enabled = !viewModel.isCleaningUp,
-                        )
-                        Text(strings.alsoDeleteDerivedData)
+                if (holders.any { it.isXcodeRepository }) {
+                    CleanupOption(strings.alsoDeleteDerivedData, board.cleanupDeleteDerivedData, enabled) {
+                        board.cleanupDeleteDerivedData = it
                     }
-                    if (viewModel.derivedDataOrphans.isNotEmpty()) {
+                    if (derivedDataOrphans.isNotEmpty()) {
                         Text(
                             strings.orphanedDerivedData(
-                                viewModel.derivedDataOrphans.size,
-                                formatSize(viewModel.derivedDataOrphans.sumOf { it.sizeBytes }),
+                                derivedDataOrphans.size,
+                                formatSize(derivedDataOrphans.sumOf { it.sizeBytes }),
                             ),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -115,19 +115,16 @@ fun CleanupDialog(viewModel: WorktreeViewModel) {
         },
         confirmButton = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (viewModel.isCleaningUp) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.padding(end = Spacing.sm).size(20.dp),
-                        strokeWidth = 2.dp,
-                    )
+                if (board.isCleaningUp) {
+                    InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
                 }
-                TextButton(onClick = { viewModel.confirmCleanup() }, enabled = !viewModel.isCleaningUp) {
+                DangerButton(onClick = { board.confirmCleanup() }, enabled = enabled) {
                     Text(strings.cleanUp)
                 }
             }
         },
         dismissButton = {
-            TextButton(onClick = { viewModel.dismissCleanup() }, enabled = !viewModel.isCleaningUp) {
+            NeutralTextButton(onClick = { board.dismissCleanup() }, enabled = enabled) {
                 Text(strings.cancel)
             }
         },
@@ -135,28 +132,44 @@ fun CleanupDialog(viewModel: WorktreeViewModel) {
 }
 
 @Composable
+private fun CleanupOption(
+    label: String,
+    checked: Boolean,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier) {
+        Checkbox(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
+            modifier = Modifier.handPointer(enabled),
+        )
+        Text(label)
+    }
+}
+
+@Composable
 fun CleanupIssues(report: CleanupReport, onDismiss: () -> Unit) {
     val strings = LocalStrings.current
-    val lines = report.failures.map { strings.cleanupFailed(it.path, strings.worktreeError(it.error)) } +
+    val lines = report.failures.map { strings.cleanupFailed(it.path, strings.describe(it.error).summary) } +
         report.keptBranches.map { strings.branchKept(it) }
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.Top,
-    ) {
-        Row(modifier = Modifier.weight(1f)) {
-            Icon(
-                Icons.Default.Warning,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(end = Spacing.sm),
-            )
-            Column {
-                lines.forEach { Text(it, color = MaterialTheme.colorScheme.error) }
-            }
-        }
-        IconButton(onClick = onDismiss) {
-            Icon(Icons.Default.Close, contentDescription = strings.closeMessage)
-        }
-    }
+    Notice(
+        kind = NoticeKind.WARNING,
+        message = lines.joinToString("\n"),
+        onDismiss = onDismiss,
+        modifier = Modifier.padding(top = Spacing.sm),
+    )
+}
+
+@Composable
+fun HerdrCloseFailures(failures: List<CleanupFailure>, onDismiss: () -> Unit) {
+    val strings = LocalStrings.current
+    Notice(
+        kind = NoticeKind.WARNING,
+        message = failures.joinToString("\n") { strings.herdrCloseFailed(it.path, it.error.herdrDetail()) },
+        onDismiss = onDismiss,
+        modifier = Modifier.padding(top = Spacing.sm),
+    )
 }

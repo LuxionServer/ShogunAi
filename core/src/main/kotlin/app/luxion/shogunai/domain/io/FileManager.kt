@@ -6,6 +6,12 @@ interface FileManager {
 
     fun copy(source: String, destination: String)
 
+    fun createSymbolicLink(target: String, link: String)
+
+    fun isSymbolicLinkTo(link: String, target: String): Boolean
+
+    fun hasSameContent(first: String, second: String): Boolean
+
     fun directorySize(path: String, excluding: Set<String> = emptySet()): Long
 
     fun isDirectory(path: String): Boolean
@@ -18,3 +24,5 @@ interface FileManager {
 
     fun readText(path: String): String?
 }
+
+class SymbolicLinksNotSupported(cause: Throwable? = null) : Exception("Symbolic links aren't supported here", cause)

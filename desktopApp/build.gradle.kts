@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.composeCompiler)
 }
 
+@OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
 dependencies {
     implementation(project(":core"))
     implementation(project(":cli"))
@@ -26,6 +27,7 @@ dependencies {
 
     testImplementation(testFixtures(project(":core")))
     testImplementation(libs.kotlin.testJunit)
+    testImplementation(compose.uiTest)
     testImplementation(libs.kotlinx.coroutinesTest)
 }
 
@@ -36,25 +38,28 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "ShogunAi"
-            val rawVersion = (findProperty("appVersion") as String?) ?: "0.0.0"
-            // macOS no permite que la versión empiece por 0 (restricción de jpackage / CFBundleVersion).
-            // Mapeamos temporalmente "0.x.y" a "1.x.y" para evitar el fallo de compilación en macOS.
-            val isMac = System.getProperty("os.name").contains("Mac", ignoreCase = true)
-            packageVersion = if (isMac && rawVersion.startsWith("0.")) {
-                rawVersion.replaceFirst("0.", "1.")
-            } else {
-                rawVersion
-            }
+            vendor = "LuxionServer"
+            packageVersion = (findProperty("appVersion") as String?) ?: "0.0.0"
 
             macOS {
                 iconFile.set(project.file("icons/icon.icns"))
             }
             windows {
                 iconFile.set(project.file("icons/icon.ico"))
+                upgradeUuid = "964E9CC7-8B48-3DF7-8C9E-946E463F038D"
             }
             linux {
                 iconFile.set(project.file("icons/icon.png"))
             }
+        }
+    }
+}
+
+tasks.withType<org.jetbrains.compose.desktop.application.tasks.AbstractJLinkTask>().configureEach {
+    doLast {
+        val javaExecutable = File(javaHome.get(), "bin/java.exe")
+        if (javaExecutable.exists()) {
+            javaExecutable.copyTo(destinationDir.get().asFile.resolve("bin/java.exe"), overwrite = true)
         }
     }
 }

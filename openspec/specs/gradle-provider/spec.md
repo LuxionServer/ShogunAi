@@ -92,25 +92,6 @@ For a repository that declares the Gradle provider, the system SHALL report whet
 - **WHEN** neither file sets `org.gradle.caching=true`
 - **THEN** a notice says the build cache is off and how to turn it on
 
-### Requirement: Gradle daemons on the worktree screen
-The worktree screen of a project whose repository declares the Gradle provider SHALL show a "Gradle daemons" section listing every daemon with its kind, version, memory, state and worktree, the total memory, the build cache notice when it applies, and actions to stop one idle daemon or all idle ones. It SHALL refresh together with the worktree list. Projects without the provider SHALL NOT show it.
-
-#### Scenario: Gradle project
-- **WHEN** the user opens the worktree screen of a project whose `.shogunai.json` declares `"providers": { "gradle": {} }`
-- **THEN** the "Gradle daemons" section lists the running daemons and their total memory
-
-#### Scenario: Project without the provider
-- **WHEN** the repository doesn't declare the Gradle provider
-- **THEN** the worktree screen has no "Gradle daemons" section
-
-#### Scenario: Stop action on a busy daemon
-- **WHEN** a Gradle daemon is busy or its state is unknown
-- **THEN** its stop action is disabled
-
-#### Scenario: Stop result
-- **WHEN** the user stops all idle daemons
-- **THEN** the screen reports how many were stopped and kept, and the section is refreshed
-
 ### Requirement: Gradle settings in the worktree environment
 When the Gradle provider declares at least one setting, every worktree's environment, the main worktree's included, SHALL contain `GRADLE_OPTS` with the Gradle system properties for those settings and nothing else, identical for every worktree of the repository. Without settings, the provider SHALL add no variable. A `GRADLE_OPTS` declared in `env` SHALL take precedence.
 
@@ -162,14 +143,3 @@ A Gradle build started with the wrapper from a shell that has the worktree's env
 #### Scenario: Daemon reused across worktrees
 - **WHEN** a build finished in one worktree and its daemon is idle, and an agent then builds in another worktree of the same repository
 - **THEN** the second build can reuse that daemon
-
-### Requirement: Gradle settings on the worktree screen
-The "Gradle daemons" section SHALL state the declared settings (daemon heap, idle timeout, Kotlin daemon heap) and that they apply to builds started with the worktree's environment. Without settings, it SHALL NOT show them.
-
-#### Scenario: Settings shown
-- **WHEN** the repository declares `{ "gradle": { "daemonMaxHeap": "2g", "idleTimeoutMinutes": 30 } }`
-- **THEN** the section shows a 2g daemon heap and a 30-minute idle timeout for worktree builds
-
-#### Scenario: No settings
-- **WHEN** the repository declares `{ "gradle": {} }`
-- **THEN** the section shows no settings line

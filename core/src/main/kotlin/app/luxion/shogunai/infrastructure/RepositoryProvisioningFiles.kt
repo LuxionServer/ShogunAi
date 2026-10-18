@@ -3,6 +3,8 @@ package app.luxion.shogunai.infrastructure
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
+import app.luxion.shogunai.domain.model.RepositoryConfigEdit
+import app.luxion.shogunai.domain.model.RepositoryConfigRules
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.InvalidEnvironmentTemplate
 import app.luxion.shogunai.domain.model.IosSimulatorProvider
@@ -19,6 +21,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import java.security.MessageDigest
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -36,6 +39,8 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         val config = readConfig(configPath)
         return RepositoryProvisioning(
             copyPatterns = config?.let { copyPatternsOf(it, configPath) }.orEmpty(),
+            linkPatterns = config?.let { linkPatternsOf(it, configPath) }.orEmpty(),
+            postCreateCommands = config?.let { postCreateCommandsOf(it, configPath) }.orEmpty(),
             worktreeIncludePatterns = readWorktreeInclude(root.resolve(RepositoryProvisioning.WORKTREE_INCLUDE_FILE_NAME)),
             providers = config?.let { providersOf(it, configPath) } ?: RepositoryProviders(),
             environment = config?.let { environmentOf(it, configPath) } ?: EnvironmentDeclaration(),
@@ -59,29 +64,117 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         }
         val envFile = when (val field = config[ENV_FILE_FIELD]) {
             null, is JsonNull -> null
-            is JsonPrimitive -> field.takeIf { it.isString }?.content?.takeIf(::isInsideWorktree)
+            is JsonPrimitive -> field.takeIf { it.isString }?.content?.takeIf(RepositoryConfigRules::isInsideWorktree)
                 ?: throw invalid("\"$ENV_FILE_FIELD\" must be a relative path inside the worktree")
             else -> throw invalid("\"$ENV_FILE_FIELD\" must be a relative path inside the worktree")
         }
         return EnvironmentDeclaration(variables = variables, envFile = envFile)
     }
 
-    private fun isInsideWorktree(relative: String): Boolean {
-        if (relative.isBlank()) return false
-        val path = runCatching { Path.of(relative) }.getOrNull() ?: return false
-        if (path.isAbsolute || relative.startsWith("/") || relative.startsWith("\\")) return false
-        val normalized = path.normalize()
-        return normalized.toString().isNotEmpty() && !normalized.startsWith("..")
+    override fun fingerprint(repositoryPath: String): String {
+        val path = configPathOf(repositoryPath)
+        if (!path.exists()) return ABSENT_FINGERPRINT
+        return MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(path)).joinToString("") { "%02x".format(it) }
     }
 
-    override fun addCopyPatterns(repositoryPath: String, patterns: List<String>) {
-        val configPath = Path.of(repositoryPath).resolve(RepositoryProvisioning.CONFIG_FILE_NAME)
+    override fun addCopyPatterns(repositoryPath: String, patterns: List<String>, expectedFingerprint: String?) {
+        val configPath = configPathOf(repositoryPath)
+        expectedFingerprint?.let { requireUnchanged(repositoryPath, configPath, it) }
         val config = readConfig(configPath) ?: JsonObject(emptyMap())
         val existing = copyPatternsOf(config, configPath)
         val merged = (existing + patterns).distinct()
         val updated = JsonObject(config + (COPY_FIELD to JsonArray(merged.map(::JsonPrimitive))))
-        writeAtomically(configPath, json.encodeToString(JsonElement.serializer(), updated) + "\n")
+        writeAtomically(configPath, render(updated))
     }
+
+    override fun preview(repositoryPath: String, edit: RepositoryConfigEdit): String {
+        val configPath = configPathOf(repositoryPath)
+        return render(applyEdit(readConfig(configPath) ?: JsonObject(emptyMap()), edit, configPath))
+    }
+
+    override fun write(repositoryPath: String, edit: RepositoryConfigEdit, expectedFingerprint: String) {
+        val configPath = configPathOf(repositoryPath)
+        requireUnchanged(repositoryPath, configPath, expectedFingerprint)
+        val updated = applyEdit(readConfig(configPath) ?: JsonObject(emptyMap()), edit, configPath)
+        if (!configPath.exists() && updated.isEmpty()) return
+        writeAtomically(configPath, render(updated))
+    }
+
+    private fun configPathOf(repositoryPath: String): Path =
+        Path.of(repositoryPath).resolve(RepositoryProvisioning.CONFIG_FILE_NAME)
+
+    private fun requireUnchanged(repositoryPath: String, configPath: Path, expected: String) {
+        if (fingerprint(repositoryPath) != expected) throw WorktreeError.RepositoryConfigChanged(configPath.toString())
+    }
+
+    private fun render(config: JsonObject): String = json.encodeToString(JsonElement.serializer(), config) + "\n"
+
+    private fun applyEdit(config: JsonObject, edit: RepositoryConfigEdit, path: Path): JsonObject {
+        val result = LinkedHashMap(config)
+        if (edit.addCopyPatterns.isNotEmpty()) {
+            val merged = (copyPatternsOf(config, path) + edit.addCopyPatterns).distinct()
+            result[COPY_FIELD] = JsonArray(merged.map(::JsonPrimitive))
+        }
+        val providers = providersObjectOf(config, path)
+        val updatedProviders = LinkedHashMap(providers)
+        updatedProviders.applyProvider(GRADLE_PROVIDER, edit.providers.gradle?.let { gradleOptions(it) })
+        updatedProviders.applyProvider(EMULATOR_PROVIDER, edit.providers.emulator?.let { emulatorOptions(it) })
+        updatedProviders.applyProvider(IOS_SIMULATOR_PROVIDER, edit.providers.iosSimulator?.let { simulatorOptions(it) })
+        updatedProviders.applyProvider(XCODE_PROVIDER, edit.providers.xcode?.let { xcodeOptions(it) })
+        result.putOrRemove(PROVIDERS_FIELD, updatedProviders.takeIf { it.isNotEmpty() }?.let(::JsonObject))
+        result.putOrRemove(
+            ENV_FIELD,
+            edit.environment.takeIf { it.isNotEmpty() }
+                ?.let { entries -> JsonObject(entries.associate { it.name to JsonPrimitive(it.template) }) },
+        )
+        result.putOrRemove(ENV_FILE_FIELD, edit.envFile?.let(::JsonPrimitive))
+        return JsonObject(result)
+    }
+
+    private fun providersObjectOf(config: JsonObject, path: Path): JsonObject =
+        when (val field = config[PROVIDERS_FIELD]) {
+            null, is JsonNull -> JsonObject(emptyMap())
+            is JsonObject -> field
+            else -> throw WorktreeError.InvalidRepositoryConfig(path.toString(), "\"$PROVIDERS_FIELD\" must be an object")
+        }
+
+    private fun MutableMap<String, JsonElement>.applyProvider(id: String, options: Map<String, JsonElement>?) {
+        if (options == null) {
+            remove(id)
+            return
+        }
+        val existing = (this[id] as? JsonObject).orEmpty()
+        val merged = LinkedHashMap(existing)
+        val owned = OPTION_FIELDS.getValue(id)
+        owned.forEach { field -> if (field !in options) merged.remove(field) }
+        merged.putAll(options)
+        this[id] = JsonObject(merged)
+    }
+
+    private fun MutableMap<String, JsonElement>.putOrRemove(key: String, value: JsonElement?) {
+        if (value == null) remove(key) else this[key] = value
+    }
+
+    private fun gradleOptions(gradle: GradleProvider): Map<String, JsonElement> = buildMap {
+        gradle.daemonMaxHeap?.let { put(DAEMON_MAX_HEAP_FIELD, JsonPrimitive(it)) }
+        gradle.idleTimeoutMinutes?.let { put(IDLE_TIMEOUT_MINUTES_FIELD, JsonPrimitive(it)) }
+        gradle.kotlinDaemonMaxHeap?.let { put(KOTLIN_DAEMON_MAX_HEAP_FIELD, JsonPrimitive(it)) }
+    }
+
+    private fun emulatorOptions(emulator: EmulatorProvider): Map<String, JsonElement> = buildMap {
+        emulator.preferredAvd?.let { put(AVD_FIELD, JsonPrimitive(it)) }
+    }
+
+    private fun simulatorOptions(simulator: IosSimulatorProvider): Map<String, JsonElement> = buildMap {
+        simulator.device?.let { put(DEVICE_FIELD, JsonPrimitive(it)) }
+        simulator.runtime?.let { put(RUNTIME_FIELD, JsonPrimitive(it)) }
+    }
+
+    private fun xcodeOptions(xcode: XcodeProvider): Map<String, JsonElement> = buildMap {
+        if (xcode.compilationCache) put(COMPILATION_CACHE_FIELD, JsonPrimitive(true))
+    }
+
+    private fun JsonObject?.orEmpty(): JsonObject = this ?: JsonObject(emptyMap())
 
     private fun readConfig(path: Path): JsonObject? {
         if (!path.exists()) return null
@@ -96,10 +189,41 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
             ?: throw WorktreeError.InvalidRepositoryConfig(path.toString(), "expected a JSON object")
     }
 
-    private fun copyPatternsOf(config: JsonObject, path: Path): List<String> {
-        val field = config[COPY_FIELD] ?: return emptyList()
+    private fun copyPatternsOf(config: JsonObject, path: Path): List<String> = patternsOf(config, COPY_FIELD, path)
+
+    private fun linkPatternsOf(config: JsonObject, path: Path): List<String> = patternsOf(config, LINK_FIELD, path)
+
+    private fun postCreateCommandsOf(config: JsonObject, path: Path): List<List<String>> {
+        val invalid = { detail: String -> WorktreeError.InvalidRepositoryConfig(path.toString(), detail) }
+        val hooks = when (val field = config[HOOKS_FIELD]) {
+            null, is JsonNull -> return emptyList()
+            is JsonObject -> field
+            else -> throw invalid("\"$HOOKS_FIELD\" must be an object")
+        }
+        val postCreate = when (val field = hooks[POST_CREATE_FIELD]) {
+            null, is JsonNull -> return emptyList()
+            is JsonArray -> field
+            else -> throw invalid("\"$HOOKS_FIELD.$POST_CREATE_FIELD\" must be a list of commands")
+        }
+        val commandsInvalid = {
+            invalid("\"$HOOKS_FIELD.$POST_CREATE_FIELD\" must be a list of commands, each a non-empty list of strings")
+        }
+        val strings = { array: JsonArray ->
+            array.map { element ->
+                val primitive = element as? JsonPrimitive
+                if (primitive == null || !primitive.isString) throw commandsInvalid()
+                primitive.content
+            }.also { if (it.isEmpty()) throw commandsInvalid() }
+        }
+        if (postCreate.isEmpty()) return emptyList()
+        if (postCreate.first() is JsonPrimitive) return listOf(strings(postCreate))
+        return postCreate.map { element -> strings(element as? JsonArray ?: throw commandsInvalid()) }
+    }
+
+    private fun patternsOf(config: JsonObject, name: String, path: Path): List<String> {
+        val field = config[name] ?: return emptyList()
         if (field is JsonNull) return emptyList()
-        val invalid = { WorktreeError.InvalidRepositoryConfig(path.toString(), "\"$COPY_FIELD\" must be a list of strings") }
+        val invalid = { WorktreeError.InvalidRepositoryConfig(path.toString(), "\"$name\" must be a list of strings") }
         val array = field as? JsonArray ?: throw invalid()
         return array.map { element ->
             val primitive = element as? JsonPrimitive
@@ -172,7 +296,7 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         )
         return when (val value = options[field]) {
             null, is JsonNull -> null
-            is JsonPrimitive -> value.takeIf { it.isString }?.content?.takeIf(MEMORY_SIZE::matches) ?: throw invalid
+            is JsonPrimitive -> value.takeIf { it.isString }?.content?.takeIf(RepositoryConfigRules::isMemorySize) ?: throw invalid
             else -> throw invalid
         }
     }
@@ -184,8 +308,7 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         )
         return when (val value = options[field]) {
             null, is JsonNull -> null
-            is JsonPrimitive -> value.takeIf { !it.isString && WHOLE_NUMBER.matches(it.content) }
-                ?.content?.toIntOrNull()?.takeIf { it > 0 } ?: throw invalid
+            is JsonPrimitive -> value.takeIf { !it.isString }?.content?.let(RepositoryConfigRules::positiveWholeNumber) ?: throw invalid
             else -> throw invalid
         }
     }
@@ -205,13 +328,14 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
 
     private companion object {
         const val COPY_FIELD = "copy"
+        const val LINK_FIELD = "link"
+        const val HOOKS_FIELD = "hooks"
+        const val POST_CREATE_FIELD = "postCreate"
         const val PROVIDERS_FIELD = "providers"
         const val GRADLE_PROVIDER = "gradle"
         const val DAEMON_MAX_HEAP_FIELD = "daemonMaxHeap"
         const val IDLE_TIMEOUT_MINUTES_FIELD = "idleTimeoutMinutes"
         const val KOTLIN_DAEMON_MAX_HEAP_FIELD = "kotlinDaemonMaxHeap"
-        val MEMORY_SIZE = Regex("[0-9]+[kKmMgG]")
-        val WHOLE_NUMBER = Regex("[0-9]+")
         const val EMULATOR_PROVIDER = "emulator"
         const val AVD_FIELD = "avd"
         const val IOS_SIMULATOR_PROVIDER = "ios-simulator"
@@ -221,5 +345,12 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         const val COMPILATION_CACHE_FIELD = "compilationCache"
         const val ENV_FIELD = "env"
         const val ENV_FILE_FIELD = "envFile"
+        const val ABSENT_FINGERPRINT = "absent"
+        val OPTION_FIELDS = mapOf(
+            GRADLE_PROVIDER to listOf(DAEMON_MAX_HEAP_FIELD, IDLE_TIMEOUT_MINUTES_FIELD, KOTLIN_DAEMON_MAX_HEAP_FIELD),
+            EMULATOR_PROVIDER to listOf(AVD_FIELD),
+            IOS_SIMULATOR_PROVIDER to listOf(DEVICE_FIELD, RUNTIME_FIELD),
+            XCODE_PROVIDER to listOf(COMPILATION_CACHE_FIELD),
+        )
     }
 }

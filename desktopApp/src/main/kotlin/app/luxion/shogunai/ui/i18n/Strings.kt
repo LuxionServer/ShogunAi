@@ -1,9 +1,9 @@
 package app.luxion.shogunai.ui.i18n
 
 import androidx.compose.runtime.staticCompositionLocalOf
-import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.AppLanguage
-import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.RepositoryConfigIssue
+import app.luxion.shogunai.domain.usecase.GitFailureCause
 
 interface Strings {
     val languageName: String
@@ -23,14 +23,34 @@ interface Strings {
     val selectLocalFilesDialogTitle: String
 
     val projectsTitle: String
-    val newProject: String
-    val search: String
-    val noProjectsYet: String
-    fun noProjectsMatch(query: String): String
+    val addProject: String
     val editProject: String
-    val deleteProject: String
-    val deleteProjectTitle: String
-    fun deleteProjectMessage(projectName: String): String
+    val removeProject: String
+    val removeProjectTitle: String
+    fun removeProjectMessage(projectName: String): String
+    val remove: String
+    val emptyStateTitle: String
+    val emptyStateMessage: String
+    val collapseSidebar: String
+    val expandSidebar: String
+
+    val menuFile: String
+    val menuView: String
+    val menuHelp: String
+    val menuWorktree: String
+    val menuPreferences: String
+    val menuQuit: String
+    val menuToggleSidebar: String
+    val menuAbout: String
+
+    val preferencesTitle: String
+    val appearanceLabel: String
+    val languageLabel: String
+
+    val aboutTitle: String
+    val aboutTagline: String
+    fun aboutVersion(version: String): String
+    val aboutRepositoryLink: String
 
     val projectConfigTitle: String
     val identitySection: String
@@ -52,7 +72,6 @@ interface Strings {
     fun repositoryConfigUnreadable(path: String): String
     val moveToRepositoryConfig: String
     val pendingSave: String
-    fun saveFailed(detail: String?): String
     val add: String
     val agentSection: String
     val agentCommandLabel: String
@@ -63,10 +82,30 @@ interface Strings {
     val discardChangesMessage: String
     val discard: String
     val keepEditing: String
+    val generalSection: String
+    val worktreeFilesSection: String
+    val nameHelp: String
+    val baseRepositoryPathHelp: String
+    val worktreesRootHelp: String
+    val mainBranchHelp: String
+    fun detectedMainBranch(branch: String): String
+    val unsavedChanges: String
+    val menuSave: String
+    val addProjectTitle: String
+    val addProjectIntro: String
+    val chooseRepositoryFolder: String
+    val dropRepositoryHint: String
+    fun notAGitRepository(path: String): String
 
     val closeError: String
     val closeMessage: String
-    val newWorktreeSection: String
+    val technicalDetails: String
+    val copyTechnicalDetails: String
+    val tryAgain: String
+    val openProjectSettings: String
+    val openPreferences: String
+    fun errorTexts(error: Throwable, gitCause: GitFailureCause): ErrorTexts
+    val newWorktree: String
     val newBranchMode: String
     val existingBranchMode: String
     val taskIdLabel: String
@@ -79,6 +118,33 @@ interface Strings {
     val selectBranchPlaceholder: String
     val otherBranchesGroup: String
     val worktreesTitle: String
+    val viewsTitle: String
+    val allWorktrees: String
+    val activeWorktrees: String
+    val groupAgentWorking: String
+    val groupNeedsYou: String
+    val groupInProgress: String
+    val groupMerged: String
+    val groupInactive: String
+    val groupFolderMissing: String
+    val groupOther: String
+    val groupByState: String
+    val groupByProject: String
+    val readingWorktreeStatus: String
+    val nothingActiveTitle: String
+    val nothingActiveMessage: String
+    val seeAllWorktrees: String
+    val menuActive: String
+    val menuAllWorktrees: String
+    fun agentsRunning(names: List<String>): String
+    val allProjects: String
+    val projectLabel: String
+    val filterWorktreesPlaceholder: String
+    val noWorktreeMatches: String
+    val clearFilter: String
+    val menuFind: String
+    val loadingWorktrees: String
+    fun worktreeCount(count: Int): String
     val removeWorktreeTitle: String
     fun removeWorktreeMessage(path: String): String
     val forceRemoveTitle: String
@@ -91,20 +157,34 @@ interface Strings {
     fun mergedInto(branch: String): String
     val statusUnavailable: String
     val folderMissing: String
+    val mainWorktree: String
     val originShogunAi: String
     val originClaudeCode: String
     val originHerdr: String
     val originOther: String
     val inactive: String
     fun worktreesSummary(count: Int, totalSize: String): String
+    fun cleanupCandidatesSummary(count: Int): String
     val locked: String
     val cleanUp: String
+    val copyPath: String
+    val statusTitle: String
+    val agentsTitle: String
+    val environmentTitle: String
+    val devicesTitle: String
+    val diskTitle: String
+    val deleteWorktree: String
+    val clearSelection: String
     val cleanUpTitle: String
     fun cleanUpMessage(count: Int): String
     val alsoDeleteLocalBranches: String
     fun worktreesCleanedUp(count: Int): String
     fun cleanupFailed(path: String, detail: String): String
     fun branchKept(branch: String): String
+    val herdrWorkspaceWillClose: String
+    val herdrCleanupNotice: String
+    val openInHerdrMark: String
+    fun herdrCloseFailed(path: String, detail: String): String
     val simulatorSection: String
     val simulatorSectionDescription: String
     val simulatorRuntimeLabel: String
@@ -169,6 +249,26 @@ interface Strings {
     fun derivedDataOnUnavailableVolumes(count: Int): String
     fun derivedDataCompilationCache(size: String): String
     fun derivedDataDeleted(count: Int, freed: String): String
+    val machineTitle: String
+    val androidEmulatorsTitle: String
+    val iosSimulatorsTitle: String
+    fun runningCount(count: Int): String
+    fun bootedCount(count: Int): String
+    val ownerOutsideProjects: String
+    val ownerLoading: String
+    val notOwnedByWorktree: String
+    val goToWorktree: String
+    val noMachineEmulators: String
+    val unownedEmulatorsTitle: String
+    val noMachineSimulators: String
+    fun simulatorOrphansTitle(count: Int): String
+    val confirmDeleteOrphansTitle: String
+    fun confirmDeleteSimulatorOrphans(count: Int): String
+    fun confirmDeleteDerivedDataOrphans(count: Int, size: String): String
+    val noDerivedData: String
+    val derivedDataKept: String
+    val gradleChipLabel: String
+    fun openGradleDaemons(project: String): String
     val alsoDeleteDerivedData: String
     fun orphanedDerivedData(count: Int, size: String): String
     fun minutesAgo(count: Long): String
@@ -177,92 +277,85 @@ interface Strings {
     fun monthsAgo(count: Long): String
     fun yearsAgo(count: Long): String
     val copied: String
+    val close: String
+    val worktreeCreatedWithError: String
     val copyCommand: String
-    fun worktreeCreated(path: String): String
+    val copyLaunchCommand: String
+    fun worktreeCreated(folder: String): String
     val worktreesRepairedAfterMove: String
     val openInHerdr: String
     fun openedInHerdr(name: String): String
     fun focusedInHerdr(name: String): String
 
-    fun baseRepositoryNotFound(path: String): String
-    fun worktreeAlreadyExists(path: String): String
-    fun invalidTaskIdError(rawInput: String): String
-    fun secretFilesNotFound(files: List<String>, basePath: String): String
-    fun invalidRepositoryConfig(path: String, detail: String?): String
-    fun repositoryNotFound(path: String): String
-    fun notAWorktree(path: String): String
-    fun gitCommandFailed(command: List<String>, exitCode: Int): String
-    fun secretCopyFailed(detail: String?): String
-    fun clipboardWriteFailed(detail: String?): String
-    val gitLfsNotFound: String
-    fun branchNotFound(branch: String): String
-    fun branchAlreadyCheckedOut(branch: String, path: String?): String
-    fun commandCouldNotStart(command: List<String>): String
-    fun processListingFailed(command: List<String>, exitCode: Int): String
-    fun noFreePort(from: Int, to: Int): String
-    fun noEmulatorPort(from: Int, to: Int): String
-    fun androidSdkNotFound(checked: List<String>): String
-    val noAvdAvailable: String
-    val herdrNotInstalled: String
-    fun herdrCommandFailed(detail: String): String
-    fun emulatorBootTimeout(serial: String, seconds: Long): String
-    val emulatorProviderNotDeclared: String
-    val noIosRuntime: String
-    fun simulatorBootTimeout(name: String, seconds: Long): String
-    val iosSimulatorProviderNotDeclared: String
-    val iosSimulatorsNotSupported: String
-    fun appleToolFailed(command: List<String>, exitCode: Int): String
-    fun androidToolFailed(command: List<String>, exitCode: Int): String
-    fun environmentFileTracked(path: String): String
-    fun environmentFileWriteFailed(path: String, detail: String?): String
-    fun unexpectedError(detail: String?): String
+    val repositoryConfigSection: String
+    val repositoryConfigSharedNote: String
+    val repositoryConfigProvidersTitle: String
+    val repositoryConfigEnvironmentTitle: String
+    val providerGradle: String
+    val providerEmulator: String
+    val providerIosSimulator: String
+    val providerXcode: String
+    val gradleDaemonMaxHeapLabel: String
+    val gradleIdleTimeoutLabel: String
+    val gradleKotlinDaemonMaxHeapLabel: String
+    val preferredAvdLabel: String
+    val preferredDeviceLabel: String
+    val preferredRuntimeLabel: String
+    val xcodeCompilationCacheLabel: String
+    val environmentVariableNameLabel: String
+    val environmentVariableTemplateLabel: String
+    val addVariable: String
+    val removeVariable: String
+    val environmentEmpty: String
+    val envFileLabel: String
+    val envFileHelp: String
+    val templateHelpTitle: String
+    val templateHelp: List<TemplateHelp>
+    val memorySizeInvalid: String
+    val minutesInvalid: String
+    val variableNameInvalid: String
+    val variableNameDuplicate: String
+    val templateUnclosed: String
+    fun templateUnknown(placeholder: String): String
+    val envFileOutsideWorktree: String
+    val repositoryConfigUnreadableExplanation: String
+    val reloadRepositoryConfig: String
+    val machineOnlyLabel: String
+    val repositoryPreviewTitle: String
+    val repositoryPreviewMessage: String
+    val repositoryPreviewConfirm: String
+    fun repositoryConfigChanged(path: String): String
+    val menuCommandPalette: String
+    val paletteHint: String
+    val paletteNoResults: String
+    val paletteKindView: String
+    val paletteKindProject: String
+    val paletteKindWorktree: String
+    val paletteKindAction: String
+    val paletteViewActive: String
+    val paletteViewAllWorktrees: String
+    val paletteViewPreferences: String
+    val paletteCleanUp: String
+    val paletteCopyLaunchCommandHint: String
+    fun paletteNewWorktreeIn(project: String): String
+    fun paletteSettingsOf(project: String): String
 }
 
 val LocalStrings = staticCompositionLocalOf<Strings> { EnglishStrings }
 
+data class TemplateHelp(val template: String, val description: String)
+
+fun Strings.repositoryConfigIssue(issue: RepositoryConfigIssue): String = when (issue) {
+    RepositoryConfigIssue.InvalidMemorySize -> memorySizeInvalid
+    RepositoryConfigIssue.InvalidMinutes -> minutesInvalid
+    RepositoryConfigIssue.InvalidVariableName -> variableNameInvalid
+    RepositoryConfigIssue.DuplicateVariableName -> variableNameDuplicate
+    RepositoryConfigIssue.UnclosedPlaceholder -> templateUnclosed
+    is RepositoryConfigIssue.UnknownPlaceholder -> templateUnknown(issue.placeholder)
+    RepositoryConfigIssue.EnvFileOutsideWorktree -> envFileOutsideWorktree
+}
+
 fun AppLanguage.strings(): Strings = when (this) {
     AppLanguage.ENGLISH -> EnglishStrings
     AppLanguage.SPANISH -> SpanishStrings
-}
-
-fun Strings.worktreeError(error: Throwable): String = when (error) {
-    is WorktreeError -> worktreeErrorMessage(error)
-    is CommandExecutionException -> commandCouldNotStart(error.command)
-    else -> unexpectedError(error.message)
-}
-
-private fun Strings.worktreeErrorMessage(error: WorktreeError): String = when (error) {
-    is WorktreeError.BaseRepositoryNotFound -> baseRepositoryNotFound(error.path)
-    is WorktreeError.WorktreeAlreadyExists -> worktreeAlreadyExists(error.path)
-    is WorktreeError.InvalidTaskId -> invalidTaskIdError(error.rawInput)
-    is WorktreeError.SecretFileNotFound -> secretFilesNotFound(error.files, error.basePath)
-    is WorktreeError.InvalidRepositoryConfig -> invalidRepositoryConfig(error.path, error.detail)
-    is WorktreeError.RepositoryNotFound -> repositoryNotFound(error.path)
-    is WorktreeError.NotAWorktree -> notAWorktree(error.path)
-    is WorktreeError.GitCommandFailed -> gitCommandFailed(error.command, error.exitCode) +
-        if (error.errorOutput.isNotBlank()) "\n${error.errorOutput}" else ""
-    is WorktreeError.SecretCopyFailed -> secretCopyFailed(error.cause?.message)
-    is WorktreeError.ClipboardWriteFailed -> clipboardWriteFailed(error.cause?.message)
-    WorktreeError.GitLfsNotFound -> gitLfsNotFound
-    is WorktreeError.BranchNotFound -> branchNotFound(error.branch)
-    is WorktreeError.BranchAlreadyCheckedOut -> branchAlreadyCheckedOut(error.branch, error.path)
-    is WorktreeError.ProcessListingFailed -> processListingFailed(error.command, error.exitCode)
-    is WorktreeError.NoFreePort -> noFreePort(error.from, error.to)
-    is WorktreeError.NoEmulatorPort -> noEmulatorPort(error.from, error.to)
-    is WorktreeError.AndroidSdkNotFound -> androidSdkNotFound(error.checked)
-    WorktreeError.NoAvdAvailable -> noAvdAvailable
-    WorktreeError.HerdrNotInstalled -> herdrNotInstalled
-    is WorktreeError.HerdrCommandFailed -> herdrCommandFailed(error.detail)
-    is WorktreeError.EmulatorBootTimeout -> emulatorBootTimeout(error.serial, error.seconds)
-    WorktreeError.EmulatorProviderNotDeclared -> emulatorProviderNotDeclared
-    WorktreeError.NoIosRuntime -> noIosRuntime
-    is WorktreeError.SimulatorBootTimeout -> simulatorBootTimeout(error.name, error.seconds)
-    WorktreeError.IosSimulatorProviderNotDeclared -> iosSimulatorProviderNotDeclared
-    WorktreeError.IosSimulatorsNotSupported -> iosSimulatorsNotSupported
-    is WorktreeError.AppleToolFailed -> appleToolFailed(error.command, error.exitCode) +
-        if (error.output.isNotBlank()) "\n${error.output}" else ""
-    is WorktreeError.AndroidToolFailed -> androidToolFailed(error.command, error.exitCode) +
-        if (error.output.isNotBlank()) "\n${error.output}" else ""
-    is WorktreeError.EnvironmentFileTracked -> environmentFileTracked(error.path)
-    is WorktreeError.EnvironmentFileWriteFailed -> environmentFileWriteFailed(error.path, error.cause?.message)
 }

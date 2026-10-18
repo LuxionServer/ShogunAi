@@ -6,10 +6,17 @@ import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.LanguagePreferenceRepository
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
+import app.luxion.shogunai.domain.io.ShellPreferenceRepository
 import app.luxion.shogunai.domain.io.ThemePreferenceRepository
+import app.luxion.shogunai.domain.model.DaemonProcess
+import app.luxion.shogunai.domain.model.DaemonStopReport
+import app.luxion.shogunai.domain.model.DerivedDataDeletion
+import app.luxion.shogunai.domain.model.DerivedDataListing
+import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.SimulatorDevice
 import app.luxion.shogunai.domain.model.SimulatorRuntime
 import app.luxion.shogunai.domain.model.SimulatorSettings
@@ -20,6 +27,7 @@ import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.model.XcodeProvider
 import app.luxion.shogunai.domain.usecase.CheckGradleBuildCacheUseCase
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
+import app.luxion.shogunai.domain.usecase.CloseHerdrWorkspacesUseCase
 import app.luxion.shogunai.domain.usecase.CopyWorktreeLaunchCommandUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
@@ -43,6 +51,8 @@ import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.RepairWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
+import app.luxion.shogunai.domain.usecase.ResolveRepositoryUseCase
+import app.luxion.shogunai.ui.projectconfig.RepositoryInspection
 import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.StartWorktreeEmulatorUseCase
 import app.luxion.shogunai.domain.usecase.StartWorktreeSimulatorUseCase
@@ -57,6 +67,7 @@ import app.luxion.shogunai.infrastructure.HerdrConfigFile
 import app.luxion.shogunai.infrastructure.JsonLanguagePreferenceRepository
 import app.luxion.shogunai.infrastructure.JsonProjectRepository
 import app.luxion.shogunai.infrastructure.JsonSettingsFile
+import app.luxion.shogunai.infrastructure.JsonShellPreferenceRepository
 import app.luxion.shogunai.infrastructure.JsonThemePreferenceRepository
 import app.luxion.shogunai.infrastructure.LocalAndroidSdk
 import app.luxion.shogunai.infrastructure.MacDerivedDataSource
@@ -74,6 +85,7 @@ class AppContainer {
     private val settingsFile = JsonSettingsFile()
     val themePreferenceRepository: ThemePreferenceRepository = JsonThemePreferenceRepository(settingsFile)
     val languagePreferenceRepository: LanguagePreferenceRepository = JsonLanguagePreferenceRepository(settingsFile)
+    val shellPreferenceRepository: ShellPreferenceRepository = JsonShellPreferenceRepository(settingsFile)
     private val fileManager: FileManager = NioFileManager()
     private val shellCommandExecutor: ShellCommandExecutor = ProcessBuilderShellCommandExecutor()
     private val clipboardWriter: ClipboardWriter = AwtClipboardWriter()
@@ -146,13 +158,43 @@ class AppContainer {
     suspend fun loadAvds(repositoryPath: String): Result<List<String>> =
         runCatching { androidSdk.listAvds(androidSdk.locate(repositoryPath)) }
 
+    suspend fun inspectRepository(folder: String): Result<RepositoryInspection> =
+        ResolveRepositoryUseCase(shellCommandExecutor)(folder).map { topLevel ->
+            val config = ProjectConfig(baseRepositoryPath = topLevel, worktreesRoot = "", secretFiles = emptyList())
+            val mainBranch = ResolveMainBranchUseCase(config, shellCommandExecutor)().getOrNull()
+            RepositoryInspection(topLevel, mainBranch?.name)
+        }
+
+    val detectRunningAgents = DetectRunningAgentsUseCase(shellCommandExecutor)
+
     private val prepareEnvironment = PrepareWorktreeEnvironmentUseCase(
         resolveEnvironment,
         WriteEnvironmentFileUseCase(shellCommandExecutor, fileManager, repositoryProvisioningSource),
     )
 
+    val machineUseCases = MachineUseCases(
+        listDaemons = { runCatching { gradleDaemonSource.list() } },
+        stopDaemons = { pids -> StopGradleDaemonsUseCase(gradleDaemonSource, shellCommandExecutor)(pids) },
+        listDerivedData = { includeCompilationCache -> ListDerivedDataUseCase(derivedDataSource)(emptyList(), includeCompilationCache) },
+        deleteOrphanedDerivedData = { DeleteOrphanedDerivedDataUseCase(derivedDataSource)() },
+        readEmulatorStates = { config, worktrees -> readEmulatorStates(config, worktrees) },
+        readRunningEmulators = { config ->
+            runCatching { androidSdk.deviceStates(androidSdk.locate(config.baseRepositoryPath)) }
+        },
+        startEmulator = { config, worktreePath -> startEmulator(config, worktreePath) },
+        stopEmulator = { config, worktreePath -> stopEmulator(config, worktreePath) },
+        stopEmulatorSerials = { config, serials -> runCatching { stopEmulator.stopSerials(config, serials) } },
+        readSimulatorStates = { config, worktrees -> readSimulatorStates(config, worktrees) },
+        startSimulator = { config, worktreePath -> startSimulator(config, worktreePath) },
+        stopSimulator = { config, worktreePath -> stopSimulator(config, worktreePath) },
+        readSimulatorOrphans = { config -> deleteSimulators.orphans(config) },
+        deleteSimulators = { udids -> deleteSimulators(udids) },
+    )
+
+    val pathExists: (String) -> Boolean = fileManager::exists
+
     fun worktreeUseCases(config: ProjectConfig): WorktreeUseCases = WorktreeUseCases(
-        list = ListWorktreesUseCase(config, shellCommandExecutor),
+        list = ListWorktreesUseCase(config, shellCommandExecutor, fileManager),
         create = CreateWorktreeUseCase(config, shellCommandExecutor, fileManager, repositoryProvisioningSource, prepareEnvironment),
         createFromBranch = CreateWorktreeFromBranchUseCase(
             config,
@@ -162,13 +204,13 @@ class AppContainer {
             prepareEnvironment,
         ),
         listLocalBranches = ListLocalBranchesUseCase(config, shellCommandExecutor),
-        remove = RemoveWorktreeUseCase(config, shellCommandExecutor),
+        remove = RemoveWorktreeUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient)),
         copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboardWriter),
         repair = RepairWorktreesUseCase(config, shellCommandExecutor, fileManager),
         resolveMainBranch = ResolveMainBranchUseCase(config, shellCommandExecutor),
         readStatus = ReadWorktreeStatusUseCase(shellCommandExecutor),
-        cleanUp = CleanUpWorktreesUseCase(config, shellCommandExecutor),
-        detectAgents = DetectRunningAgentsUseCase(config, shellCommandExecutor),
+        cleanUp = CleanUpWorktreesUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient)),
+        detectAgents = { worktrees -> detectRunningAgents(config, worktrees) },
         measureSize = MeasureWorktreeSizeUseCase(fileManager),
         readFingerprint = ReadGitMetadataFingerprintUseCase(config, fileManager),
         readPorts = { worktree ->
@@ -195,6 +237,7 @@ class AppContainer {
         herdr = HerdrUseCases(
             worktreesRoot = { runCatching { herdrConfig.worktreesRoot() }.getOrNull() },
             open = OpenWorktreeInHerdrUseCase(config, herdrClient, resolveEnvironment)::invoke,
+            openWorkspaces = CloseHerdrWorkspacesUseCase(config, herdrClient)::openWorkspaces,
         ),
         gradle = GradleUseCases(
             provider = {
@@ -226,7 +269,7 @@ data class WorktreeUseCases(
     val resolveMainBranch: ResolveMainBranchUseCase,
     val readStatus: ReadWorktreeStatusUseCase,
     val cleanUp: CleanUpWorktreesUseCase,
-    val detectAgents: DetectRunningAgentsUseCase,
+    val detectAgents: suspend (List<Worktree>) -> Result<Map<String, List<RunningAgent>>>,
     val measureSize: MeasureWorktreeSizeUseCase,
     val readFingerprint: ReadGitMetadataFingerprintUseCase,
     val readPorts: suspend (Worktree) -> Result<Map<String, Int>>,
@@ -235,6 +278,23 @@ data class WorktreeUseCases(
     val gradle: GradleUseCases,
     val xcode: XcodeUseCases,
     val herdr: HerdrUseCases = HerdrUseCases.NONE,
+)
+
+class MachineUseCases(
+    val listDaemons: suspend () -> Result<List<DaemonProcess>>,
+    val stopDaemons: suspend (List<Long>?) -> Result<DaemonStopReport>,
+    val listDerivedData: suspend (includeCompilationCache: Boolean) -> Result<DerivedDataListing>,
+    val deleteOrphanedDerivedData: suspend () -> Result<DerivedDataDeletion>,
+    val readEmulatorStates: suspend (ProjectConfig, List<Worktree>) -> Result<Map<String, WorktreeEmulator>>,
+    val readRunningEmulators: suspend (ProjectConfig) -> Result<Map<String, EmulatorState>>,
+    val startEmulator: suspend (ProjectConfig, String) -> Result<WorktreeEmulator>,
+    val stopEmulator: suspend (ProjectConfig, String) -> Result<WorktreeEmulator?>,
+    val stopEmulatorSerials: suspend (ProjectConfig, List<String>) -> Result<List<WorktreeEmulator>>,
+    val readSimulatorStates: suspend (ProjectConfig, List<Worktree>) -> Result<Map<String, WorktreeSimulator>>,
+    val startSimulator: suspend (ProjectConfig, String) -> Result<WorktreeSimulator>,
+    val stopSimulator: suspend (ProjectConfig, String) -> Result<WorktreeSimulator?>,
+    val readSimulatorOrphans: suspend (ProjectConfig) -> Result<List<SimulatorDevice>>,
+    val deleteSimulators: suspend (List<String>) -> Result<List<String>>,
 )
 
 data class SimulatorUseCases(
@@ -260,6 +320,7 @@ data class SimulatorUseCases(
 data class HerdrUseCases(
     val worktreesRoot: () -> String?,
     val open: suspend (Worktree) -> Result<HerdrOpening>,
+    val openWorkspaces: suspend (List<String>) -> Map<String, String> = { emptyMap() },
 ) {
     companion object {
         val NONE = HerdrUseCases(

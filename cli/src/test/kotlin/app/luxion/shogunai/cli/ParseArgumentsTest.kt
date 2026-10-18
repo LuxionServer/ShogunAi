@@ -45,16 +45,23 @@ class ParseArgumentsTest {
     }
 
     @Test
+    fun `new with an explicit start point`() {
+        assertEquals(CliCommand.New(taskId = "TASK-123", from = "epic/redesign"), command("new", "TASK-123", "--from", "epic/redesign"))
+    }
+
+    @Test
     fun `new rejects missing or conflicting targets`() {
         assertTrue(usageError("new").contains("task id"))
         assertTrue(usageError("new", "TASK-1", "--branch", "main").contains("not both"))
         assertTrue(usageError("new", "TASK-1", "TASK-2").contains("single task id"))
         assertTrue(usageError("new", "--branch", "main", "--fix").contains("--fix"))
+        assertTrue(usageError("new", "--branch", "main", "--from", "develop").contains("--from"))
     }
 
     @Test
     fun `options that need a value reject a missing one`() {
         assertEquals("--branch needs a value", usageError("new", "--branch"))
+        assertEquals("--from needs a value", usageError("new", "TASK-1", "--from"))
         assertEquals("--worktrees-root needs a value", usageError("new", "TASK-1", "--worktrees-root", "--fix"))
     }
 
@@ -72,9 +79,19 @@ class ParseArgumentsTest {
     }
 
     @Test
-    fun `status takes no arguments`() {
-        assertEquals(CliCommand.Status, command("status"))
-        assertEquals("'status' takes no arguments, got '--json'", usageError("status", "--json"))
+    fun `provision check with and without a path`() {
+        assertEquals(CliCommand.Provision(check = true), command("provision", "--check"))
+        assertEquals(CliCommand.Provision("../TASK-123", check = true), command("provision", "--check", "../TASK-123"))
+        assertEquals(CliCommand.Provision("../TASK-123", check = true), command("provision", "../TASK-123", "--check"))
+        assertTrue(usageError("provision", "--check", "a", "b").contains("at most one path"))
+    }
+
+    @Test
+    fun `status takes only the json flag`() {
+        assertEquals(CliCommand.Status(), command("status"))
+        assertEquals(CliCommand.Status(json = true), command("status", "--json"))
+        assertEquals("unknown option '--yaml' for 'status'", usageError("status", "--yaml"))
+        assertEquals("'status' takes no arguments, got 'extra'", usageError("status", "extra"))
     }
 
     @Test

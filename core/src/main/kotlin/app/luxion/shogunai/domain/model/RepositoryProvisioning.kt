@@ -2,6 +2,8 @@ package app.luxion.shogunai.domain.model
 
 data class RepositoryProvisioning(
     val copyPatterns: List<String> = emptyList(),
+    val linkPatterns: List<String> = emptyList(),
+    val postCreateCommands: List<List<String>> = emptyList(),
     val worktreeIncludePatterns: List<String> = emptyList(),
     val providers: RepositoryProviders = RepositoryProviders(),
     val environment: EnvironmentDeclaration = EnvironmentDeclaration(),
@@ -36,3 +38,11 @@ data class EmulatorProvider(val preferredAvd: String? = null)
 data class IosSimulatorProvider(val device: String? = null, val runtime: String? = null)
 
 data class XcodeProvider(val compilationCache: Boolean = false)
+
+enum class ProvisionMode { COPIED, LINKED, COPIED_INSTEAD_OF_LINKING }
+
+data class ProvisionedFile(val path: String, val mode: ProvisionMode)
+
+enum class ProvisionDriftState { MISSING, DIFFERS, NOT_LINKED }
+
+data class ProvisionDrift(val path: String, val state: ProvisionDriftState)

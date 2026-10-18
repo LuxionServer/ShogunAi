@@ -7,6 +7,8 @@ import kotlin.io.path.writeBytes
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class NioFileManagerTest {
 
@@ -84,5 +86,49 @@ class NioFileManagerTest {
         )
         assertEquals(listOf(head.toString()), fileManager.modificationStamps(head.toString()).map { it.first })
         assertEquals(emptyList(), fileManager.modificationStamps(root.resolve("missing").toString()))
+    }
+
+    @Test
+    fun `creates a symbolic link replacing an existing file and creating folders`() {
+        val target = root.resolve("base/.env")
+        target.parent.createDirectories()
+        Files.writeString(target, "KEY=1")
+        val link = root.resolve("worktree/config/.env")
+        link.parent.createDirectories()
+        Files.writeString(link, "OLD")
+
+        fileManager.createSymbolicLink(target.toString(), link.toString())
+
+        assertTrue(Files.isSymbolicLink(link))
+        assertEquals("KEY=1", Files.readString(link))
+        assertTrue(fileManager.isSymbolicLinkTo(link.toString(), target.toString()))
+    }
+
+    @Test
+    fun `a regular file or a link to another file isn't a symbolic link to the target`() {
+        val target = root.resolve("base.env")
+        val other = root.resolve("other.env")
+        val regular = root.resolve("regular.env")
+        val linkToOther = root.resolve("link.env")
+        listOf(target, other, regular).forEach { Files.writeString(it, "KEY=1") }
+        Files.createSymbolicLink(linkToOther, other)
+
+        assertFalse(fileManager.isSymbolicLinkTo(regular.toString(), target.toString()))
+        assertFalse(fileManager.isSymbolicLinkTo(linkToOther.toString(), target.toString()))
+        assertFalse(fileManager.isSymbolicLinkTo(root.resolve("missing").toString(), target.toString()))
+    }
+
+    @Test
+    fun `compares the content of two files`() {
+        val first = root.resolve("first")
+        val second = root.resolve("second")
+        val third = root.resolve("third")
+        Files.writeString(first, "KEY=1")
+        Files.writeString(second, "KEY=1")
+        Files.writeString(third, "KEY=2")
+
+        assertTrue(fileManager.hasSameContent(first.toString(), second.toString()))
+        assertFalse(fileManager.hasSameContent(first.toString(), third.toString()))
+        assertFalse(fileManager.hasSameContent(first.toString(), root.resolve("missing").toString()))
     }
 }

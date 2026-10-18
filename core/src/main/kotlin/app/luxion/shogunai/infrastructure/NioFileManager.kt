@@ -1,7 +1,9 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.io.FileManager
+import app.luxion.shogunai.domain.io.SymbolicLinksNotSupported
 import java.io.IOException
+import java.nio.file.FileSystemException
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -25,6 +27,31 @@ class NioFileManager : FileManager {
             StandardCopyOption.COPY_ATTRIBUTES,
         )
     }
+
+    override fun createSymbolicLink(target: String, link: String) {
+        val linkPath = Path.of(link)
+        linkPath.parent?.let { Files.createDirectories(it) }
+        Files.deleteIfExists(linkPath)
+        try {
+            Files.createSymbolicLink(linkPath, Path.of(target))
+        } catch (error: UnsupportedOperationException) {
+            throw SymbolicLinksNotSupported(error)
+        } catch (error: FileSystemException) {
+            if (error.javaClass == FileSystemException::class.java && error.reason?.contains("privilege") == true) {
+                throw SymbolicLinksNotSupported(error)
+            }
+            throw error
+        }
+    }
+
+    override fun isSymbolicLinkTo(link: String, target: String): Boolean {
+        val linkPath = Path.of(link)
+        if (!Files.isSymbolicLink(linkPath)) return false
+        return runCatching { Files.isSameFile(linkPath, Path.of(target)) }.getOrDefault(false)
+    }
+
+    override fun hasSameContent(first: String, second: String): Boolean =
+        runCatching { Files.mismatch(Path.of(first), Path.of(second)) == -1L }.getOrDefault(false)
 
     override fun isDirectory(path: String): Boolean = Files.isDirectory(Path.of(path))
 
