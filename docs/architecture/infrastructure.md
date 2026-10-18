@@ -15,7 +15,7 @@ Implementation of `ShellCommandExecutor` on top of `ProcessBuilder`. Robustness 
 
 ## `NioFileManager`
 
-Implementation of `FileManager` on top of `java.nio.file`. `copy` creates the destination's missing parent folders and uses `REPLACE_EXISTING` and `COPY_ATTRIBUTES`. `directorySize` walks the tree with `Files.walkFileTree` without following symlinks, adds up regular file sizes, skips the excluded folders and ignores files it can't read. `modificationStamps` walks the same way and records each entry's last-modified time. `readProperties` loads the file with `java.util.Properties`. Works the same on every supported OS.
+Implementation of `FileManager` on top of `java.nio.file`. `copy` creates the destination's missing parent folders and uses `REPLACE_EXISTING` and `COPY_ATTRIBUTES`. `directorySize` walks the tree with `Files.walkFileTree` without following symlinks, adds up regular file sizes, skips the excluded folders and ignores files it can't read. `modificationStamps` walks the same way and records each entry's last-modified time. `readProperties` loads the file with `java.util.Properties`. `writeText` creates the missing parent folders and writes atomically (temporary file in the same folder, then `ATOMIC_MOVE`); `readText` returns `null` for anything that isn't a readable regular file; `isDirectory` wraps `Files.isDirectory`. Works the same on every supported OS.
 
 ## `NioEnvironmentStateStore` / `SocketPortProbe`
 
@@ -69,7 +69,7 @@ Implementation of `DerivedDataSource` for macOS (`isSupported` checks `os.name`)
 
 Implementation of `RepositoryProvisioningSource` on `java.nio.file` and `kotlinx.serialization`, over `<repo>/.shogunai.json` and `<repo>/.worktreeinclude`.
 
-- **Reading**: a missing or blank `.shogunai.json` means no patterns. The file is parsed as a generic JSON object, so unknown fields are ignored; invalid JSON, a non-object root, a `copy` that isn't a list of strings, or a `providers` (or a known provider in it) that isn't an object throw `InvalidRepositoryConfig`. Unknown provider ids are skipped. `env` must be an object of strings whose templates parse (`parseEnvironmentVariable`), and `envFile` a string with a relative path that doesn't leave the worktree once normalized.
+- **Reading**: a missing or blank `.shogunai.json` means no patterns. The file is parsed as a generic JSON object, so unknown fields are ignored; invalid JSON, a non-object root, a `copy` that isn't a list of strings, or a `providers` (or a known provider in it) that isn't an object throw `InvalidRepositoryConfig`. Unknown provider ids are skipped. `env` must be an object of strings whose templates parse (`parseEnvironmentVariable`), and `envFile` a string with a relative path that doesn't leave the worktree once normalized. Provider options are checked by type: Gradle memory sizes match `[0-9]+[kKmMgG]`, `idleTimeoutMinutes` is a positive JSON number (not a string), the emulator's and simulator's names are non-empty strings and Xcode's `compilationCache` is a boolean. The user-facing summary of these rules is in [Configuration](../guide/configuration.md#repository-configuration-shogunaijson).
 - **Writing** (`addCopyPatterns`): reads the object, replaces only `copy` (existing patterns first, new ones appended without duplicates) and writes it back pretty-printed, atomically (temporary file in the same folder + `ATOMIC_MOVE`), so other fields survive. It refuses to rewrite a file it can't parse.
 
 Pattern matching is left to Git (`git ls-files --others --ignored -z -x <pattern>…`, see the domain's `CreateWorktreeUseCase`), so it follows the gitignore rules exactly, including their limits: a file can't be re-included with `!` if its parent folder is excluded (`.idea/` + `!.idea/workspace.xml` still lists `workspace.xml`; use `.idea/*` instead). Try a pattern from the base repository with the same command:
@@ -93,9 +93,13 @@ In `desktopApp`. Implementation of `ClipboardWriter` with AWT's system clipboard
 - **Each save only rewrites its own field**: `update` reads the current contents, applies the change and writes the whole file atomically (same pattern as `JsonProjectRepository`). Changing the language doesn't overwrite the theme and vice versa.
 - **Defaults**: `SYSTEM` for the theme and `ENGLISH` for the language when the file is missing, empty or unparseable. Files written by older versions (only `themeMode`) are read fine: the language takes its default.
 
+## Machine files
+
+Every file ShogunAi stores on the machine, and what each is for, is listed in [Configuration › Machine files](../guide/configuration.md#machine-files-shogunai): the catalog and preferences above, the port reservation index and lock (`NioEnvironmentStateStore`), the emulator logs (`LocalAndroidSdk`) and the Xcode compilation cache settings.
+
 ## Test doubles
 
-In `core/src/testFixtures/kotlin/app/luxion/shogunai/domain/`, `core`'s test fixtures, used by `core`'s tests and by `desktopApp`'s tests (`testImplementation(testFixtures(project(":core")))`):
+In `core/src/testFixtures/kotlin/app/luxion/shogunai/domain/`, `core`'s test fixtures, used by the tests of `core`, `cli` and `desktopApp` (`testImplementation(testFixtures(project(":core")))`):
 
 - `FakeShellCommandExecutor` — substitutes `ShellCommandExecutor`: answers each argv with a canned `CommandResult` and records the commands run.
 - `FakeFileManager` — substitutes `FileManager` with an in-memory set of existing paths and properties files.
@@ -110,4 +114,4 @@ In `core/src/testFixtures/kotlin/app/luxion/shogunai/domain/`, `core`'s test fix
 - `FakeProjectRepository` — substitutes `ProjectRepository` in ViewModel tests.
 - `FakeRepositoryProvisioningSource` — substitutes `RepositoryProvisioningSource` with provisioning per repository path, unreadable repositories and failing writes, and records the patterns added.
 
-Thanks to the domain depending on interfaces, the use case tests (`*UseCaseTest`) and the ViewModel tests don't touch disk or launch real processes. The infrastructure itself is covered by `ProcessBuilderShellCommandExecutorTest`, `JsonProjectRepositoryTest`, `JsonSettingsFileTest`, `RepositoryProvisioningFilesTest`, `NioEnvironmentStateStoreTest` (temporary directories and a real listening socket), `LocalAndroidSdkTest` (SDK lookup order, real `adb devices` output, the built start command), `SimctlAppleSimulatorsTest` (real `simctl` JSON), `FileKmpTestWiringTest` (temporary repositories and Gradle user home) and `ProcessGradleDaemonSourceTest` (on real `ps` lines and daemon log excerpts), which do use real processes and temporary files.
+Thanks to the domain depending on interfaces, the use case tests (`*UseCaseTest`) and the ViewModel tests don't touch disk or launch real processes. The infrastructure itself is covered by `ProcessBuilderShellCommandExecutorTest`, `JsonProjectRepositoryTest`, `JsonSettingsFileTest`, `RepositoryProvisioningFilesTest`, `NioEnvironmentStateStoreTest` (temporary directories and a real listening socket), `LocalAndroidSdkTest` (SDK lookup order, real `adb devices` output, the built start command), `SimctlAppleSimulatorsTest` (real `simctl` JSON), `FileKmpTestWiringTest` (temporary repositories and Gradle user home), `ProcessGradleDaemonSourceTest` (on real `ps` lines and daemon log excerpts), `NioFileManagerTest`, `MacDerivedDataSourceTest`, `HerdrConfigFileTest` and `CliHerdrClientTest`, which do use real processes and temporary files.

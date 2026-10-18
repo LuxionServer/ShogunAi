@@ -1,0 +1,150 @@
+# Referencia de la línea de comandos
+
+`shogun` ejecuta las operaciones de worktrees de ShogunAi desde un terminal, un script o un hook de agente. Trabaja sobre el repositorio Git que contiene el directorio actual (el checkout principal, una subcarpeta o cualquiera de sus worktrees), y usa el proyecto de ese repositorio en la app de escritorio si lo hay: su carpeta de worktrees, sus archivos locales y su rama principal. Consulta [Instalación](installation.md#el-comando-shogun) para tenerlo en el `PATH`.
+
+```bash
+shogun new TASK-123                # worktree nuevo en feature/TASK-123, provisionado; imprime su ruta
+shogun new --branch hotfix/login   # worktree para una rama existente
+shogun provision ../otro-worktree  # copia los archivos declarados en un worktree creado por otra herramienta
+shogun status                      # todos los worktrees con sus cambios, divergencia y si están mergeados
+shogun clean --yes                 # elimina los worktrees mergeados o sin carpeta (sin --yes solo los lista)
+eval "$(shogun env)"               # carga las variables de este worktree desde "env" en .shogunai.json
+```
+
+La salida es texto plano en inglés; por ahora solo la línea única de `new` está pensada para que la lean scripts.
+
+## Códigos de salida
+
+| Código | Significado |
+|---|---|
+| `0` | Éxito. |
+| `1` | La operación falló; el motivo va a la salida de error. |
+| `2` | Uso incorrecto: comando u opción desconocidos, argumento que falta, o entrada de un hook que no es el JSON esperado. |
+
+## Worktrees
+
+### `new`
+
+```text
+shogun new <task-id> [--fix] [--from <ref>] [--worktrees-root <dir>]
+shogun new --branch <branch> [--worktrees-root <dir>]
+```
+
+Crea un worktree, copia en él los archivos declarados, prepara su [entorno](../agents.md#entorno-por-worktree) e imprime su ruta absoluta, sola en la salida estándar, así que `cd "$(shogun new TASK-123)"` funciona.
+
+- Con un id de tarea, el worktree recibe una rama nueva `feature/<task-id>`, o `fix/<task-id>` con `--fix`. La rama parte del HEAD del worktree donde ejecutas el comando, o de `--from <ref>` (una rama, tag o commit; una referencia desconocida falla antes de crear nada).
+- Con `--branch`, el worktree hace checkout de una rama local existente. `--fix` y `--from` no se aceptan con ella.
+- `--worktrees-root <dir>` indica dónde va el worktree. Es obligatorio cuando el repositorio no tiene proyecto en la app de escritorio; las rutas relativas se resuelven desde el directorio actual.
+
+### `provision`
+
+```text
+shogun provision [<path>]
+```
+
+Copia los archivos locales del proyecto y los archivos declarados del repositorio en un worktree existente (por defecto, el directorio actual), reserva sus puertos y escribe su `envFile`. Úsalo con worktrees creados por otra herramienta. Imprime una ruta copiada por línea.
+
+### `status`
+
+Lista todos los worktrees del repositorio, uno por línea: ruta, rama (o `(detached)`) y después detalles:
+
+| Detalle | Significado |
+|---|---|
+| `main` | El checkout principal. |
+| `origin=shogunai\|claude-code\|herdr\|other` | Dónde se creó el worktree. |
+| `locked` | Lo retiene una sesión de agente. |
+| `changes=N` | Cambios sin commitear. |
+| `ahead=N behind=N` | Divergencia respecto a su upstream. |
+| `merged` | Mergeado en la rama principal. |
+| `folder-missing` | Su carpeta se borró a mano. |
+| `status-unavailable` | No se pudo leer su estado. |
+
+### `clean`
+
+```text
+shogun clean [--yes|-y] [--delete-branches] [--stop-gradle-daemons] [--stop-emulators]
+             [--delete-simulators] [--delete-derived-data]
+```
+
+Selecciona los mismos worktrees que "Limpiar" en la app de escritorio: ni el principal ni los bloqueados, y o bien mergeados sin cambios sin commitear o bien sin carpeta. Sin `--yes` solo lista lo que haría (`would remove …`); con `--yes` lo hace (`removed …`). Si no hay nada que hacer imprime `Nothing to clean up.`
+
+| Opción | Además… |
+|---|---|
+| `--delete-branches` | Borra las ramas de los worktrees eliminados si están mergeadas (`kept branch …` si no). |
+| `--stop-gradle-daemons` | Para los daemons de Gradle ociosos cuya última build fue en un worktree eliminado. |
+| `--stop-emulators` | Para los emuladores de Android de los worktrees eliminados. |
+| `--delete-simulators` | Borra los simuladores de iOS de los worktrees eliminados y los simuladores de ShogunAi huérfanos. |
+| `--delete-derived-data` | Borra los DerivedData de Xcode huérfanos, incluidas las carpetas de los worktrees eliminados. |
+
+También se cierran los espacios de trabajo de Herdr de los worktrees eliminados (`would close Herdr workspace of …` en el listado). Un daemon, emulador o espacio de Herdr que no se puede parar o cerrar se indica en la salida de error sin cambiar el código de salida.
+
+## Entorno
+
+### `env`
+
+```text
+shogun env [<path>] [--format sh|dotenv|json]
+```
+
+Imprime el entorno del worktree que contiene la ruta (o el directorio actual), a partir de `env` en `.shogunai.json` y de los providers, reservando sus puertos la primera vez. `sh` (por defecto) imprime líneas `export NOMBRE='valor'` para `eval "$(shogun env)"`; `dotenv` y `json` sirven para otras herramientas. Un entorno vacío no imprime nada.
+
+## Providers
+
+Estos comandos actúan sobre los [providers](providers.md) que un repositorio declara en `.shogunai.json`. Cuando un comando necesita un provider que el repositorio no declara, lo dice y sale con `1`.
+
+### `gradle`
+
+```text
+shogun gradle
+shogun gradle stop [<pid>...]
+```
+
+`gradle` lista los daemons de Gradle y Kotlin de la máquina: pid, tipo y versión, `memory=`, `state=busy|idle|unknown` (con `idle-for=`) y `worktree=<path>|removed|other-project`, y después el total (`No Gradle or Kotlin daemons running.` si no hay ninguno). Funciona también fuera de un repositorio. Dentro de un repositorio Gradle sin la caché de build de Gradle, termina con un aviso.
+
+`gradle stop` para todos los daemons ociosos, o solo los ids de proceso indicados; los ocupados y los de estado desconocido se conservan (`kept <pid> … (<motivo>)`). Un pid que no es un daemon sale con `1`.
+
+### `emulator`
+
+```text
+shogun emulator start|stop|status [<path>] [--avd <name>] [--no-window]
+```
+
+Arranca (y espera a), para o muestra el emulador de Android del worktree. `--avd` y `--no-window` solo se aplican a `start` y sustituyen los ajustes del proyecto en ese arranque. `status` imprime `emulator-5556 running|booting|stopped`.
+
+### `simulator`
+
+```text
+shogun simulator start|stop|status [<path>] [--device <type>] [--runtime <runtime>]
+shogun simulator gradle-init install|uninstall [--yes|-y]
+```
+
+Crea si hace falta, arranca (y espera a) y abre, apaga o muestra el simulador de iOS del worktree (solo macOS). `--device` y `--runtime` solo se aplican cuando `start` crea el simulador. En un repositorio Kotlin Multiplatform, `status` dice además si los tests de KMP usan el simulador.
+
+`gradle-init install` instala un init script de Gradle para toda la máquina que hace que los tests de simulador KMP de todos los proyectos usen el simulador del worktree; muestra el script y pregunta `[y/N]` salvo con `--yes`. `uninstall` lo elimina.
+
+### `xcode`
+
+```text
+shogun xcode
+shogun xcode clean
+```
+
+`xcode` lista las carpetas de DerivedData de los worktrees del repositorio con su tamaño, las carpetas huérfanas de la máquina (`orphans: N (tamaño)`) y, cuando se declara la caché de compilación, su tamaño. `xcode clean` borra las carpetas huérfanas (`deleted <path>`, `freed <tamaño>`, o `Nothing to delete.`). Sin el provider de Xcode, o fuera de macOS, dice que el provider no está activo y sale con `0`.
+
+## Hooks de agentes
+
+Estos comandos están pensados para que los llamen agentes y herramientas, no para escribirlos a mano. Cómo configurarlos está en [Uso con agentes](../agents.md).
+
+| Comando | Lo llama |
+|---|---|
+| `shogun hook worktree-create` | El hook `WorktreeCreate` de Claude Code. Lee `name` y `cwd` de la entrada estándar, crea (o reutiliza) un worktree provisionado en `feature/<name>` que parte del HEAD del worktree de `cwd`, e imprime su ruta. |
+| `shogun hook worktree-remove` | El hook `WorktreeRemove` de Claude Code. Elimina el worktree de `worktree_path`, borra su rama solo si está mergeada y cierra su espacio de Herdr. |
+| `shogun hook session-start` | El hook `SessionStart` de Claude Code. Añade el entorno del worktree a `CLAUDE_ENV_FILE` y le dice a Claude qué valores usa. |
+| `shogun hook herdr` | El plugin de ShogunAi para Herdr, en `worktree.created` (provisiona el worktree) y `worktree.removed` (borra su rama si está mergeada). Lee `HERDR_PLUGIN_EVENT`, `HERDR_PLUGIN_EVENT_JSON` y `HERDR_BIN_PATH`. |
+
+## Ayuda y versión
+
+| Comando | Imprime |
+|---|---|
+| `shogun help`, `-h`, `--help` | El resumen de uso. |
+| `shogun version`, `-v`, `--version` | `shogun <versión>`, la misma versión que la app. |

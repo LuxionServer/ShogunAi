@@ -7,6 +7,8 @@ Guide to cloning the repo, running the project for the first time, and knowing w
 - **JDK 21** — Gradle uses toolchains (`gradle/gradle-daemon-jvm.properties`) and downloads it automatically if you don't have it installed.
 - **Git**.
 - (Optional) IntelliJ IDEA or Android Studio with the Kotlin Multiplatform plugin, to use the IDE's run configurations.
+- (Optional) Python 3 and pip, to serve this documentation.
+- (Optional) The tools some features use at runtime (Android SDK, Xcode, Herdr…), listed in [Installation › Optional tools](guide/installation.md#optional-tools).
 
 ## Clone and build
 
@@ -38,9 +40,11 @@ The project is a Kotlin/JVM desktop app built with Compose Multiplatform, plus t
 ```
 core/src/main/kotlin/app/luxion/shogunai/
 ├── domain/           # models, ports (interfaces), and use cases
-└── infrastructure/   # concrete implementations of the ports (Git, filesystem)
+└── infrastructure/   # implementations of the ports: processes, files, JSON settings, Android SDK, simctl, Herdr…
+core/build/generated/buildInfo/  # BuildInfo.VERSION, generated from the Gradle version
 
 desktopApp/src/main/kotlin/app/luxion/shogunai/
+├── infrastructure/   # AwtClipboardWriter, the only port that needs the desktop toolkit
 ├── ui/               # Compose screens, ViewModels, and navigation
 ├── AppContainer.kt   # wires domain + infrastructure, no DI framework
 └── main.kt           # entry point
