@@ -312,6 +312,8 @@ object SpanishStrings : Strings {
     override fun monthsAgo(count: Long) = if (count == 1L) "hace 1 mes" else "hace $count meses"
     override fun yearsAgo(count: Long) = if (count == 1L) "hace 1 año" else "hace $count años"
     override val copied = "Copiado"
+    override val close = "Cerrar"
+    override val worktreeCreatedWithError = "El worktree se creó, pero falló su comando posterior a la creación."
     override val copyCommand = "Copiar comando"
     override val copyLaunchCommand = "Copiar comando de lanzamiento"
     override fun worktreeCreated(folder: String) = "Worktree creado: $folder"

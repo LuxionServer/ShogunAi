@@ -4,6 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
@@ -63,5 +64,34 @@ class CommandPaletteUiTest {
         onNode(hasSetTextAction()).performKeyInput { pressKey(Key.Enter) }
 
         assertEquals(emptyList(), ran)
+    }
+
+    @Test
+    fun `editing the query after scrolling shows the first results`() = runComposeUiTest {
+        val many = (1..30).map {
+            PaletteItem(
+                id = "view:$it",
+                kind = PaletteKind.VIEW,
+                title = "item-%02d".format(it),
+                keys = listOf("item-%02d".format(it)),
+                primary = PaletteAction.Open(ShellDestination.Active),
+            )
+        }
+        setContent { MaterialTheme { CommandPalette(many, many.map { it.id }, { _, _ -> }, {}) } }
+
+        onNode(hasSetTextAction()).performKeyInput { repeat(20) { pressKey(Key.DirectionDown) } }
+        onNode(hasSetTextAction()).performTextInput("item")
+        waitForIdle()
+
+        onNodeWithText("item-01").assertIsDisplayed()
+    }
+
+    @Test
+    fun `the search field is focused as soon as the palette is composed`() = runComposeUiTest {
+        setContent {
+            MaterialTheme { CommandPalette(listOf(project, worktree), emptyList(), { _, _ -> }, {}) }
+        }
+
+        onNode(hasSetTextAction()).assertIsFocused()
     }
 }

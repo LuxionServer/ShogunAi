@@ -311,6 +311,8 @@ object EnglishStrings : Strings {
     override fun monthsAgo(count: Long) = if (count == 1L) "1 month ago" else "$count months ago"
     override fun yearsAgo(count: Long) = if (count == 1L) "1 year ago" else "$count years ago"
     override val copied = "Copied"
+    override val close = "Close"
+    override val worktreeCreatedWithError = "The worktree was created, but its post-creation command failed."
     override val copyCommand = "Copy command"
     override val copyLaunchCommand = "Copy launch command"
     override fun worktreeCreated(folder: String) = "Worktree created: $folder"

@@ -147,10 +147,15 @@ class ProjectWorktreesTest {
     private fun useCasesWithFiles(fileManager: FakeFileManager, responder: (List<String>) -> CommandResult): WorktreeUseCases =
         useCasesWith(FakeShellCommandExecutor(responder), fileManager)
 
-    private fun useCasesWith(executor: ShellCommandExecutor, fileManager: FakeFileManager = FakeFileManager()): WorktreeUseCases {
+    private fun useCasesWith(
+        executor: ShellCommandExecutor,
+        fileManager: FakeFileManager = FakeFileManager(),
+        provisioning: FakeRepositoryProvisioningSource = FakeRepositoryProvisioningSource(),
+        createFiles: FakeFileManager = FakeFileManager(),
+    ): WorktreeUseCases {
         return WorktreeUseCases(
             list = ListWorktreesUseCase(config, executor),
-            create = CreateWorktreeUseCase(config, executor, FakeFileManager(), FakeRepositoryProvisioningSource()),
+            create = CreateWorktreeUseCase(config, executor, createFiles, provisioning),
             createFromBranch = CreateWorktreeFromBranchUseCase(
                 config,
                 executor,
@@ -324,6 +329,35 @@ class ProjectWorktreesTest {
         assertIs<WorktreeError.BaseRepositoryNotFound>(board.project.createError)
         assertNull(board.project.error)
         assertNull(board.project.success)
+    }
+
+    @Test
+    fun `a failing post-creation command leaves the dialog unable to create again`() = runTest(dispatcher) {
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(
+                config.baseRepositoryPath to RepositoryProvisioning(postCreateCommands = listOf(listOf("npm", "install"))),
+            ),
+        )
+        val executor = FakeShellCommandExecutor { command ->
+            when {
+                command == listCommand -> success(command, porcelainOutput)
+                command.first() == "npm" -> failure(command, exitCode = 1, stderr = "ENOTFOUND")
+                else -> success(command)
+            }
+        }
+        val baseFiles = FakeFileManager(existing = listOf(config.baseRepositoryPath) + config.secretFiles.map { config.baseSecretPath(it) })
+        val board = board(useCasesWith(executor, provisioning = provisioning, createFiles = baseFiles))
+        advanceUntilIdle()
+        board.openCreateDialog()
+        board.updateTaskId("TASK-456")
+
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        val error = assertIs<WorktreeError.PostCreateCommandFailed>(board.project.createError)
+        assertEquals(error.worktreePath, board.project.createdWithErrorPath)
+        assertTrue(board.isCreateDialogOpen)
+        assertFalse(board.canCreate)
     }
 
     @Test

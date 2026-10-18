@@ -141,6 +141,9 @@ private val IndicatorDotSize = 8.dp
 private val RowActionSlotSize = 28.dp
 private val RowActionIconSize = 16.dp
 
+internal fun rowContext(model: WorktreeRowModel, projectName: String?): String =
+    listOfNotNull(model.folderName, projectName, model.originLabel).joinToString(" · ")
+
 @Composable
 private fun rowLabel(model: WorktreeRowModel, projectName: String?): AnnotatedString {
     val secondary = ShogunTheme.typography.dataSmall.toSpanStyle()
@@ -149,7 +152,7 @@ private fun rowLabel(model: WorktreeRowModel, projectName: String?): AnnotatedSt
         append(model.branchLabel)
         withStyle(secondary) {
             append("  ")
-            append(listOfNotNull(model.folderName, model.originLabel, projectName).joinToString(" · "))
+            append(rowContext(model, projectName))
         }
     }
 }

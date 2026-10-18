@@ -277,6 +277,8 @@ interface Strings {
     fun monthsAgo(count: Long): String
     fun yearsAgo(count: Long): String
     val copied: String
+    val close: String
+    val worktreeCreatedWithError: String
     val copyCommand: String
     val copyLaunchCommand: String
     fun worktreeCreated(folder: String): String

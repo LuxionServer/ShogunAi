@@ -223,9 +223,9 @@ class WorktreeBoard(
             }
         }
 
-    fun copyLaunchCommand(ref: WorktreeRef) {
+    fun copyLaunchCommand(ref: WorktreeRef, onCopied: () -> Unit = {}) {
         val holder = holder(ref.projectId) ?: return
-        holder.worktrees.firstOrNull { it.path == ref.path }?.let(holder::copyLaunchCommand)
+        holder.worktrees.firstOrNull { it.path == ref.path }?.let { holder.copyLaunchCommand(it, onCopied) }
     }
 
     fun syncCatalog(catalog: List<Project>) {
@@ -403,7 +403,7 @@ class WorktreeBoard(
     val canCreate: Boolean
         get() {
             val holder = createHolder ?: return false
-            return !holder.isCreating && isCreateEnabled(
+            return !holder.isCreating && holder.createdWithErrorPath == null && isCreateEnabled(
                 mode = createMode,
                 isTaskIdValid = taskId.isNotBlank() && isTaskIdValid(taskId),
                 isSelectedBranchAvailable = holder.isBranchAvailable(selectedBranch),
