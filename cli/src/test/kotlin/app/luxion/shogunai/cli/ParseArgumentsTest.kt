@@ -79,9 +79,11 @@ class ParseArgumentsTest {
     }
 
     @Test
-    fun `status takes no arguments`() {
-        assertEquals(CliCommand.Status, command("status"))
-        assertEquals("'status' takes no arguments, got '--json'", usageError("status", "--json"))
+    fun `status takes only the json flag`() {
+        assertEquals(CliCommand.Status(), command("status"))
+        assertEquals(CliCommand.Status(json = true), command("status", "--json"))
+        assertEquals("unknown option '--yaml' for 'status'", usageError("status", "--yaml"))
+        assertEquals("'status' takes no arguments, got 'extra'", usageError("status", "extra"))
     }
 
     @Test

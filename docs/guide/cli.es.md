@@ -7,11 +7,12 @@ shogun new TASK-123                # worktree nuevo en feature/TASK-123, provisi
 shogun new --branch hotfix/login   # worktree para una rama existente
 shogun provision ../otro-worktree  # copia los archivos declarados en un worktree creado por otra herramienta
 shogun status                      # todos los worktrees con sus cambios, divergencia y si están mergeados
+shogun status --json               # lo mismo, como un documento JSON para scripts
 shogun clean --yes                 # elimina los worktrees mergeados o sin carpeta (sin --yes solo los lista)
 eval "$(shogun env)"               # carga las variables de este worktree desde "env" en .shogunai.json
 ```
 
-La salida es texto plano en inglés; por ahora solo la línea única de `new` está pensada para que la lean scripts.
+La salida es texto plano en inglés; los scripts deben leer la línea única de `new` y `status --json`.
 
 ## Códigos de salida
 
@@ -58,6 +59,52 @@ Lista todos los worktrees del repositorio, uno por línea: ruta, rama (o `(detac
 | `merged` | Mergeado en la rama principal. |
 | `folder-missing` | Su carpeta se borró a mano. |
 | `status-unavailable` | No se pudo leer su estado. |
+
+#### `status --json`
+
+```text
+shogun status [--json]
+```
+
+Imprime un único objeto JSON compacto en una línea, en vez de las líneas de texto. Los errores siguen yendo a la salida de error como texto, sin nada en la salida estándar. Por ejemplo (con saltos de línea aquí):
+
+```json
+{
+  "repository": "/home/dev/projects/main-repo",
+  "mainBranch": "main",
+  "worktrees": [
+    {
+      "path": "/home/dev/projects/main-repo",
+      "branch": "main",
+      "head": "4f1c2e9a0b7d3c58e1f6a2b94d07c3e5a8f1b620",
+      "main": true,
+      "locked": false,
+      "folderMissing": false,
+      "origin": null,
+      "status": {
+        "uncommittedChanges": 0,
+        "upstream": { "ahead": 0, "behind": 0 },
+        "mainBranch": null,
+        "merged": false,
+        "lastCommitAt": "2026-10-18T09:12:44Z"
+      }
+    }
+  ]
+}
+```
+
+| Campo | Significado |
+|---|---|
+| `repository`, `mainBranch` | La ruta del repositorio y su rama principal resuelta (`null` si no se puede resolver). |
+| `branch`, `head` | La rama activa (`null` si está detached) y el commit. |
+| `main`, `locked`, `folderMissing` | El checkout principal, retenido por una sesión de agente, carpeta borrada a mano. |
+| `origin` | `shogunai`, `claude-code`, `herdr` u `other`; `null` para el checkout principal. |
+| `status` | `null` cuando falta la carpeta o no se pudo leer su estado. |
+| `status.uncommittedChanges`, `status.merged` | Cambios sin commitear; mergeado en la rama principal. |
+| `status.upstream`, `status.mainBranch` | `{ "ahead": n, "behind": n }` respecto al upstream y a la rama principal; `null` si no hay. |
+| `status.lastCommitAt` | Hora del último commit en ISO-8601 UTC, o `null`. |
+
+Todos los campos están siempre presentes, con `null` cuando no aplican. Los nombres de los campos son un contrato: las versiones futuras solo añaden campos y nunca renombran, eliminan ni cambian el tipo de uno.
 
 ### `clean`
 

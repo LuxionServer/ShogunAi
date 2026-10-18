@@ -4,13 +4,13 @@ El comando `shogun` ejecuta las operaciones de worktrees de ShogunAi desde un te
 
 ## Comandos
 
-Qué hace cada comando, sus opciones y su salida están en la [referencia de la línea de comandos](../guide/cli.md). Esta tabla relaciona cada comando con el código de `core` que ejecuta y anota los detalles que solo importan al modificarlo.
+Qué hace cada comando, sus opciones y su salida están en la [referencia de la línea de comandos](../guide/cli.es.md). Esta tabla relaciona cada comando con el código de `core` que ejecuta y anota los detalles que solo importan al modificarlo.
 
 | Comando | Ejecuta | Notas de implementación |
 |---|---|---|
 | `new` | `ResolveStartPointUseCase`, y después `CreateWorktreeUseCase` o `CreateWorktreeFromBranchUseCase`, con `PrepareWorktreeEnvironmentUseCase` y `WriteEnvironmentFileUseCase` como preparador del entorno | Sin `--from`, el punto de partida es `HEAD` resuelto en el directorio de trabajo, así que un worktree creado desde un worktree enlazado parte de ese worktree, como hace `git worktree add -b`. Una referencia desconocida falla antes de crear nada. |
 | `provision` | `ProvisionWorktreeUseCase` | |
-| `status` | `ListWorktreesUseCase`, `ResolveMainBranchUseCase`, `ReadWorktreeStatusUseCase`, `classifyOrigin` | |
+| `status` | `ListWorktreesUseCase`, `ResolveMainBranchUseCase`, `ReadWorktreeStatusUseCase`, `classifyOrigin` | El JSON de `--json` se construye en `StatusJson.kt`; sus nombres de campo son un contrato, ver la [guía del CLI](../guide/cli.es.md#status-json). |
 | `clean` | `selectCleanupCandidates`, `CleanUpWorktreesUseCase`, `CloseHerdrWorkspacesUseCase` y, según la opción, `StopGradleDaemonsUseCase`, `StopWorktreeEmulatorUseCase`, `DeleteSimulatorsUseCase`, `DeleteOrphanedDerivedDataUseCase` | Lo que la eliminación borra se lee antes: los daemons de Gradle (para `idleDaemonsOfRemovedWorktrees`), los serials de los emuladores en marcha (`ReadEmulatorStatesUseCase`, después `StopWorktreeEmulatorUseCase.stopSerials`), los UDID de los simuladores y los DerivedData huérfanos. Los simuladores huérfanos se vuelven a buscar después de eliminar, así que el simulador de un worktree cuya carpeta ya no existía se detecta como huérfano; con solo huérfanos el comando se ejecuta igualmente. Un daemon o emulador que no se puede parar, o un cierre de Herdr fallido, va a la salida de error sin cambiar el código de salida; una carpeta de DerivedData que no se puede borrar sale con `1`. |
 | `gradle`, `gradle stop` | `ListGradleDaemonsUseCase`, `CheckGradleBuildCacheUseCase`, `StopGradleDaemonsUseCase` | Funciona fuera de un repositorio. Los daemons de Kotlin se conservan mientras corre una build de Gradle. |
 | `xcode`, `xcode clean` | `ListDerivedDataUseCase`, `DeleteOrphanedDerivedDataUseCase` | Sin el provider o fuera de macOS sale con `0`. |

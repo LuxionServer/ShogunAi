@@ -55,7 +55,7 @@ Richer provisioning in the repository's `.shogunai.json`:
 
 ### Command-line output for scripts
 
-- A machine-readable output (`--json`) for the `shogun` commands that scripts need, starting with `status`.
+- `shogun status --json` exists; the other `shogun` commands get a machine-readable output (`--json`) when a script needs it.
 
 ### Android, KMP and JVM provisioning
 

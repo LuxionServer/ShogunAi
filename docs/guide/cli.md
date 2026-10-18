@@ -7,11 +7,12 @@ shogun new TASK-123                # new feature/TASK-123 worktree, provisioned;
 shogun new --branch hotfix/login   # worktree for an existing branch
 shogun provision ../other-worktree # copy the declared files into a worktree made by another tool
 shogun status                      # every worktree with its changes, divergence and merged state
+shogun status --json               # the same, as one JSON document for scripts
 shogun clean --yes                 # remove merged or missing worktrees (without --yes it only lists them)
 eval "$(shogun env)"               # load this worktree's variables from .shogunai.json "env"
 ```
 
-Output is plain English text; only `new`'s single line is meant to be read by scripts for now.
+Output is plain English text; scripts should read `new`'s single line and `status --json`.
 
 ## Exit codes
 
@@ -58,6 +59,52 @@ Lists every worktree of the repository, one per line: path, branch (or `(detache
 | `merged` | Merged into the main branch. |
 | `folder-missing` | The folder was deleted by hand. |
 | `status-unavailable` | Its status couldn't be read. |
+
+#### `status --json`
+
+```text
+shogun status [--json]
+```
+
+Prints one compact JSON object on a single line instead of the text lines. Errors still go to standard error as text, with nothing on standard output. For example (wrapped here):
+
+```json
+{
+  "repository": "/home/dev/projects/main-repo",
+  "mainBranch": "main",
+  "worktrees": [
+    {
+      "path": "/home/dev/projects/main-repo",
+      "branch": "main",
+      "head": "4f1c2e9a0b7d3c58e1f6a2b94d07c3e5a8f1b620",
+      "main": true,
+      "locked": false,
+      "folderMissing": false,
+      "origin": null,
+      "status": {
+        "uncommittedChanges": 0,
+        "upstream": { "ahead": 0, "behind": 0 },
+        "mainBranch": null,
+        "merged": false,
+        "lastCommitAt": "2026-10-18T09:12:44Z"
+      }
+    }
+  ]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `repository`, `mainBranch` | The repository's path and its resolved main branch (`null` if it can't be resolved). |
+| `branch`, `head` | The checked-out branch (`null` when detached) and the commit. |
+| `main`, `locked`, `folderMissing` | The main checkout, held by an agent session, folder deleted by hand. |
+| `origin` | `shogunai`, `claude-code`, `herdr` or `other`; `null` for the main checkout. |
+| `status` | `null` when the folder is missing or its status couldn't be read. |
+| `status.uncommittedChanges`, `status.merged` | Uncommitted changes; merged into the main branch. |
+| `status.upstream`, `status.mainBranch` | `{ "ahead": n, "behind": n }` against the upstream and the main branch; `null` when there is none. |
+| `status.lastCommitAt` | Time of the last commit in ISO-8601 UTC, or `null`. |
+
+Every field is always present, with `null` when it doesn't apply. The field names are a contract: later versions only add fields and never rename, remove or change the type of one.
 
 ### `clean`
 
