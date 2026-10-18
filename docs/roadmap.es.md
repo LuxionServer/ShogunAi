@@ -55,7 +55,7 @@ Provisionado más completo en el `.shogunai.json` del repositorio:
 
 ### Salida del CLI para scripts
 
-- Una salida legible por máquinas (`--json`) para los comandos de `shogun` que necesiten los scripts, empezando por `status`.
+- `shogun status --json` ya existe; el resto de comandos de `shogun` tendrán una salida legible por máquinas (`--json`) cuando un script la necesite.
 
 ### Provisionado Android, KMP y JVM
 

@@ -29,6 +29,12 @@ import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.XcodeProvider
 import java.time.Instant
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -458,6 +464,97 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertTrue(out.lines().contains("$merged  feature/TASK-1  origin=herdr  changes=0  merged"), out.toString())
+    }
+
+    @Test
+    fun `status json prints one compact document`() {
+        val exitCode = cli(repositoryExecutor()).run(listOf("status", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(1, out.lines().count { it.isNotEmpty() })
+        assertTrue(out.endsWith("\n"))
+        val expected = Json.parseToJsonElement(
+            """
+            {
+              "repository": "$base",
+              "mainBranch": "main",
+              "worktrees": [
+                {
+                  "path": "$base", "branch": "main", "head": "1111111111111111111111111111111111111111",
+                  "main": true, "locked": false, "folderMissing": false, "origin": null,
+                  "status": {
+                    "uncommittedChanges": 0, "upstream": null, "mainBranch": null,
+                    "merged": false, "lastCommitAt": null
+                  }
+                },
+                {
+                  "path": "$merged", "branch": "feature/TASK-1", "head": "2222222222222222222222222222222222222222",
+                  "main": false, "locked": false, "folderMissing": false, "origin": "shogunai",
+                  "status": {
+                    "uncommittedChanges": 0, "upstream": null, "mainBranch": {"ahead": 0, "behind": 3},
+                    "merged": true, "lastCommitAt": null
+                  }
+                },
+                {
+                  "path": "$dirty", "branch": "worktree-spike", "head": "3333333333333333333333333333333333333333",
+                  "main": false, "locked": true, "folderMissing": false, "origin": "claude-code",
+                  "status": {
+                    "uncommittedChanges": 2, "upstream": null, "mainBranch": {"ahead": 2, "behind": 0},
+                    "merged": false, "lastCommitAt": null
+                  }
+                }
+              ]
+            }
+            """,
+        )
+        assertEquals(expected, Json.parseToJsonElement(out.toString()))
+    }
+
+    @Test
+    fun `status json reports missing folders detached heads and Herdr origin`() {
+        val executor = Executor { command, directory ->
+            if (command.take(3) == listOf("git", "worktree", "list")) {
+                Executor.ok(
+                    command,
+                    """
+                    worktree $base
+                    HEAD 1111111111111111111111111111111111111111
+                    branch refs/heads/main
+
+                    worktree $merged
+                    HEAD 2222222222222222222222222222222222222222
+                    detached
+
+                    worktree $dirty
+                    HEAD 3333333333333333333333333333333333333333
+                    branch refs/heads/worktree-spike
+                    prunable gitdir file points to non-existent location
+                    """.trimIndent(),
+                )
+            } else {
+                runBlocking { repositoryExecutor().execute(command, directory) }
+            }
+        }
+
+        val exitCode = cli(executor, herdrWorktreesRoot = worktreesRoot).run(listOf("status", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray.map { it.jsonObject }
+        assertEquals(JsonNull, worktrees[1].getValue("branch"))
+        assertEquals(JsonPrimitive("herdr"), worktrees[1].getValue("origin"))
+        assertEquals(JsonPrimitive(true), worktrees[2].getValue("folderMissing"))
+        assertEquals(JsonNull, worktrees[2].getValue("status"))
+    }
+
+    @Test
+    fun `status json prints nothing on standard output outside a repository`() {
+        val executor = Executor { command, _ -> Executor.fail(command, "fatal: not a git repository", 128) }
+
+        val exitCode = cli(executor, workingDirectory = "/home/dev").run(listOf("status", "--json"))
+
+        assertEquals(1, exitCode)
+        assertEquals("", out.toString())
+        assertTrue(err.startsWith("shogun: "), err.toString())
     }
 
     @Test

@@ -85,6 +85,7 @@ import java.time.Instant
 import java.util.Locale
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -159,7 +160,7 @@ class ShogunCli(
             CliCommand.Version -> out.line("shogun ${BuildInfo.VERSION}").let { EXIT_OK }
             is CliCommand.New -> new(command)
             is CliCommand.Provision -> provision(command)
-            CliCommand.Status -> status()
+            is CliCommand.Status -> status(command)
             is CliCommand.Clean -> clean(command)
             CliCommand.HookWorktreeCreate -> hookWorktreeCreate()
             CliCommand.HookWorktreeRemove -> hookWorktreeRemove()
@@ -226,15 +227,20 @@ class ShogunCli(
         return EXIT_OK
     }
 
-    private suspend fun status(): Int {
+    private suspend fun status(command: CliCommand.Status): Int {
         val config = configFor(workingDirectory)
         val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
         val mainBranch = ResolveMainBranchUseCase(config, executor)().getOrNull()
         val readStatus = ReadWorktreeStatusUseCase(executor)
         val herdrWorktreesRoot = herdrConfig.worktreesRoot()
-        worktrees.forEach { worktree ->
+        val entries = worktrees.map { worktree ->
             val status = if (worktree.isPrunable) null else readStatus(worktree, mainBranch).getOrNull()
-            out.line(statusLine(worktree, status, config, herdrWorktreesRoot))
+            WorktreeEntry(worktree, status, classifyOrigin(worktree, config, herdrWorktreesRoot))
+        }
+        if (command.json) {
+            out.line(Json.encodeToString(JsonElement.serializer(), statusJson(config.baseRepositoryPath, mainBranch?.name, entries)))
+        } else {
+            entries.forEach { out.line(statusLine(it)) }
         }
         return EXIT_OK
     }
@@ -718,11 +724,12 @@ class ShogunCli(
         return if (worktreesRoot != null) config.copy(worktreesRoot = worktreesRoot) else config
     }
 
-    private fun statusLine(worktree: Worktree, status: WorktreeStatus?, config: ProjectConfig, herdrWorktreesRoot: String): String {
+    private fun statusLine(entry: WorktreeEntry): String {
+        val (worktree, status, origin) = entry
         val details = buildList {
             add(worktree.branch ?: "(detached)")
             if (worktree.isMain) add("main")
-            classifyOrigin(worktree, config, herdrWorktreesRoot)?.let { add("origin=${it.label}") }
+            origin?.let { add("origin=${it.label}") }
             if (worktree.isLocked) add("locked")
             when {
                 worktree.isPrunable -> add("folder-missing")
@@ -746,14 +753,6 @@ class ShogunCli(
     private fun Appendable.line(text: String) {
         append(text).append('\n')
     }
-
-    private val WorktreeOrigin.label: String
-        get() = when (this) {
-            WorktreeOrigin.SHOGUNAI -> "shogunai"
-            WorktreeOrigin.CLAUDE_CODE -> "claude-code"
-            WorktreeOrigin.HERDR -> "herdr"
-            WorktreeOrigin.OTHER -> "other"
-        }
 
     private val DaemonKind.label: String
         get() = when (this) {
@@ -814,7 +813,7 @@ class ShogunCli(
               new --branch <branch>       Create a worktree for an existing local branch and print its path
                   --worktrees-root <dir>  Folder for the worktree when the repository has no ShogunAi project
               provision [<path>]          Copy the declared files into an existing worktree (default: current directory)
-              status                      List the repository's worktrees with their state
+              status [--json]             List the repository's worktrees with their state
               clean [--yes] [--delete-branches] [--stop-gradle-daemons] [--stop-emulators] [--delete-simulators]
                     [--delete-derived-data]
                                           List merged or missing worktrees; remove them with --yes

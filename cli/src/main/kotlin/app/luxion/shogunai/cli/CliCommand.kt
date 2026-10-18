@@ -16,7 +16,7 @@ sealed interface CliCommand {
     ) : CliCommand
 
     data class Provision(val path: String? = null) : CliCommand
-    data object Status : CliCommand
+    data class Status(val json: Boolean = false) : CliCommand
     data class Clean(
         val confirmed: Boolean = false,
         val deleteBranches: Boolean = false,
@@ -66,7 +66,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "version", "-v", "--version" -> noArguments(name, rest, CliCommand.Version)
                 "new" -> parseNew(rest)
                 "provision" -> parseProvision(rest)
-                "status" -> noArguments(name, rest, CliCommand.Status)
+                "status" -> parseStatus(rest)
                 "clean" -> parseClean(rest)
                 "hook" -> parseHook(rest)
                 "gradle" -> parseGradle(rest)
@@ -120,6 +120,18 @@ private fun parseNew(rest: List<String>): CliCommand.New {
         worktreesRoot = worktreesRoot,
         from = from,
     )
+}
+
+private fun parseStatus(rest: List<String>): CliCommand.Status {
+    var json = false
+    rest.forEach { argument ->
+        when {
+            argument == "--json" -> json = true
+            argument.startsWith("-") -> throw UsageException("unknown option '$argument' for 'status'")
+            else -> throw UsageException("'status' takes no arguments, got '$argument'")
+        }
+    }
+    return CliCommand.Status(json)
 }
 
 private fun parseProvision(rest: List<String>): CliCommand.Provision {
