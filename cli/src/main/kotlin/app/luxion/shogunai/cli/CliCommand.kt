@@ -15,8 +15,8 @@ sealed interface CliCommand {
         val from: String? = null,
     ) : CliCommand
 
-    data class Provision(val path: String? = null) : CliCommand
-    data object Status : CliCommand
+    data class Provision(val path: String? = null, val check: Boolean = false) : CliCommand
+    data class Status(val json: Boolean = false) : CliCommand
     data class Clean(
         val confirmed: Boolean = false,
         val deleteBranches: Boolean = false,
@@ -66,7 +66,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "version", "-v", "--version" -> noArguments(name, rest, CliCommand.Version)
                 "new" -> parseNew(rest)
                 "provision" -> parseProvision(rest)
-                "status" -> noArguments(name, rest, CliCommand.Status)
+                "status" -> parseStatus(rest)
                 "clean" -> parseClean(rest)
                 "hook" -> parseHook(rest)
                 "gradle" -> parseGradle(rest)
@@ -122,10 +122,24 @@ private fun parseNew(rest: List<String>): CliCommand.New {
     )
 }
 
+private fun parseStatus(rest: List<String>): CliCommand.Status {
+    var json = false
+    rest.forEach { argument ->
+        when {
+            argument == "--json" -> json = true
+            argument.startsWith("-") -> throw UsageException("unknown option '$argument' for 'status'")
+            else -> throw UsageException("'status' takes no arguments, got '$argument'")
+        }
+    }
+    return CliCommand.Status(json)
+}
+
 private fun parseProvision(rest: List<String>): CliCommand.Provision {
-    rest.firstOrNull { it.startsWith("-") }?.let { throw UsageException("unknown option '$it' for 'provision'") }
-    if (rest.size > 1) throw UsageException("'provision' takes at most one path")
-    return CliCommand.Provision(rest.firstOrNull())
+    val check = "--check" in rest
+    val others = rest.filter { it != "--check" }
+    others.firstOrNull { it.startsWith("-") }?.let { throw UsageException("unknown option '$it' for 'provision'") }
+    if (others.size > 1) throw UsageException("'provision' takes at most one path")
+    return CliCommand.Provision(others.firstOrNull(), check)
 }
 
 private fun parseClean(rest: List<String>): CliCommand.Clean {

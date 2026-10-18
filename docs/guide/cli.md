@@ -7,11 +7,12 @@ shogun new TASK-123                # new feature/TASK-123 worktree, provisioned;
 shogun new --branch hotfix/login   # worktree for an existing branch
 shogun provision ../other-worktree # copy the declared files into a worktree made by another tool
 shogun status                      # every worktree with its changes, divergence and merged state
+shogun status --json               # the same, as one JSON document for scripts
 shogun clean --yes                 # remove merged or missing worktrees (without --yes it only lists them)
 eval "$(shogun env)"               # load this worktree's variables from .shogunai.json "env"
 ```
 
-Output is plain English text; only `new`'s single line is meant to be read by scripts for now.
+Output is plain English text; scripts should read `new`'s single line and `status --json`.
 
 ## Exit codes
 
@@ -40,9 +41,16 @@ Creates a worktree, copies the declared files into it, prepares its [environment
 
 ```text
 shogun provision [<path>]
+shogun provision --check [<path>]
 ```
 
-Copies the project's local files and the repository's declared files into an existing worktree (the current directory by default), reserves its ports and writes its `envFile`. Use it for worktrees created by another tool. Prints one copied path per line.
+Copies the project's local files and the repository's declared `copy` files into an existing worktree (the current directory by default), links its `link` files, reserves its ports, writes its `envFile` and runs the `hooks.postCreate` commands. Use it for worktrees created by another tool. Prints one path per line: linked files end in `(linked)`, and files declared in `link` that were copied because symbolic links aren't available end in `(copied: symbolic links aren't available)`.
+
+With `--check` nothing is changed: it compares the files provisioning would give the worktree with the base repository's and prints one line per difference, `<path>: missing`, `<path>: differs` (a copy whose content changed in the base repository) or `<path>: not linked` (a `link` file that isn't a symbolic link to the base repository's file). It exits with 0 when everything matches, 3 when there is any difference, and 1 on an error.
+
+#### When a post-creation command fails
+
+The worktree is kept. `shogun new` prints its path on standard output, the failure (command, exit code and error output) on standard error, and exits with 1. `shogun provision` prints the failure on standard error and exits with 1.
 
 ### `status`
 
@@ -58,6 +66,52 @@ Lists every worktree of the repository, one per line: path, branch (or `(detache
 | `merged` | Merged into the main branch. |
 | `folder-missing` | The folder was deleted by hand. |
 | `status-unavailable` | Its status couldn't be read. |
+
+#### `status --json`
+
+```text
+shogun status [--json]
+```
+
+Prints one compact JSON object on a single line instead of the text lines. Errors still go to standard error as text, with nothing on standard output. For example (wrapped here):
+
+```json
+{
+  "repository": "/home/dev/projects/main-repo",
+  "mainBranch": "main",
+  "worktrees": [
+    {
+      "path": "/home/dev/projects/main-repo",
+      "branch": "main",
+      "head": "4f1c2e9a0b7d3c58e1f6a2b94d07c3e5a8f1b620",
+      "main": true,
+      "locked": false,
+      "folderMissing": false,
+      "origin": null,
+      "status": {
+        "uncommittedChanges": 0,
+        "upstream": { "ahead": 0, "behind": 0 },
+        "mainBranch": null,
+        "merged": false,
+        "lastCommitAt": "2026-10-18T09:12:44Z"
+      }
+    }
+  ]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `repository`, `mainBranch` | The repository's path and its resolved main branch (`null` if it can't be resolved). |
+| `branch`, `head` | The checked-out branch (`null` when detached) and the commit. |
+| `main`, `locked`, `folderMissing` | The main checkout, held by an agent session, folder deleted by hand. |
+| `origin` | `shogunai`, `claude-code`, `herdr` or `other`; `null` for the main checkout. |
+| `status` | `null` when the folder is missing or its status couldn't be read. |
+| `status.uncommittedChanges`, `status.merged` | Uncommitted changes; merged into the main branch. |
+| `status.upstream`, `status.mainBranch` | `{ "ahead": n, "behind": n }` against the upstream and the main branch; `null` when there is none. |
+| `status.lastCommitAt` | Time of the last commit in ISO-8601 UTC, or `null`. |
+
+Every field is always present, with `null` when it doesn't apply. The field names are a contract: later versions only add fields and never rename, remove or change the type of one.
 
 ### `clean`
 
@@ -137,7 +191,7 @@ These commands are meant to be called by agents and tools, not typed. How to con
 
 | Command | Called by |
 |---|---|
-| `shogun hook worktree-create` | Claude Code's `WorktreeCreate` hook. Reads `name` and `cwd` from standard input, creates (or reuses) a provisioned worktree on `feature/<name>` starting at the HEAD of the worktree in `cwd`, and prints its path. |
+| `shogun hook worktree-create` | Claude Code's `WorktreeCreate` hook. Reads `name` and `cwd` from standard input, creates (or reuses) a provisioned worktree on `feature/<name>` starting at the HEAD of the worktree in `cwd`, and prints its path. If a post-creation command fails it still prints the path as the last line and exits with 0, with the failure on standard error, so Claude Code uses the worktree. |
 | `shogun hook worktree-remove` | Claude Code's `WorktreeRemove` hook. Removes the worktree in `worktree_path`, deletes its branch only if merged and closes its Herdr workspace. |
 | `shogun hook session-start` | Claude Code's `SessionStart` hook. Appends the worktree's environment to `CLAUDE_ENV_FILE` and tells Claude which values it uses. |
 | `shogun hook herdr` | The ShogunAi plugin for Herdr, on `worktree.created` (provisions the worktree) and `worktree.removed` (deletes its branch if merged). Reads `HERDR_PLUGIN_EVENT`, `HERDR_PLUGIN_EVENT_JSON` and `HERDR_BIN_PATH`. |

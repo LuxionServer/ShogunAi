@@ -67,7 +67,7 @@ Every command SHALL work on the Git repository that contains the current directo
 - **THEN** nothing is copied and the command exits with code 1 explaining why
 
 ### Requirement: Show worktree status from the command line
-`shogun status` SHALL print one line per worktree of the repository with its path, branch (or detached), origin (ShogunAi, Claude Code, Herdr or other), uncommitted changes, divergence from its upstream and whether it's merged into the main branch, the same information the desktop app shows.
+`shogun status` SHALL print one line per worktree of the repository with its path, branch (or detached), origin (ShogunAi, Claude Code, Herdr or other), uncommitted changes, divergence from its upstream and whether it's merged into the main branch, the same information the desktop app shows. `shogun status --json` SHALL print the same information, plus each worktree's HEAD, its divergence from the main branch and its last commit time, as a single JSON document on standard output, whose fields later versions only add to and never rename, remove or change the type of.
 
 #### Scenario: Several worktrees
 - **WHEN** the repository has the main worktree, a merged worktree and one with uncommitted changes
@@ -80,6 +80,22 @@ Every command SHALL work on the Git repository that contains the current directo
 #### Scenario: Worktree created by Herdr
 - **WHEN** a worktree is inside Herdr's worktrees folder
 - **THEN** its line shows `origin=herdr`
+
+#### Scenario: JSON output
+- **WHEN** the user runs `shogun status --json` in a repository with the main worktree, a merged worktree and one with two uncommitted changes
+- **THEN** standard output is one JSON object with `repository`, `mainBranch` and a `worktrees` array with one object per worktree, where the main one has `main: true` and `origin: null`, the merged one has `status.merged: true`, and the other has `status.uncommittedChanges: 2`
+
+#### Scenario: JSON output for a missing folder or detached worktree
+- **WHEN** the user runs `shogun status --json` and a worktree's folder no longer exists, and another worktree has a detached HEAD
+- **THEN** the first has `folderMissing: true` and `status: null`, and the second has `branch: null`; every field is present in every worktree object
+
+#### Scenario: JSON output outside a repository
+- **WHEN** the user runs `shogun status --json` outside a Git repository
+- **THEN** nothing is printed on standard output, the error is printed as text on standard error and the command exits with code 1
+
+#### Scenario: Unknown option
+- **WHEN** the user runs `shogun status --yaml`
+- **THEN** it prints that the option is unknown for `status` and exits with code 2
 
 ### Requirement: Clean up worktrees from the command line
 `shogun clean` SHALL select the same worktrees as the desktop app's cleanup (clean and merged, or with a missing folder; never the main or a locked one) and only list them. With `--yes` it SHALL remove them, and with `--delete-branches` also delete their local branches when merged, reporting what was removed, kept and failed.
@@ -112,7 +128,7 @@ Every command SHALL work on the Git repository that contains the current directo
 - **THEN** it prints that the command is unknown, points to `shogun help` and exits with code 2
 
 ### Requirement: Install the command on each platform
-The `shogun` command SHALL be available from each release: on macOS and Linux through the desktop app's launcher, which runs the command instead of the window when it receives arguments, and on any platform with Java 21 or later through a `shogun-<version>.zip` attached to the release.
+The `shogun` command SHALL be available from each release: on macOS and Linux through the desktop app's launcher, which runs the command instead of the window when it receives arguments; on Windows through the Scoop manifest, which runs the command with the runtime bundled in the app; and on any platform with Java 21 or later through a `shogun-<version>.zip` attached to the release.
 
 #### Scenario: Desktop app launched with arguments
 - **WHEN** the desktop app's executable is run with `status` as argument
@@ -125,6 +141,10 @@ The `shogun` command SHALL be available from each release: on macOS and Linux th
 #### Scenario: Release assets
 - **WHEN** a release is published
 - **THEN** it includes `shogun-<version>.zip` with launch scripts for Unix and Windows
+
+#### Scenario: Windows through Scoop
+- **WHEN** a Windows user installs ShogunAi with `scoop install shogunai`
+- **THEN** `shogun status` works from a new terminal without Java installed
 
 ### Requirement: Create worktrees for Claude Code's WorktreeCreate hook
 `shogun hook worktree-create` SHALL read the hook's JSON from standard input and create a provisioned worktree named after its `name` field, on a `feature/<name>` branch starting at the HEAD of the worktree containing its `cwd` field, in the repository containing that `cwd`. It SHALL print the absolute worktree path as the last line of standard output, with any other message on standard error, and exit non-zero on failure.
@@ -368,3 +388,43 @@ With `--yes`, `shogun clean --delete-derived-data` SHALL delete the orphaned Der
 #### Scenario: Without the option
 - **WHEN** the user runs `shogun clean --yes`
 - **THEN** no DerivedData is deleted
+
+### Requirement: Check a worktree's provisioned files from the command line
+`shogun provision --check [<path>]` SHALL compare the provisioned files of the worktree at `<path>`, or the current directory when omitted, with the base repository's, without changing anything. It SHALL print one line per reported file with its relative path and state (missing, differs or not linked), and exit with code 0 when nothing is reported and code 3 otherwise.
+
+#### Scenario: Stale secret
+- **WHEN** the worktree's `.env` differs from the base repository's and the user runs `shogun provision --check`
+- **THEN** a line reports `.env` as differing, no file is copied or linked, and the command exits with code 3
+
+#### Scenario: Up to date
+- **WHEN** every declared file of the worktree matches the base repository's
+- **THEN** nothing is printed and the command exits with code 0
+
+#### Scenario: Path is not a worktree of the repository
+- **WHEN** `<path>` is the main worktree or not one of the repository's worktrees
+- **THEN** the command explains why and exits with code 1
+
+### Requirement: Report linked files when provisioning from the command line
+`shogun provision [<path>]` SHALL list linked files alongside copied ones, marking each linked file, and marking a file declared in `link` that was copied because links aren't available.
+
+#### Scenario: Linked and copied files
+- **WHEN** the repository declares `.env` in `copy` and `local.properties` in `link`, and the user runs `shogun provision`
+- **THEN** both files are listed, and `local.properties` is marked as linked
+
+### Requirement: Report a failed post-creation command from the command line
+When a post-creation command fails, `shogun new` and `shogun provision` SHALL print the error, naming the command, its exit code and its error output, on standard error and exit with code 1. `shogun new` SHALL still print the kept worktree's path on standard output.
+
+#### Scenario: New worktree with a failing command
+- **WHEN** the user runs `shogun new TASK-123` and the repository's post-creation command fails
+- **THEN** the worktree's path is printed on standard output, the failure on standard error, and the command exits with code 1
+
+#### Scenario: Provisioning with a failing command
+- **WHEN** the user runs `shogun provision` and a post-creation command fails
+- **THEN** the failure is printed on standard error and the command exits with code 1
+
+### Requirement: Keep Claude Code's worktree when a post-creation command fails
+When creating a worktree for `shogun hook worktree-create` succeeds but a post-creation command fails, the hook SHALL print the failure on standard error, print the worktree's path as the last line of standard output and exit with code 0, so Claude Code still uses the worktree.
+
+#### Scenario: Failing setup command
+- **WHEN** Claude Code runs the hook in a repository whose post-creation `npm install` fails
+- **THEN** the failure is on standard error, the worktree's path is the last line of standard output, and the command exits with code 0

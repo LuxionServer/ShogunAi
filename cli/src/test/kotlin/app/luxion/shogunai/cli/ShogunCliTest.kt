@@ -29,6 +29,12 @@ import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.XcodeProvider
 import java.time.Instant
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -429,6 +435,104 @@ class ShogunCliTest {
         assertEquals("local.properties\n.env\n", out.toString())
     }
 
+    private val linkingProvisioning = FakeRepositoryProvisioningSource(
+        byRepository = mapOf(
+            base to RepositoryProvisioning(
+                copyPatterns = listOf(".env"),
+                linkPatterns = listOf("token.txt"),
+                postCreateCommands = listOf(listOf("npm", "install")),
+            ),
+        ),
+    )
+
+    private fun linkingExecutor(hook: (List<String>) -> CommandResult? = { null }) = repositoryExecutor { command, _ ->
+        when {
+            "ls-files" in command && "token.txt" in command -> Executor.ok(command, "token.txt\u0000")
+            "ls-files" in command -> Executor.ok(command, ".env\u0000")
+            command.first() == "npm" -> hook(command)
+            else -> null
+        }
+    }
+
+    @Test
+    fun `provision marks linked files and files copied instead of linking`() {
+        val fileManager = FakeFileManager(existing = listOf(base, "$base/local.properties", "$base/token.txt"))
+
+        val exitCode = cli(linkingExecutor(), provisioning = linkingProvisioning, fileManager = fileManager, workingDirectory = merged)
+            .run(listOf("provision"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("local.properties\n.env\ntoken.txt (linked)\n", out.toString())
+
+        out.clear()
+        fileManager.symbolicLinksSupported = false
+        cli(linkingExecutor(), provisioning = linkingProvisioning, fileManager = fileManager, workingDirectory = merged)
+            .run(listOf("provision"))
+        assertTrue(out.contains("token.txt (copied: symbolic links aren't available)"), out.toString())
+    }
+
+    @Test
+    fun `provision fails with exit code 1 when a post-creation command fails`() {
+        val executor = linkingExecutor { Executor.fail(it, stderr = "ENOTFOUND", exitCode = 4) }
+
+        val exitCode = cli(executor, provisioning = linkingProvisioning, workingDirectory = merged).run(listOf("provision"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("npm install") && err.contains("exit code 4") && err.contains("ENOTFOUND"), err.toString())
+    }
+
+    @Test
+    fun `new prints the kept path and the failure when a post-creation command fails`() {
+        val executor = linkingExecutor { Executor.fail(it, stderr = "ENOTFOUND", exitCode = 4) }
+
+        val exitCode = cli(executor, provisioning = linkingProvisioning).run(listOf("new", "TASK-123"))
+
+        assertEquals(1, exitCode)
+        assertEquals("$worktreesRoot/TASK-123\n", out.toString())
+        assertTrue(err.contains("npm install") && err.contains("exit code 4") && err.contains("ENOTFOUND"), err.toString())
+    }
+
+    @Test
+    fun `provision check reports a stale copy and exits with 3 without changing anything`() {
+        val fileManager = FakeFileManager(existing = listOf(base, "$base/local.properties", "$merged/local.properties", "$base/token.txt", "$merged/.env", "$merged/token.txt"))
+        fileManager.contents["$base/.env"] = "KEY=1"
+        fileManager.contents["$base/local.properties"] = "A=1"
+        fileManager.contents["$merged/local.properties"] = "A=1"
+        fileManager.contents["$merged/.env"] = "KEY=0"
+        fileManager.symbolicLinks["$merged/token.txt"] = "$base/token.txt"
+
+        val exitCode = cli(linkingExecutor(), provisioning = linkingProvisioning, fileManager = fileManager, workingDirectory = merged)
+            .run(listOf("provision", "--check"))
+
+        assertEquals(3, exitCode, err.toString())
+        assertEquals(".env: differs\n", out.toString())
+        assertTrue(fileManager.copied.isEmpty())
+    }
+
+    @Test
+    fun `provision check prints nothing and exits with 0 when everything matches`() {
+        val fileManager = FakeFileManager(existing = listOf(base, "$base/local.properties", "$merged/local.properties", "$base/token.txt", "$merged/.env", "$merged/token.txt"))
+        fileManager.contents["$base/.env"] = "KEY=1"
+        fileManager.contents["$base/local.properties"] = "A=1"
+        fileManager.contents["$merged/local.properties"] = "A=1"
+        fileManager.contents["$merged/.env"] = "KEY=1"
+        fileManager.symbolicLinks["$merged/token.txt"] = "$base/token.txt"
+
+        val exitCode = cli(linkingExecutor(), provisioning = linkingProvisioning, fileManager = fileManager, workingDirectory = merged)
+            .run(listOf("provision", "--check"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("", out.toString())
+    }
+
+    @Test
+    fun `provision check refuses the main worktree`() {
+        val exitCode = cli(linkingExecutor(), provisioning = linkingProvisioning).run(listOf("provision", "--check"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("is not a linked worktree"), err.toString())
+    }
+
     @Test
     fun `provision refuses a directory that is not a linked worktree`() {
         val exitCode = cli(repositoryExecutor()).run(listOf("provision"))
@@ -458,6 +562,97 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertTrue(out.lines().contains("$merged  feature/TASK-1  origin=herdr  changes=0  merged"), out.toString())
+    }
+
+    @Test
+    fun `status json prints one compact document`() {
+        val exitCode = cli(repositoryExecutor()).run(listOf("status", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(1, out.lines().count { it.isNotEmpty() })
+        assertTrue(out.endsWith("\n"))
+        val expected = Json.parseToJsonElement(
+            """
+            {
+              "repository": "$base",
+              "mainBranch": "main",
+              "worktrees": [
+                {
+                  "path": "$base", "branch": "main", "head": "1111111111111111111111111111111111111111",
+                  "main": true, "locked": false, "folderMissing": false, "origin": null,
+                  "status": {
+                    "uncommittedChanges": 0, "upstream": null, "mainBranch": null,
+                    "merged": false, "lastCommitAt": null
+                  }
+                },
+                {
+                  "path": "$merged", "branch": "feature/TASK-1", "head": "2222222222222222222222222222222222222222",
+                  "main": false, "locked": false, "folderMissing": false, "origin": "shogunai",
+                  "status": {
+                    "uncommittedChanges": 0, "upstream": null, "mainBranch": {"ahead": 0, "behind": 3},
+                    "merged": true, "lastCommitAt": null
+                  }
+                },
+                {
+                  "path": "$dirty", "branch": "worktree-spike", "head": "3333333333333333333333333333333333333333",
+                  "main": false, "locked": true, "folderMissing": false, "origin": "claude-code",
+                  "status": {
+                    "uncommittedChanges": 2, "upstream": null, "mainBranch": {"ahead": 2, "behind": 0},
+                    "merged": false, "lastCommitAt": null
+                  }
+                }
+              ]
+            }
+            """,
+        )
+        assertEquals(expected, Json.parseToJsonElement(out.toString()))
+    }
+
+    @Test
+    fun `status json reports missing folders detached heads and Herdr origin`() {
+        val executor = Executor { command, directory ->
+            if (command.take(3) == listOf("git", "worktree", "list")) {
+                Executor.ok(
+                    command,
+                    """
+                    worktree $base
+                    HEAD 1111111111111111111111111111111111111111
+                    branch refs/heads/main
+
+                    worktree $merged
+                    HEAD 2222222222222222222222222222222222222222
+                    detached
+
+                    worktree $dirty
+                    HEAD 3333333333333333333333333333333333333333
+                    branch refs/heads/worktree-spike
+                    prunable gitdir file points to non-existent location
+                    """.trimIndent(),
+                )
+            } else {
+                runBlocking { repositoryExecutor().execute(command, directory) }
+            }
+        }
+
+        val exitCode = cli(executor, herdrWorktreesRoot = worktreesRoot).run(listOf("status", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray.map { it.jsonObject }
+        assertEquals(JsonNull, worktrees[1].getValue("branch"))
+        assertEquals(JsonPrimitive("herdr"), worktrees[1].getValue("origin"))
+        assertEquals(JsonPrimitive(true), worktrees[2].getValue("folderMissing"))
+        assertEquals(JsonNull, worktrees[2].getValue("status"))
+    }
+
+    @Test
+    fun `status json prints nothing on standard output outside a repository`() {
+        val executor = Executor { command, _ -> Executor.fail(command, "fatal: not a git repository", 128) }
+
+        val exitCode = cli(executor, workingDirectory = "/home/dev").run(listOf("status", "--json"))
+
+        assertEquals(1, exitCode)
+        assertEquals("", out.toString())
+        assertTrue(err.startsWith("shogun: "), err.toString())
     }
 
     @Test

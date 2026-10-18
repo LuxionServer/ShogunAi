@@ -9,6 +9,8 @@ A `.shogunai.json` at the repository's root declares what every worktree needs. 
 ```json
 {
   "copy": ["/local.properties", ".env*", ".idea/runConfigurations/"],
+  "link": ["/keys/"],
+  "hooks": { "postCreate": [["npm", "install"], ["direnv", "allow"]] },
   "env": {
     "PORT": "${port}",
     "API_URL": "http://localhost:${port:api}"
@@ -24,6 +26,8 @@ A `.shogunai.json` at the repository's root declares what every worktree needs. 
 | Key | Type | Meaning |
 |---|---|---|
 | `copy` | list of strings | Gitignore-style patterns. Every file Git doesn't track that matches one is copied into each new worktree, at the same path. |
+| `link` | list of strings | The same patterns as `copy`, but each matching file is linked with a symbolic link to the base repository's file instead of copied, so rotating it there updates every worktree. A file matching both lists is linked. Where symbolic links can't be created (Windows without the privilege), the file is copied instead. |
+| `hooks.postCreate` | list of commands | Commands run inside each worktree after it is created or provisioned, once its files are in place and its environment prepared. Each command is a list of strings given as argv, not a shell string; a single list of strings is read as one command. |
 | `env` | object of strings | Per-worktree environment variables. Names use letters, digits and `_`, and don't start with a digit. |
 | `envFile` | string | A path inside the worktree where its environment is written in dotenv format. Never written over a file Git tracks, so add it to `.gitignore`. |
 | `providers` | object | The [providers](providers.md) the repository uses, each with its own options. |
@@ -38,6 +42,10 @@ Values in `env` can use these templates:
 | `$$` | A literal `$`. |
 
 Ports are unique among the repository's worktrees, free when reserved, and never change afterwards. [Using with agents](../agents.md#per-worktree-environment) explains how agents and shells get these variables.
+
+Linking shares the file: a tool in one worktree that overwrites a linked secret overwrites the base repository's too. Keep `copy` for files a worktree may change. The project's local files are always copied.
+
+Post-creation commands run in order and stop at the first one that fails. A failure fails creation or provisioning with an error naming the command, its exit code and its error output, but the worktree is kept, since its checkout and files are fine. The commands run on creation and on every `shogun provision`, so make them safe to repeat, and only declare commands you would run from a repository you trust. They don't receive the worktree's environment variables; a command that needs them can run `shogun env`.
 
 Provider options:
 

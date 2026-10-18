@@ -79,6 +79,7 @@ class StringsTest {
         WorktreeError.NotAWorktree("~/projects/TASK-123"),
         WorktreeError.RepositoryConfigChanged("~/projects/main-repo/.shogunai.json"),
         WorktreeError.SecretCopyFailed(IOException("disk full")),
+        WorktreeError.PostCreateCommandFailed("~/projects/TASK-123", listOf("npm", "install"), 1, "npm ERR! missing script"),
         WorktreeError.ClipboardWriteFailed(IOException("busy")),
         WorktreeError.GitLfsNotFound,
         WorktreeError.BranchNotFound("feature/TASK-123"),

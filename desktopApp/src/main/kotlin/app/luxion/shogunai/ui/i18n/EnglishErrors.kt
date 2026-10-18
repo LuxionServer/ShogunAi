@@ -75,6 +75,10 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "Couldn't copy the local files into the worktree.",
         "Check that the worktree folder is writable.",
     )
+    is WorktreeError.PostCreateCommandFailed -> ErrorTexts(
+        "The worktree was created, but one of the repository's post-creation commands failed.",
+        "Read the technical details, fix the command or its cause, and run it inside the worktree.",
+    )
     is WorktreeError.ClipboardWriteFailed -> ErrorTexts(
         "Couldn't copy the launch command to the clipboard.",
         "Try again; another app may be holding the clipboard.",

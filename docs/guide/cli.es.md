@@ -7,11 +7,12 @@ shogun new TASK-123                # worktree nuevo en feature/TASK-123, provisi
 shogun new --branch hotfix/login   # worktree para una rama existente
 shogun provision ../otro-worktree  # copia los archivos declarados en un worktree creado por otra herramienta
 shogun status                      # todos los worktrees con sus cambios, divergencia y si están mergeados
+shogun status --json               # lo mismo, como un documento JSON para scripts
 shogun clean --yes                 # elimina los worktrees mergeados o sin carpeta (sin --yes solo los lista)
 eval "$(shogun env)"               # carga las variables de este worktree desde "env" en .shogunai.json
 ```
 
-La salida es texto plano en inglés; por ahora solo la línea única de `new` está pensada para que la lean scripts.
+La salida es texto plano en inglés; los scripts deben leer la línea única de `new` y `status --json`.
 
 ## Códigos de salida
 
@@ -40,9 +41,16 @@ Crea un worktree, copia en él los archivos declarados, prepara su [entorno](../
 
 ```text
 shogun provision [<path>]
+shogun provision --check [<path>]
 ```
 
-Copia los archivos locales del proyecto y los archivos declarados del repositorio en un worktree existente (por defecto, el directorio actual), reserva sus puertos y escribe su `envFile`. Úsalo con worktrees creados por otra herramienta. Imprime una ruta copiada por línea.
+Copia los archivos locales del proyecto y los archivos `copy` declarados del repositorio en un worktree existente (por defecto, el directorio actual), enlaza sus archivos `link`, reserva sus puertos, escribe su `envFile` y ejecuta los comandos de `hooks.postCreate`. Úsalo con worktrees creados por otra herramienta. Imprime una ruta por línea: los archivos enlazados terminan en `(linked)`, y los declarados en `link` que se copiaron porque no hay enlaces simbólicos terminan en `(copied: symbolic links aren't available)`.
+
+Con `--check` no se cambia nada: compara los archivos que daría el provisionado al worktree con los del repositorio base e imprime una línea por diferencia, `<ruta>: missing`, `<ruta>: differs` (una copia cuyo contenido cambió en el repositorio base) o `<ruta>: not linked` (un archivo de `link` que no es un enlace simbólico al del repositorio base). Sale con 0 si todo coincide, 3 si hay alguna diferencia y 1 si hay un error.
+
+#### Cuando falla un comando posterior a la creación
+
+El worktree se conserva. `shogun new` imprime su ruta por la salida estándar, el fallo (comando, código de salida y salida de error) por la salida de error, y sale con 1. `shogun provision` imprime el fallo por la salida de error y sale con 1.
 
 ### `status`
 
@@ -58,6 +66,52 @@ Lista todos los worktrees del repositorio, uno por línea: ruta, rama (o `(detac
 | `merged` | Mergeado en la rama principal. |
 | `folder-missing` | Su carpeta se borró a mano. |
 | `status-unavailable` | No se pudo leer su estado. |
+
+#### `status --json`
+
+```text
+shogun status [--json]
+```
+
+Imprime un único objeto JSON compacto en una línea, en vez de las líneas de texto. Los errores siguen yendo a la salida de error como texto, sin nada en la salida estándar. Por ejemplo (con saltos de línea aquí):
+
+```json
+{
+  "repository": "/home/dev/projects/main-repo",
+  "mainBranch": "main",
+  "worktrees": [
+    {
+      "path": "/home/dev/projects/main-repo",
+      "branch": "main",
+      "head": "4f1c2e9a0b7d3c58e1f6a2b94d07c3e5a8f1b620",
+      "main": true,
+      "locked": false,
+      "folderMissing": false,
+      "origin": null,
+      "status": {
+        "uncommittedChanges": 0,
+        "upstream": { "ahead": 0, "behind": 0 },
+        "mainBranch": null,
+        "merged": false,
+        "lastCommitAt": "2026-10-18T09:12:44Z"
+      }
+    }
+  ]
+}
+```
+
+| Campo | Significado |
+|---|---|
+| `repository`, `mainBranch` | La ruta del repositorio y su rama principal resuelta (`null` si no se puede resolver). |
+| `branch`, `head` | La rama activa (`null` si está detached) y el commit. |
+| `main`, `locked`, `folderMissing` | El checkout principal, retenido por una sesión de agente, carpeta borrada a mano. |
+| `origin` | `shogunai`, `claude-code`, `herdr` u `other`; `null` para el checkout principal. |
+| `status` | `null` cuando falta la carpeta o no se pudo leer su estado. |
+| `status.uncommittedChanges`, `status.merged` | Cambios sin commitear; mergeado en la rama principal. |
+| `status.upstream`, `status.mainBranch` | `{ "ahead": n, "behind": n }` respecto al upstream y a la rama principal; `null` si no hay. |
+| `status.lastCommitAt` | Hora del último commit en ISO-8601 UTC, o `null`. |
+
+Todos los campos están siempre presentes, con `null` cuando no aplican. Los nombres de los campos son un contrato: las versiones futuras solo añaden campos y nunca renombran, eliminan ni cambian el tipo de uno.
 
 ### `clean`
 
@@ -137,7 +191,7 @@ Estos comandos están pensados para que los llamen agentes y herramientas, no pa
 
 | Comando | Lo llama |
 |---|---|
-| `shogun hook worktree-create` | El hook `WorktreeCreate` de Claude Code. Lee `name` y `cwd` de la entrada estándar, crea (o reutiliza) un worktree provisionado en `feature/<name>` que parte del HEAD del worktree de `cwd`, e imprime su ruta. |
+| `shogun hook worktree-create` | El hook `WorktreeCreate` de Claude Code. Lee `name` y `cwd` de la entrada estándar, crea (o reutiliza) un worktree provisionado en `feature/<name>` que parte del HEAD del worktree de `cwd`, e imprime su ruta. Si falla un comando posterior a la creación, imprime igualmente la ruta como última línea y sale con 0, con el fallo en la salida de error, para que Claude Code use el worktree. |
 | `shogun hook worktree-remove` | El hook `WorktreeRemove` de Claude Code. Elimina el worktree de `worktree_path`, borra su rama solo si está mergeada y cierra su espacio de Herdr. |
 | `shogun hook session-start` | El hook `SessionStart` de Claude Code. Añade el entorno del worktree a `CLAUDE_ENV_FILE` y le dice a Claude qué valores usa. |
 | `shogun hook herdr` | El plugin de ShogunAi para Herdr, en `worktree.created` (provisiona el worktree) y `worktree.removed` (borra su rama si está mergeada). Lee `HERDR_PLUGIN_EVENT`, `HERDR_PLUGIN_EVENT_JSON` y `HERDR_BIN_PATH`. |

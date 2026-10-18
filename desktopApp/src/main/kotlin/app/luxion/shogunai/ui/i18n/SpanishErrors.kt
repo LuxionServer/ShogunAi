@@ -75,6 +75,10 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "No se pudieron copiar los archivos locales al worktree.",
         "Comprueba que la carpeta del worktree admite escritura.",
     )
+    is WorktreeError.PostCreateCommandFailed -> ErrorTexts(
+        "El worktree se creó, pero falló uno de los comandos posteriores a la creación del repositorio.",
+        "Lee los detalles técnicos, corrige el comando o su causa y ejecútalo dentro del worktree.",
+    )
     is WorktreeError.ClipboardWriteFailed -> ErrorTexts(
         "No se pudo copiar el comando de lanzamiento al portapapeles.",
         "Vuelve a intentarlo; puede que otra aplicación esté usando el portapapeles.",

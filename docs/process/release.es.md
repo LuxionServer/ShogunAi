@@ -22,9 +22,26 @@ graph LR
       3. compila los instaladores en macOS Apple Silicon, macOS Intel, Windows y Linux (`packageReleaseDmg`/`Msi`/`Deb`) pasando esa versión y sube cada uno como asset de esa release, que se mantiene en draft mientras dura la subida en paralelo. Cada `.dmg` de macOS recibe su sufijo de arquitectura (`-arm64`/`-x64`) justo después del build, tomado de la arquitectura del propio runner,
       4. en paralelo, compila una vez en Linux la herramienta de línea de comandos independiente (`:cli:distZip`, ver [Línea de comandos](../architecture/cli.md)) y sube `shogun-X.X.X.zip` al mismo draft,
       5. una vez subidos los cuatro instaladores y el zip, publica la release (saca el draft),
-      6. regenera el Cask de Homebrew a partir de `.github/homebrew/shogunai.rb` con la nueva versión y el `sha256` de ambos `.dmg`, y lo pushea al tap `LuxionServer/homebrew-shogunai`. El Cask instala la app y enlaza su lanzador como el comando `shogun`.
+      6. regenera el Cask de Homebrew a partir de `.github/homebrew/shogunai.rb` con la nueva versión y el `sha256` de ambos `.dmg`, y lo pushea al tap `LuxionServer/homebrew-shogunai`. El Cask instala la app y enlaza su lanzador como el comando `shogun`,
+      7. regenera `bucket/shogunai.json` en el bucket `LuxionServer/scoop-shogunai` a partir de `.github/scoop/shogunai.json` con la nueva versión y el `sha256` del `.msi`, y lo pushea,
+      8. abre un pull request a `microsoft/winget-pkgs` que actualiza `LuxionServer.ShogunAi` al nuevo `.msi` (acción `winget-releaser`).
+
+Los pasos 6, 7 y 8 se ejecutan en paralelo y son independientes: si uno falla, la release sigue publicada y los demás se ejecutan igualmente.
 
 Todo el paso 4 ocurre en un único run de CI, sin intervención manual. La release se crea en draft y recién se publica al final porque una release ya publicada es inmutable para GitHub (rechaza nuevos assets) y porque generar las notas una sola vez evita que se dupliquen si cada build del matrix las regenerara por su cuenta.
+
+## Gestores de paquetes de Windows
+
+Preparación única por parte del mantenedor, antes de la primera release que ejecute los pasos 7 y 8 (hasta entonces esos jobs fallan sin afectar a la release):
+
+1. Crear el repositorio público `LuxionServer/scoop-shogunai` con una carpeta `bucket/` y un README con los comandos de instalación.
+2. Crear un token fine-grained con `Contents: read and write` solo sobre ese repositorio y guardarlo como secreto `SCOOP_BUCKET_TOKEN`.
+3. Enviar a mano la primera versión a winget con `wingetcreate new https://github.com/LuxionServer/ShogunAi/releases/download/v<versión>/ShogunAi-<versión>.msi`, con el identificador `LuxionServer.ShogunAi`, y esperar a que se fusione (la acción solo puede actualizar un paquete existente).
+4. Crear un token clásico con `public_repo` y guardarlo como secreto `WINGET_TOKEN`.
+
+El `.msi` declara un código de actualización fijo (`upgradeUuid` en `desktopApp/build.gradle.kts`), así que un `.msi` más nuevo reemplaza la versión instalada; no lo cambies. jpackage elimina `java.exe` del runtime incluido, así que `desktopApp/build.gradle.kts` lo copia de vuelta desde el JDK de la compilación tras `createRuntimeImage`: el comando `shogun` de Scoop lo ejecuta.
+
+Tras actualizar Compose Desktop o jpackage, comprueba en Windows que la estructura del `.msi` sigue coincidiendo con el manifiesto de Scoop: instala desde el manifiesto renderizado (`scoop install` con una copia local de `.github/scoop/shogunai.json` con la versión y el `sha256` rellenados) y ejecuta `shogun --version`.
 
 ## Versión del instalador
 
