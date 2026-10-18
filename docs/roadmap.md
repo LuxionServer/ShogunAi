@@ -92,7 +92,6 @@ Some users switch between AI agents on the same task, for example when one of th
 ### Distribution
 
 - Update check against GitHub Releases: the app notices a newer version and offers to download it (or points to `brew upgrade` when installed through Homebrew).
-- Windows package managers: publish to winget and Scoop alongside the `.msi`.
 
 ## Under exploration
 

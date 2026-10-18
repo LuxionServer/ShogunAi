@@ -58,7 +58,7 @@ Branching model: `docs/process/branching.md`. `main` only receives releases and 
 
 This repository (`LuxionServer/ShogunAi`) is **public**: every commit, commit message, PR and issue comment is published permanently, and rewriting history doesn't unpublish it.
 
-- Never commit secrets: the `HOMEBREW_TAP_TOKEN` used by the release workflow (it lives only in the repository's Actions secrets), any other token or key, signing material, `.env` files or `local.properties`.
+- Never commit secrets: the `HOMEBREW_TAP_TOKEN`, `SCOOP_BUCKET_TOKEN` and `WINGET_TOKEN` used by the release workflow (they live only in the repository's Actions secrets), any other token or key, signing material, `.env` files or `local.properties`.
 - Never commit a user's local app data: `~/.shogunai/projects.json` and `~/.shogunai/settings.json` contain real filesystem paths and project names. Tests and examples use generic placeholders (`~/projects/main-repo`, `TASK-123`).
 - Never commit machine-specific state: absolute paths with a home directory, IDE or tool-local settings (e.g. `.claude/settings.local.json`), logs or build outputs.
 - Before committing, review `git diff --staged`, stage explicit paths (no `git add -A` / `git add .`) and add new local or generated files to `.gitignore`.

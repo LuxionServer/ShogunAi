@@ -45,10 +45,20 @@ compose.desktop {
             }
             windows {
                 iconFile.set(project.file("icons/icon.ico"))
+                upgradeUuid = "964E9CC7-8B48-3DF7-8C9E-946E463F038D"
             }
             linux {
                 iconFile.set(project.file("icons/icon.png"))
             }
+        }
+    }
+}
+
+tasks.withType<org.jetbrains.compose.desktop.application.tasks.AbstractJLinkTask>().configureEach {
+    doLast {
+        val javaExecutable = File(javaHome.get(), "bin/java.exe")
+        if (javaExecutable.exists()) {
+            javaExecutable.copyTo(destinationDir.get().asFile.resolve("bin/java.exe"), overwrite = true)
         }
     }
 }

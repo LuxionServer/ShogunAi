@@ -22,7 +22,9 @@ The desktop app's `main` runs the CLI instead of the window whenever it gets arg
 ## Decisions
 
 ### A fixed MSI upgrade code
-`windows { upgradeUuid = "<uuid>" }` in `desktopApp/build.gradle.kts`. Without it, whether two builds share an `UpgradeCode` depends on jpackage's default, and winget relies on Windows Installer's major upgrade to replace a version. The value is the `UpgradeCode` of the already published `.msi` files if they share one (read from the `Property` table of `ShogunAi-0.7.1.msi` and `ShogunAi-0.7.2.msi`, e.g. with msitools' `msiinfo export <msi> Property`), so existing installs upgrade too. If they differ, a new UUID is generated once and the guide tells users of earlier versions to uninstall them first. The chosen value and how it was obtained are recorded in this file when known.
+`windows { upgradeUuid = "<uuid>" }` in `desktopApp/build.gradle.kts`. Without it, whether two builds share an `UpgradeCode` depends on jpackage's default, and winget relies on Windows Installer's major upgrade to replace a version. The value is the `UpgradeCode` of the already published `.msi` files if they share one (read from the `Property` table of `ShogunAi-0.7.1.msi` and `ShogunAi-0.7.2.msi`, e.g. with msitools' `msiinfo export <msi> Property`), so existing installs upgrade too. If they differ, a new UUID is generated once and the guide tells users of earlier versions to uninstall them first. 
+
+Result: `ShogunAi-0.7.1.msi` and `ShogunAi-0.7.2.msi` share `UpgradeCode` `{964E9CC7-8B48-3DF7-8C9E-946E463F038D}`, so that value is set as `upgradeUuid` and existing installs upgrade in place.
 
 ### winget: `winget-releaser` from the release workflow
 A job `update-winget` (`needs: [resolve-version, publish-release]`, `runs-on: ubuntu-latest`) runs `vedantmgoyal9/winget-releaser@v2` (pinned to `@v2`, like the other actions) with:
@@ -64,7 +66,8 @@ The manifest:
 ```
 
 - Scoop extracts an `.msi` URL with `lessmsi` instead of running it, so no administrator rights and no Windows Installer registration: Scoop and a winget/`.msi` install don't interfere.
-- `shogun.cmd` runs the bundled `java.exe` (a console executable) with the app's jars and the app's main class, which runs the CLI because it gets arguments. The exact `extract_dir`, the `app` and `runtime` folder names and whether the jars are directly in `app` are taken from the real layout of `ShogunAi-0.7.2.msi` extracted (`msiextract` from msitools, or `lessmsi x` on Windows); the implementation adjusts the template to that layout.
+- `shogun.cmd` runs the bundled `java.exe` (a console executable) with the app's jars and the app's main class, which runs the CLI because it gets arguments. Layout of `ShogunAi-0.7.2.msi` extracted with `msiextract`: `ShogunAi/ShogunAi.exe`, `ShogunAi/app/*.jar` (`desktopApp.jar`, `cli-*.jar` and the dependencies, plus `ShogunAi.cfg` naming `app.luxion.shogunai.MainKt`) and `ShogunAi/runtime/`. Hence `extract_dir` is `ShogunAi` and the jars are directly in `app`.
+- The `.msi`'s runtime has **no `java.exe`**: jpackage runs jlink with `--strip-native-commands`, which Compose hardcodes. The build copies `java.exe` back from the JDK the runtime is linked from (`doLast` on the `createRuntimeImage` tasks in `desktopApp/build.gradle.kts`, a no-op where the file doesn't exist, i.e. outside Windows). It only needs `jli.dll`, already in the runtime. It can only be verified on a Windows build, so the first release after this change needs the manual check described in `docs/process/release.md`.
 - `bin` makes Scoop create a `shogun` shim on the `PATH`.
 
 ### Job order and failure isolation

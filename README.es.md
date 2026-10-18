@@ -25,6 +25,20 @@ brew install --cask shogunai
 > [!NOTE]
 > Homebrew elige automáticamente el instalador para la arquitectura de tu Mac (Apple Silicon o Intel). La app no está notarizada por Apple: si al abrirla por primera vez macOS avisa que "no se puede verificar el desarrollador", hazlo con clic derecho → Abrir, o ejecuta `xattr -dr com.apple.quarantine "/Applications/ShogunAi.app"`.
 
+### Windows (winget o Scoop)
+
+```powershell
+winget install LuxionServer.ShogunAi
+```
+
+```powershell
+scoop bucket add shogunai https://github.com/LuxionServer/scoop-shogunai
+scoop install shogunai
+```
+
+> [!NOTE]
+> Scoop también proporciona el comando `shogun`, sin necesitar Java.
+
 ### Descarga manual
 
 Descarga el instalador para tu sistema operativo desde la [última versión publicada](https://github.com/LuxionServer/ShogunAi/releases/latest):
@@ -41,8 +55,9 @@ Instálalo como cualquier otra app de escritorio y ábrelo. No necesitas tener J
 ### El comando `shogun`
 
 - **Homebrew**: se instala con el Cask; `shogun --version` funciona en un terminal nuevo.
+- **Scoop**: se instala con la app; `shogun --version` funciona en un terminal nuevo, sin necesitar Java.
 - **Linux (`.deb`)**: el lanzador de la app es el comando. Enlázalo una vez: `sudo ln -s /opt/shogunai/bin/ShogunAi /usr/local/bin/shogun`.
-- **Windows, o sin instalar la app**: descarga `shogun-<versión>.zip` de la release, descomprímelo y añade su carpeta `bin` al `PATH`. Necesita Java 21 o posterior.
+- **Windows (winget o `.msi`), o sin instalar la app**: descarga `shogun-<versión>.zip` de la release, descomprímelo y añade su carpeta `bin` al `PATH`. Necesita Java 21 o posterior.
 
 ## Uso básico
 

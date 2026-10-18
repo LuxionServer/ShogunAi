@@ -92,7 +92,6 @@ Hay quien alterna entre agentes de IA en una misma tarea, por ejemplo cuando a u
 ### Distribución
 
 - Comprobación de actualizaciones contra GitHub Releases: la app detecta una versión nueva y ofrece descargarla (o indica `brew upgrade` si se instaló con Homebrew).
-- Gestores de paquetes de Windows: publicar en winget y Scoop junto al `.msi`.
 
 ## En estudio
 
