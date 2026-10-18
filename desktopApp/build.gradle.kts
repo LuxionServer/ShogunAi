@@ -39,9 +39,11 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "ShogunAi"
             vendor = "LuxionServer"
-            packageVersion = (findProperty("appVersion") as String?) ?: "0.0.0"
+            val appVersion = (findProperty("appVersion") as String?) ?: "0.0.0"
+            packageVersion = appVersion
 
             macOS {
+                packageVersion = if (appVersion.startsWith("0.")) "1." + appVersion.substringAfter(".") else appVersion
                 iconFile.set(project.file("icons/icon.icns"))
             }
             windows {
