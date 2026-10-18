@@ -2,11 +2,14 @@ package app.luxion.shogunai.ui.i18n
 
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.AppLanguage
+import app.luxion.shogunai.domain.model.RepositoryConfigIssue
+import app.luxion.shogunai.domain.model.RepositoryConfigRules
 import app.luxion.shogunai.domain.model.WorktreeError
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class StringsTest {
@@ -156,5 +159,45 @@ class StringsTest {
         assertNotEquals(EnglishStrings.herdrWorkspaceWillClose, SpanishStrings.herdrWorkspaceWillClose)
         assertNotEquals(EnglishStrings.herdrCleanupNotice, SpanishStrings.herdrCleanupNotice)
         assertNotEquals(EnglishStrings.openInHerdrMark, SpanishStrings.openInHerdrMark)
+    }
+
+    @Test
+    fun `every documented template resolves`() {
+        allStrings.forEach { strings ->
+            assertTrue(strings.templateHelp.isNotEmpty())
+            strings.templateHelp.forEach { help ->
+                assertNull(RepositoryConfigRules.templateIssue("VAR", help.template), help.template)
+                assertTrue(help.description.isNotBlank())
+            }
+        }
+        assertEquals(EnglishStrings.templateHelp.map { it.template }, SpanishStrings.templateHelp.map { it.template })
+    }
+
+    @Test
+    fun `every repository configuration issue has a translated message`() {
+        val issues = listOf(
+            RepositoryConfigIssue.InvalidMemorySize,
+            RepositoryConfigIssue.InvalidMinutes,
+            RepositoryConfigIssue.InvalidVariableName,
+            RepositoryConfigIssue.DuplicateVariableName,
+            RepositoryConfigIssue.UnclosedPlaceholder,
+            RepositoryConfigIssue.UnknownPlaceholder("branch"),
+            RepositoryConfigIssue.EnvFileOutsideWorktree,
+        )
+        issues.forEach { issue ->
+            val english = EnglishStrings.repositoryConfigIssue(issue)
+            val spanish = SpanishStrings.repositoryConfigIssue(issue)
+            assertTrue(english.isNotBlank() && spanish.isNotBlank())
+            assertNotEquals(english, spanish)
+        }
+        assertTrue(EnglishStrings.repositoryConfigIssue(RepositoryConfigIssue.UnknownPlaceholder("branch")).contains("branch"))
+    }
+
+    @Test
+    fun `a repository file changed on disk is translated and keeps its path`() {
+        val error = WorktreeError.RepositoryConfigChanged("~/projects/main-repo/.shogunai.json")
+
+        allStrings.forEach { assertTrue(it.worktreeError(error).contains("~/projects/main-repo/.shogunai.json")) }
+        assertNotEquals(EnglishStrings.worktreeError(error), SpanishStrings.worktreeError(error))
     }
 }
