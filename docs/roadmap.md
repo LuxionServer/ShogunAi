@@ -34,8 +34,7 @@ In progress on the `epic/ui-redesign` branch. The desktop app grew one feature a
 
 It's planned as these OpenSpec changes, implemented in this order:
 
-1. `understandable-errors`: every error says what failed and what to do next, with the technical output kept behind "Technical details".
-2. `command-palette`: Cmd/Ctrl+K to jump to any view, project or worktree, or run an action.
+1. `command-palette`: Cmd/Ctrl+K to jump to any view, project or worktree, or run an action.
 
 Each change removes its line from this list when it's archived.
 

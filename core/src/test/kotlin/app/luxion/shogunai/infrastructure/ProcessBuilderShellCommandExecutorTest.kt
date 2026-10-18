@@ -35,6 +35,27 @@ class HomebrewPathTest {
     }
 }
 
+class GitLocaleTest {
+
+    @Test
+    fun `fuerza LC_ALL=C en los comandos de git`() {
+        val environment = mutableMapOf("LC_ALL" to "es_ES.UTF-8")
+
+        GitLocale.applyTo(listOf("git", "status"), environment)
+
+        assertEquals("C", environment["LC_ALL"])
+    }
+
+    @Test
+    fun `no toca el entorno de otros comandos`() {
+        val environment = mutableMapOf("LC_ALL" to "es_ES.UTF-8")
+
+        GitLocale.applyTo(listOf("adb", "devices"), environment)
+
+        assertEquals("es_ES.UTF-8", environment["LC_ALL"])
+    }
+}
+
 class ProcessBuilderShellCommandExecutorTest {
 
     private val executor = ProcessBuilderShellCommandExecutor()
@@ -70,6 +91,13 @@ class ProcessBuilderShellCommandExecutorTest {
         assertFailsWith<CommandExecutionException> {
             executor.execute(listOf("comando-que-no-existe-en-ningun-path"))
         }
+    }
+
+    @Test
+    fun `un proceso git recibe LC_ALL=C`() = runTest {
+        val result = executor.execute(listOf("git", "-c", "alias.show-locale=!echo \$LC_ALL", "show-locale"))
+
+        assertEquals("C", result.stdout)
     }
 
     @Test

@@ -304,6 +304,7 @@ private fun SelectedDetail(board: WorktreeBoard, selected: SelectedWorktree, mod
         projectConfig = selected.project.config,
         viewModel = selected.holder,
         projectName = selected.project.name.takeIf { !board.isFiltered },
+        projectId = selected.project.id,
         modifier = modifier,
     )
 }

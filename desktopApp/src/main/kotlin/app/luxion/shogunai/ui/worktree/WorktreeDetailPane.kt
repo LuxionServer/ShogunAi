@@ -37,8 +37,6 @@ import app.luxion.shogunai.ui.components.DangerTextButton
 import app.luxion.shogunai.ui.components.IconAction
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.NeutralTextButton
-import app.luxion.shogunai.ui.components.Notice
-import app.luxion.shogunai.ui.components.NoticeKind
 import app.luxion.shogunai.ui.components.PrimaryButton
 import app.luxion.shogunai.ui.components.ProgressSize
 import app.luxion.shogunai.ui.components.SecondaryButton
@@ -46,7 +44,7 @@ import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.StatusChip
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.Strings
-import app.luxion.shogunai.ui.i18n.worktreeError
+import app.luxion.shogunai.ui.components.ErrorNotice
 import app.luxion.shogunai.ui.theme.ShogunTheme
 import app.luxion.shogunai.ui.theme.Status
 import java.time.Instant
@@ -58,6 +56,7 @@ fun WorktreeDetailPane(
     viewModel: ProjectWorktrees,
     modifier: Modifier = Modifier,
     projectName: String? = null,
+    projectId: String? = null,
 ) {
     val strings = LocalStrings.current
     val status = viewModel.statuses[worktree.path]
@@ -126,10 +125,11 @@ fun WorktreeDetailPane(
             }
         }
         viewModel.actionErrors[worktree.path]?.let { failure ->
-            Notice(
-                kind = NoticeKind.ERROR,
-                message = strings.worktreeError(failure),
+            ErrorNotice(
+                error = failure,
                 onDismiss = { viewModel.dismissActionError(worktree.path) },
+                projectId = projectId,
+                onRetry = viewModel.actionRetry(worktree.path),
             )
         }
         StatusSection(status, viewModel.mainBranch?.name)

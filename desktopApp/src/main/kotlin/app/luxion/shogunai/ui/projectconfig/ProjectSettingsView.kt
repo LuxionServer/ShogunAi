@@ -49,7 +49,6 @@ import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
-import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.ui.FilePicker
 import app.luxion.shogunai.ui.components.IconAction
 import app.luxion.shogunai.ui.components.NeutralTextButton
@@ -63,7 +62,7 @@ import app.luxion.shogunai.ui.components.interactive
 import app.luxion.shogunai.ui.components.onEnterKey
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.Strings
-import app.luxion.shogunai.ui.i18n.worktreeError
+import app.luxion.shogunai.ui.components.ErrorNotice
 import app.luxion.shogunai.ui.relativeToBase
 import app.luxion.shogunai.ui.shell.LeaveGuard
 import app.luxion.shogunai.ui.theme.ShogunTheme
@@ -115,7 +114,7 @@ private fun SettingsForm(
     val sectionTops = remember { mutableStateMapOf<SettingsSectionId, Int>() }
     val nameFocus = remember { FocusRequester() }
     val baseRepositoryFocus = remember { FocusRequester() }
-    var saveError by remember { mutableStateOf<String?>(null) }
+    var saveError by remember { mutableStateOf<Throwable?>(null) }
     var newSecretFile by remember { mutableStateOf("") }
     var repositoryPreview by remember { mutableStateOf<String?>(null) }
 
@@ -153,9 +152,7 @@ private fun SettingsForm(
                 ProjectConfigField.NAME -> nameFocus.requestFocus()
                 ProjectConfigField.BASE_REPOSITORY_PATH -> baseRepositoryFocus.requestFocus()
             }
-            is SaveOutcome.Failed -> saveError = strings.saveFailed(
-                if (outcome.error is WorktreeError) strings.worktreeError(outcome.error) else outcome.error.message,
-            )
+            is SaveOutcome.Failed -> saveError = outcome.error
         }
     }
     val currentSave by rememberUpdatedState(save)
@@ -166,9 +163,7 @@ private fun SettingsForm(
                 saveError = null
                 onSaved(outcome.project, outcome.repositoryWritten)
             }
-            is SaveOutcome.Failed -> saveError = strings.saveFailed(
-                if (outcome.error is WorktreeError) strings.worktreeError(outcome.error) else outcome.error.message,
-            )
+            is SaveOutcome.Failed -> saveError = outcome.error
             else -> Unit
         }
     }
@@ -221,7 +216,7 @@ private fun SettingsForm(
                         EmulatorSettingsSection(viewModel, Modifier.trackTop(SettingsSectionId.EMULATOR, sectionTops))
                         SimulatorSettingsSection(viewModel, Modifier.trackTop(SettingsSectionId.SIMULATOR, sectionTops))
                         saveError?.let { error ->
-                            Notice(kind = NoticeKind.ERROR, message = error, onDismiss = { saveError = null })
+                            ErrorNotice(error = error, onDismiss = { saveError = null })
                         }
                     }
                 }

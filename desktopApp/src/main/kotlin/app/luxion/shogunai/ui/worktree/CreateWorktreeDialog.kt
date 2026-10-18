@@ -26,15 +26,13 @@ import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.ui.components.DropdownSelector
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.NeutralTextButton
-import app.luxion.shogunai.ui.components.Notice
-import app.luxion.shogunai.ui.components.NoticeKind
 import app.luxion.shogunai.ui.components.PrimaryButton
 import app.luxion.shogunai.ui.components.SegmentedSelector
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.onEnterKey
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.Strings
-import app.luxion.shogunai.ui.i18n.worktreeError
+import app.luxion.shogunai.ui.components.ErrorNotice
 import app.luxion.shogunai.ui.theme.ShogunTheme
 
 private val DialogWidth = 480.dp
@@ -77,11 +75,7 @@ fun CreateWorktreeDialog(board: WorktreeBoard) {
                     CreateMode.EXISTING_BRANCH -> ExistingBranchField(board, holder)
                 }
                 holder.createError?.let { error ->
-                    Notice(
-                        kind = NoticeKind.ERROR,
-                        message = strings.worktreeError(error),
-                        onDismiss = { holder.dismissCreateError() },
-                    )
+                    ErrorNotice(error = error, onDismiss = { holder.dismissCreateError() })
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),

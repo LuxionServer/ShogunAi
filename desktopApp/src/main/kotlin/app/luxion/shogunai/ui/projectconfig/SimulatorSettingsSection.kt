@@ -22,7 +22,7 @@ import app.luxion.shogunai.ui.components.PrimaryButton
 import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.i18n.LocalStrings
-import app.luxion.shogunai.ui.i18n.worktreeError
+import app.luxion.shogunai.ui.components.ErrorNotice
 import app.luxion.shogunai.ui.theme.ShogunTheme
 
 private data class NamedOption(val name: String?)
@@ -41,11 +41,7 @@ fun SimulatorSettingsSection(viewModel: ProjectConfigViewModel, modifier: Modifi
         )
         when (state) {
             SimulatorSectionState.Loading -> InlineProgress()
-            is SimulatorSectionState.Failed -> Text(
-                strings.worktreeError(state.error),
-                color = ShogunTheme.status.danger.color,
-                style = MaterialTheme.typography.bodySmall,
-            )
+            is SimulatorSectionState.Failed -> ErrorNotice(state.error, onDismiss = null)
             is SimulatorSectionState.Available -> AvailableSimulatorSettings(viewModel, state)
             SimulatorSectionState.Hidden -> Unit
         }
@@ -99,9 +95,7 @@ private fun KmpWiringPanel(viewModel: ProjectConfigViewModel, modifier: Modifier
         ) { Text(if (copied) strings.copied else strings.copySnippet) }
         SecondaryButton(onClick = { confirming = true }) { Text(strings.installInitScript) }
     }
-    installError?.let {
-        Text(strings.worktreeError(it), color = ShogunTheme.status.danger.color, style = MaterialTheme.typography.bodySmall)
-    }
+    installError?.let { ErrorNotice(it, onDismiss = { installError = null }) }
     if (confirming) {
         AlertDialog(
             onDismissRequest = { confirming = false },

@@ -33,7 +33,7 @@ fun IosSimulatorsView(machine: MachineResources, onOpenWorktree: (String, String
     val strings = LocalStrings.current
     var confirmingDelete by remember { mutableStateOf(false) }
     MachineViewFrame(strings.iosSimulatorsTitle) {
-        MachineErrorNotice(machine.error, machine::dismissError)
+        MachineErrorNotice(machine.error, machine::dismissError, machine.errorRetry?.let { { machine.retryError() } })
         when (val state = machine.worktreeSimulators) {
             MachineLoad.Loading -> InlineProgress()
             MachineLoad.Unavailable -> MachineSecondaryText(strings.gradleDaemonsUnavailable)

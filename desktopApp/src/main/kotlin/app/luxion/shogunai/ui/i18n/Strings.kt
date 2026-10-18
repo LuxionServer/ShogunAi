@@ -1,10 +1,9 @@
 package app.luxion.shogunai.ui.i18n
 
 import androidx.compose.runtime.staticCompositionLocalOf
-import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.model.RepositoryConfigIssue
-import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.usecase.GitFailureCause
 
 interface Strings {
     val languageName: String
@@ -73,7 +72,6 @@ interface Strings {
     fun repositoryConfigUnreadable(path: String): String
     val moveToRepositoryConfig: String
     val pendingSave: String
-    fun saveFailed(detail: String?): String
     val add: String
     val agentSection: String
     val agentCommandLabel: String
@@ -101,6 +99,12 @@ interface Strings {
 
     val closeError: String
     val closeMessage: String
+    val technicalDetails: String
+    val copyTechnicalDetails: String
+    val tryAgain: String
+    val openProjectSettings: String
+    val openPreferences: String
+    fun errorTexts(error: Throwable, gitCause: GitFailureCause): ErrorTexts
     val newWorktree: String
     val newBranchMode: String
     val existingBranchMode: String
@@ -281,39 +285,6 @@ interface Strings {
     fun openedInHerdr(name: String): String
     fun focusedInHerdr(name: String): String
 
-    fun baseRepositoryNotFound(path: String): String
-    fun worktreeAlreadyExists(path: String): String
-    fun invalidTaskIdError(rawInput: String): String
-    fun secretFilesNotFound(files: List<String>, basePath: String): String
-    fun invalidRepositoryConfig(path: String, detail: String?): String
-    fun repositoryNotFound(path: String): String
-    fun notAWorktree(path: String): String
-    fun gitCommandFailed(command: List<String>, exitCode: Int): String
-    fun secretCopyFailed(detail: String?): String
-    fun clipboardWriteFailed(detail: String?): String
-    val gitLfsNotFound: String
-    fun branchNotFound(branch: String): String
-    fun startPointNotFound(ref: String): String
-    fun branchAlreadyCheckedOut(branch: String, path: String?): String
-    fun commandCouldNotStart(command: List<String>): String
-    fun processListingFailed(command: List<String>, exitCode: Int): String
-    fun noFreePort(from: Int, to: Int): String
-    fun noEmulatorPort(from: Int, to: Int): String
-    fun androidSdkNotFound(checked: List<String>): String
-    val noAvdAvailable: String
-    val herdrNotInstalled: String
-    fun herdrCommandFailed(detail: String): String
-    fun emulatorBootTimeout(serial: String, seconds: Long): String
-    val emulatorProviderNotDeclared: String
-    val noIosRuntime: String
-    fun simulatorBootTimeout(name: String, seconds: Long): String
-    val iosSimulatorProviderNotDeclared: String
-    val iosSimulatorsNotSupported: String
-    fun appleToolFailed(command: List<String>, exitCode: Int): String
-    fun androidToolFailed(command: List<String>, exitCode: Int): String
-    fun environmentFileTracked(path: String): String
-    fun environmentFileWriteFailed(path: String, detail: String?): String
-    fun unexpectedError(detail: String?): String
     val repositoryConfigSection: String
     val repositoryConfigSharedNote: String
     val repositoryConfigProvidersTitle: String
@@ -371,48 +342,4 @@ fun Strings.repositoryConfigIssue(issue: RepositoryConfigIssue): String = when (
 fun AppLanguage.strings(): Strings = when (this) {
     AppLanguage.ENGLISH -> EnglishStrings
     AppLanguage.SPANISH -> SpanishStrings
-}
-
-fun Strings.worktreeError(error: Throwable): String = when (error) {
-    is WorktreeError -> worktreeErrorMessage(error)
-    is CommandExecutionException -> commandCouldNotStart(error.command)
-    else -> unexpectedError(error.message)
-}
-
-private fun Strings.worktreeErrorMessage(error: WorktreeError): String = when (error) {
-    is WorktreeError.BaseRepositoryNotFound -> baseRepositoryNotFound(error.path)
-    is WorktreeError.WorktreeAlreadyExists -> worktreeAlreadyExists(error.path)
-    is WorktreeError.InvalidTaskId -> invalidTaskIdError(error.rawInput)
-    is WorktreeError.SecretFileNotFound -> secretFilesNotFound(error.files, error.basePath)
-    is WorktreeError.InvalidRepositoryConfig -> invalidRepositoryConfig(error.path, error.detail)
-    is WorktreeError.RepositoryNotFound -> repositoryNotFound(error.path)
-    is WorktreeError.NotAWorktree -> notAWorktree(error.path)
-    is WorktreeError.GitCommandFailed -> gitCommandFailed(error.command, error.exitCode) +
-        if (error.errorOutput.isNotBlank()) "\n${error.errorOutput}" else ""
-    is WorktreeError.RepositoryConfigChanged -> repositoryConfigChanged(error.path)
-    is WorktreeError.SecretCopyFailed -> secretCopyFailed(error.cause?.message)
-    is WorktreeError.ClipboardWriteFailed -> clipboardWriteFailed(error.cause?.message)
-    WorktreeError.GitLfsNotFound -> gitLfsNotFound
-    is WorktreeError.BranchNotFound -> branchNotFound(error.branch)
-    is WorktreeError.StartPointNotFound -> startPointNotFound(error.ref)
-    is WorktreeError.BranchAlreadyCheckedOut -> branchAlreadyCheckedOut(error.branch, error.path)
-    is WorktreeError.ProcessListingFailed -> processListingFailed(error.command, error.exitCode)
-    is WorktreeError.NoFreePort -> noFreePort(error.from, error.to)
-    is WorktreeError.NoEmulatorPort -> noEmulatorPort(error.from, error.to)
-    is WorktreeError.AndroidSdkNotFound -> androidSdkNotFound(error.checked)
-    WorktreeError.NoAvdAvailable -> noAvdAvailable
-    WorktreeError.HerdrNotInstalled -> herdrNotInstalled
-    is WorktreeError.HerdrCommandFailed -> herdrCommandFailed(error.detail)
-    is WorktreeError.EmulatorBootTimeout -> emulatorBootTimeout(error.serial, error.seconds)
-    WorktreeError.EmulatorProviderNotDeclared -> emulatorProviderNotDeclared
-    WorktreeError.NoIosRuntime -> noIosRuntime
-    is WorktreeError.SimulatorBootTimeout -> simulatorBootTimeout(error.name, error.seconds)
-    WorktreeError.IosSimulatorProviderNotDeclared -> iosSimulatorProviderNotDeclared
-    WorktreeError.IosSimulatorsNotSupported -> iosSimulatorsNotSupported
-    is WorktreeError.AppleToolFailed -> appleToolFailed(error.command, error.exitCode) +
-        if (error.output.isNotBlank()) "\n${error.output}" else ""
-    is WorktreeError.AndroidToolFailed -> androidToolFailed(error.command, error.exitCode) +
-        if (error.output.isNotBlank()) "\n${error.output}" else ""
-    is WorktreeError.EnvironmentFileTracked -> environmentFileTracked(error.path)
-    is WorktreeError.EnvironmentFileWriteFailed -> environmentFileWriteFailed(error.path, error.cause?.message)
 }

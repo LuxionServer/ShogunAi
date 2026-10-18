@@ -1,5 +1,7 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.usecase.GitFailureCause
+
 object SpanishStrings : Strings {
     override val languageName = "Español"
 
@@ -72,7 +74,6 @@ object SpanishStrings : Strings {
         "No se puede leer $path. Corrígelo antes de crear worktrees."
     override val moveToRepositoryConfig = "Mover a .shogunai.json"
     override val pendingSave = "al guardar"
-    override fun saveFailed(detail: String?) = "No se pudo guardar" + detail.asSuffix()
     override val add = "Añadir"
     override val agentSection = "Agente"
     override val agentCommandLabel = "Comando del agente"
@@ -100,6 +101,12 @@ object SpanishStrings : Strings {
 
     override val closeError = "Cerrar error"
     override val closeMessage = "Cerrar mensaje"
+    override val technicalDetails = "Detalles técnicos"
+    override val copyTechnicalDetails = "Copiar los detalles técnicos"
+    override val tryAgain = "Volver a intentar"
+    override val openProjectSettings = "Abrir los ajustes del proyecto"
+    override val openPreferences = "Abrir las preferencias"
+    override fun errorTexts(error: Throwable, gitCause: GitFailureCause) = spanishErrorTexts(error, gitCause)
     override val newWorktree = "Nuevo worktree"
     override val newBranchMode = "Rama nueva"
     override val existingBranchMode = "Rama existente"
@@ -313,58 +320,6 @@ object SpanishStrings : Strings {
     override fun openedInHerdr(name: String) = "\"$name\" abierto en Herdr con su agente"
     override fun focusedInHerdr(name: String) = "\"$name\" ya estaba abierto en Herdr; se ha cambiado a su workspace"
 
-    override fun baseRepositoryNotFound(path: String) = "El repositorio base no existe: $path"
-    override fun worktreeAlreadyExists(path: String) = "El directorio del worktree ya existe: $path"
-    override fun invalidTaskIdError(rawInput: String) = "Id de tarea inválido: \"$rawInput\""
-    override fun secretFilesNotFound(files: List<String>, basePath: String) =
-        "No se encontraron archivos locales en $basePath: ${files.joinToString()}"
-    override fun invalidRepositoryConfig(path: String, detail: String?) = "No se puede leer $path" + detail.asSuffix()
-    override fun repositoryNotFound(path: String) = "No hay un repositorio Git en $path"
-    override fun notAWorktree(path: String) = "$path no es un worktree enlazado de este repositorio"
-    override fun gitCommandFailed(command: List<String>, exitCode: Int) =
-        "Falló el comando de Git (código de salida $exitCode): ${command.joinToString(" ")}"
-    override fun secretCopyFailed(detail: String?) = "No se pudieron copiar los archivos al worktree" + detail.asSuffix()
-    override fun clipboardWriteFailed(detail: String?) =
-        "No se pudo copiar el comando de lanzamiento al portapapeles" + detail.asSuffix()
-    override val gitLfsNotFound =
-        "El repositorio requiere Git LFS pero 'git-lfs' no está instalado. Instálalo desde https://git-lfs.com y vuelve a intentarlo."
-    override fun branchNotFound(branch: String) = "No se encontró la rama: $branch"
-    override fun startPointNotFound(ref: String) = "\"$ref\" no es un commit"
-    override fun branchAlreadyCheckedOut(branch: String, path: String?) =
-        "La rama '$branch' ya está en uso" + if (path != null) " en $path" else ""
-    override fun noFreePort(from: Int, to: Int) = "No queda ningún puerto libre entre $from y $to para este worktree"
-    override fun noEmulatorPort(from: Int, to: Int) =
-        "No queda ningún puerto de emulador entre $from y $to; para o elimina los emuladores de otros worktrees"
-    override fun androidSdkNotFound(checked: List<String>) =
-        "No se encuentra el SDK de Android. Se ha buscado en: ${checked.joinToString()}"
-    override val noAvdAvailable =
-        "No hay ningún dispositivo virtual de Android. Crea uno en el Device Manager de Android Studio y vuelve a intentarlo."
-    override val herdrNotInstalled = "Herdr no está instalado. Instálalo desde https://herdr.dev y vuelve a intentarlo."
-    override fun herdrCommandFailed(detail: String) = "No se pudo abrir el worktree en Herdr: $detail"
-    override fun emulatorBootTimeout(serial: String, seconds: Long) =
-        "$serial no ha terminado de arrancar en $seconds s; sigue arrancando"
-    override fun androidToolFailed(command: List<String>, exitCode: Int) =
-        "Falló una herramienta de Android (código $exitCode): ${command.joinToString(" ")}"
-    override val noIosRuntime =
-        "No hay ningún runtime de simulador de iOS instalado. Instala uno desde Ajustes > Componentes de Xcode y vuelve a intentarlo."
-    override fun simulatorBootTimeout(name: String, seconds: Long) =
-        "El simulador \"$name\" no ha terminado de arrancar en $seconds s; sigue arrancando"
-    override val iosSimulatorProviderNotDeclared =
-        "Este repositorio no usa el provider de simulador de iOS. Añade \"providers\": { \"ios-simulator\": {} } a .shogunai.json."
-    override val iosSimulatorsNotSupported = "Los simuladores de iOS necesitan macOS con Xcode instalado."
-    override fun appleToolFailed(command: List<String>, exitCode: Int) =
-        "Falló una herramienta de Xcode (código $exitCode): ${command.joinToString(" ")}"
-    override val emulatorProviderNotDeclared =
-        "Este repositorio no usa el provider de emulador. Añade \"providers\": { \"emulator\": {} } a .shogunai.json."
-    override fun environmentFileTracked(path: String) =
-        "El fichero de entorno \"$path\" está versionado en Git, así que no se ha sobrescrito"
-    override fun environmentFileWriteFailed(path: String, detail: String?) =
-        "No se pudo escribir el fichero de entorno \"$path\"" + if (detail.isNullOrBlank()) "" else ": $detail"
-    override fun processListingFailed(command: List<String>, exitCode: Int) =
-        "No se pudieron listar los procesos (código de salida $exitCode): ${command.joinToString(" ")}"
-    override fun commandCouldNotStart(command: List<String>) =
-        "No se pudo iniciar el comando: ${command.joinToString(" ")}"
-    override fun unexpectedError(detail: String?) = "Error inesperado" + detail.asSuffix()
     override val repositoryConfigSection = "Configuración del repositorio"
     override val repositoryConfigSharedNote =
         "Se guarda en el .shogunai.json del repositorio y la comparte todo el que lo clone."

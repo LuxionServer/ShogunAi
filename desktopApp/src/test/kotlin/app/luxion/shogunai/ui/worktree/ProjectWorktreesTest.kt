@@ -1918,6 +1918,98 @@ class ProjectWorktreesTest {
     }
 
     @Test
+    fun `retrying a failed emulator start repeats it and clears the error on success`() = runTest(dispatcher) {
+        var failing = true
+        var starts = 0
+        val emulators = EmulatorUseCases(
+            declared = { true },
+            readStates = { Result.success(emptyMap()) },
+            start = {
+                starts++
+                if (failing) Result.failure(IOException("no emulator")) else Result.success(WorktreeEmulator("emulator-5554", EmulatorState.RUNNING))
+            },
+            stop = { Result.success(WorktreeEmulator("emulator-5554", EmulatorState.STOPPED)) },
+            stopSerials = { Result.success(emptyList()) },
+        )
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(emulator = emulators))
+        advanceUntilIdle()
+        viewModel.startEmulator(worktree)
+        advanceUntilIdle()
+        assertIs<IOException>(viewModel.actionErrors[worktreePath])
+
+        failing = false
+        viewModel.actionRetry(worktreePath)?.invoke()
+        advanceUntilIdle()
+
+        assertEquals(2, starts)
+        assertNull(viewModel.actionErrors[worktreePath])
+        assertNull(viewModel.actionRetry(worktreePath))
+    }
+
+    @Test
+    fun `a failure without a retry offers none`() = runTest(dispatcher) {
+        val viewModel = projectWorktrees(useCases(listingResponder()))
+        advanceUntilIdle()
+
+        viewModel.openInHerdr(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+
+        assertIs<WorktreeError.HerdrNotInstalled>(viewModel.actionErrors[worktreePath])
+        assertNull(viewModel.actionRetry(worktreePath))
+    }
+
+    @Test
+    fun `a success on another worktree keeps the error of this one`() = runTest(dispatcher) {
+        val viewModel = projectWorktrees(useCases(listingResponder()))
+        advanceUntilIdle()
+        viewModel.openInHerdr(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+        val failure = viewModel.actionErrors[worktreePath]
+
+        viewModel.copyLaunchCommand(Worktree(path = "/home/dev/projects/TASK-456", branch = "feature/TASK-456"))
+        advanceUntilIdle()
+
+        assertEquals(failure, viewModel.actionErrors[worktreePath])
+    }
+
+    @Test
+    fun `a success on a worktree keeps the view's error`() = runTest(dispatcher) {
+        val viewModel = projectWorktrees(useCases { command ->
+            if (command.getOrNull(1) == "for-each-ref") failure(command, stderr = "fatal: not a git repository") else listingResponder()(command)
+        })
+        advanceUntilIdle()
+        viewModel.loadLocalBranches()
+        advanceUntilIdle()
+        val failure = viewModel.error
+        assertTrue(failure != null)
+
+        viewModel.copyLaunchCommand(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+
+        assertEquals(failure, viewModel.error)
+    }
+
+    @Test
+    fun `retrying the view's error reloads the branches and clears it on success`() = runTest(dispatcher) {
+        var failing = true
+        val viewModel = projectWorktrees(useCases { command ->
+            if (command.getOrNull(1) == "for-each-ref" && failing) failure(command, stderr = "fatal: not a git repository") else listingResponder()(command)
+        })
+        advanceUntilIdle()
+        viewModel.loadLocalBranches()
+        advanceUntilIdle()
+        assertTrue(viewModel.error != null)
+        assertTrue(viewModel.errorRetry != null)
+
+        failing = false
+        viewModel.retryError()
+        advanceUntilIdle()
+
+        assertNull(viewModel.error)
+        assertNull(viewModel.errorRetry)
+    }
+
+    @Test
     fun `copying the selected launch command requires a selection`() = runTest(dispatcher) {
         val board = board(useCases(listingResponder()))
         advanceUntilIdle()

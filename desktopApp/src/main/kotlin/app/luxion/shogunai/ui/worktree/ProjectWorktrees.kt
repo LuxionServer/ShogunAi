@@ -60,6 +60,9 @@ class ProjectWorktrees(
 
     var actionErrors by mutableStateOf<Map<String, Throwable>>(emptyMap())
         private set
+    private var actionRetries by mutableStateOf<Map<String, () -> Unit>>(emptyMap())
+    var errorRetry by mutableStateOf<(() -> Unit)?>(null)
+        private set
 
     val orderedWorktrees: List<Worktree>
         get() = orderMainFirst(worktrees)
@@ -207,7 +210,7 @@ class ProjectWorktrees(
             applyListResult(generation, listPermits.withPermit { useCases.list() })
             repair
                 .onSuccess { success = WorktreeSuccess.RepairedAfterMove }
-                .onFailure { error = it }
+                .onFailure { fail(it) }
         }
     }
 
@@ -290,7 +293,9 @@ class ProjectWorktrees(
         startingSimulators = startingSimulators + worktree.path
         scope.launch {
             try {
-                useCases.simulator.start(worktree.path).onFailure { recordActionError(worktree.path, it) }
+                useCases.simulator.start(worktree.path)
+                    .onSuccess { clearActionError(worktree.path) }
+                    .onFailure { recordActionError(worktree.path, it) { startSimulator(worktree) } }
                 loadSimulators(listGeneration, worktrees)
             } finally {
                 startingSimulators = startingSimulators - worktree.path
@@ -300,7 +305,9 @@ class ProjectWorktrees(
 
     fun stopSimulator(worktree: Worktree) {
         scope.launch {
-            useCases.simulator.stop(worktree.path).onFailure { recordActionError(worktree.path, it) }
+            useCases.simulator.stop(worktree.path)
+                .onSuccess { clearActionError(worktree.path) }
+                .onFailure { recordActionError(worktree.path, it) { stopSimulator(worktree) } }
             loadSimulators(listGeneration, worktrees)
         }
     }
@@ -324,7 +331,9 @@ class ProjectWorktrees(
         startingEmulators = startingEmulators + worktree.path
         scope.launch {
             try {
-                useCases.emulator.start(worktree.path).onFailure { recordActionError(worktree.path, it) }
+                useCases.emulator.start(worktree.path)
+                    .onSuccess { clearActionError(worktree.path) }
+                    .onFailure { recordActionError(worktree.path, it) { startEmulator(worktree) } }
                 loadEmulators(listGeneration, worktrees)
                 loadPorts(listGeneration, worktrees)
             } finally {
@@ -335,7 +344,9 @@ class ProjectWorktrees(
 
     fun stopEmulator(worktree: Worktree) {
         scope.launch {
-            useCases.emulator.stop(worktree.path).onFailure { recordActionError(worktree.path, it) }
+            useCases.emulator.stop(worktree.path)
+                .onSuccess { clearActionError(worktree.path) }
+                .onFailure { recordActionError(worktree.path, it) { stopEmulator(worktree) } }
             loadEmulators(listGeneration, worktrees)
         }
     }
@@ -418,8 +429,8 @@ class ProjectWorktrees(
         scope.launch {
             isLoadingBranches = true
             useCases.listLocalBranches()
-                .onSuccess { localBranches = it; error = null }
-                .onFailure { error = it }
+                .onSuccess { localBranches = it; dismissError() }
+                .onFailure { fail(it, ::loadLocalBranches) }
             isLoadingBranches = false
         }
     }
@@ -437,14 +448,14 @@ class ProjectWorktrees(
                         worktrees = worktrees.filterNot { it.path == worktree.path }
                         statuses = statuses - worktree.path
                         sizes = sizes - worktree.path
-                        error = null
+                        dismissError()
                         pendingRemoval = null
                     }
                     .onFailure { failure ->
                         if (!force && failure.suggestsForceRetry()) {
                             pendingRemoval = PendingRemoval(worktree, deleteBranch = branchToDelete != null, requiresForce = true)
                         } else {
-                            error = failure
+                            fail(failure)
                         }
                     }
             } finally {
@@ -477,8 +488,7 @@ class ProjectWorktrees(
         scope.launch {
             useCases.copyLaunchCommand(worktree.path)
                 .onSuccess {
-                    error = null
-                    actionErrors = actionErrors - worktree.path
+                    clearActionError(worktree.path)
                     copiedWorktreePath = worktree.path
                     delay(COPIED_FEEDBACK_DURATION_MS)
                     copiedWorktreePath = null
@@ -494,8 +504,7 @@ class ProjectWorktrees(
             try {
                 useCases.herdr.open(worktree)
                     .onSuccess { opening ->
-                        error = null
-                        actionErrors = actionErrors - worktree.path
+                        clearActionError(worktree.path)
                         success = WorktreeSuccess.OpenedInHerdr(
                             path = worktree.path,
                             focused = opening == HerdrOpening.FOCUSED,
@@ -545,7 +554,7 @@ class ProjectWorktrees(
             val daemonsBefore = if (stopDaemons) useCases.gradle.listDaemons(listed).getOrNull().orEmpty() else emptyList()
             useCases.cleanUp(candidates, mainBranch, options.deleteBranches)
                 .onSuccess { report ->
-                    error = null
+                    dismissError()
                     val daemonReport = stopDaemonsOfRemovedWorktrees(daemonsBefore, listed, report.removed)
                     val removedSerials = report.removed.mapNotNull { emulatorsBefore[it]?.serial }
                     val stoppedEmulators = if (removedSerials.isEmpty()) {
@@ -575,7 +584,7 @@ class ProjectWorktrees(
                     herdrCloseFailures = report.herdrFailures
                     cleanupIssues = report.takeIf { it.failures.isNotEmpty() || it.keptBranches.isNotEmpty() }
                 }
-                .onFailure { error = it }
+                .onFailure { fail(it) }
         } finally {
             isCleaningUp = false
         }
@@ -606,18 +615,41 @@ class ProjectWorktrees(
 
     fun dismissError() {
         error = null
+        errorRetry = null
+    }
+
+    private fun fail(failure: Throwable, retry: (() -> Unit)? = null) {
+        error = failure
+        errorRetry = retry
+    }
+
+    fun retryError() {
+        val retry = errorRetry ?: return
+        dismissError()
+        retry()
     }
 
     fun dismissSuccess() {
         success = null
     }
 
-    fun dismissActionError(path: String) {
-        actionErrors = actionErrors - path
+    fun dismissActionError(path: String) = clearActionError(path)
+
+    fun actionRetry(path: String): (() -> Unit)? = actionRetries[path]?.let { retry ->
+        {
+            clearActionError(path)
+            retry()
+        }
     }
 
-    private fun recordActionError(path: String, failure: Throwable) {
+    private fun clearActionError(path: String) {
+        actionErrors = actionErrors - path
+        actionRetries = actionRetries - path
+    }
+
+    private fun recordActionError(path: String, failure: Throwable, retry: (() -> Unit)? = null) {
         actionErrors = actionErrors + (path to failure)
+        actionRetries = if (retry != null) actionRetries + (path to retry) else actionRetries - path
     }
 
     private data class PendingRemoval(

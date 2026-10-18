@@ -1,0 +1,167 @@
+package app.luxion.shogunai.ui.i18n
+
+import app.luxion.shogunai.domain.executor.CommandExecutionException
+import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.usecase.GitFailureCause
+
+internal fun spanishErrorTexts(error: Throwable, gitCause: GitFailureCause): ErrorTexts = when (error) {
+    is WorktreeError.GitCommandFailed -> spanishGitTexts(gitCause)
+    is WorktreeError -> spanishWorktreeTexts(error)
+    is CommandExecutionException -> ErrorTexts(
+        "No se pudo iniciar ${error.command.first()}.",
+        "Instala ${error.command.first()} o añádelo al PATH y vuelve a intentarlo.",
+    )
+    else -> ErrorTexts("Ocurrió un error inesperado.", "Revisa los detalles técnicos.")
+}
+
+private fun spanishGitTexts(cause: GitFailureCause): ErrorTexts = when (cause) {
+    is GitFailureCause.LockFileExists -> ErrorTexts(
+        "Parece que otro proceso de Git se está ejecutando en el repositorio.",
+        "Espera a que termine, o elimina ${cause.path?.let { "el archivo de bloqueo $it" } ?: "el archivo de bloqueo"} si no hay ningún proceso de Git en marcha.",
+    )
+    is GitFailureCause.PermissionDenied -> ErrorTexts(
+        "Git no tiene permiso${cause.path?.let { " sobre $it" }.orEmpty()}.",
+        "Revisa los permisos de esa carpeta y vuelve a intentarlo.",
+    )
+    GitFailureCause.NotARepository -> ErrorTexts(
+        "La carpeta no es un repositorio de Git.",
+        "Revisa la ruta del repositorio en los ajustes del proyecto.",
+    )
+    is GitFailureCause.BranchExists -> ErrorTexts(
+        "La rama \"${cause.name}\" ya existe.",
+        "Usa otro id de tarea, o crea el worktree desde esa rama existente.",
+    )
+    GitFailureCause.LocalChanges -> ErrorTexts(
+        "El worktree tiene cambios locales.",
+        "Haz commit o descártalos primero, o elimina el worktree forzándolo.",
+    )
+    GitFailureCause.Unknown -> ErrorTexts("La operación de Git falló.", "Revisa los detalles técnicos.")
+}
+
+private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error) {
+    is WorktreeError.BaseRepositoryNotFound -> ErrorTexts(
+        "No se encontró el repositorio del proyecto en ${error.path}.",
+        "Actualiza la ruta del repositorio en los ajustes del proyecto.",
+    )
+    is WorktreeError.RepositoryNotFound -> ErrorTexts(
+        "No se encontró ningún repositorio de Git en ${error.path}.",
+        "Actualiza la ruta del repositorio en los ajustes del proyecto.",
+    )
+    is WorktreeError.WorktreeAlreadyExists -> ErrorTexts(
+        "La carpeta ${error.path} ya existe.",
+        "Usa otro id de tarea, o elimina la carpeta existente.",
+    )
+    is WorktreeError.InvalidTaskId -> ErrorTexts(
+        "\"${error.rawInput}\" no es un id de tarea válido.",
+        "Usa solo letras, dígitos, \"-\", \"_\" y \"/\".",
+    )
+    is WorktreeError.SecretFileNotFound -> ErrorTexts(
+        "No se encontraron estos archivos locales en ${error.basePath}: ${error.files.joinToString()}.",
+        "Créalos en el repositorio base, o quítalos de los archivos locales del proyecto.",
+    )
+    is WorktreeError.InvalidRepositoryConfig -> ErrorTexts(
+        "No se pudo leer ${error.path}.",
+        "Corrige el archivo siguiendo los detalles técnicos.",
+    )
+    is WorktreeError.RepositoryConfigChanged -> ErrorTexts(
+        "${error.path} cambió en disco desde que se abrieron los ajustes.",
+        "Recarga los ajustes y aplica de nuevo tus cambios.",
+    )
+    is WorktreeError.NotAWorktree -> ErrorTexts(
+        "${error.path} no es un worktree de este repositorio.",
+        "Recarga la lista; puede que la carpeta se haya eliminado.",
+    )
+    is WorktreeError.SecretCopyFailed -> ErrorTexts(
+        "No se pudieron copiar los archivos locales al worktree.",
+        "Comprueba que la carpeta del worktree admite escritura.",
+    )
+    is WorktreeError.ClipboardWriteFailed -> ErrorTexts(
+        "No se pudo copiar el comando de lanzamiento al portapapeles.",
+        "Vuelve a intentarlo; puede que otra aplicación esté usando el portapapeles.",
+    )
+    WorktreeError.GitLfsNotFound -> ErrorTexts(
+        "El repositorio usa Git LFS, pero git-lfs no está instalado.",
+        "Instala Git LFS desde https://git-lfs.com y ejecuta \"git lfs install\".",
+    )
+    is WorktreeError.BranchNotFound -> ErrorTexts(
+        "No se encontró la rama \"${error.branch}\".",
+        "Recarga la lista de ramas; puede que la rama se haya eliminado.",
+    )
+    is WorktreeError.StartPointNotFound -> ErrorTexts(
+        "\"${error.ref}\" no es un commit.",
+        "Elige una rama o un commit existente como punto de partida.",
+    )
+    is WorktreeError.BranchAlreadyCheckedOut -> ErrorTexts(
+        "La rama \"${error.branch}\" ya está en uso${error.path?.let { " en $it" }.orEmpty()}.",
+        "Abre el worktree existente de esa rama, o elige otra rama.",
+    )
+    is WorktreeError.ProcessListingFailed -> ErrorTexts(
+        "No se pudieron listar los procesos en ejecución.",
+        "La detección de agentes no está disponible; comprueba que lsof está instalado.",
+    )
+    is WorktreeError.NoFreePort -> ErrorTexts(
+        "No queda ningún puerto libre entre ${error.from} y ${error.to}.",
+        "Libera puertos de ese rango, o elimina worktrees que no uses.",
+    )
+    is WorktreeError.NoEmulatorPort -> ErrorTexts(
+        "No queda ningún puerto de emulador entre ${error.from} y ${error.to}.",
+        "Detén los emuladores de otros worktrees, o elimina worktrees que no uses.",
+    )
+    is WorktreeError.AndroidSdkNotFound -> ErrorTexts(
+        "No se encontró el SDK de Android.",
+        "Instala el SDK de Android o define ANDROID_HOME.",
+    )
+    WorktreeError.NoAvdAvailable -> ErrorTexts(
+        "No hay ningún emulador de Android disponible.",
+        "Crea uno en el Device Manager de Android Studio.",
+    )
+    is WorktreeError.EmulatorBootTimeout -> ErrorTexts(
+        "${error.serial} no terminó de arrancar en ${error.seconds} s.",
+        "Vuelve a intentarlo; el primer arranque puede tardar.",
+    )
+    is WorktreeError.AndroidToolFailed -> ErrorTexts(
+        "Falló una herramienta de Android.",
+        "Revisa los detalles técnicos.",
+    )
+    WorktreeError.NoIosRuntime -> ErrorTexts(
+        "No hay ningún runtime de simulador de iOS instalado.",
+        "Instala uno en Xcode > Settings > Components.",
+    )
+    is WorktreeError.SimulatorBootTimeout -> ErrorTexts(
+        "El simulador \"${error.name}\" no terminó de arrancar en ${error.seconds} s.",
+        "Vuelve a intentarlo; el primer arranque puede tardar.",
+    )
+    WorktreeError.IosSimulatorProviderNotDeclared -> ErrorTexts(
+        "Este repositorio no usa el proveedor de simuladores de iOS.",
+        "Activa el proveedor en los ajustes del proyecto.",
+    )
+    WorktreeError.EmulatorProviderNotDeclared -> ErrorTexts(
+        "Este repositorio no usa el proveedor de emuladores.",
+        "Activa el proveedor en los ajustes del proyecto.",
+    )
+    WorktreeError.IosSimulatorsNotSupported -> ErrorTexts(
+        "Los simuladores de iOS no están disponibles en este equipo.",
+        "Necesitan macOS con Xcode instalado.",
+    )
+    is WorktreeError.AppleToolFailed -> ErrorTexts(
+        "Falló una herramienta de Xcode.",
+        "Revisa los detalles técnicos.",
+    )
+    is WorktreeError.EnvironmentFileTracked -> ErrorTexts(
+        "Git rastrea el archivo de entorno \"${error.path}\", así que no se sobrescribió.",
+        "Elige un archivo de entorno que Git no rastree.",
+    )
+    is WorktreeError.EnvironmentFileWriteFailed -> ErrorTexts(
+        "No se pudo escribir el archivo de entorno \"${error.path}\".",
+        "Comprueba que la carpeta admite escritura.",
+    )
+    WorktreeError.HerdrNotInstalled -> ErrorTexts(
+        "Herdr no está instalado.",
+        "Instálalo desde https://herdr.dev y vuelve a intentarlo.",
+    )
+    is WorktreeError.HerdrCommandFailed -> ErrorTexts(
+        "Herdr no pudo abrir el worktree.",
+        "Revisa los detalles técnicos.",
+    )
+    is WorktreeError.GitCommandFailed -> spanishGitTexts(GitFailureCause.Unknown)
+}

@@ -104,7 +104,7 @@ private fun openWindow() = application {
             onQuit = requestQuit,
         )
         AppearanceScope(appearance) {
-            AppShell(appContainer, shellViewModel)
+            AppShell(appContainer, shellViewModel, openPreferences)
         }
     }
 

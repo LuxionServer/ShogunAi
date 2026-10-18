@@ -40,6 +40,8 @@ import app.luxion.shogunai.ui.components.FocusRingWidth
 import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.PrimaryButton
 import app.luxion.shogunai.ui.components.Spacing
+import app.luxion.shogunai.ui.components.ErrorFixActions
+import app.luxion.shogunai.ui.components.LocalErrorFixActions
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.projectconfig.ProjectSettingsView
 import app.luxion.shogunai.ui.projectconfig.ProjectConfigViewModel
@@ -58,7 +60,7 @@ private val NarrowWindowThreshold = 900.dp
 private val EmptyStateMaxWidth = 420.dp
 
 @Composable
-fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel) {
+fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel, onOpenPreferences: () -> Unit) {
     var projectPendingRemoval by remember { mutableStateOf<Project?>(null) }
     val messages = rememberAppMessages()
     val board = viewModel {
@@ -137,7 +139,13 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel) {
             )
             VerticalDivider(modifier = Modifier.fillMaxHeight())
             Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                CompositionLocalProvider(LocalAppMessages provides messages) {
+                val fixActions = remember(viewModel, onOpenPreferences) {
+                    ErrorFixActions(
+                        openProjectSettings = { projectId -> viewModel.projects.firstOrNull { it.id == projectId }?.let(viewModel::editProject) },
+                        openPreferences = onOpenPreferences,
+                    )
+                }
+                CompositionLocalProvider(LocalAppMessages provides messages, LocalErrorFixActions provides fixActions) {
                     ShellContent(appContainer, viewModel, board, machine)
                 }
                 AppMessagesHost(messages, modifier = Modifier.align(Alignment.BottomCenter))

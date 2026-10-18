@@ -14,8 +14,8 @@ import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.handPointer
 import app.luxion.shogunai.ui.i18n.LocalStrings
-import app.luxion.shogunai.ui.i18n.worktreeError
-import app.luxion.shogunai.ui.theme.ShogunTheme
+import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.ui.components.ErrorNotice
 
 private data class AvdOption(val name: String?)
 
@@ -33,16 +33,8 @@ fun EmulatorSettingsSection(viewModel: ProjectConfigViewModel, modifier: Modifie
         )
         when (state) {
             EmulatorSectionState.Loading -> InlineProgress()
-            is EmulatorSectionState.SdkNotFound -> Text(
-                strings.androidSdkNotFound(state.checked),
-                color = ShogunTheme.status.danger.color,
-                style = MaterialTheme.typography.bodySmall,
-            )
-            is EmulatorSectionState.Failed -> Text(
-                strings.worktreeError(state.error),
-                color = ShogunTheme.status.danger.color,
-                style = MaterialTheme.typography.bodySmall,
-            )
+            is EmulatorSectionState.SdkNotFound -> ErrorNotice(WorktreeError.AndroidSdkNotFound(state.checked), onDismiss = null)
+            is EmulatorSectionState.Failed -> ErrorNotice(state.error, onDismiss = null)
             is EmulatorSectionState.Available -> {
                 val options = listOf(AvdOption(null)) + (state.avds + listOfNotNull(viewModel.emulatorAvd))
                     .distinct()
