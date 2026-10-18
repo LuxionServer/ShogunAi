@@ -46,9 +46,6 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class BranchNotFound(val branch: String) :
         WorktreeError("Branch not found: $branch")
 
-    class StartPointNotFound(val ref: String) :
-        WorktreeError("Start point doesn't name a commit: $ref")
-
     class ProcessListingFailed(val command: List<String>, val exitCode: Int) :
         WorktreeError("Couldn't list processes (exit code $exitCode): ${command.joinToString(" ")}")
 

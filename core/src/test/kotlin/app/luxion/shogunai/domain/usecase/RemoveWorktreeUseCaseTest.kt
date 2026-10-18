@@ -1,6 +1,5 @@
 package app.luxion.shogunai.domain.usecase
 
-import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
@@ -72,66 +71,5 @@ class RemoveWorktreeUseCaseTest {
         useCase(worktreePath, branchToDelete = "feature/TASK-123")
 
         assertEquals(1, executor.executedCommands.size)
-    }
-
-    private fun herdrUseCase(herdr: FakeHerdrClient) = CloseHerdrWorkspacesUseCase(config, herdr)
-
-    @Test
-    fun `closes the Herdr workspace after the worktree is removed`() = runTest {
-        val herdr = FakeHerdrClient(openWorkspaces = mapOf(worktreePath to "w2"))
-        val useCase = RemoveWorktreeUseCase(config, FakeShellCommandExecutor { success(it) }, herdrUseCase(herdr))
-
-        val removal = useCase(worktreePath).getOrThrow()
-
-        assertEquals(listOf("w2"), herdr.closedWorkspaces)
-        assertEquals(null, removal.herdrFailure)
-    }
-
-    @Test
-    fun `leaves the workspace open when git fails`() = runTest {
-        val herdr = FakeHerdrClient(openWorkspaces = mapOf(worktreePath to "w2"))
-        val useCase = RemoveWorktreeUseCase(config, FakeShellCommandExecutor { failure(it) }, herdrUseCase(herdr))
-
-        assertTrue(useCase(worktreePath).isFailure)
-
-        assertTrue(herdr.closedWorkspaces.isEmpty())
-    }
-
-    @Test
-    fun `leaves the workspace open when the worktree needs force`() = runTest {
-        val herdr = FakeHerdrClient(openWorkspaces = mapOf(worktreePath to "w2"))
-        val executor = FakeShellCommandExecutor { failure(it, exitCode = 128, stderr = "contains modified or untracked files, use --force") }
-
-        assertTrue(RemoveWorktreeUseCase(config, executor, herdrUseCase(herdr))(worktreePath).isFailure)
-
-        assertTrue(herdr.closedWorkspaces.isEmpty())
-    }
-
-    @Test
-    fun `a failing close is reported without failing the removal`() = runTest {
-        val failure = WorktreeError.HerdrCommandFailed(listOf("herdr"), "workspace w2 not found")
-        val herdr = FakeHerdrClient(openWorkspaces = mapOf(worktreePath to "w2"), closeFailures = mapOf("w2" to failure))
-        val useCase = RemoveWorktreeUseCase(config, FakeShellCommandExecutor { success(it) }, herdrUseCase(herdr))
-
-        val removal = useCase(worktreePath).getOrThrow()
-
-        assertEquals(failure, removal.herdrFailure)
-    }
-
-    @Test
-    fun `a worktree that is not open in Herdr closes nothing`() = runTest {
-        val herdr = FakeHerdrClient()
-        val useCase = RemoveWorktreeUseCase(config, FakeShellCommandExecutor { success(it) }, herdrUseCase(herdr))
-
-        useCase(worktreePath).getOrThrow()
-
-        assertTrue(herdr.closedWorkspaces.isEmpty())
-    }
-
-    @Test
-    fun `without a Herdr use case Herdr is never involved`() = runTest {
-        val removal = RemoveWorktreeUseCase(config, FakeShellCommandExecutor { success(it) })(worktreePath).getOrThrow()
-
-        assertEquals(WorktreeRemoval(), removal)
     }
 }

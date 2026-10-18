@@ -1,6 +1,6 @@
 # Using with agents
 
-AI agents increasingly create their own worktrees. These recipes make the worktrees they create ready to build, with the files your repository declares in `.shogunai.json` (and `.worktreeinclude`) and your project's local files, and keep them visible and cleanable in ShogunAi. They all rely on the [`shogun` command](guide/cli.md) being on your `PATH` (see [Installation](guide/installation.md#the-shogun-command)).
+AI agents increasingly create their own worktrees. These recipes make the worktrees they create ready to build, with the files your repository declares in `.shogunai.json` (and `.worktreeinclude`) and your project's local files, and keep them visible and cleanable in ShogunAi. They all rely on the [`shogun` command](architecture/cli.md) being on your `PATH`.
 
 ## Per-worktree environment
 
@@ -22,11 +22,11 @@ A worktree isolates files, not ports. When the repository declares variables in 
 - `shogun env` prints the current worktree's variables as `export` lines (`--format dotenv` or `json` for other tools), so `eval "$(shogun env)"` sets them in a shell.
 - `envFile` (optional) is written into each worktree when it's created or provisioned, in dotenv format, for tools that read one. It's never written over a file Git tracks, so add it to `.gitignore`.
 
-For Android repositories, `"providers": { "emulator": {} }` adds `ANDROID_SERIAL=emulator-<port>` to every worktree's environment, so `./gradlew installDebug`, `connectedAndroidTest` and plain `adb` commands only use that worktree's emulator. The adb server itself is shared by every worktree, so an agent must never restart it (`adb kill-server`) or force a device with `-s`, `-e` or `-d`; the `SessionStart` hook tells Claude so. Agents start it with `shogun emulator start` (it waits until the emulator has booted); see [Providers › Android emulator](guide/providers.md#android-emulator) for the AVD and window settings. Likewise, `"providers": { "ios-simulator": {} }` gives each worktree its own iOS simulator and `IOS_SIMULATOR_UDID`; agents boot it with `shogun simulator start` and build with `xcodebuild -destination "id=$IOS_SIMULATOR_UDID"`, and KMP tests use it once the build script (or the machine-wide init script) passes it to `device` ([Providers › KMP tests](guide/providers.md#kmp-tests)).
+For Android repositories, `"providers": { "emulator": {} }` adds `ANDROID_SERIAL=emulator-<port>` to every worktree's environment, so `./gradlew installDebug`, `connectedAndroidTest` and plain `adb` commands only use that worktree's emulator. The adb server itself is shared by every worktree, so an agent must never restart it (`adb kill-server`) or force a device with `-s`, `-e` or `-d`; the `SessionStart` hook tells Claude so. Agents start it with `shogun emulator start` (it waits until the emulator has booted); see the README's "Android emulators" section for the AVD and window settings. Likewise, `"providers": { "ios-simulator": {} }` gives each worktree its own iOS simulator and `IOS_SIMULATOR_UDID`; agents boot it with `shogun simulator start` and build with `xcodebuild -destination "id=$IOS_SIMULATOR_UDID"`, and KMP tests use it once the build script (or the machine-wide init script) passes it to `device` (README, "iOS simulators").
 
-For Gradle repositories, settings in the Gradle provider (`"providers": { "gradle": { "daemonMaxHeap": "2g", "idleTimeoutMinutes": 30 } }`) add the same `GRADLE_OPTS` to every worktree's environment, so the daemons that agents' builds start use that heap and idle timeout instead of the ones in `gradle.properties`, and can be shared between worktrees. It replaces a `GRADLE_OPTS` already set in the shell, and doesn't reach builds started from an IDE ([Providers › Daemon memory and lifetime per worktree](guide/providers.md#daemon-memory-and-lifetime-per-worktree)).
+For Gradle repositories, settings in the Gradle provider (`"providers": { "gradle": { "daemonMaxHeap": "2g", "idleTimeoutMinutes": 30 } }`) add the same `GRADLE_OPTS` to every worktree's environment, so the daemons that agents' builds start use that heap and idle timeout instead of the ones in `gradle.properties`, and can be shared between worktrees. It replaces a `GRADLE_OPTS` already set in the shell, and doesn't reach builds started from an IDE (README, "Daemon memory and lifetime per worktree").
 
-For Xcode repositories, `"providers": { "xcode": { "compilationCache": true } }` adds `XCODE_XCCONFIG_FILE` to every worktree's environment, pointing to a machine-wide `.xcconfig` that turns on compilation caching with prefix mapping, so an agent's first `xcodebuild` in a new worktree reuses what other worktrees already compiled. It replaces an `XCODE_XCCONFIG_FILE` already set in the shell, doesn't reach Xcode opened from the Dock and doesn't help Swift packages. Agents can check DerivedData with `shogun xcode` and delete the orphaned folders with `shogun xcode clean` ([Providers › Xcode](guide/providers.md#xcode)).
+For Xcode repositories, `"providers": { "xcode": { "compilationCache": true } }` adds `XCODE_XCCONFIG_FILE` to every worktree's environment, pointing to a machine-wide `.xcconfig` that turns on compilation caching with prefix mapping, so an agent's first `xcodebuild` in a new worktree reuses what other worktrees already compiled. It replaces an `XCODE_XCCONFIG_FILE` already set in the shell, doesn't reach Xcode opened from the Dock and doesn't help Swift packages. Agents can check DerivedData with `shogun xcode` and delete the orphaned folders with `shogun xcode clean` (README, "Xcode repositories").
 
 The recipes below show how each agent gets these variables.
 
@@ -60,7 +60,7 @@ What happens then:
 
 Claude Code only runs a repository's project hooks once you've trusted its folder. If the hooks live in the repository's `.claude/settings.json` and you've never run `claude` there, `claude -w` stops with "Workspace trust not yet accepted": run `claude` once in the repository, accept the trust dialog, and retry. Hooks in `~/.claude/settings.json` don't need this for repositories you already trust.
 
-The new worktree starts from the HEAD of the worktree Claude Code runs in (the main checkout's current commit when you start there), like `shogun new`, and Claude Code's `worktree.baseRef` setting doesn't apply. Checked with Claude Code 2.1.301.
+The new worktree starts from the main checkout's current commit, like worktrees created from ShogunAi, and Claude Code's `worktree.baseRef` setting doesn't apply. Checked with Claude Code 2.1.301.
 
 ## Herdr
 
@@ -76,11 +76,7 @@ Don't use Herdr's "New worktree" (or `herdr worktree create`) for ShogunAi proje
 herdr plugin install LuxionServer/ShogunAi/integrations/herdr
 ```
 
-The plugin's manifest and notes live in [`integrations/herdr/`](https://github.com/LuxionServer/ShogunAi/tree/main/integrations/herdr) in the repository. On every worktree Herdr creates, it runs `shogun hook herdr`, which provisions it like `shogun provision` does: files from `.shogunai.json` and `.worktreeinclude`, your project's local files, reserved ports and `envFile`. When the repository has a ShogunAi project and the worktree is outside its worktrees folder, it also shows a Herdr notification saying so and recommending creating worktrees from ShogunAi.
-
-The plugin also listens to `worktree.removed`: when you remove a worktree from Herdr ("Remove worktree" or `herdr worktree remove`) in a repository with a ShogunAi project, `shogun hook herdr` deletes its branch if Git considers it merged, and keeps it otherwise, the same as removing from ShogunAi does. Run `herdr plugin update` to get this on an existing install.
-
-The other way round needs no plugin: removing a worktree from ShogunAi (the row's remove action, "Clean up", `shogun clean --yes` or Claude Code's removal) also closes its Herdr workspace, and the agent running there, once the worktree is removed. The dialogs say beforehand which worktrees are open in Herdr; if Herdr isn't installed or running, nothing changes, and if closing the workspace fails, the removal still counts and a warning shows Herdr's message.
+On every worktree Herdr creates, it runs `shogun hook herdr`, which provisions it like `shogun provision` does: files from `.shogunai.json` and `.worktreeinclude`, your project's local files, reserved ports and `envFile`. When the repository has a ShogunAi project and the worktree is outside its worktrees folder, it also shows a Herdr notification saying so and recommending creating worktrees from ShogunAi.
 
 - The plugin runs `shogun`, so it must be on the `PATH` of the shell you start Herdr from (Herdr's background server keeps that shell's environment; restart it with `herdr server stop` after installing `shogun`). `herdr plugin log` shows each run with the files it copied, or the error.
 - Herdr opens the new workspace a moment before the plugin runs; an agent you start instantly could find the files still being copied.

@@ -6,7 +6,6 @@ import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeDerivedDataSource
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
-import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakeHerdrConfigSource
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
@@ -20,7 +19,6 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EmulatorState
-import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.IosSimulatorProvider
 import app.luxion.shogunai.domain.model.Project
@@ -112,7 +110,6 @@ class ShogunCliTest {
         daemons: FakeGradleDaemonSource = FakeGradleDaemonSource(),
         derivedDataSource: FakeDerivedDataSource = FakeDerivedDataSource(),
         herdrWorktreesRoot: String = "/home/dev/.herdr/worktrees",
-        herdr: FakeHerdrClient = FakeHerdrClient(),
     ) = ShogunCli(
         executor = executor,
         fileManager = fileManager,
@@ -132,7 +129,6 @@ class ShogunCliTest {
         err = err,
         canonicalPath = canonicalPath,
         now = { now },
-        herdr = herdr,
     )
 
     private val gradleUserHome = "/home/dev/.gradle"
@@ -304,49 +300,6 @@ class ShogunCliTest {
     }
 
     @Test
-    fun `new from a linked worktree starts at that worktree's HEAD`() {
-        val executor = repositoryExecutor { command, directory ->
-            if (command == listOf("git", "rev-parse", "--verify", "--quiet", "HEAD^{commit}") && directory == merged) {
-                Executor.ok(command, "epic1234\n")
-            } else {
-                null
-            }
-        }
-
-        val exitCode = cli(executor, workingDirectory = merged).run(listOf("new", "TASK-123"))
-
-        assertEquals(0, exitCode, err.toString())
-        assertTrue(executor.ran("git", "worktree", "add", "$worktreesRoot/TASK-123", "-b", "feature/TASK-123", "epic1234"))
-    }
-
-    @Test
-    fun `new with from starts at the ref`() {
-        val executor = repositoryExecutor { command, _ ->
-            if (command == listOf("git", "rev-parse", "--verify", "--quiet", "epic/redesign^{commit}")) {
-                Executor.ok(command, "epic1234\n")
-            } else {
-                null
-            }
-        }
-
-        val exitCode = cli(executor).run(listOf("new", "TASK-123", "--from", "epic/redesign"))
-
-        assertEquals(0, exitCode, err.toString())
-        assertTrue(executor.ran("git", "worktree", "add", "$worktreesRoot/TASK-123", "-b", "feature/TASK-123", "epic1234"))
-    }
-
-    @Test
-    fun `new with an unknown from creates nothing and exits with 1`() {
-        val executor = repositoryExecutor()
-
-        val exitCode = cli(executor).run(listOf("new", "TASK-123", "--from", "missing-branch"))
-
-        assertEquals(1, exitCode)
-        assertTrue(err.contains("missing-branch"))
-        assertFalse(executor.calls.any { "add" in it.first })
-    }
-
-    @Test
     fun `new from an existing branch`() {
         val executor = repositoryExecutor { command, _ ->
             if (command.take(3) == listOf("git", "branch", "--list")) Executor.ok(command, "  hotfix/login\n") else null
@@ -458,50 +411,6 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertTrue(out.lines().contains("$merged  feature/TASK-1  origin=herdr  changes=0  merged"), out.toString())
-    }
-
-    @Test
-    fun `clean without yes lists the Herdr workspaces it would close`() {
-        val herdr = FakeHerdrClient(openWorkspaces = mapOf(merged to "w2"))
-
-        val exitCode = cli(repositoryExecutor(), herdr = herdr).run(listOf("clean"))
-
-        assertEquals(0, exitCode, err.toString())
-        assertEquals(
-            "would remove $merged\nwould close Herdr workspace of $merged\nRun 'shogun clean --yes' to remove it.\n",
-            out.toString(),
-        )
-        assertTrue(herdr.closedWorkspaces.isEmpty())
-    }
-
-    @Test
-    fun `clean without yes prints nothing about Herdr when it isn't available`() {
-        val herdr = FakeHerdrClient(listFailure = WorktreeError.HerdrNotInstalled)
-
-        cli(repositoryExecutor(), herdr = herdr).run(listOf("clean"))
-
-        assertEquals("would remove $merged\nRun 'shogun clean --yes' to remove it.\n", out.toString())
-    }
-
-    @Test
-    fun `clean with yes closes the Herdr workspaces of the removed worktrees`() {
-        val herdr = FakeHerdrClient(openWorkspaces = mapOf(merged to "w2"))
-
-        val exitCode = cli(repositoryExecutor(), herdr = herdr).run(listOf("clean", "--yes"))
-
-        assertEquals(0, exitCode, err.toString())
-        assertEquals(listOf("w2"), herdr.closedWorkspaces)
-    }
-
-    @Test
-    fun `clean with yes reports a failing Herdr close and still exits with 0`() {
-        val failure = WorktreeError.HerdrCommandFailed(listOf("herdr"), "workspace w2 not found")
-        val herdr = FakeHerdrClient(openWorkspaces = mapOf(merged to "w2"), closeFailures = mapOf("w2" to failure))
-
-        val exitCode = cli(repositoryExecutor(), herdr = herdr).run(listOf("clean", "--yes"))
-
-        assertEquals(0, exitCode)
-        assertTrue(err.contains("shogun: couldn't close the Herdr workspace of $merged: workspace w2 not found\n"), err.toString())
     }
 
     @Test
@@ -626,7 +535,6 @@ class ShogunCliTest {
     fun `help and version`() {
         assertEquals(0, cli(repositoryExecutor()).run(listOf("help")))
         assertTrue(out.startsWith("Usage: shogun <command>"))
-        assertTrue(out.contains("new <task-id> [--fix] [--from <ref>]"))
         out.clear()
 
         assertEquals(0, cli(repositoryExecutor()).run(listOf("--version")))

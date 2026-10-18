@@ -10,7 +10,6 @@ import app.luxion.shogunai.XcodeUseCases
 import app.luxion.shogunai.domain.FakeClipboardWriter
 import app.luxion.shogunai.domain.FakeDerivedDataSource
 import app.luxion.shogunai.domain.FakeFileManager
-import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
@@ -44,7 +43,6 @@ import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.XcodeProvider
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
-import app.luxion.shogunai.domain.usecase.CloseHerdrWorkspacesUseCase
 import app.luxion.shogunai.domain.usecase.CopyWorktreeLaunchCommandUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
@@ -1727,119 +1725,5 @@ class WorktreeViewModelTest {
         assertIs<WorktreeError.HerdrNotInstalled>(viewModel.error)
         assertNull(viewModel.success)
         assertTrue(viewModel.openingInHerdr.isEmpty())
-    }
-
-    private fun withHerdr(
-        responder: (List<String>) -> CommandResult,
-        herdr: FakeHerdrClient,
-    ): WorktreeUseCases {
-        val executor = FakeShellCommandExecutor(responder)
-        val close = CloseHerdrWorkspacesUseCase(config, herdr)
-        return useCasesWith(executor).copy(
-            remove = RemoveWorktreeUseCase(config, executor, close),
-            cleanUp = CleanUpWorktreesUseCase(config, executor, close),
-            herdr = HerdrUseCases.NONE.copy(openWorkspaces = close::openWorkspaces),
-        )
-    }
-
-    @Test
-    fun `the remove dialog says when the worktree is open in Herdr`() = runTest(dispatcher) {
-        val viewModel = WorktreeViewModel(withHerdr(listingResponder(), FakeHerdrClient(openWorkspaces = mapOf(worktreePath to "w2"))))
-        advanceUntilIdle()
-
-        viewModel.requestRemoval(viewModel.worktrees.first { it.path == worktreePath })
-        advanceUntilIdle()
-
-        assertTrue(viewModel.pendingRemovalOpenInHerdr)
-    }
-
-    @Test
-    fun `the remove dialog shows no Herdr notice for a worktree that is not open`() = runTest(dispatcher) {
-        val viewModel = WorktreeViewModel(withHerdr(listingResponder(), FakeHerdrClient()))
-        advanceUntilIdle()
-
-        viewModel.requestRemoval(viewModel.worktrees.first { it.path == worktreePath })
-        advanceUntilIdle()
-
-        assertFalse(viewModel.pendingRemovalOpenInHerdr)
-    }
-
-    @Test
-    fun `the remove dialog works while the Herdr lookup is pending or failed`() = runTest(dispatcher) {
-        val herdr = FakeHerdrClient(openWorkspaces = mapOf(worktreePath to "w2"), listFailure = WorktreeError.HerdrNotInstalled)
-        val viewModel = WorktreeViewModel(withHerdr(listingResponder(), herdr))
-        advanceUntilIdle()
-
-        viewModel.requestRemoval(viewModel.worktrees.first { it.path == worktreePath })
-        assertFalse(viewModel.pendingRemovalOpenInHerdr)
-        viewModel.confirmPendingRemoval()
-        advanceUntilIdle()
-
-        assertFalse(viewModel.pendingRemovalOpenInHerdr)
-        assertTrue(viewModel.worktrees.none { it.path == worktreePath })
-        assertTrue(viewModel.herdrCloseFailures.isEmpty())
-    }
-
-    @Test
-    fun `removing a worktree open in Herdr closes its workspace`() = runTest(dispatcher) {
-        val herdr = FakeHerdrClient(openWorkspaces = mapOf(worktreePath to "w2"))
-        val viewModel = WorktreeViewModel(withHerdr(listingResponder(), herdr))
-        advanceUntilIdle()
-
-        viewModel.requestRemoval(viewModel.worktrees.first { it.path == worktreePath })
-        advanceUntilIdle()
-        viewModel.confirmPendingRemoval()
-        advanceUntilIdle()
-
-        assertEquals(listOf("w2"), herdr.closedWorkspaces)
-        assertTrue(viewModel.herdrCloseFailures.isEmpty())
-    }
-
-    @Test
-    fun `a failing Herdr close is shown as a warning after the removal`() = runTest(dispatcher) {
-        val failure = WorktreeError.HerdrCommandFailed(listOf("herdr"), "workspace w2 not found")
-        val herdr = FakeHerdrClient(openWorkspaces = mapOf(worktreePath to "w2"), closeFailures = mapOf("w2" to failure))
-        val viewModel = WorktreeViewModel(withHerdr(listingResponder(), herdr))
-        advanceUntilIdle()
-
-        viewModel.requestRemoval(viewModel.worktrees.first { it.path == worktreePath })
-        advanceUntilIdle()
-        viewModel.confirmPendingRemoval()
-        advanceUntilIdle()
-
-        assertNull(viewModel.error)
-        assertTrue(viewModel.worktrees.none { it.path == worktreePath })
-        assertEquals(listOf(worktreePath), viewModel.herdrCloseFailures.map { it.path })
-        assertEquals(failure, viewModel.herdrCloseFailures.single().error)
-        viewModel.dismissHerdrCloseFailures()
-        assertTrue(viewModel.herdrCloseFailures.isEmpty())
-    }
-
-    @Test
-    fun `the cleanup dialog marks the candidates open in Herdr`() = runTest(dispatcher) {
-        val herdr = FakeHerdrClient(openWorkspaces = mapOf(worktreePath to "w2"))
-        val viewModel = WorktreeViewModel(withHerdr(mergedResponder(), herdr))
-        advanceUntilIdle()
-
-        viewModel.openCleanup()
-        advanceUntilIdle()
-
-        assertEquals(setOf(worktreePath), viewModel.openInHerdrPaths)
-    }
-
-    @Test
-    fun `cleanup closes the Herdr workspaces and reports failures with the success`() = runTest(dispatcher) {
-        val failure = WorktreeError.HerdrCommandFailed(listOf("herdr"), "workspace w2 not found")
-        val herdr = FakeHerdrClient(openWorkspaces = mapOf(worktreePath to "w2"), closeFailures = mapOf("w2" to failure))
-        val viewModel = WorktreeViewModel(withHerdr(mergedResponder(), herdr))
-        advanceUntilIdle()
-
-        viewModel.openCleanup()
-        advanceUntilIdle()
-        viewModel.confirmCleanup()
-        advanceUntilIdle()
-
-        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1), viewModel.success)
-        assertEquals(listOf(worktreePath), viewModel.herdrCloseFailures.map { it.path })
     }
 }

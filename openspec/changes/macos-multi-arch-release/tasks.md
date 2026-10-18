@@ -13,10 +13,10 @@
 ## 3. Documentation
 
 - [x] 3.1 Update `README.md`/`README.es.md` and `docs/process/release.md`/`.es.md` to state that there are separate macOS installers per architecture
-- [x] 3.2 Mention the breaking `.dmg` rename in the notes of the first release that ships this change (superseded: v0.7.0 shipped without the note and two releases followed; the README documents the per-architecture names)
+- [ ] 3.2 Mention the breaking `.dmg` rename in the notes of the first release that ships this change
 
 ## 4. Verification
 
-- [x] 4.1 Download and open the arm64 `.dmg` on an Apple Silicon Mac and confirm it starts natively (v0.7.2: launcher and bundled `libjvm` are arm64; installed through the Cask)
-- [x] 4.2 Download and open the x64 `.dmg` on an Intel Mac (or VM) and confirm it starts without Rosetta (no Intel Mac available: verified that the v0.7.2 launcher and bundled `libjvm` are x86_64)
-- [x] 4.3 Run `brew install --cask shogunai` on both architectures and confirm each downloads the right `.dmg` (installed on Apple Silicon; the generated Cask maps `intel:` to the `-x64.dmg` and its checksum)
+- [ ] 4.1 Download and open the arm64 `.dmg` on an Apple Silicon Mac and confirm it starts natively
+- [ ] 4.2 Download and open the x64 `.dmg` on an Intel Mac (or VM) and confirm it starts without Rosetta
+- [ ] 4.3 Run `brew install --cask shogunai` on both architectures and confirm each downloads the right `.dmg`

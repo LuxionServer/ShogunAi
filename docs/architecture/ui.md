@@ -48,7 +48,7 @@ While `WorktreeScreen` is shown, a `DisposableEffect` calls `WorktreeViewModel.s
 
 ### Cleaning up worktrees
 
-The "Clean up" button next to the "Worktrees" title is enabled when `cleanupCandidates` (from `selectCleanupCandidates` over the listed worktrees and their loaded statuses) isn't empty. It opens `CleanupDialog`, which lists the candidates by folder name and branch and offers "Also delete their local branches", unchecked by default. Confirming runs `CleanUpWorktreesUseCase`, shows a progress indicator with the dialog's actions disabled, then closes the dialog, shows "N worktrees cleaned up" as a success message and reloads the list. Failures and kept branches stay visible in `CleanupIssues` until dismissed. When the dialog opens, `WorktreeViewModel` looks up which candidates are open in Herdr (`openInHerdrPaths`, through `WorktreeUseCases.herdr.openWorkspaces`, which is empty when Herdr isn't available) without blocking the dialog; those candidates are marked "open in Herdr" and a notice says their workspace, and the agent in it, will be closed. Workspaces that fail to close are listed in `herdrCloseFailures` and shown by `HerdrCloseFailures` next to the success message.
+The "Clean up" button next to the "Worktrees" title is enabled when `cleanupCandidates` (from `selectCleanupCandidates` over the listed worktrees and their loaded statuses) isn't empty. It opens `CleanupDialog`, which lists the candidates by folder name and branch and offers "Also delete their local branches", unchecked by default. Confirming runs `CleanUpWorktreesUseCase`, shows a progress indicator with the dialog's actions disabled, then closes the dialog, shows "N worktrees cleaned up" as a success message and reloads the list. Failures and kept branches stay visible in `CleanupIssues` until dismissed.
 
 When the repository declares the Gradle provider, the dialog also offers "Also stop the idle Gradle daemons of the worktrees being removed", checked by default (`cleanupStopGradleDaemons`): stopping an idle daemon only costs a restart on the next build. Before cleaning up, `confirmCleanup` lists the daemons with the worktrees as they were; after the removals it stops the idle ones whose last build was in a removed worktree (`idleDaemonsOfRemovedWorktrees`, `StopGradleDaemonsUseCase`). The success message then adds how many daemons were stopped and kept. A daemon that can't be listed or stopped never turns the cleanup into a failure.
 
@@ -71,8 +71,6 @@ Only on macOS and for repositories whose `.shogunai.json` declares the iOS simul
 ### Open in Herdr
 
 Each worktree row whose folder exists has an "Open in Herdr" button before "Copy command". `openInHerdr(worktree)` marks the worktree in `openingInHerdr` (the button is disabled meanwhile) and runs `WorktreeUseCases.herdr.open` (`OpenWorktreeInHerdrUseCase`, built in `AppContainer` with `CliHerdrClient`) with that worktree. The success message says the worktree was opened with its agent, or that it was already open and Herdr switched to it (`WorktreeSuccess.OpenedInHerdr`); a missing `herdr` or a failing command goes to the error banner, with the link to herdr.dev or Herdr's own message.
-
-Removing a worktree also closes its Herdr workspace: `requestRemoval` looks the worktree up the same way as the cleanup dialog (`pendingRemovalOpenInHerdr`) and the remove dialog adds the notice when it's open; a failing close shows the removal's success together with a `HerdrCloseFailures` warning naming the worktree and Herdr's message.
 
 ### Gradle daemons
 
@@ -125,16 +123,7 @@ List loads are tagged with a generation number: a result is only applied if no n
 
 ## `AppContainer`
 
-Builds every port implementation once at app startup: `JsonProjectRepository`, `JsonSettingsFile` with the theme and language repositories, `NioFileManager`, `ProcessBuilderShellCommandExecutor`, `AwtClipboardWriter`, `RepositoryProvisioningFiles`, `ProcessGradleDaemonSource`, `MacDerivedDataSource`, `NioEnvironmentStateStore` with `SocketPortProbe`, `SimctlAppleSimulators`, `FileKmpTestWiring`, `LocalAndroidSdk`, `HerdrConfigFile` and `CliHerdrClient`. It also builds the machine-wide pieces shared by every project: `MachineProviderContributions` (reading each repository's simulator settings from its project), the environment resolver and preparer, and the simulator and emulator use cases.
-
-- The project configuration screen gets `simulatorSetup` (runtimes, KMP wiring, the init script) and `loadAvds` for its provider sections.
-- The worktree use cases are scoped to a project, so `worktreeUseCases(config)` builds a `WorktreeUseCases` bundle for the selected `ProjectConfig`, with its `GradleUseCases`, `XcodeUseCases`, `EmulatorUseCases`, `SimulatorUseCases` and Herdr use cases over the shared implementations.
-
-There's no DI framework.
-
-## `main.kt`
-
-The entry point of the packaged app. With arguments (ignoring macOS's legacy `-psn_…` one) it runs the [`shogun` command](cli.md) and exits without loading AWT or Compose, so the app's launcher doubles as the command. Without arguments it sets the Dock icon where the platform supports it and opens the window with `AppRoot`.
+Instantiates `JsonProjectRepository`, the settings repositories, `NioFileManager`, `ProcessBuilderShellCommandExecutor` and `AwtClipboardWriter` once at app startup. The worktree use cases are scoped to a project, so `worktreeUseCases(config)` builds a `WorktreeUseCases` bundle for the selected `ProjectConfig`, including its `GradleUseCases` over a single `ProcessGradleDaemonSource`. There's no DI framework.
 
 ## `FilePicker`
 

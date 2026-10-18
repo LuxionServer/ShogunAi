@@ -45,23 +45,16 @@ class ParseArgumentsTest {
     }
 
     @Test
-    fun `new with an explicit start point`() {
-        assertEquals(CliCommand.New(taskId = "TASK-123", from = "epic/redesign"), command("new", "TASK-123", "--from", "epic/redesign"))
-    }
-
-    @Test
     fun `new rejects missing or conflicting targets`() {
         assertTrue(usageError("new").contains("task id"))
         assertTrue(usageError("new", "TASK-1", "--branch", "main").contains("not both"))
         assertTrue(usageError("new", "TASK-1", "TASK-2").contains("single task id"))
         assertTrue(usageError("new", "--branch", "main", "--fix").contains("--fix"))
-        assertTrue(usageError("new", "--branch", "main", "--from", "develop").contains("--from"))
     }
 
     @Test
     fun `options that need a value reject a missing one`() {
         assertEquals("--branch needs a value", usageError("new", "--branch"))
-        assertEquals("--from needs a value", usageError("new", "TASK-1", "--from"))
         assertEquals("--worktrees-root needs a value", usageError("new", "TASK-1", "--worktrees-root", "--fix"))
     }
 

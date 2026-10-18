@@ -7,9 +7,6 @@ Registro de decisiones de arquitectura tomadas durante el desarrollo, junto con 
 
 ## Iteración 1 — Dominio e infraestructura del flujo de worktrees (2026-07-10)
 
-!!! note "Superada"
-    La primera entrada de abajo ya no describe el código: el dominio y la infraestructura pasaron al módulo `core` cuando el CLI `shogun` se convirtió en un segundo target (`extract-core-module`), y se eliminó el módulo `shared` de la plantilla (`develop-ci-and-remove-shared-module`). Ver [Arquitectura › Visión general](../architecture/overview.md). La entrada se conserva tal como se escribió.
-
 **Todo el código de dominio e infraestructura vive en `desktopApp`, no en `shared`.**
 Motivo: el único target del proyecto es JVM/escritorio (`shared` usa `jvm()`). Poner lógica de dominio en un módulo "compartido" sin otros targets reales solo añade indirección.
 
