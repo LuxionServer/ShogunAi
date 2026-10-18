@@ -105,6 +105,10 @@ interface Strings {
     fun worktreesCleanedUp(count: Int): String
     fun cleanupFailed(path: String, detail: String): String
     fun branchKept(branch: String): String
+    val herdrWorkspaceWillClose: String
+    val herdrCleanupNotice: String
+    val openInHerdrMark: String
+    fun herdrCloseFailed(path: String, detail: String): String
     val simulatorSection: String
     val simulatorSectionDescription: String
     val simulatorRuntimeLabel: String
@@ -196,6 +200,7 @@ interface Strings {
     fun clipboardWriteFailed(detail: String?): String
     val gitLfsNotFound: String
     fun branchNotFound(branch: String): String
+    fun startPointNotFound(ref: String): String
     fun branchAlreadyCheckedOut(branch: String, path: String?): String
     fun commandCouldNotStart(command: List<String>): String
     fun processListingFailed(command: List<String>, exitCode: Int): String
@@ -245,6 +250,7 @@ private fun Strings.worktreeErrorMessage(error: WorktreeError): String = when (e
     is WorktreeError.ClipboardWriteFailed -> clipboardWriteFailed(error.cause?.message)
     WorktreeError.GitLfsNotFound -> gitLfsNotFound
     is WorktreeError.BranchNotFound -> branchNotFound(error.branch)
+    is WorktreeError.StartPointNotFound -> startPointNotFound(error.ref)
     is WorktreeError.BranchAlreadyCheckedOut -> branchAlreadyCheckedOut(error.branch, error.path)
     is WorktreeError.ProcessListingFailed -> processListingFailed(error.command, error.exitCode)
     is WorktreeError.NoFreePort -> noFreePort(error.from, error.to)

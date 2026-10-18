@@ -106,6 +106,10 @@ object SpanishStrings : Strings {
     override fun worktreesCleanedUp(count: Int) = if (count == 1) "1 worktree limpiado" else "$count worktrees limpiados"
     override fun cleanupFailed(path: String, detail: String) = "No se pudo eliminar \"$path\": $detail"
     override fun branchKept(branch: String) = "Rama \"$branch\" conservada: no está mergeada en la rama principal"
+    override val herdrWorkspaceWillClose = "Está abierto en Herdr: se cerrará su espacio de trabajo y el agente que se ejecuta en él."
+    override val herdrCleanupNotice = "A los worktrees abiertos en Herdr se les cerrará el espacio de trabajo y el agente que se ejecuta en él."
+    override val openInHerdrMark = "abierto en Herdr"
+    override fun herdrCloseFailed(path: String, detail: String) = "Eliminado, pero no se pudo cerrar el espacio de trabajo de Herdr de \"$path\": $detail"
     override val simulatorSection = "Simulador de iOS"
     override val simulatorSectionDescription =
         "Este repositorio da a cada worktree su propio simulador de iOS (IOS_SIMULATOR_UDID). Estos ajustes solo se aplican en esta máquina."
@@ -226,6 +230,7 @@ object SpanishStrings : Strings {
     override val gitLfsNotFound =
         "El repositorio requiere Git LFS pero 'git-lfs' no está instalado. Instálalo desde https://git-lfs.com y vuelve a intentarlo."
     override fun branchNotFound(branch: String) = "No se encontró la rama: $branch"
+    override fun startPointNotFound(ref: String) = "\"$ref\" no es un commit"
     override fun branchAlreadyCheckedOut(branch: String, path: String?) =
         "La rama '$branch' ya está en uso" + if (path != null) " en $path" else ""
     override fun noFreePort(from: Int, to: Int) = "No queda ningún puerto libre entre $from y $to para este worktree"

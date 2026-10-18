@@ -10,7 +10,7 @@ There are three Gradle modules:
 |---|---|---|
 | **`core`** | The domain (models, ports, use cases) and the infrastructure that implements its ports: processes, files, the JSON catalog and settings. Plain Kotlin/JVM, without Compose or AWT. | Coroutines, `kotlinx.serialization` |
 | **`desktopApp`** | The desktop application: Compose UI (screens and ViewModels), `AppContainer`, the entry point and `AwtClipboardWriter`, the only port implementation that needs the desktop toolkit. | `core`, `cli`, Compose Desktop |
-| **`cli`** | The `shogun` command: argument parsing and the four commands (`new`, `provision`, `status`, `clean`) on top of `core`. The desktop app's launcher runs it when it receives arguments. | `core` |
+| **`cli`** | The `shogun` command: argument parsing and its commands (worktrees, environment, providers and agent hooks; see the [command-line reference](../guide/cli.md)) on top of `core`. The desktop app's launcher runs it when it receives arguments. | `core` |
 
 `core` exists so that a second front end — the `shogun` command-line tool — can run the same use cases without pulling in the desktop UI. Packages didn't change when it was extracted (`app.luxion.shogunai.domain…`, `app.luxion.shogunai.infrastructure…`); the module boundary is what keeps the UI out of `core`. The test doubles live in `core`'s test fixtures, shared by every module's tests.
 
@@ -22,11 +22,15 @@ There are three Gradle modules:
 ```
 core/src/main/kotlin/app/luxion/shogunai/
 ├── domain/           # models, ports, and use cases — no infrastructure dependencies
-│   ├── model/        # ProjectConfig, Project, AgentLaunchConfig, Worktree, WorktreeStatus, WorktreeError, ThemeMode, AppLanguage…
+│   ├── model/        # ProjectConfig, Worktree, WorktreeStatus, RepositoryProvisioning, WorktreeEnvironment, providers' models, WorktreeError…
 │   ├── executor/     # ShellCommandExecutor and ClipboardWriter ports + CommandResult
-│   ├── io/           # FileManager, ProjectRepository, ThemePreferenceRepository, LanguagePreferenceRepository ports
-│   └── usecase/      # create, list, remove, repair and clean up worktrees, their status, size and agents, copy the launch command
+│   ├── io/           # ports: FileManager, ProjectRepository, preferences, RepositoryProvisioningSource,
+│   │                 #   EnvironmentStateStore, PortProbe, AndroidSdk, AppleSimulators, KmpTestWiring,
+│   │                 #   HerdrClient, HerdrConfigSource, GradleDaemonSource, DerivedDataSource
+│   └── usecase/      # worktrees (create, list, provision, remove, repair, clean up, status, overview),
+│                     #   environment and ports, providers (Gradle, emulator, simulator, Xcode), Herdr
 └── infrastructure/   # concrete implementations of the domain ports
+core/build/generated/buildInfo/  # BuildInfo.VERSION, shared by the app and the CLI
 
 desktopApp/src/main/kotlin/app/luxion/shogunai/
 ├── infrastructure/   # AwtClipboardWriter

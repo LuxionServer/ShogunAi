@@ -22,7 +22,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.luxion.shogunai.domain.usecase.CleanupFailure
 import app.luxion.shogunai.domain.usecase.CleanupReport
+import app.luxion.shogunai.domain.usecase.herdrDetail
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.worktreeError
@@ -37,9 +39,21 @@ fun CleanupDialog(viewModel: WorktreeViewModel) {
         text = {
             Column {
                 if (candidates.isNotEmpty()) Text(strings.cleanUpMessage(candidates.size))
+                if (candidates.any { it.path in viewModel.openInHerdrPaths }) {
+                    Text(
+                        strings.herdrCleanupNotice,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = Spacing.xs),
+                    )
+                }
                 candidates.forEach { worktree ->
                     Text(
-                        listOfNotNull(worktree.path.substringAfterLast('/'), worktree.branch).joinToString(" · "),
+                        listOfNotNull(
+                            worktree.path.substringAfterLast('/'),
+                            worktree.branch,
+                            strings.openInHerdrMark.takeIf { worktree.path in viewModel.openInHerdrPaths },
+                        ).joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -137,8 +151,22 @@ fun CleanupDialog(viewModel: WorktreeViewModel) {
 @Composable
 fun CleanupIssues(report: CleanupReport, onDismiss: () -> Unit) {
     val strings = LocalStrings.current
-    val lines = report.failures.map { strings.cleanupFailed(it.path, strings.worktreeError(it.error)) } +
-        report.keptBranches.map { strings.branchKept(it) }
+    WarningLines(
+        report.failures.map { strings.cleanupFailed(it.path, strings.worktreeError(it.error)) } +
+            report.keptBranches.map { strings.branchKept(it) },
+        onDismiss,
+    )
+}
+
+@Composable
+fun HerdrCloseFailures(failures: List<CleanupFailure>, onDismiss: () -> Unit) {
+    val strings = LocalStrings.current
+    WarningLines(failures.map { strings.herdrCloseFailed(it.path, it.error.herdrDetail()) }, onDismiss)
+}
+
+@Composable
+private fun WarningLines(lines: List<String>, onDismiss: () -> Unit) {
+    val strings = LocalStrings.current
     Row(
         modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm),
         horizontalArrangement = Arrangement.SpaceBetween,

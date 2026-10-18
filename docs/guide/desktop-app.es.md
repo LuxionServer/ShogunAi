@@ -1,0 +1,57 @@
+# App de escritorio
+
+La app de escritorio gestiona un catálogo de proyectos y, para cada uno, sus worktrees. Todo lo que hace está disponible también desde el [comando `shogun`](cli.md).
+
+## Proyectos
+
+La primera vez que abres la app verás el catálogo de proyectos vacío. Pulsa "Nuevo proyecto" (Cmd+N en macOS, Ctrl+N en los demás) y rellena:
+
+- **Nombre** y **repositorio base**: el repositorio Git del que salen los worktrees.
+- **Carpeta raíz de worktrees**: donde se crean los worktrees nuevos.
+- **Rama principal** (opcional): la rama con la que se comparan el estado y si una rama está mergeada; se detecta si se deja vacía.
+- **Archivos locales**: archivos que Git no versiona y que cada worktree nuevo necesita en esta máquina (p. ej. `local.properties`). Solo se guardan en esta máquina; para compartirlos con todo el que clone el repositorio, decláralos en [`.shogunai.json`](configuration.md#configuracion-del-repositorio-shogunaijson). "Mover a .shogunai.json" mueve allí los que están dentro del repositorio.
+- **Comando del agente** y **Headroom**: el comando que ejecutan "Copiar comando" y "Abrir en Herdr" en un worktree (`claude` por defecto).
+
+El formulario muestra también, en solo lectura, lo que el repositorio declara en `.shogunai.json` y `.worktreeinclude`, y los ajustes por máquina de los providers de [emulador](providers.md#emulador-de-android) y [simulador de iOS](providers.md#simulador-de-ios) cuando el repositorio los usa.
+
+El catálogo se puede buscar por nombre y ordenar; cada proyecto se puede abrir, editar o eliminar. Si mueves un repositorio en disco, edita su ruta en el proyecto: la app mueve con él la carpeta de worktrees cuando estaba junto al repositorio, y vuelve a enlazar los worktrees (`git worktree repair`).
+
+## Crear un worktree
+
+Abre un proyecto y, en "Nuevo worktree", elige:
+
+- **Rama nueva**: escribe el id de la tarea (p. ej. `TASK-123`) y el tipo de rama, `feature` o `fix`. La app crea `feature/TASK-123` desde el commit actual del repositorio base (`HEAD`); para partir de otro commit, usa [`shogun new --from`](cli.md#new). Los espacios del id se convierten en `-`, y los ids que Git no aceptaría como nombre de rama se rechazan.
+- **Rama existente**: elige una rama local de la lista, agrupadas por prefijo. Las ramas que ya tienen worktree no se pueden elegir.
+
+"Crear worktree" (o Cmd+N / Ctrl+N) lo crea y copia los archivos que declaran el repositorio y el proyecto. Si una copia falla, el worktree se vuelve a eliminar para no dejar nada a medias.
+
+## La lista de worktrees
+
+Cada fila muestra un worktree con:
+
+- Su **rama**, la etiqueta "bloqueado" cuando una sesión de agente lo retiene, su **origen** (ShogunAi, Claude Code, Herdr u otra ubicación) y los **agentes en ejecución** en él.
+- Su **estado**: cambios sin commitear, commits por delante y por detrás de su upstream y de la rama principal, la fecha del último commit, o "mergeada en <rama principal>". "Carpeta no encontrada" cuando su carpeta se borró a mano.
+- Su **tamaño**, los **puertos** reservados para él (ver [entorno por worktree](../agents.md#entorno-por-worktree)) y la etiqueta "inactivo" cuando no tiene cambios sin commitear, ningún agente en ejecución ni commits en los últimos 14 días.
+- Las líneas de emulador y simulador con Arrancar y Parar, en repositorios que usan esos [providers](providers.md).
+
+La lista se actualiza sola: los cambios hechos desde un terminal o por un agente aparecen en pocos segundos, y también al recuperar el foco la ventana.
+
+## Trabajar en un worktree
+
+- **Copiar comando** copia `cd "<worktree>" && <comando del agente>` para pegarlo en cualquier terminal.
+- **Abrir en Herdr** abre el worktree en [Herdr](../agents.md#herdr) con su entorno y ejecuta allí el comando del agente.
+
+## Eliminar y limpiar
+
+- **Eliminar** elimina un worktree, con la opción de borrar también su rama local. El worktree principal no se puede eliminar.
+- **Limpiar**, junto al título "Worktrees", lista los worktrees mergeados o cuya carpeta ya no existe y los elimina de una vez, con la opción de borrar sus ramas. Según los providers del repositorio, ofrece también parar sus daemons de Gradle ociosos y sus emuladores, y borrar sus simuladores de iOS y los DerivedData de Xcode huérfanos.
+
+Eliminar un worktree abierto en Herdr cierra también su espacio de trabajo de Herdr; los diálogos lo avisan antes.
+
+## Secciones de los providers
+
+En repositorios que los declaran en `.shogunai.json`, la pantalla de worktrees añade una sección "Daemons de Gradle" y otra "DerivedData de Xcode". Consulta [Providers](providers.md).
+
+## Tema e idioma
+
+La barra superior tiene un selector de tema (claro, oscuro, o automático para seguir al sistema) y un selector de idioma (English o Español). Las dos elecciones se recuerdan entre reinicios.

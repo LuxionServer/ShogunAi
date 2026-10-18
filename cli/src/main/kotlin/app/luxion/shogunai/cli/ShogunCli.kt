@@ -9,6 +9,7 @@ import app.luxion.shogunai.domain.io.DerivedDataSource
 import app.luxion.shogunai.domain.io.EnvironmentStateStore
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.GradleDaemonSource
+import app.luxion.shogunai.domain.io.HerdrClient
 import app.luxion.shogunai.domain.io.HerdrConfigSource
 import app.luxion.shogunai.domain.io.KmpTestWiring
 import app.luxion.shogunai.domain.io.PortProbe
@@ -39,6 +40,7 @@ import app.luxion.shogunai.domain.model.WorktreeStatus
 import app.luxion.shogunai.domain.model.XcodeProvider
 import app.luxion.shogunai.domain.usecase.CheckGradleBuildCacheUseCase
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
+import app.luxion.shogunai.domain.usecase.CloseHerdrWorkspacesUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.DeleteMergedBranchUseCase
@@ -57,8 +59,10 @@ import app.luxion.shogunai.domain.usecase.ReadEmulatorStatesUseCase
 import app.luxion.shogunai.domain.usecase.ReadSimulatorStatesUseCase
 import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
+import app.luxion.shogunai.domain.usecase.herdrDetail
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
 import app.luxion.shogunai.domain.usecase.ResolveRepositoryUseCase
+import app.luxion.shogunai.domain.usecase.ResolveStartPointUseCase
 import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.StartWorktreeEmulatorUseCase
 import app.luxion.shogunai.domain.usecase.StartWorktreeSimulatorUseCase
@@ -73,6 +77,7 @@ import app.luxion.shogunai.domain.usecase.normalizeTaskId
 import app.luxion.shogunai.domain.usecase.owningWorktree
 import app.luxion.shogunai.domain.usecase.selectCleanupCandidates
 import app.luxion.shogunai.domain.usecase.totalResidentMemory
+import app.luxion.shogunai.infrastructure.CliHerdrClient
 import app.luxion.shogunai.infrastructure.FileKmpTestWiring
 import java.io.File
 import java.time.Duration
@@ -105,6 +110,7 @@ class ShogunCli(
     private val now: () -> Instant = Instant::now,
     private val environmentVariable: (String) -> String? = System::getenv,
     private val userHome: String = System.getProperty("user.home"),
+    private val herdr: HerdrClient = CliHerdrClient(executor, userHome = userHome),
 ) {
     private val contributions = MachineProviderContributions(
         appleSimulators,
@@ -186,13 +192,24 @@ class ShogunCli(
         val worktree = if (command.branch != null) {
             CreateWorktreeFromBranchUseCase(config, executor, fileManager, provisioningSource, prepareEnvironment)(command.branch)
         } else {
+            val startPoint = resolveStartPoint(workingDirectory, command.from)
             CreateWorktreeUseCase(config, executor, fileManager, provisioningSource, prepareEnvironment)(
                 command.taskId.orEmpty(),
                 command.branchType,
+                startPoint,
             )
         }.getOrThrow()
         out.line(worktree.path)
         return EXIT_OK
+    }
+
+    private suspend fun resolveStartPoint(directory: String, from: String?): String? {
+        val resolve = ResolveStartPointUseCase(executor)
+        return if (from != null) {
+            resolve(directory, from).getOrThrow()
+        } else {
+            resolve(directory, "HEAD").getOrNull()
+        }
     }
 
     private suspend fun provision(command: CliCommand.Provision): Int =
@@ -246,8 +263,13 @@ class ShogunCli(
         }
         val daemons = if (command.stopGradleDaemons) daemonsBeforeCleanup(worktrees) else emptyList()
         val emulators = if (command.stopEmulators) emulatorsBeforeCleanup(config, candidates) else emptyMap()
+        val closeHerdrWorkspaces = CloseHerdrWorkspacesUseCase(config, herdr)
         if (!command.confirmed) {
-            candidates.forEach { out.line("would remove ${it.path}${if (it.isPrunable) " (folder missing)" else ""}") }
+            val herdrWorkspaces = closeHerdrWorkspaces.openWorkspaces(candidates.map { it.path })
+            candidates.forEach {
+                out.line("would remove ${it.path}${if (it.isPrunable) " (folder missing)" else ""}")
+                if (it.path in herdrWorkspaces) out.line("would close Herdr workspace of ${it.path}")
+            }
             idleDaemonsOfRemovedWorktrees(daemons, worktrees, candidates.map { it.path })
                 .forEach { out.line("would stop Gradle daemon $it") }
             emulators.values.forEach { out.line("would stop emulator $it") }
@@ -257,10 +279,11 @@ class ShogunCli(
             out.line("Run 'shogun clean --yes' to remove ${if (candidates.size == 1) "it" else "them"}.")
             return EXIT_OK
         }
-        val report = CleanUpWorktreesUseCase(config, executor)(candidates, mainBranch, command.deleteBranches).getOrThrow()
+        val report = CleanUpWorktreesUseCase(config, executor, closeHerdrWorkspaces)(candidates, mainBranch, command.deleteBranches).getOrThrow()
         report.removed.forEach { out.line("removed $it") }
         report.keptBranches.forEach { out.line("kept branch $it (not merged)") }
         report.failures.forEach { err.line("shogun: couldn't remove ${it.path}: ${it.error.message}") }
+        report.herdrFailures.forEach { err.line(herdrCloseFailure(it.path, it.error)) }
         val pids = idleDaemonsOfRemovedWorktrees(daemons, worktrees, report.removed)
         if (pids.isNotEmpty()) stopDaemonsAfterCleanup(pids)
         val removedEmulators = report.removed.mapNotNull { emulators[it] }
@@ -593,7 +616,7 @@ class ShogunCli(
         val existing = ListWorktreesUseCase(config, executor)().getOrThrow()
             .firstOrNull { !it.isMain && sameDirectory(it.path, target) }
         val path = existing?.path
-            ?: CreateWorktreeUseCase(config, executor, fileManager, provisioningSource, prepareEnvironment)(name, BranchType.FEATURE).getOrThrow().path
+            ?: CreateWorktreeUseCase(config, executor, fileManager, provisioningSource, prepareEnvironment)(name, BranchType.FEATURE, resolveStartPoint(directory, null)).getOrThrow().path
         out.line(path)
         return EXIT_OK
     }
@@ -607,7 +630,10 @@ class ShogunCli(
         val worktree = ListWorktreesUseCase(config, executor)().getOrThrow()
             .firstOrNull { !it.isMain && sameDirectory(it.path, path) }
             ?: throw WorktreeError.NotAWorktree(path)
-        RemoveWorktreeUseCase(config, executor)(worktree.path, force = true).getOrThrow()
+        RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr))(worktree.path, force = true)
+            .getOrThrow()
+            .herdrFailure
+            ?.let { err.line(herdrCloseFailure(worktree.path, it)) }
         worktree.branch?.let { branch ->
             if (!DeleteMergedBranchUseCase(config, executor)(branch).getOrThrow()) {
                 err.line("shogun: kept branch $branch because it isn't merged")
@@ -616,17 +642,42 @@ class ShogunCli(
         return EXIT_OK
     }
 
+    private fun herdrCloseFailure(path: String, error: WorktreeError) =
+        "shogun: couldn't close the Herdr workspace of $path: ${error.herdrDetail()}"
+
     private suspend fun hookHerdr(): Int {
         val event = environmentVariable(HERDR_PLUGIN_EVENT)?.takeIf { it.isNotBlank() }
             ?: return hookUsageError("herdr", "$HERDR_PLUGIN_EVENT isn't set; run it from Herdr's plugin")
-        if (event != HERDR_WORKTREE_CREATED) return EXIT_OK
+        if (event != HERDR_WORKTREE_CREATED && event != HERDR_WORKTREE_REMOVED) return EXIT_OK
         val json = environmentVariable(HERDR_PLUGIN_EVENT_JSON)
             ?: return hookUsageError("herdr", "$HERDR_PLUGIN_EVENT_JSON isn't set")
         val envelope = runCatching { Json.parseToJsonElement(json) }.getOrNull() as? JsonObject
             ?: return hookUsageError("herdr", "$HERDR_PLUGIN_EVENT_JSON isn't JSON")
-        val path = ((envelope["data"] as? JsonObject)?.get("worktree") as? JsonObject)?.string("path")
+        val data = envelope["data"] as? JsonObject
+        val removed = data?.get("worktree") as? JsonObject
+        val path = removed?.string("path")
             ?: return hookUsageError("herdr", "the event has no \"data.worktree.path\"")
-        return provisionWorktreeAt(path, ::flagOutsideWorktreesRoot)
+        if (event == HERDR_WORKTREE_CREATED) return provisionWorktreeAt(path, ::flagOutsideWorktreesRoot)
+        val repoRoot = ((data?.get("workspace") as? JsonObject)?.get("worktree") as? JsonObject)?.string("repo_root")
+        return deleteMergedBranchOfRemovedWorktree(path, removed?.string("branch"), repoRoot)
+    }
+
+    private suspend fun deleteMergedBranchOfRemovedWorktree(path: String, branch: String?, repoRoot: String?): Int {
+        val projects = projectRepository.list()
+        val project = if (repoRoot != null) {
+            projects.firstOrNull { sameDirectory(it.config.baseRepositoryPath, repoRoot) }
+        } else {
+            projects.firstOrNull { it.config.worktreesRoot.isNotBlank() && classifyOrigin(Worktree(path = path, branch = null), it.config) == WorktreeOrigin.SHOGUNAI }
+                ?: run {
+                    err.line("shogun: hook herdr: couldn't find the repository of $path, so its branch was left alone")
+                    return EXIT_OK
+                }
+        }
+        if (project == null || branch == null) return EXIT_OK
+        if (!DeleteMergedBranchUseCase(project.config, executor)(branch).getOrThrow()) {
+            err.line("shogun: kept branch $branch because it isn't merged")
+        }
+        return EXIT_OK
     }
 
     private suspend fun flagOutsideWorktreesRoot(worktree: Worktree, config: ProjectConfig) {
@@ -726,6 +777,7 @@ class ShogunCli(
         private const val HERDR_PLUGIN_EVENT = "HERDR_PLUGIN_EVENT"
         private const val HERDR_PLUGIN_EVENT_JSON = "HERDR_PLUGIN_EVENT_JSON"
         private const val HERDR_WORKTREE_CREATED = "worktree.created"
+        private const val HERDR_WORKTREE_REMOVED = "worktree.removed"
         private const val HERDR_BIN_PATH = "HERDR_BIN_PATH"
 
         const val BUILD_CACHE_NOTICE =
@@ -756,7 +808,9 @@ class ShogunCli(
             Usage: shogun <command> [options]
 
             Commands:
-              new <task-id> [--fix]       Create a worktree on a new feature/ (or fix/) branch and print its path
+              new <task-id> [--fix] [--from <ref>]
+                                          Create a worktree on a new feature/ (or fix/) branch and print its path;
+                                          the branch starts at the current worktree's HEAD unless --from is given
               new --branch <branch>       Create a worktree for an existing local branch and print its path
                   --worktrees-root <dir>  Folder for the worktree when the repository has no ShogunAi project
               provision [<path>]          Copy the declared files into an existing worktree (default: current directory)
@@ -775,7 +829,7 @@ class ShogunCli(
               hook worktree-create       Claude Code WorktreeCreate hook: create and provision the worktree, print its path
               hook worktree-remove        Claude Code WorktreeRemove hook: remove the worktree, delete its branch if merged
               hook session-start          Claude Code SessionStart hook: export the worktree's environment to the session
-              hook herdr                  Herdr plugin hook: provision the worktree of a worktree.created event
+              hook herdr                  Herdr plugin hook: provision worktrees on worktree.created, delete merged branches on worktree.removed
               simulator start|stop|status [<path>] [--device <type>] [--runtime <runtime>]
                                           Boot (and wait for), shut down or show the worktree's iOS simulator
                                           (repositories with "providers": { "ios-simulator": {} } in .shogunai.json)

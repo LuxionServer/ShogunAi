@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.io.HerdrClient
 import app.luxion.shogunai.domain.model.HerdrWorktreeOpening
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -42,6 +43,20 @@ class CliHerdrClient(
 
     override suspend fun runInPane(paneId: String, command: String) {
         run(listOf("pane", "run", paneId, command))
+    }
+
+    override suspend fun openWorktreeWorkspaces(repository: String): Map<String, String> {
+        val arguments = listOf("worktree", "list", "--cwd", repository)
+        val worktrees = run(arguments).field("worktrees") as? JsonArray ?: throw unexpectedResponse(arguments)
+        return worktrees.filterIsInstance<JsonObject>().mapNotNull { worktree ->
+            val path = worktree.string("path")
+            val workspaceId = worktree.string("open_workspace_id")
+            if (path != null && workspaceId != null) path to workspaceId else null
+        }.toMap()
+    }
+
+    override suspend fun closeWorkspace(workspaceId: String) {
+        run(listOf("workspace", "close", workspaceId))
     }
 
     fun executable(): String {

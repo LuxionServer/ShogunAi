@@ -1,10 +1,14 @@
 id = "shogunai.worktrees"
 name = "ShogunAi"
-version = "0.1.0"
+version = "0.2.0"
 min_herdr_version = "0.9.5"
-description = "Provision the worktrees Herdr creates with ShogunAi: local files, secrets, reserved ports and environment file"
+description = "Provision the worktrees Herdr creates with ShogunAi (local files, secrets, reserved ports and environment file) and delete the merged branch of the ones it removes"
 platforms = ["linux", "macos", "windows"]
 
 [[events]]
 on = "worktree.created"
+command = ["shogun", "hook", "herdr"]
+
+[[events]]
+on = "worktree.removed"
 command = ["shogun", "hook", "herdr"]

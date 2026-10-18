@@ -129,6 +129,10 @@ What the Xcode provider finds in Xcode's DerivedData location (`DerivedData.kt`)
 - `DerivedDataListing` — every folder with its owner (`AttributedDerivedData`) and the size of the shared compilation cache when asked for; `orphans` and `ofWorktrees()` filter it.
 - `DerivedDataDeletion` — the outcome of deleting orphans: `deleted`, `failures` (`DerivedDataDeletionFailure`: path and detail) and `bytesFreed`.
 
+### `WorktreeOrigin` / `RunningAgent`
+
+What the worktree overview shows about each worktree (`WorktreeOverview.kt`): `WorktreeOrigin` (`SHOGUNAI`, `CLAUDE_CODE`, `HERDR`, `OTHER`), the tool that created it as told by its location (`classifyOrigin`, see [Worktree overview](#worktree-overview)), and `RunningAgent`, the name of an agent CLI running in it.
+
 ### `ThemeMode` / `AppLanguage`
 
 User preferences: `LIGHT` / `DARK` / `SYSTEM` and `ENGLISH` / `SPANISH`. They're stored in `settings.json` (see [Infrastructure layer](infrastructure.md)).
@@ -143,8 +147,22 @@ User preferences: `LIGHT` / `DARK` / `SYSTEM` and `ENGLISH` / `SPANISH`. They're
 - `SecretFileNotFound` — local files are missing in the base repo.
 - `RepositoryNotFound` — the directory isn't inside a Git repository with a working tree (used by the CLI).
 - `NotAWorktree` — the path given to provision is the main worktree or isn't one of the repository's worktrees.
-- `InvalidRepositoryConfig` — `.shogunai.json` exists but isn't valid JSON, isn't an object, its `copy` isn't a list of strings, its `providers` (or a known provider in it) isn't an object, or its `env` or `envFile` is invalid; keeps the file path and the detail.
+- `InvalidRepositoryConfig` — `.shogunai.json` exists but isn't valid JSON, isn't an object, its `copy` isn't a list of strings, its `providers` (or a known provider in it) isn't an object, a provider option has the wrong type, or its `env` or `envFile` is invalid; keeps the file path and the detail.
 - `NoFreePort` — every port from 20000 to 29999 is reserved or busy.
+- `EnvironmentFileWriteFailed` — the declared `envFile` couldn't be written; keeps the path and the cause.
+- `StartPointNotFound` — the start point given to `shogun new --from` doesn't name a commit.
+- `ProcessListingFailed` — `lsof` or `ps` failed while detecting running agents (e.g. on Windows).
+- `NoEmulatorPort` — every emulator console port from 5554 to 5584 is reserved or busy.
+- `AndroidSdkNotFound` — the Android SDK wasn't found; keeps the places checked.
+- `NoAvdAvailable` — the machine has no Android Virtual Device.
+- `EmulatorBootTimeout` — the emulator didn't finish booting in time; it's left booting.
+- `AndroidToolFailed` — `emulator` or `adb` failed; keeps the command, exit code and output.
+- `EmulatorProviderNotDeclared` — an emulator command ran in a repository that doesn't declare the emulator provider.
+- `NoIosRuntime` — Xcode has no iOS simulator runtime installed.
+- `SimulatorBootTimeout` — the simulator didn't finish booting in time; it's left booting.
+- `IosSimulatorProviderNotDeclared` — a simulator command ran in a repository that doesn't declare the iOS simulator provider.
+- `IosSimulatorsNotSupported` — the host isn't macOS with Xcode.
+- `AppleToolFailed` — `xcrun simctl` or another Xcode tool failed; keeps the command, exit code and output.
 - `EnvironmentFileTracked` — the declared `envFile` is a file Git tracks in the worktree, so it isn't overwritten.
 - `GitCommandFailed` — a Git command returned a non-zero exit code; keeps the command, exit code and Git's error output.
 - `SecretCopyFailed` — copying local or repository files failed after the worktree had already been created.
@@ -287,10 +305,12 @@ interface HerdrClient {
     suspend fun splitPane(paneId: String, cwd: String, environment: List<Pair<String, String>>): String
     suspend fun closePane(paneId: String)
     suspend fun runInPane(paneId: String, command: String)
+    suspend fun openWorktreeWorkspaces(repository: String): Map<String, String>
+    suspend fun closeWorkspace(workspaceId: String)
 }
 ```
 
-The few [Herdr](https://herdr.dev) operations ShogunAi uses to open a worktree there: open an existing worktree as a focused workspace grouped under its repository (or focus it if it's already open), split a pane into a focused one whose shell starts in a directory with extra variables, close a pane, and submit a command in a pane. Pane ids aren't stored, since Herdr renumbers them when panes move. Errors are `HerdrNotInstalled` and `HerdrCommandFailed`.
+The few [Herdr](https://herdr.dev) operations ShogunAi uses to open a worktree there and to close it again: `openWorktreeWorkspaces` returns, for the worktrees of a repository that Herdr has open, their path and workspace id; `closeWorkspace` closes a workspace and the processes in its panes. The rest: open an existing worktree as a focused workspace grouped under its repository (or focus it if it's already open), split a pane into a focused one whose shell starts in a directory with extra variables, close a pane, and submit a command in a pane. Pane ids aren't stored, since Herdr renumbers them when panes move. Errors are `HerdrNotInstalled` and `HerdrCommandFailed`.
 
 ### `GradleDaemonSource`
 
@@ -331,7 +351,7 @@ The worktree use cases are built per project (they receive its `ProjectConfig`) 
 Creates a worktree on a **new** branch `<type>/<taskId>`. The task id is normalized first (`normalizeTaskId`: trimmed, whitespace runs replaced with `-`) and validated as a Git ref segment. Then, in this order:
 
 1. **Upfront validations** (base repo exists, destination free, local files present) and **resolving the repository's files** — done *before* touching Git so as not to leave a half-done worktree.
-2. `git worktree add <path> -b <branch>`.
+2. `git worktree add <path> -b <branch> [<startPoint>]`. The caller resolves the optional start point to a commit id with `ResolveStartPointUseCase` (`git rev-parse --verify --quiet <ref>^{commit}` in its own directory, failing with `StartPointNotFound`), so `HEAD` means the worktree the command runs in even though Git runs in the base repository. Without one (the desktop app), the branch starts at the base repository's HEAD.
 3. Copying the local files and then the repository's files into the new directory, at the same relative paths.
 4. Preparing its environment through the `WorktreeEnvironmentPreparer` it receives: `PrepareWorktreeEnvironmentUseCase` resolves it with reservation (`ResolveWorktreeEnvironmentUseCase`) and, when `envFile` is declared, `WriteEnvironmentFileUseCase` writes it in dotenv format, refusing a file Git tracks (`git ls-files --error-unmatch`, `EnvironmentFileTracked`) and reporting write errors as `EnvironmentFileWriteFailed`. The preparer defaults to `WorktreeEnvironmentPreparer.NONE`, which tests that don't exercise the environment rely on; the app and the CLI always pass the real one.
 
@@ -370,7 +390,7 @@ Squash and rebase merges aren't detected as merged, and remote-tracking branches
 
 `selectCleanupCandidates(worktrees, statuses)` picks the worktrees to clean up: not main, not locked, and either prunable or merged into the main branch with no uncommitted changes. Worktrees without a loaded status are never picked.
 
-`CleanUpWorktreesUseCase` takes those candidates, the `MainBranch` and whether to delete branches, and returns a `CleanupReport` (`removed`, `keptBranches`, `failures`). Each existing worktree is removed with `git worktree remove` (never `--force`), and missing ones with a single `git worktree prune`. A failing step is recorded and the rest continue. Then the branches of every removed worktree, pruned ones included, are deleted only if `git merge-base --is-ancestor <branch> <main ref>` still succeeds, and then with `git branch -D`: `-d` checks against the base repository's `HEAD`, which in a git-flow repository may not contain a branch merged into `develop`.
+`CleanUpWorktreesUseCase` takes those candidates, the `MainBranch` and whether to delete branches, and returns a `CleanupReport` (`removed`, `keptBranches`, `failures`, `herdrFailures`). Each existing worktree is removed with `git worktree remove` (never `--force`), and missing ones with a single `git worktree prune`. A failing step is recorded and the rest continue. Then the branches of every removed worktree, pruned ones included, are deleted only if `git merge-base --is-ancestor <branch> <main ref>` still succeeds, and then with `git branch -D`: `-d` checks against the base repository's `HEAD`, which in a git-flow repository may not contain a branch merged into `develop`.
 
 ### Worktree overview
 
@@ -382,10 +402,14 @@ Squash and rebase merges aren't detected as merged, and remote-tracking branches
 
 ### `RemoveWorktreeUseCase`
 
-Runs `git worktree remove [--force] <path>` and, optionally, `git branch -d <branch>` to delete the local branch (safe delete, not `-D`).
+Runs `git worktree remove [--force] <path>` and, optionally, `git branch -d <branch>` to delete the local branch (safe delete, not `-D`). It returns a `WorktreeRemoval` whose `herdrFailure` is the error from closing the worktree's Herdr workspace, when that failed (see [`CloseHerdrWorkspacesUseCase`](#closeherdrworkspacesusecase)).
 
 !!! note
     Git doesn't allow removing a worktree from inside itself, which is another reason every command runs from the base repository.
+
+### `CloseHerdrWorkspacesUseCase`
+
+Closes the Herdr workspace of removed worktrees, in two steps around the removal. `openWorkspaces(paths)` makes one `worktree list` call for the base repository, before anything is removed (afterwards Git no longer lists the worktree), and returns the workspace id of each given path that Herdr has open, matching paths with `normalizePath`. Any failure (Herdr not installed or not running, an unexpected response) gives an empty map: if ShogunAi can't see Herdr there's nothing to close and nothing to report. `close(workspaces, removedPaths)` closes only the workspaces of the paths that were actually removed (pruned missing worktrees included) and returns a `CleanupFailure` for each close that failed instead of throwing. `RemoveWorktreeUseCase` and `CleanUpWorktreesUseCase` take it as an optional parameter and `null` leaves their behaviour unchanged; a Git failure closes nothing.
 
 ### `CopyWorktreeLaunchCommandUseCase`
 
@@ -394,6 +418,10 @@ Copies `cd "<worktree path>" && <agent command>` to the clipboard, with the agen
 ### `OpenWorktreeInHerdrUseCase`
 
 Opens a worktree in Herdr with its environment and the project's agent. It asks Herdr to open the worktree for the project's base repository, labelled with its folder name; if Herdr already had it open, that workspace is now focused and it returns `FOCUSED` without touching its panes. Otherwise it resolves the worktree's environment (the same as `shogun env`, provider variables such as `ANDROID_SERIAL` included, reserving ports if needed); when it isn't empty, it splits the root pane into one whose shell starts in the worktree with those variables and closes the root pane, so the workspace keeps a single pane. Then it runs `AgentLaunchConfig.resolvedCommand()` in that pane and returns `OPENED`.
+
+### `ResolveStartPointUseCase`
+
+Resolves the ref a new branch starts from to a commit id with `git rev-parse --verify --quiet <ref>^{commit}`, run in the caller's directory, so `HEAD` means the worktree the command runs in and not the base repository. An unknown ref fails with `StartPointNotFound` before anything is created. Used by `shogun new` and the `WorktreeCreate` hook; the desktop app passes no start point.
 
 ### `ResolveRepositoryUseCase`
 
@@ -420,6 +448,10 @@ Resolves a worktree's environment from the base repository's declaration and the
 3. writes the reservations only if they changed.
 
 Contributions can also ask for resources (`ResourceRequest`: a key, and how to check, create and discard one). With reservation, a stored resource that still `exists` is kept; otherwise one is created outside the lock (creating a simulator runs `xcrun` for about a second) and recorded under it, and if another process recorded one in the meantime, the new one is discarded and the recorded one used. Without reservation resources are only read. Provider variables come first and declared `env` variables override a provider variable with the same name. A reserved port is never checked again, because the worktree's own server is expected to listen on it. With `reserve = false` (used to show ports without side effects) it only reads the stored ports, without locking or writing, and returns no variables until every port is reserved. `formatEnvironment` renders the variables as `sh` (`export NAME='value'`, single quotes with `'\''` escaping, safe for `eval`), `dotenv` (`NAME=value`, double-quoted and escaped unless the value is plain) or `json`.
+
+### `PrepareWorktreeEnvironmentUseCase` / `WriteEnvironmentFileUseCase`
+
+`PrepareWorktreeEnvironmentUseCase` is the `WorktreeEnvironmentPreparer` that creation and provisioning run once the files are copied: it resolves the worktree's environment with reservation and, when the declaration has an `envFile`, calls `WriteEnvironmentFileUseCase`. That one writes the variables in dotenv format at the declared path, refusing a file Git tracks (`git ls-files --error-unmatch`, `EnvironmentFileTracked`) and reporting write errors as `EnvironmentFileWriteFailed`. `WorktreeEnvironmentPreparer.NONE` does nothing, for tests that don't exercise the environment.
 
 ### iOS simulator use cases
 
