@@ -51,6 +51,7 @@ import app.luxion.shogunai.ui.components.handPointer
 import app.luxion.shogunai.ui.components.onNewItemShortcut
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.Strings
+import app.luxion.shogunai.ui.machine.MachineResource
 import app.luxion.shogunai.ui.shell.LocalAppMessages
 import app.luxion.shogunai.ui.shell.MessageAction
 import java.io.File
@@ -61,6 +62,7 @@ fun WorktreeScreen(
     onSelectFilter: (String?) -> Unit,
     onOpenProjectSettings: (Project) -> Unit,
     onSeeAll: () -> Unit,
+    onOpenMachine: (MachineResource) -> Unit,
 ) {
     val strings = LocalStrings.current
     DisposableEffect(board) {
@@ -122,7 +124,7 @@ fun WorktreeScreen(
             }
         }
 
-        WorktreeContent(board, onOpenProjectSettings, onSeeAll, modifier = Modifier.weight(1f).fillMaxWidth())
+        WorktreeContent(board, onOpenProjectSettings, onSeeAll, onOpenMachine, modifier = Modifier.weight(1f).fillMaxWidth())
     }
 
     if (board.isCreateDialogOpen) {
@@ -255,6 +257,7 @@ private fun WorktreeContent(
     board: WorktreeBoard,
     onOpenProjectSettings: (Project) -> Unit,
     onSeeAll: () -> Unit,
+    onOpenMachine: (MachineResource) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier) {
@@ -266,7 +269,7 @@ private fun WorktreeContent(
             } else if (board.hasNoMatch) {
                 NoMatch(onClear = board::clearTextFilter, modifier = listModifier)
             } else {
-                WorktreeListPane(board, onOpenProjectSettings, listModifier)
+                WorktreeListPane(board, onOpenProjectSettings, onOpenMachine, listModifier)
             }
         }
         if (narrow && selected != null) {

@@ -38,6 +38,11 @@ import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.WithTooltip
 import app.luxion.shogunai.ui.components.interactive
 import app.luxion.shogunai.ui.i18n.LocalStrings
+import app.luxion.shogunai.ui.machine.MachineResource
+import app.luxion.shogunai.ui.machine.MachineSummary
+import app.luxion.shogunai.ui.machine.icon
+import app.luxion.shogunai.ui.machine.text
+import app.luxion.shogunai.ui.machine.title
 import app.luxion.shogunai.ui.theme.Status
 import app.luxion.shogunai.ui.theme.ShogunTheme
 
@@ -56,6 +61,9 @@ fun Sidebar(
     activeCount: Int,
     totalWorktreeCount: Int,
     activityOf: (Project) -> ProjectActivity,
+    machineResources: List<MachineResource>,
+    machineSummaries: Map<MachineResource, MachineSummary>,
+    selectedMachine: MachineResource?,
     rail: Boolean,
     onSelectActive: () -> Unit,
     onSelectAll: () -> Unit,
@@ -63,6 +71,7 @@ fun Sidebar(
     onEditProject: (Project) -> Unit,
     onRemoveProject: (Project) -> Unit,
     onAddProject: () -> Unit,
+    onSelectMachine: (MachineResource) -> Unit,
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -122,6 +131,20 @@ fun Sidebar(
             } else {
                 AddProjectRow(onAddProject)
             }
+            if (machineResources.isNotEmpty() && !rail) SectionLabel(strings.machineTitle)
+            machineResources.forEach { resource ->
+                if (rail) {
+                    RailViewItem(resource.title(strings), resource.icon, selected = resource == selectedMachine) { onSelectMachine(resource) }
+                } else {
+                    MachineRow(
+                        label = resource.title(strings),
+                        icon = resource.icon,
+                        summary = machineSummaries[resource]?.text(resource, strings),
+                        selected = resource == selectedMachine,
+                        onClick = { onSelectMachine(resource) },
+                    )
+                }
+            }
         }
     }
 }
@@ -169,6 +192,45 @@ private fun ViewRow(label: String, icon: ImageVector, count: Int, selected: Bool
             style = ShogunTheme.typography.dataSmall,
             color = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
         )
+    }
+}
+
+@Composable
+private fun MachineRow(label: String, icon: ImageVector, summary: String?, selected: Boolean, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.sm)
+            .height(SidebarRowHeight)
+            .interactive(onClick = onClick)
+            .background(if (selected) colors.secondaryContainer else colors.surfaceContainerLow)
+            .padding(horizontal = Spacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
+            modifier = Modifier.size(16.dp),
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (selected) colors.onSecondaryContainer else colors.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        summary?.let {
+            Text(
+                it,
+                style = ShogunTheme.typography.dataSmall,
+                color = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
     }
 }
 

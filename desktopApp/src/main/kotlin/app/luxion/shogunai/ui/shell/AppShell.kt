@@ -21,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -40,7 +41,11 @@ import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.projectconfig.ProjectConfigScreen
 import app.luxion.shogunai.ui.projectconfig.ProjectConfigViewModel
 import app.luxion.shogunai.ui.rememberScreenViewModelStoreOwner
+import app.luxion.shogunai.ui.machine.MachineResource
+import app.luxion.shogunai.ui.machine.MachineResources
+import app.luxion.shogunai.ui.machine.MachineView
 import app.luxion.shogunai.ui.worktree.WorktreeBoard
+import app.luxion.shogunai.ui.worktree.WorktreeRef
 import app.luxion.shogunai.ui.worktree.WorktreeScreen
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
@@ -61,6 +66,23 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel) {
         )
     }
     LaunchedEffect(viewModel.projects) { board.syncCatalog(viewModel.projects) }
+    val machineScope = rememberCoroutineScope()
+    val machine = remember {
+        MachineResources(
+            scope = machineScope,
+            useCases = appContainer.machineUseCases,
+            projects = { board.machineProjects },
+            pathExists = appContainer.pathExists,
+            onDevicesChanged = { projectId -> board.holder(projectId)?.refreshDevices() },
+        )
+    }
+    val declaredMachine = machine.declared
+    LaunchedEffect(declaredMachine) { machine.runSummaryTicks() }
+    LaunchedEffect(viewModel.destination, board.isCatalogLoaded) {
+        val destination = viewModel.destination as? ShellDestination.Machine
+        machine.show(destination?.resource)
+        if (destination != null && board.isCatalogLoaded && destination.resource !in machine.declared) viewModel.selectActive()
+    }
     val windowInfo = LocalWindowInfo.current
     LaunchedEffect(windowInfo) {
         snapshotFlow { windowInfo.isWindowFocused }
@@ -85,6 +107,9 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel) {
                 activeCount = board.activeCount,
                 totalWorktreeCount = board.totalWorktreeCount,
                 activityOf = { project -> ProjectActivity(board.activeCountOf(project.id), board.agentNamesOf(project.id)) },
+                machineResources = machine.visibleResources,
+                machineSummaries = machine.summaries,
+                selectedMachine = (viewModel.destination as? ShellDestination.Machine)?.resource,
                 rail = viewModel.isRail,
                 onSelectActive = viewModel::selectActive,
                 onSelectAll = viewModel::selectAll,
@@ -92,12 +117,13 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel) {
                 onEditProject = viewModel::editProject,
                 onRemoveProject = { projectPendingRemoval = it },
                 onAddProject = viewModel::addProject,
+                onSelectMachine = viewModel::selectMachine,
                 onToggle = viewModel::toggleSidebar,
             )
             VerticalDivider(modifier = Modifier.fillMaxHeight())
             Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
                 CompositionLocalProvider(LocalAppMessages provides messages) {
-                    ShellContent(appContainer, viewModel, board)
+                    ShellContent(appContainer, viewModel, board, machine)
                 }
                 AppMessagesHost(messages, modifier = Modifier.align(Alignment.BottomCenter))
             }
@@ -117,7 +143,7 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel) {
 }
 
 @Composable
-private fun ShellContent(appContainer: AppContainer, viewModel: ShellViewModel, board: WorktreeBoard) {
+private fun ShellContent(appContainer: AppContainer, viewModel: ShellViewModel, board: WorktreeBoard, machine: MachineResources) {
     when (val destination = viewModel.destination) {
         null -> EmptyState(onAddProject = viewModel::addProject)
         ShellDestination.Active -> WorktreeView(destination, viewModel, board)
@@ -125,8 +151,30 @@ private fun ShellContent(appContainer: AppContainer, viewModel: ShellViewModel, 
         is ShellDestination.ProjectSettings -> viewModel.projectFor(destination)?.let { project ->
             key(destination) { ProjectForm(appContainer, viewModel, existingProject = project) }
         }
+        is ShellDestination.Machine -> MachineDestination(destination.resource, viewModel, board, machine)
         ShellDestination.AddProject -> key(destination) { ProjectForm(appContainer, viewModel, existingProject = null) }
     }
+}
+
+@Composable
+private fun MachineDestination(
+    resource: MachineResource,
+    shellViewModel: ShellViewModel,
+    board: WorktreeBoard,
+    machine: MachineResources,
+) {
+    val reloadRequestsOnEntry = remember { shellViewModel.reloadRequests }
+    LaunchedEffect(shellViewModel.reloadRequests) {
+        if (shellViewModel.reloadRequests != reloadRequestsOnEntry) machine.reload()
+    }
+    MachineView(
+        resource = resource,
+        machine = machine,
+        onOpenWorktree = { projectId, path ->
+            board.select(WorktreeRef(projectId, path))
+            shellViewModel.selectAll()
+        },
+    )
 }
 
 @Composable
@@ -163,6 +211,7 @@ private fun WorktreeView(destination: ShellDestination, shellViewModel: ShellVie
         onSelectFilter = shellViewModel::selectFilter,
         onOpenProjectSettings = shellViewModel::editProject,
         onSeeAll = shellViewModel::selectAll,
+        onOpenMachine = shellViewModel::selectMachine,
     )
 }
 

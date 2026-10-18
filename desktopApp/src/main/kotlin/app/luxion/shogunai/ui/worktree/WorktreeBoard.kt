@@ -16,6 +16,7 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.usecase.Activity
+import app.luxion.shogunai.ui.machine.MachineProject
 import app.luxion.shogunai.domain.usecase.AgentSearch
 import app.luxion.shogunai.domain.usecase.isActive
 import app.luxion.shogunai.domain.usecase.worktreeActivity
@@ -192,6 +193,22 @@ class WorktreeBoard(
 
     val pendingRemoval: ProjectWorktrees?
         get() = entries.values.firstOrNull { it.holder.worktreePendingRemoval != null }?.holder
+
+    val isCatalogLoaded: Boolean
+        get() = projects.isNotEmpty() && entries.values.all { it.holder.hasLoaded }
+
+    val machineProjects: List<MachineProject>
+        get() = projects.mapNotNull { project ->
+            val holder = holder(project.id) ?: return@mapNotNull null
+            MachineProject(
+                project = project,
+                worktrees = holder.worktrees.takeIf { holder.hasLoaded },
+                declares = holder.declaredResources,
+                gradleSettings = holder.gradleSettings,
+                gradleBuildCacheEnabled = holder.isGradleBuildCacheEnabled,
+                compilationCache = holder.hasCompilationCache,
+            )
+        }
 
     fun holder(projectId: String): ProjectWorktrees? = entries[projectId]?.holder
 

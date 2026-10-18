@@ -44,6 +44,7 @@ import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.XcodeProvider
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
+import app.luxion.shogunai.ui.machine.MachineResource
 import app.luxion.shogunai.domain.usecase.CloseHerdrWorkspacesUseCase
 import app.luxion.shogunai.domain.usecase.CopyWorktreeLaunchCommandUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
@@ -1279,15 +1280,15 @@ class ProjectWorktreesTest {
     }
 
     @Test
-    fun `gradle repositories list daemons with their worktree and the build cache state`() = runTest(dispatcher) {
+    fun `gradle repositories expose the build cache state without listing daemons`() = runTest(dispatcher) {
         val source = FakeGradleDaemonSource(listOf(gradleDaemon(10, idle, lastBuildDirectory = worktreePath)))
         val viewModel = projectWorktrees(gradleRepository(listingResponder(), source, buildCacheEnabled = false))
         advanceUntilIdle()
 
         assertTrue(viewModel.isGradleRepository)
         assertFalse(viewModel.isGradleBuildCacheEnabled)
-        val daemons = assertIs<GradleDaemonsState.Loaded>(viewModel.gradleDaemons).daemons
-        assertEquals(DaemonOwner.Worktree(worktreePath), daemons.single().owner)
+        assertEquals(setOf(MachineResource.GRADLE_DAEMONS), viewModel.declaredResources)
+        assertEquals(0, source.listings)
     }
 
     @Test
@@ -1300,42 +1301,6 @@ class ProjectWorktreesTest {
         assertEquals(settings, declared.gradleSettings)
         assertTrue(bare.isGradleRepository)
         assertNull(bare.gradleSettings)
-    }
-
-    @Test
-    fun `memory settings are shown with their unit`() {
-        assertEquals("2 GB", formatMemorySetting("2g"))
-        assertEquals("1024 MB", formatMemorySetting("1024M"))
-        assertEquals("512 KB", formatMemorySetting("512k"))
-    }
-
-    @Test
-    fun `daemons are unavailable when processes can't be listed`() = runTest(dispatcher) {
-        val source = FakeGradleDaemonSource(failure = WorktreeError.ProcessListingFailed(listOf("ps"), 1))
-        val viewModel = projectWorktrees(gradleRepository(listingResponder(), source))
-        advanceUntilIdle()
-
-        assertEquals(GradleDaemonsState.Unavailable, viewModel.gradleDaemons)
-        assertNull(viewModel.error)
-    }
-
-    @Test
-    fun `stopping idle daemons keeps busy ones, reports and reloads`() = runTest(dispatcher) {
-        val executed = mutableListOf<List<String>>()
-        val source = FakeGradleDaemonSource(listOf(gradleDaemon(10, idle), gradleDaemon(11, DaemonState.Busy)))
-        val viewModel = projectWorktrees(gradleRepository(listingResponder(executed), source))
-        advanceUntilIdle()
-        val listingsBefore = source.listings
-
-        viewModel.stopIdleGradleDaemons()
-        advanceUntilIdle()
-
-        assertTrue(executed.contains(listOf("kill", "10")))
-        assertFalse(executed.contains(listOf("kill", "11")))
-        assertEquals(listOf(10L), viewModel.daemonStopReport?.stopped?.map { it.pid })
-        assertEquals(listOf(11L), viewModel.daemonStopReport?.kept?.map { it.pid })
-        assertEquals(listingsBefore + 2, source.listings)
-        assertFalse(viewModel.isStoppingDaemons)
     }
 
     @Test
@@ -1670,7 +1635,7 @@ class ProjectWorktreesTest {
     }
 
     @Test
-    fun `xcode repositories load worktree folders and orphans`() = runTest(dispatcher) {
+    fun `xcode repositories load their orphans for the cleanup`() = runTest(dispatcher) {
         val project = worktreeProject()
         val worktreeFolder = FakeDerivedDataSource.derivedData("TASK-123", project, 2_000_000_000L)
         val orphan = FakeDerivedDataSource.derivedData("Orphan-1", "/gone/App.xcodeproj", 500_000_000L)
@@ -1687,12 +1652,8 @@ class ProjectWorktreesTest {
         advanceUntilIdle()
 
         assertTrue(viewModel.isXcodeRepository)
-        val listing = assertIs<DerivedDataState.Loaded>(viewModel.derivedData).listing
-        val attributed = listing.ofWorktrees().single()
-        assertEquals(worktreePath, (attributed.owner as DerivedDataOwner.Worktree).path)
-        assertEquals(2_000_000_000L, attributed.folder.sizeBytes)
-        assertEquals(listOf(orphan.path), listing.orphans.map { it.path })
-        assertEquals(300_000_000L, listing.compilationCacheBytes)
+        assertEquals(listOf(orphan.path), viewModel.derivedDataOrphans.map { it.path })
+        assertTrue(viewModel.hasCompilationCache)
         assertEquals(1, source.listings)
     }
 
@@ -1709,33 +1670,6 @@ class ProjectWorktreesTest {
         board.stopWatching()
 
         assertEquals(1, source.listings)
-    }
-
-    @Test
-    fun `deleteOrphanedDerivedData deletes orphans, reports and reloads the section`() = runTest(dispatcher) {
-        val project = worktreeProject()
-        val worktreeFolder = FakeDerivedDataSource.derivedData("TASK-123", project, 2_000_000_000L)
-        val orphan = FakeDerivedDataSource.derivedData("Orphan-1", "/gone/App.xcodeproj", 500_000_000L)
-        val source = CountingDerivedDataSource(
-            FakeDerivedDataSource(existing = listOf(worktreeFolder, orphan), existingProjects = setOf(project)),
-        )
-        val viewModel = projectWorktrees(xcodeRepository(listingResponder(), source))
-        advanceUntilIdle()
-        assertTrue(viewModel.derivedDataOrphans.isNotEmpty())
-
-        viewModel.deleteOrphanedDerivedData()
-        assertTrue(viewModel.isDeletingOrphans)
-        advanceUntilIdle()
-
-        assertFalse(viewModel.isDeletingOrphans)
-        assertEquals(listOf(orphan.path), source.source.deleted)
-        assertEquals(3, source.listings)
-        assertEquals(listOf(orphan.path), viewModel.derivedDataDeletionReport?.deleted?.map { it.path })
-        assertEquals(500_000_000L, viewModel.derivedDataDeletionReport?.bytesFreed)
-        assertTrue(assertIs<DerivedDataState.Loaded>(viewModel.derivedData).listing.orphans.isEmpty())
-
-        viewModel.dismissDerivedDataDeletionReport()
-        assertNull(viewModel.derivedDataDeletionReport)
     }
 
     @Test

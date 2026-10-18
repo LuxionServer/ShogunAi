@@ -34,11 +34,10 @@ En curso en la rama `epic/ui-redesign`. La app de escritorio ha crecido funciona
 
 Está planificado en estos cambios de OpenSpec, que se implementan en este orden:
 
-1. `machine-resources-view`: la sección "Máquina", que sustituye a las secciones de Gradle y DerivedData de la vista del proyecto.
-2. `project-settings-view`: la configuración del proyecto en secciones con una barra de guardado, y añadir un proyecto a partir de la carpeta de su repositorio.
-3. `providers-configuration`: activar los providers, fijar sus opciones y el entorno por worktree desde la configuración, escribiendo `.shogunai.json`.
-4. `understandable-errors`: cada error dice qué ha fallado y qué hacer después, con la salida técnica guardada en "Detalles técnicos".
-5. `command-palette`: Cmd/Ctrl+K para saltar a cualquier vista, proyecto o worktree, o ejecutar una acción.
+1. `project-settings-view`: la configuración del proyecto en secciones con una barra de guardado, y añadir un proyecto a partir de la carpeta de su repositorio.
+2. `providers-configuration`: activar los providers, fijar sus opciones y el entorno por worktree desde la configuración, escribiendo `.shogunai.json`.
+3. `understandable-errors`: cada error dice qué ha fallado y qué hacer después, con la salida técnica guardada en "Detalles técnicos".
+4. `command-palette`: Cmd/Ctrl+K para saltar a cualquier vista, proyecto o worktree, o ejecutar una acción.
 
 Cada cambio quita su línea de esta lista cuando se archiva.
 

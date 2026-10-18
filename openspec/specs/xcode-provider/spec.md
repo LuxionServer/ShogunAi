@@ -10,7 +10,7 @@ The Xcode provider SHALL only act on macOS and only for repositories that declar
 
 #### Scenario: Repository without the provider
 - **WHEN** a repository doesn't declare `"xcode"` in `providers`
-- **THEN** no DerivedData is read and the worktree screen has no Xcode section
+- **THEN** no DerivedData is read for that repository
 
 #### Scenario: Other operating system
 - **WHEN** the repository declares the provider and ShogunAi runs on Linux or Windows
@@ -71,21 +71,6 @@ The system SHALL delete a DerivedData folder only if it is orphaned when the del
 #### Scenario: Project restored in the meantime
 - **WHEN** a folder was orphaned when listed but its `WorkspacePath` exists when the deletion runs
 - **THEN** it isn't deleted
-
-### Requirement: DerivedData on the worktree screen
-The worktree screen of a project whose repository declares the provider SHALL show an "Xcode DerivedData" section with each worktree's folder size, the total for the repository, the number and size of orphaned folders on the machine with an action to delete them, and the compilation cache size when caching is declared.
-
-#### Scenario: Section shown
-- **WHEN** the user opens the worktree screen of a repository that declares the provider and two worktrees have DerivedData
-- **THEN** the section lists both with their sizes and the total
-
-#### Scenario: Orphans
-- **WHEN** three orphaned folders take 4 GB
-- **THEN** the section shows them with a "Delete orphans" action, and after deleting it reports the space freed and refreshes
-
-#### Scenario: No orphans
-- **WHEN** there are no orphaned folders
-- **THEN** the delete action is disabled
 
 ### Requirement: Compilation caching through the environment
 When the provider declares `"compilationCache": true`, the system SHALL write a machine-level `.xcconfig` that enables compilation caching and Swift and Clang prefix mapping, and every worktree's environment SHALL contain `XCODE_XCCONFIG_FILE` with its path. A variable with that name declared in `env` SHALL take precedence; without the option, no variable SHALL be added.

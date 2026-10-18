@@ -230,6 +230,26 @@ interface Strings {
     fun derivedDataOnUnavailableVolumes(count: Int): String
     fun derivedDataCompilationCache(size: String): String
     fun derivedDataDeleted(count: Int, freed: String): String
+    val machineTitle: String
+    val androidEmulatorsTitle: String
+    val iosSimulatorsTitle: String
+    fun runningCount(count: Int): String
+    fun bootedCount(count: Int): String
+    val ownerOutsideProjects: String
+    val ownerLoading: String
+    val notOwnedByWorktree: String
+    val goToWorktree: String
+    val noMachineEmulators: String
+    val unownedEmulatorsTitle: String
+    val noMachineSimulators: String
+    fun simulatorOrphansTitle(count: Int): String
+    val confirmDeleteOrphansTitle: String
+    fun confirmDeleteSimulatorOrphans(count: Int): String
+    fun confirmDeleteDerivedDataOrphans(count: Int, size: String): String
+    val noDerivedData: String
+    val derivedDataKept: String
+    val gradleChipLabel: String
+    fun openGradleDaemons(project: String): String
     val alsoDeleteDerivedData: String
     fun orphanedDerivedData(count: Int, size: String): String
     fun minutesAgo(count: Long): String

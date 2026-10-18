@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.io.ShellPreferenceRepository
 import app.luxion.shogunai.domain.model.Project
+import app.luxion.shogunai.ui.machine.MachineResource
 
 class ShellViewModel(
     private val projectRepository: ProjectRepository,
@@ -65,6 +66,8 @@ class ShellViewModel(
 
     fun selectAll() = select(ShellDestination.All())
 
+    fun selectMachine(resource: MachineResource) = select(ShellDestination.Machine(resource))
+
     fun selectFilter(projectId: String?) = select(ShellDestination.All(projectFilter = projectId))
 
     fun addProject() = openForm(ShellDestination.AddProject)
@@ -118,7 +121,8 @@ class ShellViewModel(
     }
 
     private fun isAvailable(destination: ShellDestination): Boolean = when {
-        (destination is ShellDestination.All || destination == ShellDestination.Active) && projects.isEmpty() -> false
+        (destination is ShellDestination.All || destination == ShellDestination.Active || destination is ShellDestination.Machine) &&
+            projects.isEmpty() -> false
         else -> destination.referencedProjectId?.let { id -> projects.any { it.id == id } } ?: true
     }
 

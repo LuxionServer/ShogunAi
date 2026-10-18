@@ -7,9 +7,7 @@ import app.luxion.shogunai.WorktreeUseCases
 import app.luxion.shogunai.domain.model.BranchOption
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.DaemonStopReport
-import app.luxion.shogunai.domain.model.DerivedDataDeletion
 import app.luxion.shogunai.domain.model.DerivedDataFolder
-import app.luxion.shogunai.domain.model.DerivedDataListing
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.model.GradleProvider
@@ -22,6 +20,7 @@ import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeStatus
+import app.luxion.shogunai.ui.machine.MachineResource
 import app.luxion.shogunai.domain.usecase.CleanupFailure
 import app.luxion.shogunai.domain.usecase.CleanupReport
 import app.luxion.shogunai.domain.usecase.idleDaemonsOfRemovedWorktrees
@@ -108,6 +107,14 @@ class ProjectWorktrees(
     var orphanedSimulators by mutableStateOf<List<SimulatorDevice>>(emptyList())
         private set
 
+    val declaredResources: Set<MachineResource>
+        get() = buildSet {
+            if (isGradleRepository) add(MachineResource.GRADLE_DAEMONS)
+            if (isEmulatorRepository) add(MachineResource.ANDROID_EMULATORS)
+            if (isSimulatorRepository) add(MachineResource.IOS_SIMULATORS)
+            if (isXcodeRepository) add(MachineResource.XCODE_DERIVED_DATA)
+        }
+
     val canCleanUp: Boolean
         get() = cleanupCandidates.isNotEmpty() ||
             (isSimulatorRepository && orphanedSimulators.isNotEmpty()) ||
@@ -122,28 +129,17 @@ class ProjectWorktrees(
 
     var isGradleRepository by mutableStateOf(false)
         private set
-    var gradleDaemons by mutableStateOf<GradleDaemonsState>(GradleDaemonsState.Loading)
-        private set
     var isGradleBuildCacheEnabled by mutableStateOf(true)
         private set
     var gradleSettings by mutableStateOf<GradleProvider?>(null)
         private set
-    var isStoppingDaemons by mutableStateOf(false)
-        private set
-    var daemonStopReport by mutableStateOf<DaemonStopReport?>(null)
-        private set
 
     var isXcodeRepository by mutableStateOf(false)
         private set
-    var derivedData by mutableStateOf<DerivedDataState>(DerivedDataState.Loading)
+    var hasCompilationCache by mutableStateOf(false)
         private set
-    var isDeletingOrphans by mutableStateOf(false)
+    var derivedDataOrphans by mutableStateOf<List<DerivedDataFolder>>(emptyList())
         private set
-    var derivedDataDeletionReport by mutableStateOf<DerivedDataDeletion?>(null)
-        private set
-
-    val derivedDataOrphans: List<DerivedDataFolder>
-        get() = (derivedData as? DerivedDataState.Loaded)?.listing?.orphans.orEmpty()
 
     var localBranches by mutableStateOf<List<BranchOption>>(emptyList())
         private set
@@ -199,7 +195,6 @@ class ProjectWorktrees(
     }
 
     suspend fun refreshDevices() {
-        if (isGradleRepository && !isStoppingDaemons) loadGradleDaemons(listGeneration, worktrees)
         if (isEmulatorRepository) loadEmulators(listGeneration, worktrees)
         if (isSimulatorRepository) loadSimulators(listGeneration, worktrees)
     }
@@ -247,7 +242,7 @@ class ProjectWorktrees(
             val detected = useCases.detectAgents(listed).getOrNull()
             if (generation == listGeneration) agents = detected
         }
-        loadGradleSection(generation, listed)
+        loadGradleSection()
         loadPorts(generation, listed)
         loadEmulatorSection(generation, listed)
         loadSimulatorSection(generation, listed)
@@ -354,75 +349,26 @@ class ProjectWorktrees(
         }
     }
 
-    private fun loadGradleSection(generation: Int, listed: List<Worktree>) {
+    private fun loadGradleSection() {
         val provider = useCases.gradle.provider()
         isGradleRepository = provider != null
         gradleSettings = provider?.takeIf { it.hasSettings }
         if (provider == null) return
         isGradleBuildCacheEnabled = useCases.gradle.isBuildCacheEnabled()
-        scope.launch { loadGradleDaemons(generation, listed) }
-    }
-
-    private suspend fun loadGradleDaemons(generation: Int, listed: List<Worktree>) {
-        val state = useCases.gradle.listDaemons(listed)
-            .fold(onSuccess = { GradleDaemonsState.Loaded(it) }, onFailure = { GradleDaemonsState.Unavailable })
-        if (generation == listGeneration) gradleDaemons = state
     }
 
     private fun loadXcodeSection(generation: Int, listed: List<Worktree>) {
         val provider = useCases.xcode.provider()?.takeIf { useCases.xcode.supported() }
         isXcodeRepository = provider != null
-        if (provider == null) return
-        scope.launch { loadDerivedData(generation, listed, provider.compilationCache) }
-    }
-
-    private suspend fun loadDerivedData(generation: Int, listed: List<Worktree>, includeCompilationCache: Boolean) {
-        derivedData = DerivedDataState.Loading
-        val state = useCases.xcode.list(listed, includeCompilationCache)
-            .fold(onSuccess = { DerivedDataState.Loaded(it) }, onFailure = { DerivedDataState.Unavailable })
-        if (generation == listGeneration) derivedData = state
-    }
-
-    fun deleteOrphanedDerivedData() {
-        if (isDeletingOrphans) return
-        isDeletingOrphans = true
-        scope.launch {
-            try {
-                useCases.xcode.deleteOrphans()
-                    .onSuccess { derivedDataDeletionReport = it }
-                    .onFailure { error = it }
-                loadXcodeSection(listGeneration, worktrees)
-            } finally {
-                isDeletingOrphans = false
-            }
+        hasCompilationCache = provider?.compilationCache == true
+        if (provider == null) {
+            derivedDataOrphans = emptyList()
+            return
         }
-    }
-
-    fun dismissDerivedDataDeletionReport() {
-        derivedDataDeletionReport = null
-    }
-
-    fun stopGradleDaemon(pid: Long) = stopGradleDaemons(listOf(pid))
-
-    fun stopIdleGradleDaemons() = stopGradleDaemons(null)
-
-    private fun stopGradleDaemons(pids: List<Long>?) {
-        if (isStoppingDaemons) return
         scope.launch {
-            isStoppingDaemons = true
-            try {
-                useCases.gradle.stopDaemons(pids)
-                    .onSuccess { daemonStopReport = it }
-                    .onFailure { error = it }
-                loadGradleDaemons(listGeneration, worktrees)
-            } finally {
-                isStoppingDaemons = false
-            }
+            val orphans = useCases.xcode.list(listed, false).getOrNull()?.orphans ?: return@launch
+            if (generation == listGeneration) derivedDataOrphans = orphans
         }
-    }
-
-    fun dismissDaemonStopReport() {
-        daemonStopReport = null
     }
 
     private fun loadStatusOf(worktree: Worktree) {
@@ -736,14 +682,3 @@ sealed interface WorktreeSuccess {
     }
 }
 
-sealed interface GradleDaemonsState {
-    data object Loading : GradleDaemonsState
-    data class Loaded(val daemons: List<GradleDaemon>) : GradleDaemonsState
-    data object Unavailable : GradleDaemonsState
-}
-
-sealed interface DerivedDataState {
-    data object Loading : DerivedDataState
-    data class Loaded(val listing: DerivedDataListing) : DerivedDataState
-    data object Unavailable : DerivedDataState
-}
