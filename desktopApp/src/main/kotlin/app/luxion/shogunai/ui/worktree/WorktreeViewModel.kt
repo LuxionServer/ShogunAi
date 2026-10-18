@@ -24,7 +24,6 @@ import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeStatus
-import app.luxion.shogunai.domain.usecase.CleanupFailure
 import app.luxion.shogunai.domain.usecase.CleanupReport
 import app.luxion.shogunai.domain.usecase.idleDaemonsOfRemovedWorktrees
 import app.luxion.shogunai.domain.usecase.isValidGitRefSegment
@@ -75,10 +74,6 @@ class WorktreeViewModel(
     var herdrWorktreesRoot by mutableStateOf<String?>(null)
         private set
     var openingInHerdr by mutableStateOf<Set<String>>(emptySet())
-        private set
-    var openInHerdrPaths by mutableStateOf<Set<String>>(emptySet())
-        private set
-    var herdrCloseFailures by mutableStateOf<List<CleanupFailure>>(emptyList())
         private set
     val totalSize: Long
         get() = sizes.values.sum()
@@ -163,8 +158,6 @@ class WorktreeViewModel(
         get() = pendingRemoval?.deleteBranch ?: false
     val pendingRemovalRequiresForce: Boolean
         get() = pendingRemoval?.requiresForce ?: false
-    val pendingRemovalOpenInHerdr: Boolean
-        get() = pendingRemoval?.worktree?.path in openInHerdrPaths
 
     init {
         refresh()
@@ -500,8 +493,7 @@ class WorktreeViewModel(
             isRemoving = true
             try {
                 useCases.remove(worktree.path, branchToDelete, force)
-                    .onSuccess { removal ->
-                        removal.herdrFailure?.let { herdrCloseFailures = listOf(CleanupFailure(worktree.path, it)) }
+                    .onSuccess {
                         worktrees = worktrees.filterNot { it.path == worktree.path }
                         statuses = statuses - worktree.path
                         sizes = sizes - worktree.path
@@ -523,14 +515,6 @@ class WorktreeViewModel(
 
     fun requestRemoval(worktree: Worktree) {
         pendingRemoval = PendingRemoval(worktree, deleteBranch = false)
-        lookUpOpenInHerdr(listOf(worktree.path))
-    }
-
-    private fun lookUpOpenInHerdr(paths: List<String>) {
-        openInHerdrPaths = emptySet()
-        viewModelScope.launch {
-            openInHerdrPaths = useCases.herdr.openWorkspaces(paths).keys
-        }
     }
 
     fun setPendingRemovalDeleteBranch(deleteBranch: Boolean) {
@@ -585,7 +569,6 @@ class WorktreeViewModel(
         cleanupDeleteSimulators = true
         cleanupDeleteDerivedData = true
         isCleanupDialogOpen = true
-        lookUpOpenInHerdr(cleanupCandidates.map { it.path })
     }
 
     fun dismissCleanup() {
@@ -642,7 +625,6 @@ class WorktreeViewModel(
                             deletedDerivedDataFolders = deletedDerivedData?.deleted?.size ?: 0,
                             derivedDataBytesFreed = deletedDerivedData?.bytesFreed ?: 0,
                         )
-                        herdrCloseFailures = report.herdrFailures
                         cleanupIssues = report.takeIf { it.failures.isNotEmpty() || it.keptBranches.isNotEmpty() }
                     }
                     .onFailure { error = it }
@@ -666,10 +648,6 @@ class WorktreeViewModel(
 
     fun dismissCleanupIssues() {
         cleanupIssues = null
-    }
-
-    fun dismissHerdrCloseFailures() {
-        herdrCloseFailures = emptyList()
     }
 
     private fun loadedStatuses(): Map<String, WorktreeStatus> =

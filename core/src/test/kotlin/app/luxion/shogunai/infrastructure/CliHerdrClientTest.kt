@@ -85,56 +85,6 @@ class CliHerdrClientTest {
     }
 
     @Test
-    fun `the workspaces of open worktrees are listed by path`() = runTest {
-        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("worktree-list.json")) }
-
-        val workspaces = client(executor).openWorktreeWorkspaces("/home/dev/projects/main-repo")
-
-        assertEquals(
-            mapOf("/home/dev/projects/main-repo" to "w1", worktree to "w2"),
-            workspaces,
-        )
-        assertEquals(
-            listOf("herdr", "worktree", "list", "--cwd", "/home/dev/projects/main-repo"),
-            executor.executedCommands.single(),
-        )
-    }
-
-    @Test
-    fun `a list without worktrees is an unexpected response`() = runTest {
-        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("pane-close.json")) }
-
-        assertFailsWith<WorktreeError.HerdrCommandFailed> { client(executor).openWorktreeWorkspaces("/r") }
-    }
-
-    @Test
-    fun `a workspace is closed by its id`() = runTest {
-        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("workspace-close.json")) }
-
-        client(executor).closeWorkspace("w2")
-
-        assertEquals(listOf("herdr", "workspace", "close", "w2"), executor.executedCommands.single())
-    }
-
-    @Test
-    fun `closing an unknown workspace reports Herdr's message`() = runTest {
-        val executor = FakeShellCommandExecutor { CommandResult(it, 1, "", fixture("workspace-close-missing.json")) }
-
-        val error = assertFailsWith<WorktreeError.HerdrCommandFailed> { client(executor).closeWorkspace("w99") }
-
-        assertEquals("workspace w99 not found", error.detail)
-    }
-
-    @Test
-    fun `listing worktrees fails when no server is running`() = runTest {
-        val executor = FakeShellCommandExecutor { CommandResult(it, 1, "", fixture("server-not-running.json")) }
-
-        val error = assertFailsWith<WorktreeError.HerdrCommandFailed> { client(executor).openWorktreeWorkspaces("/r") }
-
-        assertTrue(error.detail.startsWith("no herdr server is running"), error.detail)
-    }
-
-    @Test
     fun `a missing binary means Herdr isn't installed`() = runTest {
         val executor = object : ShellCommandExecutor {
             override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult =

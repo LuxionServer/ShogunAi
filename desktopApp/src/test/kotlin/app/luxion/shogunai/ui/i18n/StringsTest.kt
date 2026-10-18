@@ -28,7 +28,6 @@ class StringsTest {
             WorktreeError.SecretFileNotFound(listOf("local.properties"), "~/projects/main-repo") to "local.properties",
             WorktreeError.InvalidRepositoryConfig("~/projects/main-repo/.shogunai.json", "unexpected token") to "~/projects/main-repo/.shogunai.json",
             WorktreeError.BranchNotFound("feature/TASK-123") to "feature/TASK-123",
-            WorktreeError.StartPointNotFound("epic/redesign") to "epic/redesign",
             WorktreeError.BranchAlreadyCheckedOut("feature/TASK-123", "~/projects/TASK-123") to "~/projects/TASK-123",
             WorktreeError.ProcessListingFailed(listOf("lsof", "-d", "cwd"), 1) to "lsof -d cwd",
             WorktreeError.NoEmulatorPort(5554, 5584) to "5584",
@@ -97,19 +96,5 @@ class StringsTest {
     fun `each language names itself in its own language`() {
         assertEquals("English", EnglishStrings.languageName)
         assertEquals("Español", SpanishStrings.languageName)
-    }
-
-    @Test
-    fun `the Herdr close warning and notices are translated and keep their data`() {
-        val english = EnglishStrings.herdrCloseFailed("~/projects/TASK-123", "workspace w2 not found")
-        val spanish = SpanishStrings.herdrCloseFailed("~/projects/TASK-123", "workspace w2 not found")
-
-        listOf(english, spanish).forEach {
-            assertTrue(it.contains("~/projects/TASK-123") && it.contains("workspace w2 not found"), it)
-        }
-        assertNotEquals(english, spanish)
-        assertNotEquals(EnglishStrings.herdrWorkspaceWillClose, SpanishStrings.herdrWorkspaceWillClose)
-        assertNotEquals(EnglishStrings.herdrCleanupNotice, SpanishStrings.herdrCleanupNotice)
-        assertNotEquals(EnglishStrings.openInHerdrMark, SpanishStrings.openInHerdrMark)
     }
 }

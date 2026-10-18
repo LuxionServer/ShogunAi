@@ -6,7 +6,6 @@ plugins {
     alias(libs.plugins.composeCompiler)
 }
 
-@OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
 dependencies {
     implementation(project(":core"))
     implementation(project(":cli"))
@@ -27,7 +26,6 @@ dependencies {
 
     testImplementation(testFixtures(project(":core")))
     testImplementation(libs.kotlin.testJunit)
-    testImplementation(compose.uiTest)
     testImplementation(libs.kotlinx.coroutinesTest)
 }
 

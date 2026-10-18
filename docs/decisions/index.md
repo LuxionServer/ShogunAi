@@ -7,9 +7,6 @@ Log of architecture decisions made during development, along with the reasoning.
 
 ## Iteration 1 — Domain and infrastructure of the worktree flow (2026-07-10)
 
-!!! note "Superseded"
-    The first entry below no longer describes the code: the domain and infrastructure moved to the `core` module when the `shogun` CLI became a second target (`extract-core-module`), and the template's `shared` module was removed (`develop-ci-and-remove-shared-module`). See [Architecture › Overview](../architecture/overview.md). The entry is kept as it was written.
-
 **All domain and infrastructure code lives in `desktopApp`, not in `shared`.**
 Reason: the project's only target is JVM/desktop (`shared` uses `jvm()`). Putting domain logic in a "shared" module with no other real targets only adds indirection.
 

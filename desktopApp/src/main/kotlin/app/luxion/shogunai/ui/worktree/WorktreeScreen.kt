@@ -97,7 +97,10 @@ fun WorktreeScreen(
         viewModel.selectedBranch?.let { viewModel.createFromBranch(it) }
         viewModel.selectedBranch = null
     }
-    val isCreateEnabled = isCreateEnabled(viewModel.createMode, isTaskIdValid, viewModel.isSelectedBranchAvailable)
+    val isCreateEnabled = when (viewModel.createMode) {
+        CreateMode.NEW_BRANCH -> isTaskIdValid
+        CreateMode.EXISTING_BRANCH -> viewModel.isSelectedBranchAvailable
+    }
     val createWorktree = when (viewModel.createMode) {
         CreateMode.NEW_BRANCH -> createNewBranchWorktree
         CreateMode.EXISTING_BRANCH -> createFromSelectedBranch
@@ -294,10 +297,6 @@ fun WorktreeScreen(
             CleanupIssues(report, onDismiss = { viewModel.dismissCleanupIssues() })
         }
 
-        if (viewModel.herdrCloseFailures.isNotEmpty()) {
-            HerdrCloseFailures(viewModel.herdrCloseFailures, onDismiss = { viewModel.dismissHerdrCloseFailures() })
-        }
-
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = Spacing.lg),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -373,13 +372,6 @@ fun WorktreeScreen(
                             strings.removeWorktreeMessage(worktree.path)
                         },
                     )
-                    if (viewModel.pendingRemovalOpenInHerdr) {
-                        Text(
-                            strings.herdrWorkspaceWillClose,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.padding(top = Spacing.sm),
-                        )
-                    }
                     worktree.branch?.let { branch ->
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -488,13 +480,4 @@ private fun WorktreeRow(
             }
         }
     }
-}
-
-internal fun isCreateEnabled(
-    mode: CreateMode,
-    isTaskIdValid: Boolean,
-    isSelectedBranchAvailable: Boolean,
-): Boolean = when (mode) {
-    CreateMode.NEW_BRANCH -> isTaskIdValid
-    CreateMode.EXISTING_BRANCH -> isSelectedBranchAvailable
 }

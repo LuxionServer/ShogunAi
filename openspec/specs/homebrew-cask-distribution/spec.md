@@ -6,42 +6,30 @@ Lets macOS users install and update the app with Homebrew, with the Cask kept in
 ## Requirements
 
 ### Requirement: Instalación vía Homebrew Cask
-The system SHALL offer a Homebrew Cask in the `LuxionServer/homebrew-shogunai` tap that installs the latest published version of the app on macOS from the `.dmg` of the corresponding GitHub Release that matches the user's CPU architecture (arm64 or Intel x86_64), without the user choosing it manually.
+El sistema SHALL ofrecer un Cask de Homebrew en el tap `LuxionServer/homebrew-shogunai` que instale la última versión publicada de la app en macOS a partir del `.dmg` de la GitHub Release correspondiente.
 
 #### Scenario: Instalación fresca
-- **WHEN** a user runs `brew tap LuxionServer/shogunai` followed by `brew install --cask shogunai`
-- **THEN** Homebrew downloads the `.dmg` of the latest release for the user's architecture and leaves the app installed in `/Applications`
-
-#### Scenario: Installation on an Apple Silicon Mac
-- **WHEN** a user with an Apple Silicon Mac runs `brew install --cask shogunai`
-- **THEN** Homebrew downloads the `arm64` `.dmg` and verifies it against the arm64 `sha256`
-
-#### Scenario: Installation on an Intel Mac
-- **WHEN** a user with an Intel Mac runs `brew install --cask shogunai`
-- **THEN** Homebrew downloads the `x64` `.dmg` and verifies it against the Intel `sha256`
+- **WHEN** un usuario ejecuta `brew tap LuxionServer/shogunai` seguido de `brew install --cask shogunai`
+- **THEN** Homebrew descarga el `.dmg` de la última release y deja la app instalada en `/Applications`
 
 #### Scenario: Advertencia de Gatekeeper documentada
-- **WHEN** the user installs the Cask
-- **THEN** Homebrew shows a notice (`caveats`) explaining that the first launch may be blocked by Gatekeeper because the app is not notarized, and how to open it anyway
+- **WHEN** el usuario instala el Cask
+- **THEN** Homebrew muestra un aviso (`caveats`) explicando que el primer arranque puede ser bloqueado por Gatekeeper por no estar la app notarizada, y cómo abrirla igualmente
 
 ### Requirement: Actualización automática del Cask en cada release
-The system SHALL automatically update the Cask in the tap every time a new release of `LuxionServer/ShogunAi` is published, without manual intervention, writing the new version and one `sha256` per macOS architecture.
+El sistema SHALL actualizar automáticamente la versión y el `sha256` del Cask en el tap cada vez que se publica una nueva release en `LuxionServer/ShogunAi`, sin intervención manual.
 
 #### Scenario: Release publicada con éxito
-- **WHEN** the release workflow publishes a new GitHub Release with its arm64 and x64 `.dmg` files
-- **THEN** a CI job computes the `sha256` of both `.dmg` files, regenerates `Casks/shogunai.rb` in the tap from the Cask template versioned in `LuxionServer/ShogunAi` with the new version and both checksums, and commits and pushes that change to the tap repository
-
-#### Scenario: A macOS installer is missing
-- **WHEN** the update job runs and either the arm64 or the x64 `.dmg` cannot be downloaded from the release
-- **THEN** the job fails visibly in GitHub Actions without modifying the tap
+- **WHEN** el workflow de release publica una nueva GitHub Release con su `.dmg`
+- **THEN** un job de CI calcula el `sha256` del `.dmg`, actualiza `version` y `sha256` en `Casks/shogunai.rb` del tap, y commitea/pushea ese cambio al repo del tap
 
 #### Scenario: Re-ejecución sin cambios
-- **WHEN** the update job runs again for a version already reflected in the Cask
-- **THEN** no new commit is created (there are no differences to commit) and the job finishes without error
+- **WHEN** el job de actualización se vuelve a ejecutar para una versión ya reflejada en el Cask
+- **THEN** no se genera un commit nuevo (no hay diferencias que commitear) y el job termina sin error
 
 #### Scenario: Falla la autenticación contra el tap
-- **WHEN** the token used to write to `LuxionServer/homebrew-shogunai` is invalid or has expired
-- **THEN** the job fails visibly in GitHub Actions, without affecting the already completed release publication
+- **WHEN** el token usado para escribir en `LuxionServer/homebrew-shogunai` es inválido o ha expirado
+- **THEN** el job falla de forma visible en GitHub Actions, sin afectar la publicación de la release ya completada
 
 ### Requirement: Install the shogun command with the Cask
 The Cask SHALL link the desktop app's executable as `shogun` in Homebrew's `bin` folder, so installing the app also installs the command line tool, and uninstalling removes both.

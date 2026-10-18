@@ -7,8 +7,6 @@ Guía para clonar el repo, levantar el proyecto por primera vez y saber por dón
 - **JDK 21** — Gradle usa toolchains (`gradle/gradle-daemon-jvm.properties`) y lo descarga solo si no lo tienes instalado.
 - **Git**.
 - (Opcional) IntelliJ IDEA o Android Studio con el plugin de Kotlin Multiplatform, para usar las run configurations del IDE.
-- (Opcional) Python 3 y pip, para servir esta documentación.
-- (Opcional) Las herramientas que usan algunas funciones en ejecución (Android SDK, Xcode, Herdr…), listadas en [Instalación › Herramientas opcionales](guide/installation.md#herramientas-opcionales).
 
 ## Clonar y compilar
 
@@ -40,11 +38,9 @@ El proyecto es una app de escritorio Kotlin/JVM construida con Compose Multiplat
 ```
 core/src/main/kotlin/app/luxion/shogunai/
 ├── domain/           # modelos, puertos (interfaces) y casos de uso
-└── infrastructure/   # implementaciones de los puertos: procesos, ficheros, ajustes JSON, Android SDK, simctl, Herdr…
-core/build/generated/buildInfo/  # BuildInfo.VERSION, generado a partir de la versión de Gradle
+└── infrastructure/   # implementaciones concretas de los puertos (Git, filesystem)
 
 desktopApp/src/main/kotlin/app/luxion/shogunai/
-├── infrastructure/   # AwtClipboardWriter, el único puerto que necesita el toolkit de escritorio
 ├── ui/               # pantallas Compose, ViewModels y navegación
 ├── AppContainer.kt   # cablea dominio + infraestructura, sin framework de DI
 └── main.kt           # punto de entrada

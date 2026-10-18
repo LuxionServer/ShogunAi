@@ -1,5 +1,5 @@
 site_name: ShogunAi
-site_description: Desktop app and command-line tool that prepare Git worktrees for AI agents, with per-worktree environments and providers for Gradle, Android emulators, iOS simulators and Xcode.
+site_description: KMP Desktop orchestrator for Git worktrees, Android environment bootstrapping, and AI agent workflow automation.
 repo_name: ShogunAi
 repo_url: https://github.com/LuxionServer/ShogunAi
 
@@ -68,24 +68,11 @@ plugins:
             Design decisions: Decisiones de diseño
             Roadmap: Roadmap
             Using with agents: Uso con agentes
-            User guide: Guía de uso
-            Installation: Instalación
-            Desktop app: App de escritorio
-            Command-line reference: Referencia de la línea de comandos
-            Configuration: Configuración
-            Providers: Providers
-            Release: Proceso de release
 
 nav:
   - Home: index.md
-  - User guide:
-      - Installation: guide/installation.md
-      - Desktop app: guide/desktop-app.md
-      - Command-line reference: guide/cli.md
-      - Configuration: guide/configuration.md
-      - Providers: guide/providers.md
-  - Using with agents: agents.md
   - Getting started: getting-started.md
+  - Using with agents: agents.md
   - Architecture:
       - Overview: architecture/overview.md
       - Domain layer: architecture/domain.md
