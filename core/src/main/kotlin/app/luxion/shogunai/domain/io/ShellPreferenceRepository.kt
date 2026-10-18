@@ -15,6 +15,8 @@ interface ShellPreferenceRepository {
     fun saveCollapsedProjects(projectIds: Set<String>)
     fun loadLastCreateProject(): String?
     fun saveLastCreateProject(projectId: String)
+    fun loadRecentPaletteItems(): List<String>
+    fun saveRecentPaletteItems(ids: List<String>)
     fun loadGrouping(view: GroupedView): Grouping
     fun saveGrouping(view: GroupedView, grouping: Grouping)
 }

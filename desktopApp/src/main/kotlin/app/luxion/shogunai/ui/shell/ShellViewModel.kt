@@ -9,6 +9,7 @@ import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.io.ShellPreferenceRepository
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.ui.machine.MachineResource
+import app.luxion.shogunai.ui.palette.recordRecent
 
 class ShellViewModel(
     private val projectRepository: ProjectRepository,
@@ -35,6 +36,10 @@ class ShellViewModel(
     var canSaveSettings by mutableStateOf(false)
         private set
     var saveSettingsRequests by mutableIntStateOf(0)
+        private set
+    var isPaletteOpen by mutableStateOf(false)
+        private set
+    var recentPaletteItems by mutableStateOf(shellPreferences.loadRecentPaletteItems())
         private set
     val isLeaveConfirmationPending: Boolean get() = pendingLeave != null
 
@@ -96,6 +101,24 @@ class ShellViewModel(
 
     fun requestLeave(leave: () -> Unit) {
         if (leaveGuard?.hasUnsavedChanges == true) pendingLeave = leave else leave()
+    }
+
+    fun navigate(target: ShellDestination, andThen: () -> Unit = {}) = requestLeave {
+        if (target.isForm) openForm(target) else select(target)
+        andThen()
+    }
+
+    fun openPalette() {
+        isPaletteOpen = true
+    }
+
+    fun closePalette() {
+        isPaletteOpen = false
+    }
+
+    fun rememberPaletteItem(id: String, knownIds: Set<String>) {
+        recentPaletteItems = recordRecent(recentPaletteItems.filter { it in knownIds }, id)
+        shellPreferences.saveRecentPaletteItems(recentPaletteItems)
     }
 
     fun selectProject(project: Project) = requestLeave { select(ShellDestination.All(projectFilter = project.id)) }

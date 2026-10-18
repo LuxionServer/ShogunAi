@@ -53,6 +53,7 @@ class JsonSettingsFile(
         val sidebarCollapsed: Boolean = false,
         val collapsedProjects: List<String> = emptyList(),
         val lastCreateProject: String? = null,
+        val recentPaletteItems: List<String> = emptyList(),
         val grouping: GroupingSettings = GroupingSettings(),
     )
 

@@ -11,6 +11,7 @@ class FakeShellPreferenceRepository(
     var sidebarCollapsed: Boolean = false,
     var collapsedProjects: Set<String> = emptySet(),
     var lastCreateProject: String? = null,
+    var recentPaletteItems: List<String> = emptyList(),
     val groupings: MutableMap<GroupedView, Grouping> = mutableMapOf(),
 ) : ShellPreferenceRepository {
 
@@ -42,6 +43,12 @@ class FakeShellPreferenceRepository(
 
     override fun saveLastCreateProject(projectId: String) {
         lastCreateProject = projectId
+    }
+
+    override fun loadRecentPaletteItems(): List<String> = recentPaletteItems
+
+    override fun saveRecentPaletteItems(ids: List<String>) {
+        recentPaletteItems = ids
     }
 
     override fun loadGrouping(view: GroupedView): Grouping = groupings[view] ?: view.defaultGrouping

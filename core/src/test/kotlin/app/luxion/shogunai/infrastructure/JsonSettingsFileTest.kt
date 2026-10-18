@@ -149,6 +149,22 @@ class JsonSettingsFileTest {
     }
 
     @Test
+    fun `recent palette items are remembered in order with the other keys`() {
+        shellRepository.saveLastDestination("all")
+
+        shellRepository.saveRecentPaletteItems(listOf("action:reload", "project:api"))
+
+        val reloaded = JsonShellPreferenceRepository(JsonSettingsFile(storagePath))
+        assertEquals(listOf("action:reload", "project:api"), reloaded.loadRecentPaletteItems())
+        assertEquals("all", reloaded.loadLastDestination())
+    }
+
+    @Test
+    fun `there are no recent palette items by default`() {
+        assertTrue(shellRepository.loadRecentPaletteItems().isEmpty())
+    }
+
+    @Test
     fun `each view's grouping defaults and is remembered independently`() {
         assertEquals(Grouping.BY_STATE, shellRepository.loadGrouping(GroupedView.ACTIVE))
         assertEquals(Grouping.BY_PROJECT, shellRepository.loadGrouping(GroupedView.ALL))

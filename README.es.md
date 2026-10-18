@@ -75,6 +75,26 @@ Instálalo como cualquier otra app de escritorio y ábrelo. No necesitas tener J
 
 La app está en inglés por defecto; puedes cambiarla a español en Preferencias (Ajustes… en el menú ShogunAi en macOS, Archivo > Preferencias en el resto, Cmd/Ctrl+Coma), junto al tema. La elección se recuerda entre reinicios, igual que el último proyecto abierto, el tamaño y la posición de la ventana y si la barra lateral está contraída (Ver > Mostrar u ocultar barra lateral, Cmd/Ctrl+Barra invertida).
 
+### Atajos de teclado
+
+Usa Cmd en macOS y Ctrl en el resto.
+
+| Atajo | Acción |
+|---|---|
+| Cmd/Ctrl+K | Paleta de comandos: ir a cualquier vista, proyecto, worktree o acción |
+| Cmd/Ctrl+1, Cmd/Ctrl+2 | Mostrar Activos, mostrar Todos los worktrees |
+| Cmd/Ctrl+N | Nuevo worktree |
+| Mayús+Cmd/Ctrl+N | Añadir proyecto |
+| Cmd/Ctrl+S | Guardar los ajustes del proyecto |
+| Cmd/Ctrl+F | Buscar en la lista de worktrees |
+| Mayús+Cmd/Ctrl+C | Copiar el comando de lanzamiento del worktree seleccionado |
+| Cmd/Ctrl+Retroceso | Eliminar el worktree seleccionado (pregunta antes) |
+| Cmd/Ctrl+R | Recargar |
+| Cmd/Ctrl+Barra invertida | Mostrar u ocultar la barra lateral |
+| Cmd/Ctrl+Coma | Preferencias |
+
+En la paleta de comandos, las flechas recorren los resultados, Intro ejecuta el resaltado y Cmd/Ctrl+Intro copia el comando de lanzamiento de un worktree.
+
 ## Línea de comandos
 
 `shogun` trabaja sobre el repositorio Git que contiene el directorio actual, usando su proyecto de la app de escritorio si lo hay:

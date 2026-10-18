@@ -90,7 +90,7 @@ fun worktreeRowModel(
     )
 }
 
-private fun indicatorOf(
+internal fun indicatorOf(
     worktree: Worktree,
     status: WorktreeStatus?,
     mainBranchName: String?,

@@ -48,6 +48,12 @@ import app.luxion.shogunai.ui.projectconfig.ProjectConfigViewModel
 import app.luxion.shogunai.ui.rememberScreenViewModelStoreOwner
 import app.luxion.shogunai.ui.machine.MachineResource
 import app.luxion.shogunai.ui.machine.MachineResources
+import app.luxion.shogunai.ui.palette.CommandPalette
+import app.luxion.shogunai.ui.palette.PaletteAction
+import app.luxion.shogunai.ui.palette.PaletteCommand
+import app.luxion.shogunai.ui.palette.buildPaletteIndex
+import app.luxion.shogunai.ui.palette.platformShortcutLabel
+import app.luxion.shogunai.ui.palette.pruneRecent
 import app.luxion.shogunai.ui.machine.MachineView
 import app.luxion.shogunai.ui.worktree.WorktreeBoard
 import app.luxion.shogunai.ui.worktree.WorktreeRef
@@ -153,6 +159,10 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel, onOpenPrefer
         }
     }
 
+    if (viewModel.isPaletteOpen) {
+        PaletteHost(viewModel, board, machine, onOpenPreferences)
+    }
+
     if (viewModel.isLeaveConfirmationPending) {
         DiscardChangesDialog(onConfirm = viewModel::confirmLeave, onDismiss = viewModel::keepEditing)
     }
@@ -166,6 +176,54 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel, onOpenPrefer
             },
             onDismiss = { projectPendingRemoval = null },
         )
+    }
+}
+
+@Composable
+private fun PaletteHost(viewModel: ShellViewModel, board: WorktreeBoard, machine: MachineResources, onOpenPreferences: () -> Unit) {
+    val strings = LocalStrings.current
+    val items = remember(viewModel.projects, board.paletteWorktrees, machine.visibleResources, board.canCleanUp(), strings) {
+        buildPaletteIndex(
+            projects = viewModel.projects,
+            worktrees = board.paletteWorktrees,
+            machineResources = machine.visibleResources,
+            canCleanUp = board.canCleanUp(),
+            strings = strings,
+            shortcutLabel = ::platformShortcutLabel,
+        )
+    }
+    val knownIds = remember(items) { items.mapTo(mutableSetOf()) { it.id } }
+    CommandPalette(
+        items = items,
+        recentIds = pruneRecent(viewModel.recentPaletteItems, items),
+        onRun = { item, action ->
+            viewModel.closePalette()
+            viewModel.rememberPaletteItem(item.id, knownIds)
+            runPaletteAction(action, viewModel, board, onOpenPreferences)
+        },
+        onDismiss = viewModel::closePalette,
+    )
+}
+
+private fun runPaletteAction(action: PaletteAction, viewModel: ShellViewModel, board: WorktreeBoard, onOpenPreferences: () -> Unit) {
+    when (action) {
+        is PaletteAction.Open -> viewModel.navigate(action.destination)
+        is PaletteAction.SelectWorktree -> viewModel.navigate(ShellDestination.All()) {
+            board.clearTextFilter()
+            if (action.ref.projectId in board.collapsedProjects) board.toggleCollapsed(action.ref.projectId)
+            board.select(action.ref)
+        }
+        is PaletteAction.CopyLaunchCommand -> board.copyLaunchCommand(action.ref)
+        is PaletteAction.NewWorktreeIn -> viewModel.navigate(ShellDestination.All(projectFilter = action.projectId)) {
+            board.openCreateDialog(action.projectId)
+        }
+        is PaletteAction.Run -> when (action.command) {
+            PaletteCommand.ADD_PROJECT -> viewModel.addProject()
+            PaletteCommand.CLEAN_UP -> viewModel.navigate(ShellDestination.All()) { board.openCleanup() }
+            PaletteCommand.RELOAD -> viewModel.reload()
+            PaletteCommand.TOGGLE_SIDEBAR -> viewModel.toggleSidebar()
+            PaletteCommand.OPEN_PREFERENCES -> onOpenPreferences()
+        }
     }
 }
 

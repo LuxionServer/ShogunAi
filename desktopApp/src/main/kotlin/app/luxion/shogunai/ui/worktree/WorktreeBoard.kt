@@ -212,6 +212,22 @@ class WorktreeBoard(
 
     fun holder(projectId: String): ProjectWorktrees? = entries[projectId]?.holder
 
+    val paletteWorktrees: List<PaletteWorktree>
+        get() = projects.flatMap { project ->
+            val holder = holder(project.id) ?: return@flatMap emptyList()
+            val now = clock()
+            holder.orderedWorktrees.map { worktree ->
+                val status = (holder.statuses[worktree.path] as? WorktreeStatusState.Loaded)?.status
+                val agents = holder.agents.orEmpty()[worktree.path].orEmpty()
+                PaletteWorktree(project, worktree, indicatorOf(worktree, status, holder.mainBranch?.name, agents, now))
+            }
+        }
+
+    fun copyLaunchCommand(ref: WorktreeRef) {
+        val holder = holder(ref.projectId) ?: return
+        holder.worktrees.firstOrNull { it.path == ref.path }?.let(holder::copyLaunchCommand)
+    }
+
     fun syncCatalog(catalog: List<Project>) {
         projects = catalog
         val current = entries
@@ -497,6 +513,8 @@ data class WorktreeGroup(
 data class WorktreeEntry(val project: Project, val holder: ProjectWorktrees, val worktree: Worktree) {
     val ref = WorktreeRef(project.id, worktree.path)
 }
+
+data class PaletteWorktree(val project: Project, val worktree: Worktree, val indicator: RowIndicator?)
 
 data class SelectedWorktree(val project: Project, val holder: ProjectWorktrees, val worktree: Worktree)
 

@@ -412,4 +412,81 @@ class ShellViewModelTest {
 
         assertEquals(ShellDestination.All(), viewModel.destination)
     }
+
+    @Test
+    fun `the palette opens and closes without changing the destination`() {
+        val viewModel = viewModel()
+        viewModel.selectActive()
+
+        viewModel.openPalette()
+        assertTrue(viewModel.isPaletteOpen)
+        viewModel.closePalette()
+
+        assertFalse(viewModel.isPaletteOpen)
+        assertEquals(ShellDestination.Active, viewModel.destination)
+    }
+
+    @Test
+    fun `navigating runs the follow up after the destination changes`() {
+        val viewModel = viewModel()
+        var destinationSeen: ShellDestination? = null
+
+        viewModel.navigate(ShellDestination.All()) { destinationSeen = viewModel.destination }
+
+        assertEquals(ShellDestination.All(), destinationSeen)
+    }
+
+    @Test
+    fun `navigating to project settings opens the form and keeps the way back`() {
+        val viewModel = viewModel()
+        viewModel.selectAll()
+
+        viewModel.navigate(ShellDestination.ProjectSettings(api.id))
+        assertEquals(ShellDestination.ProjectSettings(api.id), viewModel.destination)
+        viewModel.cancelForm()
+
+        assertEquals(ShellDestination.All(), viewModel.destination)
+    }
+
+    @Test
+    fun `navigating asks before leaving changed settings and waits for the answer`() {
+        val viewModel = viewModel()
+        viewModel.editProject(api)
+        val guard = object : LeaveGuard {
+            override val hasUnsavedChanges = true
+        }
+        viewModel.attachLeaveGuard(guard)
+        var followedUp = false
+
+        viewModel.navigate(ShellDestination.All()) { followedUp = true }
+
+        assertTrue(viewModel.isLeaveConfirmationPending)
+        assertFalse(followedUp)
+        viewModel.confirmLeave()
+        assertTrue(followedUp)
+        assertEquals(ShellDestination.All(), viewModel.destination)
+    }
+
+    @Test
+    fun `remembered palette items are unique, most recent first, capped and saved`() {
+        val viewModel = viewModel()
+        val known = (1..30).mapTo(mutableSetOf()) { "item-$it" }
+
+        (1..30).forEach { viewModel.rememberPaletteItem("item-$it", known) }
+        viewModel.rememberPaletteItem("item-3", known)
+
+        assertEquals(20, viewModel.recentPaletteItems.size)
+        assertEquals("item-3", viewModel.recentPaletteItems.first())
+        assertEquals(viewModel.recentPaletteItems, preferences.recentPaletteItems)
+    }
+
+    @Test
+    fun `remembering an item drops recent ones that no longer exist`() {
+        preferences.recentPaletteItems = listOf("gone", "project:api")
+        val viewModel = viewModel()
+
+        viewModel.rememberPaletteItem("project:mobile", setOf("project:api", "project:mobile"))
+
+        assertEquals(listOf("project:mobile", "project:api"), viewModel.recentPaletteItems)
+    }
 }

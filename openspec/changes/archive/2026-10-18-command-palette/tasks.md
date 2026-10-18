@@ -2,9 +2,9 @@
 
 ## 1. Index and matching
 
-- [ ] 1.1 Add `PaletteItem` and `buildPaletteIndex(...)` over the catalog, board rows, visible machine entries and the action list, with no destructive actions; verify with `PaletteIndexTest`: every kind present, machine entries only when visible, no item deletes anything.
-- [ ] 1.2 Add `matchScore` and the ranking (exact, prefix, word starts, contiguity, gaps, recency, alphabetical); verify with `PaletteMatcherTest` covering every "Matching and ranking" scenario and case changes as word starts.
-- [ ] 1.3 Persist `recentPaletteItems` (unique, most recent first, at most 20, stale ids dropped) in `settings.json`; verify with `JsonSettingsFileTest` and `PaletteIndexTest` cases.
+- [x] 1.1 Add `PaletteItem` and `buildPaletteIndex(...)` over the catalog, board rows, visible machine entries and the action list, with no destructive actions; verify with `PaletteIndexTest`: every kind present, machine entries only when visible, no item deletes anything.
+- [x] 1.2 Add `matchScore` and the ranking (exact, prefix, word starts, contiguity, gaps, recency, alphabetical); verify with `PaletteMatcherTest` covering every "Matching and ranking" scenario and case changes as word starts.
+- [x] 1.3 Persist `recentPaletteItems` (unique, most recent first, at most 20, stale ids dropped) in `settings.json`; verify with `JsonSettingsFileTest` and `PaletteIndexTest` cases.
 
 ## 2. Palette UI
 
@@ -13,8 +13,8 @@
 
 ## 3. Strings and docs
 
-- [ ] 3.1 Add the palette strings (kinds, action titles, empty states) in both languages; verify `StringsTest` passes.
-- [ ] 3.2 Add the palette to `docs/architecture/ui.md` and `ui.es.md` and list the app's keyboard shortcuts in `README.md` and `README.es.md`; verify `mkdocs build --strict` succeeds.
+- [x] 3.1 Add the palette strings (kinds, action titles, empty states) in both languages; verify `StringsTest` passes.
+- [x] 3.2 Add the palette to `docs/architecture/ui.md` and `ui.es.md` and list the app's keyboard shortcuts in `README.md` and `README.es.md`; verify `mkdocs build --strict` succeeds.
 - [ ] 3.3 Run the app on the secondary display with three demo projects and check every `command-palette` scenario.
 
 ## Workflow follow-up
