@@ -44,6 +44,16 @@ mkdocs serve                         # serve the docs locally
 - Don't add the `Co-Authored-By: Claude` trailer (or for any AI) in this project's commits.
 - Commit messages are always in English, even though the user converses in Spanish.
 
+### Opening a pull request
+
+Branching model: `docs/process/branching.md`. `main` only receives releases and is never a pull request target for a feature, fix, chore or docs branch.
+
+- Never take the base branch from the "main branch" shown in the session context, and never pass `--base main`. Derive it from where the branch comes from.
+- Before `gh pr create`, run `git merge-base --fork-point` or compare `git log --oneline origin/develop..HEAD` with the epic's, and state the base you will use together with the evidence (the branch's parent and what the commits are).
+- The base is `develop` by default, or the `epic/<name>` branch when the change was branched from one. A `release/**` branch is the only one allowed to target `main`.
+- Always pass `--base <branch>` explicitly, never rely on the default.
+- If the base is not obvious, ask before creating the pull request. A merged pull request on the wrong branch is not undone by closing it.
+
 ## Public repository
 
 This repository (`LuxionServer/ShogunAi`) is **public**: every commit, commit message, PR and issue comment is published permanently, and rewriting history doesn't unpublish it.
