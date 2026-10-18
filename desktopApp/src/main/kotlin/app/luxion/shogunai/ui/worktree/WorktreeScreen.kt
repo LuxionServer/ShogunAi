@@ -97,10 +97,7 @@ fun WorktreeScreen(
         viewModel.selectedBranch?.let { viewModel.createFromBranch(it) }
         viewModel.selectedBranch = null
     }
-    val isCreateEnabled = when (viewModel.createMode) {
-        CreateMode.NEW_BRANCH -> isTaskIdValid
-        CreateMode.EXISTING_BRANCH -> viewModel.isSelectedBranchAvailable
-    }
+    val isCreateEnabled = isCreateEnabled(viewModel.createMode, isTaskIdValid, viewModel.isSelectedBranchAvailable)
     val createWorktree = when (viewModel.createMode) {
         CreateMode.NEW_BRANCH -> createNewBranchWorktree
         CreateMode.EXISTING_BRANCH -> createFromSelectedBranch
@@ -491,4 +488,13 @@ private fun WorktreeRow(
             }
         }
     }
+}
+
+internal fun isCreateEnabled(
+    mode: CreateMode,
+    isTaskIdValid: Boolean,
+    isSelectedBranchAvailable: Boolean,
+): Boolean = when (mode) {
+    CreateMode.NEW_BRANCH -> isTaskIdValid
+    CreateMode.EXISTING_BRANCH -> isSelectedBranchAvailable
 }
