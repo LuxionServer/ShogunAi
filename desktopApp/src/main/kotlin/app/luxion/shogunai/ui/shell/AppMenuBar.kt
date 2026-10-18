@@ -21,6 +21,7 @@ fun FrameWindowScope.AppMenuBar(
     onShowActive: (() -> Unit)?,
     onShowAll: (() -> Unit)?,
     onReload: () -> Unit,
+    onCommandPalette: () -> Unit,
     onToggleSidebar: () -> Unit,
     onPreferences: () -> Unit,
     onAbout: () -> Unit,
@@ -47,6 +48,7 @@ fun FrameWindowScope.AppMenuBar(
             onShowActive?.let { Item(strings.menuActive, shortcut = shortcut(Key.One), onClick = it) }
             onShowAll?.let { Item(strings.menuAllWorktrees, shortcut = shortcut(Key.Two), onClick = it) }
             onFind?.let { Item(strings.menuFind, shortcut = shortcut(Key.F), onClick = it) }
+            Item(strings.menuCommandPalette, shortcut = shortcut(Key.K), onClick = onCommandPalette)
             Item(strings.reload, shortcut = shortcut(Key.R), onClick = onReload)
             Item(strings.menuToggleSidebar, shortcut = shortcut(Key.Backslash), onClick = onToggleSidebar)
         }

@@ -24,20 +24,6 @@ graph LR
 
 ## Planificado
 
-### Rediseño de la app de escritorio
-
-En curso en la rama `epic/ui-redesign`. La app de escritorio ha crecido funcionalidad a funcionalidad sin un diseño: un proyecto cada vez, filas de worktree abarrotadas, los recursos de la máquina al final de la lista de un proyecto y errores mostrados como la salida en crudo de un comando. El rediseño la convierte en una torre de control organizada en tres paneles:
-
-- **Barra lateral**: "Activos" (la vista principal: los worktrees con un agente trabajando, trabajo esperándote o todavía en curso, de todos los proyectos), "Todos los worktrees" (todos los proyectos; al elegir un proyecto se filtra la vista), los proyectos, y una sección "Máquina" con los daemons de Gradle, los emuladores de Android, los simuladores de iOS y los DerivedData de Xcode de todos los proyectos.
-- **Lista**: una línea por worktree, con la rama como etiqueta e indicadores compactos para lo que importa.
-- **Detalle**: todo sobre el worktree seleccionado y sus acciones.
-
-Está planificado en estos cambios de OpenSpec, que se implementan en este orden:
-
-1. `command-palette`: Cmd/Ctrl+K para saltar a cualquier vista, proyecto o worktree, o ejecutar una acción.
-
-Cada cambio quita su línea de esta lista cuando se archiva.
-
 ### Demo guiada de bienvenida
 
 Un recorrido de primer uso basado en la revisión hecha antes de mergear la capa de worktrees: la app crea un repositorio de ejemplo desechable con worktrees en todos los estados y abre un agente con un prompt preparado que guía al usuario por cada funcionalidad (estado, limpieza, provisionado, el CLI, los hooks, el entorno y los providers), paso a paso.

@@ -98,6 +98,7 @@ private fun openWindow() = application {
             onShowActive = shellViewModel::selectActive.takeIf { shellViewModel.projects.isNotEmpty() },
             onShowAll = shellViewModel::selectAll.takeIf { shellViewModel.projects.isNotEmpty() },
             onReload = shellViewModel::reload,
+            onCommandPalette = shellViewModel::openPalette,
             onToggleSidebar = shellViewModel::toggleSidebar,
             onPreferences = openPreferences,
             onAbout = { aboutOpen = true },

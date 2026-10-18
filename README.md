@@ -75,6 +75,26 @@ Install it like any other desktop app and open it. You don't need a JDK or any d
 
 The app is in English by default; you can switch to Spanish in Preferences (Settings… in the ShogunAi menu on macOS, File > Preferences elsewhere, Cmd/Ctrl+Comma), next to the theme. Your choice is remembered between restarts, as are the last project you had open, the window's size and position, and whether the sidebar is collapsed (View > Toggle sidebar, Cmd/Ctrl+Backslash).
 
+### Keyboard shortcuts
+
+Use Cmd on macOS and Ctrl elsewhere.
+
+| Shortcut | Action |
+|---|---|
+| Cmd/Ctrl+K | Command palette: jump to any view, project, worktree or action |
+| Cmd/Ctrl+1, Cmd/Ctrl+2 | Show Active, show All worktrees |
+| Cmd/Ctrl+N | New worktree |
+| Shift+Cmd/Ctrl+N | Add project |
+| Cmd/Ctrl+S | Save the project's settings |
+| Cmd/Ctrl+F | Find in the worktree list |
+| Shift+Cmd/Ctrl+C | Copy the selected worktree's launch command |
+| Cmd/Ctrl+Backspace | Delete the selected worktree (asks first) |
+| Cmd/Ctrl+R | Reload |
+| Cmd/Ctrl+Backslash | Toggle the sidebar |
+| Cmd/Ctrl+Comma | Preferences |
+
+In the command palette, the arrows move through the results, Enter runs the highlighted one and Cmd/Ctrl+Enter copies a worktree's launch command.
+
 ## Command line
 
 `shogun` works on the Git repository that contains the current directory, using its project from the desktop app if there is one:

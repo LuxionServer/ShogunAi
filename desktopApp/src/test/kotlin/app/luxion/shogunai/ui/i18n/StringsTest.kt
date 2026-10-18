@@ -287,4 +287,15 @@ class StringsTest {
         }
         assertTrue(EnglishStrings.repositoryConfigIssue(RepositoryConfigIssue.UnknownPlaceholder("branch")).contains("branch"))
     }
+
+    @Test
+    fun `the command palette strings are translated`() {
+        assertEquals("Command palette", EnglishStrings.menuCommandPalette)
+        assertNotEquals(EnglishStrings.menuCommandPalette, SpanishStrings.menuCommandPalette)
+        assertNotEquals(EnglishStrings.paletteNoResults, SpanishStrings.paletteNoResults)
+        assertNotEquals(EnglishStrings.paletteKindAction, SpanishStrings.paletteKindAction)
+        assertNotEquals(EnglishStrings.paletteNewWorktreeIn("api"), SpanishStrings.paletteNewWorktreeIn("api"))
+        assertNotEquals(EnglishStrings.paletteSettingsOf("api"), SpanishStrings.paletteSettingsOf("api"))
+        allStrings.forEach { assertTrue(it.paletteNewWorktreeIn("api").contains("api")) }
+    }
 }

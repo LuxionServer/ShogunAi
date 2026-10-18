@@ -323,6 +323,20 @@ interface Strings {
     val repositoryPreviewMessage: String
     val repositoryPreviewConfirm: String
     fun repositoryConfigChanged(path: String): String
+    val menuCommandPalette: String
+    val paletteHint: String
+    val paletteNoResults: String
+    val paletteKindView: String
+    val paletteKindProject: String
+    val paletteKindWorktree: String
+    val paletteKindAction: String
+    val paletteViewActive: String
+    val paletteViewAllWorktrees: String
+    val paletteViewPreferences: String
+    val paletteCleanUp: String
+    val paletteCopyLaunchCommandHint: String
+    fun paletteNewWorktreeIn(project: String): String
+    fun paletteSettingsOf(project: String): String
 }
 
 val LocalStrings = staticCompositionLocalOf<Strings> { EnglishStrings }

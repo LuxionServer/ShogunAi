@@ -24,20 +24,6 @@ graph LR
 
 ## Planned
 
-### Desktop app redesign
-
-In progress on the `epic/ui-redesign` branch. The desktop app grew one feature at a time without a design: one project at a time, crowded worktree rows, machine resources at the bottom of a project's list and errors shown as raw command output. The redesign turns it into a control tower built around three panes:
-
-- **Sidebar**: "Active" (the main view: worktrees with an agent working, work waiting for you, or still in progress, across every project), "All worktrees" (every project, where selecting a project filters the view), the projects, and a "Machine" section with Gradle daemons, Android emulators, iOS simulators and Xcode DerivedData across every project.
-- **List**: one line per worktree, with the branch as its label and compact indicators for what matters.
-- **Detail**: everything about the selected worktree and its actions.
-
-It's planned as these OpenSpec changes, implemented in this order:
-
-1. `command-palette`: Cmd/Ctrl+K to jump to any view, project or worktree, or run an action.
-
-Each change removes its line from this list when it's archived.
-
 ### Guided onboarding demo
 
 A first-run walkthrough built on the review done before merging the worktree layer: the app creates a throwaway sample repository with worktrees in every state, and opens an agent with a prepared prompt that walks the user through each feature (status, cleanup, provisioning, the CLI, hooks, environment and providers), one step at a time.

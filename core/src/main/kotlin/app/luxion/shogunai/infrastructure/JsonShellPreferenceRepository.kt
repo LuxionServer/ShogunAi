@@ -39,6 +39,12 @@ class JsonShellPreferenceRepository(
         settingsFile.update { it.copy(lastCreateProject = projectId) }
     }
 
+    override fun loadRecentPaletteItems(): List<String> = settingsFile.read().recentPaletteItems
+
+    override fun saveRecentPaletteItems(ids: List<String>) {
+        settingsFile.update { it.copy(recentPaletteItems = ids) }
+    }
+
     override fun loadGrouping(view: GroupedView): Grouping = settingsFile.read().grouping.of(view)
 
     override fun saveGrouping(view: GroupedView, grouping: Grouping) {
