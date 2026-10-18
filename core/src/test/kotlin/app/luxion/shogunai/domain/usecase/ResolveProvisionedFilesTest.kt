@@ -13,7 +13,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
-class ResolveFilesToCopyTest {
+class ResolveProvisionedFilesTest {
 
     private val config = ProjectConfig(
         baseRepositoryPath = "/home/dev/projects/main-repo",
@@ -28,7 +28,7 @@ class ResolveFilesToCopyTest {
     fun `runs no git command when the repository declares no patterns`() = runTest {
         val executor = FakeShellCommandExecutor()
 
-        val files = resolveFilesToCopy(config, executor, FakeRepositoryProvisioningSource())
+        val files = resolveProvisionedFiles(config, executor, FakeRepositoryProvisioningSource()).copied
 
         assertEquals(emptyList(), files)
         assertTrue(executor.executedCommands.isEmpty())
@@ -42,7 +42,7 @@ class ResolveFilesToCopyTest {
             worktreeIncludePatterns = listOf(".env*", ".idea/runConfigurations/"),
         )
 
-        val files = resolveFilesToCopy(config, executor, source(provisioning))
+        val files = resolveProvisionedFiles(config, executor, source(provisioning)).copied
 
         assertEquals(listOf("local.properties", ".env"), files)
         assertEquals(
@@ -60,7 +60,7 @@ class ResolveFilesToCopyTest {
             success(it, stdout = "config/my secrets.json\u0000.idea/runConfigurations/Año.xml\u0000")
         }
 
-        val files = resolveFilesToCopy(config, executor, source(RepositoryProvisioning(copyPatterns = listOf("*.json"))))
+        val files = resolveProvisionedFiles(config, executor, source(RepositoryProvisioning(copyPatterns = listOf("*.json")))).copied
 
         assertEquals(listOf("config/my secrets.json", ".idea/runConfigurations/Año.xml"), files)
     }
@@ -70,7 +70,7 @@ class ResolveFilesToCopyTest {
         val executor = FakeShellCommandExecutor { failure(it, exitCode = 128, stderr = "not a git repository") }
 
         val error = assertFailsWith<WorktreeError.GitCommandFailed> {
-            resolveFilesToCopy(config, executor, source(RepositoryProvisioning(copyPatterns = listOf(".env"))))
+            resolveProvisionedFiles(config, executor, source(RepositoryProvisioning(copyPatterns = listOf(".env"))))
         }
 
         assertEquals(128, error.exitCode)

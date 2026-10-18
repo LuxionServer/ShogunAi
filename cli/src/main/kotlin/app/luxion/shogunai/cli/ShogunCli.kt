@@ -32,6 +32,9 @@ import app.luxion.shogunai.domain.model.IOS_SIMULATOR_UDID
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.SimulatorDevice
 import app.luxion.shogunai.domain.model.SimulatorSettings
+import app.luxion.shogunai.domain.model.ProvisionDriftState
+import app.luxion.shogunai.domain.model.ProvisionMode
+import app.luxion.shogunai.domain.model.ProvisionedFile
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeOrigin
@@ -54,6 +57,7 @@ import app.luxion.shogunai.domain.usecase.MachineProviderContributions
 import app.luxion.shogunai.domain.usecase.effectiveGradleJvmArgs
 import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.ProviderContributions
+import app.luxion.shogunai.domain.usecase.CheckProvisionedFilesUseCase
 import app.luxion.shogunai.domain.usecase.ProvisionWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.ReadEmulatorStatesUseCase
 import app.luxion.shogunai.domain.usecase.ReadSimulatorStatesUseCase
@@ -190,7 +194,7 @@ class ShogunCli(
             err.line("Pass --worktrees-root <dir>, or add the repository as a project in the desktop app.")
             return EXIT_USAGE
         }
-        val worktree = if (command.branch != null) {
+        val created = if (command.branch != null) {
             CreateWorktreeFromBranchUseCase(config, executor, fileManager, provisioningSource, prepareEnvironment)(command.branch)
         } else {
             val startPoint = resolveStartPoint(workingDirectory, command.from)
@@ -199,8 +203,14 @@ class ShogunCli(
                 command.branchType,
                 startPoint,
             )
-        }.getOrThrow()
-        out.line(worktree.path)
+        }
+        val failure = created.exceptionOrNull()
+        if (failure is WorktreeError.PostCreateCommandFailed) {
+            out.line(failure.worktreePath)
+            err.line("shogun: ${failure.message}")
+            return EXIT_FAILURE
+        }
+        out.line(created.getOrThrow().path)
         return EXIT_OK
     }
 
@@ -213,8 +223,32 @@ class ShogunCli(
         }
     }
 
-    private suspend fun provision(command: CliCommand.Provision): Int =
-        provisionWorktreeAt(absolute(command.path ?: workingDirectory))
+    private suspend fun provision(command: CliCommand.Provision): Int {
+        val target = absolute(command.path ?: workingDirectory)
+        return if (command.check) checkProvisionedFiles(target) else provisionWorktreeAt(target)
+    }
+
+    private suspend fun checkProvisionedFiles(target: String): Int {
+        val config = configFor(target)
+        val worktree = ListWorktreesUseCase(config, executor)().getOrThrow()
+            .firstOrNull { sameDirectory(it.path, target) }
+            ?: throw WorktreeError.NotAWorktree(target)
+        val drift = CheckProvisionedFilesUseCase(config, executor, fileManager, provisioningSource)(worktree.path).getOrThrow()
+        drift.forEach { out.line("${it.path}: ${driftLabel(it.state)}") }
+        return if (drift.isEmpty()) EXIT_OK else EXIT_DRIFT
+    }
+
+    private fun driftLabel(state: ProvisionDriftState): String = when (state) {
+        ProvisionDriftState.MISSING -> "missing"
+        ProvisionDriftState.DIFFERS -> "differs"
+        ProvisionDriftState.NOT_LINKED -> "not linked"
+    }
+
+    private fun provisionedLabel(file: ProvisionedFile): String = when (file.mode) {
+        ProvisionMode.COPIED -> file.path
+        ProvisionMode.LINKED -> "${file.path} (linked)"
+        ProvisionMode.COPIED_INSTEAD_OF_LINKING -> "${file.path} (copied: symbolic links aren't available)"
+    }
 
     private suspend fun provisionWorktreeAt(target: String, onProvisioned: suspend (Worktree, ProjectConfig) -> Unit = { _, _ -> }): Int {
         val config = configFor(target)
@@ -222,7 +256,7 @@ class ShogunCli(
             .firstOrNull { sameDirectory(it.path, target) }
             ?: throw WorktreeError.NotAWorktree(target)
         ProvisionWorktreeUseCase(config, executor, fileManager, provisioningSource, prepareEnvironment)(worktree.path).getOrThrow()
-            .forEach { out.line(it) }
+            .forEach { out.line(provisionedLabel(it)) }
         onProvisioned(worktree, config)
         return EXIT_OK
     }
@@ -621,8 +655,21 @@ class ShogunCli(
         val target = config.worktreePathFor(normalizeTaskId(name))
         val existing = ListWorktreesUseCase(config, executor)().getOrThrow()
             .firstOrNull { !it.isMain && sameDirectory(it.path, target) }
-        val path = existing?.path
-            ?: CreateWorktreeUseCase(config, executor, fileManager, provisioningSource, prepareEnvironment)(name, BranchType.FEATURE, resolveStartPoint(directory, null)).getOrThrow().path
+        val path = existing?.path ?: run {
+            val created = CreateWorktreeUseCase(config, executor, fileManager, provisioningSource, prepareEnvironment)(
+                name,
+                BranchType.FEATURE,
+                resolveStartPoint(directory, null),
+            )
+            when (val failure = created.exceptionOrNull()) {
+                null -> created.getOrThrow().path
+                is WorktreeError.PostCreateCommandFailed -> {
+                    err.line("shogun: hook worktree-create: ${failure.message}")
+                    failure.worktreePath
+                }
+                else -> throw failure
+            }
+        }
         out.line(path)
         return EXIT_OK
     }
@@ -771,6 +818,7 @@ class ShogunCli(
         const val EXIT_OK = 0
         const val EXIT_FAILURE = 1
         const val EXIT_USAGE = 2
+        const val EXIT_DRIFT = 3
         private const val CLAUDE_CODE_WORKTREES = ".claude/worktrees"
         private const val CLAUDE_ENV_FILE = "CLAUDE_ENV_FILE"
         private const val HERDR_PLUGIN_EVENT = "HERDR_PLUGIN_EVENT"
@@ -812,7 +860,10 @@ class ShogunCli(
                                           the branch starts at the current worktree's HEAD unless --from is given
               new --branch <branch>       Create a worktree for an existing local branch and print its path
                   --worktrees-root <dir>  Folder for the worktree when the repository has no ShogunAi project
-              provision [<path>]          Copy the declared files into an existing worktree (default: current directory)
+              provision [<path>]          Copy or link the declared files into an existing worktree and run its
+                                          post-creation commands (default: current directory)
+              provision --check [<path>]  List the declared files a worktree is missing, has stale or doesn't link;
+                                          exit code 3 when there are any, and nothing is changed
               status [--json]             List the repository's worktrees with their state
               clean [--yes] [--delete-branches] [--stop-gradle-daemons] [--stop-emulators] [--delete-simulators]
                     [--delete-derived-data]

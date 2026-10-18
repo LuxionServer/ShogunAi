@@ -120,6 +120,20 @@ class HookCommandsTest {
     }
 
     @Test
+    fun `worktree-create keeps the worktree and exits with 0 when a post-creation command fails`() {
+        val executor = Executor(porcelain()) { command ->
+            if (command.first() == "npm") CommandResult(command, 1, "", "ENOTFOUND") else null
+        }
+        val provisioning = RepositoryProvisioning(postCreateCommands = listOf(listOf("npm", "install")))
+
+        val exitCode = cli(executor, createInput("TASK-123"), provisioning = provisioning).run(listOf("hook", "worktree-create"))
+
+        assertEquals(0, exitCode)
+        assertEquals("$worktreesRoot/TASK-123\n", out.toString())
+        assertTrue(err.contains("npm install") && err.contains("ENOTFOUND"), err.toString())
+    }
+
+    @Test
     fun `worktree-create from a session in a linked worktree starts at that worktree's HEAD`() {
         val linked = "/home/dev/projects/epic-redesign"
         val executor = Executor(porcelain(linked to "epic/redesign")) { command ->

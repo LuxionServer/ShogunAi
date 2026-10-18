@@ -197,6 +197,7 @@ interface Strings {
     fun notAWorktree(path: String): String
     fun gitCommandFailed(command: List<String>, exitCode: Int): String
     fun secretCopyFailed(detail: String?): String
+    fun postCreateCommandFailed(command: List<String>, exitCode: Int?, detail: String): String
     fun clipboardWriteFailed(detail: String?): String
     val gitLfsNotFound: String
     fun branchNotFound(branch: String): String
@@ -247,6 +248,7 @@ private fun Strings.worktreeErrorMessage(error: WorktreeError): String = when (e
     is WorktreeError.GitCommandFailed -> gitCommandFailed(error.command, error.exitCode) +
         if (error.errorOutput.isNotBlank()) "\n${error.errorOutput}" else ""
     is WorktreeError.SecretCopyFailed -> secretCopyFailed(error.cause?.message)
+    is WorktreeError.PostCreateCommandFailed -> postCreateCommandFailed(error.command, error.exitCode, error.errorOutput)
     is WorktreeError.ClipboardWriteFailed -> clipboardWriteFailed(error.cause?.message)
     WorktreeError.GitLfsNotFound -> gitLfsNotFound
     is WorktreeError.BranchNotFound -> branchNotFound(error.branch)

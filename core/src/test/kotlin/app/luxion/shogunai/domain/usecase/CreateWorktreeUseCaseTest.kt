@@ -358,4 +358,34 @@ class CreateWorktreeUseCaseTest {
         assertIs<WorktreeError.NoFreePort>(error)
         assertTrue(executor.executed("git", "worktree", "remove", "--force", worktreePath))
     }
+
+    @Test
+    fun `links files, runs post-creation commands and keeps the worktree when one fails`() = runTest {
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(
+                config.baseRepositoryPath to RepositoryProvisioning(
+                    linkPatterns = listOf("keys/"),
+                    postCreateCommands = listOf(listOf("npm", "install"), listOf("direnv", "allow")),
+                ),
+            ),
+        )
+        val executor = FakeShellCommandExecutor {
+            when {
+                it.getOrNull(1) == "ls-files" -> success(it, stdout = "keys/a\u0000")
+                it.first() == "npm" -> failure(it, exitCode = 1, stderr = "ENOTFOUND")
+                else -> success(it)
+            }
+        }
+        val fileManager = FakeFileManager(existing = baseWithSecrets)
+
+        val error = CreateWorktreeUseCase(config, executor, fileManager, provisioning)("TASK-123", BranchType.FEATURE)
+            .exceptionOrNull()
+
+        assertIs<WorktreeError.PostCreateCommandFailed>(error)
+        assertEquals(worktreePath, error.worktreePath)
+        assertEquals(mapOf("$worktreePath/keys/a" to "${config.baseRepositoryPath}/keys/a"), fileManager.symbolicLinks)
+        assertFalse(executor.executed("direnv", "allow"))
+        assertFalse(executor.executedCommands.any { it.take(3) == listOf("git", "worktree", "remove") })
+        assertFalse(executor.executedCommands.any { it.take(2) == listOf("git", "branch") })
+    }
 }

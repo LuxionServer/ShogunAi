@@ -1,0 +1,94 @@
+package app.luxion.shogunai.domain.usecase
+
+import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
+import app.luxion.shogunai.domain.FakeShellCommandExecutor
+import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
+import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.ProvisionDrift
+import app.luxion.shogunai.domain.model.ProvisionDriftState
+import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.domain.model.WorktreeError
+import kotlinx.coroutines.test.runTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
+
+class CheckProvisionedFilesUseCaseTest {
+
+    private val base = "/home/dev/projects/main-repo"
+    private val linked = "/home/dev/projects/TASK-123"
+    private val config = ProjectConfig(baseRepositoryPath = base, worktreesRoot = "/home/dev/projects", secretFiles = emptyList())
+
+    private val porcelain = """
+        worktree $base
+        HEAD 1111111111111111111111111111111111111111
+        branch refs/heads/main
+
+        worktree $linked
+        HEAD 2222222222222222222222222222222222222222
+        branch refs/heads/feature/TASK-123
+    """.trimIndent()
+
+    private val executor = FakeShellCommandExecutor {
+        when {
+            it.getOrNull(1) == "worktree" -> success(it, stdout = porcelain)
+            it.getOrNull(1) == "ls-files" && "local.properties" in it -> success(it, stdout = "local.properties\u0000")
+            it.getOrNull(1) == "ls-files" -> success(it, stdout = ".env\u0000")
+            else -> success(it)
+        }
+    }
+
+    private val provisioning = FakeRepositoryProvisioningSource(
+        byRepository = mapOf(base to RepositoryProvisioning(copyPatterns = listOf(".env"), linkPatterns = listOf("local.properties"))),
+    )
+
+    private fun fileManager(vararg existing: String) = FakeFileManager(existing = listOf(base, linked) + existing).also {
+        it.contents["$base/.env"] = "KEY=1"
+    }
+
+    @Test
+    fun `reports a stale copy as differing`() = runTest {
+        val files = fileManager("$base/.env", "$linked/.env", "$base/local.properties", "$linked/local.properties")
+        files.contents["$linked/.env"] = "KEY=0"
+        files.symbolicLinks["$linked/local.properties"] = "$base/local.properties"
+
+        val drift = CheckProvisionedFilesUseCase(config, executor, files, provisioning)(linked).getOrThrow()
+
+        assertEquals(listOf(ProvisionDrift(".env", ProvisionDriftState.DIFFERS)), drift)
+        assertTrue(files.copied.isEmpty())
+    }
+
+    @Test
+    fun `reports missing files and links replaced by regular files`() = runTest {
+        val files = fileManager("$base/.env", "$base/local.properties", "$linked/local.properties")
+
+        val drift = CheckProvisionedFilesUseCase(config, executor, files, provisioning)(linked).getOrThrow()
+
+        assertEquals(
+            listOf(
+                ProvisionDrift(".env", ProvisionDriftState.MISSING),
+                ProvisionDrift("local.properties", ProvisionDriftState.NOT_LINKED),
+            ),
+            drift,
+        )
+        assertTrue(files.copied.isEmpty() && files.symbolicLinks.isEmpty())
+    }
+
+    @Test
+    fun `reports nothing when everything matches`() = runTest {
+        val files = fileManager("$base/.env", "$linked/.env", "$base/local.properties", "$linked/local.properties")
+        files.contents["$linked/.env"] = "KEY=1"
+        files.symbolicLinks["$linked/local.properties"] = "$base/local.properties"
+
+        assertEquals(emptyList(), CheckProvisionedFilesUseCase(config, executor, files, provisioning)(linked).getOrThrow())
+    }
+
+    @Test
+    fun `refuses the main worktree`() = runTest {
+        val error = CheckProvisionedFilesUseCase(config, executor, fileManager(), provisioning)(base).exceptionOrNull()
+
+        assertIs<WorktreeError.NotAWorktree>(error)
+    }
+}

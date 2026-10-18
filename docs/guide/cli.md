@@ -41,9 +41,16 @@ Creates a worktree, copies the declared files into it, prepares its [environment
 
 ```text
 shogun provision [<path>]
+shogun provision --check [<path>]
 ```
 
-Copies the project's local files and the repository's declared files into an existing worktree (the current directory by default), reserves its ports and writes its `envFile`. Use it for worktrees created by another tool. Prints one copied path per line.
+Copies the project's local files and the repository's declared `copy` files into an existing worktree (the current directory by default), links its `link` files, reserves its ports, writes its `envFile` and runs the `hooks.postCreate` commands. Use it for worktrees created by another tool. Prints one path per line: linked files end in `(linked)`, and files declared in `link` that were copied because symbolic links aren't available end in `(copied: symbolic links aren't available)`.
+
+With `--check` nothing is changed: it compares the files provisioning would give the worktree with the base repository's and prints one line per difference, `<path>: missing`, `<path>: differs` (a copy whose content changed in the base repository) or `<path>: not linked` (a `link` file that isn't a symbolic link to the base repository's file). It exits with 0 when everything matches, 3 when there is any difference, and 1 on an error.
+
+#### When a post-creation command fails
+
+The worktree is kept. `shogun new` prints its path on standard output, the failure (command, exit code and error output) on standard error, and exits with 1. `shogun provision` prints the failure on standard error and exits with 1.
 
 ### `status`
 
@@ -184,7 +191,7 @@ These commands are meant to be called by agents and tools, not typed. How to con
 
 | Command | Called by |
 |---|---|
-| `shogun hook worktree-create` | Claude Code's `WorktreeCreate` hook. Reads `name` and `cwd` from standard input, creates (or reuses) a provisioned worktree on `feature/<name>` starting at the HEAD of the worktree in `cwd`, and prints its path. |
+| `shogun hook worktree-create` | Claude Code's `WorktreeCreate` hook. Reads `name` and `cwd` from standard input, creates (or reuses) a provisioned worktree on `feature/<name>` starting at the HEAD of the worktree in `cwd`, and prints its path. If a post-creation command fails it still prints the path as the last line and exits with 0, with the failure on standard error, so Claude Code uses the worktree. |
 | `shogun hook worktree-remove` | Claude Code's `WorktreeRemove` hook. Removes the worktree in `worktree_path`, deletes its branch only if merged and closes its Herdr workspace. |
 | `shogun hook session-start` | Claude Code's `SessionStart` hook. Appends the worktree's environment to `CLAUDE_ENV_FILE` and tells Claude which values it uses. |
 | `shogun hook herdr` | The ShogunAi plugin for Herdr, on `worktree.created` (provisions the worktree) and `worktree.removed` (deletes its branch if merged). Reads `HERDR_PLUGIN_EVENT`, `HERDR_PLUGIN_EVENT_JSON` and `HERDR_BIN_PATH`. |

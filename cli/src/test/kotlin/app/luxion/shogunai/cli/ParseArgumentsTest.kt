@@ -79,6 +79,14 @@ class ParseArgumentsTest {
     }
 
     @Test
+    fun `provision check with and without a path`() {
+        assertEquals(CliCommand.Provision(check = true), command("provision", "--check"))
+        assertEquals(CliCommand.Provision("../TASK-123", check = true), command("provision", "--check", "../TASK-123"))
+        assertEquals(CliCommand.Provision("../TASK-123", check = true), command("provision", "../TASK-123", "--check"))
+        assertTrue(usageError("provision", "--check", "a", "b").contains("at most one path"))
+    }
+
+    @Test
     fun `status takes only the json flag`() {
         assertEquals(CliCommand.Status(), command("status"))
         assertEquals(CliCommand.Status(json = true), command("status", "--json"))

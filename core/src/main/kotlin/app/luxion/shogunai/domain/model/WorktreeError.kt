@@ -35,6 +35,16 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class SecretCopyFailed(cause: Throwable) :
         WorktreeError("Failed to copy secret files: ${cause.message}", cause)
 
+    class PostCreateCommandFailed(
+        val worktreePath: String,
+        val command: List<String>,
+        val exitCode: Int?,
+        val errorOutput: String,
+    ) : WorktreeError(
+        "Post-creation command failed" + (exitCode?.let { " (exit code $it)" } ?: "") + ": ${command.joinToString(" ")}" +
+            if (errorOutput.isNotBlank()) "\n$errorOutput" else "",
+    )
+
     class ClipboardWriteFailed(cause: Throwable) :
         WorktreeError("Failed to copy the launch command to the clipboard: ${cause.message}", cause)
 

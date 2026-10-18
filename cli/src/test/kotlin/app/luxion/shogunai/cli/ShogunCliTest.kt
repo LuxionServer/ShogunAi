@@ -435,6 +435,104 @@ class ShogunCliTest {
         assertEquals("local.properties\n.env\n", out.toString())
     }
 
+    private val linkingProvisioning = FakeRepositoryProvisioningSource(
+        byRepository = mapOf(
+            base to RepositoryProvisioning(
+                copyPatterns = listOf(".env"),
+                linkPatterns = listOf("token.txt"),
+                postCreateCommands = listOf(listOf("npm", "install")),
+            ),
+        ),
+    )
+
+    private fun linkingExecutor(hook: (List<String>) -> CommandResult? = { null }) = repositoryExecutor { command, _ ->
+        when {
+            "ls-files" in command && "token.txt" in command -> Executor.ok(command, "token.txt\u0000")
+            "ls-files" in command -> Executor.ok(command, ".env\u0000")
+            command.first() == "npm" -> hook(command)
+            else -> null
+        }
+    }
+
+    @Test
+    fun `provision marks linked files and files copied instead of linking`() {
+        val fileManager = FakeFileManager(existing = listOf(base, "$base/local.properties", "$base/token.txt"))
+
+        val exitCode = cli(linkingExecutor(), provisioning = linkingProvisioning, fileManager = fileManager, workingDirectory = merged)
+            .run(listOf("provision"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("local.properties\n.env\ntoken.txt (linked)\n", out.toString())
+
+        out.clear()
+        fileManager.symbolicLinksSupported = false
+        cli(linkingExecutor(), provisioning = linkingProvisioning, fileManager = fileManager, workingDirectory = merged)
+            .run(listOf("provision"))
+        assertTrue(out.contains("token.txt (copied: symbolic links aren't available)"), out.toString())
+    }
+
+    @Test
+    fun `provision fails with exit code 1 when a post-creation command fails`() {
+        val executor = linkingExecutor { Executor.fail(it, stderr = "ENOTFOUND", exitCode = 4) }
+
+        val exitCode = cli(executor, provisioning = linkingProvisioning, workingDirectory = merged).run(listOf("provision"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("npm install") && err.contains("exit code 4") && err.contains("ENOTFOUND"), err.toString())
+    }
+
+    @Test
+    fun `new prints the kept path and the failure when a post-creation command fails`() {
+        val executor = linkingExecutor { Executor.fail(it, stderr = "ENOTFOUND", exitCode = 4) }
+
+        val exitCode = cli(executor, provisioning = linkingProvisioning).run(listOf("new", "TASK-123"))
+
+        assertEquals(1, exitCode)
+        assertEquals("$worktreesRoot/TASK-123\n", out.toString())
+        assertTrue(err.contains("npm install") && err.contains("exit code 4") && err.contains("ENOTFOUND"), err.toString())
+    }
+
+    @Test
+    fun `provision check reports a stale copy and exits with 3 without changing anything`() {
+        val fileManager = FakeFileManager(existing = listOf(base, "$base/local.properties", "$merged/local.properties", "$base/token.txt", "$merged/.env", "$merged/token.txt"))
+        fileManager.contents["$base/.env"] = "KEY=1"
+        fileManager.contents["$base/local.properties"] = "A=1"
+        fileManager.contents["$merged/local.properties"] = "A=1"
+        fileManager.contents["$merged/.env"] = "KEY=0"
+        fileManager.symbolicLinks["$merged/token.txt"] = "$base/token.txt"
+
+        val exitCode = cli(linkingExecutor(), provisioning = linkingProvisioning, fileManager = fileManager, workingDirectory = merged)
+            .run(listOf("provision", "--check"))
+
+        assertEquals(3, exitCode, err.toString())
+        assertEquals(".env: differs\n", out.toString())
+        assertTrue(fileManager.copied.isEmpty())
+    }
+
+    @Test
+    fun `provision check prints nothing and exits with 0 when everything matches`() {
+        val fileManager = FakeFileManager(existing = listOf(base, "$base/local.properties", "$merged/local.properties", "$base/token.txt", "$merged/.env", "$merged/token.txt"))
+        fileManager.contents["$base/.env"] = "KEY=1"
+        fileManager.contents["$base/local.properties"] = "A=1"
+        fileManager.contents["$merged/local.properties"] = "A=1"
+        fileManager.contents["$merged/.env"] = "KEY=1"
+        fileManager.symbolicLinks["$merged/token.txt"] = "$base/token.txt"
+
+        val exitCode = cli(linkingExecutor(), provisioning = linkingProvisioning, fileManager = fileManager, workingDirectory = merged)
+            .run(listOf("provision", "--check"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("", out.toString())
+    }
+
+    @Test
+    fun `provision check refuses the main worktree`() {
+        val exitCode = cli(linkingExecutor(), provisioning = linkingProvisioning).run(listOf("provision", "--check"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("is not a linked worktree"), err.toString())
+    }
+
     @Test
     fun `provision refuses a directory that is not a linked worktree`() {
         val exitCode = cli(repositoryExecutor()).run(listOf("provision"))
