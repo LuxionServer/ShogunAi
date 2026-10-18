@@ -9,6 +9,8 @@ Un `.shogunai.json` en la raíz del repositorio declara lo que necesita cada wor
 ```json
 {
   "copy": ["/local.properties", ".env*", ".idea/runConfigurations/"],
+  "link": ["/keys/"],
+  "hooks": { "postCreate": [["npm", "install"], ["direnv", "allow"]] },
   "env": {
     "PORT": "${port}",
     "API_URL": "http://localhost:${port:api}"
@@ -24,6 +26,8 @@ Un `.shogunai.json` en la raíz del repositorio declara lo que necesita cada wor
 | Clave | Tipo | Significado |
 |---|---|---|
 | `copy` | lista de cadenas | Patrones al estilo gitignore. Cada archivo que Git no versiona y coincide con alguno se copia a cada worktree nuevo, en la misma ruta. |
+| `link` | lista de cadenas | Los mismos patrones que `copy`, pero cada archivo que coincide se enlaza con un enlace simbólico al archivo del repositorio base en vez de copiarse, así que al rotarlo allí se actualiza en todos los worktrees. Un archivo que coincide con ambas listas se enlaza. Donde no se pueden crear enlaces simbólicos (Windows sin el privilegio), el archivo se copia. |
+| `hooks.postCreate` | lista de comandos | Comandos que se ejecutan dentro de cada worktree tras crearlo o provisionarlo, cuando sus archivos ya están en su sitio y su entorno preparado. Cada comando es una lista de cadenas dada como argv, no una cadena de shell; una única lista de cadenas se lee como un solo comando. |
 | `env` | objeto de cadenas | Variables de entorno por worktree. Los nombres usan letras, dígitos y `_`, y no empiezan por un dígito. |
 | `envFile` | cadena | Una ruta dentro del worktree donde se escribe su entorno en formato dotenv. Nunca se escribe sobre un archivo que Git versiona, así que añádelo a `.gitignore`. |
 | `providers` | objeto | Los [providers](providers.md) que usa el repositorio, cada uno con sus opciones. |
@@ -38,6 +42,10 @@ Los valores de `env` pueden usar estas plantillas:
 | `$$` | Un `$` literal. |
 
 Los puertos no se repiten entre los worktrees del repositorio, están libres al reservarse y no cambian después. [Uso con agentes](../agents.md#entorno-por-worktree) explica cómo reciben estas variables los agentes y las shells.
+
+Enlazar comparte el archivo: una herramienta de un worktree que sobrescriba un secreto enlazado sobrescribe también el del repositorio base. Deja `copy` para los archivos que un worktree pueda modificar. Los archivos locales del proyecto siempre se copian.
+
+Los comandos posteriores a la creación se ejecutan en orden y se detienen en el primero que falla. Un fallo hace fallar la creación o el provisionado con un error que nombra el comando, su código de salida y su salida de error, pero el worktree se conserva, porque su checkout y sus archivos están bien. Los comandos se ejecutan al crear y en cada `shogun provision`, así que hazlos seguros de repetir, y declara solo comandos que ejecutarías desde un repositorio de confianza. No reciben las variables de entorno del worktree; un comando que las necesite puede ejecutar `shogun env`.
 
 Opciones de los providers:
 

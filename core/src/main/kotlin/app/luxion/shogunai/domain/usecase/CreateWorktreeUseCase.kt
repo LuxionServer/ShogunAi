@@ -31,7 +31,7 @@ class CreateWorktreeUseCase(
                 throw WorktreeError.WorktreeAlreadyExists(worktreePath)
             }
 
-            val repositoryFiles = checkProvisioningAndResolveFiles(config, executor, fileManager, provisioningSource)
+            val provisioned = checkProvisioningAndResolveFiles(config, executor, fileManager, provisioningSource)
 
             val branch = "${branchType.prefix}/$id"
             addWorktreeAndCopySecrets(
@@ -42,7 +42,7 @@ class CreateWorktreeUseCase(
                 branch = branch,
                 addArgs = listOf("git", "worktree", "add", worktreePath, "-b", branch) + listOfNotNull(startPoint),
                 branchToDeleteOnLfsFailure = branch,
-                repositoryFiles = repositoryFiles,
+                provisioned = provisioned,
                 environment = environment,
             )
         }

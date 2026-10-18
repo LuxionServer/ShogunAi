@@ -15,7 +15,7 @@ sealed interface CliCommand {
         val from: String? = null,
     ) : CliCommand
 
-    data class Provision(val path: String? = null) : CliCommand
+    data class Provision(val path: String? = null, val check: Boolean = false) : CliCommand
     data class Status(val json: Boolean = false) : CliCommand
     data class Clean(
         val confirmed: Boolean = false,
@@ -135,9 +135,11 @@ private fun parseStatus(rest: List<String>): CliCommand.Status {
 }
 
 private fun parseProvision(rest: List<String>): CliCommand.Provision {
-    rest.firstOrNull { it.startsWith("-") }?.let { throw UsageException("unknown option '$it' for 'provision'") }
-    if (rest.size > 1) throw UsageException("'provision' takes at most one path")
-    return CliCommand.Provision(rest.firstOrNull())
+    val check = "--check" in rest
+    val others = rest.filter { it != "--check" }
+    others.firstOrNull { it.startsWith("-") }?.let { throw UsageException("unknown option '$it' for 'provision'") }
+    if (others.size > 1) throw UsageException("'provision' takes at most one path")
+    return CliCommand.Provision(others.firstOrNull(), check)
 }
 
 private fun parseClean(rest: List<String>): CliCommand.Clean {

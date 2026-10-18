@@ -10,7 +10,7 @@ Esa dirección se construye en tres capas:
 
 | Capa | Papel | Qué aporta |
 |---|---|---|
-| **Motor y CLI** | La base | Provisionado de worktrees definido en el repositorio (`.shogunai.json`) y un comando `shogun` que usan la app de escritorio, los agentes y sus hooks, con un entorno por worktree (puertos reservados y variables) que llega a la shell de cada agente. **Disponible**; el provisionado más completo está planificado. |
+| **Motor y CLI** | La base | Provisionado de worktrees definido en el repositorio (`.shogunai.json`) y un comando `shogun` que usan la app de escritorio, los agentes y sus hooks, con un entorno por worktree (puertos reservados y variables) que llega a la shell de cada agente. **Disponible.** |
 | **Torre de control** | La vista | La app de escritorio muestra el estado de todos los worktrees, incluidos los creados por otras herramientas, los mantiene limpios y sigue los cambios según ocurren. **Disponible.** |
 | **Android, KMP y JVM** | El contenido | Provisionado para los stacks en los que más cuesta preparar un worktree: Gradle, secretos locales, emuladores e IDEs. **Empezado**: los repositorios Gradle muestran sus daemons, pueden parar los ociosos y acotar la memoria y la vida de los daemons que arrancan los agentes, los repositorios Android pueden dar a cada worktree su propio emulador, los KMP e iOS su propio simulador de iOS, y los repositorios Xcode ven y limpian sus DerivedData y comparten compilaciones entre worktrees. |
 
@@ -18,8 +18,8 @@ Se conecta con las herramientas que ejecutan agentes en vez de sustituirlas: los
 
 ```mermaid
 graph LR
-    A["Configuración del repositorio"] --> B["Salida del CLI para scripts"]
-    A --> D["Provisionado Android, KMP y JVM"]
+    B["Salida del CLI para scripts"]
+    D["Provisionado Android, KMP y JVM"]
 ```
 
 ## Planificado
@@ -44,14 +44,6 @@ Los errores se muestran a menudo como la salida en crudo de un comando (un mensa
 ### Demo guiada de bienvenida
 
 Un recorrido de primer uso basado en la revisión hecha antes de mergear la capa de worktrees: la app crea un repositorio de ejemplo desechable con worktrees en todos los estados y abre un agente con un prompt preparado que guía al usuario por cada funcionalidad (estado, limpieza, provisionado, el CLI, los hooks, el entorno y los providers), paso a paso.
-
-### Configuración del repositorio
-
-Provisionado más completo en el `.shogunai.json` del repositorio:
-
-- Un hook post-creación ejecutado como argv (p. ej. `npm install`, `direnv allow`).
-- Enlazar un secreto con un symlink en vez de copiarlo, para que al rotarlo se actualice en todos los worktrees.
-- Detectar secretos de un worktree que difieren de los del repositorio base.
 
 ### Salida del CLI para scripts
 

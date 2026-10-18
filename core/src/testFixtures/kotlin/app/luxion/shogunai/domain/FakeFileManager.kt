@@ -1,6 +1,7 @@
 package app.luxion.shogunai.domain
 
 import app.luxion.shogunai.domain.io.FileManager
+import app.luxion.shogunai.domain.io.SymbolicLinksNotSupported
 import java.io.IOException
 
 class FakeFileManager(
@@ -35,6 +36,23 @@ class FakeFileManager(
 
     override fun modificationStamps(path: String): List<Pair<String, Long>> =
         stamps.filterKeys { it == path || it.startsWith("$path/") }.toList()
+
+    val symbolicLinks = mutableMapOf<String, String>()
+    val contents = mutableMapOf<String, String>()
+    var symbolicLinksSupported = true
+    var failSymbolicLinksFor: Set<String> = emptySet()
+
+    override fun createSymbolicLink(target: String, link: String) {
+        if (!symbolicLinksSupported) throw SymbolicLinksNotSupported()
+        if (target in failSymbolicLinksFor) throw IOException("enlace fallido de $target")
+        symbolicLinks[link] = target
+        paths += link
+    }
+
+    override fun isSymbolicLinkTo(link: String, target: String): Boolean = symbolicLinks[link] == target
+
+    override fun hasSameContent(first: String, second: String): Boolean =
+        contents[first] != null && contents[first] == contents[second]
 
     private val paths = existing.toMutableSet()
     val copied = mutableListOf<Pair<String, String>>()

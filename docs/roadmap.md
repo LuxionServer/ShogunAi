@@ -10,7 +10,7 @@ That direction is built in three layers:
 
 | Layer | Role | What it brings |
 |---|---|---|
-| **Engine and CLI** | The foundation | Worktree provisioning defined in the repository (`.shogunai.json`) and a `shogun` command that the desktop app, agents and their hooks all use, including a per-worktree environment (reserved ports and variables) delivered to each agent's shell. **Available**; richer provisioning is planned. |
+| **Engine and CLI** | The foundation | Worktree provisioning defined in the repository (`.shogunai.json`) and a `shogun` command that the desktop app, agents and their hooks all use, including a per-worktree environment (reserved ports and variables) delivered to each agent's shell. **Available.** |
 | **Control tower** | The view | The desktop app shows the state of every worktree, including the ones created by other tools, keeps them clean and follows changes as they happen. **Available.** |
 | **Android, KMP and JVM** | The content | Provisioning for the stacks where a worktree is hardest to prepare: Gradle, local secrets, emulators and IDEs. **Started**: Gradle repositories show their daemons, can stop the idle ones and bound the memory and lifetime of the daemons agents start, Android repositories can give each worktree its own emulator, KMP and iOS repositories its own iOS simulator, and Xcode repositories see and clean up their DerivedData and share compilations between worktrees. |
 
@@ -18,8 +18,8 @@ It plugs into the tools that run agents rather than replacing them: Claude Code'
 
 ```mermaid
 graph LR
-    A["Repository configuration"] --> B["Command-line output for scripts"]
-    A --> D["Android, KMP and JVM provisioning"]
+    B["Command-line output for scripts"]
+    D["Android, KMP and JVM provisioning"]
 ```
 
 ## Planned
@@ -44,14 +44,6 @@ Errors are often shown as raw command output (a Git or `simctl` message with its
 ### Guided onboarding demo
 
 A first-run walkthrough built on the review done before merging the worktree layer: the app creates a throwaway sample repository with worktrees in every state, and opens an agent with a prepared prompt that walks the user through each feature (status, cleanup, provisioning, the CLI, hooks, environment and providers), one step at a time.
-
-### Repository configuration
-
-Richer provisioning in the repository's `.shogunai.json`:
-
-- A post-creation hook run as argv (e.g. `npm install`, `direnv allow`).
-- Symlinking a secret instead of copying it, so a rotated secret updates every worktree.
-- Detection of secrets in a worktree that differ from the base repository's.
 
 ### Command-line output for scripts
 

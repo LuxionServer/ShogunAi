@@ -32,7 +32,7 @@ class CreateWorktreeFromBranchUseCase(
                 throw WorktreeError.BranchNotFound(branchName)
             }
 
-            val repositoryFiles = checkProvisioningAndResolveFiles(config, executor, fileManager, provisioningSource)
+            val provisioned = checkProvisioningAndResolveFiles(config, executor, fileManager, provisioningSource)
 
             addWorktreeAndCopySecrets(
                 config = config,
@@ -42,7 +42,7 @@ class CreateWorktreeFromBranchUseCase(
                 branch = branchName,
                 addArgs = listOf("git", "worktree", "add", worktreePath, branchName),
                 branchToDeleteOnLfsFailure = null,
-                repositoryFiles = repositoryFiles,
+                provisioned = provisioned,
                 environment = environment,
             )
         }

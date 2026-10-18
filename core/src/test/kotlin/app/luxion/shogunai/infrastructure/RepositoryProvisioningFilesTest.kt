@@ -50,6 +50,78 @@ class RepositoryProvisioningFilesTest {
     }
 
     @Test
+    fun `reads several post-creation commands`() {
+        configFile.writeText("""{ "hooks": { "postCreate": [["npm", "install"], ["direnv", "allow"]] } }""")
+
+        assertEquals(
+            listOf(listOf("npm", "install"), listOf("direnv", "allow")),
+            files.read(repository.toString()).postCreateCommands,
+        )
+    }
+
+    @Test
+    fun `reads a single post-creation command given as one argv`() {
+        configFile.writeText("""{ "hooks": { "postCreate": ["npm", "install"] } }""")
+
+        assertEquals(listOf(listOf("npm", "install")), files.read(repository.toString()).postCreateCommands)
+    }
+
+    @Test
+    fun `declares no post-creation command without hooks`() {
+        configFile.writeText("""{ "hooks": {} }""")
+        assertEquals(emptyList(), files.read(repository.toString()).postCreateCommands)
+
+        configFile.writeText("""{ "copy": [".env"] }""")
+        assertEquals(emptyList(), files.read(repository.toString()).postCreateCommands)
+    }
+
+    @Test
+    fun `fails with InvalidRepositoryConfig on invalid post-creation commands`() {
+        listOf(
+            """{ "hooks": { "postCreate": "npm install" } }""",
+            """{ "hooks": { "postCreate": [[]] } }""",
+            """{ "hooks": { "postCreate": [["npm", 1]] } }""",
+            """{ "hooks": { "postCreate": [["npm"], "ls"] } }""",
+            """{ "hooks": [] }""",
+        ).forEach { content ->
+            configFile.writeText(content)
+
+            val error = assertFailsWith<WorktreeError.InvalidRepositoryConfig>(content) { files.read(repository.toString()) }
+
+            assertTrue(error.path.endsWith(".shogunai.json"))
+        }
+    }
+
+    @Test
+    fun `reads link patterns`() {
+        configFile.writeText("""{ "link": ["/local.properties", "keys/"] }""")
+
+        assertEquals(listOf("/local.properties", "keys/"), files.read(repository.toString()).linkPatterns)
+    }
+
+    @Test
+    fun `fails with InvalidRepositoryConfig when link is not a list of strings`() {
+        configFile.writeText("""{ "link": "local.properties" }""")
+
+        assertFailsWith<WorktreeError.InvalidRepositoryConfig> { files.read(repository.toString()) }
+    }
+
+    @Test
+    fun `keeps hooks and link when adding patterns`() {
+        configFile.writeText("""{ "hooks": { "postCreate": [["npm", "install"]] }, "link": ["keys/"] }""")
+
+        files.addCopyPatterns(repository.toString(), listOf(".env"))
+
+        val written = Json.parseToJsonElement(configFile.readText()).jsonObject
+        assertEquals("keys/", written.getValue("link").jsonArray.single().jsonPrimitive.content)
+        assertEquals(
+            "npm",
+            written.getValue("hooks").jsonObject.getValue("postCreate").jsonArray.single().jsonArray.first().jsonPrimitive.content,
+        )
+        assertEquals(".env", written.getValue("copy").jsonArray.single().jsonPrimitive.content)
+    }
+
+    @Test
     fun `reads worktreeinclude skipping comments and blank lines`() {
         worktreeInclude.writeText("# secrets\n\n.env.local\n  config/keys/  \n")
 

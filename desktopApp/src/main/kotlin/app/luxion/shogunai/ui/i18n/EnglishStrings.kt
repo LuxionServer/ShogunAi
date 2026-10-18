@@ -224,6 +224,9 @@ object EnglishStrings : Strings {
     override fun gitCommandFailed(command: List<String>, exitCode: Int) =
         "Git command failed (exit code $exitCode): ${command.joinToString(" ")}"
     override fun secretCopyFailed(detail: String?) = "Failed to copy files into the worktree" + detail.asSuffix()
+    override fun postCreateCommandFailed(command: List<String>, exitCode: Int?, detail: String) =
+        "The worktree was created, but its post-creation command failed" +
+            (exitCode?.let { " (exit code $it)" } ?: "") + ": ${command.joinToString(" ")}" + detail.asSuffix()
     override fun clipboardWriteFailed(detail: String?) =
         "Failed to copy the launch command to the clipboard" + detail.asSuffix()
     override val gitLfsNotFound =
