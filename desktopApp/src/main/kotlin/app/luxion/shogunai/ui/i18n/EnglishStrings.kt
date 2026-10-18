@@ -269,6 +269,31 @@ object EnglishStrings : Strings {
     override fun derivedDataCompilationCache(size: String) = "Compilation cache · $size"
     override fun derivedDataDeleted(count: Int, freed: String) =
         if (count == 1) "1 DerivedData folder deleted · $freed freed" else "$count DerivedData folders deleted · $freed freed"
+    override val machineTitle = "Machine"
+    override val androidEmulatorsTitle = "Android emulators"
+    override val iosSimulatorsTitle = "iOS simulators"
+    override fun runningCount(count: Int) = "$count running"
+    override fun bootedCount(count: Int) = "$count booted"
+    override val ownerOutsideProjects = "outside saved projects"
+    override val ownerLoading = "loading owner"
+    override val notOwnedByWorktree = "not owned by a worktree"
+    override val goToWorktree = "Show in All worktrees"
+    override val noMachineEmulators = "No worktree emulators in these projects"
+    override val unownedEmulatorsTitle = "Running outside any worktree"
+    override val noMachineSimulators = "No ShogunAi simulators yet"
+    override fun simulatorOrphansTitle(count: Int) =
+        if (count == 1) "1 orphaned simulator" else "$count orphaned simulators"
+    override val confirmDeleteOrphansTitle = "Delete orphans?"
+    override fun confirmDeleteSimulatorOrphans(count: Int) =
+        if (count == 1) "1 simulator whose worktree no longer exists will be deleted."
+        else "$count simulators whose worktrees no longer exist will be deleted."
+    override fun confirmDeleteDerivedDataOrphans(count: Int, size: String) =
+        if (count == 1) "1 DerivedData folder whose project no longer exists will be deleted ($size)."
+        else "$count DerivedData folders whose projects no longer exist will be deleted ($size)."
+    override val noDerivedData = "No DerivedData folders on this machine"
+    override val derivedDataKept = "kept: unavailable volume"
+    override val gradleChipLabel = "Gradle"
+    override fun openGradleDaemons(project: String) = "Show the Gradle daemons of $project in Machine"
     override val alsoDeleteDerivedData = "Also delete orphaned Xcode DerivedData"
     override fun orphanedDerivedData(count: Int, size: String) =
         if (count == 1) "Orphaned DerivedData, also deleted: 1 folder · $size"

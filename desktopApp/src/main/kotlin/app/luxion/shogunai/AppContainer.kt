@@ -8,6 +8,11 @@ import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.io.ShellPreferenceRepository
 import app.luxion.shogunai.domain.io.ThemePreferenceRepository
+import app.luxion.shogunai.domain.model.DaemonProcess
+import app.luxion.shogunai.domain.model.DaemonStopReport
+import app.luxion.shogunai.domain.model.DerivedDataDeletion
+import app.luxion.shogunai.domain.model.DerivedDataListing
+import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -167,6 +172,27 @@ class AppContainer {
         WriteEnvironmentFileUseCase(shellCommandExecutor, fileManager, repositoryProvisioningSource),
     )
 
+    val machineUseCases = MachineUseCases(
+        listDaemons = { runCatching { gradleDaemonSource.list() } },
+        stopDaemons = { pids -> StopGradleDaemonsUseCase(gradleDaemonSource, shellCommandExecutor)(pids) },
+        listDerivedData = { includeCompilationCache -> ListDerivedDataUseCase(derivedDataSource)(emptyList(), includeCompilationCache) },
+        deleteOrphanedDerivedData = { DeleteOrphanedDerivedDataUseCase(derivedDataSource)() },
+        readEmulatorStates = { config, worktrees -> readEmulatorStates(config, worktrees) },
+        readRunningEmulators = { config ->
+            runCatching { androidSdk.deviceStates(androidSdk.locate(config.baseRepositoryPath)) }
+        },
+        startEmulator = { config, worktreePath -> startEmulator(config, worktreePath) },
+        stopEmulator = { config, worktreePath -> stopEmulator(config, worktreePath) },
+        stopEmulatorSerials = { config, serials -> runCatching { stopEmulator.stopSerials(config, serials) } },
+        readSimulatorStates = { config, worktrees -> readSimulatorStates(config, worktrees) },
+        startSimulator = { config, worktreePath -> startSimulator(config, worktreePath) },
+        stopSimulator = { config, worktreePath -> stopSimulator(config, worktreePath) },
+        readSimulatorOrphans = { config -> deleteSimulators.orphans(config) },
+        deleteSimulators = { udids -> deleteSimulators(udids) },
+    )
+
+    val pathExists: (String) -> Boolean = fileManager::exists
+
     fun worktreeUseCases(config: ProjectConfig): WorktreeUseCases = WorktreeUseCases(
         list = ListWorktreesUseCase(config, shellCommandExecutor, fileManager),
         create = CreateWorktreeUseCase(config, shellCommandExecutor, fileManager, repositoryProvisioningSource, prepareEnvironment),
@@ -252,6 +278,23 @@ data class WorktreeUseCases(
     val gradle: GradleUseCases,
     val xcode: XcodeUseCases,
     val herdr: HerdrUseCases = HerdrUseCases.NONE,
+)
+
+class MachineUseCases(
+    val listDaemons: suspend () -> Result<List<DaemonProcess>>,
+    val stopDaemons: suspend (List<Long>?) -> Result<DaemonStopReport>,
+    val listDerivedData: suspend (includeCompilationCache: Boolean) -> Result<DerivedDataListing>,
+    val deleteOrphanedDerivedData: suspend () -> Result<DerivedDataDeletion>,
+    val readEmulatorStates: suspend (ProjectConfig, List<Worktree>) -> Result<Map<String, WorktreeEmulator>>,
+    val readRunningEmulators: suspend (ProjectConfig) -> Result<Map<String, EmulatorState>>,
+    val startEmulator: suspend (ProjectConfig, String) -> Result<WorktreeEmulator>,
+    val stopEmulator: suspend (ProjectConfig, String) -> Result<WorktreeEmulator?>,
+    val stopEmulatorSerials: suspend (ProjectConfig, List<String>) -> Result<List<WorktreeEmulator>>,
+    val readSimulatorStates: suspend (ProjectConfig, List<Worktree>) -> Result<Map<String, WorktreeSimulator>>,
+    val startSimulator: suspend (ProjectConfig, String) -> Result<WorktreeSimulator>,
+    val stopSimulator: suspend (ProjectConfig, String) -> Result<WorktreeSimulator?>,
+    val readSimulatorOrphans: suspend (ProjectConfig) -> Result<List<SimulatorDevice>>,
+    val deleteSimulators: suspend (List<String>) -> Result<List<String>>,
 )
 
 data class SimulatorUseCases(

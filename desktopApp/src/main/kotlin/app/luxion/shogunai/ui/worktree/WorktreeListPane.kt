@@ -1,5 +1,10 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.ui.components.StatusChip
+import app.luxion.shogunai.ui.components.WithTooltip
+import app.luxion.shogunai.ui.machine.MachineResource
+import app.luxion.shogunai.ui.theme.Status
+
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -53,6 +58,7 @@ import java.time.Instant
 fun WorktreeListPane(
     board: WorktreeBoard,
     onOpenProjectSettings: (Project) -> Unit,
+    onOpenMachine: (MachineResource) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -91,7 +97,12 @@ fun WorktreeListPane(
             items.forEach { item ->
                 when (item) {
                     is ListItem.Header -> stickyHeader(key = item.key) {
-                        ProjectGroupHeader(item.group, board, onOpenProjectSettings = { onOpenProjectSettings(item.group.project) })
+                        ProjectGroupHeader(
+                            item.group,
+                            board,
+                            onOpenProjectSettings = { onOpenProjectSettings(item.group.project) },
+                            onOpenGradle = { onOpenMachine(MachineResource.GRADLE_DAEMONS) },
+                        )
                     }
                     is ListItem.StateHeader -> stickyHeader(key = item.key) {
                         StateGroupHeader(item.group.kind, item.group.items.size, board)
@@ -106,8 +117,6 @@ fun WorktreeListPane(
                         WorktreeRowFor(board, item.group.project, item.group.holder, item.worktree, projectName = null)
                         HorizontalDivider()
                     }
-                    is ListItem.Gradle -> item(key = item.key) { GradleDaemonsSection(item.group.holder) }
-                    is ListItem.Xcode -> item(key = item.key) { XcodeDerivedDataSection(item.group.holder) }
                 }
             }
         }
@@ -138,14 +147,6 @@ private sealed interface ListItem {
         val ref = WorktreeRef(group.project.id, worktree.path)
         override val key = "worktree:${group.project.id}:${worktree.path}"
     }
-
-    data class Gradle(val group: WorktreeGroup) : ListItem {
-        override val key = "gradle:${group.project.id}"
-    }
-
-    data class Xcode(val group: WorktreeGroup) : ListItem {
-        override val key = "xcode:${group.project.id}"
-    }
 }
 
 private fun listItems(board: WorktreeBoard): List<ListItem> =
@@ -162,8 +163,6 @@ private fun projectListItems(board: WorktreeBoard): List<ListItem> = board.group
         val holder = group.holder
         if (holder.hasGroupState) add(ListItem.GroupState(group))
         group.worktrees.forEach { add(ListItem.WorktreeItem(group, it)) }
-        if (!board.isTextFiltering && holder.isGradleRepository) add(ListItem.Gradle(group))
-        if (!board.isTextFiltering && holder.isXcodeRepository) add(ListItem.Xcode(group))
     }
 }
 
@@ -171,7 +170,12 @@ private val ProjectWorktrees.hasGroupState: Boolean
     get() = loadState !is ProjectLoadState.Loaded || error != null || cleanupIssues != null || herdrCloseFailures.isNotEmpty()
 
 @Composable
-private fun ProjectGroupHeader(group: WorktreeGroup, board: WorktreeBoard, onOpenProjectSettings: () -> Unit) {
+private fun ProjectGroupHeader(
+    group: WorktreeGroup,
+    board: WorktreeBoard,
+    onOpenProjectSettings: () -> Unit,
+    onOpenGradle: () -> Unit,
+) {
     val strings = LocalStrings.current
     val colors = MaterialTheme.colorScheme
     val holder = group.holder
@@ -204,6 +208,15 @@ private fun ProjectGroupHeader(group: WorktreeGroup, board: WorktreeBoard, onOpe
             color = colors.onSurfaceVariant,
         )
         if (holder.isLoading) InlineProgress()
+        if (holder.isGradleRepository) {
+            WithTooltip(label = strings.openGradleDaemons(group.project.name)) {
+                StatusChip(
+                    Status.NEUTRAL,
+                    strings.gradleChipLabel,
+                    modifier = Modifier.interactive(shape = MaterialTheme.shapes.extraSmall, onClick = onOpenGradle),
+                )
+            }
+        }
         Box(Modifier.weight(1f))
         DangerTextButton(
             onClick = { board.openCleanup(projectId) },

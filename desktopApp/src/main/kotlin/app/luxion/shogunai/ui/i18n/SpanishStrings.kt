@@ -270,6 +270,31 @@ object SpanishStrings : Strings {
     override fun derivedDataDeleted(count: Int, freed: String) =
         if (count == 1) "1 carpeta de DerivedData borrada · $freed liberados"
         else "$count carpetas de DerivedData borradas · $freed liberados"
+    override val machineTitle = "Máquina"
+    override val androidEmulatorsTitle = "Emuladores Android"
+    override val iosSimulatorsTitle = "Simuladores iOS"
+    override fun runningCount(count: Int) = if (count == 1) "1 en marcha" else "$count en marcha"
+    override fun bootedCount(count: Int) = if (count == 1) "1 arrancado" else "$count arrancados"
+    override val ownerOutsideProjects = "fuera de los proyectos guardados"
+    override val ownerLoading = "buscando propietario"
+    override val notOwnedByWorktree = "sin worktree propietario"
+    override val goToWorktree = "Mostrar en Todos los worktrees"
+    override val noMachineEmulators = "No hay emuladores de worktrees en estos proyectos"
+    override val unownedEmulatorsTitle = "En marcha fuera de cualquier worktree"
+    override val noMachineSimulators = "Aún no hay simuladores de ShogunAi"
+    override fun simulatorOrphansTitle(count: Int) =
+        if (count == 1) "1 simulador huérfano" else "$count simuladores huérfanos"
+    override val confirmDeleteOrphansTitle = "¿Borrar huérfanos?"
+    override fun confirmDeleteSimulatorOrphans(count: Int) =
+        if (count == 1) "Se borrará 1 simulador cuyo worktree ya no existe."
+        else "Se borrarán $count simuladores cuyos worktrees ya no existen."
+    override fun confirmDeleteDerivedDataOrphans(count: Int, size: String) =
+        if (count == 1) "Se borrará 1 carpeta de DerivedData cuyo proyecto ya no existe ($size)."
+        else "Se borrarán $count carpetas de DerivedData cuyos proyectos ya no existen ($size)."
+    override val noDerivedData = "No hay carpetas de DerivedData en esta máquina"
+    override val derivedDataKept = "conservada: volumen no disponible"
+    override val gradleChipLabel = "Gradle"
+    override fun openGradleDaemons(project: String) = "Mostrar en Máquina los daemons de Gradle de $project"
     override val alsoDeleteDerivedData = "Borrar también los DerivedData de Xcode huérfanos"
     override fun orphanedDerivedData(count: Int, size: String) =
         if (count == 1) "DerivedData huérfanos, que también se borran: 1 carpeta · $size"
