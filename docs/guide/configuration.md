@@ -50,6 +50,12 @@ Provider options:
 
 Unknown keys and unknown providers are ignored. A file that isn't valid JSON, or a known key with the wrong type, makes creating and provisioning worktrees fail with a message naming the file and the problem, and nothing is created.
 
+### Editing it from the app
+
+You don't have to write this file by hand. The project settings have a "Repository configuration" section where you turn providers on with their options, edit the `env` variables (with help on the `${port}`, `${port:key}` and `${worktree}` templates) and set the `envFile` path. Values are checked as you type with the same rules as above. Before the first save that writes the file, the app shows the resulting `.shogunai.json` and reminds you that it belongs to the repository and should be committed.
+
+Saving only changes `providers`, `env`, `envFile` and, with "Move to .shogunai.json", `copy`: every other key, unknown provider and unknown provider option stays as it was (keys keep their order, indentation is normalized to two spaces). The app never writes over a file it couldn't read, or one that changed on disk since the settings were opened: in the first case the section explains the problem, in the second it offers to reload. The settings that apply to this machine only (the AVD to use, headless mode, the simulator device and runtime) stay in their own sections, labeled "This machine only".
+
 ## `.worktreeinclude`
 
 Claude Code's `.worktreeinclude` is read like `copy`: one gitignore-style pattern per line, skipping blank lines and lines starting with `#`. Both files can be used together.

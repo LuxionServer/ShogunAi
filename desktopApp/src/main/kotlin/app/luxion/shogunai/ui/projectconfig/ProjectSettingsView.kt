@@ -22,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -72,10 +73,11 @@ private val ContentMaxWidth = 720.dp
 private val IndexMinContentWidth = 1000.dp
 private val IndexWidth = 200.dp
 private val LocalFilesListMaxHeight = 160.dp
+private val PreviewMaxHeight = 280.dp
 private const val SaveBarAnimationMillis = 150
 private const val SectionActivationOffsetPx = 48
 
-private enum class SettingsSectionId { GENERAL, WORKTREE_FILES, AGENT, EMULATOR, SIMULATOR }
+private enum class SettingsSectionId { GENERAL, WORKTREE_FILES, REPOSITORY_CONFIG, AGENT, EMULATOR, SIMULATOR }
 
 @Composable
 fun ProjectSettingsView(
@@ -85,7 +87,7 @@ fun ProjectSettingsView(
     onAttachLeaveGuard: (LeaveGuard) -> Unit,
     onDetachLeaveGuard: (LeaveGuard) -> Unit,
     onCanSaveChanged: (Boolean) -> Unit,
-    onSaved: (Project) -> Unit,
+    onSaved: (Project, Boolean) -> Unit,
     onCancel: () -> Unit,
 ) {
     DisposableEffect(viewModel) {
@@ -104,7 +106,7 @@ private fun SettingsForm(
     viewModel: ProjectConfigViewModel,
     saveRequests: Int,
     onCanSaveChanged: (Boolean) -> Unit,
-    onSaved: (Project) -> Unit,
+    onSaved: (Project, Boolean) -> Unit,
     onCancel: () -> Unit,
 ) {
     val strings = LocalStrings.current
@@ -115,10 +117,12 @@ private fun SettingsForm(
     val baseRepositoryFocus = remember { FocusRequester() }
     var saveError by remember { mutableStateOf<String?>(null) }
     var newSecretFile by remember { mutableStateOf("") }
+    var repositoryPreview by remember { mutableStateOf<String?>(null) }
 
     val sections = buildList {
         add(SettingsSectionId.GENERAL)
         add(SettingsSectionId.WORKTREE_FILES)
+        add(SettingsSectionId.REPOSITORY_CONFIG)
         add(SettingsSectionId.AGENT)
         if (viewModel.emulatorSection != EmulatorSectionState.Hidden) add(SettingsSectionId.EMULATOR)
         if (viewModel.simulatorSection != SimulatorSectionState.Hidden) add(SettingsSectionId.SIMULATOR)
@@ -139,7 +143,11 @@ private fun SettingsForm(
         when (val outcome = viewModel.submit()) {
             is SaveOutcome.Saved -> {
                 saveError = null
-                onSaved(outcome.project)
+                onSaved(outcome.project, outcome.repositoryWritten)
+            }
+            is SaveOutcome.NeedsPreview -> repositoryPreview = outcome.content
+            is SaveOutcome.InvalidRepositoryConfig -> scope.launch {
+                scrollState.animateScrollTo(sectionTops[SettingsSectionId.REPOSITORY_CONFIG] ?: 0)
             }
             is SaveOutcome.Invalid -> when (outcome.firstInvalidField) {
                 ProjectConfigField.NAME -> nameFocus.requestFocus()
@@ -151,6 +159,22 @@ private fun SettingsForm(
         }
     }
     val currentSave by rememberUpdatedState(save)
+    val confirmPreview: () -> Unit = {
+        repositoryPreview = null
+        when (val outcome = viewModel.submit(previewConfirmed = true)) {
+            is SaveOutcome.Saved -> {
+                saveError = null
+                onSaved(outcome.project, outcome.repositoryWritten)
+            }
+            is SaveOutcome.Failed -> saveError = strings.saveFailed(
+                if (outcome.error is WorktreeError) strings.worktreeError(outcome.error) else outcome.error.message,
+            )
+            else -> Unit
+        }
+    }
+    repositoryPreview?.let { content ->
+        RepositoryPreviewDialog(content, onConfirm = confirmPreview, onDismiss = { repositoryPreview = null })
+    }
 
     val canSave = viewModel.hasUnsavedChanges || viewModel.isNewProject
     LaunchedEffect(canSave) { onCanSaveChanged(canSave) }
@@ -191,6 +215,8 @@ private fun SettingsForm(
                         HorizontalDivider()
                         WorktreeFilesSection(viewModel, newSecretFile, { newSecretFile = it }, sectionTops)
                         HorizontalDivider()
+                        RepositoryConfigSection(viewModel, Modifier.trackTop(SettingsSectionId.REPOSITORY_CONFIG, sectionTops))
+                        HorizontalDivider()
                         AgentSection(viewModel, sectionTops)
                         EmulatorSettingsSection(viewModel, Modifier.trackTop(SettingsSectionId.EMULATOR, sectionTops))
                         SimulatorSettingsSection(viewModel, Modifier.trackTop(SettingsSectionId.SIMULATOR, sectionTops))
@@ -215,6 +241,29 @@ private fun Modifier.trackTop(
     section: SettingsSectionId,
     tops: MutableMap<SettingsSectionId, Int>,
 ): Modifier = onGloballyPositioned { tops[section] = it.positionInParent().y.toInt() }
+
+@Composable
+private fun RepositoryPreviewDialog(content: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    val strings = LocalStrings.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(strings.repositoryPreviewTitle) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                Text(strings.repositoryPreviewMessage)
+                Surface(tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth().heightIn(max = PreviewMaxHeight)) {
+                    Text(
+                        content,
+                        style = ShogunTheme.typography.data,
+                        modifier = Modifier.verticalScroll(rememberScrollState()).padding(Spacing.sm),
+                    )
+                }
+            }
+        },
+        confirmButton = { PrimaryButton(onClick = onConfirm) { Text(strings.repositoryPreviewConfirm) } },
+        dismissButton = { NeutralTextButton(onClick = onDismiss) { Text(strings.cancel) } },
+    )
+}
 
 @Composable
 private fun SectionIndex(
@@ -243,6 +292,7 @@ private fun SectionIndex(
 private fun SettingsSectionId.title(strings: Strings): String = when (this) {
     SettingsSectionId.GENERAL -> strings.generalSection
     SettingsSectionId.WORKTREE_FILES -> strings.worktreeFilesSection
+    SettingsSectionId.REPOSITORY_CONFIG -> strings.repositoryConfigSection
     SettingsSectionId.AGENT -> strings.agentSection
     SettingsSectionId.EMULATOR -> strings.emulatorSection
     SettingsSectionId.SIMULATOR -> strings.simulatorSection

@@ -365,4 +365,48 @@ object SpanishStrings : Strings {
     override fun commandCouldNotStart(command: List<String>) =
         "No se pudo iniciar el comando: ${command.joinToString(" ")}"
     override fun unexpectedError(detail: String?) = "Error inesperado" + detail.asSuffix()
+    override val repositoryConfigSection = "Configuración del repositorio"
+    override val repositoryConfigSharedNote =
+        "Se guarda en el .shogunai.json del repositorio y la comparte todo el que lo clone."
+    override val repositoryConfigProvidersTitle = "Proveedores"
+    override val repositoryConfigEnvironmentTitle = "Entorno del worktree"
+    override val providerGradle = "Gradle"
+    override val providerEmulator = "Emulador de Android"
+    override val providerIosSimulator = "Simulador de iOS"
+    override val providerXcode = "Xcode"
+    override val gradleDaemonMaxHeapLabel = "Memoria del daemon"
+    override val gradleIdleTimeoutLabel = "Tiempo de inactividad (minutos)"
+    override val gradleKotlinDaemonMaxHeapLabel = "Memoria del daemon de Kotlin"
+    override val preferredAvdLabel = "AVD preferido"
+    override val preferredDeviceLabel = "Dispositivo preferido"
+    override val preferredRuntimeLabel = "Runtime preferido"
+    override val xcodeCompilationCacheLabel = "Caché de compilación"
+    override val environmentVariableNameLabel = "Nombre"
+    override val environmentVariableTemplateLabel = "Plantilla"
+    override val addVariable = "Añadir variable"
+    override val removeVariable = "Quitar variable"
+    override val environmentEmpty = "No hay variables declaradas."
+    override val envFileLabel = "Archivo de entorno"
+    override val envFileHelp = "Ruta relativa dentro del worktree donde se escriben las variables. Déjalo vacío para no escribirlo."
+    override val templateHelpTitle = "Plantillas"
+    override val templateHelp = listOf(
+        TemplateHelp("\${port}", "Un puerto libre reservado para este worktree y esta variable."),
+        TemplateHelp("\${port:key}", "Un puerto compartido por todas las variables que usan la misma clave."),
+        TemplateHelp("\${worktree}", "El nombre de la carpeta del worktree."),
+    )
+    override val memorySizeInvalid = "Usa un número seguido de k, m o g, por ejemplo 2g o 1024m."
+    override val minutesInvalid = "Usa un número entero de minutos mayor que 0."
+    override val variableNameInvalid = "Los nombres usan letras, dígitos y _, y no empiezan por un dígito."
+    override val variableNameDuplicate = "Este nombre ya lo usa otra variable."
+    override val templateUnclosed = "A un marcador le falta la llave de cierre."
+    override fun templateUnknown(placeholder: String) = "Marcador desconocido \${$placeholder}."
+    override val envFileOutsideWorktree = "Usa una ruta relativa dentro del worktree."
+    override val repositoryConfigUnreadableExplanation = "Corrige o elimina el archivo para editar aquí la configuración del repositorio."
+    override val reloadRepositoryConfig = "Recargar"
+    override val machineOnlyLabel = "Solo en esta máquina"
+    override val repositoryPreviewTitle = "¿Guardar .shogunai.json?"
+    override val repositoryPreviewMessage =
+        "Este archivo pertenece al repositorio. Haz commit para que todo el que lo clone tenga la misma configuración. Esto es lo que se va a escribir:"
+    override val repositoryPreviewConfirm = "Guardar y escribir"
+    override fun repositoryConfigChanged(path: String) = "$path ha cambiado en disco desde que se abrieron los ajustes."
 }

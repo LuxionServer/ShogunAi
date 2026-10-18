@@ -35,6 +35,7 @@ import app.luxion.shogunai.AppContainer
 import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.ui.components.DangerButton
+import app.luxion.shogunai.ui.isMacOs
 import app.luxion.shogunai.ui.components.FocusRingWidth
 import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.PrimaryButton
@@ -162,15 +163,16 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel) {
 
 @Composable
 private fun ShellContent(appContainer: AppContainer, viewModel: ShellViewModel, board: WorktreeBoard, machine: MachineResources) {
+    val refreshBoard: (String) -> Unit = { projectId -> board.holder(projectId)?.refresh() }
     when (val destination = viewModel.destination) {
         null -> EmptyState(onAddProject = viewModel::addProject)
         ShellDestination.Active -> WorktreeView(destination, viewModel, board)
         is ShellDestination.All -> WorktreeView(destination, viewModel, board)
         is ShellDestination.ProjectSettings -> viewModel.projectFor(destination)?.let { project ->
-            key(destination) { ProjectForm(appContainer, viewModel, existingProject = project, initialFolder = null) }
+            key(destination) { ProjectForm(appContainer, viewModel, existingProject = project, initialFolder = null, onRepositoryConfigWritten = refreshBoard) }
         }
         is ShellDestination.AddProject -> key(destination) {
-            ProjectForm(appContainer, viewModel, existingProject = null, initialFolder = destination.folder)
+            ProjectForm(appContainer, viewModel, existingProject = null, initialFolder = destination.folder, onRepositoryConfigWritten = refreshBoard)
         }
         is ShellDestination.Machine -> MachineDestination(destination.resource, viewModel, board, machine)
     }
@@ -241,6 +243,7 @@ private fun ProjectForm(
     shellViewModel: ShellViewModel,
     existingProject: Project?,
     initialFolder: String?,
+    onRepositoryConfigWritten: (projectId: String) -> Unit,
 ) {
     val viewModel = viewModel(viewModelStoreOwner = rememberScreenViewModelStoreOwner()) {
         ProjectConfigViewModel(
@@ -250,6 +253,7 @@ private fun ProjectForm(
             appContainer::loadAvds,
             appContainer.simulatorSetup,
             appContainer::inspectRepository,
+            isMacOs,
         )
     }
     ProjectSettingsView(
@@ -259,7 +263,10 @@ private fun ProjectForm(
         onAttachLeaveGuard = shellViewModel::attachLeaveGuard,
         onDetachLeaveGuard = shellViewModel::detachLeaveGuard,
         onCanSaveChanged = shellViewModel::updateCanSaveSettings,
-        onSaved = { saved -> shellViewModel.onProjectSaved(saved, previous = existingProject) },
+        onSaved = { saved, repositoryWritten ->
+            if (repositoryWritten) onRepositoryConfigWritten(saved.id)
+            shellViewModel.onProjectSaved(saved, previous = existingProject)
+        },
         onCancel = shellViewModel::cancelForm,
     )
 }

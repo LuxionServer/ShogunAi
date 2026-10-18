@@ -363,6 +363,51 @@ object EnglishStrings : Strings {
     override fun commandCouldNotStart(command: List<String>) =
         "Could not start the command: ${command.joinToString(" ")}"
     override fun unexpectedError(detail: String?) = "Unexpected error" + detail.asSuffix()
+
+    override val repositoryConfigSection = "Repository configuration"
+    override val repositoryConfigSharedNote =
+        "Stored in the repository's .shogunai.json and shared with everyone who clones it."
+    override val repositoryConfigProvidersTitle = "Providers"
+    override val repositoryConfigEnvironmentTitle = "Worktree environment"
+    override val providerGradle = "Gradle"
+    override val providerEmulator = "Android emulator"
+    override val providerIosSimulator = "iOS simulator"
+    override val providerXcode = "Xcode"
+    override val gradleDaemonMaxHeapLabel = "Daemon heap"
+    override val gradleIdleTimeoutLabel = "Idle timeout (minutes)"
+    override val gradleKotlinDaemonMaxHeapLabel = "Kotlin daemon heap"
+    override val preferredAvdLabel = "Preferred AVD"
+    override val preferredDeviceLabel = "Preferred device"
+    override val preferredRuntimeLabel = "Preferred runtime"
+    override val xcodeCompilationCacheLabel = "Compilation caching"
+    override val environmentVariableNameLabel = "Name"
+    override val environmentVariableTemplateLabel = "Template"
+    override val addVariable = "Add variable"
+    override val removeVariable = "Remove variable"
+    override val environmentEmpty = "No variables declared."
+    override val envFileLabel = "Environment file"
+    override val envFileHelp = "Relative path inside the worktree where the variables are written. Leave empty to skip."
+    override val templateHelpTitle = "Templates"
+    override val templateHelp = listOf(
+        TemplateHelp("\${port}", "A free port reserved for this worktree and this variable."),
+        TemplateHelp("\${port:key}", "A port shared by every variable that uses the same key."),
+        TemplateHelp("\${worktree}", "The worktree's folder name."),
+    )
+    override val memorySizeInvalid = "Use a number followed by k, m or g, for example 2g or 1024m."
+    override val minutesInvalid = "Use a whole number of minutes greater than 0."
+    override val variableNameInvalid = "Names use letters, digits and _, and don't start with a digit."
+    override val variableNameDuplicate = "This name is already used by another variable."
+    override val templateUnclosed = "A placeholder is missing its closing brace."
+    override fun templateUnknown(placeholder: String) = "Unknown placeholder \${$placeholder}."
+    override val envFileOutsideWorktree = "Use a relative path inside the worktree."
+    override val repositoryConfigUnreadableExplanation = "Fix or remove the file to edit the repository configuration here."
+    override val reloadRepositoryConfig = "Reload"
+    override val machineOnlyLabel = "This machine only"
+    override val repositoryPreviewTitle = "Save .shogunai.json?"
+    override val repositoryPreviewMessage =
+        "This file belongs to the repository. Commit it so everyone who clones the repository gets the same configuration. This is what will be written:"
+    override val repositoryPreviewConfirm = "Save and write"
+    override fun repositoryConfigChanged(path: String) = "$path changed on disk since the settings were opened."
 }
 
 internal fun String?.asSuffix(): String = if (isNullOrBlank()) "" else ": $this"

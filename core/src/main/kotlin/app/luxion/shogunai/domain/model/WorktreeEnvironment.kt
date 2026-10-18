@@ -26,7 +26,7 @@ data class WorktreeEnvironment(
     val isEmpty: Boolean get() = variables.isEmpty()
 }
 
-class InvalidEnvironmentTemplate(message: String) : Exception(message)
+class InvalidEnvironmentTemplate(message: String, val issue: RepositoryConfigIssue) : Exception(message)
 
 private val VARIABLE_NAME = Regex("[A-Za-z_][A-Za-z0-9_]*")
 private val PORT_KEY = Regex("[A-Za-z0-9_-]+")
@@ -37,7 +37,7 @@ fun isValidVariableName(name: String): Boolean = VARIABLE_NAME.matches(name)
 fun portKeyLabel(key: String): String = key.removePrefix(SHARED_PORT_PREFIX)
 
 fun parseEnvironmentVariable(name: String, value: String): EnvironmentVariable {
-    if (!isValidVariableName(name)) throw InvalidEnvironmentTemplate("\"$name\" isn't a valid variable name")
+    if (!isValidVariableName(name)) throw InvalidEnvironmentTemplate("\"$name\" isn't a valid variable name", RepositoryConfigIssue.InvalidVariableName)
     val parts = mutableListOf<TemplatePart>()
     val literal = StringBuilder()
     var index = 0
@@ -49,7 +49,7 @@ fun parseEnvironmentVariable(name: String, value: String): EnvironmentVariable {
             }
             value.startsWith("\${", index) -> {
                 val end = value.indexOf('}', index)
-                if (end < 0) throw InvalidEnvironmentTemplate("unclosed placeholder in \"$name\"")
+                if (end < 0) throw InvalidEnvironmentTemplate("unclosed placeholder in \"$name\"", RepositoryConfigIssue.UnclosedPlaceholder)
                 if (literal.isNotEmpty()) parts += TemplatePart.Literal(literal.toString()).also { literal.clear() }
                 parts += placeholder(name, value.substring(index + 2, end))
                 index = end + 1
@@ -69,7 +69,10 @@ private fun placeholder(name: String, content: String): TemplatePart = when {
     content == "port" -> TemplatePart.Port(name)
     content.startsWith("port:") && PORT_KEY.matches(content.removePrefix("port:")) ->
         TemplatePart.Port(SHARED_PORT_PREFIX + content.removePrefix("port:"))
-    else -> throw InvalidEnvironmentTemplate("unknown placeholder \${$content} in \"$name\"")
+    else -> throw InvalidEnvironmentTemplate(
+        "unknown placeholder \${$content} in \"$name\"",
+        RepositoryConfigIssue.UnknownPlaceholder(content),
+    )
 }
 
 fun EnvironmentVariable.render(worktreeName: String, ports: Map<String, Int>): String =

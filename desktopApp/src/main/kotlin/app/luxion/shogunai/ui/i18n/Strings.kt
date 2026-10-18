@@ -3,6 +3,7 @@ package app.luxion.shogunai.ui.i18n
 import androidx.compose.runtime.staticCompositionLocalOf
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.AppLanguage
+import app.luxion.shogunai.domain.model.RepositoryConfigIssue
 import app.luxion.shogunai.domain.model.WorktreeError
 
 interface Strings {
@@ -313,9 +314,59 @@ interface Strings {
     fun environmentFileTracked(path: String): String
     fun environmentFileWriteFailed(path: String, detail: String?): String
     fun unexpectedError(detail: String?): String
+    val repositoryConfigSection: String
+    val repositoryConfigSharedNote: String
+    val repositoryConfigProvidersTitle: String
+    val repositoryConfigEnvironmentTitle: String
+    val providerGradle: String
+    val providerEmulator: String
+    val providerIosSimulator: String
+    val providerXcode: String
+    val gradleDaemonMaxHeapLabel: String
+    val gradleIdleTimeoutLabel: String
+    val gradleKotlinDaemonMaxHeapLabel: String
+    val preferredAvdLabel: String
+    val preferredDeviceLabel: String
+    val preferredRuntimeLabel: String
+    val xcodeCompilationCacheLabel: String
+    val environmentVariableNameLabel: String
+    val environmentVariableTemplateLabel: String
+    val addVariable: String
+    val removeVariable: String
+    val environmentEmpty: String
+    val envFileLabel: String
+    val envFileHelp: String
+    val templateHelpTitle: String
+    val templateHelp: List<TemplateHelp>
+    val memorySizeInvalid: String
+    val minutesInvalid: String
+    val variableNameInvalid: String
+    val variableNameDuplicate: String
+    val templateUnclosed: String
+    fun templateUnknown(placeholder: String): String
+    val envFileOutsideWorktree: String
+    val repositoryConfigUnreadableExplanation: String
+    val reloadRepositoryConfig: String
+    val machineOnlyLabel: String
+    val repositoryPreviewTitle: String
+    val repositoryPreviewMessage: String
+    val repositoryPreviewConfirm: String
+    fun repositoryConfigChanged(path: String): String
 }
 
 val LocalStrings = staticCompositionLocalOf<Strings> { EnglishStrings }
+
+data class TemplateHelp(val template: String, val description: String)
+
+fun Strings.repositoryConfigIssue(issue: RepositoryConfigIssue): String = when (issue) {
+    RepositoryConfigIssue.InvalidMemorySize -> memorySizeInvalid
+    RepositoryConfigIssue.InvalidMinutes -> minutesInvalid
+    RepositoryConfigIssue.InvalidVariableName -> variableNameInvalid
+    RepositoryConfigIssue.DuplicateVariableName -> variableNameDuplicate
+    RepositoryConfigIssue.UnclosedPlaceholder -> templateUnclosed
+    is RepositoryConfigIssue.UnknownPlaceholder -> templateUnknown(issue.placeholder)
+    RepositoryConfigIssue.EnvFileOutsideWorktree -> envFileOutsideWorktree
+}
 
 fun AppLanguage.strings(): Strings = when (this) {
     AppLanguage.ENGLISH -> EnglishStrings
@@ -338,6 +389,7 @@ private fun Strings.worktreeErrorMessage(error: WorktreeError): String = when (e
     is WorktreeError.NotAWorktree -> notAWorktree(error.path)
     is WorktreeError.GitCommandFailed -> gitCommandFailed(error.command, error.exitCode) +
         if (error.errorOutput.isNotBlank()) "\n${error.errorOutput}" else ""
+    is WorktreeError.RepositoryConfigChanged -> repositoryConfigChanged(error.path)
     is WorktreeError.SecretCopyFailed -> secretCopyFailed(error.cause?.message)
     is WorktreeError.ClipboardWriteFailed -> clipboardWriteFailed(error.cause?.message)
     WorktreeError.GitLfsNotFound -> gitLfsNotFound

@@ -45,8 +45,10 @@ enum class ProjectConfigField { NAME, BASE_REPOSITORY_PATH }
 data class RepositoryInspection(val topLevel: String, val mainBranch: String?)
 
 sealed interface SaveOutcome {
-    data class Saved(val project: Project) : SaveOutcome
+    data class Saved(val project: Project, val repositoryWritten: Boolean = false) : SaveOutcome
     data class Invalid(val firstInvalidField: ProjectConfigField) : SaveOutcome
+    data class InvalidRepositoryConfig(val field: RepositoryConfigField) : SaveOutcome
+    data class NeedsPreview(val content: String) : SaveOutcome
     data class Failed(val error: Throwable) : SaveOutcome
 }
 
@@ -59,6 +61,7 @@ class ProjectConfigViewModel(
     private val inspectRepository: suspend (folder: String) -> Result<RepositoryInspection> = {
         Result.failure(WorktreeError.RepositoryNotFound(it))
     },
+    private val supportsApplePlatforms: Boolean = true,
 ) : ViewModel(), LeaveGuard {
     private val existingId = existingProject?.id
     val isNewProject: Boolean = existingProject == null
@@ -99,6 +102,26 @@ class ProjectConfigViewModel(
     var pendingRepositoryPatterns by mutableStateOf(emptyList<String>())
         private set
 
+    var repositoryDraft by mutableStateOf(RepositoryConfigDraft())
+        private set
+
+    var repositoryChangedOnDisk by mutableStateOf(false)
+        private set
+
+    private var initialRepositoryDraft = RepositoryConfigDraft()
+    private var repositoryFingerprint = ABSENT_FINGERPRINT
+    private var nextEnvironmentRowId = 0
+    private var repositoryPreviewConfirmed = false
+    private var lastSaveWroteRepository = false
+
+    val repositoryConfigEditable: Boolean
+        get() = _baseRepositoryPath.isNotBlank() && repositoryProvisioning !is RepositoryProvisioningState.Unreadable
+
+    val showsApplePlatformProviders: Boolean get() = supportsApplePlatforms
+
+    private val repositoryDraftChanged: Boolean
+        get() = repositoryConfigEditable && repositoryDraft != initialRepositoryDraft
+
     private val worktreesRootOffset = worktreesRootOffset(_baseRepositoryPath, worktreesRoot)
     private var lastNonBlankBaseRepositoryPath = _baseRepositoryPath
 
@@ -108,6 +131,7 @@ class ProjectConfigViewModel(
             _baseRepositoryPath = value
             touch(ProjectConfigField.BASE_REPOSITORY_PATH)
             repositoryProvisioning = provisioningSource.stateFor(value)
+            loadRepositoryConfig()
             refreshEmulatorSection()
             refreshSimulatorSection()
             if (value.isBlank()) return
@@ -151,9 +175,61 @@ class ProjectConfigViewModel(
     private var initialSimulatorRuntime = simulatorRuntime
 
     init {
+        loadRepositoryConfig()
         refreshEmulatorSection()
         refreshSimulatorSection()
     }
+
+    private fun loadRepositoryConfig() {
+        val path = _baseRepositoryPath
+        val provisioning = if (path.isBlank() || repositoryProvisioning is RepositoryProvisioningState.Unreadable) {
+            null
+        } else {
+            runCatching { provisioningSource.read(path) }.getOrNull()
+        }
+        repositoryFingerprint = if (path.isBlank()) ABSENT_FINGERPRINT else runCatching { provisioningSource.fingerprint(path) }.getOrDefault(ABSENT_FINGERPRINT)
+        repositoryDraft = RepositoryConfigDraft.of(provisioning)
+        initialRepositoryDraft = repositoryDraft
+        nextEnvironmentRowId = repositoryDraft.environment.size
+        repositoryChangedOnDisk = false
+    }
+
+    fun reloadRepositoryConfig() {
+        repositoryProvisioning = provisioningSource.stateFor(_baseRepositoryPath)
+        loadRepositoryConfig()
+        refreshEmulatorSection()
+    }
+
+    fun updateRepositoryDraft(transform: (RepositoryConfigDraft) -> RepositoryConfigDraft) {
+        if (repositoryConfigEditable) repositoryDraft = transform(repositoryDraft)
+    }
+
+    fun setGradleEnabled(enabled: Boolean) =
+        updateRepositoryDraft { it.copy(gradle = if (enabled) it.gradle ?: GradleDraft() else null) }
+
+    fun setEmulatorEnabled(enabled: Boolean) =
+        updateRepositoryDraft { it.copy(emulator = if (enabled) it.emulator ?: EmulatorDraft() else null) }
+
+    fun setIosSimulatorEnabled(enabled: Boolean) =
+        updateRepositoryDraft { it.copy(iosSimulator = if (enabled) it.iosSimulator ?: IosSimulatorDraft() else null) }
+
+    fun setXcodeEnabled(enabled: Boolean) =
+        updateRepositoryDraft { it.copy(xcode = if (enabled) it.xcode ?: XcodeDraft() else null) }
+
+    fun addEnvironmentRow() =
+        updateRepositoryDraft { it.copy(environment = it.environment + EnvironmentRow(nextEnvironmentRowId++, "", "")) }
+
+    fun updateEnvironmentRow(id: Int, name: String? = null, template: String? = null) =
+        updateRepositoryDraft { draft ->
+            draft.copy(
+                environment = draft.environment.map { row ->
+                    if (row.id == id) row.copy(name = name ?: row.name, template = template ?: row.template) else row
+                },
+            )
+        }
+
+    fun removeEnvironmentRow(id: Int) =
+        updateRepositoryDraft { draft -> draft.copy(environment = draft.environment.filterNot { it.id == id }) }
 
     private fun refreshSimulatorSection() {
         simulatorLoad?.cancel()
@@ -249,14 +325,31 @@ class ProjectConfigViewModel(
         initialSecretFiles = secretFiles
     }
 
-    fun submit(): SaveOutcome {
+    fun submit(previewConfirmed: Boolean = false): SaveOutcome {
         saveAttempted = true
         firstInvalidField?.let { return SaveOutcome.Invalid(it) }
+        if (repositoryConfigEditable) {
+            repositoryDraft.problems.firstOrNull()?.let { return SaveOutcome.InvalidRepositoryConfig(it.field) }
+        }
+        if (previewConfirmed) repositoryPreviewConfirmed = true
+        if (needsRepositoryWrite && !repositoryPreviewConfirmed) {
+            val preview = runCatching { provisioningSource.preview(baseRepositoryPath, pendingRepositoryEdit()) }
+                .getOrElse { return SaveOutcome.Failed(it) }
+            return SaveOutcome.NeedsPreview(preview)
+        }
         return save().fold(
-            onSuccess = { SaveOutcome.Saved(it) },
-            onFailure = { SaveOutcome.Failed(it) },
+            onSuccess = { SaveOutcome.Saved(it, lastSaveWroteRepository) },
+            onFailure = { error ->
+                if (error is WorktreeError.RepositoryConfigChanged) repositoryChangedOnDisk = true
+                SaveOutcome.Failed(error)
+            },
         )
     }
+
+    private val needsRepositoryWrite: Boolean
+        get() = repositoryDraftChanged || pendingRepositoryPatterns.isNotEmpty()
+
+    private fun pendingRepositoryEdit() = repositoryDraft.toEdit(addCopyPatterns = pendingRepositoryPatterns)
 
     override val hasUnsavedChanges: Boolean
         get() = name != initialName ||
@@ -264,6 +357,7 @@ class ProjectConfigViewModel(
             worktreesRoot != initialWorktreesRoot ||
             secretFiles != initialSecretFiles ||
             pendingRepositoryPatterns.isNotEmpty() ||
+            repositoryDraftChanged ||
             agentCommand != initialAgentCommand ||
             useHeadroom != initialUseHeadroom ||
             mainBranch != initialMainBranch ||
@@ -296,12 +390,23 @@ class ProjectConfigViewModel(
     private fun String.isSameDirectoryAs(other: String): Boolean =
         trimEnd('/', '\\') == other.trimEnd('/', '\\')
 
-    fun save(): Result<Project> = runCatching {
-        if (pendingRepositoryPatterns.isNotEmpty()) {
-            provisioningSource.addCopyPatterns(baseRepositoryPath, pendingRepositoryPatterns)
-            pendingRepositoryPatterns = emptyList()
-            repositoryProvisioning = provisioningSource.stateFor(baseRepositoryPath)
+    private fun writeRepositoryConfig() {
+        when {
+            repositoryDraftChanged -> provisioningSource.write(baseRepositoryPath, pendingRepositoryEdit(), repositoryFingerprint)
+            pendingRepositoryPatterns.isNotEmpty() ->
+                provisioningSource.addCopyPatterns(baseRepositoryPath, pendingRepositoryPatterns, repositoryFingerprint)
+            else -> return
         }
+        lastSaveWroteRepository = true
+        pendingRepositoryPatterns = emptyList()
+        repositoryProvisioning = provisioningSource.stateFor(baseRepositoryPath)
+        loadRepositoryConfig()
+        refreshEmulatorSection()
+    }
+
+    fun save(): Result<Project> = runCatching {
+        lastSaveWroteRepository = false
+        writeRepositoryConfig()
         val project = Project(
             id = existingId ?: UUID.randomUUID().toString(),
             name = name,
@@ -317,5 +422,9 @@ class ProjectConfigViewModel(
         )
         projectRepository.save(project)
         project
+    }
+
+    private companion object {
+        const val ABSENT_FINGERPRINT = "absent"
     }
 }

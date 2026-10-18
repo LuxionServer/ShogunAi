@@ -25,6 +25,7 @@ fun EmulatorSettingsSection(viewModel: ProjectConfigViewModel, modifier: Modifie
     if (state == EmulatorSectionState.Hidden) return
     val strings = LocalStrings.current
     SettingsSection(title = strings.emulatorSection, modifier = modifier) {
+        Text(strings.machineOnlyLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
         Text(
             strings.emulatorSectionDescription,
             style = MaterialTheme.typography.bodySmall,
