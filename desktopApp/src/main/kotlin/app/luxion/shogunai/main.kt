@@ -56,19 +56,21 @@ private fun openWindow() = application {
         saveWindowBounds(windowState, appContainer.shellPreferenceRepository)
         exitApplication()
     }
+    val shellViewModelHolder = remember { mutableStateOf<ShellViewModel?>(null) }
+    val requestQuit = { shellViewModelHolder.value?.requestLeave(quit) ?: quit() }
     DisposableEffect(Unit) {
         setDockIcon()
         installMacAppMenuHandlers(
             onAbout = { aboutOpen = true },
             onPreferences = openPreferences,
-            beforeQuit = { saveWindowBounds(windowState, appContainer.shellPreferenceRepository) },
+            onQuit = requestQuit,
         )
         onDispose { }
     }
 
     val escapeWorktreeView = remember { mutableStateOf<(() -> Unit)?>(null) }
     Window(
-        onCloseRequest = quit,
+        onCloseRequest = requestQuit,
         state = windowState,
         title = "ShogunAi",
         icon = painterResource("icons/icon.png"),
@@ -81,10 +83,12 @@ private fun openWindow() = application {
         val shellViewModel = viewModel {
             ShellViewModel(appContainer.projectRepository, appContainer.shellPreferenceRepository)
         }
+        SideEffect { shellViewModelHolder.value = shellViewModel }
         val worktreeActions = shellViewModel.worktreeActions
         SideEffect { escapeWorktreeView.value = worktreeActions?.onEscape }
         AppMenuBar(
             strings = appearance.strings,
+            onSave = shellViewModel::requestSaveSettings.takeIf { shellViewModel.canSaveSettings },
             onAddProject = shellViewModel::addProject,
             onNewWorktree = shellViewModel::requestNewWorktree.takeIf { shellViewModel.canCreateWorktree },
             onFind = worktreeActions?.onFind,
@@ -97,7 +101,7 @@ private fun openWindow() = application {
             onToggleSidebar = shellViewModel::toggleSidebar,
             onPreferences = openPreferences,
             onAbout = { aboutOpen = true },
-            onQuit = quit,
+            onQuit = requestQuit,
         )
         AppearanceScope(appearance) {
             AppShell(appContainer, shellViewModel)

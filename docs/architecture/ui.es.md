@@ -14,7 +14,7 @@ Los mensajes de éxito son transitorios y no mueven el layout: el shell tiene un
 
 `main.kt` añade las convenciones de escritorio alrededor del shell:
 
-- Un `MenuBar` (`AppMenuBar`) con Archivo (Nuevo worktree mientras hay una vista de worktrees activa, Añadir proyecto; Preferencias y Salir fuera de macOS), Ver (Buscar mientras hay una vista de worktrees activa, Recargar, Mostrar u ocultar barra lateral) y Ayuda (Acerca de, fuera de macOS), con etiquetas de `Strings` para que siga el idioma. En macOS, los handlers de `java.awt.Desktop` ponen Acerca de y Ajustes… en el menú ShogunAi, y un handler de salida guarda los bounds de la ventana antes de que Cmd+Q cierre la app.
+- Un `MenuBar` (`AppMenuBar`) con Archivo (Nuevo worktree mientras hay una vista de worktrees activa, Guardar mientras la configuración de un proyecto tiene cambios, Añadir proyecto; Preferencias y Salir fuera de macOS), Ver (Buscar mientras hay una vista de worktrees activa, Recargar, Mostrar u ocultar barra lateral) y Ayuda (Acerca de, fuera de macOS), con etiquetas de `Strings` para que siga el idioma. En macOS, los handlers de `java.awt.Desktop` ponen Acerca de y Ajustes… en el menú ShogunAi, y un handler de salida cancela la salida del sistema y pasa por el `LeaveGuard`, que guarda los bounds de la ventana al salir de verdad.
 - `PreferencesWindow` (modo de tema e idioma, una sola instancia que se trae al frente al reabrirla) y `AboutWindow` (icono, nombre, `BuildInfo.VERSION`, enlace al repositorio). Todas las ventanas leen el mismo `Appearance`, así que un cambio se aplica a todas a la vez.
 - Los bounds y el estado maximizado de la ventana se guardan como `windowBounds` al cerrarla y se restauran al arrancar; si no intersecan con ninguna pantalla conectada, la ventana se abre centrada. El tamaño mínimo es 720×480.
 
@@ -126,6 +126,16 @@ Solo en macOS y en repositorios cuyo `.shogunai.json` declara el provider de Xco
 ### Comando de lanzamiento
 
 El botón "Copiar comando de lanzamiento" del detalle, el icono y el menú contextual de la fila, y Cmd/Ctrl+Mayús+C sobre el worktree seleccionado llaman a `ProjectWorktrees.copyLaunchCommand(worktree)`; el icono de la fila muestra "Copiado" durante un par de segundos. El usuario pega el comando (`cd "<ruta>" && <comando del agente>`) en la terminal que prefiera.
+
+### Configuración de proyecto
+
+`ProjectSettingsView` (`ui/projectconfig`) aloja los destinos `ProjectSettings` y `AddProject`. Es una columna limitada a 720 dp y centrada, con las secciones General (nombre, repositorio base, carpeta de worktrees, rama principal), Archivos del worktree (lo que declara el repositorio y los archivos locales), Agente y, cuando el repositorio los declara, Emulador Android y Simulador iOS. Las secciones se separan con un título, no con tarjetas, y cada campo lleva su etiqueta encima y su ayuda debajo. Desde 1000 dp de ancho de contenido aparece a la izquierda un índice de secciones: al activar una entrada se desplaza con animación hasta la sección, y se resalta la de la sección visible.
+
+`ProjectConfigViewModel` muestra el error de un campo obligatorio solo cuando el campo se ha editado (`touchedFields`) o se ha intentado guardar (`saveAttempted`), mediante `isErrorVisible`. "Guardar" está siempre habilitado: `submit()` devuelve `SaveOutcome.Invalid` con el primer campo inválido, al que la vista da el foco, o guarda. Una barra de guardado aparece abajo mientras se cumple `hasUnsavedChanges`, con "Descartar" y "Guardar"; al añadir un proyecto muestra siempre "Cancelar" y "Añadir proyecto". Archivo > Guardar (Cmd/Ctrl+S) se habilita con `ShellViewModel.canSaveSettings`, que mantiene la vista, y le llega mediante `saveSettingsRequests`.
+
+La vista registra su `ProjectConfigViewModel` como `LeaveGuard` del shell. `ShellViewModel.requestLeave` ejecuta una navegación (barra lateral, atajos, entradas de menú, "Descartar") o el cierre de la ventana solo si el guard no tiene cambios sin guardar; si los tiene, la deja pendiente y `AppShell` pregunta si descartar, y `confirmLeave` o `keepEditing` la resuelven. El cierre de la ventana, Archivo > Salir y el manejador de salida de macOS pasan por él.
+
+"Añadir proyecto" empieza eligiendo la carpeta del repositorio, con el selector o soltando una carpeta sobre la ventana (`folderDropTarget`, que solo acepta un único directorio y resalta la ventana mientras se arrastra). `AppContainer.inspectRepository` resuelve la carpeta hasta la raíz de su repositorio con `ResolveRepositoryUseCase` y detecta la rama principal con `ResolveMainBranchUseCase`; después `ProjectConfigViewModel.chooseFolder` rellena el nombre, la carpeta `<carpeta>-worktrees` junto al repositorio y la rama detectada como marcador de la rama principal. Una carpeta que no es un repositorio Git se rechaza con un mensaje y el formulario no se abre. Los valores rellenados cuentan como valores iniciales del formulario, así que un formulario relleno sin editar no tiene cambios sin guardar.
 
 ### Provisionado del repositorio y archivos locales
 

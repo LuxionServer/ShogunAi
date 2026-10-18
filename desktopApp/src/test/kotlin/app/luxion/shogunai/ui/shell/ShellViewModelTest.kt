@@ -329,4 +329,87 @@ class ShellViewModelTest {
 
         assertNull(viewModel.worktreeActions)
     }
+
+    private class FakeLeaveGuard(override var hasUnsavedChanges: Boolean) : LeaveGuard
+
+    @Test
+    fun `navigation is blocked until confirmed while the form has unsaved changes`() {
+        val viewModel = viewModel()
+        viewModel.editProject(api)
+        viewModel.attachLeaveGuard(FakeLeaveGuard(hasUnsavedChanges = true))
+
+        viewModel.selectProject(mobile)
+
+        assertEquals(ShellDestination.ProjectSettings("api"), viewModel.destination)
+        assertTrue(viewModel.isLeaveConfirmationPending)
+
+        viewModel.confirmLeave()
+
+        assertEquals(ShellDestination.All(projectFilter = "mobile"), viewModel.destination)
+        assertFalse(viewModel.isLeaveConfirmationPending)
+    }
+
+    @Test
+    fun `keeping the edits cancels the pending navigation`() {
+        val viewModel = viewModel()
+        viewModel.editProject(api)
+        viewModel.attachLeaveGuard(FakeLeaveGuard(hasUnsavedChanges = true))
+
+        viewModel.selectAll()
+        viewModel.keepEditing()
+
+        assertEquals(ShellDestination.ProjectSettings("api"), viewModel.destination)
+        assertFalse(viewModel.isLeaveConfirmationPending)
+    }
+
+    @Test
+    fun `navigation is allowed without unsaved changes`() {
+        val viewModel = viewModel()
+        viewModel.editProject(api)
+        viewModel.attachLeaveGuard(FakeLeaveGuard(hasUnsavedChanges = false))
+
+        viewModel.selectAll()
+
+        assertEquals(ShellDestination.All(), viewModel.destination)
+        assertFalse(viewModel.isLeaveConfirmationPending)
+    }
+
+    @Test
+    fun `closing the window asks while the form has unsaved changes`() {
+        val viewModel = viewModel()
+        viewModel.addProject()
+        viewModel.attachLeaveGuard(FakeLeaveGuard(hasUnsavedChanges = true))
+        var closed = false
+
+        viewModel.requestLeave { closed = true }
+
+        assertFalse(closed)
+        assertTrue(viewModel.isLeaveConfirmationPending)
+
+        viewModel.confirmLeave()
+
+        assertTrue(closed)
+    }
+
+    @Test
+    fun `closing the window does not ask without unsaved changes`() {
+        val viewModel = viewModel()
+        var closed = false
+
+        viewModel.requestLeave { closed = true }
+
+        assertTrue(closed)
+    }
+
+    @Test
+    fun `a detached guard no longer blocks navigation`() {
+        val viewModel = viewModel()
+        val guard = FakeLeaveGuard(hasUnsavedChanges = true)
+        viewModel.attachLeaveGuard(guard)
+        viewModel.detachLeaveGuard(guard)
+
+        viewModel.selectAll()
+
+        assertEquals(ShellDestination.All(), viewModel.destination)
+    }
 }

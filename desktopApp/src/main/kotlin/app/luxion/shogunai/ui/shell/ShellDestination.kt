@@ -4,7 +4,7 @@ sealed interface ShellDestination {
     data object Active : ShellDestination
     data class All(val projectFilter: String? = null, val previousWorktreesRoot: String? = null) : ShellDestination
     data class ProjectSettings(val projectId: String) : ShellDestination
-    data object AddProject : ShellDestination
+    data class AddProject(val folder: String? = null) : ShellDestination
 
     val isForm: Boolean get() = this is ProjectSettings || this is AddProject
 
@@ -13,13 +13,13 @@ sealed interface ShellDestination {
             Active -> null
             is All -> projectFilter
             is ProjectSettings -> projectId
-            AddProject -> null
+            is AddProject -> null
         }
 
     fun storageKey(): String? = when (this) {
         Active -> ACTIVE_KEY
         is All -> projectFilter?.let { PROJECT_PREFIX + it } ?: ALL_KEY
-        is ProjectSettings, AddProject -> null
+        is ProjectSettings, is AddProject -> null
     }
 
     companion object {

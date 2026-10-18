@@ -5,6 +5,8 @@ import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.domain.model.WorktreeError
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -300,5 +302,91 @@ class ProjectConfigViewModelTest {
         viewModel.save().getOrThrow()
 
         assertTrue(provisioningSource.addedPatterns.isEmpty())
+    }
+
+    private fun newProjectViewModel(
+        inspections: Map<String, RepositoryInspection> = emptyMap(),
+    ) = ProjectConfigViewModel(
+        projectRepository,
+        provisioningSource,
+        existingProject = null,
+        inspectRepository = { folder ->
+            inspections[folder]?.let { Result.success(it) } ?: Result.failure(WorktreeError.RepositoryNotFound(folder))
+        },
+    )
+
+    @Test
+    fun `an untouched new form shows no errors`() {
+        val viewModel = newProjectViewModel()
+
+        assertFalse(viewModel.isErrorVisible(ProjectConfigField.NAME))
+        assertFalse(viewModel.isErrorVisible(ProjectConfigField.BASE_REPOSITORY_PATH))
+    }
+
+    @Test
+    fun `emptying an edited name shows its error`() {
+        val viewModel = newProjectViewModel()
+
+        viewModel.name = "api"
+        assertFalse(viewModel.isErrorVisible(ProjectConfigField.NAME))
+        viewModel.name = ""
+
+        assertTrue(viewModel.isErrorVisible(ProjectConfigField.NAME))
+        assertFalse(viewModel.isErrorVisible(ProjectConfigField.BASE_REPOSITORY_PATH))
+    }
+
+    @Test
+    fun `saving with errors does not save and reports the first invalid field`() {
+        val viewModel = newProjectViewModel()
+
+        val outcome = viewModel.submit()
+
+        assertEquals(SaveOutcome.Invalid(ProjectConfigField.NAME), outcome)
+        assertTrue(viewModel.isErrorVisible(ProjectConfigField.NAME))
+        assertTrue(viewModel.isErrorVisible(ProjectConfigField.BASE_REPOSITORY_PATH))
+        assertTrue(projectRepository.list().isEmpty())
+    }
+
+    @Test
+    fun `saving a valid form saves the project`() {
+        val viewModel = newProjectViewModel()
+        viewModel.name = "api"
+        viewModel.baseRepositoryPath = "/home/dev/projects/api"
+
+        val outcome = viewModel.submit()
+
+        assertIs<SaveOutcome.Saved>(outcome)
+        assertEquals(1, projectRepository.list().size)
+    }
+
+    @Test
+    fun `choosing a repository prefills the name, a sibling worktrees folder and the detected main branch`() = runBlocking {
+        val viewModel = newProjectViewModel(
+            mapOf("/home/dev/projects/main-repo/app" to RepositoryInspection("/home/dev/projects/main-repo", "main")),
+        )
+
+        val result = viewModel.chooseFolder("/home/dev/projects/main-repo/app")
+
+        assertTrue(result.isSuccess)
+        assertTrue(viewModel.folderChosen)
+        assertEquals("main-repo", viewModel.name)
+        assertEquals("/home/dev/projects/main-repo", viewModel.baseRepositoryPath)
+        assertEquals("/home/dev/projects/main-repo-worktrees", viewModel.worktreesRoot)
+        assertEquals("main", viewModel.detectedMainBranch)
+        assertEquals("", viewModel.mainBranch)
+        assertFalse(viewModel.hasUnsavedChanges)
+        assertFalse(viewModel.isErrorVisible(ProjectConfigField.NAME))
+    }
+
+    @Test
+    fun `a folder that is not a repository is rejected and the form stays closed`() = runBlocking {
+        val viewModel = newProjectViewModel()
+
+        val result = viewModel.chooseFolder("/home/dev/projects/plain")
+
+        assertTrue(result.isFailure)
+        assertFalse(viewModel.folderChosen)
+        assertEquals("/home/dev/projects/plain", viewModel.rejectedFolder)
+        assertEquals("", viewModel.baseRepositoryPath)
     }
 }
