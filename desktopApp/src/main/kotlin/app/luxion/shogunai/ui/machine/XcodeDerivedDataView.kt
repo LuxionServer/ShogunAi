@@ -30,7 +30,7 @@ fun XcodeDerivedDataView(machine: MachineResources, onOpenWorktree: (String, Str
     val strings = LocalStrings.current
     var confirmingDelete by remember { mutableStateOf(false) }
     MachineViewFrame(strings.xcodeDerivedDataTitle) {
-        MachineErrorNotice(machine.error, machine::dismissError)
+        MachineErrorNotice(machine.error, machine::dismissError, machine.errorRetry?.let { { machine.retryError() } })
         when (val state = machine.derivedData) {
             MachineLoad.Loading -> InlineProgress()
             MachineLoad.Unavailable -> MachineSecondaryText(strings.xcodeDerivedDataUnavailable)

@@ -22,12 +22,10 @@ import app.luxion.shogunai.domain.usecase.ProjectOwner
 import app.luxion.shogunai.ui.components.DangerButton
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.NeutralTextButton
-import app.luxion.shogunai.ui.components.Notice
-import app.luxion.shogunai.ui.components.NoticeKind
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.interactive
 import app.luxion.shogunai.ui.i18n.LocalStrings
-import app.luxion.shogunai.ui.i18n.worktreeError
+import app.luxion.shogunai.ui.components.ErrorNotice
 import app.luxion.shogunai.ui.theme.ShogunTheme
 
 val MachineActionColumnWidth: Dp = 96.dp
@@ -45,9 +43,9 @@ fun MachineViewFrame(title: String, content: @Composable ColumnScope.() -> Unit)
 }
 
 @Composable
-fun MachineErrorNotice(error: Throwable?, onDismiss: () -> Unit) {
+fun MachineErrorNotice(error: Throwable?, onDismiss: () -> Unit, onRetry: (() -> Unit)? = null) {
     if (error == null) return
-    Notice(kind = NoticeKind.ERROR, message = LocalStrings.current.worktreeError(error), onDismiss = onDismiss)
+    ErrorNotice(error = error, onDismiss = onDismiss, onRetry = onRetry)
 }
 
 @Composable

@@ -38,7 +38,7 @@ private val NoticeIconSize = 18.dp
 fun Notice(
     kind: NoticeKind,
     message: String,
-    onDismiss: () -> Unit,
+    onDismiss: (() -> Unit)?,
     modifier: Modifier = Modifier,
     details: (@Composable () -> Unit)? = null,
 ) {
@@ -60,11 +60,13 @@ fun Notice(
                 Text(message, style = MaterialTheme.typography.bodyMedium)
                 details?.invoke()
             }
-            IconAction(
-                icon = Icons.Default.Close,
-                label = if (kind == NoticeKind.ERROR) strings.closeError else strings.closeMessage,
-                onClick = onDismiss,
-            )
+            onDismiss?.let {
+                IconAction(
+                    icon = Icons.Default.Close,
+                    label = if (kind == NoticeKind.ERROR) strings.closeError else strings.closeMessage,
+                    onClick = it,
+                )
+            }
         }
     }
 }

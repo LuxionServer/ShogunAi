@@ -42,14 +42,11 @@ import app.luxion.shogunai.domain.usecase.classifyOrigin
 import app.luxion.shogunai.ui.components.DangerTextButton
 import app.luxion.shogunai.ui.components.IconAction
 import app.luxion.shogunai.ui.components.InlineProgress
-import app.luxion.shogunai.ui.components.Notice
-import app.luxion.shogunai.ui.components.NoticeKind
-import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.interactive
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.Strings
-import app.luxion.shogunai.ui.i18n.worktreeError
+import app.luxion.shogunai.ui.components.ErrorNotice
 import app.luxion.shogunai.ui.theme.ShogunTheme
 import java.time.Instant
 
@@ -112,7 +109,7 @@ fun WorktreeListPane(
                         WorktreeRowFor(board, entry.project, entry.holder, entry.worktree, projectName = entry.project.name)
                         HorizontalDivider()
                     }
-                    is ListItem.GroupState -> item(key = item.key) { GroupState(item.group.holder) }
+                    is ListItem.GroupState -> item(key = item.key) { GroupState(item.group.holder, item.group.project.id) }
                     is ListItem.WorktreeItem -> item(key = item.key) {
                         WorktreeRowFor(board, item.group.project, item.group.holder, item.worktree, projectName = null)
                         HorizontalDivider()
@@ -228,7 +225,7 @@ private fun ProjectGroupHeader(
 }
 
 @Composable
-private fun GroupState(holder: ProjectWorktrees) {
+private fun GroupState(holder: ProjectWorktrees, projectId: String) {
     val strings = LocalStrings.current
     val noticeModifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm)
     when (val state = holder.loadState) {
@@ -240,27 +237,22 @@ private fun GroupState(holder: ProjectWorktrees) {
             InlineProgress()
             Text(strings.loadingWorktrees, style = MaterialTheme.typography.bodySmall)
         }
-        is ProjectLoadState.Failed -> Row(
+        is ProjectLoadState.Failed -> ErrorNotice(
+            error = state.error,
+            onDismiss = null,
             modifier = noticeModifier,
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-        ) {
-            Text(
-                strings.worktreeError(state.error),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.weight(1f),
-            )
-            SecondaryButton(onClick = { holder.refresh() }, enabled = !holder.isLoading) { Text(strings.reload) }
-        }
+            projectId = projectId,
+            onRetry = { holder.refresh() }.takeIf { !holder.isLoading },
+        )
         ProjectLoadState.Loaded -> Unit
     }
     holder.error?.let { error ->
-        Notice(
-            kind = NoticeKind.ERROR,
-            message = strings.worktreeError(error),
+        ErrorNotice(
+            error = error,
             onDismiss = { holder.dismissError() },
             modifier = noticeModifier,
+            projectId = projectId,
+            onRetry = holder.errorRetry?.let { { holder.retryError() } },
         )
     }
     holder.cleanupIssues?.let { report ->

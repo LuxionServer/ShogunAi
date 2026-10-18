@@ -34,8 +34,7 @@ En curso en la rama `epic/ui-redesign`. La app de escritorio ha crecido funciona
 
 Está planificado en estos cambios de OpenSpec, que se implementan en este orden:
 
-1. `understandable-errors`: cada error dice qué ha fallado y qué hacer después, con la salida técnica guardada en "Detalles técnicos".
-2. `command-palette`: Cmd/Ctrl+K para saltar a cualquier vista, proyecto o worktree, o ejecutar una acción.
+1. `command-palette`: Cmd/Ctrl+K para saltar a cualquier vista, proyecto o worktree, o ejecutar una acción.
 
 Cada cambio quita su línea de esta lista cuando se archiva.
 

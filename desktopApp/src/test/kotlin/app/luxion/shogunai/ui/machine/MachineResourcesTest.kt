@@ -95,9 +95,17 @@ class MachineResourcesTest {
         orphans: List<SimulatorDevice> = emptyList(),
         derivedData: DerivedDataListing = DerivedDataListing(emptyList(), null),
         stopReport: DaemonStopReport = DaemonStopReport(),
+        startEmulator: suspend (ProjectConfig, String) -> Result<WorktreeEmulator> = { _, path ->
+            calls.startedEmulators += path
+            Result.success(WorktreeEmulator("emulator-5554", EmulatorState.RUNNING))
+        },
+        stopDaemons: suspend (List<Long>?) -> Result<DaemonStopReport> = { pids ->
+            calls.stoppedDaemons += pids
+            Result.success(stopReport)
+        },
     ) = MachineUseCases(
         listDaemons = { calls.daemonListings++; Result.success(calls.daemons) },
-        stopDaemons = { pids -> calls.stoppedDaemons += pids; Result.success(stopReport) },
+        stopDaemons = stopDaemons,
         listDerivedData = { includeCache ->
             calls.derivedDataListings++
             calls.includeCompilationCache += includeCache
@@ -106,7 +114,7 @@ class MachineResourcesTest {
         deleteOrphanedDerivedData = { calls.derivedDataDeletions++; Result.success(DerivedDataDeletion()) },
         readEmulatorStates = { _, _ -> calls.emulatorReads++; Result.success(emulators) },
         readRunningEmulators = { Result.success(running) },
-        startEmulator = { _, path -> calls.startedEmulators += path; Result.success(WorktreeEmulator("emulator-5554", EmulatorState.RUNNING)) },
+        startEmulator = startEmulator,
         stopEmulator = { _, _ -> Result.success(null) },
         stopEmulatorSerials = { _, serials -> calls.stoppedSerials += serials; Result.success(emptyList()) },
         readSimulatorStates = { _, _ -> calls.simulatorReads++; Result.success(simulators) },
@@ -283,6 +291,99 @@ class MachineResourcesTest {
         assertEquals(listOf(apiWorktree.path), calls.startedEmulators)
         assertEquals(listOf("api"), changed)
         assertFalse(machine.isBusy("api", apiWorktree.path))
+    }
+
+    @Test
+    fun `a failed device action keeps its error until retried, and the retry clears it on success`() = machineTest {
+        val calls = Calls()
+        var failing = true
+        val failure = IllegalStateException("adb offline")
+        val machine = machine(
+            useCases(
+                calls,
+                startEmulator = { _, path ->
+                    calls.startedEmulators += path
+                    if (failing) Result.failure(failure) else Result.success(WorktreeEmulator("emulator-5554", EmulatorState.RUNNING))
+                },
+            ),
+            listOf(machineProject("api", listOf(apiWorktree), MachineResource.ANDROID_EMULATORS)),
+        )
+
+        machine.startEmulator("api", apiWorktree.path)
+        runCurrent()
+        assertEquals(failure, machine.error)
+        assertTrue(machine.errorRetry != null)
+
+        failing = false
+        machine.retryError()
+        runCurrent()
+
+        assertEquals(listOf(apiWorktree.path, apiWorktree.path), calls.startedEmulators)
+        assertNull(machine.error)
+        assertNull(machine.errorRetry)
+    }
+
+    @Test
+    fun `an unrelated success keeps the error of another action`() = machineTest {
+        val calls = Calls()
+        val failure = IllegalStateException("adb offline")
+        val machine = machine(
+            useCases(calls, startEmulator = { _, _ -> Result.failure(failure) }),
+            listOf(
+                machineProject("api", listOf(apiWorktree), MachineResource.ANDROID_EMULATORS),
+                machineProject("main-repo", listOf(mainWorktree), MachineResource.GRADLE_DAEMONS),
+            ),
+        )
+
+        machine.startEmulator("api", apiWorktree.path)
+        runCurrent()
+        machine.stopIdleGradleDaemons()
+        runCurrent()
+
+        assertEquals(failure, machine.error)
+    }
+
+    @Test
+    fun `a failed daemon stop is retried with the same pids and cleared when it succeeds`() = machineTest {
+        val calls = Calls()
+        var failing = true
+        val machine = machine(
+            useCases(
+                calls,
+                stopDaemons = { pids ->
+                    calls.stoppedDaemons += pids
+                    if (failing) Result.failure(IllegalStateException("kill failed")) else Result.success(DaemonStopReport())
+                },
+            ),
+            listOf(machineProject("main-repo", listOf(mainWorktree), MachineResource.GRADLE_DAEMONS)),
+        )
+
+        machine.stopGradleDaemon(10)
+        runCurrent()
+        assertTrue(machine.error != null)
+
+        failing = false
+        machine.retryError()
+        runCurrent()
+
+        assertEquals(listOf<List<Long>?>(listOf(10L), listOf(10L)), calls.stoppedDaemons)
+        assertNull(machine.error)
+    }
+
+    @Test
+    fun `dismissing an error drops its retry`() = machineTest {
+        val calls = Calls()
+        val machine = machine(
+            useCases(calls, startEmulator = { _, _ -> Result.failure(IllegalStateException("adb offline")) }),
+            listOf(machineProject("api", listOf(apiWorktree), MachineResource.ANDROID_EMULATORS)),
+        )
+        machine.startEmulator("api", apiWorktree.path)
+        runCurrent()
+
+        machine.dismissError()
+
+        assertNull(machine.error)
+        assertNull(machine.errorRetry)
     }
 
     @Test

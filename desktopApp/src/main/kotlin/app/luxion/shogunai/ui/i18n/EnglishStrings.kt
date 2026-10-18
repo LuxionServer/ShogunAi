@@ -1,5 +1,7 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.usecase.GitFailureCause
+
 object EnglishStrings : Strings {
     override val languageName = "English"
 
@@ -72,7 +74,6 @@ object EnglishStrings : Strings {
         "Can't read $path. Fix it before creating worktrees."
     override val moveToRepositoryConfig = "Move to .shogunai.json"
     override val pendingSave = "on save"
-    override fun saveFailed(detail: String?) = "Couldn't save" + detail.asSuffix()
     override val add = "Add"
     override val agentSection = "Agent"
     override val agentCommandLabel = "Agent command"
@@ -100,6 +101,12 @@ object EnglishStrings : Strings {
 
     override val closeError = "Close error"
     override val closeMessage = "Close message"
+    override val technicalDetails = "Technical details"
+    override val copyTechnicalDetails = "Copy technical details"
+    override val tryAgain = "Try again"
+    override val openProjectSettings = "Open project settings"
+    override val openPreferences = "Open preferences"
+    override fun errorTexts(error: Throwable, gitCause: GitFailureCause) = englishErrorTexts(error, gitCause)
     override val newWorktree = "New worktree"
     override val newBranchMode = "New branch"
     override val existingBranchMode = "Existing branch"
@@ -312,57 +319,6 @@ object EnglishStrings : Strings {
     override fun openedInHerdr(name: String) = "Opened \"$name\" in Herdr with its agent"
     override fun focusedInHerdr(name: String) = "\"$name\" was already open in Herdr; switched to its workspace"
 
-    override fun baseRepositoryNotFound(path: String) = "Base repository doesn't exist: $path"
-    override fun worktreeAlreadyExists(path: String) = "Worktree directory already exists: $path"
-    override fun invalidTaskIdError(rawInput: String) = "Invalid task id: \"$rawInput\""
-    override fun secretFilesNotFound(files: List<String>, basePath: String) =
-        "Local files not found in $basePath: ${files.joinToString()}"
-    override fun invalidRepositoryConfig(path: String, detail: String?) = "Can't read $path" + detail.asSuffix()
-    override fun repositoryNotFound(path: String) = "No Git repository found at $path"
-    override fun notAWorktree(path: String) = "$path is not a linked worktree of this repository"
-    override fun gitCommandFailed(command: List<String>, exitCode: Int) =
-        "Git command failed (exit code $exitCode): ${command.joinToString(" ")}"
-    override fun secretCopyFailed(detail: String?) = "Failed to copy files into the worktree" + detail.asSuffix()
-    override fun clipboardWriteFailed(detail: String?) =
-        "Failed to copy the launch command to the clipboard" + detail.asSuffix()
-    override val gitLfsNotFound =
-        "The repository requires Git LFS but 'git-lfs' isn't installed. Install it from https://git-lfs.com and try again."
-    override fun branchNotFound(branch: String) = "Branch not found: $branch"
-    override fun startPointNotFound(ref: String) = "\"$ref\" doesn't name a commit"
-    override fun branchAlreadyCheckedOut(branch: String, path: String?) =
-        "Branch '$branch' is already checked out" + if (path != null) " at $path" else ""
-    override fun noFreePort(from: Int, to: Int) = "No free port left between $from and $to for this worktree"
-    override fun noEmulatorPort(from: Int, to: Int) =
-        "No emulator port left between $from and $to; stop or remove other worktrees' emulators"
-    override fun androidSdkNotFound(checked: List<String>) = "Android SDK not found. Checked: ${checked.joinToString()}"
-    override val noAvdAvailable =
-        "No Android Virtual Device found. Create one in Android Studio's Device Manager and try again."
-    override val herdrNotInstalled = "Herdr isn't installed. Install it from https://herdr.dev and try again."
-    override fun herdrCommandFailed(detail: String) = "Couldn't open the worktree in Herdr: $detail"
-    override fun emulatorBootTimeout(serial: String, seconds: Long) =
-        "$serial didn't finish booting within $seconds s; it's still starting"
-    override fun androidToolFailed(command: List<String>, exitCode: Int) =
-        "Android tool failed (exit code $exitCode): ${command.joinToString(" ")}"
-    override val noIosRuntime =
-        "No iOS simulator runtime is installed. Install one from Xcode's Settings > Components and try again."
-    override fun simulatorBootTimeout(name: String, seconds: Long) =
-        "The simulator \"$name\" didn't finish booting within $seconds s; it's still starting"
-    override val iosSimulatorProviderNotDeclared =
-        "This repository doesn't use the iOS simulator provider. Add \"providers\": { \"ios-simulator\": {} } to .shogunai.json."
-    override val iosSimulatorsNotSupported = "iOS simulators need macOS with Xcode installed."
-    override fun appleToolFailed(command: List<String>, exitCode: Int) =
-        "Xcode tool failed (exit code $exitCode): ${command.joinToString(" ")}"
-    override val emulatorProviderNotDeclared =
-        "This repository doesn't use the emulator provider. Add \"providers\": { \"emulator\": {} } to .shogunai.json."
-    override fun environmentFileTracked(path: String) =
-        "The environment file \"$path\" is tracked by Git, so it wasn't overwritten"
-    override fun environmentFileWriteFailed(path: String, detail: String?) =
-        "Couldn't write the environment file \"$path\"" + if (detail.isNullOrBlank()) "" else ": $detail"
-    override fun processListingFailed(command: List<String>, exitCode: Int) =
-        "Couldn't list processes (exit code $exitCode): ${command.joinToString(" ")}"
-    override fun commandCouldNotStart(command: List<String>) =
-        "Could not start the command: ${command.joinToString(" ")}"
-    override fun unexpectedError(detail: String?) = "Unexpected error" + detail.asSuffix()
 
     override val repositoryConfigSection = "Repository configuration"
     override val repositoryConfigSharedNote =

@@ -22,7 +22,7 @@ import app.luxion.shogunai.ui.components.NoticeKind
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.handPointer
 import app.luxion.shogunai.ui.i18n.LocalStrings
-import app.luxion.shogunai.ui.i18n.worktreeError
+import app.luxion.shogunai.ui.i18n.describe
 import app.luxion.shogunai.ui.theme.ShogunTheme
 
 @Composable
@@ -153,7 +153,7 @@ private fun CleanupOption(
 @Composable
 fun CleanupIssues(report: CleanupReport, onDismiss: () -> Unit) {
     val strings = LocalStrings.current
-    val lines = report.failures.map { strings.cleanupFailed(it.path, strings.worktreeError(it.error)) } +
+    val lines = report.failures.map { strings.cleanupFailed(it.path, strings.describe(it.error).summary) } +
         report.keptBranches.map { strings.branchKept(it) }
     Notice(
         kind = NoticeKind.WARNING,

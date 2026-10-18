@@ -22,7 +22,7 @@ import app.luxion.shogunai.ui.worktree.status
 fun AndroidEmulatorsView(machine: MachineResources, onOpenWorktree: (String, String) -> Unit) {
     val strings = LocalStrings.current
     MachineViewFrame(strings.androidEmulatorsTitle) {
-        MachineErrorNotice(machine.error, machine::dismissError)
+        MachineErrorNotice(machine.error, machine::dismissError, machine.errorRetry?.let { { machine.retryError() } })
         when (val state = machine.worktreeEmulators) {
             MachineLoad.Loading -> InlineProgress()
             MachineLoad.Unavailable -> MachineSecondaryText(strings.gradleDaemonsUnavailable)

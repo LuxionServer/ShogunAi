@@ -34,7 +34,7 @@ import java.time.Instant
 fun GradleDaemonsView(machine: MachineResources, onOpenWorktree: (String, String) -> Unit) {
     val strings = LocalStrings.current
     MachineViewFrame(strings.gradleDaemonsTitle) {
-        MachineErrorNotice(machine.error, machine::dismissError)
+        MachineErrorNotice(machine.error, machine::dismissError, machine.errorRetry?.let { { machine.retryError() } })
         when (val state = machine.gradleDaemons) {
             MachineLoad.Loading -> InlineProgress()
             MachineLoad.Unavailable -> MachineSecondaryText(strings.gradleDaemonsUnavailable)

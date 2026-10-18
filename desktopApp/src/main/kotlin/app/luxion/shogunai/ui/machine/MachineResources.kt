@@ -113,6 +113,9 @@ class MachineResources(
         private set
     var error by mutableStateOf<Throwable?>(null)
         private set
+    var errorRetry by mutableStateOf<(() -> Unit)?>(null)
+        private set
+    private var errorKey: String? = null
 
     val declared: Set<MachineResource>
         get() = projects().flatMapTo(mutableSetOf()) { it.declares }
@@ -298,8 +301,8 @@ class MachineResources(
         scope.launch {
             try {
                 useCases.stopDaemons(pids)
-                    .onSuccess { daemonStopReport = it }
-                    .onFailure { error = it }
+                    .onSuccess { daemonStopReport = it; clearError(DAEMONS_KEY) }
+                    .onFailure { fail(DAEMONS_KEY, it) { stopGradleDaemons(pids) } }
                 loadDaemons()
             } finally {
                 isStoppingDaemons = false
@@ -317,8 +320,8 @@ class MachineResources(
         scope.launch {
             try {
                 useCases.deleteOrphanedDerivedData()
-                    .onSuccess { derivedDataDeletionReport = it }
-                    .onFailure { error = it }
+                    .onSuccess { derivedDataDeletionReport = it; clearError(DERIVED_DATA_KEY) }
+                    .onFailure { fail(DERIVED_DATA_KEY, it, ::deleteOrphanedDerivedData) }
                 loadDerivedData()
             } finally {
                 isDeletingDerivedData = false
@@ -337,8 +340,8 @@ class MachineResources(
         scope.launch {
             try {
                 useCases.deleteSimulators(udids)
-                    .onSuccess { simulatorsDeleted = it.size }
-                    .onFailure { error = it }
+                    .onSuccess { simulatorsDeleted = it.size; clearError(SIMULATOR_ORPHANS_KEY) }
+                    .onFailure { fail(SIMULATOR_ORPHANS_KEY, it, ::deleteSimulatorOrphans) }
                 loadSimulators()
             } finally {
                 isDeletingSimulators = false
@@ -376,7 +379,10 @@ class MachineResources(
         startingDevices = startingDevices + serial
         scope.launch {
             try {
-                useCases.stopEmulatorSerials(declaring.project.config, listOf(serial)).onFailure { error = it }
+                val key = "unowned:$serial"
+                useCases.stopEmulatorSerials(declaring.project.config, listOf(serial))
+                    .onSuccess { clearError(key) }
+                    .onFailure { fail(key, it) { stopUnownedEmulator(serial) } }
                 loadEmulators()
             } finally {
                 startingDevices = startingDevices - serial
@@ -388,6 +394,24 @@ class MachineResources(
 
     fun dismissError() {
         error = null
+        errorRetry = null
+        errorKey = null
+    }
+
+    fun retryError() {
+        val retry = errorRetry ?: return
+        dismissError()
+        retry()
+    }
+
+    private fun fail(key: String, failure: Throwable, retry: () -> Unit) {
+        error = failure
+        errorRetry = retry
+        errorKey = key
+    }
+
+    private fun clearError(key: String) {
+        if (errorKey == key) dismissError()
     }
 
     private fun runDeviceAction(projectId: String, worktreePath: String, action: suspend (config: ProjectConfig) -> Result<*>) {
@@ -397,7 +421,9 @@ class MachineResources(
         startingDevices = startingDevices + key
         scope.launch {
             try {
-                action(config).onFailure { error = it }
+                action(config)
+                    .onSuccess { clearError(key) }
+                    .onFailure { fail(key, it) { runDeviceAction(projectId, worktreePath, action) } }
                 onDevicesChanged(projectId)
             } finally {
                 startingDevices = startingDevices - key
@@ -425,6 +451,9 @@ class MachineResources(
     companion object {
         val PROCESS_INTERVAL = 5.seconds
         val SUMMARY_INTERVAL = 30.seconds
+        private const val DAEMONS_KEY = "daemons"
+        private const val DERIVED_DATA_KEY = "derivedData"
+        private const val SIMULATOR_ORPHANS_KEY = "simulatorOrphans"
 
         fun deviceKey(projectId: String, worktreePath: String): String = "$projectId:$worktreePath"
     }
