@@ -45,6 +45,8 @@ compose.desktop {
             val appVersion = (findProperty("appVersion") as String?) ?: "0.0.0"
             packageVersion = appVersion
 
+            modules("java.net.http")
+
             macOS {
                 packageVersion = macBundleVersion(appVersion)
                 iconFile.set(project.file("icons/icon.icns"))
