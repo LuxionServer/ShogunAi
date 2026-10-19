@@ -34,7 +34,7 @@ Each row shows a worktree with:
 - Its **size**, the **ports** reserved for it (see [per-worktree environment](../agents.md#per-worktree-environment)) and an "inactive" label when it has no uncommitted changes, no agent running and no commit in the last 14 days.
 - The emulator and simulator lines with Start and Stop, for repositories that use those [providers](providers.md).
 
-The list refreshes by itself: changes made from a terminal or by an agent show up within a few seconds, and when the window regains focus.
+The list refreshes by itself: changes made from a terminal or by an agent show up within a few seconds, and edits that aren't staged yet show up when the window regains focus. Statuses and sizes stay on screen while they are read again. Sizes are measured when a worktree first appears; "Reload" measures them all again, for example after a build.
 
 "Active" and "All worktrees" span every project; their project filter narrows the current view to one project without leaving it. Selecting a project in the sidebar opens that project's own view instead, which has no project filter.
 
