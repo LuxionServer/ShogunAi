@@ -139,6 +139,7 @@ fun WorktreeScreen(
     }
 
     board.pendingRemoval?.let { holder -> RemoveWorktreeDialog(holder) }
+    board.terminalChoice?.let { holder -> ChooseTerminalDialog(holder) }
 }
 
 @Composable
@@ -190,6 +191,31 @@ private fun TextFilterField(board: WorktreeBoard) {
             .width(FilterFieldWidth)
             .focusRequester(focusRequester)
             .trackTextInputFocus(),
+    )
+}
+
+@Composable
+private fun ChooseTerminalDialog(holder: ProjectWorktrees) {
+    val strings = LocalStrings.current
+    AlertDialog(
+        onDismissRequest = { holder.dismissTerminalChoice() },
+        title = { Text(strings.chooseTerminalTitle) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                Text(strings.chooseTerminalMessage)
+                holder.tools.availableTerminals.forEach { terminal ->
+                    SecondaryButton(onClick = { holder.chooseTerminal(terminal) }, modifier = Modifier.fillMaxWidth()) {
+                        Text(terminal.displayName)
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            NeutralTextButton(onClick = { holder.dismissTerminalChoice() }) {
+                Text(strings.cancel)
+            }
+        },
     )
 }
 

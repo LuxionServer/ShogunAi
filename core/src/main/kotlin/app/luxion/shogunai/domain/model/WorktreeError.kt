@@ -149,6 +149,24 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class HerdrCommandFailed(val command: List<String>, val detail: String) :
         WorktreeError("Herdr couldn't open the worktree: $detail")
 
+    class TerminalLaunchFailed(val terminal: TerminalId, val detail: String) :
+        WorktreeError("${terminal.displayName} couldn't open the worktree" + if (detail.isBlank()) "" else ": $detail")
+
+    class TerminalAutomationRefused(val terminal: TerminalId) :
+        WorktreeError(
+            "macOS didn't allow ShogunAi to control ${terminal.displayName}. " +
+                "Allow it in System Settings > Privacy & Security > Automation.",
+        )
+
+    class TerminalUnsupported(val terminal: TerminalId, val reason: String) :
+        WorktreeError("${terminal.displayName} can't be used: $reason")
+
+    class EditorLaunchFailed(val editor: EditorId, val detail: String) :
+        WorktreeError("${editor.displayName} couldn't open the worktree" + if (detail.isBlank()) "" else ": $detail")
+
+    class FolderOpenFailed(val path: String, val detail: String) :
+        WorktreeError("Couldn't show $path" + if (detail.isBlank()) "" else ": $detail")
+
     class WorktreeTargetNotFound(val target: String) :
         WorktreeError("No worktree matches \"$target\"")
 
@@ -160,4 +178,5 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
 
     class AgentRunningInWorktree(val path: String, val agents: List<String>) :
         WorktreeError("${agents.joinToString()} is running in $path")
+
 }

@@ -6,6 +6,7 @@ import app.luxion.shogunai.ui.isMacOs
 import app.luxion.shogunai.ui.machine.MachineResource
 import app.luxion.shogunai.ui.machine.title
 import app.luxion.shogunai.ui.shell.ShellDestination
+import app.luxion.shogunai.ui.worktree.OpenAction
 import app.luxion.shogunai.ui.worktree.PaletteWorktree
 import app.luxion.shogunai.ui.worktree.WorktreeRef
 
@@ -15,11 +16,13 @@ fun buildPaletteIndex(
     machineResources: List<MachineResource>,
     canCleanUp: Boolean,
     strings: Strings,
+    openActions: List<OpenAction> = emptyList(),
     shortcutLabel: (key: String, shift: Boolean) -> String,
 ): List<PaletteItem> =
     viewItems(projects, machineResources, strings, shortcutLabel) +
         projects.flatMap { projectItems(it, strings) } +
         worktrees.map { worktreeItem(it, strings) } +
+        openActionItems(openActions, strings) +
         actionItems(projects, canCleanUp, strings, shortcutLabel)
 
 fun pruneRecent(recentIds: List<String>, items: List<PaletteItem>): List<String> {
@@ -116,6 +119,18 @@ private fun worktreeItem(entry: PaletteWorktree, strings: Strings): PaletteItem 
         secondary = PaletteAction.CopyLaunchCommand(ref),
     )
 }
+
+private fun openActionItems(openActions: List<OpenAction>, strings: Strings): List<PaletteItem> =
+    openActions.map { action ->
+        PaletteItem(
+            id = "action:open:${action.kind.name.lowercase()}",
+            kind = PaletteKind.ACTION,
+            title = action.label,
+            keys = listOf(action.label),
+            context = strings.paletteKindAction,
+            primary = PaletteAction.OpenSelected(action.kind),
+        )
+    }
 
 private fun actionItems(
     projects: List<Project>,

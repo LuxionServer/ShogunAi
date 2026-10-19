@@ -393,6 +393,20 @@ object SpanishStrings : Strings {
     override val openInHerdr = "Abrir en Herdr"
     override fun openedInHerdr(name: String) = "\"$name\" abierto en Herdr con su agente"
     override fun focusedInHerdr(name: String) = "\"$name\" ya estaba abierto en Herdr; se ha cambiado a su workspace"
+    override val toolsLabel = "Herramientas"
+    override val terminalToolLabel = "Terminal"
+    override val editorToolLabel = "IDE"
+    override val noTerminalFound = "No se ha encontrado ningún terminal compatible"
+    override val noEditorFound = "No se ha encontrado ningún IDE compatible"
+    override fun openInTool(name: String) = "Abrir en $name"
+    override val openFolder = "Abrir carpeta"
+    override val chooseTerminalTitle = "Elige un terminal"
+    override val chooseTerminalMessage = "Los worktrees se abrirán en el terminal que elijas. Puedes cambiarlo después en Preferencias."
+    override val projectEditorLabel = "IDE en este equipo"
+    override fun defaultEditorOption(name: String?) = if (name == null) "Predeterminado" else "Predeterminado ($name)"
+    override fun editorNotFoundOption(name: String) = "$name (no encontrado)"
+    override fun editorOverrideMissing(name: String) =
+        "No se ha encontrado $name en este equipo, así que los worktrees de este proyecto se abren en el IDE predeterminado."
 
     override val repositoryConfigSection = "Configuración del repositorio"
     override val repositoryConfigSharedNote =

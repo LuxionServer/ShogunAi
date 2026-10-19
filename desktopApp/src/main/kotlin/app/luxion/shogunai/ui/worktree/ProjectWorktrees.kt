@@ -16,6 +16,8 @@ import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.ProvisionDrift
 import app.luxion.shogunai.domain.model.WorktreeEnvironment
 import app.luxion.shogunai.domain.model.RunningAgent
+import app.luxion.shogunai.domain.model.TerminalId
+import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.SimulatorDevice
 import app.luxion.shogunai.domain.model.WorktreeEmulator
@@ -24,6 +26,7 @@ import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeStatus
 import app.luxion.shogunai.domain.model.withoutLocalTwins
 import app.luxion.shogunai.ui.machine.MachineResource
+import app.luxion.shogunai.ui.shell.ToolsPreferences
 import app.luxion.shogunai.domain.usecase.CleanupFailure
 import app.luxion.shogunai.domain.usecase.CleanupReport
 import app.luxion.shogunai.domain.usecase.CleanupSelection
@@ -111,6 +114,8 @@ class ProjectWorktrees(
     var openInHerdrPaths by mutableStateOf<Set<String>>(emptySet())
         private set
     var herdrCloseFailures by mutableStateOf<List<CleanupFailure>>(emptyList())
+        private set
+    var terminalChoiceFor by mutableStateOf<Worktree?>(null)
         private set
     val totalSize: Long
         get() = sizes.values.sum()
@@ -671,8 +676,70 @@ class ProjectWorktrees(
         }
     }
 
+    val tools: ToolsPreferences get() = useCases.tools.preferences
+
+    fun openActions(worktree: Worktree, strings: Strings): List<OpenAction> {
+        if (worktree.isPrunable) return emptyList()
+        return listOfNotNull(
+            tools.terminalShown?.let {
+                val name = tools.terminalInUse?.displayName ?: strings.terminalToolLabel.lowercase()
+                OpenAction(OpenKind.TERMINAL, strings.openInTool(name)) { openInTerminal(worktree) }
+            },
+            tools.editorFor(useCases.tools.editorOverride)?.let {
+                OpenAction(OpenKind.EDITOR, strings.openInTool(it.displayName)) { openInEditor(worktree) }
+            },
+            OpenAction(OpenKind.FOLDER, strings.openFolder) { openFolder(worktree) },
+        )
+    }
+
+    fun open(worktree: Worktree, kind: OpenKind) {
+        when (kind) {
+            OpenKind.TERMINAL -> openInTerminal(worktree)
+            OpenKind.EDITOR -> openInEditor(worktree)
+            OpenKind.FOLDER -> openFolder(worktree)
+        }
+    }
+
+    fun openInTerminal(worktree: Worktree) {
+        val terminal = tools.terminalInUse
+        if (terminal == null) {
+            if (tools.availableTerminals.isNotEmpty()) terminalChoiceFor = worktree
+            return
+        }
+        launchTool(worktree) { useCases.tools.openInTerminal(worktree.path, terminal) }
+    }
+
+    fun chooseTerminal(terminal: TerminalId) {
+        val worktree = terminalChoiceFor
+        tools.chooseTerminal(terminal)
+        terminalChoiceFor = null
+        if (worktree != null) openInTerminal(worktree)
+    }
+
+    fun dismissTerminalChoice() {
+        terminalChoiceFor = null
+    }
+
+    fun openInEditor(worktree: Worktree) {
+        val editor = tools.editorFor(useCases.tools.editorOverride) ?: return
+        launchTool(worktree) { useCases.tools.openInEditor(worktree.path, editor) }
+    }
+
+    fun openFolder(worktree: Worktree) {
+        launchTool(worktree) { useCases.tools.openFolder(worktree.path) }
+    }
+
+    private fun launchTool(worktree: Worktree, launch: suspend () -> Result<Unit>) {
+        scope.launch {
+            launch()
+                .onSuccess { clearActionError(worktree.path) }
+                .onFailure { recordActionError(worktree.path, it) }
+        }
+    }
+
     private fun List<RunningAgent>.agentPaneToFocus(): String? =
         (firstOrNull { it.waitsForUser && it.herdrPaneId != null } ?: firstOrNull { it.herdrPaneId != null })?.herdrPaneId
+
 
     fun copyLastCreatedLaunchCommand() {
         lastCreatedWorktree?.let(::copyLaunchCommand)

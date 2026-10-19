@@ -10,7 +10,8 @@ La primera vez que abres la app verás el catálogo de proyectos vacío. Pulsa "
 - **Carpeta raíz de worktrees**: donde se crean los worktrees nuevos.
 - **Rama principal** (opcional): la rama con la que se comparan el estado y si una rama está mergeada; se detecta si se deja vacía.
 - **Archivos locales**: archivos que Git no versiona y que cada worktree nuevo necesita en esta máquina (p. ej. `local.properties`). Solo se guardan en esta máquina; para compartirlos con todo el que clone el repositorio, decláralos en [`.shogunai.json`](configuration.md#configuracion-del-repositorio-shogunaijson). "Mover a .shogunai.json" mueve allí los que están dentro del repositorio.
-- **Comando del agente** y **Headroom**: el comando que ejecutan "Copiar comando" y "Abrir en Herdr" en un worktree (`claude` por defecto).
+- **Comando del agente** y **Headroom**: el comando que ejecutan "Copiar comando", "Abrir en Herdr" y "Abrir en terminal" en un worktree (`claude` por defecto).
+- **IDE en este equipo** (opcional): el IDE en el que se abren los worktrees de este proyecto cuando no es el predeterminado de Preferencias (p. ej. Android Studio para un repositorio Android). Solo se guarda en esta máquina.
 
 El formulario muestra también, en solo lectura, lo que el repositorio declara en `.shogunai.json` y `.worktreeinclude`, y los ajustes por máquina de los providers de [emulador](providers.md#emulador-de-android) y [simulador de iOS](providers.md#simulador-de-ios) cuando el repositorio los usa.
 
@@ -60,6 +61,11 @@ Agrupada por estado, la cabecera de cada grupo muestra una pista breve junto a s
 
 - **Copiar comando** copia `cd "<worktree>" && <comando del agente>` para pegarlo en cualquier terminal.
 - **Abrir en Herdr** abre el worktree en [Herdr](../agents.md#herdr) con su entorno y ejecuta allí el comando del agente; si el worktree ya tiene un agente en Herdr, enfoca el panel de ese agente en su lugar.
+- **Abrir en terminal** abre una ventana o pestaña nueva de tu terminal en la carpeta del worktree, con las variables de entorno del worktree y ejecutando el comando del agente; el shell sigue abierto cuando el agente termina. Se admiten Terminal e iTerm2 (macOS), Windows Terminal (Windows), y tmux (3.0 o posterior) y Zellij (macOS y Linux); tmux y Zellij abren una ventana o pestaña nueva en la última sesión que usaste, por lo que solo se ofrecen mientras haya una en marcha. La primera vez, la app pregunta qué terminal usar. En macOS, Terminal e iTerm2 piden tu permiso la primera vez que ShogunAi los controla; si lo rechazas, permítelo en Ajustes del Sistema > Privacidad y seguridad > Automatización.
+- **Abrir en IDE** abre la carpeta del worktree en VS Code, IntelliJ IDEA o Android Studio, según el IDE predeterminado o el elegido para el proyecto.
+- **Abrir carpeta** muestra la carpeta del worktree en Finder, el Explorador o el gestor de archivos.
+
+"Copiar comando" sigue siendo el botón principal; las demás acciones están a su lado, en el menú contextual del worktree y en la paleta de comandos (para el worktree seleccionado). Solo se ofrecen para las herramientas que hay en esta máquina, y "Abrir en IDE" y "Abrir carpeta" desaparecen cuando la carpeta del worktree ya no existe.
 
 ## Eliminar y limpiar
 
@@ -71,6 +77,10 @@ Eliminar un worktree abierto en Herdr cierra también su espacio de trabajo de H
 ## Secciones de los providers
 
 En repositorios que los declaran en `.shogunai.json`, la pantalla de worktrees añade una sección "Daemons de Gradle" y otra "DerivedData de Xcode". Consulta [Providers](providers.md).
+
+## Preferencias
+
+Preferencias (Cmd+Coma en macOS, Ctrl+Coma en los demás) reúne el tema, el idioma y la sección **Herramientas**, donde eliges el terminal y el IDE predeterminado entre los que ShogunAi ha encontrado en esta máquina. Si no encuentra ninguno, la sección lo dice y las acciones correspondientes no se ofrecen.
 
 ## Tema e idioma
 

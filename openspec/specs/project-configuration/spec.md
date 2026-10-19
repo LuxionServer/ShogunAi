@@ -398,6 +398,17 @@ After the repository file was reloaded from disk, for example after a "changed o
 - **WHEN** a save fails because `.shogunai.json` changed on disk, the user reloads it, edits again and saves
 - **THEN** the preview dialog is shown before the file is written
 
+### Requirement: IDE for a project on this machine
+The project settings' Agent section SHALL let the user choose the IDE the project's worktrees open in on this machine, among the detected ones, or leave it on the default from Preferences. The choice SHALL be stored with the project on this machine, not in the repository.
+
+#### Scenario: Override the IDE
+- **WHEN** the user chooses Android Studio for a project and saves
+- **THEN** that project's worktrees open in Android Studio while other projects keep the default IDE
+
+#### Scenario: Overridden IDE uninstalled
+- **WHEN** the IDE chosen for a project is no longer installed
+- **THEN** the settings say it wasn't found, and the worktrees open in the default IDE
+
 ### Requirement: Settings title names the project
 The project settings view of an existing project SHALL show a title that names the project as saved, and SHALL keep the "Add project" title while adding one.
 

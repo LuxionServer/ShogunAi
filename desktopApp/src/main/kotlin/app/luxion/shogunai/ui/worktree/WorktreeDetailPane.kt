@@ -14,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -132,6 +133,20 @@ fun WorktreeDetailPane(
         }
         PrimaryButton(onClick = { viewModel.copyLaunchCommand(worktree) }, modifier = Modifier.fillMaxWidth()) {
             Text(strings.copyLaunchCommand, style = MaterialTheme.typography.bodySmall)
+        }
+        val openActions = viewModel.openActions(worktree, strings)
+        if (openActions.isNotEmpty()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+                openActions.forEach { action ->
+                    if (action.kind == OpenKind.FOLDER) {
+                        IconAction(icon = Icons.Default.FolderOpen, label = action.label, onClick = action.onClick)
+                    } else {
+                        SecondaryButton(onClick = action.onClick) {
+                            Text(action.label, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
             if (!worktree.isPrunable) {

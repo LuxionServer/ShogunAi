@@ -422,6 +422,7 @@ private fun WorktreeRowFor(
         onCopyLaunchCommand = { holder.copyLaunchCommand(worktree) },
         onCopyPath = { scope.launch { clipboard.copyText(worktree.path) } },
         onOpenInHerdr = { holder.openInHerdr(worktree) },
+        openActions = holder.openActions(worktree, strings),
         onRemove = { holder.requestRemoval(worktree) },
     )
 }

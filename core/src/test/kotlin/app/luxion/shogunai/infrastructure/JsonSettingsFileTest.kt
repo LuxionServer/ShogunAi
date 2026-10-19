@@ -2,7 +2,9 @@ package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.model.GroupedView
+import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.Grouping
+import app.luxion.shogunai.domain.model.TerminalId
 import app.luxion.shogunai.domain.model.ThemeMode
 import app.luxion.shogunai.domain.model.WindowBounds
 import java.nio.file.Files
@@ -179,6 +181,35 @@ class JsonSettingsFileTest {
         reloaded.saveGrouping(GroupedView.ALL, Grouping.BY_STATE)
         assertEquals(Grouping.BY_PROJECT, reloaded.loadGrouping(GroupedView.ACTIVE))
         assertEquals(Grouping.BY_STATE, reloaded.loadGrouping(GroupedView.ALL))
+    }
+
+    @Test
+    fun `no terminal or editor is chosen by default or in a file written before they existed`() {
+        val tools = JsonToolPreferenceRepository(settingsFile)
+        assertNull(tools.loadTerminal())
+        assertNull(tools.loadEditor())
+
+        Files.writeString(storagePath, """{ "themeMode": "DARK" }""")
+
+        assertNull(tools.loadTerminal())
+        assertNull(tools.loadEditor())
+    }
+
+    @Test
+    fun `the chosen terminal and editor are remembered with the other keys and can be cleared`() {
+        val tools = JsonToolPreferenceRepository(settingsFile)
+        themeRepository.save(ThemeMode.DARK)
+
+        tools.saveTerminal(TerminalId.ITERM2)
+        tools.saveEditor(EditorId.VS_CODE)
+
+        val reloaded = JsonToolPreferenceRepository(JsonSettingsFile(storagePath))
+        assertEquals(TerminalId.ITERM2, reloaded.loadTerminal())
+        assertEquals(EditorId.VS_CODE, reloaded.loadEditor())
+        assertEquals(ThemeMode.DARK, themeRepository.load())
+        reloaded.saveTerminal(null)
+        assertNull(reloaded.loadTerminal())
+        assertEquals(EditorId.VS_CODE, reloaded.loadEditor())
     }
 
     @Test

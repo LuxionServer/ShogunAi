@@ -215,5 +215,25 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "Herdr couldn't open the worktree.",
         "Check the technical details.",
     )
+    is WorktreeError.TerminalLaunchFailed -> ErrorTexts(
+        "${error.terminal.displayName} couldn't open the worktree.",
+        "Check the technical details.",
+    )
+    is WorktreeError.TerminalAutomationRefused -> ErrorTexts(
+        "macOS didn't allow ShogunAi to control ${error.terminal.displayName}.",
+        "Allow it in System Settings > Privacy & Security > Automation, then try again.",
+    )
+    is WorktreeError.TerminalUnsupported -> ErrorTexts(
+        "${error.terminal.displayName} can't be used: ${error.reason}.",
+        "Choose another terminal in Preferences.",
+    )
+    is WorktreeError.EditorLaunchFailed -> ErrorTexts(
+        "${error.editor.displayName} couldn't open the worktree.",
+        "Check the technical details.",
+    )
+    is WorktreeError.FolderOpenFailed -> ErrorTexts(
+        "Couldn't show \"${error.path}\".",
+        "Check the technical details.",
+    )
     is WorktreeError.GitCommandFailed -> englishGitTexts(GitFailureCause.Unknown)
 }
