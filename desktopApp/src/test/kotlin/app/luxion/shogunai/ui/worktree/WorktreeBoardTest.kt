@@ -111,7 +111,9 @@ class WorktreeBoardTest {
         var worktrees: List<Pair<String, String>>,
         agentCommand: String = "claude",
         var exists: Boolean = true,
+        val declaresEmulator: Boolean = false,
     ) {
+        var emulatorReads = 0
         val base = "/home/dev/projects/$id"
         val config = ProjectConfig(
             baseRepositoryPath = base,
@@ -179,7 +181,17 @@ class WorktreeBoardTest {
             measureSize = MeasureWorktreeSizeUseCase(files, dispatcher),
             readFingerprint = ReadGitMetadataFingerprintUseCase(config, files, dispatcher),
             readPorts = { Result.success(emptyMap()) },
-            emulator = EmulatorUseCases.NONE,
+            emulator = if (declaresEmulator) {
+                EmulatorUseCases.NONE.copy(
+                    declared = { true },
+                    readStates = {
+                        emulatorReads++
+                        Result.success(emptyMap())
+                    },
+                )
+            } else {
+                EmulatorUseCases.NONE
+            },
             simulator = SimulatorUseCases.NONE,
             gradle = GradleUseCases(
                 provider = { GradleProvider().takeIf { id in gradleDeclaredFor } },
@@ -196,7 +208,7 @@ class WorktreeBoardTest {
         )
     }
 
-    private val repositories = listOf(api, mainRepo)
+    private var repositories = listOf(api, mainRepo)
 
     private fun board(
         projects: List<Project> = repositories.map { it.project },
@@ -523,6 +535,28 @@ class WorktreeBoardTest {
 
         assertEquals(1, api.lists)
         assertEquals(2, mainRepo.lists)
+    }
+
+    @Test
+    fun `device states are refreshed at most every ten seconds while agents are detected on every check`() = runTest(dispatcher) {
+        val emulatorProject = FakeRepository("emulator-app", emptyList(), declaresEmulator = true)
+        repositories = listOf(emulatorProject)
+        val board = board(listOf(emulatorProject.project), clock = { now })
+        advanceUntilIdle()
+        val baseline = emulatorProject.emulatorReads
+        board.startWatching()
+
+        repeat(4) {
+            now = now.plusSeconds(3)
+            tick()
+        }
+        assertEquals(baseline + 1, emulatorProject.emulatorReads)
+        assertEquals(4, agentSearches.size)
+
+        now = now.plusSeconds(3)
+        tick()
+        assertEquals(baseline + 2, emulatorProject.emulatorReads)
+        board.stopWatching()
     }
 
     @Test

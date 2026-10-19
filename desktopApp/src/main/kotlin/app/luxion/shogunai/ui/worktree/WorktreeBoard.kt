@@ -30,6 +30,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import java.time.Instant
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.toJavaDuration
 
@@ -39,7 +40,9 @@ class WorktreeBoard(
     private val preferences: ShellPreferenceRepository,
     private val autoRefreshInterval: Duration = AUTO_REFRESH_INTERVAL,
     private val clock: () -> Instant = Instant::now,
+    private val deviceRefreshInterval: Duration = DEVICE_REFRESH_INTERVAL,
 ) : ViewModel() {
+    private val deviceRefreshes = mutableMapOf<String, Instant>()
     private val listPermits = Semaphore(MAX_PARALLEL_LISTS)
     private val sizeQueue = SizeQueue(viewModelScope)
     private var entries by mutableStateOf<Map<String, Entry>>(emptyMap())
@@ -248,6 +251,7 @@ class WorktreeBoard(
                 project.id to existing.copy(project = project)
             } else {
                 existing?.dispose()
+                deviceRefreshes.remove(project.id)
                 project.id to createEntry(project)
             }
         }
@@ -361,8 +365,16 @@ class WorktreeBoard(
         val detected = detectAgents(searches).getOrNull()
         unchanged.forEach { entry ->
             entry.holder.applyAgents(detected)
-            entry.holder.refreshDevices()
+            if (isDeviceRefreshDue(entry.project.id)) entry.holder.refreshDevices()
         }
+    }
+
+    private fun isDeviceRefreshDue(projectId: String): Boolean {
+        val now = clock()
+        val last = deviceRefreshes[projectId]
+        if (last != null && (now.toEpochMilli() - last.toEpochMilli()).milliseconds < deviceRefreshInterval) return false
+        deviceRefreshes[projectId] = now
+        return true
     }
 
     fun select(ref: WorktreeRef) {
@@ -579,4 +591,5 @@ internal fun isCreateEnabled(
 
 private const val MAX_PARALLEL_LISTS = 2
 private val AUTO_REFRESH_INTERVAL = 3.seconds
+private val DEVICE_REFRESH_INTERVAL = 10.seconds
 private val FOCUS_REFRESH_MIN_INTERVAL = 5.seconds
