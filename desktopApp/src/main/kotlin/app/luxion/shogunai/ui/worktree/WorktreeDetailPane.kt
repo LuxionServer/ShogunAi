@@ -18,8 +18,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.LocalClipboard
+import app.luxion.shogunai.ui.components.copyText
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.text.style.TextOverflow
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.EMULATOR_PORT_KEY
@@ -62,7 +64,8 @@ fun WorktreeDetailPane(
     val status = viewModel.statuses[worktree.path]
     val origin = classifyOrigin(worktree, projectConfig, viewModel.herdrWorktreesRoot)
     val valueColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val clipboard = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
     Column(
         modifier = modifier
             .fillMaxHeight()
@@ -100,7 +103,7 @@ fun WorktreeDetailPane(
                 IconAction(
                     icon = Icons.Default.ContentCopy,
                     label = strings.copyPath,
-                    onClick = { clipboard.setText(AnnotatedString(worktree.path)) },
+                    onClick = { scope.launch { clipboard.copyText(worktree.path) } },
                 )
             }
         }

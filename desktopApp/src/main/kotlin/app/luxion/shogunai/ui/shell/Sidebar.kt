@@ -17,12 +17,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ViewList
+import androidx.compose.material.icons.automirrored.filled.ViewSidebar
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.filled.ViewList
-import androidx.compose.material.icons.filled.ViewSidebar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -89,7 +89,7 @@ fun Sidebar(
             horizontalArrangement = if (rail) Arrangement.Center else Arrangement.End,
         ) {
             IconAction(
-                icon = Icons.Default.ViewSidebar,
+                icon = Icons.AutoMirrored.Filled.ViewSidebar,
                 label = if (rail) strings.expandSidebar else strings.collapseSidebar,
                 onClick = onToggle,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -102,11 +102,11 @@ fun Sidebar(
         ) {
             if (rail) {
                 RailViewItem(strings.activeWorktrees, Icons.Default.Bolt, selected = isActiveSelected, onClick = onSelectActive)
-                RailViewItem(strings.allWorktrees, Icons.Default.ViewList, selected = isAllSelected, onClick = onSelectAll)
+                RailViewItem(strings.allWorktrees, Icons.AutoMirrored.Filled.ViewList, selected = isAllSelected, onClick = onSelectAll)
             } else {
                 SectionLabel(strings.viewsTitle)
                 ViewRow(strings.activeWorktrees, Icons.Default.Bolt, activeCount, selected = isActiveSelected, onClick = onSelectActive)
-                ViewRow(strings.allWorktrees, Icons.Default.ViewList, totalWorktreeCount, selected = isAllSelected, onClick = onSelectAll)
+                ViewRow(strings.allWorktrees, Icons.AutoMirrored.Filled.ViewList, totalWorktreeCount, selected = isAllSelected, onClick = onSelectAll)
                 SectionLabel(strings.projectsTitle)
             }
             projects.forEach { project ->

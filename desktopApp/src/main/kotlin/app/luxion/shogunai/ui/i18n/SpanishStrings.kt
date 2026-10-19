@@ -52,10 +52,8 @@ object SpanishStrings : Strings {
     override val aboutRepositoryLink = "Ver en GitHub"
 
     override val projectConfigTitle = "Configuración de proyecto"
-    override val identitySection = "Identidad"
     override val nameLabel = "Nombre"
     override val nameEmptyError = "El nombre no puede estar vacío"
-    override val pathsSection = "Rutas"
     override val baseRepositoryPathLabel = "Ruta del repositorio base"
     override val baseRepositoryPathEmptyError = "La ruta del repositorio no puede estar vacía"
     override val worktreesRootLabel = "Carpeta raíz de worktrees"
@@ -168,7 +166,7 @@ object SpanishStrings : Strings {
         "\"$path\" tiene cambios sin guardar. Se perderán si se elimina el worktree."
     override fun alsoDeleteLocalBranch(branch: String) = "Eliminar también la rama local ($branch)"
     override val forceRemove = "Forzar eliminación"
-    override val detachedHead = "(detached)"
+    override val detachedHead = "(desacoplado)"
     override fun uncommittedChanges(count: Int) = if (count == 1) "1 cambio" else "$count cambios"
     override val upstream = "upstream"
     override fun mergedInto(branch: String) = "mergeada en $branch"
@@ -258,7 +256,6 @@ object SpanishStrings : Strings {
     override fun daemonIdle(since: String) = "ocioso · $since"
     override val daemonStateUnknown = "estado desconocido"
     override val daemonOwnerRemoved = "worktree eliminado"
-    override val daemonOwnerOther = "otro proyecto"
     override val stopDaemon = "Parar"
     override val stopIdleDaemons = "Parar los ociosos"
     override val gradleBuildCacheOff =
@@ -278,7 +275,6 @@ object SpanishStrings : Strings {
 
     override val xcodeDerivedDataTitle = "DerivedData de Xcode"
     override val xcodeDerivedDataUnavailable = "No se pueden inspeccionar los DerivedData en este sistema"
-    override val noDerivedDataFolders = "Aún no hay DerivedData para estos worktrees"
     override fun derivedDataSummary(count: Int, totalSize: String) =
         (if (count == 1) "1 carpeta de DerivedData" else "$count carpetas de DerivedData") + " · $totalSize"
     override fun derivedDataOrphans(count: Int, size: String) =
@@ -299,7 +295,6 @@ object SpanishStrings : Strings {
     override val ownerOutsideProjects = "fuera de los proyectos guardados"
     override val ownerLoading = "buscando propietario"
     override val notOwnedByWorktree = "sin worktree propietario"
-    override val goToWorktree = "Mostrar en Todos los worktrees"
     override val noMachineEmulators = "No hay emuladores de worktrees en estos proyectos"
     override val unownedEmulatorsTitle = "En marcha fuera de cualquier worktree"
     override val noMachineSimulators = "Aún no hay simuladores de ShogunAi"
@@ -328,7 +323,6 @@ object SpanishStrings : Strings {
     override val copied = "Copiado"
     override val close = "Cerrar"
     override val worktreeCreatedWithError = "El worktree se creó, pero falló su comando posterior a la creación."
-    override val copyCommand = "Copiar comando"
     override val copyLaunchCommand = "Copiar comando de lanzamiento"
     override fun worktreeCreated(folder: String) = "Worktree creado: $folder"
     override fun worktreeCreatedCommandsSkipped(folder: String) = "Worktree creado: $folder. Se omitieron sus comandos posteriores a la creación."
@@ -403,7 +397,6 @@ object SpanishStrings : Strings {
     override val paletteViewAllWorktrees = "Todos los worktrees"
     override val paletteViewPreferences = "Preferencias"
     override val paletteCleanUp = "Limpiar"
-    override val paletteCopyLaunchCommandHint = "Copiar comando de lanzamiento"
     override fun paletteNewWorktreeIn(project: String) = "Nuevo worktree en $project"
     override fun paletteSettingsOf(project: String) = "Ajustes de $project"
 }

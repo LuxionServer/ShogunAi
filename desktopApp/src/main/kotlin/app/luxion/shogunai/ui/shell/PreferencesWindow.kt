@@ -10,7 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
+import app.luxion.shogunai.ui.components.rememberAppIconPainter
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -38,7 +38,7 @@ fun PreferencesWindow(appearance: Appearance, bringToFrontRequests: Int, onClose
     Window(
         onCloseRequest = onClose,
         title = appearance.strings.preferencesTitle,
-        icon = painterResource("icons/icon.png"),
+        icon = rememberAppIconPainter(),
         resizable = false,
         state = rememberWindowState(size = PreferencesWindowSize, position = WindowPosition(Alignment.Center)),
     ) {

@@ -16,14 +16,12 @@ dependencies {
     implementation(compose.foundation)
     implementation(compose.material3)
     implementation(compose.ui)
-    implementation(libs.compose.materialIconsCore)
     implementation(libs.compose.materialIconsExtended)
     implementation(libs.kotlinx.coroutinesSwing)
     implementation(libs.kotlinx.coroutinesCore)
     implementation(libs.androidx.lifecycle.viewmodelCompose)
     implementation(libs.androidx.lifecycle.runtimeCompose)
 
-    implementation(libs.compose.uiToolingPreview)
 
     testImplementation(testFixtures(project(":core")))
     testImplementation(libs.kotlin.testJunit)

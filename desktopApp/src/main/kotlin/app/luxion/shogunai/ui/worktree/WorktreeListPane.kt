@@ -35,8 +35,10 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.LocalClipboard
+import app.luxion.shogunai.ui.components.copyText
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.text.style.TextOverflow
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.Worktree
@@ -376,7 +378,8 @@ private fun WorktreeRowFor(
     projectName: String?,
 ) {
     val strings = LocalStrings.current
-    val clipboard = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
     val ref = WorktreeRef(project.id, worktree.path)
     WorktreeRow(
         model = worktreeRowModel(
@@ -396,7 +399,7 @@ private fun WorktreeRowFor(
         projectName = projectName,
         onSelect = { board.select(ref) },
         onCopyLaunchCommand = { holder.copyLaunchCommand(worktree) },
-        onCopyPath = { clipboard.setText(AnnotatedString(worktree.path)) },
+        onCopyPath = { scope.launch { clipboard.copyText(worktree.path) } },
         onOpenInHerdr = { holder.openInHerdr(worktree) },
         onRemove = { holder.requestRemoval(worktree) },
     )
