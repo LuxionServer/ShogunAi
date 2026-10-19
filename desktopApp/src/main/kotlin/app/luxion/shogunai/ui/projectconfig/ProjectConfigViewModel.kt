@@ -19,7 +19,6 @@ import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.ui.shell.LeaveGuard
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import java.io.File
 import java.util.UUID
 
 sealed interface SimulatorSectionState {
@@ -396,11 +395,13 @@ class ProjectConfigViewModel(
 
     suspend fun chooseFolder(folder: String): Result<Unit> =
         inspectRepository(folder).map { inspection ->
-            val repository = File(inspection.topLevel)
+            val topLevel = inspection.topLevel.trimEnd('/', '\\')
+            val repositoryName = topLevel.substringAfterLast('/').substringAfterLast('\\')
+            val repositoryParent = topLevel.dropLast(repositoryName.length).trimEnd('/', '\\')
             baseRepositoryPath = inspection.topLevel
             loadRepository(inspection.topLevel)
-            name = repository.name
-            worktreesRoot = File(repository.parentFile, "${repository.name}-worktrees").path
+            name = repositoryName
+            worktreesRoot = "$repositoryParent/$repositoryName-worktrees"
             detectedMainBranch = inspection.mainBranch
             rejectedFolder = null
             folderChosen = true

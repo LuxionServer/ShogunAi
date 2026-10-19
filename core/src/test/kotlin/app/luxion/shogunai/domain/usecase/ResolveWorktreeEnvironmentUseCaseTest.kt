@@ -515,12 +515,13 @@ class ResolveWorktreeEnvironmentUseCaseTest {
 
     @Test
     fun `sourcing the dotenv file from sh yields the exact value and runs nothing`() {
+        org.junit.Assume.assumeFalse(System.getProperty("os.name").startsWith("Windows"))
         val value = "a`touch /tmp/shogunai-pwned`\$(touch /tmp/shogunai-pwned)\$HOME \"q\" \\"
         val file = java.nio.file.Files.createTempFile("env", ".sh")
         val environment = WorktreeEnvironment(variables = listOf("VALUE" to value))
         file.toFile().writeText(formatEnvironment(environment, EnvironmentFormat.DOTENV))
 
-        val process = ProcessBuilder("sh", "-c", ". \"\$1\" && printf %s \"\$VALUE\"", "sh", file.toString().replace('\\', '/'))
+        val process = ProcessBuilder("sh", "-c", ". \"\$1\" && printf %s \"\$VALUE\"", "sh", file.toString())
             .redirectErrorStream(true)
             .start()
         val output = process.inputStream.readBytes().decodeToString()
