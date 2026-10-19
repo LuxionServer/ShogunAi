@@ -1,7 +1,9 @@
 package app.luxion.shogunai.ui.i18n
 
 import androidx.compose.runtime.staticCompositionLocalOf
+import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.AppLanguage
+import app.luxion.shogunai.domain.model.HerdrAgentState
 import app.luxion.shogunai.domain.model.RepositoryConfigIssue
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
@@ -96,6 +98,9 @@ interface Strings {
     val unsavedChanges: String
     val menuSave: String
     val addProjectTitle: String
+    fun projectSettingsTitle(name: String): String
+    val linkedPattern: String
+    fun postCreationCommandsNote(count: Int): String
     val addProjectIntro: String
     val chooseRepositoryFolder: String
     val dropRepositoryHint: String
@@ -120,6 +125,12 @@ interface Strings {
     val noBranchesAvailable: String
     fun branchAlreadyHasWorktree(branch: String): String
     val selectBranchPlaceholder: String
+    val startFromLabel: String
+    fun startFromMainBranch(ref: String): String
+    fun startFromCurrentBranch(branch: String?): String
+    fun remoteBranchLabel(branch: String): String
+    val fetchFirstLabel: String
+    val createWithoutFetching: String
     val otherBranchesGroup: String
     val worktreesTitle: String
     val viewsTitle: String
@@ -155,6 +166,7 @@ interface Strings {
     val menuActive: String
     val menuAllWorktrees: String
     fun agentsRunning(names: List<String>): String
+    fun agentLabel(name: String, state: HerdrAgentState?): String
     val allProjects: String
     val projectLabel: String
     val filterWorktreesPlaceholder: String
@@ -173,6 +185,7 @@ interface Strings {
     fun uncommittedChanges(count: Int): String
     val upstream: String
     fun mergedInto(branch: String): String
+    val notStarted: String
     val statusUnavailable: String
     val folderMissing: String
     val mainWorktree: String
@@ -189,6 +202,13 @@ interface Strings {
     val statusTitle: String
     val agentsTitle: String
     val environmentTitle: String
+    val provisioningTitle: String
+    val provisioningChecking: String
+    val provisioningUnavailable: String
+    val provisioningUpToDate: String
+    val provisionAction: String
+    val copyAsEnv: String
+    fun provisionDriftFile(path: String, state: ProvisionDriftState): String
     val devicesTitle: String
     val diskTitle: String
     val deleteWorktree: String
@@ -216,6 +236,10 @@ interface Strings {
     val installInitScript: String
     val installInitScriptTitle: String
     fun installInitScriptMessage(path: String): String
+    val uninstallInitScript: String
+    val uninstallInitScriptTitle: String
+    fun uninstallInitScriptMessage(path: String): String
+    val uninstall: String
     val install: String
     val simulatorLabel: String
     val simulatorShutdown: String
@@ -274,6 +298,12 @@ interface Strings {
     val ownerOutsideProjects: String
     val ownerLoading: String
     val notOwnedByWorktree: String
+    val machineColumnDevice: String
+    val machineColumnWorktree: String
+    val machineColumnState: String
+    val automaticAvd: String
+    val simulatorNotCreated: String
+    fun simulatorNotCreatedFor(device: String): String
     val noMachineEmulators: String
     val unownedEmulatorsTitle: String
     val noMachineSimulators: String
@@ -312,6 +342,20 @@ interface Strings {
     val openInHerdr: String
     fun openedInHerdr(name: String): String
     fun focusedInHerdr(name: String): String
+
+    val toolsLabel: String
+    val terminalToolLabel: String
+    val editorToolLabel: String
+    val noTerminalFound: String
+    val noEditorFound: String
+    fun openInTool(name: String): String
+    val openFolder: String
+    val chooseTerminalTitle: String
+    val chooseTerminalMessage: String
+    val projectEditorLabel: String
+    fun defaultEditorOption(name: String?): String
+    fun editorNotFoundOption(name: String): String
+    fun editorOverrideMissing(name: String): String
 
     val repositoryConfigSection: String
     val repositoryConfigSharedNote: String

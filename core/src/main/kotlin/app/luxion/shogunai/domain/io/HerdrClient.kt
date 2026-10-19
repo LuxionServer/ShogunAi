@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.io
 
+import app.luxion.shogunai.domain.model.HerdrAgent
 import app.luxion.shogunai.domain.model.HerdrWorktreeOpening
 
 interface HerdrClient {
@@ -15,4 +16,8 @@ interface HerdrClient {
     suspend fun openWorktreeWorkspaces(repository: String): Map<String, String>
 
     suspend fun closeWorkspace(workspaceId: String)
+
+    suspend fun listAgents(): List<HerdrAgent>
+
+    suspend fun focusAgent(paneId: String)
 }

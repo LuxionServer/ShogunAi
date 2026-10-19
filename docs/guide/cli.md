@@ -8,6 +8,8 @@ shogun new --branch hotfix/login   # worktree for an existing branch
 shogun provision ../other-worktree # copy the declared files into a worktree made by another tool
 shogun status                      # every worktree with its changes, divergence and merged state
 shogun status --json               # the same, as one JSON document for scripts
+shogun remove TASK-123             # remove one worktree and stop its emulator and simulator
+shogun repair                      # re-link the worktrees after the repository moved
 shogun clean --yes                 # remove merged or missing worktrees (without --yes it only lists them)
 eval "$(shogun env)"               # load this worktree's variables from .shogunai.json "env"
 ```
@@ -28,14 +30,15 @@ Output is plain English text; scripts should read `new`'s single line and `statu
 ### `new`
 
 ```text
-shogun new <task-id> [--fix] [--from <ref>] [--worktrees-root <dir>]
-shogun new --branch <branch> [--worktrees-root <dir>]
+shogun new <task-id> [--fix] [--from <ref>] [--fetch] [--worktrees-root <dir>]
+shogun new --branch <branch> [--fetch] [--worktrees-root <dir>]
 ```
 
 Creates a worktree, copies the declared files into it, prepares its [environment](../agents.md#per-worktree-environment) and prints its absolute path, alone on standard output, so `cd "$(shogun new TASK-123)"` works.
 
 - With a task id, the worktree gets a new `feature/<task-id>` branch, or `fix/<task-id>` with `--fix`. The branch starts at the HEAD of the worktree you run the command in, or at `--from <ref>` (a branch, tag or commit; an unknown ref fails before anything is created).
-- With `--branch`, the worktree checks out an existing local branch. `--fix` and `--from` aren't accepted with it.
+- With `--branch`, the worktree checks out an existing branch. `--fix` and `--from` aren't accepted with it. A branch that exists only on `origin`, given as `<name>` or `origin/<name>`, gets a local branch of that name tracking it; a local branch with that name takes precedence.
+- `--fetch` runs `git fetch --prune origin` first, so `--from origin/develop` or a remote branch is current. It never waits for credentials: if the fetch fails, Git's error is printed, nothing is created and the exit code is 1.
 - `--worktrees-root <dir>` sets where the worktree goes. It's required when the repository has no project in the desktop app; relative paths are resolved against the current directory.
 - A task id containing `/` (`team/TASK-1`) keeps the `/` in the branch (`feature/team/TASK-1`) and becomes one folder, `team-TASK-1`.
 - If creating the worktree fails after Git created it or its new branch, both are removed, so retrying with the same task id works. A branch that existed before is never deleted.
@@ -76,9 +79,11 @@ Lists every worktree of the repository, one per line: path, branch (or `(detache
 | `main` | The main checkout. |
 | `origin=shogunai\|claude-code\|herdr\|other` | Where the worktree was created. |
 | `locked` | Held by an agent session. |
+| `agents=claude(blocked),codex` | Agents running in it, with the state Herdr reports (`working`, `blocked`, `done`, `idle`) when it is running. |
 | `changes=N` | Uncommitted changes. |
 | `ahead=N behind=N` | Divergence from its upstream. |
 | `merged` | Merged into the main branch. |
+| `not-started` | The branch never had commits of its own (shown instead of `merged`). |
 | `folder-missing` | The folder was deleted by hand. |
 | `status-unavailable (reason)` | Its status couldn't be read, with Git's reason. |
 
@@ -103,6 +108,7 @@ Prints one compact JSON object on a single line instead of the text lines. Error
       "locked": false,
       "folderMissing": false,
       "origin": null,
+      "agents": [{ "name": "claude", "herdrState": "blocked" }],
       "status": {
         "uncommittedChanges": 0,
         "upstream": { "ahead": 0, "behind": 0 },
@@ -121,6 +127,7 @@ Prints one compact JSON object on a single line instead of the text lines. Error
 | `branch`, `head` | The checked-out branch (`null` when detached) and the commit. |
 | `main`, `locked`, `folderMissing` | The main checkout, held by an agent session, folder deleted by hand. |
 | `origin` | `shogunai`, `claude-code`, `herdr` or `other`; `null` for the main checkout. |
+| `agents` | The agents running in it: `name` and `herdrState` (`working`, `blocked`, `done`, `idle`; `null` when Herdr isn't running or doesn't report one). |
 | `status` | `null` when the folder is missing or its status couldn't be read. |
 | `statusProblem` | Only present when the status couldn't be read: Git's reason. |
 | `status.uncommittedChanges`, `status.merged` | Uncommitted changes; merged into the main branch. |
@@ -128,6 +135,26 @@ Prints one compact JSON object on a single line instead of the text lines. Error
 | `status.lastCommitAt` | Time of the last commit in ISO-8601 UTC, or `null`. |
 
 Every field is always present, with `null` when it doesn't apply. The field names are a contract: later versions only add fields and never rename, remove or change the type of one.
+
+### `remove`
+
+```text
+shogun remove <task id | path | branch> [--force|-f] [--delete-branch]
+```
+
+Removes one linked worktree, the way the desktop app's remove does. The target is, in this order, the path of a worktree, the exact name of its branch, or a task id (the worktree at `<worktrees folder>/<task id>`); no match, or more than one, removes nothing and fails (listing the candidates). The main worktree is never removed.
+
+Without `--force` it refuses a worktree with uncommitted or untracked changes, or one where an agent is running (`shogun: claude is running in <path>; use --force to remove it anyway`), and exits with `1`. With `--force` it removes it anyway. The branch is kept unless you pass `--delete-branch`, which deletes it only when it's merged into the project's main branch (`deleted branch …`, or `kept branch … (not merged into the main branch)`).
+
+After removing it, the command stops what the repository's providers keep for that worktree: its Android emulator (`stopped emulator …`), its iOS simulator (`stopped simulator …`) and the idle Gradle daemons whose last build was in it (`stopped Gradle daemon …`). A resource that can't be stopped is reported on standard error and the exit code is `1`; the worktree is already removed by then. Its Herdr workspace is closed too.
+
+### `repair`
+
+```text
+shogun repair
+```
+
+Re-links the worktrees after the repository or the worktrees folder moved, as the desktop app does when you change a project's folders: the worktrees Git still lists at their old location are looked for under the project's worktrees folder, by their folder name, and re-linked (`repaired <path>`). With nothing to re-link it prints `Nothing to repair.` It needs the repository's project from the desktop app, since that's where the worktrees folder is stored; without it, it exits with `2`.
 
 ### `clean`
 

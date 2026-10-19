@@ -1,0 +1,136 @@
+package app.luxion.shogunai.infrastructure
+
+import app.luxion.shogunai.domain.FakeShellCommandExecutor
+import app.luxion.shogunai.domain.executor.CommandExecutionException
+import app.luxion.shogunai.domain.model.DetectedTools
+import app.luxion.shogunai.domain.model.EditorId
+import app.luxion.shogunai.domain.model.HostOs
+import app.luxion.shogunai.domain.model.TerminalId
+import kotlinx.coroutines.test.runTest
+import java.io.IOException
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class LocalToolDetectorTest {
+
+    private fun detector(
+        os: HostOs,
+        files: Set<String> = emptySet(),
+        directories: Set<String> = emptySet(),
+        bundles: Set<String> = emptySet(),
+        sessions: Set<String> = emptySet(),
+    ): LocalToolDetector {
+        val executor = FakeShellCommandExecutor { command ->
+            when {
+                command.first() == "mdfind" ->
+                    FakeShellCommandExecutor.success(command, if (bundles.any { command[1].contains("'$it'") }) "/Applications/App.app\n" else "")
+                command.first() in sessions -> FakeShellCommandExecutor.success(command, "main: 1 windows\n")
+                else -> FakeShellCommandExecutor.failure(command)
+            }
+        }
+        return LocalToolDetector(
+            executor = executor,
+            os = os,
+            home = "/home/dev",
+            locator = ExecutableLocator(os, "/home/dev", listOf("/usr/bin"), "C:\\Users\\dev\\AppData\\Local") { it in files },
+            isDirectory = { it in directories },
+        )
+    }
+
+    @Test
+    fun `finds macOS terminals and IDEs by bundle identifier`() = runTest {
+        val tools = detector(
+            HostOs.MACOS,
+            bundles = setOf("com.googlecode.iterm2", "com.apple.Terminal", "com.google.android.studio"),
+        ).detect()
+
+        assertEquals(listOf(TerminalId.TERMINAL, TerminalId.ITERM2), tools.terminals)
+        assertEquals(listOf(EditorId.ANDROID_STUDIO), tools.editors)
+    }
+
+    @Test
+    fun `falls back to the application folders when Spotlight doesn't know the bundle`() = runTest {
+        val tools = detector(
+            HostOs.MACOS,
+            directories = setOf("/home/dev/Applications/Visual Studio Code.app", "/System/Applications/Utilities/Terminal.app"),
+        ).detect()
+
+        assertEquals(listOf(TerminalId.TERMINAL), tools.terminals)
+        assertEquals(listOf(EditorId.VS_CODE), tools.editors)
+    }
+
+    @Test
+    fun `finds an IDE through the Toolbox scripts on macOS`() = runTest {
+        val tools = detector(
+            HostOs.MACOS,
+            files = setOf("/home/dev/Library/Application Support/JetBrains/Toolbox/scripts/idea"),
+        ).detect()
+
+        assertEquals(listOf(EditorId.INTELLIJ_IDEA), tools.editors)
+    }
+
+    @Test
+    fun `offers tmux and Zellij only while they have a running session`() = runTest {
+        val files = setOf("/usr/bin/tmux", "/usr/bin/zellij")
+
+        assertEquals(
+            listOf(TerminalId.TMUX),
+            detector(HostOs.LINUX, files, sessions = setOf("tmux")).detect().terminals,
+        )
+        assertEquals(
+            DetectedTools(),
+            detector(HostOs.LINUX, files).detect(),
+        )
+        assertEquals(
+            listOf(TerminalId.TMUX, TerminalId.ZELLIJ),
+            detector(HostOs.MACOS, files, sessions = setOf("tmux", "zellij")).detect().terminals,
+        )
+    }
+
+    @Test
+    fun `finds Linux IDEs on the path and in the Toolbox folder`() = runTest {
+        val tools = detector(
+            HostOs.LINUX,
+            files = setOf("/usr/bin/code", "/home/dev/.local/share/JetBrains/Toolbox/scripts/studio"),
+        ).detect()
+
+        assertEquals(emptyList(), tools.terminals)
+        assertEquals(listOf(EditorId.VS_CODE, EditorId.ANDROID_STUDIO), tools.editors)
+    }
+
+    @Test
+    fun `finds Windows Terminal and the IDE launchers on Windows`() = runTest {
+        val tools = detector(
+            HostOs.WINDOWS,
+            files = setOf(
+                "/usr/bin\\wt.exe",
+                "/usr/bin\\code.cmd",
+                "C:\\Users\\dev\\AppData\\Local\\JetBrains\\Toolbox\\scripts\\idea.cmd",
+            ),
+        ).detect()
+
+        assertEquals(listOf(TerminalId.WINDOWS_TERMINAL), tools.terminals)
+        assertEquals(listOf(EditorId.VS_CODE, EditorId.INTELLIJ_IDEA), tools.editors)
+    }
+
+    @Test
+    fun `macOS terminals aren't offered on other systems`() = runTest {
+        val tools = detector(HostOs.LINUX, bundles = setOf("com.apple.Terminal"), directories = setOf("/Applications/Terminal.app")).detect()
+
+        assertEquals(emptyList(), tools.terminals)
+    }
+
+    @Test
+    fun `a missing command counts as not installed`() = runTest {
+        val executor = FakeShellCommandExecutor { throw CommandExecutionException(it, IOException("not found")) }
+        val detector = LocalToolDetector(
+            executor = executor,
+            os = HostOs.MACOS,
+            home = "/home/dev",
+            locator = ExecutableLocator(HostOs.MACOS, "/home/dev", listOf("/usr/bin"), null) { it == "/usr/bin/tmux" },
+            isDirectory = { false },
+        )
+
+        assertEquals(DetectedTools(), detector.detect())
+    }
+}

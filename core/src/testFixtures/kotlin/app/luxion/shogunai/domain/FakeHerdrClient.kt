@@ -1,6 +1,7 @@
 package app.luxion.shogunai.domain
 
 import app.luxion.shogunai.domain.io.HerdrClient
+import app.luxion.shogunai.domain.model.HerdrAgent
 import app.luxion.shogunai.domain.model.HerdrWorktreeOpening
 
 class FakeHerdrClient(
@@ -10,6 +11,8 @@ class FakeHerdrClient(
     private val openWorkspaces: Map<String, String> = emptyMap(),
     private val listFailure: Throwable? = null,
     private val closeFailures: Map<String, Throwable> = emptyMap(),
+    private val agents: List<HerdrAgent> = emptyList(),
+    private val agentsFailure: Throwable? = null,
 ) : HerdrClient {
 
     data class Split(val paneId: String, val cwd: String, val environment: List<Pair<String, String>>)
@@ -20,6 +23,9 @@ class FakeHerdrClient(
     val closedWorkspaces = mutableListOf<String>()
     var listings = 0
         private set
+    var agentListings = 0
+        private set
+    val focusedAgents = mutableListOf<String>()
     val ran = mutableListOf<Pair<String, String>>()
 
     override suspend fun openWorktree(repository: String, path: String, label: String): HerdrWorktreeOpening {
@@ -52,5 +58,15 @@ class FakeHerdrClient(
     override suspend fun closeWorkspace(workspaceId: String) {
         closeFailures[workspaceId]?.let { throw it }
         closedWorkspaces += workspaceId
+    }
+
+    override suspend fun listAgents(): List<HerdrAgent> {
+        agentListings++
+        agentsFailure?.let { throw it }
+        return agents
+    }
+
+    override suspend fun focusAgent(paneId: String) {
+        focusedAgents += paneId
     }
 }

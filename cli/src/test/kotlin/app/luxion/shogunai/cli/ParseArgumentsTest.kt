@@ -52,6 +52,12 @@ class ParseArgumentsTest {
     }
 
     @Test
+    fun `new accepts fetch with a task id or a branch`() {
+        assertEquals(CliCommand.New(taskId = "TASK-1", fetch = true), command("new", "TASK-1", "--fetch"))
+        assertEquals(CliCommand.New(branch = "feature/x", fetch = true), command("new", "--fetch", "--branch", "feature/x"))
+    }
+
+    @Test
     fun `new with an explicit start point`() {
         assertEquals(CliCommand.New(taskId = "TASK-123", from = "epic/redesign"), command("new", "TASK-123", "--from", "epic/redesign"))
     }
@@ -184,5 +190,25 @@ class ParseArgumentsTest {
     @Test
     fun `unknown command`() {
         assertEquals("unknown command 'frobnicate'", usageError("frobnicate"))
+    }
+
+    @Test
+    fun `remove takes a target with force and delete-branch`() {
+        assertEquals(CliCommand.Remove("TASK-123"), command("remove", "TASK-123"))
+        assertEquals(CliCommand.Remove("TASK-123", force = true, deleteBranch = true), command("remove", "--force", "TASK-123", "--delete-branch"))
+        assertEquals(CliCommand.Remove("TASK-123", force = true), command("remove", "-f", "TASK-123"))
+    }
+
+    @Test
+    fun `remove needs exactly one target and knows its options`() {
+        assertTrue(usageError("remove").contains("needs a task id, path or branch"))
+        assertTrue(usageError("remove", "a", "b").contains("single target"))
+        assertTrue(usageError("remove", "a", "--bogus").contains("unknown option '--bogus'"))
+    }
+
+    @Test
+    fun `repair takes no arguments`() {
+        assertEquals(CliCommand.Repair, command("repair"))
+        assertTrue(usageError("repair", "now").contains("takes no arguments"))
     }
 }

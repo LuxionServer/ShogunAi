@@ -4,10 +4,13 @@ internal object CliHelp {
 
     private val sections: Map<String, String> = linkedMapOf(
         "new" to """
-  new <task-id> [--fix] [--from <ref>]
+  new <task-id> [--fix] [--from <ref>] [--fetch]
                               Create a worktree on a new feature/ (or fix/) branch and print its path;
                               the branch starts at the current worktree's HEAD unless --from is given
-  new --branch <branch>       Create a worktree for an existing local branch and print its path
+  new --branch <branch> [--fetch]
+                              Create a worktree for an existing branch and print its path; a branch that
+                              exists only on origin gets a local branch tracking it
+      --fetch                 Fetch from origin first, so the start point or branch is current
       --worktrees-root <dir>  Folder for the worktree when the repository has no ShogunAi project
 """.trimIndent(),
         "provision" to """
@@ -23,6 +26,15 @@ internal object CliHelp {
 """.trimIndent(),
         "status" to """
   status [--json]             List the repository's worktrees with their state
+""".trimIndent(),
+        "remove" to """
+  remove <task id | path | branch> [--force] [--delete-branch]
+                              Remove one worktree and stop its emulator, simulator and idle Gradle daemons;
+                              refused while it has changes or an agent running unless --force;
+                              --delete-branch also deletes its branch when it is merged into the main branch
+""".trimIndent(),
+        "repair" to """
+  repair                      Re-link the worktrees after the repository or the worktrees folder moved
 """.trimIndent(),
         "clean" to """
   clean [--yes] [--delete-branches] [--stop-gradle-daemons] [--stop-emulators] [--delete-simulators]

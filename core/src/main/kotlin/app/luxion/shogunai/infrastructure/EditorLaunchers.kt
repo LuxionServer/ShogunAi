@@ -1,0 +1,73 @@
+package app.luxion.shogunai.infrastructure
+
+import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.io.EditorLauncher
+import app.luxion.shogunai.domain.io.FolderLauncher
+import app.luxion.shogunai.domain.model.EditorId
+import app.luxion.shogunai.domain.model.HostOs
+import app.luxion.shogunai.domain.model.WorktreeError
+
+class CommandEditorLauncher(
+    override val editor: EditorId,
+    private val executor: ShellCommandExecutor,
+    private val os: HostOs = HostOs.current(),
+    private val locator: ExecutableLocator = ExecutableLocator(os),
+) : EditorLauncher {
+
+    override suspend fun open(path: String): Result<Unit> = runCatching {
+        val failure = if (os == HostOs.MACOS) openBundle(path) else null
+        if (os == HostOs.MACOS && failure == null) return@runCatching
+        try {
+            openExecutable(path)
+        } catch (executableFailure: ToolCommandFailed) {
+            throw WorktreeError.EditorLaunchFailed(editor, failure?.detail ?: executableFailure.detail)
+        }
+    }
+
+    private suspend fun openBundle(path: String): ToolCommandFailed? {
+        var last: ToolCommandFailed? = null
+        for (bundleId in ToolCatalog.editorApps.getValue(editor).bundleIds) {
+            try {
+                executor.runTool(listOf("open", "-b", bundleId, path))
+                return null
+            } catch (failure: ToolCommandFailed) {
+                last = failure
+            }
+        }
+        return last
+    }
+
+    private suspend fun openExecutable(path: String) {
+        val name = ToolCatalog.editorExecutable(editor, os)
+        val executable = locator.find(name, includeToolbox = true)
+            ?: throw ToolCommandFailed(null, "$name wasn't found")
+        val command = if (os == HostOs.LINUX) listOf("sh", "-c", DETACHED, executable, path) else listOf(executable, path)
+        executor.runTool(command)
+    }
+
+    private companion object {
+        const val DETACHED = "nohup \"\$0\" \"\$@\" >/dev/null 2>&1 &"
+    }
+}
+
+class SystemFolderLauncher(
+    private val executor: ShellCommandExecutor,
+    private val os: HostOs = HostOs.current(),
+) : FolderLauncher {
+
+    override suspend fun open(path: String): Result<Unit> = runCatching {
+        try {
+            executor.runTool(command(path))
+        } catch (failure: ToolCommandFailed) {
+            val explorerReportsStatusOne = os == HostOs.WINDOWS && failure.result?.exitCode == 1
+            if (!explorerReportsStatusOne) throw WorktreeError.FolderOpenFailed(path, failure.detail)
+        }
+        Unit
+    }
+
+    private fun command(path: String): List<String> = when (os) {
+        HostOs.MACOS -> listOf("open", path)
+        HostOs.WINDOWS -> listOf("explorer.exe", path)
+        HostOs.LINUX -> listOf("xdg-open", path)
+    }
+}

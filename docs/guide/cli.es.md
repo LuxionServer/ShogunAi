@@ -8,6 +8,8 @@ shogun new --branch hotfix/login   # worktree para una rama existente
 shogun provision ../otro-worktree  # copia los archivos declarados en un worktree creado por otra herramienta
 shogun status                      # todos los worktrees con sus cambios, divergencia y si están mergeados
 shogun status --json               # lo mismo, como un documento JSON para scripts
+shogun remove TASK-123             # elimina un worktree y para su emulador y simulador
+shogun repair                      # re-enlaza los worktrees tras mover el repositorio
 shogun clean --yes                 # elimina los worktrees mergeados o sin carpeta (sin --yes solo los lista)
 eval "$(shogun env)"               # carga las variables de este worktree desde "env" en .shogunai.json
 ```
@@ -28,14 +30,15 @@ La salida es texto plano en inglés; los scripts deben leer la línea única de 
 ### `new`
 
 ```text
-shogun new <task-id> [--fix] [--from <ref>] [--worktrees-root <dir>]
-shogun new --branch <branch> [--worktrees-root <dir>]
+shogun new <task-id> [--fix] [--from <ref>] [--fetch] [--worktrees-root <dir>]
+shogun new --branch <branch> [--fetch] [--worktrees-root <dir>]
 ```
 
 Crea un worktree, copia en él los archivos declarados, prepara su [entorno](../agents.md#entorno-por-worktree) e imprime su ruta absoluta, sola en la salida estándar, así que `cd "$(shogun new TASK-123)"` funciona.
 
 - Con un id de tarea, el worktree recibe una rama nueva `feature/<task-id>`, o `fix/<task-id>` con `--fix`. La rama parte del HEAD del worktree donde ejecutas el comando, o de `--from <ref>` (una rama, tag o commit; una referencia desconocida falla antes de crear nada).
-- Con `--branch`, el worktree hace checkout de una rama local existente. `--fix` y `--from` no se aceptan con ella.
+- Con `--branch`, el worktree hace checkout de una rama existente. `--fix` y `--from` no se aceptan con ella. Una rama que existe solo en `origin`, indicada como `<nombre>` u `origin/<nombre>`, recibe una rama local con ese nombre que la sigue; una rama local con ese nombre tiene prioridad.
+- `--fetch` ejecuta antes `git fetch --prune origin`, para que `--from origin/develop` o una rama remota estén al día. Nunca espera credenciales: si el fetch falla, se imprime el error de Git, no se crea nada y el código de salida es 1.
 - `--worktrees-root <dir>` indica dónde va el worktree. Es obligatorio cuando el repositorio no tiene proyecto en la app de escritorio; las rutas relativas se resuelven desde el directorio actual.
 - Un id de tarea con `/` (`team/TASK-1`) conserva la `/` en la rama (`feature/team/TASK-1`) y se convierte en una sola carpeta, `team-TASK-1`.
 - Si la creación del worktree falla después de que Git haya creado el worktree o su rama nueva, se eliminan ambos, así que volver a intentarlo con el mismo id de tarea funciona. Una rama que ya existía nunca se borra.
@@ -76,9 +79,11 @@ Lista todos los worktrees del repositorio, uno por línea: ruta, rama (o `(detac
 | `main` | El checkout principal. |
 | `origin=shogunai\|claude-code\|herdr\|other` | Dónde se creó el worktree. |
 | `locked` | Lo retiene una sesión de agente. |
+| `agents=claude(blocked),codex` | Agentes en ejecución en él, con el estado que informa Herdr (`working`, `blocked`, `done`, `idle`) cuando está en marcha. |
 | `changes=N` | Cambios sin commitear. |
 | `ahead=N behind=N` | Divergencia respecto a su upstream. |
 | `merged` | Mergeado en la rama principal. |
+| `not-started` | La rama nunca tuvo commits propios (se muestra en lugar de `merged`). |
 | `folder-missing` | Su carpeta se borró a mano. |
 | `status-unavailable (motivo)` | No se pudo leer su estado, con el motivo de Git. |
 
@@ -103,6 +108,7 @@ Imprime un único objeto JSON compacto en una línea, en vez de las líneas de t
       "locked": false,
       "folderMissing": false,
       "origin": null,
+      "agents": [{ "name": "claude", "herdrState": "blocked" }],
       "status": {
         "uncommittedChanges": 0,
         "upstream": { "ahead": 0, "behind": 0 },
@@ -121,6 +127,7 @@ Imprime un único objeto JSON compacto en una línea, en vez de las líneas de t
 | `branch`, `head` | La rama activa (`null` si está detached) y el commit. |
 | `main`, `locked`, `folderMissing` | El checkout principal, retenido por una sesión de agente, carpeta borrada a mano. |
 | `origin` | `shogunai`, `claude-code`, `herdr` u `other`; `null` para el checkout principal. |
+| `agents` | Los agentes en ejecución en él: `name` y `herdrState` (`working`, `blocked`, `done`, `idle`; `null` cuando Herdr no está en marcha o no informa de uno). |
 | `status` | `null` cuando falta la carpeta o no se pudo leer su estado. |
 | `statusProblem` | Solo aparece cuando no se pudo leer el estado: el motivo de Git. |
 | `status.uncommittedChanges`, `status.merged` | Cambios sin commitear; mergeado en la rama principal. |
@@ -128,6 +135,26 @@ Imprime un único objeto JSON compacto en una línea, en vez de las líneas de t
 | `status.lastCommitAt` | Hora del último commit en ISO-8601 UTC, o `null`. |
 
 Todos los campos están siempre presentes, con `null` cuando no aplican. Los nombres de los campos son un contrato: las versiones futuras solo añaden campos y nunca renombran, eliminan ni cambian el tipo de uno.
+
+### `remove`
+
+```text
+shogun remove <id de tarea | ruta | rama> [--force|-f] [--delete-branch]
+```
+
+Elimina un worktree enlazado, igual que "Eliminar" en la app de escritorio. El objetivo es, por este orden, la ruta de un worktree, el nombre exacto de su rama o un id de tarea (el worktree en `<carpeta de worktrees>/<id de tarea>`); si no hay coincidencia, o hay más de una, no elimina nada y falla (listando los candidatos). El worktree principal nunca se elimina.
+
+Sin `--force` rechaza un worktree con cambios sin commitear o sin seguimiento, o donde se ejecuta un agente (`shogun: claude is running in <ruta>; use --force to remove it anyway`), y termina con `1`. Con `--force` lo elimina igualmente. La rama se conserva salvo que pases `--delete-branch`, que la borra solo si está mergeada en la rama principal del proyecto (`deleted branch …`, o `kept branch … (not merged into the main branch)`).
+
+Tras eliminarlo, el comando para lo que los providers del repositorio mantienen para ese worktree: su emulador de Android (`stopped emulator …`), su simulador de iOS (`stopped simulator …`) y los daemons de Gradle ociosos cuya última build fue en él (`stopped Gradle daemon …`). Un recurso que no se puede parar se indica en la salida de error y el código de salida es `1`; para entonces el worktree ya está eliminado. También se cierra su espacio de trabajo de Herdr.
+
+### `repair`
+
+```text
+shogun repair
+```
+
+Vuelve a enlazar los worktrees tras mover el repositorio o la carpeta de worktrees, como hace la app de escritorio al cambiar las carpetas de un proyecto: los worktrees que Git aún lista en su ubicación antigua se buscan en la carpeta de worktrees del proyecto, por el nombre de su carpeta, y se re-enlazan (`repaired <ruta>`). Si no hay nada que re-enlazar imprime `Nothing to repair.` Necesita el proyecto del repositorio en la app de escritorio, porque ahí se guarda la carpeta de worktrees; sin él, termina con `2`.
 
 ### `clean`
 

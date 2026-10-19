@@ -48,9 +48,11 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.unit.dp
+import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.ui.FilePicker
+import app.luxion.shogunai.ui.components.DropdownSelector
 import app.luxion.shogunai.ui.components.IconAction
 import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.Notice
@@ -91,6 +93,7 @@ fun ProjectSettingsView(
     onCanSaveChanged: (Boolean) -> Unit,
     onSaved: (Project, Boolean) -> Unit,
     onCancel: () -> Unit,
+    onDiscard: () -> Unit = onCancel,
 ) {
     DisposableEffect(viewModel) {
         onAttachLeaveGuard(viewModel)
@@ -100,7 +103,7 @@ fun ProjectSettingsView(
         AddProjectFolderStep(viewModel, initialFolder, onCancel)
         return
     }
-    SettingsForm(viewModel, saveRequests, onCanSaveChanged, onSaved, onCancel)
+    SettingsForm(viewModel, saveRequests, onCanSaveChanged, onSaved, onDiscard)
 }
 
 @Composable
@@ -228,7 +231,7 @@ private fun SettingsForm(
                         verticalArrangement = Arrangement.spacedBy(Spacing.lg),
                     ) {
                         Text(
-                            if (viewModel.isNewProject) strings.addProjectTitle else strings.projectConfigTitle,
+                            settingsTitle(strings, viewModel.isNewProject, viewModel.savedName),
                             style = MaterialTheme.typography.headlineSmall,
                         )
                         GeneralSection(viewModel, nameFocus, baseRepositoryFocus, worktreesRootFocus, settleBasePath, sectionTops)
@@ -560,6 +563,40 @@ private fun AgentSection(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        EditorOverrideField(viewModel)
+    }
+}
+
+@Composable
+private fun EditorOverrideField(viewModel: ProjectConfigViewModel) {
+    val strings = LocalStrings.current
+    val tools = viewModel.tools
+    if (tools.detected == null) return
+    val override = viewModel.editorOverride
+    val options = listOf<EditorId?>(null) + (tools.availableEditors + listOfNotNull(override)).distinct()
+    SettingsField(strings.projectEditorLabel) {
+        Text(strings.machineOnlyLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        DropdownSelector(
+            options = options,
+            selected = override,
+            onSelect = { viewModel.editorOverride = it },
+            label = { option ->
+                when {
+                    option == null -> strings.defaultEditorOption(tools.editorShown?.displayName)
+                    option !in tools.availableEditors -> strings.editorNotFoundOption(option.displayName)
+                    else -> option.displayName
+                }
+            },
+            placeholder = strings.projectEditorLabel,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (viewModel.editorOverrideMissing && override != null) {
+            Text(
+                strings.editorOverrideMissing(override.displayName),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
     }
 }
 
@@ -613,16 +650,15 @@ private fun RepositoryProvisioningList(
 ) {
     val strings = LocalStrings.current
     val declared = (state as? RepositoryProvisioningState.Declared)?.provisioning
-    val rows = declared?.copyPatterns.orEmpty().map { it to RepositoryProvisioning.CONFIG_FILE_NAME } +
-        declared?.worktreeIncludePatterns.orEmpty().map { it to RepositoryProvisioning.WORKTREE_INCLUDE_FILE_NAME } +
-        pendingPatterns.map { it to "${RepositoryProvisioning.CONFIG_FILE_NAME} · ${strings.pendingSave}" }
+    val rows = provisioningRows(declared, pendingPatterns, strings)
+    val commandCount = declared?.postCreateCommands?.size ?: 0
 
     when {
         state is RepositoryProvisioningState.Unreadable -> Text(
             strings.repositoryConfigUnreadable(state.path) + (state.detail?.let { "\n$it" } ?: ""),
             color = ShogunTheme.status.danger.color,
         )
-        rows.isEmpty() -> Text(strings.repositoryProvisioningEmpty)
+        rows.isEmpty() && commandCount == 0 -> Text(strings.repositoryProvisioningEmpty)
     }
     rows.forEach { (pattern, source) ->
         Row(
@@ -637,5 +673,12 @@ private fun RepositoryProvisioningList(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+    if (commandCount > 0) {
+        Text(
+            strings.postCreationCommandsNote(commandCount),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }

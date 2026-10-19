@@ -51,6 +51,7 @@ fun WorktreeRow(
     onCopyLaunchCommand: () -> Unit,
     onCopyPath: () -> Unit,
     onOpenInHerdr: () -> Unit,
+    openActions: List<OpenAction> = emptyList(),
     onRemove: () -> Unit,
 ) {
     val strings = LocalStrings.current
@@ -63,6 +64,7 @@ fun WorktreeRow(
                 add(ContextMenuItem(strings.copyLaunchCommand, onClick = onCopyLaunchCommand))
                 if (!prunable) {
                     add(ContextMenuItem(strings.openInHerdr, onClick = onOpenInHerdr))
+                    openActions.forEach { add(ContextMenuItem(it.label, onClick = it.onClick)) }
                 }
                 add(ContextMenuItem(strings.copyPath, onClick = onCopyPath))
                 if (!isMain) {

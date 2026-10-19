@@ -11,7 +11,11 @@ data class WorktreeStatus(
     val upstream: Divergence?,
     val mainBranch: Divergence?,
     val lastCommitAt: Instant?,
+    val neverCommitted: Boolean = false,
 ) {
+    val isNotStarted: Boolean
+        get() = neverCommitted
+
     val isMerged: Boolean
-        get() = mainBranch != null && mainBranch.ahead == 0 && mainBranch.behind > 0
+        get() = !neverCommitted && mainBranch != null && mainBranch.ahead == 0 && mainBranch.behind > 0
 }
