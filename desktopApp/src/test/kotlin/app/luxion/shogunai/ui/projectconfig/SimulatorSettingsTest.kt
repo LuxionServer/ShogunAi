@@ -37,6 +37,8 @@ class SimulatorSettingsTest {
     ) : SimulatorSetup {
         var runtimeReads = 0
         var installs = 0
+        var uninstalls = 0
+        var initScriptInstalled = false
         var runtimes: List<SimulatorRuntime> = emptyList()
 
         override fun isAvailable(repositoryPath: String) = repositoryPath == repository
@@ -49,6 +51,14 @@ class SimulatorSettingsTest {
         override fun installInitScript(): Result<Unit> {
             installs++
             wired = true
+            initScriptInstalled = true
+            return Result.success(Unit)
+        }
+        override fun isInitScriptInstalled() = initScriptInstalled
+        override fun uninstallInitScript(): Result<Unit> {
+            uninstalls++
+            wired = false
+            initScriptInstalled = false
             return Result.success(Unit)
         }
         override val snippet = "tasks.withType<KotlinNativeSimulatorTest>()"
@@ -111,7 +121,27 @@ class SimulatorSettingsTest {
         viewModel.installSimulatorInitScript().getOrThrow()
 
         assertEquals(1, setup.installs)
-        assertEquals(SimulatorSectionState.Available(listOf(ios), testsWired = true, kotlinMultiplatform = true), viewModel.simulatorSection)
+        assertEquals(
+            SimulatorSectionState.Available(listOf(ios), testsWired = true, kotlinMultiplatform = true, initScriptInstalled = true),
+            viewModel.simulatorSection,
+        )
+    }
+
+    @Test
+    fun `uninstalling the init script marks the tests as not wired`() = runTest(dispatcher) {
+        setup.wired = true
+        setup.initScriptInstalled = true
+        val viewModel = viewModel(project(kmp))
+        advanceUntilIdle()
+        assertEquals(
+            SimulatorSectionState.Available(listOf(ios), testsWired = true, kotlinMultiplatform = true, initScriptInstalled = true),
+            viewModel.simulatorSection,
+        )
+
+        viewModel.uninstallSimulatorInitScript().getOrThrow()
+
+        assertEquals(1, setup.uninstalls)
+        assertEquals(SimulatorSectionState.Available(listOf(ios), testsWired = false, kotlinMultiplatform = true), viewModel.simulatorSection)
     }
 
     @Test

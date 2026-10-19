@@ -8,11 +8,13 @@ shogun new --branch hotfix/login   # worktree for an existing branch
 shogun provision ../other-worktree # copy the declared files into a worktree made by another tool
 shogun status                      # every worktree with its changes, divergence and merged state
 shogun status --json               # the same, as one JSON document for scripts
+shogun remove TASK-123             # remove one worktree and stop its emulator and simulator
+shogun repair                      # re-link the worktrees after the repository moved
 shogun clean --yes                 # remove merged or missing worktrees (without --yes it only lists them)
 eval "$(shogun env)"               # load this worktree's variables from .shogunai.json "env"
 ```
 
-Output is plain English text; scripts should read `new`'s single line and `status --json`.
+Output is plain English text; scripts should use `--json`, which every command that reports a result accepts (see [JSON output](#json-output)).
 
 ## Exit codes
 
@@ -134,6 +136,26 @@ Prints one compact JSON object on a single line instead of the text lines. Error
 
 Every field is always present, with `null` when it doesn't apply. The field names are a contract: later versions only add fields and never rename, remove or change the type of one.
 
+### `remove`
+
+```text
+shogun remove <task id | path | branch> [--force|-f] [--delete-branch]
+```
+
+Removes one linked worktree, the way the desktop app's remove does. The target is, in this order, the path of a worktree, the exact name of its branch, or a task id (the worktree at `<worktrees folder>/<task id>`); no match, or more than one, removes nothing and fails (listing the candidates). The main worktree is never removed.
+
+Without `--force` it refuses a worktree with uncommitted or untracked changes, or one where an agent is running (`shogun: claude is running in <path>; use --force to remove it anyway`), and exits with `1`. With `--force` it removes it anyway. The branch is kept unless you pass `--delete-branch`, which deletes it only when it's merged into the project's main branch (`deleted branch …`, or `kept branch … (not merged into the main branch)`).
+
+After removing it, the command stops what the repository's providers keep for that worktree: its Android emulator (`stopped emulator …`), its iOS simulator (`stopped simulator …`) and the idle Gradle daemons whose last build was in it (`stopped Gradle daemon …`). A resource that can't be stopped is reported on standard error and the exit code is `1`; the worktree is already removed by then. Its Herdr workspace is closed too.
+
+### `repair`
+
+```text
+shogun repair
+```
+
+Re-links the worktrees after the repository or the worktrees folder moved, as the desktop app does when you change a project's folders: the worktrees Git still lists at their old location are looked for under the project's worktrees folder, by their folder name, and re-linked (`repaired <path>`). With nothing to re-link it prints `Nothing to repair.` It needs the repository's project from the desktop app, since that's where the worktrees folder is stored; without it, it exits with `2`.
+
 ### `clean`
 
 ```text
@@ -207,6 +229,39 @@ shogun xcode clean
 ```
 
 `xcode` lists the DerivedData folders of the repository's worktrees with their size, the orphaned folders on the machine (`orphans: N (size)`) and, when compilation caching is declared, the cache size. `xcode clean` deletes the orphaned folders (`deleted <path>`, `freed <size>`, or `Nothing to delete.`). Without the Xcode provider, or off macOS, it says the provider isn't active and exits with `0`.
+
+## JSON output
+
+Besides `status --json` above, every command that reports a result accepts `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `clean`, `gradle`, `gradle stop`, `xcode`, `xcode clean`, `emulator` and `simulator` (not `simulator gradle-init`, `env`, `hook`, `help` or `--version`; on those it is an unknown option and exits with `2`). The option can go anywhere after the command.
+
+The rules are the same for all of them:
+
+- One compact JSON object on a single line on standard output, instead of the text, with the same exit code as the text output.
+- An error before the result exists is printed as text on standard error, with nothing on standard output.
+- It never asks a question. Post-creation commands that aren't approved on this machine are skipped and listed (`shogun trust` approves them), and `trust` only reports unless `--yes` is given.
+- Every documented field is always present, `null` when it doesn't apply, lists empty rather than missing, and enumerations in lowercase. Paths are absolute. Later versions only add fields, never rename, remove or change the type of one.
+
+| Command | Object |
+|---|---|
+| `new` | `path`, `branch`, `created` (always `true`), `skippedPostCreateCommands` (a list of argv lists) and `postCreateFailure`: `null`, or `{ command, exitCode, stderr }` when a post-creation command failed. In that case the object is still printed, since the worktree exists, and the exit code is `1`. |
+| `provision` | `path`, `copied`, `linked` and `copiedInsteadOfLinking` (file paths), `skippedPostCreateCommands` and `postCreateFailure`, as in `new`. When a command failed, the three file lists are empty. |
+| `provision --check` | `path` and `drift`: a list of `{ path, state }` with `state` `missing`, `differs` or `not-linked`. The exit code is `3` when `drift` isn't empty. |
+| `trust` | `repository`, `commands` (argv lists), `approved` and `changed` (this run approved or revoked it). A repository without post-creation commands is `approved: true` with no commands. `--revoke` reports `approved: false` when there were commands. |
+| `remove` | `path`, `branch` (the worktree's, or `null` if detached), `branchDeleted` (the name, or `null` when it was kept or `--delete-branch` wasn't given), `providers` (`emulatorsStopped` serials, `simulatorsStopped` udids and `gradleDaemonsStopped` pids) and `failures` (messages of what couldn't be stopped, exit code `1`). |
+| `repair` | `repaired`: the re-linked worktree paths. |
+| `clean` | `dryRun`; `candidates`: `{ path, branch, reason }` with `reason` `merged` or `folder-missing`; `keptForAgents`: `{ path, agents }`; `skipped`: `{ path, reason }` (status unavailable); `removed`; `deletedBranches`; `failures`: `{ path, message }`; and `providers`: `gradleDaemonsStopped`, `emulatorsStopped`, `simulatorsDeleted` and `derivedDataDeleted`. Without `--yes` (`dryRun: true`) `removed`, `deletedBranches` and the `providers` lists are empty. |
+| `gradle` | `daemons`: `{ pid, kind, version, memoryBytes, state, idleSince, worktree }` with `kind` `gradle` or `kotlin`, `state` `busy`, `idle`, `unknown` or `untracked`, `idleSince` in ISO-8601 UTC (only when idle) and `worktree` a path, `removed`, `other-project` or `null` outside a repository; and `totalMemoryBytes`. |
+| `gradle stop` | `stopped` (pids), `kept`: `{ pid, kind, reason }` with `reason` `busy`, `state-unknown` or `build-running`, `notDaemons` (pids) and `failures`: `{ pid, message }`. The exit code is `1` when either of the last two isn't empty. |
+| `xcode` | `active` (`false` when the provider isn't active, with the rest empty), `folders`: `{ path, sizeBytes, worktree }`, `orphans`: `{ path, sizeBytes }`, `unavailableVolumeFolders` (a count) and `compilationCacheBytes` (`null` unless declared). |
+| `xcode clean` | `active`, `deleted` (paths), `freedBytes` and `failures`: `{ path, message }`. |
+| `emulator start\|stop\|status` | `worktree`, `serial` and `state` (`running`, `booting` or `stopped`). `serial` and `state` are `null` when the worktree has no emulator port reserved yet. |
+| `simulator start\|stop\|status` | `worktree`, `udid`, `name` and `state` (`shutdown`, `booting` or `booted`), `null` when the worktree has no simulator yet. The KMP wiring hint isn't part of it. |
+
+```bash
+shogun clean --json | jq -r '.candidates[].path'
+shogun emulator status --json | jq -r '.serial'
+shogun provision --check --json | jq -e '.drift | length == 0'
+```
 
 ## Agent hooks
 

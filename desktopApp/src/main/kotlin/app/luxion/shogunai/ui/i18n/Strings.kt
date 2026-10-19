@@ -1,6 +1,7 @@
 package app.luxion.shogunai.ui.i18n
 
 import androidx.compose.runtime.staticCompositionLocalOf
+import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.model.HerdrAgentState
 import app.luxion.shogunai.domain.model.RepositoryConfigIssue
@@ -201,6 +202,13 @@ interface Strings {
     val statusTitle: String
     val agentsTitle: String
     val environmentTitle: String
+    val provisioningTitle: String
+    val provisioningChecking: String
+    val provisioningUnavailable: String
+    val provisioningUpToDate: String
+    val provisionAction: String
+    val copyAsEnv: String
+    fun provisionDriftFile(path: String, state: ProvisionDriftState): String
     val devicesTitle: String
     val diskTitle: String
     val deleteWorktree: String
@@ -228,6 +236,10 @@ interface Strings {
     val installInitScript: String
     val installInitScriptTitle: String
     fun installInitScriptMessage(path: String): String
+    val uninstallInitScript: String
+    val uninstallInitScriptTitle: String
+    fun uninstallInitScriptMessage(path: String): String
+    val uninstall: String
     val install: String
     val simulatorLabel: String
     val simulatorShutdown: String
@@ -330,6 +342,20 @@ interface Strings {
     val openInHerdr: String
     fun openedInHerdr(name: String): String
     fun focusedInHerdr(name: String): String
+
+    val toolsLabel: String
+    val terminalToolLabel: String
+    val editorToolLabel: String
+    val noTerminalFound: String
+    val noEditorFound: String
+    fun openInTool(name: String): String
+    val openFolder: String
+    val chooseTerminalTitle: String
+    val chooseTerminalMessage: String
+    val projectEditorLabel: String
+    fun defaultEditorOption(name: String?): String
+    fun editorNotFoundOption(name: String): String
+    fun editorOverrideMissing(name: String): String
 
     val repositoryConfigSection: String
     val repositoryConfigSharedNote: String

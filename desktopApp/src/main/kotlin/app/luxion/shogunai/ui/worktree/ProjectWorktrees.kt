@@ -13,7 +13,11 @@ import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.MainBranch
+import app.luxion.shogunai.domain.model.ProvisionDrift
+import app.luxion.shogunai.domain.model.WorktreeEnvironment
 import app.luxion.shogunai.domain.model.RunningAgent
+import app.luxion.shogunai.domain.model.TerminalId
+import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.SimulatorDevice
 import app.luxion.shogunai.domain.model.WorktreeEmulator
@@ -22,6 +26,7 @@ import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeStatus
 import app.luxion.shogunai.domain.model.withoutLocalTwins
 import app.luxion.shogunai.ui.machine.MachineResource
+import app.luxion.shogunai.ui.shell.ToolsPreferences
 import app.luxion.shogunai.domain.usecase.CleanupFailure
 import app.luxion.shogunai.domain.usecase.CleanupReport
 import app.luxion.shogunai.domain.usecase.CleanupSelection
@@ -96,6 +101,12 @@ class ProjectWorktrees(
         private set
     var ports by mutableStateOf<Map<String, Map<String, Int>>>(emptyMap())
         private set
+    var environments by mutableStateOf<Map<String, WorktreeEnvironment>>(emptyMap())
+        private set
+    var provisioning by mutableStateOf<Map<String, ProvisioningState>>(emptyMap())
+        private set
+    var provisioningInProgress by mutableStateOf<Set<String>>(emptySet())
+        private set
     var herdrWorktreesRoot by mutableStateOf<String?>(null)
         private set
     var openingInHerdr by mutableStateOf<Set<String>>(emptySet())
@@ -103,6 +114,8 @@ class ProjectWorktrees(
     var openInHerdrPaths by mutableStateOf<Set<String>>(emptySet())
         private set
     var herdrCloseFailures by mutableStateOf<List<CleanupFailure>>(emptyList())
+        private set
+    var terminalChoiceFor by mutableStateOf<Worktree?>(null)
         private set
     val totalSize: Long
         get() = sizes.values.sum()
@@ -211,6 +224,42 @@ class ProjectWorktrees(
                 useCases.list()
             }
             applyListResult(generation, result, remeasureSizes)
+        }
+    }
+
+    fun loadDetail(worktree: Worktree) {
+        if (worktree.isPrunable) return
+        scope.launch {
+            useCases.readEnvironment(worktree).onSuccess { environments = environments + (worktree.path to it) }
+        }
+        if (worktree.isMain) return
+        provisioning = provisioning + (worktree.path to ProvisioningState.Checking)
+        scope.launch { checkProvisioning(worktree) }
+    }
+
+    private suspend fun checkProvisioning(worktree: Worktree) {
+        val state = useCases.provisioning.check(worktree.path).fold(
+            onSuccess = { ProvisioningState.Checked(it) },
+            onFailure = { ProvisioningState.Unavailable },
+        )
+        provisioning = provisioning + (worktree.path to state)
+    }
+
+    fun provision(worktree: Worktree) {
+        if (worktree.path in provisioningInProgress) return
+        provisioningInProgress = provisioningInProgress + worktree.path
+        scope.launch {
+            try {
+                useCases.provisioning.provision(worktree.path)
+                    .onSuccess { clearActionError(worktree.path) }
+                    .onFailure { recordActionError(worktree.path, it) { provision(worktree) } }
+                checkProvisioning(worktree)
+                useCases.invalidateEnvironments()
+                useCases.readEnvironment(worktree).onSuccess { environments = environments + (worktree.path to it) }
+                loadPorts(listGeneration, worktrees)
+            } finally {
+                provisioningInProgress = provisioningInProgress - worktree.path
+            }
         }
     }
 
@@ -541,8 +590,10 @@ class ProjectWorktrees(
         scope.launch {
             isRemoving = true
             try {
+                val resources = useCases.releaseResources.plan(worktree, worktrees)
                 useCases.remove(worktree.path, branchToDelete, force)
                     .onSuccess { removal ->
+                        launch { useCases.releaseResources.release(resources) }
                         removal.herdrFailure?.let { herdrCloseFailures = listOf(CleanupFailure(worktree.path, it)) }
                         worktrees = worktrees.filterNot { it.path == worktree.path }
                         statuses = statuses - worktree.path
@@ -625,8 +676,70 @@ class ProjectWorktrees(
         }
     }
 
+    val tools: ToolsPreferences get() = useCases.tools.preferences
+
+    fun openActions(worktree: Worktree, strings: Strings): List<OpenAction> {
+        if (worktree.isPrunable) return emptyList()
+        return listOfNotNull(
+            tools.terminalShown?.let {
+                val name = tools.terminalInUse?.displayName ?: strings.terminalToolLabel.lowercase()
+                OpenAction(OpenKind.TERMINAL, strings.openInTool(name)) { openInTerminal(worktree) }
+            },
+            tools.editorFor(useCases.tools.editorOverride)?.let {
+                OpenAction(OpenKind.EDITOR, strings.openInTool(it.displayName)) { openInEditor(worktree) }
+            },
+            OpenAction(OpenKind.FOLDER, strings.openFolder) { openFolder(worktree) },
+        )
+    }
+
+    fun open(worktree: Worktree, kind: OpenKind) {
+        when (kind) {
+            OpenKind.TERMINAL -> openInTerminal(worktree)
+            OpenKind.EDITOR -> openInEditor(worktree)
+            OpenKind.FOLDER -> openFolder(worktree)
+        }
+    }
+
+    fun openInTerminal(worktree: Worktree) {
+        val terminal = tools.terminalInUse
+        if (terminal == null) {
+            if (tools.availableTerminals.isNotEmpty()) terminalChoiceFor = worktree
+            return
+        }
+        launchTool(worktree) { useCases.tools.openInTerminal(worktree.path, terminal) }
+    }
+
+    fun chooseTerminal(terminal: TerminalId) {
+        val worktree = terminalChoiceFor
+        tools.chooseTerminal(terminal)
+        terminalChoiceFor = null
+        if (worktree != null) openInTerminal(worktree)
+    }
+
+    fun dismissTerminalChoice() {
+        terminalChoiceFor = null
+    }
+
+    fun openInEditor(worktree: Worktree) {
+        val editor = tools.editorFor(useCases.tools.editorOverride) ?: return
+        launchTool(worktree) { useCases.tools.openInEditor(worktree.path, editor) }
+    }
+
+    fun openFolder(worktree: Worktree) {
+        launchTool(worktree) { useCases.tools.openFolder(worktree.path) }
+    }
+
+    private fun launchTool(worktree: Worktree, launch: suspend () -> Result<Unit>) {
+        scope.launch {
+            launch()
+                .onSuccess { clearActionError(worktree.path) }
+                .onFailure { recordActionError(worktree.path, it) }
+        }
+    }
+
     private fun List<RunningAgent>.agentPaneToFocus(): String? =
         (firstOrNull { it.waitsForUser && it.herdrPaneId != null } ?: firstOrNull { it.herdrPaneId != null })?.herdrPaneId
+
 
     fun copyLastCreatedLaunchCommand() {
         lastCreatedWorktree?.let(::copyLaunchCommand)
@@ -780,6 +893,12 @@ private const val COPIED_FEEDBACK_DURATION_MS = 2000L
 private const val MAX_PARALLEL_STATUS_READS = 4
 
 enum class CreateMode { NEW_BRANCH, EXISTING_BRANCH }
+
+sealed interface ProvisioningState {
+    data object Checking : ProvisioningState
+    data object Unavailable : ProvisioningState
+    data class Checked(val drift: List<ProvisionDrift>) : ProvisioningState
+}
 
 enum class FingerprintCheck { RELOADED, UNCHANGED, UNREADABLE }
 

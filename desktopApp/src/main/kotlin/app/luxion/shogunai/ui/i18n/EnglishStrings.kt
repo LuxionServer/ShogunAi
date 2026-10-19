@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.HerdrAgentState
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
@@ -213,6 +214,17 @@ object EnglishStrings : Strings {
     override val copyPath = "Copy path"
     override val statusTitle = "Status"
     override val agentsTitle = "Agents"
+    override val provisioningTitle = "Provisioned files"
+    override val provisioningChecking = "Checking…"
+    override val provisioningUnavailable = "Couldn't check the files"
+    override val provisioningUpToDate = "Files are up to date"
+    override val provisionAction = "Provision"
+    override val copyAsEnv = "Copy as .env"
+    override fun provisionDriftFile(path: String, state: ProvisionDriftState) = when (state) {
+        ProvisionDriftState.MISSING -> "$path · missing"
+        ProvisionDriftState.DIFFERS -> "$path · differs"
+        ProvisionDriftState.NOT_LINKED -> "$path · not linked"
+    }
     override val environmentTitle = "Environment"
     override val devicesTitle = "Devices"
     override val diskTitle = "Disk"
@@ -246,6 +258,12 @@ object EnglishStrings : Strings {
     override fun installInitScriptMessage(path: String) =
         "ShogunAi will write the Gradle init script $path, which makes the iOS simulator tests of every Gradle " +
             "project on this machine run on IOS_SIMULATOR_UDID when it's set. Remove it with 'shogun simulator gradle-init uninstall'."
+    override val uninstallInitScript = "Uninstall the init script"
+    override val uninstallInitScriptTitle = "Uninstall the Gradle init script?"
+    override fun uninstallInitScriptMessage(path: String) =
+        "ShogunAi will delete $path. KMP iOS simulator tests of Gradle projects on this machine will stop using the " +
+            "worktree's simulator, unless the module's build.gradle.kts does it."
+    override val uninstall = "Uninstall"
     override val install = "Install"
     override val simulatorLabel = "iOS simulator"
     override val simulatorShutdown = "shut down"
@@ -374,6 +392,20 @@ object EnglishStrings : Strings {
     override val openInHerdr = "Open in Herdr"
     override fun openedInHerdr(name: String) = "Opened \"$name\" in Herdr with its agent"
     override fun focusedInHerdr(name: String) = "\"$name\" was already open in Herdr; switched to its workspace"
+    override val toolsLabel = "Tools"
+    override val terminalToolLabel = "Terminal"
+    override val editorToolLabel = "IDE"
+    override val noTerminalFound = "No supported terminal found"
+    override val noEditorFound = "No supported IDE found"
+    override fun openInTool(name: String) = "Open in $name"
+    override val openFolder = "Open folder"
+    override val chooseTerminalTitle = "Choose a terminal"
+    override val chooseTerminalMessage = "Worktrees will open in the terminal you choose. You can change it later in Preferences."
+    override val projectEditorLabel = "IDE on this machine"
+    override fun defaultEditorOption(name: String?) = if (name == null) "Default" else "Default ($name)"
+    override fun editorNotFoundOption(name: String) = "$name (not found)"
+    override fun editorOverrideMissing(name: String) =
+        "$name wasn't found on this machine, so this project's worktrees open in the default IDE."
 
 
     override val repositoryConfigSection = "Repository configuration"

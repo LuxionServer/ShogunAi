@@ -183,6 +183,22 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "The environment file \"${error.path}\" resolves outside the worktree, so it wasn't written.",
         "Choose an environment file whose folders are real folders inside the worktree.",
     )
+    is WorktreeError.WorktreeTargetNotFound -> ErrorTexts(
+        "No worktree matches \"${error.target}\".",
+        "Check the task id, path or branch.",
+    )
+    is WorktreeError.AmbiguousWorktreeTarget -> ErrorTexts(
+        "\"${error.target}\" matches more than one worktree.",
+        "Use the path of the one you mean: ${error.candidates.joinToString()}.",
+    )
+    is WorktreeError.CannotRemoveMainWorktree -> ErrorTexts(
+        "${error.path} is the main worktree.",
+        "The main worktree can't be removed.",
+    )
+    is WorktreeError.AgentRunningInWorktree -> ErrorTexts(
+        "${error.agents.joinToString()} is running in ${error.path}.",
+        "Stop it first, or remove the worktree forcing it.",
+    )
     is WorktreeError.InvalidRef -> ErrorTexts(
         "\"${error.ref}\" isn't a valid branch or start point.",
         "Branch names and start points can't start with \"-\".",
@@ -197,6 +213,26 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     )
     is WorktreeError.HerdrCommandFailed -> ErrorTexts(
         "Herdr couldn't open the worktree.",
+        "Check the technical details.",
+    )
+    is WorktreeError.TerminalLaunchFailed -> ErrorTexts(
+        "${error.terminal.displayName} couldn't open the worktree.",
+        "Check the technical details.",
+    )
+    is WorktreeError.TerminalAutomationRefused -> ErrorTexts(
+        "macOS didn't allow ShogunAi to control ${error.terminal.displayName}.",
+        "Allow it in System Settings > Privacy & Security > Automation, then try again.",
+    )
+    is WorktreeError.TerminalUnsupported -> ErrorTexts(
+        "${error.terminal.displayName} can't be used: ${error.reason}.",
+        "Choose another terminal in Preferences.",
+    )
+    is WorktreeError.EditorLaunchFailed -> ErrorTexts(
+        "${error.editor.displayName} couldn't open the worktree.",
+        "Check the technical details.",
+    )
+    is WorktreeError.FolderOpenFailed -> ErrorTexts(
+        "Couldn't show \"${error.path}\".",
         "Check the technical details.",
     )
     is WorktreeError.GitCommandFailed -> englishGitTexts(GitFailureCause.Unknown)

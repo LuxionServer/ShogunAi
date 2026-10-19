@@ -1,7 +1,9 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.model.AppLanguage
+import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.Grouping
+import app.luxion.shogunai.domain.model.TerminalId
 import app.luxion.shogunai.domain.model.ThemeMode
 import app.luxion.shogunai.domain.model.WindowBounds
 import kotlinx.serialization.SerializationException
@@ -84,6 +86,8 @@ class JsonSettingsFile(
         val lastCreateProject: String? = null,
         val recentPaletteItems: List<String> = emptyList(),
         val grouping: GroupingSettings = GroupingSettings(),
+        val terminal: TerminalId? = null,
+        val editor: EditorId? = null,
     )
 
     @Serializable

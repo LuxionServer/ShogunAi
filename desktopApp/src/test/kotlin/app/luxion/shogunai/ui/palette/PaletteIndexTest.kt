@@ -6,6 +6,8 @@ import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.ui.i18n.EnglishStrings
 import app.luxion.shogunai.ui.machine.MachineResource
 import app.luxion.shogunai.ui.shell.ShellDestination
+import app.luxion.shogunai.ui.worktree.OpenAction
+import app.luxion.shogunai.ui.worktree.OpenKind
 import app.luxion.shogunai.ui.worktree.PaletteWorktree
 import app.luxion.shogunai.ui.worktree.WorktreeRef
 import kotlin.test.Test
@@ -30,6 +32,22 @@ class PaletteIndexTest {
         machine: List<MachineResource> = listOf(MachineResource.GRADLE_DAEMONS),
         canCleanUp: Boolean = true,
     ) = buildPaletteIndex(projects, worktrees, machine, canCleanUp, EnglishStrings) { key, shift -> "${if (shift) "S" else ""}$key" }
+
+    @Test
+    fun `the selected worktree's open actions are listed and run on the selection`() {
+        val actions = listOf(
+            OpenAction(OpenKind.TERMINAL, "Open in iTerm2") {},
+            OpenAction(OpenKind.FOLDER, "Open folder") {},
+        )
+
+        val items = buildPaletteIndex(listOf(api), emptyList(), emptyList(), false, EnglishStrings, actions) { key, _ -> key }
+
+        assertEquals(
+            listOf(PaletteAction.OpenSelected(OpenKind.TERMINAL), PaletteAction.OpenSelected(OpenKind.FOLDER)),
+            items.filter { it.title.startsWith("Open") }.map { it.primary },
+        )
+        assertTrue(index().none { it.primary is PaletteAction.OpenSelected })
+    }
 
     @Test
     fun `every kind of item is present`() {

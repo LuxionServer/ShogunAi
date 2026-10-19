@@ -118,8 +118,8 @@ class ParseArgumentsTest {
 
     @Test
     fun `xcode commands`() {
-        assertEquals(CliCommand.Xcode, command("xcode"))
-        assertEquals(CliCommand.XcodeClean, command("xcode", "clean"))
+        assertEquals(CliCommand.Xcode(), command("xcode"))
+        assertEquals(CliCommand.XcodeClean(), command("xcode", "clean"))
         assertEquals("unknown subcommand 'build' for 'xcode', expected clean", usageError("xcode", "build"))
         assertEquals("'xcode clean' takes no arguments, got 'extra'", usageError("xcode", "clean", "extra"))
     }
@@ -168,7 +168,7 @@ class ParseArgumentsTest {
 
     @Test
     fun `gradle commands`() {
-        assertEquals(CliCommand.Gradle, command("gradle"))
+        assertEquals(CliCommand.Gradle(), command("gradle"))
         assertEquals(CliCommand.GradleStop(), command("gradle", "stop"))
         assertEquals(CliCommand.GradleStop(listOf(4242, 4243)), command("gradle", "stop", "4242", "4243"))
         assertEquals("'gradle stop' takes process ids, got 'all'", usageError("gradle", "stop", "all"))
@@ -190,5 +190,52 @@ class ParseArgumentsTest {
     @Test
     fun `unknown command`() {
         assertEquals("unknown command 'frobnicate'", usageError("frobnicate"))
+    }
+
+    @Test
+    fun `remove takes a target with force and delete-branch`() {
+        assertEquals(CliCommand.Remove("TASK-123"), command("remove", "TASK-123"))
+        assertEquals(CliCommand.Remove("TASK-123", force = true, deleteBranch = true), command("remove", "--force", "TASK-123", "--delete-branch"))
+        assertEquals(CliCommand.Remove("TASK-123", force = true), command("remove", "-f", "TASK-123"))
+    }
+
+    @Test
+    fun `remove needs exactly one target and knows its options`() {
+        assertTrue(usageError("remove").contains("needs a task id, path or branch"))
+        assertTrue(usageError("remove", "a", "b").contains("single target"))
+        assertTrue(usageError("remove", "a", "--bogus").contains("unknown option '--bogus'"))
+    }
+
+    @Test
+    fun `repair takes no arguments`() {
+        assertEquals(CliCommand.Repair(), command("repair"))
+        assertTrue(usageError("repair", "now").contains("takes no arguments"))
+    }
+
+    @Test
+    fun `json is accepted anywhere after the command`() {
+        assertEquals(CliCommand.New(taskId = "TASK-1", json = true), command("new", "--json", "TASK-1"))
+        assertEquals(CliCommand.New(taskId = "TASK-1", json = true), command("new", "TASK-1", "--json"))
+        assertEquals(CliCommand.Provision(check = true, json = true), command("provision", "--json", "--check"))
+        assertEquals(CliCommand.Trust(yes = true, json = true), command("trust", "--yes", "--json"))
+        assertEquals(CliCommand.Remove("TASK-1", json = true), command("remove", "TASK-1", "--json"))
+        assertEquals(CliCommand.Repair(json = true), command("repair", "--json"))
+        assertEquals(CliCommand.Clean(confirmed = true, json = true), command("clean", "--json", "--yes"))
+        assertEquals(CliCommand.Gradle(json = true), command("gradle", "--json"))
+        assertEquals(CliCommand.GradleStop(listOf(5L), json = true), command("gradle", "stop", "5", "--json"))
+        assertEquals(CliCommand.Xcode(json = true), command("xcode", "--json"))
+        assertEquals(CliCommand.XcodeClean(json = true), command("xcode", "clean", "--json"))
+        assertEquals(CliCommand.Emulator(EmulatorAction.STATUS, json = true), command("emulator", "status", "--json"))
+        assertEquals(CliCommand.Simulator(SimulatorAction.STOP, json = true), command("simulator", "stop", "--json"))
+    }
+
+    @Test
+    fun `json is an unknown option on commands without JSON output`() {
+        assertEquals(
+            ParsedArguments.UsageError("unknown option '--json' for 'hook session-start'"),
+            parseArguments(listOf("hook", "session-start", "--json")),
+        )
+        assertTrue(parseArguments(listOf("simulator", "gradle-init", "install", "--json")) is ParsedArguments.UsageError)
+        assertTrue(parseArguments(listOf("version", "--json")) is ParsedArguments.UsageError)
     }
 }
