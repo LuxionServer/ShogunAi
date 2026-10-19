@@ -2,6 +2,7 @@ package app.luxion.shogunai.ui.worktree
 
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.EmulatorState
+import app.luxion.shogunai.domain.model.HerdrAgentState
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.Worktree
@@ -68,6 +69,30 @@ class WorktreeRowModelTest {
 
         assertEquals(RowIndicator.AGENT_RUNNING, model.indicator)
         assertEquals(listOf(RowChipKind.AGENT, RowChipKind.CHANGES), chipsOf(model))
+    }
+
+    @Test
+    fun `the agent chip shows the state Herdr reports with its own status`() {
+        val expected = mapOf(
+            HerdrAgentState.WORKING to ("claude · working" to Status.INFO),
+            HerdrAgentState.BLOCKED to ("claude · blocked" to Status.WARNING),
+            HerdrAgentState.DONE to ("claude · done" to Status.SUCCESS),
+            HerdrAgentState.IDLE to ("claude · idle" to Status.NEUTRAL),
+        )
+
+        expected.forEach { (state, label) ->
+            val chip = model(agents = listOf(RunningAgent("claude", state))).chips.single { it.kind == RowChipKind.AGENT }
+
+            assertEquals(label, chip.label to chip.status)
+        }
+    }
+
+    @Test
+    fun `an agent without a state shows only its name`() {
+        val chip = model(agents = listOf(RunningAgent("claude"))).chips.single { it.kind == RowChipKind.AGENT }
+
+        assertEquals("claude", chip.label)
+        assertEquals(Status.INFO, chip.status)
     }
 
     @Test

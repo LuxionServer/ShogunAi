@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.HerdrAgentState
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
 object SpanishStrings : Strings {
@@ -137,8 +138,8 @@ object SpanishStrings : Strings {
     override val groupOther = "Otros"
     override val groupAgentWorkingHint = "agente en marcha"
     override val groupAgentWorkingCriterion = "Hay un agente de IA en marcha en el worktree."
-    override val groupNeedsYouHint = "sin commit o sin subir"
-    override val groupNeedsYouCriterion = "Cambios sin commit, o commits sin subir a su upstream (o a la rama principal si no tiene)."
+    override val groupNeedsYouHint = "agente esperando, sin commit o sin subir"
+    override val groupNeedsYouCriterion = "Un agente bloqueado o terminado en Herdr, cambios sin commit, o commits sin subir a su upstream (o a la rama principal si no tiene)."
     override val groupInProgressHint = "subido, sin fusionar"
     override val groupInProgressCriterion = "Limpio, subido, sin fusionar y con algún commit en los últimos 14 días."
     override val groupMergedHint = "ya en la rama principal"
@@ -157,6 +158,13 @@ object SpanishStrings : Strings {
     override val seeAllWorktrees = "Ver todos los worktrees"
     override val menuActive = "Mostrar activos"
     override val menuAllWorktrees = "Mostrar todos los worktrees"
+    override fun agentLabel(name: String, state: HerdrAgentState?) = when (state) {
+        null -> name
+        HerdrAgentState.WORKING -> "$name · trabajando"
+        HerdrAgentState.BLOCKED -> "$name · bloqueado"
+        HerdrAgentState.DONE -> "$name · terminado"
+        HerdrAgentState.IDLE -> "$name · inactivo"
+    }
     override fun agentsRunning(names: List<String>) = "Agentes en ejecución: ${names.joinToString(", ")}"
     override val allProjects = "Todos los proyectos"
     override val projectLabel = "Proyecto"

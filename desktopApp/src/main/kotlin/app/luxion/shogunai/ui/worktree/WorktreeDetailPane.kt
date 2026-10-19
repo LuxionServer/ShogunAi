@@ -204,7 +204,7 @@ private fun ColumnScope.AgentsSection(agents: List<RunningAgent>) {
     val strings = LocalStrings.current
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         SectionTitle(strings.agentsTitle)
-        agents.forEach { DetailValue(it.name) }
+        agents.forEach { DetailValue(strings.agentLabel(it.name, it.herdrState)) }
     }
 }
 

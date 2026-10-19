@@ -68,7 +68,6 @@ Provisionado para los stacks en los que un worktree recién creado está más le
 Copiar el comando de lanzamiento sigue siendo la opción por defecto, pero la app también podría abrirlo directamente con integraciones concretas y fiables en lugar de un lanzamiento genérico de terminal:
 
 - Terminales: iTerm2 y Terminal en macOS, Windows Terminal, tmux y Zellij.
-- El estado de los agentes de Herdr (trabajando, bloqueado, terminado) en cada fila de worktree, leído de su API, ahora que los worktrees se pueden abrir en Herdr.
 - «Abrir en IDE» (VS Code, IntelliJ IDEA, Android Studio) y «Abrir carpeta».
 
 ### Modo multiagente

@@ -29,7 +29,7 @@ Open a project and, under "New worktree", choose:
 
 Each row shows a worktree with:
 
-- Its **branch**, a "locked" label when an agent session holds it, its **origin** (ShogunAi, Claude Code, Herdr or another location) and the **agents running** in it.
+- Its **branch**, a "locked" label when an agent session holds it, its **origin** (ShogunAi, Claude Code, Herdr or another location) and the **agents running** in it. With Herdr running, each agent also shows its state (working, blocked, done or idle).
 - Its **status**: uncommitted changes, ahead/behind its upstream and the main branch, the last commit date, or "merged into <main branch>". "Folder missing" when its folder was deleted by hand.
 - Its **size**, the **ports** reserved for it (see [per-worktree environment](../agents.md#per-worktree-environment)) and an "inactive" label when it has no uncommitted changes, no agent running and no commit in the last 14 days.
 - The emulator and simulator lines with Start and Stop, for repositories that use those [providers](providers.md).
@@ -45,7 +45,7 @@ Grouped by state, each group's header shows a short hint next to its title, and 
 | Group | Hint | Criterion |
 |---|---|---|
 | Agent working | agent running | An AI agent is running in the worktree. |
-| Needs you | uncommitted or unpushed | Uncommitted changes, or commits not pushed to its upstream (or to the main branch when it has none). |
+| Needs you | agent waiting, uncommitted or unpushed | An agent blocked or done in Herdr, uncommitted changes, or commits not pushed to its upstream (or to the main branch when it has none). |
 | In progress | pushed, not merged | Clean, pushed, not merged and with a commit in the last 14 days. |
 | Merged | in main branch | No commits of its own ahead of the main branch. Can be cleaned up. |
 | Inactive | idle for 14+ days | Clean, no agent and no commit in the last 14 days. |
@@ -55,7 +55,7 @@ Grouped by state, each group's header shows a short hint next to its title, and 
 ## Working in a worktree
 
 - **Copy command** copies `cd "<worktree>" && <agent command>` to paste in any terminal.
-- **Open in Herdr** opens the worktree in [Herdr](../agents.md#herdr) with its environment and runs the agent command there.
+- **Open in Herdr** opens the worktree in [Herdr](../agents.md#herdr) with its environment and runs the agent command there; if the worktree already has an agent in Herdr, it focuses that agent's pane instead.
 
 ## Removing and cleaning up
 

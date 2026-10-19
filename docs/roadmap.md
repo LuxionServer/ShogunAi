@@ -68,7 +68,6 @@ Provisioning for the stacks where a fresh worktree is furthest from building:
 Copying the launch command stays as the default, but the app could also open it directly with reliable, specific integrations instead of a generic terminal launch:
 
 - Terminals: iTerm2 and Terminal on macOS, Windows Terminal, tmux and Zellij.
-- Herdr's agent status (working, blocked, done) in each worktree row, read from its API, now that worktrees can be opened in Herdr.
 - "Open in IDE" (VS Code, IntelliJ IDEA, Android Studio) and "Open folder".
 
 ### Multi-agent mode

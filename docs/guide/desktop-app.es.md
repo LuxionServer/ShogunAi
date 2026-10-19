@@ -29,7 +29,7 @@ Abre un proyecto y, en "Nuevo worktree", elige:
 
 Cada fila muestra un worktree con:
 
-- Su **rama**, la etiqueta "bloqueado" cuando una sesión de agente lo retiene, su **origen** (ShogunAi, Claude Code, Herdr u otra ubicación) y los **agentes en ejecución** en él.
+- Su **rama**, la etiqueta "bloqueado" cuando una sesión de agente lo retiene, su **origen** (ShogunAi, Claude Code, Herdr u otra ubicación) y los **agentes en ejecución** en él. Con Herdr en marcha, cada agente muestra además su estado (trabajando, bloqueado, terminado o inactivo).
 - Su **estado**: cambios sin commitear, commits por delante y por detrás de su upstream y de la rama principal, la fecha del último commit, o "mergeada en <rama principal>". "Carpeta no encontrada" cuando su carpeta se borró a mano.
 - Su **tamaño**, los **puertos** reservados para él (ver [entorno por worktree](../agents.md#entorno-por-worktree)) y la etiqueta "inactivo" cuando no tiene cambios sin commitear, ningún agente en ejecución ni commits en los últimos 14 días.
 - Las líneas de emulador y simulador con Arrancar y Parar, en repositorios que usan esos [providers](providers.md).
@@ -45,7 +45,7 @@ Agrupada por estado, la cabecera de cada grupo muestra una pista breve junto a s
 | Grupo | Pista | Criterio |
 |---|---|---|
 | Con agente | agente en marcha | Hay un agente de IA en marcha en el worktree. |
-| Te necesitan | sin commit o sin subir | Cambios sin commit, o commits sin subir a su upstream (o a la rama principal si no tiene). |
+| Te necesitan | agente esperando, sin commit o sin subir | Un agente bloqueado o terminado en Herdr, cambios sin commit, o commits sin subir a su upstream (o a la rama principal si no tiene). |
 | En curso | subido, sin fusionar | Limpio, subido, sin fusionar y con algún commit en los últimos 14 días. |
 | Fusionados | ya en la rama principal | Sin commits propios por delante de la rama principal. Se puede limpiar. |
 | Inactivos | sin commits en 14 días | Limpio, sin agente y sin commits en los últimos 14 días. |
@@ -55,7 +55,7 @@ Agrupada por estado, la cabecera de cada grupo muestra una pista breve junto a s
 ## Trabajar en un worktree
 
 - **Copiar comando** copia `cd "<worktree>" && <comando del agente>` para pegarlo en cualquier terminal.
-- **Abrir en Herdr** abre el worktree en [Herdr](../agents.md#herdr) con su entorno y ejecuta allí el comando del agente.
+- **Abrir en Herdr** abre el worktree en [Herdr](../agents.md#herdr) con su entorno y ejecuta allí el comando del agente; si el worktree ya tiene un agente en Herdr, enfoca el panel de ese agente en su lugar.
 
 ## Eliminar y limpiar
 

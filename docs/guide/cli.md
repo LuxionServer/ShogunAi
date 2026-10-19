@@ -76,6 +76,7 @@ Lists every worktree of the repository, one per line: path, branch (or `(detache
 | `main` | The main checkout. |
 | `origin=shogunai\|claude-code\|herdr\|other` | Where the worktree was created. |
 | `locked` | Held by an agent session. |
+| `agents=claude(blocked),codex` | Agents running in it, with the state Herdr reports (`working`, `blocked`, `done`, `idle`) when it is running. |
 | `changes=N` | Uncommitted changes. |
 | `ahead=N behind=N` | Divergence from its upstream. |
 | `merged` | Merged into the main branch. |
@@ -103,6 +104,7 @@ Prints one compact JSON object on a single line instead of the text lines. Error
       "locked": false,
       "folderMissing": false,
       "origin": null,
+      "agents": [{ "name": "claude", "herdrState": "blocked" }],
       "status": {
         "uncommittedChanges": 0,
         "upstream": { "ahead": 0, "behind": 0 },
@@ -121,6 +123,7 @@ Prints one compact JSON object on a single line instead of the text lines. Error
 | `branch`, `head` | The checked-out branch (`null` when detached) and the commit. |
 | `main`, `locked`, `folderMissing` | The main checkout, held by an agent session, folder deleted by hand. |
 | `origin` | `shogunai`, `claude-code`, `herdr` or `other`; `null` for the main checkout. |
+| `agents` | The agents running in it: `name` and `herdrState` (`working`, `blocked`, `done`, `idle`; `null` when Herdr isn't running or doesn't report one). |
 | `status` | `null` when the folder is missing or its status couldn't be read. |
 | `statusProblem` | Only present when the status couldn't be read: Git's reason. |
 | `status.uncommittedChanges`, `status.merged` | Uncommitted changes; merged into the main branch. |
