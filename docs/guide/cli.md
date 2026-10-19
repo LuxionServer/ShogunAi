@@ -28,14 +28,15 @@ Output is plain English text; scripts should read `new`'s single line and `statu
 ### `new`
 
 ```text
-shogun new <task-id> [--fix] [--from <ref>] [--worktrees-root <dir>]
-shogun new --branch <branch> [--worktrees-root <dir>]
+shogun new <task-id> [--fix] [--from <ref>] [--fetch] [--worktrees-root <dir>]
+shogun new --branch <branch> [--fetch] [--worktrees-root <dir>]
 ```
 
 Creates a worktree, copies the declared files into it, prepares its [environment](../agents.md#per-worktree-environment) and prints its absolute path, alone on standard output, so `cd "$(shogun new TASK-123)"` works.
 
 - With a task id, the worktree gets a new `feature/<task-id>` branch, or `fix/<task-id>` with `--fix`. The branch starts at the HEAD of the worktree you run the command in, or at `--from <ref>` (a branch, tag or commit; an unknown ref fails before anything is created).
-- With `--branch`, the worktree checks out an existing local branch. `--fix` and `--from` aren't accepted with it.
+- With `--branch`, the worktree checks out an existing branch. `--fix` and `--from` aren't accepted with it. A branch that exists only on `origin`, given as `<name>` or `origin/<name>`, gets a local branch of that name tracking it; a local branch with that name takes precedence.
+- `--fetch` runs `git fetch --prune origin` first, so `--from origin/develop` or a remote branch is current. It never waits for credentials: if the fetch fails, Git's error is printed, nothing is created and the exit code is 1.
 - `--worktrees-root <dir>` sets where the worktree goes. It's required when the repository has no project in the desktop app; relative paths are resolved against the current directory.
 - A task id containing `/` (`team/TASK-1`) keeps the `/` in the branch (`feature/team/TASK-1`) and becomes one folder, `team-TASK-1`.
 - If creating the worktree fails after Git created it or its new branch, both are removed, so retrying with the same task id works. A branch that existed before is never deleted.
@@ -79,6 +80,7 @@ Lists every worktree of the repository, one per line: path, branch (or `(detache
 | `changes=N` | Uncommitted changes. |
 | `ahead=N behind=N` | Divergence from its upstream. |
 | `merged` | Merged into the main branch. |
+| `not-started` | The branch never had commits of its own (shown instead of `merged`). |
 | `folder-missing` | The folder was deleted by hand. |
 | `status-unavailable (reason)` | Its status couldn't be read, with Git's reason. |
 

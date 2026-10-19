@@ -173,6 +173,8 @@ class MachineResources(
             machineProject.worktrees.orEmpty().filterNot { it.isPrunable }.map { machineProject.project.id to it }
         }
 
+    fun project(projectId: String): Project? = projects().firstOrNull { it.project.id == projectId }?.project
+
     fun projectName(projectId: String): String =
         projects().firstOrNull { it.project.id == projectId }?.project?.name ?: projectId
 

@@ -76,6 +76,7 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel, onOpenPrefer
             detectAgents = appContainer.detectRunningAgents::invoke,
             preferences = appContainer.shellPreferenceRepository,
             approval = appContainer.postCreateApproval,
+            rememberFetchBeforeCreate = viewModel::rememberFetchBeforeCreate,
         )
     }
     LaunchedEffect(viewModel.projects) { board.syncCatalog(viewModel.projects) }
@@ -364,6 +365,7 @@ private fun ProjectForm(
             shellViewModel.onProjectSaved(saved, previous = existingProject)
         },
         onCancel = shellViewModel::cancelForm,
+        onDiscard = shellViewModel::discardForm,
     )
 }
 

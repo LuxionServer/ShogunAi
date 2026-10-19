@@ -5,13 +5,15 @@ import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
 import app.luxion.shogunai.domain.model.BranchOption
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.withoutLocalTwins
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
-class ListLocalBranchesUseCaseTest {
+class ListBranchesUseCaseTest {
 
     private val config = ProjectConfig(
         baseRepositoryPath = "/home/dev/projects/main-repo",
@@ -19,7 +21,7 @@ class ListLocalBranchesUseCaseTest {
         secretFiles = listOf("local.properties"),
     )
 
-    private val branches = "develop\nfeature/TASK-123\nfeature/TASK-456\n"
+    private val branches = "refs/heads/develop\nrefs/heads/feature/TASK-123\nrefs/heads/feature/TASK-456\n"
 
     private val porcelain = """
         worktree /home/dev/projects/main-repo
@@ -48,7 +50,7 @@ class ListLocalBranchesUseCaseTest {
 
     @Test
     fun `marks no branch as checked out when nothing is checked out`() = runTest {
-        val useCase = ListLocalBranchesUseCase(config, executor(porcelainOutput = ""))
+        val useCase = ListBranchesUseCase(config, executor(porcelainOutput = ""))
 
         val branches = useCase().getOrThrow()
 
@@ -64,7 +66,7 @@ class ListLocalBranchesUseCaseTest {
 
     @Test
     fun `flags branches already checked out in another worktree`() = runTest {
-        val useCase = ListLocalBranchesUseCase(config, executor())
+        val useCase = ListBranchesUseCase(config, executor())
 
         val branches = useCase().getOrThrow()
 
@@ -85,7 +87,7 @@ class ListLocalBranchesUseCaseTest {
             HEAD abc123
             branch refs/heads/develop
         """.trimIndent()
-        val useCase = ListLocalBranchesUseCase(config, executor(porcelainOutput = basePorcelain))
+        val useCase = ListBranchesUseCase(config, executor(porcelainOutput = basePorcelain))
 
         val branches = useCase().getOrThrow()
 
@@ -101,15 +103,43 @@ class ListLocalBranchesUseCaseTest {
 
     @Test
     fun `fails when listing branches fails`() = runTest {
-        val useCase = ListLocalBranchesUseCase(config, executor(failBranches = true))
+        val useCase = ListBranchesUseCase(config, executor(failBranches = true))
 
         assertIs<WorktreeError.GitCommandFailed>(useCase().exceptionOrNull())
     }
 
     @Test
     fun `fails when listing worktrees fails`() = runTest {
-        val useCase = ListLocalBranchesUseCase(config, executor(failWorktrees = true))
+        val useCase = ListBranchesUseCase(config, executor(failWorktrees = true))
 
         assertIs<WorktreeError.GitCommandFailed>(useCase().exceptionOrNull())
+    }
+
+    @Test
+    fun `lists origin branches as remote and skips origin HEAD`() = runTest {
+        val refs = "refs/heads/develop\nrefs/remotes/origin/HEAD\nrefs/remotes/origin/develop\nrefs/remotes/origin/feature/TASK-9\n"
+        val useCase = ListBranchesUseCase(config, executor(branchesOutput = refs, porcelainOutput = ""))
+
+        val branches = useCase().getOrThrow()
+
+        assertEquals(
+            listOf(
+                BranchOption("develop", isCheckedOut = false),
+                BranchOption("origin/develop", isCheckedOut = false, isRemote = true),
+                BranchOption("origin/feature/TASK-9", isCheckedOut = false, isRemote = true),
+            ),
+            branches,
+        )
+    }
+
+    @Test
+    fun `drops remote branches that have a local twin`() = runTest {
+        val refs = "refs/heads/develop\nrefs/remotes/origin/develop\nrefs/remotes/origin/feature/TASK-9\n"
+        val useCase = ListBranchesUseCase(config, executor(branchesOutput = refs, porcelainOutput = ""))
+
+        val names = useCase().getOrThrow().withoutLocalTwins().map { it.name }
+
+        assertEquals(listOf("develop", "origin/feature/TASK-9"), names)
+        assertTrue("origin/develop" !in names)
     }
 }

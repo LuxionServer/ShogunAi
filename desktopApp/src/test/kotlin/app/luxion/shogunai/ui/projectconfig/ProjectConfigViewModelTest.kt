@@ -13,6 +13,7 @@ import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.XcodeProvider
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
+import app.luxion.shogunai.ui.i18n.EnglishStrings
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -43,6 +44,51 @@ class ProjectConfigViewModelTest {
     )
 
     private fun viewModelFor(project: Project?) = ProjectConfigViewModel(projectRepository, provisioningSource, project)
+
+    @Test
+    fun `the saved name stays while the name field is edited`() {
+        val viewModel = viewModelFor(projectWith())
+
+        viewModel.name = "other-name"
+
+        assertEquals("Project", viewModel.savedName)
+        assertEquals("Settings · Project", settingsTitle(EnglishStrings, isNewProject = false, savedName = viewModel.savedName))
+    }
+
+    @Test
+    fun `adding a project keeps the add title`() {
+        assertEquals("Add project", settingsTitle(EnglishStrings, isNewProject = true, savedName = ""))
+    }
+
+    @Test
+    fun `linked patterns are listed from the config file and marked as linked`() {
+        val declared = RepositoryProvisioning(
+            copyPatterns = listOf("local.properties"),
+            linkPatterns = listOf("node_modules"),
+            worktreeIncludePatterns = listOf(".env"),
+        )
+
+        assertEquals(
+            listOf(
+                "local.properties" to ".shogunai.json",
+                "node_modules" to ".shogunai.json · linked",
+                ".env" to ".worktreeinclude",
+            ),
+            provisioningRows(declared, emptyList(), EnglishStrings),
+        )
+    }
+
+    @Test
+    fun `a repository with only commands has no rows and an empty one has neither`() {
+        val onlyCommands = RepositoryProvisioning(postCreateCommands = listOf(listOf("npm", "install"), listOf("npm", "run", "setup")))
+
+        assertTrue(provisioningRows(onlyCommands, emptyList(), EnglishStrings).isEmpty())
+        assertEquals(
+            "2 commands run after creation; see Repository configuration below.",
+            EnglishStrings.postCreationCommandsNote(onlyCommands.postCreateCommands.size),
+        )
+        assertTrue(provisioningRows(null, emptyList(), EnglishStrings).isEmpty())
+    }
 
     private fun viewModelInspecting(project: Project?, vararg repositories: String) = ProjectConfigViewModel(
         projectRepository,

@@ -49,6 +49,7 @@ class WorktreeBoard(
     private val deviceRefreshInterval: Duration = DEVICE_REFRESH_INTERVAL,
     val approval: DialogPostCreateApproval = DialogPostCreateApproval(),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val rememberFetchBeforeCreate: (projectId: String, fetch: Boolean) -> Unit = { _, _ -> },
 ) : ViewModel() {
     private val deviceRefreshes = mutableMapOf<String, Instant>()
     private val listPermits = Semaphore(MAX_PARALLEL_LISTS)
@@ -84,6 +85,8 @@ class WorktreeBoard(
     var createMode by mutableStateOf(CreateMode.NEW_BRANCH)
         private set
     var selectedBranch by mutableStateOf<String?>(null)
+    var startFrom by mutableStateOf<StartOption?>(null)
+    var fetchFirst by mutableStateOf(false)
 
     var cleanupScope by mutableStateOf<List<String>?>(null)
         private set
@@ -268,7 +271,7 @@ class WorktreeBoard(
         val current = entries
         val next = catalog.associate { project ->
             val existing = current[project.id]
-            if (existing != null && existing.project.config == project.config) {
+            if (existing != null && existing.project.config.withoutFetchPreference() == project.config.withoutFetchPreference()) {
                 project.id to existing.copy(project = project)
             } else {
                 existing?.dispose()
@@ -336,9 +339,7 @@ class WorktreeBoard(
     fun refreshShown() {
         shownHolders().forEach { holder ->
             holder.refresh(remeasureSizes = true)
-            if (isCreateDialogOpen && createHolder == holder && createMode == CreateMode.EXISTING_BRANCH) {
-                holder.loadLocalBranches()
-            }
+            if (isCreateDialogOpen && createHolder == holder) holder.loadBranches()
         }
     }
 
@@ -465,9 +466,11 @@ class WorktreeBoard(
         createAsksForProject = projectId == null && effectiveProjectFilter == null
         taskId = ""
         selectedBranch = null
+        startFrom = null
+        fetchFirst = fetchPreferenceOf(target)
         holder(target)?.dismissCreateError()
         createProjectId = target
-        if (createMode == CreateMode.EXISTING_BRANCH) holder(target)?.loadLocalBranches()
+        holder(target)?.loadBranches()
     }
 
     private fun defaultCreateProject(): String? =
@@ -477,14 +480,35 @@ class WorktreeBoard(
         if (createHolder?.isCreating == true || holder(projectId) == null) return
         createProjectId = projectId
         selectedBranch = null
+        startFrom = null
+        fetchFirst = fetchPreferenceOf(projectId)
         holder(projectId)?.dismissCreateError()
-        if (createMode == CreateMode.EXISTING_BRANCH) holder(projectId)?.loadLocalBranches()
+        holder(projectId)?.loadBranches()
     }
+
+    private fun fetchPreferenceOf(projectId: String): Boolean =
+        projects.firstOrNull { it.id == projectId }?.config?.fetchBeforeCreate ?: false
 
     fun updateCreateMode(mode: CreateMode) {
         createMode = mode
-        if (mode == CreateMode.EXISTING_BRANCH) createHolder?.loadLocalBranches()
     }
+
+    val startOptions: List<StartOption>
+        get() {
+            val holder = createHolder ?: return emptyList()
+            val default = holder.defaultStartRef
+            val branches = holder.branches.map { it.name }.filter { it != default }
+            return listOfNotNull(default?.let(StartOption::Branch), StartOption.Current) + branches.map(StartOption::Branch)
+        }
+
+    val effectiveStartFrom: StartOption
+        get() = startFrom ?: createHolder?.defaultStartRef?.let(StartOption::Branch) ?: StartOption.Current
+
+    val currentBranchName: String?
+        get() = createHolder?.worktrees?.firstOrNull { it.isMain }?.branch
+
+    val canFetchFirst: Boolean
+        get() = createHolder?.hasOrigin == true
 
     fun updateTaskId(raw: String) {
         taskId = normalizeTaskId(raw)
@@ -495,7 +519,7 @@ class WorktreeBoard(
     val canCreate: Boolean
         get() {
             val holder = createHolder ?: return false
-            return !holder.isCreating && holder.createdWithErrorPath == null && isCreateEnabled(
+            return !holder.isCreating && !holder.isLoadingBranches && holder.createdWithErrorPath == null && isCreateEnabled(
                 mode = createMode,
                 isTaskIdValid = taskId.isNotBlank() && isTaskIdValid(taskId),
                 isSelectedBranchAvailable = holder.isBranchAvailable(selectedBranch),
@@ -506,17 +530,19 @@ class WorktreeBoard(
         if (createHolder?.isCreating != true) createProjectId = null
     }
 
-    fun confirmCreate() {
+    fun confirmCreate(skipFetch: Boolean = false) {
         if (!canCreate) return
         val projectId = createProjectId ?: return
         val holder = holder(projectId) ?: return
+        if (holder.hasOrigin && fetchFirst != fetchPreferenceOf(projectId)) rememberFetchBeforeCreate(projectId, fetchFirst)
+        val fetch = fetchFirst && holder.hasOrigin && !skipFetch
         val onCreated: (Worktree) -> Unit = {
             preferences.saveLastCreateProject(projectId)
             if (createProjectId == projectId) createProjectId = null
         }
         when (createMode) {
-            CreateMode.NEW_BRANCH -> holder.create(taskId, branchType, onCreated)
-            CreateMode.EXISTING_BRANCH -> selectedBranch?.let { holder.createFromBranch(it, onCreated) }
+            CreateMode.NEW_BRANCH -> holder.create(taskId, branchType, effectiveStartFrom.ref, fetch, onCreated)
+            CreateMode.EXISTING_BRANCH -> selectedBranch?.let { holder.createFromBranch(it, fetch, onCreated) }
         }
     }
 
@@ -611,6 +637,18 @@ data class PaletteWorktree(val project: Project, val worktree: Worktree, val ind
 data class SelectedWorktree(val project: Project, val holder: ProjectWorktrees, val worktree: Worktree)
 
 data class PendingSuccess(val projectId: String?, val success: WorktreeSuccess)
+
+sealed interface StartOption {
+    val ref: String?
+
+    data object Current : StartOption {
+        override val ref: String? = null
+    }
+
+    data class Branch(override val ref: String) : StartOption
+}
+
+private fun ProjectConfig.withoutFetchPreference(): ProjectConfig = copy(fetchBeforeCreate = false)
 
 internal fun isCreateEnabled(
     mode: CreateMode,

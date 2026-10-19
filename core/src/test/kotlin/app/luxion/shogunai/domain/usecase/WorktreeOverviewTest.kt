@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
@@ -121,5 +122,27 @@ class WorktreeOverviewTest {
         val main = Worktree(path = "/w", branch = "main", isMain = true)
 
         assertFalse(isInactive(main, status(), emptyList(), now))
+    }
+
+    private fun notStartedStatus(changes: Int) = WorktreeStatus(
+        uncommittedChanges = changes,
+        upstream = null,
+        mainBranch = Divergence(ahead = 0, behind = 3),
+        lastCommitAt = now.minus(Duration.ofDays(30)),
+        neverCommitted = true,
+    )
+
+    @Test
+    fun `a not started worktree without changes is in progress even when its base commit is old`() {
+        val activity = worktreeActivity(worktreeAt("/home/dev/projects/TASK-1"), notStartedStatus(0), emptyList(), now)
+
+        assertEquals(Activity.InProgress, activity)
+    }
+
+    @Test
+    fun `a not started worktree with changes needs the user`() {
+        val activity = worktreeActivity(worktreeAt("/home/dev/projects/TASK-1"), notStartedStatus(2), emptyList(), now)
+
+        assertEquals(Activity.NeedsYou, activity)
     }
 }
