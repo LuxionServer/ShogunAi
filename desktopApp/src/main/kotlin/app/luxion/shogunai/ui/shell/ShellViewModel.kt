@@ -143,6 +143,11 @@ class ShellViewModel(
         select(destinationBeforeForm?.takeIf(::isAvailable) ?: fallbackDestination())
     }
 
+    fun discardForm() {
+        leaveGuard = null
+        cancelForm()
+    }
+
     fun onProjectSaved(saved: Project, previous: Project?) {
         leaveGuard = null
         projects = loadProjects()

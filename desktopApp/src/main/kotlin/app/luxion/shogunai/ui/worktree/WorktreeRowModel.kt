@@ -40,6 +40,7 @@ enum class RowChipKind {
     CHANGES,
     DIVERGENCE,
     MERGED,
+    NOT_STARTED,
     INACTIVE,
     LOCKED,
     DEVICE,
@@ -140,6 +141,9 @@ private fun chipsOf(
         }
         if (merged) {
             add(RowChip(RowChipKind.MERGED, Status.SUCCESS, strings.mergedInto(mainBranchName)))
+        }
+        if (status?.isNotStarted == true) {
+            add(RowChip(RowChipKind.NOT_STARTED, Status.NEUTRAL, strings.notStarted))
         }
         if (inactive) {
             add(RowChip(RowChipKind.INACTIVE, Status.NEUTRAL, strings.inactive))

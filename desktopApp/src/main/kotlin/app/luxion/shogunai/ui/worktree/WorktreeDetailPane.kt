@@ -202,6 +202,9 @@ private fun ColumnScope.StatusSection(status: WorktreeStatusState?, mainBranchNa
                 if (value.isMerged && mainBranchName != null) {
                     StatusChip(Status.SUCCESS, strings.mergedInto(mainBranchName))
                 }
+                if (value.isNotStarted) {
+                    StatusChip(Status.NEUTRAL, strings.notStarted)
+                }
                 statusSegments(value, mainBranchName, Instant.now(), strings).forEach { DetailValue(it) }
             }
         }

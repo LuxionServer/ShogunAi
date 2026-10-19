@@ -691,6 +691,22 @@ class ShogunCliTest {
     }
 
     @Test
+    fun `status shows a branch that never had commits as not started instead of merged`() {
+        val executor = repositoryExecutor { command, directory ->
+            when {
+                command == listOf("git", "rev-parse", "HEAD") && directory == merged -> Executor.ok(command, "2222\n")
+                command.take(3) == listOf("git", "reflog", "show") && directory == merged -> Executor.ok(command, "2222\n")
+                else -> null
+            }
+        }
+
+        val exitCode = cli(executor).run(listOf("status"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.lines().contains("$merged  feature/TASK-1  origin=shogunai  changes=0  not-started"), out.toString())
+    }
+
+    @Test
     fun `status json prints one compact document`() {
         val exitCode = cli(repositoryExecutor()).run(listOf("status", "--json"))
 

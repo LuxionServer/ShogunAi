@@ -988,6 +988,7 @@ class ShogunCli(
                     add("changes=${status.uncommittedChanges}")
                     status.upstream?.let { add("ahead=${it.ahead} behind=${it.behind}") }
                     if (status.isMerged) add("merged")
+                    if (status.isNotStarted) add("not-started")
                 }
             }
         }
