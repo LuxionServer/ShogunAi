@@ -1,5 +1,7 @@
 package app.luxion.shogunai.infrastructure
 
+import kotlin.time.Duration
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.AppleSimulators
@@ -22,9 +24,9 @@ class SimctlAppleSimulators(
 
     override fun isSupported(): Boolean = osName.startsWith("Mac", ignoreCase = true)
 
-    override suspend fun runtimes(): List<SimulatorRuntime> = parseRuntimes(simctl("list", "-j", "runtimes").stdout)
+    override suspend fun runtimes(): List<SimulatorRuntime> = parseRuntimes(simctl("list", "-j", "runtimes", timeout = CommandTimeouts.LISTING).stdout)
 
-    override suspend fun devices(): List<SimulatorDevice> = parseDevices(simctl("list", "-j", "devices").stdout)
+    override suspend fun devices(): List<SimulatorDevice> = parseDevices(simctl("list", "-j", "devices", timeout = CommandTimeouts.LISTING).stdout)
 
     override suspend fun create(name: String, deviceTypeIdentifier: String, runtimeIdentifier: String): String =
         simctl("create", name, deviceTypeIdentifier, runtimeIdentifier).stdout.trim()
@@ -49,9 +51,13 @@ class SimctlAppleSimulators(
         simctl("delete", udid)
     }
 
-    private suspend fun simctl(vararg arguments: String, toleratedState: String? = null): CommandResult {
+    private suspend fun simctl(
+        vararg arguments: String,
+        toleratedState: String? = null,
+        timeout: Duration? = null,
+    ): CommandResult {
         val command = listOf("xcrun", "simctl") + arguments
-        val result = executor.execute(command)
+        val result = timeout?.let { executor.executeWithin(command, it) } ?: executor.execute(command)
         val tolerated = toleratedState != null && result.stderr.contains("current state: $toleratedState")
         if (!result.isSuccess && !tolerated) {
             throw WorktreeError.AppleToolFailed(command, result.exitCode, result.stderr.trim())

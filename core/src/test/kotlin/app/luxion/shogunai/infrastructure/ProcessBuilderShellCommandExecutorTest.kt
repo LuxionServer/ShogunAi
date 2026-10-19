@@ -2,7 +2,15 @@ package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import kotlin.system.measureTimeMillis
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -108,5 +116,58 @@ class ProcessBuilderShellCommandExecutorTest {
         assertTrue(path.contains("/opt/homebrew/bin"))
         assertTrue(path.contains("/opt/homebrew/sbin"))
         assertTrue(path.contains("/usr/local/bin"))
+    }
+
+    @Test
+    fun `un comando que lee de la entrada estándar recibe fin de fichero`() = runTest {
+        val result = executor.execute(listOf("cat"))
+
+        assertTrue(result.isSuccess)
+        assertEquals("", result.stdout)
+    }
+
+    @Test
+    fun `cancelar la operación mata el comando y sus hijos en pocos segundos`() = runBlocking {
+        val marker = "98765${System.nanoTime() % 1000}"
+        val job = launch(Dispatchers.Default) { executor.execute(listOf("sh", "-c", "sleep $marker; true")) }
+        awaitProcess(marker, running = true)
+
+        val elapsed = measureTimeMillis { job.cancelAndJoin() }
+
+        assertTrue(elapsed < 5_000, "cancelling took $elapsed ms")
+        awaitProcess(marker, running = false)
+        assertFalse(isRunning(marker))
+    }
+
+    @Test
+    fun `un comando que supera el límite lanza TimedOut y no deja procesos`() = runBlocking {
+        val marker = "87654${System.nanoTime() % 1000}"
+
+        val error = assertFailsWith<CommandExecutionException.TimedOut> {
+            executor.executeWithin(listOf("sh", "-c", "sleep $marker; true"), 500.milliseconds)
+        }
+
+        assertEquals(500.milliseconds, error.limit)
+        awaitProcess(marker, running = false)
+        assertFalse(isRunning(marker))
+    }
+
+    @Test
+    fun `un comando dentro del límite devuelve su resultado`() = runTest {
+        val result = executor.executeWithin(listOf("echo", "ok"), 10.seconds)
+
+        assertEquals("ok", result.stdout)
+    }
+
+    private fun isRunning(marker: String): Boolean = ProcessHandle.allProcesses().anyMatch { handle ->
+        val info = handle.info()
+        (info.arguments().map { it.joinToString(" ") }.orElse("") + info.commandLine().orElse("")).contains(marker)
+    }
+
+    private suspend fun awaitProcess(marker: String, running: Boolean) {
+        repeat(100) {
+            if (isRunning(marker) == running) return
+            delay(50)
+        }
     }
 }

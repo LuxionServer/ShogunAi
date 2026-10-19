@@ -3,7 +3,10 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
+import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.CommandResult
+import app.luxion.shogunai.domain.executor.CommandTimeouts
+import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.Worktree
@@ -44,6 +47,21 @@ class ReadWorktreeStatusUseCaseTest {
         assertEquals(Divergence(ahead = 2, behind = 0), status.upstream)
         assertEquals(Divergence(ahead = 4, behind = 1), status.mainBranch)
         assertEquals(Instant.ofEpochSecond(1760000000), status.lastCommitAt)
+    }
+
+    @Test
+    fun `reads state with a limit and reports a timeout as a failed read`() = runTest {
+        val fake = executor()
+        ReadWorktreeStatusUseCase(fake)(worktree, mainBranch).getOrThrow()
+        assertEquals(CommandTimeouts.GIT_READ, fake.timeouts[statusCommand])
+
+        val hung = object : ShellCommandExecutor {
+            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult =
+                throw CommandExecutionException.TimedOut(command, CommandTimeouts.GIT_READ)
+        }
+        val failure = ReadWorktreeStatusUseCase(hung)(worktree, mainBranch).exceptionOrNull()
+
+        assertIs<CommandExecutionException.TimedOut>(failure)
     }
 
     @Test

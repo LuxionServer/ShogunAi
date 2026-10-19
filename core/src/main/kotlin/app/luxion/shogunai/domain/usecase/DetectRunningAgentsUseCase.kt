@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
@@ -41,7 +42,7 @@ class DetectRunningAgentsUseCase(
         agentCommand.trim().substringBefore(' ').substringAfterLast('/').ifEmpty { null }
 
     private suspend fun run(vararg command: String): String {
-        val result = executor.execute(command.toList())
+        val result = executor.executeWithin(command.toList(), CommandTimeouts.LISTING)
         if (!result.isSuccess) {
             throw WorktreeError.ProcessListingFailed(result.command, result.exitCode)
         }

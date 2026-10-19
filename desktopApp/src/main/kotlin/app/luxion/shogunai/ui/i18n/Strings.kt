@@ -197,6 +197,7 @@ interface Strings {
     fun branchKept(branch: String): String
     val herdrWorkspaceWillClose: String
     val herdrCleanupNotice: String
+    fun keptForRunningAgent(name: String, agents: List<String>): String
     val openInHerdrMark: String
     fun herdrCloseFailed(path: String, detail: String): String
     val simulatorSection: String

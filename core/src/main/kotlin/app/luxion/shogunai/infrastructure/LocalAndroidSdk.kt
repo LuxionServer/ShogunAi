@@ -1,7 +1,9 @@
 package app.luxion.shogunai.infrastructure
 
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.AndroidSdk
+import app.luxion.shogunai.domain.io.EmulatorProcess
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.SdkLocation
@@ -19,7 +21,7 @@ class LocalAndroidSdk(
     private val userHome: String = System.getProperty("user.home"),
     private val osName: String = System.getProperty("os.name").orEmpty(),
     private val logDirectory: Path = Path.of(System.getProperty("user.home"), ".shogunai", "logs"),
-    private val launch: (command: List<String>, log: File) -> Unit = ::launchDetached,
+    private val launch: (command: List<String>, log: File) -> EmulatorProcess = ::launchDetached,
 ) : AndroidSdk {
 
     private val bootedSerials: MutableSet<String> = ConcurrentHashMap.newKeySet()
@@ -55,9 +57,9 @@ class LocalAndroidSdk(
         }
     }
 
-    override fun startEmulator(sdk: SdkLocation, avd: String, consolePort: Int, noWindow: Boolean) {
+    override fun startEmulator(sdk: SdkLocation, avd: String, consolePort: Int, noWindow: Boolean): EmulatorProcess {
         Files.createDirectories(logDirectory)
-        launch(emulatorCommand(sdk, avd, consolePort, noWindow), logDirectory.resolve("${emulatorSerial(consolePort)}.log").toFile())
+        return launch(emulatorCommand(sdk, avd, consolePort, noWindow), logDirectory.resolve("${emulatorSerial(consolePort)}.log").toFile())
     }
 
     override suspend fun stopEmulator(sdk: SdkLocation, serial: String) {
@@ -66,12 +68,12 @@ class LocalAndroidSdk(
     }
 
     private suspend fun bootCompleted(sdk: SdkLocation, serial: String): Boolean {
-        val result = executor.execute(listOf(sdk.adb, "-s", serial, "shell", "getprop", "sys.boot_completed"))
+        val result = executor.executeWithin(listOf(sdk.adb, "-s", serial, "shell", "getprop", "sys.boot_completed"), CommandTimeouts.LISTING)
         return result.isSuccess && result.stdout.trim() == "1"
     }
 
     private suspend fun run(command: List<String>): String {
-        val result = executor.execute(command)
+        val result = executor.executeWithin(command, CommandTimeouts.LISTING)
         if (!result.isSuccess) throw WorktreeError.AndroidToolFailed(command, result.exitCode, result.stderr.trim())
         return result.stdout
     }
@@ -117,10 +119,16 @@ internal fun parseAdbDevices(output: String): Map<String, String> =
         }
         .toMap()
 
-private fun launchDetached(command: List<String>, log: File) {
-    ProcessBuilder(command)
+private fun launchDetached(command: List<String>, log: File): EmulatorProcess {
+    val process = ProcessBuilder(command)
         .redirectErrorStream(true)
         .redirectOutput(ProcessBuilder.Redirect.appendTo(log))
         .redirectInput(ProcessBuilder.Redirect.from(File(if (File.separatorChar == '\\') "NUL" else "/dev/null")))
         .start()
+    return object : EmulatorProcess {
+        override val isAlive: Boolean get() = process.isAlive
+
+        override fun lastLogLines(count: Int): String =
+            runCatching { log.readLines().takeLast(count).joinToString("\n") }.getOrDefault("")
+    }
 }

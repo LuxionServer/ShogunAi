@@ -8,6 +8,7 @@ import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeStatus
@@ -39,6 +40,24 @@ class CleanUpWorktreesUseCaseTest {
         mainBranch = if (merged) Divergence(ahead = 0, behind = 2) else Divergence(ahead = 1, behind = 0),
         lastCommitAt = null,
     )
+
+    @Test
+    fun `keeps a worktree with a running agent out of the candidates and says which agent`() {
+        val statuses = mapOf(first.path to status(merged = true), second.path to status(merged = true))
+        val agents = mapOf(first.path to listOf(RunningAgent("claude")))
+
+        val selection = selectCleanup(listOf(first, second, missing), statuses, agents)
+
+        assertEquals(listOf(second, missing), selection.candidates)
+        assertEquals(mapOf(first to listOf(RunningAgent("claude"))), selection.keptForRunningAgent)
+    }
+
+    @Test
+    fun `selects every qualifying worktree when running agents are unknown`() {
+        val statuses = mapOf(first.path to status(merged = true))
+
+        assertEquals(listOf(first), selectCleanup(listOf(first), statuses, runningAgents = null).candidates)
+    }
 
     @Test
     fun `selects merged clean worktrees and missing ones, never the main, locked or dirty`() {

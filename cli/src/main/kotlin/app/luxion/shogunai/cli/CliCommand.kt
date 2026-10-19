@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.usecase.EnvironmentFormat
 sealed interface CliCommand {
     data object Help : CliCommand
     data object Version : CliCommand
+    data class CommandHelp(val name: String) : CliCommand
 
     data class New(
         val taskId: String? = null,
@@ -60,6 +61,9 @@ sealed interface ParsedArguments {
 fun parseArguments(args: List<String>): ParsedArguments {
     val name = args.firstOrNull() ?: return ParsedArguments.Command(CliCommand.Help)
     val rest = args.drop(1)
+    if (name in CliHelp.commandNames && rest.any { it == "--help" || it == "-h" }) {
+        return ParsedArguments.Command(CliCommand.CommandHelp(name))
+    }
     return try {
         ParsedArguments.Command(
             when (name) {

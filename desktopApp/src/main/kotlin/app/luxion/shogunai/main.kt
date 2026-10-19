@@ -110,7 +110,12 @@ private fun openWindow() = application {
         LaunchedEffect(Unit) { window.minimumSize = MinimumWindowSize }
         SideEffect { mainWindowHolder.value = window }
         val shellViewModel = viewModel {
-            ShellViewModel(appContainer.projectRepository, appContainer.shellPreferenceRepository)
+            ShellViewModel(
+                appContainer.projectRepository,
+                appContainer.shellPreferenceRepository,
+                appContainer::settingsProblem,
+                appContainer::acknowledgeSettingsProblem,
+            )
         }
         SideEffect { shellViewModelHolder.value = shellViewModel }
         val worktreeActions = shellViewModel.worktreeActions

@@ -7,6 +7,7 @@ import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
+import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -56,6 +57,41 @@ class ListWorktreesUseCaseTest {
 
         val detached = worktrees[2]
         assertNull(detached.branch)
+    }
+
+    @Test
+    fun `flags the main worktree when the project's path has a trailing slash`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it, stdout = porcelain) }
+        val slashed = config.copy(baseRepositoryPath = "/home/dev/projects/main-repo/")
+
+        val worktrees = ListWorktreesUseCase(slashed, executor)().getOrThrow()
+
+        assertEquals(listOf(true, false, false), worktrees.map { it.isMain })
+    }
+
+    @Test
+    fun `flags the main worktree when the project's path is a symbolic link`() = runTest {
+        val root = Files.createTempDirectory("main-worktree").toRealPath()
+        val real = Files.createDirectory(root.resolve("main-repo"))
+        val link = Files.createSymbolicLink(root.resolve("link"), real)
+        val executor = FakeShellCommandExecutor { success(it, stdout = "worktree $real\nHEAD abc123\nbranch refs/heads/develop\n") }
+
+        val worktrees = ListWorktreesUseCase(config.copy(baseRepositoryPath = link.toString()), executor)().getOrThrow()
+
+        assertTrue(worktrees.single().isMain)
+    }
+
+    @Test
+    fun `a submodule's main worktree is listed at its working tree instead of its Git folder`() = runTest {
+        val executor = FakeShellCommandExecutor {
+            success(it, stdout = "worktree /home/dev/projects/super/.git/modules/lib\nHEAD abc123\nbranch refs/heads/main\n")
+        }
+        val submodule = config.copy(baseRepositoryPath = "/home/dev/projects/super/lib")
+
+        val main = ListWorktreesUseCase(submodule, executor)().getOrThrow().single()
+
+        assertEquals("/home/dev/projects/super/lib", main.path)
+        assertTrue(main.isMain)
     }
 
     @Test

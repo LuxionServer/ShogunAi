@@ -176,6 +176,22 @@ class CreateWorktreeFromBranchUseCaseTest {
     }
 
     @Test
+    fun `a failed copy removes the worktree but keeps the existing branch`() = runTest {
+        val exec = executor()
+        val fileManager = FakeFileManager(
+            existing = baseWithSecrets,
+            failCopyFor = setOf(config.baseSecretPath("local.properties")),
+        )
+        val useCase = CreateWorktreeFromBranchUseCase(config, exec, fileManager, FakeRepositoryProvisioningSource())
+
+        val error = useCase(branch).exceptionOrNull()
+
+        assertIs<WorktreeError.SecretCopyFailed>(error)
+        assertTrue(exec.executed("git", "worktree", "remove", "--force", worktreePath))
+        assertTrue(exec.executedCommands.none { it.take(3) == listOf("git", "branch", "-D") })
+    }
+
+    @Test
     fun `strips a known branch type prefix so the directory matches the new-branch flow`() = runTest {
         val prefixedBranch = "feature/TASK-123"
         val prefixedWorktreePath = "/home/dev/projects/TASK-123"

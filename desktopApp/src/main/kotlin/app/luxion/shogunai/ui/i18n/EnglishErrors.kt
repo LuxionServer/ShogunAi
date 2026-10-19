@@ -47,6 +47,26 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "No Git repository was found at ${error.path}.",
         "Update the repository path in the project's settings.",
     )
+    is WorktreeError.BareRepositoryNotSupported -> ErrorTexts(
+        "${error.path} is a bare repository, which isn't supported yet.",
+        "Use a repository with a working tree.",
+    )
+    WorktreeError.RepositoryHasNoCommits -> ErrorTexts(
+        "The repository has no commits yet.",
+        "Make a first commit and try again.",
+    )
+     is WorktreeError.LocalFileUnreadable ->
+        if (error.path.endsWith("settings.json")) {
+            ErrorTexts(
+                "The settings file ${error.path} couldn't be read, so the default settings are in use.",
+                "The unreadable file is kept next to it. Fix it or delete it to dismiss this.",
+            )
+        } else {
+            ErrorTexts(
+                "The projects file ${error.path} couldn't be read, so no projects are shown.",
+                "Fix the file. If you add or remove a project, the unreadable file is first kept next to it.",
+            )
+        }
     is WorktreeError.WorktreeAlreadyExists -> ErrorTexts(
         "The folder ${error.path} already exists.",
         "Use another task id, or remove the existing folder.",
@@ -122,6 +142,10 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     is WorktreeError.EmulatorBootTimeout -> ErrorTexts(
         "${error.serial} didn't finish booting within ${error.seconds} s.",
         "Try again; the first boot can be slow.",
+    )
+    is WorktreeError.EmulatorExitedEarly -> ErrorTexts(
+        "The emulator of ${error.serial} stopped before it finished booting.",
+        "Check the emulator's log in the technical details; the AVD may be broken.",
     )
     is WorktreeError.AndroidToolFailed -> ErrorTexts(
         "An Android tool failed.",

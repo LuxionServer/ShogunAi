@@ -271,6 +271,18 @@ class EnvironmentCommandsTest {
     }
 
     @Test
+    fun `session-start reports an unwritable CLAUDE_ENV_FILE in one line`() {
+        val unwritable = "/home/dev/does-not-exist/claude-env"
+
+        val exitCode = cli(declaring("PORT" to "\${port}"), input = """{"cwd": "$linked"}""", environment = mapOf("CLAUDE_ENV_FILE" to unwritable))
+            .run(listOf("hook", "session-start"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.startsWith("shogun: $unwritable"), err.toString())
+        assertEquals(1, err.lines().count { it.isNotBlank() })
+    }
+
+    @Test
     fun `session-start without CLAUDE_ENV_FILE only prints context`() {
         val exitCode = cli(declaring("PORT" to "\${port}"), input = """{"cwd": "$linked"}""", environment = emptyMap())
             .run(listOf("hook", "session-start"))

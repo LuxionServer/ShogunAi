@@ -28,7 +28,7 @@ class ResolveRepositoryUseCaseTest {
 
         assertEquals("/home/dev/projects/main-repo", repository)
         assertEquals(
-            listOf("git", "rev-parse", "--path-format=absolute", "--git-common-dir"),
+            listOf("git", "rev-parse", "--path-format=absolute", "--git-common-dir", "--is-bare-repository"),
             executor.executedCommands.single(),
         )
     }
@@ -43,10 +43,66 @@ class ResolveRepositoryUseCaseTest {
         assertEquals("/home/dev", error.path)
     }
 
+    private fun layoutExecutor(
+        commonDir: String,
+        bare: Boolean = false,
+        coreBare: Boolean = false,
+        coreWorktree: String? = null,
+        worktrees: String = "",
+    ) =
+        FakeShellCommandExecutor { command ->
+            when (command.getOrNull(1)) {
+                "rev-parse" -> success(command, stdout = "$commonDir\n$bare\n")
+                "config" -> if ("core.worktree" in command) {
+                    if (coreWorktree != null) success(command, stdout = "$coreWorktree\n") else failure(command)
+                } else {
+                    success(command, stdout = "$coreBare\n")
+                }
+                "worktree" -> success(command, stdout = worktrees)
+                else -> failure(command)
+            }
+        }
+
+    @Test
+    fun `resolves the main worktree of a submodule`() = runTest {
+        val executor = layoutExecutor(
+            commonDir = "/home/dev/projects/super/.git/modules/lib",
+            coreWorktree = "../../../lib",
+            worktrees = "worktree /home/dev/projects/super/.git/modules/lib\nbare\n",
+        )
+
+        val repository = ResolveRepositoryUseCase(executor)("/home/dev/projects/super/lib").getOrThrow()
+
+        assertEquals("/home/dev/projects/super/lib", repository)
+    }
+
+    @Test
+    fun `resolves the main worktree when the Git folder is separate`() = runTest {
+        val executor = layoutExecutor(
+            commonDir = "/home/dev/git-dirs/main-repo.git",
+            worktrees = "worktree /home/dev/projects/main-repo\nHEAD abc\nbranch refs/heads/main\n",
+        )
+
+        val repository = ResolveRepositoryUseCase(executor)("/home/dev/projects/main-repo/src").getOrThrow()
+
+        assertEquals("/home/dev/projects/main-repo", repository)
+    }
+
     @Test
     fun `fails for a bare repository`() = runTest {
-        val error = resolveWith("/home/dev/projects/main-repo.git")("/home/dev/projects/main-repo.git").exceptionOrNull()
+        val executor = layoutExecutor(commonDir = "/home/dev/projects/main-repo.git", bare = true)
 
-        assertIs<WorktreeError.RepositoryNotFound>(error)
+        val error = ResolveRepositoryUseCase(executor)("/home/dev/projects/main-repo.git").exceptionOrNull()
+
+        assertIs<WorktreeError.BareRepositoryNotSupported>(error)
+    }
+
+    @Test
+    fun `fails for a worktree of a bare repository`() = runTest {
+        val executor = layoutExecutor(commonDir = "/home/dev/projects/main-repo.git", coreBare = true)
+
+        val error = ResolveRepositoryUseCase(executor)("/home/dev/projects/TASK-1").exceptionOrNull()
+
+        assertIs<WorktreeError.BareRepositoryNotSupported>(error)
     }
 }

@@ -33,7 +33,8 @@ class SharedDeviceStatesAndroidSdkTest {
             return mapOf("emulator-5554" to EmulatorState.RUNNING)
         }
 
-        override fun startEmulator(sdk: SdkLocation, avd: String, consolePort: Int, noWindow: Boolean) = Unit
+        override fun startEmulator(sdk: SdkLocation, avd: String, consolePort: Int, noWindow: Boolean) =
+            app.luxion.shogunai.domain.FakeAndroidSdk.FakeEmulatorProcess()
 
         override suspend fun stopEmulator(sdk: SdkLocation, serial: String) {
             stopped += serial

@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.BranchOption
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -10,16 +11,18 @@ class ListLocalBranchesUseCase(
     private val executor: ShellCommandExecutor,
 ) {
     suspend operator fun invoke(): Result<List<BranchOption>> = runCatching {
-        val branches = executor.execute(
+        val branches = executor.executeWithin(
             command = listOf("git", "for-each-ref", "--format=%(refname:short)", "refs/heads"),
+            timeout = CommandTimeouts.GIT_READ,
             workingDirectory = config.baseRepositoryPath,
         )
         if (!branches.isSuccess) {
             throw WorktreeError.GitCommandFailed(branches.command, branches.exitCode, branches.stderr)
         }
 
-        val worktrees = executor.execute(
+        val worktrees = executor.executeWithin(
             command = listOf("git", "worktree", "list", "--porcelain"),
+            timeout = CommandTimeouts.GIT_READ,
             workingDirectory = config.baseRepositoryPath,
         )
         if (!worktrees.isSuccess) {

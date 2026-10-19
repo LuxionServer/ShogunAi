@@ -46,7 +46,7 @@ class CreateWorktreeFromBranchUseCase(
                 worktreePath = worktreePath,
                 branch = branchName,
                 addArgs = listOf("git", "worktree", "add", worktreePath, branchName),
-                branchToDeleteOnLfsFailure = null,
+                createdBranch = null,
                 provisioned = provisioned,
                 environment = environment,
                 trust = trust,

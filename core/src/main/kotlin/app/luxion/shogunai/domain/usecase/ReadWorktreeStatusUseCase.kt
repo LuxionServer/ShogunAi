@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.MainBranch
@@ -43,7 +44,7 @@ class ReadWorktreeStatusUseCase(
     }
 
     private suspend fun git(worktree: Worktree, vararg args: String) =
-        executor.execute(listOf("git", *args), workingDirectory = worktree.path)
+        executor.executeWithin(listOf("git", *args), CommandTimeouts.GIT_READ, workingDirectory = worktree.path)
 }
 
 internal fun parseLeftRightCount(output: String): Divergence? {

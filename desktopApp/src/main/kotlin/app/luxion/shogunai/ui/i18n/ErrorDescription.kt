@@ -54,6 +54,7 @@ private fun fixOf(error: Throwable, gitCause: GitFailureCause): ErrorFix? = when
 private fun technicalDetailsOf(error: Throwable): TechnicalDetails? = when (error) {
     is WorktreeError.GitCommandFailed -> TechnicalDetails(error.command, error.exitCode, error.errorOutput)
     is WorktreeError.AppleToolFailed -> TechnicalDetails(error.command, error.exitCode, error.output)
+    is WorktreeError.EmulatorExitedEarly -> TechnicalDetails(emptyList(), null, error.lastLogLines)
     is WorktreeError.AndroidToolFailed -> TechnicalDetails(error.command, error.exitCode, error.output)
     is WorktreeError.ProcessListingFailed -> TechnicalDetails(error.command, error.exitCode, "")
     is WorktreeError.HerdrCommandFailed -> TechnicalDetails(error.command, null, error.detail)

@@ -34,13 +34,18 @@ class StartWorktreeEmulatorUseCase(
         val location = sdk.locate(config.baseRepositoryPath)
         val current = sdk.deviceStates(location)[serial]
         if (current == EmulatorState.RUNNING) return@runCatching WorktreeEmulator(serial, EmulatorState.RUNNING)
-        if (current == null) {
+        val process = if (current == null) {
             val chosen = chooseAvd(avd, config.emulator, provider.preferredAvd, sdk.listAvds(location))
                 ?: throw WorktreeError.NoAvdAvailable
             sdk.startEmulator(location, chosen, port, noWindow ?: config.emulator.noWindow)
+        } else {
+            null
         }
         var waited = 0L
         while (sdk.deviceStates(location)[serial] != EmulatorState.RUNNING) {
+            if (process != null && !process.isAlive) {
+                throw WorktreeError.EmulatorExitedEarly(serial, process.lastLogLines(LOG_TAIL_LINES))
+            }
             if (waited >= timeoutMs) throw WorktreeError.EmulatorBootTimeout(serial, timeoutMs / 1000)
             pause(pollIntervalMs)
             waited += pollIntervalMs
@@ -51,6 +56,7 @@ class StartWorktreeEmulatorUseCase(
     companion object {
         const val POLL_INTERVAL_MS = 2_000L
         const val BOOT_TIMEOUT_MS = 180_000L
+        const val LOG_TAIL_LINES = 20
     }
 }
 

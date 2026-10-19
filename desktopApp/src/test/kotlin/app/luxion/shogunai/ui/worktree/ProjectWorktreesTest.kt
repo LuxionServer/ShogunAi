@@ -1203,6 +1203,41 @@ class ProjectWorktreesTest {
         assertEquals(listOf(worktreePath), viewModel.cleanupCandidates.map { it.path })
     }
 
+    private fun agentRunningResponder(executed: MutableList<List<String>> = mutableListOf()): (List<String>) -> CommandResult {
+        val base = mergedResponder(executed)
+        return { command ->
+            when (command.first()) {
+                "lsof" -> success(command, stdout = "p42\nfcwd\nn$worktreePath\n")
+                "ps" -> success(command, stdout = "42 /usr/local/bin/claude\n")
+                else -> base(command)
+            }
+        }
+    }
+
+    @Test
+    fun `a merged worktree with a running agent is kept out of the cleanup and says which agent`() = runTest(dispatcher) {
+        val viewModel = projectWorktrees(useCases(agentRunningResponder()))
+        advanceUntilIdle()
+
+        assertTrue(viewModel.cleanupCandidates.isEmpty())
+        assertEquals(
+            listOf(worktreePath to listOf(RunningAgent("claude"))),
+            viewModel.cleanupKeptForRunningAgent.map { (worktree, agents) -> worktree.path to agents },
+        )
+    }
+
+    @Test
+    fun `cleaning up never removes a worktree where an agent is running`() = runTest(dispatcher) {
+        val executed = mutableListOf<List<String>>()
+        val viewModel = projectWorktrees(useCases(agentRunningResponder(executed)))
+        advanceUntilIdle()
+
+        viewModel.cleanUp(CleanupOptions())
+        advanceUntilIdle()
+
+        assertTrue(executed.none { it.take(3) == listOf("git", "worktree", "remove") })
+    }
+
     @Test
     fun `cancelling the cleanup dialog runs nothing`() = runTest(dispatcher) {
         val executed = mutableListOf<List<String>>()

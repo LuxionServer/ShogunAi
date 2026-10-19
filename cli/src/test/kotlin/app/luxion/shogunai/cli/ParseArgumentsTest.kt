@@ -22,6 +22,13 @@ class ParseArgumentsTest {
     }
 
     @Test
+    fun `help after a command asks for that command's help`() {
+        assertEquals(CliCommand.CommandHelp("new"), command("new", "--help"))
+        assertEquals(CliCommand.CommandHelp("clean"), command("clean", "--yes", "-h"))
+        assertEquals(CliCommand.CommandHelp("hook"), command("hook", "herdr", "--help"))
+    }
+
+    @Test
     fun `version aliases`() {
         listOf("version", "-v", "--version").forEach { assertEquals(CliCommand.Version, command(it)) }
     }

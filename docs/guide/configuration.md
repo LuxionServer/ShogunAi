@@ -88,6 +88,8 @@ Claude Code's `.worktreeinclude` is read like `copy`: one gitignore-style patter
 | `logs/emulator-<port>.log` | The output of each emulator ShogunAi started. |
 | `xcode/compilation-cache.xcconfig` | The shared Xcode settings written by the Xcode provider's `compilationCache`. |
 
+If `projects.json` or `settings.json` can't be read (for example, it isn't valid JSON), ShogunAi never overwrites it silently: the desktop app shows a notice with the file's path, the `shogun` command fails with one line naming it, and before anything writes a new file the unreadable one is kept next to it as `projects.json.unreadable-<timestamp>` (or `settings.json.unreadable-<timestamp>`). An unreadable `settings.json` makes the app start with the default settings. Writes to both files are serialized between the app and `shogun` with a `projects.json.lock` or `settings.json.lock` file next to them, so two writers never drop each other's change.
+
 These files contain paths of your machine; don't commit them anywhere.
 
 ## Per-worktree state

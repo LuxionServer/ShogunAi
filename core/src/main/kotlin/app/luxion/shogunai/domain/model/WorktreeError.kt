@@ -26,6 +26,15 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class RepositoryNotFound(val path: String) :
         WorktreeError("No Git repository found at $path")
 
+    class BareRepositoryNotSupported(val path: String) :
+        WorktreeError("$path is a bare repository; bare repositories aren't supported yet")
+
+    object RepositoryHasNoCommits :
+        WorktreeError("The repository has no commits yet; make a first commit and try again")
+
+    class LocalFileUnreadable(val path: String, val reason: String?) :
+        WorktreeError("Can't read $path" + if (reason.isNullOrBlank()) "" else ": $reason")
+
     class NotAWorktree(val path: String) :
         WorktreeError("$path is not a linked worktree of this repository")
 
@@ -80,6 +89,12 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
 
     class EmulatorBootTimeout(val serial: String, val seconds: Long) :
         WorktreeError("$serial didn't finish booting within $seconds s; it's still starting")
+
+    class EmulatorExitedEarly(val serial: String, val lastLogLines: String) :
+        WorktreeError(
+            "The emulator process of $serial exited before it finished booting" +
+                if (lastLogLines.isNotBlank()) ":\n$lastLogLines" else "",
+        )
 
     class AndroidToolFailed(val command: List<String>, val exitCode: Int, val output: String) :
         WorktreeError(

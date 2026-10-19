@@ -1,5 +1,6 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.BuildInfo
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeAppleSimulators
@@ -92,6 +93,7 @@ class ShogunCliTest {
             command.take(3) == listOf("git", "worktree", "list") -> Executor.ok(command, porcelain)
             command.take(2) == listOf("git", "symbolic-ref") -> Executor.fail(command)
             command.take(2) == listOf("git", "rev-parse") && command.last() == "refs/heads/main" -> Executor.ok(command)
+            command.take(2) == listOf("git", "rev-parse") && command.last() == "HEAD^{commit}" -> Executor.ok(command, "abc123\n")
             command.take(2) == listOf("git", "rev-parse") -> Executor.fail(command)
             "status" in command && directory == dirty -> Executor.ok(command, " M a.kt\n M b.kt\n")
             "rev-list" in command && command.last() == "@{upstream}...HEAD" -> Executor.fail(command)
@@ -122,10 +124,11 @@ class ShogunCliTest {
         herdr: FakeHerdrClient = FakeHerdrClient(),
         trust: FakeRepositoryTrust = FakeRepositoryTrust(),
         answer: String? = null,
+        projectRepository: ProjectRepository = FakeProjectRepository(projects),
     ) = ShogunCli(
         executor = executor,
         fileManager = fileManager,
-        projectRepository = FakeProjectRepository(projects),
+        projectRepository = projectRepository,
         provisioningSource = provisioning,
         daemonSource = daemons,
         gradleUserHome = gradleUserHome,
@@ -297,7 +300,7 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode)
         assertEquals(
-            "would remove $merged\nwould stop Gradle daemon 10\nRun 'shogun clean --yes' to remove it.\n",
+            "would remove $merged\nwould stop Gradle daemon 10\nRun 'shogun clean --stop-gradle-daemons --yes' to remove the worktree.\n",
             out.toString(),
         )
         assertFalse(executor.calls.any { it.first.first() == "kill" })
@@ -311,7 +314,7 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals("$worktreesRoot/TASK-123\n", out.toString())
-        assertTrue(executor.ran("git", "worktree", "add", "$worktreesRoot/TASK-123", "-b", "fix/TASK-123"))
+        assertTrue(executor.ran("git", "worktree", "add", "$worktreesRoot/TASK-123", "-b", "fix/TASK-123", "abc123"))
     }
 
     @Test
@@ -415,6 +418,73 @@ class ShogunCliTest {
         assertEquals(1, exitCode)
         assertTrue(err.startsWith("shogun: Worktree directory already exists"), err.toString())
         assertEquals("", out.toString())
+    }
+
+    @Test
+    fun `new in a repository without commits asks for a first commit`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command.last() == "HEAD^{commit}") Executor.fail(command, "", 1) else null
+        }
+        val fileManager = FakeFileManager(existing = listOf(base, "$base/local.properties"))
+
+        val exitCode = cli(executor, fileManager = fileManager).run(listOf("new", "TASK-1"))
+
+        assertEquals(1, exitCode)
+        assertEquals("shogun: The repository has no commits yet; make a first commit and try again\n", err.toString())
+    }
+
+    @Test
+    fun `new in a bare repository says it is not supported yet`() {
+        val executor = Executor { command, _ ->
+            if (command.contains("--git-common-dir")) Executor.ok(command, "$base.git\ntrue\n") else Executor.fail(command)
+        }
+
+        val exitCode = cli(executor).run(listOf("new", "TASK-1"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("bare repositories aren't supported yet"), err.toString())
+    }
+
+    @Test
+    fun `new explains that the branch already exists and how to use it`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command.take(3) == listOf("git", "worktree", "add")) {
+                Executor.fail(command, "fatal: a branch named 'feature/TASK-1' already exists", 128)
+            } else {
+                null
+            }
+        }
+        val fileManager = FakeFileManager(existing = listOf(base, "$base/local.properties"))
+
+        val exitCode = cli(executor, fileManager = fileManager).run(listOf("new", "TASK-1"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("fatal: a branch named 'feature/TASK-1' already exists"), err.toString())
+        assertTrue(err.contains("hint: The branch feature/TASK-1 already exists. Use another task id, or run 'shogun new --branch feature/TASK-1' to use it."), err.toString())
+    }
+
+    @Test
+    fun `a corrupted projects file is reported in one line with exit code 1`() {
+        val corrupted = object : ProjectRepository {
+            override fun list(): List<Project> = throw WorktreeError.LocalFileUnreadable("/home/dev/.shogunai/projects.json", "unexpected token")
+            override fun save(project: Project) = Unit
+            override fun delete(id: String) = Unit
+        }
+
+        val exitCode = cli(repositoryExecutor(), projectRepository = corrupted).run(listOf("status"))
+
+        assertEquals(1, exitCode)
+        assertEquals("shogun: Can't read /home/dev/.shogunai/projects.json: unexpected token\n", err.toString())
+    }
+
+    @Test
+    fun `an unexpected exception is reported in one line instead of a stack trace`() {
+        val executor = repositoryExecutor { _, _ -> throw IllegalStateException("boom\n\tat somewhere") }
+
+        val exitCode = cli(executor).run(listOf("status"))
+
+        assertEquals(1, exitCode)
+        assertEquals("shogun: boom\n", err.toString())
     }
 
     @Test
@@ -566,6 +636,52 @@ class ShogunCliTest {
         )
     }
 
+    private fun statusUnreadable(path: String) = repositoryExecutor { command, directory ->
+        if (directory == path && "status" in command) Executor.fail(command, "fatal: not a git repository: $path/.git", 128) else null
+    }
+
+    @Test
+    fun `status says why a worktree's status is unavailable`() {
+        val exitCode = cli(statusUnreadable(merged)).run(listOf("status"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(
+            out.contains("$merged  feature/TASK-1  origin=shogunai  status-unavailable (fatal: not a git repository: $merged/.git)\n"),
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `clean lists the worktrees it skipped because their status couldn't be read`() {
+        val exitCode = cli(statusUnreadable(merged)).run(listOf("clean"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            "skipped $merged (status unavailable: fatal: not a git repository: $merged/.git)\nNothing to clean up.\n",
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `the dry run hint repeats the given flags and names only what would be removed`() {
+        val orphan = FakeDerivedDataSource.derivedData("Gone-hash", "/home/dev/projects/gone/App.xcodeproj")
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(xcode = XcodeProvider()))),
+        )
+        val executor = repositoryExecutor { command, directory ->
+            if ("rev-list" in command && directory == merged) Executor.ok(command, "0\t1") else null
+        }
+
+        cli(executor, provisioning = provisioning, derivedDataSource = FakeDerivedDataSource(existing = listOf(orphan)))
+            .run(listOf("clean", "--delete-branches", "--delete-derived-data"))
+
+        assertTrue(
+            out.endsWith("Run 'shogun clean --delete-branches --delete-derived-data --yes' to remove the orphaned DerivedData.\n"),
+            out.toString(),
+        )
+        assertFalse(out.contains("worktree."), out.toString())
+    }
+
     @Test
     fun `status shows worktrees inside Herdr's folder as created by Herdr`() {
         val exitCode = cli(repositoryExecutor(), herdrWorktreesRoot = worktreesRoot).run(listOf("status"))
@@ -673,7 +789,7 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals(
-            "would remove $merged\nwould close Herdr workspace of $merged\nRun 'shogun clean --yes' to remove it.\n",
+            "would remove $merged\nwould close Herdr workspace of $merged\nRun 'shogun clean --yes' to remove the worktree.\n",
             out.toString(),
         )
         assertTrue(herdr.closedWorkspaces.isEmpty())
@@ -685,7 +801,7 @@ class ShogunCliTest {
 
         cli(repositoryExecutor(), herdr = herdr).run(listOf("clean"))
 
-        assertEquals("would remove $merged\nRun 'shogun clean --yes' to remove it.\n", out.toString())
+        assertEquals("would remove $merged\nRun 'shogun clean --yes' to remove the worktree.\n", out.toString())
     }
 
     @Test
@@ -716,7 +832,7 @@ class ShogunCliTest {
         val exitCode = cli(executor).run(listOf("clean"))
 
         assertEquals(0, exitCode)
-        assertEquals("would remove $merged\nRun 'shogun clean --yes' to remove it.\n", out.toString())
+        assertEquals("would remove $merged\nRun 'shogun clean --yes' to remove the worktree.\n", out.toString())
         assertFalse(executor.calls.any { it.first.take(3) == listOf("git", "worktree", "remove") })
     }
 
@@ -815,6 +931,38 @@ class ShogunCliTest {
         assertTrue(err.contains("couldn't remove $merged"), err.toString())
     }
 
+    private fun agentRunningIn(path: String) = repositoryExecutor { command, _ ->
+        when (command.first()) {
+            "lsof" -> Executor.ok(command, "p4242\nn$path\n")
+            "ps" -> Executor.ok(command, "4242 /usr/local/bin/claude\n")
+            else -> null
+        }
+    }
+
+    @Test
+    fun `clean keeps a worktree where an agent is running and says which one`() {
+        val executor = agentRunningIn(merged)
+
+        val exitCode = cli(executor).run(listOf("clean", "--yes"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("kept $merged (claude is running)\nNothing to clean up.\n", out.toString())
+        assertFalse(executor.calls.any { it.first.take(3) == listOf("git", "worktree", "remove") })
+    }
+
+    @Test
+    fun `clean says when running agents couldn't be checked and goes on`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command.first() == "lsof") Executor.fail(command, "lsof: not found", 127) else null
+        }
+
+        val exitCode = cli(executor).run(listOf("clean"))
+
+        assertEquals(0, exitCode)
+        assertTrue(err.startsWith("shogun: couldn't check for running agents"), err.toString())
+        assertTrue(out.contains("would remove $merged"), out.toString())
+    }
+
     @Test
     fun `clean with nothing to remove`() {
         val executor = repositoryExecutor { command, directory ->
@@ -836,6 +984,26 @@ class ShogunCliTest {
 
         assertEquals(0, cli(repositoryExecutor()).run(listOf("--version")))
         assertEquals("shogun ${BuildInfo.VERSION}\n", out.toString())
+    }
+
+    @Test
+    fun `help for a command prints only its usage and exits with 0`() {
+        val exitCode = cli(repositoryExecutor()).run(listOf("new", "--help"))
+
+        assertEquals(0, exitCode)
+        assertTrue(out.startsWith("Usage: shogun new [options]\n"), out.toString())
+        listOf("--fix", "--branch", "--from", "--worktrees-root").forEach { assertTrue(out.contains(it), it) }
+        assertFalse(out.contains("provision"), out.toString())
+        assertEquals("", err.toString())
+    }
+
+    @Test
+    fun `the global help lists every command with aligned descriptions`() {
+        cli(repositoryExecutor()).run(listOf("help"))
+
+        val hookLines = out.lines().filter { it.trimStart().startsWith("hook ") }
+        assertEquals(4, hookLines.size)
+        assertEquals(1, hookLines.map { it.indexOf("  ", it.indexOf("hook") + 5).let { gap -> it.substring(gap).indexOfFirst { c -> c != ' ' } + gap } }.distinct().size)
     }
 
     @Test

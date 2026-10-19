@@ -8,13 +8,18 @@ import androidx.lifecycle.ViewModel
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.io.ShellPreferenceRepository
 import app.luxion.shogunai.domain.model.Project
+import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.ui.machine.MachineResource
 import app.luxion.shogunai.ui.palette.recordRecent
 
 class ShellViewModel(
     private val projectRepository: ProjectRepository,
     private val shellPreferences: ShellPreferenceRepository,
+    private val readSettingsProblem: () -> WorktreeError.LocalFileUnreadable? = { null },
+    private val acknowledgeSettingsProblem: () -> Unit = {},
 ) : ViewModel() {
+    var unreadableFiles by mutableStateOf<List<WorktreeError.LocalFileUnreadable>>(emptyList())
+        private set
     var projects by mutableStateOf<List<Project>>(emptyList())
         private set
     var destination by mutableStateOf<ShellDestination?>(null)
@@ -45,6 +50,7 @@ class ShellViewModel(
 
     init {
         projects = loadProjects()
+        noteSettingsProblem()
         destination = ShellDestination.fromStorageKey(shellPreferences.loadLastDestination())
             ?.takeIf(::isAvailable)
             ?: fallbackDestination()
@@ -189,7 +195,23 @@ class ShellViewModel(
     private fun fallbackDestination(): ShellDestination? =
         if (projects.isEmpty()) null else ShellDestination.Active
 
-    private fun loadProjects(): List<Project> = projectRepository.list().sortedBy { it.name.lowercase() }
+    fun dismissUnreadableFiles() {
+        unreadableFiles = emptyList()
+        acknowledgeSettingsProblem()
+    }
+
+    private fun noteSettingsProblem() {
+        val problem = readSettingsProblem() ?: return
+        if (unreadableFiles.none { it.path == problem.path }) unreadableFiles += problem
+    }
+
+    private fun loadProjects(): List<Project> = try {
+        unreadableFiles = unreadableFiles.filterNot { it.path.endsWith(PROJECTS_FILE_NAME) }
+        projectRepository.list().sortedBy { it.name.lowercase() }
+    } catch (problem: WorktreeError.LocalFileUnreadable) {
+        unreadableFiles += problem
+        emptyList()
+    }
 }
 
 data class WorktreeActions(
@@ -199,3 +221,5 @@ data class WorktreeActions(
     val onClearSelection: () -> Unit,
     val onEscape: () -> Unit,
 )
+
+private const val PROJECTS_FILE_NAME = "projects.json"

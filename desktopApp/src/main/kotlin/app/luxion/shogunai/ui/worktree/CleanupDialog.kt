@@ -71,6 +71,18 @@ fun CleanupDialog(board: WorktreeBoard) {
                         )
                     }
                 }
+                groups.forEach { group ->
+                    group.holder.cleanupKeptForRunningAgent.forEach { (worktree, running) ->
+                        Text(
+                            strings.keptForRunningAgent(worktree.path.substringAfterLast('/'), running.map { it.name }),
+                            style = ShogunTheme.typography.dataSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = Spacing.xs),
+                        )
+                    }
+                }
                 CleanupOption(strings.alsoDeleteLocalBranches, board.cleanupDeleteBranches, enabled, Modifier.padding(top = Spacing.sm)) {
                     board.cleanupDeleteBranches = it
                 }

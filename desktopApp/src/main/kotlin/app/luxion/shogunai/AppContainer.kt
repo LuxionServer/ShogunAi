@@ -87,6 +87,10 @@ import app.luxion.shogunai.infrastructure.defaultGradleUserHome
 class AppContainer {
     val projectRepository: ProjectRepository = JsonProjectRepository()
     private val settingsFile = JsonSettingsFile()
+    fun settingsProblem() = settingsFile.lastReadProblem
+
+    fun acknowledgeSettingsProblem() = settingsFile.acknowledgeReadProblem()
+
     val themePreferenceRepository: ThemePreferenceRepository = JsonThemePreferenceRepository(settingsFile)
     val languagePreferenceRepository: LanguagePreferenceRepository = JsonLanguagePreferenceRepository(settingsFile)
     val shellPreferenceRepository: ShellPreferenceRepository = JsonShellPreferenceRepository(settingsFile)
@@ -130,7 +134,7 @@ class AppContainer {
     )
 
     private fun simulatorSettingsFor(repositoryPath: String): SimulatorSettings =
-        projectRepository.list()
+        runCatching { projectRepository.list() }.getOrDefault(emptyList())
             .firstOrNull { it.config.baseRepositoryPath.trimEnd('/') == repositoryPath.trimEnd('/') }
             ?.config?.simulator ?: SimulatorSettings()
 

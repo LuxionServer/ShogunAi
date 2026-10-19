@@ -1,5 +1,7 @@
 package app.luxion.shogunai.infrastructure
 
+import app.luxion.shogunai.domain.FakeAndroidSdk
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.model.EmulatorState
@@ -38,7 +40,10 @@ class LocalAndroidSdkTest {
         userHome = "/home/dev",
         osName = osName,
         logDirectory = logs,
-        launch = { command, log -> launches += command to log },
+        launch = { command, log ->
+            launches += command to log
+            FakeAndroidSdk.FakeEmulatorProcess()
+        },
     )
 
     @Test
@@ -108,6 +113,15 @@ class LocalAndroidSdkTest {
             ),
             states,
         )
+    }
+
+    @Test
+    fun `asks adb for devices with a limit`() = runTest {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, "List of devices attached\n") }
+
+        sdk(executor = executor).deviceStates(location)
+
+        assertEquals(CommandTimeouts.LISTING, executor.timeouts[listOf("/sdk/platform-tools/adb", "devices")])
     }
 
     @Test
