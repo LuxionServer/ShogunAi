@@ -36,7 +36,9 @@ import app.luxion.shogunai.domain.usecase.DeleteOrphanedDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.DetectRunningAgentsUseCase
 import app.luxion.shogunai.domain.usecase.ListDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.ListGradleDaemonsUseCase
-import app.luxion.shogunai.domain.usecase.ListLocalBranchesUseCase
+import app.luxion.shogunai.domain.usecase.FetchRemoteUseCase
+import app.luxion.shogunai.domain.usecase.ListBranchesUseCase
+import app.luxion.shogunai.domain.usecase.ResolveStartPointUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.MeasureWorktreeSizeUseCase
 import app.luxion.shogunai.domain.usecase.ReadGitMetadataFingerprintUseCase
@@ -72,7 +74,7 @@ class WorktreeBoardTest {
 
     private val dispatcher = StandardTestDispatcher()
     private val listCommand = listOf("git", "worktree", "list", "--porcelain")
-    private val forEachRefCommand = listOf("git", "for-each-ref", "--format=%(refname:short)", "refs/heads")
+    private val forEachRefCommand = listOf("git", "for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes/origin/")
     private val statusCommand = listOf("git", "--no-optional-locks", "status", "--porcelain")
     private var now = Instant.parse("2026-10-19T10:00:00Z")
 
@@ -149,7 +151,7 @@ class WorktreeBoardTest {
                         listGate?.await()
                         success(command, porcelain)
                     }
-                    command == forEachRefCommand -> success(command, stdout = "main\nhotfix/fix\n")
+                    command == forEachRefCommand -> success(command, stdout = "refs/heads/main\nrefs/heads/hotfix/fix\n")
                     command == statusCommand -> {
                         statusGate?.await()
                         success(command)
@@ -171,7 +173,9 @@ class WorktreeBoardTest {
             list = ListWorktreesUseCase(config, executor, FakeFileManager(existing = if (exists) listOf(base) else emptyList())),
             create = CreateWorktreeUseCase(config, executor, files, FakeRepositoryProvisioningSource()),
             createFromBranch = CreateWorktreeFromBranchUseCase(config, executor, files, FakeRepositoryProvisioningSource()),
-            listLocalBranches = ListLocalBranchesUseCase(config, executor),
+            listBranches = ListBranchesUseCase(config, executor),
+            fetchRemote = FetchRemoteUseCase(config, executor),
+            resolveStartPoint = { ref -> ResolveStartPointUseCase(executor)(config.baseRepositoryPath, ref) },
             remove = RemoveWorktreeUseCase(config, executor),
             copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, FakeClipboardWriter()),
             repair = RepairWorktreesUseCase(config, executor, files),
@@ -470,6 +474,19 @@ class WorktreeBoardTest {
 
         assertNotSame(before, board.holder("api"))
         assertEquals(2, board.holder("api")?.worktrees?.size)
+    }
+
+    @Test
+    fun `remembering the fetch option keeps the project's holder`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        val before = board.holder("api")
+
+        val remembered = api.project.copy(config = api.config.copy(fetchBeforeCreate = true))
+        board.syncCatalog(listOf(remembered, mainRepo.project))
+
+        assertSame(before, board.holder("api"))
+        assertTrue(board.projects.first().config.fetchBeforeCreate)
     }
 
     @Test

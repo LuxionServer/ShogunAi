@@ -123,6 +123,12 @@ interface Strings {
     val noBranchesAvailable: String
     fun branchAlreadyHasWorktree(branch: String): String
     val selectBranchPlaceholder: String
+    val startFromLabel: String
+    fun startFromMainBranch(ref: String): String
+    fun startFromCurrentBranch(branch: String?): String
+    fun remoteBranchLabel(branch: String): String
+    val fetchFirstLabel: String
+    val createWithoutFetching: String
     val otherBranchesGroup: String
     val worktreesTitle: String
     val viewsTitle: String

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.BasicAlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -25,6 +26,7 @@ import androidx.compose.ui.window.DialogProperties
 import app.luxion.shogunai.domain.io.PostCreateDecision
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.ShellQuoting
+import app.luxion.shogunai.domain.model.withoutLocalTwins
 import app.luxion.shogunai.ui.components.DropdownSelector
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.NeutralTextButton
@@ -32,6 +34,7 @@ import app.luxion.shogunai.ui.components.PrimaryButton
 import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.SegmentedSelector
 import app.luxion.shogunai.ui.components.Spacing
+import app.luxion.shogunai.ui.components.handPointer
 import app.luxion.shogunai.ui.components.onEnterKey
 import app.luxion.shogunai.ui.components.trackTextInputFocus
 import app.luxion.shogunai.ui.i18n.LocalStrings
@@ -77,6 +80,15 @@ fun CreateWorktreeDialog(board: WorktreeBoard) {
                 when (board.createMode) {
                     CreateMode.NEW_BRANCH -> NewBranchFields(board, holder)
                     CreateMode.EXISTING_BRANCH -> ExistingBranchField(board, holder)
+                }
+                if (board.canFetchFirst) {
+                    FetchFirstOption(board, isCreating)
+                }
+                holder.fetchError?.let { error ->
+                    ErrorNotice(error = error, onDismiss = null, onRetry = { board.confirmCreate() })
+                    NeutralTextButton(onClick = { board.confirmCreate(skipFetch = true) }) {
+                        Text(strings.createWithoutFetching)
+                    }
                 }
                 val approvalRequest = board.approval.pending
                 if (approvalRequest != null) PostCreateApprovalStep(approvalRequest, board.approval)
@@ -134,6 +146,46 @@ private fun PostCreateApprovalStep(request: DialogPostCreateApproval.Request, ap
 }
 
 @Composable
+private fun FetchFirstOption(board: WorktreeBoard, isCreating: Boolean) {
+    val strings = LocalStrings.current
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(
+            checked = board.fetchFirst,
+            onCheckedChange = { board.fetchFirst = it },
+            enabled = !isCreating,
+            modifier = Modifier.handPointer(!isCreating),
+        )
+        Text(strings.fetchFirstLabel)
+    }
+}
+
+@Composable
+private fun StartFromField(board: WorktreeBoard, holder: ProjectWorktrees) {
+    val strings = LocalStrings.current
+    val groupExpansion = remember { mutableStateMapOf<String, Boolean>() }
+    DropdownSelector(
+        options = board.startOptions,
+        selected = board.effectiveStartFrom,
+        onSelect = { board.startFrom = it },
+        label = { option ->
+            when {
+                option == StartOption.Current -> strings.startFromCurrentBranch(board.currentBranchName)
+                option.ref == holder.defaultStartRef -> strings.startFromMainBranch(option.ref.orEmpty())
+                else -> option.ref.orEmpty()
+            }
+        },
+        placeholder = strings.startFromLabel,
+        fieldLabel = strings.startFromLabel,
+        groupBy = { option ->
+            option.ref?.takeIf { it != holder.defaultStartRef }?.substringBefore('/', strings.otherBranchesGroup)
+        },
+        expandedGroups = groupExpansion,
+        fieldEnabled = !holder.isCreating,
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+@Composable
 private fun ProjectField(board: WorktreeBoard, isCreating: Boolean) {
     val strings = LocalStrings.current
     DropdownSelector(
@@ -175,12 +227,14 @@ private fun NewBranchFields(board: WorktreeBoard, holder: ProjectWorktrees) {
         label = { it.prefix },
         enabled = !holder.isCreating,
     )
+    StartFromField(board, holder)
 }
 
 @Composable
 private fun ExistingBranchField(board: WorktreeBoard, holder: ProjectWorktrees) {
     val strings = LocalStrings.current
     val branchGroupExpansion = remember { mutableStateMapOf<String, Boolean>() }
+    val existing = holder.branches.withoutLocalTwins()
     when {
         holder.isLoadingBranches -> Row(verticalAlignment = Alignment.CenterVertically) {
             InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
@@ -189,15 +243,21 @@ private fun ExistingBranchField(board: WorktreeBoard, holder: ProjectWorktrees) 
         holder.branchesError != null -> ErrorNotice(
             error = holder.branchesError!!,
             onDismiss = null,
-            onRetry = holder::loadLocalBranches,
+            onRetry = holder::loadBranches,
         )
-        holder.localBranches.isEmpty() -> Text(strings.noBranchesAvailable)
+        existing.isEmpty() -> Text(strings.noBranchesAvailable)
         else -> DropdownSelector(
-            options = holder.localBranches,
-            selected = holder.localBranches.find { it.name == board.selectedBranch },
+            options = existing,
+            selected = existing.find { it.name == board.selectedBranch },
             onSelect = { board.selectedBranch = it.name },
             enabled = { !it.isCheckedOut },
-            label = { if (it.isCheckedOut) strings.branchAlreadyHasWorktree(it.name) else it.name },
+            label = {
+                when {
+                    it.isCheckedOut -> strings.branchAlreadyHasWorktree(it.name)
+                    it.isRemote -> strings.remoteBranchLabel(it.name)
+                    else -> it.name
+                }
+            },
             placeholder = strings.selectBranchPlaceholder,
             groupBy = { it.name.substringBefore('/', strings.otherBranchesGroup) },
             expandedGroups = branchGroupExpansion,
