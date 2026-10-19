@@ -128,6 +128,20 @@ interface Strings {
     val groupInactive: String
     val groupFolderMissing: String
     val groupOther: String
+    val groupAgentWorkingHint: String
+    val groupAgentWorkingCriterion: String
+    val groupNeedsYouHint: String
+    val groupNeedsYouCriterion: String
+    val groupInProgressHint: String
+    val groupInProgressCriterion: String
+    val groupMergedHint: String
+    val groupMergedCriterion: String
+    val groupInactiveHint: String
+    val groupInactiveCriterion: String
+    val groupFolderMissingHint: String
+    val groupFolderMissingCriterion: String
+    val groupOtherHint: String
+    val groupOtherCriterion: String
     val groupByState: String
     val groupByProject: String
     val readingWorktreeStatus: String

@@ -85,7 +85,7 @@ The app SHALL provide an About window with the app's name, icon, version and a l
 - **THEN** a window shows the app's icon, name and version
 
 ### Requirement: Sidebar views section
-The sidebar SHALL show a views section above the projects, with an "All worktrees" entry showing the total number of worktrees. Project entries SHALL open the same worktree view filtered to that project.
+The sidebar SHALL show a views section above the projects, with an "All worktrees" entry showing the total number of worktrees. Project entries SHALL open the worktree view of that project.
 
 #### Scenario: All worktrees entry
 - **WHEN** the saved projects have 7 worktrees in total
@@ -93,7 +93,7 @@ The sidebar SHALL show a views section above the projects, with an "All worktree
 
 #### Scenario: Project entry is a filter
 - **WHEN** the user selects `api` in the sidebar
-- **THEN** the content area shows the worktree view with the project filter set to `api`
+- **THEN** the content area shows the worktree view with only `api`'s worktrees and `api` marked as selected in the sidebar
 
 ### Requirement: Active is the main view
 The sidebar's views section SHALL list "Active" first, above "All worktrees", with the number of active worktrees. When no view was saved from a previous session, the app SHALL open on "Active".

@@ -59,7 +59,6 @@ import java.io.File
 @Composable
 fun WorktreeScreen(
     board: WorktreeBoard,
-    onSelectFilter: (String?) -> Unit,
     onOpenProjectSettings: (Project) -> Unit,
     onSeeAll: () -> Unit,
     onOpenMachine: (MachineResource) -> Unit,
@@ -75,7 +74,7 @@ fun WorktreeScreen(
         messages.show(strings.successMessage(pending.success), pending.action(strings, board))
         board.dismissSuccess(pending)
     }
-    val filteredProject = board.shownProjects.singleOrNull()?.takeIf { board.isFiltered }
+    val filteredProject = board.shownProjects.singleOrNull()?.takeIf { board.isProjectView }
 
     Column(
         modifier = Modifier
@@ -115,7 +114,9 @@ fun WorktreeScreen(
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (!board.isActiveView) ProjectFilter(board, onSelectFilter)
+            if (!board.isProjectView) {
+                ViewProjectFilter(board.projects, board.viewProjectFilter, board::updateViewProjectFilter)
+            }
             TextFilterField(board)
             GroupingSelector(board)
             if (board.isActiveView && board.isReadingActivity) {
@@ -150,13 +151,13 @@ private fun GroupingSelector(board: WorktreeBoard) {
 }
 
 @Composable
-private fun ProjectFilter(board: WorktreeBoard, onSelectFilter: (String?) -> Unit) {
+internal fun ViewProjectFilter(projects: List<Project>, selectedId: String?, onSelect: (String?) -> Unit) {
     val strings = LocalStrings.current
-    val options = listOf<Project?>(null) + board.projects
+    val options = listOf<Project?>(null) + projects
     DropdownSelector(
         options = options,
-        selected = board.projects.firstOrNull { it.id == board.projectFilter },
-        onSelect = { onSelectFilter(it?.id) },
+        selected = projects.firstOrNull { it.id == selectedId },
+        onSelect = { onSelect(it?.id) },
         label = { it?.name ?: strings.allProjects },
         placeholder = strings.allProjects,
         modifier = Modifier.width(FilterFieldWidth),

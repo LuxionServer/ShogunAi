@@ -129,8 +129,6 @@ class ShellViewModel(
 
     fun selectMachine(resource: MachineResource) = requestLeave { select(ShellDestination.Machine(resource)) }
 
-    fun selectFilter(projectId: String?) = requestLeave { select(ShellDestination.All(projectFilter = projectId)) }
-
     fun addProject(folder: String? = null) = requestLeave { openForm(ShellDestination.AddProject(folder)) }
 
     fun editProject(project: Project) = requestLeave { openForm(ShellDestination.ProjectSettings(project.id)) }

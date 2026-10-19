@@ -221,9 +221,7 @@ private fun runPaletteAction(
     when (action) {
         is PaletteAction.Open -> viewModel.navigate(action.destination)
         is PaletteAction.SelectWorktree -> viewModel.navigate(ShellDestination.All()) {
-            board.clearTextFilter()
-            if (action.ref.projectId in board.collapsedProjects) board.toggleCollapsed(action.ref.projectId)
-            board.select(action.ref)
+            board.revealInAllWorktrees(action.ref)
         }
         is PaletteAction.CopyLaunchCommand -> board.copyLaunchCommand(action.ref, onCopied)
         is PaletteAction.NewWorktreeIn -> viewModel.navigate(ShellDestination.All(projectFilter = action.projectId)) {
@@ -271,7 +269,7 @@ private fun MachineDestination(
         resource = resource,
         machine = machine,
         onOpenWorktree = { projectId, path ->
-            board.select(WorktreeRef(projectId, path))
+            board.revealInAllWorktrees(WorktreeRef(projectId, path))
             shellViewModel.selectAll()
         },
     )
@@ -308,7 +306,6 @@ private fun WorktreeView(destination: ShellDestination, shellViewModel: ShellVie
     }
     WorktreeScreen(
         board = board,
-        onSelectFilter = shellViewModel::selectFilter,
         onOpenProjectSettings = shellViewModel::editProject,
         onSeeAll = shellViewModel::selectAll,
         onOpenMachine = shellViewModel::selectMachine,

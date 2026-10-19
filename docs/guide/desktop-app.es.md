@@ -36,6 +36,22 @@ Cada fila muestra un worktree con:
 
 La lista se actualiza sola: los cambios hechos desde un terminal o por un agente aparecen en pocos segundos, y también al recuperar el foco la ventana.
 
+"Activos" y "Todos los worktrees" abarcan todos los proyectos; su filtro de proyecto reduce la vista actual a un proyecto sin salir de ella. Al seleccionar un proyecto en la barra lateral se abre, en cambio, la vista propia de ese proyecto, que no tiene filtro de proyecto.
+
+## Estados
+
+Agrupada por estado, la cabecera de cada grupo muestra una pista breve junto a su título, y al pasar el ratón por el título se ve su criterio completo. "Activos" muestra los tres primeros grupos; "Todos los worktrees", todos.
+
+| Grupo | Pista | Criterio |
+|---|---|---|
+| Con agente | agente en marcha | Hay un agente de IA en marcha en el worktree. |
+| Te necesitan | sin commit o sin subir | Cambios sin commit, o commits sin subir a su upstream (o a la rama principal si no tiene). |
+| En curso | subido, sin fusionar | Limpio, subido, sin fusionar y con algún commit en los últimos 14 días. |
+| Fusionados | ya en la rama principal | Sin commits propios por delante de la rama principal. Se puede limpiar. |
+| Inactivos | sin commits en 14 días | Limpio, sin agente y sin commits en los últimos 14 días. |
+| Carpeta no encontrada | carpeta borrada | Git aún lo lista, pero su carpeta ya no existe. Se puede limpiar. |
+| Otros | principal o sin leer | El worktree principal cuando está limpio, o un worktree cuyo estado aún no se ha leído. |
+
 ## Trabajar en un worktree
 
 - **Copiar comando** copia `cd "<worktree>" && <comando del agente>` para pegarlo en cualquier terminal.
