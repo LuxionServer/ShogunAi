@@ -368,7 +368,8 @@ private val WorktreeDetailOverlayThreshold = 760.dp
 private val WorktreeOverlayScrim = Color(0x66000000)
 
 private fun Strings.successMessage(success: WorktreeSuccess): String = when (success) {
-    is WorktreeSuccess.Created -> worktreeCreated(File(success.path).name)
+    is WorktreeSuccess.Created ->
+        if (success.commandsSkipped) worktreeCreatedCommandsSkipped(File(success.path).name) else worktreeCreated(File(success.path).name)
     WorktreeSuccess.RepairedAfterMove -> worktreesRepairedAfterMove
     is WorktreeSuccess.OpenedInHerdr -> {
         val name = File(success.path).name

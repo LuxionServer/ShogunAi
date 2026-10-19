@@ -94,7 +94,7 @@ class CleanUpWorktreesUseCaseTest {
         val report = CleanUpWorktreesUseCase(config, executor)(listOf(first), mainBranch, deleteBranches = true).getOrThrow()
 
         assertTrue(executor.executed("git", "merge-base", "--is-ancestor", "feature/TASK-1", "origin/develop"))
-        assertTrue(executor.executed("git", "branch", "-D", "feature/TASK-1"))
+        assertTrue(executor.executed("git", "branch", "-D", "--", "feature/TASK-1"))
         assertTrue(report.keptBranches.isEmpty())
     }
 
@@ -120,7 +120,7 @@ class CleanUpWorktreesUseCaseTest {
         val report = CleanUpWorktreesUseCase(config, executor)(listOf(first, missing), mainBranch, deleteBranches = true)
             .getOrThrow()
 
-        assertTrue(executor.executed("git", "branch", "-D", "feature/TASK-1"))
+        assertTrue(executor.executed("git", "branch", "-D", "--", "feature/TASK-1"))
         assertEquals(listOf("feature/TASK-3"), report.keptBranches)
     }
 
@@ -147,7 +147,7 @@ class CleanUpWorktreesUseCaseTest {
         assertEquals(listOf(second.path), report.removed)
         assertEquals(listOf(first.path), report.failures.map { it.path })
         assertEquals(128, assertIs<WorktreeError.GitCommandFailed>(report.failures.single().error).exitCode)
-        assertTrue(executor.executedCommands.none { it == listOf("git", "branch", "-D", "feature/TASK-1") })
+        assertTrue(executor.executedCommands.none { it == listOf("git", "branch", "-D", "--", "feature/TASK-1") })
     }
 
     @Test

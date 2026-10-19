@@ -14,6 +14,7 @@ import app.luxion.shogunai.domain.FakeKmpTestWiring
 import app.luxion.shogunai.domain.FakeGradleDaemonSource.Companion.gradleDaemon
 import app.luxion.shogunai.domain.FakeGradleDaemonSource.Companion.kotlinDaemon
 import app.luxion.shogunai.domain.FakeProjectRepository
+import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
@@ -119,6 +120,8 @@ class ShogunCliTest {
         derivedDataSource: FakeDerivedDataSource = FakeDerivedDataSource(),
         herdrWorktreesRoot: String = "/home/dev/.herdr/worktrees",
         herdr: FakeHerdrClient = FakeHerdrClient(),
+        trust: FakeRepositoryTrust = FakeRepositoryTrust(),
+        answer: String? = null,
     ) = ShogunCli(
         executor = executor,
         fileManager = fileManager,
@@ -139,6 +142,8 @@ class ShogunCliTest {
         canonicalPath = canonicalPath,
         now = { now },
         herdr = herdr,
+        trust = trust,
+        readAnswer = { answer },
     )
 
     private val gradleUserHome = "/home/dev/.gradle"
@@ -445,6 +450,10 @@ class ShogunCliTest {
         ),
     )
 
+    private val installCommands = listOf(listOf("npm", "install"))
+
+    private val approvedInstall get() = FakeRepositoryTrust(mapOf(base to installCommands))
+
     private fun linkingExecutor(hook: (List<String>) -> CommandResult? = { null }) = repositoryExecutor { command, _ ->
         when {
             "ls-files" in command && "token.txt" in command -> Executor.ok(command, "token.txt\u0000")
@@ -475,7 +484,8 @@ class ShogunCliTest {
     fun `provision fails with exit code 1 when a post-creation command fails`() {
         val executor = linkingExecutor { Executor.fail(it, stderr = "ENOTFOUND", exitCode = 4) }
 
-        val exitCode = cli(executor, provisioning = linkingProvisioning, workingDirectory = merged).run(listOf("provision"))
+        val exitCode = cli(executor, provisioning = linkingProvisioning, workingDirectory = merged, trust = approvedInstall)
+            .run(listOf("provision"))
 
         assertEquals(1, exitCode)
         assertTrue(err.contains("npm install") && err.contains("exit code 4") && err.contains("ENOTFOUND"), err.toString())
@@ -485,7 +495,7 @@ class ShogunCliTest {
     fun `new prints the kept path and the failure when a post-creation command fails`() {
         val executor = linkingExecutor { Executor.fail(it, stderr = "ENOTFOUND", exitCode = 4) }
 
-        val exitCode = cli(executor, provisioning = linkingProvisioning).run(listOf("new", "TASK-123"))
+        val exitCode = cli(executor, provisioning = linkingProvisioning, trust = approvedInstall).run(listOf("new", "TASK-123"))
 
         assertEquals(1, exitCode)
         assertEquals("$worktreesRoot/TASK-123\n", out.toString())
@@ -1032,5 +1042,116 @@ class ShogunCliTest {
         assertEquals(0, exitCode, err.toString())
         assertTrue(out.contains("would delete orphaned DerivedData ${orphan.path}\n"), out.toString())
         assertTrue(derivedData.deleted.isEmpty())
+    }
+
+    @Test
+    fun `new runs and approves the commands when the user answers yes`() {
+        val executor = linkingExecutor()
+        val trust = FakeRepositoryTrust()
+
+        val exitCode = cli(executor, provisioning = linkingProvisioning, trust = trust, answer = "y").run(listOf("new", "TASK-123"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(executor.calls.any { it.first == listOf("npm", "install") })
+        assertTrue(trust.isApproved(base, installCommands))
+        assertEquals("$worktreesRoot/TASK-123\n", out.toString())
+        assertTrue(err.contains("npm install"), err.toString())
+    }
+
+    @Test
+    fun `new skips the commands when the user answers no or just presses Enter`() {
+        listOf("n", "").forEach { answer ->
+            out.clear()
+            err.clear()
+            val executor = linkingExecutor()
+            val trust = FakeRepositoryTrust()
+
+            val exitCode = cli(executor, provisioning = linkingProvisioning, trust = trust, answer = answer).run(listOf("new", "TASK-123"))
+
+            assertEquals(0, exitCode, err.toString())
+            assertFalse(executor.calls.any { it.first == listOf("npm", "install") })
+            assertFalse(trust.isApproved(base, installCommands))
+            assertTrue(err.contains("shogun trust"), err.toString())
+        }
+    }
+
+    @Test
+    fun `new skips the commands with a note when there is no console to ask on`() {
+        val executor = linkingExecutor()
+
+        val exitCode = cli(executor, provisioning = linkingProvisioning, answer = null).run(listOf("new", "TASK-123"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertFalse(executor.calls.any { it.first == listOf("npm", "install") })
+        assertTrue(err.contains("skipped 1 post-creation command not approved on this machine"), err.toString())
+        assertTrue(err.contains("shogun trust"), err.toString())
+    }
+
+    @Test
+    fun `provision asks before running unapproved commands`() {
+        val executor = linkingExecutor()
+        val trust = FakeRepositoryTrust()
+
+        val exitCode = cli(executor, provisioning = linkingProvisioning, workingDirectory = merged, trust = trust, answer = "yes")
+            .run(listOf("provision"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(executor.calls.any { it.first == listOf("npm", "install") })
+        assertTrue(trust.isApproved(base, installCommands))
+    }
+
+    @Test
+    fun `trust shows the commands and approves them with --yes`() {
+        val trust = FakeRepositoryTrust()
+
+        val exitCode = cli(linkingExecutor(), provisioning = linkingProvisioning, trust = trust).run(listOf("trust", "--yes"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.contains("npm install"), out.toString())
+        assertTrue(out.contains("not approved on this machine"), out.toString())
+        assertTrue(trust.isApproved(base, installCommands))
+    }
+
+    @Test
+    fun `trust asks on a console and approves only on yes`() {
+        val declined = FakeRepositoryTrust()
+        cli(linkingExecutor(), provisioning = linkingProvisioning, trust = declined, answer = "n").run(listOf("trust"))
+        assertFalse(declined.isApproved(base, installCommands))
+
+        val accepted = FakeRepositoryTrust()
+        cli(linkingExecutor(), provisioning = linkingProvisioning, trust = accepted, answer = "y").run(listOf("trust"))
+        assertTrue(accepted.isApproved(base, installCommands))
+    }
+
+    @Test
+    fun `trust reports commands that are already approved`() {
+        val exitCode = cli(linkingExecutor(), provisioning = linkingProvisioning, trust = approvedInstall).run(listOf("trust"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.contains("approved on this machine") && !out.contains("not approved"), out.toString())
+    }
+
+    @Test
+    fun `trust --revoke removes the approval`() {
+        val trust = approvedInstall
+
+        val exitCode = cli(linkingExecutor(), provisioning = linkingProvisioning, trust = trust).run(listOf("trust", "--revoke"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertFalse(trust.isApproved(base, installCommands))
+    }
+
+    @Test
+    fun `trust says so when the repository declares no commands`() {
+        val exitCode = cli(linkingExecutor()).run(listOf("trust"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.contains("declares no post-creation commands"), out.toString())
+    }
+
+    @Test
+    fun `trust rejects an unknown option and combining yes with revoke`() {
+        assertEquals(2, cli(linkingExecutor()).run(listOf("trust", "--bogus")))
+        assertEquals(2, cli(linkingExecutor()).run(listOf("trust", "--yes", "--revoke")))
     }
 }

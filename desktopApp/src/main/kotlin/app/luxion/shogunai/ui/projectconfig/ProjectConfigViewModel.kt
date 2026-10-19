@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
+import app.luxion.shogunai.domain.io.RepositoryTrust
 import androidx.lifecycle.viewModelScope
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.SimulatorSetup
@@ -62,6 +63,7 @@ class ProjectConfigViewModel(
         Result.failure(WorktreeError.RepositoryNotFound(it))
     },
     private val supportsApplePlatforms: Boolean = true,
+    private val trust: RepositoryTrust = RepositoryTrust.NONE,
 ) : ViewModel(), LeaveGuard {
     private val existingId = existingProject?.id
     val isNewProject: Boolean = existingProject == null
@@ -106,6 +108,12 @@ class ProjectConfigViewModel(
         private set
 
     var repositoryChangedOnDisk by mutableStateOf(false)
+        private set
+
+    var postCreateApproved by mutableStateOf(false)
+        private set
+
+    var postCreateCommands by mutableStateOf(emptyList<List<String>>())
         private set
 
     private var initialRepositoryDraft = RepositoryConfigDraft()
@@ -189,9 +197,30 @@ class ProjectConfigViewModel(
         }
         repositoryFingerprint = if (path.isBlank()) ABSENT_FINGERPRINT else runCatching { provisioningSource.fingerprint(path) }.getOrDefault(ABSENT_FINGERPRINT)
         repositoryDraft = RepositoryConfigDraft.of(provisioning)
+        postCreateCommands = provisioning?.postCreateCommands.orEmpty()
         initialRepositoryDraft = repositoryDraft
         nextEnvironmentRowId = repositoryDraft.environment.size
         repositoryChangedOnDisk = false
+        refreshPostCreateApproval()
+    }
+
+    private fun refreshPostCreateApproval() {
+        val commands = postCreateCommands
+        postCreateApproved = commands.isNotEmpty() && _baseRepositoryPath.isNotBlank() &&
+            runCatching { trust.isApproved(_baseRepositoryPath, commands) }.getOrDefault(false)
+    }
+
+    fun approvePostCreateCommands() {
+        val commands = postCreateCommands
+        if (commands.isEmpty() || _baseRepositoryPath.isBlank()) return
+        trust.approve(_baseRepositoryPath, commands)
+        refreshPostCreateApproval()
+    }
+
+    fun revokePostCreateApproval() {
+        if (_baseRepositoryPath.isBlank()) return
+        trust.revoke(_baseRepositoryPath)
+        refreshPostCreateApproval()
     }
 
     fun reloadRepositoryConfig() {

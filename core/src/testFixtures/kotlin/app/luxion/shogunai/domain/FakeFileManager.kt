@@ -65,6 +65,10 @@ class FakeFileManager(
 
     override fun exists(path: String): Boolean = path in paths
 
+    var outsidePaths: Set<String> = emptySet()
+
+    override fun isInside(root: String, path: String): Boolean = path !in outsidePaths
+
     override fun copy(source: String, destination: String) {
         if (source in failCopyFor) throw IOException("copia fallida de $source")
         copied += source to destination

@@ -6,6 +6,7 @@ sealed interface RepositoryConfigIssue {
     data object InvalidMemorySize : RepositoryConfigIssue
     data object InvalidMinutes : RepositoryConfigIssue
     data object InvalidVariableName : RepositoryConfigIssue
+    data object ReservedVariableName : RepositoryConfigIssue
     data object DuplicateVariableName : RepositoryConfigIssue
     data object UnclosedPlaceholder : RepositoryConfigIssue
     data class UnknownPlaceholder(val placeholder: String) : RepositoryConfigIssue
@@ -27,8 +28,11 @@ object RepositoryConfigRules {
     fun minutesIssue(value: String): RepositoryConfigIssue? =
         if (positiveWholeNumber(value) != null) null else RepositoryConfigIssue.InvalidMinutes
 
-    fun variableNameIssue(name: String): RepositoryConfigIssue? =
-        if (isValidVariableName(name)) null else RepositoryConfigIssue.InvalidVariableName
+    fun variableNameIssue(name: String): RepositoryConfigIssue? = when {
+        !isValidVariableName(name) -> RepositoryConfigIssue.InvalidVariableName
+        isReservedVariableName(name) -> RepositoryConfigIssue.ReservedVariableName
+        else -> null
+    }
 
     fun templateIssue(name: String, template: String): RepositoryConfigIssue? =
         try {

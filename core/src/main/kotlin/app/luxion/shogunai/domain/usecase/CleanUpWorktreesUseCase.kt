@@ -79,7 +79,7 @@ class CleanUpWorktreesUseCase(
     private suspend fun deleteIfContained(branch: String, mainBranch: MainBranch?): Boolean {
         if (mainBranch == null) return false
         if (!git("merge-base", "--is-ancestor", branch, mainBranch.ref).isSuccess) return false
-        return git("branch", "-D", branch).isSuccess
+        return git("branch", "-D", "--", branch).isSuccess
     }
 
     private suspend fun git(vararg args: String) =

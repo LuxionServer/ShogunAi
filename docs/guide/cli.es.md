@@ -48,9 +48,19 @@ Copia los archivos locales del proyecto y los archivos `copy` declarados del rep
 
 Con `--check` no se cambia nada: compara los archivos que daría el provisionado al worktree con los del repositorio base e imprime una línea por diferencia, `<ruta>: missing`, `<ruta>: differs` (una copia cuyo contenido cambió en el repositorio base) o `<ruta>: not linked` (un archivo de `link` que no es un enlace simbólico al del repositorio base). Sale con 0 si todo coincide, 3 si hay alguna diferencia y 1 si hay un error.
 
+Los comandos posteriores a la creación solo se ejecutan cuando están aprobados en este equipo (ver [Aprobar los comandos posteriores a la creación](configuration.md#aprobar-los-comandos-posteriores-a-la-creacion)). En un terminal, `shogun new` y `shogun provision` imprimen los comandos y preguntan `Run these commands? [y/N]` por la salida de error; solo un sí explícito los ejecuta y aprueba. Sin terminal omiten los comandos, imprimen `shogun: skipped N post-creation commands not approved on this machine; run 'shogun trust' in <repo> to review them` por la salida de error y terminan bien.
+
 #### Cuando falla un comando posterior a la creación
 
 El worktree se conserva. `shogun new` imprime su ruta por la salida estándar, el fallo (comando, código de salida y salida de error) por la salida de error, y sale con 1. `shogun provision` imprime el fallo por la salida de error y sale con 1.
+
+### `trust`
+
+```text
+shogun trust [<path>] [--yes] [--revoke]
+```
+
+Imprime los comandos posteriores a la creación que declara el repositorio, uno por línea, y si están aprobados en este equipo. En un terminal pregunta si aprobarlos; `--yes` aprueba sin preguntar, para que lo puedan hacer scripts y CI, y `--revoke` quita la aprobación del repositorio. Si el repositorio no declara comandos, lo dice. Código de salida 0 salvo que algo falle.
 
 ### `status`
 
@@ -191,10 +201,10 @@ Estos comandos están pensados para que los llamen agentes y herramientas, no pa
 
 | Comando | Lo llama |
 |---|---|
-| `shogun hook worktree-create` | El hook `WorktreeCreate` de Claude Code. Lee `name` y `cwd` de la entrada estándar, crea (o reutiliza) un worktree provisionado en `feature/<name>` que parte del HEAD del worktree de `cwd`, e imprime su ruta. Si falla un comando posterior a la creación, imprime igualmente la ruta como última línea y sale con 0, con el fallo en la salida de error, para que Claude Code use el worktree. |
+| `shogun hook worktree-create` | El hook `WorktreeCreate` de Claude Code. Lee `name` y `cwd` de la entrada estándar, crea (o reutiliza) un worktree provisionado en `feature/<name>` que parte del HEAD del worktree de `cwd`, e imprime su ruta. Si falla un comando posterior a la creación, imprime igualmente la ruta como última línea y sale con 0, con el fallo en la salida de error, para que Claude Code use el worktree. Los comandos posteriores a la creación sin aprobar se omiten con una nota por la salida de error; nunca pregunta. |
 | `shogun hook worktree-remove` | El hook `WorktreeRemove` de Claude Code. Elimina el worktree de `worktree_path`, borra su rama solo si está mergeada y cierra su espacio de Herdr. |
 | `shogun hook session-start` | El hook `SessionStart` de Claude Code. Añade el entorno del worktree a `CLAUDE_ENV_FILE` y le dice a Claude qué valores usa. |
-| `shogun hook herdr` | El plugin de ShogunAi para Herdr, en `worktree.created` (provisiona el worktree) y `worktree.removed` (borra su rama si está mergeada). Lee `HERDR_PLUGIN_EVENT`, `HERDR_PLUGIN_EVENT_JSON` y `HERDR_BIN_PATH`. |
+| `shogun hook herdr` | El plugin de ShogunAi para Herdr, en `worktree.created` (provisiona el worktree, omitiendo con una nota los comandos posteriores a la creación sin aprobar) y `worktree.removed` (borra su rama si está mergeada). Lee `HERDR_PLUGIN_EVENT`, `HERDR_PLUGIN_EVENT_JSON` y `HERDR_BIN_PATH`. |
 
 ## Ayuda y versión
 

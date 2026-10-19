@@ -131,4 +131,24 @@ class NioFileManagerTest {
         assertFalse(fileManager.hasSameContent(first.toString(), third.toString()))
         assertFalse(fileManager.hasSameContent(first.toString(), root.resolve("missing").toString()))
     }
+
+    @Test
+    fun `a path under a symlinked folder pointing outside is not inside the root`() {
+        val worktree = root.resolve("worktree").also { it.createDirectories() }
+        val outside = root.resolve("outside").also { it.createDirectories() }
+        Files.createSymbolicLink(worktree.resolve("config"), outside)
+
+        assertFalse(fileManager.isInside(worktree.toString(), worktree.resolve("config/.env").toString()))
+        assertFalse(fileManager.isInside(worktree.toString(), worktree.resolve("config/new/.env").toString()))
+        assertTrue(outside.toFile().list().isNullOrEmpty())
+    }
+
+    @Test
+    fun `a regular or missing folder inside the root is inside it`() {
+        val worktree = root.resolve("worktree").also { it.createDirectories() }
+        worktree.resolve("config").createDirectories()
+
+        assertTrue(fileManager.isInside(worktree.toString(), worktree.resolve("config/.env").toString()))
+        assertTrue(fileManager.isInside(worktree.toString(), worktree.resolve("missing/deeper/.env").toString()))
+    }
 }

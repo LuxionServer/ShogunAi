@@ -30,6 +30,17 @@ En repositorios Xcode, `"providers": { "xcode": { "compilationCache": true } }` 
 
 Las recetas de abajo muestran cómo recibe cada agente estas variables.
 
+## Aprobar los comandos posteriores a la creación
+
+Los hooks de agentes y el plugin de Herdr no pueden preguntarte nada, así que nunca ejecutan los comandos `hooks.postCreate` de un repositorio hasta que los hayas aprobado en este equipo: provisionan el worktree, omiten los comandos e imprimen una nota por la salida de error que nombra `shogun trust`. Ejecútalo una vez en cada repositorio de confianza:
+
+```bash
+shogun trust        # muestra los comandos y pregunta
+shogun trust --yes  # aprueba sin preguntar
+```
+
+Después los hooks los ejecutan, hasta que cambien los comandos del repositorio; entonces vuelves a aprobar. Detalles: [Aprobar los comandos posteriores a la creación](guide/configuration.md#aprobar-los-comandos-posteriores-a-la-creacion).
+
 ## Claude Code
 
 El hook `WorktreeCreate` de Claude Code **sustituye** su propia creación de worktrees para `claude --worktree`, `EnterWorktree`, los subagentes con `isolation: "worktree"` y las sesiones en segundo plano. Apúntalo a `shogun`, junto con `WorktreeRemove` para que la limpieza también pase por ShogunAi. En el `.claude/settings.json` del repositorio (compartido con el equipo) o en tu `~/.claude/settings.json` (todos los repositorios):

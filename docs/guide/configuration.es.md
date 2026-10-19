@@ -28,7 +28,7 @@ Un `.shogunai.json` en la raíz del repositorio declara lo que necesita cada wor
 | `copy` | lista de cadenas | Patrones al estilo gitignore. Cada archivo que Git no versiona y coincide con alguno se copia a cada worktree nuevo, en la misma ruta. |
 | `link` | lista de cadenas | Los mismos patrones que `copy`, pero cada archivo que coincide se enlaza con un enlace simbólico al archivo del repositorio base en vez de copiarse, así que al rotarlo allí se actualiza en todos los worktrees. Un archivo que coincide con ambas listas se enlaza. Donde no se pueden crear enlaces simbólicos (Windows sin el privilegio), el archivo se copia. |
 | `hooks.postCreate` | lista de comandos | Comandos que se ejecutan dentro de cada worktree tras crearlo o provisionarlo, cuando sus archivos ya están en su sitio y su entorno preparado. Cada comando es una lista de cadenas dada como argv, no una cadena de shell; una única lista de cadenas se lee como un solo comando. |
-| `env` | objeto de cadenas | Variables de entorno por worktree. Los nombres usan letras, dígitos y `_`, y no empiezan por un dígito. |
+| `env` | objeto de cadenas | Variables de entorno por worktree. Los nombres usan letras, dígitos y `_`, y no empiezan por un dígito. Los nombres que cambian el comportamiento de los shells, los entornos de ejecución, el cargador dinámico o Git están reservados e invalidan el archivo: `PATH`, `HOME`, `SHELL`, `IFS`, `ENV`, `BASH_ENV`, `ZDOTDIR`, `PROMPT_COMMAND`, `NODE_OPTIONS`, `NODE_PATH`, `PYTHONPATH`, `PYTHONSTARTUP`, `PYTHONHOME`, `RUBYOPT`, `RUBYLIB`, `PERL5OPT`, `PERL5LIB`, `JAVA_TOOL_OPTIONS`, `_JAVA_OPTIONS`, `JDK_JAVA_OPTIONS`, `CLASSPATH` y cualquier nombre que empiece por `LD_`, `DYLD_` o `GIT_`. Un script del proyecto puede definirlos por su cuenta. |
 | `envFile` | cadena | Una ruta dentro del worktree donde se escribe su entorno en formato dotenv. Nunca se escribe sobre un archivo que Git versiona, así que añádelo a `.gitignore`. |
 | `providers` | objeto | Los [providers](providers.md) que usa el repositorio, cada uno con sus opciones. |
 
@@ -46,6 +46,16 @@ Los puertos no se repiten entre los worktrees del repositorio, están libres al 
 Enlazar comparte el archivo: una herramienta de un worktree que sobrescriba un secreto enlazado sobrescribe también el del repositorio base. Deja `copy` para los archivos que un worktree pueda modificar. Los archivos locales del proyecto siempre se copian.
 
 Los comandos posteriores a la creación se ejecutan en orden y se detienen en el primero que falla. Un fallo hace fallar la creación o el provisionado con un error que nombra el comando, su código de salida y su salida de error, pero el worktree se conserva, porque su checkout y sus archivos están bien. Los comandos se ejecutan al crear y en cada `shogun provision`, así que hazlos seguros de repetir, y declara solo comandos que ejecutarías desde un repositorio de confianza. No reciben las variables de entorno del worktree; un comando que las necesite puede ejecutar `shogun env`.
+
+### Aprobar los comandos posteriores a la creación
+
+Como `.shogunai.json` se versiona, quien controla una rama controla sus comandos. Por eso solo se ejecutan cuando los has aprobado en este equipo, para ese repositorio. La aprobación cubre exactamente la lista que viste: si un pull cambia un comando, añade uno o los reordena, la lista cuenta como no aprobada y ShogunAi vuelve a preguntar. Las aprobaciones se guardan en `~/.shogunai/trust.json`, legible solo por ti.
+
+- La app de escritorio muestra los comandos en el diálogo de creación y ofrece «Ejecutar y recordar» u «Omitir». Omitir crea el worktree sin ejecutarlos. Los ajustes del proyecto listan los comandos del repositorio, si están aprobados en este equipo, y permiten aprobarlos o revocarlos.
+- `shogun new` y `shogun provision` imprimen los comandos y preguntan en un terminal. Donde no pueden preguntar, y siempre en los hooks de agentes, omiten los comandos e imprimen una nota por la salida de error que nombra `shogun trust`.
+- `shogun trust` muestra los comandos y los aprueba (`--yes` omite la pregunta) o revoca la aprobación (`--revoke`); consulta [la referencia de la línea de comandos](cli.md#trust).
+
+Los archivos `copy` y `link` no necesitan aprobación: solo se leen del repositorio base y, tras seguir los enlaces simbólicos, solo se escriben dentro del worktree. Un archivo cuyo destino resuelve fuera del worktree, a través de una carpeta enlazada desde la rama, hace fallar la operación.
 
 Opciones de los providers:
 

@@ -155,6 +155,14 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "Git rastrea el archivo de entorno \"${error.path}\", así que no se sobrescribió.",
         "Elige un archivo de entorno que Git no rastree.",
     )
+    is WorktreeError.EnvironmentFileOutsideWorktree -> ErrorTexts(
+        "El archivo de entorno \"${error.path}\" resuelve fuera del worktree, así que no se escribió.",
+        "Elige un archivo de entorno cuyas carpetas sean carpetas reales dentro del worktree.",
+    )
+    is WorktreeError.InvalidRef -> ErrorTexts(
+        "\"${error.ref}\" no es una rama ni un punto de partida válidos.",
+        "Los nombres de rama y los puntos de partida no pueden empezar por \"-\".",
+    )
     is WorktreeError.EnvironmentFileWriteFailed -> ErrorTexts(
         "No se pudo escribir el archivo de entorno \"${error.path}\".",
         "Comprueba que la carpeta admite escritura.",

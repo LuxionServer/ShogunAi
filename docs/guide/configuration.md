@@ -28,7 +28,7 @@ A `.shogunai.json` at the repository's root declares what every worktree needs. 
 | `copy` | list of strings | Gitignore-style patterns. Every file Git doesn't track that matches one is copied into each new worktree, at the same path. |
 | `link` | list of strings | The same patterns as `copy`, but each matching file is linked with a symbolic link to the base repository's file instead of copied, so rotating it there updates every worktree. A file matching both lists is linked. Where symbolic links can't be created (Windows without the privilege), the file is copied instead. |
 | `hooks.postCreate` | list of commands | Commands run inside each worktree after it is created or provisioned, once its files are in place and its environment prepared. Each command is a list of strings given as argv, not a shell string; a single list of strings is read as one command. |
-| `env` | object of strings | Per-worktree environment variables. Names use letters, digits and `_`, and don't start with a digit. |
+| `env` | object of strings | Per-worktree environment variables. Names use letters, digits and `_`, and don't start with a digit. Names that change how shells, runtimes, the dynamic loader or Git behave are reserved and make the file invalid: `PATH`, `HOME`, `SHELL`, `IFS`, `ENV`, `BASH_ENV`, `ZDOTDIR`, `PROMPT_COMMAND`, `NODE_OPTIONS`, `NODE_PATH`, `PYTHONPATH`, `PYTHONSTARTUP`, `PYTHONHOME`, `RUBYOPT`, `RUBYLIB`, `PERL5OPT`, `PERL5LIB`, `JAVA_TOOL_OPTIONS`, `_JAVA_OPTIONS`, `JDK_JAVA_OPTIONS`, `CLASSPATH` and any name starting with `LD_`, `DYLD_` or `GIT_`. A project script can set those itself. |
 | `envFile` | string | A path inside the worktree where its environment is written in dotenv format. Never written over a file Git tracks, so add it to `.gitignore`. |
 | `providers` | object | The [providers](providers.md) the repository uses, each with its own options. |
 
@@ -46,6 +46,16 @@ Ports are unique among the repository's worktrees, free when reserved, and never
 Linking shares the file: a tool in one worktree that overwrites a linked secret overwrites the base repository's too. Keep `copy` for files a worktree may change. The project's local files are always copied.
 
 Post-creation commands run in order and stop at the first one that fails. A failure fails creation or provisioning with an error naming the command, its exit code and its error output, but the worktree is kept, since its checkout and files are fine. The commands run on creation and on every `shogun provision`, so make them safe to repeat, and only declare commands you would run from a repository you trust. They don't receive the worktree's environment variables; a command that needs them can run `shogun env`.
+
+### Approving post-creation commands
+
+Because `.shogunai.json` is committed, whoever controls a branch controls its commands. They therefore run only after you have approved them on this machine, for that repository. The approval covers exactly the list you saw: if a pull changes a command, adds one or reorders them, the list counts as not approved and ShogunAi asks again. Approvals are stored in `~/.shogunai/trust.json`, readable only by you.
+
+- The desktop app shows the commands in the create dialog and offers "Run and remember" or "Skip". Skipping creates the worktree without running them. Project settings lists the repository's commands, whether they are approved on this machine, and lets you approve or revoke them.
+- `shogun new` and `shogun provision` print the commands and ask on a terminal. Where they can't ask, and always in the agent hooks, they skip the commands and print a note on standard error that names `shogun trust`.
+- `shogun trust` shows the commands and approves them (`--yes` skips the question) or revokes the approval (`--revoke`); see [the CLI reference](cli.md#trust).
+
+`copy` and `link` files need no approval: they are only read from the base repository and, after following symbolic links, only written inside the worktree. A file whose destination resolves outside the worktree, through a symlinked folder from the branch, fails the operation.
 
 Provider options:
 

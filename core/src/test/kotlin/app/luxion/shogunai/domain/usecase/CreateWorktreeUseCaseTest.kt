@@ -2,9 +2,12 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
+import app.luxion.shogunai.domain.FakePostCreateApproval
+import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
+import app.luxion.shogunai.domain.io.PostCreateDecision
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
@@ -155,7 +158,7 @@ class CreateWorktreeUseCaseTest {
             "should roll back the worktree that Git left half-done",
         )
         assertTrue(
-            executor.executed("git", "branch", "-D", "feature/TASK-123"),
+            executor.executed("git", "branch", "-D", "--", "feature/TASK-123"),
             "should roll back the branch that Git left created so a retry doesn't collide with it",
         )
     }
@@ -182,7 +185,7 @@ class CreateWorktreeUseCaseTest {
         assertIs<WorktreeError.GitLfsNotFound>(error)
         assertTrue(fileManager.copied.isEmpty())
         assertTrue(
-            executor.executed("git", "branch", "-D", "feature/TASK-123"),
+            executor.executed("git", "branch", "-D", "--", "feature/TASK-123"),
             "should roll back the branch that Git left created so a retry doesn't collide with it",
         )
     }
@@ -378,7 +381,10 @@ class CreateWorktreeUseCaseTest {
         }
         val fileManager = FakeFileManager(existing = baseWithSecrets)
 
-        val error = CreateWorktreeUseCase(config, executor, fileManager, provisioning)("TASK-123", BranchType.FEATURE)
+        val trust = FakeRepositoryTrust(
+            mapOf(config.baseRepositoryPath to listOf(listOf("npm", "install"), listOf("direnv", "allow"))),
+        )
+        val error = CreateWorktreeUseCase(config, executor, fileManager, provisioning, trust = trust)("TASK-123", BranchType.FEATURE)
             .exceptionOrNull()
 
         assertIs<WorktreeError.PostCreateCommandFailed>(error)
@@ -387,5 +393,77 @@ class CreateWorktreeUseCaseTest {
         assertFalse(executor.executed("direnv", "allow"))
         assertFalse(executor.executedCommands.any { it.take(3) == listOf("git", "worktree", "remove") })
         assertFalse(executor.executedCommands.any { it.take(2) == listOf("git", "branch") })
+    }
+
+    private val installCommands = listOf(listOf("npm", "install"))
+
+    private val installProvisioning = FakeRepositoryProvisioningSource(
+        byRepository = mapOf(config.baseRepositoryPath to RepositoryProvisioning(postCreateCommands = installCommands)),
+    )
+
+    @Test
+    fun `skips unapproved post-creation commands and reports them`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+        val approval = FakePostCreateApproval(PostCreateDecision.SKIP)
+
+        val created = CreateWorktreeUseCase(
+            config, executor, FakeFileManager(baseWithSecrets), installProvisioning, approval = approval,
+        )("TASK-123", BranchType.FEATURE).getOrThrow()
+
+        assertEquals(installCommands, created.skippedPostCreateCommands)
+        assertFalse(executor.executed("npm", "install"))
+    }
+
+    @Test
+    fun `runs unapproved commands once approved and remembers the approval`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+        val trust = FakeRepositoryTrust()
+
+        val created = CreateWorktreeUseCase(
+            config, executor, FakeFileManager(baseWithSecrets), installProvisioning,
+            trust = trust,
+            approval = FakePostCreateApproval(PostCreateDecision.RUN),
+        )("TASK-123", BranchType.FEATURE).getOrThrow()
+
+        assertEquals(emptyList(), created.skippedPostCreateCommands)
+        assertTrue(executor.executed("npm", "install"))
+        assertTrue(trust.isApproved(config.baseRepositoryPath, installCommands))
+    }
+
+    @Test
+    fun `approved commands run without asking`() = runTest {
+        val approval = FakePostCreateApproval(PostCreateDecision.SKIP)
+
+        CreateWorktreeUseCase(
+            config, FakeShellCommandExecutor { success(it) }, FakeFileManager(baseWithSecrets), installProvisioning,
+            trust = FakeRepositoryTrust(mapOf(config.baseRepositoryPath to installCommands)),
+            approval = approval,
+        )("TASK-123", BranchType.FEATURE).getOrThrow()
+
+        assertTrue(approval.asked.isEmpty())
+    }
+
+    @Test
+    fun `rejects a start point that Git could read as an option`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+        val useCase = CreateWorktreeUseCase(config, executor, FakeFileManager(baseWithSecrets), FakeRepositoryProvisioningSource())
+
+        val error = useCase("TASK-123", BranchType.FEATURE, startPoint = "--upload-pack=x").exceptionOrNull()
+
+        assertEquals("--upload-pack=x", assertIs<WorktreeError.InvalidRef>(error).ref)
+        assertTrue(executor.executedCommands.isEmpty())
+    }
+
+    @Test
+    fun `a provisioned file resolving outside the worktree fails the creation and rolls back`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+        val fileManager = FakeFileManager(baseWithSecrets).also { it.outsidePaths = setOf("$worktreePath/local.properties") }
+        val useCase = CreateWorktreeUseCase(config, executor, fileManager, FakeRepositoryProvisioningSource())
+
+        val error = useCase("TASK-123", BranchType.FEATURE).exceptionOrNull()
+
+        assertIs<WorktreeError.SecretCopyFailed>(error)
+        assertTrue(fileManager.copied.isEmpty())
+        assertTrue(executor.executed("git", "worktree", "remove", "--force", worktreePath))
     }
 }
