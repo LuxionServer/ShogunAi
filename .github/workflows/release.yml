@@ -116,7 +116,7 @@ jobs:
           distribution: corretto
           java-version: "21"
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       - name: Build installer
         env:
@@ -160,7 +160,7 @@ jobs:
           distribution: corretto
           java-version: "21"
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       - name: Build CLI zip
         run: ./gradlew :cli:distZip "-PappVersion=${VERSION}"
