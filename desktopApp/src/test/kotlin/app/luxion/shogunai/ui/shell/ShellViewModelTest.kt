@@ -103,6 +103,17 @@ class ShellViewModelTest {
     }
 
     @Test
+    fun `remembering the fetch option saves it in the project`() {
+        val viewModel = viewModel()
+
+        viewModel.rememberFetchBeforeCreate("mobile", true)
+
+        assertTrue(repository.list().single { it.id == "mobile" }.config.fetchBeforeCreate)
+        assertTrue(viewModel.projects.single { it.id == "mobile" }.config.fetchBeforeCreate)
+        assertFalse(viewModel.projects.single { it.id == "api" }.config.fetchBeforeCreate)
+    }
+
+    @Test
     fun `opens on the empty state without projects`() {
         val viewModel = ShellViewModel(FakeProjectRepository(), preferences)
 

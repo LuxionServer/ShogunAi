@@ -152,6 +152,12 @@ class ShellViewModel(
         select(ShellDestination.All(saved.id, previous?.config?.worktreesRoot?.takeIf { moved }))
     }
 
+    fun rememberFetchBeforeCreate(projectId: String, fetch: Boolean) {
+        val project = projects.firstOrNull { it.id == projectId } ?: return
+        runCatching { projectRepository.save(project.copy(config = project.config.copy(fetchBeforeCreate = fetch))) }
+        projects = loadProjects()
+    }
+
     fun removeProject(project: Project) {
         projectRepository.delete(project.id)
         refresh()

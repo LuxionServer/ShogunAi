@@ -56,13 +56,6 @@ Provisioning for the stacks where a fresh worktree is furthest from building:
 - "Open in Android Studio" on the right worktree.
 - Showing the emulators ShogunAi starts inside Android Studio's Running Devices window, as the ones Android Studio starts itself, so several of them can be arranged in one window. It needs a spike: Android Studio may embed an external emulator started with the options it uses itself.
 
-### Choosing the base of a new worktree
-
-`shogun new` and Claude Code's `WorktreeCreate` hook already start a new branch at the HEAD of the worktree they run in, and `shogun new --from <ref>` at any branch, tag or commit. The desktop app still starts it at the base repository's `HEAD`, so creating a worktree there from an up-to-date branch means going to another Git client first. Still planned:
-
-- Pick the base branch (`develop`, `main`, …) when creating a worktree in the desktop app, with an optional `git fetch` beforehand.
-- Create a worktree from a remote branch (`origin/...`), not only from local ones.
-
 ### Launching the agent and tools directly
 
 Copying the launch command stays as the default, but the app could also open it directly with reliable, specific integrations instead of a generic terminal launch:

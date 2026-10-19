@@ -123,6 +123,13 @@ object EnglishStrings : Strings {
     override val noBranchesAvailable = "No branches available to create a worktree."
     override fun branchAlreadyHasWorktree(branch: String) = "$branch (already has a worktree)"
     override val selectBranchPlaceholder = "Select a branch"
+    override val startFromLabel = "Start from"
+    override fun startFromMainBranch(ref: String) = "$ref (main branch)"
+    override fun startFromCurrentBranch(branch: String?) =
+        if (branch != null) "Current branch of the repository ($branch)" else "Current commit of the repository"
+    override fun remoteBranchLabel(branch: String) = "$branch (remote)"
+    override val fetchFirstLabel = "Fetch from origin first"
+    override val createWithoutFetching = "Create without fetching"
     override val otherBranchesGroup = "other"
     override val worktreesTitle = "Worktrees"
     override val viewsTitle = "Views"
