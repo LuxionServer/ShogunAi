@@ -29,6 +29,11 @@ dependencies {
     testImplementation(libs.kotlinx.coroutinesTest)
 }
 
+fun macBundleVersion(version: String): String {
+    val (major, minor, patch) = version.split(".")
+    return "${major.toInt() + 1}.$minor.$patch"
+}
+
 compose.desktop {
     application {
         mainClass = "app.luxion.shogunai.MainKt"
@@ -41,7 +46,7 @@ compose.desktop {
             packageVersion = appVersion
 
             macOS {
-                packageVersion = if (appVersion.startsWith("0.")) "1." + appVersion.substringAfter(".") else appVersion
+                packageVersion = macBundleVersion(appVersion)
                 iconFile.set(project.file("icons/icon.icns"))
             }
             windows {
