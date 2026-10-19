@@ -180,7 +180,7 @@ class AppContainer {
             RepositoryInspection(topLevel, mainBranch?.name)
         }
 
-    val detectRunningAgents = DetectRunningAgentsUseCase(shellCommandExecutor)
+    val detectRunningAgents = DetectRunningAgentsUseCase(shellCommandExecutor, herdrClient)
 
     private val prepareEnvironment = PrepareWorktreeEnvironmentUseCase(
         resolveEnvironment,
@@ -272,6 +272,7 @@ class AppContainer {
             worktreesRoot = { withContext(Dispatchers.IO) { runCatching { herdrConfig.worktreesRoot() }.getOrNull() } },
             open = OpenWorktreeInHerdrUseCase(config, herdrClient, resolveEnvironment)::invoke,
             openWorkspaces = CloseHerdrWorkspacesUseCase(config, herdrClient)::openWorkspaces,
+            focusAgent = { paneId -> runCatching { herdrClient.focusAgent(paneId) } },
         ),
         gradle = GradleUseCases(
             provider = {
@@ -364,6 +365,7 @@ data class HerdrUseCases(
     val worktreesRoot: suspend () -> String?,
     val open: suspend (Worktree) -> Result<HerdrOpening>,
     val openWorkspaces: suspend (List<String>) -> Map<String, String> = { emptyMap() },
+    val focusAgent: suspend (String) -> Result<Unit> = { Result.success(Unit) },
 ) {
     companion object {
         val NONE = HerdrUseCases(

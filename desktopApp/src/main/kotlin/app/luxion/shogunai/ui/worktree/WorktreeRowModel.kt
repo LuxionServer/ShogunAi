@@ -2,6 +2,7 @@ package app.luxion.shogunai.ui.worktree
 
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.EmulatorState
+import app.luxion.shogunai.domain.model.HerdrAgentState
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.Worktree
@@ -131,7 +132,7 @@ private fun chipsOf(
             add(RowChip(RowChipKind.STATUS_UNAVAILABLE, Status.NEUTRAL, strings.statusUnavailable))
         }
         agents.forEach { agent ->
-            add(RowChip(RowChipKind.AGENT, Status.INFO, agent.name))
+            add(RowChip(RowChipKind.AGENT, agent.herdrState.status(), strings.agentLabel(agent.name, agent.herdrState)))
         }
         if (changes != null) {
             add(RowChip(RowChipKind.CHANGES, Status.WARNING, strings.uncommittedChanges(changes)))
@@ -156,6 +157,13 @@ private fun chipsOf(
             add(RowChip(RowChipKind.DEVICE, state.status(), simulatorStateLabel(state, strings)))
         }
     }
+}
+
+private fun HerdrAgentState?.status(): Status = when (this) {
+    HerdrAgentState.BLOCKED -> Status.WARNING
+    HerdrAgentState.DONE -> Status.SUCCESS
+    HerdrAgentState.IDLE -> Status.NEUTRAL
+    HerdrAgentState.WORKING, null -> Status.INFO
 }
 
 private fun activeEmulator(emulator: WorktreeEmulator?): EmulatorState? = when (emulator?.state) {

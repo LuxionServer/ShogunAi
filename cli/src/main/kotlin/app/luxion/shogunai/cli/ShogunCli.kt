@@ -37,6 +37,7 @@ import app.luxion.shogunai.domain.model.SimulatorDevice
 import app.luxion.shogunai.domain.model.SimulatorSettings
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.ProvisionMode
+import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.ProvisionedFile
 import app.luxion.shogunai.domain.model.ShellQuoting
 import app.luxion.shogunai.domain.model.Worktree
@@ -358,6 +359,7 @@ class ShogunCli(
         val mainBranch = ResolveMainBranchUseCase(config, executor)().getOrNull()
         val readStatus = ReadWorktreeStatusUseCase(executor)
         val herdrWorktreesRoot = herdrConfig.worktreesRoot()
+        val agents = DetectRunningAgentsUseCase(executor, herdr)(config, worktrees.filterNot { it.isPrunable }).getOrNull().orEmpty()
         val entries = worktrees.map { worktree ->
             val read = if (worktree.isPrunable) null else readStatus(worktree, mainBranch)
             WorktreeEntry(
@@ -365,6 +367,7 @@ class ShogunCli(
                 read?.getOrNull(),
                 classifyOrigin(worktree, config, herdrWorktreesRoot),
                 read?.exceptionOrNull()?.let(::failureReason),
+                agents[worktree.path].orEmpty(),
             )
         }
         if (command.json) {
@@ -384,7 +387,7 @@ class ShogunCli(
             .filterNot { it.isMain || it.isPrunable || it.isLocked }
             .associateWith { worktree -> readStatus(worktree, mainBranch) }
         val statuses = statusReads.mapNotNull { (worktree, read) -> read.getOrNull()?.let { worktree.path to it } }.toMap()
-        val agents = DetectRunningAgentsUseCase(executor)(config, worktrees.filterNot { it.isMain || it.isPrunable })
+        val agents = DetectRunningAgentsUseCase(executor, herdr)(config, worktrees.filterNot { it.isMain || it.isPrunable })
             .onFailure { err.line("shogun: couldn't check for running agents, so none were taken into account: ${it.message}") }
             .getOrNull()
         val selection = selectCleanup(worktrees, statuses, agents)
@@ -913,6 +916,7 @@ class ShogunCli(
             if (worktree.isMain) add("main")
             origin?.let { add("origin=${it.label}") }
             if (worktree.isLocked) add("locked")
+            entry.agents.takeIf { it.isNotEmpty() }?.let { agents -> add("agents=${agents.joinToString(",") { agentLabel(it) }}") }
             when {
                 worktree.isPrunable -> add("folder-missing")
                 status == null -> add(entry.statusProblem?.let { "status-unavailable ($it)" } ?: "status-unavailable")
@@ -926,6 +930,9 @@ class ShogunCli(
         }
         return (listOf(worktree.path) + details).joinToString("  ")
     }
+
+    private fun agentLabel(agent: RunningAgent): String =
+        agent.herdrState?.let { "${agent.name}(${it.name.lowercase()})" } ?: agent.name
 
     private fun absolute(path: String): String =
         if (File(path).isAbsolute) path else File(workingDirectory, path).toPath().normalize().toString()

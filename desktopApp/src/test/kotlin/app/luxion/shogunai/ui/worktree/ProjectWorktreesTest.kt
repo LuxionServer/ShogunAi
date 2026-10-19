@@ -4,6 +4,7 @@ import app.luxion.shogunai.EmulatorUseCases
 import app.luxion.shogunai.GradleUseCases
 import app.luxion.shogunai.HerdrUseCases
 import app.luxion.shogunai.SimulatorUseCases
+import app.luxion.shogunai.domain.model.HerdrAgentState
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.WorktreeUseCases
 import app.luxion.shogunai.XcodeUseCases
@@ -2459,6 +2460,52 @@ class ProjectWorktreesTest {
         assertEquals(target, calls.single())
         assertEquals(WorktreeSuccess.OpenedInHerdr(worktreePath, focused = false), viewModel.success)
         assertTrue(viewModel.openingInHerdr.isEmpty())
+    }
+
+    @Test
+    fun `opening in Herdr focuses the pane of the agent that needs the user`() = runTest(dispatcher) {
+        val focused = mutableListOf<String>()
+        var opened = 0
+        val herdr = HerdrUseCases.NONE.copy(
+            open = { opened++; Result.success(HerdrOpening.OPENED) },
+            focusAgent = { pane -> focused += pane; Result.success(Unit) },
+        )
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
+        advanceUntilIdle()
+        viewModel.applyAgents(
+            mapOf(
+                worktreePath to listOf(
+                    RunningAgent("codex", HerdrAgentState.WORKING, "w1:p1"),
+                    RunningAgent("claude", HerdrAgentState.BLOCKED, "w1:p2"),
+                ),
+            ),
+        )
+
+        viewModel.openInHerdr(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+
+        assertEquals(listOf("w1:p2"), focused)
+        assertEquals(0, opened)
+        assertEquals(WorktreeSuccess.OpenedInHerdr(worktreePath, focused = true), viewModel.success)
+    }
+
+    @Test
+    fun `opening in Herdr opens the workspace when the agents have no pane`() = runTest(dispatcher) {
+        val focused = mutableListOf<String>()
+        var opened = 0
+        val herdr = HerdrUseCases.NONE.copy(
+            open = { opened++; Result.success(HerdrOpening.OPENED) },
+            focusAgent = { pane -> focused += pane; Result.success(Unit) },
+        )
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
+        advanceUntilIdle()
+        viewModel.applyAgents(mapOf(worktreePath to listOf(RunningAgent("claude"))))
+
+        viewModel.openInHerdr(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+
+        assertTrue(focused.isEmpty())
+        assertEquals(1, opened)
     }
 
     @Test
