@@ -101,7 +101,7 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel, onOpenPrefer
             .filter { it }
             .collectLatest {
                 viewModel.refresh()
-                board.refreshShown()
+                board.refreshOnFocus()
             }
     }
 

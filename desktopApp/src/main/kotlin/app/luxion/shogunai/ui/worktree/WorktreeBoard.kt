@@ -32,6 +32,7 @@ import java.time.Instant
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.toJavaDuration
 
 class WorktreeBoard(
     private val useCasesFor: (ProjectConfig) -> WorktreeUseCases,
@@ -271,6 +272,7 @@ class WorktreeBoard(
             scope = CoroutineScope(viewModelScope.coroutineContext + job),
             listPermits = listPermits,
             sizeQueue = sizeQueue,
+            clock = clock,
         )
         holder.refresh()
         return Entry(project, holder, job)
@@ -310,11 +312,28 @@ class WorktreeBoard(
 
     fun refreshShown() {
         shownHolders().forEach { holder ->
-            holder.refresh()
+            holder.refresh(remeasureSizes = true)
             if (isCreateDialogOpen && createHolder == holder && createMode == CreateMode.EXISTING_BRANCH) {
                 holder.loadLocalBranches()
             }
         }
+    }
+
+    fun refreshOnFocus() {
+        val due = shownEntries().filter { isDueForFocusRefresh(it.holder) }
+        if (due.isEmpty()) return
+        due.forEach { it.holder.refreshStatuses() }
+        viewModelScope.launch {
+            val searches = due.map { AgentSearch(it.project.config.agentLaunchConfig.agentCommand, it.holder.worktrees) }
+            val detected = detectAgents(searches).getOrNull()
+            due.forEach { it.holder.applyAgents(detected) }
+        }
+    }
+
+    private fun isDueForFocusRefresh(holder: ProjectWorktrees): Boolean {
+        if (holder.isBusy || !holder.hasLoaded) return false
+        val lastRead = holder.lastReadAt ?: return true
+        return clock() >= lastRead + FOCUS_REFRESH_MIN_INTERVAL.toJavaDuration()
     }
 
     fun repairAfterMove(projectId: String, previousWorktreesRoot: String) {
@@ -573,3 +592,4 @@ internal fun isCreateEnabled(
 private const val MAX_PARALLEL_LISTS = 2
 private val AUTO_REFRESH_INTERVAL = 3.seconds
 private val DEVICE_REFRESH_INTERVAL = 10.seconds
+private val FOCUS_REFRESH_MIN_INTERVAL = 5.seconds
