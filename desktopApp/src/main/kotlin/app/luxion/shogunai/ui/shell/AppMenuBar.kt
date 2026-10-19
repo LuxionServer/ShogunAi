@@ -26,6 +26,7 @@ fun FrameWindowScope.AppMenuBar(
     onCommandPalette: () -> Unit,
     onToggleSidebar: () -> Unit,
     onPreferences: () -> Unit,
+    onCheckForUpdates: () -> Unit,
     onAbout: () -> Unit,
     onQuit: () -> Unit,
 ) {
@@ -59,10 +60,9 @@ fun FrameWindowScope.AppMenuBar(
             Item(strings.reload, shortcut = shortcut(Key.R), onClick = onReload)
             Item(strings.menuToggleSidebar, shortcut = shortcut(Key.Backslash), onClick = onToggleSidebar)
         }
-        if (!isMacOs) {
-            Menu(strings.menuHelp) {
-                Item(strings.menuAbout, onClick = onAbout)
-            }
+        Menu(strings.menuHelp) {
+            Item(strings.menuCheckForUpdates, onClick = onCheckForUpdates)
+            if (!isMacOs) Item(strings.menuAbout, onClick = onAbout)
         }
     }
 }

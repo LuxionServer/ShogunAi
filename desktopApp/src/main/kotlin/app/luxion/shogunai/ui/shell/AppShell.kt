@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.AlertDialog
@@ -150,30 +151,35 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel, onOpenPrefer
                 onToggle = viewModel::toggleSidebar,
             )
             VerticalDivider(modifier = Modifier.fillMaxHeight())
-            Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                val fixActions = remember(viewModel, onOpenPreferences) {
-                    ErrorFixActions(
-                        openProjectSettings = { projectId -> viewModel.projects.firstOrNull { it.id == projectId }?.let(viewModel::editProject) },
-                        openPreferences = onOpenPreferences,
-                    )
-                }
-                CompositionLocalProvider(LocalAppMessages provides messages, LocalErrorFixActions provides fixActions) {
-                    ShellContent(appContainer, viewModel, board, machine)
-                }
-                AppMessagesHost(messages, modifier = Modifier.align(Alignment.BottomCenter))
-                if (viewModel.unreadableFiles.isNotEmpty()) {
-                    Column(
-                        modifier = Modifier.align(Alignment.TopCenter).padding(Spacing.md),
-                        verticalArrangement = Arrangement.spacedBy(Spacing.xs),
-                    ) {
-                        viewModel.unreadableFiles.forEach { problem ->
-                            ErrorNotice(error = problem, onDismiss = viewModel::dismissUnreadableFiles)
+            Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                appContainer.updates.notice?.let { UpdateNotice(appContainer.updates, Modifier.padding(Spacing.md)) }
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    val fixActions = remember(viewModel, onOpenPreferences) {
+                        ErrorFixActions(
+                            openProjectSettings = { projectId -> viewModel.projects.firstOrNull { it.id == projectId }?.let(viewModel::editProject) },
+                            openPreferences = onOpenPreferences,
+                        )
+                    }
+                    CompositionLocalProvider(LocalAppMessages provides messages, LocalErrorFixActions provides fixActions) {
+                        ShellContent(appContainer, viewModel, board, machine)
+                    }
+                    AppMessagesHost(messages, modifier = Modifier.align(Alignment.BottomCenter))
+                    if (viewModel.unreadableFiles.isNotEmpty()) {
+                        Column(
+                            modifier = Modifier.align(Alignment.TopCenter).padding(Spacing.md),
+                            verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+                        ) {
+                            viewModel.unreadableFiles.forEach { problem ->
+                                ErrorNotice(error = problem, onDismiss = viewModel::dismissUnreadableFiles)
+                            }
                         }
                     }
                 }
             }
         }
     }
+
+    UpdateCheckDialog(appContainer.updates)
 
     if (viewModel.isPaletteOpen) {
         PaletteHost(viewModel, board, machine, messages, onOpenPreferences)

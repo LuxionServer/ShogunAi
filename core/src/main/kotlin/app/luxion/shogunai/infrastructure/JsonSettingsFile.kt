@@ -88,6 +88,8 @@ class JsonSettingsFile(
         val grouping: GroupingSettings = GroupingSettings(),
         val terminal: TerminalId? = null,
         val editor: EditorId? = null,
+        val checkForUpdates: Boolean = true,
+        val skippedVersion: String? = null,
         val worktreeAgents: Map<String, String> = emptyMap(),
     )
 

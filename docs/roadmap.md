@@ -63,10 +63,6 @@ Copying the launch command stays as the default, but the app could also open it 
 
 - Menu bar / system tray icon with recent projects and worktrees.
 
-### Distribution
-
-- Update check against GitHub Releases: the app notices a newer version and offers to download it (or points to `brew upgrade` when installed through Homebrew).
-
 ## Under exploration
 
 ### Integration with GitHub and task trackers

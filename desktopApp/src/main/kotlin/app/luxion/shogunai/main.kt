@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
@@ -26,6 +27,8 @@ import app.luxion.shogunai.ui.shell.ShellViewModel
 import app.luxion.shogunai.ui.shell.installMacAppMenuHandlers
 import app.luxion.shogunai.ui.shell.rememberRestoredWindowState
 import app.luxion.shogunai.ui.shell.saveWindowBounds
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.awt.AWTEvent
 import java.awt.Dimension
 import java.awt.Taskbar
@@ -36,8 +39,10 @@ import java.awt.event.WindowEvent
 import javax.swing.JFrame
 import javax.swing.SwingUtilities
 import kotlin.system.exitProcess
+import kotlin.time.Duration.Companion.hours
 
 private val MinimumWindowSize = Dimension(720, 480)
+private val UpdateCheckInterval = 24.hours
 
 fun main(args: Array<String>) {
     val cliArguments = args.filterNot { it.startsWith("-psn_") }
@@ -58,6 +63,8 @@ private fun openWindow() = application {
     val openPreferences: () -> Unit = {
         if (preferencesOpen) preferencesFrontRequests++ else preferencesOpen = true
     }
+    val updateScope = rememberCoroutineScope()
+    val checkForUpdates: () -> Unit = { updateScope.launch { appContainer.updates.checkNow() } }
     val windowState = rememberRestoredWindowState(appContainer.shellPreferenceRepository)
     val quit = {
         saveWindowBounds(windowState, appContainer.shellPreferenceRepository)
@@ -110,6 +117,12 @@ private fun openWindow() = application {
     ) {
         LaunchedEffect(Unit) { window.minimumSize = MinimumWindowSize }
         LaunchedEffect(Unit) { appContainer.tools.refresh() }
+        LaunchedEffect(Unit) {
+            while (true) {
+                appContainer.updates.checkInBackground()
+                delay(UpdateCheckInterval)
+            }
+        }
         SideEffect { mainWindowHolder.value = window }
         val shellViewModel = viewModel {
             ShellViewModel(
@@ -139,6 +152,7 @@ private fun openWindow() = application {
             onCommandPalette = shellViewModel::openPalette,
             onToggleSidebar = shellViewModel::toggleSidebar,
             onPreferences = openPreferences,
+            onCheckForUpdates = checkForUpdates,
             onAbout = { aboutOpen = true },
             onQuit = requestQuit,
         )
@@ -148,7 +162,7 @@ private fun openWindow() = application {
     }
 
     if (preferencesOpen) {
-        PreferencesWindow(appearance, appContainer.tools, preferencesFrontRequests, onClose = { preferencesOpen = false })
+        PreferencesWindow(appearance, appContainer.tools, appContainer.updates, preferencesFrontRequests, onClose = { preferencesOpen = false })
     }
     if (aboutOpen) {
         AboutWindow(appearance, onClose = { aboutOpen = false })

@@ -87,6 +87,10 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "${error.path} changed on disk since the settings were opened.",
         "Reload the settings and apply your changes again.",
     )
+    is WorktreeError.UpdateCheckFailed -> ErrorTexts(
+        "Couldn't check for updates" + (error.reason?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: "."),
+        "Check your connection and try again later.",
+    )
     is WorktreeError.NotAWorktree -> ErrorTexts(
         "${error.path} isn't a worktree of this repository.",
         "Reload the list; the folder may have been removed.",

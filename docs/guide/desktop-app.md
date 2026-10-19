@@ -82,8 +82,26 @@ For repositories that declare them in `.shogunai.json`, the worktree screen adds
 
 ## Preferences
 
-Preferences (Cmd+Comma on macOS, Ctrl+Comma elsewhere) holds the theme, the language and the **Tools** section, where you choose the terminal and the default IDE among the ones ShogunAi found on this machine. If none is found, the section says so and the matching actions aren't offered.
+Preferences (Cmd+Comma on macOS, Ctrl+Comma elsewhere) holds the theme, the language, the **Tools** section, where you choose the terminal and the default IDE among the ones ShogunAi found on this machine (if none is found, the section says so and the matching actions aren't offered), and **Check for updates automatically**, on by default. See [Updates](#updates).
 
 ## Theme and language
 
 The top bar has a theme selector (light, dark, or automatic to follow the system) and a language selector (English or Español). Both choices are remembered between restarts.
+
+## Updates
+
+Every time it starts, and then once a day while it stays open, the app asks GitHub for the latest published release. If it is newer than the version you run, a short notice appears at the top of the window ("ShogunAi 1.3.0 is out! You're on 1.2.0.") with a **What's new** link to the release notes. The notice never interrupts your work, and it reminds you how to update for the way ShogunAi was installed:
+
+| Installed with | The notice |
+|---|---|
+| Homebrew | `brew upgrade --cask shogunai`, with a **Copy** button |
+| Scoop | `scoop update shogunai`, with a **Copy** button |
+| winget | `winget upgrade LuxionServer.ShogunAi`, with a **Copy** button |
+| The `.dmg`, `.msi` or `.deb` | A **Download** button for the new installer (for the `.deb`, also the `sudo apt install ./<file>` command to run afterwards) |
+| Anything else | A link to the release page |
+
+The app never downloads, installs or runs anything by itself. **Skip this version** hides the notice until a newer version comes out; closing it hides it until the next start. A release is sometimes published a few minutes before the Homebrew, Scoop or winget package follows, so the command may need a moment.
+
+**Check for Updates…** in the Help menu checks right away, ignoring the schedule and skipped versions, and tells you whether ShogunAi is up to date, which version is available or why the check failed. Development builds don't check on their own.
+
+The only request the app makes on its own is an anonymous `GET` to `https://api.github.com/repos/LuxionServer/ShogunAi/releases/latest`, which carries the app version in its `User-Agent` header and nothing else. Turn **Check for updates automatically** off in Preferences and the app contacts GitHub only when you choose **Check for Updates…**.
