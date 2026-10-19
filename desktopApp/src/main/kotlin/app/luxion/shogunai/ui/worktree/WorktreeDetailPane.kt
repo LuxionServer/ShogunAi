@@ -46,6 +46,7 @@ import app.luxion.shogunai.domain.usecase.EnvironmentFormat
 import app.luxion.shogunai.domain.usecase.classifyOrigin
 import app.luxion.shogunai.domain.usecase.formatEnvironment
 import app.luxion.shogunai.ui.components.DangerTextButton
+import app.luxion.shogunai.ui.components.DropdownSelector
 import app.luxion.shogunai.ui.components.IconAction
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.NeutralTextButton
@@ -131,8 +132,27 @@ fun WorktreeDetailPane(
                 )
             }
         }
-        PrimaryButton(onClick = { viewModel.copyLaunchCommand(worktree) }, modifier = Modifier.fillMaxWidth()) {
-            Text(strings.copyLaunchCommand, style = MaterialTheme.typography.bodySmall)
+        if (viewModel.hasAgentChoice) {
+            DropdownSelector(
+                options = viewModel.agentOptions,
+                selected = viewModel.agentFor(worktree),
+                onSelect = { viewModel.setAgent(worktree, it) },
+                label = { it.displayName },
+                placeholder = strings.chooseAgent,
+                modifier = Modifier.fillMaxWidth(),
+                fieldLabel = strings.worktreeAgentLabel,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+            PrimaryButton(onClick = { viewModel.copyLaunchCommand(worktree) }, modifier = Modifier.weight(1f)) {
+                Text(
+                    viewModel.launchLabel(strings.copyLaunchCommand, worktree, strings),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (viewModel.hasAgentChoice) {
+                AgentMenuButton(viewModel.agentOptions) { viewModel.copyLaunchCommand(worktree, picked = it) }
+            }
         }
         val openActions = viewModel.openActions(worktree, strings)
         if (openActions.isNotEmpty()) {
@@ -143,6 +163,9 @@ fun WorktreeDetailPane(
                     } else {
                         SecondaryButton(onClick = action.onClick) {
                             Text(action.label, style = MaterialTheme.typography.bodySmall)
+                        }
+                        if (action.kind == OpenKind.TERMINAL && viewModel.hasAgentChoice) {
+                            AgentMenuButton(viewModel.agentOptions) { viewModel.openInTerminal(worktree, it) }
                         }
                     }
                 }
@@ -155,8 +178,11 @@ fun WorktreeDetailPane(
                     onClick = { viewModel.openInHerdr(worktree) },
                     enabled = !opening,
                 ) {
-                    Text(strings.openInHerdr, style = MaterialTheme.typography.bodySmall)
+                    Text(viewModel.launchLabel(strings.openInHerdr, worktree, strings), style = MaterialTheme.typography.bodySmall)
                     if (opening) InlineProgress(size = ProgressSize.Small)
+                }
+                if (viewModel.hasAgentChoice) {
+                    AgentMenuButton(viewModel.agentOptions) { viewModel.openInHerdr(worktree, it) }
                 }
             }
             if (!worktree.isMain) {

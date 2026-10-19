@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.projectconfig
 
+import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeRepositoryTrust
@@ -434,7 +435,7 @@ class ProjectConfigViewModelTest {
         assertEquals(ProjectConfigField.WORKTREES_ROOT, assertIs<SaveOutcome.Invalid>(viewModel.submit()).firstInvalidField)
 
         viewModel.worktreesRoot = "/home/dev/projects"
-        viewModel.agentCommand = ""
+        viewModel.updateAgent(0) { it.copy(command = "") }
         assertEquals(ProjectConfigField.AGENT_COMMAND, assertIs<SaveOutcome.Invalid>(viewModel.submit()).firstInvalidField)
     }
 
@@ -862,5 +863,72 @@ class ProjectConfigViewModelTest {
         val viewModel = ProjectConfigViewModel(projectRepository, provisioningSource, projectWith(), trust = trust)
 
         assertFalse(viewModel.postCreateApproved)
+    }
+
+    @Test
+    fun `a project stored with one agent shows a single agent`() {
+        val viewModel = viewModelFor(projectWith())
+
+        assertEquals(listOf(AgentDraft()), viewModel.agents)
+    }
+
+    @Test
+    fun `a second agent is saved after the default one`() {
+        val viewModel = viewModelFor(projectWith())
+
+        viewModel.addAgent()
+        viewModel.updateAgent(1) { it.copy(name = "Codex", command = "codex --full-auto", useHeadroom = false) }
+        assertIs<SaveOutcome.Saved>(viewModel.submit())
+
+        val saved = projectRepository.list().single().config
+        assertEquals("claude", saved.agentLaunchConfig.agentCommand)
+        assertEquals(listOf(AgentLaunchConfig(name = "Codex", agentCommand = "codex --full-auto", useHeadroom = false)), saved.additionalAgents)
+    }
+
+    @Test
+    fun `making another agent the default moves it into the default field`() {
+        val viewModel = viewModelFor(projectWith())
+        viewModel.addAgent()
+        viewModel.updateAgent(1) { it.copy(name = "Codex", command = "codex") }
+
+        viewModel.makeDefault(1)
+        assertIs<SaveOutcome.Saved>(viewModel.submit())
+
+        val saved = projectRepository.list().single().config
+        assertEquals("Codex", saved.agentLaunchConfig.displayName)
+        assertEquals(listOf("Claude"), saved.additionalAgents.map { it.displayName })
+    }
+
+    @Test
+    fun `two agents with the same name cannot be saved`() {
+        val viewModel = viewModelFor(projectWith())
+        viewModel.addAgent()
+        viewModel.updateAgent(1) { it.copy(name = "Claude", command = "claude --model opus") }
+
+        assertEquals(setOf("Claude"), viewModel.duplicatedAgentNames)
+        assertEquals(ProjectConfigField.AGENT_NAME, assertIs<SaveOutcome.Invalid>(viewModel.submit()).firstInvalidField)
+    }
+
+    @Test
+    fun `the last agent cannot be removed`() {
+        val viewModel = viewModelFor(projectWith())
+
+        viewModel.removeAgent(0)
+
+        assertEquals(1, viewModel.agents.size)
+    }
+
+    @Test
+    fun `an agent can be removed and reordered`() {
+        val viewModel = viewModelFor(projectWith())
+        viewModel.addAgent()
+        viewModel.updateAgent(1) { it.copy(name = "Codex", command = "codex") }
+        viewModel.addAgent()
+        viewModel.updateAgent(2) { it.copy(name = "Gemini", command = "gemini") }
+
+        viewModel.moveAgent(2, 1)
+        assertEquals(listOf("Claude", "Gemini", "Codex"), viewModel.agents.map { it.toConfig().displayName })
+        viewModel.removeAgent(1)
+        assertEquals(listOf("Claude", "Codex"), viewModel.agents.map { it.toConfig().displayName })
     }
 }

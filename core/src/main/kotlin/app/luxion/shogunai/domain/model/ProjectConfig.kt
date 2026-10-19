@@ -8,12 +8,19 @@ data class ProjectConfig(
     val worktreesRoot: String,
     val secretFiles: List<String>,
     val agentLaunchConfig: AgentLaunchConfig = AgentLaunchConfig(),
+    val additionalAgents: List<AgentLaunchConfig> = emptyList(),
     val mainBranch: String? = null,
     val emulator: EmulatorSettings = EmulatorSettings(),
     val simulator: SimulatorSettings = SimulatorSettings(),
     val editorOverride: EditorId? = null,
     val fetchBeforeCreate: Boolean = false,
 ) {
+    val agents: List<AgentLaunchConfig>
+        get() = listOf(agentLaunchConfig) + additionalAgents
+
+    fun agentNamed(displayName: String?): AgentLaunchConfig =
+        agents.firstOrNull { it.displayName == displayName } ?: agentLaunchConfig
+
     fun worktreePathFor(taskId: String): String = joinPath(worktreesRoot, taskId.replace("/", "-"))
 
     fun worktreePathForBranch(branch: String): String {

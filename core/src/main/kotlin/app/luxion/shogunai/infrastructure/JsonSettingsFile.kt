@@ -90,6 +90,7 @@ class JsonSettingsFile(
         val editor: EditorId? = null,
         val checkForUpdates: Boolean = true,
         val skippedVersion: String? = null,
+        val worktreeAgents: Map<String, String> = emptyMap(),
     )
 
     @Serializable

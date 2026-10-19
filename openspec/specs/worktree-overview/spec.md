@@ -29,7 +29,7 @@ The system SHALL classify every non-main worktree by origin and show it next to 
 - **THEN** its row and detail show it is in another location
 
 ### Requirement: Show the AI agents running in each worktree
-The system SHALL detect the AI agent processes whose working directory is inside each worktree. A worktree's row SHALL show an "agent running" indicator, and its detail SHALL name each running agent. A process belongs to the worktree with the longest path that contains its working directory, so a process in a nested worktree isn't attributed to the main one. Recognized agents are Claude, Codex, Gemini, Cursor agent, OpenCode, Aider, Copilot and the project's own agent command. When processes can't be inspected on the platform, no agent information is shown, except the agents Herdr reports.
+The system SHALL detect the AI agent processes whose working directory is inside each worktree. A worktree's row SHALL show an "agent running" indicator, and its detail SHALL name each running agent. A process belongs to the worktree with the longest path that contains its working directory, so a process in a nested worktree isn't attributed to the main one. Recognized agents are Claude, Codex, Gemini, Cursor agent, OpenCode, Aider, Copilot and every agent command of the project. When processes can't be inspected on the platform, no agent information is shown, except the agents Herdr reports.
 
 #### Scenario: Agent running in a worktree
 - **WHEN** a `claude` process has its working directory inside a worktree
@@ -46,6 +46,10 @@ The system SHALL detect the AI agent processes whose working directory is inside
 #### Scenario: Process inspection unavailable
 - **WHEN** listing processes fails, for example because `lsof` isn't installed
 - **THEN** no row or detail shows agent information and the rest of the list works normally
+
+#### Scenario: Second agent of the project
+- **WHEN** a project's second agent runs the command `antigravity` and an `antigravity` process works inside one of its worktrees
+- **THEN** that worktree shows the agent as running
 
 ### Requirement: Show each worktree's disk usage
 The system SHALL compute each worktree's disk usage in the background, without blocking the list or its statuses, and show it in human-readable units in its detail. Folders of other worktrees nested inside a worktree SHALL NOT be counted in it. The project summary SHALL show the total of the sizes computed so far.

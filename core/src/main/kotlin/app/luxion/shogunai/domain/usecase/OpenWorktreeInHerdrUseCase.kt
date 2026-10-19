@@ -1,6 +1,7 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.io.HerdrClient
+import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.Worktree
@@ -10,7 +11,9 @@ class OpenWorktreeInHerdrUseCase(
     private val herdr: HerdrClient,
     private val resolveEnvironment: ResolveWorktreeEnvironmentUseCase,
 ) {
-    suspend operator fun invoke(worktree: Worktree): Result<HerdrOpening> = runCatching {
+    suspend operator fun invoke(worktree: Worktree,
+        agent: AgentLaunchConfig = config.agentLaunchConfig,
+    ): Result<HerdrOpening> = runCatching {
         val label = normalizePath(worktree.path).substringAfterLast('/')
         val opening = herdr.openWorktree(config.baseRepositoryPath, worktree.path, label)
         if (opening.alreadyOpen) return@runCatching HerdrOpening.FOCUSED
@@ -21,7 +24,7 @@ class OpenWorktreeInHerdrUseCase(
             herdr.splitPane(opening.rootPaneId, worktree.path, environment.variables)
                 .also { herdr.closePane(opening.rootPaneId) }
         }
-        herdr.runInPane(pane, config.agentLaunchConfig.resolvedCommand())
+        herdr.runInPane(pane, agent.resolvedCommand())
         HerdrOpening.OPENED
     }
 }
