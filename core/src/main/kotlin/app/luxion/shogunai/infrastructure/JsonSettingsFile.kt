@@ -88,6 +88,9 @@ class JsonSettingsFile(
         val grouping: GroupingSettings = GroupingSettings(),
         val terminal: TerminalId? = null,
         val editor: EditorId? = null,
+        val checkForUpdates: Boolean = true,
+        val lastUpdateCheck: Long? = null,
+        val skippedVersion: String? = null,
     )
 
     @Serializable

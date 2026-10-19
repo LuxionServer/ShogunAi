@@ -81,10 +81,6 @@ Hallazgos menores de revisar de punta a punta la interfaz rediseñada:
 
 - Icono en la barra de menús / bandeja del sistema con los proyectos y worktrees recientes.
 
-### Distribución
-
-- Comprobación de actualizaciones contra GitHub Releases: la app detecta una versión nueva y ofrece descargarla (o indica `brew upgrade` si se instaló con Homebrew).
-
 ## En estudio
 
 ### Integración con GitHub y gestores de tareas

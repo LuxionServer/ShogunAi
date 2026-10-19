@@ -48,6 +48,10 @@ Descarga el instalador para tu sistema operativo desde la [última release](http
 
 Instálala como cualquier otra app de escritorio y ábrela.
 
+## Actualizaciones
+
+La app de escritorio te avisa cuando hay una versión nueva y te recuerda cómo actualizarla según cómo la instalaste; consulta [Actualizaciones](desktop-app.es.md#actualizaciones) para ver qué comprueba y cómo desactivarlo. Con Homebrew, Scoop y winget también puedes actualizar cuando quieras: `brew upgrade --cask shogunai`, `scoop update shogunai` o `winget upgrade LuxionServer.ShogunAi`. Una versión nueva puede tardar unos minutos en llegar a esos gestores de paquetes tras publicarse.
+
 ## El comando `shogun`
 
 | Cómo instalaste ShogunAi | Cómo obtener `shogun` |

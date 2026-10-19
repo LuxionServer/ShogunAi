@@ -3,6 +3,7 @@ package app.luxion.shogunai.ui.i18n
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.RepositoryConfigIssue
 import app.luxion.shogunai.domain.model.RepositoryConfigRules
 import app.luxion.shogunai.domain.model.WorktreeError
@@ -369,6 +370,19 @@ class StringsTest {
         ).forEach { text ->
             assertTrue(text(EnglishStrings).isNotBlank() && text(SpanishStrings).isNotBlank())
             assertNotEquals(text(EnglishStrings), text(SpanishStrings))
+        }
+    }
+
+    @Test
+    fun `the update strings are translated and name both versions`() {
+        assertEquals("Check for Updates…", EnglishStrings.menuCheckForUpdates)
+        assertNotEquals(EnglishStrings.menuCheckForUpdates, SpanishStrings.menuCheckForUpdates)
+        assertNotEquals(EnglishStrings.updateSkipVersion, SpanishStrings.updateSkipVersion)
+        assertNotEquals(EnglishStrings.updateCheckAutomaticallyLabel, SpanishStrings.updateCheckAutomaticallyLabel)
+        allStrings.forEach { strings ->
+            val message = strings.updateAvailableMessage("1.3.0", "1.2.0")
+            assertTrue("1.3.0" in message && "1.2.0" in message)
+            assertTrue("brew upgrade --cask shogunai" in strings.updateCommandReminder(InstallChannel.HOMEBREW, "brew upgrade --cask shogunai"))
         }
     }
 }

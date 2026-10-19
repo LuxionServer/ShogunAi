@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.HerdrAgentState
 import app.luxion.shogunai.domain.usecase.GitFailureCause
@@ -466,4 +467,21 @@ object SpanishStrings : Strings {
     override val paletteCleanUp = "Limpiar"
     override fun paletteNewWorktreeIn(project: String) = "Nuevo worktree en $project"
     override fun paletteSettingsOf(project: String) = "Ajustes de $project"
+    override val menuCheckForUpdates = "Buscar actualizaciones…"
+    override fun updateAvailableMessage(newVersion: String, runningVersion: String) =
+        "¡Ya está aquí ShogunAi $newVersion! Tienes la $runningVersion."
+    override val updateWhatsNew = "Novedades"
+    override val updateSkipVersion = "Omitir esta versión"
+    override val updateCopy = "Copiar"
+    override val updateDownload = "Descargar"
+    override val updateOpenReleasePage = "Abrir"
+    override fun updateCommandReminder(channel: InstallChannel, command: String) =
+        "¿Instalada con ${channel.installerName()}? Ejecuta $command para actualizar."
+    override val updateDownloadReminder = "Descarga el nuevo instalador para actualizar."
+    override fun updateInstallCommandReminder(command: String) = "Tras descargarlo, ejecuta $command"
+    override val updateReleasePageReminder = "Consulta la página de la versión para actualizar."
+    override val updateDialogTitle = "Buscar actualizaciones"
+    override val updateChecking = "Buscando actualizaciones…"
+    override fun updateUpToDateMessage(version: String) = "ShogunAi está al día (versión $version)."
+    override val updateCheckAutomaticallyLabel = "Buscar actualizaciones automáticamente"
 }

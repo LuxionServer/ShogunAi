@@ -25,7 +25,7 @@ import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.i18n.strings
 
-private val PreferencesWindowSize = DpSize(440.dp, 430.dp)
+private val PreferencesWindowSize = DpSize(440.dp, 480.dp)
 
 fun ThemeMode.label(strings: Strings): String = when (this) {
     ThemeMode.LIGHT -> strings.themeLight
@@ -34,7 +34,7 @@ fun ThemeMode.label(strings: Strings): String = when (this) {
 }
 
 @Composable
-fun PreferencesWindow(appearance: Appearance, tools: ToolsPreferences, bringToFrontRequests: Int, onClose: () -> Unit) {
+fun PreferencesWindow(appearance: Appearance, tools: ToolsPreferences, updates: UpdateState, bringToFrontRequests: Int, onClose: () -> Unit) {
     Window(
         onCloseRequest = onClose,
         title = appearance.strings.preferencesTitle,
@@ -45,13 +45,13 @@ fun PreferencesWindow(appearance: Appearance, tools: ToolsPreferences, bringToFr
         LaunchedEffect(bringToFrontRequests) { window.toFront() }
         LaunchedEffect(Unit) { tools.refresh() }
         AppearanceScope(appearance) {
-            PreferencesContent(appearance, tools)
+            PreferencesContent(appearance, tools, updates)
         }
     }
 }
 
 @Composable
-private fun PreferencesContent(appearance: Appearance, tools: ToolsPreferences) {
+private fun PreferencesContent(appearance: Appearance, tools: ToolsPreferences, updates: UpdateState) {
     val strings = LocalStrings.current
     Column(
         modifier = Modifier.fillMaxWidth().padding(Spacing.lg),
@@ -78,6 +78,7 @@ private fun PreferencesContent(appearance: Appearance, tools: ToolsPreferences) 
             modifier = Modifier.fillMaxWidth(),
         )
         ToolsSection(tools)
+        UpdatesPreferences(updates)
     }
 }
 

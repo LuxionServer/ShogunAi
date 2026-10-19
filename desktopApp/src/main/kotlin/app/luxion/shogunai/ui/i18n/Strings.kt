@@ -1,6 +1,7 @@
 package app.luxion.shogunai.ui.i18n
 
 import androidx.compose.runtime.staticCompositionLocalOf
+import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.model.HerdrAgentState
@@ -322,6 +323,21 @@ interface Strings {
     fun daysAgo(count: Long): String
     fun monthsAgo(count: Long): String
     fun yearsAgo(count: Long): String
+    val menuCheckForUpdates: String
+    fun updateAvailableMessage(newVersion: String, runningVersion: String): String
+    val updateWhatsNew: String
+    val updateSkipVersion: String
+    val updateCopy: String
+    val updateDownload: String
+    val updateOpenReleasePage: String
+    fun updateCommandReminder(channel: InstallChannel, command: String): String
+    val updateDownloadReminder: String
+    fun updateInstallCommandReminder(command: String): String
+    val updateReleasePageReminder: String
+    val updateDialogTitle: String
+    val updateChecking: String
+    fun updateUpToDateMessage(version: String): String
+    val updateCheckAutomaticallyLabel: String
     val copied: String
     val close: String
     val worktreeCreatedWithError: String
@@ -429,4 +445,11 @@ fun Strings.repositoryConfigIssue(issue: RepositoryConfigIssue): String = when (
 fun AppLanguage.strings(): Strings = when (this) {
     AppLanguage.ENGLISH -> EnglishStrings
     AppLanguage.SPANISH -> SpanishStrings
+}
+
+internal fun InstallChannel.installerName(): String = when (this) {
+    InstallChannel.HOMEBREW -> "Homebrew"
+    InstallChannel.SCOOP -> "Scoop"
+    InstallChannel.WINGET -> "winget"
+    else -> name
 }

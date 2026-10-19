@@ -48,6 +48,10 @@ Download the installer for your operating system from the [latest release](https
 
 Install it like any other desktop app and open it.
 
+## Updates
+
+The desktop app tells you when a newer release is out and reminds you how to update it for the way you installed it; see [Updates](desktop-app.md#updates) for what it checks and how to turn it off. With Homebrew, Scoop and winget you can also update whenever you like: `brew upgrade --cask shogunai`, `scoop update shogunai` or `winget upgrade LuxionServer.ShogunAi`. A new release can reach those package managers a few minutes after it is published.
+
 ## The `shogun` command
 
 | How you installed ShogunAi | How to get `shogun` |
