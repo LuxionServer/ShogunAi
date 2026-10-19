@@ -15,6 +15,7 @@ class ResolveWorktreeEnvironmentUseCase(
     private val stateStore: EnvironmentStateStore,
     private val portProbe: PortProbe,
     private val contributions: ProviderContributions = ProviderContributions.DEFAULT,
+    private val cache: WorktreeEnvironmentCache? = null,
 ) {
     suspend operator fun invoke(
         repositoryPath: String,
@@ -104,6 +105,13 @@ class ResolveWorktreeEnvironmentUseCase(
     }
 
     private suspend fun gitDirectories(worktreePath: String): GitDirectories {
+        cache?.directoriesOf(worktreePath)?.let { return GitDirectories(it.admin, it.common) }
+        val directories = readGitDirectories(worktreePath)
+        cache?.remember(worktreePath, CachedGitDirectories(directories.admin, directories.common))
+        return directories
+    }
+
+    private suspend fun readGitDirectories(worktreePath: String): GitDirectories {
         val result = executor.execute(
             command = listOf("git", "rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir"),
             workingDirectory = worktreePath,

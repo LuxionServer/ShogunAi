@@ -222,6 +222,7 @@ class WorktreeBoardTest {
         },
         preferences = preferences,
         clock = clock,
+        ioDispatcher = dispatcher,
     ).also {
         it.syncCatalog(projects)
         it.show(null)
@@ -604,7 +605,7 @@ class WorktreeBoardTest {
     }
 
     @Test
-    fun `every project is checked even when the view is filtered`() = runTest(dispatcher) {
+    fun `only shown projects are checked while agents are detected for every project`() = runTest(dispatcher) {
         val board = board()
         advanceUntilIdle()
         board.show("api")
@@ -617,8 +618,26 @@ class WorktreeBoardTest {
         runCurrent()
         board.stopWatching()
 
-        assertEquals(2, mainRepo.lists)
+        assertEquals(1, mainRepo.lists)
         assertEquals(listOf("codex", "claude"), agentSearches.first().map { it.agentCommand })
+    }
+
+    @Test
+    fun `no check runs while the window is inactive and focus resumes them`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.startWatching()
+        board.setWindowActive(false)
+
+        repeat(5) { tick() }
+        assertTrue(agentSearches.isEmpty())
+
+        board.setWindowActive(true)
+        runCurrent()
+        tick()
+        board.stopWatching()
+
+        assertEquals(1, agentSearches.size)
     }
 
     @Test
