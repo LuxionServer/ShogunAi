@@ -1,6 +1,7 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.io.TerminalLauncher
+import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.ShellQuoting
 import app.luxion.shogunai.domain.model.TerminalId
@@ -12,11 +13,15 @@ class OpenWorktreeInTerminalUseCase(
     private val launchers: List<TerminalLauncher>,
     private val resolveEnvironment: ResolveWorktreeEnvironmentUseCase,
 ) {
-    suspend operator fun invoke(worktreePath: String, terminal: TerminalId): Result<Unit> = runCatching {
+    suspend operator fun invoke(
+        worktreePath: String,
+        terminal: TerminalId,
+        agent: AgentLaunchConfig = config.agentLaunchConfig,
+    ): Result<Unit> = runCatching {
         val launcher = launchers.firstOrNull { it.terminal == terminal }
             ?: throw WorktreeError.TerminalUnsupported(terminal, "it isn't available on this system")
         val variables = resolveEnvironment(config.baseRepositoryPath, worktreePath).getOrThrow().variables
-        val agentCommand = config.agentLaunchConfig.resolvedCommand()
+        val agentCommand = agent.resolvedCommand()
         val line = if (terminal.usesPowerShell) {
             powershellLine(worktreePath, variables, agentCommand)
         } else {

@@ -133,8 +133,8 @@ class DetectRunningAgentsUseCaseTest {
 
         val agents = DetectRunningAgentsUseCase(executor)(
             listOf(
-                AgentSearch("/opt/tools/my-agent", worktrees),
-                AgentSearch("claude", listOf(api)),
+                AgentSearch(listOf("/opt/tools/my-agent"), worktrees),
+                AgentSearch(listOf("claude"), listOf(api)),
             ),
         ).getOrThrow()
 
@@ -252,9 +252,22 @@ class DetectRunningAgentsUseCaseTest {
         val api = Worktree(path = "/home/dev/projects/api", branch = "main", isMain = true)
 
         DetectRunningAgentsUseCase(executor(), herdr)(
-            listOf(AgentSearch("claude", worktrees), AgentSearch("claude", listOf(api))),
+            listOf(AgentSearch(listOf("claude"), worktrees), AgentSearch(listOf("claude"), listOf(api))),
         ).getOrThrow()
 
         assertEquals(1, herdr.agentListings)
+    }
+
+    @Test
+    fun `the executable of a second agent of the project is recognized`() = runTest {
+        val multi = config.copy(additionalAgents = listOf(AgentLaunchConfig(agentCommand = "antigravity --chat")))
+        val executor = executor(
+            lsof = "p300\ncantigravity\nfcwd\nn${sibling.path}",
+            ps = "300 /opt/tools/antigravity",
+        )
+
+        val agents = DetectRunningAgentsUseCase(executor)(multi, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("antigravity")), agents[sibling.path])
     }
 }

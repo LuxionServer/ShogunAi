@@ -205,7 +205,8 @@ private fun PaletteHost(
 ) {
     val strings = LocalStrings.current
     val openActions = board.selectedOpenActions(strings)
-    val items = remember(viewModel.projects, board.paletteWorktrees, machine.visibleResources, board.canCleanUp(), strings, openActions.map { it.label }) {
+    val launchChoices = board.selectedLaunchChoices(strings)
+    val items = remember(viewModel.projects, board.paletteWorktrees, machine.visibleResources, board.canCleanUp(), strings, openActions.map { it.label }, launchChoices.map { it.label }) {
         buildPaletteIndex(
             projects = viewModel.projects,
             worktrees = board.paletteWorktrees,
@@ -214,6 +215,7 @@ private fun PaletteHost(
             strings = strings,
             shortcutLabel = ::platformShortcutLabel,
             openActions = openActions,
+            launchChoices = launchChoices,
         )
     }
     val knownIds = remember(items) { items.mapTo(mutableSetOf()) { it.id } }
@@ -243,6 +245,7 @@ private fun runPaletteAction(
         }
         is PaletteAction.CopyLaunchCommand -> board.copyLaunchCommand(action.ref, onCopied)
         is PaletteAction.OpenSelected -> board.openSelected(action.kind)
+        is PaletteAction.LaunchSelected -> board.launchSelected(action.kind, action.agent)
         is PaletteAction.NewWorktreeIn -> viewModel.navigate(ShellDestination.All(projectFilter = action.projectId)) {
             board.openCreateDialog(action.projectId)
         }

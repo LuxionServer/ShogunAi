@@ -88,6 +88,7 @@ class JsonSettingsFile(
         val grouping: GroupingSettings = GroupingSettings(),
         val terminal: TerminalId? = null,
         val editor: EditorId? = null,
+        val worktreeAgents: Map<String, String> = emptyMap(),
     )
 
     @Serializable

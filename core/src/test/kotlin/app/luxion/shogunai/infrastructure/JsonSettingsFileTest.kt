@@ -253,4 +253,18 @@ class JsonSettingsFileTest {
         assertEquals(ThemeMode.DARK, settings.themeMode)
         assertTrue(settings.sidebarCollapsed)
     }
+
+    @Test
+    fun `reads settings written before worktree agents existed`() {
+        Files.writeString(storagePath, """{ "themeMode": "DARK" }""")
+
+        assertTrue(settingsFile.read().worktreeAgents.isEmpty())
+    }
+
+    @Test
+    fun `keeps the agent chosen for a worktree`() {
+        settingsFile.update { it.copy(worktreeAgents = mapOf("/home/dev/projects/TASK-1" to "Codex")) }
+
+        assertEquals(mapOf("/home/dev/projects/TASK-1" to "Codex"), settingsFile.read().worktreeAgents)
+    }
 }

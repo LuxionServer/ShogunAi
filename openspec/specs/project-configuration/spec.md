@@ -51,7 +51,7 @@ The system SHALL let the user add or remove entries in the project's `secretFile
 - **THEN** those entries appear as local files and are still copied into new worktrees
 
 ### Requirement: Configure the agent launch command
-The system SHALL let the user set the project's `AgentLaunchConfig` from the project configuration screen: which agent command to run (default `claude`) and whether to wrap it with Headroom's `headroom wrap` context compressor (default enabled).
+The system SHALL let the user set the project's `AgentLaunchConfig` from the project configuration screen: which agent command to run (default `claude`) and whether to wrap it with Headroom's `headroom wrap` context compressor (default enabled). This first agent is the project's default agent.
 
 #### Scenario: Default is Headroom-wrapped claude
 - **WHEN** the user creates a new project without touching the agent launch fields
@@ -426,3 +426,22 @@ When the KMP init script is installed, project settings SHALL offer to uninstall
 #### Scenario: Uninstall
 - **WHEN** the init script is installed and the user chooses to uninstall it in project settings
 - **THEN** the script is removed and the section shows that KMP tests no longer use the worktree's simulator
+
+### Requirement: Several agents per project
+The project settings' Agent section SHALL let the user add, edit, remove and reorder agents, each with a name, a command with its default arguments and the Headroom option, and choose which one is the default. Agent names SHALL be unique and non-blank within the project; an agent without a name SHALL be shown by its command's executable name. A project SHALL keep at least one agent.
+
+#### Scenario: Add a second agent
+- **WHEN** the user adds an agent named "Codex" with the command `codex --full-auto` and saves
+- **THEN** the project has Claude as its default agent and Codex as a second one
+
+#### Scenario: Make another agent the default
+- **WHEN** the user activates "Make default" on Codex and saves
+- **THEN** Codex is the project's default agent and Claude stays as another agent
+
+#### Scenario: Duplicate name
+- **WHEN** two agents of the project have the name "Claude"
+- **THEN** saving is refused with the duplicated name marked
+
+#### Scenario: Stored project with one agent
+- **WHEN** the app loads a project saved before this change
+- **THEN** it has a single agent, its stored agent command, and its settings look as before

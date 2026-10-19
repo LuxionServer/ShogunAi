@@ -1,5 +1,6 @@
 package app.luxion.shogunai.infrastructure
 
+import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.EmulatorSettings
 import app.luxion.shogunai.domain.model.Project
@@ -170,5 +171,48 @@ class JsonProjectRepositoryTest {
         writers.forEach { it.join() }
 
         assertEquals(30, repository.list().size)
+    }
+
+    @Test
+    fun `a project stored with one agent has a single agent`() {
+        Files.writeString(
+            storagePath,
+            """
+            [{"id": "p", "name": "Main", "config": {
+                "baseRepositoryPath": "/home/dev/projects/main-repo",
+                "worktreesRoot": "/home/dev/projects",
+                "secretFiles": [],
+                "agentLaunchConfig": {"agentCommand": "claude", "useHeadroom": false}
+            }}]
+            """.trimIndent(),
+        )
+
+        val config = repository.list().single().config
+
+        assertEquals(listOf(AgentLaunchConfig(agentCommand = "claude", useHeadroom = false)), config.agents)
+        assertTrue(config.additionalAgents.isEmpty())
+    }
+
+    @Test
+    fun `keeps several agents of a project in order`() {
+        val agents = listOf(
+            AgentLaunchConfig(name = "Claude", agentCommand = "claude"),
+            AgentLaunchConfig(name = "Codex", agentCommand = "codex --full-auto", useHeadroom = false),
+        )
+        val project = Project(
+            id = "p",
+            name = "Main",
+            config = ProjectConfig(
+                baseRepositoryPath = "/home/dev/projects/main-repo",
+                worktreesRoot = "/home/dev/projects",
+                secretFiles = emptyList(),
+                agentLaunchConfig = agents.first(),
+                additionalAgents = agents.drop(1),
+            ),
+        )
+
+        repository.save(project)
+
+        assertEquals(agents, repository.list().single().config.agents)
     }
 }
