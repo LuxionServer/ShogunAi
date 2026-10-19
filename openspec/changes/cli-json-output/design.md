@@ -22,19 +22,19 @@ See proposal.md for motivation. `StatusJson.kt` builds `status --json` with `kot
 **Field conventions.** camelCase names; paths absolute; absent values as `null`, never omitted, as in `status --json`; lists always present, possibly empty; enumerations as lowercase strings (`running`, `stopped`, `booting`). Objects per command:
 
 - `new`: `{ path, branch, created: true, skippedPostCreateCommands: [[argv]], postCreateFailure: null | { command: [argv], exitCode, stderr } }`. On a post-creation failure the object is still printed (the worktree exists) and the exit code stays 1, mirroring how the text output prints the path.
-- `provision`: `{ path, copied: [path], linked: [path], copiedInsteadOfLinking: [path], skippedPostCreateCommands, postCreateFailure }`; `provision --check`: `{ path, drift: [{ path, state: "missing" | "differs" | "not-linked" }] }` with exit code 3 when `drift` isn't empty.
-- `trust`: `{ repository, commands: [[argv]], approved, changed }`.
-- `clean`: `{ dryRun, candidates: [{ path, branch, reason: "merged" | "folder-missing" }], keptForAgents: [{ path, agents: [name] }], skipped: [{ path, reason }], removed: [path], deletedBranches: [name], failures: [{ path, message }], providers: { gradleDaemonsStopped, emulatorsStopped, simulatorsDeleted, derivedDataDeleted } }`.
-- `gradle`: `{ daemons: [{ pid, kind, version, memoryBytes, state, worktree }], totalMemoryBytes }`; `gradle stop`: `{ stopped: [pid], keptBusy: [pid], failures: [{ pid, message }] }`.
-- `xcode`: `{ folders: [{ path, sizeBytes, worktree }], orphans: [...], compilationCache }`; `xcode clean`: `{ deleted: [path], freedBytes, failures }`.
-- `emulator ...`: `{ worktree, serial, avd, state }`; `simulator ...`: `{ worktree, udid, device, runtime, state }`.
-- `remove`: `{ path, branchDeleted: null | name, providers }`; `repair`: `{ repaired: [path], failures }`.
+- `provision`: `{ path, copied: [path], linked: [path], copiedInsteadOfLinking: [path], skippedPostCreateCommands, postCreateFailure }` (the file lists are empty when a command failed, since the use case reports only the failure); `provision --check`: `{ path, drift: [{ path, state: "missing" | "differs" | "not-linked" }] }` with exit code 3 when `drift` isn't empty.
+- `trust`: `{ repository, commands: [[argv]], approved, changed }`; a repository without commands is `approved: true`.
+- `clean`: `{ dryRun, candidates: [{ path, branch, reason: "merged" | "folder-missing" }], keptForAgents: [{ path, agents: [name] }], skipped: [{ path, reason }], removed: [path], deletedBranches: [name], failures: [{ path, message }], providers: { gradleDaemonsStopped: [pid], emulatorsStopped: [serial], simulatorsDeleted: [udid], derivedDataDeleted: [path] } }`.
+- `gradle`: `{ daemons: [{ pid, kind, version, memoryBytes, state, idleSince, worktree }], totalMemoryBytes }`; `gradle stop`: `{ stopped: [pid], kept: [{ pid, kind, reason }], notDaemons: [pid], failures: [{ pid, message }] }`.
+- `xcode`: `{ active, folders: [{ path, sizeBytes, worktree }], orphans: [{ path, sizeBytes }], unavailableVolumeFolders, compilationCacheBytes }`; `xcode clean`: `{ active, deleted: [path], freedBytes, failures: [{ path, message }] }`.
+- `emulator ...`: `{ worktree, serial, state }` (the use cases don't report the AVD); `simulator ...`: `{ worktree, udid, name, state }`.
+- `remove`: `{ path, branch, branchDeleted: null | name, providers: { emulatorsStopped, simulatorsStopped, gradleDaemonsStopped }, failures: [message] }`; `repair`: `{ repaired: [path] }`.
 
 The exact field lists are fixed by the docs page written in the same task as each builder, and tests assert every documented field is present.
 
 **No questions in JSON mode.** `--json` selects a non-interactive approval (`PostCreateApproval.SKIP` for `new`/`provision`, as hooks do) and makes `trust` without `--yes` report only. `clean` without `--yes` is already a dry run.
 
-**Parsing.** `--json` is accepted anywhere after the command, as other flags are; on a command without JSON output it's an unknown option (exit code 2), as `status --yaml` is today.
+**Parsing.** `--json` is accepted anywhere after the command, as other flags are; on a command without JSON output it's an unknown option (exit code 2), as `status --yaml` is today. `parseArguments` strips the flag for the listed commands (not `simulator gradle-init`) and applies it to the parsed command, so each command's own parser is unchanged.
 
 ## Risks / Trade-offs
 
