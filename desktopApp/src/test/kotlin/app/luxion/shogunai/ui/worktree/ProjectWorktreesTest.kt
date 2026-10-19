@@ -7,6 +7,14 @@ import app.luxion.shogunai.SimulatorUseCases
 import app.luxion.shogunai.domain.model.HerdrAgentState
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.WorktreeUseCases
+import app.luxion.shogunai.ProvisioningUseCases
+import app.luxion.shogunai.ReleaseResourcesUseCases
+import app.luxion.shogunai.domain.usecase.ReleasedResources
+import app.luxion.shogunai.domain.usecase.WorktreeResourcePlan
+import app.luxion.shogunai.domain.model.ProvisionDrift
+import app.luxion.shogunai.domain.model.ProvisionDriftState
+import app.luxion.shogunai.domain.model.WorktreeEnvironment
+import app.luxion.shogunai.domain.usecase.ProvisionResult
 import app.luxion.shogunai.XcodeUseCases
 import app.luxion.shogunai.domain.FakeClipboardWriter
 import app.luxion.shogunai.domain.FakeDerivedDataSource
@@ -2856,5 +2864,132 @@ class ProjectWorktreesTest {
 
         assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1), board.cleanupSuccess)
         assertEquals(listOf(worktreePath), board.project.herdrCloseFailures.map { it.path })
+    }
+
+    private fun provisioningCase(
+        drift: MutableList<ProvisionDrift>,
+        provisioned: MutableList<String> = mutableListOf(),
+        environment: WorktreeEnvironment = WorktreeEnvironment(),
+    ): ProjectWorktrees {
+        val base = useCases { command -> if (command == listCommand) success(command, porcelainOutput) else success(command) }
+        return projectWorktrees(
+            base.copy(
+                provisioning = ProvisioningUseCases(
+                    check = { Result.success(drift.toList()) },
+                    provision = { path ->
+                        provisioned += path
+                        drift.clear()
+                        Result.success(ProvisionResult(emptyList()))
+                    },
+                ),
+                readEnvironment = { Result.success(environment) },
+            ),
+        )
+    }
+
+    private fun ProjectWorktrees.linked(): Worktree = worktrees.first { it.path == worktreePath }
+
+    @Test
+    fun `a never provisioned worktree lists its missing files and can be provisioned`() = runTest(dispatcher) {
+        val drift = mutableListOf(ProvisionDrift(".env", ProvisionDriftState.MISSING), ProvisionDrift("local.properties", ProvisionDriftState.MISSING))
+        val provisioned = mutableListOf<String>()
+        val viewModel = provisioningCase(drift, provisioned)
+        advanceUntilIdle()
+        val worktree = viewModel.linked()
+
+        viewModel.loadDetail(worktree)
+        assertEquals(ProvisioningState.Checking, viewModel.provisioning[worktreePath])
+        advanceUntilIdle()
+        assertEquals(ProvisioningState.Checked(drift.toList()), viewModel.provisioning[worktreePath])
+
+        viewModel.provision(worktree)
+        advanceUntilIdle()
+
+        assertEquals(listOf(worktreePath), provisioned)
+        assertEquals(ProvisioningState.Checked(emptyList()), viewModel.provisioning[worktreePath])
+        assertTrue(viewModel.provisioningInProgress.isEmpty())
+    }
+
+    @Test
+    fun `a stale copy is listed as differing`() = runTest(dispatcher) {
+        val drift = mutableListOf(ProvisionDrift(".env", ProvisionDriftState.DIFFERS))
+        val viewModel = provisioningCase(drift)
+        advanceUntilIdle()
+
+        viewModel.loadDetail(viewModel.linked())
+        advanceUntilIdle()
+
+        assertEquals(ProvisioningState.Checked(listOf(ProvisionDrift(".env", ProvisionDriftState.DIFFERS))), viewModel.provisioning[worktreePath])
+    }
+
+    @Test
+    fun `an up to date worktree has no drift`() = runTest(dispatcher) {
+        val viewModel = provisioningCase(mutableListOf())
+        advanceUntilIdle()
+
+        viewModel.loadDetail(viewModel.linked())
+        advanceUntilIdle()
+
+        assertEquals(ProvisioningState.Checked(emptyList()), viewModel.provisioning[worktreePath])
+    }
+
+    @Test
+    fun `the main worktree is never checked for provisioning`() = runTest(dispatcher) {
+        val viewModel = provisioningCase(mutableListOf(ProvisionDrift(".env", ProvisionDriftState.MISSING)))
+        advanceUntilIdle()
+
+        viewModel.loadDetail(Worktree(path = config.baseRepositoryPath, branch = "main", isMain = true))
+        advanceUntilIdle()
+
+        assertTrue(viewModel.provisioning.isEmpty())
+    }
+
+    @Test
+    fun `the detail loads the environment variables and copies them in dotenv format`() = runTest(dispatcher) {
+        val environment = WorktreeEnvironment(
+            variables = listOf("PORT" to "20001", "APP_SUFFIX" to "-TASK-123"),
+            ports = mapOf("port" to 20001),
+        )
+        val viewModel = provisioningCase(mutableListOf(), environment = environment)
+        advanceUntilIdle()
+
+        viewModel.loadDetail(viewModel.linked())
+        advanceUntilIdle()
+
+        assertEquals(environment, viewModel.environments[worktreePath])
+        assertEquals("PORT=20001\nAPP_SUFFIX=-TASK-123\n", environmentAsDotenv(environment))
+    }
+
+    @Test
+    fun `removing a worktree releases the resources planned before the removal`() = runTest(dispatcher) {
+        val steps = mutableListOf<String>()
+        val base = useCases { command ->
+            if (command == listCommand) {
+                success(command, porcelainOutput)
+            } else {
+                if (command.take(3) == listOf("git", "worktree", "remove")) steps += "removed"
+                success(command)
+            }
+        }
+        val viewModel = projectWorktrees(
+            base.copy(
+                releaseResources = ReleaseResourcesUseCases(
+                    plan = { _, _ ->
+                        steps += "planned"
+                        WorktreeResourcePlan(emulatorSerial = "emulator-5554")
+                    },
+                    release = { plan ->
+                        steps += "released ${plan.emulatorSerial}"
+                        ReleasedResources(stoppedEmulators = listOfNotNull(plan.emulatorSerial))
+                    },
+                ),
+            ),
+        )
+        advanceUntilIdle()
+
+        viewModel.remove(viewModel.linked(), branchToDelete = null)
+        advanceUntilIdle()
+
+        assertEquals(listOf("planned", "removed", "released emulator-5554"), steps)
     }
 }

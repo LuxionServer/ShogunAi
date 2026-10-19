@@ -148,4 +148,16 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
 
     class HerdrCommandFailed(val command: List<String>, val detail: String) :
         WorktreeError("Herdr couldn't open the worktree: $detail")
+
+    class WorktreeTargetNotFound(val target: String) :
+        WorktreeError("No worktree matches \"$target\"")
+
+    class AmbiguousWorktreeTarget(val target: String, val candidates: List<String>) :
+        WorktreeError("\"$target\" matches more than one worktree:\n" + candidates.joinToString("\n") { "  $it" })
+
+    class CannotRemoveMainWorktree(val path: String) :
+        WorktreeError("$path is the main worktree and can't be removed")
+
+    class AgentRunningInWorktree(val path: String, val agents: List<String>) :
+        WorktreeError("${agents.joinToString()} is running in $path")
 }

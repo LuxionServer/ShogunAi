@@ -69,6 +69,10 @@ import app.luxion.shogunai.domain.usecase.ProvisionWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.ReadEmulatorStatesUseCase
 import app.luxion.shogunai.domain.usecase.ReadSimulatorStatesUseCase
 import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
+import app.luxion.shogunai.domain.usecase.ReleaseWorktreeResourcesUseCase
+import app.luxion.shogunai.domain.usecase.RepairWorktreesUseCase
+import app.luxion.shogunai.domain.usecase.GitFailureCause
+import app.luxion.shogunai.domain.usecase.resolveWorktreeTarget
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.herdrDetail
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
@@ -198,6 +202,8 @@ class ShogunCli(
             is CliCommand.New -> new(command)
             is CliCommand.Provision -> provision(command)
             is CliCommand.Trust -> trust(command)
+            is CliCommand.Remove -> remove(command)
+            CliCommand.Repair -> repair()
             is CliCommand.Status -> status(command)
             is CliCommand.Clean -> clean(command)
             CliCommand.HookWorktreeCreate -> hookWorktreeCreate()
@@ -377,6 +383,70 @@ class ShogunCli(
         }
         return EXIT_OK
     }
+
+    private val releaseResources = ReleaseWorktreeResourcesUseCase(
+        provisioningSource,
+        readEmulatorStates,
+        stopEmulator,
+        readSimulatorStates,
+        stopSimulator,
+        ListGradleDaemonsUseCase(daemonSource, fileManager),
+        StopGradleDaemonsUseCase(daemonSource, executor),
+    )
+
+    private suspend fun remove(command: CliCommand.Remove): Int {
+        val config = configFor(workingDirectory)
+        val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
+        val worktree = resolveWorktreeTarget(command.target, worktrees, config, ::canonical)
+        if (!command.force && !worktree.isPrunable) {
+            val agents = DetectRunningAgentsUseCase(executor)(config, listOf(worktree))
+                .onFailure { err.line("shogun: couldn't check for running agents, so none were taken into account: ${it.message}") }
+                .getOrNull()?.get(worktree.path).orEmpty()
+            if (agents.isNotEmpty()) {
+                err.line("shogun: ${agents.joinToString { it.name }} is running in ${worktree.path}; use --force to remove it anyway")
+                return EXIT_FAILURE
+            }
+        }
+        val plan = releaseResources.plan(config, worktree, worktrees)
+        val removal = RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr))(worktree.path, force = command.force)
+            .getOrElse { failure ->
+                if (failure is WorktreeError.GitCommandFailed && classifyGitFailure(failure.errorOutput) == GitFailureCause.LocalChanges) {
+                    err.line("shogun: ${worktree.path} has uncommitted or untracked changes; use --force to remove it anyway")
+                    return EXIT_FAILURE
+                }
+                throw failure
+            }
+        out.line("removed ${worktree.path}")
+        removal.herdrFailure?.let { err.line(herdrCloseFailure(worktree.path, it)) }
+        val released = releaseResources.release(config, plan)
+        released.stoppedEmulators.forEach { out.line("stopped emulator $it") }
+        released.stoppedSimulators.forEach { out.line("stopped simulator $it") }
+        released.stoppedDaemons.forEach { out.line("stopped Gradle daemon $it") }
+        released.failures.forEach { err.line("shogun: $it") }
+        val branch = worktree.branch?.takeIf { command.deleteBranch }
+        if (branch != null) {
+            if (DeleteMergedBranchUseCase(config, executor)(branch).getOrThrow()) {
+                out.line("deleted branch $branch")
+            } else {
+                out.line("kept branch $branch (not merged into the main branch)")
+            }
+        }
+        return if (released.failures.isEmpty()) EXIT_OK else EXIT_FAILURE
+    }
+
+    private suspend fun repair(): Int {
+        val projectConfig = configFor(workingDirectory)
+        if (projectConfig.worktreesRoot.isBlank()) {
+            err.line("shogun: this repository has no ShogunAi project, so there's no worktrees folder to repair into.")
+            err.line("Add the repository as a project in the desktop app first.")
+            return EXIT_USAGE
+        }
+        val relinked = RepairWorktreesUseCase(projectConfig, executor, fileManager)().getOrThrow()
+        if (relinked.isEmpty()) out.line("Nothing to repair.") else relinked.forEach { out.line("repaired $it") }
+        return EXIT_OK
+    }
+
+    private fun canonical(path: String): String = runCatching { canonicalPath(absolute(path)) }.getOrDefault(path)
 
     private suspend fun clean(command: CliCommand.Clean): Int {
         val config = configFor(workingDirectory)

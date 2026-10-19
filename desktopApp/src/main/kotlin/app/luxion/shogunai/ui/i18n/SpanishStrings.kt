@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.HerdrAgentState
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
@@ -213,6 +214,17 @@ object SpanishStrings : Strings {
     override val copyPath = "Copiar ruta"
     override val statusTitle = "Estado"
     override val agentsTitle = "Agentes"
+    override val provisioningTitle = "Archivos provisionados"
+    override val provisioningChecking = "Comprobando…"
+    override val provisioningUnavailable = "No se pudieron comprobar los archivos"
+    override val provisioningUpToDate = "Los archivos están al día"
+    override val provisionAction = "Provisionar"
+    override val copyAsEnv = "Copiar como .env"
+    override fun provisionDriftFile(path: String, state: ProvisionDriftState) = when (state) {
+        ProvisionDriftState.MISSING -> "$path · falta"
+        ProvisionDriftState.DIFFERS -> "$path · difiere"
+        ProvisionDriftState.NOT_LINKED -> "$path · sin enlazar"
+    }
     override val environmentTitle = "Entorno"
     override val devicesTitle = "Dispositivos"
     override val diskTitle = "Disco"
@@ -246,6 +258,12 @@ object SpanishStrings : Strings {
     override fun installInitScriptMessage(path: String) =
         "ShogunAi escribirá el init script de Gradle $path para que los tests de simulador iOS de todos los " +
             "proyectos Gradle de esta máquina se ejecuten en IOS_SIMULATOR_UDID cuando esté definida. Quítalo con 'shogun simulator gradle-init uninstall'."
+    override val uninstallInitScript = "Desinstalar el init script"
+    override val uninstallInitScriptTitle = "¿Desinstalar el init script de Gradle?"
+    override fun uninstallInitScriptMessage(path: String) =
+        "ShogunAi borrará $path. Los tests de simulador iOS KMP de los proyectos Gradle de esta máquina dejarán de usar el " +
+            "simulador del worktree, salvo que lo haga el build.gradle.kts del módulo."
+    override val uninstall = "Desinstalar"
     override val install = "Instalar"
     override val simulatorLabel = "Simulador de iOS"
     override val simulatorShutdown = "apagado"

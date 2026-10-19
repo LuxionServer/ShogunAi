@@ -8,6 +8,8 @@ shogun new --branch hotfix/login   # worktree para una rama existente
 shogun provision ../otro-worktree  # copia los archivos declarados en un worktree creado por otra herramienta
 shogun status                      # todos los worktrees con sus cambios, divergencia y si están mergeados
 shogun status --json               # lo mismo, como un documento JSON para scripts
+shogun remove TASK-123             # elimina un worktree y para su emulador y simulador
+shogun repair                      # re-enlaza los worktrees tras mover el repositorio
 shogun clean --yes                 # elimina los worktrees mergeados o sin carpeta (sin --yes solo los lista)
 eval "$(shogun env)"               # carga las variables de este worktree desde "env" en .shogunai.json
 ```
@@ -133,6 +135,26 @@ Imprime un único objeto JSON compacto en una línea, en vez de las líneas de t
 | `status.lastCommitAt` | Hora del último commit en ISO-8601 UTC, o `null`. |
 
 Todos los campos están siempre presentes, con `null` cuando no aplican. Los nombres de los campos son un contrato: las versiones futuras solo añaden campos y nunca renombran, eliminan ni cambian el tipo de uno.
+
+### `remove`
+
+```text
+shogun remove <id de tarea | ruta | rama> [--force|-f] [--delete-branch]
+```
+
+Elimina un worktree enlazado, igual que "Eliminar" en la app de escritorio. El objetivo es, por este orden, la ruta de un worktree, el nombre exacto de su rama o un id de tarea (el worktree en `<carpeta de worktrees>/<id de tarea>`); si no hay coincidencia, o hay más de una, no elimina nada y falla (listando los candidatos). El worktree principal nunca se elimina.
+
+Sin `--force` rechaza un worktree con cambios sin commitear o sin seguimiento, o donde se ejecuta un agente (`shogun: claude is running in <ruta>; use --force to remove it anyway`), y termina con `1`. Con `--force` lo elimina igualmente. La rama se conserva salvo que pases `--delete-branch`, que la borra solo si está mergeada en la rama principal del proyecto (`deleted branch …`, o `kept branch … (not merged into the main branch)`).
+
+Tras eliminarlo, el comando para lo que los providers del repositorio mantienen para ese worktree: su emulador de Android (`stopped emulator …`), su simulador de iOS (`stopped simulator …`) y los daemons de Gradle ociosos cuya última build fue en él (`stopped Gradle daemon …`). Un recurso que no se puede parar se indica en la salida de error y el código de salida es `1`; para entonces el worktree ya está eliminado. También se cierra su espacio de trabajo de Herdr.
+
+### `repair`
+
+```text
+shogun repair
+```
+
+Vuelve a enlazar los worktrees tras mover el repositorio o la carpeta de worktrees, como hace la app de escritorio al cambiar las carpetas de un proyecto: los worktrees que Git aún lista en su ubicación antigua se buscan en la carpeta de worktrees del proyecto, por el nombre de su carpeta, y se re-enlazan (`repaired <ruta>`). Si no hay nada que re-enlazar imprime `Nothing to repair.` Necesita el proyecto del repositorio en la app de escritorio, porque ahí se guarda la carpeta de worktrees; sin él, termina con `2`.
 
 ### `clean`
 

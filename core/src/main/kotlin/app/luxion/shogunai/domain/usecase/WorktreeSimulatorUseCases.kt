@@ -61,6 +61,10 @@ class StopWorktreeSimulatorUseCase(
         if (device.state != SimulatorState.SHUTDOWN) simulators.shutdown(udid)
         WorktreeSimulator(udid, device.name, SimulatorState.SHUTDOWN)
     }
+
+    suspend fun shutDown(udid: String) {
+        if (simulators.devices().any { it.udid == udid && it.state != SimulatorState.SHUTDOWN }) simulators.shutdown(udid)
+    }
 }
 
 class ReadSimulatorStatesUseCase(

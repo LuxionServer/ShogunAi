@@ -33,6 +33,8 @@ Cada fila muestra un worktree con:
 
 - Su **rama**, la etiqueta "bloqueado" cuando una sesión de agente lo retiene, su **origen** (ShogunAi, Claude Code, Herdr u otra ubicación) y los **agentes en ejecución** en él. Con Herdr en marcha, cada agente muestra además su estado (trabajando, bloqueado, terminado o inactivo).
 - Su **estado**: cambios sin commitear, commits por delante y por detrás de su upstream y de la rama principal, la fecha del último commit, "mergeada en <rama principal>", o "sin empezar" cuando su rama nunca tuvo commits propios. "Carpeta no encontrada" cuando su carpeta se borró a mano.
+- Sus **archivos provisionados**: si los archivos y enlaces declarados para los worktrees nuevos coinciden con los del repositorio base, listando los que faltan, difieren o no están enlazados. En un worktree creado por otra herramienta, o cuyas copias están desactualizadas, **Provisionar** los copia, reserva sus puertos y escribe su archivo de entorno, como hace `shogun provision`.
+- Su **entorno**: los puertos y cada variable de `"env"` en `.shogunai.json` con su valor, en el orden en que las imprime `shogun env`. **Copiar como .env** las pone en el portapapeles en formato dotenv. Los valores no se ocultan, porque salen de plantillas del repositorio.
 - Su **tamaño**, los **puertos** reservados para él (ver [entorno por worktree](../agents.md#entorno-por-worktree)) y la etiqueta "inactivo" cuando no tiene cambios sin commitear, ningún agente en ejecución ni commits en los últimos 14 días.
 - Las líneas de emulador y simulador con Arrancar y Parar, en repositorios que usan esos [providers](providers.md).
 
