@@ -20,8 +20,10 @@ El catálogo se puede buscar por nombre y ordenar; cada proyecto se puede abrir,
 
 Abre un proyecto y, en "Nuevo worktree", elige:
 
-- **Rama nueva**: escribe el id de la tarea (p. ej. `TASK-123`) y el tipo de rama, `feature` o `fix`. La app crea `feature/TASK-123` desde el commit actual del repositorio base (`HEAD`); para partir de otro commit, usa [`shogun new --from`](cli.md#new). Los espacios del id se convierten en `-`, y los ids que Git no aceptaría como nombre de rama se rechazan.
-- **Rama existente**: elige una rama local de la lista, agrupadas por prefijo. Las ramas que ya tienen worktree no se pueden elegir.
+- **Rama nueva**: escribe el id de la tarea (p. ej. `TASK-123`) y el tipo de rama, `feature` o `fix`. La app crea `feature/TASK-123` en el commit elegido en **Partir de**: por defecto la rama principal del proyecto (`origin/develop` si existe), la rama actual del repositorio base, o cualquier rama local o de `origin/`; si no se resuelve ninguna rama principal, el valor por defecto es la rama actual. Para partir de un tag o de un commit, usa [`shogun new --from`](cli.md#new). Los espacios del id se convierten en `-`, y los ids que Git no aceptaría como nombre de rama se rechazan.
+- **Rama existente**: elige una rama de la lista, agrupadas por prefijo. Las ramas que ya tienen worktree no se pueden elegir. También se listan las ramas que existen solo en `origin`, marcadas como remotas; al elegir una se crea una rama local con ese nombre que la sigue.
+
+Cuando el repositorio tiene un remoto `origin`, **Hacer fetch de origin antes** hace fetch antes de crear, en cualquiera de los dos modos, para que la rama elegida esté al día. Está desactivado por defecto y cada proyecto recuerda su último valor en este equipo. El fetch nunca espera credenciales: si falla, el diálogo muestra el error de Git con "Volver a intentar" y "Crear sin hacer fetch", y no se crea nada hasta que elijas una.
 
 "Crear worktree" (o Cmd+N / Ctrl+N) lo crea y copia los archivos que declaran el repositorio y el proyecto. Si una copia falla, el worktree se vuelve a eliminar para no dejar nada a medias.
 

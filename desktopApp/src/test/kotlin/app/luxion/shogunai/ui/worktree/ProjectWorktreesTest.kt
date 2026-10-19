@@ -55,6 +55,7 @@ import app.luxion.shogunai.domain.model.SimulatorDevice
 import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.withoutLocalTwins
 import app.luxion.shogunai.domain.model.XcodeProvider
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
 import app.luxion.shogunai.ui.machine.MachineResource
@@ -68,7 +69,9 @@ import app.luxion.shogunai.domain.usecase.MeasureWorktreeSizeUseCase
 import app.luxion.shogunai.domain.usecase.ReadGitMetadataFingerprintUseCase
 import app.luxion.shogunai.domain.usecase.ListGradleDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.ListDerivedDataUseCase
-import app.luxion.shogunai.domain.usecase.ListLocalBranchesUseCase
+import app.luxion.shogunai.domain.usecase.FetchRemoteUseCase
+import app.luxion.shogunai.domain.usecase.ListBranchesUseCase
+import app.luxion.shogunai.domain.usecase.ResolveStartPointUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
@@ -123,7 +126,7 @@ class ProjectWorktreesTest {
     private val removeCommand = listOf("git", "worktree", "remove", worktreePath)
     private val forceRemoveCommand = listOf("git", "worktree", "remove", "--force", worktreePath)
     private val repairCommandPrefix = listOf("git", "worktree", "repair")
-    private val forEachRefCommand = listOf("git", "for-each-ref", "--format=%(refname:short)", "refs/heads")
+    private val forEachRefCommand = listOf("git", "for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes/origin/")
 
     private val porcelainOutput = """
         worktree $worktreePath
@@ -146,11 +149,16 @@ class ProjectWorktreesTest {
 
     private val project = Project(id = "main-repo", name = "main-repo", config = config)
 
-    private fun board(useCases: WorktreeUseCases): WorktreeBoard = WorktreeBoard(
+    private fun board(
+        useCases: WorktreeUseCases,
+        project: Project = this.project,
+        rememberFetchBeforeCreate: (String, Boolean) -> Unit = { _, _ -> },
+    ): WorktreeBoard = WorktreeBoard(
         useCasesFor = { useCases },
         detectAgents = { searches -> useCases.detectAgents(searches.flatMap { it.worktrees }) },
         preferences = FakeShellPreferenceRepository(),
         ioDispatcher = dispatcher,
+        rememberFetchBeforeCreate = rememberFetchBeforeCreate,
     ).also {
         it.syncCatalog(listOf(project))
         it.show(null)
@@ -186,7 +194,9 @@ class ProjectWorktreesTest {
                 ),
                 FakeRepositoryProvisioningSource(),
             ),
-            listLocalBranches = ListLocalBranchesUseCase(config, executor),
+            listBranches = ListBranchesUseCase(config, executor),
+            fetchRemote = FetchRemoteUseCase(config, executor),
+            resolveStartPoint = { ref -> ResolveStartPointUseCase(executor)(config.baseRepositoryPath, ref) },
             remove = RemoveWorktreeUseCase(config, executor),
             copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboard, windows = false),
             repair = RepairWorktreesUseCase(config, executor, FakeFileManager(existing = listOf(config.baseRepositoryPath))),
@@ -476,7 +486,7 @@ class ProjectWorktreesTest {
             useCases { command ->
                 when {
                     command == listCommand -> success(command, porcelainOutput)
-                    command == forEachRefCommand -> success(command, stdout = "$branch\n")
+                    command == forEachRefCommand -> success(command, stdout = "refs/heads/$branch\n")
                     command.getOrNull(1) == "show-ref" -> success(command)
                     else -> success(command)
                 }
@@ -713,13 +723,13 @@ class ProjectWorktreesTest {
         })
         advanceUntilIdle()
 
-        viewModel.loadLocalBranches()
+        viewModel.loadBranches()
         advanceUntilIdle()
 
         assertTrue(viewModel.branchesError != null)
         assertNull(viewModel.error)
         failing = false
-        viewModel.loadLocalBranches()
+        viewModel.loadBranches()
         advanceUntilIdle()
         assertNull(viewModel.branchesError)
     }
@@ -891,7 +901,7 @@ class ProjectWorktreesTest {
                     listCommand -> success(command, porcelainOutput)
                     forEachRefCommand -> {
                         forEachRefCallCount++
-                        success(command, stdout = "feature/TASK-123\nhotfix/security-patch\n")
+                        success(command, stdout = "refs/heads/feature/TASK-123\nrefs/heads/hotfix/security-patch\n")
                     }
                     else -> success(command)
                 }
@@ -912,12 +922,12 @@ class ProjectWorktreesTest {
                 BranchOption("feature/TASK-123", isCheckedOut = true),
                 BranchOption("hotfix/security-patch", isCheckedOut = false),
             ),
-            board.project.localBranches,
+            board.project.branches,
         )
     }
 
     @Test
-    fun `refresh does not reload local branches when create mode is new branch`() = runTest(dispatcher) {
+    fun `refresh reloads branches while the create dialog is open in new branch mode`() = runTest(dispatcher) {
         var forEachRefCallCount = 0
         val board = board(
             useCases { command ->
@@ -925,7 +935,7 @@ class ProjectWorktreesTest {
                     listCommand -> success(command, porcelainOutput)
                     forEachRefCommand -> {
                         forEachRefCallCount++
-                        success(command, stdout = "hotfix/security-patch\n")
+                        success(command, stdout = "refs/heads/hotfix/security-patch\n")
                     }
                     else -> success(command)
                 }
@@ -934,11 +944,247 @@ class ProjectWorktreesTest {
         advanceUntilIdle()
         board.openCreateDialog()
         assertEquals(CreateMode.NEW_BRANCH, board.createMode)
+        advanceUntilIdle()
+        assertEquals(1, forEachRefCallCount)
 
         board.refreshShown()
         advanceUntilIdle()
 
-        assertEquals(0, forEachRefCallCount)
+        assertEquals(2, forEachRefCallCount)
+    }
+
+    private val addPrefix = listOf("git", "worktree", "add", "/home/dev/projects/TASK-456", "-b", "feature/TASK-456")
+
+    private fun startPointScenario(
+        remoteBranches: String = "",
+        fetchResult: (List<String>) -> CommandResult = { success(it) },
+        hasOrigin: Boolean = true,
+        mainBranch: String? = "develop",
+        projectConfig: ProjectConfig = config,
+    ): Pair<WorktreeBoard, FakeShellCommandExecutor> {
+        val executor = FakeShellCommandExecutor { command ->
+            when {
+                command == listCommand -> success(command, "worktree ${config.baseRepositoryPath}\nHEAD abc123\nbranch refs/heads/develop\n\n$porcelainOutput")
+                command.take(2) == listOf("git", "show-ref") ->
+                    if (command.last().startsWith("refs/remotes/origin/")) success(command) else failure(command)
+                command == forEachRefCommand ->
+                    success(command, stdout = "refs/heads/develop\nrefs/heads/feature/TASK-123\n$remoteBranches")
+                command.take(2) == listOf("git", "symbolic-ref") ->
+                    mainBranch?.let { success(command, stdout = "origin/$it\n") } ?: failure(command)
+                command.take(2) == listOf("git", "rev-parse") && command.last() == "refs/remotes/origin/develop" -> success(command)
+                command.take(2) == listOf("git", "rev-parse") && command.last() == "origin/develop^{commit}" ->
+                    success(command, stdout = "fetched1\n")
+                command.take(2) == listOf("git", "rev-parse") && command.last() == "develop^{commit}" ->
+                    success(command, stdout = "local11\n")
+                command.take(2) == listOf("git", "rev-parse") -> failure(command)
+                command.take(3) == listOf("git", "remote", "get-url") ->
+                    if (hasOrigin) success(command, stdout = "git@example.com:team/repo.git") else failure(command, exitCode = 2)
+                command.take(2) == listOf("git", "fetch") -> fetchResult(command)
+                else -> success(command)
+            }
+        }
+        val useCases = useCasesWith(executor, createFiles = existingBase())
+        return board(useCases, project.copy(config = projectConfig)) to executor
+    }
+
+    @Test
+    fun `the new branch starts at the main branch by default`() = runTest(dispatcher) {
+        val (board, executor) = startPointScenario()
+        advanceUntilIdle()
+        board.openCreateDialog()
+        advanceUntilIdle()
+        board.updateTaskId("TASK-456")
+
+        assertEquals(StartOption.Branch("origin/develop"), board.effectiveStartFrom)
+        assertEquals(StartOption.Branch("origin/develop"), board.startOptions.first())
+        assertEquals(StartOption.Current, board.startOptions[1])
+
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        assertTrue(executor.executed(*(addPrefix + "fetched1").toTypedArray()), executor.executedCommands.toString())
+    }
+
+    @Test
+    fun `starting from the repository's current branch adds no start point`() = runTest(dispatcher) {
+        val (board, executor) = startPointScenario()
+        advanceUntilIdle()
+        board.openCreateDialog()
+        advanceUntilIdle()
+        board.updateTaskId("TASK-456")
+        board.startFrom = StartOption.Current
+
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        assertTrue(executor.executed(*addPrefix.toTypedArray()), executor.executedCommands.toString())
+    }
+
+    @Test
+    fun `without a main branch the current branch is the default`() = runTest(dispatcher) {
+        val (board, executor) = startPointScenario(mainBranch = null)
+        advanceUntilIdle()
+        board.openCreateDialog()
+        advanceUntilIdle()
+
+        assertEquals(StartOption.Current, board.effectiveStartFrom)
+        assertEquals("develop", board.currentBranchName)
+    }
+
+    @Test
+    fun `a start point that disappeared creates nothing and reports it`() = runTest(dispatcher) {
+        val (board, executor) = startPointScenario()
+        advanceUntilIdle()
+        board.openCreateDialog()
+        advanceUntilIdle()
+        board.updateTaskId("TASK-456")
+        board.startFrom = StartOption.Branch("origin/deleted")
+
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        val error = assertIs<WorktreeError.StartPointNotFound>(board.project.createError)
+        assertEquals("origin/deleted", error.ref)
+        assertTrue(board.isCreateDialogOpen)
+        assertFalse(executor.executedCommands.any { it.take(3) == listOf("git", "worktree", "add") })
+    }
+
+    @Test
+    fun `fetching first runs before the start point is resolved`() = runTest(dispatcher) {
+        val (board, executor) = startPointScenario()
+        advanceUntilIdle()
+        board.openCreateDialog()
+        advanceUntilIdle()
+        board.updateTaskId("TASK-456")
+        board.fetchFirst = true
+
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        val commands = executor.executedCommands
+        val fetch = commands.indexOf(listOf("git", "fetch", "--prune", "origin"))
+        val resolve = commands.indexOf(listOf("git", "rev-parse", "--verify", "--quiet", "origin/develop^{commit}"))
+        assertTrue(fetch in 0 until resolve, commands.toString())
+        assertTrue(executor.executed(*(addPrefix + "fetched1").toTypedArray()))
+    }
+
+    @Test
+    fun `a failed fetch creates nothing until the user retries or skips it`() = runTest(dispatcher) {
+        var fetchSucceeds = false
+        val (board, executor) = startPointScenario(
+            fetchResult = { if (fetchSucceeds) success(it) else failure(it, exitCode = 128, stderr = "Could not resolve host") },
+        )
+        advanceUntilIdle()
+        board.openCreateDialog()
+        advanceUntilIdle()
+        board.updateTaskId("TASK-456")
+        board.fetchFirst = true
+
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        val fetchError = assertIs<WorktreeError.GitCommandFailed>(board.project.fetchError)
+        assertEquals("Could not resolve host", fetchError.errorOutput)
+        assertTrue(board.isCreateDialogOpen)
+        assertFalse(board.project.isCreating)
+        assertFalse(executor.executedCommands.any { it.take(3) == listOf("git", "worktree", "add") })
+
+        fetchSucceeds = true
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        assertNull(board.project.fetchError)
+        assertFalse(board.isCreateDialogOpen)
+        assertTrue(executor.executed(*(addPrefix + "fetched1").toTypedArray()))
+    }
+
+    @Test
+    fun `creating without fetching skips a failing fetch`() = runTest(dispatcher) {
+        val (board, executor) = startPointScenario(fetchResult = { failure(it, exitCode = 128) })
+        advanceUntilIdle()
+        board.openCreateDialog()
+        advanceUntilIdle()
+        board.updateTaskId("TASK-456")
+        board.fetchFirst = true
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        board.confirmCreate(skipFetch = true)
+        advanceUntilIdle()
+
+        assertNull(board.project.fetchError)
+        assertFalse(board.isCreateDialogOpen)
+        assertEquals(1, executor.executedCommands.count { it.take(2) == listOf("git", "fetch") })
+        assertTrue(executor.executed(*(addPrefix + "local11").toTypedArray()).not())
+        assertTrue(executor.executed(*(addPrefix + "fetched1").toTypedArray()))
+    }
+
+    @Test
+    fun `the fetch option starts from the project's remembered value and is remembered when it changes`() = runTest(dispatcher) {
+        val remembered = mutableListOf<Pair<String, Boolean>>()
+        val executor = FakeShellCommandExecutor { command ->
+            if (command == listCommand) success(command, porcelainOutput) else success(command)
+        }
+        val board = board(
+            useCasesWith(executor, createFiles = existingBase()),
+            rememberFetchBeforeCreate = { id, fetch -> remembered += id to fetch },
+        )
+        advanceUntilIdle()
+        board.openCreateDialog()
+        advanceUntilIdle()
+        assertFalse(board.fetchFirst)
+        board.updateTaskId("TASK-456")
+        board.fetchFirst = true
+
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        assertEquals(listOf(project.id to true), remembered)
+    }
+
+    @Test
+    fun `the dialog opens with the fetch option on when the project remembers it`() = runTest(dispatcher) {
+        val (board, _) = startPointScenario(projectConfig = config.copy(fetchBeforeCreate = true))
+        advanceUntilIdle()
+
+        board.openCreateDialog()
+
+        assertTrue(board.fetchFirst)
+    }
+
+    @Test
+    fun `a repository without origin offers no fetch`() = runTest(dispatcher) {
+        val (board, _) = startPointScenario(hasOrigin = false)
+        advanceUntilIdle()
+        board.openCreateDialog()
+        advanceUntilIdle()
+
+        assertFalse(board.canFetchFirst)
+    }
+
+    @Test
+    fun `remote only branches are listed once and create a local branch tracking them`() = runTest(dispatcher) {
+        val (board, executor) = startPointScenario(
+            remoteBranches = "refs/remotes/origin/HEAD\nrefs/remotes/origin/develop\nrefs/remotes/origin/feature/TASK-9\n",
+        )
+        advanceUntilIdle()
+        board.openCreateDialog()
+        board.updateCreateMode(CreateMode.EXISTING_BRANCH)
+        advanceUntilIdle()
+
+        val listed = board.project.branches.withoutLocalTwins().filter { it.isRemote }
+        assertEquals(listOf("origin/feature/TASK-9"), listed.map { it.name })
+
+        board.selectedBranch = "origin/feature/TASK-9"
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        assertTrue(
+            executor.executed(
+                "git", "worktree", "add", "--track", "-b", "feature/TASK-9", "/home/dev/projects/TASK-9", "origin/feature/TASK-9",
+            ),
+            executor.executedCommands.toString(),
+        )
     }
 
     @Test
@@ -952,19 +1198,19 @@ class ProjectWorktreesTest {
     }
 
     @Test
-    fun `loadLocalBranches populates localBranches flagging already checked out branches`() = runTest(dispatcher) {
+    fun `loadBranches populates localBranches flagging already checked out branches`() = runTest(dispatcher) {
         val viewModel = projectWorktrees(
             useCases { command ->
                 when (command) {
                     listCommand -> success(command, porcelainOutput)
-                    forEachRefCommand -> success(command, stdout = "feature/TASK-123\nhotfix/security-patch\n")
+                    forEachRefCommand -> success(command, stdout = "refs/heads/feature/TASK-123\nrefs/heads/hotfix/security-patch\n")
                     else -> success(command)
                 }
             },
         )
         advanceUntilIdle()
 
-        viewModel.loadLocalBranches()
+        viewModel.loadBranches()
         advanceUntilIdle()
 
         assertEquals(
@@ -972,7 +1218,7 @@ class ProjectWorktreesTest {
                 BranchOption("feature/TASK-123", isCheckedOut = true),
                 BranchOption("hotfix/security-patch", isCheckedOut = false),
             ),
-            viewModel.localBranches,
+            viewModel.branches,
         )
         assertEquals(false, viewModel.isLoadingBranches)
     }
@@ -1073,12 +1319,12 @@ class ProjectWorktreesTest {
             useCases { command ->
                 when (command) {
                     listCommand -> success(command, porcelainOutput)
-                    forEachRefCommand -> success(command, stdout = "develop\nfeature/TASK-123\n")
+                    forEachRefCommand -> success(command, stdout = "refs/heads/develop\nrefs/heads/feature/TASK-123\n")
                     else -> success(command)
                 }
             },
         )
-        board.project.loadLocalBranches()
+        board.project.loadBranches()
         advanceUntilIdle()
 
         board.selectedBranch = "develop"

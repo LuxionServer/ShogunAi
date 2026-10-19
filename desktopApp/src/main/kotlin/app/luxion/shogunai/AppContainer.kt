@@ -40,7 +40,8 @@ import app.luxion.shogunai.domain.usecase.DeleteSimulatorsUseCase
 import app.luxion.shogunai.domain.usecase.DetectRunningAgentsUseCase
 import app.luxion.shogunai.domain.usecase.ListDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.ListGradleDaemonsUseCase
-import app.luxion.shogunai.domain.usecase.ListLocalBranchesUseCase
+import app.luxion.shogunai.domain.usecase.FetchRemoteUseCase
+import app.luxion.shogunai.domain.usecase.ListBranchesUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.MachineProviderContributions
 import app.luxion.shogunai.domain.usecase.effectiveGradleJvmArgs
@@ -62,6 +63,7 @@ import app.luxion.shogunai.domain.usecase.WorktreeResourcePlan
 import app.luxion.shogunai.domain.usecase.RepairWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
 import app.luxion.shogunai.domain.usecase.ResolveRepositoryUseCase
+import app.luxion.shogunai.domain.usecase.ResolveStartPointUseCase
 import app.luxion.shogunai.ui.projectconfig.RepositoryInspection
 import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.WorktreeEnvironmentCache
@@ -242,7 +244,9 @@ class AppContainer {
             repositoryTrust,
             postCreateApproval,
         ),
-        listLocalBranches = ListLocalBranchesUseCase(config, shellCommandExecutor),
+        listBranches = ListBranchesUseCase(config, shellCommandExecutor),
+        fetchRemote = FetchRemoteUseCase(config, shellCommandExecutor),
+        resolveStartPoint = { ref -> ResolveStartPointUseCase(shellCommandExecutor)(config.baseRepositoryPath, ref) },
         remove = RemoveWorktreeUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient)),
         copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboardWriter),
         repair = RepairWorktreesUseCase(config, shellCommandExecutor, fileManager),
@@ -337,7 +341,9 @@ data class WorktreeUseCases(
     val list: ListWorktreesUseCase,
     val create: CreateWorktreeUseCase,
     val createFromBranch: CreateWorktreeFromBranchUseCase,
-    val listLocalBranches: ListLocalBranchesUseCase,
+    val listBranches: ListBranchesUseCase,
+    val fetchRemote: FetchRemoteUseCase,
+    val resolveStartPoint: suspend (String) -> Result<String>,
     val remove: RemoveWorktreeUseCase,
     val copyLaunchCommand: CopyWorktreeLaunchCommandUseCase,
     val repair: RepairWorktreesUseCase,

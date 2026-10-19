@@ -52,6 +52,12 @@ class ParseArgumentsTest {
     }
 
     @Test
+    fun `new accepts fetch with a task id or a branch`() {
+        assertEquals(CliCommand.New(taskId = "TASK-1", fetch = true), command("new", "TASK-1", "--fetch"))
+        assertEquals(CliCommand.New(branch = "feature/x", fetch = true), command("new", "--fetch", "--branch", "feature/x"))
+    }
+
+    @Test
     fun `new with an explicit start point`() {
         assertEquals(CliCommand.New(taskId = "TASK-123", from = "epic/redesign"), command("new", "TASK-123", "--from", "epic/redesign"))
     }

@@ -14,6 +14,7 @@ sealed interface CliCommand {
         val branchType: BranchType = BranchType.FEATURE,
         val worktreesRoot: String? = null,
         val from: String? = null,
+        val fetch: Boolean = false,
     ) : CliCommand
 
     data class Provision(val path: String? = null, val check: Boolean = false) : CliCommand
@@ -105,10 +106,12 @@ private fun parseNew(rest: List<String>): CliCommand.New {
     var fix = false
     var worktreesRoot: String? = null
     var from: String? = null
+    var fetch = false
     val remaining = ArrayDeque(rest)
     while (remaining.isNotEmpty()) {
         when (val argument = remaining.removeFirst()) {
             "--fix" -> fix = true
+            "--fetch" -> fetch = true
             "--from" -> from = remaining.valueOf(argument)
             "--branch" -> branch = remaining.valueOf(argument)
             "--worktrees-root" -> worktreesRoot = remaining.valueOf(argument)
@@ -129,6 +132,7 @@ private fun parseNew(rest: List<String>): CliCommand.New {
         branchType = if (fix) BranchType.FIX else BranchType.FEATURE,
         worktreesRoot = worktreesRoot,
         from = from,
+        fetch = fetch,
     )
 }
 

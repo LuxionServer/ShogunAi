@@ -4,10 +4,13 @@ internal object CliHelp {
 
     private val sections: Map<String, String> = linkedMapOf(
         "new" to """
-  new <task-id> [--fix] [--from <ref>]
+  new <task-id> [--fix] [--from <ref>] [--fetch]
                               Create a worktree on a new feature/ (or fix/) branch and print its path;
                               the branch starts at the current worktree's HEAD unless --from is given
-  new --branch <branch>       Create a worktree for an existing local branch and print its path
+  new --branch <branch> [--fetch]
+                              Create a worktree for an existing branch and print its path; a branch that
+                              exists only on origin gets a local branch tracking it
+      --fetch                 Fetch from origin first, so the start point or branch is current
       --worktrees-root <dir>  Folder for the worktree when the repository has no ShogunAi project
 """.trimIndent(),
         "provision" to """

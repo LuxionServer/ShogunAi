@@ -127,6 +127,13 @@ object SpanishStrings : Strings {
     override val loadingBranches = "Cargando ramas..."
     override val noBranchesAvailable = "No hay ramas disponibles para crear un worktree."
     override fun branchAlreadyHasWorktree(branch: String) = "$branch (ya tiene un worktree)"
+    override val startFromLabel = "Partir de"
+    override fun startFromMainBranch(ref: String) = "$ref (rama principal)"
+    override fun startFromCurrentBranch(branch: String?) =
+        if (branch != null) "Rama actual del repositorio ($branch)" else "Commit actual del repositorio"
+    override fun remoteBranchLabel(branch: String) = "$branch (remota)"
+    override val fetchFirstLabel = "Hacer fetch de origin antes"
+    override val createWithoutFetching = "Crear sin hacer fetch"
     override val selectBranchPlaceholder = "Selecciona una rama"
     override val otherBranchesGroup = "otras"
     override val worktreesTitle = "Worktrees"

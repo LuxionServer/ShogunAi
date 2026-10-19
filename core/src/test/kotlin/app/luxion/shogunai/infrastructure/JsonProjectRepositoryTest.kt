@@ -13,6 +13,7 @@ import kotlin.io.path.name
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -89,6 +90,7 @@ class JsonProjectRepositoryTest {
         assertNull(project.config.mainBranch)
         assertEquals(EmulatorSettings(), project.config.emulator)
         assertEquals(SimulatorSettings(), project.config.simulator)
+        assertFalse(project.config.fetchBeforeCreate)
     }
 
     @Test

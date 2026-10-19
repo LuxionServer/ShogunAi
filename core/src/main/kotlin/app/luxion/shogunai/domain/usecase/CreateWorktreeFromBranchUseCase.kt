@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.io.PostCreateApproval
 import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.REMOTE_PREFIX
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 
@@ -28,14 +29,9 @@ class CreateWorktreeFromBranchUseCase(
                 throw WorktreeError.BaseRepositoryNotFound(config.baseRepositoryPath)
             }
 
-            val worktreePath = config.worktreePathForBranch(branchName)
-            if (fileManager.exists(worktreePath)) {
-                throw WorktreeError.WorktreeAlreadyExists(worktreePath)
-            }
-
-            if (!localBranchExists(branchName)) {
-                throw WorktreeError.BranchNotFound(branchName)
-            }
+            requireFreeWorktreePath(branchName)
+            val source = resolveSource(branchName) ?: throw WorktreeError.BranchNotFound(branchName)
+            val worktreePath = requireFreeWorktreePath(source.localName)
 
             val provisioned = checkProvisioningAndResolveFiles(config, executor, fileManager, provisioningSource)
 
@@ -44,9 +40,9 @@ class CreateWorktreeFromBranchUseCase(
                 executor = executor,
                 fileManager = fileManager,
                 worktreePath = worktreePath,
-                branch = branchName,
-                addArgs = listOf("git", "worktree", "add", worktreePath, branchName),
-                createdBranch = null,
+                branch = source.localName,
+                addArgs = source.addArgs(worktreePath),
+                createdBranch = source.localName.takeIf { source.isRemote },
                 provisioned = provisioned,
                 environment = environment,
                 trust = trust,
@@ -54,11 +50,34 @@ class CreateWorktreeFromBranchUseCase(
             )
         }
 
-    private suspend fun localBranchExists(branch: String): Boolean {
-        val result = executor.execute(
-            command = listOf("git", "show-ref", "--verify", "--quiet", "refs/heads/$branch"),
+    private fun requireFreeWorktreePath(branch: String): String {
+        val worktreePath = config.worktreePathForBranch(branch)
+        if (fileManager.exists(worktreePath)) {
+            throw WorktreeError.WorktreeAlreadyExists(worktreePath)
+        }
+        return worktreePath
+    }
+
+    private suspend fun resolveSource(name: String): BranchSource? = when {
+        refExists("refs/heads/$name") -> BranchSource(name, isRemote = false)
+        name.startsWith(REMOTE_PREFIX) && refExists("refs/remotes/$name") ->
+            BranchSource(name.removePrefix(REMOTE_PREFIX), isRemote = true)
+        refExists("refs/remotes/$REMOTE_PREFIX$name") -> BranchSource(name, isRemote = true)
+        else -> null
+    }
+
+    private suspend fun refExists(ref: String): Boolean =
+        executor.execute(
+            command = listOf("git", "show-ref", "--verify", "--quiet", ref),
             workingDirectory = config.baseRepositoryPath,
-        )
-        return result.isSuccess
+        ).isSuccess
+
+    private class BranchSource(val localName: String, val isRemote: Boolean) {
+        fun addArgs(worktreePath: String): List<String> =
+            if (isRemote) {
+                listOf("git", "worktree", "add", "--track", "-b", localName, worktreePath, "$REMOTE_PREFIX$localName")
+            } else {
+                listOf("git", "worktree", "add", worktreePath, localName)
+            }
     }
 }

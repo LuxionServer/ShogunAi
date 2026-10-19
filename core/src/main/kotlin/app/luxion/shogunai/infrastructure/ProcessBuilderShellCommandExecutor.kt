@@ -92,6 +92,8 @@ internal object GitLocale {
     private const val GIT_EXECUTABLE = "git"
 
     fun applyTo(command: List<String>, environment: MutableMap<String, String>) {
-        if (command.firstOrNull() == GIT_EXECUTABLE) environment["LC_ALL"] = "C"
+        if (command.firstOrNull() != GIT_EXECUTABLE) return
+        environment["LC_ALL"] = "C"
+        environment["GIT_TERMINAL_PROMPT"] = "0"
     }
 }
