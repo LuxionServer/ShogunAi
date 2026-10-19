@@ -22,6 +22,8 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EmulatorState
+import app.luxion.shogunai.domain.model.HerdrAgent
+import app.luxion.shogunai.domain.model.HerdrAgentState
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.IosSimulatorProvider
@@ -361,6 +363,74 @@ class ShogunCliTest {
     }
 
     @Test
+    fun `new with a remote only branch creates a tracking branch`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command.take(2) == listOf("git", "show-ref") && command.last() != "refs/remotes/origin/feature/TASK-9") {
+                Executor.fail(command)
+            } else {
+                null
+            }
+        }
+
+        val exitCode = cli(executor).run(listOf("new", "--branch", "feature/TASK-9"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("$worktreesRoot/TASK-9\n", out.toString())
+        assertTrue(
+            executor.ran(
+                "git", "worktree", "add", "--track", "-b", "feature/TASK-9", "$worktreesRoot/TASK-9", "origin/feature/TASK-9",
+            ),
+        )
+    }
+
+    @Test
+    fun `new with a branch that exists nowhere creates nothing and exits with 1`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command.take(2) == listOf("git", "show-ref")) Executor.fail(command) else null
+        }
+
+        val exitCode = cli(executor).run(listOf("new", "--branch", "feature/missing"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("Branch not found: feature/missing"), err.toString())
+        assertFalse(executor.calls.any { "add" in it.first })
+    }
+
+    @Test
+    fun `new with fetch fetches origin before resolving the start point`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command == listOf("git", "rev-parse", "--verify", "--quiet", "origin/develop^{commit}")) {
+                Executor.ok(command, "fetched1\n")
+            } else {
+                null
+            }
+        }
+
+        val exitCode = cli(executor).run(listOf("new", "TASK-123", "--from", "origin/develop", "--fetch"))
+
+        assertEquals(0, exitCode, err.toString())
+        val commands = executor.calls.map { it.first }
+        val fetch = commands.indexOf(listOf("git", "fetch", "--prune", "origin"))
+        val resolve = commands.indexOf(listOf("git", "rev-parse", "--verify", "--quiet", "origin/develop^{commit}"))
+        assertTrue(fetch in 0 until resolve, commands.toString())
+        assertTrue(executor.ran("git", "worktree", "add", "$worktreesRoot/TASK-123", "-b", "feature/TASK-123", "fetched1"))
+    }
+
+    @Test
+    fun `new with fetch that fails creates nothing and exits with 1`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command.take(2) == listOf("git", "fetch")) Executor.fail(command, stderr = "Could not resolve host", exitCode = 128) else null
+        }
+
+        val exitCode = cli(executor).run(listOf("new", "TASK-123", "--fetch"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("Could not resolve host"), err.toString())
+        assertFalse(executor.calls.any { "add" in it.first })
+        assertEquals("", out.toString())
+    }
+
+    @Test
     fun `new from an existing branch`() {
         val executor = repositoryExecutor { command, _ ->
             if (command.take(3) == listOf("git", "branch", "--list")) Executor.ok(command, "  hotfix/login\n") else null
@@ -691,6 +761,58 @@ class ShogunCliTest {
     }
 
     @Test
+    fun `status shows the state Herdr reports for each agent`() {
+        val herdr = FakeHerdrClient(agents = listOf(HerdrAgent("claude", HerdrAgentState.BLOCKED, merged, "w1:p1")))
+
+        val exitCode = cli(repositoryExecutor(), herdr = herdr).run(listOf("status"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(
+            out.lines().contains("$merged  feature/TASK-1  origin=shogunai  agents=claude(blocked)  changes=0  merged"),
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `status json adds the agents with their Herdr state`() {
+        val herdr = FakeHerdrClient(
+            agents = listOf(
+                HerdrAgent("claude", HerdrAgentState.BLOCKED, merged, "w1:p1"),
+                HerdrAgent("aider", null, dirty, "w2:p1"),
+            ),
+        )
+
+        val exitCode = cli(repositoryExecutor(), herdr = herdr).run(listOf("status", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray
+        assertEquals(
+            Json.parseToJsonElement("""[{"name": "claude", "herdrState": "blocked"}]"""),
+            worktrees[1].jsonObject.getValue("agents"),
+        )
+        assertEquals(
+            Json.parseToJsonElement("""[{"name": "aider", "herdrState": null}]"""),
+            worktrees[2].jsonObject.getValue("agents"),
+        )
+    }
+
+    @Test
+    fun `status shows a branch that never had commits as not started instead of merged`() {
+        val executor = repositoryExecutor { command, directory ->
+            when {
+                command == listOf("git", "rev-parse", "HEAD") && directory == merged -> Executor.ok(command, "2222\n")
+                command.take(3) == listOf("git", "reflog", "show") && directory == merged -> Executor.ok(command, "2222\n")
+                else -> null
+            }
+        }
+
+        val exitCode = cli(executor).run(listOf("status"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.lines().contains("$merged  feature/TASK-1  origin=shogunai  changes=0  not-started"), out.toString())
+    }
+
+    @Test
     fun `status json prints one compact document`() {
         val exitCode = cli(repositoryExecutor()).run(listOf("status", "--json"))
 
@@ -705,7 +827,7 @@ class ShogunCliTest {
               "worktrees": [
                 {
                   "path": "$base", "branch": "main", "head": "1111111111111111111111111111111111111111",
-                  "main": true, "locked": false, "folderMissing": false, "origin": null,
+                  "main": true, "locked": false, "folderMissing": false, "origin": null, "agents": [],
                   "status": {
                     "uncommittedChanges": 0, "upstream": null, "mainBranch": null,
                     "merged": false, "lastCommitAt": null
@@ -713,7 +835,7 @@ class ShogunCliTest {
                 },
                 {
                   "path": "$merged", "branch": "feature/TASK-1", "head": "2222222222222222222222222222222222222222",
-                  "main": false, "locked": false, "folderMissing": false, "origin": "shogunai",
+                  "main": false, "locked": false, "folderMissing": false, "origin": "shogunai", "agents": [],
                   "status": {
                     "uncommittedChanges": 0, "upstream": null, "mainBranch": {"ahead": 0, "behind": 3},
                     "merged": true, "lastCommitAt": null
@@ -721,7 +843,7 @@ class ShogunCliTest {
                 },
                 {
                   "path": "$dirty", "branch": "worktree-spike", "head": "3333333333333333333333333333333333333333",
-                  "main": false, "locked": true, "folderMissing": false, "origin": "claude-code",
+                  "main": false, "locked": true, "folderMissing": false, "origin": "claude-code", "agents": [],
                   "status": {
                     "uncommittedChanges": 2, "upstream": null, "mainBranch": {"ahead": 2, "behind": 0},
                     "merged": false, "lastCommitAt": null
@@ -979,7 +1101,7 @@ class ShogunCliTest {
     fun `help and version`() {
         assertEquals(0, cli(repositoryExecutor()).run(listOf("help")))
         assertTrue(out.startsWith("Usage: shogun <command>"))
-        assertTrue(out.contains("new <task-id> [--fix] [--from <ref>]"))
+        assertTrue(out.contains("new <task-id> [--fix] [--from <ref>] [--fetch]"))
         out.clear()
 
         assertEquals(0, cli(repositoryExecutor()).run(listOf("--version")))
@@ -992,7 +1114,7 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode)
         assertTrue(out.startsWith("Usage: shogun new [options]\n"), out.toString())
-        listOf("--fix", "--branch", "--from", "--worktrees-root").forEach { assertTrue(out.contains(it), it) }
+        listOf("--fix", "--branch", "--from", "--fetch", "--worktrees-root").forEach { assertTrue(out.contains(it), it) }
         assertFalse(out.contains("provision"), out.toString())
         assertEquals("", err.toString())
     }

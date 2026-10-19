@@ -103,6 +103,17 @@ class ShellViewModelTest {
     }
 
     @Test
+    fun `remembering the fetch option saves it in the project`() {
+        val viewModel = viewModel()
+
+        viewModel.rememberFetchBeforeCreate("mobile", true)
+
+        assertTrue(repository.list().single { it.id == "mobile" }.config.fetchBeforeCreate)
+        assertTrue(viewModel.projects.single { it.id == "mobile" }.config.fetchBeforeCreate)
+        assertFalse(viewModel.projects.single { it.id == "api" }.config.fetchBeforeCreate)
+    }
+
+    @Test
     fun `opens on the empty state without projects`() {
         val viewModel = ShellViewModel(FakeProjectRepository(), preferences)
 
@@ -375,6 +386,31 @@ class ShellViewModelTest {
 
         assertEquals(ShellDestination.All(), viewModel.destination)
         assertFalse(viewModel.isLeaveConfirmationPending)
+    }
+
+    @Test
+    fun `discarding the form leaves without asking even with unsaved changes`() {
+        val viewModel = viewModel()
+        viewModel.selectProject(mobile)
+        viewModel.editProject(api)
+        viewModel.attachLeaveGuard(FakeLeaveGuard(hasUnsavedChanges = true))
+
+        viewModel.discardForm()
+
+        assertFalse(viewModel.isLeaveConfirmationPending)
+        assertEquals(ShellDestination.All(projectFilter = "mobile"), viewModel.destination)
+    }
+
+    @Test
+    fun `leaving through the sidebar still asks while the form has unsaved changes`() {
+        val viewModel = viewModel()
+        viewModel.editProject(api)
+        viewModel.attachLeaveGuard(FakeLeaveGuard(hasUnsavedChanges = true))
+
+        viewModel.selectProject(mobile)
+
+        assertTrue(viewModel.isLeaveConfirmationPending)
+        assertEquals(ShellDestination.ProjectSettings(api.id), viewModel.destination)
     }
 
     @Test

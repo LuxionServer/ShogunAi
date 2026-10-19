@@ -20,12 +20,14 @@ import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeStatus
+import app.luxion.shogunai.domain.model.withoutLocalTwins
 import app.luxion.shogunai.ui.machine.MachineResource
 import app.luxion.shogunai.domain.usecase.CleanupFailure
 import app.luxion.shogunai.domain.usecase.CleanupReport
 import app.luxion.shogunai.domain.usecase.CleanupSelection
 import app.luxion.shogunai.domain.usecase.idleDaemonsOfRemovedWorktrees
 import app.luxion.shogunai.domain.usecase.selectCleanup
+import app.luxion.shogunai.domain.usecase.waitsForUser
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -163,7 +165,13 @@ class ProjectWorktrees(
     var derivedDataOrphans by mutableStateOf<List<DerivedDataFolder>>(emptyList())
         private set
 
-    var localBranches by mutableStateOf<List<BranchOption>>(emptyList())
+    var branches by mutableStateOf<List<BranchOption>>(emptyList())
+        private set
+    var defaultStartRef by mutableStateOf<String?>(null)
+        private set
+    var hasOrigin by mutableStateOf(false)
+        private set
+    var fetchError by mutableStateOf<Throwable?>(null)
         private set
     var isLoadingBranches by mutableStateOf(false)
         private set
@@ -451,10 +459,11 @@ class ProjectWorktrees(
     }
 
     fun isBranchAvailable(branch: String?): Boolean =
-        localBranches.any { it.name == branch && !it.isCheckedOut }
+        branches.withoutLocalTwins().any { it.name == branch && !it.isCheckedOut }
 
     fun dismissCreateError() {
         createError = null
+        fetchError = null
         createdWithErrorPath = null
     }
 
@@ -463,15 +472,33 @@ class ProjectWorktrees(
         scope.launch { useCases.copyLaunchCommand(path).onFailure { recordActionError(path, it) } }
     }
 
-    fun create(taskId: String, branchType: BranchType, onCreated: (Worktree) -> Unit = {}) =
-        runCreation(onCreated) { useCases.create(taskId, branchType) }
+    fun create(
+        taskId: String,
+        branchType: BranchType,
+        startRef: String? = null,
+        fetch: Boolean = false,
+        onCreated: (Worktree) -> Unit = {},
+    ) = runCreation(fetch, onCreated) {
+        val startPoint = startRef?.let { useCases.resolveStartPoint(it) }
+        val startFailure = startPoint?.exceptionOrNull()
+        if (startFailure != null) Result.failure(startFailure) else useCases.create(taskId, branchType, startPoint?.getOrNull())
+    }
 
-    private fun runCreation(onCreated: (Worktree) -> Unit, creation: suspend () -> Result<Worktree>) {
+    private fun runCreation(fetch: Boolean, onCreated: (Worktree) -> Unit, creation: suspend () -> Result<Worktree>) {
         if (isCreating) return
         isCreating = true
         createError = null
+        fetchError = null
         scope.launch {
             try {
+                if (fetch) {
+                    val fetched = withContext(ioDispatcher) { useCases.fetchRemote() }
+                    fetched.exceptionOrNull()?.let {
+                        fetchError = it
+                        return@launch
+                    }
+                    loadBranches()
+                }
                 withContext(ioDispatcher) { creation() }
                     .onSuccess { worktree ->
                         worktrees = worktrees.filterNot { it.path == worktree.path } + worktree
@@ -494,18 +521,20 @@ class ProjectWorktrees(
         }
     }
 
-    fun loadLocalBranches() {
+    fun loadBranches() {
         scope.launch {
             isLoadingBranches = true
-            useCases.listLocalBranches()
-                .onSuccess { localBranches = it; branchesError = null }
+            useCases.listBranches()
+                .onSuccess { branches = it; branchesError = null }
                 .onFailure { branchesError = it }
+            defaultStartRef = useCases.resolveMainBranch().getOrNull()?.ref
+            hasOrigin = useCases.fetchRemote.hasOrigin()
             isLoadingBranches = false
         }
     }
 
-    fun createFromBranch(branch: String, onCreated: (Worktree) -> Unit = {}) =
-        runCreation(onCreated) { useCases.createFromBranch(branch) }
+    fun createFromBranch(branch: String, fetch: Boolean = false, onCreated: (Worktree) -> Unit = {}) =
+        runCreation(fetch, onCreated) { useCases.createFromBranch(branch) }
 
     fun remove(worktree: Worktree, branchToDelete: String?, force: Boolean = false) {
         removeError = null
@@ -573,9 +602,15 @@ class ProjectWorktrees(
     fun openInHerdr(worktree: Worktree) {
         if (worktree.path in openingInHerdr) return
         openingInHerdr = openingInHerdr + worktree.path
+        val agentPane = agents.orEmpty()[worktree.path].orEmpty().agentPaneToFocus()
         scope.launch {
             try {
-                useCases.herdr.open(worktree)
+                val result = if (agentPane != null) {
+                    useCases.herdr.focusAgent(agentPane).map { HerdrOpening.FOCUSED }
+                } else {
+                    useCases.herdr.open(worktree)
+                }
+                result
                     .onSuccess { opening ->
                         clearActionError(worktree.path)
                         success = WorktreeSuccess.OpenedInHerdr(
@@ -589,6 +624,9 @@ class ProjectWorktrees(
             }
         }
     }
+
+    private fun List<RunningAgent>.agentPaneToFocus(): String? =
+        (firstOrNull { it.waitsForUser && it.herdrPaneId != null } ?: firstOrNull { it.herdrPaneId != null })?.herdrPaneId
 
     fun copyLastCreatedLaunchCommand() {
         lastCreatedWorktree?.let(::copyLaunchCommand)

@@ -91,6 +91,7 @@ fun ProjectSettingsView(
     onCanSaveChanged: (Boolean) -> Unit,
     onSaved: (Project, Boolean) -> Unit,
     onCancel: () -> Unit,
+    onDiscard: () -> Unit = onCancel,
 ) {
     DisposableEffect(viewModel) {
         onAttachLeaveGuard(viewModel)
@@ -100,7 +101,7 @@ fun ProjectSettingsView(
         AddProjectFolderStep(viewModel, initialFolder, onCancel)
         return
     }
-    SettingsForm(viewModel, saveRequests, onCanSaveChanged, onSaved, onCancel)
+    SettingsForm(viewModel, saveRequests, onCanSaveChanged, onSaved, onDiscard)
 }
 
 @Composable
@@ -228,7 +229,7 @@ private fun SettingsForm(
                         verticalArrangement = Arrangement.spacedBy(Spacing.lg),
                     ) {
                         Text(
-                            if (viewModel.isNewProject) strings.addProjectTitle else strings.projectConfigTitle,
+                            settingsTitle(strings, viewModel.isNewProject, viewModel.savedName),
                             style = MaterialTheme.typography.headlineSmall,
                         )
                         GeneralSection(viewModel, nameFocus, baseRepositoryFocus, worktreesRootFocus, settleBasePath, sectionTops)
@@ -613,16 +614,15 @@ private fun RepositoryProvisioningList(
 ) {
     val strings = LocalStrings.current
     val declared = (state as? RepositoryProvisioningState.Declared)?.provisioning
-    val rows = declared?.copyPatterns.orEmpty().map { it to RepositoryProvisioning.CONFIG_FILE_NAME } +
-        declared?.worktreeIncludePatterns.orEmpty().map { it to RepositoryProvisioning.WORKTREE_INCLUDE_FILE_NAME } +
-        pendingPatterns.map { it to "${RepositoryProvisioning.CONFIG_FILE_NAME} · ${strings.pendingSave}" }
+    val rows = provisioningRows(declared, pendingPatterns, strings)
+    val commandCount = declared?.postCreateCommands?.size ?: 0
 
     when {
         state is RepositoryProvisioningState.Unreadable -> Text(
             strings.repositoryConfigUnreadable(state.path) + (state.detail?.let { "\n$it" } ?: ""),
             color = ShogunTheme.status.danger.color,
         )
-        rows.isEmpty() -> Text(strings.repositoryProvisioningEmpty)
+        rows.isEmpty() && commandCount == 0 -> Text(strings.repositoryProvisioningEmpty)
     }
     rows.forEach { (pattern, source) ->
         Row(
@@ -637,5 +637,12 @@ private fun RepositoryProvisioningList(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+    if (commandCount > 0) {
+        Text(
+            strings.postCreationCommandsNote(commandCount),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }

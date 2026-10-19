@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.HerdrAgentState
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
 object SpanishStrings : Strings {
@@ -99,6 +100,10 @@ object SpanishStrings : Strings {
     override val unsavedChanges = "Cambios sin guardar"
     override val menuSave = "Guardar"
     override val addProjectTitle = "Añadir proyecto"
+    override fun projectSettingsTitle(name: String) = "Ajustes · $name"
+    override val linkedPattern = "enlazado"
+    override fun postCreationCommandsNote(count: Int) =
+        "${if (count == 1) "Se ejecuta 1 comando" else "Se ejecutan $count comandos"} tras la creación; consúltalos en Configuración del repositorio, más abajo."
     override val addProjectIntro = "Elige la carpeta de un repositorio Git. El resto de la configuración se rellena a partir de ella."
     override val chooseRepositoryFolder = "Elegir carpeta del repositorio…"
     override val dropRepositoryHint = "También puedes soltar una carpeta en cualquier parte de esta ventana."
@@ -122,6 +127,13 @@ object SpanishStrings : Strings {
     override val loadingBranches = "Cargando ramas..."
     override val noBranchesAvailable = "No hay ramas disponibles para crear un worktree."
     override fun branchAlreadyHasWorktree(branch: String) = "$branch (ya tiene un worktree)"
+    override val startFromLabel = "Partir de"
+    override fun startFromMainBranch(ref: String) = "$ref (rama principal)"
+    override fun startFromCurrentBranch(branch: String?) =
+        if (branch != null) "Rama actual del repositorio ($branch)" else "Commit actual del repositorio"
+    override fun remoteBranchLabel(branch: String) = "$branch (remota)"
+    override val fetchFirstLabel = "Hacer fetch de origin antes"
+    override val createWithoutFetching = "Crear sin hacer fetch"
     override val selectBranchPlaceholder = "Selecciona una rama"
     override val otherBranchesGroup = "otras"
     override val worktreesTitle = "Worktrees"
@@ -137,8 +149,8 @@ object SpanishStrings : Strings {
     override val groupOther = "Otros"
     override val groupAgentWorkingHint = "agente en marcha"
     override val groupAgentWorkingCriterion = "Hay un agente de IA en marcha en el worktree."
-    override val groupNeedsYouHint = "sin commit o sin subir"
-    override val groupNeedsYouCriterion = "Cambios sin commit, o commits sin subir a su upstream (o a la rama principal si no tiene)."
+    override val groupNeedsYouHint = "agente esperando, sin commit o sin subir"
+    override val groupNeedsYouCriterion = "Un agente bloqueado o terminado en Herdr, cambios sin commit, o commits sin subir a su upstream (o a la rama principal si no tiene)."
     override val groupInProgressHint = "subido, sin fusionar"
     override val groupInProgressCriterion = "Limpio, subido, sin fusionar y con algún commit en los últimos 14 días."
     override val groupMergedHint = "ya en la rama principal"
@@ -157,6 +169,13 @@ object SpanishStrings : Strings {
     override val seeAllWorktrees = "Ver todos los worktrees"
     override val menuActive = "Mostrar activos"
     override val menuAllWorktrees = "Mostrar todos los worktrees"
+    override fun agentLabel(name: String, state: HerdrAgentState?) = when (state) {
+        null -> name
+        HerdrAgentState.WORKING -> "$name · trabajando"
+        HerdrAgentState.BLOCKED -> "$name · bloqueado"
+        HerdrAgentState.DONE -> "$name · terminado"
+        HerdrAgentState.IDLE -> "$name · inactivo"
+    }
     override fun agentsRunning(names: List<String>) = "Agentes en ejecución: ${names.joinToString(", ")}"
     override val allProjects = "Todos los proyectos"
     override val projectLabel = "Proyecto"
@@ -177,6 +196,7 @@ object SpanishStrings : Strings {
     override fun uncommittedChanges(count: Int) = if (count == 1) "1 cambio" else "$count cambios"
     override val upstream = "upstream"
     override fun mergedInto(branch: String) = "mergeada en $branch"
+    override val notStarted = "sin empezar"
     override val statusUnavailable = "Estado no disponible"
     override val folderMissing = "Carpeta no encontrada"
     override val mainWorktree = "principal"
@@ -303,6 +323,12 @@ object SpanishStrings : Strings {
     override val ownerOutsideProjects = "fuera de los proyectos guardados"
     override val ownerLoading = "buscando propietario"
     override val notOwnedByWorktree = "sin worktree propietario"
+    override val machineColumnDevice = "Dispositivo"
+    override val machineColumnWorktree = "Worktree"
+    override val machineColumnState = "Estado"
+    override val automaticAvd = "Automático"
+    override val simulatorNotCreated = "Sin crear"
+    override fun simulatorNotCreatedFor(device: String) = "Sin crear · $device"
     override val noMachineEmulators = "No hay emuladores de worktrees en estos proyectos"
     override val unownedEmulatorsTitle = "En marcha fuera de cualquier worktree"
     override val noMachineSimulators = "Aún no hay simuladores de ShogunAi"

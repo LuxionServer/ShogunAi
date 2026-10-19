@@ -20,6 +20,7 @@ interface ShellCommandExecutor {
 object CommandTimeouts {
     val GIT_READ: Duration = 30.seconds
     val LISTING: Duration = 10.seconds
+    val NETWORK: Duration = 60.seconds
 }
 
 open class CommandExecutionException(

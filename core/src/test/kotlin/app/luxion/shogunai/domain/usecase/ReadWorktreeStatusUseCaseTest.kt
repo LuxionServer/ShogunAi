@@ -15,6 +15,8 @@ import kotlinx.coroutines.test.runTest
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 
@@ -27,6 +29,14 @@ class ReadWorktreeStatusUseCaseTest {
     private val upstreamCommand = listOf("git", "rev-list", "--left-right", "--count", "@{upstream}...HEAD")
     private val mainBranchCommand = listOf("git", "rev-list", "--left-right", "--count", "origin/develop...HEAD")
     private val lastCommitCommand = listOf("git", "log", "-1", "--format=%ct")
+
+    private val reflogCommand = listOf("git", "reflog", "show", "--format=%H", "refs/heads/feature/TASK-123")
+    private val headCommand = listOf("git", "rev-parse", "HEAD")
+    private val mergedMainBranch = mapOf<List<String>, (List<String>) -> CommandResult>(
+        mainBranchCommand to { command -> success(command, stdout = "3\t0\n") },
+        upstreamCommand to { command -> failure(command, exitCode = 128, stderr = "fatal: no upstream configured") },
+        headCommand to { command -> success(command, stdout = "abc123\n") },
+    )
 
     private fun executor(overrides: Map<List<String>, (List<String>) -> CommandResult> = emptyMap()) =
         FakeShellCommandExecutor { command ->
@@ -133,5 +143,58 @@ class ReadWorktreeStatusUseCaseTest {
     fun `parses left-right counts as behind then ahead`() {
         assertEquals(Divergence(ahead = 7, behind = 3), parseLeftRightCount("3\t7\n"))
         assertNull(parseLeftRightCount("garbage"))
+    }
+
+    @Test
+    fun `a merged-looking branch whose only reflog entry is its tip never had commits`() = runTest {
+        val executor = executor(mergedMainBranch + (reflogCommand to { command -> success(command, stdout = "abc123\n") }))
+
+        val status = ReadWorktreeStatusUseCase(executor)(worktree, mainBranch).getOrThrow()
+
+        assertTrue(status.neverCommitted)
+        assertFalse(status.isMerged)
+    }
+
+    @Test
+    fun `a fast-forward merged branch has several reflog entries and stays merged`() = runTest {
+        val executor = executor(mergedMainBranch + (reflogCommand to { command -> success(command, stdout = "abc123\ndef456\n") }))
+
+        val status = ReadWorktreeStatusUseCase(executor)(worktree, mainBranch).getOrThrow()
+
+        assertFalse(status.neverCommitted)
+        assertTrue(status.isMerged)
+    }
+
+    @Test
+    fun `a branch with an upstream stays merged without reading the reflog`() = runTest {
+        val executor = executor(
+            mergedMainBranch + mapOf(
+                upstreamCommand to { command -> success(command, stdout = "0\t0\n") },
+                reflogCommand to { command -> success(command, stdout = "abc123\n") },
+            ),
+        )
+
+        val status = ReadWorktreeStatusUseCase(executor)(worktree, mainBranch).getOrThrow()
+
+        assertTrue(status.isMerged)
+        assertEquals(0, executor.executedCommands.count { it == reflogCommand })
+    }
+
+    @Test
+    fun `an unreadable reflog keeps the merged reading`() = runTest {
+        val executor = executor(
+            mergedMainBranch + (reflogCommand to { command -> failure(command, exitCode = 128, stderr = "fatal: bad ref") }),
+        )
+
+        assertTrue(ReadWorktreeStatusUseCase(executor)(worktree, mainBranch).getOrThrow().isMerged)
+    }
+
+    @Test
+    fun `a branch that doesn't read as merged never reads the reflog`() = runTest {
+        val executor = executor()
+
+        ReadWorktreeStatusUseCase(executor)(worktree, mainBranch).getOrThrow()
+
+        assertEquals(0, executor.executedCommands.count { it == reflogCommand })
     }
 }

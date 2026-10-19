@@ -37,6 +37,7 @@ import app.luxion.shogunai.domain.model.SimulatorDevice
 import app.luxion.shogunai.domain.model.SimulatorSettings
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.ProvisionMode
+import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.ProvisionedFile
 import app.luxion.shogunai.domain.model.ShellQuoting
 import app.luxion.shogunai.domain.model.Worktree
@@ -57,6 +58,7 @@ import app.luxion.shogunai.domain.usecase.DeleteSimulatorsUseCase
 import app.luxion.shogunai.domain.usecase.EnvironmentFormat
 import app.luxion.shogunai.domain.usecase.ListDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.ListGradleDaemonsUseCase
+import app.luxion.shogunai.domain.usecase.FetchRemoteUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.MachineProviderContributions
 import app.luxion.shogunai.domain.usecase.effectiveGradleJvmArgs
@@ -232,6 +234,7 @@ class ShogunCli(
             err.line("Pass --worktrees-root <dir>, or add the repository as a project in the desktop app.")
             return EXIT_USAGE
         }
+        if (command.fetch) FetchRemoteUseCase(config, executor)().getOrThrow()
         val created = if (command.branch != null) {
             CreateWorktreeFromBranchUseCase(
                 config, executor, fileManager, provisioningSource, prepareEnvironment, trust, terminalApproval,
@@ -356,6 +359,7 @@ class ShogunCli(
         val mainBranch = ResolveMainBranchUseCase(config, executor)().getOrNull()
         val readStatus = ReadWorktreeStatusUseCase(executor)
         val herdrWorktreesRoot = herdrConfig.worktreesRoot()
+        val agents = DetectRunningAgentsUseCase(executor, herdr)(config, worktrees.filterNot { it.isPrunable }).getOrNull().orEmpty()
         val entries = worktrees.map { worktree ->
             val read = if (worktree.isPrunable) null else readStatus(worktree, mainBranch)
             WorktreeEntry(
@@ -363,6 +367,7 @@ class ShogunCli(
                 read?.getOrNull(),
                 classifyOrigin(worktree, config, herdrWorktreesRoot),
                 read?.exceptionOrNull()?.let(::failureReason),
+                agents[worktree.path].orEmpty(),
             )
         }
         if (command.json) {
@@ -382,7 +387,7 @@ class ShogunCli(
             .filterNot { it.isMain || it.isPrunable || it.isLocked }
             .associateWith { worktree -> readStatus(worktree, mainBranch) }
         val statuses = statusReads.mapNotNull { (worktree, read) -> read.getOrNull()?.let { worktree.path to it } }.toMap()
-        val agents = DetectRunningAgentsUseCase(executor)(config, worktrees.filterNot { it.isMain || it.isPrunable })
+        val agents = DetectRunningAgentsUseCase(executor, herdr)(config, worktrees.filterNot { it.isMain || it.isPrunable })
             .onFailure { err.line("shogun: couldn't check for running agents, so none were taken into account: ${it.message}") }
             .getOrNull()
         val selection = selectCleanup(worktrees, statuses, agents)
@@ -911,6 +916,7 @@ class ShogunCli(
             if (worktree.isMain) add("main")
             origin?.let { add("origin=${it.label}") }
             if (worktree.isLocked) add("locked")
+            entry.agents.takeIf { it.isNotEmpty() }?.let { agents -> add("agents=${agents.joinToString(",") { agentLabel(it) }}") }
             when {
                 worktree.isPrunable -> add("folder-missing")
                 status == null -> add(entry.statusProblem?.let { "status-unavailable ($it)" } ?: "status-unavailable")
@@ -918,6 +924,7 @@ class ShogunCli(
                     add("changes=${status.uncommittedChanges}")
                     status.upstream?.let { add("ahead=${it.ahead} behind=${it.behind}") }
                     if (status.isMerged) add("merged")
+                    if (status.isNotStarted) add("not-started")
                 }
             }
         }
@@ -926,6 +933,9 @@ class ShogunCli(
 
     private fun folderName(path: String): String =
         path.trimEnd('/', '\\').substringAfterLast('/').substringAfterLast('\\')
+
+    private fun agentLabel(agent: RunningAgent): String =
+        agent.herdrState?.let { "${agent.name}(${it.name.lowercase()})" } ?: agent.name
 
     private fun absolute(path: String): String =
         if (path.startsWith('/') || File(path).isAbsolute) path else File(workingDirectory, path).toPath().normalize().toString().replace('\\', '/')

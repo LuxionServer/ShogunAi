@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.HerdrAgentState
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
 object EnglishStrings : Strings {
@@ -99,6 +100,10 @@ object EnglishStrings : Strings {
     override val unsavedChanges = "Unsaved changes"
     override val menuSave = "Save"
     override val addProjectTitle = "Add project"
+    override fun projectSettingsTitle(name: String) = "Settings · $name"
+    override val linkedPattern = "linked"
+    override fun postCreationCommandsNote(count: Int) =
+        "${if (count == 1) "1 command runs" else "$count commands run"} after creation; see Repository configuration below."
     override val addProjectIntro = "Choose the folder of a Git repository. The rest of the settings are filled in from it."
     override val chooseRepositoryFolder = "Choose repository folder…"
     override val dropRepositoryHint = "You can also drop a folder anywhere on this window."
@@ -123,6 +128,13 @@ object EnglishStrings : Strings {
     override val noBranchesAvailable = "No branches available to create a worktree."
     override fun branchAlreadyHasWorktree(branch: String) = "$branch (already has a worktree)"
     override val selectBranchPlaceholder = "Select a branch"
+    override val startFromLabel = "Start from"
+    override fun startFromMainBranch(ref: String) = "$ref (main branch)"
+    override fun startFromCurrentBranch(branch: String?) =
+        if (branch != null) "Current branch of the repository ($branch)" else "Current commit of the repository"
+    override fun remoteBranchLabel(branch: String) = "$branch (remote)"
+    override val fetchFirstLabel = "Fetch from origin first"
+    override val createWithoutFetching = "Create without fetching"
     override val otherBranchesGroup = "other"
     override val worktreesTitle = "Worktrees"
     override val viewsTitle = "Views"
@@ -137,8 +149,8 @@ object EnglishStrings : Strings {
     override val groupOther = "Other"
     override val groupAgentWorkingHint = "agent running"
     override val groupAgentWorkingCriterion = "An AI agent is running in the worktree."
-    override val groupNeedsYouHint = "uncommitted or unpushed"
-    override val groupNeedsYouCriterion = "Uncommitted changes, or commits not pushed to its upstream (or to the main branch when it has none)."
+    override val groupNeedsYouHint = "agent waiting, uncommitted or unpushed"
+    override val groupNeedsYouCriterion = "An agent blocked or done in Herdr, uncommitted changes, or commits not pushed to its upstream (or to the main branch when it has none)."
     override val groupInProgressHint = "pushed, not merged"
     override val groupInProgressCriterion = "Clean, pushed, not merged and with a commit in the last 14 days."
     override val groupMergedHint = "in main branch"
@@ -157,6 +169,13 @@ object EnglishStrings : Strings {
     override val seeAllWorktrees = "See all worktrees"
     override val menuActive = "Show Active"
     override val menuAllWorktrees = "Show All worktrees"
+    override fun agentLabel(name: String, state: HerdrAgentState?) = when (state) {
+        null -> name
+        HerdrAgentState.WORKING -> "$name · working"
+        HerdrAgentState.BLOCKED -> "$name · blocked"
+        HerdrAgentState.DONE -> "$name · done"
+        HerdrAgentState.IDLE -> "$name · idle"
+    }
     override fun agentsRunning(names: List<String>) = "Agents running: ${names.joinToString(", ")}"
     override val allProjects = "All projects"
     override val projectLabel = "Project"
@@ -177,6 +196,7 @@ object EnglishStrings : Strings {
     override fun uncommittedChanges(count: Int) = if (count == 1) "1 change" else "$count changes"
     override val upstream = "upstream"
     override fun mergedInto(branch: String) = "merged into $branch"
+    override val notStarted = "not started"
     override val statusUnavailable = "Status unavailable"
     override val folderMissing = "Folder missing"
     override val mainWorktree = "main"
@@ -302,6 +322,12 @@ object EnglishStrings : Strings {
     override val ownerOutsideProjects = "outside saved projects"
     override val ownerLoading = "loading owner"
     override val notOwnedByWorktree = "not owned by a worktree"
+    override val machineColumnDevice = "Device"
+    override val machineColumnWorktree = "Worktree"
+    override val machineColumnState = "State"
+    override val automaticAvd = "Automatic"
+    override val simulatorNotCreated = "Not created"
+    override fun simulatorNotCreatedFor(device: String) = "Not created · $device"
     override val noMachineEmulators = "No worktree emulators in these projects"
     override val unownedEmulatorsTitle = "Running outside any worktree"
     override val noMachineSimulators = "No ShogunAi simulators yet"

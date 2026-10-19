@@ -192,6 +192,9 @@ private fun ColumnScope.StatusSection(status: WorktreeStatusState?, mainBranchNa
                 if (value.isMerged && mainBranchName != null) {
                     StatusChip(Status.SUCCESS, strings.mergedInto(mainBranchName))
                 }
+                if (value.isNotStarted) {
+                    StatusChip(Status.NEUTRAL, strings.notStarted)
+                }
                 statusSegments(value, mainBranchName, Instant.now(), strings).forEach { DetailValue(it) }
             }
         }
@@ -204,7 +207,7 @@ private fun ColumnScope.AgentsSection(agents: List<RunningAgent>) {
     val strings = LocalStrings.current
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         SectionTitle(strings.agentsTitle)
-        agents.forEach { DetailValue(it.name) }
+        agents.forEach { DetailValue(strings.agentLabel(it.name, it.herdrState)) }
     }
 }
 
