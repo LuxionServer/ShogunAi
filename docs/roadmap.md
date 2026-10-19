@@ -18,11 +18,28 @@ It plugs into the tools that run agents rather than replacing them: Claude Code'
 
 ```mermaid
 graph LR
-    B["Command-line output for scripts"]
-    D["Android, KMP and JVM provisioning"]
+    R["Robustness of the engine"] --> P["Command line and desktop parity"]
 ```
 
 ## Planned
+
+### Hardening after real use
+
+A review of the whole project on 2026-10-19, after using it on real repositories, turned into six OpenSpec changes, already proposed in `openspec/changes/`:
+
+- **Release hardening** (`release-hardening`): the macOS bundle version stays valid from 1.0 and 2.0 on, releases run the tests first, CI tests on Linux, macOS and Windows, releases publish `SHA256SUMS`, and the workflow holds least privilege with pinned actions.
+- **Robustness of the engine** (`process-robustness`): cancelled commands stop, commands never wait for input, a failed creation removes its branch, corrupted local files are reported and kept, submodules work, and branches are deleted by one rule everywhere; cleanup never removes a worktree with a running agent.
+- **Desktop fixes after the redesign** (`desktop-review-fixes`): no crash when a creation races a refresh, errors visible in every grouping, errors inside the removal dialog, and path edits in settings that keep unsaved changes.
+- **Background refresh cost** (`background-refresh-cost`): the watcher pauses while the window is in the background and only checks the shown projects, with cheaper device reads.
+- **Command line and desktop parity** (`cli-desktop-parity`): `shogun remove` and `shogun repair`, and in the app the provisioning state and "Provision" for worktrees created by other tools, plus the worktree's environment variables.
+- **Docs and build hygiene** (`docs-hygiene`): missing docs, the Herdr plugin manifest test, compiler warnings, unused strings and dependencies, and ignore rules.
+
+Follow-ups left out of those changes:
+
+- Support for bare repositories with worktrees (the "bare clone" layout), which changes what the base repository and copying from it mean.
+- Filesystem watchers instead of polling for Git metadata changes.
+- Splitting `ProjectWorktrees.kt` and `ProjectSettingsView.kt` into smaller holders and sections.
+- Build provenance attestations for release assets, and treating compiler warnings as errors once the build is clean.
 
 ### Guided onboarding demo
 
