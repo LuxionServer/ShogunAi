@@ -7,7 +7,7 @@ See proposal.md for motivation. The running version is `BuildInfo.VERSION`, `0.0
 ## Goals / Non-Goals
 
 **Goals:**
-- One small anonymous request at most once a day, never blocking start-up.
+- One small anonymous request at every start-up and once a day while the app stays open, never blocking start-up.
 - The suggested update path matches how the app was installed.
 
 **Non-Goals:**
@@ -21,7 +21,7 @@ See proposal.md for motivation. The running version is `BuildInfo.VERSION`, `0.0
 
 **Version comparison.** Strict `X.Y.Z` numeric comparison; a tag that doesn't parse is ignored. Development builds (`0.0.0`) never check.
 
-**Schedule.** On start-up, after the first frame, in the background: when `checkForUpdates` is on and `lastUpdateCheck` is older than 24 hours, check. `lastUpdateCheck` is written after any completed request, successful or not, so a failing network doesn't retry on every start. Automatic failures are silent; the manual check reports them.
+**Schedule.** On every start-up, after the first frame, and then every 24 hours while the app stays open, in the background: when `checkForUpdates` is on, check. Nothing about the last check is persisted. Automatic failures are silent and keep any notice already shown; the manual check reports them.
 
 **Install channel.** Detected once, from the running app's location, and only when a newer version was found:
 - macOS with a `shogunai` folder in `/opt/homebrew/Caskroom` or `/usr/local/Caskroom` → Homebrew: `brew upgrade --cask shogunai`.

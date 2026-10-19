@@ -1,7 +1,5 @@
 package app.luxion.shogunai.domain.model
 
-import java.time.Instant
-
 data class AppVersion(val major: Int, val minor: Int, val patch: Int) : Comparable<AppVersion> {
 
     override fun compareTo(other: AppVersion): Int =
@@ -86,7 +84,6 @@ fun InstallChannel.updateAction(release: LatestRelease, architecture: HostArchit
 
 data class UpdatePreferences(
     val checkAutomatically: Boolean = true,
-    val lastCheck: Instant? = null,
     val skippedVersion: AppVersion? = null,
 )
 

@@ -3,7 +3,6 @@ package app.luxion.shogunai.infrastructure
 import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.model.AppVersion
 import app.luxion.shogunai.domain.model.UpdatePreferences
-import java.time.Instant
 import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.Grouping
@@ -268,13 +267,11 @@ class JsonSettingsFileTest {
     @Test
     fun `saves the update preferences next to the other settings`() {
         themeRepository.save(ThemeMode.DARK)
-        val checkedAt = Instant.parse("2026-10-19T10:00:00Z")
 
         updateRepository.setCheckAutomatically(false)
-        updateRepository.recordCheck(checkedAt)
         updateRepository.skip(AppVersion(1, 3, 0))
 
-        assertEquals(UpdatePreferences(false, checkedAt, AppVersion(1, 3, 0)), updateRepository.load())
+        assertEquals(UpdatePreferences(false, AppVersion(1, 3, 0)), updateRepository.load())
         assertEquals(ThemeMode.DARK, themeRepository.load())
     }
 }

@@ -88,7 +88,7 @@ La barra superior tiene un selector de tema (claro, oscuro, o automático para s
 
 ## Actualizaciones
 
-Una vez al día, tras el arranque, la app pregunta a GitHub por la última versión publicada. Si es más reciente que la que usas, aparece un aviso breve arriba de la ventana («¡Ya está aquí ShogunAi 1.3.0! Tienes la 1.2.0.») con un enlace **Novedades** a las notas de la versión. El aviso no interrumpe tu trabajo y te recuerda cómo actualizar según cómo se instaló ShogunAi:
+Cada vez que arranca, y después una vez al día mientras sigue abierta, la app pregunta a GitHub por la última versión publicada. Si es más reciente que la que usas, aparece un aviso breve arriba de la ventana («¡Ya está aquí ShogunAi 1.3.0! Tienes la 1.2.0.») con un enlace **Novedades** a las notas de la versión. El aviso no interrumpe tu trabajo y te recuerda cómo actualizar según cómo se instaló ShogunAi:
 
 | Instalada con | El aviso |
 |---|---|

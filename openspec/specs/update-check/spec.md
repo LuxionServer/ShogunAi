@@ -6,15 +6,19 @@ Lets the desktop app tell the user when a newer ShogunAi release is published an
 ## Requirements
 
 ### Requirement: Check for a newer release
-When automatic checks are on, the desktop app SHALL ask GitHub for the latest published release of ShogunAi at most once every 24 hours, in the background after start-up, and SHALL compare its version with the running one. Development builds SHALL NOT check. A failed automatic check SHALL NOT show anything and SHALL NOT be retried before the next 24 hours.
+When automatic checks are on, the desktop app SHALL ask GitHub for the latest published release of ShogunAi in the background every time the app starts and, while it stays open, once every 24 hours, and SHALL compare its version with the running one. Development builds SHALL NOT check. A failed automatic check SHALL NOT show anything and SHALL NOT remove a notice already shown.
 
 #### Scenario: Newer version published
-- **WHEN** the app runs version 1.2.0, the last check was two days ago, and the latest release is 1.3.0
+- **WHEN** the app starts running version 1.2.0 and the latest release is 1.3.0
 - **THEN** after start-up the main window shows that 1.3.0 is available
 
-#### Scenario: Checked recently
-- **WHEN** the last check was an hour ago
-- **THEN** the app makes no request at start-up
+#### Scenario: Opened again soon after
+- **WHEN** the user closes the app and opens it again an hour later
+- **THEN** the app checks again at start-up
+
+#### Scenario: Left open for a week
+- **WHEN** the app stays open for a week and 1.3.0 is published on the third day
+- **THEN** the next daily check shows that 1.3.0 is available without restarting the app
 
 #### Scenario: Offline
 - **WHEN** the automatic check can't reach GitHub
@@ -76,5 +80,5 @@ The Help menu, or the application menu on macOS, SHALL offer "Check for Updatesâ
 Preferences SHALL offer "Check for updates automatically", on by default. When it is off, the app SHALL NOT contact GitHub except when the user chooses "Check for Updatesâ€¦".
 
 #### Scenario: Checks off
-- **WHEN** the user turns the option off and restarts the app two days later
+- **WHEN** the user turns the option off and restarts the app
 - **THEN** no request is made at start-up

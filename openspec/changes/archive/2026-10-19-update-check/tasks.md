@@ -4,7 +4,7 @@
 
 - [x] 1.1 Add the `ReleaseSource` port and the GitHub adapter over `java.net.http.HttpClient` (headers, 10-second timeout, lenient `tag_name`/`html_url` parsing); add adapter tests against a local HTTP server (release, malformed body, 403, timeout) and verify they pass
 - [x] 1.2 Add version comparison, install channel detection (Homebrew, `.dmg`, Scoop, winget through `winget list`, `.msi`, `.deb`, unknown) and installer asset selection from the release's assets; add tests for tags with and without `v`, unparsable tags, `0.0.0`, each channel and each asset, and verify they pass
-- [x] 1.3 Add `CheckForUpdateUseCase` with the 24-hour schedule, skipped version and manual mode, and the settings fields with backward-compatible reading; add tests with a fake clock and source, and verify they pass
+- [x] 1.3 Add `CheckForUpdateUseCase` with skipped version and manual mode, and the settings fields with backward-compatible reading; add tests with a fake clock and source, and verify they pass
 
 ## 2. Desktop app
 

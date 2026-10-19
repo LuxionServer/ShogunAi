@@ -29,7 +29,7 @@ class UpdateState(
         private set
 
     suspend fun checkInBackground() {
-        notice = runCheck(UpdateCheckMode.AUTOMATIC).getOrNull() as? UpdateCheck.Available
+        (runCheck(UpdateCheckMode.AUTOMATIC).getOrNull() as? UpdateCheck.Available)?.let { notice = it }
     }
 
     suspend fun checkNow() {

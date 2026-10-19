@@ -105,7 +105,7 @@ private fun UpdateCheckDialogContent(result: ManualUpdateResult, state: UpdateSt
         is ManualUpdateResult.Failed -> ErrorNotice(error = result.error, onDismiss = null)
         is ManualUpdateResult.Finished -> when (val check = result.check) {
             is UpdateCheck.Available -> Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                Text(strings.updateAvailableMessage(check.release.version.toString(), check.running.toString()))
+                Text(strings.updateAvailableDialogMessage(check.release.version.toString(), check.running.toString()))
                 UpdateDetails(check, state, onSkip = null)
             }
             is UpdateCheck.UpToDate -> Text(strings.updateUpToDateMessage(check.running.toString()))

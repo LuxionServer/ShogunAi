@@ -12,7 +12,6 @@ import app.luxion.shogunai.ui.shell.UpdateState
 import app.luxion.shogunai.ui.shell.openInBrowser
 import java.nio.file.Files
 import java.nio.file.Path
-import java.time.Clock
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.ui.worktree.DialogPostCreateApproval
@@ -145,7 +144,6 @@ class AppContainer {
                 pathExists = { Files.exists(Path.of(it)) },
                 executor = shellCommandExecutor,
             ),
-            clock = Clock.systemUTC(),
             runningVersion = BuildInfo.VERSION,
             architecture = HostArchitecture.current(),
         )::invoke,

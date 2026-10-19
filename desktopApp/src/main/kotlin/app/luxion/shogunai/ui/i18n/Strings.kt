@@ -325,6 +325,7 @@ interface Strings {
     fun yearsAgo(count: Long): String
     val menuCheckForUpdates: String
     fun updateAvailableMessage(newVersion: String, runningVersion: String): String
+    fun updateAvailableDialogMessage(newVersion: String, runningVersion: String): String
     val updateWhatsNew: String
     val updateSkipVersion: String
     val updateCopy: String

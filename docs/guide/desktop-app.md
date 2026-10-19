@@ -88,7 +88,7 @@ The top bar has a theme selector (light, dark, or automatic to follow the system
 
 ## Updates
 
-Once a day, after start-up, the app asks GitHub for the latest published release. If it is newer than the version you run, a short notice appears at the top of the window ("ShogunAi 1.3.0 is out! You're on 1.2.0.") with a **What's new** link to the release notes. The notice never interrupts your work, and it reminds you how to update for the way ShogunAi was installed:
+Every time it starts, and then once a day while it stays open, the app asks GitHub for the latest published release. If it is newer than the version you run, a short notice appears at the top of the window ("ShogunAi 1.3.0 is out! You're on 1.2.0.") with a **What's new** link to the release notes. The notice never interrupts your work, and it reminds you how to update for the way ShogunAi was installed:
 
 | Installed with | The notice |
 |---|---|

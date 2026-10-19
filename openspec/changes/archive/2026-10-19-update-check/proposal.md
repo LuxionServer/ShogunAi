@@ -6,7 +6,7 @@ ShogunAi ships often, but nothing in the app says a new version exists: users fi
 
 ## What Changes
 
-- Once a day at start-up, the desktop app asks GitHub for the latest published release and, when it's newer than the running version, shows a short, friendly notice in the main window with the new version and a link to what's new.
+- At every start-up, and once a day while it stays open, the desktop app asks GitHub for the latest published release and, when it's newer than the running version, shows a short, friendly notice in the main window with the new version and a link to what's new.
 - The notice detects how the app was installed and reminds the user how to update it: `brew upgrade --cask shogunai` for Homebrew, `scoop update shogunai` for Scoop, `winget upgrade LuxionServer.ShogunAi` for winget, and the new `.dmg`, `.msi` or `.deb` to download otherwise (with the `apt` command for the `.deb`).
 - "Skip this version" hides the notice until a newer one comes out.
 - Help > "Check for Updates…" checks on demand and says when the app is up to date or the check failed.
@@ -21,7 +21,7 @@ ShogunAi ships often, but nothing in the app says a new version exists: users fi
 
 ## Impact
 
-- `core`: a `ReleaseSource` port with a GitHub adapter (`java.net.http.HttpClient`, no new dependency), version comparison, install channel detection, a `CheckForUpdateUseCase`; settings gain `checkForUpdates`, `lastUpdateCheck` and `skippedVersion`.
+- `core`: a `ReleaseSource` port with a GitHub adapter (`java.net.http.HttpClient`, no new dependency), version comparison, install channel detection, a `CheckForUpdateUseCase`; settings gain `checkForUpdates` and `skippedVersion`.
 - `desktopApp`: the notice, the Help menu entry, the Preferences option, strings.
 - Docs: `docs/guide/desktop-app.md`, `docs/guide/installation.md` and Spanish versions, stating the request the app makes.
 - First network request made by the desktop app on its own; documented and switchable off.

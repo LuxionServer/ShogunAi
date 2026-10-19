@@ -15,9 +15,6 @@ import app.luxion.shogunai.domain.model.HostArchitecture
 import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.usecase.CheckForUpdateUseCase
 import app.luxion.shogunai.domain.usecase.DetectInstallChannelUseCase
-import java.time.Clock
-import java.time.Instant
-import java.time.ZoneOffset
 import app.luxion.shogunai.domain.model.AppVersion
 import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.LatestRelease
@@ -169,6 +166,25 @@ class UpdateViewsUiTest {
     }
 
     @Test
+    fun `a later check that finds nothing or fails keeps the notice`() = runComposeUiTest {
+        var result: Result<UpdateCheck> = Result.success(available(InstallChannel.HOMEBREW, UpdateAction.RunCommand("brew upgrade --cask shogunai")))
+        val state = UpdateState(
+            check = { result },
+            preferences = preferences,
+            clipboard = clipboard,
+            openUrl = { opened += it },
+        )
+        runBlocking { state.checkInBackground() }
+
+        result = Result.failure(WorktreeError.UpdateCheckFailed("offline"))
+        runBlocking { state.checkInBackground() }
+        result = Result.success(UpdateCheck.UpToDate(running))
+        runBlocking { state.checkInBackground() }
+
+        assertEquals(release, state.notice?.release)
+    }
+
+    @Test
     fun `the manual check says the app is up to date`() = runComposeUiTest {
         val state = state(Result.success(UpdateCheck.UpToDate(running)))
         runBlocking { state.checkNow() }
@@ -186,7 +202,7 @@ class UpdateViewsUiTest {
         runBlocking { state.checkNow() }
         show { UpdateCheckDialog(state) }
 
-        onNodeWithText("ShogunAi 1.3.0 is out! You're on 1.2.0.").assertIsDisplayed()
+        onNodeWithText("ShogunAi 1.3.0 is available. You're on 1.2.0.").assertIsDisplayed()
         onNodeWithText("Skip this version").assertDoesNotExist()
     }
 
@@ -207,7 +223,6 @@ class UpdateViewsUiTest {
                 source = source,
                 preferences = preferences,
                 detectChannel = DetectInstallChannelUseCase(HostOs.LINUX, "/home/someone/shogunai", { false }, FakeShellCommandExecutor()),
-                clock = Clock.fixed(Instant.parse("2026-10-19T10:00:00Z"), ZoneOffset.UTC),
                 runningVersion = "1.2.0",
                 architecture = HostArchitecture.X64,
             )::invoke,

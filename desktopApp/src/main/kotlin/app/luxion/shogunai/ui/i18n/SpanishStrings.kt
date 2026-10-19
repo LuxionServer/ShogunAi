@@ -470,6 +470,8 @@ object SpanishStrings : Strings {
     override val menuCheckForUpdates = "Buscar actualizaciones…"
     override fun updateAvailableMessage(newVersion: String, runningVersion: String) =
         "¡Ya está aquí ShogunAi $newVersion! Tienes la $runningVersion."
+    override fun updateAvailableDialogMessage(newVersion: String, runningVersion: String) =
+        "ShogunAi $newVersion está disponible. Tienes la $runningVersion."
     override val updateWhatsNew = "Novedades"
     override val updateSkipVersion = "Omitir esta versión"
     override val updateCopy = "Copiar"
