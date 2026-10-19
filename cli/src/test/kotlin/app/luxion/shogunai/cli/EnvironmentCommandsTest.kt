@@ -311,4 +311,79 @@ class EnvironmentCommandsTest {
         assertTrue(err.contains(".shogunai.json"), err.toString())
         assertFalse(envFile.readText().isNotEmpty())
     }
+
+    private fun jsonOut(): kotlinx.serialization.json.JsonObject {
+        val text = out.toString()
+        assertTrue(text.endsWith("\n") && text.trimEnd('\n').lines().size == 1, text)
+        return kotlinx.serialization.json.Json.parseToJsonElement(text) as kotlinx.serialization.json.JsonObject
+    }
+
+    private fun kotlinx.serialization.json.JsonObject.text(key: String) =
+        (getValue(key) as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content
+
+    @Test
+    fun `emulator json reports the serial and state`() {
+        assertEquals(0, cli(withEmulator()).run(listOf("emulator", "start", "--no-window", "--json")))
+        val started = jsonOut()
+        assertEquals(setOf("worktree", "serial", "state"), started.keys)
+        assertEquals(linked, started.text("worktree"))
+        assertEquals("emulator-5554", started.text("serial"))
+        assertEquals("running", started.text("state"))
+        out.clear()
+
+        assertEquals(0, cli(withEmulator()).run(listOf("emulator", "status", "--json")))
+        assertEquals("running", jsonOut().text("state"))
+        out.clear()
+
+        assertEquals(0, cli(withEmulator()).run(listOf("emulator", "stop", "--json")))
+        assertEquals("stopped", jsonOut().text("state"))
+    }
+
+    @Test
+    fun `emulator status json before any reservation has a null serial and state`() {
+        assertEquals(0, cli(withEmulator()).run(listOf("emulator", "status", "--json")))
+
+        val json = jsonOut()
+        assertEquals(linked, json.text("worktree"))
+        assertEquals(kotlinx.serialization.json.JsonNull, json.getValue("serial"))
+        assertEquals(kotlinx.serialization.json.JsonNull, json.getValue("state"))
+    }
+
+    @Test
+    fun `emulator json without the provider prints nothing on standard output`() {
+        val exitCode = cli(declaring("PORT" to "\${port}")).run(listOf("emulator", "status", "--json"))
+
+        assertEquals(1, exitCode)
+        assertEquals("", out.toString())
+    }
+
+    @Test
+    fun `simulator json reports the udid, name and state`() {
+        assertEquals(0, cli(withSimulator()).run(listOf("simulator", "start", "--json")))
+        val started = jsonOut()
+        assertEquals(setOf("worktree", "udid", "name", "state"), started.keys)
+        assertEquals("UDID-1", started.text("udid"))
+        assertEquals("ShogunAi · main-repo · TASK-123", started.text("name"))
+        assertEquals("booted", started.text("state"))
+        assertFalse(out.contains("KMP"), out.toString())
+        out.clear()
+
+        assertEquals(0, cli(withSimulator()).run(listOf("simulator", "stop", "--json")))
+        assertEquals("shutdown", jsonOut().text("state"))
+    }
+
+    @Test
+    fun `simulator status json before any simulator has null fields`() {
+        assertEquals(0, cli(withSimulator()).run(listOf("simulator", "status", "--json")))
+
+        assertEquals(kotlinx.serialization.json.JsonNull, jsonOut().getValue("udid"))
+    }
+
+    @Test
+    fun `simulator gradle-init doesn't accept json`() {
+        val exitCode = cli(withSimulator()).run(listOf("simulator", "gradle-init", "install", "--json"))
+
+        assertEquals(2, exitCode)
+        assertTrue(err.contains("--json"), err.toString())
+    }
 }
