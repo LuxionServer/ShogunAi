@@ -67,10 +67,6 @@ Copying the launch command stays as the default, but the app could also open it 
 
 Some users switch between AI agents on the same task, for example when one of them runs out of quota. A project would hold several agent commands instead of one (Claude, Antigravity, Codex, …), each with its default arguments, and the user would pick the agent when copying or launching the command. The current single-agent setup stays the default for users who don't need it.
 
-### Desktop ergonomics
-
-- Menu bar / system tray icon with recent projects and worktrees.
-
 ### Distribution
 
 - Update check against GitHub Releases: the app notices a newer version and offers to download it (or points to `brew upgrade` when installed through Homebrew).

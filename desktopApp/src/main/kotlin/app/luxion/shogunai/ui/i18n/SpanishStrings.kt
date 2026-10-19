@@ -466,4 +466,12 @@ object SpanishStrings : Strings {
     override val paletteCleanUp = "Limpiar"
     override fun paletteNewWorktreeIn(project: String) = "Nuevo worktree en $project"
     override fun paletteSettingsOf(project: String) = "Ajustes de $project"
+    override val trayShowApp = "Mostrar ShogunAi"
+    override val trayNewWorktree = "Nuevo worktree…"
+    override val trayRecentProjects = "Proyectos recientes"
+    override val trayRecentWorktrees = "Worktrees recientes"
+    override val trayShowInApp = "Mostrar en ShogunAi"
+    override val showIconInMenuBar = "Mostrar el icono en la barra de menús"
+    override val showIconInTray = "Mostrar el icono en la bandeja del sistema"
+    override val keepRunningWhenClosed = "Seguir ejecutándose al cerrar la ventana"
 }

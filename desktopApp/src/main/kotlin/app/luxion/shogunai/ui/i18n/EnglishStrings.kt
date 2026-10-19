@@ -466,6 +466,14 @@ object EnglishStrings : Strings {
     override val paletteCleanUp = "Clean up"
     override fun paletteNewWorktreeIn(project: String) = "New worktree in $project"
     override fun paletteSettingsOf(project: String) = "Settings of $project"
+    override val trayShowApp = "Show ShogunAi"
+    override val trayNewWorktree = "New worktree…"
+    override val trayRecentProjects = "Recent projects"
+    override val trayRecentWorktrees = "Recent worktrees"
+    override val trayShowInApp = "Show in ShogunAi"
+    override val showIconInMenuBar = "Show icon in the menu bar"
+    override val showIconInTray = "Show icon in the system tray"
+    override val keepRunningWhenClosed = "Keep running when the window is closed"
 }
 
 internal fun String?.asSuffix(): String = if (isNullOrBlank()) "" else ": $this"

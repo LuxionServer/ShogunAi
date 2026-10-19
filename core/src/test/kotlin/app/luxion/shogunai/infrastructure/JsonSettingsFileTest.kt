@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.Grouping
+import app.luxion.shogunai.domain.model.RecentWorktree
 import app.luxion.shogunai.domain.model.TerminalId
 import app.luxion.shogunai.domain.model.ThemeMode
 import app.luxion.shogunai.domain.model.WindowBounds
@@ -210,6 +211,48 @@ class JsonSettingsFileTest {
         reloaded.saveTerminal(null)
         assertNull(reloaded.loadTerminal())
         assertEquals(EditorId.VS_CODE, reloaded.loadEditor())
+    }
+
+    @Test
+    fun `there are no recents and the tray defaults apply in a file written before they existed`() {
+        assertTrue(shellRepository.loadRecentProjects().isEmpty())
+        assertTrue(shellRepository.loadRecentWorktrees().isEmpty())
+        assertTrue(shellRepository.loadShowTrayIcon())
+        assertFalse(shellRepository.loadKeepRunningInTray())
+
+        Files.writeString(storagePath, """{ "themeMode": "DARK" }""")
+
+        assertTrue(shellRepository.loadRecentProjects().isEmpty())
+        assertTrue(shellRepository.loadRecentWorktrees().isEmpty())
+        assertTrue(shellRepository.loadShowTrayIcon())
+        assertFalse(shellRepository.loadKeepRunningInTray())
+    }
+
+    @Test
+    fun `recent projects and worktrees are remembered in order with the other keys`() {
+        shellRepository.saveLastDestination("all")
+        val worktrees = listOf(RecentWorktree("api", "~/worktrees/api/TASK-1"), RecentWorktree("main-repo", "~/projects/main-repo"))
+
+        shellRepository.saveRecentProjects(listOf("api", "main-repo"))
+        shellRepository.saveRecentWorktrees(worktrees)
+
+        val reloaded = JsonShellPreferenceRepository(JsonSettingsFile(storagePath))
+        assertEquals(listOf("api", "main-repo"), reloaded.loadRecentProjects())
+        assertEquals(worktrees, reloaded.loadRecentWorktrees())
+        assertEquals("all", reloaded.loadLastDestination())
+    }
+
+    @Test
+    fun `the tray options are remembered with the other keys`() {
+        themeRepository.save(ThemeMode.DARK)
+
+        shellRepository.saveShowTrayIcon(false)
+        shellRepository.saveKeepRunningInTray(true)
+
+        val reloaded = JsonShellPreferenceRepository(JsonSettingsFile(storagePath))
+        assertFalse(reloaded.loadShowTrayIcon())
+        assertTrue(reloaded.loadKeepRunningInTray())
+        assertEquals(ThemeMode.DARK, themeRepository.load())
     }
 
     @Test

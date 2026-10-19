@@ -2,8 +2,10 @@ package app.luxion.shogunai.ui.shell
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,8 +26,10 @@ import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.i18n.strings
+import app.luxion.shogunai.ui.isMacOs
+import app.luxion.shogunai.ui.tray.TrayPreferences
 
-private val PreferencesWindowSize = DpSize(440.dp, 430.dp)
+private val PreferencesWindowSize = DpSize(440.dp, 600.dp)
 
 fun ThemeMode.label(strings: Strings): String = when (this) {
     ThemeMode.LIGHT -> strings.themeLight
@@ -34,7 +38,13 @@ fun ThemeMode.label(strings: Strings): String = when (this) {
 }
 
 @Composable
-fun PreferencesWindow(appearance: Appearance, tools: ToolsPreferences, bringToFrontRequests: Int, onClose: () -> Unit) {
+fun PreferencesWindow(
+    appearance: Appearance,
+    tools: ToolsPreferences,
+    tray: TrayPreferences,
+    bringToFrontRequests: Int,
+    onClose: () -> Unit,
+) {
     Window(
         onCloseRequest = onClose,
         title = appearance.strings.preferencesTitle,
@@ -45,13 +55,13 @@ fun PreferencesWindow(appearance: Appearance, tools: ToolsPreferences, bringToFr
         LaunchedEffect(bringToFrontRequests) { window.toFront() }
         LaunchedEffect(Unit) { tools.refresh() }
         AppearanceScope(appearance) {
-            PreferencesContent(appearance, tools)
+            PreferencesContent(appearance, tools, tray)
         }
     }
 }
 
 @Composable
-private fun PreferencesContent(appearance: Appearance, tools: ToolsPreferences) {
+private fun PreferencesContent(appearance: Appearance, tools: ToolsPreferences, tray: TrayPreferences) {
     val strings = LocalStrings.current
     Column(
         modifier = Modifier.fillMaxWidth().padding(Spacing.lg),
@@ -78,6 +88,7 @@ private fun PreferencesContent(appearance: Appearance, tools: ToolsPreferences) 
             modifier = Modifier.fillMaxWidth(),
         )
         ToolsSection(tools)
+        if (tray.isSupported) TraySection(tray)
     }
 }
 
@@ -107,6 +118,36 @@ fun ToolsSection(tools: ToolsPreferences) {
         noneFound = strings.noEditorFound,
         isDetected = tools.detected != null,
     )
+}
+
+@Composable
+private fun TraySection(tray: TrayPreferences) {
+    val strings = LocalStrings.current
+    TrayOption(
+        label = if (isMacOs) strings.showIconInMenuBar else strings.showIconInTray,
+        checked = tray.showIcon,
+        enabled = true,
+        onChange = tray::changeShowIcon,
+        modifier = Modifier.padding(top = Spacing.md),
+    )
+    TrayOption(
+        label = strings.keepRunningWhenClosed,
+        checked = tray.keepRunning && tray.showIcon,
+        enabled = tray.showIcon,
+        onChange = tray::changeKeepRunning,
+    )
+}
+
+@Composable
+private fun TrayOption(label: String, checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = checked, onCheckedChange = onChange, enabled = enabled)
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 @Composable

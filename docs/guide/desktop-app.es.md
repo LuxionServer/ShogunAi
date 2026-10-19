@@ -82,6 +82,22 @@ En repositorios que los declaran en `.shogunai.json`, la pantalla de worktrees a
 
 Preferencias (Cmd+Coma en macOS, Ctrl+Coma en los demás) reúne el tema, el idioma y la sección **Herramientas**, donde eliges el terminal y el IDE predeterminado entre los que ShogunAi ha encontrado en esta máquina. Si no encuentra ninguno, la sección lo dice y las acciones correspondientes no se ofrecen.
 
+## Icono en la barra de menús y en la bandeja del sistema
+
+Mientras ShogunAi se ejecuta, un icono en la barra de menús de macOS (o en la bandeja del sistema en los escritorios de Windows y Linux que la tienen) abre un menú con:
+
+- **Mostrar ShogunAi** y **Nuevo worktree…**, que traen la ventana al frente.
+- **Proyectos recientes**: hasta 5, los que abriste más recientemente.
+- **Worktrees recientes**: hasta 8, los que seleccionaste, creaste o lanzaste más recientemente. Cada uno es un submenú con **Mostrar en ShogunAi**, **Copiar comando de lanzamiento** y, según estén disponibles, **Abrir en <terminal>**, **Abrir en <IDE>** y **Abrir carpeta**, que se comportan como en el detalle del worktree. Las acciones de terminal, IDE y carpeta se ejecutan sin traer la ventana al frente; si una falla, la ventana pasa al frente y muestra el error.
+- **Preferencias** y **Salir**.
+
+La etiqueta de un worktree es `<rama> — <proyecto>`, con el prefijo `●` cuando un agente trabaja en él y `!` cuando te necesita (cambios sin confirmar, commits sin subir, o un agente bloqueado o terminado). Los recientes se recuerdan entre reinicios y los proyectos y worktrees eliminados desaparecen de ellos.
+
+Preferencias tiene dos opciones para esto, que solo aparecen donde el sistema tiene bandeja:
+
+- **Mostrar el icono en la barra de menús** (bandeja del sistema en Windows y Linux), activada por defecto.
+- **Seguir ejecutándose al cerrar la ventana**, desactivada por defecto y disponible solo mientras el icono se muestra. Con ella activada, cerrar la ventana la oculta y la app sigue en el icono; **Mostrar ShogunAi** devuelve la ventana y **Salir** (o Cmd/Ctrl+Q) cierra la app. Los ajustes de proyecto sin guardar siguen preguntando antes de cerrar la ventana. Con ella desactivada, cerrar la ventana cierra la app, como antes.
+
 ## Tema e idioma
 
 La barra superior tiene un selector de tema (claro, oscuro, o automático para seguir al sistema) y un selector de idioma (English o Español). Las dos elecciones se recuerdan entre reinicios.

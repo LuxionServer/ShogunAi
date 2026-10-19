@@ -409,6 +409,14 @@ interface Strings {
     val paletteCleanUp: String
     fun paletteNewWorktreeIn(project: String): String
     fun paletteSettingsOf(project: String): String
+    val trayShowApp: String
+    val trayNewWorktree: String
+    val trayRecentProjects: String
+    val trayRecentWorktrees: String
+    val trayShowInApp: String
+    val showIconInMenuBar: String
+    val showIconInTray: String
+    val keepRunningWhenClosed: String
 }
 
 val LocalStrings = staticCompositionLocalOf<Strings> { EnglishStrings }

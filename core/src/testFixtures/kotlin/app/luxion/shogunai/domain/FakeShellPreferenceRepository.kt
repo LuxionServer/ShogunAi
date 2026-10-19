@@ -3,6 +3,7 @@ package app.luxion.shogunai.domain
 import app.luxion.shogunai.domain.io.ShellPreferenceRepository
 import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.Grouping
+import app.luxion.shogunai.domain.model.RecentWorktree
 import app.luxion.shogunai.domain.model.WindowBounds
 
 class FakeShellPreferenceRepository(
@@ -13,6 +14,10 @@ class FakeShellPreferenceRepository(
     var lastCreateProject: String? = null,
     var recentPaletteItems: List<String> = emptyList(),
     val groupings: MutableMap<GroupedView, Grouping> = mutableMapOf(),
+    var recentProjects: List<String> = emptyList(),
+    var recentWorktrees: List<RecentWorktree> = emptyList(),
+    var showTrayIcon: Boolean = true,
+    var keepRunningInTray: Boolean = false,
 ) : ShellPreferenceRepository {
 
     override fun loadLastDestination(): String? = lastDestination
@@ -55,5 +60,29 @@ class FakeShellPreferenceRepository(
 
     override fun saveGrouping(view: GroupedView, grouping: Grouping) {
         groupings[view] = grouping
+    }
+
+    override fun loadRecentProjects(): List<String> = recentProjects
+
+    override fun saveRecentProjects(ids: List<String>) {
+        recentProjects = ids
+    }
+
+    override fun loadRecentWorktrees(): List<RecentWorktree> = recentWorktrees
+
+    override fun saveRecentWorktrees(worktrees: List<RecentWorktree>) {
+        recentWorktrees = worktrees
+    }
+
+    override fun loadShowTrayIcon(): Boolean = showTrayIcon
+
+    override fun saveShowTrayIcon(show: Boolean) {
+        showTrayIcon = show
+    }
+
+    override fun loadKeepRunningInTray(): Boolean = keepRunningInTray
+
+    override fun saveKeepRunningInTray(keepRunning: Boolean) {
+        keepRunningInTray = keepRunning
     }
 }

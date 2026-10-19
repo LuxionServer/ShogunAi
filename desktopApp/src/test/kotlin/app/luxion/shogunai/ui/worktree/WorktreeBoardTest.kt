@@ -57,6 +57,11 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.RecentWorktree
+import app.luxion.shogunai.domain.usecase.Activity
+import app.luxion.shogunai.ui.i18n.EnglishStrings
+import app.luxion.shogunai.ui.tray.trayWorktreeLabel
 import java.time.Instant
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -218,6 +223,7 @@ class WorktreeBoardTest {
     private fun board(
         projects: List<Project> = repositories.map { it.project },
         clock: () -> Instant = Instant::now,
+        onWorktreeUsed: (WorktreeRef) -> Unit = {},
     ): WorktreeBoard = WorktreeBoard(
         useCasesFor = { config -> repositories.first { it.base == config.baseRepositoryPath }.useCases() },
         detectAgents = { searches ->
@@ -228,6 +234,7 @@ class WorktreeBoardTest {
         preferences = preferences,
         clock = clock,
         ioDispatcher = dispatcher,
+        onWorktreeUsed = onWorktreeUsed,
     ).also {
         it.syncCatalog(projects)
         it.show(null)
@@ -282,6 +289,81 @@ class WorktreeBoardTest {
         assertEquals(listOf("codex"), board.agentNamesOf("api"))
         assertEquals(emptyList(), board.agentNamesOf("main-repo"))
         board.stopWatching()
+    }
+
+    @Test
+    fun `the tray lists the loaded recent worktrees and drops the removed ones`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        val recents = listOf(
+            RecentWorktree("main-repo", "/home/dev/projects/TASK-123"),
+            RecentWorktree("main-repo", "/home/dev/projects/removed"),
+            RecentWorktree("deleted-project", "/home/dev/projects/other"),
+            RecentWorktree("api", "/home/dev/projects/api-TASK-12"),
+        )
+
+        val listed = board.trayWorktrees(recents, EnglishStrings)
+
+        assertEquals(listOf("feature/TASK-123", "feature/TASK-12"), listed.map { it.name })
+        assertEquals(listOf("main-repo", "api"), listed.map { it.projectName })
+        assertTrue(listed.all { it.isLoaded })
+    }
+
+    @Test
+    fun `the tray shows a recent worktree by its folder until its project loads`() = runTest(dispatcher) {
+        val board = board()
+
+        val listed = board.trayWorktrees(listOf(RecentWorktree("main-repo", "/home/dev/projects/TASK-123")), EnglishStrings)
+
+        assertEquals("TASK-123", listed.single().name)
+        assertEquals(Activity.Unknown, listed.single().activity)
+        assertFalse(listed.single().isLoaded)
+        assertTrue(listed.single().openActions.isEmpty())
+    }
+
+    @Test
+    fun `the tray marks a worktree whose agent is blocked as needing the user`() = runTest(dispatcher) {
+        agentResult = Result.success(
+            mapOf("/home/dev/projects/api-TASK-12" to listOf(RunningAgent("codex", herdrState = HerdrAgentState.BLOCKED))),
+        )
+        val board = board()
+        advanceUntilIdle()
+        board.startWatching()
+        tick()
+
+        val listed = board.trayWorktrees(listOf(RecentWorktree("api", "/home/dev/projects/api-TASK-12")), EnglishStrings)
+
+        board.stopWatching()
+        assertEquals(Activity.NeedsYou, listed.single().activity)
+        assertEquals("! feature/TASK-12 — api", trayWorktreeLabel(listed.single()))
+    }
+
+    @Test
+    fun `the tray marks a worktree whose agent is working`() = runTest(dispatcher) {
+        agentResult = Result.success(
+            mapOf("/home/dev/projects/api-TASK-12" to listOf(RunningAgent("codex", herdrState = HerdrAgentState.WORKING))),
+        )
+        val board = board()
+        advanceUntilIdle()
+        board.startWatching()
+        tick()
+
+        val listed = board.trayWorktrees(listOf(RecentWorktree("api", "/home/dev/projects/api-TASK-12")), EnglishStrings)
+
+        board.stopWatching()
+        assertEquals("● feature/TASK-12 — api", trayWorktreeLabel(listed.single()))
+    }
+
+    @Test
+    fun `selecting a worktree reports it as used`() = runTest(dispatcher) {
+        val used = mutableListOf<WorktreeRef>()
+        val board = board(onWorktreeUsed = used::add)
+        advanceUntilIdle()
+        val main = WorktreeRef("api", "/home/dev/projects/api")
+
+        board.select(main)
+
+        assertEquals(listOf(main), used)
     }
 
     @Test
