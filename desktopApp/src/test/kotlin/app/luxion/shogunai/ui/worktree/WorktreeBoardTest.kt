@@ -109,7 +109,9 @@ class WorktreeBoardTest {
         var worktrees: List<Pair<String, String>>,
         agentCommand: String = "claude",
         var exists: Boolean = true,
+        val declaresEmulator: Boolean = false,
     ) {
+        var emulatorReads = 0
         val base = "/home/dev/projects/$id"
         val config = ProjectConfig(
             baseRepositoryPath = base,
@@ -172,7 +174,17 @@ class WorktreeBoardTest {
             measureSize = MeasureWorktreeSizeUseCase(files, dispatcher),
             readFingerprint = ReadGitMetadataFingerprintUseCase(config, files, dispatcher),
             readPorts = { Result.success(emptyMap()) },
-            emulator = EmulatorUseCases.NONE,
+            emulator = if (declaresEmulator) {
+                EmulatorUseCases.NONE.copy(
+                    declared = { true },
+                    readStates = {
+                        emulatorReads++
+                        Result.success(emptyMap())
+                    },
+                )
+            } else {
+                EmulatorUseCases.NONE
+            },
             simulator = SimulatorUseCases.NONE,
             gradle = GradleUseCases(
                 provider = { GradleProvider().takeIf { id in gradleDeclaredFor } },
@@ -189,7 +201,7 @@ class WorktreeBoardTest {
         )
     }
 
-    private val repositories = listOf(api, mainRepo)
+    private var repositories = listOf(api, mainRepo)
 
     private fun board(projects: List<Project> = repositories.map { it.project }): WorktreeBoard = WorktreeBoard(
         useCasesFor = { config -> repositories.first { it.base == config.baseRepositoryPath }.useCases() },
@@ -199,12 +211,16 @@ class WorktreeBoardTest {
             agentResult
         },
         preferences = preferences,
+        clock = { now },
     ).also {
         it.syncCatalog(projects)
         it.show(null)
     }
 
+    private var now = Instant.parse("2026-01-01T00:00:00Z")
+
     private fun TestScope.tick() {
+        now = now.plusSeconds(3)
         advanceTimeBy(3.seconds)
         runCurrent()
     }
@@ -512,6 +528,24 @@ class WorktreeBoardTest {
 
         assertEquals(1, api.lists)
         assertEquals(2, mainRepo.lists)
+    }
+
+    @Test
+    fun `device states are refreshed at most every ten seconds while agents are detected on every check`() = runTest(dispatcher) {
+        val emulatorProject = FakeRepository("emulator-app", emptyList(), declaresEmulator = true)
+        repositories = listOf(emulatorProject)
+        val board = board(listOf(emulatorProject.project))
+        advanceUntilIdle()
+        val baseline = emulatorProject.emulatorReads
+        board.startWatching()
+
+        repeat(4) { tick() }
+        assertEquals(baseline + 1, emulatorProject.emulatorReads)
+        assertEquals(4, agentSearches.size)
+
+        tick()
+        assertEquals(baseline + 2, emulatorProject.emulatorReads)
+        board.stopWatching()
     }
 
     @Test

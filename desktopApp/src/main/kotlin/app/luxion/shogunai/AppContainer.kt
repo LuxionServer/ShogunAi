@@ -70,6 +70,7 @@ import app.luxion.shogunai.infrastructure.JsonSettingsFile
 import app.luxion.shogunai.infrastructure.JsonShellPreferenceRepository
 import app.luxion.shogunai.infrastructure.JsonThemePreferenceRepository
 import app.luxion.shogunai.infrastructure.LocalAndroidSdk
+import app.luxion.shogunai.infrastructure.SharedDeviceStatesAndroidSdk
 import app.luxion.shogunai.infrastructure.MacDerivedDataSource
 import app.luxion.shogunai.infrastructure.NioEnvironmentStateStore
 import app.luxion.shogunai.infrastructure.NioFileManager
@@ -148,7 +149,7 @@ class AppContainer {
 
         override val initScriptPath: String get() = kmpTestWiring.initScriptPath()
     }
-    private val androidSdk = LocalAndroidSdk(shellCommandExecutor, fileManager)
+    private val androidSdk = SharedDeviceStatesAndroidSdk(LocalAndroidSdk(shellCommandExecutor, fileManager))
     private val herdrConfig = HerdrConfigFile()
     private val herdrClient = CliHerdrClient(shellCommandExecutor)
     private val startEmulator = StartWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)
