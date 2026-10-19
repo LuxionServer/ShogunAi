@@ -11,7 +11,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
+import app.luxion.shogunai.ui.components.rememberAppIconPainter
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -34,7 +34,7 @@ fun AboutWindow(appearance: Appearance, onClose: () -> Unit) {
     DialogWindow(
         onCloseRequest = onClose,
         title = appearance.strings.aboutTitle,
-        icon = painterResource("icons/icon.png"),
+        icon = rememberAppIconPainter(),
         resizable = false,
         state = rememberDialogState(size = AboutWindowSize),
     ) {
@@ -52,7 +52,7 @@ private fun AboutContent() {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(Spacing.sm, Alignment.CenterVertically),
     ) {
-        Image(painterResource("icons/icon.png"), contentDescription = null, modifier = Modifier.size(AboutIconSize))
+        Image(rememberAppIconPainter(), contentDescription = null, modifier = Modifier.size(AboutIconSize))
         Text("ShogunAi", style = MaterialTheme.typography.titleLarge)
         Text(
             strings.aboutTagline,

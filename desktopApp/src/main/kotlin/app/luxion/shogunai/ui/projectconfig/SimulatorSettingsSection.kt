@@ -12,8 +12,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.LocalClipboard
+import app.luxion.shogunai.ui.components.copyText
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import app.luxion.shogunai.domain.model.SimulatorRuntime
 import app.luxion.shogunai.ui.components.DropdownSelector
 import app.luxion.shogunai.ui.components.InlineProgress
@@ -82,7 +84,8 @@ private fun AvailableSimulatorSettings(viewModel: ProjectConfigViewModel, state:
 @Composable
 private fun KmpWiringPanel(viewModel: ProjectConfigViewModel, modifier: Modifier = Modifier) {
     val strings = LocalStrings.current
-    val clipboard = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
     var confirming by remember { mutableStateOf(false) }
     var copied by remember { mutableStateOf(false) }
     var installError by remember { mutableStateOf<Throwable?>(null) }
@@ -90,7 +93,7 @@ private fun KmpWiringPanel(viewModel: ProjectConfigViewModel, modifier: Modifier
     Text(viewModel.simulatorSnippet, style = ShogunTheme.typography.dataSmall)
     Row {
         SecondaryButton(
-            onClick = { clipboard.setText(AnnotatedString(viewModel.simulatorSnippet)); copied = true },
+            onClick = { scope.launch { clipboard.copyText(viewModel.simulatorSnippet) }; copied = true },
             modifier = Modifier.padding(end = Spacing.sm),
         ) { Text(if (copied) strings.copied else strings.copySnippet) }
         SecondaryButton(onClick = { confirming = true }) { Text(strings.installInitScript) }

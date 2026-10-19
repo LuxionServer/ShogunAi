@@ -6,7 +6,7 @@ Don't load all of `docs/` into context by default: search for the specific page 
 
 ## Code style
 
-- **All code is written in English**: identifiers, comments, and commit messages. Spanish is reserved for the Spanish translation of `docs/` and conversation with the user.
+- **All code is written in English**: identifiers and commit messages. Spanish is reserved for the Spanish translation of `docs/` and conversation with the user.
 - Use cases return `Result<T>` with typed errors (`sealed class WorktreeError`), never untyped exceptions surfaced to the caller.
 - Shell commands are run as **argv** (`listOf("git", ...)`), never as a string for a shell to parse.
 - The domain depends on ports (`ShellCommandExecutor`, `FileManager`), never directly on concrete implementations.
