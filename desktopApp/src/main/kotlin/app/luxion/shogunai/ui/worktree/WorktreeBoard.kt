@@ -22,10 +22,14 @@ import app.luxion.shogunai.domain.usecase.isActive
 import app.luxion.shogunai.domain.usecase.worktreeActivity
 import app.luxion.shogunai.domain.usecase.isValidGitRefSegment
 import app.luxion.shogunai.domain.usecase.normalizeTaskId
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import java.time.Instant
@@ -42,12 +46,14 @@ class WorktreeBoard(
     private val clock: () -> Instant = Instant::now,
     private val deviceRefreshInterval: Duration = DEVICE_REFRESH_INTERVAL,
     val approval: DialogPostCreateApproval = DialogPostCreateApproval(),
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
     private val deviceRefreshes = mutableMapOf<String, Instant>()
     private val listPermits = Semaphore(MAX_PARALLEL_LISTS)
     private val sizeQueue = SizeQueue(viewModelScope)
     private var entries by mutableStateOf<Map<String, Entry>>(emptyMap())
     private var watchJob: Job? = null
+    private val windowActive = MutableStateFlow(true)
 
     var projects by mutableStateOf<List<Project>>(emptyList())
         private set
@@ -274,6 +280,7 @@ class WorktreeBoard(
             listPermits = listPermits,
             sizeQueue = sizeQueue,
             clock = clock,
+            ioDispatcher = ioDispatcher,
         )
         holder.refresh()
         return Entry(project, holder, job)
@@ -346,10 +353,16 @@ class WorktreeBoard(
         watchJob = viewModelScope.launch {
             var check: Job? = null
             while (true) {
+                windowActive.first { it }
                 delay(autoRefreshInterval)
+                if (!windowActive.value) continue
                 if (check?.isActive != true) check = launch { checkProjects() }
             }
         }
+    }
+
+    fun setWindowActive(active: Boolean) {
+        windowActive.value = active
     }
 
     fun stopWatching() {
@@ -358,14 +371,17 @@ class WorktreeBoard(
     }
 
     private suspend fun checkProjects() {
-        val unchanged = entries.values
+        val unchanged = shownEntries()
             .filterNot { it.holder.isBusy }
             .filter { it.holder.checkFingerprint() == FingerprintCheck.UNCHANGED }
-        if (unchanged.isEmpty()) return
-        val searches = unchanged.map { AgentSearch(it.project.config.agentLaunchConfig.agentCommand, it.holder.worktrees) }
+        val shownIds = shownProjects.map { it.id }.toSet()
+        val hidden = entries.values.filter { it.project.id !in shownIds && !it.holder.isBusy && it.holder.hasLoaded }
+        val loaded = unchanged + hidden
+        if (loaded.isEmpty()) return
+        val searches = loaded.map { AgentSearch(it.project.config.agentLaunchConfig.agentCommand, it.holder.worktrees) }
         val detected = detectAgents(searches).getOrNull()
+        loaded.forEach { it.holder.applyAgents(detected) }
         unchanged.forEach { entry ->
-            entry.holder.applyAgents(detected)
             if (isDeviceRefreshDue(entry.project.id)) entry.holder.refreshDevices()
         }
     }
