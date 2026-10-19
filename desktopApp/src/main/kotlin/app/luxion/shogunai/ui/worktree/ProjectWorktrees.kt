@@ -30,14 +30,19 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import java.time.Instant
 
 class ProjectWorktrees(
     private val useCases: WorktreeUseCases,
     private val scope: CoroutineScope,
     private val listPermits: Semaphore = Semaphore(1),
     private val sizeQueue: SizeQueue = SizeQueue(scope),
+    private val clock: () -> Instant = Instant::now,
 ) {
     private var lastFingerprint: List<Pair<String, Long>>? = null
+
+    var lastReadAt: Instant? = null
+        private set
 
     var worktrees by mutableStateOf<List<Worktree>>(emptyList())
         private set
@@ -168,16 +173,22 @@ class ProjectWorktrees(
     val pendingRemovalOpenInHerdr: Boolean
         get() = pendingRemoval?.worktree?.path in openInHerdrPaths
 
-    fun refresh() {
+    fun refresh(remeasureSizes: Boolean = false) {
         val generation = ++listGeneration
         isLoading = true
+        lastReadAt = clock()
         scope.launch {
             val result = listPermits.withPermit {
                 lastFingerprint = useCases.readFingerprint().getOrNull() ?: lastFingerprint
                 useCases.list()
             }
-            applyListResult(generation, result)
+            applyListResult(generation, result, remeasureSizes)
         }
+    }
+
+    fun refreshStatuses() {
+        lastReadAt = clock()
+        readStatuses(listGeneration, worktrees, mainBranch)
     }
 
     val isBusy: Boolean
@@ -207,6 +218,7 @@ class ProjectWorktrees(
     fun repairAfterMove(previousWorktreesRoot: String) {
         val generation = ++listGeneration
         isLoading = true
+        lastReadAt = clock()
         scope.launch {
             val repair = useCases.repair(previousWorktreesRoot)
             applyListResult(generation, listPermits.withPermit { useCases.list() })
@@ -216,32 +228,37 @@ class ProjectWorktrees(
         }
     }
 
-    private fun applyListResult(generation: Int, result: Result<List<Worktree>>) {
+    private fun applyListResult(generation: Int, result: Result<List<Worktree>>, remeasureSizes: Boolean = false) {
         if (generation != listGeneration) return
         result
             .onSuccess {
                 worktrees = it
                 listFailure = null
-                loadStatuses(generation, it)
+                loadStatuses(generation, it, remeasureSizes)
             }
             .onFailure { listFailure = it }
         hasLoaded = true
         isLoading = false
     }
 
-    private fun loadStatuses(generation: Int, listed: List<Worktree>) {
-        statuses = listed.associate { it.path to WorktreeStatusState.Loading }
+    private fun loadStatuses(generation: Int, listed: List<Worktree>, remeasureSizes: Boolean) {
+        statuses = listed.associate { it.path to (statuses[it.path] ?: WorktreeStatusState.Loading) }
+        readStatuses(generation, listed, knownMainBranch = null)
+        loadOverview(generation, listed, remeasureSizes)
+    }
+
+    private fun readStatuses(generation: Int, listed: List<Worktree>, knownMainBranch: MainBranch?) {
         scope.launch {
-            val resolved = useCases.resolveMainBranch().getOrNull()
+            val resolved = knownMainBranch ?: useCases.resolveMainBranch().getOrNull()
             if (generation != listGeneration) return@launch
             mainBranch = resolved
             listed.forEach { worktree -> launch { readStatus(generation, worktree, resolved) } }
         }
-        loadOverview(generation, listed)
     }
 
-    private fun loadOverview(generation: Int, listed: List<Worktree>) {
-        sizes = emptyMap()
+    private fun loadOverview(generation: Int, listed: List<Worktree>, remeasureSizes: Boolean) {
+        val listedPaths = listed.map { it.path }.toSet()
+        sizes = sizes.filterKeys { it in listedPaths }
         herdrWorktreesRoot = useCases.herdr.worktreesRoot()
         scope.launch {
             val detected = useCases.detectAgents(listed).getOrNull()
@@ -254,9 +271,10 @@ class ProjectWorktrees(
         loadXcodeSection(generation, listed)
         sizeQueue.submit(
             owner = this,
-            worktrees = listed,
+            worktrees = if (remeasureSizes) listed else listed.filterNot { it.path in sizes },
             measure = { worktree -> useCases.measureSize(worktree, listed).getOrNull() },
-            deliver = { path, size -> if (generation == listGeneration) sizes = sizes + (path to size) },
+            deliver = { path, size -> if (worktrees.any { it.path == path }) sizes = sizes + (path to size) },
+            replacePending = remeasureSizes,
         )
     }
 

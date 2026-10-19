@@ -34,7 +34,7 @@ Cada fila muestra un worktree con:
 - Su **tamaño**, los **puertos** reservados para él (ver [entorno por worktree](../agents.md#entorno-por-worktree)) y la etiqueta "inactivo" cuando no tiene cambios sin commitear, ningún agente en ejecución ni commits en los últimos 14 días.
 - Las líneas de emulador y simulador con Arrancar y Parar, en repositorios que usan esos [providers](providers.md).
 
-La lista se actualiza sola: los cambios hechos desde un terminal o por un agente aparecen en pocos segundos, y también al recuperar el foco la ventana.
+La lista se actualiza sola: los cambios hechos desde un terminal o por un agente aparecen en pocos segundos, y las ediciones que aún no están en el índice aparecen al recuperar el foco la ventana. Los estados y tamaños se siguen mostrando mientras se vuelven a leer. Los tamaños se miden cuando un worktree aparece por primera vez; "Recargar" los vuelve a medir todos, por ejemplo tras una compilación.
 
 ## Trabajar en un worktree
 

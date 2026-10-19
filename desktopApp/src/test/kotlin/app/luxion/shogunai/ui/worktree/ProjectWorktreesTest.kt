@@ -962,6 +962,98 @@ class ProjectWorktreesTest {
     }
 
     @Test
+    fun `a reload keeps the previous statuses until they are read again and new worktrees start loading`() = runTest(dispatcher) {
+        val otherPath = "/home/dev/projects/TASK-456"
+        var porcelain = porcelainOutput
+        var statusGate: CompletableDeferred<Unit>? = null
+        val executor = object : ShellCommandExecutor {
+            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+                if (command == statusCommand) statusGate?.await()
+                return when (command) {
+                    listCommand -> success(command, porcelain)
+                    statusCommand -> success(command, stdout = " M build.gradle.kts\n")
+                    else -> success(command)
+                }
+            }
+        }
+        val viewModel = projectWorktrees(useCasesWith(executor))
+        advanceUntilIdle()
+        val previous = assertIs<WorktreeStatusState.Loaded>(viewModel.statuses[worktreePath])
+
+        statusGate = CompletableDeferred()
+        porcelain = "$porcelainOutput\n\nworktree $otherPath\nHEAD def456\nbranch refs/heads/feature/TASK-456"
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertEquals(previous, viewModel.statuses[worktreePath])
+        assertEquals(WorktreeStatusState.Loading, viewModel.statuses[otherPath])
+
+        statusGate?.complete(Unit)
+        advanceUntilIdle()
+
+        assertIs<WorktreeStatusState.Loaded>(viewModel.statuses[otherPath])
+    }
+
+    @Test
+    fun `a reload drops the statuses and sizes of worktrees no longer listed`() = runTest(dispatcher) {
+        val otherPath = "/home/dev/projects/TASK-456"
+        val fileManager = FakeFileManager(
+            existing = listOf(worktreePath, otherPath),
+            sizes = mapOf(worktreePath to 1000L, otherPath to 500L),
+        )
+        var porcelain = "$porcelainOutput\n\nworktree $otherPath\nHEAD def456\nbranch refs/heads/feature/TASK-456"
+        val viewModel = projectWorktrees(
+            useCasesWithFiles(fileManager) { command ->
+                if (command == listCommand) success(command, porcelain) else success(command)
+            },
+        )
+        advanceUntilIdle()
+
+        porcelain = porcelainOutput
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertEquals(setOf(worktreePath), viewModel.statuses.keys)
+        assertEquals(mapOf(worktreePath to 1000L), viewModel.sizes)
+    }
+
+    @Test
+    fun `refreshStatuses reads the statuses again without listing the worktrees`() = runTest(dispatcher) {
+        var listCalls = 0
+        var statusOutput = ""
+        var statusGate: CompletableDeferred<Unit>? = null
+        val executor = object : ShellCommandExecutor {
+            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+                if (command == statusCommand) statusGate?.await()
+                return when (command) {
+                    listCommand -> {
+                        listCalls++
+                        success(command, porcelainOutput)
+                    }
+                    statusCommand -> success(command, stdout = statusOutput)
+                    else -> success(command)
+                }
+            }
+        }
+        val viewModel = projectWorktrees(useCasesWith(executor))
+        advanceUntilIdle()
+
+        statusGate = CompletableDeferred()
+        statusOutput = " M build.gradle.kts\n"
+        viewModel.refreshStatuses()
+        advanceUntilIdle()
+
+        assertEquals(0, assertIs<WorktreeStatusState.Loaded>(viewModel.statuses[worktreePath]).status.uncommittedChanges)
+
+        statusGate?.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(1, listCalls)
+        assertEquals(1, assertIs<WorktreeStatusState.Loaded>(viewModel.statuses[worktreePath]).status.uncommittedChanges)
+        assertFalse(viewModel.isLoading)
+    }
+
+    @Test
     fun `a created worktree gets its status without reloading the list`() = runTest(dispatcher) {
         val branch = "hotfix/security-patch"
         var listCalls = 0
@@ -1128,7 +1220,7 @@ class ProjectWorktreesTest {
     }
 
     @Test
-    fun `sizes are measured for every worktree and added up, and measured again on reload`() = runTest(dispatcher) {
+    fun `sizes are measured for every worktree and added up, and measured again on a manual reload`() = runTest(dispatcher) {
         val otherPath = "/home/dev/projects/TASK-456"
         val fileManager = FakeFileManager(
             existing = listOf(worktreePath, otherPath),
@@ -1145,10 +1237,35 @@ class ProjectWorktreesTest {
         assertEquals(mapOf(worktreePath to 1000L, otherPath to 500L), viewModel.sizes)
         assertEquals(1500L, viewModel.totalSize)
 
-        viewModel.refresh()
+        viewModel.refresh(remeasureSizes = true)
+        assertEquals(mapOf(worktreePath to 1000L, otherPath to 500L), viewModel.sizes)
         advanceUntilIdle()
 
         assertEquals(4, fileManager.sizeRequests.size)
+        assertEquals(1500L, viewModel.totalSize)
+    }
+
+    @Test
+    fun `an automatic reload measures only worktrees without a size`() = runTest(dispatcher) {
+        val otherPath = "/home/dev/projects/TASK-456"
+        val fileManager = FakeFileManager(
+            existing = listOf(worktreePath, otherPath),
+            sizes = mapOf(worktreePath to 1000L, otherPath to 500L),
+        )
+        var porcelain = porcelainOutput
+        val viewModel = projectWorktrees(
+            useCasesWithFiles(fileManager) { command ->
+                if (command == listCommand) success(command, porcelain) else success(command)
+            },
+        )
+        advanceUntilIdle()
+
+        porcelain = "$porcelainOutput\n\nworktree $otherPath\nHEAD def456\nbranch refs/heads/feature/TASK-456"
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertEquals(listOf(worktreePath, otherPath), fileManager.sizeRequests.map { it.first })
+        assertEquals(mapOf(worktreePath to 1000L, otherPath to 500L), viewModel.sizes)
     }
 
     private val gitDir = "${config.baseRepositoryPath}/.git"
