@@ -1610,4 +1610,486 @@ class ShogunCliTest {
         assertEquals(0, exitCode, err.toString())
         assertEquals("Nothing to repair.\n", out.toString())
     }
+
+    private fun jsonOut(): kotlinx.serialization.json.JsonObject {
+        val text = out.toString()
+        assertTrue(text.endsWith("\n") && text.trimEnd('\n').lines().size == 1, text)
+        return Json.parseToJsonElement(text).jsonObject
+    }
+
+    private fun kotlinx.serialization.json.JsonObject.strings(key: String) = getValue(key).jsonArray.map { (it as JsonPrimitive).content }
+
+    @Test
+    fun `new json reports the worktree and lists the unapproved commands without asking`() {
+        val executor = linkingExecutor()
+
+        val exitCode = cli(executor, provisioning = linkingProvisioning, answer = "y").run(listOf("new", "TASK-123", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = jsonOut()
+        assertEquals(setOf("path", "branch", "created", "skippedPostCreateCommands", "postCreateFailure"), json.keys)
+        assertEquals("$worktreesRoot/TASK-123", (json.getValue("path") as JsonPrimitive).content)
+        assertEquals("feature/TASK-123", (json.getValue("branch") as JsonPrimitive).content)
+        assertEquals(JsonPrimitive(true), json.getValue("created"))
+        assertEquals(listOf("npm", "install"), json.getValue("skippedPostCreateCommands").jsonArray.single().jsonArray.map { (it as JsonPrimitive).content })
+        assertEquals(JsonNull, json.getValue("postCreateFailure"))
+        assertFalse(executor.calls.any { it.first.first() == "npm" })
+        assertFalse(err.contains("Run these commands"), err.toString())
+    }
+
+    @Test
+    fun `new json is accepted before the task id too`() {
+        val exitCode = cli(repositoryExecutor()).run(listOf("new", "--json", "TASK-123"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("$worktreesRoot/TASK-123", (jsonOut().getValue("path") as JsonPrimitive).content)
+    }
+
+    @Test
+    fun `new json still prints the object when a post-creation command fails`() {
+        val executor = linkingExecutor { Executor.fail(it, stderr = "ENOTFOUND", exitCode = 2) }
+
+        val exitCode = cli(executor, provisioning = linkingProvisioning, trust = approvedInstall).run(listOf("new", "TASK-123", "--json"))
+
+        assertEquals(1, exitCode)
+        val json = jsonOut()
+        assertEquals("$worktreesRoot/TASK-123", (json.getValue("path") as JsonPrimitive).content)
+        val failure = json.getValue("postCreateFailure").jsonObject
+        assertEquals(setOf("command", "exitCode", "stderr"), failure.keys)
+        assertEquals(listOf("npm", "install"), failure.strings("command"))
+        assertEquals(JsonPrimitive(2), failure.getValue("exitCode"))
+        assertEquals("ENOTFOUND", (failure.getValue("stderr") as JsonPrimitive).content)
+    }
+
+    @Test
+    fun `provision json lists the copied and linked files`() {
+        val executor = linkingExecutor()
+        val fileManager = FakeFileManager(existing = listOf(base, "$base/local.properties", "$base/token.txt"))
+
+        val exitCode = cli(executor, provisioning = linkingProvisioning, fileManager = fileManager, workingDirectory = merged, trust = approvedInstall)
+            .run(listOf("provision", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = jsonOut()
+        assertEquals(
+            setOf("path", "copied", "linked", "copiedInsteadOfLinking", "skippedPostCreateCommands", "postCreateFailure"),
+            json.keys,
+        )
+        assertEquals(merged, (json.getValue("path") as JsonPrimitive).content)
+        assertEquals(listOf("local.properties", ".env"), json.strings("copied"))
+        assertEquals(listOf("token.txt"), json.strings("linked"))
+        assertEquals(emptyList(), json.strings("copiedInsteadOfLinking"))
+        assertTrue(executor.ran("npm", "install"))
+    }
+
+    @Test
+    fun `provision json skips unapproved commands instead of asking`() {
+        val executor = linkingExecutor()
+
+        val exitCode = cli(executor, provisioning = linkingProvisioning, workingDirectory = merged, answer = "y")
+            .run(listOf("provision", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(1, jsonOut().getValue("skippedPostCreateCommands").jsonArray.size)
+        assertFalse(executor.calls.any { it.first.first() == "npm" })
+        assertFalse(err.contains("Run these commands"), err.toString())
+    }
+
+    @Test
+    fun `provision json reports the failed command with empty file lists`() {
+        val executor = linkingExecutor { Executor.fail(it, stderr = "ENOTFOUND", exitCode = 4) }
+
+        val exitCode = cli(executor, provisioning = linkingProvisioning, workingDirectory = merged, trust = approvedInstall)
+            .run(listOf("provision", "--json"))
+
+        assertEquals(1, exitCode)
+        assertEquals(JsonPrimitive(4), jsonOut().getValue("postCreateFailure").jsonObject.getValue("exitCode"))
+    }
+
+    @Test
+    fun `provision check json lists the stale file and exits with 3`() {
+        val fileManager = FakeFileManager(existing = listOf(base, "$base/local.properties", "$merged/local.properties", "$base/token.txt", "$merged/.env", "$merged/token.txt"))
+        fileManager.contents["$base/.env"] = "KEY=1"
+        fileManager.contents["$base/local.properties"] = "A=1"
+        fileManager.contents["$merged/local.properties"] = "A=1"
+        fileManager.contents["$merged/.env"] = "KEY=0"
+        fileManager.symbolicLinks["$merged/token.txt"] = "$base/token.txt"
+
+        val exitCode = cli(linkingExecutor(), provisioning = linkingProvisioning, fileManager = fileManager, workingDirectory = merged)
+            .run(listOf("provision", "--check", "--json"))
+
+        assertEquals(3, exitCode, err.toString())
+        val json = jsonOut()
+        assertEquals(setOf("path", "drift"), json.keys)
+        val drift = json.getValue("drift").jsonArray.single().jsonObject
+        assertEquals(setOf("path", "state"), drift.keys)
+        assertEquals(".env", (drift.getValue("path") as JsonPrimitive).content)
+        assertEquals("differs", (drift.getValue("state") as JsonPrimitive).content)
+    }
+
+    @Test
+    fun `provision check json with nothing stale prints an empty list and exits with 0`() {
+        val fileManager = FakeFileManager(existing = listOf(base, "$base/local.properties", "$merged/local.properties", "$base/token.txt", "$merged/.env", "$merged/token.txt"))
+        fileManager.contents["$base/.env"] = "KEY=1"
+        fileManager.contents["$base/local.properties"] = "A=1"
+        fileManager.contents["$merged/local.properties"] = "A=1"
+        fileManager.contents["$merged/.env"] = "KEY=1"
+        fileManager.symbolicLinks["$merged/token.txt"] = "$base/token.txt"
+
+        val exitCode = cli(linkingExecutor(), provisioning = linkingProvisioning, fileManager = fileManager, workingDirectory = merged)
+            .run(listOf("provision", "--check", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(emptyList(), jsonOut().getValue("drift").jsonArray.toList())
+    }
+
+    @Test
+    fun `trust json only reports commands that aren't approved`() {
+        val trust = FakeRepositoryTrust()
+
+        val exitCode = cli(linkingExecutor(), provisioning = linkingProvisioning, trust = trust, answer = "y").run(listOf("trust", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = jsonOut()
+        assertEquals(setOf("repository", "commands", "approved", "changed"), json.keys)
+        assertEquals(base, (json.getValue("repository") as JsonPrimitive).content)
+        assertEquals(JsonPrimitive(false), json.getValue("approved"))
+        assertEquals(JsonPrimitive(false), json.getValue("changed"))
+        assertEquals(listOf("npm", "install"), json.getValue("commands").jsonArray.single().jsonArray.map { (it as JsonPrimitive).content })
+        assertFalse(trust.isApproved(base, installCommands))
+        assertFalse(err.contains("Approve these commands"), err.toString())
+    }
+
+    @Test
+    fun `trust json with yes approves and says it changed`() {
+        val trust = FakeRepositoryTrust()
+
+        val exitCode = cli(linkingExecutor(), provisioning = linkingProvisioning, trust = trust).run(listOf("trust", "--yes", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(JsonPrimitive(true), jsonOut().getValue("approved"))
+        assertEquals(JsonPrimitive(true), jsonOut().getValue("changed"))
+        assertTrue(trust.isApproved(base, installCommands))
+    }
+
+    @Test
+    fun `trust json reports already approved commands and revoking`() {
+        val trust = approvedInstall
+
+        cli(linkingExecutor(), provisioning = linkingProvisioning, trust = trust).run(listOf("trust", "--json"))
+        assertEquals(JsonPrimitive(true), jsonOut().getValue("approved"))
+        assertEquals(JsonPrimitive(false), jsonOut().getValue("changed"))
+        out.clear()
+
+        cli(linkingExecutor(), provisioning = linkingProvisioning, trust = trust).run(listOf("trust", "--revoke", "--json"))
+        assertEquals(JsonPrimitive(false), jsonOut().getValue("approved"))
+        assertEquals(JsonPrimitive(true), jsonOut().getValue("changed"))
+        assertFalse(trust.isApproved(base, installCommands))
+    }
+
+    @Test
+    fun `trust json without declared commands is approved with an empty list`() {
+        val exitCode = cli(linkingExecutor()).run(listOf("trust", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(JsonPrimitive(true), jsonOut().getValue("approved"))
+        assertEquals(emptyList(), jsonOut().getValue("commands").jsonArray.toList())
+    }
+
+    @Test
+    fun `clean json dry run lists the candidates and removes nothing`() {
+        val executor = repositoryExecutor()
+
+        val exitCode = cli(executor).run(listOf("clean", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = jsonOut()
+        assertEquals(
+            setOf("dryRun", "candidates", "keptForAgents", "skipped", "removed", "deletedBranches", "failures", "providers"),
+            json.keys,
+        )
+        assertEquals(JsonPrimitive(true), json.getValue("dryRun"))
+        val candidate = json.getValue("candidates").jsonArray.single().jsonObject
+        assertEquals(setOf("path", "branch", "reason"), candidate.keys)
+        assertEquals(merged, (candidate.getValue("path") as JsonPrimitive).content)
+        assertEquals("feature/TASK-1", (candidate.getValue("branch") as JsonPrimitive).content)
+        assertEquals("merged", (candidate.getValue("reason") as JsonPrimitive).content)
+        assertEquals(emptyList(), json.strings("removed"))
+        assertEquals(
+            setOf("gradleDaemonsStopped", "emulatorsStopped", "simulatorsDeleted", "derivedDataDeleted"),
+            json.getValue("providers").jsonObject.keys,
+        )
+        assertFalse(executor.calls.any { it.first.take(3) == listOf("git", "worktree", "remove") })
+    }
+
+    @Test
+    fun `clean json lists a worktree kept because an agent runs in it`() {
+        val exitCode = cli(agentRunningIn(merged)).run(listOf("clean", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = jsonOut()
+        assertEquals(emptyList(), json.getValue("candidates").jsonArray.toList())
+        val kept = json.getValue("keptForAgents").jsonArray.single().jsonObject
+        assertEquals(merged, (kept.getValue("path") as JsonPrimitive).content)
+        assertEquals(listOf("claude"), kept.strings("agents"))
+    }
+
+    @Test
+    fun `clean json lists the worktrees whose status couldn't be read`() {
+        val executor = repositoryExecutor { command, directory ->
+            if ("status" in command && directory == merged) Executor.fail(command, "fatal: not a git repository") else null
+        }
+
+        cli(executor).run(listOf("clean", "--json"))
+
+        val skipped = jsonOut().getValue("skipped").jsonArray.single().jsonObject
+        assertEquals(setOf("path", "reason"), skipped.keys)
+        assertEquals(merged, (skipped.getValue("path") as JsonPrimitive).content)
+    }
+
+    @Test
+    fun `clean json with yes reports the removal and the deleted branches`() {
+        val executor = repositoryExecutor()
+
+        val exitCode = cli(executor).run(listOf("clean", "--yes", "--delete-branches", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = jsonOut()
+        assertEquals(JsonPrimitive(false), json.getValue("dryRun"))
+        assertEquals(listOf(merged), json.strings("removed"))
+        assertEquals(listOf("feature/TASK-1"), json.strings("deletedBranches"))
+        assertTrue(executor.ran("git", "worktree", "remove", merged))
+    }
+
+    @Test
+    fun `clean json reports the failures and exits with 1`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command.take(3) == listOf("git", "worktree", "remove")) Executor.fail(command, "is dirty") else null
+        }
+
+        val exitCode = cli(executor).run(listOf("clean", "--yes", "--json"))
+
+        assertEquals(1, exitCode)
+        val failure = jsonOut().getValue("failures").jsonArray.single().jsonObject
+        assertEquals(setOf("path", "message"), failure.keys)
+        assertEquals(merged, (failure.getValue("path") as JsonPrimitive).content)
+        assertEquals(emptyList(), jsonOut().strings("removed"))
+    }
+
+    @Test
+    fun `clean json with nothing to remove prints empty lists`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command.take(3) == listOf("git", "worktree", "list")) Executor.ok(command, porcelain.substringBefore("worktree $merged")) else null
+        }
+
+        val exitCode = cli(executor).run(listOf("clean", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(emptyList(), jsonOut().getValue("candidates").jsonArray.toList())
+    }
+
+    @Test
+    fun `clean json stops the emulators of removed worktrees`() {
+        environmentStore.portsByAdminDirectory["$base/.git/worktrees/TASK-1"] = mapOf("emulator" to 5556)
+        androidSdk.states["emulator-5556"] = EmulatorState.RUNNING
+
+        val exitCode = cli(executorWithAdminDirectories(), provisioning = emulatorProvisioning)
+            .run(listOf("clean", "--yes", "--stop-emulators", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf("emulator-5556"), jsonOut().getValue("providers").jsonObject.strings("emulatorsStopped"))
+    }
+
+    @Test
+    fun `clean json outside a repository prints nothing on standard output`() {
+        val executor = Executor { command, _ -> Executor.fail(command, "fatal: not a git repository", 128) }
+
+        val exitCode = cli(executor, workingDirectory = "/tmp/elsewhere").run(listOf("clean", "--json"))
+
+        assertEquals(1, exitCode)
+        assertEquals("", out.toString())
+        assertTrue(err.startsWith("shogun: "), err.toString())
+    }
+
+    @Test
+    fun `gradle json lists the daemons with their state and owner`() {
+        val daemons = FakeGradleDaemonSource(
+            listOf(
+                gradleDaemon(10, idleSinceTenMinutes, lastBuildDirectory = merged, memoryBytes = 1_073_741_824),
+                gradleDaemon(11, DaemonState.Busy, lastBuildDirectory = "/home/dev/projects/gone", memoryBytes = 1_073_741_824),
+                kotlinDaemon(12, memoryBytes = 536_870_912),
+            ),
+        )
+        val fileManager = FakeFileManager(existing = listOf(base, merged))
+
+        val exitCode = cli(repositoryExecutor(), fileManager = fileManager, daemons = daemons).run(listOf("gradle", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = jsonOut()
+        assertEquals(setOf("daemons", "totalMemoryBytes"), json.keys)
+        assertEquals(JsonPrimitive(2_684_354_560L), json.getValue("totalMemoryBytes"))
+        val first = json.getValue("daemons").jsonArray[0].jsonObject
+        assertEquals(setOf("pid", "kind", "version", "memoryBytes", "state", "idleSince", "worktree"), first.keys)
+        assertEquals(JsonPrimitive(10), first.getValue("pid"))
+        assertEquals("idle", (first.getValue("state") as JsonPrimitive).content)
+        assertEquals(merged, (first.getValue("worktree") as JsonPrimitive).content)
+        assertEquals("removed", (json.getValue("daemons").jsonArray[1].jsonObject.getValue("worktree") as JsonPrimitive).content)
+        val kotlin = json.getValue("daemons").jsonArray[2].jsonObject
+        assertEquals("kotlin", (kotlin.getValue("kind") as JsonPrimitive).content)
+        assertEquals(JsonNull, kotlin.getValue("idleSince"))
+    }
+
+    @Test
+    fun `gradle json without daemons prints an empty list`() {
+        val exitCode = cli(repositoryExecutor()).run(listOf("gradle", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(emptyList(), jsonOut().getValue("daemons").jsonArray.toList())
+        assertEquals(JsonPrimitive(0), jsonOut().getValue("totalMemoryBytes"))
+    }
+
+    @Test
+    fun `gradle stop json lists the stopped and kept daemons`() {
+        val daemons = FakeGradleDaemonSource(
+            listOf(
+                gradleDaemon(10, idleSinceTenMinutes),
+                gradleDaemon(12, DaemonState.Busy),
+            ),
+        )
+
+        val exitCode = cli(repositoryExecutor(), daemons = daemons).run(listOf("gradle", "stop", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = jsonOut()
+        assertEquals(setOf("stopped", "kept", "notDaemons", "failures"), json.keys)
+        assertEquals(listOf(JsonPrimitive(10)), json.getValue("stopped").jsonArray.toList())
+        val kept = json.getValue("kept").jsonArray.single().jsonObject
+        assertEquals(setOf("pid", "kind", "reason"), kept.keys)
+        assertEquals("busy", (kept.getValue("reason") as JsonPrimitive).content)
+    }
+
+    @Test
+    fun `gradle stop json of a process that isn't a daemon exits with 1`() {
+        val exitCode = cli(repositoryExecutor()).run(listOf("gradle", "stop", "99", "--json"))
+
+        assertEquals(1, exitCode)
+        assertEquals(listOf(JsonPrimitive(99)), jsonOut().getValue("notDaemons").jsonArray.toList())
+    }
+
+    private fun xcodeProvisioning() = FakeRepositoryProvisioningSource(
+        byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(xcode = XcodeProvider(compilationCache = true)))),
+    )
+
+    @Test
+    fun `xcode json lists the folders of the worktrees and the orphans`() {
+        val firstProject = "$base/iosApp/iosApp.xcodeproj"
+        val orphanProject = "/home/dev/projects/gone/Gone.xcodeproj"
+        val derivedData = FakeDerivedDataSource(
+            existing = listOf(
+                FakeDerivedDataSource.derivedData("Main-hash", firstProject, sizeBytes = 1_073_741_824L),
+                FakeDerivedDataSource.derivedData("Gone-hash", orphanProject, sizeBytes = 2_147_483_648L),
+            ),
+            existingProjects = setOf(firstProject),
+        )
+        val fileManager = FakeFileManager(existing = listOf(base, merged))
+
+        val exitCode = cli(repositoryExecutor(), fileManager = fileManager, provisioning = xcodeProvisioning(), derivedDataSource = derivedData)
+            .run(listOf("xcode", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = jsonOut()
+        assertEquals(setOf("active", "folders", "orphans", "unavailableVolumeFolders", "compilationCacheBytes"), json.keys)
+        assertEquals(JsonPrimitive(true), json.getValue("active"))
+        val folder = json.getValue("folders").jsonArray.single().jsonObject
+        assertEquals(setOf("path", "sizeBytes", "worktree"), folder.keys)
+        assertEquals(base, (folder.getValue("worktree") as JsonPrimitive).content)
+        assertEquals(JsonPrimitive(1_073_741_824L), folder.getValue("sizeBytes"))
+        val orphan = json.getValue("orphans").jsonArray.single().jsonObject
+        assertEquals(setOf("path", "sizeBytes"), orphan.keys)
+        assertEquals(JsonPrimitive(2_147_483_648L), orphan.getValue("sizeBytes"))
+    }
+
+    @Test
+    fun `xcode json says when the provider isn't active`() {
+        val exitCode = cli(repositoryExecutor()).run(listOf("xcode", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(JsonPrimitive(false), jsonOut().getValue("active"))
+        assertEquals(JsonNull, jsonOut().getValue("compilationCacheBytes"))
+    }
+
+    @Test
+    fun `xcode clean json lists the deleted folders and the freed bytes`() {
+        val first = FakeDerivedDataSource.derivedData("Gone1-hash", "/home/dev/projects/gone1/App.xcodeproj", 1_073_741_824L)
+        val second = FakeDerivedDataSource.derivedData("Gone2-hash", "/home/dev/projects/gone2/App.xcodeproj", 1_073_741_824L)
+        val derivedData = FakeDerivedDataSource(existing = listOf(first, second))
+
+        val exitCode = cli(repositoryExecutor(), provisioning = xcodeProvisioning(), derivedDataSource = derivedData)
+            .run(listOf("xcode", "clean", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = jsonOut()
+        assertEquals(setOf("active", "deleted", "freedBytes", "failures"), json.keys)
+        assertEquals(listOf(first.path, second.path), json.strings("deleted"))
+        assertEquals(JsonPrimitive(2_147_483_648L), json.getValue("freedBytes"))
+    }
+
+    @Test
+    fun `remove json reports the removal and what was released`() {
+        environmentStore.portsByAdminDirectory["$base/.git/worktrees/TASK-1"] = mapOf("emulator" to 5556)
+        androidSdk.states["emulator-5556"] = EmulatorState.RUNNING
+
+        val exitCode = cli(executorWithAdminDirectories(), provisioning = emulatorProvisioning).run(listOf("remove", "TASK-1", "--delete-branch", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = jsonOut()
+        assertEquals(setOf("path", "branch", "branchDeleted", "providers", "failures"), json.keys)
+        assertEquals(merged, (json.getValue("path") as JsonPrimitive).content)
+        assertEquals("feature/TASK-1", (json.getValue("branchDeleted") as JsonPrimitive).content)
+        assertEquals(
+            setOf("emulatorsStopped", "simulatorsStopped", "gradleDaemonsStopped"),
+            json.getValue("providers").jsonObject.keys,
+        )
+        assertEquals(listOf("emulator-5556"), json.getValue("providers").jsonObject.strings("emulatorsStopped"))
+    }
+
+    @Test
+    fun `remove json leaves the branch null when it isn't deleted`() {
+        val exitCode = cli(executorWithAdminDirectories()).run(listOf("remove", "TASK-1", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(JsonNull, jsonOut().getValue("branchDeleted"))
+    }
+
+    @Test
+    fun `remove json prints nothing on standard output when the worktree has changes`() {
+        val exitCode = cli(executorWithAdminDirectories()).run(listOf("remove", "spike", "--json"))
+
+        assertEquals(1, exitCode)
+        assertEquals("", out.toString())
+    }
+
+    @Test
+    fun `repair json lists the re-linked worktrees`() {
+        val moved = "/home/dev/old-place/TASK-1"
+        val executor = repositoryExecutor { command, _ ->
+            if (command.take(3) == listOf("git", "worktree", "list")) Executor.ok(command, porcelain.replace(merged, moved)) else null
+        }
+        val fileManager = FakeFileManager(existing = listOf(base, merged))
+
+        val exitCode = cli(executor, fileManager = fileManager).run(listOf("repair", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = jsonOut()
+        assertEquals(setOf("repaired"), json.keys)
+        assertEquals(listOf(merged), json.strings("repaired"))
+    }
+
+    @Test
+    fun `repair json with nothing to repair prints an empty list`() {
+        val exitCode = cli(repositoryExecutor()).run(listOf("repair", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(emptyList(), jsonOut().strings("repaired"))
+    }
 }
