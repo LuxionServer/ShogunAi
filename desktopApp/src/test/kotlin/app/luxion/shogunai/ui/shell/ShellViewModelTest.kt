@@ -2,7 +2,9 @@ package app.luxion.shogunai.ui.shell
 
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeShellPreferenceRepository
+import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.model.Project
+import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.ProjectConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -489,5 +491,34 @@ class ShellViewModelTest {
         viewModel.rememberPaletteItem("project:mobile", setOf("project:api", "project:mobile"))
 
         assertEquals(listOf("project:mobile", "project:api"), viewModel.recentPaletteItems)
+    }
+
+    @Test
+    fun `an unreadable projects file shows no projects and reports the file`() {
+        val unreadable = WorktreeError.LocalFileUnreadable("~/.shogunai/projects.json", "unexpected token")
+        val failing = object : ProjectRepository {
+            override fun list(): List<Project> = throw unreadable
+            override fun save(project: Project) = Unit
+            override fun delete(id: String) = Unit
+        }
+
+        val viewModel = ShellViewModel(failing, preferences)
+
+        assertTrue(viewModel.projects.isEmpty())
+        assertEquals(listOf(unreadable), viewModel.unreadableFiles)
+        viewModel.dismissUnreadableFiles()
+        assertTrue(viewModel.unreadableFiles.isEmpty())
+    }
+
+    @Test
+    fun `a settings file that was reset is reported and acknowledged on dismissal`() {
+        val problem = WorktreeError.LocalFileUnreadable("~/.shogunai/settings.json", null)
+        var pending: WorktreeError.LocalFileUnreadable? = problem
+
+        val viewModel = ShellViewModel(repository, preferences, { pending }, { pending = null })
+
+        assertEquals(listOf(problem), viewModel.unreadableFiles)
+        viewModel.dismissUnreadableFiles()
+        assertNull(pending)
     }
 }

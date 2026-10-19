@@ -32,6 +32,18 @@ class CreateWorktreeUseCaseTest {
     private val baseWithSecrets = listOf(config.baseRepositoryPath) + secretsInBase
 
     @Test
+    fun `a task id with a slash maps to one folder and keeps the slash in the branch`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+        val useCase = CreateWorktreeUseCase(config, executor, FakeFileManager(baseWithSecrets), FakeRepositoryProvisioningSource())
+
+        val worktree = useCase("team/TASK-1", BranchType.FEATURE).getOrThrow()
+
+        assertEquals("/home/dev/projects/team-TASK-1", worktree.path)
+        assertEquals("feature/team/TASK-1", worktree.branch)
+        assertTrue(executor.executed("git", "worktree", "add", "/home/dev/projects/team-TASK-1", "-b", "feature/team/TASK-1"))
+    }
+
+    @Test
     fun `creates worktree and copies secret files on success`() = runTest {
         val executor = FakeShellCommandExecutor { success(it) }
         val fileManager = FakeFileManager(existing = baseWithSecrets)
@@ -206,6 +218,7 @@ class CreateWorktreeUseCaseTest {
             executor.executed("git", "worktree", "remove", "--force", worktreePath),
             "should roll back the incomplete worktree",
         )
+        assertTrue(executor.executed("git", "branch", "-D", "--", "feature/TASK-123"))
     }
 
     @Test
@@ -360,6 +373,7 @@ class CreateWorktreeUseCaseTest {
 
         assertIs<WorktreeError.NoFreePort>(error)
         assertTrue(executor.executed("git", "worktree", "remove", "--force", worktreePath))
+        assertTrue(executor.executed("git", "branch", "-D", "--", "feature/TASK-123"))
     }
 
     @Test

@@ -19,7 +19,7 @@ La salida es texto plano en inglés; los scripts deben leer la línea única de 
 | Código | Significado |
 |---|---|
 | `0` | Éxito. |
-| `1` | La operación falló; el motivo va a la salida de error. |
+| `1` | La operación falló; el motivo va a la salida de error. Los fallos que un comando no trata de forma específica se imprimen en una sola línea que empieza por `shogun:`, nunca como un stack trace. |
 | `2` | Uso incorrecto: comando u opción desconocidos, argumento que falta, o entrada de un hook que no es el JSON esperado. |
 | `3` | `provision --check` encontró diferencias entre el worktree y el repositorio base. |
 
@@ -37,6 +37,10 @@ Crea un worktree, copia en él los archivos declarados, prepara su [entorno](../
 - Con un id de tarea, el worktree recibe una rama nueva `feature/<task-id>`, o `fix/<task-id>` con `--fix`. La rama parte del HEAD del worktree donde ejecutas el comando, o de `--from <ref>` (una rama, tag o commit; una referencia desconocida falla antes de crear nada).
 - Con `--branch`, el worktree hace checkout de una rama local existente. `--fix` y `--from` no se aceptan con ella.
 - `--worktrees-root <dir>` indica dónde va el worktree. Es obligatorio cuando el repositorio no tiene proyecto en la app de escritorio; las rutas relativas se resuelven desde el directorio actual.
+- Un id de tarea con `/` (`team/TASK-1`) conserva la `/` en la rama (`feature/team/TASK-1`) y se convierte en una sola carpeta, `team-TASK-1`.
+- Si la creación del worktree falla después de que Git haya creado el worktree o su rama nueva, se eliminan ambos, así que volver a intentarlo con el mismo id de tarea funciona. Una rama que ya existía nunca se borra.
+- Funciona en submódulos y en repositorios cuya carpeta de Git está separada del árbol de trabajo. En un repositorio bare falla diciendo que los repositorios bare todavía no están soportados, y en un repositorio sin commits falla pidiendo un primer commit.
+- Cuando Git falla por una causa que reconoce (la rama ya existe, hay un archivo de bloqueo, permiso denegado…), una línea `hint:` tras el mensaje de Git lo explica y sugiere qué hacer, por ejemplo `shogun new --branch feature/TASK-123`.
 
 ### `provision`
 
@@ -76,7 +80,7 @@ Lista todos los worktrees del repositorio, uno por línea: ruta, rama (o `(detac
 | `ahead=N behind=N` | Divergencia respecto a su upstream. |
 | `merged` | Mergeado en la rama principal. |
 | `folder-missing` | Su carpeta se borró a mano. |
-| `status-unavailable` | No se pudo leer su estado. |
+| `status-unavailable (motivo)` | No se pudo leer su estado, con el motivo de Git. |
 
 #### `status --json`
 
@@ -118,6 +122,7 @@ Imprime un único objeto JSON compacto en una línea, en vez de las líneas de t
 | `main`, `locked`, `folderMissing` | El checkout principal, retenido por una sesión de agente, carpeta borrada a mano. |
 | `origin` | `shogunai`, `claude-code`, `herdr` u `other`; `null` para el checkout principal. |
 | `status` | `null` cuando falta la carpeta o no se pudo leer su estado. |
+| `statusProblem` | Solo aparece cuando no se pudo leer el estado: el motivo de Git. |
 | `status.uncommittedChanges`, `status.merged` | Cambios sin commitear; mergeado en la rama principal. |
 | `status.upstream`, `status.mainBranch` | `{ "ahead": n, "behind": n }` respecto al upstream y a la rama principal; `null` si no hay. |
 | `status.lastCommitAt` | Hora del último commit en ISO-8601 UTC, o `null`. |
@@ -131,11 +136,13 @@ shogun clean [--yes|-y] [--delete-branches] [--stop-gradle-daemons] [--stop-emul
              [--delete-simulators] [--delete-derived-data]
 ```
 
-Selecciona los mismos worktrees que "Limpiar" en la app de escritorio: ni el principal ni los bloqueados, y o bien mergeados sin cambios sin commitear o bien sin carpeta. Sin `--yes` solo lista lo que haría (`would remove …`); con `--yes` lo hace (`removed …`). Si no hay nada que hacer imprime `Nothing to clean up.`
+Selecciona los mismos worktrees que "Limpiar" en la app de escritorio: ni el principal, ni los bloqueados, ni uno donde se ejecute un agente, y o bien mergeados sin cambios sin commitear o bien sin carpeta. Sin `--yes` solo lista lo que haría (`would remove …`) y termina con el comando que hay que ejecutar, repitiendo las opciones que diste y nombrando solo lo que se eliminaría; con `--yes` lo hace (`removed …`). Si no hay nada que hacer imprime `Nothing to clean up.`
+
+Un worktree donde se ejecuta un agente se lista como `kept <ruta> (claude is running)`; si en la plataforma no se pueden comprobar los agentes, una nota en la salida de error lo dice. Un worktree cuyo estado no se pudo leer se lista como `skipped <ruta> (status unavailable: <motivo>)`.
 
 | Opción | Además… |
 |---|---|
-| `--delete-branches` | Borra las ramas de los worktrees eliminados si están mergeadas (`kept branch …` si no). |
+| `--delete-branches` | Borra las ramas de los worktrees eliminados si están mergeadas en la rama principal del proyecto (`kept branch …` si no). |
 | `--stop-gradle-daemons` | Para los daemons de Gradle ociosos cuya última build fue en un worktree eliminado. |
 | `--stop-emulators` | Para los emuladores de Android de los worktrees eliminados. |
 | `--delete-simulators` | Borra los simuladores de iOS de los worktrees eliminados y los simuladores de ShogunAi huérfanos. |
@@ -203,13 +210,14 @@ Estos comandos están pensados para que los llamen agentes y herramientas, no pa
 | Comando | Lo llama |
 |---|---|
 | `shogun hook worktree-create` | El hook `WorktreeCreate` de Claude Code. Lee `name` y `cwd` de la entrada estándar, crea (o reutiliza) un worktree provisionado en `feature/<name>` que parte del HEAD del worktree de `cwd`, e imprime su ruta. Si falla un comando posterior a la creación, imprime igualmente la ruta como última línea y sale con 0, con el fallo en la salida de error, para que Claude Code use el worktree. Los comandos posteriores a la creación sin aprobar se omiten con una nota por la salida de error; nunca pregunta. |
-| `shogun hook worktree-remove` | El hook `WorktreeRemove` de Claude Code. Elimina el worktree de `worktree_path`, borra su rama solo si está mergeada y cierra su espacio de Herdr. |
+| `shogun hook worktree-remove` | El hook `WorktreeRemove` de Claude Code. Elimina el worktree de `worktree_path`, borra su rama solo si está mergeada en la rama principal del proyecto (una rama mergeada solo en su propio upstream se conserva, con una nota en la salida de error) y cierra su espacio de Herdr. |
 | `shogun hook session-start` | El hook `SessionStart` de Claude Code. Añade el entorno del worktree a `CLAUDE_ENV_FILE` y le dice a Claude qué valores usa. |
-| `shogun hook herdr` | El plugin de ShogunAi para Herdr, en `worktree.created` (provisiona el worktree, omitiendo con una nota los comandos posteriores a la creación sin aprobar) y `worktree.removed` (borra su rama si está mergeada). Lee `HERDR_PLUGIN_EVENT`, `HERDR_PLUGIN_EVENT_JSON` y `HERDR_BIN_PATH`. |
+| `shogun hook herdr` | El plugin de ShogunAi para Herdr, en `worktree.created` (provisiona el worktree, omitiendo con una nota los comandos posteriores a la creación sin aprobar) y `worktree.removed` (borra su rama si está mergeada en la rama principal del proyecto). Lee `HERDR_PLUGIN_EVENT`, `HERDR_PLUGIN_EVENT_JSON` y `HERDR_BIN_PATH`. |
 
 ## Ayuda y versión
 
 | Comando | Imprime |
 |---|---|
 | `shogun help`, `-h`, `--help` | El resumen de uso. |
+| `shogun <comando> --help`, `-h` | El uso y las opciones de ese comando, con código de salida 0. |
 | `shogun version`, `-v`, `--version` | `shogun <versión>`, la misma versión que la app. |

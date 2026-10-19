@@ -429,7 +429,7 @@ Finds the base repository (main worktree) that contains a directory, for front e
 
 ### `DeleteMergedBranchUseCase`
 
-Deletes a local branch with `git branch -d`, which Git refuses when the branch isn't merged, and returns whether it was deleted instead of failing. Used by the CLI's `WorktreeRemove` hook, where a kept branch is expected rather than an error.
+Deletes a local branch only when it is contained in the project's main branch (the same rule `clean` uses), and returns whether it was deleted instead of failing. A branch merged only into its own upstream is kept. Used by the CLI's Claude Code `WorktreeRemove` and Herdr hooks, where a kept branch is expected rather than an error.
 
 ### `ProvisionWorktreeUseCase`
 

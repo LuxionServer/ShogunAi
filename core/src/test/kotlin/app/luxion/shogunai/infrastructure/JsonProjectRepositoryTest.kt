@@ -8,10 +8,16 @@ import java.nio.file.Files
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.deleteExisting
 import kotlin.io.path.deleteIfExists
+import kotlin.io.path.listDirectoryEntries
+import kotlin.io.path.name
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.concurrent.thread
+import app.luxion.shogunai.domain.model.WorktreeError
 
 class JsonProjectRepositoryTest {
 
@@ -21,7 +27,7 @@ class JsonProjectRepositoryTest {
 
     @AfterTest
     fun tearDown() {
-        storagePath.deleteIfExists()
+        tempDir.listDirectoryEntries().forEach { it.deleteIfExists() }
         tempDir.deleteExisting()
     }
 
@@ -104,5 +110,45 @@ class JsonProjectRepositoryTest {
         val loaded = JsonProjectRepository(storagePath).list().single().config
         assertEquals(project.config.emulator, loaded.emulator)
         assertEquals(project.config.simulator, loaded.simulator)
+    }
+
+    private fun project(id: String) = Project(
+        id = id,
+        name = id,
+        config = ProjectConfig(baseRepositoryPath = "/home/dev/projects/$id", worktreesRoot = "/home/dev/projects", secretFiles = emptyList()),
+    )
+
+    @Test
+    fun `reports a corrupted file with its path instead of a stack trace`() {
+        Files.writeString(storagePath, "{ not json")
+
+        val error = assertFailsWith<WorktreeError.LocalFileUnreadable> { repository.list() }
+
+        assertEquals(storagePath.toString(), error.path)
+        assertTrue(Files.readString(storagePath) == "{ not json", "listing never touches the file")
+    }
+
+    @Test
+    fun `keeps the unreadable file before saving over it`() {
+        Files.writeString(storagePath, "{ not json")
+
+        repository.save(project("project-1"))
+
+        val kept = tempDir.listDirectoryEntries().single { it.name.startsWith("projects.json.unreadable-") }
+        assertEquals("{ not json", Files.readString(kept))
+        assertEquals(listOf("project-1"), repository.list().map { it.id })
+    }
+
+    @Test
+    fun `concurrent writers don't lose each other's projects`() {
+        val writers = (1..2).map { writer ->
+            thread {
+                val own = JsonProjectRepository(storagePath)
+                repeat(15) { own.save(project("writer-$writer-$it")) }
+            }
+        }
+        writers.forEach { it.join() }
+
+        assertEquals(30, repository.list().size)
     }
 }

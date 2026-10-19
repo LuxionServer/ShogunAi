@@ -1,5 +1,6 @@
 package app.luxion.shogunai.infrastructure
 
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.GradleDaemonSource
 import app.luxion.shogunai.domain.model.DaemonKind
@@ -21,7 +22,7 @@ class ProcessGradleDaemonSource(
 ) : GradleDaemonSource {
 
     override suspend fun list(): List<DaemonProcess> {
-        val result = executor.execute(PS_COMMAND)
+        val result = executor.executeWithin(PS_COMMAND, CommandTimeouts.LISTING)
         if (!result.isSuccess) throw WorktreeError.ProcessListingFailed(result.command, result.exitCode)
         return parseDaemonProcesses(result.stdout).map { process ->
             if (process.kind != DaemonKind.GRADLE || process.gradleVersion == null) return@map process

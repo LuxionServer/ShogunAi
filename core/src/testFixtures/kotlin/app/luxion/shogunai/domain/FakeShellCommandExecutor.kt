@@ -2,6 +2,7 @@ package app.luxion.shogunai.domain
 
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import kotlin.time.Duration
 
 class FakeShellCommandExecutor(
     private val responder: (command: List<String>) -> CommandResult = { success(it) },
@@ -14,6 +15,17 @@ class FakeShellCommandExecutor(
         executedCommands += command
         workingDirectories += workingDirectory
         return responder(command)
+    }
+
+    val timeouts = mutableMapOf<List<String>, Duration>()
+
+    override suspend fun executeWithin(
+        command: List<String>,
+        timeout: Duration,
+        workingDirectory: String?,
+    ): CommandResult {
+        timeouts[command] = timeout
+        return execute(command, workingDirectory)
     }
 
     fun executed(vararg args: String): Boolean = executedCommands.any { it == args.toList() }

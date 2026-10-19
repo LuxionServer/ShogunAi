@@ -66,6 +66,19 @@ class WorktreeEmulatorUseCasesTest {
     }
 
     @Test
+    fun `fails at once with the log tail when the emulator process exits`() = runTest {
+        val sdk = FakeAndroidSdk(bootAfterPolls = 1000)
+        sdk.process = FakeAndroidSdk.FakeEmulatorProcess(alive = false, log = "line 1\nPANIC: Broken AVD system path")
+
+        val error = start(sdk, timeoutMs = 180_000)(config, task).exceptionOrNull()
+
+        assertIs<WorktreeError.EmulatorExitedEarly>(error)
+        assertEquals("emulator-5554", error.serial)
+        assertTrue(error.lastLogLines.endsWith("PANIC: Broken AVD system path"))
+        assertTrue(pauses.isEmpty(), "no boot timeout is waited")
+    }
+
+    @Test
     fun `an emulator already running isn't started again`() = runTest {
         val sdk = FakeAndroidSdk(states = mutableMapOf("emulator-5554" to EmulatorState.RUNNING))
 

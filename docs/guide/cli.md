@@ -19,7 +19,7 @@ Output is plain English text; scripts should read `new`'s single line and `statu
 | Code | Meaning |
 |---|---|
 | `0` | Success. |
-| `1` | The operation failed; the reason is on standard error. |
+| `1` | The operation failed; the reason is on standard error. Failures a command doesn't handle specifically are printed as one line starting with `shogun:`, never as a stack trace. |
 | `2` | Wrong usage: unknown command or option, missing argument, or hook input that isn't the expected JSON. |
 | `3` | `provision --check` found differences between the worktree and the base repository. |
 
@@ -37,6 +37,10 @@ Creates a worktree, copies the declared files into it, prepares its [environment
 - With a task id, the worktree gets a new `feature/<task-id>` branch, or `fix/<task-id>` with `--fix`. The branch starts at the HEAD of the worktree you run the command in, or at `--from <ref>` (a branch, tag or commit; an unknown ref fails before anything is created).
 - With `--branch`, the worktree checks out an existing local branch. `--fix` and `--from` aren't accepted with it.
 - `--worktrees-root <dir>` sets where the worktree goes. It's required when the repository has no project in the desktop app; relative paths are resolved against the current directory.
+- A task id containing `/` (`team/TASK-1`) keeps the `/` in the branch (`feature/team/TASK-1`) and becomes one folder, `team-TASK-1`.
+- If creating the worktree fails after Git created it or its new branch, both are removed, so retrying with the same task id works. A branch that existed before is never deleted.
+- It works in submodules and in repositories whose Git folder is separate from the working tree. In a bare repository it fails saying bare repositories aren't supported yet, and in a repository without commits it fails asking for a first commit.
+- When Git fails for a cause it recognizes (branch already exists, lock file present, permission denied…), a `hint:` line after Git's message explains it and suggests what to do, for example `shogun new --branch feature/TASK-123`.
 
 ### `provision`
 
@@ -76,7 +80,7 @@ Lists every worktree of the repository, one per line: path, branch (or `(detache
 | `ahead=N behind=N` | Divergence from its upstream. |
 | `merged` | Merged into the main branch. |
 | `folder-missing` | The folder was deleted by hand. |
-| `status-unavailable` | Its status couldn't be read. |
+| `status-unavailable (reason)` | Its status couldn't be read, with Git's reason. |
 
 #### `status --json`
 
@@ -118,6 +122,7 @@ Prints one compact JSON object on a single line instead of the text lines. Error
 | `main`, `locked`, `folderMissing` | The main checkout, held by an agent session, folder deleted by hand. |
 | `origin` | `shogunai`, `claude-code`, `herdr` or `other`; `null` for the main checkout. |
 | `status` | `null` when the folder is missing or its status couldn't be read. |
+| `statusProblem` | Only present when the status couldn't be read: Git's reason. |
 | `status.uncommittedChanges`, `status.merged` | Uncommitted changes; merged into the main branch. |
 | `status.upstream`, `status.mainBranch` | `{ "ahead": n, "behind": n }` against the upstream and the main branch; `null` when there is none. |
 | `status.lastCommitAt` | Time of the last commit in ISO-8601 UTC, or `null`. |
@@ -131,11 +136,13 @@ shogun clean [--yes|-y] [--delete-branches] [--stop-gradle-daemons] [--stop-emul
              [--delete-simulators] [--delete-derived-data]
 ```
 
-Selects the same worktrees as the desktop app's "Clean up": not the main one, not locked, and either merged with no uncommitted changes or with their folder gone. Without `--yes` it only lists what it would do (`would remove …`); with `--yes` it does it (`removed …`). With nothing to do it prints `Nothing to clean up.`
+Selects the same worktrees as the desktop app's "Clean up": not the main one, not locked, not one where an agent is running, and either merged with no uncommitted changes or with their folder gone. Without `--yes` it only lists what it would do (`would remove …`) and ends with the command to run, repeating the options you gave and naming only what would be removed; with `--yes` it does it (`removed …`). With nothing to do it prints `Nothing to clean up.`
+
+A worktree where an agent is running is listed as `kept <path> (claude is running)`; if running agents can't be checked on the platform, a note on standard error says so. A worktree whose status couldn't be read is listed as `skipped <path> (status unavailable: <reason>)`.
 
 | Option | Also… |
 |---|---|
-| `--delete-branches` | Deletes the removed worktrees' branches if they're merged (`kept branch …` otherwise). |
+| `--delete-branches` | Deletes the removed worktrees' branches if they're merged into the project's main branch (`kept branch …` otherwise). |
 | `--stop-gradle-daemons` | Stops the idle Gradle daemons whose last build was in a removed worktree. |
 | `--stop-emulators` | Stops the removed worktrees' Android emulators. |
 | `--delete-simulators` | Deletes the removed worktrees' iOS simulators and orphaned ShogunAi simulators. |
@@ -203,13 +210,14 @@ These commands are meant to be called by agents and tools, not typed. How to con
 | Command | Called by |
 |---|---|
 | `shogun hook worktree-create` | Claude Code's `WorktreeCreate` hook. Reads `name` and `cwd` from standard input, creates (or reuses) a provisioned worktree on `feature/<name>` starting at the HEAD of the worktree in `cwd`, and prints its path. If a post-creation command fails it still prints the path as the last line and exits with 0, with the failure on standard error, so Claude Code uses the worktree. Unapproved post-creation commands are skipped with a note on standard error; it never asks. |
-| `shogun hook worktree-remove` | Claude Code's `WorktreeRemove` hook. Removes the worktree in `worktree_path`, deletes its branch only if merged and closes its Herdr workspace. |
+| `shogun hook worktree-remove` | Claude Code's `WorktreeRemove` hook. Removes the worktree in `worktree_path`, deletes its branch only if it's merged into the project's main branch (a branch merged only into its own upstream is kept, with a note on standard error) and closes its Herdr workspace. |
 | `shogun hook session-start` | Claude Code's `SessionStart` hook. Appends the worktree's environment to `CLAUDE_ENV_FILE` and tells Claude which values it uses. |
-| `shogun hook herdr` | The ShogunAi plugin for Herdr, on `worktree.created` (provisions the worktree, skipping unapproved post-creation commands with a note) and `worktree.removed` (deletes its branch if merged). Reads `HERDR_PLUGIN_EVENT`, `HERDR_PLUGIN_EVENT_JSON` and `HERDR_BIN_PATH`. |
+| `shogun hook herdr` | The ShogunAi plugin for Herdr, on `worktree.created` (provisions the worktree, skipping unapproved post-creation commands with a note) and `worktree.removed` (deletes its branch if merged into the project's main branch). Reads `HERDR_PLUGIN_EVENT`, `HERDR_PLUGIN_EVENT_JSON` and `HERDR_BIN_PATH`. |
 
 ## Help and version
 
 | Command | Prints |
 |---|---|
 | `shogun help`, `-h`, `--help` | The usage summary. |
+| `shogun <command> --help`, `-h` | The usage and options of that command, with exit code 0. |
 | `shogun version`, `-v`, `--version` | `shogun <version>`, the same version as the app. |

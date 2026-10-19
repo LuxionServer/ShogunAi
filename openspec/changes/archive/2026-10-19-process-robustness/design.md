@@ -27,7 +27,7 @@ See proposal.md for motivation. Relevant current state:
 
 ## Decisions
 
-**Executor.** Start with `redirectInput(ProcessBuilder.Redirect.from(nullDevice))` (`/dev/null` or `NUL`). Read both streams on `Dispatchers.IO` in `async` blocks; wrap the wait in `withTimeoutOrNull(limit)` when a limit is given. On cancellation or timeout, in a `NonCancellable` block, call `process.descendants().forEach(ProcessHandle::destroyForcibly)` and `process.destroyForcibly()`, which closes the streams and unblocks the readers, then rethrow (`CancellationException`) or throw `CommandExecutionException.TimedOut(command, limit)`. `ShellCommandExecutor.execute` gains an optional `timeout: Duration? = null`; read-only callers (status, worktree list, rev-parse, adb devices, simctl list, ps) pass a limit (30 s for Git reads, 10 s for device and process listings). Alternative: a global default timeout; rejected, it would kill a legitimate long `npm install` or Gradle build.
+**Executor.** Start with `redirectInput(ProcessBuilder.Redirect.from(nullDevice))` (`/dev/null` or `NUL`). Read both streams on `Dispatchers.IO` in `async` blocks; wrap the wait in `withTimeoutOrNull(limit)` when a limit is given. On cancellation or timeout, in a `NonCancellable` block, call `process.descendants().forEach(ProcessHandle::destroyForcibly)` and `process.destroyForcibly()`, which closes the streams and unblocks the readers, then rethrow (`CancellationException`) or throw `CommandExecutionException.TimedOut(command, limit)`. `ShellCommandExecutor` gains `executeWithin(command, timeout, workingDirectory)`, whose default implementation ignores the limit so existing fakes keep working; read-only callers (status, worktree list, rev-parse, adb devices, simctl list, ps) pass a limit (30 s for Git reads, 10 s for device and process listings). Alternative: a global default timeout; rejected, it would kill a legitimate long `npm install` or Gradle build.
 
 **Rollback.** `createWorktreeAt` remembers whether it created the branch (`-b`) and passes that branch to every rollback path, not only the LFS one. Rollback deletes it with `git branch -D -- <branch>` best-effort. A branch that existed before (`--branch` mode) is never in that variable.
 
@@ -37,9 +37,11 @@ See proposal.md for motivation. Relevant current state:
 
 **Shared Git failure hints.** Move `classifyGitFailure` and its messages from the desktop to `core` so the CLI prints the same hint after Git's message. The desktop's i18n strings stay; the CLI uses English text from `core`.
 
-**Repository layout.** Resolve with `git rev-parse --show-toplevel --git-common-dir --is-bare-repository` in one call. Bare → `WorktreeError.BareRepositoryNotSupported`. Otherwise the main worktree is `git worktree list --porcelain`'s first entry, which works for submodules and `--separate-git-dir`. No commits (`rev-parse HEAD` fails) → `WorktreeError.RepositoryHasNoCommits`, raised by `new` instead of the `getOrNull()` fallback.
+**Repository layout.** Resolve with `git rev-parse --show-toplevel --git-common-dir --is-bare-repository` in one call. Bare → `WorktreeError.BareRepositoryNotSupported`. Otherwise the main worktree is `core.worktree` of the common Git folder when set (submodules), or `git worktree list --porcelain`'s first entry (`--separate-git-dir`); `ListWorktreesUseCase` shows a submodule's main worktree at its working tree, since Git lists its Git folder. No commits (`rev-parse HEAD` fails) → `WorktreeError.RepositoryHasNoCommits`, raised by `new` instead of the `getOrNull()` fallback.
 
 **Path comparison.** Reuse `sameDirectory` (normalize, `toRealPath` when it exists, case-insensitive on macOS and Windows) in `ListWorktreesUseCase` and anywhere `baseRepositoryPath` is compared with a Git path.
+
+**Cancelling from the terminal.** `ShogunCli.run` registers a shutdown hook that cancels and joins the running command's job, so Ctrl+C or SIGTERM reaches the executor's cleanup instead of killing the JVM and orphaning the child processes.
 
 **One deletion rule.** `DeleteMergedBranchUseCase` resolves the project's main branch with `ResolveMainBranchUseCase` and uses `deleteIfContained` (already used by cleanup), then `git branch -D -- <b>` only when contained. Both hooks call it.
 

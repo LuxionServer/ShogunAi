@@ -19,6 +19,18 @@ fun classifyGitFailure(stderr: String): GitFailureCause {
     return GitFailureCause.Unknown
 }
 
+fun GitFailureCause.hint(): String? = when (this) {
+    is GitFailureCause.LockFileExists ->
+        "Another Git process seems to be running. Wait for it to finish, or remove ${path ?: "the lock file"} if none is."
+    is GitFailureCause.PermissionDenied ->
+        "Git was denied permission${path?.let { " on $it" }.orEmpty()}. Check the permissions of that folder."
+    GitFailureCause.NotARepository -> "The folder isn't a Git repository. Check the repository path."
+    is GitFailureCause.BranchExists ->
+        "The branch $name already exists. Use another task id, or run 'shogun new --branch $name' to use it."
+    GitFailureCause.LocalChanges -> "The worktree has local changes. Commit or discard them first."
+    GitFailureCause.Unknown -> null
+}
+
 private val LOCK_FILE = Regex("""Unable to create '([^']*\.lock)': File exists""")
 private const val ANOTHER_PROCESS = "Another git process seems to be running"
 private const val PERMISSION_DENIED = "Permission denied"

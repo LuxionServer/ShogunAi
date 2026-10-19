@@ -48,6 +48,7 @@ class HookCommandsTest {
             return when {
                 "--git-common-dir" in command -> CommandResult(command, 0, "/home/dev/projects/main-repo/.git\n", "")
                 command.take(3) == listOf("git", "worktree", "list") -> CommandResult(command, 0, worktreeList, "")
+                command.last() == "HEAD^{commit}" -> CommandResult(command, 0, "abc123\n", "")
                 command.getOrNull(1) == "ls-files" -> CommandResult(command, 0, ".env\u0000", "")
                 else -> CommandResult(command, 0, "", "")
             }
@@ -119,7 +120,7 @@ class HookCommandsTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals("$worktreesRoot/TASK-123\n", out.toString())
-        assertTrue(executor.ran("git", "worktree", "add", "$worktreesRoot/TASK-123", "-b", "feature/TASK-123"))
+        assertTrue(executor.ran("git", "worktree", "add", "$worktreesRoot/TASK-123", "-b", "feature/TASK-123", "abc123"))
         assertTrue(executor.calls.any { it.first.getOrNull(1) == "rev-parse" && it.second == "$base/src" }, "resolves the repository from cwd")
     }
 
@@ -227,7 +228,7 @@ class HookCommandsTest {
 
         assertEquals(0, exitCode, err.toString())
         assertTrue(executor.ran("git", "worktree", "remove", "--force", path))
-        assertTrue(executor.ran("git", "branch", "-d", "--", "feature/TASK-123"))
+        assertTrue(executor.ran("git", "branch", "-D", "--", "feature/TASK-123"))
         assertEquals("", err.toString())
     }
 
@@ -235,13 +236,32 @@ class HookCommandsTest {
     fun `worktree-remove keeps a branch that isn't merged and still succeeds`() {
         val path = "$worktreesRoot/TASK-123"
         val executor = Executor(porcelain(path to "feature/TASK-123")) { command ->
-            if (command.take(3) == listOf("git", "branch", "-d")) CommandResult(command, 1, "", "not fully merged") else null
+            if (command.take(3) == listOf("git", "merge-base", "--is-ancestor")) CommandResult(command, 1, "", "") else null
         }
 
         val exitCode = cli(executor, """{"worktree_path":"$path"}""", existing = listOf(base, path)).run(listOf("hook", "worktree-remove"))
 
         assertEquals(0, exitCode)
-        assertEquals("shogun: kept branch feature/TASK-123 because it isn't merged\n", err.toString())
+        assertEquals("shogun: kept branch feature/TASK-123 because it isn't merged into the main branch\n", err.toString())
+    }
+
+    @Test
+    fun `worktree-remove keeps a branch merged only into its upstream`() {
+        val path = "$worktreesRoot/TASK-123"
+        val executor = Executor(porcelain(path to "feature/TASK-123")) { command ->
+            when {
+                command.take(3) == listOf("git", "merge-base", "--is-ancestor") && command.last() == "main" ->
+                    CommandResult(command, 1, "", "")
+                else -> null
+            }
+        }
+
+        val exitCode = cli(executor, """{"worktree_path":"$path"}""", existing = listOf(base, path)).run(listOf("hook", "worktree-remove"))
+
+        assertEquals(0, exitCode)
+        assertTrue(executor.ran("git", "merge-base", "--is-ancestor", "feature/TASK-123", "main"))
+        assertTrue(executor.branchDeletions().isEmpty())
+        assertEquals("shogun: kept branch feature/TASK-123 because it isn't merged into the main branch\n", err.toString())
     }
 
     @Test
@@ -471,7 +491,7 @@ class HookCommandsTest {
 
     private fun removedEnvironment(json: String? = removedEvent()) = herdrEnvironment(event = "worktree.removed", json = json)
 
-    private fun Executor.branchDeletions() = calls.map { it.first }.filter { it.take(3) == listOf("git", "branch", "-d") }
+    private fun Executor.branchDeletions() = calls.map { it.first }.filter { it.take(3) == listOf("git", "branch", "-D") }
 
     @Test
     fun `herdr deletes the merged branch of a removed worktree`() {
@@ -480,21 +500,21 @@ class HookCommandsTest {
         val exitCode = cli(executor, "", environment = removedEnvironment()).run(listOf("hook", "herdr"))
 
         assertEquals(0, exitCode, err.toString())
-        assertEquals(listOf(listOf("git", "branch", "-d", "--", "feature/TASK-9")), executor.branchDeletions())
-        assertEquals(base, executor.calls.single { it.first.take(3) == listOf("git", "branch", "-d") }.second)
+        assertEquals(listOf(listOf("git", "branch", "-D", "--", "feature/TASK-9")), executor.branchDeletions())
+        assertEquals(base, executor.calls.single { it.first.take(3) == listOf("git", "branch", "-D") }.second)
         assertEquals("", err.toString())
     }
 
     @Test
     fun `herdr keeps the branch of a removed worktree that isn't merged`() {
         val executor = Executor(porcelain()) { command ->
-            if (command.take(3) == listOf("git", "branch", "-d")) CommandResult(command, 1, "", "not fully merged") else null
+            if (command.take(3) == listOf("git", "merge-base", "--is-ancestor")) CommandResult(command, 1, "", "") else null
         }
 
         val exitCode = cli(executor, "", environment = removedEnvironment()).run(listOf("hook", "herdr"))
 
         assertEquals(0, exitCode)
-        assertEquals("shogun: kept branch feature/TASK-9 because it isn't merged\n", err.toString())
+        assertEquals("shogun: kept branch feature/TASK-9 because it isn't merged into the main branch\n", err.toString())
     }
 
     @Test
@@ -526,7 +546,7 @@ class HookCommandsTest {
         val exitCode = cli(executor, "", environment = removedEnvironment(withoutWorkspace)).run(listOf("hook", "herdr"))
 
         assertEquals(0, exitCode, err.toString())
-        assertEquals(listOf(listOf("git", "branch", "-d", "--", "feature/TASK-9")), executor.branchDeletions())
+        assertEquals(listOf(listOf("git", "branch", "-D", "--", "feature/TASK-9")), executor.branchDeletions())
     }
 
     @Test

@@ -206,6 +206,7 @@ object SpanishStrings : Strings {
     override fun cleanupFailed(path: String, detail: String) = "No se pudo eliminar \"$path\": $detail"
     override fun branchKept(branch: String) = "Rama \"$branch\" conservada: no está mergeada en la rama principal"
     override val herdrWorkspaceWillClose = "Está abierto en Herdr: se cerrará su espacio de trabajo y el agente que se ejecuta en él."
+    override fun keptForRunningAgent(name: String, agents: List<String>) = "$name · se conserva, ${agents.joinToString()} está en ejecución"
     override val herdrCleanupNotice = "A los worktrees abiertos en Herdr se les cerrará el espacio de trabajo y el agente que se ejecuta en él."
     override val openInHerdrMark = "abierto en Herdr"
     override fun herdrCloseFailed(path: String, detail: String) = "Eliminado, pero no se pudo cerrar el espacio de trabajo de Herdr de \"$path\": $detail"

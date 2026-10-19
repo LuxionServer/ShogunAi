@@ -206,6 +206,7 @@ object EnglishStrings : Strings {
     override fun cleanupFailed(path: String, detail: String) = "Couldn't remove \"$path\": $detail"
     override fun branchKept(branch: String) = "Branch \"$branch\" kept: it isn't merged into the main branch"
     override val herdrWorkspaceWillClose = "It's open in Herdr: its workspace, and the agent running there, will be closed."
+    override fun keptForRunningAgent(name: String, agents: List<String>) = "$name · kept, ${agents.joinToString()} is running"
     override val herdrCleanupNotice = "The worktrees open in Herdr will have their workspace, and the agent running there, closed."
     override val openInHerdrMark = "open in Herdr"
     override fun herdrCloseFailed(path: String, detail: String) = "Removed, but couldn't close the Herdr workspace of \"$path\": $detail"

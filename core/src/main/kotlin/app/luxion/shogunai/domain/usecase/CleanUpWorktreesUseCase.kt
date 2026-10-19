@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeStatus
@@ -17,10 +18,28 @@ data class CleanupReport(
 
 data class CleanupFailure(val path: String, val error: WorktreeError)
 
-fun selectCleanupCandidates(worktrees: List<Worktree>, statuses: Map<String, WorktreeStatus>): List<Worktree> =
-    worktrees.filter { worktree ->
+data class CleanupSelection(
+    val candidates: List<Worktree>,
+    val keptForRunningAgent: Map<Worktree, List<RunningAgent>> = emptyMap(),
+)
+
+fun selectCleanup(
+    worktrees: List<Worktree>,
+    statuses: Map<String, WorktreeStatus>,
+    runningAgents: Map<String, List<RunningAgent>>? = null,
+): CleanupSelection {
+    val qualifying = worktrees.filter { worktree ->
         !worktree.isMain && !worktree.isLocked && (worktree.isPrunable || statuses[worktree.path].isCleanAndMerged())
     }
+    val (kept, candidates) = qualifying.partition { !it.isPrunable && runningAgents?.get(it.path).orEmpty().isNotEmpty() }
+    return CleanupSelection(candidates, kept.associateWith { runningAgents?.get(it.path).orEmpty() })
+}
+
+fun selectCleanupCandidates(
+    worktrees: List<Worktree>,
+    statuses: Map<String, WorktreeStatus>,
+    runningAgents: Map<String, List<RunningAgent>>? = null,
+): List<Worktree> = selectCleanup(worktrees, statuses, runningAgents).candidates
 
 private fun WorktreeStatus?.isCleanAndMerged(): Boolean =
     this != null && isMerged && uncommittedChanges == 0
@@ -64,7 +83,7 @@ class CleanUpWorktreesUseCase(
 
         if (deleteBranches) {
             removedWorktrees.mapNotNull { it.branch }.forEach { branch ->
-                if (!deleteIfContained(branch, mainBranch)) keptBranches += branch
+                if (!deleteBranchIfContained(executor, config, branch, mainBranch)) keptBranches += branch
             }
         }
 
@@ -74,12 +93,6 @@ class CleanUpWorktreesUseCase(
             failures = failures,
             herdrFailures = herdrFailures,
         )
-    }
-
-    private suspend fun deleteIfContained(branch: String, mainBranch: MainBranch?): Boolean {
-        if (mainBranch == null) return false
-        if (!git("merge-base", "--is-ancestor", branch, mainBranch.ref).isSuccess) return false
-        return git("branch", "-D", "--", branch).isSuccess
     }
 
     private suspend fun git(vararg args: String) =

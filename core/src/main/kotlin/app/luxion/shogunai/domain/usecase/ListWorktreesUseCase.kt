@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -15,15 +16,21 @@ class ListWorktreesUseCase(
         if (fileManager?.exists(config.baseRepositoryPath) == false) {
             throw WorktreeError.BaseRepositoryNotFound(config.baseRepositoryPath)
         }
-        val result = executor.execute(
+        val result = executor.executeWithin(
             command = listOf("git", "worktree", "list", "--porcelain"),
+            timeout = CommandTimeouts.GIT_READ,
             workingDirectory = config.baseRepositoryPath,
         )
         if (!result.isSuccess) {
             throw WorktreeError.GitCommandFailed(result.command, result.exitCode, result.stderr)
         }
-        parseWorktreeList(result.stdout)
-            .map { it.copy(isMain = it.path == config.baseRepositoryPath) }
+        parseWorktreeList(result.stdout).mapIndexed { index, worktree ->
+            when {
+                sameDirectory(worktree.path, config.baseRepositoryPath) -> worktree.copy(isMain = true)
+                index == 0 && normalizePath(worktree.path).contains("/.git/modules/") -> worktree.copy(path = config.baseRepositoryPath, isMain = true)
+                else -> worktree
+            }
+        }
     }
 }
 

@@ -41,6 +41,7 @@ import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.PrimaryButton
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.ErrorFixActions
+import app.luxion.shogunai.ui.components.ErrorNotice
 import app.luxion.shogunai.ui.components.LocalErrorFixActions
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.projectconfig.ProjectSettingsView
@@ -159,6 +160,16 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel, onOpenPrefer
                     ShellContent(appContainer, viewModel, board, machine)
                 }
                 AppMessagesHost(messages, modifier = Modifier.align(Alignment.BottomCenter))
+                if (viewModel.unreadableFiles.isNotEmpty()) {
+                    Column(
+                        modifier = Modifier.align(Alignment.TopCenter).padding(Spacing.md),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+                    ) {
+                        viewModel.unreadableFiles.forEach { problem ->
+                            ErrorNotice(error = problem, onDismiss = viewModel::dismissUnreadableFiles)
+                        }
+                    }
+                }
             }
         }
     }

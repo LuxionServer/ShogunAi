@@ -1,6 +1,7 @@
 package app.luxion.shogunai.domain
 
 import app.luxion.shogunai.domain.io.AndroidSdk
+import app.luxion.shogunai.domain.io.EmulatorProcess
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.SdkLocation
 import app.luxion.shogunai.domain.model.WorktreeError
@@ -23,6 +24,14 @@ class FakeAndroidSdk(
         private set
     private var pollsSinceStart = 0
 
+    class FakeEmulatorProcess(var alive: Boolean = true, var log: String = "") : EmulatorProcess {
+        override val isAlive: Boolean get() = alive
+
+        override fun lastLogLines(count: Int): String = log.lines().takeLast(count).joinToString("\n")
+    }
+
+    var process = FakeEmulatorProcess()
+
     private val location = SdkLocation("/home/dev/Android/sdk", "/home/dev/Android/sdk/emulator/emulator", "/home/dev/Android/sdk/platform-tools/adb")
 
     override fun locate(repositoryPath: String): SdkLocation {
@@ -42,10 +51,11 @@ class FakeAndroidSdk(
         return states.toMap()
     }
 
-    override fun startEmulator(sdk: SdkLocation, avd: String, consolePort: Int, noWindow: Boolean) {
+    override fun startEmulator(sdk: SdkLocation, avd: String, consolePort: Int, noWindow: Boolean): EmulatorProcess {
         started += Started(avd, consolePort, noWindow)
         states[emulatorSerial(consolePort)] = EmulatorState.BOOTING
         pollsSinceStart = 0
+        return process
     }
 
     override suspend fun stopEmulator(sdk: SdkLocation, serial: String) {

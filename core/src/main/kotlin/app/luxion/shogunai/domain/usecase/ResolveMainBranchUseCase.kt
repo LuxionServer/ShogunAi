@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -37,7 +38,7 @@ class ResolveMainBranchUseCase(
         git("rev-parse", "--verify", "--quiet", ref).isSuccess
 
     private suspend fun git(vararg args: String) =
-        executor.execute(listOf("git", *args), workingDirectory = config.baseRepositoryPath)
+        executor.executeWithin(listOf("git", *args), CommandTimeouts.GIT_READ, workingDirectory = config.baseRepositoryPath)
 
     private companion object {
         const val REMOTE = "origin"

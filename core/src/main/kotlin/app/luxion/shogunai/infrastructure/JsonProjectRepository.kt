@@ -2,8 +2,11 @@ package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.model.Project
+import app.luxion.shogunai.domain.model.WorktreeError
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -16,20 +19,38 @@ class JsonProjectRepository(
 
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
 
-    override fun list(): List<Project> {
+    override fun list(): List<Project> = LocalFileLock.withLock(storagePath) { read() }
+
+    override fun save(project: Project) = LocalFileLock.withLock(storagePath) {
+        write(readKeepingUnreadable().filterNot { it.id == project.id } + project)
+    }
+
+    override fun delete(id: String) = LocalFileLock.withLock(storagePath) {
+        write(readKeepingUnreadable().filterNot { it.id == id })
+    }
+
+    private fun read(): List<Project> {
         if (!storagePath.exists()) return emptyList()
-        val text = storagePath.readText()
+        val text = try {
+            storagePath.readText()
+        } catch (error: IOException) {
+            throw WorktreeError.LocalFileUnreadable(storagePath.toString(), error.message)
+        }
         if (text.isBlank()) return emptyList()
-        return json.decodeFromString(text)
+        return try {
+            json.decodeFromString(text)
+        } catch (error: SerializationException) {
+            throw WorktreeError.LocalFileUnreadable(storagePath.toString(), error.message?.lineSequence()?.firstOrNull())
+        } catch (error: IllegalArgumentException) {
+            throw WorktreeError.LocalFileUnreadable(storagePath.toString(), error.message?.lineSequence()?.firstOrNull())
+        }
     }
 
-    override fun save(project: Project) {
-        val updated = list().filterNot { it.id == project.id } + project
-        write(updated)
-    }
-
-    override fun delete(id: String) {
-        write(list().filterNot { it.id == id })
+    private fun readKeepingUnreadable(): List<Project> = try {
+        read()
+    } catch (_: WorktreeError.LocalFileUnreadable) {
+        keepUnreadableCopy(storagePath)
+        emptyList()
     }
 
     private fun write(projects: List<Project>) {

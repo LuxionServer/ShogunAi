@@ -47,6 +47,26 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "No se encontró ningún repositorio de Git en ${error.path}.",
         "Actualiza la ruta del repositorio en los ajustes del proyecto.",
     )
+    is WorktreeError.BareRepositoryNotSupported -> ErrorTexts(
+        "${error.path} es un repositorio bare, que todavía no está soportado.",
+        "Usa un repositorio con árbol de trabajo.",
+    )
+    WorktreeError.RepositoryHasNoCommits -> ErrorTexts(
+        "El repositorio todavía no tiene commits.",
+        "Haz un primer commit y vuelve a intentarlo.",
+    )
+     is WorktreeError.LocalFileUnreadable ->
+        if (error.path.endsWith("settings.json")) {
+            ErrorTexts(
+                "No se pudo leer el archivo de ajustes ${error.path}, así que se usan los ajustes por defecto.",
+                "El archivo ilegible se conserva a su lado. Corrígelo o bórralo para quitar este aviso.",
+            )
+        } else {
+            ErrorTexts(
+                "No se pudo leer el archivo de proyectos ${error.path}, así que no se muestra ningún proyecto.",
+                "Corrige el archivo. Si añades o quitas un proyecto, el archivo ilegible se conserva antes a su lado.",
+            )
+        }
     is WorktreeError.WorktreeAlreadyExists -> ErrorTexts(
         "La carpeta ${error.path} ya existe.",
         "Usa otro id de tarea, o elimina la carpeta existente.",
@@ -122,6 +142,10 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     is WorktreeError.EmulatorBootTimeout -> ErrorTexts(
         "${error.serial} no terminó de arrancar en ${error.seconds} s.",
         "Vuelve a intentarlo; el primer arranque puede tardar.",
+    )
+    is WorktreeError.EmulatorExitedEarly -> ErrorTexts(
+        "El emulador de ${error.serial} se detuvo antes de terminar de arrancar.",
+        "Revisa el log del emulador en los detalles técnicos; puede que el AVD esté roto.",
     )
     is WorktreeError.AndroidToolFailed -> ErrorTexts(
         "Falló una herramienta de Android.",

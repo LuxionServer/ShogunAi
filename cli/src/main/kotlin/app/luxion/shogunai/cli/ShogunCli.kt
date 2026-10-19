@@ -51,6 +51,7 @@ import app.luxion.shogunai.domain.usecase.CloseHerdrWorkspacesUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.DeleteMergedBranchUseCase
+import app.luxion.shogunai.domain.usecase.DetectRunningAgentsUseCase
 import app.luxion.shogunai.domain.usecase.DeleteOrphanedDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.DeleteSimulatorsUseCase
 import app.luxion.shogunai.domain.usecase.EnvironmentFormat
@@ -83,7 +84,9 @@ import app.luxion.shogunai.domain.usecase.formatEnvironment
 import app.luxion.shogunai.domain.usecase.idleDaemonsOfRemovedWorktrees
 import app.luxion.shogunai.domain.usecase.normalizeTaskId
 import app.luxion.shogunai.domain.usecase.owningWorktree
-import app.luxion.shogunai.domain.usecase.selectCleanupCandidates
+import app.luxion.shogunai.domain.usecase.classifyGitFailure
+import app.luxion.shogunai.domain.usecase.hint
+import app.luxion.shogunai.domain.usecase.selectCleanup
 import app.luxion.shogunai.domain.usecase.totalResidentMemory
 import app.luxion.shogunai.infrastructure.CliHerdrClient
 import app.luxion.shogunai.infrastructure.FileKmpTestWiring
@@ -91,6 +94,9 @@ import java.io.File
 import java.time.Duration
 import java.time.Instant
 import java.util.Locale
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -165,12 +171,27 @@ class ShogunCli(
             err.line("Run 'shogun help' for usage.")
             EXIT_USAGE
         }
-        is ParsedArguments.Command -> runBlocking { execute(parsed.command) }
+        is ParsedArguments.Command -> runBlocking { cancelledOnShutdown { execute(parsed.command) } }
+    }
+
+    private suspend fun <T> cancelledOnShutdown(block: suspend () -> T): T {
+        val job = currentCoroutineContext().job
+        val hook = Thread {
+            job.cancel()
+            runBlocking { job.join() }
+        }
+        Runtime.getRuntime().addShutdownHook(hook)
+        try {
+            return block()
+        } finally {
+            runCatching { Runtime.getRuntime().removeShutdownHook(hook) }
+        }
     }
 
     private suspend fun execute(command: CliCommand): Int = try {
         when (command) {
-            CliCommand.Help -> out.append(USAGE).let { EXIT_OK }
+            CliCommand.Help -> out.append(CliHelp.USAGE).let { EXIT_OK }
+            is CliCommand.CommandHelp -> out.append(CliHelp.forCommand(command.name).orEmpty()).let { EXIT_OK }
             CliCommand.Version -> out.line("shogun ${BuildInfo.VERSION}").let { EXIT_OK }
             is CliCommand.New -> new(command)
             is CliCommand.Provision -> provision(command)
@@ -192,9 +213,15 @@ class ShogunCli(
         }
     } catch (error: WorktreeError) {
         err.line("shogun: ${error.message}")
+        if (error is WorktreeError.GitCommandFailed) classifyGitFailure(error.errorOutput).hint()?.let { err.line("hint: $it") }
         EXIT_FAILURE
     } catch (error: CommandExecutionException) {
         err.line("shogun: ${error.message}")
+        EXIT_FAILURE
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Exception) {
+        err.line("shogun: ${error.message?.lineSequence()?.firstOrNull { it.isNotBlank() } ?: error::class.simpleName}")
         EXIT_FAILURE
     }
 
@@ -275,7 +302,7 @@ class ShogunCli(
         return if (from != null) {
             resolve(directory, from).getOrThrow()
         } else {
-            resolve(directory, "HEAD").getOrNull()
+            resolve(directory, "HEAD").getOrElse { throw WorktreeError.RepositoryHasNoCommits }
         }
     }
 
@@ -330,8 +357,13 @@ class ShogunCli(
         val readStatus = ReadWorktreeStatusUseCase(executor)
         val herdrWorktreesRoot = herdrConfig.worktreesRoot()
         val entries = worktrees.map { worktree ->
-            val status = if (worktree.isPrunable) null else readStatus(worktree, mainBranch).getOrNull()
-            WorktreeEntry(worktree, status, classifyOrigin(worktree, config, herdrWorktreesRoot))
+            val read = if (worktree.isPrunable) null else readStatus(worktree, mainBranch)
+            WorktreeEntry(
+                worktree,
+                read?.getOrNull(),
+                classifyOrigin(worktree, config, herdrWorktreesRoot),
+                read?.exceptionOrNull()?.let(::failureReason),
+            )
         }
         if (command.json) {
             out.line(Json.encodeToString(JsonElement.serializer(), statusJson(config.baseRepositoryPath, mainBranch?.name, entries)))
@@ -346,11 +378,21 @@ class ShogunCli(
         val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
         val mainBranch = ResolveMainBranchUseCase(config, executor)().getOrNull()
         val readStatus = ReadWorktreeStatusUseCase(executor)
-        val statuses = worktrees
+        val statusReads = worktrees
             .filterNot { it.isMain || it.isPrunable || it.isLocked }
-            .mapNotNull { worktree -> readStatus(worktree, mainBranch).getOrNull()?.let { worktree.path to it } }
-            .toMap()
-        val candidates = selectCleanupCandidates(worktrees, statuses)
+            .associateWith { worktree -> readStatus(worktree, mainBranch) }
+        val statuses = statusReads.mapNotNull { (worktree, read) -> read.getOrNull()?.let { worktree.path to it } }.toMap()
+        val agents = DetectRunningAgentsUseCase(executor)(config, worktrees.filterNot { it.isMain || it.isPrunable })
+            .onFailure { err.line("shogun: couldn't check for running agents, so none were taken into account: ${it.message}") }
+            .getOrNull()
+        val selection = selectCleanup(worktrees, statuses, agents)
+        val candidates = selection.candidates
+        selection.keptForRunningAgent.forEach { (worktree, running) ->
+            out.line("kept ${worktree.path} (${running.joinToString { it.name }} is running)")
+        }
+        statusReads.forEach { (worktree, read) ->
+            read.exceptionOrNull()?.let { out.line("skipped ${worktree.path} (status unavailable: ${failureReason(it)})") }
+        }
         val simulators = if (command.deleteSimulators) simulatorsBeforeCleanup(config, candidates) else SimulatorCleanup()
         val derivedDataOrphans = if (command.deleteDerivedData && derivedDataSource.isSupported() && xcodeProvider(config.baseRepositoryPath) != null) {
             listDerivedData(worktrees, includeCompilationCache = false)
@@ -378,7 +420,7 @@ class ShogunCli(
             simulators.byWorktree.values.forEach { out.line("would delete simulator ${it.name} (${it.udid})") }
             simulators.orphans.forEach { out.line("would delete orphaned simulator ${it.name} (${it.udid})") }
             derivedDataOrphans.forEach { out.line("would delete orphaned DerivedData ${it.path}") }
-            out.line("Run 'shogun clean --yes' to remove ${if (candidates.size == 1) "it" else "them"}.")
+            out.line(dryRunHint(command, candidates.size, simulators.orphans.isNotEmpty(), derivedDataOrphans.isNotEmpty()))
             return EXIT_OK
         }
         val report = CleanUpWorktreesUseCase(config, executor, closeHerdrWorkspaces)(candidates, mainBranch, command.deleteBranches).getOrThrow()
@@ -411,6 +453,33 @@ class ShogunCli(
                 }
         }
         return if (report.failures.isEmpty() && !derivedDataFailed) EXIT_OK else EXIT_FAILURE
+    }
+
+    private fun dryRunHint(command: CliCommand.Clean, worktrees: Int, simulatorOrphans: Boolean, derivedDataOrphans: Boolean): String {
+        val flags = listOfNotNull(
+            "--delete-branches".takeIf { command.deleteBranches },
+            "--stop-gradle-daemons".takeIf { command.stopGradleDaemons },
+            "--stop-emulators".takeIf { command.stopEmulators },
+            "--delete-simulators".takeIf { command.deleteSimulators },
+            "--delete-derived-data".takeIf { command.deleteDerivedData },
+            "--yes",
+        )
+        val what = listOfNotNull(
+            when (worktrees) {
+                0 -> null
+                1 -> "the worktree"
+                else -> "the worktrees"
+            },
+            "the orphaned simulators".takeIf { simulatorOrphans },
+            "the orphaned DerivedData".takeIf { derivedDataOrphans },
+        )
+        val listed = if (what.size > 1) what.dropLast(1).joinToString(", ") + " and " + what.last() else what.single()
+        return "Run 'shogun clean ${flags.joinToString(" ")}' to remove $listed."
+    }
+
+    private fun failureReason(error: Throwable): String {
+        val text = (error as? WorktreeError.GitCommandFailed)?.errorOutput?.takeIf { it.isNotBlank() } ?: error.message.orEmpty()
+        return text.lineSequence().firstOrNull { it.isNotBlank() }?.trim() ?: error::class.simpleName.orEmpty()
     }
 
     private data class SimulatorCleanup(
@@ -753,7 +822,7 @@ class ShogunCli(
             ?.let { err.line(herdrCloseFailure(worktree.path, it)) }
         worktree.branch?.let { branch ->
             if (!DeleteMergedBranchUseCase(config, executor)(branch).getOrThrow()) {
-                err.line("shogun: kept branch $branch because it isn't merged")
+                err.line("shogun: kept branch $branch because it isn't merged into the main branch")
             }
         }
         return EXIT_OK
@@ -792,7 +861,7 @@ class ShogunCli(
         }
         if (project == null || branch == null) return EXIT_OK
         if (!DeleteMergedBranchUseCase(project.config, executor)(branch).getOrThrow()) {
-            err.line("shogun: kept branch $branch because it isn't merged")
+            err.line("shogun: kept branch $branch because it isn't merged into the main branch")
         }
         return EXIT_OK
     }
@@ -844,7 +913,7 @@ class ShogunCli(
             if (worktree.isLocked) add("locked")
             when {
                 worktree.isPrunable -> add("folder-missing")
-                status == null -> add("status-unavailable")
+                status == null -> add(entry.statusProblem?.let { "status-unavailable ($it)" } ?: "status-unavailable")
                 else -> {
                     add("changes=${status.uncommittedChanges}")
                     status.upstream?.let { add("ahead=${it.ahead} behind=${it.behind}") }
@@ -915,55 +984,6 @@ class ShogunCli(
             }
         }
 
-        val USAGE = """
-            Usage: shogun <command> [options]
 
-            Commands:
-              new <task-id> [--fix] [--from <ref>]
-                                          Create a worktree on a new feature/ (or fix/) branch and print its path;
-                                          the branch starts at the current worktree's HEAD unless --from is given
-              new --branch <branch>       Create a worktree for an existing local branch and print its path
-                  --worktrees-root <dir>  Folder for the worktree when the repository has no ShogunAi project
-              provision [<path>]          Copy or link the declared files into an existing worktree and run its
-                                          post-creation commands (default: current directory)
-              provision --check [<path>]  List the declared files a worktree is missing, has stale or doesn't link;
-                                          exit code 3 when there are any, and nothing is changed
-              trust [<path>] [--yes] [--revoke]
-                                          Show the post-creation commands the repository declares and whether they are
-                                          approved on this machine; approve them (--yes skips the question) or revoke
-              status [--json]             List the repository's worktrees with their state
-              clean [--yes] [--delete-branches] [--stop-gradle-daemons] [--stop-emulators] [--delete-simulators]
-                    [--delete-derived-data]
-                                          List merged or missing worktrees; remove them with --yes
-                                          (--stop-gradle-daemons / --stop-emulators: also stop their idle
-                                          Gradle daemons / their emulators; --delete-simulators: also delete
-                                          their iOS simulators and orphaned ShogunAi simulators;
-                                          --delete-derived-data: also delete orphaned Xcode DerivedData)
-              gradle                      List the Gradle and Kotlin daemons with their memory, state and worktree
-              gradle stop [<pid>...]      Stop idle daemons (all of them, or only the given ones); busy ones are kept
-              xcode                       List Xcode DerivedData folders of the worktrees, orphans and compilation cache
-              xcode clean                 Delete orphaned Xcode DerivedData folders on the machine
-              hook worktree-create       Claude Code WorktreeCreate hook: create and provision the worktree, print its path
-              hook worktree-remove        Claude Code WorktreeRemove hook: remove the worktree, delete its branch if merged
-              hook session-start          Claude Code SessionStart hook: export the worktree's environment to the session
-              hook herdr                  Herdr plugin hook: provision worktrees on worktree.created, delete merged branches on worktree.removed
-              simulator start|stop|status [<path>] [--device <type>] [--runtime <runtime>]
-                                          Boot (and wait for), shut down or show the worktree's iOS simulator
-                                          (repositories with "providers": { "ios-simulator": {} } in .shogunai.json)
-              simulator gradle-init install|uninstall [--yes]
-                                          Make every project's KMP iOS simulator tests use IOS_SIMULATOR_UDID
-              emulator start|stop|status [<path>] [--avd <name>] [--no-window]
-                                          Start (and wait for), stop or show the worktree's Android emulator
-                                          (repositories with "providers": { "emulator": {} } in .shogunai.json)
-              env [<path>] [--format sh|dotenv|json]
-                                          Print the worktree's environment from .shogunai.json "env"
-                                          (sh prints export lines for: eval "$(shogun env)")
-              help                        Show this help
-              --version                   Show the version
-
-            Works on the Git repository containing the current directory. Files to copy come from the
-            repository's .shogunai.json and .worktreeinclude, and from the desktop app's project if there is one.
-
-        """.trimIndent() + "\n"
     }
 }

@@ -23,8 +23,9 @@ import app.luxion.shogunai.domain.model.WorktreeStatus
 import app.luxion.shogunai.ui.machine.MachineResource
 import app.luxion.shogunai.domain.usecase.CleanupFailure
 import app.luxion.shogunai.domain.usecase.CleanupReport
+import app.luxion.shogunai.domain.usecase.CleanupSelection
 import app.luxion.shogunai.domain.usecase.idleDaemonsOfRemovedWorktrees
-import app.luxion.shogunai.domain.usecase.selectCleanupCandidates
+import app.luxion.shogunai.domain.usecase.selectCleanup
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -104,8 +105,12 @@ class ProjectWorktrees(
     val totalSize: Long
         get() = sizes.values.sum()
 
+    private val cleanupSelection: CleanupSelection
+        get() = selectCleanup(worktrees, loadedStatuses(), agents)
     val cleanupCandidates: List<Worktree>
-        get() = selectCleanupCandidates(worktrees, loadedStatuses())
+        get() = cleanupSelection.candidates
+    val cleanupKeptForRunningAgent: Map<Worktree, List<RunningAgent>>
+        get() = cleanupSelection.keptForRunningAgent
     var isCleaningUp by mutableStateOf(false)
         private set
     var cleanupIssues by mutableStateOf<CleanupReport?>(null)
@@ -602,6 +607,7 @@ class ProjectWorktrees(
     }
 
     suspend fun cleanUp(options: CleanupOptions): WorktreeSuccess.CleanedUp? {
+        useCases.detectAgents(worktrees).getOrNull()?.let(::applyAgents)
         val candidates = cleanupCandidates
         val listed = worktrees
         val stopDaemons = isGradleRepository && options.stopGradleDaemons

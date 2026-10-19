@@ -14,6 +14,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.concurrent.thread
+import kotlin.io.path.name
 import kotlin.test.assertTrue
 
 class JsonSettingsFileTest {
@@ -177,5 +179,47 @@ class JsonSettingsFileTest {
         reloaded.saveGrouping(GroupedView.ALL, Grouping.BY_STATE)
         assertEquals(Grouping.BY_PROJECT, reloaded.loadGrouping(GroupedView.ACTIVE))
         assertEquals(Grouping.BY_STATE, reloaded.loadGrouping(GroupedView.ALL))
+    }
+
+    @Test
+    fun `an unreadable file reads as defaults and reports the problem`() {
+        Files.writeString(storagePath, "{ not json")
+
+        assertEquals(ThemeMode.SYSTEM, themeRepository.load())
+
+        assertEquals(storagePath.toString(), settingsFile.lastReadProblem?.path)
+        assertEquals("{ not json", Files.readString(storagePath))
+    }
+
+    @Test
+    fun `keeps the unreadable file before the first write`() {
+        Files.writeString(storagePath, "{ not json")
+
+        themeRepository.save(ThemeMode.DARK)
+
+        val kept = tempDir.listDirectoryEntries().single { it.name.startsWith("settings.json.unreadable-") }
+        assertEquals("{ not json", Files.readString(kept))
+        assertEquals(ThemeMode.DARK, JsonThemePreferenceRepository(JsonSettingsFile(storagePath)).load())
+    }
+
+    @Test
+    fun `a readable file reports no problem`() {
+        themeRepository.save(ThemeMode.DARK)
+
+        themeRepository.load()
+
+        assertNull(settingsFile.lastReadProblem)
+    }
+
+    @Test
+    fun `two writers changing different keys at once keep both changes`() {
+        val first = thread { repeat(30) { JsonSettingsFile(storagePath).update { it.copy(themeMode = ThemeMode.DARK) } } }
+        val second = thread { repeat(30) { JsonSettingsFile(storagePath).update { it.copy(sidebarCollapsed = true) } } }
+        first.join()
+        second.join()
+
+        val settings = JsonSettingsFile(storagePath).read()
+        assertEquals(ThemeMode.DARK, settings.themeMode)
+        assertTrue(settings.sidebarCollapsed)
     }
 }

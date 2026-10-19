@@ -67,7 +67,7 @@ internal suspend fun addWorktreeAndCopySecrets(
     worktreePath: String,
     branch: String,
     addArgs: List<String>,
-    branchToDeleteOnLfsFailure: String?,
+    createdBranch: String?,
     provisioned: ProvisionedFiles,
     environment: WorktreeEnvironmentPreparer,
     trust: RepositoryTrust,
@@ -81,20 +81,14 @@ internal suspend fun addWorktreeAndCopySecrets(
         }
 
         if (GIT_LFS_MISSING_MARKERS.any { add.stderr.contains(it) }) {
-            removeIncompleteWorktreeIgnoringResult(config, executor, worktreePath)
-            branchToDeleteOnLfsFailure?.let {
-                executor.execute(
-                    command = listOf("git", "branch", "-D", "--", it),
-                    workingDirectory = config.baseRepositoryPath,
-                )
-            }
+            rollBack(config, executor, worktreePath, createdBranch)
             throw WorktreeError.GitLfsNotFound
         }
         throw WorktreeError.GitCommandFailed(add.command, add.exitCode, add.stderr)
     }
 
-    copySecretsOrRollback(config, executor, fileManager, worktreePath, provisioned)
-    prepareEnvironmentOrRollback(config, executor, environment, worktreePath)
+    copySecretsOrRollback(config, executor, fileManager, worktreePath, provisioned, createdBranch)
+    prepareEnvironmentOrRollback(config, executor, environment, worktreePath, createdBranch)
     val skipped = runApprovedPostCreateCommands(
         config, executor, trust, approval, worktreePath, provisioned.postCreateCommands,
     )
@@ -107,11 +101,12 @@ private suspend fun prepareEnvironmentOrRollback(
     executor: ShellCommandExecutor,
     environment: WorktreeEnvironmentPreparer,
     worktreePath: String,
+    createdBranch: String?,
 ) {
     try {
         environment.prepare(config.baseRepositoryPath, worktreePath)
     } catch (error: Exception) {
-        removeIncompleteWorktreeIgnoringResult(config, executor, worktreePath)
+        rollBack(config, executor, worktreePath, createdBranch)
         throw error
     }
 }
@@ -122,11 +117,12 @@ private suspend fun copySecretsOrRollback(
     fileManager: FileManager,
     worktreePath: String,
     provisioned: ProvisionedFiles,
+    createdBranch: String?,
 ) {
     try {
         applyProvisionedFiles(config, fileManager, worktreePath, provisioned)
     } catch (copyError: WorktreeError.SecretCopyFailed) {
-        removeIncompleteWorktreeIgnoringResult(config, executor, worktreePath)
+        rollBack(config, executor, worktreePath, createdBranch)
         throw copyError
     }
 }
@@ -207,15 +203,22 @@ private suspend fun runPostCreateCommands(
     }
 }
 
-private suspend fun removeIncompleteWorktreeIgnoringResult(
+private suspend fun rollBack(
     config: ProjectConfig,
     executor: ShellCommandExecutor,
     worktreePath: String,
+    createdBranch: String?,
 ) {
     executor.execute(
         command = listOf("git", "worktree", "remove", "--force", worktreePath),
         workingDirectory = config.baseRepositoryPath,
     )
+    createdBranch?.let {
+        executor.execute(
+            command = listOf("git", "branch", "-D", "--", it),
+            workingDirectory = config.baseRepositoryPath,
+        )
+    }
 }
 
 internal val GIT_LFS_MISSING_MARKERS = listOf(
