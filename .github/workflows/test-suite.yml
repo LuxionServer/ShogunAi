@@ -17,6 +17,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
@@ -29,7 +30,11 @@ jobs:
           java-version: "21"
 
       - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/develop' }}
 
       - name: Run tests
         shell: bash
-        run: ./gradlew test
+        run: |
+          printf 'allprojects { tasks.withType(Test).configureEach { testLogging { events "started" } } }\n' > "$RUNNER_TEMP/log.init.gradle"
+          ./gradlew test -I "$RUNNER_TEMP/log.init.gradle"
