@@ -90,8 +90,8 @@ class CliHerdrClient(
 
     fun executable(): String {
         val name = if (osName.startsWith("Windows", ignoreCase = true)) "herdr.exe" else "herdr"
-        val candidates = USER_BIN_FOLDERS.map { File(File(userHome, it), name).path } +
-            SYSTEM_BIN_FOLDERS.map { File(it, name).path }
+        val candidates = USER_BIN_FOLDERS.map { "${userHome.trimEnd('/', '\\')}/$it/$name" } +
+            SYSTEM_BIN_FOLDERS.map { "$it/$name" }
         return candidates.firstOrNull(isFile) ?: name
     }
 

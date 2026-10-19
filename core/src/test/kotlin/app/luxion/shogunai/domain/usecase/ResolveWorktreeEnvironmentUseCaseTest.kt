@@ -520,7 +520,7 @@ class ResolveWorktreeEnvironmentUseCaseTest {
         val environment = WorktreeEnvironment(variables = listOf("VALUE" to value))
         file.toFile().writeText(formatEnvironment(environment, EnvironmentFormat.DOTENV))
 
-        val process = ProcessBuilder("sh", "-c", ". \"\$1\" && printf %s \"\$VALUE\"", "sh", file.toString())
+        val process = ProcessBuilder("sh", "-c", ". \"\$1\" && printf %s \"\$VALUE\"", "sh", file.toString().replace('\\', '/'))
             .redirectErrorStream(true)
             .start()
         val output = process.inputStream.readBytes().decodeToString()

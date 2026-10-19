@@ -93,6 +93,7 @@ import app.luxion.shogunai.domain.usecase.totalResidentMemory
 import app.luxion.shogunai.infrastructure.CliHerdrClient
 import app.luxion.shogunai.infrastructure.FileKmpTestWiring
 import java.io.File
+import java.io.FileNotFoundException
 import java.time.Duration
 import java.time.Instant
 import java.util.Locale
@@ -630,7 +631,7 @@ class ShogunCli(
         val environment = resolveEnvironment(repository, worktree.path).getOrThrow()
         if (environment.isEmpty) return EXIT_OK
         environmentVariable(CLAUDE_ENV_FILE)?.takeIf { it.isNotBlank() }?.let { path ->
-            File(path).appendText(formatEnvironment(environment, EnvironmentFormat.SH))
+            appendToEnvironmentFile(path, formatEnvironment(environment, EnvironmentFormat.SH))
         }
         val variables = environment.variables.joinToString(", ") { (name, value) -> "$name=$value" }
         val emulatorHint = environment.variables.toMap()[ANDROID_SERIAL]
@@ -929,6 +930,14 @@ class ShogunCli(
             }
         }
         return (listOf(worktree.path) + details).joinToString("  ")
+    }
+
+    private fun appendToEnvironmentFile(path: String, content: String) {
+        try {
+            File(path).appendText(content)
+        } catch (error: FileNotFoundException) {
+            throw FileNotFoundException(error.message.orEmpty().replaceFirst(File(path).path, path))
+        }
     }
 
     private fun folderName(path: String): String =
