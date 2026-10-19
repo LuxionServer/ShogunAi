@@ -24,6 +24,15 @@ internal object CliHelp {
         "status" to """
   status [--json]             List the repository's worktrees with their state
 """.trimIndent(),
+        "remove" to """
+  remove <task id | path | branch> [--force] [--delete-branch]
+                              Remove one worktree and stop its emulator, simulator and idle Gradle daemons;
+                              refused while it has changes or an agent running unless --force;
+                              --delete-branch also deletes its branch when it is merged into the main branch
+""".trimIndent(),
+        "repair" to """
+  repair                      Re-link the worktrees after the repository or the worktrees folder moved
+""".trimIndent(),
         "clean" to """
   clean [--yes] [--delete-branches] [--stop-gradle-daemons] [--stop-emulators] [--delete-simulators]
         [--delete-derived-data]

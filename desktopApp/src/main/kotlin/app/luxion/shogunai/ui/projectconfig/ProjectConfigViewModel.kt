@@ -29,6 +29,7 @@ sealed interface SimulatorSectionState {
         val runtimes: List<SimulatorRuntime>,
         val testsWired: Boolean,
         val kotlinMultiplatform: Boolean,
+        val initScriptInstalled: Boolean = false,
     ) : SimulatorSectionState
     data class Failed(val error: Throwable) : SimulatorSectionState
 }
@@ -335,6 +336,7 @@ class ProjectConfigViewModel(
                         runtimes = runtimes.filter { it.platform.equals("iOS", ignoreCase = true) },
                         testsWired = simulatorSetup.isWired(repositoryPath),
                         kotlinMultiplatform = simulatorSetup.usesKotlinMultiplatform(repositoryPath),
+                        initScriptInstalled = simulatorSetup.isInitScriptInstalled(),
                     )
                 },
                 onFailure = { SimulatorSectionState.Failed(it) },
@@ -345,7 +347,18 @@ class ProjectConfigViewModel(
     fun installSimulatorInitScript(): Result<Unit> =
         simulatorSetup.installInitScript().onSuccess {
             val current = simulatorSection
-            if (current is SimulatorSectionState.Available) simulatorSection = current.copy(testsWired = true)
+            if (current is SimulatorSectionState.Available) simulatorSection = current.copy(testsWired = true, initScriptInstalled = true)
+        }
+
+    fun uninstallSimulatorInitScript(): Result<Unit> =
+        simulatorSetup.uninstallInitScript().onSuccess {
+            val current = simulatorSection
+            if (current is SimulatorSectionState.Available) {
+                simulatorSection = current.copy(
+                    testsWired = simulatorSetup.isWired(loadedRepositoryPath),
+                    initScriptInstalled = false,
+                )
+            }
         }
 
     private fun refreshEmulatorSection() {

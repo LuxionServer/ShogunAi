@@ -31,6 +31,8 @@ Each row shows a worktree with:
 
 - Its **branch**, a "locked" label when an agent session holds it, its **origin** (ShogunAi, Claude Code, Herdr or another location) and the **agents running** in it.
 - Its **status**: uncommitted changes, ahead/behind its upstream and the main branch, the last commit date, or "merged into <main branch>". "Folder missing" when its folder was deleted by hand.
+- Its **provisioned files**: whether the files and links declared for new worktrees match the base repository's, listing the missing, differing and not-linked ones. For a worktree made by another tool, or whose copies are stale, **Provision** copies them, reserves its ports and writes its environment file, as `shogun provision` does.
+- Its **environment**: the ports and every variable from `.shogunai.json` `"env"` with its value, in the order `shogun env` prints them. **Copy as .env** puts them on the clipboard in dotenv format. Values aren't masked, since they come from templates in the repository.
 - Its **size**, the **ports** reserved for it (see [per-worktree environment](../agents.md#per-worktree-environment)) and an "inactive" label when it has no uncommitted changes, no agent running and no commit in the last 14 days.
 - The emulator and simulator lines with Start and Stop, for repositories that use those [providers](providers.md).
 

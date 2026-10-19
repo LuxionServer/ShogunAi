@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
 object EnglishStrings : Strings {
@@ -193,6 +194,17 @@ object EnglishStrings : Strings {
     override val copyPath = "Copy path"
     override val statusTitle = "Status"
     override val agentsTitle = "Agents"
+    override val provisioningTitle = "Provisioned files"
+    override val provisioningChecking = "Checking…"
+    override val provisioningUnavailable = "Couldn't check the files"
+    override val provisioningUpToDate = "Files are up to date"
+    override val provisionAction = "Provision"
+    override val copyAsEnv = "Copy as .env"
+    override fun provisionDriftFile(path: String, state: ProvisionDriftState) = when (state) {
+        ProvisionDriftState.MISSING -> "$path · missing"
+        ProvisionDriftState.DIFFERS -> "$path · differs"
+        ProvisionDriftState.NOT_LINKED -> "$path · not linked"
+    }
     override val environmentTitle = "Environment"
     override val devicesTitle = "Devices"
     override val diskTitle = "Disk"
@@ -226,6 +238,12 @@ object EnglishStrings : Strings {
     override fun installInitScriptMessage(path: String) =
         "ShogunAi will write the Gradle init script $path, which makes the iOS simulator tests of every Gradle " +
             "project on this machine run on IOS_SIMULATOR_UDID when it's set. Remove it with 'shogun simulator gradle-init uninstall'."
+    override val uninstallInitScript = "Uninstall the init script"
+    override val uninstallInitScriptTitle = "Uninstall the Gradle init script?"
+    override fun uninstallInitScriptMessage(path: String) =
+        "ShogunAi will delete $path. KMP iOS simulator tests of Gradle projects on this machine will stop using the " +
+            "worktree's simulator, unless the module's build.gradle.kts does it."
+    override val uninstall = "Uninstall"
     override val install = "Install"
     override val simulatorLabel = "iOS simulator"
     override val simulatorShutdown = "shut down"

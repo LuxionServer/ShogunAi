@@ -1,6 +1,7 @@
 package app.luxion.shogunai.ui.i18n
 
 import androidx.compose.runtime.staticCompositionLocalOf
+import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.model.RepositoryConfigIssue
 import app.luxion.shogunai.domain.usecase.GitFailureCause
@@ -189,6 +190,13 @@ interface Strings {
     val statusTitle: String
     val agentsTitle: String
     val environmentTitle: String
+    val provisioningTitle: String
+    val provisioningChecking: String
+    val provisioningUnavailable: String
+    val provisioningUpToDate: String
+    val provisionAction: String
+    val copyAsEnv: String
+    fun provisionDriftFile(path: String, state: ProvisionDriftState): String
     val devicesTitle: String
     val diskTitle: String
     val deleteWorktree: String
@@ -216,6 +224,10 @@ interface Strings {
     val installInitScript: String
     val installInitScriptTitle: String
     fun installInitScriptMessage(path: String): String
+    val uninstallInitScript: String
+    val uninstallInitScriptTitle: String
+    fun uninstallInitScriptMessage(path: String): String
+    val uninstall: String
     val install: String
     val simulatorLabel: String
     val simulatorShutdown: String

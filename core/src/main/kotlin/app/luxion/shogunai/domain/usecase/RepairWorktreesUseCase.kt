@@ -12,7 +12,7 @@ class RepairWorktreesUseCase(
     private val executor: ShellCommandExecutor,
     private val fileManager: FileManager,
 ) {
-    suspend operator fun invoke(previousWorktreesRoot: String): Result<Unit> = runCatching {
+    suspend operator fun invoke(previousWorktreesRoot: String? = null): Result<List<String>> = runCatching {
         if (!fileManager.exists(config.baseRepositoryPath)) {
             throw WorktreeError.BaseRepositoryNotFound(config.baseRepositoryPath)
         }
@@ -37,12 +37,13 @@ class RepairWorktreesUseCase(
         if (!repair.isSuccess) {
             throw WorktreeError.GitCommandFailed(repair.command, repair.exitCode, repair.stderr)
         }
+        movedWorktreePaths
     }
 
     private fun List<Worktree>.withoutBaseRepositoryEntry(): List<Worktree> = drop(1)
 
-    private fun relocatedPath(oldPath: String, previousWorktreesRoot: String): String? {
-        val previousRoot = previousWorktreesRoot.trimEnd('/')
+    private fun relocatedPath(oldPath: String, previousWorktreesRoot: String?): String? {
+        val previousRoot = (previousWorktreesRoot ?: oldPath.substringBeforeLast('/', "")).trimEnd('/')
         if (previousRoot.isEmpty() || previousRoot == config.worktreesRoot.trimEnd('/')) return null
         if (!oldPath.startsWith("$previousRoot/")) return null
         return joinPath(config.worktreesRoot, oldPath.removePrefix("$previousRoot/"))

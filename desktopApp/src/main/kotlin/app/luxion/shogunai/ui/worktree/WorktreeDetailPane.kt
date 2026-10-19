@@ -40,7 +40,10 @@ import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.model.WorktreeStatus
 import app.luxion.shogunai.domain.model.portKeyLabel
+import app.luxion.shogunai.domain.model.WorktreeEnvironment
+import app.luxion.shogunai.domain.usecase.EnvironmentFormat
 import app.luxion.shogunai.domain.usecase.classifyOrigin
+import app.luxion.shogunai.domain.usecase.formatEnvironment
 import app.luxion.shogunai.ui.components.DangerTextButton
 import app.luxion.shogunai.ui.components.IconAction
 import app.luxion.shogunai.ui.components.InlineProgress
@@ -75,6 +78,7 @@ fun WorktreeDetailPane(
     val valueColor = MaterialTheme.colorScheme.onSurfaceVariant
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
+    LaunchedEffect(worktree.path) { viewModel.loadDetail(worktree) }
     Column(
         modifier = modifier
             .fillMaxHeight()
@@ -156,7 +160,13 @@ fun WorktreeDetailPane(
         }
         StatusSection(status, viewModel.mainBranch?.name)
         AgentsSection(viewModel.agents.orEmpty()[worktree.path].orEmpty())
-        EnvironmentSection(viewModel.ports[worktree.path].orEmpty())
+        ProvisioningSection(
+            worktree = worktree,
+            state = viewModel.provisioning[worktree.path],
+            isProvisioning = worktree.path in viewModel.provisioningInProgress,
+            onProvision = { viewModel.provision(worktree) },
+        )
+        EnvironmentSection(viewModel.environments[worktree.path], viewModel.ports[worktree.path].orEmpty())
         DevicesSection(
             emulator = viewModel.emulators[worktree.path],
             showEmulator = viewModel.isEmulatorRepository && !worktree.isPrunable,
@@ -209,14 +219,62 @@ private fun ColumnScope.AgentsSection(agents: List<RunningAgent>) {
 }
 
 @Composable
-private fun ColumnScope.EnvironmentSection(ports: Map<String, Int>) {
+private fun ColumnScope.ProvisioningSection(
+    worktree: Worktree,
+    state: ProvisioningState?,
+    isProvisioning: Boolean,
+    onProvision: () -> Unit,
+) {
+    if (worktree.isMain || worktree.isPrunable || state == null) return
     val strings = LocalStrings.current
-    if (ports.isEmpty()) return
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-        SectionTitle(strings.environmentTitle)
-        DetailValue(portsLabel(ports))
+        SectionTitle(strings.provisioningTitle)
+        when (state) {
+            ProvisioningState.Checking -> {
+                MutedText(strings.provisioningChecking)
+                InlineProgress(size = ProgressSize.Small)
+            }
+            ProvisioningState.Unavailable -> MutedText(strings.provisioningUnavailable)
+            is ProvisioningState.Checked -> if (state.drift.isEmpty()) {
+                StatusChip(Status.SUCCESS, strings.provisioningUpToDate)
+            } else {
+                state.drift.forEach { DetailValue(strings.provisionDriftFile(it.path, it.state)) }
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+                    SecondaryButton(onClick = onProvision, enabled = !isProvisioning) {
+                        Text(strings.provisionAction, style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (isProvisioning) InlineProgress(size = ProgressSize.Small)
+                }
+            }
+        }
     }
 }
+
+@Composable
+private fun ColumnScope.EnvironmentSection(environment: WorktreeEnvironment?, ports: Map<String, Int>) {
+    val strings = LocalStrings.current
+    val variables = environment?.variables.orEmpty()
+    if (variables.isEmpty() && ports.isEmpty()) return
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+        SectionTitle(strings.environmentTitle)
+        if (ports.isNotEmpty()) DetailValue(portsLabel(ports))
+        if (variables.isNotEmpty()) {
+            SelectionContainer {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                    variables.forEach { (name, value) -> DetailValue("$name=$value") }
+                }
+            }
+            NeutralTextButton(onClick = { scope.launch { clipboard.copyText(environmentAsDotenv(environment!!)) } }) {
+                Text(strings.copyAsEnv, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+fun environmentAsDotenv(environment: WorktreeEnvironment): String =
+    formatEnvironment(environment, EnvironmentFormat.DOTENV)
 
 @Composable
 private fun ColumnScope.DevicesSection(
