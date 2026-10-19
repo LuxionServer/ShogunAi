@@ -17,6 +17,13 @@ class NioFileManager : FileManager {
 
     override fun exists(path: String): Boolean = Files.exists(Path.of(path))
 
+    override fun isInside(root: String, path: String): Boolean = runCatching {
+        val realRoot = Path.of(root).toRealPath()
+        var existing = Path.of(path).toAbsolutePath().normalize()
+        while (!Files.exists(existing, LinkOption.NOFOLLOW_LINKS)) existing = existing.parent ?: return false
+        existing.toRealPath().startsWith(realRoot)
+    }.getOrDefault(false)
+
     override fun copy(source: String, destination: String) {
         val destinationPath = Path.of(destination)
         destinationPath.parent?.let { Files.createDirectories(it) }

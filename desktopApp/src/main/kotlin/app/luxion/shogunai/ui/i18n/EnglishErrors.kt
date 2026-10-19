@@ -155,6 +155,14 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "The environment file \"${error.path}\" is tracked by Git, so it wasn't overwritten.",
         "Choose an environment file that Git doesn't track.",
     )
+    is WorktreeError.EnvironmentFileOutsideWorktree -> ErrorTexts(
+        "The environment file \"${error.path}\" resolves outside the worktree, so it wasn't written.",
+        "Choose an environment file whose folders are real folders inside the worktree.",
+    )
+    is WorktreeError.InvalidRef -> ErrorTexts(
+        "\"${error.ref}\" isn't a valid branch or start point.",
+        "Branch names and start points can't start with \"-\".",
+    )
     is WorktreeError.EnvironmentFileWriteFailed -> ErrorTexts(
         "Couldn't write the environment file \"${error.path}\".",
         "Check that the folder is writable.",

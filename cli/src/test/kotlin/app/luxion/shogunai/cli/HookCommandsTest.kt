@@ -11,6 +11,7 @@ import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
 import app.luxion.shogunai.domain.FakeKmpTestWiring
 import app.luxion.shogunai.domain.FakeProjectRepository
+import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.CommandResult
@@ -78,6 +79,7 @@ class HookCommandsTest {
         environment: Map<String, String> = emptyMap(),
         provisioning: RepositoryProvisioning = RepositoryProvisioning(worktreeIncludePatterns = listOf(".env")),
         herdr: FakeHerdrClient = FakeHerdrClient(),
+        trust: FakeRepositoryTrust = FakeRepositoryTrust(),
     ) = ShogunCli(
         executor = executor,
         fileManager = FakeFileManager(existing = existing),
@@ -102,6 +104,8 @@ class HookCommandsTest {
         environmentVariable = { environment[it] },
         userHome = "/home/dev",
         herdr = herdr,
+        trust = trust,
+        readAnswer = { "y" },
     )
 
     private fun createInput(name: String, cwd: String = base) =
@@ -126,11 +130,26 @@ class HookCommandsTest {
         }
         val provisioning = RepositoryProvisioning(postCreateCommands = listOf(listOf("npm", "install")))
 
-        val exitCode = cli(executor, createInput("TASK-123"), provisioning = provisioning).run(listOf("hook", "worktree-create"))
+        val trust = FakeRepositoryTrust(mapOf(base to listOf(listOf("npm", "install"))))
+
+        val exitCode = cli(executor, createInput("TASK-123"), provisioning = provisioning, trust = trust).run(listOf("hook", "worktree-create"))
 
         assertEquals(0, exitCode)
         assertEquals("$worktreesRoot/TASK-123\n", out.toString())
         assertTrue(err.contains("npm install") && err.contains("ENOTFOUND"), err.toString())
+    }
+
+    @Test
+    fun `worktree-create skips unapproved commands without asking and says how to approve them`() {
+        val executor = Executor(porcelain())
+        val provisioning = RepositoryProvisioning(postCreateCommands = listOf(listOf("npm", "install")))
+
+        val exitCode = cli(executor, createInput("TASK-123"), provisioning = provisioning).run(listOf("hook", "worktree-create"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("$worktreesRoot/TASK-123\n", out.toString())
+        assertFalse(executor.calls.any { it.first.first() == "npm" })
+        assertTrue(err.contains("shogun trust"), err.toString())
     }
 
     @Test
@@ -208,7 +227,7 @@ class HookCommandsTest {
 
         assertEquals(0, exitCode, err.toString())
         assertTrue(executor.ran("git", "worktree", "remove", "--force", path))
-        assertTrue(executor.ran("git", "branch", "-d", "feature/TASK-123"))
+        assertTrue(executor.ran("git", "branch", "-d", "--", "feature/TASK-123"))
         assertEquals("", err.toString())
     }
 
@@ -293,6 +312,37 @@ class HookCommandsTest {
         assertEquals(0, exitCode, err.toString())
         assertEquals(".env\n", out.toString())
         assertTrue(executor.calls.any { it.first.getOrNull(1) == "rev-parse" && it.second == herdrWorktree }, "resolves the repository from the worktree")
+    }
+
+    @Test
+    fun `herdr skips unapproved commands without asking and says how to approve them`() {
+        val executor = Executor(porcelain(herdrWorktree to "feature/TASK-7"))
+        val provisioning = RepositoryProvisioning(
+            worktreeIncludePatterns = listOf(".env"),
+            postCreateCommands = listOf(listOf("npm", "install")),
+        )
+
+        val exitCode = cli(executor, "", environment = herdrEnvironment(), provisioning = provisioning).run(listOf("hook", "herdr"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertFalse(executor.calls.any { it.first.first() == "npm" })
+        assertTrue(err.contains("shogun trust"), err.toString())
+    }
+
+    @Test
+    fun `herdr runs approved commands`() {
+        val executor = Executor(porcelain(herdrWorktree to "feature/TASK-7"))
+        val provisioning = RepositoryProvisioning(
+            worktreeIncludePatterns = listOf(".env"),
+            postCreateCommands = listOf(listOf("npm", "install")),
+        )
+        val trust = FakeRepositoryTrust(mapOf(base to listOf(listOf("npm", "install"))))
+
+        val exitCode = cli(executor, "", environment = herdrEnvironment(), provisioning = provisioning, trust = trust)
+            .run(listOf("hook", "herdr"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(executor.calls.any { it.first == listOf("npm", "install") })
     }
 
     @Test
@@ -430,7 +480,7 @@ class HookCommandsTest {
         val exitCode = cli(executor, "", environment = removedEnvironment()).run(listOf("hook", "herdr"))
 
         assertEquals(0, exitCode, err.toString())
-        assertEquals(listOf(listOf("git", "branch", "-d", "feature/TASK-9")), executor.branchDeletions())
+        assertEquals(listOf(listOf("git", "branch", "-d", "--", "feature/TASK-9")), executor.branchDeletions())
         assertEquals(base, executor.calls.single { it.first.take(3) == listOf("git", "branch", "-d") }.second)
         assertEquals("", err.toString())
     }
@@ -476,7 +526,7 @@ class HookCommandsTest {
         val exitCode = cli(executor, "", environment = removedEnvironment(withoutWorkspace)).run(listOf("hook", "herdr"))
 
         assertEquals(0, exitCode, err.toString())
-        assertEquals(listOf(listOf("git", "branch", "-d", "feature/TASK-9")), executor.branchDeletions())
+        assertEquals(listOf(listOf("git", "branch", "-d", "--", "feature/TASK-9")), executor.branchDeletions())
     }
 
     @Test

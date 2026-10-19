@@ -113,6 +113,12 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class EnvironmentFileTracked(val path: String) :
         WorktreeError("Won't write the environment file over $path because Git tracks it")
 
+    class EnvironmentFileOutsideWorktree(val path: String) :
+        WorktreeError("Won't write the environment file $path because its real location is outside the worktree")
+
+    class InvalidRef(val ref: String) :
+        WorktreeError("Invalid branch or start point: \"$ref\"")
+
     class EnvironmentFileWriteFailed(val path: String, cause: Throwable) :
         WorktreeError("Failed to write the environment file $path: ${cause.message}", cause)
 

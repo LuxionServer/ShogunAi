@@ -4,6 +4,8 @@ interface FileManager {
 
     fun exists(path: String): Boolean
 
+    fun isInside(root: String, path: String): Boolean
+
     fun copy(source: String, destination: String)
 
     fun createSymbolicLink(target: String, link: String)

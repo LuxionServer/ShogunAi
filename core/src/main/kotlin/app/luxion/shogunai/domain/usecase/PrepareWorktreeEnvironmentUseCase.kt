@@ -43,6 +43,7 @@ class WriteEnvironmentFileUseCase(
         )
         if (tracked.isSuccess) throw WorktreeError.EnvironmentFileTracked(envFile)
         val path = joinPath(worktreePath, envFile)
+        if (!fileManager.isInside(worktreePath, path)) throw WorktreeError.EnvironmentFileOutsideWorktree(envFile)
         try {
             fileManager.writeText(path, formatEnvironment(environment, EnvironmentFormat.DOTENV))
         } catch (error: Exception) {

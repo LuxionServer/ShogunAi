@@ -30,6 +30,17 @@ For Xcode repositories, `"providers": { "xcode": { "compilationCache": true } }`
 
 The recipes below show how each agent gets these variables.
 
+## Approving post-creation commands
+
+Agent hooks and the Herdr plugin can't ask you anything, so they never run a repository's `hooks.postCreate` commands until you have approved them on this machine: they provision the worktree, skip the commands and print a note on standard error that names `shogun trust`. Run it once in each repository you trust:
+
+```bash
+shogun trust        # show the commands and ask
+shogun trust --yes  # approve without asking
+```
+
+After that the hooks run them, until the repository's commands change; then you approve again. Details: [Approving post-creation commands](guide/configuration.md#approving-post-creation-commands).
+
 ## Claude Code
 
 Claude Code's `WorktreeCreate` hook **replaces** its own worktree creation for `claude --worktree`, `EnterWorktree`, subagents with `isolation: "worktree"` and background sessions. Point it at `shogun`, together with `WorktreeRemove` so cleanup goes through ShogunAi too. In the repository's `.claude/settings.json` (shared with the team) or your `~/.claude/settings.json` (every repository):

@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.EnvironmentStateStore
 import app.luxion.shogunai.domain.io.PortProbe
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
+import app.luxion.shogunai.domain.model.ShellQuoting
 import app.luxion.shogunai.domain.model.WorktreeEnvironment
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.render
@@ -123,14 +124,12 @@ class ResolveWorktreeEnvironmentUseCase(
 enum class EnvironmentFormat { SH, DOTENV, JSON }
 
 fun formatEnvironment(environment: WorktreeEnvironment, format: EnvironmentFormat): String = when (format) {
-    EnvironmentFormat.SH -> environment.variables.joinToString("") { (name, value) -> "export $name=${shellQuote(value)}\n" }
+    EnvironmentFormat.SH -> environment.variables.joinToString("") { (name, value) -> "export $name=${ShellQuoting.posix(value)}\n" }
     EnvironmentFormat.DOTENV -> environment.variables.joinToString("") { (name, value) -> "$name=${dotenvValue(value)}\n" }
     EnvironmentFormat.JSON -> environment.variables.joinToString(",", prefix = "{", postfix = "}\n") { (name, value) ->
         "${jsonString(name)}:${jsonString(value)}"
     }
 }
-
-private fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
 
 private val PLAIN_DOTENV_VALUE = Regex("[A-Za-z0-9_./:@%+,=-]*")
 
@@ -138,7 +137,7 @@ private fun dotenvValue(value: String): String =
     if (PLAIN_DOTENV_VALUE.matches(value)) {
         value
     } else {
-        "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("$", "\\$") + "\""
+        "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("$", "\\$").replace("`", "\\`") + "\""
     }
 
 private fun jsonString(value: String): String = buildString {

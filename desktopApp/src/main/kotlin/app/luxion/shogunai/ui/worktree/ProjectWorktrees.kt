@@ -440,7 +440,7 @@ class ProjectWorktrees(
                     .onSuccess { worktree ->
                         worktrees = worktrees + worktree
                         lastCreatedWorktree = worktree
-                        success = WorktreeSuccess.Created(worktree.path)
+                        success = WorktreeSuccess.Created(worktree.path, worktree.skippedPostCreateCommands.isNotEmpty())
                         loadStatusOf(worktree)
                         onCreated(worktree)
                     }
@@ -723,7 +723,7 @@ sealed interface WorktreeStatusState {
 }
 
 sealed interface WorktreeSuccess {
-    data class Created(val path: String) : WorktreeSuccess
+    data class Created(val path: String, val commandsSkipped: Boolean = false) : WorktreeSuccess
     data object RepairedAfterMove : WorktreeSuccess
     data class OpenedInHerdr(val path: String, val focused: Boolean) : WorktreeSuccess
     data class CleanedUp(

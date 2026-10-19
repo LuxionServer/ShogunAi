@@ -3,9 +3,11 @@ package app.luxion.shogunai
 import app.luxion.shogunai.domain.executor.ClipboardWriter
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
+import app.luxion.shogunai.ui.worktree.DialogPostCreateApproval
 import app.luxion.shogunai.domain.io.LanguagePreferenceRepository
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
+import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.io.ShellPreferenceRepository
 import app.luxion.shogunai.domain.io.ThemePreferenceRepository
 import app.luxion.shogunai.domain.model.DaemonProcess
@@ -66,6 +68,7 @@ import app.luxion.shogunai.infrastructure.CliHerdrClient
 import app.luxion.shogunai.infrastructure.HerdrConfigFile
 import app.luxion.shogunai.infrastructure.JsonLanguagePreferenceRepository
 import app.luxion.shogunai.infrastructure.JsonProjectRepository
+import app.luxion.shogunai.infrastructure.JsonRepositoryTrust
 import app.luxion.shogunai.infrastructure.JsonSettingsFile
 import app.luxion.shogunai.infrastructure.JsonShellPreferenceRepository
 import app.luxion.shogunai.infrastructure.JsonThemePreferenceRepository
@@ -194,15 +197,29 @@ class AppContainer {
 
     val pathExists: (String) -> Boolean = fileManager::exists
 
+    val repositoryTrust: RepositoryTrust = JsonRepositoryTrust()
+
+    val postCreateApproval = DialogPostCreateApproval()
+
     fun worktreeUseCases(config: ProjectConfig): WorktreeUseCases = WorktreeUseCases(
         list = ListWorktreesUseCase(config, shellCommandExecutor, fileManager),
-        create = CreateWorktreeUseCase(config, shellCommandExecutor, fileManager, repositoryProvisioningSource, prepareEnvironment),
+        create = CreateWorktreeUseCase(
+            config,
+            shellCommandExecutor,
+            fileManager,
+            repositoryProvisioningSource,
+            prepareEnvironment,
+            repositoryTrust,
+            postCreateApproval,
+        ),
         createFromBranch = CreateWorktreeFromBranchUseCase(
             config,
             shellCommandExecutor,
             fileManager,
             repositoryProvisioningSource,
             prepareEnvironment,
+            repositoryTrust,
+            postCreateApproval,
         ),
         listLocalBranches = ListLocalBranchesUseCase(config, shellCommandExecutor),
         remove = RemoveWorktreeUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient)),

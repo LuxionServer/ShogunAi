@@ -41,6 +41,7 @@ class WorktreeBoard(
     private val autoRefreshInterval: Duration = AUTO_REFRESH_INTERVAL,
     private val clock: () -> Instant = Instant::now,
     private val deviceRefreshInterval: Duration = DEVICE_REFRESH_INTERVAL,
+    val approval: DialogPostCreateApproval = DialogPostCreateApproval(),
 ) : ViewModel() {
     private val deviceRefreshes = mutableMapOf<String, Instant>()
     private val listPermits = Semaphore(MAX_PARALLEL_LISTS)

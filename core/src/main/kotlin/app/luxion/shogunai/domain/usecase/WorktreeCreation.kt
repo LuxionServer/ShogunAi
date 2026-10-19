@@ -3,6 +3,9 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.io.FileManager
+import app.luxion.shogunai.domain.io.PostCreateApproval
+import app.luxion.shogunai.domain.io.PostCreateDecision
+import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.io.SymbolicLinksNotSupported
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -11,6 +14,7 @@ import app.luxion.shogunai.domain.model.ProvisionedFile
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.joinPath
+import java.io.IOException
 
 internal data class ProvisionedFiles(
     val copied: List<String> = emptyList(),
@@ -66,6 +70,8 @@ internal suspend fun addWorktreeAndCopySecrets(
     branchToDeleteOnLfsFailure: String?,
     provisioned: ProvisionedFiles,
     environment: WorktreeEnvironmentPreparer,
+    trust: RepositoryTrust,
+    approval: PostCreateApproval,
 ): Worktree {
     val add = executor.execute(command = addArgs, workingDirectory = config.baseRepositoryPath)
     if (!add.isSuccess) {
@@ -78,7 +84,7 @@ internal suspend fun addWorktreeAndCopySecrets(
             removeIncompleteWorktreeIgnoringResult(config, executor, worktreePath)
             branchToDeleteOnLfsFailure?.let {
                 executor.execute(
-                    command = listOf("git", "branch", "-D", it),
+                    command = listOf("git", "branch", "-D", "--", it),
                     workingDirectory = config.baseRepositoryPath,
                 )
             }
@@ -89,9 +95,11 @@ internal suspend fun addWorktreeAndCopySecrets(
 
     copySecretsOrRollback(config, executor, fileManager, worktreePath, provisioned)
     prepareEnvironmentOrRollback(config, executor, environment, worktreePath)
-    runPostCreateCommands(executor, worktreePath, provisioned.postCreateCommands)
+    val skipped = runApprovedPostCreateCommands(
+        config, executor, trust, approval, worktreePath, provisioned.postCreateCommands,
+    )
 
-    return Worktree(path = worktreePath, branch = branch)
+    return Worktree(path = worktreePath, branch = branch, skippedPostCreateCommands = skipped)
 }
 
 private suspend fun prepareEnvironmentOrRollback(
@@ -135,6 +143,7 @@ internal fun applyProvisionedFiles(
             ProvisionedFile(fileName, ProvisionMode.COPIED)
         }
         val linked = provisioned.linked.map { fileName ->
+            requireInsideWorktree(fileManager, worktreePath, fileName)
             try {
                 fileManager.createSymbolicLink(
                     target = config.baseSecretPath(fileName),
@@ -152,11 +161,36 @@ internal fun applyProvisionedFiles(
     }
 }
 
+private fun requireInsideWorktree(fileManager: FileManager, worktreePath: String, fileName: String) {
+    if (!fileManager.isInside(worktreePath, joinPath(worktreePath, fileName))) {
+        throw IOException("$fileName resolves outside the worktree")
+    }
+}
+
 private fun copyFromBase(config: ProjectConfig, fileManager: FileManager, worktreePath: String, fileName: String) {
+    requireInsideWorktree(fileManager, worktreePath, fileName)
     fileManager.copy(source = config.baseSecretPath(fileName), destination = joinPath(worktreePath, fileName))
 }
 
-internal suspend fun runPostCreateCommands(
+internal suspend fun runApprovedPostCreateCommands(
+    config: ProjectConfig,
+    executor: ShellCommandExecutor,
+    trust: RepositoryTrust,
+    approval: PostCreateApproval,
+    worktreePath: String,
+    commands: List<List<String>>,
+): List<List<String>> {
+    if (commands.isEmpty()) return emptyList()
+    val repository = config.baseRepositoryPath
+    if (!trust.isApproved(repository, commands)) {
+        if (approval.decide(repository, commands) != PostCreateDecision.RUN) return commands
+        trust.approve(repository, commands)
+    }
+    runPostCreateCommands(executor, worktreePath, commands)
+    return emptyList()
+}
+
+private suspend fun runPostCreateCommands(
     executor: ShellCommandExecutor,
     worktreePath: String,
     commands: List<List<String>>,

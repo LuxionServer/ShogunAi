@@ -72,4 +72,15 @@ class PrepareWorktreeEnvironmentUseCaseTest {
         assertIs<WorktreeError.EnvironmentFileWriteFailed>(error)
         assertEquals("$worktree/.env.shogunai", error.path)
     }
+
+    @Test
+    fun `refuses a file whose real location is outside the worktree`() = runTest {
+        val fileManager = FakeFileManager().also { it.outsidePaths = setOf("$worktree/cfg/.zshenv") }
+
+        val error = WriteEnvironmentFileUseCase(untracked, fileManager, provisioning("cfg/.zshenv"))(repository, worktree, environment)
+            .exceptionOrNull()
+
+        assertIs<WorktreeError.EnvironmentFileOutsideWorktree>(error)
+        assertTrue(fileManager.writtenTexts.isEmpty())
+    }
 }

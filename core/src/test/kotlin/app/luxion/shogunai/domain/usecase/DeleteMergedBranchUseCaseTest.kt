@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -20,7 +21,7 @@ class DeleteMergedBranchUseCaseTest {
         val deleted = DeleteMergedBranchUseCase(config, executor)("feature/TASK-123").getOrThrow()
 
         assertTrue(deleted)
-        assertEquals(listOf("git", "branch", "-d", "feature/TASK-123"), executor.executedCommands.single())
+        assertEquals(listOf("git", "branch", "-d", "--", "feature/TASK-123"), executor.executedCommands.single())
     }
 
     @Test
@@ -30,5 +31,15 @@ class DeleteMergedBranchUseCaseTest {
         val deleted = DeleteMergedBranchUseCase(config, executor)("feature/TASK-123").getOrThrow()
 
         assertFalse(deleted)
+    }
+
+    @Test
+    fun `rejects a branch that Git could read as an option`() = runTest {
+        val executor = FakeShellCommandExecutor()
+
+        val error = DeleteMergedBranchUseCase(config, executor)("-D").exceptionOrNull()
+
+        assertEquals("-D", (error as WorktreeError.InvalidRef).ref)
+        assertTrue(executor.executedCommands.isEmpty())
     }
 }

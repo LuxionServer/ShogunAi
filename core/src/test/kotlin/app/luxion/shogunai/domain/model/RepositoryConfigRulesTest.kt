@@ -68,4 +68,11 @@ class RepositoryConfigRulesTest {
             assertEquals(RepositoryConfigIssue.EnvFileOutsideWorktree, RepositoryConfigRules.envFileIssue(it), it)
         }
     }
+
+    @Test
+    fun `rejects reserved variable names`() {
+        listOf("PATH", "BASH_ENV", "NODE_OPTIONS", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "GIT_SSH_COMMAND").forEach {
+            assertEquals(RepositoryConfigIssue.ReservedVariableName, RepositoryConfigRules.variableNameIssue(it), it)
+        }
+    }
 }

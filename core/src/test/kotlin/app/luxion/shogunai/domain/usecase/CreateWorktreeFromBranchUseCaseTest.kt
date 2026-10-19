@@ -32,7 +32,7 @@ class CreateWorktreeFromBranchUseCaseTest {
     private fun executor(addResponse: (List<String>) -> CommandResult = { success(it) }) =
         FakeShellCommandExecutor {
             when {
-                it.getOrNull(1) == "branch" && it.getOrNull(2) == "--list" -> success(it, stdout = "  $branch\n")
+                it.getOrNull(1) == "show-ref" && it.last() == "refs/heads/$branch" -> success(it)
                 it.getOrNull(1) == "worktree" && it.getOrNull(2) == "add" -> addResponse(it)
                 else -> success(it)
             }
@@ -61,7 +61,7 @@ class CreateWorktreeFromBranchUseCaseTest {
     @Test
     fun `fails when the branch does not exist locally`() = runTest {
         val exec = FakeShellCommandExecutor {
-            if (it.getOrNull(1) == "branch" && it.getOrNull(2) == "--list") success(it, stdout = "") else success(it)
+            if (it.getOrNull(1) == "show-ref") failure(it, exitCode = 1) else success(it)
         }
         val useCase = CreateWorktreeFromBranchUseCase(config, exec, FakeFileManager(existing = baseWithSecrets), FakeRepositoryProvisioningSource())
 
@@ -140,7 +140,7 @@ class CreateWorktreeFromBranchUseCaseTest {
             "should roll back the worktree that Git left half-done",
         )
         assertFalse(
-            exec.executed("git", "branch", "-D", branch),
+            exec.executed("git", "branch", "-D", "--", branch),
             "must never delete a branch that already existed before this call",
         )
     }
@@ -161,7 +161,7 @@ class CreateWorktreeFromBranchUseCaseTest {
             exec.executed("git", "worktree", "remove", "--force", worktreePath),
             "should roll back the incomplete worktree",
         )
-        assertFalse(exec.executed("git", "branch", "-D", branch))
+        assertFalse(exec.executed("git", "branch", "-D", "--", branch))
     }
 
     @Test
@@ -181,7 +181,7 @@ class CreateWorktreeFromBranchUseCaseTest {
         val prefixedWorktreePath = "/home/dev/projects/TASK-123"
         val exec = FakeShellCommandExecutor {
             when {
-                it.getOrNull(1) == "branch" && it.getOrNull(2) == "--list" -> success(it, stdout = "  $prefixedBranch\n")
+                it.getOrNull(1) == "show-ref" && it.last() == "refs/heads/$prefixedBranch" -> success(it)
                 else -> success(it)
             }
         }
@@ -197,7 +197,7 @@ class CreateWorktreeFromBranchUseCaseTest {
     fun `copies the files selected by the repository patterns`() = runTest {
         val exec = FakeShellCommandExecutor {
             when {
-                it.getOrNull(1) == "branch" && it.getOrNull(2) == "--list" -> success(it, stdout = "  $branch\n")
+                it.getOrNull(1) == "show-ref" && it.last() == "refs/heads/$branch" -> success(it)
                 it.getOrNull(1) == "ls-files" -> success(it, stdout = ".env\u0000")
                 else -> success(it)
             }
@@ -223,5 +223,32 @@ class CreateWorktreeFromBranchUseCaseTest {
 
         assertIs<WorktreeError.InvalidRepositoryConfig>(error)
         assertFalse(exec.executedCommands.any { it.getOrNull(1) == "worktree" })
+    }
+
+    @Test
+    fun `rejects branch names that Git could read as options`() = runTest {
+        val exec = executor()
+
+        listOf("-d", "--upload-pack=x").forEach { optionLike ->
+            val useCase = CreateWorktreeFromBranchUseCase(config, exec, FakeFileManager(existing = baseWithSecrets), FakeRepositoryProvisioningSource())
+
+            val error = useCase(optionLike).exceptionOrNull()
+
+            assertEquals(optionLike, assertIs<WorktreeError.InvalidRef>(error).ref)
+        }
+        assertTrue(exec.executedCommands.isEmpty())
+    }
+
+    @Test
+    fun `a branch name with a wildcard matches only its exact name`() = runTest {
+        val exec = FakeShellCommandExecutor {
+            if (it.getOrNull(1) == "show-ref" && it.last() == "refs/heads/feature/*") failure(it, exitCode = 1) else success(it)
+        }
+        val useCase = CreateWorktreeFromBranchUseCase(config, exec, FakeFileManager(existing = baseWithSecrets), FakeRepositoryProvisioningSource())
+
+        val error = useCase("feature/*").exceptionOrNull()
+
+        assertIs<WorktreeError.BranchNotFound>(error)
+        assertTrue(exec.executed("git", "show-ref", "--verify", "--quiet", "refs/heads/feature/*"))
     }
 }

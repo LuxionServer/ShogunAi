@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.domain.model.ShellQuoting
 import app.luxion.shogunai.ui.components.IconAction
 import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.SecondaryButton
@@ -59,6 +60,7 @@ fun RepositoryConfigSection(viewModel: ProjectConfigViewModel, modifier: Modifie
                 }
                 ProvidersEditor(viewModel, strings)
                 EnvironmentEditor(viewModel, strings)
+                if (viewModel.postCreateCommands.isNotEmpty()) PostCreateCommandsView(viewModel, strings)
             }
         }
     }
@@ -243,6 +245,28 @@ private fun EnvironmentEditor(viewModel: ProjectConfigViewModel, strings: String
             supportingText = { Text(envFileIssue?.let(strings::repositoryConfigIssue) ?: strings.envFileHelp) },
             modifier = Modifier.fillMaxWidth(),
         )
+    }
+}
+
+@Composable
+private fun PostCreateCommandsView(viewModel: ProjectConfigViewModel, strings: Strings) {
+    SettingsField(strings.postCreateCommandsTitle) {
+        viewModel.postCreateCommands.forEach { command ->
+            Text(ShellQuoting.posixCommand(command), style = ShogunTheme.typography.data)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            Text(
+                if (viewModel.postCreateApproved) strings.postCreateApproved else strings.postCreateNotApproved,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            if (viewModel.postCreateApproved) {
+                SecondaryButton(onClick = viewModel::revokePostCreateApproval) { Text(strings.revokeApproval) }
+            } else {
+                SecondaryButton(onClick = viewModel::approvePostCreateCommands) { Text(strings.approveCommands) }
+            }
+        }
     }
 }
 

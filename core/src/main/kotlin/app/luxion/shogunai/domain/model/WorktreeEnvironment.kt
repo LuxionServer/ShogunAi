@@ -34,10 +34,22 @@ private const val SHARED_PORT_PREFIX = "port:"
 
 fun isValidVariableName(name: String): Boolean = VARIABLE_NAME.matches(name)
 
+private val RESERVED_VARIABLE_NAMES = setOf(
+    "PATH", "HOME", "SHELL", "IFS", "ENV", "BASH_ENV", "ZDOTDIR", "PROMPT_COMMAND",
+    "NODE_OPTIONS", "NODE_PATH", "PYTHONPATH", "PYTHONSTARTUP", "PYTHONHOME", "RUBYOPT", "RUBYLIB",
+    "PERL5OPT", "PERL5LIB", "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS", "CLASSPATH",
+)
+
+private val RESERVED_VARIABLE_PREFIXES = listOf("LD_", "DYLD_", "GIT_")
+
+fun isReservedVariableName(name: String): Boolean =
+    name in RESERVED_VARIABLE_NAMES || RESERVED_VARIABLE_PREFIXES.any(name::startsWith)
+
 fun portKeyLabel(key: String): String = key.removePrefix(SHARED_PORT_PREFIX)
 
 fun parseEnvironmentVariable(name: String, value: String): EnvironmentVariable {
     if (!isValidVariableName(name)) throw InvalidEnvironmentTemplate("\"$name\" isn't a valid variable name", RepositoryConfigIssue.InvalidVariableName)
+    if (isReservedVariableName(name)) throw InvalidEnvironmentTemplate("\"$name\" is a reserved variable name", RepositoryConfigIssue.ReservedVariableName)
     val parts = mutableListOf<TemplatePart>()
     val literal = StringBuilder()
     var index = 0

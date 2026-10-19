@@ -74,6 +74,7 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel, onOpenPrefer
             useCasesFor = appContainer::worktreeUseCases,
             detectAgents = appContainer.detectRunningAgents::invoke,
             preferences = appContainer.shellPreferenceRepository,
+            approval = appContainer.postCreateApproval,
         )
     }
     LaunchedEffect(viewModel.projects) { board.syncCatalog(viewModel.projects) }
@@ -329,6 +330,7 @@ private fun ProjectForm(
             appContainer.simulatorSetup,
             appContainer::inspectRepository,
             isMacOs,
+            appContainer.repositoryTrust,
         )
     }
     ProjectSettingsView(

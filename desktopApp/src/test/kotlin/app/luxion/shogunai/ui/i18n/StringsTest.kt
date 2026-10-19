@@ -294,6 +294,7 @@ class StringsTest {
             RepositoryConfigIssue.InvalidMemorySize,
             RepositoryConfigIssue.InvalidMinutes,
             RepositoryConfigIssue.InvalidVariableName,
+            RepositoryConfigIssue.ReservedVariableName,
             RepositoryConfigIssue.DuplicateVariableName,
             RepositoryConfigIssue.UnclosedPlaceholder,
             RepositoryConfigIssue.UnknownPlaceholder("branch"),
@@ -317,5 +318,24 @@ class StringsTest {
         assertNotEquals(EnglishStrings.paletteNewWorktreeIn("api"), SpanishStrings.paletteNewWorktreeIn("api"))
         assertNotEquals(EnglishStrings.paletteSettingsOf("api"), SpanishStrings.paletteSettingsOf("api"))
         allStrings.forEach { assertTrue(it.paletteNewWorktreeIn("api").contains("api")) }
+    }
+
+    @Test
+    fun `the post-creation approval strings are translated`() {
+        listOf<(app.luxion.shogunai.ui.i18n.Strings) -> String>(
+            { it.postCreateApprovalTitle },
+            { it.postCreateApprovalExplanation },
+            { it.runAndRemember },
+            { it.skipCommands },
+            { it.postCreateCommandsTitle },
+            { it.postCreateApproved },
+            { it.postCreateNotApproved },
+            { it.approveCommands },
+            { it.revokeApproval },
+            { it.worktreeCreatedCommandsSkipped("TASK-1") },
+        ).forEach { text ->
+            assertTrue(text(EnglishStrings).isNotBlank() && text(SpanishStrings).isNotBlank())
+            assertNotEquals(text(EnglishStrings), text(SpanishStrings))
+        }
     }
 }

@@ -2,9 +2,12 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
+import app.luxion.shogunai.domain.FakePostCreateApproval
+import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
+import app.luxion.shogunai.domain.io.PostCreateDecision
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.ProvisionMode
@@ -50,7 +53,7 @@ class ProvisionWorktreeUseCaseTest {
         val fileManager = FakeFileManager(existing = listOf("$base/local.properties", "$linked/.env"))
         val useCase = ProvisionWorktreeUseCase(config, executor(), fileManager, provisioning)
 
-        val provisioned = useCase("$linked/").getOrThrow()
+        val provisioned = useCase("$linked/").getOrThrow().files
 
         assertEquals(listOf("local.properties", ".env"), provisioned.map { it.path })
         assertTrue(provisioned.all { it.mode == ProvisionMode.COPIED })
@@ -131,6 +134,10 @@ class ProvisionWorktreeUseCaseTest {
         ),
     )
 
+    private val linkingCommands = listOf(listOf("npm", "install"), listOf("direnv", "allow"))
+
+    private val approvedTrust = FakeRepositoryTrust(mapOf(base to linkingCommands))
+
     private fun linkingExecutor(hook: (List<String>) -> app.luxion.shogunai.domain.executor.CommandResult = { success(it) }) =
         FakeShellCommandExecutor {
             when {
@@ -145,7 +152,7 @@ class ProvisionWorktreeUseCaseTest {
     fun `links files matching link patterns, preferring link over copy`() = runTest {
         val fileManager = FakeFileManager(existing = listOf("$base/local.properties"))
 
-        val provisioned = ProvisionWorktreeUseCase(config, linkingExecutor(), fileManager, linkingProvisioning)(linked).getOrThrow()
+        val provisioned = ProvisionWorktreeUseCase(config, linkingExecutor(), fileManager, linkingProvisioning)(linked).getOrThrow().files
 
         assertEquals(
             mapOf("keys/a" to "$base/keys/a", "keys/b" to "$base/keys/b").mapKeys { "$linked/${it.key}" },
@@ -167,7 +174,7 @@ class ProvisionWorktreeUseCaseTest {
     fun `copies linked files when symbolic links aren't supported`() = runTest {
         val fileManager = FakeFileManager(existing = listOf("$base/local.properties")).also { it.symbolicLinksSupported = false }
 
-        val provisioned = ProvisionWorktreeUseCase(config, linkingExecutor(), fileManager, linkingProvisioning)(linked).getOrThrow()
+        val provisioned = ProvisionWorktreeUseCase(config, linkingExecutor(), fileManager, linkingProvisioning)(linked).getOrThrow().files
 
         assertTrue(fileManager.symbolicLinks.isEmpty())
         assertTrue("$base/keys/a" to "$linked/keys/a" in fileManager.copied)
@@ -184,7 +191,7 @@ class ProvisionWorktreeUseCaseTest {
             it.failSymbolicLinksFor = setOf("$base/keys/a")
         }
 
-        val error = ProvisionWorktreeUseCase(config, exec, fileManager, linkingProvisioning)(linked).exceptionOrNull()
+        val error = ProvisionWorktreeUseCase(config, exec, fileManager, linkingProvisioning, trust = approvedTrust)(linked).exceptionOrNull()
 
         assertIs<WorktreeError.SecretCopyFailed>(error)
     }
@@ -198,6 +205,7 @@ class ProvisionWorktreeUseCaseTest {
         ProvisionWorktreeUseCase(
             config, exec, fileManager, linkingProvisioning,
             environment = { _, _ -> order += "environment" },
+            trust = approvedTrust,
         )(linked).getOrThrow()
 
         assertEquals(listOf("environment", "hook", "hook"), order)
@@ -210,7 +218,7 @@ class ProvisionWorktreeUseCaseTest {
         val exec = linkingExecutor { failure(it, exitCode = 3, stderr = "network down") }
         val fileManager = FakeFileManager(existing = listOf("$base/local.properties"))
 
-        val error = ProvisionWorktreeUseCase(config, exec, fileManager, linkingProvisioning)(linked).exceptionOrNull()
+        val error = ProvisionWorktreeUseCase(config, exec, fileManager, linkingProvisioning, trust = approvedTrust)(linked).exceptionOrNull()
 
         assertIs<WorktreeError.PostCreateCommandFailed>(error)
         assertEquals(listOf("npm", "install"), error.command)
@@ -226,10 +234,54 @@ class ProvisionWorktreeUseCaseTest {
         val exec = linkingExecutor { throw CommandExecutionException(it, java.io.IOException("No such file")) }
         val fileManager = FakeFileManager(existing = listOf("$base/local.properties"))
 
-        val error = ProvisionWorktreeUseCase(config, exec, fileManager, linkingProvisioning)(linked).exceptionOrNull()
+        val error = ProvisionWorktreeUseCase(config, exec, fileManager, linkingProvisioning, trust = approvedTrust)(linked).exceptionOrNull()
 
         assertIs<WorktreeError.PostCreateCommandFailed>(error)
         assertEquals(listOf("npm", "install"), error.command)
         assertEquals(null, error.exitCode)
+    }
+
+    @Test
+    fun `skips unapproved post-creation commands when the decision is to skip`() = runTest {
+        val exec = linkingExecutor()
+        val fileManager = FakeFileManager(existing = listOf("$base/local.properties"))
+        val approval = FakePostCreateApproval(PostCreateDecision.SKIP)
+
+        val result = ProvisionWorktreeUseCase(config, exec, fileManager, linkingProvisioning, approval = approval)(linked).getOrThrow()
+
+        assertEquals(linkingCommands, result.skippedPostCreateCommands)
+        assertEquals(listOf(base to linkingCommands), approval.asked)
+        assertFalse(exec.executed("npm", "install"))
+    }
+
+    @Test
+    fun `runs and records the approval when the decision is to run`() = runTest {
+        val exec = linkingExecutor()
+        val fileManager = FakeFileManager(existing = listOf("$base/local.properties"))
+        val trust = FakeRepositoryTrust()
+
+        val result = ProvisionWorktreeUseCase(
+            config, exec, fileManager, linkingProvisioning,
+            trust = trust,
+            approval = FakePostCreateApproval(PostCreateDecision.RUN),
+        )(linked).getOrThrow()
+
+        assertEquals(emptyList(), result.skippedPostCreateCommands)
+        assertTrue(exec.executed("npm", "install"))
+        assertTrue(trust.isApproved(base, linkingCommands))
+    }
+
+    @Test
+    fun `approved commands run without asking`() = runTest {
+        val approval = FakePostCreateApproval(PostCreateDecision.SKIP)
+        val fileManager = FakeFileManager(existing = listOf("$base/local.properties"))
+
+        ProvisionWorktreeUseCase(
+            config, linkingExecutor(), fileManager, linkingProvisioning,
+            trust = approvedTrust,
+            approval = approval,
+        )(linked).getOrThrow()
+
+        assertTrue(approval.asked.isEmpty())
     }
 }

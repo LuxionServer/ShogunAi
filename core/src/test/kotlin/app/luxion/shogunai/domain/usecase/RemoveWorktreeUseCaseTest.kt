@@ -40,7 +40,7 @@ class RemoveWorktreeUseCaseTest {
         useCase(worktreePath, branchToDelete = "feature/TASK-123").getOrThrow()
 
         assertTrue(executor.executed("git", "worktree", "remove", worktreePath))
-        assertTrue(executor.executed("git", "branch", "-d", "feature/TASK-123"))
+        assertTrue(executor.executed("git", "branch", "-d", "--", "feature/TASK-123"))
     }
 
     @Test
