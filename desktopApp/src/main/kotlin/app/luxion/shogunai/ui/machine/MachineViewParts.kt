@@ -4,9 +4,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -30,6 +32,7 @@ import app.luxion.shogunai.ui.theme.ShogunTheme
 
 val MachineActionColumnWidth: Dp = 96.dp
 val MachineOwnerColumnWidth: Dp = 220.dp
+val MachineStateColumnWidth: Dp = 110.dp
 
 @Composable
 fun MachineViewFrame(title: String, content: @Composable ColumnScope.() -> Unit) {
@@ -73,6 +76,22 @@ fun MachineRowLine(content: @Composable (androidx.compose.foundation.layout.RowS
         verticalAlignment = Alignment.CenterVertically,
         content = content,
     )
+}
+
+@Composable
+fun MachineColumnHeader() {
+    val strings = LocalStrings.current
+    MachineRowLine {
+        MachineHeaderText(strings.machineColumnDevice, Modifier.weight(1f))
+        MachineHeaderText(strings.machineColumnWorktree, Modifier.width(MachineOwnerColumnWidth))
+        MachineHeaderText(strings.machineColumnState, Modifier.width(MachineStateColumnWidth))
+        Spacer(Modifier.width(MachineActionColumnWidth))
+    }
+}
+
+@Composable
+private fun MachineHeaderText(text: String, modifier: Modifier = Modifier) {
+    Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = modifier)
 }
 
 @Composable

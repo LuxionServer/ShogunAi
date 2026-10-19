@@ -2,6 +2,7 @@ package app.luxion.shogunai.domain.io
 
 import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.Grouping
+import app.luxion.shogunai.domain.model.RecentWorktree
 import app.luxion.shogunai.domain.model.WindowBounds
 
 interface ShellPreferenceRepository {
@@ -19,4 +20,12 @@ interface ShellPreferenceRepository {
     fun saveRecentPaletteItems(ids: List<String>)
     fun loadGrouping(view: GroupedView): Grouping
     fun saveGrouping(view: GroupedView, grouping: Grouping)
+    fun loadRecentProjects(): List<String>
+    fun saveRecentProjects(ids: List<String>)
+    fun loadRecentWorktrees(): List<RecentWorktree>
+    fun saveRecentWorktrees(worktrees: List<RecentWorktree>)
+    fun loadShowTrayIcon(): Boolean
+    fun saveShowTrayIcon(show: Boolean)
+    fun loadKeepRunningInTray(): Boolean
+    fun saveKeepRunningInTray(keepRunning: Boolean)
 }

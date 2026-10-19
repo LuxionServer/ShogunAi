@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.MainBranch
@@ -12,14 +13,31 @@ class ReadWorktreeStatusUseCase(
     private val executor: ShellCommandExecutor,
 ) {
     suspend operator fun invoke(worktree: Worktree, mainBranch: MainBranch?): Result<WorktreeStatus> = runCatching {
+        val uncommittedChanges = uncommittedChanges(worktree)
+        val upstream = if (worktree.branch != null) divergenceFrom(worktree, "@{upstream}") else null
+        val mainBranchDivergence = mainBranch
+            ?.takeIf { it.name != worktree.branch }
+            ?.let { divergenceFrom(worktree, it.ref) }
+        val wouldReadAsMerged = mainBranchDivergence != null &&
+            mainBranchDivergence.ahead == 0 &&
+            mainBranchDivergence.behind > 0
         WorktreeStatus(
-            uncommittedChanges = uncommittedChanges(worktree),
-            upstream = if (worktree.branch != null) divergenceFrom(worktree, "@{upstream}") else null,
-            mainBranch = mainBranch
-                ?.takeIf { it.name != worktree.branch }
-                ?.let { divergenceFrom(worktree, it.ref) },
+            uncommittedChanges = uncommittedChanges,
+            upstream = upstream,
+            mainBranch = mainBranchDivergence,
             lastCommitAt = lastCommitAt(worktree),
+            neverCommitted = wouldReadAsMerged && upstream == null && worktree.branch != null &&
+                branchNeverCommitted(worktree, worktree.branch),
         )
+    }
+
+    private suspend fun branchNeverCommitted(worktree: Worktree, branch: String): Boolean {
+        val reflog = git(worktree, "reflog", "show", "--format=%H", "refs/heads/$branch")
+        if (!reflog.isSuccess) return false
+        val entries = reflog.stdout.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        if (entries.size != 1) return false
+        val head = git(worktree, "rev-parse", "HEAD")
+        return head.isSuccess && head.stdout.trim() == entries.single()
     }
 
     private suspend fun uncommittedChanges(worktree: Worktree): Int {
@@ -43,7 +61,7 @@ class ReadWorktreeStatusUseCase(
     }
 
     private suspend fun git(worktree: Worktree, vararg args: String) =
-        executor.execute(listOf("git", *args), workingDirectory = worktree.path)
+        executor.executeWithin(listOf("git", *args), CommandTimeouts.GIT_READ, workingDirectory = worktree.path)
 }
 
 internal fun parseLeftRightCount(output: String): Divergence? {

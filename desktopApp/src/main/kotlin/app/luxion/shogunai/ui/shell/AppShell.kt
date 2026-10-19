@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.AlertDialog
@@ -18,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -41,6 +43,7 @@ import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.PrimaryButton
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.ErrorFixActions
+import app.luxion.shogunai.ui.components.ErrorNotice
 import app.luxion.shogunai.ui.components.LocalErrorFixActions
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.projectconfig.ProjectSettingsView
@@ -66,7 +69,12 @@ private val NarrowWindowThreshold = 900.dp
 private val EmptyStateMaxWidth = 420.dp
 
 @Composable
-fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel, onOpenPreferences: () -> Unit) {
+fun AppShell(
+    appContainer: AppContainer,
+    viewModel: ShellViewModel,
+    onOpenPreferences: () -> Unit,
+    onBoardReady: (WorktreeBoard) -> Unit = {},
+) {
     var projectPendingRemoval by remember { mutableStateOf<Project?>(null) }
     val messages = rememberAppMessages()
     val board = viewModel {
@@ -75,9 +83,17 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel, onOpenPrefer
             detectAgents = appContainer.detectRunningAgents::invoke,
             preferences = appContainer.shellPreferenceRepository,
             approval = appContainer.postCreateApproval,
+            rememberFetchBeforeCreate = viewModel::rememberFetchBeforeCreate,
+            onWorktreeUsed = { ref -> viewModel.recordWorktree(ref.projectId, ref.path) },
         )
     }
+    SideEffect { onBoardReady(board) }
     LaunchedEffect(viewModel.projects) { board.syncCatalog(viewModel.projects) }
+    viewModel.projects.forEach { project ->
+        val holder = board.holder(project.id)
+        val loadedPaths = holder?.takeIf { it.hasLoaded && it.listFailure == null }?.worktrees?.mapTo(mutableSetOf()) { it.path }
+        LaunchedEffect(project.id, loadedPaths) { loadedPaths?.let { viewModel.pruneRecentWorktrees(project.id, it) } }
+    }
     val machineScope = rememberCoroutineScope()
     val machine = remember {
         MachineResources(
@@ -96,6 +112,9 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel, onOpenPrefer
         if (destination != null && board.isCatalogLoaded && destination.resource !in machine.declared) viewModel.selectActive()
     }
     val windowInfo = LocalWindowInfo.current
+    LaunchedEffect(windowInfo) {
+        snapshotFlow { windowInfo.isWindowFocused }.collect(board::setWindowActive)
+    }
     LaunchedEffect(windowInfo) {
         snapshotFlow { windowInfo.isWindowFocused }
             .drop(1)
@@ -145,20 +164,35 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel, onOpenPrefer
                 onToggle = viewModel::toggleSidebar,
             )
             VerticalDivider(modifier = Modifier.fillMaxHeight())
-            Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                val fixActions = remember(viewModel, onOpenPreferences) {
-                    ErrorFixActions(
-                        openProjectSettings = { projectId -> viewModel.projects.firstOrNull { it.id == projectId }?.let(viewModel::editProject) },
-                        openPreferences = onOpenPreferences,
-                    )
+            Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                appContainer.updates.notice?.let { UpdateNotice(appContainer.updates, Modifier.padding(Spacing.md)) }
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    val fixActions = remember(viewModel, onOpenPreferences) {
+                        ErrorFixActions(
+                            openProjectSettings = { projectId -> viewModel.projects.firstOrNull { it.id == projectId }?.let(viewModel::editProject) },
+                            openPreferences = onOpenPreferences,
+                        )
+                    }
+                    CompositionLocalProvider(LocalAppMessages provides messages, LocalErrorFixActions provides fixActions) {
+                        ShellContent(appContainer, viewModel, board, machine)
+                    }
+                    AppMessagesHost(messages, modifier = Modifier.align(Alignment.BottomCenter))
+                    if (viewModel.unreadableFiles.isNotEmpty()) {
+                        Column(
+                            modifier = Modifier.align(Alignment.TopCenter).padding(Spacing.md),
+                            verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+                        ) {
+                            viewModel.unreadableFiles.forEach { problem ->
+                                ErrorNotice(error = problem, onDismiss = viewModel::dismissUnreadableFiles)
+                            }
+                        }
+                    }
                 }
-                CompositionLocalProvider(LocalAppMessages provides messages, LocalErrorFixActions provides fixActions) {
-                    ShellContent(appContainer, viewModel, board, machine)
-                }
-                AppMessagesHost(messages, modifier = Modifier.align(Alignment.BottomCenter))
             }
         }
     }
+
+    UpdateCheckDialog(appContainer.updates)
 
     if (viewModel.isPaletteOpen) {
         PaletteHost(viewModel, board, machine, messages, onOpenPreferences)
@@ -189,7 +223,9 @@ private fun PaletteHost(
     onOpenPreferences: () -> Unit,
 ) {
     val strings = LocalStrings.current
-    val items = remember(viewModel.projects, board.paletteWorktrees, machine.visibleResources, board.canCleanUp(), strings) {
+    val openActions = board.selectedOpenActions(strings)
+    val launchChoices = board.selectedLaunchChoices(strings)
+    val items = remember(viewModel.projects, board.paletteWorktrees, machine.visibleResources, board.canCleanUp(), strings, openActions.map { it.label }, launchChoices.map { it.label }) {
         buildPaletteIndex(
             projects = viewModel.projects,
             worktrees = board.paletteWorktrees,
@@ -197,6 +233,8 @@ private fun PaletteHost(
             canCleanUp = board.canCleanUp(),
             strings = strings,
             shortcutLabel = ::platformShortcutLabel,
+            openActions = openActions,
+            launchChoices = launchChoices,
         )
     }
     val knownIds = remember(items) { items.mapTo(mutableSetOf()) { it.id } }
@@ -225,6 +263,8 @@ private fun runPaletteAction(
             board.revealInAllWorktrees(action.ref)
         }
         is PaletteAction.CopyLaunchCommand -> board.copyLaunchCommand(action.ref, onCopied)
+        is PaletteAction.OpenSelected -> board.openSelected(action.kind)
+        is PaletteAction.LaunchSelected -> board.launchSelected(action.kind, action.agent)
         is PaletteAction.NewWorktreeIn -> viewModel.navigate(ShellDestination.All(projectFilter = action.projectId)) {
             board.openCreateDialog(action.projectId)
         }
@@ -293,6 +333,7 @@ private fun WorktreeView(destination: ShellDestination, shellViewModel: ShellVie
                 onDeleteSelectedWorktree = board::deleteSelectedWorktree,
                 onClearSelection = board::clearSelection,
                 onEscape = board::escape,
+                hasSelection = { board.selectedWorktree != null },
             ),
         )
         onDispose { shellViewModel.updateWorktreeActions(null) }
@@ -331,6 +372,7 @@ private fun ProjectForm(
             appContainer::inspectRepository,
             isMacOs,
             appContainer.repositoryTrust,
+            appContainer.tools,
         )
     }
     ProjectSettingsView(
@@ -345,6 +387,7 @@ private fun ProjectForm(
             shellViewModel.onProjectSaved(saved, previous = existingProject)
         },
         onCancel = shellViewModel::cancelForm,
+        onDiscard = shellViewModel::discardForm,
     )
 }
 

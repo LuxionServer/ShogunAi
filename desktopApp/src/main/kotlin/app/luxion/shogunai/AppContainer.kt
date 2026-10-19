@@ -1,6 +1,17 @@
 package app.luxion.shogunai
 
+import app.luxion.shogunai.BuildInfo
 import app.luxion.shogunai.domain.executor.ClipboardWriter
+import app.luxion.shogunai.domain.model.HostArchitecture
+import app.luxion.shogunai.domain.model.HostOs
+import app.luxion.shogunai.domain.usecase.CheckForUpdateUseCase
+import app.luxion.shogunai.domain.usecase.DetectInstallChannelUseCase
+import app.luxion.shogunai.infrastructure.GitHubReleaseSource
+import app.luxion.shogunai.infrastructure.JsonUpdatePreferenceRepository
+import app.luxion.shogunai.ui.shell.UpdateState
+import app.luxion.shogunai.ui.shell.openInBrowser
+import java.nio.file.Files
+import java.nio.file.Path
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.ui.worktree.DialogPostCreateApproval
@@ -10,6 +21,21 @@ import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.io.ShellPreferenceRepository
 import app.luxion.shogunai.domain.io.ThemePreferenceRepository
+import app.luxion.shogunai.domain.model.EditorId
+import app.luxion.shogunai.domain.model.TerminalId
+import app.luxion.shogunai.domain.usecase.OpenWorktreeInTerminalUseCase
+import app.luxion.shogunai.infrastructure.CommandEditorLauncher
+import app.luxion.shogunai.infrastructure.JsonToolPreferenceRepository
+import app.luxion.shogunai.infrastructure.LocalToolDetector
+import app.luxion.shogunai.infrastructure.MacTerminalLauncher
+import app.luxion.shogunai.infrastructure.SystemFolderLauncher
+import app.luxion.shogunai.infrastructure.TmuxTerminalLauncher
+import app.luxion.shogunai.infrastructure.WindowsTerminalLauncher
+import app.luxion.shogunai.infrastructure.ZellijTerminalLauncher
+import app.luxion.shogunai.domain.model.AgentLaunchConfig
+import app.luxion.shogunai.domain.model.WorktreeAgents
+import app.luxion.shogunai.ui.shell.AgentChoices
+import app.luxion.shogunai.ui.shell.ToolsPreferences
 import app.luxion.shogunai.domain.model.DaemonProcess
 import app.luxion.shogunai.domain.model.DaemonStopReport
 import app.luxion.shogunai.domain.model.DerivedDataDeletion
@@ -18,6 +44,8 @@ import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.ProvisionDrift
+import app.luxion.shogunai.domain.model.WorktreeEnvironment
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.SimulatorDevice
 import app.luxion.shogunai.domain.model.SimulatorRuntime
@@ -38,7 +66,8 @@ import app.luxion.shogunai.domain.usecase.DeleteSimulatorsUseCase
 import app.luxion.shogunai.domain.usecase.DetectRunningAgentsUseCase
 import app.luxion.shogunai.domain.usecase.ListDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.ListGradleDaemonsUseCase
-import app.luxion.shogunai.domain.usecase.ListLocalBranchesUseCase
+import app.luxion.shogunai.domain.usecase.FetchRemoteUseCase
+import app.luxion.shogunai.domain.usecase.ListBranchesUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.MachineProviderContributions
 import app.luxion.shogunai.domain.usecase.effectiveGradleJvmArgs
@@ -50,12 +79,20 @@ import app.luxion.shogunai.domain.usecase.OpenWorktreeInHerdrUseCase
 import app.luxion.shogunai.domain.usecase.ReadGitMetadataFingerprintUseCase
 import app.luxion.shogunai.domain.usecase.ReadSimulatorStatesUseCase
 import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
+import app.luxion.shogunai.domain.usecase.CheckProvisionedFilesUseCase
+import app.luxion.shogunai.domain.usecase.ProvisionResult
+import app.luxion.shogunai.domain.usecase.ProvisionWorktreeUseCase
+import app.luxion.shogunai.domain.usecase.ReleasedResources
+import app.luxion.shogunai.domain.usecase.ReleaseWorktreeResourcesUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
+import app.luxion.shogunai.domain.usecase.WorktreeResourcePlan
 import app.luxion.shogunai.domain.usecase.RepairWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
 import app.luxion.shogunai.domain.usecase.ResolveRepositoryUseCase
+import app.luxion.shogunai.domain.usecase.ResolveStartPointUseCase
 import app.luxion.shogunai.ui.projectconfig.RepositoryInspection
 import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
+import app.luxion.shogunai.domain.usecase.WorktreeEnvironmentCache
 import app.luxion.shogunai.domain.usecase.StartWorktreeEmulatorUseCase
 import app.luxion.shogunai.domain.usecase.StartWorktreeSimulatorUseCase
 import app.luxion.shogunai.domain.usecase.StopGradleDaemonsUseCase
@@ -83,16 +120,40 @@ import app.luxion.shogunai.infrastructure.RepositoryProvisioningFiles
 import app.luxion.shogunai.infrastructure.SimctlAppleSimulators
 import app.luxion.shogunai.infrastructure.SocketPortProbe
 import app.luxion.shogunai.infrastructure.defaultGradleUserHome
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class AppContainer {
     val projectRepository: ProjectRepository = JsonProjectRepository()
     private val settingsFile = JsonSettingsFile()
+    fun settingsProblem() = settingsFile.lastReadProblem
+
+    fun acknowledgeSettingsProblem() = settingsFile.acknowledgeReadProblem()
+
     val themePreferenceRepository: ThemePreferenceRepository = JsonThemePreferenceRepository(settingsFile)
     val languagePreferenceRepository: LanguagePreferenceRepository = JsonLanguagePreferenceRepository(settingsFile)
     val shellPreferenceRepository: ShellPreferenceRepository = JsonShellPreferenceRepository(settingsFile)
     private val fileManager: FileManager = NioFileManager()
     private val shellCommandExecutor: ShellCommandExecutor = ProcessBuilderShellCommandExecutor()
     private val clipboardWriter: ClipboardWriter = AwtClipboardWriter()
+    private val updatePreferences = JsonUpdatePreferenceRepository(settingsFile)
+    val updates = UpdateState(
+        check = CheckForUpdateUseCase(
+            source = GitHubReleaseSource(BuildInfo.VERSION),
+            preferences = updatePreferences,
+            detectChannel = DetectInstallChannelUseCase(
+                os = HostOs.current(),
+                appLocation = System.getProperty("java.home").orEmpty(),
+                pathExists = { Files.exists(Path.of(it)) },
+                executor = shellCommandExecutor,
+            ),
+            runningVersion = BuildInfo.VERSION,
+            architecture = HostArchitecture.current(),
+        )::invoke,
+        preferences = updatePreferences,
+        clipboard = clipboardWriter,
+        openUrl = ::openInBrowser,
+    )
     val repositoryProvisioningSource: RepositoryProvisioningSource = RepositoryProvisioningFiles()
     private val gradleUserHome = defaultGradleUserHome()
     private val gradleDaemonSource = ProcessGradleDaemonSource(shellCommandExecutor, gradleUserHome)
@@ -113,6 +174,20 @@ class AppContainer {
         userHome = System.getProperty("user.home"),
         isMac = derivedDataSource.isSupported(),
     )
+    val agentChoices = AgentChoices(settingsFile.read().worktreeAgents) { transform ->
+        settingsFile.update { it.copy(worktreeAgents = transform(it.worktreeAgents)) }
+    }
+    val tools = ToolsPreferences(JsonToolPreferenceRepository(settingsFile), LocalToolDetector(shellCommandExecutor))
+    private val terminalLaunchers = listOf(
+        MacTerminalLauncher(TerminalId.TERMINAL, shellCommandExecutor),
+        MacTerminalLauncher(TerminalId.ITERM2, shellCommandExecutor),
+        WindowsTerminalLauncher(shellCommandExecutor),
+        TmuxTerminalLauncher(shellCommandExecutor),
+        ZellijTerminalLauncher(shellCommandExecutor),
+    )
+    private val editorLaunchers = EditorId.entries.map { CommandEditorLauncher(it, shellCommandExecutor) }
+    private val folderLauncher = SystemFolderLauncher(shellCommandExecutor)
+    private val environmentCache = WorktreeEnvironmentCache()
     private val resolveEnvironment = resolverWith(contributions)
     private val startSimulator = StartWorktreeSimulatorUseCase(repositoryProvisioningSource, appleSimulators, { repository, worktree, requested ->
         resolverWith(contributions.requesting(requested))(repository, worktree)
@@ -127,10 +202,11 @@ class AppContainer {
         environmentStateStore,
         portProbe,
         factory,
+        environmentCache,
     )
 
     private fun simulatorSettingsFor(repositoryPath: String): SimulatorSettings =
-        projectRepository.list()
+        runCatching { projectRepository.list() }.getOrDefault(emptyList())
             .firstOrNull { it.config.baseRepositoryPath.trimEnd('/') == repositoryPath.trimEnd('/') }
             ?.config?.simulator ?: SimulatorSettings()
 
@@ -147,6 +223,10 @@ class AppContainer {
             kmpTestWiring.usesKotlinMultiplatform(repositoryPath)
 
         override fun installInitScript(): Result<Unit> = runCatching { kmpTestWiring.installInitScript() }
+
+        override fun isInitScriptInstalled(): Boolean = kmpTestWiring.isInitScriptInstalled()
+
+        override fun uninstallInitScript(): Result<Unit> = runCatching { kmpTestWiring.uninstallInitScript() }
 
         override val snippet: String = FileKmpTestWiring.REPOSITORY_SNIPPET
 
@@ -169,7 +249,7 @@ class AppContainer {
             RepositoryInspection(topLevel, mainBranch?.name)
         }
 
-    val detectRunningAgents = DetectRunningAgentsUseCase(shellCommandExecutor)
+    val detectRunningAgents = DetectRunningAgentsUseCase(shellCommandExecutor, herdrClient)
 
     private val prepareEnvironment = PrepareWorktreeEnvironmentUseCase(
         resolveEnvironment,
@@ -221,9 +301,12 @@ class AppContainer {
             repositoryTrust,
             postCreateApproval,
         ),
-        listLocalBranches = ListLocalBranchesUseCase(config, shellCommandExecutor),
+        listBranches = ListBranchesUseCase(config, shellCommandExecutor),
+        fetchRemote = FetchRemoteUseCase(config, shellCommandExecutor),
+        resolveStartPoint = { ref -> ResolveStartPointUseCase(shellCommandExecutor)(config.baseRepositoryPath, ref) },
         remove = RemoveWorktreeUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient)),
         copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboardWriter),
+        agents = AgentUseCases(config, agentChoices),
         repair = RepairWorktreesUseCase(config, shellCommandExecutor, fileManager),
         resolveMainBranch = ResolveMainBranchUseCase(config, shellCommandExecutor),
         readStatus = ReadWorktreeStatusUseCase(shellCommandExecutor),
@@ -231,13 +314,16 @@ class AppContainer {
         detectAgents = { worktrees -> detectRunningAgents(config, worktrees) },
         measureSize = MeasureWorktreeSizeUseCase(fileManager),
         readFingerprint = ReadGitMetadataFingerprintUseCase(config, fileManager),
+        invalidateEnvironments = environmentCache::invalidate,
         readPorts = { worktree ->
             resolveEnvironment(config.baseRepositoryPath, worktree.path, reserve = false).map { it.ports }
         },
         emulator = EmulatorUseCases(
             declared = {
-                runCatching { repositoryProvisioningSource.read(config.baseRepositoryPath).providers.emulator != null }
-                    .getOrDefault(false)
+                withContext(Dispatchers.IO) {
+                    runCatching { repositoryProvisioningSource.read(config.baseRepositoryPath).providers.emulator != null }
+                        .getOrDefault(false)
+                }
             },
             readStates = { worktrees -> readEmulatorStates(config, worktrees) },
             start = { worktreePath -> startEmulator(config, worktreePath) },
@@ -245,29 +331,71 @@ class AppContainer {
             stopSerials = { serials -> runCatching { stopEmulator.stopSerials(config, serials) } },
         ),
         simulator = SimulatorUseCases(
-            declared = { simulatorSetup.isAvailable(config.baseRepositoryPath) },
+            declared = { withContext(Dispatchers.IO) { simulatorSetup.isAvailable(config.baseRepositoryPath) } },
             readStates = { worktrees -> readSimulatorStates(config, worktrees) },
             start = { worktreePath -> startSimulator(config, worktreePath) },
             stop = { worktreePath -> stopSimulator(config, worktreePath) },
             orphans = { deleteSimulators.orphans(config) },
             delete = { udids -> deleteSimulators(udids) },
         ),
+        tools = ToolUseCases(
+            preferences = tools,
+            editorOverride = config.editorOverride,
+            openInTerminal = OpenWorktreeInTerminalUseCase(config, terminalLaunchers, resolveEnvironment)::invoke,
+            openInEditor = { path, editor -> editorLaunchers.first { it.editor == editor }.open(path) },
+            openFolder = folderLauncher::open,
+        ),
+        provisioning = ProvisioningUseCases(
+            check = CheckProvisionedFilesUseCase(config, shellCommandExecutor, fileManager, repositoryProvisioningSource)::invoke,
+            provision = ProvisionWorktreeUseCase(
+                config,
+                shellCommandExecutor,
+                fileManager,
+                repositoryProvisioningSource,
+                prepareEnvironment,
+                repositoryTrust,
+                postCreateApproval,
+            )::invoke,
+        ),
+        readEnvironment = { worktree -> resolveEnvironment(config.baseRepositoryPath, worktree.path, reserve = false) },
+        releaseResources = ReleaseWorktreeResourcesUseCase(
+            repositoryProvisioningSource,
+            readEmulatorStates,
+            stopEmulator,
+            readSimulatorStates,
+            stopSimulator,
+            ListGradleDaemonsUseCase(gradleDaemonSource, fileManager),
+            StopGradleDaemonsUseCase(gradleDaemonSource, shellCommandExecutor),
+        ).let { releaser ->
+            ReleaseResourcesUseCases(
+                plan = { worktree, all -> releaser.plan(config, worktree, all) },
+                release = { plan -> releaser.release(config, plan) },
+            )
+        },
+
         herdr = HerdrUseCases(
-            worktreesRoot = { runCatching { herdrConfig.worktreesRoot() }.getOrNull() },
+            worktreesRoot = { withContext(Dispatchers.IO) { runCatching { herdrConfig.worktreesRoot() }.getOrNull() } },
             open = OpenWorktreeInHerdrUseCase(config, herdrClient, resolveEnvironment)::invoke,
             openWorkspaces = CloseHerdrWorkspacesUseCase(config, herdrClient)::openWorkspaces,
+            focusAgent = { paneId -> runCatching { herdrClient.focusAgent(paneId) } },
         ),
         gradle = GradleUseCases(
             provider = {
-                runCatching { repositoryProvisioningSource.read(config.baseRepositoryPath).providers.gradle }.getOrNull()
+                withContext(Dispatchers.IO) {
+                    runCatching { repositoryProvisioningSource.read(config.baseRepositoryPath).providers.gradle }.getOrNull()
+                }
             },
             listDaemons = ListGradleDaemonsUseCase(gradleDaemonSource, fileManager),
             stopDaemons = StopGradleDaemonsUseCase(gradleDaemonSource, shellCommandExecutor),
-            isBuildCacheEnabled = { CheckGradleBuildCacheUseCase(fileManager, gradleUserHome)(config.baseRepositoryPath) },
+            isBuildCacheEnabled = {
+                withContext(Dispatchers.IO) { CheckGradleBuildCacheUseCase(fileManager, gradleUserHome)(config.baseRepositoryPath) }
+            },
         ),
         xcode = XcodeUseCases(
             provider = {
-                runCatching { repositoryProvisioningSource.read(config.baseRepositoryPath).providers.xcode }.getOrNull()
+                withContext(Dispatchers.IO) {
+                    runCatching { repositoryProvisioningSource.read(config.baseRepositoryPath).providers.xcode }.getOrNull()
+                }
             },
             supported = derivedDataSource::isSupported,
             list = ListDerivedDataUseCase(derivedDataSource),
@@ -276,11 +404,36 @@ class AppContainer {
     )
 }
 
+class AgentUseCases(
+    val config: ProjectConfig,
+    val choices: AgentChoices,
+) {
+    val options: List<AgentLaunchConfig> get() = config.agents
+    val hasChoice: Boolean get() = options.size > 1
+
+    fun agentFor(worktreePath: String): AgentLaunchConfig =
+        WorktreeAgents.agentFor(config, choices.chosen, worktreePath)
+
+    fun choose(worktreePath: String, agent: AgentLaunchConfig) {
+        choices.update { WorktreeAgents.choose(config, it, worktreePath, agent) }
+    }
+
+    fun prune(existingWorktreePaths: Set<String>) {
+        choices.update { WorktreeAgents.prune(config, it, existingWorktreePaths) }
+    }
+
+    companion object {
+        val NONE = AgentUseCases(ProjectConfig("", "", emptyList()), AgentChoices())
+    }
+}
+
 data class WorktreeUseCases(
     val list: ListWorktreesUseCase,
     val create: CreateWorktreeUseCase,
     val createFromBranch: CreateWorktreeFromBranchUseCase,
-    val listLocalBranches: ListLocalBranchesUseCase,
+    val listBranches: ListBranchesUseCase,
+    val fetchRemote: FetchRemoteUseCase,
+    val resolveStartPoint: suspend (String) -> Result<String>,
     val remove: RemoveWorktreeUseCase,
     val copyLaunchCommand: CopyWorktreeLaunchCommandUseCase,
     val repair: RepairWorktreesUseCase,
@@ -290,13 +443,44 @@ data class WorktreeUseCases(
     val detectAgents: suspend (List<Worktree>) -> Result<Map<String, List<RunningAgent>>>,
     val measureSize: MeasureWorktreeSizeUseCase,
     val readFingerprint: ReadGitMetadataFingerprintUseCase,
+    val invalidateEnvironments: () -> Unit = {},
     val readPorts: suspend (Worktree) -> Result<Map<String, Int>>,
     val emulator: EmulatorUseCases,
     val simulator: SimulatorUseCases,
     val gradle: GradleUseCases,
     val xcode: XcodeUseCases,
     val herdr: HerdrUseCases = HerdrUseCases.NONE,
+    val tools: ToolUseCases = ToolUseCases.NONE,
+    val provisioning: ProvisioningUseCases = ProvisioningUseCases.NONE,
+    val readEnvironment: suspend (Worktree) -> Result<WorktreeEnvironment> = { Result.success(WorktreeEnvironment()) },
+    val releaseResources: ReleaseResourcesUseCases = ReleaseResourcesUseCases.NONE,
+    val agents: AgentUseCases = AgentUseCases.NONE,
+
 )
+
+class ProvisioningUseCases(
+    val check: suspend (String) -> Result<List<ProvisionDrift>>,
+    val provision: suspend (String) -> Result<ProvisionResult>,
+) {
+    companion object {
+        val NONE = ProvisioningUseCases(
+            check = { Result.success(emptyList()) },
+            provision = { Result.success(ProvisionResult(emptyList())) },
+        )
+    }
+}
+
+class ReleaseResourcesUseCases(
+    val plan: suspend (Worktree, List<Worktree>) -> WorktreeResourcePlan,
+    val release: suspend (WorktreeResourcePlan) -> ReleasedResources,
+) {
+    companion object {
+        val NONE = ReleaseResourcesUseCases(
+            plan = { _, _ -> WorktreeResourcePlan() },
+            release = { ReleasedResources() },
+        )
+    }
+}
 
 class MachineUseCases(
     val listDaemons: suspend () -> Result<List<DaemonProcess>>,
@@ -316,7 +500,7 @@ class MachineUseCases(
 )
 
 data class SimulatorUseCases(
-    val declared: () -> Boolean,
+    val declared: suspend () -> Boolean,
     val readStates: suspend (List<Worktree>) -> Result<Map<String, WorktreeSimulator>>,
     val start: suspend (String) -> Result<WorktreeSimulator>,
     val stop: suspend (String) -> Result<WorktreeSimulator?>,
@@ -335,15 +519,34 @@ data class SimulatorUseCases(
     }
 }
 
+data class ToolUseCases(
+    val preferences: ToolsPreferences,
+    val editorOverride: EditorId?,
+    val openInTerminal: suspend (path: String, terminal: TerminalId, agent: AgentLaunchConfig) -> Result<Unit>,
+    val openInEditor: suspend (path: String, editor: EditorId) -> Result<Unit>,
+    val openFolder: suspend (path: String) -> Result<Unit>,
+) {
+    companion object {
+        val NONE = ToolUseCases(
+            preferences = ToolsPreferences.NONE,
+            editorOverride = null,
+            openInTerminal = { _, terminal, _ -> Result.failure(WorktreeError.TerminalUnsupported(terminal, "no launcher")) },
+            openInEditor = { _, editor -> Result.failure(WorktreeError.EditorLaunchFailed(editor, "no launcher")) },
+            openFolder = { path -> Result.failure(WorktreeError.FolderOpenFailed(path, "no launcher")) },
+        )
+    }
+}
+
 data class HerdrUseCases(
-    val worktreesRoot: () -> String?,
-    val open: suspend (Worktree) -> Result<HerdrOpening>,
+    val worktreesRoot: suspend () -> String?,
+    val open: suspend (Worktree, AgentLaunchConfig) -> Result<HerdrOpening>,
     val openWorkspaces: suspend (List<String>) -> Map<String, String> = { emptyMap() },
+    val focusAgent: suspend (String) -> Result<Unit> = { Result.success(Unit) },
 ) {
     companion object {
         val NONE = HerdrUseCases(
             worktreesRoot = { null },
-            open = { Result.failure(WorktreeError.HerdrNotInstalled) },
+            open = { _, _ -> Result.failure(WorktreeError.HerdrNotInstalled) },
         )
     }
 }
@@ -354,6 +557,8 @@ interface SimulatorSetup {
     fun isWired(repositoryPath: String): Boolean
     fun usesKotlinMultiplatform(repositoryPath: String): Boolean
     fun installInitScript(): Result<Unit>
+    fun isInitScriptInstalled(): Boolean
+    fun uninstallInitScript(): Result<Unit>
     val snippet: String
     val initScriptPath: String
 
@@ -364,6 +569,8 @@ interface SimulatorSetup {
             override fun isWired(repositoryPath: String) = false
             override fun usesKotlinMultiplatform(repositoryPath: String) = false
             override fun installInitScript(): Result<Unit> = Result.success(Unit)
+            override fun isInitScriptInstalled() = false
+            override fun uninstallInitScript(): Result<Unit> = Result.success(Unit)
             override val snippet: String = ""
             override val initScriptPath: String = ""
         }
@@ -371,7 +578,7 @@ interface SimulatorSetup {
 }
 
 data class EmulatorUseCases(
-    val declared: () -> Boolean,
+    val declared: suspend () -> Boolean,
     val readStates: suspend (List<Worktree>) -> Result<Map<String, WorktreeEmulator>>,
     val start: suspend (String) -> Result<WorktreeEmulator>,
     val stop: suspend (String) -> Result<WorktreeEmulator?>,
@@ -389,15 +596,15 @@ data class EmulatorUseCases(
 }
 
 data class GradleUseCases(
-    val provider: () -> GradleProvider?,
+    val provider: suspend () -> GradleProvider?,
     val listDaemons: ListGradleDaemonsUseCase,
     val stopDaemons: StopGradleDaemonsUseCase,
-    val isBuildCacheEnabled: () -> Boolean,
+    val isBuildCacheEnabled: suspend () -> Boolean,
 )
 
 data class XcodeUseCases(
-    val provider: () -> XcodeProvider?,
-    val supported: () -> Boolean,
+    val provider: suspend () -> XcodeProvider?,
+    val supported: suspend () -> Boolean,
     val list: ListDerivedDataUseCase,
     val deleteOrphans: DeleteOrphanedDerivedDataUseCase,
 )

@@ -2,7 +2,10 @@ package app.luxion.shogunai.ui.shell
 
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeShellPreferenceRepository
+import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.model.Project
+import app.luxion.shogunai.domain.model.RecentWorktree
+import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.ProjectConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -98,6 +101,17 @@ class ShellViewModelTest {
         viewModel.selectProject(mobile)
         viewModel.selectAll()
         assertEquals(ShellDestination.All(), viewModel.destination)
+    }
+
+    @Test
+    fun `remembering the fetch option saves it in the project`() {
+        val viewModel = viewModel()
+
+        viewModel.rememberFetchBeforeCreate("mobile", true)
+
+        assertTrue(repository.list().single { it.id == "mobile" }.config.fetchBeforeCreate)
+        assertTrue(viewModel.projects.single { it.id == "mobile" }.config.fetchBeforeCreate)
+        assertFalse(viewModel.projects.single { it.id == "api" }.config.fetchBeforeCreate)
     }
 
     @Test
@@ -312,6 +326,7 @@ class ShellViewModelTest {
                 onDeleteSelectedWorktree = { deleted++ },
                 onClearSelection = { cleared++ },
                 onEscape = {},
+                hasSelection = { true },
             ),
         )
         val actions = viewModel.worktreeActions
@@ -331,6 +346,34 @@ class ShellViewModelTest {
     }
 
     private class FakeLeaveGuard(override var hasUnsavedChanges: Boolean) : LeaveGuard
+
+    @Test
+    fun `closing the window with unsaved settings asks before hiding it`() {
+        val viewModel = viewModel()
+        viewModel.editProject(api)
+        viewModel.attachLeaveGuard(FakeLeaveGuard(hasUnsavedChanges = true))
+        var hidden = false
+
+        viewModel.requestLeave { hidden = true }
+
+        assertFalse(hidden)
+        assertTrue(viewModel.isLeaveConfirmationPending)
+
+        viewModel.confirmLeave()
+
+        assertTrue(hidden)
+    }
+
+    @Test
+    fun `closing the window without unsaved settings hides it right away`() {
+        val viewModel = viewModel()
+        var hidden = false
+
+        viewModel.requestLeave { hidden = true }
+
+        assertTrue(hidden)
+        assertFalse(viewModel.isLeaveConfirmationPending)
+    }
 
     @Test
     fun `navigation is blocked until confirmed while the form has unsaved changes`() {
@@ -372,6 +415,31 @@ class ShellViewModelTest {
 
         assertEquals(ShellDestination.All(), viewModel.destination)
         assertFalse(viewModel.isLeaveConfirmationPending)
+    }
+
+    @Test
+    fun `discarding the form leaves without asking even with unsaved changes`() {
+        val viewModel = viewModel()
+        viewModel.selectProject(mobile)
+        viewModel.editProject(api)
+        viewModel.attachLeaveGuard(FakeLeaveGuard(hasUnsavedChanges = true))
+
+        viewModel.discardForm()
+
+        assertFalse(viewModel.isLeaveConfirmationPending)
+        assertEquals(ShellDestination.All(projectFilter = "mobile"), viewModel.destination)
+    }
+
+    @Test
+    fun `leaving through the sidebar still asks while the form has unsaved changes`() {
+        val viewModel = viewModel()
+        viewModel.editProject(api)
+        viewModel.attachLeaveGuard(FakeLeaveGuard(hasUnsavedChanges = true))
+
+        viewModel.selectProject(mobile)
+
+        assertTrue(viewModel.isLeaveConfirmationPending)
+        assertEquals(ShellDestination.ProjectSettings(api.id), viewModel.destination)
     }
 
     @Test
@@ -488,5 +556,111 @@ class ShellViewModelTest {
         viewModel.rememberPaletteItem("project:mobile", setOf("project:api", "project:mobile"))
 
         assertEquals(listOf("project:mobile", "project:api"), viewModel.recentPaletteItems)
+    }
+
+    @Test
+    fun `an unreadable projects file shows no projects and reports the file`() {
+        val unreadable = WorktreeError.LocalFileUnreadable("~/.shogunai/projects.json", "unexpected token")
+        val failing = object : ProjectRepository {
+            override fun list(): List<Project> = throw unreadable
+            override fun save(project: Project) = Unit
+            override fun delete(id: String) = Unit
+        }
+
+        val viewModel = ShellViewModel(failing, preferences)
+
+        assertTrue(viewModel.projects.isEmpty())
+        assertEquals(listOf(unreadable), viewModel.unreadableFiles)
+        viewModel.dismissUnreadableFiles()
+        assertTrue(viewModel.unreadableFiles.isEmpty())
+    }
+
+    @Test
+    fun `a settings file that was reset is reported and acknowledged on dismissal`() {
+        val problem = WorktreeError.LocalFileUnreadable("~/.shogunai/settings.json", null)
+        var pending: WorktreeError.LocalFileUnreadable? = problem
+
+        val viewModel = ShellViewModel(repository, preferences, { pending }, { pending = null })
+
+        assertEquals(listOf(problem), viewModel.unreadableFiles)
+        viewModel.dismissUnreadableFiles()
+        assertNull(pending)
+    }
+
+    @Test
+    fun `opening a project view makes it the first recent project and saves it`() {
+        val viewModel = viewModel()
+
+        viewModel.selectProject(api)
+        viewModel.selectProject(mobile)
+        viewModel.selectProject(api)
+        viewModel.selectAll()
+
+        assertEquals(listOf("api", "mobile"), viewModel.recentProjects)
+        assertEquals(listOf("api", "mobile"), preferences.recentProjects)
+    }
+
+    @Test
+    fun `keeps at most five recent projects`() {
+        val projects = (1..7).map { Project(id = "p$it", name = "p$it", config = config) }
+        val viewModel = ShellViewModel(FakeProjectRepository(initialProjects = projects), preferences)
+
+        projects.forEach(viewModel::selectProject)
+
+        assertEquals(listOf("p7", "p6", "p5", "p4", "p3"), viewModel.recentProjects)
+    }
+
+    @Test
+    fun `a launched worktree becomes the first recent worktree and survives a restart`() {
+        val viewModel = viewModel()
+
+        viewModel.recordWorktree("api", "~/projects/TASK-1")
+        viewModel.recordWorktree("mobile", "~/projects/TASK-2")
+        viewModel.recordWorktree("api", "~/projects/TASK-1")
+
+        val expected = listOf(RecentWorktree("api", "~/projects/TASK-1"), RecentWorktree("mobile", "~/projects/TASK-2"))
+        assertEquals(expected, viewModel.recentWorktrees)
+        assertEquals(expected, viewModel().recentWorktrees)
+    }
+
+    @Test
+    fun `keeps at most eight recent worktrees`() {
+        val viewModel = viewModel()
+
+        (1..10).forEach { viewModel.recordWorktree("api", "~/projects/TASK-$it") }
+
+        assertEquals(8, viewModel.recentWorktrees.size)
+        assertEquals("~/projects/TASK-10", viewModel.recentWorktrees.first().path)
+        assertEquals("~/projects/TASK-3", viewModel.recentWorktrees.last().path)
+    }
+
+    @Test
+    fun `a removed worktree disappears from the recents without touching the other projects`() {
+        val viewModel = viewModel()
+        viewModel.recordWorktree("api", "~/projects/TASK-1")
+        viewModel.recordWorktree("api", "~/projects/TASK-2")
+        viewModel.recordWorktree("mobile", "~/projects/TASK-3")
+
+        viewModel.pruneRecentWorktrees("api", setOf("~/projects/TASK-2"))
+
+        assertEquals(
+            listOf(RecentWorktree("mobile", "~/projects/TASK-3"), RecentWorktree("api", "~/projects/TASK-2")),
+            viewModel.recentWorktrees,
+        )
+        assertEquals(viewModel.recentWorktrees, preferences.recentWorktrees)
+    }
+
+    @Test
+    fun `a removed project disappears from the recent projects and worktrees`() {
+        val viewModel = viewModel()
+        viewModel.selectProject(api)
+        viewModel.selectProject(mobile)
+        viewModel.recordWorktree("api", "~/projects/TASK-1")
+        viewModel.recordWorktree("mobile", "~/projects/TASK-2")
+
+        viewModel.removeProject(api)
+
+        assertEquals(listOf("mobile"), viewModel.recentProjects)
+        assertEquals(listOf(RecentWorktree("mobile", "~/projects/TASK-2")), viewModel.recentWorktrees)
     }
 }

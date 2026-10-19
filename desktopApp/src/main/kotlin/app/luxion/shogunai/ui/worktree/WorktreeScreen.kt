@@ -46,7 +46,9 @@ import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.PrimaryButton
 import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.SegmentedSelector
+import app.luxion.shogunai.ui.components.ErrorNotice
 import app.luxion.shogunai.ui.components.Spacing
+import app.luxion.shogunai.ui.components.trackTextInputFocus
 import app.luxion.shogunai.ui.components.handPointer
 import app.luxion.shogunai.ui.components.onNewItemShortcut
 import app.luxion.shogunai.ui.i18n.LocalStrings
@@ -137,6 +139,7 @@ fun WorktreeScreen(
     }
 
     board.pendingRemoval?.let { holder -> RemoveWorktreeDialog(holder) }
+    board.terminalChoice?.let { holder -> ChooseTerminalDialog(holder) }
 }
 
 @Composable
@@ -186,7 +189,33 @@ private fun TextFilterField(board: WorktreeBoard) {
         singleLine = true,
         modifier = Modifier
             .width(FilterFieldWidth)
-            .focusRequester(focusRequester),
+            .focusRequester(focusRequester)
+            .trackTextInputFocus(),
+    )
+}
+
+@Composable
+private fun ChooseTerminalDialog(holder: ProjectWorktrees) {
+    val strings = LocalStrings.current
+    AlertDialog(
+        onDismissRequest = { holder.dismissTerminalChoice() },
+        title = { Text(strings.chooseTerminalTitle) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                Text(strings.chooseTerminalMessage)
+                holder.tools.availableTerminals.forEach { terminal ->
+                    SecondaryButton(onClick = { holder.chooseTerminal(terminal) }, modifier = Modifier.fillMaxWidth()) {
+                        Text(terminal.displayName)
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            NeutralTextButton(onClick = { holder.dismissTerminalChoice() }) {
+                Text(strings.cancel)
+            }
+        },
     )
 }
 
@@ -213,6 +242,9 @@ private fun RemoveWorktreeDialog(holder: ProjectWorktrees) {
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(top = Spacing.sm),
                     )
+                }
+                holder.removeError?.let { error ->
+                    ErrorNotice(error = error, onDismiss = null, modifier = Modifier.padding(top = Spacing.sm))
                 }
                 worktree.branch?.let { branch ->
                     Row(

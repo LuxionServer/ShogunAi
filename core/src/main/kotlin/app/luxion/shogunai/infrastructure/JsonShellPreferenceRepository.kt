@@ -3,6 +3,7 @@ package app.luxion.shogunai.infrastructure
 import app.luxion.shogunai.domain.io.ShellPreferenceRepository
 import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.Grouping
+import app.luxion.shogunai.domain.model.RecentWorktree
 import app.luxion.shogunai.domain.model.WindowBounds
 
 class JsonShellPreferenceRepository(
@@ -49,6 +50,30 @@ class JsonShellPreferenceRepository(
 
     override fun saveGrouping(view: GroupedView, grouping: Grouping) {
         settingsFile.update { it.copy(grouping = it.grouping.with(view, grouping)) }
+    }
+
+    override fun loadRecentProjects(): List<String> = settingsFile.read().recentProjects
+
+    override fun saveRecentProjects(ids: List<String>) {
+        settingsFile.update { it.copy(recentProjects = ids) }
+    }
+
+    override fun loadRecentWorktrees(): List<RecentWorktree> = settingsFile.read().recentWorktrees
+
+    override fun saveRecentWorktrees(worktrees: List<RecentWorktree>) {
+        settingsFile.update { it.copy(recentWorktrees = worktrees) }
+    }
+
+    override fun loadShowTrayIcon(): Boolean = settingsFile.read().showTrayIcon
+
+    override fun saveShowTrayIcon(show: Boolean) {
+        settingsFile.update { it.copy(showTrayIcon = show) }
+    }
+
+    override fun loadKeepRunningInTray(): Boolean = settingsFile.read().keepRunningInTray
+
+    override fun saveKeepRunningInTray(keepRunning: Boolean) {
+        settingsFile.update { it.copy(keepRunningInTray = keepRunning) }
     }
 
     private fun JsonSettingsFile.GroupingSettings.of(view: GroupedView): Grouping = when (view) {

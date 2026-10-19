@@ -33,3 +33,21 @@ The system SHALL cancel an in-progress test run when a newer commit is pushed to
 #### Scenario: Two quick pushes to the same pull request
 - **WHEN** a second commit is pushed to a pull request while the test run for the first commit is still in progress
 - **THEN** the first run is cancelled and only the run for the latest commit completes
+
+### Requirement: Tests run on every target operating system
+The test workflow SHALL run the full test suite on Linux, macOS and Windows for every run it already performs, and a failure on any of them SHALL fail the check.
+
+#### Scenario: Windows-only failure
+- **WHEN** a pull request to `develop` breaks a test only on Windows
+- **THEN** the check fails and names the Windows job
+
+### Requirement: A release builds only after its tests pass
+The release workflow SHALL run the full test suite on the release commit, on every target operating system, before any installer is built or any release is created, whichever event started it.
+
+#### Scenario: Release from a pushed tag
+- **WHEN** a `vX.Y.Z` tag is pushed and a test fails on that commit
+- **THEN** no installer is built and no release is created
+
+#### Scenario: Release from a merged pull request
+- **WHEN** the release pull request is merged and every test passes
+- **THEN** the installers are built and published as before

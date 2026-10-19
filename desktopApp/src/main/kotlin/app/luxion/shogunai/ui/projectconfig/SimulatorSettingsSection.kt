@@ -12,8 +12,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.LocalClipboard
+import app.luxion.shogunai.ui.components.copyText
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import app.luxion.shogunai.domain.model.SimulatorRuntime
 import app.luxion.shogunai.ui.components.DropdownSelector
 import app.luxion.shogunai.ui.components.InlineProgress
@@ -74,6 +76,7 @@ private fun AvailableSimulatorSettings(viewModel: ProjectConfigViewModel, state:
     if (!state.kotlinMultiplatform) return
     if (state.testsWired) {
         Text(strings.simulatorTestsWired, style = MaterialTheme.typography.bodySmall, color = ShogunTheme.status.success.color)
+        if (state.initScriptInstalled) UninstallInitScriptPanel(viewModel)
     } else {
         KmpWiringPanel(viewModel)
     }
@@ -82,7 +85,8 @@ private fun AvailableSimulatorSettings(viewModel: ProjectConfigViewModel, state:
 @Composable
 private fun KmpWiringPanel(viewModel: ProjectConfigViewModel, modifier: Modifier = Modifier) {
     val strings = LocalStrings.current
-    val clipboard = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
     var confirming by remember { mutableStateOf(false) }
     var copied by remember { mutableStateOf(false) }
     var installError by remember { mutableStateOf<Throwable?>(null) }
@@ -90,7 +94,7 @@ private fun KmpWiringPanel(viewModel: ProjectConfigViewModel, modifier: Modifier
     Text(viewModel.simulatorSnippet, style = ShogunTheme.typography.dataSmall)
     Row {
         SecondaryButton(
-            onClick = { clipboard.setText(AnnotatedString(viewModel.simulatorSnippet)); copied = true },
+            onClick = { scope.launch { clipboard.copyText(viewModel.simulatorSnippet) }; copied = true },
             modifier = Modifier.padding(end = Spacing.sm),
         ) { Text(if (copied) strings.copied else strings.copySnippet) }
         SecondaryButton(onClick = { confirming = true }) { Text(strings.installInitScript) }
@@ -106,6 +110,29 @@ private fun KmpWiringPanel(viewModel: ProjectConfigViewModel, modifier: Modifier
                     confirming = false
                     installError = viewModel.installSimulatorInitScript().exceptionOrNull()
                 }) { Text(strings.install) }
+            },
+            dismissButton = { NeutralTextButton(onClick = { confirming = false }) { Text(strings.cancel) } },
+        )
+    }
+}
+
+@Composable
+private fun UninstallInitScriptPanel(viewModel: ProjectConfigViewModel) {
+    val strings = LocalStrings.current
+    var confirming by remember { mutableStateOf(false) }
+    var uninstallError by remember { mutableStateOf<Throwable?>(null) }
+    SecondaryButton(onClick = { confirming = true }) { Text(strings.uninstallInitScript) }
+    uninstallError?.let { ErrorNotice(it, onDismiss = { uninstallError = null }) }
+    if (confirming) {
+        AlertDialog(
+            onDismissRequest = { confirming = false },
+            title = { Text(strings.uninstallInitScriptTitle) },
+            text = { Text(strings.uninstallInitScriptMessage(viewModel.simulatorInitScriptPath)) },
+            confirmButton = {
+                PrimaryButton(onClick = {
+                    confirming = false
+                    uninstallError = viewModel.uninstallSimulatorInitScript().exceptionOrNull()
+                }) { Text(strings.uninstall) }
             },
             dismissButton = { NeutralTextButton(onClick = { confirming = false }) { Text(strings.cancel) } },
         )

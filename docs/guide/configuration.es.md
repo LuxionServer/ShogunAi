@@ -82,11 +82,13 @@ El `.worktreeinclude` de Claude Code se lee como `copy`: un patrón al estilo gi
 
 | Archivo | Contenido |
 |---|---|
-| `projects.json` | El catálogo de proyectos de la app de escritorio: el nombre, repositorio base, carpeta de worktrees, rama principal, archivos locales, comando del agente y ajustes de emulador y simulador de cada proyecto. El comando `shogun` lo lee para encontrar el proyecto de un repositorio. |
-| `settings.json` | El tema de la app (`LIGHT`, `DARK` o `SYSTEM`, el valor por defecto) y su idioma (`ENGLISH`, por defecto, o `SPANISH`). |
+| `projects.json` | El catálogo de proyectos de la app de escritorio: el nombre, repositorio base, carpeta de worktrees, rama principal, archivos locales, comandos de los agentes, IDE elegido para el proyecto en esta máquina y ajustes de emulador y simulador de cada proyecto. El comando `shogun` lo lee para encontrar el proyecto de un repositorio. |
+| `settings.json` | Las preferencias de la app: tema (`LIGHT`, `DARK` o `SYSTEM`, el valor por defecto), idioma (`ENGLISH`, por defecto, o `SPANISH`), posición y tamaño de la ventana, si la barra lateral está plegada, los proyectos plegados, el último destino, el último proyecto con el que se creó un worktree, los elementos recientes de la paleta de comandos y la agrupación de la lista de worktrees en cada vista, y el terminal elegido (`TERMINAL`, `ITERM2`, `WINDOWS_TERMINAL`, `TMUX` o `ZELLIJ`) y el IDE predeterminado (`VS_CODE`, `INTELLIJ_IDEA` o `ANDROID_STUDIO`), sin valor hasta que se elijan, y el último agente elegido para cada worktree. |
 | `reservations.json`, `reservations.lock` | Un índice de los worktrees, de cualquier repositorio, que tienen puertos reservados, y el bloqueo que se toma al reservar, para que dos worktrees nunca reciban el mismo puerto. |
 | `logs/emulator-<puerto>.log` | La salida de cada emulador que arrancó ShogunAi. |
 | `xcode/compilation-cache.xcconfig` | Los ajustes compartidos de Xcode que escribe la opción `compilationCache` del provider de Xcode. |
+
+Si `projects.json` o `settings.json` no se pueden leer (por ejemplo, no son JSON válido), ShogunAi nunca los sobrescribe en silencio: la app de escritorio muestra un aviso con la ruta del archivo, el comando `shogun` falla con una línea que lo nombra, y antes de que nada escriba un archivo nuevo el ilegible se conserva a su lado como `projects.json.unreadable-<marca de tiempo>` (o `settings.json.unreadable-<marca de tiempo>`). Un `settings.json` ilegible hace que la app arranque con los ajustes por defecto. Las escrituras en ambos archivos se serializan entre la app y `shogun` con un archivo `projects.json.lock` o `settings.json.lock` a su lado, así que dos escritores nunca pierden el cambio del otro.
 
 Estos archivos contienen rutas de tu máquina; no los subas a ningún repositorio.
 

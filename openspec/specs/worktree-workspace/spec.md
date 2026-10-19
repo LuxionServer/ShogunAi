@@ -287,3 +287,114 @@ When the worktree is created but its post-create command fails, the "New worktre
 #### Scenario: Copy the launch command after the failure
 - **WHEN** the user activates "Copy launch command" in that dialog
 - **THEN** the created worktree's launch command is copied
+
+### Requirement: A failed creation leaves nothing behind
+When a creation fails after Git created the worktree or its new branch, and before post-creation commands run, the system SHALL remove the worktree and delete the branch it created, best-effort, so retrying with the same task id works. A branch that existed before the creation SHALL never be deleted.
+
+#### Scenario: No free port
+- **WHEN** creating `TASK-123` fails while reserving its ports
+- **THEN** the worktree folder and `feature/TASK-123` are gone, and creating `TASK-123` again succeeds once a port is free
+
+#### Scenario: Existing branch
+- **WHEN** creating a worktree from the existing branch `feature/TASK-9` fails while copying its files
+- **THEN** the worktree is removed and `feature/TASK-9` is kept
+
+### Requirement: Recognize the main worktree by its location
+The system SHALL treat a worktree as the main one when its location is the base repository's, comparing resolved paths, so a trailing separator, a symbolic link, a case difference on macOS or a different separator on Windows doesn't change the result.
+
+#### Scenario: Project saved with a trailing slash
+- **WHEN** the project's base repository is saved as `~/projects/main-repo/`
+- **THEN** the main worktree is listed as main and is never offered for cleanup
+
+### Requirement: Task ids with a slash map to one folder
+A task id containing `/` SHALL produce a worktree folder whose name replaces each `/` with `-`, as worktrees created from existing branches already do, while the branch keeps the `/`.
+
+#### Scenario: Team prefix
+- **WHEN** the user creates a worktree for `team/TASK-1`
+- **THEN** the branch is `feature/team/TASK-1` and the folder is `<worktrees root>/team-TASK-1`
+
+### Requirement: A created worktree appears once
+When a creation finishes while the project's list is being refreshed, or after a refresh already listed the new worktree, the list SHALL show the worktree exactly once.
+
+#### Scenario: Window focused during a slow creation
+- **WHEN** a creation with a slow post-creation command is running, the user switches to another app and back, and the creation then finishes
+- **THEN** the new worktree appears once and the app keeps working
+
+#### Scenario: Reload during creation
+- **WHEN** the user presses Cmd/Ctrl+R while a worktree is being created
+- **THEN** the new worktree appears once when the creation finishes
+
+### Requirement: Removal errors are shown in the removal dialog
+When removing a worktree fails, the removal dialog SHALL stay open and show the error with its technical details. While the removal runs, the dialog SHALL NOT be dismissed by clicking outside it or pressing Escape. When the removed worktree was selected, the selection SHALL be cleared.
+
+#### Scenario: Removal fails
+- **WHEN** removing a worktree fails because a file in it is locked
+- **THEN** the dialog shows the error, and the user can retry or close it
+
+#### Scenario: Click outside during removal
+- **WHEN** the user clicks outside the dialog while the removal runs
+- **THEN** the dialog stays open until the removal ends
+
+#### Scenario: Selected worktree removed
+- **WHEN** the selected worktree is removed
+- **THEN** no worktree is selected and the detail shows the project summary
+
+### Requirement: Branch loading errors are shown in the create dialog
+When loading the local branches for "From existing branch" fails, the create dialog SHALL show the error in the dialog with a way to retry, instead of saying there are no branches.
+
+#### Scenario: Git fails while listing branches
+- **WHEN** the dialog opens in existing-branch mode and listing branches fails
+- **THEN** the dialog shows the error and a retry action, and doesn't show "No branches available"
+
+### Requirement: Choose where a new branch starts
+The "New branch" mode of the "New worktree" dialog SHALL let the user choose the commit the new branch starts at: the project's main branch, selected by default, the base repository's current branch, any local branch or any `origin/` branch. When no main branch can be resolved, the base repository's current branch SHALL be the default. The worktree SHALL be created with its branch starting at the chosen branch's commit at creation time.
+
+#### Scenario: Default start point
+- **WHEN** the project's main branch is `develop`, `origin/develop` exists and the base repository has `feature/old` checked out
+- **THEN** the dialog preselects `origin/develop`, and confirming creates the new branch at the commit `origin/develop` points to
+
+#### Scenario: Start from the repository's current branch
+- **WHEN** the user chooses the base repository's current branch as the start point
+- **THEN** the new branch starts at the base repository's `HEAD`, as before this change
+
+#### Scenario: No main branch
+- **WHEN** no main branch can be resolved for the project
+- **THEN** the dialog preselects the base repository's current branch
+
+#### Scenario: Start point disappeared
+- **WHEN** the chosen branch was deleted after the dialog listed it
+- **THEN** the dialog shows that the start point doesn't name a commit, and no worktree or branch is created
+
+### Requirement: Fetch before creating a worktree
+When the base repository has an `origin` remote, the "New worktree" dialog SHALL offer "Fetch from origin first", whose last value is remembered per project on this machine and is off by default. When it is on, the app SHALL fetch from `origin` before creating, in either mode, and SHALL use the updated branches. A fetch SHALL never wait for credentials.
+
+#### Scenario: Fetch moves the start point
+- **WHEN** the option is on, the start point is `origin/develop` and the remote has a newer commit on `develop`
+- **THEN** the app fetches first and the new branch starts at the newer commit
+
+#### Scenario: Fetch fails
+- **WHEN** the option is on and the fetch fails, for example without network or without credentials
+- **THEN** the dialog shows Git's error with "Retry" and "Create without fetching", and nothing is created until the user chooses one
+
+#### Scenario: Option remembered
+- **WHEN** the user turns the option on, creates a worktree, and later opens the dialog for the same project
+- **THEN** the option is on
+
+#### Scenario: Repository without origin
+- **WHEN** the base repository has no `origin` remote
+- **THEN** the dialog doesn't show the option
+
+### Requirement: Create a worktree from a remote branch
+The "Existing branch" mode SHALL also list each `origin/` branch that has no local branch with the same name, marked as remote. Choosing one SHALL create a local branch with that name tracking the remote branch, and the worktree on it, in the folder the local branch would get. If the creation fails before post-creation commands run, the local branch it created SHALL be deleted.
+
+#### Scenario: Remote-only branch
+- **WHEN** `origin/feature/TASK-9` exists and there is no local `feature/TASK-9`
+- **THEN** it is listed as remote, and choosing it creates a local `feature/TASK-9` tracking `origin/feature/TASK-9` in the worktree folder `TASK-9`
+
+#### Scenario: Branch that exists locally and remotely
+- **WHEN** both `feature/TASK-9` and `origin/feature/TASK-9` exist
+- **THEN** only the local branch is listed
+
+#### Scenario: Creation from a remote branch fails
+- **WHEN** copying a local file fails after the worktree was added from `origin/feature/TASK-9`
+- **THEN** the worktree is removed and the local `feature/TASK-9` the creation made is deleted

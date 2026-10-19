@@ -51,7 +51,7 @@ The system SHALL let the user add or remove entries in the project's `secretFile
 - **THEN** those entries appear as local files and are still copied into new worktrees
 
 ### Requirement: Configure the agent launch command
-The system SHALL let the user set the project's `AgentLaunchConfig` from the project configuration screen: which agent command to run (default `claude`) and whether to wrap it with Headroom's `headroom wrap` context compressor (default enabled).
+The system SHALL let the user set the project's `AgentLaunchConfig` from the project configuration screen: which agent command to run (default `claude`) and whether to wrap it with Headroom's `headroom wrap` context compressor (default enabled). This first agent is the project's default agent.
 
 #### Scenario: Default is Headroom-wrapped claude
 - **WHEN** the user creates a new project without touching the agent launch fields
@@ -89,11 +89,11 @@ The system SHALL keep secret files and the worktrees root pointing to the right 
 - **THEN** changing the base repository path does not modify the worktrees root
 
 ### Requirement: Confirm before discarding unsaved changes
-The system SHALL ask for confirmation before discarding unsaved edits whenever the user leaves the project settings while any field differs from its initial value: with "Discard", by selecting another entry in the sidebar, through a shortcut or menu entry that changes the view, or by closing the window.
+The system SHALL ask for confirmation before discarding unsaved edits whenever the user leaves the project settings while any field differs from its initial value: by selecting another entry in the sidebar, through a shortcut or menu entry that changes the view, or by closing the window. Activating "Discard" in the save bar SHALL discard the edits and return to the previous view without asking again.
 
 #### Scenario: Cancel with unsaved changes
-- **WHEN** the user has changed at least one field and activates "Discard"
-- **THEN** the app shows a confirmation dialog before discarding the changes and returning to the previous view
+- **WHEN** the user has changed at least one field and activates "Discard" in the save bar
+- **THEN** the app discards the changes and returns to the previous view without showing a confirmation dialog
 
 #### Scenario: Cancel without changes
 - **WHEN** the user leaves the settings without having changed any field
@@ -131,11 +131,19 @@ The system SHALL let the user set an optional main branch on the project configu
 - **THEN** the app asks for confirmation before discarding the change
 
 ### Requirement: Show the repository's provisioning
-The project configuration screen SHALL show, read-only, the patterns the base repository declares in `.shogunai.json` and in `.worktreeinclude`, each with the file it comes from, and SHALL refresh them when the base repository path changes. When `.shogunai.json` can't be read, the screen SHALL say so instead of listing its patterns.
+The project configuration screen SHALL show, read-only, the patterns the base repository declares in `.shogunai.json` (`copy` and `link`) and in `.worktreeinclude`, each with the file it comes from and `link` patterns marked as linked, and SHALL refresh them when the base repository path changes. When the repository declares post-creation commands, the screen SHALL say how many there are and where they're listed. When `.shogunai.json` can't be read, the screen SHALL say so instead of listing its patterns.
 
 #### Scenario: Repository with both files
 - **WHEN** the user opens the configuration of a project whose repository has `.shogunai.json` with `local.properties` and `.worktreeinclude` with `.env`
 - **THEN** the screen lists `local.properties` from `.shogunai.json` and `.env` from `.worktreeinclude`
+
+#### Scenario: Linked patterns
+- **WHEN** the repository's `.shogunai.json` declares `node_modules` under `link`
+- **THEN** the screen lists `node_modules` from `.shogunai.json`, marked as linked
+
+#### Scenario: Only post-creation commands
+- **WHEN** the repository's `.shogunai.json` declares two post-creation commands and no patterns
+- **THEN** the screen says two commands run after creation and points to the repository configuration section, and doesn't say the repository declares nothing
 
 #### Scenario: Repository without provisioning files
 - **WHEN** the base repository has neither file
@@ -356,3 +364,84 @@ The emulator and iOS simulator settings stored with the project on this machine 
 #### Scenario: Two kinds of emulator settings
 - **WHEN** the emulator provider is on and the user looks at the emulator settings
 - **THEN** the preferred AVD is shown under "Repository configuration", and the AVD to use and headless mode are shown under the emulator section labeled "this machine only"
+
+### Requirement: Editing the base path keeps unsaved edits
+While the user types the base repository path in project settings, the app SHALL NOT discard unsaved repository settings. It SHALL read the repository at the new path only when the path settles (after a short pause, on leaving the field or after choosing a folder), and SHALL keep the user's unsaved repository edits when the repository is the same.
+
+#### Scenario: Fix a typo in the path
+- **WHEN** the user changes the Gradle memory, then edits the base path and returns it to the same repository
+- **THEN** the Gradle memory change is still there and the save bar still shows unsaved changes
+
+#### Scenario: Different repository
+- **WHEN** the user points the path to another repository that has its own `.shogunai.json`
+- **THEN** the app asks whether to discard the unsaved repository edits before loading the other repository's settings
+
+### Requirement: Validate the project form
+Saving project settings SHALL require a base path that is the top folder of a Git repository, checked the same way as "Add project", a non-blank worktrees folder and a non-blank agent command, and SHALL reject a repository that another project already uses.
+
+#### Scenario: Subfolder chosen
+- **WHEN** the user chooses a subfolder of a repository with Browse in project settings
+- **THEN** the form says the folder isn't the repository's top folder and can't be saved
+
+#### Scenario: Repository already added
+- **WHEN** the base path is the repository of another project
+- **THEN** the form names that project and can't be saved
+
+#### Scenario: Blank agent command
+- **WHEN** the agent command is blank
+- **THEN** the form says it is required and can't be saved
+
+### Requirement: Preview again after reloading the repository file
+After the repository file was reloaded from disk, for example after a "changed on disk" conflict, the next save that writes it SHALL show the preview again.
+
+#### Scenario: Conflict, reload and save
+- **WHEN** a save fails because `.shogunai.json` changed on disk, the user reloads it, edits again and saves
+- **THEN** the preview dialog is shown before the file is written
+
+### Requirement: IDE for a project on this machine
+The project settings' Agent section SHALL let the user choose the IDE the project's worktrees open in on this machine, among the detected ones, or leave it on the default from Preferences. The choice SHALL be stored with the project on this machine, not in the repository.
+
+#### Scenario: Override the IDE
+- **WHEN** the user chooses Android Studio for a project and saves
+- **THEN** that project's worktrees open in Android Studio while other projects keep the default IDE
+
+#### Scenario: Overridden IDE uninstalled
+- **WHEN** the IDE chosen for a project is no longer installed
+- **THEN** the settings say it wasn't found, and the worktrees open in the default IDE
+
+### Requirement: Settings title names the project
+The project settings view of an existing project SHALL show a title that names the project as saved, and SHALL keep the "Add project" title while adding one.
+
+#### Scenario: Existing project
+- **WHEN** the user opens the settings of the project `main-repo`
+- **THEN** the title reads "Settings · main-repo"
+
+#### Scenario: Name edited but not saved
+- **WHEN** the user changes the name field to `other-name` without saving
+- **THEN** the title still names `main-repo`
+
+### Requirement: Uninstall the KMP init script from settings
+When the KMP init script is installed, project settings SHALL offer to uninstall it, with the same effect as `shogun simulator gradle-init uninstall`.
+
+#### Scenario: Uninstall
+- **WHEN** the init script is installed and the user chooses to uninstall it in project settings
+- **THEN** the script is removed and the section shows that KMP tests no longer use the worktree's simulator
+
+### Requirement: Several agents per project
+The project settings' Agent section SHALL let the user add, edit, remove and reorder agents, each with a name, a command with its default arguments and the Headroom option, and choose which one is the default. Agent names SHALL be unique and non-blank within the project; an agent without a name SHALL be shown by its command's executable name. A project SHALL keep at least one agent.
+
+#### Scenario: Add a second agent
+- **WHEN** the user adds an agent named "Codex" with the command `codex --full-auto` and saves
+- **THEN** the project has Claude as its default agent and Codex as a second one
+
+#### Scenario: Make another agent the default
+- **WHEN** the user activates "Make default" on Codex and saves
+- **THEN** Codex is the project's default agent and Claude stays as another agent
+
+#### Scenario: Duplicate name
+- **WHEN** two agents of the project have the name "Claude"
+- **THEN** saving is refused with the duplicated name marked
+
+#### Scenario: Stored project with one agent
+- **WHEN** the app loads a project saved before this change
+- **THEN** it has a single agent, its stored agent command, and its settings look as before

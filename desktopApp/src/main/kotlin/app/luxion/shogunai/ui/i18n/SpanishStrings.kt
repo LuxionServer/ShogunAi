@@ -1,5 +1,8 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.InstallChannel
+import app.luxion.shogunai.domain.model.ProvisionDriftState
+import app.luxion.shogunai.domain.model.HerdrAgentState
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
 object SpanishStrings : Strings {
@@ -52,12 +55,17 @@ object SpanishStrings : Strings {
     override val aboutRepositoryLink = "Ver en GitHub"
 
     override val projectConfigTitle = "Configuración de proyecto"
-    override val identitySection = "Identidad"
     override val nameLabel = "Nombre"
     override val nameEmptyError = "El nombre no puede estar vacío"
-    override val pathsSection = "Rutas"
     override val baseRepositoryPathLabel = "Ruta del repositorio base"
     override val baseRepositoryPathEmptyError = "La ruta del repositorio no puede estar vacía"
+    override val baseRepositoryNotTopLevelError = "Esta carpeta no es la carpeta raíz del repositorio"
+    override fun baseRepositoryAlreadyAdded(projectName: String) = "Este repositorio ya está añadido como \"$projectName\""
+    override val worktreesRootEmptyError = "La carpeta de worktrees no puede estar vacía"
+    override val agentCommandEmptyError = "El comando del agente no puede estar vacío"
+    override val discardRepositoryEditsTitle = "¿Descartar los ajustes del repositorio?"
+    override fun discardRepositoryEditsMessage(path: String) =
+        "Tienes cambios sin guardar en los ajustes de este repositorio. Cargar $path los descarta."
     override val worktreesRootLabel = "Carpeta raíz de worktrees"
     override val mainBranchLabel = "Rama principal"
     override val mainBranchPlaceholder = "Detectada a partir del repositorio"
@@ -76,6 +84,17 @@ object SpanishStrings : Strings {
     override val pendingSave = "al guardar"
     override val add = "Añadir"
     override val agentSection = "Agente"
+    override val agentNameLabel = "Nombre"
+    override fun duplicateAgentNameError(name: String) = "Ya hay otro agente llamado \"$name\""
+    override val addAgent = "Añadir agente"
+    override val removeAgent = "Quitar agente"
+    override val makeDefaultAgent = "Hacer predeterminado"
+    override val defaultAgentMark = "Predeterminado"
+    override val moveAgentUp = "Subir"
+    override val moveAgentDown = "Bajar"
+    override val worktreeAgentLabel = "Agente"
+    override val chooseAgent = "Elegir agente"
+    override fun launchWithAgent(action: String, agent: String) = "$action · $agent"
     override val agentCommandLabel = "Comando del agente"
     override val useHeadroomLabel = "Usar Headroom (headroom wrap)"
     override val headroomDescription = "Headroom envuelve el comando del agente para comprimir el contexto antes de lanzarlo."
@@ -94,6 +113,10 @@ object SpanishStrings : Strings {
     override val unsavedChanges = "Cambios sin guardar"
     override val menuSave = "Guardar"
     override val addProjectTitle = "Añadir proyecto"
+    override fun projectSettingsTitle(name: String) = "Ajustes · $name"
+    override val linkedPattern = "enlazado"
+    override fun postCreationCommandsNote(count: Int) =
+        "${if (count == 1) "Se ejecuta 1 comando" else "Se ejecutan $count comandos"} tras la creación; consúltalos en Configuración del repositorio, más abajo."
     override val addProjectIntro = "Elige la carpeta de un repositorio Git. El resto de la configuración se rellena a partir de ella."
     override val chooseRepositoryFolder = "Elegir carpeta del repositorio…"
     override val dropRepositoryHint = "También puedes soltar una carpeta en cualquier parte de esta ventana."
@@ -117,6 +140,13 @@ object SpanishStrings : Strings {
     override val loadingBranches = "Cargando ramas..."
     override val noBranchesAvailable = "No hay ramas disponibles para crear un worktree."
     override fun branchAlreadyHasWorktree(branch: String) = "$branch (ya tiene un worktree)"
+    override val startFromLabel = "Partir de"
+    override fun startFromMainBranch(ref: String) = "$ref (rama principal)"
+    override fun startFromCurrentBranch(branch: String?) =
+        if (branch != null) "Rama actual del repositorio ($branch)" else "Commit actual del repositorio"
+    override fun remoteBranchLabel(branch: String) = "$branch (remota)"
+    override val fetchFirstLabel = "Hacer fetch de origin antes"
+    override val createWithoutFetching = "Crear sin hacer fetch"
     override val selectBranchPlaceholder = "Selecciona una rama"
     override val otherBranchesGroup = "otras"
     override val worktreesTitle = "Worktrees"
@@ -132,8 +162,8 @@ object SpanishStrings : Strings {
     override val groupOther = "Otros"
     override val groupAgentWorkingHint = "agente en marcha"
     override val groupAgentWorkingCriterion = "Hay un agente de IA en marcha en el worktree."
-    override val groupNeedsYouHint = "sin commit o sin subir"
-    override val groupNeedsYouCriterion = "Cambios sin commit, o commits sin subir a su upstream (o a la rama principal si no tiene)."
+    override val groupNeedsYouHint = "agente esperando, sin commit o sin subir"
+    override val groupNeedsYouCriterion = "Un agente bloqueado o terminado en Herdr, cambios sin commit, o commits sin subir a su upstream (o a la rama principal si no tiene)."
     override val groupInProgressHint = "subido, sin fusionar"
     override val groupInProgressCriterion = "Limpio, subido, sin fusionar y con algún commit en los últimos 14 días."
     override val groupMergedHint = "ya en la rama principal"
@@ -152,6 +182,13 @@ object SpanishStrings : Strings {
     override val seeAllWorktrees = "Ver todos los worktrees"
     override val menuActive = "Mostrar activos"
     override val menuAllWorktrees = "Mostrar todos los worktrees"
+    override fun agentLabel(name: String, state: HerdrAgentState?) = when (state) {
+        null -> name
+        HerdrAgentState.WORKING -> "$name · trabajando"
+        HerdrAgentState.BLOCKED -> "$name · bloqueado"
+        HerdrAgentState.DONE -> "$name · terminado"
+        HerdrAgentState.IDLE -> "$name · inactivo"
+    }
     override fun agentsRunning(names: List<String>) = "Agentes en ejecución: ${names.joinToString(", ")}"
     override val allProjects = "Todos los proyectos"
     override val projectLabel = "Proyecto"
@@ -168,10 +205,11 @@ object SpanishStrings : Strings {
         "\"$path\" tiene cambios sin guardar. Se perderán si se elimina el worktree."
     override fun alsoDeleteLocalBranch(branch: String) = "Eliminar también la rama local ($branch)"
     override val forceRemove = "Forzar eliminación"
-    override val detachedHead = "(detached)"
+    override val detachedHead = "(desacoplado)"
     override fun uncommittedChanges(count: Int) = if (count == 1) "1 cambio" else "$count cambios"
     override val upstream = "upstream"
     override fun mergedInto(branch: String) = "mergeada en $branch"
+    override val notStarted = "sin empezar"
     override val statusUnavailable = "Estado no disponible"
     override val folderMissing = "Carpeta no encontrada"
     override val mainWorktree = "principal"
@@ -188,6 +226,17 @@ object SpanishStrings : Strings {
     override val copyPath = "Copiar ruta"
     override val statusTitle = "Estado"
     override val agentsTitle = "Agentes"
+    override val provisioningTitle = "Archivos provisionados"
+    override val provisioningChecking = "Comprobando…"
+    override val provisioningUnavailable = "No se pudieron comprobar los archivos"
+    override val provisioningUpToDate = "Los archivos están al día"
+    override val provisionAction = "Provisionar"
+    override val copyAsEnv = "Copiar como .env"
+    override fun provisionDriftFile(path: String, state: ProvisionDriftState) = when (state) {
+        ProvisionDriftState.MISSING -> "$path · falta"
+        ProvisionDriftState.DIFFERS -> "$path · difiere"
+        ProvisionDriftState.NOT_LINKED -> "$path · sin enlazar"
+    }
     override val environmentTitle = "Entorno"
     override val devicesTitle = "Dispositivos"
     override val diskTitle = "Disco"
@@ -201,6 +250,7 @@ object SpanishStrings : Strings {
     override fun cleanupFailed(path: String, detail: String) = "No se pudo eliminar \"$path\": $detail"
     override fun branchKept(branch: String) = "Rama \"$branch\" conservada: no está mergeada en la rama principal"
     override val herdrWorkspaceWillClose = "Está abierto en Herdr: se cerrará su espacio de trabajo y el agente que se ejecuta en él."
+    override fun keptForRunningAgent(name: String, agents: List<String>) = "$name · se conserva, ${agents.joinToString()} está en ejecución"
     override val herdrCleanupNotice = "A los worktrees abiertos en Herdr se les cerrará el espacio de trabajo y el agente que se ejecuta en él."
     override val openInHerdrMark = "abierto en Herdr"
     override fun herdrCloseFailed(path: String, detail: String) = "Eliminado, pero no se pudo cerrar el espacio de trabajo de Herdr de \"$path\": $detail"
@@ -220,6 +270,12 @@ object SpanishStrings : Strings {
     override fun installInitScriptMessage(path: String) =
         "ShogunAi escribirá el init script de Gradle $path para que los tests de simulador iOS de todos los " +
             "proyectos Gradle de esta máquina se ejecuten en IOS_SIMULATOR_UDID cuando esté definida. Quítalo con 'shogun simulator gradle-init uninstall'."
+    override val uninstallInitScript = "Desinstalar el init script"
+    override val uninstallInitScriptTitle = "¿Desinstalar el init script de Gradle?"
+    override fun uninstallInitScriptMessage(path: String) =
+        "ShogunAi borrará $path. Los tests de simulador iOS KMP de los proyectos Gradle de esta máquina dejarán de usar el " +
+            "simulador del worktree, salvo que lo haga el build.gradle.kts del módulo."
+    override val uninstall = "Desinstalar"
     override val install = "Instalar"
     override val simulatorLabel = "Simulador de iOS"
     override val simulatorShutdown = "apagado"
@@ -258,7 +314,6 @@ object SpanishStrings : Strings {
     override fun daemonIdle(since: String) = "ocioso · $since"
     override val daemonStateUnknown = "estado desconocido"
     override val daemonOwnerRemoved = "worktree eliminado"
-    override val daemonOwnerOther = "otro proyecto"
     override val stopDaemon = "Parar"
     override val stopIdleDaemons = "Parar los ociosos"
     override val gradleBuildCacheOff =
@@ -278,7 +333,6 @@ object SpanishStrings : Strings {
 
     override val xcodeDerivedDataTitle = "DerivedData de Xcode"
     override val xcodeDerivedDataUnavailable = "No se pueden inspeccionar los DerivedData en este sistema"
-    override val noDerivedDataFolders = "Aún no hay DerivedData para estos worktrees"
     override fun derivedDataSummary(count: Int, totalSize: String) =
         (if (count == 1) "1 carpeta de DerivedData" else "$count carpetas de DerivedData") + " · $totalSize"
     override fun derivedDataOrphans(count: Int, size: String) =
@@ -299,7 +353,12 @@ object SpanishStrings : Strings {
     override val ownerOutsideProjects = "fuera de los proyectos guardados"
     override val ownerLoading = "buscando propietario"
     override val notOwnedByWorktree = "sin worktree propietario"
-    override val goToWorktree = "Mostrar en Todos los worktrees"
+    override val machineColumnDevice = "Dispositivo"
+    override val machineColumnWorktree = "Worktree"
+    override val machineColumnState = "Estado"
+    override val automaticAvd = "Automático"
+    override val simulatorNotCreated = "Sin crear"
+    override fun simulatorNotCreatedFor(device: String) = "Sin crear · $device"
     override val noMachineEmulators = "No hay emuladores de worktrees en estos proyectos"
     override val unownedEmulatorsTitle = "En marcha fuera de cualquier worktree"
     override val noMachineSimulators = "Aún no hay simuladores de ShogunAi"
@@ -328,7 +387,6 @@ object SpanishStrings : Strings {
     override val copied = "Copiado"
     override val close = "Cerrar"
     override val worktreeCreatedWithError = "El worktree se creó, pero falló su comando posterior a la creación."
-    override val copyCommand = "Copiar comando"
     override val copyLaunchCommand = "Copiar comando de lanzamiento"
     override fun worktreeCreated(folder: String) = "Worktree creado: $folder"
     override fun worktreeCreatedCommandsSkipped(folder: String) = "Worktree creado: $folder. Se omitieron sus comandos posteriores a la creación."
@@ -347,6 +405,20 @@ object SpanishStrings : Strings {
     override val openInHerdr = "Abrir en Herdr"
     override fun openedInHerdr(name: String) = "\"$name\" abierto en Herdr con su agente"
     override fun focusedInHerdr(name: String) = "\"$name\" ya estaba abierto en Herdr; se ha cambiado a su workspace"
+    override val toolsLabel = "Herramientas"
+    override val terminalToolLabel = "Terminal"
+    override val editorToolLabel = "IDE"
+    override val noTerminalFound = "No se ha encontrado ningún terminal compatible"
+    override val noEditorFound = "No se ha encontrado ningún IDE compatible"
+    override fun openInTool(name: String) = "Abrir en $name"
+    override val openFolder = "Abrir carpeta"
+    override val chooseTerminalTitle = "Elige un terminal"
+    override val chooseTerminalMessage = "Los worktrees se abrirán en el terminal que elijas. Puedes cambiarlo después en Preferencias."
+    override val projectEditorLabel = "IDE en este equipo"
+    override fun defaultEditorOption(name: String?) = if (name == null) "Predeterminado" else "Predeterminado ($name)"
+    override fun editorNotFoundOption(name: String) = "$name (no encontrado)"
+    override fun editorOverrideMissing(name: String) =
+        "No se ha encontrado $name en este equipo, así que los worktrees de este proyecto se abren en el IDE predeterminado."
 
     override val repositoryConfigSection = "Configuración del repositorio"
     override val repositoryConfigSharedNote =
@@ -395,6 +467,7 @@ object SpanishStrings : Strings {
     override val menuCommandPalette = "Paleta de comandos"
     override val paletteHint = "Busca vistas, proyectos, worktrees y acciones"
     override val paletteNoResults = "Sin resultados"
+    override val paletteCopyLaunchCommandHint = "Copiar comando de lanzamiento"
     override val paletteKindView = "Vista"
     override val paletteKindProject = "Proyecto"
     override val paletteKindWorktree = "Worktree"
@@ -403,7 +476,33 @@ object SpanishStrings : Strings {
     override val paletteViewAllWorktrees = "Todos los worktrees"
     override val paletteViewPreferences = "Preferencias"
     override val paletteCleanUp = "Limpiar"
-    override val paletteCopyLaunchCommandHint = "Copiar comando de lanzamiento"
     override fun paletteNewWorktreeIn(project: String) = "Nuevo worktree en $project"
     override fun paletteSettingsOf(project: String) = "Ajustes de $project"
+    override val trayShowApp = "Mostrar ShogunAi"
+    override val trayNewWorktree = "Nuevo worktree…"
+    override val trayRecentProjects = "Proyectos recientes"
+    override val trayRecentWorktrees = "Worktrees recientes"
+    override val trayShowInApp = "Mostrar en ShogunAi"
+    override val showIconInMenuBar = "Mostrar el icono en la barra de menús"
+    override val showIconInTray = "Mostrar el icono en la bandeja del sistema"
+    override val keepRunningWhenClosed = "Seguir ejecutándose al cerrar la ventana"
+    override val menuCheckForUpdates = "Buscar actualizaciones…"
+    override fun updateAvailableMessage(newVersion: String, runningVersion: String) =
+        "¡Ya está aquí ShogunAi $newVersion! Tienes la $runningVersion."
+    override fun updateAvailableDialogMessage(newVersion: String, runningVersion: String) =
+        "ShogunAi $newVersion está disponible. Tienes la $runningVersion."
+    override val updateWhatsNew = "Novedades"
+    override val updateSkipVersion = "Omitir esta versión"
+    override val updateCopy = "Copiar"
+    override val updateDownload = "Descargar"
+    override val updateOpenReleasePage = "Abrir"
+    override fun updateCommandReminder(channel: InstallChannel, command: String) =
+        "¿Instalada con ${channel.installerName()}? Ejecuta $command para actualizar."
+    override val updateDownloadReminder = "Descarga el nuevo instalador para actualizar."
+    override fun updateInstallCommandReminder(command: String) = "Tras descargarlo, ejecuta $command"
+    override val updateReleasePageReminder = "Consulta la página de la versión para actualizar."
+    override val updateDialogTitle = "Buscar actualizaciones"
+    override val updateChecking = "Buscando actualizaciones…"
+    override fun updateUpToDateMessage(version: String) = "ShogunAi está al día (versión $version)."
+    override val updateCheckAutomaticallyLabel = "Buscar actualizaciones automáticamente"
 }

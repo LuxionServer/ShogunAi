@@ -2,6 +2,8 @@ package app.luxion.shogunai.ui.i18n
 
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.AppLanguage
+import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.RepositoryConfigIssue
 import app.luxion.shogunai.domain.model.RepositoryConfigRules
 import app.luxion.shogunai.domain.model.WorktreeError
@@ -53,6 +55,20 @@ class StringsTest {
     }
 
     @Test
+    fun `the project form validation strings are translated and differ between languages`() {
+        val english = EnglishStrings
+        val spanish = SpanishStrings
+
+        assertNotEquals(english.baseRepositoryNotTopLevelError, spanish.baseRepositoryNotTopLevelError)
+        assertNotEquals(english.baseRepositoryAlreadyAdded("api"), spanish.baseRepositoryAlreadyAdded("api"))
+        assertTrue(english.baseRepositoryAlreadyAdded("api").contains("api"))
+        assertNotEquals(english.worktreesRootEmptyError, spanish.worktreesRootEmptyError)
+        assertNotEquals(english.agentCommandEmptyError, spanish.agentCommandEmptyError)
+        assertNotEquals(english.discardRepositoryEditsTitle, spanish.discardRepositoryEditsTitle)
+        assertTrue(spanish.discardRepositoryEditsMessage("/p").contains("/p"))
+    }
+
+    @Test
     fun `the worktree view strings are translated and differ between languages`() {
         val english = EnglishStrings
         val spanish = SpanishStrings
@@ -80,6 +96,10 @@ class StringsTest {
         WorktreeError.InvalidRepositoryConfig("~/projects/main-repo/.shogunai.json", "unexpected token"),
         WorktreeError.RepositoryNotFound("~/projects/main-repo"),
         WorktreeError.NotAWorktree("~/projects/TASK-123"),
+        WorktreeError.LocalFileUnreadable("~/.shogunai/projects.json", "unexpected token"),
+        WorktreeError.LocalFileUnreadable("~/.shogunai/settings.json", null),
+        WorktreeError.BareRepositoryNotSupported("~/projects/main-repo.git"),
+        WorktreeError.RepositoryHasNoCommits,
         WorktreeError.RepositoryConfigChanged("~/projects/main-repo/.shogunai.json"),
         WorktreeError.SecretCopyFailed(IOException("disk full")),
         WorktreeError.PostCreateCommandFailed("~/projects/TASK-123", listOf("npm", "install"), 1, "npm ERR! missing script"),
@@ -94,6 +114,7 @@ class StringsTest {
         WorktreeError.AndroidSdkNotFound(listOf("ANDROID_HOME (/opt/sdk)")),
         WorktreeError.NoAvdAvailable,
         WorktreeError.EmulatorBootTimeout("emulator-5556", 180),
+        WorktreeError.EmulatorExitedEarly("emulator-5556", "PANIC: Broken AVD system path"),
         WorktreeError.AndroidToolFailed(listOf("adb", "devices"), 1, "adb: device offline"),
         WorktreeError.NoIosRuntime,
         WorktreeError.SimulatorBootTimeout("ShogunAi · main-repo · TASK-123", 120),
@@ -121,8 +142,8 @@ class StringsTest {
 
     @Test
     fun `every state group has its own hint and criterion in both languages`() {
-        assertEquals("uncommitted or unpushed", StateGroupKind.NEEDS_YOU.hint(EnglishStrings))
-        assertEquals("sin commit o sin subir", StateGroupKind.NEEDS_YOU.hint(SpanishStrings))
+        assertEquals("agent waiting, uncommitted or unpushed", StateGroupKind.NEEDS_YOU.hint(EnglishStrings))
+        assertEquals("agente esperando, sin commit o sin subir", StateGroupKind.NEEDS_YOU.hint(SpanishStrings))
         allStrings.forEach { strings ->
             val hints = StateGroupKind.entries.map { it.hint(strings) }
             val criteria = StateGroupKind.entries.map { it.criterion(strings) }
@@ -263,6 +284,19 @@ class StringsTest {
     }
 
     @Test
+    fun `agent labels name the agent and translate each Herdr state`() {
+        HerdrAgentState.entries.forEach { state ->
+            val english = EnglishStrings.agentLabel("claude", state)
+            val spanish = SpanishStrings.agentLabel("claude", state)
+
+            assertTrue(english.startsWith("claude") && spanish.startsWith("claude"))
+            assertNotEquals(english, spanish)
+        }
+        assertEquals("claude", EnglishStrings.agentLabel("claude", null))
+        assertEquals("claude", SpanishStrings.agentLabel("claude", null))
+    }
+
+    @Test
     fun `the Herdr close warning and notices are translated and keep their data`() {
         val english = EnglishStrings.herdrCloseFailed("~/projects/TASK-123", "workspace w2 not found")
         val spanish = SpanishStrings.herdrCloseFailed("~/projects/TASK-123", "workspace w2 not found")
@@ -336,6 +370,19 @@ class StringsTest {
         ).forEach { text ->
             assertTrue(text(EnglishStrings).isNotBlank() && text(SpanishStrings).isNotBlank())
             assertNotEquals(text(EnglishStrings), text(SpanishStrings))
+        }
+    }
+
+    @Test
+    fun `the update strings are translated and name both versions`() {
+        assertEquals("Check for Updates…", EnglishStrings.menuCheckForUpdates)
+        assertNotEquals(EnglishStrings.menuCheckForUpdates, SpanishStrings.menuCheckForUpdates)
+        assertNotEquals(EnglishStrings.updateSkipVersion, SpanishStrings.updateSkipVersion)
+        assertNotEquals(EnglishStrings.updateCheckAutomaticallyLabel, SpanishStrings.updateCheckAutomaticallyLabel)
+        allStrings.forEach { strings ->
+            val message = strings.updateAvailableMessage("1.3.0", "1.2.0")
+            assertTrue("1.3.0" in message && "1.2.0" in message)
+            assertTrue("brew upgrade --cask shogunai" in strings.updateCommandReminder(InstallChannel.HOMEBREW, "brew upgrade --cask shogunai"))
         }
     }
 }

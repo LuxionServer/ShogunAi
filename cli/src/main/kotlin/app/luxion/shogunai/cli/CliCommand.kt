@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.usecase.EnvironmentFormat
 sealed interface CliCommand {
     data object Help : CliCommand
     data object Version : CliCommand
+    data class CommandHelp(val name: String) : CliCommand
 
     data class New(
         val taskId: String? = null,
@@ -13,10 +14,24 @@ sealed interface CliCommand {
         val branchType: BranchType = BranchType.FEATURE,
         val worktreesRoot: String? = null,
         val from: String? = null,
+        val fetch: Boolean = false,
+        val json: Boolean = false,
     ) : CliCommand
 
-    data class Provision(val path: String? = null, val check: Boolean = false) : CliCommand
-    data class Trust(val path: String? = null, val yes: Boolean = false, val revoke: Boolean = false) : CliCommand
+    data class Provision(val path: String? = null, val check: Boolean = false, val json: Boolean = false) : CliCommand
+    data class Trust(
+        val path: String? = null,
+        val yes: Boolean = false,
+        val revoke: Boolean = false,
+        val json: Boolean = false,
+    ) : CliCommand
+    data class Remove(
+        val target: String,
+        val force: Boolean = false,
+        val deleteBranch: Boolean = false,
+        val json: Boolean = false,
+    ) : CliCommand
+    data class Repair(val json: Boolean = false) : CliCommand
     data class Status(val json: Boolean = false) : CliCommand
     data class Clean(
         val confirmed: Boolean = false,
@@ -25,13 +40,14 @@ sealed interface CliCommand {
         val stopEmulators: Boolean = false,
         val deleteSimulators: Boolean = false,
         val deleteDerivedData: Boolean = false,
+        val json: Boolean = false,
     ) : CliCommand
 
-    data object Xcode : CliCommand
-    data object XcodeClean : CliCommand
+    data class Xcode(val json: Boolean = false) : CliCommand
+    data class XcodeClean(val json: Boolean = false) : CliCommand
 
-    data object Gradle : CliCommand
-    data class GradleStop(val pids: List<Long> = emptyList()) : CliCommand
+    data class Gradle(val json: Boolean = false) : CliCommand
+    data class GradleStop(val pids: List<Long> = emptyList(), val json: Boolean = false) : CliCommand
     data object HookWorktreeCreate : CliCommand
     data object HookWorktreeRemove : CliCommand
     data object HookSessionStart : CliCommand
@@ -41,12 +57,14 @@ sealed interface CliCommand {
         val path: String? = null,
         val avd: String? = null,
         val noWindow: Boolean = false,
+        val json: Boolean = false,
     ) : CliCommand
     data class Simulator(
         val action: SimulatorAction,
         val path: String? = null,
         val device: String? = null,
         val runtime: String? = null,
+        val json: Boolean = false,
     ) : CliCommand
     data class SimulatorGradleInit(val install: Boolean, val confirmed: Boolean = false) : CliCommand
     data class Env(val path: String? = null, val format: EnvironmentFormat = EnvironmentFormat.SH) : CliCommand
@@ -60,34 +78,66 @@ sealed interface ParsedArguments {
 fun parseArguments(args: List<String>): ParsedArguments {
     val name = args.firstOrNull() ?: return ParsedArguments.Command(CliCommand.Help)
     val rest = args.drop(1)
+    if (name in CliHelp.commandNames && rest.any { it == "--help" || it == "-h" }) {
+        return ParsedArguments.Command(CliCommand.CommandHelp(name))
+    }
+    val json = name in JSON_COMMANDS && !isSimulatorGradleInit(name, rest) && JSON_FLAG in rest
+    val arguments = if (json) rest.filter { it != JSON_FLAG } else rest
     return try {
         ParsedArguments.Command(
             when (name) {
                 "help", "-h", "--help" -> noArguments(name, rest, CliCommand.Help)
                 "version", "-v", "--version" -> noArguments(name, rest, CliCommand.Version)
-                "new" -> parseNew(rest)
-                "provision" -> parseProvision(rest)
-                "trust" -> parseTrust(rest)
-                "status" -> parseStatus(rest)
-                "clean" -> parseClean(rest)
-                "hook" -> parseHook(rest)
-                "gradle" -> parseGradle(rest)
-                "xcode" -> parseXcode(rest)
-                "env" -> parseEnv(rest)
-                "emulator" -> parseEmulator(rest)
-                "simulator" -> parseSimulator(rest)
+                "new" -> parseNew(arguments)
+                "provision" -> parseProvision(arguments)
+                "trust" -> parseTrust(arguments)
+                "remove" -> parseRemove(arguments)
+                "repair" -> noArguments(name, arguments, CliCommand.Repair())
+                "status" -> parseStatus(arguments)
+                "clean" -> parseClean(arguments)
+                "hook" -> parseHook(arguments)
+                "gradle" -> parseGradle(arguments)
+                "xcode" -> parseXcode(arguments)
+                "env" -> parseEnv(arguments)
+                "emulator" -> parseEmulator(arguments)
+                "simulator" -> parseSimulator(arguments)
                 else -> throw UsageException("unknown command '$name'")
-            },
+            }.withJson(json),
         )
     } catch (error: UsageException) {
         ParsedArguments.UsageError(error.message.orEmpty())
     }
 }
 
+private const val JSON_FLAG = "--json"
+
+private val JSON_COMMANDS = setOf("new", "provision", "trust", "remove", "repair", "clean", "gradle", "xcode", "emulator", "simulator")
+
+private fun isSimulatorGradleInit(name: String, rest: List<String>) = name == "simulator" && rest.firstOrNull() == "gradle-init"
+
+private fun CliCommand.withJson(json: Boolean): CliCommand = if (!json) this else when (this) {
+    is CliCommand.New -> copy(json = true)
+    is CliCommand.Provision -> copy(json = true)
+    is CliCommand.Trust -> copy(json = true)
+    is CliCommand.Remove -> copy(json = true)
+    is CliCommand.Repair -> copy(json = true)
+    is CliCommand.Clean -> copy(json = true)
+    is CliCommand.Xcode -> copy(json = true)
+    is CliCommand.XcodeClean -> copy(json = true)
+    is CliCommand.Gradle -> copy(json = true)
+    is CliCommand.GradleStop -> copy(json = true)
+    is CliCommand.Emulator -> copy(json = true)
+    is CliCommand.Simulator -> copy(json = true)
+    else -> this
+}
+
 private class UsageException(message: String) : Exception(message)
 
 private fun noArguments(name: String, rest: List<String>, command: CliCommand): CliCommand {
-    rest.firstOrNull()?.let { throw UsageException("'$name' takes no arguments, got '$it'") }
+    rest.firstOrNull()?.let {
+        if (it.startsWith("-")) throw UsageException("unknown option '$it' for '$name'")
+        throw UsageException("'$name' takes no arguments, got '$it'")
+    }
     return command
 }
 
@@ -97,10 +147,12 @@ private fun parseNew(rest: List<String>): CliCommand.New {
     var fix = false
     var worktreesRoot: String? = null
     var from: String? = null
+    var fetch = false
     val remaining = ArrayDeque(rest)
     while (remaining.isNotEmpty()) {
         when (val argument = remaining.removeFirst()) {
             "--fix" -> fix = true
+            "--fetch" -> fetch = true
             "--from" -> from = remaining.valueOf(argument)
             "--branch" -> branch = remaining.valueOf(argument)
             "--worktrees-root" -> worktreesRoot = remaining.valueOf(argument)
@@ -121,7 +173,24 @@ private fun parseNew(rest: List<String>): CliCommand.New {
         branchType = if (fix) BranchType.FIX else BranchType.FEATURE,
         worktreesRoot = worktreesRoot,
         from = from,
+        fetch = fetch,
     )
+}
+
+private fun parseRemove(rest: List<String>): CliCommand.Remove {
+    var target: String? = null
+    var force = false
+    var deleteBranch = false
+    rest.forEach { argument ->
+        when {
+            argument == "--force" || argument == "-f" -> force = true
+            argument == "--delete-branch" -> deleteBranch = true
+            argument.startsWith("-") -> throw UsageException("unknown option '$argument' for 'remove'")
+            target != null -> throw UsageException("'remove' takes a single target, got '$target' and '$argument'")
+            else -> target = argument
+        }
+    }
+    return CliCommand.Remove(target ?: throw UsageException("'remove' needs a task id, path or branch"), force, deleteBranch)
 }
 
 private fun parseStatus(rest: List<String>): CliCommand.Status {
@@ -183,14 +252,14 @@ private fun parseClean(rest: List<String>): CliCommand.Clean {
 }
 
 private fun parseXcode(rest: List<String>): CliCommand {
-    val subcommand = rest.firstOrNull() ?: return CliCommand.Xcode
+    val subcommand = rest.firstOrNull() ?: return CliCommand.Xcode()
     if (subcommand != "clean") throw UsageException("unknown subcommand '$subcommand' for 'xcode', expected clean")
     rest.drop(1).firstOrNull()?.let { throw UsageException("'xcode clean' takes no arguments, got '$it'") }
-    return CliCommand.XcodeClean
+    return CliCommand.XcodeClean()
 }
 
 private fun parseGradle(rest: List<String>): CliCommand {
-    val subcommand = rest.firstOrNull() ?: return CliCommand.Gradle
+    val subcommand = rest.firstOrNull() ?: return CliCommand.Gradle()
     if (subcommand != "stop") throw UsageException("unknown subcommand '$subcommand' for 'gradle', expected stop")
     val pids = rest.drop(1).map { argument ->
         argument.toLongOrNull()?.takeIf { it > 0 }

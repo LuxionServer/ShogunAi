@@ -1,9 +1,12 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
+import app.luxion.shogunai.domain.model.HerdrAgent
+import app.luxion.shogunai.domain.model.HerdrAgentState
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
@@ -130,8 +133,8 @@ class DetectRunningAgentsUseCaseTest {
 
         val agents = DetectRunningAgentsUseCase(executor)(
             listOf(
-                AgentSearch("/opt/tools/my-agent", worktrees),
-                AgentSearch("claude", listOf(api)),
+                AgentSearch(listOf("/opt/tools/my-agent"), worktrees),
+                AgentSearch(listOf("claude"), listOf(api)),
             ),
         ).getOrThrow()
 
@@ -148,5 +151,123 @@ class DetectRunningAgentsUseCaseTest {
 
         assertTrue(agents.isEmpty())
         assertTrue(executor.executedCommands.isEmpty())
+    }
+
+    private fun herdrAgent(directory: String, state: HerdrAgentState?, name: String = "claude", pane: String = "w1:p1") =
+        HerdrAgent(name, state, directory, pane)
+
+    @Test
+    fun `a blocked agent Herdr reports enriches the process found in its worktree`() = runTest {
+        val herdr = FakeHerdrClient(agents = listOf(herdrAgent(nested.path, HerdrAgentState.BLOCKED, pane = "w2:p1")))
+
+        val agents = DetectRunningAgentsUseCase(executor(), herdr)(config, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("claude", HerdrAgentState.BLOCKED, "w2:p1")), agents[nested.path])
+        assertEquals(listOf(RunningAgent("codex")), agents[main.path])
+    }
+
+    @Test
+    fun `the most urgent state wins among several panes of the same agent`() = runTest {
+        val herdr = FakeHerdrClient(
+            agents = listOf(
+                herdrAgent(sibling.path, HerdrAgentState.WORKING, pane = "w1:p1"),
+                herdrAgent(sibling.path, HerdrAgentState.BLOCKED, pane = "w1:p2"),
+                herdrAgent(sibling.path, HerdrAgentState.IDLE, pane = "w1:p3"),
+            ),
+        )
+
+        val agents = DetectRunningAgentsUseCase(executor(), herdr)(config, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("claude", HerdrAgentState.BLOCKED, "w1:p2")), agents[sibling.path])
+    }
+
+    @Test
+    fun `herdr agents are attributed to the deepest worktree by their directory`() = runTest {
+        val herdr = FakeHerdrClient(agents = listOf(herdrAgent("${nested.path}/src", HerdrAgentState.DONE)))
+
+        val agents = DetectRunningAgentsUseCase(executor(), herdr)(config, worktrees).getOrThrow()
+
+        assertEquals(RunningAgent("claude", HerdrAgentState.DONE, "w1:p1"), agents.getValue(nested.path).single())
+    }
+
+    @Test
+    fun `an agent only Herdr sees is added and survives an unreadable process list`() = runTest {
+        val herdr = FakeHerdrClient(agents = listOf(herdrAgent(sibling.path, HerdrAgentState.WORKING)))
+
+        val agents = DetectRunningAgentsUseCase(executor(failLsof = true), herdr)(config, worktrees).getOrThrow()
+
+        assertEquals(mapOf(sibling.path to listOf(RunningAgent("claude", HerdrAgentState.WORKING, "w1:p1"))), agents)
+    }
+
+    @Test
+    fun `agents outside every worktree and agents without a state are handled`() = runTest {
+        val herdr = FakeHerdrClient(
+            agents = listOf(
+                herdrAgent("/home/dev/elsewhere", HerdrAgentState.BLOCKED),
+                herdrAgent(sibling.path, null, name = "aider"),
+            ),
+        )
+
+        val agents = DetectRunningAgentsUseCase(executor(), herdr)(config, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("aider", null, "w1:p1")), agents[sibling.path])
+        assertEquals(setOf(nested.path, main.path, sibling.path), agents.keys)
+    }
+
+    @Test
+    fun `a failing Herdr leaves detection as it was`() = runTest {
+        val herdr = FakeHerdrClient(agentsFailure = WorktreeError.HerdrNotInstalled)
+
+        val agents = DetectRunningAgentsUseCase(executor(), herdr)(config, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("claude")), agents[nested.path])
+    }
+
+    @Test
+    fun `after a Herdr failure the next read waits 30 seconds`() = runTest {
+        val herdr = FakeHerdrClient(agentsFailure = WorktreeError.HerdrNotInstalled)
+        var clock = 1_000L
+        val useCase = DetectRunningAgentsUseCase(executor(), herdr) { clock }
+
+        useCase(config, worktrees)
+        clock += 29_000
+        useCase(config, worktrees)
+        assertEquals(1, herdr.agentListings)
+
+        clock += 1_000
+        useCase(config, worktrees)
+        assertEquals(2, herdr.agentListings)
+    }
+
+    @Test
+    fun `without a Herdr client nothing is added`() = runTest {
+        val agents = DetectRunningAgentsUseCase(executor())(config, worktrees).getOrThrow()
+
+        assertEquals(setOf(nested.path, main.path), agents.keys)
+    }
+
+    @Test
+    fun `herdr is read once per detection across projects`() = runTest {
+        val herdr = FakeHerdrClient()
+        val api = Worktree(path = "/home/dev/projects/api", branch = "main", isMain = true)
+
+        DetectRunningAgentsUseCase(executor(), herdr)(
+            listOf(AgentSearch(listOf("claude"), worktrees), AgentSearch(listOf("claude"), listOf(api))),
+        ).getOrThrow()
+
+        assertEquals(1, herdr.agentListings)
+    }
+
+    @Test
+    fun `the executable of a second agent of the project is recognized`() = runTest {
+        val multi = config.copy(additionalAgents = listOf(AgentLaunchConfig(agentCommand = "antigravity --chat")))
+        val executor = executor(
+            lsof = "p300\ncantigravity\nfcwd\nn${sibling.path}",
+            ps = "300 /opt/tools/antigravity",
+        )
+
+        val agents = DetectRunningAgentsUseCase(executor)(multi, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("antigravity")), agents[sibling.path])
     }
 }

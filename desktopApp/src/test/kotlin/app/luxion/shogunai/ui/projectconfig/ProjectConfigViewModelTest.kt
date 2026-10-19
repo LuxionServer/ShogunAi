@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.projectconfig
 
+import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeRepositoryTrust
@@ -13,6 +14,7 @@ import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.XcodeProvider
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
+import app.luxion.shogunai.ui.i18n.EnglishStrings
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -43,6 +45,65 @@ class ProjectConfigViewModelTest {
     )
 
     private fun viewModelFor(project: Project?) = ProjectConfigViewModel(projectRepository, provisioningSource, project)
+
+    @Test
+    fun `the saved name stays while the name field is edited`() {
+        val viewModel = viewModelFor(projectWith())
+
+        viewModel.name = "other-name"
+
+        assertEquals("Project", viewModel.savedName)
+        assertEquals("Settings · Project", settingsTitle(EnglishStrings, isNewProject = false, savedName = viewModel.savedName))
+    }
+
+    @Test
+    fun `adding a project keeps the add title`() {
+        assertEquals("Add project", settingsTitle(EnglishStrings, isNewProject = true, savedName = ""))
+    }
+
+    @Test
+    fun `linked patterns are listed from the config file and marked as linked`() {
+        val declared = RepositoryProvisioning(
+            copyPatterns = listOf("local.properties"),
+            linkPatterns = listOf("node_modules"),
+            worktreeIncludePatterns = listOf(".env"),
+        )
+
+        assertEquals(
+            listOf(
+                "local.properties" to ".shogunai.json",
+                "node_modules" to ".shogunai.json · linked",
+                ".env" to ".worktreeinclude",
+            ),
+            provisioningRows(declared, emptyList(), EnglishStrings),
+        )
+    }
+
+    @Test
+    fun `a repository with only commands has no rows and an empty one has neither`() {
+        val onlyCommands = RepositoryProvisioning(postCreateCommands = listOf(listOf("npm", "install"), listOf("npm", "run", "setup")))
+
+        assertTrue(provisioningRows(onlyCommands, emptyList(), EnglishStrings).isEmpty())
+        assertEquals(
+            "2 commands run after creation; see Repository configuration below.",
+            EnglishStrings.postCreationCommandsNote(onlyCommands.postCreateCommands.size),
+        )
+        assertTrue(provisioningRows(null, emptyList(), EnglishStrings).isEmpty())
+    }
+
+    private fun viewModelInspecting(project: Project?, vararg repositories: String) = ProjectConfigViewModel(
+        projectRepository,
+        provisioningSource,
+        project,
+        inspectRepository = { folder ->
+            val topLevel = repositories.firstOrNull { folder == it || folder.startsWith("$it/") }
+            if (topLevel == null) {
+                Result.failure(WorktreeError.RepositoryNotFound(folder))
+            } else {
+                Result.success(RepositoryInspection(topLevel, "main"))
+            }
+        },
+    )
 
     @Test
     fun `relative secret files follow the base repository when it moves`() {
@@ -232,14 +293,165 @@ class ProjectConfigViewModelTest {
     }
 
     @Test
-    fun `reloads the provisioning when the base repository path changes`() {
+    fun `reloads the provisioning when the base repository path settles on another repository`() = runBlocking {
         val other = RepositoryProvisioning(copyPatterns = listOf(".env*"))
         provisioningSource = FakeRepositoryProvisioningSource(byRepository = mapOf("/home/dev/projects/other-repo" to other))
-        val viewModel = viewModelFor(projectWith())
+        val viewModel = viewModelInspecting(projectWith(), "/home/dev/projects/other-repo")
 
         viewModel.baseRepositoryPath = "/home/dev/projects/other-repo"
+        assertEquals(RepositoryProvisioningState.None, viewModel.repositoryProvisioning)
+        viewModel.settleBaseRepositoryPath()
 
         assertEquals(RepositoryProvisioningState.Declared(other), viewModel.repositoryProvisioning)
+    }
+
+    @Test
+    fun `fixing a typo in the base path keeps the unsaved repository edits`() = runBlocking {
+        val viewModel = viewModelInspecting(projectWith(), basePath)
+        viewModel.setGradleEnabled(true)
+        val edited = GradleDraft(daemonMaxHeap = "4g", idleTimeoutMinutes = "30")
+        viewModel.updateRepositoryDraft { it.copy(gradle = edited) }
+
+        viewModel.baseRepositoryPath = "$basePath-typo"
+        viewModel.settleBaseRepositoryPath()
+        viewModel.baseRepositoryPath = basePath
+        viewModel.settleBaseRepositoryPath()
+
+        assertEquals(edited, viewModel.repositoryDraft.gradle)
+        assertTrue(viewModel.hasUnsavedChanges)
+        assertNull(viewModel.pendingRepositoryChange)
+        assertNull(viewModel.basePathProblem)
+    }
+
+    @Test
+    fun `another repository asks before discarding the unsaved repository edits`() = runBlocking {
+        val other = RepositoryProvisioning(copyPatterns = listOf(".env*"))
+        provisioningSource = FakeRepositoryProvisioningSource(byRepository = mapOf("/home/dev/projects/other-repo" to other))
+        val viewModel = viewModelInspecting(projectWith(), basePath, "/home/dev/projects/other-repo")
+        viewModel.setGradleEnabled(true)
+
+        viewModel.baseRepositoryPath = "/home/dev/projects/other-repo"
+        viewModel.settleBaseRepositoryPath()
+
+        assertEquals("/home/dev/projects/other-repo", viewModel.pendingRepositoryChange)
+        assertEquals(GradleDraft(), viewModel.repositoryDraft.gradle)
+        assertIs<SaveOutcome.Invalid>(viewModel.submit())
+
+        viewModel.confirmRepositoryChange()
+
+        assertNull(viewModel.pendingRepositoryChange)
+        assertNull(viewModel.repositoryDraft.gradle)
+        assertEquals(RepositoryProvisioningState.Declared(other), viewModel.repositoryProvisioning)
+    }
+
+    @Test
+    fun `declining the change puts the previous repository path back`() = runBlocking {
+        val viewModel = viewModelInspecting(projectWith(), basePath, "/home/dev/projects/other-repo")
+        viewModel.setGradleEnabled(true)
+        viewModel.baseRepositoryPath = "/home/dev/projects/other-repo"
+        viewModel.settleBaseRepositoryPath()
+
+        viewModel.cancelRepositoryChange()
+
+        assertEquals(basePath, viewModel.baseRepositoryPath)
+        assertNull(viewModel.pendingRepositoryChange)
+        assertEquals(GradleDraft(), viewModel.repositoryDraft.gradle)
+    }
+
+    @Test
+    fun `another repository loads straight away when nothing is unsaved`() = runBlocking {
+        val viewModel = viewModelInspecting(projectWith(), basePath, "/home/dev/projects/other-repo")
+
+        viewModel.baseRepositoryPath = "/home/dev/projects/other-repo"
+        viewModel.settleBaseRepositoryPath()
+
+        assertNull(viewModel.pendingRepositoryChange)
+    }
+
+    @Test
+    fun `a subfolder of a repository is flagged and cannot be saved`() = runBlocking {
+        val viewModel = viewModelInspecting(projectWith(), basePath)
+
+        viewModel.baseRepositoryPath = "$basePath/app"
+        viewModel.settleBaseRepositoryPath()
+
+        assertEquals(BasePathProblem.NOT_TOP_LEVEL, viewModel.basePathProblem)
+        assertTrue(viewModel.isErrorVisible(ProjectConfigField.BASE_REPOSITORY_PATH))
+        assertEquals(ProjectConfigField.BASE_REPOSITORY_PATH, assertIs<SaveOutcome.Invalid>(viewModel.submit()).firstInvalidField)
+        assertTrue(projectRepository.list().isEmpty())
+    }
+
+    @Test
+    fun `a folder that is not a repository is flagged and cannot be saved`() = runBlocking {
+        val viewModel = viewModelInspecting(projectWith(), basePath)
+
+        viewModel.baseRepositoryPath = "/home/dev/plain"
+        viewModel.settleBaseRepositoryPath()
+
+        assertEquals(BasePathProblem.NOT_A_REPOSITORY, viewModel.basePathProblem)
+        assertTrue(viewModel.submit() is SaveOutcome.Invalid)
+    }
+
+    @Test
+    fun `the flag disappears when the path is edited again`() = runBlocking {
+        val viewModel = viewModelInspecting(projectWith(), basePath)
+        viewModel.baseRepositoryPath = "/home/dev/plain"
+        viewModel.settleBaseRepositoryPath()
+
+        viewModel.baseRepositoryPath = "/home/dev/plain2"
+
+        assertNull(viewModel.basePathProblem)
+    }
+
+    @Test
+    fun `a repository another project already uses is rejected naming that project`() {
+        projectRepository.save(
+            Project(
+                id = "other",
+                name = "Other project",
+                config = ProjectConfig(baseRepositoryPath = "/home/dev/projects/api", worktreesRoot = "/home/dev/projects", secretFiles = emptyList()),
+            ),
+        )
+        val viewModel = viewModelFor(projectWith())
+
+        viewModel.baseRepositoryPath = "/home/dev/projects/api/"
+
+        assertEquals("Other project", viewModel.duplicateProject?.name)
+        assertIs<SaveOutcome.Invalid>(viewModel.submit())
+    }
+
+    @Test
+    fun `the project being edited is not a duplicate of itself`() {
+        projectRepository.save(projectWith())
+
+        assertNull(viewModelFor(projectWith()).duplicateProject)
+    }
+
+    @Test
+    fun `a blank worktrees folder or agent command cannot be saved`() {
+        val viewModel = viewModelFor(projectWith())
+
+        viewModel.worktreesRoot = " "
+        assertEquals(ProjectConfigField.WORKTREES_ROOT, assertIs<SaveOutcome.Invalid>(viewModel.submit()).firstInvalidField)
+
+        viewModel.worktreesRoot = "/home/dev/projects"
+        viewModel.updateAgent(0) { it.copy(command = "") }
+        assertEquals(ProjectConfigField.AGENT_COMMAND, assertIs<SaveOutcome.Invalid>(viewModel.submit()).firstInvalidField)
+    }
+
+    @Test
+    fun `the preview is shown again after reloading a file changed on disk`() {
+        val viewModel = viewModelFor(projectWith())
+        viewModel.setGradleEnabled(true)
+        viewModel.submit(previewConfirmed = true)
+        viewModel.setEmulatorEnabled(true)
+        provisioningSource.currentFingerprint = "fingerprint-2"
+        assertIs<SaveOutcome.Failed>(viewModel.submit())
+
+        viewModel.reloadRepositoryConfig()
+        viewModel.setGradleEnabled(true)
+
+        assertIs<SaveOutcome.NeedsPreview>(viewModel.submit())
     }
 
     @Test
@@ -359,6 +571,7 @@ class ProjectConfigViewModelTest {
         val viewModel = newProjectViewModel()
         viewModel.name = "api"
         viewModel.baseRepositoryPath = "/home/dev/projects/api"
+        viewModel.worktreesRoot = "/home/dev/projects"
 
         val outcome = viewModel.submit()
 
@@ -650,5 +863,72 @@ class ProjectConfigViewModelTest {
         val viewModel = ProjectConfigViewModel(projectRepository, provisioningSource, projectWith(), trust = trust)
 
         assertFalse(viewModel.postCreateApproved)
+    }
+
+    @Test
+    fun `a project stored with one agent shows a single agent`() {
+        val viewModel = viewModelFor(projectWith())
+
+        assertEquals(listOf(AgentDraft()), viewModel.agents)
+    }
+
+    @Test
+    fun `a second agent is saved after the default one`() {
+        val viewModel = viewModelFor(projectWith())
+
+        viewModel.addAgent()
+        viewModel.updateAgent(1) { it.copy(name = "Codex", command = "codex --full-auto", useHeadroom = false) }
+        assertIs<SaveOutcome.Saved>(viewModel.submit())
+
+        val saved = projectRepository.list().single().config
+        assertEquals("claude", saved.agentLaunchConfig.agentCommand)
+        assertEquals(listOf(AgentLaunchConfig(name = "Codex", agentCommand = "codex --full-auto", useHeadroom = false)), saved.additionalAgents)
+    }
+
+    @Test
+    fun `making another agent the default moves it into the default field`() {
+        val viewModel = viewModelFor(projectWith())
+        viewModel.addAgent()
+        viewModel.updateAgent(1) { it.copy(name = "Codex", command = "codex") }
+
+        viewModel.makeDefault(1)
+        assertIs<SaveOutcome.Saved>(viewModel.submit())
+
+        val saved = projectRepository.list().single().config
+        assertEquals("Codex", saved.agentLaunchConfig.displayName)
+        assertEquals(listOf("Claude"), saved.additionalAgents.map { it.displayName })
+    }
+
+    @Test
+    fun `two agents with the same name cannot be saved`() {
+        val viewModel = viewModelFor(projectWith())
+        viewModel.addAgent()
+        viewModel.updateAgent(1) { it.copy(name = "Claude", command = "claude --model opus") }
+
+        assertEquals(setOf("Claude"), viewModel.duplicatedAgentNames)
+        assertEquals(ProjectConfigField.AGENT_NAME, assertIs<SaveOutcome.Invalid>(viewModel.submit()).firstInvalidField)
+    }
+
+    @Test
+    fun `the last agent cannot be removed`() {
+        val viewModel = viewModelFor(projectWith())
+
+        viewModel.removeAgent(0)
+
+        assertEquals(1, viewModel.agents.size)
+    }
+
+    @Test
+    fun `an agent can be removed and reordered`() {
+        val viewModel = viewModelFor(projectWith())
+        viewModel.addAgent()
+        viewModel.updateAgent(1) { it.copy(name = "Codex", command = "codex") }
+        viewModel.addAgent()
+        viewModel.updateAgent(2) { it.copy(name = "Gemini", command = "gemini") }
+
+        viewModel.moveAgent(2, 1)
+        assertEquals(listOf("Claude", "Gemini", "Codex"), viewModel.agents.map { it.toConfig().displayName })
+        viewModel.removeAgent(1)
+        assertEquals(listOf("Claude", "Codex"), viewModel.agents.map { it.toConfig().displayName })
     }
 }

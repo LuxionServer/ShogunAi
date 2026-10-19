@@ -26,6 +26,18 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class RepositoryNotFound(val path: String) :
         WorktreeError("No Git repository found at $path")
 
+    class BareRepositoryNotSupported(val path: String) :
+        WorktreeError("$path is a bare repository; bare repositories aren't supported yet")
+
+    object RepositoryHasNoCommits :
+        WorktreeError("The repository has no commits yet; make a first commit and try again")
+
+    class LocalFileUnreadable(val path: String, val reason: String?) :
+        WorktreeError("Can't read $path" + if (reason.isNullOrBlank()) "" else ": $reason")
+
+    class UpdateCheckFailed(val reason: String?) :
+        WorktreeError("Couldn't check for updates" + if (reason.isNullOrBlank()) "" else ": $reason")
+
     class NotAWorktree(val path: String) :
         WorktreeError("$path is not a linked worktree of this repository")
 
@@ -81,6 +93,12 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class EmulatorBootTimeout(val serial: String, val seconds: Long) :
         WorktreeError("$serial didn't finish booting within $seconds s; it's still starting")
 
+    class EmulatorExitedEarly(val serial: String, val lastLogLines: String) :
+        WorktreeError(
+            "The emulator process of $serial exited before it finished booting" +
+                if (lastLogLines.isNotBlank()) ":\n$lastLogLines" else "",
+        )
+
     class AndroidToolFailed(val command: List<String>, val exitCode: Int, val output: String) :
         WorktreeError(
             "Android tool failed (exit code $exitCode): ${command.joinToString(" ")}" +
@@ -133,4 +151,35 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
 
     class HerdrCommandFailed(val command: List<String>, val detail: String) :
         WorktreeError("Herdr couldn't open the worktree: $detail")
+
+    class TerminalLaunchFailed(val terminal: TerminalId, val detail: String) :
+        WorktreeError("${terminal.displayName} couldn't open the worktree" + if (detail.isBlank()) "" else ": $detail")
+
+    class TerminalAutomationRefused(val terminal: TerminalId) :
+        WorktreeError(
+            "macOS didn't allow ShogunAi to control ${terminal.displayName}. " +
+                "Allow it in System Settings > Privacy & Security > Automation.",
+        )
+
+    class TerminalUnsupported(val terminal: TerminalId, val reason: String) :
+        WorktreeError("${terminal.displayName} can't be used: $reason")
+
+    class EditorLaunchFailed(val editor: EditorId, val detail: String) :
+        WorktreeError("${editor.displayName} couldn't open the worktree" + if (detail.isBlank()) "" else ": $detail")
+
+    class FolderOpenFailed(val path: String, val detail: String) :
+        WorktreeError("Couldn't show $path" + if (detail.isBlank()) "" else ": $detail")
+
+    class WorktreeTargetNotFound(val target: String) :
+        WorktreeError("No worktree matches \"$target\"")
+
+    class AmbiguousWorktreeTarget(val target: String, val candidates: List<String>) :
+        WorktreeError("\"$target\" matches more than one worktree:\n" + candidates.joinToString("\n") { "  $it" })
+
+    class CannotRemoveMainWorktree(val path: String) :
+        WorktreeError("$path is the main worktree and can't be removed")
+
+    class AgentRunningInWorktree(val path: String, val agents: List<String>) :
+        WorktreeError("${agents.joinToString()} is running in $path")
+
 }

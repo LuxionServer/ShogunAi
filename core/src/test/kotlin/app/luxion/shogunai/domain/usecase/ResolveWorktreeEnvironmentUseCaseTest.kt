@@ -60,6 +60,33 @@ class ResolveWorktreeEnvironmentUseCaseTest {
     ) = ResolveWorktreeEnvironmentUseCase(gitExecutor(), source, store, probe)
 
     @Test
+    fun `a cache reads the git directories of a worktree once until it is invalidated`() = runTest {
+        var gitReads = 0
+        val counting = object : app.luxion.shogunai.domain.executor.ShellCommandExecutor {
+            override suspend fun execute(command: List<String>, workingDirectory: String?): app.luxion.shogunai.domain.executor.CommandResult {
+                gitReads++
+                return gitExecutor().execute(command, workingDirectory)
+            }
+        }
+        val cache = WorktreeEnvironmentCache()
+        val resolve = ResolveWorktreeEnvironmentUseCase(
+            counting,
+            declaring("PORT" to "\${port}"),
+            FakeEnvironmentStateStore(),
+            FakePortProbe(),
+            cache = cache,
+        )
+
+        resolve(repository, task, reserve = false).getOrThrow()
+        resolve(repository, task, reserve = false).getOrThrow()
+        assertEquals(1, gitReads)
+
+        cache.invalidate()
+        resolve(repository, task, reserve = false).getOrThrow()
+        assertEquals(2, gitReads)
+    }
+
+    @Test
     fun `reserves the lowest free port and renders the templates`() = runTest {
         val store = FakeEnvironmentStateStore()
         val source = declaring("PORT" to "\${port}", "APP_SUFFIX" to "-\${worktree}")
@@ -488,6 +515,7 @@ class ResolveWorktreeEnvironmentUseCaseTest {
 
     @Test
     fun `sourcing the dotenv file from sh yields the exact value and runs nothing`() {
+        org.junit.Assume.assumeFalse(System.getProperty("os.name").startsWith("Windows"))
         val value = "a`touch /tmp/shogunai-pwned`\$(touch /tmp/shogunai-pwned)\$HOME \"q\" \\"
         val file = java.nio.file.Files.createTempFile("env", ".sh")
         val environment = WorktreeEnvironment(variables = listOf("VALUE" to value))

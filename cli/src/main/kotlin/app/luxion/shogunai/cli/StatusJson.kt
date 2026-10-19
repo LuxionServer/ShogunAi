@@ -1,6 +1,7 @@
 package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.domain.model.Divergence
+import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeOrigin
 import app.luxion.shogunai.domain.model.WorktreeStatus
@@ -10,7 +11,13 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-data class WorktreeEntry(val worktree: Worktree, val status: WorktreeStatus?, val origin: WorktreeOrigin?)
+data class WorktreeEntry(
+    val worktree: Worktree,
+    val status: WorktreeStatus?,
+    val origin: WorktreeOrigin?,
+    val statusProblem: String? = null,
+    val agents: List<RunningAgent> = emptyList(),
+)
 
 val WorktreeOrigin.label: String
     get() = when (this) {
@@ -35,7 +42,14 @@ private fun worktreeJson(entry: WorktreeEntry): JsonObject = buildJsonObject {
     put("locked", worktree.isLocked)
     put("folderMissing", worktree.isPrunable)
     put("origin", entry.origin?.label)
+    put("agents", buildJsonArray { entry.agents.forEach { add(agentJson(it)) } })
     put("status", entry.status?.let(::statusObject) ?: JsonNull)
+    entry.statusProblem?.let { put("statusProblem", it) }
+}
+
+private fun agentJson(agent: RunningAgent): JsonObject = buildJsonObject {
+    put("name", agent.name)
+    put("herdrState", agent.herdrState?.name?.lowercase())
 }
 
 private fun statusObject(status: WorktreeStatus): JsonObject = buildJsonObject {

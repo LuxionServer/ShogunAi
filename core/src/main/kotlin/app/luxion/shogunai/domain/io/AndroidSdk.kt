@@ -11,7 +11,14 @@ interface AndroidSdk {
 
     suspend fun deviceStates(sdk: SdkLocation): Map<String, EmulatorState>
 
-    fun startEmulator(sdk: SdkLocation, avd: String, consolePort: Int, noWindow: Boolean)
+    fun startEmulator(sdk: SdkLocation, avd: String, consolePort: Int, noWindow: Boolean): EmulatorProcess
 
     suspend fun stopEmulator(sdk: SdkLocation, serial: String)
+}
+
+interface EmulatorProcess {
+
+    val isAlive: Boolean
+
+    fun lastLogLines(count: Int): String
 }

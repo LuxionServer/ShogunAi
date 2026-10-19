@@ -429,7 +429,7 @@ Encuentra el repositorio base (worktree principal) que contiene un directorio, p
 
 ### `DeleteMergedBranchUseCase`
 
-Borra una rama local con `git branch -d`, que Git rechaza cuando la rama no está mergeada, y devuelve si se borró en vez de fallar. Lo usa el hook `WorktreeRemove` del CLI, donde conservar la rama es lo esperado y no un error.
+Borra una rama local solo cuando está contenida en la rama principal del proyecto (la misma regla que usa `clean`), y devuelve si se borró en vez de fallar. Una rama mergeada solo en su upstream se conserva. Lo usan los hooks `WorktreeRemove` de Claude Code y de Herdr del CLI, donde conservar la rama es lo esperado y no un error.
 
 ### `ProvisionWorktreeUseCase`
 

@@ -54,9 +54,13 @@ private fun fixOf(error: Throwable, gitCause: GitFailureCause): ErrorFix? = when
 private fun technicalDetailsOf(error: Throwable): TechnicalDetails? = when (error) {
     is WorktreeError.GitCommandFailed -> TechnicalDetails(error.command, error.exitCode, error.errorOutput)
     is WorktreeError.AppleToolFailed -> TechnicalDetails(error.command, error.exitCode, error.output)
+    is WorktreeError.EmulatorExitedEarly -> TechnicalDetails(emptyList(), null, error.lastLogLines)
     is WorktreeError.AndroidToolFailed -> TechnicalDetails(error.command, error.exitCode, error.output)
     is WorktreeError.ProcessListingFailed -> TechnicalDetails(error.command, error.exitCode, "")
     is WorktreeError.HerdrCommandFailed -> TechnicalDetails(error.command, null, error.detail)
+    is WorktreeError.TerminalLaunchFailed -> TechnicalDetails(null, null, error.detail)
+    is WorktreeError.EditorLaunchFailed -> TechnicalDetails(null, null, error.detail)
+    is WorktreeError.FolderOpenFailed -> TechnicalDetails(null, null, error.detail)
     is WorktreeError.PostCreateCommandFailed -> TechnicalDetails(error.command, error.exitCode, error.errorOutput)
     is WorktreeError.InvalidRepositoryConfig -> error.detail?.let { TechnicalDetails(null, null, it) }
     is WorktreeError.AndroidSdkNotFound -> TechnicalDetails(null, null, error.checked.joinToString("\n"))

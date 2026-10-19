@@ -1,11 +1,31 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.ToolUseCases
+import app.luxion.shogunai.domain.FakeToolDetector
+import app.luxion.shogunai.domain.FakeToolPreferenceRepository
+import app.luxion.shogunai.domain.model.DetectedTools
+import app.luxion.shogunai.domain.model.EditorId
+import app.luxion.shogunai.domain.model.TerminalId
+import app.luxion.shogunai.ui.i18n.EnglishStrings
+import app.luxion.shogunai.ui.shell.ToolsPreferences
 import app.luxion.shogunai.EmulatorUseCases
 import app.luxion.shogunai.GradleUseCases
+import app.luxion.shogunai.AgentUseCases
 import app.luxion.shogunai.HerdrUseCases
+import app.luxion.shogunai.domain.model.AgentLaunchConfig
+import app.luxion.shogunai.ui.shell.AgentChoices
 import app.luxion.shogunai.SimulatorUseCases
+import app.luxion.shogunai.domain.model.HerdrAgentState
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.WorktreeUseCases
+import app.luxion.shogunai.ProvisioningUseCases
+import app.luxion.shogunai.ReleaseResourcesUseCases
+import app.luxion.shogunai.domain.usecase.ReleasedResources
+import app.luxion.shogunai.domain.usecase.WorktreeResourcePlan
+import app.luxion.shogunai.domain.model.ProvisionDrift
+import app.luxion.shogunai.domain.model.ProvisionDriftState
+import app.luxion.shogunai.domain.model.WorktreeEnvironment
+import app.luxion.shogunai.domain.usecase.ProvisionResult
 import app.luxion.shogunai.XcodeUseCases
 import app.luxion.shogunai.domain.FakeClipboardWriter
 import app.luxion.shogunai.domain.FakeDerivedDataSource
@@ -31,6 +51,7 @@ import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.DerivedDataSource
 import app.luxion.shogunai.domain.model.BranchOption
+import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.DaemonOwner
 import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.DerivedDataFolder
@@ -46,6 +67,7 @@ import app.luxion.shogunai.domain.model.SimulatorDevice
 import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.withoutLocalTwins
 import app.luxion.shogunai.domain.model.XcodeProvider
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
 import app.luxion.shogunai.ui.machine.MachineResource
@@ -59,7 +81,9 @@ import app.luxion.shogunai.domain.usecase.MeasureWorktreeSizeUseCase
 import app.luxion.shogunai.domain.usecase.ReadGitMetadataFingerprintUseCase
 import app.luxion.shogunai.domain.usecase.ListGradleDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.ListDerivedDataUseCase
-import app.luxion.shogunai.domain.usecase.ListLocalBranchesUseCase
+import app.luxion.shogunai.domain.usecase.FetchRemoteUseCase
+import app.luxion.shogunai.domain.usecase.ListBranchesUseCase
+import app.luxion.shogunai.domain.usecase.ResolveStartPointUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
@@ -68,6 +92,13 @@ import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
 import app.luxion.shogunai.domain.usecase.StopGradleDaemonsUseCase
 import app.luxion.shogunai.domain.FakeShellPreferenceRepository
 import app.luxion.shogunai.domain.model.Project
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.runComposeUiTest
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -108,7 +139,7 @@ class ProjectWorktreesTest {
     private val removeCommand = listOf("git", "worktree", "remove", worktreePath)
     private val forceRemoveCommand = listOf("git", "worktree", "remove", "--force", worktreePath)
     private val repairCommandPrefix = listOf("git", "worktree", "repair")
-    private val forEachRefCommand = listOf("git", "for-each-ref", "--format=%(refname:short)", "refs/heads")
+    private val forEachRefCommand = listOf("git", "for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes/origin/")
 
     private val porcelainOutput = """
         worktree $worktreePath
@@ -126,15 +157,22 @@ class ProjectWorktreesTest {
         Dispatchers.resetMain()
     }
 
-    private fun projectWorktrees(useCases: WorktreeUseCases): ProjectWorktrees =
-        ProjectWorktrees(useCases, CoroutineScope(SupervisorJob() + dispatcher)).also { it.refresh() }
+    private fun projectWorktrees(useCases: WorktreeUseCases, onUsed: (String) -> Unit = {}): ProjectWorktrees =
+        ProjectWorktrees(useCases, CoroutineScope(SupervisorJob() + dispatcher), ioDispatcher = dispatcher, onUsed = onUsed)
+            .also { it.refresh() }
 
     private val project = Project(id = "main-repo", name = "main-repo", config = config)
 
-    private fun board(useCases: WorktreeUseCases): WorktreeBoard = WorktreeBoard(
+    private fun board(
+        useCases: WorktreeUseCases,
+        project: Project = this.project,
+        rememberFetchBeforeCreate: (String, Boolean) -> Unit = { _, _ -> },
+    ): WorktreeBoard = WorktreeBoard(
         useCasesFor = { useCases },
         detectAgents = { searches -> useCases.detectAgents(searches.flatMap { it.worktrees }) },
         preferences = FakeShellPreferenceRepository(),
+        ioDispatcher = dispatcher,
+        rememberFetchBeforeCreate = rememberFetchBeforeCreate,
     ).also {
         it.syncCatalog(listOf(project))
         it.show(null)
@@ -170,7 +208,9 @@ class ProjectWorktreesTest {
                 ),
                 FakeRepositoryProvisioningSource(),
             ),
-            listLocalBranches = ListLocalBranchesUseCase(config, executor),
+            listBranches = ListBranchesUseCase(config, executor),
+            fetchRemote = FetchRemoteUseCase(config, executor),
+            resolveStartPoint = { ref -> ResolveStartPointUseCase(executor)(config.baseRepositoryPath, ref) },
             remove = RemoveWorktreeUseCase(config, executor),
             copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboard, windows = false),
             repair = RepairWorktreesUseCase(config, executor, FakeFileManager(existing = listOf(config.baseRepositoryPath))),
@@ -249,6 +289,9 @@ class ProjectWorktreesTest {
             gradle = gradleUseCases(executor, source, provider = provider, buildCacheEnabled = buildCacheEnabled),
         )
     }
+
+    private fun existingBase() =
+        FakeFileManager(existing = listOf(config.baseRepositoryPath) + config.secretFiles.map { config.baseSecretPath(it) })
 
     private val idle = DaemonState.Idle(Instant.parse("2026-10-16T10:50:00Z"))
 
@@ -382,6 +425,7 @@ class ProjectWorktreesTest {
             detectAgents = { searches -> useCases.detectAgents(searches.flatMap { it.worktrees }) },
             preferences = FakeShellPreferenceRepository(),
             approval = approval,
+            ioDispatcher = dispatcher,
         ).also {
             it.syncCatalog(listOf(project))
             it.show(null)
@@ -456,7 +500,7 @@ class ProjectWorktreesTest {
             useCases { command ->
                 when {
                     command == listCommand -> success(command, porcelainOutput)
-                    command == forEachRefCommand -> success(command, stdout = "$branch\n")
+                    command == forEachRefCommand -> success(command, stdout = "refs/heads/$branch\n")
                     command.getOrNull(1) == "show-ref" -> success(command)
                     else -> success(command)
                 }
@@ -534,15 +578,15 @@ class ProjectWorktreesTest {
     fun `dismissError clears the error message`() = runTest(dispatcher) {
         val viewModel = projectWorktrees(
             useCases { command ->
-                when (command) {
-                    listCommand -> success(command, porcelainOutput)
-                    removeCommand -> failure(command, stderr = "permission denied")
+                when {
+                    command.take(3) == repairCommandPrefix -> failure(command, exitCode = 128, stderr = "permission denied")
+                    command == listCommand -> success(command, porcelainOutput)
                     else -> success(command)
                 }
             },
         )
         advanceUntilIdle()
-        viewModel.remove(worktree, branchToDelete = null)
+        viewModel.repairAfterMove(previousWorktreesRoot = "/home/dev/old-projects")
         advanceUntilIdle()
         assertIs<WorktreeError>(viewModel.error)
 
@@ -577,7 +621,7 @@ class ProjectWorktreesTest {
     }
 
     @Test
-    fun `sets error when remove fails for a reason unrelated to force`() = runTest(dispatcher) {
+    fun `a removal failing for a reason unrelated to force stays in the dialog with its error`() = runTest(dispatcher) {
         val viewModel = projectWorktrees(
             useCases { command ->
                 when (command) {
@@ -588,13 +632,120 @@ class ProjectWorktreesTest {
             },
         )
         advanceUntilIdle()
+        viewModel.requestRemoval(worktree)
 
-        viewModel.remove(worktree, branchToDelete = null)
+        viewModel.confirmPendingRemoval()
         advanceUntilIdle()
 
-        assertNull(viewModel.worktreePendingRemoval)
-        val error = assertIs<WorktreeError.GitCommandFailed>(viewModel.error)
+        assertEquals(worktree, viewModel.worktreePendingRemoval)
+        val error = assertIs<WorktreeError.GitCommandFailed>(viewModel.removeError)
         assertTrue(error.errorOutput.contains("is not a working tree"))
+        assertNull(viewModel.error)
+        assertTrue(viewModel.worktrees.any { it.path == worktreePath })
+    }
+
+    @Test
+    fun `dismissing the removal dialog is ignored while removing and clears the error afterwards`() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val viewModel = projectWorktrees(
+            useCasesWith(
+                object : ShellCommandExecutor {
+                    override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+                        if (command != removeCommand) return listingResponder()(command)
+                        gate.await()
+                        return failure(command, stderr = "fatal: locked")
+                    }
+                },
+            ),
+        )
+        advanceUntilIdle()
+        viewModel.requestRemoval(worktree)
+        viewModel.confirmPendingRemoval()
+        runCurrent()
+
+        viewModel.dismissPendingRemoval()
+
+        assertTrue(viewModel.isRemoving)
+        assertEquals(worktree, viewModel.worktreePendingRemoval)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertTrue(viewModel.removeError != null)
+        viewModel.dismissPendingRemoval()
+        assertNull(viewModel.worktreePendingRemoval)
+        assertNull(viewModel.removeError)
+    }
+
+    @Test
+    fun `a refresh during a slow creation is skipped and the created worktree stays once`() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val created = "/home/dev/projects/TASK-456"
+        val executed = mutableListOf<List<String>>()
+        val viewModel = projectWorktrees(
+            useCasesWith(
+                object : ShellCommandExecutor {
+                    override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+                        executed += command
+                        if (command.take(3) == listOf("git", "worktree", "add")) gate.await()
+                        return if (command == listCommand) success(command, porcelainOutput) else success(command)
+                    }
+                },
+                createFiles = existingBase(),
+            ),
+        )
+        advanceUntilIdle()
+        val listingsBefore = executed.count { it == listCommand }
+
+        viewModel.create("TASK-456", BranchType.FEATURE)
+        runCurrent()
+        viewModel.refresh()
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(listingsBefore, executed.count { it == listCommand })
+        assertEquals(1, viewModel.worktrees.count { it.path == created })
+    }
+
+    @Test
+    fun `a created worktree already listed by a refresh is not duplicated`() = runTest(dispatcher) {
+        val created = "/home/dev/projects/TASK-456"
+        val listing = """
+            $porcelainOutput
+
+            worktree $created
+            HEAD abc123
+            branch refs/heads/feature/TASK-456
+        """.trimIndent()
+        val viewModel = projectWorktrees(
+            useCasesWith(
+                FakeShellCommandExecutor { command -> if (command == listCommand) success(command, listing) else success(command) },
+                createFiles = existingBase(),
+            ),
+        )
+        advanceUntilIdle()
+
+        viewModel.create("TASK-456", BranchType.FEATURE)
+        advanceUntilIdle()
+
+        assertEquals(1, viewModel.worktrees.count { it.path == created })
+    }
+
+    @Test
+    fun `a failure listing branches is kept apart from the view error and retried`() = runTest(dispatcher) {
+        var failing = true
+        val viewModel = projectWorktrees(useCases { command ->
+            if (command.getOrNull(1) == "for-each-ref" && failing) failure(command, stderr = "fatal: not a git repository") else listingResponder()(command)
+        })
+        advanceUntilIdle()
+
+        viewModel.loadBranches()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.branchesError != null)
+        assertNull(viewModel.error)
+        failing = false
+        viewModel.loadBranches()
+        advanceUntilIdle()
+        assertNull(viewModel.branchesError)
     }
 
     @Test
@@ -764,7 +915,7 @@ class ProjectWorktreesTest {
                     listCommand -> success(command, porcelainOutput)
                     forEachRefCommand -> {
                         forEachRefCallCount++
-                        success(command, stdout = "feature/TASK-123\nhotfix/security-patch\n")
+                        success(command, stdout = "refs/heads/feature/TASK-123\nrefs/heads/hotfix/security-patch\n")
                     }
                     else -> success(command)
                 }
@@ -785,12 +936,12 @@ class ProjectWorktreesTest {
                 BranchOption("feature/TASK-123", isCheckedOut = true),
                 BranchOption("hotfix/security-patch", isCheckedOut = false),
             ),
-            board.project.localBranches,
+            board.project.branches,
         )
     }
 
     @Test
-    fun `refresh does not reload local branches when create mode is new branch`() = runTest(dispatcher) {
+    fun `refresh reloads branches while the create dialog is open in new branch mode`() = runTest(dispatcher) {
         var forEachRefCallCount = 0
         val board = board(
             useCases { command ->
@@ -798,7 +949,7 @@ class ProjectWorktreesTest {
                     listCommand -> success(command, porcelainOutput)
                     forEachRefCommand -> {
                         forEachRefCallCount++
-                        success(command, stdout = "hotfix/security-patch\n")
+                        success(command, stdout = "refs/heads/hotfix/security-patch\n")
                     }
                     else -> success(command)
                 }
@@ -807,11 +958,247 @@ class ProjectWorktreesTest {
         advanceUntilIdle()
         board.openCreateDialog()
         assertEquals(CreateMode.NEW_BRANCH, board.createMode)
+        advanceUntilIdle()
+        assertEquals(1, forEachRefCallCount)
 
         board.refreshShown()
         advanceUntilIdle()
 
-        assertEquals(0, forEachRefCallCount)
+        assertEquals(2, forEachRefCallCount)
+    }
+
+    private val addPrefix = listOf("git", "worktree", "add", "/home/dev/projects/TASK-456", "-b", "feature/TASK-456")
+
+    private fun startPointScenario(
+        remoteBranches: String = "",
+        fetchResult: (List<String>) -> CommandResult = { success(it) },
+        hasOrigin: Boolean = true,
+        mainBranch: String? = "develop",
+        projectConfig: ProjectConfig = config,
+    ): Pair<WorktreeBoard, FakeShellCommandExecutor> {
+        val executor = FakeShellCommandExecutor { command ->
+            when {
+                command == listCommand -> success(command, "worktree ${config.baseRepositoryPath}\nHEAD abc123\nbranch refs/heads/develop\n\n$porcelainOutput")
+                command.take(2) == listOf("git", "show-ref") ->
+                    if (command.last().startsWith("refs/remotes/origin/")) success(command) else failure(command)
+                command == forEachRefCommand ->
+                    success(command, stdout = "refs/heads/develop\nrefs/heads/feature/TASK-123\n$remoteBranches")
+                command.take(2) == listOf("git", "symbolic-ref") ->
+                    mainBranch?.let { success(command, stdout = "origin/$it\n") } ?: failure(command)
+                command.take(2) == listOf("git", "rev-parse") && command.last() == "refs/remotes/origin/develop" -> success(command)
+                command.take(2) == listOf("git", "rev-parse") && command.last() == "origin/develop^{commit}" ->
+                    success(command, stdout = "fetched1\n")
+                command.take(2) == listOf("git", "rev-parse") && command.last() == "develop^{commit}" ->
+                    success(command, stdout = "local11\n")
+                command.take(2) == listOf("git", "rev-parse") -> failure(command)
+                command.take(3) == listOf("git", "remote", "get-url") ->
+                    if (hasOrigin) success(command, stdout = "git@example.com:team/repo.git") else failure(command, exitCode = 2)
+                command.take(2) == listOf("git", "fetch") -> fetchResult(command)
+                else -> success(command)
+            }
+        }
+        val useCases = useCasesWith(executor, createFiles = existingBase())
+        return board(useCases, project.copy(config = projectConfig)) to executor
+    }
+
+    @Test
+    fun `the new branch starts at the main branch by default`() = runTest(dispatcher) {
+        val (board, executor) = startPointScenario()
+        advanceUntilIdle()
+        board.openCreateDialog()
+        advanceUntilIdle()
+        board.updateTaskId("TASK-456")
+
+        assertEquals(StartOption.Branch("origin/develop"), board.effectiveStartFrom)
+        assertEquals(StartOption.Branch("origin/develop"), board.startOptions.first())
+        assertEquals(StartOption.Current, board.startOptions[1])
+
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        assertTrue(executor.executed(*(addPrefix + "fetched1").toTypedArray()), executor.executedCommands.toString())
+    }
+
+    @Test
+    fun `starting from the repository's current branch adds no start point`() = runTest(dispatcher) {
+        val (board, executor) = startPointScenario()
+        advanceUntilIdle()
+        board.openCreateDialog()
+        advanceUntilIdle()
+        board.updateTaskId("TASK-456")
+        board.startFrom = StartOption.Current
+
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        assertTrue(executor.executed(*addPrefix.toTypedArray()), executor.executedCommands.toString())
+    }
+
+    @Test
+    fun `without a main branch the current branch is the default`() = runTest(dispatcher) {
+        val (board, executor) = startPointScenario(mainBranch = null)
+        advanceUntilIdle()
+        board.openCreateDialog()
+        advanceUntilIdle()
+
+        assertEquals(StartOption.Current, board.effectiveStartFrom)
+        assertEquals("develop", board.currentBranchName)
+    }
+
+    @Test
+    fun `a start point that disappeared creates nothing and reports it`() = runTest(dispatcher) {
+        val (board, executor) = startPointScenario()
+        advanceUntilIdle()
+        board.openCreateDialog()
+        advanceUntilIdle()
+        board.updateTaskId("TASK-456")
+        board.startFrom = StartOption.Branch("origin/deleted")
+
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        val error = assertIs<WorktreeError.StartPointNotFound>(board.project.createError)
+        assertEquals("origin/deleted", error.ref)
+        assertTrue(board.isCreateDialogOpen)
+        assertFalse(executor.executedCommands.any { it.take(3) == listOf("git", "worktree", "add") })
+    }
+
+    @Test
+    fun `fetching first runs before the start point is resolved`() = runTest(dispatcher) {
+        val (board, executor) = startPointScenario()
+        advanceUntilIdle()
+        board.openCreateDialog()
+        advanceUntilIdle()
+        board.updateTaskId("TASK-456")
+        board.fetchFirst = true
+
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        val commands = executor.executedCommands
+        val fetch = commands.indexOf(listOf("git", "fetch", "--prune", "origin"))
+        val resolve = commands.indexOf(listOf("git", "rev-parse", "--verify", "--quiet", "origin/develop^{commit}"))
+        assertTrue(fetch in 0 until resolve, commands.toString())
+        assertTrue(executor.executed(*(addPrefix + "fetched1").toTypedArray()))
+    }
+
+    @Test
+    fun `a failed fetch creates nothing until the user retries or skips it`() = runTest(dispatcher) {
+        var fetchSucceeds = false
+        val (board, executor) = startPointScenario(
+            fetchResult = { if (fetchSucceeds) success(it) else failure(it, exitCode = 128, stderr = "Could not resolve host") },
+        )
+        advanceUntilIdle()
+        board.openCreateDialog()
+        advanceUntilIdle()
+        board.updateTaskId("TASK-456")
+        board.fetchFirst = true
+
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        val fetchError = assertIs<WorktreeError.GitCommandFailed>(board.project.fetchError)
+        assertEquals("Could not resolve host", fetchError.errorOutput)
+        assertTrue(board.isCreateDialogOpen)
+        assertFalse(board.project.isCreating)
+        assertFalse(executor.executedCommands.any { it.take(3) == listOf("git", "worktree", "add") })
+
+        fetchSucceeds = true
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        assertNull(board.project.fetchError)
+        assertFalse(board.isCreateDialogOpen)
+        assertTrue(executor.executed(*(addPrefix + "fetched1").toTypedArray()))
+    }
+
+    @Test
+    fun `creating without fetching skips a failing fetch`() = runTest(dispatcher) {
+        val (board, executor) = startPointScenario(fetchResult = { failure(it, exitCode = 128) })
+        advanceUntilIdle()
+        board.openCreateDialog()
+        advanceUntilIdle()
+        board.updateTaskId("TASK-456")
+        board.fetchFirst = true
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        board.confirmCreate(skipFetch = true)
+        advanceUntilIdle()
+
+        assertNull(board.project.fetchError)
+        assertFalse(board.isCreateDialogOpen)
+        assertEquals(1, executor.executedCommands.count { it.take(2) == listOf("git", "fetch") })
+        assertTrue(executor.executed(*(addPrefix + "local11").toTypedArray()).not())
+        assertTrue(executor.executed(*(addPrefix + "fetched1").toTypedArray()))
+    }
+
+    @Test
+    fun `the fetch option starts from the project's remembered value and is remembered when it changes`() = runTest(dispatcher) {
+        val remembered = mutableListOf<Pair<String, Boolean>>()
+        val executor = FakeShellCommandExecutor { command ->
+            if (command == listCommand) success(command, porcelainOutput) else success(command)
+        }
+        val board = board(
+            useCasesWith(executor, createFiles = existingBase()),
+            rememberFetchBeforeCreate = { id, fetch -> remembered += id to fetch },
+        )
+        advanceUntilIdle()
+        board.openCreateDialog()
+        advanceUntilIdle()
+        assertFalse(board.fetchFirst)
+        board.updateTaskId("TASK-456")
+        board.fetchFirst = true
+
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        assertEquals(listOf(project.id to true), remembered)
+    }
+
+    @Test
+    fun `the dialog opens with the fetch option on when the project remembers it`() = runTest(dispatcher) {
+        val (board, _) = startPointScenario(projectConfig = config.copy(fetchBeforeCreate = true))
+        advanceUntilIdle()
+
+        board.openCreateDialog()
+
+        assertTrue(board.fetchFirst)
+    }
+
+    @Test
+    fun `a repository without origin offers no fetch`() = runTest(dispatcher) {
+        val (board, _) = startPointScenario(hasOrigin = false)
+        advanceUntilIdle()
+        board.openCreateDialog()
+        advanceUntilIdle()
+
+        assertFalse(board.canFetchFirst)
+    }
+
+    @Test
+    fun `remote only branches are listed once and create a local branch tracking them`() = runTest(dispatcher) {
+        val (board, executor) = startPointScenario(
+            remoteBranches = "refs/remotes/origin/HEAD\nrefs/remotes/origin/develop\nrefs/remotes/origin/feature/TASK-9\n",
+        )
+        advanceUntilIdle()
+        board.openCreateDialog()
+        board.updateCreateMode(CreateMode.EXISTING_BRANCH)
+        advanceUntilIdle()
+
+        val listed = board.project.branches.withoutLocalTwins().filter { it.isRemote }
+        assertEquals(listOf("origin/feature/TASK-9"), listed.map { it.name })
+
+        board.selectedBranch = "origin/feature/TASK-9"
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        assertTrue(
+            executor.executed(
+                "git", "worktree", "add", "--track", "-b", "feature/TASK-9", "/home/dev/projects/TASK-9", "origin/feature/TASK-9",
+            ),
+            executor.executedCommands.toString(),
+        )
     }
 
     @Test
@@ -825,19 +1212,19 @@ class ProjectWorktreesTest {
     }
 
     @Test
-    fun `loadLocalBranches populates localBranches flagging already checked out branches`() = runTest(dispatcher) {
+    fun `loadBranches populates localBranches flagging already checked out branches`() = runTest(dispatcher) {
         val viewModel = projectWorktrees(
             useCases { command ->
                 when (command) {
                     listCommand -> success(command, porcelainOutput)
-                    forEachRefCommand -> success(command, stdout = "feature/TASK-123\nhotfix/security-patch\n")
+                    forEachRefCommand -> success(command, stdout = "refs/heads/feature/TASK-123\nrefs/heads/hotfix/security-patch\n")
                     else -> success(command)
                 }
             },
         )
         advanceUntilIdle()
 
-        viewModel.loadLocalBranches()
+        viewModel.loadBranches()
         advanceUntilIdle()
 
         assertEquals(
@@ -845,7 +1232,7 @@ class ProjectWorktreesTest {
                 BranchOption("feature/TASK-123", isCheckedOut = true),
                 BranchOption("hotfix/security-patch", isCheckedOut = false),
             ),
-            viewModel.localBranches,
+            viewModel.branches,
         )
         assertEquals(false, viewModel.isLoadingBranches)
     }
@@ -946,12 +1333,12 @@ class ProjectWorktreesTest {
             useCases { command ->
                 when (command) {
                     listCommand -> success(command, porcelainOutput)
-                    forEachRefCommand -> success(command, stdout = "develop\nfeature/TASK-123\n")
+                    forEachRefCommand -> success(command, stdout = "refs/heads/develop\nrefs/heads/feature/TASK-123\n")
                     else -> success(command)
                 }
             },
         )
-        board.project.loadLocalBranches()
+        board.project.loadBranches()
         advanceUntilIdle()
 
         board.selectedBranch = "develop"
@@ -1201,6 +1588,41 @@ class ProjectWorktreesTest {
         advanceUntilIdle()
 
         assertEquals(listOf(worktreePath), viewModel.cleanupCandidates.map { it.path })
+    }
+
+    private fun agentRunningResponder(executed: MutableList<List<String>> = mutableListOf()): (List<String>) -> CommandResult {
+        val base = mergedResponder(executed)
+        return { command ->
+            when (command.first()) {
+                "lsof" -> success(command, stdout = "p42\nfcwd\nn$worktreePath\n")
+                "ps" -> success(command, stdout = "42 /usr/local/bin/claude\n")
+                else -> base(command)
+            }
+        }
+    }
+
+    @Test
+    fun `a merged worktree with a running agent is kept out of the cleanup and says which agent`() = runTest(dispatcher) {
+        val viewModel = projectWorktrees(useCases(agentRunningResponder()))
+        advanceUntilIdle()
+
+        assertTrue(viewModel.cleanupCandidates.isEmpty())
+        assertEquals(
+            listOf(worktreePath to listOf(RunningAgent("claude"))),
+            viewModel.cleanupKeptForRunningAgent.map { (worktree, agents) -> worktree.path to agents },
+        )
+    }
+
+    @Test
+    fun `cleaning up never removes a worktree where an agent is running`() = runTest(dispatcher) {
+        val executed = mutableListOf<List<String>>()
+        val viewModel = projectWorktrees(useCases(agentRunningResponder(executed)))
+        advanceUntilIdle()
+
+        viewModel.cleanUp(CleanupOptions())
+        advanceUntilIdle()
+
+        assertTrue(executed.none { it.take(3) == listOf("git", "worktree", "remove") })
     }
 
     @Test
@@ -1712,6 +2134,73 @@ class ProjectWorktreesTest {
     }
 
     @Test
+    fun `stopping an emulator twice sends one stop and shows progress meanwhile`() = runTest(dispatcher) {
+        val emulators = RecordingEmulators(initial = mapOf(worktreePath to WorktreeEmulator("emulator-5554", EmulatorState.RUNNING)))
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(emulator = emulators.useCases()))
+        advanceUntilIdle()
+
+        viewModel.stopEmulator(worktree)
+        viewModel.stopEmulator(worktree)
+        assertTrue(worktreePath in viewModel.stoppingEmulators)
+        advanceUntilIdle()
+
+        assertEquals(listOf(worktreePath), emulators.stopped)
+        assertTrue(viewModel.stoppingEmulators.isEmpty())
+    }
+
+    @Test
+    fun `stopping a simulator twice sends one stop and shows progress meanwhile`() = runTest(dispatcher) {
+        val simulators = RecordingSimulators()
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(simulator = simulators.useCases()))
+        advanceUntilIdle()
+
+        viewModel.stopSimulator(worktree)
+        viewModel.stopSimulator(worktree)
+        assertTrue(worktreePath in viewModel.stoppingSimulators)
+        advanceUntilIdle()
+
+        assertEquals(listOf(worktreePath), simulators.stopped)
+        assertTrue(viewModel.stoppingSimulators.isEmpty())
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `copying a path from the detail confirms it`() = runComposeUiTest {
+        val holder = projectWorktrees(useCases(listingResponder()))
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder) } }
+
+        onNodeWithContentDescription("Copy path").performClick()
+
+        onNodeWithContentDescription("Copied").assertIsDisplayed()
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the detail of a multi-agent project names the worktree's agent on its launch actions`() = runComposeUiTest {
+        val holder = projectWorktrees(withAgents())
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, multiAgentConfig, holder) } }
+
+        onNodeWithText("Copy launch command · Claude").assertIsDisplayed()
+        onNodeWithText("Open in Herdr · Claude").assertIsDisplayed()
+
+        holder.setAgent(worktree, codex)
+        waitForIdle()
+
+        onNodeWithText("Copy launch command · Codex").assertIsDisplayed()
+        onNodeWithText("Open in Herdr · Codex").assertIsDisplayed()
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the detail of a single-agent project shows no agent choice`() = runComposeUiTest {
+        val holder = projectWorktrees(withAgents(projectConfig = config))
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder) } }
+
+        onNodeWithText("Copy launch command").assertIsDisplayed()
+        onNodeWithContentDescription("Choose agent").assertDoesNotExist()
+    }
+
+    @Test
     fun `cleanup stops the running emulators of removed worktrees`() = runTest(dispatcher) {
         val emulators = RecordingEmulators(initial = mapOf(worktreePath to WorktreeEmulator("emulator-5556", EmulatorState.RUNNING)))
         val board = board(useCases(mergedResponder()).copy(emulator = emulators.useCases()))
@@ -2006,7 +2495,7 @@ class ProjectWorktreesTest {
     @Test
     fun `opening in Herdr passes the worktree and reports the opening`() = runTest(dispatcher) {
         val calls = mutableListOf<Worktree>()
-        val herdr = HerdrUseCases.NONE.copy(open = { target -> calls += target; Result.success(HerdrOpening.OPENED) })
+        val herdr = HerdrUseCases.NONE.copy(open = { target, _ -> calls += target; Result.success(HerdrOpening.OPENED) })
         val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
         advanceUntilIdle()
         val target = viewModel.worktrees.first { it.path == worktreePath }
@@ -2021,8 +2510,54 @@ class ProjectWorktreesTest {
     }
 
     @Test
+    fun `opening in Herdr focuses the pane of the agent that needs the user`() = runTest(dispatcher) {
+        val focused = mutableListOf<String>()
+        var opened = 0
+        val herdr = HerdrUseCases.NONE.copy(
+            open = { _, _ -> opened++; Result.success(HerdrOpening.OPENED) },
+            focusAgent = { pane -> focused += pane; Result.success(Unit) },
+        )
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
+        advanceUntilIdle()
+        viewModel.applyAgents(
+            mapOf(
+                worktreePath to listOf(
+                    RunningAgent("codex", HerdrAgentState.WORKING, "w1:p1"),
+                    RunningAgent("claude", HerdrAgentState.BLOCKED, "w1:p2"),
+                ),
+            ),
+        )
+
+        viewModel.openInHerdr(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+
+        assertEquals(listOf("w1:p2"), focused)
+        assertEquals(0, opened)
+        assertEquals(WorktreeSuccess.OpenedInHerdr(worktreePath, focused = true), viewModel.success)
+    }
+
+    @Test
+    fun `opening in Herdr opens the workspace when the agents have no pane`() = runTest(dispatcher) {
+        val focused = mutableListOf<String>()
+        var opened = 0
+        val herdr = HerdrUseCases.NONE.copy(
+            open = { _, _ -> opened++; Result.success(HerdrOpening.OPENED) },
+            focusAgent = { pane -> focused += pane; Result.success(Unit) },
+        )
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
+        advanceUntilIdle()
+        viewModel.applyAgents(mapOf(worktreePath to listOf(RunningAgent("claude"))))
+
+        viewModel.openInHerdr(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+
+        assertTrue(focused.isEmpty())
+        assertEquals(1, opened)
+    }
+
+    @Test
     fun `an already open worktree is reported as focused`() = runTest(dispatcher) {
-        val herdr = HerdrUseCases.NONE.copy(open = { Result.success(HerdrOpening.FOCUSED) })
+        val herdr = HerdrUseCases.NONE.copy(open = { _, _ -> Result.success(HerdrOpening.FOCUSED) })
         val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
         advanceUntilIdle()
 
@@ -2196,6 +2731,18 @@ class ProjectWorktreesTest {
     }
 
     @Test
+    fun `copying the launch command reports the worktree as used`() = runTest(dispatcher) {
+        val used = mutableListOf<String>()
+        val viewModel = projectWorktrees(useCases(listingResponder()), used::add)
+        advanceUntilIdle()
+
+        viewModel.copyLaunchCommand(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+
+        assertEquals(listOf(worktreePath), used)
+    }
+
+    @Test
     fun `a success on another worktree keeps the error of this one`() = runTest(dispatcher) {
         val viewModel = projectWorktrees(useCases(listingResponder()))
         advanceUntilIdle()
@@ -2212,10 +2759,10 @@ class ProjectWorktreesTest {
     @Test
     fun `a success on a worktree keeps the view's error`() = runTest(dispatcher) {
         val viewModel = projectWorktrees(useCases { command ->
-            if (command.getOrNull(1) == "for-each-ref") failure(command, stderr = "fatal: not a git repository") else listingResponder()(command)
+            if (command.take(3) == repairCommandPrefix) failure(command, stderr = "fatal: not a git repository") else listingResponder()(command)
         })
         advanceUntilIdle()
-        viewModel.loadLocalBranches()
+        viewModel.repairAfterMove(previousWorktreesRoot = "/home/dev/old-projects")
         advanceUntilIdle()
         val failure = viewModel.error
         assertTrue(failure != null)
@@ -2224,26 +2771,6 @@ class ProjectWorktreesTest {
         advanceUntilIdle()
 
         assertEquals(failure, viewModel.error)
-    }
-
-    @Test
-    fun `retrying the view's error reloads the branches and clears it on success`() = runTest(dispatcher) {
-        var failing = true
-        val viewModel = projectWorktrees(useCases { command ->
-            if (command.getOrNull(1) == "for-each-ref" && failing) failure(command, stderr = "fatal: not a git repository") else listingResponder()(command)
-        })
-        advanceUntilIdle()
-        viewModel.loadLocalBranches()
-        advanceUntilIdle()
-        assertTrue(viewModel.error != null)
-        assertTrue(viewModel.errorRetry != null)
-
-        failing = false
-        viewModel.retryError()
-        advanceUntilIdle()
-
-        assertNull(viewModel.error)
-        assertNull(viewModel.errorRetry)
     }
 
     @Test
@@ -2388,5 +2915,383 @@ class ProjectWorktreesTest {
 
         assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1), board.cleanupSuccess)
         assertEquals(listOf(worktreePath), board.project.herdrCloseFailures.map { it.path })
+    }
+
+    private class ToolCalls {
+        val terminals = mutableListOf<Pair<String, TerminalId>>()
+        val editors = mutableListOf<Pair<String, EditorId>>()
+        val folders = mutableListOf<String>()
+        var failure: Throwable? = null
+    }
+
+    private suspend fun withTools(
+        detected: DetectedTools,
+        chosenTerminal: TerminalId? = null,
+        chosenEditor: EditorId? = null,
+        editorOverride: EditorId? = null,
+        calls: ToolCalls = ToolCalls(),
+    ): Pair<ProjectWorktrees, FakeToolPreferenceRepository> {
+        val repository = FakeToolPreferenceRepository(chosenTerminal, chosenEditor)
+        val preferences = ToolsPreferences(repository, FakeToolDetector(detected)).also { it.refresh() }
+        val tools = ToolUseCases(
+            preferences = preferences,
+            editorOverride = editorOverride,
+            openInTerminal = { path, terminal, _ -> calls.terminals += path to terminal; calls.failure?.let { Result.failure(it) } ?: Result.success(Unit) },
+            openInEditor = { path, editor -> calls.editors += path to editor; calls.failure?.let { Result.failure(it) } ?: Result.success(Unit) },
+            openFolder = { path -> calls.folders += path; calls.failure?.let { Result.failure(it) } ?: Result.success(Unit) },
+        )
+        val holder = projectWorktrees(useCases(listingResponder()).copy(tools = tools))
+        return holder to repository
+    }
+
+    private val installed = DetectedTools(
+        terminals = listOf(TerminalId.TERMINAL, TerminalId.ITERM2),
+        editors = listOf(EditorId.VS_CODE, EditorId.ANDROID_STUDIO),
+    )
+
+    @Test
+    fun `the open actions name the chosen terminal and the default IDE`() = runTest(dispatcher) {
+        val (holder) = withTools(installed, chosenTerminal = TerminalId.ITERM2)
+        advanceUntilIdle()
+
+        val actions = holder.openActions(holder.worktrees.first { it.path == worktreePath }, EnglishStrings)
+
+        assertEquals(
+            listOf(
+                OpenKind.TERMINAL to "Open in iTerm2",
+                OpenKind.EDITOR to "Open in VS Code",
+                OpenKind.FOLDER to "Open folder",
+            ),
+            actions.map { it.kind to it.label },
+        )
+    }
+
+    @Test
+    fun `a project's IDE override replaces the default and an uninstalled one falls back`() = runTest(dispatcher) {
+        val (overridden) = withTools(installed, chosenEditor = EditorId.VS_CODE, editorOverride = EditorId.ANDROID_STUDIO)
+        val (uninstalled) = withTools(installed, chosenEditor = EditorId.VS_CODE, editorOverride = EditorId.INTELLIJ_IDEA)
+        advanceUntilIdle()
+
+        fun labels(holder: ProjectWorktrees) =
+            holder.openActions(holder.worktrees.first { it.path == worktreePath }, EnglishStrings).map { it.label }
+
+        assertTrue("Open in Android Studio" in labels(overridden))
+        assertTrue("Open in VS Code" in labels(uninstalled))
+    }
+
+    @Test
+    fun `with nothing detected only the folder action is offered`() = runTest(dispatcher) {
+        val (holder) = withTools(DetectedTools())
+        advanceUntilIdle()
+
+        val actions = holder.openActions(holder.worktrees.first { it.path == worktreePath }, EnglishStrings)
+
+        assertEquals(listOf(OpenKind.FOLDER), actions.map { it.kind })
+    }
+
+    @Test
+    fun `a worktree whose folder is missing offers no open action`() = runTest(dispatcher) {
+        val (holder) = withTools(installed, chosenTerminal = TerminalId.TERMINAL)
+        advanceUntilIdle()
+
+        assertTrue(holder.openActions(Worktree(path = worktreePath, branch = null, isPrunable = true), EnglishStrings).isEmpty())
+    }
+
+    @Test
+    fun `opening in the chosen terminal, the IDE and the folder calls each launcher with the worktree path`() = runTest(dispatcher) {
+        val calls = ToolCalls()
+        val (holder) = withTools(installed, chosenTerminal = TerminalId.TERMINAL, chosenEditor = EditorId.ANDROID_STUDIO, calls = calls)
+        advanceUntilIdle()
+        val target = holder.worktrees.first { it.path == worktreePath }
+
+        holder.openInTerminal(target)
+        holder.openInEditor(target)
+        holder.openFolder(target)
+        advanceUntilIdle()
+
+        assertEquals(listOf(worktreePath to TerminalId.TERMINAL), calls.terminals)
+        assertEquals(listOf(worktreePath to EditorId.ANDROID_STUDIO), calls.editors)
+        assertEquals(listOf(worktreePath), calls.folders)
+    }
+
+    @Test
+    fun `the first use asks for a terminal, remembers the choice and opens it`() = runTest(dispatcher) {
+        val calls = ToolCalls()
+        val (holder, repository) = withTools(installed, calls = calls)
+        advanceUntilIdle()
+        val target = holder.worktrees.first { it.path == worktreePath }
+
+        holder.openInTerminal(target)
+        advanceUntilIdle()
+
+        assertEquals(target, holder.terminalChoiceFor)
+        assertTrue(calls.terminals.isEmpty())
+
+        holder.chooseTerminal(TerminalId.ITERM2)
+        advanceUntilIdle()
+
+        assertNull(holder.terminalChoiceFor)
+        assertEquals(TerminalId.ITERM2, repository.terminal)
+        assertEquals(listOf(worktreePath to TerminalId.ITERM2), calls.terminals)
+    }
+
+    @Test
+    fun `dismissing the terminal choice opens nothing`() = runTest(dispatcher) {
+        val calls = ToolCalls()
+        val (holder) = withTools(installed, calls = calls)
+        advanceUntilIdle()
+
+        holder.openInTerminal(holder.worktrees.first { it.path == worktreePath })
+        holder.dismissTerminalChoice()
+        advanceUntilIdle()
+
+        assertNull(holder.terminalChoiceFor)
+        assertTrue(calls.terminals.isEmpty())
+    }
+
+    @Test
+    fun `a failed launch is shown as the worktree's action error and a later success clears it`() = runTest(dispatcher) {
+        val calls = ToolCalls()
+        val (holder) = withTools(installed, chosenTerminal = TerminalId.TERMINAL, calls = calls)
+        advanceUntilIdle()
+        val target = holder.worktrees.first { it.path == worktreePath }
+        val failure = WorktreeError.TerminalLaunchFailed(TerminalId.TERMINAL, "boom")
+        calls.failure = failure
+
+        holder.openInTerminal(target)
+        advanceUntilIdle()
+        assertEquals(failure, holder.actionErrors[worktreePath])
+
+        calls.failure = null
+        holder.openInTerminal(target)
+        advanceUntilIdle()
+        assertNull(holder.actionErrors[worktreePath])
+    }
+
+    private fun provisioningCase(
+        drift: MutableList<ProvisionDrift>,
+        provisioned: MutableList<String> = mutableListOf(),
+        environment: WorktreeEnvironment = WorktreeEnvironment(),
+    ): ProjectWorktrees {
+        val base = useCases { command -> if (command == listCommand) success(command, porcelainOutput) else success(command) }
+        return projectWorktrees(
+            base.copy(
+                provisioning = ProvisioningUseCases(
+                    check = { Result.success(drift.toList()) },
+                    provision = { path ->
+                        provisioned += path
+                        drift.clear()
+                        Result.success(ProvisionResult(emptyList()))
+                    },
+                ),
+                readEnvironment = { Result.success(environment) },
+            ),
+        )
+    }
+
+    private fun ProjectWorktrees.linked(): Worktree = worktrees.first { it.path == worktreePath }
+
+    @Test
+    fun `a never provisioned worktree lists its missing files and can be provisioned`() = runTest(dispatcher) {
+        val drift = mutableListOf(ProvisionDrift(".env", ProvisionDriftState.MISSING), ProvisionDrift("local.properties", ProvisionDriftState.MISSING))
+        val provisioned = mutableListOf<String>()
+        val viewModel = provisioningCase(drift, provisioned)
+        advanceUntilIdle()
+        val worktree = viewModel.linked()
+
+        viewModel.loadDetail(worktree)
+        assertEquals(ProvisioningState.Checking, viewModel.provisioning[worktreePath])
+        advanceUntilIdle()
+        assertEquals(ProvisioningState.Checked(drift.toList()), viewModel.provisioning[worktreePath])
+
+        viewModel.provision(worktree)
+        advanceUntilIdle()
+
+        assertEquals(listOf(worktreePath), provisioned)
+        assertEquals(ProvisioningState.Checked(emptyList()), viewModel.provisioning[worktreePath])
+        assertTrue(viewModel.provisioningInProgress.isEmpty())
+    }
+
+    @Test
+    fun `a stale copy is listed as differing`() = runTest(dispatcher) {
+        val drift = mutableListOf(ProvisionDrift(".env", ProvisionDriftState.DIFFERS))
+        val viewModel = provisioningCase(drift)
+        advanceUntilIdle()
+
+        viewModel.loadDetail(viewModel.linked())
+        advanceUntilIdle()
+
+        assertEquals(ProvisioningState.Checked(listOf(ProvisionDrift(".env", ProvisionDriftState.DIFFERS))), viewModel.provisioning[worktreePath])
+    }
+
+    @Test
+    fun `an up to date worktree has no drift`() = runTest(dispatcher) {
+        val viewModel = provisioningCase(mutableListOf())
+        advanceUntilIdle()
+
+        viewModel.loadDetail(viewModel.linked())
+        advanceUntilIdle()
+
+        assertEquals(ProvisioningState.Checked(emptyList()), viewModel.provisioning[worktreePath])
+    }
+
+    @Test
+    fun `the main worktree is never checked for provisioning`() = runTest(dispatcher) {
+        val viewModel = provisioningCase(mutableListOf(ProvisionDrift(".env", ProvisionDriftState.MISSING)))
+        advanceUntilIdle()
+
+        viewModel.loadDetail(Worktree(path = config.baseRepositoryPath, branch = "main", isMain = true))
+        advanceUntilIdle()
+
+        assertTrue(viewModel.provisioning.isEmpty())
+    }
+
+    @Test
+    fun `the detail loads the environment variables and copies them in dotenv format`() = runTest(dispatcher) {
+        val environment = WorktreeEnvironment(
+            variables = listOf("PORT" to "20001", "APP_SUFFIX" to "-TASK-123"),
+            ports = mapOf("port" to 20001),
+        )
+        val viewModel = provisioningCase(mutableListOf(), environment = environment)
+        advanceUntilIdle()
+
+        viewModel.loadDetail(viewModel.linked())
+        advanceUntilIdle()
+
+        assertEquals(environment, viewModel.environments[worktreePath])
+        assertEquals("PORT=20001\nAPP_SUFFIX=-TASK-123\n", environmentAsDotenv(environment))
+    }
+
+    @Test
+    fun `removing a worktree releases the resources planned before the removal`() = runTest(dispatcher) {
+        val steps = mutableListOf<String>()
+        val base = useCases { command ->
+            if (command == listCommand) {
+                success(command, porcelainOutput)
+            } else {
+                if (command.take(3) == listOf("git", "worktree", "remove")) steps += "removed"
+                success(command)
+            }
+        }
+        val viewModel = projectWorktrees(
+            base.copy(
+                releaseResources = ReleaseResourcesUseCases(
+                    plan = { _, _ ->
+                        steps += "planned"
+                        WorktreeResourcePlan(emulatorSerial = "emulator-5554")
+                    },
+                    release = { plan ->
+                        steps += "released ${plan.emulatorSerial}"
+                        ReleasedResources(stoppedEmulators = listOfNotNull(plan.emulatorSerial))
+                    },
+                ),
+            ),
+        )
+        advanceUntilIdle()
+
+        viewModel.remove(viewModel.linked(), branchToDelete = null)
+        advanceUntilIdle()
+
+        assertEquals(listOf("planned", "removed", "released emulator-5554"), steps)
+
+    }
+
+    private val codex = AgentLaunchConfig(name = "Codex", agentCommand = "codex", useHeadroom = false)
+    private val multiAgentConfig = config.copy(additionalAgents = listOf(codex))
+
+    private fun withAgents(choices: AgentChoices = AgentChoices(), projectConfig: ProjectConfig = multiAgentConfig) =
+        useCases(listingResponder()).copy(agents = AgentUseCases(projectConfig, choices))
+
+    @Test
+    fun `launching with another agent runs it and remembers it for the next launch`() = runTest(dispatcher) {
+        val holder = projectWorktrees(withAgents())
+        advanceUntilIdle()
+        val target = holder.worktrees.first { it.path == worktreePath }
+
+        holder.copyLaunchCommand(target, picked = codex)
+        advanceUntilIdle()
+        holder.copyLaunchCommand(target)
+        advanceUntilIdle()
+
+        assertEquals(listOf("cd '$worktreePath' && codex", "cd '$worktreePath' && codex"), clipboard.writtenText)
+        assertEquals(codex, holder.agentFor(target))
+        assertEquals("Copy launch command · Codex", holder.launchLabel("Copy launch command", target, EnglishStrings))
+    }
+
+    @Test
+    fun `setting the agent from the detail changes the launch without launching`() = runTest(dispatcher) {
+        val holder = projectWorktrees(withAgents())
+        advanceUntilIdle()
+        val target = holder.worktrees.first { it.path == worktreePath }
+
+        holder.setAgent(target, codex)
+        holder.copyLaunchCommand(target)
+        advanceUntilIdle()
+
+        assertEquals(listOf("cd '$worktreePath' && codex"), clipboard.writtenText)
+    }
+
+    @Test
+    fun `choosing the default agent clears the remembered one`() = runTest(dispatcher) {
+        val choices = AgentChoices()
+        val holder = projectWorktrees(withAgents(choices))
+        advanceUntilIdle()
+        val target = holder.worktrees.first { it.path == worktreePath }
+
+        holder.setAgent(target, codex)
+        holder.setAgent(target, config.agentLaunchConfig)
+
+        assertEquals(emptyMap(), choices.chosen)
+    }
+
+    @Test
+    fun `a removed agent falls back to the default one`() = runTest(dispatcher) {
+        val choices = AgentChoices(mapOf(worktreePath to "Codex"))
+        val holder = projectWorktrees(withAgents(choices, projectConfig = config))
+        advanceUntilIdle()
+        val target = holder.worktrees.first { it.path == worktreePath }
+
+        holder.copyLaunchCommand(target)
+        advanceUntilIdle()
+
+        assertEquals(listOf("cd '$worktreePath' && headroom wrap claude"), clipboard.writtenText)
+        assertEquals(emptyMap(), choices.chosen)
+    }
+
+    @Test
+    fun `a single agent shows no choice`() = runTest(dispatcher) {
+        val holder = projectWorktrees(withAgents(projectConfig = config))
+        advanceUntilIdle()
+        val target = holder.worktrees.first { it.path == worktreePath }
+
+        assertFalse(holder.hasAgentChoice)
+        assertEquals("Copy launch command", holder.launchLabel("Copy launch command", target, EnglishStrings))
+        assertTrue(holder.launchChoices(target, EnglishStrings).isEmpty())
+    }
+
+    @Test
+    fun `the launch choices offer the other agents`() = runTest(dispatcher) {
+        val holder = projectWorktrees(withAgents())
+        advanceUntilIdle()
+        val target = holder.worktrees.first { it.path == worktreePath }
+
+        val choices = holder.launchChoices(target, EnglishStrings)
+
+        assertTrue(choices.isNotEmpty())
+        assertTrue(choices.all { it.agent == codex })
+        assertEquals("Copy launch command · Codex", choices.first { it.kind == LaunchKind.COPY }.label)
+    }
+
+    @Test
+    fun `opening in Herdr with a picked agent passes it on`() = runTest(dispatcher) {
+        val used = mutableListOf<AgentLaunchConfig>()
+        val herdr = HerdrUseCases.NONE.copy(open = { _, agent -> used += agent; Result.success(HerdrOpening.OPENED) })
+        val holder = projectWorktrees(withAgents().copy(herdr = herdr))
+        advanceUntilIdle()
+
+        holder.openInHerdr(holder.worktrees.first { it.path == worktreePath }, codex)
+        advanceUntilIdle()
+
+        assertEquals(listOf(codex), used)
     }
 }

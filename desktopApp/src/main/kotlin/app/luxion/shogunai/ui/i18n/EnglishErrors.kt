@@ -47,6 +47,26 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "No Git repository was found at ${error.path}.",
         "Update the repository path in the project's settings.",
     )
+    is WorktreeError.BareRepositoryNotSupported -> ErrorTexts(
+        "${error.path} is a bare repository, which isn't supported yet.",
+        "Use a repository with a working tree.",
+    )
+    WorktreeError.RepositoryHasNoCommits -> ErrorTexts(
+        "The repository has no commits yet.",
+        "Make a first commit and try again.",
+    )
+     is WorktreeError.LocalFileUnreadable ->
+        if (error.path.endsWith("settings.json")) {
+            ErrorTexts(
+                "The settings file ${error.path} couldn't be read, so the default settings are in use.",
+                "The unreadable file is kept next to it. Fix it or delete it to dismiss this.",
+            )
+        } else {
+            ErrorTexts(
+                "The projects file ${error.path} couldn't be read, so no projects are shown.",
+                "Fix the file. If you add or remove a project, the unreadable file is first kept next to it.",
+            )
+        }
     is WorktreeError.WorktreeAlreadyExists -> ErrorTexts(
         "The folder ${error.path} already exists.",
         "Use another task id, or remove the existing folder.",
@@ -66,6 +86,10 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     is WorktreeError.RepositoryConfigChanged -> ErrorTexts(
         "${error.path} changed on disk since the settings were opened.",
         "Reload the settings and apply your changes again.",
+    )
+    is WorktreeError.UpdateCheckFailed -> ErrorTexts(
+        "Couldn't check for updates" + (error.reason?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: "."),
+        "Check your connection and try again later.",
     )
     is WorktreeError.NotAWorktree -> ErrorTexts(
         "${error.path} isn't a worktree of this repository.",
@@ -123,6 +147,10 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "${error.serial} didn't finish booting within ${error.seconds} s.",
         "Try again; the first boot can be slow.",
     )
+    is WorktreeError.EmulatorExitedEarly -> ErrorTexts(
+        "The emulator of ${error.serial} stopped before it finished booting.",
+        "Check the emulator's log in the technical details; the AVD may be broken.",
+    )
     is WorktreeError.AndroidToolFailed -> ErrorTexts(
         "An Android tool failed.",
         "Check the technical details.",
@@ -159,6 +187,22 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "The environment file \"${error.path}\" resolves outside the worktree, so it wasn't written.",
         "Choose an environment file whose folders are real folders inside the worktree.",
     )
+    is WorktreeError.WorktreeTargetNotFound -> ErrorTexts(
+        "No worktree matches \"${error.target}\".",
+        "Check the task id, path or branch.",
+    )
+    is WorktreeError.AmbiguousWorktreeTarget -> ErrorTexts(
+        "\"${error.target}\" matches more than one worktree.",
+        "Use the path of the one you mean: ${error.candidates.joinToString()}.",
+    )
+    is WorktreeError.CannotRemoveMainWorktree -> ErrorTexts(
+        "${error.path} is the main worktree.",
+        "The main worktree can't be removed.",
+    )
+    is WorktreeError.AgentRunningInWorktree -> ErrorTexts(
+        "${error.agents.joinToString()} is running in ${error.path}.",
+        "Stop it first, or remove the worktree forcing it.",
+    )
     is WorktreeError.InvalidRef -> ErrorTexts(
         "\"${error.ref}\" isn't a valid branch or start point.",
         "Branch names and start points can't start with \"-\".",
@@ -173,6 +217,26 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     )
     is WorktreeError.HerdrCommandFailed -> ErrorTexts(
         "Herdr couldn't open the worktree.",
+        "Check the technical details.",
+    )
+    is WorktreeError.TerminalLaunchFailed -> ErrorTexts(
+        "${error.terminal.displayName} couldn't open the worktree.",
+        "Check the technical details.",
+    )
+    is WorktreeError.TerminalAutomationRefused -> ErrorTexts(
+        "macOS didn't allow ShogunAi to control ${error.terminal.displayName}.",
+        "Allow it in System Settings > Privacy & Security > Automation, then try again.",
+    )
+    is WorktreeError.TerminalUnsupported -> ErrorTexts(
+        "${error.terminal.displayName} can't be used: ${error.reason}.",
+        "Choose another terminal in Preferences.",
+    )
+    is WorktreeError.EditorLaunchFailed -> ErrorTexts(
+        "${error.editor.displayName} couldn't open the worktree.",
+        "Check the technical details.",
+    )
+    is WorktreeError.FolderOpenFailed -> ErrorTexts(
+        "Couldn't show \"${error.path}\".",
         "Check the technical details.",
     )
     is WorktreeError.GitCommandFailed -> englishGitTexts(GitFailureCause.Unknown)

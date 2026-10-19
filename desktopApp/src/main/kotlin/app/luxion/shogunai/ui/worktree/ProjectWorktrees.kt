@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -13,23 +14,34 @@ import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.MainBranch
+import app.luxion.shogunai.domain.model.ProvisionDrift
+import app.luxion.shogunai.domain.model.WorktreeEnvironment
 import app.luxion.shogunai.domain.model.RunningAgent
+import app.luxion.shogunai.domain.model.TerminalId
+import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.SimulatorDevice
 import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeStatus
+import app.luxion.shogunai.domain.model.withoutLocalTwins
 import app.luxion.shogunai.ui.machine.MachineResource
+import app.luxion.shogunai.ui.shell.ToolsPreferences
 import app.luxion.shogunai.domain.usecase.CleanupFailure
 import app.luxion.shogunai.domain.usecase.CleanupReport
+import app.luxion.shogunai.domain.usecase.CleanupSelection
 import app.luxion.shogunai.domain.usecase.idleDaemonsOfRemovedWorktrees
-import app.luxion.shogunai.domain.usecase.selectCleanupCandidates
+import app.luxion.shogunai.domain.usecase.selectCleanup
+import app.luxion.shogunai.domain.usecase.waitsForUser
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import java.time.Instant
 
 class ProjectWorktrees(
@@ -38,6 +50,9 @@ class ProjectWorktrees(
     private val listPermits: Semaphore = Semaphore(1),
     private val sizeQueue: SizeQueue = SizeQueue(scope),
     private val clock: () -> Instant = Instant::now,
+    private val onRemoved: (String) -> Unit = {},
+    private val onUsed: (String) -> Unit = {},
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private var lastFingerprint: List<Pair<String, Long>>? = null
 
@@ -88,6 +103,12 @@ class ProjectWorktrees(
         private set
     var ports by mutableStateOf<Map<String, Map<String, Int>>>(emptyMap())
         private set
+    var environments by mutableStateOf<Map<String, WorktreeEnvironment>>(emptyMap())
+        private set
+    var provisioning by mutableStateOf<Map<String, ProvisioningState>>(emptyMap())
+        private set
+    var provisioningInProgress by mutableStateOf<Set<String>>(emptySet())
+        private set
     var herdrWorktreesRoot by mutableStateOf<String?>(null)
         private set
     var openingInHerdr by mutableStateOf<Set<String>>(emptySet())
@@ -96,11 +117,17 @@ class ProjectWorktrees(
         private set
     var herdrCloseFailures by mutableStateOf<List<CleanupFailure>>(emptyList())
         private set
+    var terminalChoiceFor by mutableStateOf<Worktree?>(null)
+        private set
     val totalSize: Long
         get() = sizes.values.sum()
 
+    private val cleanupSelection: CleanupSelection
+        get() = selectCleanup(worktrees, loadedStatuses(), agents)
     val cleanupCandidates: List<Worktree>
-        get() = selectCleanupCandidates(worktrees, loadedStatuses())
+        get() = cleanupSelection.candidates
+    val cleanupKeptForRunningAgent: Map<Worktree, List<RunningAgent>>
+        get() = cleanupSelection.keptForRunningAgent
     var isCleaningUp by mutableStateOf(false)
         private set
     var cleanupIssues by mutableStateOf<CleanupReport?>(null)
@@ -111,6 +138,8 @@ class ProjectWorktrees(
     var simulators by mutableStateOf<Map<String, WorktreeSimulator>>(emptyMap())
         private set
     var startingSimulators by mutableStateOf<Set<String>>(emptySet())
+        private set
+    var stoppingSimulators by mutableStateOf<Set<String>>(emptySet())
         private set
     var orphanedSimulators by mutableStateOf<List<SimulatorDevice>>(emptyList())
         private set
@@ -134,6 +163,8 @@ class ProjectWorktrees(
         private set
     var startingEmulators by mutableStateOf<Set<String>>(emptySet())
         private set
+    var stoppingEmulators by mutableStateOf<Set<String>>(emptySet())
+        private set
 
     var isGradleRepository by mutableStateOf(false)
         private set
@@ -149,9 +180,19 @@ class ProjectWorktrees(
     var derivedDataOrphans by mutableStateOf<List<DerivedDataFolder>>(emptyList())
         private set
 
-    var localBranches by mutableStateOf<List<BranchOption>>(emptyList())
+    var branches by mutableStateOf<List<BranchOption>>(emptyList())
+        private set
+    var defaultStartRef by mutableStateOf<String?>(null)
+        private set
+    var hasOrigin by mutableStateOf(false)
+        private set
+    var fetchError by mutableStateOf<Throwable?>(null)
         private set
     var isLoadingBranches by mutableStateOf(false)
+        private set
+    var branchesError by mutableStateOf<Throwable?>(null)
+        private set
+    var removeError by mutableStateOf<Throwable?>(null)
         private set
 
     var createError by mutableStateOf<Throwable?>(null)
@@ -174,15 +215,53 @@ class ProjectWorktrees(
         get() = pendingRemoval?.worktree?.path in openInHerdrPaths
 
     fun refresh(remeasureSizes: Boolean = false) {
+        if (isCreating) return
         val generation = ++listGeneration
         isLoading = true
         lastReadAt = clock()
         scope.launch {
             val result = listPermits.withPermit {
                 lastFingerprint = useCases.readFingerprint().getOrNull() ?: lastFingerprint
+                useCases.invalidateEnvironments()
                 useCases.list()
             }
             applyListResult(generation, result, remeasureSizes)
+        }
+    }
+
+    fun loadDetail(worktree: Worktree) {
+        if (worktree.isPrunable) return
+        scope.launch {
+            useCases.readEnvironment(worktree).onSuccess { environments = environments + (worktree.path to it) }
+        }
+        if (worktree.isMain) return
+        provisioning = provisioning + (worktree.path to ProvisioningState.Checking)
+        scope.launch { checkProvisioning(worktree) }
+    }
+
+    private suspend fun checkProvisioning(worktree: Worktree) {
+        val state = useCases.provisioning.check(worktree.path).fold(
+            onSuccess = { ProvisioningState.Checked(it) },
+            onFailure = { ProvisioningState.Unavailable },
+        )
+        provisioning = provisioning + (worktree.path to state)
+    }
+
+    fun provision(worktree: Worktree) {
+        if (worktree.path in provisioningInProgress) return
+        provisioningInProgress = provisioningInProgress + worktree.path
+        scope.launch {
+            try {
+                useCases.provisioning.provision(worktree.path)
+                    .onSuccess { clearActionError(worktree.path) }
+                    .onFailure { recordActionError(worktree.path, it) { provision(worktree) } }
+                checkProvisioning(worktree)
+                useCases.invalidateEnvironments()
+                useCases.readEnvironment(worktree).onSuccess { environments = environments + (worktree.path to it) }
+                loadPorts(listGeneration, worktrees)
+            } finally {
+                provisioningInProgress = provisioningInProgress - worktree.path
+            }
         }
     }
 
@@ -233,6 +312,7 @@ class ProjectWorktrees(
         result
             .onSuccess {
                 worktrees = it
+                useCases.agents.prune(it.map { worktree -> worktree.path }.toSet())
                 listFailure = null
                 loadStatuses(generation, it, remeasureSizes)
             }
@@ -259,7 +339,7 @@ class ProjectWorktrees(
     private fun loadOverview(generation: Int, listed: List<Worktree>, remeasureSizes: Boolean) {
         val listedPaths = listed.map { it.path }.toSet()
         sizes = sizes.filterKeys { it in listedPaths }
-        herdrWorktreesRoot = useCases.herdr.worktreesRoot()
+        scope.launch { herdrWorktreesRoot = useCases.herdr.worktreesRoot() }
         scope.launch {
             val detected = useCases.detectAgents(listed).getOrNull()
             if (generation == listGeneration) agents = detected
@@ -283,13 +363,13 @@ class ProjectWorktrees(
     }
 
     private fun loadSimulatorSection(generation: Int, listed: List<Worktree>) {
-        isSimulatorRepository = useCases.simulator.declared()
-        if (!isSimulatorRepository) {
-            simulators = emptyMap()
-            orphanedSimulators = emptyList()
-            return
-        }
         scope.launch {
+            isSimulatorRepository = useCases.simulator.declared()
+            if (!isSimulatorRepository) {
+                simulators = emptyMap()
+                orphanedSimulators = emptyList()
+                return@launch
+            }
             loadSimulators(generation, listed)
             val orphans = useCases.simulator.orphans().getOrNull() ?: return@launch
             if (generation == listGeneration) orphanedSimulators = orphans
@@ -324,21 +404,29 @@ class ProjectWorktrees(
     }
 
     fun stopSimulator(worktree: Worktree) {
+        if (worktree.path in stoppingSimulators) return
+        stoppingSimulators = stoppingSimulators + worktree.path
         scope.launch {
-            useCases.simulator.stop(worktree.path)
-                .onSuccess { clearActionError(worktree.path) }
-                .onFailure { recordActionError(worktree.path, it) { stopSimulator(worktree) } }
-            loadSimulators(listGeneration, worktrees)
+            try {
+                useCases.simulator.stop(worktree.path)
+                    .onSuccess { clearActionError(worktree.path) }
+                    .onFailure { recordActionError(worktree.path, it) { stopSimulator(worktree) } }
+                loadSimulators(listGeneration, worktrees)
+            } finally {
+                stoppingSimulators = stoppingSimulators - worktree.path
+            }
         }
     }
 
     private fun loadEmulatorSection(generation: Int, listed: List<Worktree>) {
-        isEmulatorRepository = useCases.emulator.declared()
-        if (!isEmulatorRepository) {
-            emulators = emptyMap()
-            return
+        scope.launch {
+            isEmulatorRepository = useCases.emulator.declared()
+            if (!isEmulatorRepository) {
+                emulators = emptyMap()
+                return@launch
+            }
+            loadEmulators(generation, listed)
         }
-        scope.launch { loadEmulators(generation, listed) }
     }
 
     private suspend fun loadEmulators(generation: Int, listed: List<Worktree>) {
@@ -363,11 +451,17 @@ class ProjectWorktrees(
     }
 
     fun stopEmulator(worktree: Worktree) {
+        if (worktree.path in stoppingEmulators) return
+        stoppingEmulators = stoppingEmulators + worktree.path
         scope.launch {
-            useCases.emulator.stop(worktree.path)
-                .onSuccess { clearActionError(worktree.path) }
-                .onFailure { recordActionError(worktree.path, it) { stopEmulator(worktree) } }
-            loadEmulators(listGeneration, worktrees)
+            try {
+                useCases.emulator.stop(worktree.path)
+                    .onSuccess { clearActionError(worktree.path) }
+                    .onFailure { recordActionError(worktree.path, it) { stopEmulator(worktree) } }
+                loadEmulators(listGeneration, worktrees)
+            } finally {
+                stoppingEmulators = stoppingEmulators - worktree.path
+            }
         }
     }
 
@@ -381,22 +475,24 @@ class ProjectWorktrees(
     }
 
     private fun loadGradleSection() {
-        val provider = useCases.gradle.provider()
-        isGradleRepository = provider != null
-        gradleSettings = provider?.takeIf { it.hasSettings }
-        if (provider == null) return
-        isGradleBuildCacheEnabled = useCases.gradle.isBuildCacheEnabled()
+        scope.launch {
+            val provider = useCases.gradle.provider()
+            isGradleRepository = provider != null
+            gradleSettings = provider?.takeIf { it.hasSettings }
+            if (provider == null) return@launch
+            isGradleBuildCacheEnabled = useCases.gradle.isBuildCacheEnabled()
+        }
     }
 
     private fun loadXcodeSection(generation: Int, listed: List<Worktree>) {
-        val provider = useCases.xcode.provider()?.takeIf { useCases.xcode.supported() }
-        isXcodeRepository = provider != null
-        hasCompilationCache = provider?.compilationCache == true
-        if (provider == null) {
-            derivedDataOrphans = emptyList()
-            return
-        }
         scope.launch {
+            val provider = useCases.xcode.provider()?.takeIf { useCases.xcode.supported() }
+            isXcodeRepository = provider != null
+            hasCompilationCache = provider?.compilationCache == true
+            if (provider == null) {
+                derivedDataOrphans = emptyList()
+                return@launch
+            }
             val orphans = useCases.xcode.list(listed, false).getOrNull()?.orphans ?: return@launch
             if (generation == listGeneration) derivedDataOrphans = orphans
         }
@@ -415,39 +511,60 @@ class ProjectWorktrees(
     }
 
     fun isBranchAvailable(branch: String?): Boolean =
-        localBranches.any { it.name == branch && !it.isCheckedOut }
+        branches.withoutLocalTwins().any { it.name == branch && !it.isCheckedOut }
 
     fun dismissCreateError() {
         createError = null
+        fetchError = null
         createdWithErrorPath = null
     }
 
     fun copyCreatedLaunchCommand() {
         val path = createdWithErrorPath ?: return
-        scope.launch { useCases.copyLaunchCommand(path).onFailure { recordActionError(path, it) } }
+        scope.launch { useCases.copyLaunchCommand(path, useCases.agents.agentFor(path)).onFailure { recordActionError(path, it) } }
     }
 
-    fun create(taskId: String, branchType: BranchType, onCreated: (Worktree) -> Unit = {}) =
-        runCreation(onCreated) { useCases.create(taskId, branchType) }
+    fun create(
+        taskId: String,
+        branchType: BranchType,
+        startRef: String? = null,
+        fetch: Boolean = false,
+        onCreated: (Worktree) -> Unit = {},
+    ) = runCreation(fetch, onCreated) {
+        val startPoint = startRef?.let { useCases.resolveStartPoint(it) }
+        val startFailure = startPoint?.exceptionOrNull()
+        if (startFailure != null) Result.failure(startFailure) else useCases.create(taskId, branchType, startPoint?.getOrNull())
+    }
 
-    private fun runCreation(onCreated: (Worktree) -> Unit, creation: suspend () -> Result<Worktree>) {
+    private fun runCreation(fetch: Boolean, onCreated: (Worktree) -> Unit, creation: suspend () -> Result<Worktree>) {
         if (isCreating) return
         isCreating = true
         createError = null
+        fetchError = null
         scope.launch {
             try {
-                creation()
+                if (fetch) {
+                    val fetched = withContext(ioDispatcher) { useCases.fetchRemote() }
+                    fetched.exceptionOrNull()?.let {
+                        fetchError = it
+                        return@launch
+                    }
+                    loadBranches()
+                }
+                withContext(ioDispatcher) { creation() }
                     .onSuccess { worktree ->
-                        worktrees = worktrees + worktree
+                        worktrees = worktrees.filterNot { it.path == worktree.path } + worktree
                         lastCreatedWorktree = worktree
                         success = WorktreeSuccess.Created(worktree.path, worktree.skippedPostCreateCommands.isNotEmpty())
                         loadStatusOf(worktree)
+                        onUsed(worktree.path)
                         onCreated(worktree)
                     }
                     .onFailure { failure ->
                         createError = failure
                         if (failure is WorktreeError.PostCreateCommandFailed) {
                             createdWithErrorPath = failure.worktreePath
+                            isCreating = false
                             refresh()
                         }
                     }
@@ -457,37 +574,43 @@ class ProjectWorktrees(
         }
     }
 
-    fun loadLocalBranches() {
+    fun loadBranches() {
         scope.launch {
             isLoadingBranches = true
-            useCases.listLocalBranches()
-                .onSuccess { localBranches = it; dismissError() }
-                .onFailure { fail(it, ::loadLocalBranches) }
+            useCases.listBranches()
+                .onSuccess { branches = it; branchesError = null }
+                .onFailure { branchesError = it }
+            defaultStartRef = useCases.resolveMainBranch().getOrNull()?.ref
+            hasOrigin = useCases.fetchRemote.hasOrigin()
             isLoadingBranches = false
         }
     }
 
-    fun createFromBranch(branch: String, onCreated: (Worktree) -> Unit = {}) =
-        runCreation(onCreated) { useCases.createFromBranch(branch) }
+    fun createFromBranch(branch: String, fetch: Boolean = false, onCreated: (Worktree) -> Unit = {}) =
+        runCreation(fetch, onCreated) { useCases.createFromBranch(branch) }
 
     fun remove(worktree: Worktree, branchToDelete: String?, force: Boolean = false) {
+        removeError = null
         scope.launch {
             isRemoving = true
             try {
+                val resources = useCases.releaseResources.plan(worktree, worktrees)
                 useCases.remove(worktree.path, branchToDelete, force)
                     .onSuccess { removal ->
+                        launch { useCases.releaseResources.release(resources) }
                         removal.herdrFailure?.let { herdrCloseFailures = listOf(CleanupFailure(worktree.path, it)) }
                         worktrees = worktrees.filterNot { it.path == worktree.path }
                         statuses = statuses - worktree.path
                         sizes = sizes - worktree.path
                         dismissError()
                         pendingRemoval = null
+                        onRemoved(worktree.path)
                     }
                     .onFailure { failure ->
                         if (!force && failure.suggestsForceRetry()) {
                             pendingRemoval = PendingRemoval(worktree, deleteBranch = branchToDelete != null, requiresForce = true)
                         } else {
-                            fail(failure)
+                            removeError = failure
                         }
                     }
             } finally {
@@ -497,6 +620,7 @@ class ProjectWorktrees(
     }
 
     fun requestRemoval(worktree: Worktree) {
+        removeError = null
         pendingRemoval = PendingRemoval(worktree, deleteBranch = false)
         lookUpOpenInHerdr(listOf(worktree.path))
     }
@@ -516,9 +640,11 @@ class ProjectWorktrees(
         pendingRemoval = pendingRemoval?.copy(deleteBranch = deleteBranch)
     }
 
-    fun copyLaunchCommand(worktree: Worktree, onCopied: () -> Unit = {}) {
+    fun copyLaunchCommand(worktree: Worktree, onCopied: () -> Unit = {}, picked: AgentLaunchConfig? = null) {
+        onUsed(worktree.path)
+        val agent = resolveAgent(worktree, picked)
         scope.launch {
-            useCases.copyLaunchCommand(worktree.path)
+            useCases.copyLaunchCommand(worktree.path, agent)
                 .onSuccess {
                     clearActionError(worktree.path)
                     onCopied()
@@ -530,12 +656,20 @@ class ProjectWorktrees(
         }
     }
 
-    fun openInHerdr(worktree: Worktree) {
+    fun openInHerdr(worktree: Worktree, picked: AgentLaunchConfig? = null) {
         if (worktree.path in openingInHerdr) return
+        onUsed(worktree.path)
+        val agent = resolveAgent(worktree, picked)
         openingInHerdr = openingInHerdr + worktree.path
+        val agentPane = agents.orEmpty()[worktree.path].orEmpty().agentPaneToFocus()
         scope.launch {
             try {
-                useCases.herdr.open(worktree)
+                val result = if (agentPane != null) {
+                    useCases.herdr.focusAgent(agentPane).map { HerdrOpening.FOCUSED }
+                } else {
+                    useCases.herdr.open(worktree, agent)
+                }
+                result
                     .onSuccess { opening ->
                         clearActionError(worktree.path)
                         success = WorktreeSuccess.OpenedInHerdr(
@@ -550,6 +684,120 @@ class ProjectWorktrees(
         }
     }
 
+    val tools: ToolsPreferences get() = useCases.tools.preferences
+
+    val agentOptions: List<AgentLaunchConfig> get() = useCases.agents.options
+    val hasAgentChoice: Boolean get() = useCases.agents.hasChoice
+
+    fun agentFor(worktree: Worktree): AgentLaunchConfig = useCases.agents.agentFor(worktree.path)
+
+    fun setAgent(worktree: Worktree, agent: AgentLaunchConfig) {
+        useCases.agents.choose(worktree.path, agent)
+    }
+
+    fun launchLabel(base: String, worktree: Worktree, strings: Strings): String =
+        if (hasAgentChoice) strings.launchWithAgent(base, agentFor(worktree).displayName) else base
+
+    fun launchChoices(worktree: Worktree, strings: Strings): List<LaunchChoice> {
+        if (!hasAgentChoice) return emptyList()
+        val current = agentFor(worktree)
+        val kinds = if (worktree.isPrunable) {
+            listOf(LaunchKind.COPY)
+        } else {
+            listOfNotNull(LaunchKind.COPY, LaunchKind.TERMINAL.takeIf { tools.terminalShown != null }, LaunchKind.HERDR)
+        }
+        return agentOptions.filter { it.displayName != current.displayName }.flatMap { agent ->
+            kinds.map { kind ->
+                val base = when (kind) {
+                    LaunchKind.COPY -> strings.copyLaunchCommand
+                    LaunchKind.TERMINAL -> strings.openInTool(tools.terminalInUse?.displayName ?: strings.terminalToolLabel.lowercase())
+                    LaunchKind.HERDR -> strings.openInHerdr
+                }
+                LaunchChoice(kind, agent, strings.launchWithAgent(base, agent.displayName))
+            }
+        }
+    }
+
+    fun launch(worktree: Worktree, kind: LaunchKind, agent: AgentLaunchConfig) {
+        when (kind) {
+            LaunchKind.COPY -> copyLaunchCommand(worktree, picked = agent)
+            LaunchKind.TERMINAL -> openInTerminal(worktree, agent)
+            LaunchKind.HERDR -> openInHerdr(worktree, agent)
+        }
+    }
+
+    private fun resolveAgent(worktree: Worktree, picked: AgentLaunchConfig?): AgentLaunchConfig {
+        if (picked == null) return agentFor(worktree)
+        setAgent(worktree, picked)
+        return picked
+    }
+
+    fun openActions(worktree: Worktree, strings: Strings): List<OpenAction> {
+        if (worktree.isPrunable) return emptyList()
+        return listOfNotNull(
+            tools.terminalShown?.let {
+                val name = tools.terminalInUse?.displayName ?: strings.terminalToolLabel.lowercase()
+                OpenAction(OpenKind.TERMINAL, launchLabel(strings.openInTool(name), worktree, strings)) { openInTerminal(worktree) }
+            },
+            tools.editorFor(useCases.tools.editorOverride)?.let {
+                OpenAction(OpenKind.EDITOR, strings.openInTool(it.displayName)) { openInEditor(worktree) }
+            },
+            OpenAction(OpenKind.FOLDER, strings.openFolder) { openFolder(worktree) },
+        )
+    }
+
+    fun open(worktree: Worktree, kind: OpenKind) {
+        when (kind) {
+            OpenKind.TERMINAL -> openInTerminal(worktree)
+            OpenKind.EDITOR -> openInEditor(worktree)
+            OpenKind.FOLDER -> openFolder(worktree)
+        }
+    }
+
+    fun openInTerminal(worktree: Worktree, picked: AgentLaunchConfig? = null) {
+        val terminal = tools.terminalInUse
+        if (terminal == null) {
+            if (tools.availableTerminals.isNotEmpty()) terminalChoiceFor = worktree
+            return
+        }
+        onUsed(worktree.path)
+        val agent = resolveAgent(worktree, picked)
+        launchTool(worktree) { useCases.tools.openInTerminal(worktree.path, terminal, agent) }
+    }
+
+    fun chooseTerminal(terminal: TerminalId) {
+        val worktree = terminalChoiceFor
+        tools.chooseTerminal(terminal)
+        terminalChoiceFor = null
+        if (worktree != null) openInTerminal(worktree)
+    }
+
+    fun dismissTerminalChoice() {
+        terminalChoiceFor = null
+    }
+
+    fun openInEditor(worktree: Worktree) {
+        val editor = tools.editorFor(useCases.tools.editorOverride) ?: return
+        onUsed(worktree.path)
+        launchTool(worktree) { useCases.tools.openInEditor(worktree.path, editor) }
+    }
+
+    fun openFolder(worktree: Worktree) {
+        launchTool(worktree) { useCases.tools.openFolder(worktree.path) }
+    }
+
+    private fun launchTool(worktree: Worktree, launch: suspend () -> Result<Unit>) {
+        scope.launch {
+            launch()
+                .onSuccess { clearActionError(worktree.path) }
+                .onFailure { recordActionError(worktree.path, it) }
+        }
+    }
+
+    private fun List<RunningAgent>.agentPaneToFocus(): String? =
+        (firstOrNull { it.waitsForUser && it.herdrPaneId != null } ?: firstOrNull { it.herdrPaneId != null })?.herdrPaneId
+
+
     fun copyLastCreatedLaunchCommand() {
         lastCreatedWorktree?.let(::copyLaunchCommand)
     }
@@ -561,10 +809,13 @@ class ProjectWorktrees(
     }
 
     fun dismissPendingRemoval() {
+        if (isRemoving) return
         pendingRemoval = null
+        removeError = null
     }
 
     suspend fun cleanUp(options: CleanupOptions): WorktreeSuccess.CleanedUp? {
+        useCases.detectAgents(worktrees).getOrNull()?.let(::applyAgents)
         val candidates = cleanupCandidates
         val listed = worktrees
         val stopDaemons = isGradleRepository && options.stopGradleDaemons
@@ -699,6 +950,12 @@ private const val COPIED_FEEDBACK_DURATION_MS = 2000L
 private const val MAX_PARALLEL_STATUS_READS = 4
 
 enum class CreateMode { NEW_BRANCH, EXISTING_BRANCH }
+
+sealed interface ProvisioningState {
+    data object Checking : ProvisioningState
+    data object Unavailable : ProvisioningState
+    data class Checked(val drift: List<ProvisionDrift>) : ProvisioningState
+}
 
 enum class FingerprintCheck { RELOADED, UNCHANGED, UNREADABLE }
 

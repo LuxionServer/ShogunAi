@@ -18,12 +18,15 @@ fun FrameWindowScope.AppMenuBar(
     onCopySelectedLaunchCommand: (() -> Unit)?,
     onDeleteSelectedWorktree: (() -> Unit)?,
     onClearSelection: (() -> Unit)?,
+    hasWorktreeSelection: Boolean,
+    isEditingText: Boolean,
     onShowActive: (() -> Unit)?,
     onShowAll: (() -> Unit)?,
     onReload: () -> Unit,
     onCommandPalette: () -> Unit,
     onToggleSidebar: () -> Unit,
     onPreferences: () -> Unit,
+    onCheckForUpdates: () -> Unit,
     onAbout: () -> Unit,
     onQuit: () -> Unit,
 ) {
@@ -40,9 +43,14 @@ fun FrameWindowScope.AppMenuBar(
             }
         }
         Menu(strings.menuWorktree) {
-            onCopySelectedLaunchCommand?.let { Item(strings.copyLaunchCommand, shortcut = shortcut(Key.C, shift = true), onClick = it) }
-            onDeleteSelectedWorktree?.let { Item(strings.deleteWorktree, shortcut = shortcut(Key.Backspace), onClick = it) }
-            onClearSelection?.let { Item(strings.clearSelection, onClick = it) }
+            val actsOnSelection = hasWorktreeSelection && !isEditingText
+            onCopySelectedLaunchCommand?.let {
+                Item(strings.copyLaunchCommand, shortcut = shortcut(Key.C, shift = true), enabled = actsOnSelection, onClick = it)
+            }
+            onDeleteSelectedWorktree?.let {
+                Item(strings.deleteWorktree, shortcut = shortcut(Key.Backspace), enabled = actsOnSelection, onClick = it)
+            }
+            onClearSelection?.let { Item(strings.clearSelection, enabled = hasWorktreeSelection, onClick = it) }
         }
         Menu(strings.menuView) {
             onShowActive?.let { Item(strings.menuActive, shortcut = shortcut(Key.One), onClick = it) }
@@ -52,10 +60,9 @@ fun FrameWindowScope.AppMenuBar(
             Item(strings.reload, shortcut = shortcut(Key.R), onClick = onReload)
             Item(strings.menuToggleSidebar, shortcut = shortcut(Key.Backslash), onClick = onToggleSidebar)
         }
-        if (!isMacOs) {
-            Menu(strings.menuHelp) {
-                Item(strings.menuAbout, onClick = onAbout)
-            }
+        Menu(strings.menuHelp) {
+            Item(strings.menuCheckForUpdates, onClick = onCheckForUpdates)
+            if (!isMacOs) Item(strings.menuAbout, onClick = onAbout)
         }
     }
 }

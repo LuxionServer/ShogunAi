@@ -12,14 +12,23 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.LocalClipboard
+import app.luxion.shogunai.ui.components.copyText
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.text.style.TextOverflow
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.EMULATOR_PORT_KEY
@@ -32,8 +41,12 @@ import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.model.WorktreeStatus
 import app.luxion.shogunai.domain.model.portKeyLabel
+import app.luxion.shogunai.domain.model.WorktreeEnvironment
+import app.luxion.shogunai.domain.usecase.EnvironmentFormat
 import app.luxion.shogunai.domain.usecase.classifyOrigin
+import app.luxion.shogunai.domain.usecase.formatEnvironment
 import app.luxion.shogunai.ui.components.DangerTextButton
+import app.luxion.shogunai.ui.components.DropdownSelector
 import app.luxion.shogunai.ui.components.IconAction
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.NeutralTextButton
@@ -47,7 +60,10 @@ import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.components.ErrorNotice
 import app.luxion.shogunai.ui.theme.ShogunTheme
 import app.luxion.shogunai.ui.theme.Status
+import kotlinx.coroutines.delay
 import java.time.Instant
+
+private const val PATH_COPIED_FEEDBACK_MS = 2000L
 
 @Composable
 fun WorktreeDetailPane(
@@ -62,7 +78,9 @@ fun WorktreeDetailPane(
     val status = viewModel.statuses[worktree.path]
     val origin = classifyOrigin(worktree, projectConfig, viewModel.herdrWorktreesRoot)
     val valueColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val clipboard = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(worktree.path) { viewModel.loadDetail(worktree) }
     Column(
         modifier = modifier
             .fillMaxHeight()
@@ -97,15 +115,61 @@ fun WorktreeDetailPane(
                 SelectionContainer(Modifier.weight(1f)) {
                     Text(worktree.path, style = ShogunTheme.typography.dataSmall, color = valueColor)
                 }
+                var pathCopied by remember(worktree.path) { mutableStateOf(false) }
+                LaunchedEffect(pathCopied) {
+                    if (pathCopied) {
+                        delay(PATH_COPIED_FEEDBACK_MS)
+                        pathCopied = false
+                    }
+                }
                 IconAction(
-                    icon = Icons.Default.ContentCopy,
-                    label = strings.copyPath,
-                    onClick = { clipboard.setText(AnnotatedString(worktree.path)) },
+                    icon = if (pathCopied) Icons.Default.Check else Icons.Default.ContentCopy,
+                    label = if (pathCopied) strings.copied else strings.copyPath,
+                    onClick = {
+                        scope.launch { clipboard.copyText(worktree.path) }
+                        pathCopied = true
+                    },
                 )
             }
         }
-        PrimaryButton(onClick = { viewModel.copyLaunchCommand(worktree) }, modifier = Modifier.fillMaxWidth()) {
-            Text(strings.copyLaunchCommand, style = MaterialTheme.typography.bodySmall)
+        if (viewModel.hasAgentChoice) {
+            DropdownSelector(
+                options = viewModel.agentOptions,
+                selected = viewModel.agentFor(worktree),
+                onSelect = { viewModel.setAgent(worktree, it) },
+                label = { it.displayName },
+                placeholder = strings.chooseAgent,
+                modifier = Modifier.fillMaxWidth(),
+                fieldLabel = strings.worktreeAgentLabel,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+            PrimaryButton(onClick = { viewModel.copyLaunchCommand(worktree) }, modifier = Modifier.weight(1f)) {
+                Text(
+                    viewModel.launchLabel(strings.copyLaunchCommand, worktree, strings),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (viewModel.hasAgentChoice) {
+                AgentMenuButton(viewModel.agentOptions) { viewModel.copyLaunchCommand(worktree, picked = it) }
+            }
+        }
+        val openActions = viewModel.openActions(worktree, strings)
+        if (openActions.isNotEmpty()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+                openActions.forEach { action ->
+                    if (action.kind == OpenKind.FOLDER) {
+                        IconAction(icon = Icons.Default.FolderOpen, label = action.label, onClick = action.onClick)
+                    } else {
+                        SecondaryButton(onClick = action.onClick) {
+                            Text(action.label, style = MaterialTheme.typography.bodySmall)
+                        }
+                        if (action.kind == OpenKind.TERMINAL && viewModel.hasAgentChoice) {
+                            AgentMenuButton(viewModel.agentOptions) { viewModel.openInTerminal(worktree, it) }
+                        }
+                    }
+                }
+            }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
             if (!worktree.isPrunable) {
@@ -114,8 +178,11 @@ fun WorktreeDetailPane(
                     onClick = { viewModel.openInHerdr(worktree) },
                     enabled = !opening,
                 ) {
-                    Text(strings.openInHerdr, style = MaterialTheme.typography.bodySmall)
+                    Text(viewModel.launchLabel(strings.openInHerdr, worktree, strings), style = MaterialTheme.typography.bodySmall)
                     if (opening) InlineProgress(size = ProgressSize.Small)
+                }
+                if (viewModel.hasAgentChoice) {
+                    AgentMenuButton(viewModel.agentOptions) { viewModel.openInHerdr(worktree, it) }
                 }
             }
             if (!worktree.isMain) {
@@ -134,14 +201,22 @@ fun WorktreeDetailPane(
         }
         StatusSection(status, viewModel.mainBranch?.name)
         AgentsSection(viewModel.agents.orEmpty()[worktree.path].orEmpty())
-        EnvironmentSection(viewModel.ports[worktree.path].orEmpty())
+        ProvisioningSection(
+            worktree = worktree,
+            state = viewModel.provisioning[worktree.path],
+            isProvisioning = worktree.path in viewModel.provisioningInProgress,
+            onProvision = { viewModel.provision(worktree) },
+        )
+        EnvironmentSection(viewModel.environments[worktree.path], viewModel.ports[worktree.path].orEmpty())
         DevicesSection(
             emulator = viewModel.emulators[worktree.path],
             showEmulator = viewModel.isEmulatorRepository && !worktree.isPrunable,
             isStartingEmulator = worktree.path in viewModel.startingEmulators,
+            isStoppingEmulator = worktree.path in viewModel.stoppingEmulators,
             simulator = viewModel.simulators[worktree.path],
             showSimulator = viewModel.isSimulatorRepository && !worktree.isPrunable,
             isStartingSimulator = worktree.path in viewModel.startingSimulators,
+            isStoppingSimulator = worktree.path in viewModel.stoppingSimulators,
             onStartSimulator = { viewModel.startSimulator(worktree) },
             onStopSimulator = { viewModel.stopSimulator(worktree) },
             onStartEmulator = { viewModel.startEmulator(worktree) },
@@ -168,6 +243,9 @@ private fun ColumnScope.StatusSection(status: WorktreeStatusState?, mainBranchNa
                 if (value.isMerged && mainBranchName != null) {
                     StatusChip(Status.SUCCESS, strings.mergedInto(mainBranchName))
                 }
+                if (value.isNotStarted) {
+                    StatusChip(Status.NEUTRAL, strings.notStarted)
+                }
                 statusSegments(value, mainBranchName, Instant.now(), strings).forEach { DetailValue(it) }
             }
         }
@@ -180,28 +258,78 @@ private fun ColumnScope.AgentsSection(agents: List<RunningAgent>) {
     val strings = LocalStrings.current
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         SectionTitle(strings.agentsTitle)
-        agents.forEach { DetailValue(it.name) }
+        agents.forEach { DetailValue(strings.agentLabel(it.name, it.herdrState)) }
     }
 }
 
 @Composable
-private fun ColumnScope.EnvironmentSection(ports: Map<String, Int>) {
+private fun ColumnScope.ProvisioningSection(
+    worktree: Worktree,
+    state: ProvisioningState?,
+    isProvisioning: Boolean,
+    onProvision: () -> Unit,
+) {
+    if (worktree.isMain || worktree.isPrunable || state == null) return
     val strings = LocalStrings.current
-    if (ports.isEmpty()) return
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-        SectionTitle(strings.environmentTitle)
-        DetailValue(portsLabel(ports))
+        SectionTitle(strings.provisioningTitle)
+        when (state) {
+            ProvisioningState.Checking -> {
+                MutedText(strings.provisioningChecking)
+                InlineProgress(size = ProgressSize.Small)
+            }
+            ProvisioningState.Unavailable -> MutedText(strings.provisioningUnavailable)
+            is ProvisioningState.Checked -> if (state.drift.isEmpty()) {
+                StatusChip(Status.SUCCESS, strings.provisioningUpToDate)
+            } else {
+                state.drift.forEach { DetailValue(strings.provisionDriftFile(it.path, it.state)) }
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+                    SecondaryButton(onClick = onProvision, enabled = !isProvisioning) {
+                        Text(strings.provisionAction, style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (isProvisioning) InlineProgress(size = ProgressSize.Small)
+                }
+            }
+        }
     }
 }
+
+@Composable
+private fun ColumnScope.EnvironmentSection(environment: WorktreeEnvironment?, ports: Map<String, Int>) {
+    val strings = LocalStrings.current
+    val variables = environment?.variables.orEmpty()
+    if (variables.isEmpty() && ports.isEmpty()) return
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+        SectionTitle(strings.environmentTitle)
+        if (ports.isNotEmpty()) DetailValue(portsLabel(ports))
+        if (variables.isNotEmpty()) {
+            SelectionContainer {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                    variables.forEach { (name, value) -> DetailValue("$name=$value") }
+                }
+            }
+            NeutralTextButton(onClick = { scope.launch { clipboard.copyText(environmentAsDotenv(environment!!)) } }) {
+                Text(strings.copyAsEnv, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+fun environmentAsDotenv(environment: WorktreeEnvironment): String =
+    formatEnvironment(environment, EnvironmentFormat.DOTENV)
 
 @Composable
 private fun ColumnScope.DevicesSection(
     emulator: WorktreeEmulator?,
     showEmulator: Boolean,
     isStartingEmulator: Boolean,
+    isStoppingEmulator: Boolean,
     simulator: WorktreeSimulator?,
     showSimulator: Boolean,
     isStartingSimulator: Boolean,
+    isStoppingSimulator: Boolean,
     onStartSimulator: () -> Unit,
     onStopSimulator: () -> Unit,
     onStartEmulator: () -> Unit,
@@ -212,10 +340,10 @@ private fun ColumnScope.DevicesSection(
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         SectionTitle(strings.devicesTitle)
         if (showEmulator) {
-            EmulatorValue(emulator, isStartingEmulator, strings, onStartEmulator, onStopEmulator)
+            EmulatorValue(emulator, isStartingEmulator, isStoppingEmulator, strings, onStartEmulator, onStopEmulator)
         }
         if (showSimulator) {
-            SimulatorValue(simulator, isStartingSimulator, strings, onStartSimulator, onStopSimulator)
+            SimulatorValue(simulator, isStartingSimulator, isStoppingSimulator, strings, onStartSimulator, onStopSimulator)
         }
     }
 }
@@ -249,6 +377,7 @@ private fun ColumnScope.MutedText(text: String) {
 private fun ColumnScope.EmulatorValue(
     emulator: WorktreeEmulator?,
     isStarting: Boolean,
+    isStopping: Boolean,
     strings: Strings,
     onStart: () -> Unit,
     onStop: () -> Unit,
@@ -258,7 +387,7 @@ private fun ColumnScope.EmulatorValue(
         Text(strings.emulatorLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         emulator?.serial?.let { Text(it, style = ShogunTheme.typography.dataSmall) }
         StatusChip(state.status(), emulatorStateLabel(state, strings))
-        if (isStarting) {
+        if (isStarting || isStopping) {
             InlineProgress(size = ProgressSize.Small)
         } else if (state == EmulatorState.STOPPED) {
             NeutralTextButton(onClick = onStart) { Text(strings.startEmulator, style = MaterialTheme.typography.bodySmall) }
@@ -272,6 +401,7 @@ private fun ColumnScope.EmulatorValue(
 private fun ColumnScope.SimulatorValue(
     simulator: WorktreeSimulator?,
     isStarting: Boolean,
+    isStopping: Boolean,
     strings: Strings,
     onStart: () -> Unit,
     onStop: () -> Unit,
@@ -281,7 +411,7 @@ private fun ColumnScope.SimulatorValue(
         Text(strings.simulatorLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         simulator?.name?.let { Text(it, style = ShogunTheme.typography.dataSmall) }
         StatusChip(state.status(), simulatorStateLabel(state, strings))
-        if (isStarting) {
+        if (isStarting || isStopping) {
             InlineProgress(size = ProgressSize.Small)
         } else if (state == SimulatorState.SHUTDOWN) {
             NeutralTextButton(onClick = onStart) { Text(strings.startSimulator, style = MaterialTheme.typography.bodySmall) }

@@ -1,5 +1,8 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.InstallChannel
+import app.luxion.shogunai.domain.model.ProvisionDriftState
+import app.luxion.shogunai.domain.model.HerdrAgentState
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
 object EnglishStrings : Strings {
@@ -52,12 +55,17 @@ object EnglishStrings : Strings {
     override val aboutRepositoryLink = "View on GitHub"
 
     override val projectConfigTitle = "Project settings"
-    override val identitySection = "Identity"
     override val nameLabel = "Name"
     override val nameEmptyError = "The name can't be empty"
-    override val pathsSection = "Paths"
     override val baseRepositoryPathLabel = "Base repository path"
     override val baseRepositoryPathEmptyError = "The repository path can't be empty"
+    override val baseRepositoryNotTopLevelError = "This folder isn't the repository's top folder"
+    override fun baseRepositoryAlreadyAdded(projectName: String) = "This repository is already added as \"$projectName\""
+    override val worktreesRootEmptyError = "The worktrees folder can't be empty"
+    override val agentCommandEmptyError = "The agent command can't be empty"
+    override val discardRepositoryEditsTitle = "Discard repository settings?"
+    override fun discardRepositoryEditsMessage(path: String) =
+        "You have unsaved changes to this repository's settings. Loading $path discards them."
     override val worktreesRootLabel = "Worktrees root folder"
     override val mainBranchLabel = "Main branch"
     override val mainBranchPlaceholder = "Detected from the repository"
@@ -77,6 +85,17 @@ object EnglishStrings : Strings {
     override val add = "Add"
     override val agentSection = "Agent"
     override val agentCommandLabel = "Agent command"
+    override val agentNameLabel = "Name"
+    override fun duplicateAgentNameError(name: String) = "Another agent is already named \"$name\""
+    override val addAgent = "Add agent"
+    override val removeAgent = "Remove agent"
+    override val makeDefaultAgent = "Make default"
+    override val defaultAgentMark = "Default"
+    override val moveAgentUp = "Move up"
+    override val moveAgentDown = "Move down"
+    override val worktreeAgentLabel = "Agent"
+    override val chooseAgent = "Choose agent"
+    override fun launchWithAgent(action: String, agent: String) = "$action · $agent"
     override val useHeadroomLabel = "Use Headroom (headroom wrap)"
     override val headroomDescription = "Headroom wraps the agent command to compress the context before launching it."
     override val save = "Save"
@@ -94,6 +113,10 @@ object EnglishStrings : Strings {
     override val unsavedChanges = "Unsaved changes"
     override val menuSave = "Save"
     override val addProjectTitle = "Add project"
+    override fun projectSettingsTitle(name: String) = "Settings · $name"
+    override val linkedPattern = "linked"
+    override fun postCreationCommandsNote(count: Int) =
+        "${if (count == 1) "1 command runs" else "$count commands run"} after creation; see Repository configuration below."
     override val addProjectIntro = "Choose the folder of a Git repository. The rest of the settings are filled in from it."
     override val chooseRepositoryFolder = "Choose repository folder…"
     override val dropRepositoryHint = "You can also drop a folder anywhere on this window."
@@ -118,6 +141,13 @@ object EnglishStrings : Strings {
     override val noBranchesAvailable = "No branches available to create a worktree."
     override fun branchAlreadyHasWorktree(branch: String) = "$branch (already has a worktree)"
     override val selectBranchPlaceholder = "Select a branch"
+    override val startFromLabel = "Start from"
+    override fun startFromMainBranch(ref: String) = "$ref (main branch)"
+    override fun startFromCurrentBranch(branch: String?) =
+        if (branch != null) "Current branch of the repository ($branch)" else "Current commit of the repository"
+    override fun remoteBranchLabel(branch: String) = "$branch (remote)"
+    override val fetchFirstLabel = "Fetch from origin first"
+    override val createWithoutFetching = "Create without fetching"
     override val otherBranchesGroup = "other"
     override val worktreesTitle = "Worktrees"
     override val viewsTitle = "Views"
@@ -132,8 +162,8 @@ object EnglishStrings : Strings {
     override val groupOther = "Other"
     override val groupAgentWorkingHint = "agent running"
     override val groupAgentWorkingCriterion = "An AI agent is running in the worktree."
-    override val groupNeedsYouHint = "uncommitted or unpushed"
-    override val groupNeedsYouCriterion = "Uncommitted changes, or commits not pushed to its upstream (or to the main branch when it has none)."
+    override val groupNeedsYouHint = "agent waiting, uncommitted or unpushed"
+    override val groupNeedsYouCriterion = "An agent blocked or done in Herdr, uncommitted changes, or commits not pushed to its upstream (or to the main branch when it has none)."
     override val groupInProgressHint = "pushed, not merged"
     override val groupInProgressCriterion = "Clean, pushed, not merged and with a commit in the last 14 days."
     override val groupMergedHint = "in main branch"
@@ -152,6 +182,13 @@ object EnglishStrings : Strings {
     override val seeAllWorktrees = "See all worktrees"
     override val menuActive = "Show Active"
     override val menuAllWorktrees = "Show All worktrees"
+    override fun agentLabel(name: String, state: HerdrAgentState?) = when (state) {
+        null -> name
+        HerdrAgentState.WORKING -> "$name · working"
+        HerdrAgentState.BLOCKED -> "$name · blocked"
+        HerdrAgentState.DONE -> "$name · done"
+        HerdrAgentState.IDLE -> "$name · idle"
+    }
     override fun agentsRunning(names: List<String>) = "Agents running: ${names.joinToString(", ")}"
     override val allProjects = "All projects"
     override val projectLabel = "Project"
@@ -172,6 +209,7 @@ object EnglishStrings : Strings {
     override fun uncommittedChanges(count: Int) = if (count == 1) "1 change" else "$count changes"
     override val upstream = "upstream"
     override fun mergedInto(branch: String) = "merged into $branch"
+    override val notStarted = "not started"
     override val statusUnavailable = "Status unavailable"
     override val folderMissing = "Folder missing"
     override val mainWorktree = "main"
@@ -188,6 +226,17 @@ object EnglishStrings : Strings {
     override val copyPath = "Copy path"
     override val statusTitle = "Status"
     override val agentsTitle = "Agents"
+    override val provisioningTitle = "Provisioned files"
+    override val provisioningChecking = "Checking…"
+    override val provisioningUnavailable = "Couldn't check the files"
+    override val provisioningUpToDate = "Files are up to date"
+    override val provisionAction = "Provision"
+    override val copyAsEnv = "Copy as .env"
+    override fun provisionDriftFile(path: String, state: ProvisionDriftState) = when (state) {
+        ProvisionDriftState.MISSING -> "$path · missing"
+        ProvisionDriftState.DIFFERS -> "$path · differs"
+        ProvisionDriftState.NOT_LINKED -> "$path · not linked"
+    }
     override val environmentTitle = "Environment"
     override val devicesTitle = "Devices"
     override val diskTitle = "Disk"
@@ -201,6 +250,7 @@ object EnglishStrings : Strings {
     override fun cleanupFailed(path: String, detail: String) = "Couldn't remove \"$path\": $detail"
     override fun branchKept(branch: String) = "Branch \"$branch\" kept: it isn't merged into the main branch"
     override val herdrWorkspaceWillClose = "It's open in Herdr: its workspace, and the agent running there, will be closed."
+    override fun keptForRunningAgent(name: String, agents: List<String>) = "$name · kept, ${agents.joinToString()} is running"
     override val herdrCleanupNotice = "The worktrees open in Herdr will have their workspace, and the agent running there, closed."
     override val openInHerdrMark = "open in Herdr"
     override fun herdrCloseFailed(path: String, detail: String) = "Removed, but couldn't close the Herdr workspace of \"$path\": $detail"
@@ -220,6 +270,12 @@ object EnglishStrings : Strings {
     override fun installInitScriptMessage(path: String) =
         "ShogunAi will write the Gradle init script $path, which makes the iOS simulator tests of every Gradle " +
             "project on this machine run on IOS_SIMULATOR_UDID when it's set. Remove it with 'shogun simulator gradle-init uninstall'."
+    override val uninstallInitScript = "Uninstall the init script"
+    override val uninstallInitScriptTitle = "Uninstall the Gradle init script?"
+    override fun uninstallInitScriptMessage(path: String) =
+        "ShogunAi will delete $path. KMP iOS simulator tests of Gradle projects on this machine will stop using the " +
+            "worktree's simulator, unless the module's build.gradle.kts does it."
+    override val uninstall = "Uninstall"
     override val install = "Install"
     override val simulatorLabel = "iOS simulator"
     override val simulatorShutdown = "shut down"
@@ -258,7 +314,6 @@ object EnglishStrings : Strings {
     override fun daemonIdle(since: String) = "idle · $since"
     override val daemonStateUnknown = "state unknown"
     override val daemonOwnerRemoved = "removed worktree"
-    override val daemonOwnerOther = "other project"
     override val stopDaemon = "Stop"
     override val stopIdleDaemons = "Stop idle daemons"
     override val gradleBuildCacheOff =
@@ -278,7 +333,6 @@ object EnglishStrings : Strings {
 
     override val xcodeDerivedDataTitle = "Xcode DerivedData"
     override val xcodeDerivedDataUnavailable = "DerivedData can't be inspected on this system"
-    override val noDerivedDataFolders = "No DerivedData folders for these worktrees yet"
     override fun derivedDataSummary(count: Int, totalSize: String) =
         (if (count == 1) "1 DerivedData folder" else "$count DerivedData folders") + " · $totalSize"
     override fun derivedDataOrphans(count: Int, size: String) =
@@ -298,7 +352,12 @@ object EnglishStrings : Strings {
     override val ownerOutsideProjects = "outside saved projects"
     override val ownerLoading = "loading owner"
     override val notOwnedByWorktree = "not owned by a worktree"
-    override val goToWorktree = "Show in All worktrees"
+    override val machineColumnDevice = "Device"
+    override val machineColumnWorktree = "Worktree"
+    override val machineColumnState = "State"
+    override val automaticAvd = "Automatic"
+    override val simulatorNotCreated = "Not created"
+    override fun simulatorNotCreatedFor(device: String) = "Not created · $device"
     override val noMachineEmulators = "No worktree emulators in these projects"
     override val unownedEmulatorsTitle = "Running outside any worktree"
     override val noMachineSimulators = "No ShogunAi simulators yet"
@@ -327,7 +386,6 @@ object EnglishStrings : Strings {
     override val copied = "Copied"
     override val close = "Close"
     override val worktreeCreatedWithError = "The worktree was created, but its post-creation command failed."
-    override val copyCommand = "Copy command"
     override val copyLaunchCommand = "Copy launch command"
     override fun worktreeCreated(folder: String) = "Worktree created: $folder"
     override fun worktreeCreatedCommandsSkipped(folder: String) = "Worktree created: $folder. Its post-creation commands were skipped."
@@ -346,6 +404,20 @@ object EnglishStrings : Strings {
     override val openInHerdr = "Open in Herdr"
     override fun openedInHerdr(name: String) = "Opened \"$name\" in Herdr with its agent"
     override fun focusedInHerdr(name: String) = "\"$name\" was already open in Herdr; switched to its workspace"
+    override val toolsLabel = "Tools"
+    override val terminalToolLabel = "Terminal"
+    override val editorToolLabel = "IDE"
+    override val noTerminalFound = "No supported terminal found"
+    override val noEditorFound = "No supported IDE found"
+    override fun openInTool(name: String) = "Open in $name"
+    override val openFolder = "Open folder"
+    override val chooseTerminalTitle = "Choose a terminal"
+    override val chooseTerminalMessage = "Worktrees will open in the terminal you choose. You can change it later in Preferences."
+    override val projectEditorLabel = "IDE on this machine"
+    override fun defaultEditorOption(name: String?) = if (name == null) "Default" else "Default ($name)"
+    override fun editorNotFoundOption(name: String) = "$name (not found)"
+    override fun editorOverrideMissing(name: String) =
+        "$name wasn't found on this machine, so this project's worktrees open in the default IDE."
 
 
     override val repositoryConfigSection = "Repository configuration"
@@ -395,6 +467,7 @@ object EnglishStrings : Strings {
     override val menuCommandPalette = "Command palette"
     override val paletteHint = "Search views, projects, worktrees and actions"
     override val paletteNoResults = "No results"
+    override val paletteCopyLaunchCommandHint = "Copy launch command"
     override val paletteKindView = "View"
     override val paletteKindProject = "Project"
     override val paletteKindWorktree = "Worktree"
@@ -403,9 +476,35 @@ object EnglishStrings : Strings {
     override val paletteViewAllWorktrees = "All worktrees"
     override val paletteViewPreferences = "Preferences"
     override val paletteCleanUp = "Clean up"
-    override val paletteCopyLaunchCommandHint = "Copy launch command"
     override fun paletteNewWorktreeIn(project: String) = "New worktree in $project"
     override fun paletteSettingsOf(project: String) = "Settings of $project"
+    override val trayShowApp = "Show ShogunAi"
+    override val trayNewWorktree = "New worktree…"
+    override val trayRecentProjects = "Recent projects"
+    override val trayRecentWorktrees = "Recent worktrees"
+    override val trayShowInApp = "Show in ShogunAi"
+    override val showIconInMenuBar = "Show icon in the menu bar"
+    override val showIconInTray = "Show icon in the system tray"
+    override val keepRunningWhenClosed = "Keep running when the window is closed"
+    override val menuCheckForUpdates = "Check for Updates…"
+    override fun updateAvailableMessage(newVersion: String, runningVersion: String) =
+        "ShogunAi $newVersion is out! You're on $runningVersion."
+    override fun updateAvailableDialogMessage(newVersion: String, runningVersion: String) =
+        "ShogunAi $newVersion is available. You're on $runningVersion."
+    override val updateWhatsNew = "What's new"
+    override val updateSkipVersion = "Skip this version"
+    override val updateCopy = "Copy"
+    override val updateDownload = "Download"
+    override val updateOpenReleasePage = "Open"
+    override fun updateCommandReminder(channel: InstallChannel, command: String) =
+        "Installed with ${channel.installerName()}? Run $command to update."
+    override val updateDownloadReminder = "Download the new installer to update."
+    override fun updateInstallCommandReminder(command: String) = "After downloading, run $command"
+    override val updateReleasePageReminder = "See the release page to update."
+    override val updateDialogTitle = "Check for Updates"
+    override val updateChecking = "Checking for updates…"
+    override fun updateUpToDateMessage(version: String) = "ShogunAi is up to date (version $version)."
+    override val updateCheckAutomaticallyLabel = "Check for updates automatically"
 }
 
 internal fun String?.asSuffix(): String = if (isNullOrBlank()) "" else ": $this"

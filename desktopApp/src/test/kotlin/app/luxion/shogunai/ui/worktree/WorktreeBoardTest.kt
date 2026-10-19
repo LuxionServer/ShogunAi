@@ -27,6 +27,7 @@ import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.usecase.AgentSearch
+import app.luxion.shogunai.ui.components.TextInputFocus
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.CopyWorktreeLaunchCommandUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
@@ -35,7 +36,9 @@ import app.luxion.shogunai.domain.usecase.DeleteOrphanedDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.DetectRunningAgentsUseCase
 import app.luxion.shogunai.domain.usecase.ListDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.ListGradleDaemonsUseCase
-import app.luxion.shogunai.domain.usecase.ListLocalBranchesUseCase
+import app.luxion.shogunai.domain.usecase.FetchRemoteUseCase
+import app.luxion.shogunai.domain.usecase.ListBranchesUseCase
+import app.luxion.shogunai.domain.usecase.ResolveStartPointUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.MeasureWorktreeSizeUseCase
 import app.luxion.shogunai.domain.usecase.ReadGitMetadataFingerprintUseCase
@@ -54,6 +57,11 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.RecentWorktree
+import app.luxion.shogunai.domain.usecase.Activity
+import app.luxion.shogunai.ui.i18n.EnglishStrings
+import app.luxion.shogunai.ui.tray.trayWorktreeLabel
 import java.time.Instant
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -71,7 +79,7 @@ class WorktreeBoardTest {
 
     private val dispatcher = StandardTestDispatcher()
     private val listCommand = listOf("git", "worktree", "list", "--porcelain")
-    private val forEachRefCommand = listOf("git", "for-each-ref", "--format=%(refname:short)", "refs/heads")
+    private val forEachRefCommand = listOf("git", "for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes/origin/")
     private val statusCommand = listOf("git", "--no-optional-locks", "status", "--porcelain")
     private var now = Instant.parse("2026-10-19T10:00:00Z")
 
@@ -148,7 +156,7 @@ class WorktreeBoardTest {
                         listGate?.await()
                         success(command, porcelain)
                     }
-                    command == forEachRefCommand -> success(command, stdout = "main\nhotfix/fix\n")
+                    command == forEachRefCommand -> success(command, stdout = "refs/heads/main\nrefs/heads/hotfix/fix\n")
                     command == statusCommand -> {
                         statusGate?.await()
                         success(command)
@@ -170,7 +178,9 @@ class WorktreeBoardTest {
             list = ListWorktreesUseCase(config, executor, FakeFileManager(existing = if (exists) listOf(base) else emptyList())),
             create = CreateWorktreeUseCase(config, executor, files, FakeRepositoryProvisioningSource()),
             createFromBranch = CreateWorktreeFromBranchUseCase(config, executor, files, FakeRepositoryProvisioningSource()),
-            listLocalBranches = ListLocalBranchesUseCase(config, executor),
+            listBranches = ListBranchesUseCase(config, executor),
+            fetchRemote = FetchRemoteUseCase(config, executor),
+            resolveStartPoint = { ref -> ResolveStartPointUseCase(executor)(config.baseRepositoryPath, ref) },
             remove = RemoveWorktreeUseCase(config, executor),
             copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, FakeClipboardWriter()),
             repair = RepairWorktreesUseCase(config, executor, files),
@@ -213,6 +223,7 @@ class WorktreeBoardTest {
     private fun board(
         projects: List<Project> = repositories.map { it.project },
         clock: () -> Instant = Instant::now,
+        onWorktreeUsed: (WorktreeRef) -> Unit = {},
     ): WorktreeBoard = WorktreeBoard(
         useCasesFor = { config -> repositories.first { it.base == config.baseRepositoryPath }.useCases() },
         detectAgents = { searches ->
@@ -222,6 +233,8 @@ class WorktreeBoardTest {
         },
         preferences = preferences,
         clock = clock,
+        ioDispatcher = dispatcher,
+        onWorktreeUsed = onWorktreeUsed,
     ).also {
         it.syncCatalog(projects)
         it.show(null)
@@ -276,6 +289,81 @@ class WorktreeBoardTest {
         assertEquals(listOf("codex"), board.agentNamesOf("api"))
         assertEquals(emptyList(), board.agentNamesOf("main-repo"))
         board.stopWatching()
+    }
+
+    @Test
+    fun `the tray lists the loaded recent worktrees and drops the removed ones`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        val recents = listOf(
+            RecentWorktree("main-repo", "/home/dev/projects/TASK-123"),
+            RecentWorktree("main-repo", "/home/dev/projects/removed"),
+            RecentWorktree("deleted-project", "/home/dev/projects/other"),
+            RecentWorktree("api", "/home/dev/projects/api-TASK-12"),
+        )
+
+        val listed = board.trayWorktrees(recents, EnglishStrings)
+
+        assertEquals(listOf("feature/TASK-123", "feature/TASK-12"), listed.map { it.name })
+        assertEquals(listOf("main-repo", "api"), listed.map { it.projectName })
+        assertTrue(listed.all { it.isLoaded })
+    }
+
+    @Test
+    fun `the tray shows a recent worktree by its folder until its project loads`() = runTest(dispatcher) {
+        val board = board()
+
+        val listed = board.trayWorktrees(listOf(RecentWorktree("main-repo", "/home/dev/projects/TASK-123")), EnglishStrings)
+
+        assertEquals("TASK-123", listed.single().name)
+        assertEquals(Activity.Unknown, listed.single().activity)
+        assertFalse(listed.single().isLoaded)
+        assertTrue(listed.single().openActions.isEmpty())
+    }
+
+    @Test
+    fun `the tray marks a worktree whose agent is blocked as needing the user`() = runTest(dispatcher) {
+        agentResult = Result.success(
+            mapOf("/home/dev/projects/api-TASK-12" to listOf(RunningAgent("codex", herdrState = HerdrAgentState.BLOCKED))),
+        )
+        val board = board()
+        advanceUntilIdle()
+        board.startWatching()
+        tick()
+
+        val listed = board.trayWorktrees(listOf(RecentWorktree("api", "/home/dev/projects/api-TASK-12")), EnglishStrings)
+
+        board.stopWatching()
+        assertEquals(Activity.NeedsYou, listed.single().activity)
+        assertEquals("! feature/TASK-12 — api", trayWorktreeLabel(listed.single()))
+    }
+
+    @Test
+    fun `the tray marks a worktree whose agent is working`() = runTest(dispatcher) {
+        agentResult = Result.success(
+            mapOf("/home/dev/projects/api-TASK-12" to listOf(RunningAgent("codex", herdrState = HerdrAgentState.WORKING))),
+        )
+        val board = board()
+        advanceUntilIdle()
+        board.startWatching()
+        tick()
+
+        val listed = board.trayWorktrees(listOf(RecentWorktree("api", "/home/dev/projects/api-TASK-12")), EnglishStrings)
+
+        board.stopWatching()
+        assertEquals("● feature/TASK-12 — api", trayWorktreeLabel(listed.single()))
+    }
+
+    @Test
+    fun `selecting a worktree reports it as used`() = runTest(dispatcher) {
+        val used = mutableListOf<WorktreeRef>()
+        val board = board(onWorktreeUsed = used::add)
+        advanceUntilIdle()
+        val main = WorktreeRef("api", "/home/dev/projects/api")
+
+        board.select(main)
+
+        assertEquals(listOf(main), used)
     }
 
     @Test
@@ -471,6 +559,19 @@ class WorktreeBoardTest {
     }
 
     @Test
+    fun `remembering the fetch option keeps the project's holder`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        val before = board.holder("api")
+
+        val remembered = api.project.copy(config = api.config.copy(fetchBeforeCreate = true))
+        board.syncCatalog(listOf(remembered, mainRepo.project))
+
+        assertSame(before, board.holder("api"))
+        assertTrue(board.projects.first().config.fetchBeforeCreate)
+    }
+
+    @Test
     fun `the selection is cleared when its project is removed`() = runTest(dispatcher) {
         val board = board()
         advanceUntilIdle()
@@ -575,7 +676,7 @@ class WorktreeBoardTest {
         board.stopWatching()
 
         val searches = agentSearches.single()
-        assertEquals(listOf("codex", "claude"), searches.map { it.agentCommand })
+        assertEquals(listOf(listOf("codex"), listOf("claude")), searches.map { it.agentCommands })
         assertEquals(listOf(2, 3), searches.map { it.worktrees.size })
         assertEquals(listOf(RunningAgent("codex")), board.holder("api")?.agents?.get("/home/dev/projects/api-TASK-12"))
         assertEquals(listOf(RunningAgent("claude")), board.holder("main-repo")?.agents?.get("/home/dev/projects/TASK-123"))
@@ -604,7 +705,7 @@ class WorktreeBoardTest {
     }
 
     @Test
-    fun `every project is checked even when the view is filtered`() = runTest(dispatcher) {
+    fun `only shown projects are checked while agents are detected for every project`() = runTest(dispatcher) {
         val board = board()
         advanceUntilIdle()
         board.show("api")
@@ -617,8 +718,26 @@ class WorktreeBoardTest {
         runCurrent()
         board.stopWatching()
 
-        assertEquals(2, mainRepo.lists)
-        assertEquals(listOf("codex", "claude"), agentSearches.first().map { it.agentCommand })
+        assertEquals(1, mainRepo.lists)
+        assertEquals(listOf(listOf("codex"), listOf("claude")), agentSearches.first().map { it.agentCommands })
+    }
+
+    @Test
+    fun `no check runs while the window is inactive and focus resumes them`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.startWatching()
+        board.setWindowActive(false)
+
+        repeat(5) { tick() }
+        assertTrue(agentSearches.isEmpty())
+
+        board.setWindowActive(true)
+        runCurrent()
+        tick()
+        board.stopWatching()
+
+        assertEquals(1, agentSearches.size)
     }
 
     @Test
@@ -879,7 +998,7 @@ class WorktreeBoardTest {
         assertEquals(1, api.lists)
         assertEquals(1, mainRepo.lists)
         assertEquals(statusReads + 5, executed.count { it == statusCommand })
-        assertEquals(listOf("codex", "claude"), agentSearches.single().map { it.agentCommand })
+        assertEquals(listOf(listOf("codex"), listOf("claude")), agentSearches.single().map { it.agentCommands })
         assertEquals(sizeRequests, api.files.sizeRequests.size + mainRepo.files.sizeRequests.size)
     }
 
@@ -919,8 +1038,97 @@ class WorktreeBoardTest {
         advanceUntilIdle()
 
         assertTrue(apiHolder.isRemoving)
-        assertEquals(listOf("claude"), agentSearches.single().map { it.agentCommand })
+        assertEquals(listOf(listOf("claude")), agentSearches.single().map { it.agentCommands })
         api.removeGate?.complete(Unit)
         runCurrent()
+    }
+
+    @Test
+    fun `a failed project is listed above the state groups and is not nothing active`() = runTest(dispatcher) {
+        api.exists = false
+        val board = board(listOf(api.project))
+        board.show(null, GroupedView.ACTIVE)
+        board.updateGrouping(Grouping.BY_STATE)
+        advanceUntilIdle()
+
+        val items = listItems(board)
+
+        assertEquals(listOf("api"), items.filterIsInstance<ListItem.GroupState>().map { it.group.project.id })
+        assertTrue(items.filterIsInstance<ListItem.GroupState>().single().showsProjectName)
+        assertFalse(board.isNothingActive)
+    }
+
+    @Test
+    fun `a failed project keeps its group in the active view grouped by project`() = runTest(dispatcher) {
+        api.exists = false
+        val board = board(listOf(api.project))
+        board.show(null, GroupedView.ACTIVE)
+        board.updateGrouping(Grouping.BY_PROJECT)
+        advanceUntilIdle()
+
+        val items = listItems(board)
+
+        assertTrue(items.any { it is ListItem.Header })
+        assertTrue(items.any { it is ListItem.GroupState })
+    }
+
+    @Test
+    fun `a collapsed group still shows its project's load failure`() = runTest(dispatcher) {
+        api.exists = false
+        val board = board()
+        board.updateGrouping(Grouping.BY_PROJECT)
+        advanceUntilIdle()
+        board.toggleCollapsed("api")
+
+        val notices = listItems(board).filterIsInstance<ListItem.GroupState>()
+
+        assertEquals(listOf("api"), notices.map { it.group.project.id })
+        assertTrue(notices.single().showsProjectName)
+    }
+
+    @Test
+    fun `removing the selected worktree clears the selection`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        val holder = board.holder("api")!!
+        val worktree = holder.worktrees.first { !it.isMain }
+        board.select(WorktreeRef("api", worktree.path))
+
+        holder.remove(worktree, branchToDelete = null)
+        advanceUntilIdle()
+
+        assertNull(board.selected)
+    }
+
+    @Test
+    fun `removing another worktree keeps the selection`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        val apiHolder = board.holder("api")!!
+        val selection = WorktreeRef("main-repo", "/home/dev/projects/TASK-123")
+        board.select(selection)
+
+        apiHolder.remove(apiHolder.worktrees.first { !it.isMain }, branchToDelete = null)
+        advanceUntilIdle()
+
+        assertEquals(selection, board.selected)
+    }
+
+    @Test
+    fun `deleting the selected worktree does nothing while a text field has focus`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.select(WorktreeRef("main-repo", "/home/dev/projects/TASK-123"))
+
+        TextInputFocus.enter()
+        try {
+            board.deleteSelectedWorktree()
+            assertNull(board.pendingRemoval)
+        } finally {
+            TextInputFocus.leave()
+        }
+
+        board.deleteSelectedWorktree()
+        assertEquals("/home/dev/projects/TASK-123", board.pendingRemoval?.worktreePendingRemoval?.path)
     }
 }

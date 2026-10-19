@@ -1,7 +1,10 @@
 package app.luxion.shogunai.ui.i18n
 
 import androidx.compose.runtime.staticCompositionLocalOf
+import app.luxion.shogunai.domain.model.InstallChannel
+import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.AppLanguage
+import app.luxion.shogunai.domain.model.HerdrAgentState
 import app.luxion.shogunai.domain.model.RepositoryConfigIssue
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
@@ -53,12 +56,16 @@ interface Strings {
     val aboutRepositoryLink: String
 
     val projectConfigTitle: String
-    val identitySection: String
     val nameLabel: String
     val nameEmptyError: String
-    val pathsSection: String
     val baseRepositoryPathLabel: String
     val baseRepositoryPathEmptyError: String
+    val baseRepositoryNotTopLevelError: String
+    fun baseRepositoryAlreadyAdded(projectName: String): String
+    val worktreesRootEmptyError: String
+    val agentCommandEmptyError: String
+    val discardRepositoryEditsTitle: String
+    fun discardRepositoryEditsMessage(path: String): String
     val worktreesRootLabel: String
     val mainBranchLabel: String
     val mainBranchPlaceholder: String
@@ -75,6 +82,17 @@ interface Strings {
     val add: String
     val agentSection: String
     val agentCommandLabel: String
+    val agentNameLabel: String
+    fun duplicateAgentNameError(name: String): String
+    val addAgent: String
+    val removeAgent: String
+    val makeDefaultAgent: String
+    val defaultAgentMark: String
+    val moveAgentUp: String
+    val moveAgentDown: String
+    val worktreeAgentLabel: String
+    val chooseAgent: String
+    fun launchWithAgent(action: String, agent: String): String
     val useHeadroomLabel: String
     val headroomDescription: String
     val save: String
@@ -92,6 +110,9 @@ interface Strings {
     val unsavedChanges: String
     val menuSave: String
     val addProjectTitle: String
+    fun projectSettingsTitle(name: String): String
+    val linkedPattern: String
+    fun postCreationCommandsNote(count: Int): String
     val addProjectIntro: String
     val chooseRepositoryFolder: String
     val dropRepositoryHint: String
@@ -116,6 +137,12 @@ interface Strings {
     val noBranchesAvailable: String
     fun branchAlreadyHasWorktree(branch: String): String
     val selectBranchPlaceholder: String
+    val startFromLabel: String
+    fun startFromMainBranch(ref: String): String
+    fun startFromCurrentBranch(branch: String?): String
+    fun remoteBranchLabel(branch: String): String
+    val fetchFirstLabel: String
+    val createWithoutFetching: String
     val otherBranchesGroup: String
     val worktreesTitle: String
     val viewsTitle: String
@@ -151,6 +178,7 @@ interface Strings {
     val menuActive: String
     val menuAllWorktrees: String
     fun agentsRunning(names: List<String>): String
+    fun agentLabel(name: String, state: HerdrAgentState?): String
     val allProjects: String
     val projectLabel: String
     val filterWorktreesPlaceholder: String
@@ -169,6 +197,7 @@ interface Strings {
     fun uncommittedChanges(count: Int): String
     val upstream: String
     fun mergedInto(branch: String): String
+    val notStarted: String
     val statusUnavailable: String
     val folderMissing: String
     val mainWorktree: String
@@ -185,6 +214,13 @@ interface Strings {
     val statusTitle: String
     val agentsTitle: String
     val environmentTitle: String
+    val provisioningTitle: String
+    val provisioningChecking: String
+    val provisioningUnavailable: String
+    val provisioningUpToDate: String
+    val provisionAction: String
+    val copyAsEnv: String
+    fun provisionDriftFile(path: String, state: ProvisionDriftState): String
     val devicesTitle: String
     val diskTitle: String
     val deleteWorktree: String
@@ -197,6 +233,7 @@ interface Strings {
     fun branchKept(branch: String): String
     val herdrWorkspaceWillClose: String
     val herdrCleanupNotice: String
+    fun keptForRunningAgent(name: String, agents: List<String>): String
     val openInHerdrMark: String
     fun herdrCloseFailed(path: String, detail: String): String
     val simulatorSection: String
@@ -211,6 +248,10 @@ interface Strings {
     val installInitScript: String
     val installInitScriptTitle: String
     fun installInitScriptMessage(path: String): String
+    val uninstallInitScript: String
+    val uninstallInitScriptTitle: String
+    fun uninstallInitScriptMessage(path: String): String
+    val uninstall: String
     val install: String
     val simulatorLabel: String
     val simulatorShutdown: String
@@ -246,7 +287,6 @@ interface Strings {
     fun daemonIdle(since: String): String
     val daemonStateUnknown: String
     val daemonOwnerRemoved: String
-    val daemonOwnerOther: String
     val stopDaemon: String
     val stopIdleDaemons: String
     val gradleBuildCacheOff: String
@@ -256,7 +296,6 @@ interface Strings {
 
     val xcodeDerivedDataTitle: String
     val xcodeDerivedDataUnavailable: String
-    val noDerivedDataFolders: String
     fun derivedDataSummary(count: Int, totalSize: String): String
     fun derivedDataOrphans(count: Int, size: String): String
     val deleteOrphans: String
@@ -271,7 +310,12 @@ interface Strings {
     val ownerOutsideProjects: String
     val ownerLoading: String
     val notOwnedByWorktree: String
-    val goToWorktree: String
+    val machineColumnDevice: String
+    val machineColumnWorktree: String
+    val machineColumnState: String
+    val automaticAvd: String
+    val simulatorNotCreated: String
+    fun simulatorNotCreatedFor(device: String): String
     val noMachineEmulators: String
     val unownedEmulatorsTitle: String
     val noMachineSimulators: String
@@ -290,10 +334,25 @@ interface Strings {
     fun daysAgo(count: Long): String
     fun monthsAgo(count: Long): String
     fun yearsAgo(count: Long): String
+    val menuCheckForUpdates: String
+    fun updateAvailableMessage(newVersion: String, runningVersion: String): String
+    fun updateAvailableDialogMessage(newVersion: String, runningVersion: String): String
+    val updateWhatsNew: String
+    val updateSkipVersion: String
+    val updateCopy: String
+    val updateDownload: String
+    val updateOpenReleasePage: String
+    fun updateCommandReminder(channel: InstallChannel, command: String): String
+    val updateDownloadReminder: String
+    fun updateInstallCommandReminder(command: String): String
+    val updateReleasePageReminder: String
+    val updateDialogTitle: String
+    val updateChecking: String
+    fun updateUpToDateMessage(version: String): String
+    val updateCheckAutomaticallyLabel: String
     val copied: String
     val close: String
     val worktreeCreatedWithError: String
-    val copyCommand: String
     val copyLaunchCommand: String
     fun worktreeCreated(folder: String): String
     fun worktreeCreatedCommandsSkipped(folder: String): String
@@ -311,6 +370,20 @@ interface Strings {
     val openInHerdr: String
     fun openedInHerdr(name: String): String
     fun focusedInHerdr(name: String): String
+
+    val toolsLabel: String
+    val terminalToolLabel: String
+    val editorToolLabel: String
+    val noTerminalFound: String
+    val noEditorFound: String
+    fun openInTool(name: String): String
+    val openFolder: String
+    val chooseTerminalTitle: String
+    val chooseTerminalMessage: String
+    val projectEditorLabel: String
+    fun defaultEditorOption(name: String?): String
+    fun editorNotFoundOption(name: String): String
+    fun editorOverrideMissing(name: String): String
 
     val repositoryConfigSection: String
     val repositoryConfigSharedNote: String
@@ -353,6 +426,7 @@ interface Strings {
     val menuCommandPalette: String
     val paletteHint: String
     val paletteNoResults: String
+    val paletteCopyLaunchCommandHint: String
     val paletteKindView: String
     val paletteKindProject: String
     val paletteKindWorktree: String
@@ -361,9 +435,16 @@ interface Strings {
     val paletteViewAllWorktrees: String
     val paletteViewPreferences: String
     val paletteCleanUp: String
-    val paletteCopyLaunchCommandHint: String
     fun paletteNewWorktreeIn(project: String): String
     fun paletteSettingsOf(project: String): String
+    val trayShowApp: String
+    val trayNewWorktree: String
+    val trayRecentProjects: String
+    val trayRecentWorktrees: String
+    val trayShowInApp: String
+    val showIconInMenuBar: String
+    val showIconInTray: String
+    val keepRunningWhenClosed: String
 }
 
 val LocalStrings = staticCompositionLocalOf<Strings> { EnglishStrings }
@@ -384,4 +465,11 @@ fun Strings.repositoryConfigIssue(issue: RepositoryConfigIssue): String = when (
 fun AppLanguage.strings(): Strings = when (this) {
     AppLanguage.ENGLISH -> EnglishStrings
     AppLanguage.SPANISH -> SpanishStrings
+}
+
+internal fun InstallChannel.installerName(): String = when (this) {
+    InstallChannel.HOMEBREW -> "Homebrew"
+    InstallChannel.SCOOP -> "Scoop"
+    InstallChannel.WINGET -> "winget"
+    else -> name
 }

@@ -2,6 +2,7 @@ package app.luxion.shogunai.domain.usecase
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class GitFailureCauseTest {
 
@@ -66,5 +67,20 @@ class GitFailureCauseTest {
     fun `un mensaje desconocido es Unknown`() {
         assertEquals(GitFailureCause.Unknown, classifyGitFailure("fatal: something nobody expected"))
         assertEquals(GitFailureCause.Unknown, classifyGitFailure(""))
+    }
+
+    @Test
+    fun `every recognized cause has a hint and an unknown one has none`() {
+        assertEquals(
+            "The branch feature/TASK-1 already exists. Use another task id, or run 'shogun new --branch feature/TASK-1' to use it.",
+            GitFailureCause.BranchExists("feature/TASK-1").hint(),
+        )
+        assertEquals(null, GitFailureCause.Unknown.hint())
+        listOf(
+            GitFailureCause.LockFileExists(null),
+            GitFailureCause.PermissionDenied("~/projects"),
+            GitFailureCause.NotARepository,
+            GitFailureCause.LocalChanges,
+        ).forEach { assertTrue(it.hint() != null) }
     }
 }

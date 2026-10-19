@@ -17,9 +17,9 @@ import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.ui.shell.LeaveGuard
+import app.luxion.shogunai.ui.shell.ToolsPreferences
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import java.io.File
 import java.util.UUID
 
 sealed interface SimulatorSectionState {
@@ -29,6 +29,7 @@ sealed interface SimulatorSectionState {
         val runtimes: List<SimulatorRuntime>,
         val testsWired: Boolean,
         val kotlinMultiplatform: Boolean,
+        val initScriptInstalled: Boolean = false,
     ) : SimulatorSectionState
     data class Failed(val error: Throwable) : SimulatorSectionState
 }
@@ -41,7 +42,21 @@ sealed interface EmulatorSectionState {
     data class Failed(val error: Throwable) : EmulatorSectionState
 }
 
-enum class ProjectConfigField { NAME, BASE_REPOSITORY_PATH }
+enum class ProjectConfigField { NAME, BASE_REPOSITORY_PATH, WORKTREES_ROOT, AGENT_COMMAND, AGENT_NAME }
+
+data class AgentDraft(val name: String = "", val command: String = "claude", val useHeadroom: Boolean = true) {
+    fun toConfig() = AgentLaunchConfig(
+        name = name.trim().ifEmpty { null },
+        agentCommand = command,
+        useHeadroom = useHeadroom,
+    )
+
+    companion object {
+        fun from(config: AgentLaunchConfig) = AgentDraft(config.name.orEmpty(), config.agentCommand, config.useHeadroom)
+    }
+}
+
+enum class BasePathProblem { NOT_A_REPOSITORY, NOT_TOP_LEVEL }
 
 data class RepositoryInspection(val topLevel: String, val mainBranch: String?)
 
@@ -64,6 +79,7 @@ class ProjectConfigViewModel(
     },
     private val supportsApplePlatforms: Boolean = true,
     private val trust: RepositoryTrust = RepositoryTrust.NONE,
+    val tools: ToolsPreferences = ToolsPreferences.NONE,
 ) : ViewModel(), LeaveGuard {
     private val existingId = existingProject?.id
     val isNewProject: Boolean = existingProject == null
@@ -91,6 +107,19 @@ class ProjectConfigViewModel(
         }
 
     private var _baseRepositoryPath by mutableStateOf(existingProject?.config?.baseRepositoryPath ?: "")
+    private var loadedRepositoryPath = _baseRepositoryPath
+    private val otherProjects = runCatching { projectRepository.list() }.getOrDefault(emptyList()).filter { it.id != existingId }
+    private var inspectedPath: String? = null
+    private var inspectionProblem by mutableStateOf<BasePathProblem?>(null)
+
+    var pendingRepositoryChange by mutableStateOf<String?>(null)
+        private set
+
+    val basePathProblem: BasePathProblem?
+        get() = inspectionProblem.takeIf { inspectedPath == _baseRepositoryPath }
+
+    val duplicateProject: Project?
+        get() = otherProjects.firstOrNull { it.config.baseRepositoryPath.isSameDirectoryAs(_baseRepositoryPath) }
     var worktreesRoot by mutableStateOf(existingProject?.config?.worktreesRoot ?: "")
 
     var secretFiles by mutableStateOf(
@@ -123,7 +152,7 @@ class ProjectConfigViewModel(
     private var lastSaveWroteRepository = false
 
     val repositoryConfigEditable: Boolean
-        get() = _baseRepositoryPath.isNotBlank() && repositoryProvisioning !is RepositoryProvisioningState.Unreadable
+        get() = loadedRepositoryPath.isNotBlank() && repositoryProvisioning !is RepositoryProvisioningState.Unreadable
 
     val showsApplePlatformProviders: Boolean get() = supportsApplePlatforms
 
@@ -138,21 +167,21 @@ class ProjectConfigViewModel(
         set(value) {
             _baseRepositoryPath = value
             touch(ProjectConfigField.BASE_REPOSITORY_PATH)
-            repositoryProvisioning = provisioningSource.stateFor(value)
-            loadRepositoryConfig()
-            refreshEmulatorSection()
-            refreshSimulatorSection()
             if (value.isBlank()) return
             val offset = worktreesRootOffset
             val followsBase = offset != null &&
                 worktreesRoot.isSameDirectoryAs(applyWorktreesRootOffset(lastNonBlankBaseRepositoryPath, offset))
-            if (followsBase) worktreesRoot = applyWorktreesRootOffset(value, offset!!)
+            if (followsBase) worktreesRoot = applyWorktreesRootOffset(value, offset)
             lastNonBlankBaseRepositoryPath = value
         }
 
-    var agentCommand by mutableStateOf(existingProject?.config?.agentLaunchConfig?.agentCommand ?: "claude")
-    var useHeadroom by mutableStateOf(existingProject?.config?.agentLaunchConfig?.useHeadroom ?: true)
+    var agents by mutableStateOf(
+        existingProject?.config?.agents?.map(AgentDraft::from) ?: listOf(AgentDraft()),
+    )
+        private set
     var mainBranch by mutableStateOf(existingProject?.config?.mainBranch.orEmpty())
+    var editorOverride by mutableStateOf(existingProject?.config?.editorOverride)
+    val editorOverrideMissing: Boolean get() = editorOverride?.let { it !in tools.availableEditors } == true
     var emulatorAvd by mutableStateOf(existingProject?.config?.emulator?.avd)
     var emulatorNoWindow by mutableStateOf(existingProject?.config?.emulator?.noWindow ?: false)
 
@@ -171,12 +200,13 @@ class ProjectConfigViewModel(
     val simulatorInitScriptPath: String get() = simulatorSetup.initScriptPath
 
     private var initialName = name
+    val savedName: String get() = initialName
     private var initialBaseRepositoryPath = baseRepositoryPath
     private var initialWorktreesRoot = worktreesRoot
     private var initialSecretFiles = secretFiles
-    private var initialAgentCommand = agentCommand
-    private var initialUseHeadroom = useHeadroom
+    private var initialAgents = agents
     private var initialMainBranch = mainBranch
+    private var initialEditorOverride = editorOverride
     private var initialEmulatorAvd = emulatorAvd
     private var initialEmulatorNoWindow = emulatorNoWindow
     private var initialSimulatorDevice = simulatorDevice
@@ -188,8 +218,56 @@ class ProjectConfigViewModel(
         refreshSimulatorSection()
     }
 
-    private fun loadRepositoryConfig() {
+    private val hasUnsavedRepositoryEdits: Boolean
+        get() = repositoryDraftChanged || pendingRepositoryPatterns.isNotEmpty()
+
+    private val repositoryIsStale: Boolean
+        get() = hasUnsavedRepositoryEdits && !_baseRepositoryPath.isSameDirectoryAs(loadedRepositoryPath)
+
+    suspend fun settleBaseRepositoryPath() {
         val path = _baseRepositoryPath
+        if (path.isBlank() || path.isSameDirectoryAs(loadedRepositoryPath)) {
+            inspectedPath = null
+            inspectionProblem = null
+            pendingRepositoryChange = null
+            return
+        }
+        if (inspectedPath == path && (inspectionProblem != null || pendingRepositoryChange == path)) return
+        val result = inspectRepository(path)
+        if (_baseRepositoryPath != path) return
+        inspectedPath = path
+        val inspection = result.getOrNull()
+        inspectionProblem = when {
+            inspection == null -> BasePathProblem.NOT_A_REPOSITORY
+            !inspection.topLevel.isSameDirectoryAs(path) -> BasePathProblem.NOT_TOP_LEVEL
+            else -> null
+        }
+        if (inspection == null || inspectionProblem != null) return
+        detectedMainBranch = inspection.mainBranch
+        if (hasUnsavedRepositoryEdits) pendingRepositoryChange = path else loadRepository(path)
+    }
+
+    fun confirmRepositoryChange() {
+        pendingRepositoryChange?.let(::loadRepository)
+    }
+
+    fun cancelRepositoryChange() {
+        pendingRepositoryChange = null
+        baseRepositoryPath = loadedRepositoryPath
+    }
+
+    private fun loadRepository(path: String) {
+        loadedRepositoryPath = path
+        pendingRepositoryChange = null
+        pendingRepositoryPatterns = emptyList()
+        repositoryProvisioning = provisioningSource.stateFor(path)
+        loadRepositoryConfig()
+        refreshEmulatorSection()
+        refreshSimulatorSection()
+    }
+
+    private fun loadRepositoryConfig() {
+        val path = loadedRepositoryPath
         val provisioning = if (path.isBlank() || repositoryProvisioning is RepositoryProvisioningState.Unreadable) {
             null
         } else {
@@ -201,30 +279,31 @@ class ProjectConfigViewModel(
         initialRepositoryDraft = repositoryDraft
         nextEnvironmentRowId = repositoryDraft.environment.size
         repositoryChangedOnDisk = false
+        repositoryPreviewConfirmed = false
         refreshPostCreateApproval()
     }
 
     private fun refreshPostCreateApproval() {
         val commands = postCreateCommands
-        postCreateApproved = commands.isNotEmpty() && _baseRepositoryPath.isNotBlank() &&
-            runCatching { trust.isApproved(_baseRepositoryPath, commands) }.getOrDefault(false)
+        postCreateApproved = commands.isNotEmpty() && loadedRepositoryPath.isNotBlank() &&
+            runCatching { trust.isApproved(loadedRepositoryPath, commands) }.getOrDefault(false)
     }
 
     fun approvePostCreateCommands() {
         val commands = postCreateCommands
-        if (commands.isEmpty() || _baseRepositoryPath.isBlank()) return
-        trust.approve(_baseRepositoryPath, commands)
+        if (commands.isEmpty() || loadedRepositoryPath.isBlank()) return
+        trust.approve(loadedRepositoryPath, commands)
         refreshPostCreateApproval()
     }
 
     fun revokePostCreateApproval() {
-        if (_baseRepositoryPath.isBlank()) return
-        trust.revoke(_baseRepositoryPath)
+        if (loadedRepositoryPath.isBlank()) return
+        trust.revoke(loadedRepositoryPath)
         refreshPostCreateApproval()
     }
 
     fun reloadRepositoryConfig() {
-        repositoryProvisioning = provisioningSource.stateFor(_baseRepositoryPath)
+        repositoryProvisioning = provisioningSource.stateFor(loadedRepositoryPath)
         loadRepositoryConfig()
         refreshEmulatorSection()
     }
@@ -262,7 +341,7 @@ class ProjectConfigViewModel(
 
     private fun refreshSimulatorSection() {
         simulatorLoad?.cancel()
-        val repositoryPath = _baseRepositoryPath
+        val repositoryPath = loadedRepositoryPath
         if (repositoryPath.isBlank() || !simulatorSetup.isAvailable(repositoryPath)) {
             simulatorSection = SimulatorSectionState.Hidden
             return
@@ -275,6 +354,7 @@ class ProjectConfigViewModel(
                         runtimes = runtimes.filter { it.platform.equals("iOS", ignoreCase = true) },
                         testsWired = simulatorSetup.isWired(repositoryPath),
                         kotlinMultiplatform = simulatorSetup.usesKotlinMultiplatform(repositoryPath),
+                        initScriptInstalled = simulatorSetup.isInitScriptInstalled(),
                     )
                 },
                 onFailure = { SimulatorSectionState.Failed(it) },
@@ -285,12 +365,23 @@ class ProjectConfigViewModel(
     fun installSimulatorInitScript(): Result<Unit> =
         simulatorSetup.installInitScript().onSuccess {
             val current = simulatorSection
-            if (current is SimulatorSectionState.Available) simulatorSection = current.copy(testsWired = true)
+            if (current is SimulatorSectionState.Available) simulatorSection = current.copy(testsWired = true, initScriptInstalled = true)
+        }
+
+    fun uninstallSimulatorInitScript(): Result<Unit> =
+        simulatorSetup.uninstallInitScript().onSuccess {
+            val current = simulatorSection
+            if (current is SimulatorSectionState.Available) {
+                simulatorSection = current.copy(
+                    testsWired = simulatorSetup.isWired(loadedRepositoryPath),
+                    initScriptInstalled = false,
+                )
+            }
         }
 
     private fun refreshEmulatorSection() {
         emulatorLoad?.cancel()
-        val repositoryPath = _baseRepositoryPath
+        val repositoryPath = loadedRepositoryPath
         val declared = (repositoryProvisioning as? RepositoryProvisioningState.Declared)?.provisioning?.providers?.emulator
             ?: runCatching { provisioningSource.read(repositoryPath).providers.emulator }.getOrNull()
         if (repositoryPath.isBlank() || declared == null) {
@@ -323,7 +414,37 @@ class ProjectConfigViewModel(
 
     private fun isInvalid(field: ProjectConfigField): Boolean = when (field) {
         ProjectConfigField.NAME -> name.isBlank()
-        ProjectConfigField.BASE_REPOSITORY_PATH -> baseRepositoryPath.isBlank()
+        ProjectConfigField.BASE_REPOSITORY_PATH ->
+            baseRepositoryPath.isBlank() || duplicateProject != null || basePathProblem != null
+        ProjectConfigField.WORKTREES_ROOT -> worktreesRoot.isBlank()
+        ProjectConfigField.AGENT_COMMAND -> agents.any { it.command.isBlank() }
+        ProjectConfigField.AGENT_NAME -> duplicatedAgentNames.isNotEmpty()
+    }
+
+    val duplicatedAgentNames: Set<String>
+        get() = agents.map { it.toConfig().displayName }
+            .groupingBy { it }.eachCount()
+            .filterValues { it > 1 }.keys
+
+    fun updateAgent(index: Int, transform: (AgentDraft) -> AgentDraft) {
+        agents = agents.mapIndexed { position, agent -> if (position == index) transform(agent) else agent }
+    }
+
+    fun addAgent() {
+        agents = agents + AgentDraft(command = "")
+    }
+
+    fun removeAgent(index: Int) {
+        if (agents.size > 1) agents = agents.filterIndexed { position, _ -> position != index }
+    }
+
+    fun makeDefault(index: Int) = moveAgent(index, 0)
+
+    fun moveAgent(index: Int, target: Int) {
+        if (index !in agents.indices || target !in agents.indices) return
+        val reordered = agents.toMutableList()
+        reordered.add(target, reordered.removeAt(index))
+        agents = reordered
     }
 
     private fun touch(field: ProjectConfigField) {
@@ -332,10 +453,13 @@ class ProjectConfigViewModel(
 
     suspend fun chooseFolder(folder: String): Result<Unit> =
         inspectRepository(folder).map { inspection ->
-            val repository = File(inspection.topLevel)
+            val topLevel = inspection.topLevel.trimEnd('/', '\\')
+            val repositoryName = topLevel.substringAfterLast('/').substringAfterLast('\\')
+            val repositoryParent = topLevel.dropLast(repositoryName.length).trimEnd('/', '\\')
             baseRepositoryPath = inspection.topLevel
-            name = repository.name
-            worktreesRoot = File(repository.parentFile, "${repository.name}-worktrees").path
+            loadRepository(inspection.topLevel)
+            name = repositoryName
+            worktreesRoot = "$repositoryParent/$repositoryName-worktrees"
             detectedMainBranch = inspection.mainBranch
             rejectedFolder = null
             folderChosen = true
@@ -357,6 +481,7 @@ class ProjectConfigViewModel(
     fun submit(previewConfirmed: Boolean = false): SaveOutcome {
         saveAttempted = true
         firstInvalidField?.let { return SaveOutcome.Invalid(it) }
+        if (pendingRepositoryChange != null || repositoryIsStale) return SaveOutcome.Invalid(ProjectConfigField.BASE_REPOSITORY_PATH)
         if (repositoryConfigEditable) {
             repositoryDraft.problems.firstOrNull()?.let { return SaveOutcome.InvalidRepositoryConfig(it.field) }
         }
@@ -387,9 +512,9 @@ class ProjectConfigViewModel(
             secretFiles != initialSecretFiles ||
             pendingRepositoryPatterns.isNotEmpty() ||
             repositoryDraftChanged ||
-            agentCommand != initialAgentCommand ||
-            useHeadroom != initialUseHeadroom ||
+            agents != initialAgents ||
             mainBranch != initialMainBranch ||
+            editorOverride != initialEditorOverride ||
             emulatorAvd != initialEmulatorAvd ||
             emulatorNoWindow != initialEmulatorNoWindow ||
             simulatorDevice != initialSimulatorDevice ||
@@ -430,6 +555,7 @@ class ProjectConfigViewModel(
         pendingRepositoryPatterns = emptyList()
         repositoryProvisioning = provisioningSource.stateFor(baseRepositoryPath)
         loadRepositoryConfig()
+        repositoryPreviewConfirmed = true
         refreshEmulatorSection()
     }
 
@@ -443,10 +569,12 @@ class ProjectConfigViewModel(
                 baseRepositoryPath = baseRepositoryPath,
                 worktreesRoot = worktreesRoot,
                 secretFiles = secretFiles,
-                agentLaunchConfig = AgentLaunchConfig(agentCommand = agentCommand, useHeadroom = useHeadroom),
+                agentLaunchConfig = agents.first().toConfig(),
+                additionalAgents = agents.drop(1).map(AgentDraft::toConfig),
                 mainBranch = mainBranch.trim().ifEmpty { null },
                 emulator = EmulatorSettings(avd = emulatorAvd?.trim()?.ifEmpty { null }, noWindow = emulatorNoWindow),
                 simulator = SimulatorSettings(device = simulatorDevice, runtime = simulatorRuntime),
+                editorOverride = editorOverride,
             ),
         )
         projectRepository.save(project)

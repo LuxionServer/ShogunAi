@@ -11,7 +11,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
+import app.luxion.shogunai.ui.components.rememberAppIconPainter
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -22,8 +22,6 @@ import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.theme.ShogunTheme
-import java.awt.Desktop
-import java.net.URI
 
 private const val RepositoryUrl = "https://github.com/LuxionServer/ShogunAi"
 private val AboutWindowSize = DpSize(360.dp, 340.dp)
@@ -34,7 +32,7 @@ fun AboutWindow(appearance: Appearance, onClose: () -> Unit) {
     DialogWindow(
         onCloseRequest = onClose,
         title = appearance.strings.aboutTitle,
-        icon = painterResource("icons/icon.png"),
+        icon = rememberAppIconPainter(),
         resizable = false,
         state = rememberDialogState(size = AboutWindowSize),
     ) {
@@ -52,7 +50,7 @@ private fun AboutContent() {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(Spacing.sm, Alignment.CenterVertically),
     ) {
-        Image(painterResource("icons/icon.png"), contentDescription = null, modifier = Modifier.size(AboutIconSize))
+        Image(rememberAppIconPainter(), contentDescription = null, modifier = Modifier.size(AboutIconSize))
         Text("ShogunAi", style = MaterialTheme.typography.titleLarge)
         Text(
             strings.aboutTagline,
@@ -65,12 +63,6 @@ private fun AboutContent() {
             style = ShogunTheme.typography.dataSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        NeutralTextButton(onClick = ::openRepository) { Text(strings.aboutRepositoryLink) }
+        NeutralTextButton(onClick = { openInBrowser(RepositoryUrl) }) { Text(strings.aboutRepositoryLink) }
     }
-}
-
-private fun openRepository() {
-    if (!Desktop.isDesktopSupported()) return
-    val desktop = Desktop.getDesktop()
-    if (desktop.isSupported(Desktop.Action.BROWSE)) desktop.browse(URI(RepositoryUrl))
 }

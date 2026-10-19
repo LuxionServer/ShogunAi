@@ -94,4 +94,22 @@ class CommandPaletteUiTest {
 
         onNode(hasSetTextAction()).assertIsFocused()
     }
+
+    @Test
+    fun `a highlighted worktree shows that the secondary shortcut copies its launch command`() = runComposeUiTest {
+        setContent {
+            MaterialTheme { CommandPalette(listOf(worktree, project), listOf(worktree.id), { _, _ -> }, {}) }
+        }
+
+        onNodeWithText("Copy launch command", substring = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `the hint is hidden while a project is highlighted`() = runComposeUiTest {
+        setContent {
+            MaterialTheme { CommandPalette(listOf(project, worktree), listOf(project.id), { _, _ -> }, {}) }
+        }
+
+        onNodeWithText("Copy launch command", substring = true).assertDoesNotExist()
+    }
 }

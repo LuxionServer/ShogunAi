@@ -1,5 +1,7 @@
 package app.luxion.shogunai.infrastructure
 
+import app.luxion.shogunai.domain.model.AgentLaunchConfig
+import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.EmulatorSettings
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -8,10 +10,17 @@ import java.nio.file.Files
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.deleteExisting
 import kotlin.io.path.deleteIfExists
+import kotlin.io.path.listDirectoryEntries
+import kotlin.io.path.name
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.concurrent.thread
+import app.luxion.shogunai.domain.model.WorktreeError
 
 class JsonProjectRepositoryTest {
 
@@ -21,7 +30,7 @@ class JsonProjectRepositoryTest {
 
     @AfterTest
     fun tearDown() {
-        storagePath.deleteIfExists()
+        tempDir.listDirectoryEntries().forEach { it.deleteIfExists() }
         tempDir.deleteExisting()
     }
 
@@ -83,6 +92,7 @@ class JsonProjectRepositoryTest {
         assertNull(project.config.mainBranch)
         assertEquals(EmulatorSettings(), project.config.emulator)
         assertEquals(SimulatorSettings(), project.config.simulator)
+        assertFalse(project.config.fetchBeforeCreate)
     }
 
     @Test
@@ -104,5 +114,105 @@ class JsonProjectRepositoryTest {
         val loaded = JsonProjectRepository(storagePath).list().single().config
         assertEquals(project.config.emulator, loaded.emulator)
         assertEquals(project.config.simulator, loaded.simulator)
+    }
+
+    @Test
+    fun `keeps the IDE override of a project and reads projects saved without one`() {
+        val config = ProjectConfig(
+            baseRepositoryPath = "/home/dev/projects/main-repo",
+            worktreesRoot = "/home/dev/projects",
+            secretFiles = emptyList(),
+        )
+        repository.save(Project("with", "With", config.copy(editorOverride = EditorId.ANDROID_STUDIO)))
+        Files.writeString(
+            tempDir.resolve("old.json"),
+            """[{"id":"old","name":"Old","config":{"baseRepositoryPath":"/a","worktreesRoot":"/b","secretFiles":[]}}]""",
+        )
+
+        assertEquals(EditorId.ANDROID_STUDIO, JsonProjectRepository(storagePath).list().single().config.editorOverride)
+        assertNull(JsonProjectRepository(tempDir.resolve("old.json")).list().single().config.editorOverride)
+    }
+
+    private fun project(id: String) = Project(
+        id = id,
+        name = id,
+        config = ProjectConfig(baseRepositoryPath = "/home/dev/projects/$id", worktreesRoot = "/home/dev/projects", secretFiles = emptyList()),
+    )
+
+    @Test
+    fun `reports a corrupted file with its path instead of a stack trace`() {
+        Files.writeString(storagePath, "{ not json")
+
+        val error = assertFailsWith<WorktreeError.LocalFileUnreadable> { repository.list() }
+
+        assertEquals(storagePath.toString(), error.path)
+        assertTrue(Files.readString(storagePath) == "{ not json", "listing never touches the file")
+    }
+
+    @Test
+    fun `keeps the unreadable file before saving over it`() {
+        Files.writeString(storagePath, "{ not json")
+
+        repository.save(project("project-1"))
+
+        val kept = tempDir.listDirectoryEntries().single { it.name.startsWith("projects.json.unreadable-") }
+        assertEquals("{ not json", Files.readString(kept))
+        assertEquals(listOf("project-1"), repository.list().map { it.id })
+    }
+
+    @Test
+    fun `concurrent writers don't lose each other's projects`() {
+        val writers = (1..2).map { writer ->
+            thread {
+                val own = JsonProjectRepository(storagePath)
+                repeat(15) { own.save(project("writer-$writer-$it")) }
+            }
+        }
+        writers.forEach { it.join() }
+
+        assertEquals(30, repository.list().size)
+    }
+
+    @Test
+    fun `a project stored with one agent has a single agent`() {
+        Files.writeString(
+            storagePath,
+            """
+            [{"id": "p", "name": "Main", "config": {
+                "baseRepositoryPath": "/home/dev/projects/main-repo",
+                "worktreesRoot": "/home/dev/projects",
+                "secretFiles": [],
+                "agentLaunchConfig": {"agentCommand": "claude", "useHeadroom": false}
+            }}]
+            """.trimIndent(),
+        )
+
+        val config = repository.list().single().config
+
+        assertEquals(listOf(AgentLaunchConfig(agentCommand = "claude", useHeadroom = false)), config.agents)
+        assertTrue(config.additionalAgents.isEmpty())
+    }
+
+    @Test
+    fun `keeps several agents of a project in order`() {
+        val agents = listOf(
+            AgentLaunchConfig(name = "Claude", agentCommand = "claude"),
+            AgentLaunchConfig(name = "Codex", agentCommand = "codex --full-auto", useHeadroom = false),
+        )
+        val project = Project(
+            id = "p",
+            name = "Main",
+            config = ProjectConfig(
+                baseRepositoryPath = "/home/dev/projects/main-repo",
+                worktreesRoot = "/home/dev/projects",
+                secretFiles = emptyList(),
+                agentLaunchConfig = agents.first(),
+                additionalAgents = agents.drop(1),
+            ),
+        )
+
+        repository.save(project)
+
+        assertEquals(agents, repository.list().single().config.agents)
     }
 }

@@ -1,8 +1,13 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.model.AppLanguage
+import app.luxion.shogunai.domain.model.AppVersion
+import app.luxion.shogunai.domain.model.UpdatePreferences
 import app.luxion.shogunai.domain.model.GroupedView
+import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.Grouping
+import app.luxion.shogunai.domain.model.RecentWorktree
+import app.luxion.shogunai.domain.model.TerminalId
 import app.luxion.shogunai.domain.model.ThemeMode
 import app.luxion.shogunai.domain.model.WindowBounds
 import java.nio.file.Files
@@ -14,6 +19,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.concurrent.thread
+import kotlin.io.path.name
 import kotlin.test.assertTrue
 
 class JsonSettingsFileTest {
@@ -24,6 +31,7 @@ class JsonSettingsFileTest {
     private val themeRepository = JsonThemePreferenceRepository(settingsFile)
     private val languageRepository = JsonLanguagePreferenceRepository(settingsFile)
     private val shellRepository = JsonShellPreferenceRepository(settingsFile)
+    private val updateRepository = JsonUpdatePreferenceRepository(settingsFile)
 
     @AfterTest
     fun tearDown() {
@@ -177,5 +185,150 @@ class JsonSettingsFileTest {
         reloaded.saveGrouping(GroupedView.ALL, Grouping.BY_STATE)
         assertEquals(Grouping.BY_PROJECT, reloaded.loadGrouping(GroupedView.ACTIVE))
         assertEquals(Grouping.BY_STATE, reloaded.loadGrouping(GroupedView.ALL))
+    }
+
+    @Test
+    fun `no terminal or editor is chosen by default or in a file written before they existed`() {
+        val tools = JsonToolPreferenceRepository(settingsFile)
+        assertNull(tools.loadTerminal())
+        assertNull(tools.loadEditor())
+
+        Files.writeString(storagePath, """{ "themeMode": "DARK" }""")
+
+        assertNull(tools.loadTerminal())
+        assertNull(tools.loadEditor())
+    }
+
+    @Test
+    fun `the chosen terminal and editor are remembered with the other keys and can be cleared`() {
+        val tools = JsonToolPreferenceRepository(settingsFile)
+        themeRepository.save(ThemeMode.DARK)
+
+        tools.saveTerminal(TerminalId.ITERM2)
+        tools.saveEditor(EditorId.VS_CODE)
+
+        val reloaded = JsonToolPreferenceRepository(JsonSettingsFile(storagePath))
+        assertEquals(TerminalId.ITERM2, reloaded.loadTerminal())
+        assertEquals(EditorId.VS_CODE, reloaded.loadEditor())
+        assertEquals(ThemeMode.DARK, themeRepository.load())
+        reloaded.saveTerminal(null)
+        assertNull(reloaded.loadTerminal())
+        assertEquals(EditorId.VS_CODE, reloaded.loadEditor())
+    }
+
+    @Test
+    fun `there are no recents and the tray defaults apply in a file written before they existed`() {
+        assertTrue(shellRepository.loadRecentProjects().isEmpty())
+        assertTrue(shellRepository.loadRecentWorktrees().isEmpty())
+        assertTrue(shellRepository.loadShowTrayIcon())
+        assertFalse(shellRepository.loadKeepRunningInTray())
+
+        Files.writeString(storagePath, """{ "themeMode": "DARK" }""")
+
+        assertTrue(shellRepository.loadRecentProjects().isEmpty())
+        assertTrue(shellRepository.loadRecentWorktrees().isEmpty())
+        assertTrue(shellRepository.loadShowTrayIcon())
+        assertFalse(shellRepository.loadKeepRunningInTray())
+    }
+
+    @Test
+    fun `recent projects and worktrees are remembered in order with the other keys`() {
+        shellRepository.saveLastDestination("all")
+        val worktrees = listOf(RecentWorktree("api", "~/worktrees/api/TASK-1"), RecentWorktree("main-repo", "~/projects/main-repo"))
+
+        shellRepository.saveRecentProjects(listOf("api", "main-repo"))
+        shellRepository.saveRecentWorktrees(worktrees)
+
+        val reloaded = JsonShellPreferenceRepository(JsonSettingsFile(storagePath))
+        assertEquals(listOf("api", "main-repo"), reloaded.loadRecentProjects())
+        assertEquals(worktrees, reloaded.loadRecentWorktrees())
+        assertEquals("all", reloaded.loadLastDestination())
+    }
+
+    @Test
+    fun `the tray options are remembered with the other keys`() {
+        themeRepository.save(ThemeMode.DARK)
+
+        shellRepository.saveShowTrayIcon(false)
+        shellRepository.saveKeepRunningInTray(true)
+
+        val reloaded = JsonShellPreferenceRepository(JsonSettingsFile(storagePath))
+        assertFalse(reloaded.loadShowTrayIcon())
+        assertTrue(reloaded.loadKeepRunningInTray())
+        assertEquals(ThemeMode.DARK, themeRepository.load())
+    }
+
+    @Test
+    fun `an unreadable file reads as defaults and reports the problem`() {
+        Files.writeString(storagePath, "{ not json")
+
+        assertEquals(ThemeMode.SYSTEM, themeRepository.load())
+
+        assertEquals(storagePath.toString(), settingsFile.lastReadProblem?.path)
+        assertEquals("{ not json", Files.readString(storagePath))
+    }
+
+    @Test
+    fun `keeps the unreadable file before the first write`() {
+        Files.writeString(storagePath, "{ not json")
+
+        themeRepository.save(ThemeMode.DARK)
+
+        val kept = tempDir.listDirectoryEntries().single { it.name.startsWith("settings.json.unreadable-") }
+        assertEquals("{ not json", Files.readString(kept))
+        assertEquals(ThemeMode.DARK, JsonThemePreferenceRepository(JsonSettingsFile(storagePath)).load())
+    }
+
+    @Test
+    fun `a readable file reports no problem`() {
+        themeRepository.save(ThemeMode.DARK)
+
+        themeRepository.load()
+
+        assertNull(settingsFile.lastReadProblem)
+    }
+
+    @Test
+    fun `two writers changing different keys at once keep both changes`() {
+        val first = thread { repeat(30) { JsonSettingsFile(storagePath).update { it.copy(themeMode = ThemeMode.DARK) } } }
+        val second = thread { repeat(30) { JsonSettingsFile(storagePath).update { it.copy(sidebarCollapsed = true) } } }
+        first.join()
+        second.join()
+
+        val settings = JsonSettingsFile(storagePath).read()
+        assertEquals(ThemeMode.DARK, settings.themeMode)
+        assertTrue(settings.sidebarCollapsed)
+    }
+
+    @Test
+    fun `update checks are on with no history when the file was written before they existed`() {
+        Files.writeString(storagePath, """{ "themeMode": "DARK" }""")
+
+        assertEquals(UpdatePreferences(), updateRepository.load())
+    }
+
+    @Test
+    fun `saves the update preferences next to the other settings`() {
+        themeRepository.save(ThemeMode.DARK)
+
+        updateRepository.setCheckAutomatically(false)
+        updateRepository.skip(AppVersion(1, 3, 0))
+
+        assertEquals(UpdatePreferences(false, AppVersion(1, 3, 0)), updateRepository.load())
+        assertEquals(ThemeMode.DARK, themeRepository.load())
+    }
+
+    @Test
+    fun `reads settings written before worktree agents existed`() {
+        Files.writeString(storagePath, """{ "themeMode": "DARK" }""")
+
+        assertTrue(settingsFile.read().worktreeAgents.isEmpty())
+    }
+
+    @Test
+    fun `keeps the agent chosen for a worktree`() {
+        settingsFile.update { it.copy(worktreeAgents = mapOf("/home/dev/projects/TASK-1" to "Codex")) }
+
+        assertEquals(mapOf("/home/dev/projects/TASK-1" to "Codex"), settingsFile.read().worktreeAgents)
     }
 }

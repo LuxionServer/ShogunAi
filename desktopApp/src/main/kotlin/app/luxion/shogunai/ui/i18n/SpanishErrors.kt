@@ -47,6 +47,26 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "No se encontró ningún repositorio de Git en ${error.path}.",
         "Actualiza la ruta del repositorio en los ajustes del proyecto.",
     )
+    is WorktreeError.BareRepositoryNotSupported -> ErrorTexts(
+        "${error.path} es un repositorio bare, que todavía no está soportado.",
+        "Usa un repositorio con árbol de trabajo.",
+    )
+    WorktreeError.RepositoryHasNoCommits -> ErrorTexts(
+        "El repositorio todavía no tiene commits.",
+        "Haz un primer commit y vuelve a intentarlo.",
+    )
+     is WorktreeError.LocalFileUnreadable ->
+        if (error.path.endsWith("settings.json")) {
+            ErrorTexts(
+                "No se pudo leer el archivo de ajustes ${error.path}, así que se usan los ajustes por defecto.",
+                "El archivo ilegible se conserva a su lado. Corrígelo o bórralo para quitar este aviso.",
+            )
+        } else {
+            ErrorTexts(
+                "No se pudo leer el archivo de proyectos ${error.path}, así que no se muestra ningún proyecto.",
+                "Corrige el archivo. Si añades o quitas un proyecto, el archivo ilegible se conserva antes a su lado.",
+            )
+        }
     is WorktreeError.WorktreeAlreadyExists -> ErrorTexts(
         "La carpeta ${error.path} ya existe.",
         "Usa otro id de tarea, o elimina la carpeta existente.",
@@ -66,6 +86,10 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     is WorktreeError.RepositoryConfigChanged -> ErrorTexts(
         "${error.path} cambió en disco desde que se abrieron los ajustes.",
         "Recarga los ajustes y aplica de nuevo tus cambios.",
+    )
+    is WorktreeError.UpdateCheckFailed -> ErrorTexts(
+        "No se pudo buscar actualizaciones" + (error.reason?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: "."),
+        "Comprueba tu conexión e inténtalo de nuevo más tarde.",
     )
     is WorktreeError.NotAWorktree -> ErrorTexts(
         "${error.path} no es un worktree de este repositorio.",
@@ -123,6 +147,10 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "${error.serial} no terminó de arrancar en ${error.seconds} s.",
         "Vuelve a intentarlo; el primer arranque puede tardar.",
     )
+    is WorktreeError.EmulatorExitedEarly -> ErrorTexts(
+        "El emulador de ${error.serial} se detuvo antes de terminar de arrancar.",
+        "Revisa el log del emulador en los detalles técnicos; puede que el AVD esté roto.",
+    )
     is WorktreeError.AndroidToolFailed -> ErrorTexts(
         "Falló una herramienta de Android.",
         "Revisa los detalles técnicos.",
@@ -159,6 +187,22 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "El archivo de entorno \"${error.path}\" resuelve fuera del worktree, así que no se escribió.",
         "Elige un archivo de entorno cuyas carpetas sean carpetas reales dentro del worktree.",
     )
+    is WorktreeError.WorktreeTargetNotFound -> ErrorTexts(
+        "Ningún worktree coincide con \"${error.target}\".",
+        "Revisa el id de tarea, la ruta o la rama.",
+    )
+    is WorktreeError.AmbiguousWorktreeTarget -> ErrorTexts(
+        "\"${error.target}\" coincide con más de un worktree.",
+        "Usa la ruta del que quieres: ${error.candidates.joinToString()}.",
+    )
+    is WorktreeError.CannotRemoveMainWorktree -> ErrorTexts(
+        "${error.path} es el worktree principal.",
+        "El worktree principal no se puede eliminar.",
+    )
+    is WorktreeError.AgentRunningInWorktree -> ErrorTexts(
+        "${error.agents.joinToString()} se está ejecutando en ${error.path}.",
+        "Páralo primero, o elimina el worktree forzándolo.",
+    )
     is WorktreeError.InvalidRef -> ErrorTexts(
         "\"${error.ref}\" no es una rama ni un punto de partida válidos.",
         "Los nombres de rama y los puntos de partida no pueden empezar por \"-\".",
@@ -173,6 +217,26 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     )
     is WorktreeError.HerdrCommandFailed -> ErrorTexts(
         "Herdr no pudo abrir el worktree.",
+        "Revisa los detalles técnicos.",
+    )
+    is WorktreeError.TerminalLaunchFailed -> ErrorTexts(
+        "${error.terminal.displayName} no pudo abrir el worktree.",
+        "Revisa los detalles técnicos.",
+    )
+    is WorktreeError.TerminalAutomationRefused -> ErrorTexts(
+        "macOS no permitió que ShogunAi controle ${error.terminal.displayName}.",
+        "Permítelo en Ajustes del Sistema > Privacidad y seguridad > Automatización y vuelve a intentarlo.",
+    )
+    is WorktreeError.TerminalUnsupported -> ErrorTexts(
+        "No se puede usar ${error.terminal.displayName}: ${error.reason}.",
+        "Elige otro terminal en Preferencias.",
+    )
+    is WorktreeError.EditorLaunchFailed -> ErrorTexts(
+        "${error.editor.displayName} no pudo abrir el worktree.",
+        "Revisa los detalles técnicos.",
+    )
+    is WorktreeError.FolderOpenFailed -> ErrorTexts(
+        "No se pudo mostrar \"${error.path}\".",
         "Revisa los detalles técnicos.",
     )
     is WorktreeError.GitCommandFailed -> spanishGitTexts(GitFailureCause.Unknown)

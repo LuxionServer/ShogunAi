@@ -109,7 +109,7 @@ A worktree that is selected in "Active" SHALL stay listed while it remains selec
 - **THEN** it stays in "Active", in the group for its new state, until the user selects something else
 
 ### Requirement: Group by state
-"Active" SHALL group its worktrees by state, in this order: "Agent working" (an agent is running), "Needs you" (uncommitted changes or commits not pushed to its upstream, and no agent), and "In progress" (any other active worktree). When "All worktrees" is grouped by state, it SHALL also show "Merged", "Inactive" and "Folder missing" groups after those, and a trailing "Other" group for the clean main worktrees and the worktrees whose status isn't read yet, so that no worktree disappears. Empty groups SHALL be hidden.
+"Active" SHALL group its worktrees by state, in this order: "Agent working" (an agent is running and none is blocked or done), "Needs you" (an agent is blocked or done, or there are uncommitted changes or commits not pushed to its upstream and no agent), and "In progress" (any other active worktree). When "All worktrees" is grouped by state, it SHALL also show "Merged", "Inactive" and "Folder missing" groups after those, and a trailing "Other" group for the clean main worktrees and the worktrees whose status isn't read yet, so that no worktree disappears. Empty groups SHALL be hidden.
 
 #### Scenario: Active groups
 - **WHEN** one active worktree has an agent, one has uncommitted changes and one is clean and unmerged
@@ -118,6 +118,10 @@ A worktree that is selected in "Active" SHALL stay listed while it remains selec
 #### Scenario: All worktrees by state
 - **WHEN** "All worktrees" is grouped by state and two worktrees are merged
 - **THEN** a "Merged" group lists them after the active groups
+
+#### Scenario: Agent waiting for the user
+- **WHEN** Herdr reports a worktree's agent as blocked
+- **THEN** the worktree is listed under "Needs you" instead of "Agent working"
 
 ### Requirement: Remember each view's grouping
 "Active" and "All worktrees" SHALL each offer grouping by state or by project, defaulting to state for "Active" and to project for "All worktrees", and SHALL remember each view's choice across restarts.
@@ -161,3 +165,14 @@ Each state group header SHALL show, next to its title, a hint of a few words say
 #### Scenario: Full criterion on hover
 - **WHEN** the user hovers the "Inactive" group's title
 - **THEN** a tooltip says the worktrees are clean, have no agent running and no commit in the last 14 days
+
+### Requirement: Errors stay visible in every grouping
+A project's load failure and the errors of its actions (removal, cleanup, branch loading, repair, closing Herdr workspaces) SHALL be shown when the view is grouped by state, and when the project's group is collapsed, with the project's name. A project whose load failed SHALL NOT count as having nothing active.
+
+#### Scenario: Failed project in the Active view
+- **WHEN** the Active view is grouped by state and one of the shown projects fails to load
+- **THEN** the view shows that project's error above the state groups, and doesn't show "Nothing active"
+
+#### Scenario: Collapsed group
+- **WHEN** a project group is collapsed and a cleanup in that project fails
+- **THEN** the error is still shown under the group header

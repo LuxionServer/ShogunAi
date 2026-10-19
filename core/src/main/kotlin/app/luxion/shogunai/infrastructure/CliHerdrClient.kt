@@ -3,6 +3,8 @@ package app.luxion.shogunai.infrastructure
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.HerdrClient
+import app.luxion.shogunai.domain.model.HerdrAgent
+import app.luxion.shogunai.domain.model.HerdrAgentState
 import app.luxion.shogunai.domain.model.HerdrWorktreeOpening
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.serialization.json.Json
@@ -59,10 +61,37 @@ class CliHerdrClient(
         run(listOf("workspace", "close", workspaceId))
     }
 
+    override suspend fun listAgents(): List<HerdrAgent> {
+        val arguments = listOf("agent", "list")
+        val agents = run(arguments).field("agents") as? JsonArray ?: throw unexpectedResponse(arguments)
+        return agents.filterIsInstance<JsonObject>().mapNotNull { agent ->
+            val name = agent.string("agent")
+            val directory = agent.string("foreground_cwd") ?: agent.string("cwd")
+            val paneId = agent.string("pane_id")
+            if (name != null && directory != null && paneId != null) {
+                HerdrAgent(name, agentState(agent.string("agent_status")), directory, paneId)
+            } else {
+                null
+            }
+        }
+    }
+
+    override suspend fun focusAgent(paneId: String) {
+        run(listOf("agent", "focus", paneId))
+    }
+
+    private fun agentState(status: String?): HerdrAgentState? = when (status) {
+        "working" -> HerdrAgentState.WORKING
+        "blocked" -> HerdrAgentState.BLOCKED
+        "done" -> HerdrAgentState.DONE
+        "idle" -> HerdrAgentState.IDLE
+        else -> null
+    }
+
     fun executable(): String {
         val name = if (osName.startsWith("Windows", ignoreCase = true)) "herdr.exe" else "herdr"
-        val candidates = USER_BIN_FOLDERS.map { File(File(userHome, it), name).path } +
-            SYSTEM_BIN_FOLDERS.map { File(it, name).path }
+        val candidates = USER_BIN_FOLDERS.map { "${userHome.trimEnd('/', '\\')}/$it/$name" } +
+            SYSTEM_BIN_FOLDERS.map { "$it/$name" }
         return candidates.firstOrNull(isFile) ?: name
     }
 

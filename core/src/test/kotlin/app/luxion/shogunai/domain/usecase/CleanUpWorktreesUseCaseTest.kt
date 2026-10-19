@@ -8,6 +8,8 @@ import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeStatus
@@ -41,6 +43,35 @@ class CleanUpWorktreesUseCaseTest {
     )
 
     @Test
+    fun `keeps a worktree with a running agent out of the candidates and says which agent`() {
+        val statuses = mapOf(first.path to status(merged = true), second.path to status(merged = true))
+        val agents = mapOf(first.path to listOf(RunningAgent("claude")))
+
+        val selection = selectCleanup(listOf(first, second, missing), statuses, agents)
+
+        assertEquals(listOf(second, missing), selection.candidates)
+        assertEquals(mapOf(first to listOf(RunningAgent("claude"))), selection.keptForRunningAgent)
+    }
+
+    @Test
+    fun `keeps a worktree whose agent only Herdr reports`() {
+        val statuses = mapOf(first.path to status(merged = true))
+        val herdrAgent = RunningAgent("claude", HerdrAgentState.BLOCKED, "w1:p1")
+
+        val selection = selectCleanup(listOf(first), statuses, mapOf(first.path to listOf(herdrAgent)))
+
+        assertEquals(emptyList(), selection.candidates)
+        assertEquals(mapOf(first to listOf(herdrAgent)), selection.keptForRunningAgent)
+    }
+
+    @Test
+    fun `selects every qualifying worktree when running agents are unknown`() {
+        val statuses = mapOf(first.path to status(merged = true))
+
+        assertEquals(listOf(first), selectCleanup(listOf(first), statuses, runningAgents = null).candidates)
+    }
+
+    @Test
     fun `selects merged clean worktrees and missing ones, never the main, locked or dirty`() {
         val main = Worktree(path = config.baseRepositoryPath, branch = "develop", isMain = true)
         val locked = Worktree(path = "/home/dev/projects/TASK-4", branch = "feature/TASK-4", isLocked = true)
@@ -62,6 +93,19 @@ class CleanUpWorktreesUseCaseTest {
         )
 
         assertEquals(listOf(first, missing), candidates)
+    }
+
+    @Test
+    fun `never selects a worktree that has not started`() {
+        val notStarted = WorktreeStatus(
+            uncommittedChanges = 0,
+            upstream = null,
+            mainBranch = Divergence(ahead = 0, behind = 2),
+            lastCommitAt = null,
+            neverCommitted = true,
+        )
+
+        assertEquals(emptyList(), selectCleanupCandidates(listOf(first), mapOf(first.path to notStarted)))
     }
 
     @Test
