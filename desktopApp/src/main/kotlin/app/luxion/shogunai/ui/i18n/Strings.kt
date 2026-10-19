@@ -59,6 +59,12 @@ interface Strings {
     val pathsSection: String
     val baseRepositoryPathLabel: String
     val baseRepositoryPathEmptyError: String
+    val baseRepositoryNotTopLevelError: String
+    fun baseRepositoryAlreadyAdded(projectName: String): String
+    val worktreesRootEmptyError: String
+    val agentCommandEmptyError: String
+    val discardRepositoryEditsTitle: String
+    fun discardRepositoryEditsMessage(path: String): String
     val worktreesRootLabel: String
     val mainBranchLabel: String
     val mainBranchPlaceholder: String

@@ -198,4 +198,5 @@ data class WorktreeActions(
     val onDeleteSelectedWorktree: () -> Unit,
     val onClearSelection: () -> Unit,
     val onEscape: () -> Unit,
+    val hasSelection: () -> Boolean,
 )

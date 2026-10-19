@@ -86,3 +86,14 @@ A result row SHALL give its title the free width of the row, truncating it only 
 #### Scenario: Short title with free space
 - **WHEN** a result has a title that fits in the row and a shortcut
 - **THEN** the title isn't truncated and the shortcut sits at the row's right edge
+
+### Requirement: The palette shows its secondary action
+When the highlighted result is a worktree, the palette SHALL show that Cmd/Ctrl+Enter copies its launch command.
+
+#### Scenario: Worktree highlighted
+- **WHEN** the user highlights a worktree in the palette
+- **THEN** a hint shows that Cmd/Ctrl+Enter copies its launch command
+
+#### Scenario: Project highlighted
+- **WHEN** the highlighted result is a project
+- **THEN** the hint isn't shown

@@ -38,6 +38,7 @@ class ProjectWorktrees(
     private val listPermits: Semaphore = Semaphore(1),
     private val sizeQueue: SizeQueue = SizeQueue(scope),
     private val clock: () -> Instant = Instant::now,
+    private val onRemoved: (String) -> Unit = {},
 ) {
     private var lastFingerprint: List<Pair<String, Long>>? = null
 
@@ -112,6 +113,8 @@ class ProjectWorktrees(
         private set
     var startingSimulators by mutableStateOf<Set<String>>(emptySet())
         private set
+    var stoppingSimulators by mutableStateOf<Set<String>>(emptySet())
+        private set
     var orphanedSimulators by mutableStateOf<List<SimulatorDevice>>(emptyList())
         private set
 
@@ -134,6 +137,8 @@ class ProjectWorktrees(
         private set
     var startingEmulators by mutableStateOf<Set<String>>(emptySet())
         private set
+    var stoppingEmulators by mutableStateOf<Set<String>>(emptySet())
+        private set
 
     var isGradleRepository by mutableStateOf(false)
         private set
@@ -152,6 +157,10 @@ class ProjectWorktrees(
     var localBranches by mutableStateOf<List<BranchOption>>(emptyList())
         private set
     var isLoadingBranches by mutableStateOf(false)
+        private set
+    var branchesError by mutableStateOf<Throwable?>(null)
+        private set
+    var removeError by mutableStateOf<Throwable?>(null)
         private set
 
     var createError by mutableStateOf<Throwable?>(null)
@@ -174,6 +183,7 @@ class ProjectWorktrees(
         get() = pendingRemoval?.worktree?.path in openInHerdrPaths
 
     fun refresh(remeasureSizes: Boolean = false) {
+        if (isCreating) return
         val generation = ++listGeneration
         isLoading = true
         lastReadAt = clock()
@@ -324,11 +334,17 @@ class ProjectWorktrees(
     }
 
     fun stopSimulator(worktree: Worktree) {
+        if (worktree.path in stoppingSimulators) return
+        stoppingSimulators = stoppingSimulators + worktree.path
         scope.launch {
-            useCases.simulator.stop(worktree.path)
-                .onSuccess { clearActionError(worktree.path) }
-                .onFailure { recordActionError(worktree.path, it) { stopSimulator(worktree) } }
-            loadSimulators(listGeneration, worktrees)
+            try {
+                useCases.simulator.stop(worktree.path)
+                    .onSuccess { clearActionError(worktree.path) }
+                    .onFailure { recordActionError(worktree.path, it) { stopSimulator(worktree) } }
+                loadSimulators(listGeneration, worktrees)
+            } finally {
+                stoppingSimulators = stoppingSimulators - worktree.path
+            }
         }
     }
 
@@ -363,11 +379,17 @@ class ProjectWorktrees(
     }
 
     fun stopEmulator(worktree: Worktree) {
+        if (worktree.path in stoppingEmulators) return
+        stoppingEmulators = stoppingEmulators + worktree.path
         scope.launch {
-            useCases.emulator.stop(worktree.path)
-                .onSuccess { clearActionError(worktree.path) }
-                .onFailure { recordActionError(worktree.path, it) { stopEmulator(worktree) } }
-            loadEmulators(listGeneration, worktrees)
+            try {
+                useCases.emulator.stop(worktree.path)
+                    .onSuccess { clearActionError(worktree.path) }
+                    .onFailure { recordActionError(worktree.path, it) { stopEmulator(worktree) } }
+                loadEmulators(listGeneration, worktrees)
+            } finally {
+                stoppingEmulators = stoppingEmulators - worktree.path
+            }
         }
     }
 
@@ -438,7 +460,7 @@ class ProjectWorktrees(
             try {
                 creation()
                     .onSuccess { worktree ->
-                        worktrees = worktrees + worktree
+                        worktrees = worktrees.filterNot { it.path == worktree.path } + worktree
                         lastCreatedWorktree = worktree
                         success = WorktreeSuccess.Created(worktree.path, worktree.skippedPostCreateCommands.isNotEmpty())
                         loadStatusOf(worktree)
@@ -448,6 +470,7 @@ class ProjectWorktrees(
                         createError = failure
                         if (failure is WorktreeError.PostCreateCommandFailed) {
                             createdWithErrorPath = failure.worktreePath
+                            isCreating = false
                             refresh()
                         }
                     }
@@ -461,8 +484,8 @@ class ProjectWorktrees(
         scope.launch {
             isLoadingBranches = true
             useCases.listLocalBranches()
-                .onSuccess { localBranches = it; dismissError() }
-                .onFailure { fail(it, ::loadLocalBranches) }
+                .onSuccess { localBranches = it; branchesError = null }
+                .onFailure { branchesError = it }
             isLoadingBranches = false
         }
     }
@@ -471,6 +494,7 @@ class ProjectWorktrees(
         runCreation(onCreated) { useCases.createFromBranch(branch) }
 
     fun remove(worktree: Worktree, branchToDelete: String?, force: Boolean = false) {
+        removeError = null
         scope.launch {
             isRemoving = true
             try {
@@ -482,12 +506,13 @@ class ProjectWorktrees(
                         sizes = sizes - worktree.path
                         dismissError()
                         pendingRemoval = null
+                        onRemoved(worktree.path)
                     }
                     .onFailure { failure ->
                         if (!force && failure.suggestsForceRetry()) {
                             pendingRemoval = PendingRemoval(worktree, deleteBranch = branchToDelete != null, requiresForce = true)
                         } else {
-                            fail(failure)
+                            removeError = failure
                         }
                     }
             } finally {
@@ -497,6 +522,7 @@ class ProjectWorktrees(
     }
 
     fun requestRemoval(worktree: Worktree) {
+        removeError = null
         pendingRemoval = PendingRemoval(worktree, deleteBranch = false)
         lookUpOpenInHerdr(listOf(worktree.path))
     }
@@ -561,7 +587,9 @@ class ProjectWorktrees(
     }
 
     fun dismissPendingRemoval() {
+        if (isRemoving) return
         pendingRemoval = null
+        removeError = null
     }
 
     suspend fun cleanUp(options: CleanupOptions): WorktreeSuccess.CleanedUp? {

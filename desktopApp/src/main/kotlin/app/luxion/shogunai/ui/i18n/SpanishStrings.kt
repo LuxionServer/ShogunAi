@@ -58,6 +58,13 @@ object SpanishStrings : Strings {
     override val pathsSection = "Rutas"
     override val baseRepositoryPathLabel = "Ruta del repositorio base"
     override val baseRepositoryPathEmptyError = "La ruta del repositorio no puede estar vacía"
+    override val baseRepositoryNotTopLevelError = "Esta carpeta no es la carpeta raíz del repositorio"
+    override fun baseRepositoryAlreadyAdded(projectName: String) = "Este repositorio ya está añadido como \"$projectName\""
+    override val worktreesRootEmptyError = "La carpeta de worktrees no puede estar vacía"
+    override val agentCommandEmptyError = "El comando del agente no puede estar vacío"
+    override val discardRepositoryEditsTitle = "¿Descartar los ajustes del repositorio?"
+    override fun discardRepositoryEditsMessage(path: String) =
+        "Tienes cambios sin guardar en los ajustes de este repositorio. Cargar $path los descarta."
     override val worktreesRootLabel = "Carpeta raíz de worktrees"
     override val mainBranchLabel = "Rama principal"
     override val mainBranchPlaceholder = "Detectada a partir del repositorio"

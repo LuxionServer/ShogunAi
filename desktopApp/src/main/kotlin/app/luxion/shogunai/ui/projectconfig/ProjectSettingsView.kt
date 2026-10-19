@@ -44,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.unit.dp
@@ -66,6 +67,7 @@ import app.luxion.shogunai.ui.components.ErrorNotice
 import app.luxion.shogunai.ui.relativeToBase
 import app.luxion.shogunai.ui.shell.LeaveGuard
 import app.luxion.shogunai.ui.theme.ShogunTheme
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private val ContentMaxWidth = 720.dp
@@ -73,6 +75,7 @@ private val IndexMinContentWidth = 1000.dp
 private val IndexWidth = 200.dp
 private val LocalFilesListMaxHeight = 160.dp
 private val PreviewMaxHeight = 280.dp
+private const val BasePathSettleDelayMillis = 400L
 private const val SaveBarAnimationMillis = 150
 private const val SectionActivationOffsetPx = 48
 
@@ -114,6 +117,8 @@ private fun SettingsForm(
     val sectionTops = remember { mutableStateMapOf<SettingsSectionId, Int>() }
     val nameFocus = remember { FocusRequester() }
     val baseRepositoryFocus = remember { FocusRequester() }
+    val worktreesRootFocus = remember { FocusRequester() }
+    val agentCommandFocus = remember { FocusRequester() }
     var saveError by remember { mutableStateOf<Throwable?>(null) }
     var newSecretFile by remember { mutableStateOf("") }
     var repositoryPreview by remember { mutableStateOf<String?>(null) }
@@ -138,7 +143,7 @@ private fun SettingsForm(
         }
     }
 
-    val save: () -> Unit = {
+    val submitNow: () -> Unit = {
         when (val outcome = viewModel.submit()) {
             is SaveOutcome.Saved -> {
                 saveError = null
@@ -151,9 +156,29 @@ private fun SettingsForm(
             is SaveOutcome.Invalid -> when (outcome.firstInvalidField) {
                 ProjectConfigField.NAME -> nameFocus.requestFocus()
                 ProjectConfigField.BASE_REPOSITORY_PATH -> baseRepositoryFocus.requestFocus()
+                ProjectConfigField.WORKTREES_ROOT -> worktreesRootFocus.requestFocus()
+                ProjectConfigField.AGENT_COMMAND -> agentCommandFocus.requestFocus()
             }
             is SaveOutcome.Failed -> saveError = outcome.error
         }
+    }
+    val save: () -> Unit = {
+        scope.launch {
+            viewModel.settleBaseRepositoryPath()
+            submitNow()
+        }
+    }
+    val settleBasePath: () -> Unit = { scope.launch { viewModel.settleBaseRepositoryPath() } }
+    LaunchedEffect(viewModel.baseRepositoryPath) {
+        delay(BasePathSettleDelayMillis)
+        viewModel.settleBaseRepositoryPath()
+    }
+    viewModel.pendingRepositoryChange?.let { path ->
+        DiscardRepositoryEditsDialog(
+            path = path,
+            onConfirm = viewModel::confirmRepositoryChange,
+            onDismiss = viewModel::cancelRepositoryChange,
+        )
     }
     val currentSave by rememberUpdatedState(save)
     val confirmPreview: () -> Unit = {
@@ -206,13 +231,13 @@ private fun SettingsForm(
                             if (viewModel.isNewProject) strings.addProjectTitle else strings.projectConfigTitle,
                             style = MaterialTheme.typography.headlineSmall,
                         )
-                        GeneralSection(viewModel, nameFocus, baseRepositoryFocus, sectionTops)
+                        GeneralSection(viewModel, nameFocus, baseRepositoryFocus, worktreesRootFocus, settleBasePath, sectionTops)
                         HorizontalDivider()
                         WorktreeFilesSection(viewModel, newSecretFile, { newSecretFile = it }, sectionTops)
                         HorizontalDivider()
                         RepositoryConfigSection(viewModel, Modifier.trackTop(SettingsSectionId.REPOSITORY_CONFIG, sectionTops))
                         HorizontalDivider()
-                        AgentSection(viewModel, sectionTops)
+                        AgentSection(viewModel, agentCommandFocus, sectionTops)
                         EmulatorSettingsSection(viewModel, Modifier.trackTop(SettingsSectionId.EMULATOR, sectionTops))
                         SimulatorSettingsSection(viewModel, Modifier.trackTop(SettingsSectionId.SIMULATOR, sectionTops))
                         saveError?.let { error ->
@@ -323,6 +348,8 @@ private fun GeneralSection(
     viewModel: ProjectConfigViewModel,
     nameFocus: FocusRequester,
     baseRepositoryFocus: FocusRequester,
+    worktreesRootFocus: FocusRequester,
+    onSettleBasePath: () -> Unit,
     tops: MutableMap<SettingsSectionId, Int>,
 ) {
     val strings = LocalStrings.current
@@ -340,6 +367,7 @@ private fun GeneralSection(
         }
         SettingsField(strings.baseRepositoryPathLabel) {
             val error = viewModel.isErrorVisible(ProjectConfigField.BASE_REPOSITORY_PATH)
+            val errorMessage = baseRepositoryErrorMessage(viewModel, strings)
             Row(verticalAlignment = Alignment.Top) {
                 OutlinedTextField(
                     value = viewModel.baseRepositoryPath,
@@ -347,25 +375,31 @@ private fun GeneralSection(
                     textStyle = ShogunTheme.typography.data,
                     singleLine = true,
                     isError = error,
-                    supportingText = { Text(if (error) strings.baseRepositoryPathEmptyError else strings.baseRepositoryPathHelp) },
-                    modifier = Modifier.weight(1f).focusRequester(baseRepositoryFocus),
+                    supportingText = { Text(if (error && errorMessage != null) errorMessage else strings.baseRepositoryPathHelp) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .focusRequester(baseRepositoryFocus)
+                        .onFocusChanged { if (!it.isFocused) onSettleBasePath() },
                 )
                 BrowseButton {
                     FilePicker.pickDirectory(viewModel.baseRepositoryPath, strings.selectFolderDialogTitle)?.let {
                         viewModel.baseRepositoryPath = it
+                        onSettleBasePath()
                     }
                 }
             }
         }
         SettingsField(strings.worktreesRootLabel) {
+            val rootError = viewModel.worktreesRoot.isBlank()
             Row(verticalAlignment = Alignment.Top) {
                 OutlinedTextField(
                     value = viewModel.worktreesRoot,
                     onValueChange = { viewModel.worktreesRoot = it },
                     textStyle = ShogunTheme.typography.data,
                     singleLine = true,
-                    supportingText = { Text(strings.worktreesRootHelp) },
-                    modifier = Modifier.weight(1f),
+                    isError = rootError,
+                    supportingText = { Text(if (rootError) strings.worktreesRootEmptyError else strings.worktreesRootHelp) },
+                    modifier = Modifier.weight(1f).focusRequester(worktreesRootFocus),
                 )
                 BrowseButton {
                     FilePicker.pickDirectory(viewModel.worktreesRoot, strings.selectFolderDialogTitle)?.let {
@@ -386,6 +420,26 @@ private fun GeneralSection(
             )
         }
     }
+}
+
+private fun baseRepositoryErrorMessage(viewModel: ProjectConfigViewModel, strings: Strings): String? = when {
+    viewModel.baseRepositoryPath.isBlank() -> strings.baseRepositoryPathEmptyError
+    viewModel.duplicateProject != null -> strings.baseRepositoryAlreadyAdded(viewModel.duplicateProject!!.name)
+    viewModel.basePathProblem == BasePathProblem.NOT_A_REPOSITORY -> strings.notAGitRepository(viewModel.baseRepositoryPath)
+    viewModel.basePathProblem == BasePathProblem.NOT_TOP_LEVEL -> strings.baseRepositoryNotTopLevelError
+    else -> null
+}
+
+@Composable
+private fun DiscardRepositoryEditsDialog(path: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    val strings = LocalStrings.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(strings.discardRepositoryEditsTitle) },
+        text = { Text(strings.discardRepositoryEditsMessage(path)) },
+        confirmButton = { PrimaryButton(onClick = onConfirm) { Text(strings.discard) } },
+        dismissButton = { NeutralTextButton(onClick = onDismiss) { Text(strings.keepEditing) } },
+    )
 }
 
 @Composable
@@ -475,7 +529,11 @@ private fun WorktreeFilesSection(
 }
 
 @Composable
-private fun AgentSection(viewModel: ProjectConfigViewModel, tops: MutableMap<SettingsSectionId, Int>) {
+private fun AgentSection(
+    viewModel: ProjectConfigViewModel,
+    agentCommandFocus: FocusRequester,
+    tops: MutableMap<SettingsSectionId, Int>,
+) {
     val strings = LocalStrings.current
     SettingsSection(strings.agentSection, Modifier.trackTop(SettingsSectionId.AGENT, tops)) {
         SettingsField(strings.agentCommandLabel) {
@@ -484,7 +542,13 @@ private fun AgentSection(viewModel: ProjectConfigViewModel, tops: MutableMap<Set
                 onValueChange = { viewModel.agentCommand = it },
                 textStyle = ShogunTheme.typography.data,
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+                isError = viewModel.agentCommand.isBlank(),
+                supportingText = if (viewModel.agentCommand.isBlank()) {
+                    { Text(strings.agentCommandEmptyError) }
+                } else {
+                    null
+                },
+                modifier = Modifier.fillMaxWidth().focusRequester(agentCommandFocus),
             )
         }
         Row(verticalAlignment = Alignment.CenterVertically) {

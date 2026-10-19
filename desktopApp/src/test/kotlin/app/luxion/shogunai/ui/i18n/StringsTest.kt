@@ -53,6 +53,20 @@ class StringsTest {
     }
 
     @Test
+    fun `the project form validation strings are translated and differ between languages`() {
+        val english = EnglishStrings
+        val spanish = SpanishStrings
+
+        assertNotEquals(english.baseRepositoryNotTopLevelError, spanish.baseRepositoryNotTopLevelError)
+        assertNotEquals(english.baseRepositoryAlreadyAdded("api"), spanish.baseRepositoryAlreadyAdded("api"))
+        assertTrue(english.baseRepositoryAlreadyAdded("api").contains("api"))
+        assertNotEquals(english.worktreesRootEmptyError, spanish.worktreesRootEmptyError)
+        assertNotEquals(english.agentCommandEmptyError, spanish.agentCommandEmptyError)
+        assertNotEquals(english.discardRepositoryEditsTitle, spanish.discardRepositoryEditsTitle)
+        assertTrue(spanish.discardRepositoryEditsMessage("/p").contains("/p"))
+    }
+
+    @Test
     fun `the worktree view strings are translated and differ between languages`() {
         val english = EnglishStrings
         val spanish = SpanishStrings

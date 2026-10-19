@@ -33,6 +33,7 @@ import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.SegmentedSelector
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.onEnterKey
+import app.luxion.shogunai.ui.components.trackTextInputFocus
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.components.ErrorNotice
@@ -164,6 +165,7 @@ private fun NewBranchFields(board: WorktreeBoard, holder: ProjectWorktrees) {
         supportingText = { Text(if (isInvalid) strings.invalidTaskId else strings.taskIdHint) },
         modifier = Modifier.fillMaxWidth()
             .focusRequester(focusRequester)
+            .trackTextInputFocus()
             .onEnterKey(enabled = board.canCreate) { board.confirmCreate() },
     )
     SegmentedSelector(
@@ -184,6 +186,11 @@ private fun ExistingBranchField(board: WorktreeBoard, holder: ProjectWorktrees) 
             InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
             Text(strings.loadingBranches)
         }
+        holder.branchesError != null -> ErrorNotice(
+            error = holder.branchesError!!,
+            onDismiss = null,
+            onRetry = holder::loadLocalBranches,
+        )
         holder.localBranches.isEmpty() -> Text(strings.noBranchesAvailable)
         else -> DropdownSelector(
             options = holder.localBranches,

@@ -58,6 +58,13 @@ object EnglishStrings : Strings {
     override val pathsSection = "Paths"
     override val baseRepositoryPathLabel = "Base repository path"
     override val baseRepositoryPathEmptyError = "The repository path can't be empty"
+    override val baseRepositoryNotTopLevelError = "This folder isn't the repository's top folder"
+    override fun baseRepositoryAlreadyAdded(projectName: String) = "This repository is already added as \"$projectName\""
+    override val worktreesRootEmptyError = "The worktrees folder can't be empty"
+    override val agentCommandEmptyError = "The agent command can't be empty"
+    override val discardRepositoryEditsTitle = "Discard repository settings?"
+    override fun discardRepositoryEditsMessage(path: String) =
+        "You have unsaved changes to this repository's settings. Loading $path discards them."
     override val worktreesRootLabel = "Worktrees root folder"
     override val mainBranchLabel = "Main branch"
     override val mainBranchPlaceholder = "Detected from the repository"

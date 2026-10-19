@@ -27,6 +27,7 @@ import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.usecase.AgentSearch
+import app.luxion.shogunai.ui.components.TextInputFocus
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.CopyWorktreeLaunchCommandUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
@@ -922,5 +923,94 @@ class WorktreeBoardTest {
         assertEquals(listOf("claude"), agentSearches.single().map { it.agentCommand })
         api.removeGate?.complete(Unit)
         runCurrent()
+    }
+
+    @Test
+    fun `a failed project is listed above the state groups and is not nothing active`() = runTest(dispatcher) {
+        api.exists = false
+        val board = board(listOf(api.project))
+        board.show(null, GroupedView.ACTIVE)
+        board.updateGrouping(Grouping.BY_STATE)
+        advanceUntilIdle()
+
+        val items = listItems(board)
+
+        assertEquals(listOf("api"), items.filterIsInstance<ListItem.GroupState>().map { it.group.project.id })
+        assertTrue(items.filterIsInstance<ListItem.GroupState>().single().showsProjectName)
+        assertFalse(board.isNothingActive)
+    }
+
+    @Test
+    fun `a failed project keeps its group in the active view grouped by project`() = runTest(dispatcher) {
+        api.exists = false
+        val board = board(listOf(api.project))
+        board.show(null, GroupedView.ACTIVE)
+        board.updateGrouping(Grouping.BY_PROJECT)
+        advanceUntilIdle()
+
+        val items = listItems(board)
+
+        assertTrue(items.any { it is ListItem.Header })
+        assertTrue(items.any { it is ListItem.GroupState })
+    }
+
+    @Test
+    fun `a collapsed group still shows its project's load failure`() = runTest(dispatcher) {
+        api.exists = false
+        val board = board()
+        board.updateGrouping(Grouping.BY_PROJECT)
+        advanceUntilIdle()
+        board.toggleCollapsed("api")
+
+        val notices = listItems(board).filterIsInstance<ListItem.GroupState>()
+
+        assertEquals(listOf("api"), notices.map { it.group.project.id })
+        assertTrue(notices.single().showsProjectName)
+    }
+
+    @Test
+    fun `removing the selected worktree clears the selection`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        val holder = board.holder("api")!!
+        val worktree = holder.worktrees.first { !it.isMain }
+        board.select(WorktreeRef("api", worktree.path))
+
+        holder.remove(worktree, branchToDelete = null)
+        advanceUntilIdle()
+
+        assertNull(board.selected)
+    }
+
+    @Test
+    fun `removing another worktree keeps the selection`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        val apiHolder = board.holder("api")!!
+        val selection = WorktreeRef("main-repo", "/home/dev/projects/TASK-123")
+        board.select(selection)
+
+        apiHolder.remove(apiHolder.worktrees.first { !it.isMain }, branchToDelete = null)
+        advanceUntilIdle()
+
+        assertEquals(selection, board.selected)
+    }
+
+    @Test
+    fun `deleting the selected worktree does nothing while a text field has focus`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.select(WorktreeRef("main-repo", "/home/dev/projects/TASK-123"))
+
+        TextInputFocus.enter()
+        try {
+            board.deleteSelectedWorktree()
+            assertNull(board.pendingRemoval)
+        } finally {
+            TextInputFocus.leave()
+        }
+
+        board.deleteSelectedWorktree()
+        assertEquals("/home/dev/projects/TASK-123", board.pendingRemoval?.worktreePendingRemoval?.path)
     }
 }

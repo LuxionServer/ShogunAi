@@ -31,6 +31,7 @@ import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.DerivedDataSource
 import app.luxion.shogunai.domain.model.BranchOption
+import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.DaemonOwner
 import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.DerivedDataFolder
@@ -68,6 +69,12 @@ import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
 import app.luxion.shogunai.domain.usecase.StopGradleDaemonsUseCase
 import app.luxion.shogunai.domain.FakeShellPreferenceRepository
 import app.luxion.shogunai.domain.model.Project
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.runComposeUiTest
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -249,6 +256,9 @@ class ProjectWorktreesTest {
             gradle = gradleUseCases(executor, source, provider = provider, buildCacheEnabled = buildCacheEnabled),
         )
     }
+
+    private fun existingBase() =
+        FakeFileManager(existing = listOf(config.baseRepositoryPath) + config.secretFiles.map { config.baseSecretPath(it) })
 
     private val idle = DaemonState.Idle(Instant.parse("2026-10-16T10:50:00Z"))
 
@@ -534,15 +544,15 @@ class ProjectWorktreesTest {
     fun `dismissError clears the error message`() = runTest(dispatcher) {
         val viewModel = projectWorktrees(
             useCases { command ->
-                when (command) {
-                    listCommand -> success(command, porcelainOutput)
-                    removeCommand -> failure(command, stderr = "permission denied")
+                when {
+                    command.take(3) == repairCommandPrefix -> failure(command, exitCode = 128, stderr = "permission denied")
+                    command == listCommand -> success(command, porcelainOutput)
                     else -> success(command)
                 }
             },
         )
         advanceUntilIdle()
-        viewModel.remove(worktree, branchToDelete = null)
+        viewModel.repairAfterMove(previousWorktreesRoot = "/home/dev/old-projects")
         advanceUntilIdle()
         assertIs<WorktreeError>(viewModel.error)
 
@@ -577,7 +587,7 @@ class ProjectWorktreesTest {
     }
 
     @Test
-    fun `sets error when remove fails for a reason unrelated to force`() = runTest(dispatcher) {
+    fun `a removal failing for a reason unrelated to force stays in the dialog with its error`() = runTest(dispatcher) {
         val viewModel = projectWorktrees(
             useCases { command ->
                 when (command) {
@@ -588,13 +598,120 @@ class ProjectWorktreesTest {
             },
         )
         advanceUntilIdle()
+        viewModel.requestRemoval(worktree)
 
-        viewModel.remove(worktree, branchToDelete = null)
+        viewModel.confirmPendingRemoval()
         advanceUntilIdle()
 
-        assertNull(viewModel.worktreePendingRemoval)
-        val error = assertIs<WorktreeError.GitCommandFailed>(viewModel.error)
+        assertEquals(worktree, viewModel.worktreePendingRemoval)
+        val error = assertIs<WorktreeError.GitCommandFailed>(viewModel.removeError)
         assertTrue(error.errorOutput.contains("is not a working tree"))
+        assertNull(viewModel.error)
+        assertTrue(viewModel.worktrees.any { it.path == worktreePath })
+    }
+
+    @Test
+    fun `dismissing the removal dialog is ignored while removing and clears the error afterwards`() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val viewModel = projectWorktrees(
+            useCasesWith(
+                object : ShellCommandExecutor {
+                    override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+                        if (command != removeCommand) return listingResponder()(command)
+                        gate.await()
+                        return failure(command, stderr = "fatal: locked")
+                    }
+                },
+            ),
+        )
+        advanceUntilIdle()
+        viewModel.requestRemoval(worktree)
+        viewModel.confirmPendingRemoval()
+        runCurrent()
+
+        viewModel.dismissPendingRemoval()
+
+        assertTrue(viewModel.isRemoving)
+        assertEquals(worktree, viewModel.worktreePendingRemoval)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertTrue(viewModel.removeError != null)
+        viewModel.dismissPendingRemoval()
+        assertNull(viewModel.worktreePendingRemoval)
+        assertNull(viewModel.removeError)
+    }
+
+    @Test
+    fun `a refresh during a slow creation is skipped and the created worktree stays once`() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val created = "/home/dev/projects/TASK-456"
+        val executed = mutableListOf<List<String>>()
+        val viewModel = projectWorktrees(
+            useCasesWith(
+                object : ShellCommandExecutor {
+                    override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+                        executed += command
+                        if (command.take(3) == listOf("git", "worktree", "add")) gate.await()
+                        return if (command == listCommand) success(command, porcelainOutput) else success(command)
+                    }
+                },
+                createFiles = existingBase(),
+            ),
+        )
+        advanceUntilIdle()
+        val listingsBefore = executed.count { it == listCommand }
+
+        viewModel.create("TASK-456", BranchType.FEATURE)
+        runCurrent()
+        viewModel.refresh()
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(listingsBefore, executed.count { it == listCommand })
+        assertEquals(1, viewModel.worktrees.count { it.path == created })
+    }
+
+    @Test
+    fun `a created worktree already listed by a refresh is not duplicated`() = runTest(dispatcher) {
+        val created = "/home/dev/projects/TASK-456"
+        val listing = """
+            $porcelainOutput
+
+            worktree $created
+            HEAD abc123
+            branch refs/heads/feature/TASK-456
+        """.trimIndent()
+        val viewModel = projectWorktrees(
+            useCasesWith(
+                FakeShellCommandExecutor { command -> if (command == listCommand) success(command, listing) else success(command) },
+                createFiles = existingBase(),
+            ),
+        )
+        advanceUntilIdle()
+
+        viewModel.create("TASK-456", BranchType.FEATURE)
+        advanceUntilIdle()
+
+        assertEquals(1, viewModel.worktrees.count { it.path == created })
+    }
+
+    @Test
+    fun `a failure listing branches is kept apart from the view error and retried`() = runTest(dispatcher) {
+        var failing = true
+        val viewModel = projectWorktrees(useCases { command ->
+            if (command.getOrNull(1) == "for-each-ref" && failing) failure(command, stderr = "fatal: not a git repository") else listingResponder()(command)
+        })
+        advanceUntilIdle()
+
+        viewModel.loadLocalBranches()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.branchesError != null)
+        assertNull(viewModel.error)
+        failing = false
+        viewModel.loadLocalBranches()
+        advanceUntilIdle()
+        assertNull(viewModel.branchesError)
     }
 
     @Test
@@ -1712,6 +1829,47 @@ class ProjectWorktreesTest {
     }
 
     @Test
+    fun `stopping an emulator twice sends one stop and shows progress meanwhile`() = runTest(dispatcher) {
+        val emulators = RecordingEmulators(initial = mapOf(worktreePath to WorktreeEmulator("emulator-5554", EmulatorState.RUNNING)))
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(emulator = emulators.useCases()))
+        advanceUntilIdle()
+
+        viewModel.stopEmulator(worktree)
+        viewModel.stopEmulator(worktree)
+        assertTrue(worktreePath in viewModel.stoppingEmulators)
+        advanceUntilIdle()
+
+        assertEquals(listOf(worktreePath), emulators.stopped)
+        assertTrue(viewModel.stoppingEmulators.isEmpty())
+    }
+
+    @Test
+    fun `stopping a simulator twice sends one stop and shows progress meanwhile`() = runTest(dispatcher) {
+        val simulators = RecordingSimulators()
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(simulator = simulators.useCases()))
+        advanceUntilIdle()
+
+        viewModel.stopSimulator(worktree)
+        viewModel.stopSimulator(worktree)
+        assertTrue(worktreePath in viewModel.stoppingSimulators)
+        advanceUntilIdle()
+
+        assertEquals(listOf(worktreePath), simulators.stopped)
+        assertTrue(viewModel.stoppingSimulators.isEmpty())
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `copying a path from the detail confirms it`() = runComposeUiTest {
+        val holder = projectWorktrees(useCases(listingResponder()))
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder) } }
+
+        onNodeWithContentDescription("Copy path").performClick()
+
+        onNodeWithContentDescription("Copied").assertIsDisplayed()
+    }
+
+    @Test
     fun `cleanup stops the running emulators of removed worktrees`() = runTest(dispatcher) {
         val emulators = RecordingEmulators(initial = mapOf(worktreePath to WorktreeEmulator("emulator-5556", EmulatorState.RUNNING)))
         val board = board(useCases(mergedResponder()).copy(emulator = emulators.useCases()))
@@ -2212,10 +2370,10 @@ class ProjectWorktreesTest {
     @Test
     fun `a success on a worktree keeps the view's error`() = runTest(dispatcher) {
         val viewModel = projectWorktrees(useCases { command ->
-            if (command.getOrNull(1) == "for-each-ref") failure(command, stderr = "fatal: not a git repository") else listingResponder()(command)
+            if (command.take(3) == repairCommandPrefix) failure(command, stderr = "fatal: not a git repository") else listingResponder()(command)
         })
         advanceUntilIdle()
-        viewModel.loadLocalBranches()
+        viewModel.repairAfterMove(previousWorktreesRoot = "/home/dev/old-projects")
         advanceUntilIdle()
         val failure = viewModel.error
         assertTrue(failure != null)
@@ -2224,26 +2382,6 @@ class ProjectWorktreesTest {
         advanceUntilIdle()
 
         assertEquals(failure, viewModel.error)
-    }
-
-    @Test
-    fun `retrying the view's error reloads the branches and clears it on success`() = runTest(dispatcher) {
-        var failing = true
-        val viewModel = projectWorktrees(useCases { command ->
-            if (command.getOrNull(1) == "for-each-ref" && failing) failure(command, stderr = "fatal: not a git repository") else listingResponder()(command)
-        })
-        advanceUntilIdle()
-        viewModel.loadLocalBranches()
-        advanceUntilIdle()
-        assertTrue(viewModel.error != null)
-        assertTrue(viewModel.errorRetry != null)
-
-        failing = false
-        viewModel.retryError()
-        advanceUntilIdle()
-
-        assertNull(viewModel.error)
-        assertNull(viewModel.errorRetry)
     }
 
     @Test

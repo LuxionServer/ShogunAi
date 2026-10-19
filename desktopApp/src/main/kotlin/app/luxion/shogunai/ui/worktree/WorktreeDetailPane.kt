@@ -12,10 +12,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -47,7 +53,10 @@ import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.components.ErrorNotice
 import app.luxion.shogunai.ui.theme.ShogunTheme
 import app.luxion.shogunai.ui.theme.Status
+import kotlinx.coroutines.delay
 import java.time.Instant
+
+private const val PATH_COPIED_FEEDBACK_MS = 2000L
 
 @Composable
 fun WorktreeDetailPane(
@@ -97,10 +106,20 @@ fun WorktreeDetailPane(
                 SelectionContainer(Modifier.weight(1f)) {
                     Text(worktree.path, style = ShogunTheme.typography.dataSmall, color = valueColor)
                 }
+                var pathCopied by remember(worktree.path) { mutableStateOf(false) }
+                LaunchedEffect(pathCopied) {
+                    if (pathCopied) {
+                        delay(PATH_COPIED_FEEDBACK_MS)
+                        pathCopied = false
+                    }
+                }
                 IconAction(
-                    icon = Icons.Default.ContentCopy,
-                    label = strings.copyPath,
-                    onClick = { clipboard.setText(AnnotatedString(worktree.path)) },
+                    icon = if (pathCopied) Icons.Default.Check else Icons.Default.ContentCopy,
+                    label = if (pathCopied) strings.copied else strings.copyPath,
+                    onClick = {
+                        clipboard.setText(AnnotatedString(worktree.path))
+                        pathCopied = true
+                    },
                 )
             }
         }
@@ -139,9 +158,11 @@ fun WorktreeDetailPane(
             emulator = viewModel.emulators[worktree.path],
             showEmulator = viewModel.isEmulatorRepository && !worktree.isPrunable,
             isStartingEmulator = worktree.path in viewModel.startingEmulators,
+            isStoppingEmulator = worktree.path in viewModel.stoppingEmulators,
             simulator = viewModel.simulators[worktree.path],
             showSimulator = viewModel.isSimulatorRepository && !worktree.isPrunable,
             isStartingSimulator = worktree.path in viewModel.startingSimulators,
+            isStoppingSimulator = worktree.path in viewModel.stoppingSimulators,
             onStartSimulator = { viewModel.startSimulator(worktree) },
             onStopSimulator = { viewModel.stopSimulator(worktree) },
             onStartEmulator = { viewModel.startEmulator(worktree) },
@@ -199,9 +220,11 @@ private fun ColumnScope.DevicesSection(
     emulator: WorktreeEmulator?,
     showEmulator: Boolean,
     isStartingEmulator: Boolean,
+    isStoppingEmulator: Boolean,
     simulator: WorktreeSimulator?,
     showSimulator: Boolean,
     isStartingSimulator: Boolean,
+    isStoppingSimulator: Boolean,
     onStartSimulator: () -> Unit,
     onStopSimulator: () -> Unit,
     onStartEmulator: () -> Unit,
@@ -212,10 +235,10 @@ private fun ColumnScope.DevicesSection(
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         SectionTitle(strings.devicesTitle)
         if (showEmulator) {
-            EmulatorValue(emulator, isStartingEmulator, strings, onStartEmulator, onStopEmulator)
+            EmulatorValue(emulator, isStartingEmulator, isStoppingEmulator, strings, onStartEmulator, onStopEmulator)
         }
         if (showSimulator) {
-            SimulatorValue(simulator, isStartingSimulator, strings, onStartSimulator, onStopSimulator)
+            SimulatorValue(simulator, isStartingSimulator, isStoppingSimulator, strings, onStartSimulator, onStopSimulator)
         }
     }
 }
@@ -249,6 +272,7 @@ private fun ColumnScope.MutedText(text: String) {
 private fun ColumnScope.EmulatorValue(
     emulator: WorktreeEmulator?,
     isStarting: Boolean,
+    isStopping: Boolean,
     strings: Strings,
     onStart: () -> Unit,
     onStop: () -> Unit,
@@ -258,7 +282,7 @@ private fun ColumnScope.EmulatorValue(
         Text(strings.emulatorLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         emulator?.serial?.let { Text(it, style = ShogunTheme.typography.dataSmall) }
         StatusChip(state.status(), emulatorStateLabel(state, strings))
-        if (isStarting) {
+        if (isStarting || isStopping) {
             InlineProgress(size = ProgressSize.Small)
         } else if (state == EmulatorState.STOPPED) {
             NeutralTextButton(onClick = onStart) { Text(strings.startEmulator, style = MaterialTheme.typography.bodySmall) }
@@ -272,6 +296,7 @@ private fun ColumnScope.EmulatorValue(
 private fun ColumnScope.SimulatorValue(
     simulator: WorktreeSimulator?,
     isStarting: Boolean,
+    isStopping: Boolean,
     strings: Strings,
     onStart: () -> Unit,
     onStop: () -> Unit,
@@ -281,7 +306,7 @@ private fun ColumnScope.SimulatorValue(
         Text(strings.simulatorLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         simulator?.name?.let { Text(it, style = ShogunTheme.typography.dataSmall) }
         StatusChip(state.status(), simulatorStateLabel(state, strings))
-        if (isStarting) {
+        if (isStarting || isStopping) {
             InlineProgress(size = ProgressSize.Small)
         } else if (state == SimulatorState.SHUTDOWN) {
             NeutralTextButton(onClick = onStart) { Text(strings.startSimulator, style = MaterialTheme.typography.bodySmall) }

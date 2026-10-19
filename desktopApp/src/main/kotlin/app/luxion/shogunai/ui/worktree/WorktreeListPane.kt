@@ -111,7 +111,9 @@ fun WorktreeListPane(
                         WorktreeRowFor(board, entry.project, entry.holder, entry.worktree, projectName = entry.project.name)
                         HorizontalDivider()
                     }
-                    is ListItem.GroupState -> item(key = item.key) { GroupState(item.group.holder, item.group.project.id) }
+                    is ListItem.GroupState -> item(key = item.key) {
+                        GroupState(item.group.holder, item.group.project.id, projectName = item.group.project.name.takeIf { item.showsProjectName })
+                    }
                     is ListItem.WorktreeItem -> item(key = item.key) {
                         WorktreeRowFor(board, item.group.project, item.group.holder, item.worktree, projectName = null)
                         HorizontalDivider()
@@ -146,7 +148,7 @@ internal fun scrollDeltaToReveal(itemOffset: Int, itemSize: Int, headerHeight: I
 
 private fun Any.isHeaderKey(): Boolean = this is String && (startsWith("header:") || startsWith("state-header:"))
 
-private sealed interface ListItem {
+internal sealed interface ListItem {
     val key: String
 
     data class Header(val group: WorktreeGroup) : ListItem {
@@ -162,7 +164,7 @@ private sealed interface ListItem {
         override val key = "state-row:${entry.project.id}:${entry.worktree.path}"
     }
 
-    data class GroupState(val group: WorktreeGroup) : ListItem {
+    data class GroupState(val group: WorktreeGroup, val showsProjectName: Boolean = false) : ListItem {
         override val key = "state:${group.project.id}"
     }
 
@@ -172,25 +174,37 @@ private sealed interface ListItem {
     }
 }
 
-private fun listItems(board: WorktreeBoard): List<ListItem> =
+internal fun listItems(board: WorktreeBoard): List<ListItem> =
     if (board.isGroupedByState) stateListItems(board) else projectListItems(board)
 
-private fun stateListItems(board: WorktreeBoard): List<ListItem> = board.stateGroups.flatMap { group ->
-    listOf<ListItem>(ListItem.StateHeader(group)) + group.items.map { ListItem.StateRow(group, it) }
+private fun stateListItems(board: WorktreeBoard): List<ListItem> {
+    val notices = board.shownProjects.mapNotNull { project ->
+        val holder = board.holder(project.id)?.takeIf { it.hasNotice } ?: return@mapNotNull null
+        ListItem.GroupState(WorktreeGroup(project, holder, emptyList(), collapsed = false), showsProjectName = true)
+    }
+    return notices + board.stateGroups.flatMap { group ->
+        listOf<ListItem>(ListItem.StateHeader(group)) + group.items.map { ListItem.StateRow(group, it) }
+    }
 }
 
 private fun projectListItems(board: WorktreeBoard): List<ListItem> = board.groups.flatMap { group ->
     buildList {
         if (!board.isFiltered) add(ListItem.Header(group))
-        if (group.collapsed) return@buildList
         val holder = group.holder
+        if (group.collapsed) {
+            if (holder.hasNotice) add(ListItem.GroupState(group, showsProjectName = true))
+            return@buildList
+        }
         if (holder.hasGroupState) add(ListItem.GroupState(group))
         group.worktrees.forEach { add(ListItem.WorktreeItem(group, it)) }
     }
 }
 
+private val ProjectWorktrees.hasNotice: Boolean
+    get() = loadState is ProjectLoadState.Failed || error != null || cleanupIssues != null || herdrCloseFailures.isNotEmpty()
+
 private val ProjectWorktrees.hasGroupState: Boolean
-    get() = loadState !is ProjectLoadState.Loaded || error != null || cleanupIssues != null || herdrCloseFailures.isNotEmpty()
+    get() = loadState !is ProjectLoadState.Loaded || hasNotice
 
 @Composable
 private fun ProjectGroupHeader(
@@ -251,9 +265,16 @@ private fun ProjectGroupHeader(
 }
 
 @Composable
-private fun GroupState(holder: ProjectWorktrees, projectId: String) {
+private fun GroupState(holder: ProjectWorktrees, projectId: String, projectName: String? = null) {
     val strings = LocalStrings.current
     val noticeModifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm)
+    if (projectName != null) {
+        Text(
+            projectName,
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.padding(start = Spacing.md, end = Spacing.md, top = Spacing.sm),
+        )
+    }
     when (val state = holder.loadState) {
         ProjectLoadState.Loading -> Row(
             modifier = noticeModifier,
