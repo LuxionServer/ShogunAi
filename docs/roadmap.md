@@ -44,10 +44,6 @@ Follow-ups left out of those changes:
 
 A first-run walkthrough built on the review done before merging the worktree layer: the app creates a throwaway sample repository with worktrees in every state, and opens an agent with a prepared prompt that walks the user through each feature (status, cleanup, provisioning, the CLI, hooks, environment and providers), one step at a time.
 
-### Command-line output for scripts
-
-- `shogun status --json` exists; the other `shogun` commands get a machine-readable output (`--json`) when a script needs it.
-
 ### Android, KMP and JVM provisioning
 
 Provisioning for the stacks where a fresh worktree is furthest from building:
