@@ -18,11 +18,11 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -263,7 +263,7 @@ private fun highlight(text: String, query: String): AnnotatedString {
 
 private val PaletteItem.icon: ImageVector
     get() = when (kind) {
-        PaletteKind.VIEW -> machineResource?.icon ?: Icons.Default.ViewList
+        PaletteKind.VIEW -> machineResource?.icon ?: Icons.AutoMirrored.Filled.ViewList
         PaletteKind.PROJECT -> Icons.Default.Folder
         PaletteKind.WORKTREE -> Icons.Default.AccountTree
         PaletteKind.ACTION -> Icons.Default.Bolt

@@ -23,8 +23,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.LocalClipboard
+import app.luxion.shogunai.ui.components.copyText
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.ui.i18n.ErrorFix
 import app.luxion.shogunai.ui.i18n.LocalStrings
@@ -90,7 +92,8 @@ private fun fixActionFor(fix: ErrorFix?, projectId: String?): Pair<String, () ->
 @Composable
 private fun TechnicalDetailsDisclosure(details: TechnicalDetails) {
     val strings = LocalStrings.current
-    val clipboard = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
     var expanded by remember(details) { mutableStateOf(false) }
     val text = details.asPlainText()
     Column {
@@ -106,7 +109,7 @@ private fun TechnicalDetailsDisclosure(details: TechnicalDetails) {
                 IconAction(
                     icon = Icons.Default.ContentCopy,
                     label = strings.copyTechnicalDetails,
-                    onClick = { clipboard.setText(AnnotatedString(text)) },
+                    onClick = { scope.launch { clipboard.copyText(text) } },
                 )
             }
         }

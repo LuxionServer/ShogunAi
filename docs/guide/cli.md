@@ -21,6 +21,7 @@ Output is plain English text; scripts should read `new`'s single line and `statu
 | `0` | Success. |
 | `1` | The operation failed; the reason is on standard error. |
 | `2` | Wrong usage: unknown command or option, missing argument, or hook input that isn't the expected JSON. |
+| `3` | `provision --check` found differences between the worktree and the base repository. |
 
 ## Worktrees
 

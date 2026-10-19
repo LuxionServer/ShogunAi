@@ -157,7 +157,7 @@ class ProjectConfigViewModel(
             val offset = worktreesRootOffset
             val followsBase = offset != null &&
                 worktreesRoot.isSameDirectoryAs(applyWorktreesRootOffset(lastNonBlankBaseRepositoryPath, offset))
-            if (followsBase) worktreesRoot = applyWorktreesRootOffset(value, offset!!)
+            if (followsBase) worktreesRoot = applyWorktreesRootOffset(value, offset)
             lastNonBlankBaseRepositoryPath = value
         }
 

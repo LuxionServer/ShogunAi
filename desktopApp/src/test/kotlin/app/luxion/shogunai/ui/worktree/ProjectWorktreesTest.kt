@@ -134,7 +134,7 @@ class ProjectWorktreesTest {
     }
 
     private fun projectWorktrees(useCases: WorktreeUseCases): ProjectWorktrees =
-        ProjectWorktrees(useCases, CoroutineScope(SupervisorJob() + dispatcher)).also { it.refresh() }
+        ProjectWorktrees(useCases, CoroutineScope(SupervisorJob() + dispatcher), ioDispatcher = dispatcher).also { it.refresh() }
 
     private val project = Project(id = "main-repo", name = "main-repo", config = config)
 
@@ -142,6 +142,7 @@ class ProjectWorktreesTest {
         useCasesFor = { useCases },
         detectAgents = { searches -> useCases.detectAgents(searches.flatMap { it.worktrees }) },
         preferences = FakeShellPreferenceRepository(),
+        ioDispatcher = dispatcher,
     ).also {
         it.syncCatalog(listOf(project))
         it.show(null)
@@ -392,6 +393,7 @@ class ProjectWorktreesTest {
             detectAgents = { searches -> useCases.detectAgents(searches.flatMap { it.worktrees }) },
             preferences = FakeShellPreferenceRepository(),
             approval = approval,
+            ioDispatcher = dispatcher,
         ).also {
             it.syncCatalog(listOf(project))
             it.show(null)

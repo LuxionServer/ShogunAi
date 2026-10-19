@@ -97,6 +97,9 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel, onOpenPrefer
     }
     val windowInfo = LocalWindowInfo.current
     LaunchedEffect(windowInfo) {
+        snapshotFlow { windowInfo.isWindowFocused }.collect(board::setWindowActive)
+    }
+    LaunchedEffect(windowInfo) {
         snapshotFlow { windowInfo.isWindowFocused }
             .drop(1)
             .filter { it }

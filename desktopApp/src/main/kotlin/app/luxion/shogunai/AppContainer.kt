@@ -56,6 +56,7 @@ import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
 import app.luxion.shogunai.domain.usecase.ResolveRepositoryUseCase
 import app.luxion.shogunai.ui.projectconfig.RepositoryInspection
 import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
+import app.luxion.shogunai.domain.usecase.WorktreeEnvironmentCache
 import app.luxion.shogunai.domain.usecase.StartWorktreeEmulatorUseCase
 import app.luxion.shogunai.domain.usecase.StartWorktreeSimulatorUseCase
 import app.luxion.shogunai.domain.usecase.StopGradleDaemonsUseCase
@@ -83,6 +84,8 @@ import app.luxion.shogunai.infrastructure.RepositoryProvisioningFiles
 import app.luxion.shogunai.infrastructure.SimctlAppleSimulators
 import app.luxion.shogunai.infrastructure.SocketPortProbe
 import app.luxion.shogunai.infrastructure.defaultGradleUserHome
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class AppContainer {
     val projectRepository: ProjectRepository = JsonProjectRepository()
@@ -113,6 +116,7 @@ class AppContainer {
         userHome = System.getProperty("user.home"),
         isMac = derivedDataSource.isSupported(),
     )
+    private val environmentCache = WorktreeEnvironmentCache()
     private val resolveEnvironment = resolverWith(contributions)
     private val startSimulator = StartWorktreeSimulatorUseCase(repositoryProvisioningSource, appleSimulators, { repository, worktree, requested ->
         resolverWith(contributions.requesting(requested))(repository, worktree)
@@ -127,6 +131,7 @@ class AppContainer {
         environmentStateStore,
         portProbe,
         factory,
+        environmentCache,
     )
 
     private fun simulatorSettingsFor(repositoryPath: String): SimulatorSettings =
@@ -231,13 +236,16 @@ class AppContainer {
         detectAgents = { worktrees -> detectRunningAgents(config, worktrees) },
         measureSize = MeasureWorktreeSizeUseCase(fileManager),
         readFingerprint = ReadGitMetadataFingerprintUseCase(config, fileManager),
+        invalidateEnvironments = environmentCache::invalidate,
         readPorts = { worktree ->
             resolveEnvironment(config.baseRepositoryPath, worktree.path, reserve = false).map { it.ports }
         },
         emulator = EmulatorUseCases(
             declared = {
-                runCatching { repositoryProvisioningSource.read(config.baseRepositoryPath).providers.emulator != null }
-                    .getOrDefault(false)
+                withContext(Dispatchers.IO) {
+                    runCatching { repositoryProvisioningSource.read(config.baseRepositoryPath).providers.emulator != null }
+                        .getOrDefault(false)
+                }
             },
             readStates = { worktrees -> readEmulatorStates(config, worktrees) },
             start = { worktreePath -> startEmulator(config, worktreePath) },
@@ -245,7 +253,7 @@ class AppContainer {
             stopSerials = { serials -> runCatching { stopEmulator.stopSerials(config, serials) } },
         ),
         simulator = SimulatorUseCases(
-            declared = { simulatorSetup.isAvailable(config.baseRepositoryPath) },
+            declared = { withContext(Dispatchers.IO) { simulatorSetup.isAvailable(config.baseRepositoryPath) } },
             readStates = { worktrees -> readSimulatorStates(config, worktrees) },
             start = { worktreePath -> startSimulator(config, worktreePath) },
             stop = { worktreePath -> stopSimulator(config, worktreePath) },
@@ -253,21 +261,27 @@ class AppContainer {
             delete = { udids -> deleteSimulators(udids) },
         ),
         herdr = HerdrUseCases(
-            worktreesRoot = { runCatching { herdrConfig.worktreesRoot() }.getOrNull() },
+            worktreesRoot = { withContext(Dispatchers.IO) { runCatching { herdrConfig.worktreesRoot() }.getOrNull() } },
             open = OpenWorktreeInHerdrUseCase(config, herdrClient, resolveEnvironment)::invoke,
             openWorkspaces = CloseHerdrWorkspacesUseCase(config, herdrClient)::openWorkspaces,
         ),
         gradle = GradleUseCases(
             provider = {
-                runCatching { repositoryProvisioningSource.read(config.baseRepositoryPath).providers.gradle }.getOrNull()
+                withContext(Dispatchers.IO) {
+                    runCatching { repositoryProvisioningSource.read(config.baseRepositoryPath).providers.gradle }.getOrNull()
+                }
             },
             listDaemons = ListGradleDaemonsUseCase(gradleDaemonSource, fileManager),
             stopDaemons = StopGradleDaemonsUseCase(gradleDaemonSource, shellCommandExecutor),
-            isBuildCacheEnabled = { CheckGradleBuildCacheUseCase(fileManager, gradleUserHome)(config.baseRepositoryPath) },
+            isBuildCacheEnabled = {
+                withContext(Dispatchers.IO) { CheckGradleBuildCacheUseCase(fileManager, gradleUserHome)(config.baseRepositoryPath) }
+            },
         ),
         xcode = XcodeUseCases(
             provider = {
-                runCatching { repositoryProvisioningSource.read(config.baseRepositoryPath).providers.xcode }.getOrNull()
+                withContext(Dispatchers.IO) {
+                    runCatching { repositoryProvisioningSource.read(config.baseRepositoryPath).providers.xcode }.getOrNull()
+                }
             },
             supported = derivedDataSource::isSupported,
             list = ListDerivedDataUseCase(derivedDataSource),
@@ -290,6 +304,7 @@ data class WorktreeUseCases(
     val detectAgents: suspend (List<Worktree>) -> Result<Map<String, List<RunningAgent>>>,
     val measureSize: MeasureWorktreeSizeUseCase,
     val readFingerprint: ReadGitMetadataFingerprintUseCase,
+    val invalidateEnvironments: () -> Unit = {},
     val readPorts: suspend (Worktree) -> Result<Map<String, Int>>,
     val emulator: EmulatorUseCases,
     val simulator: SimulatorUseCases,
@@ -316,7 +331,7 @@ class MachineUseCases(
 )
 
 data class SimulatorUseCases(
-    val declared: () -> Boolean,
+    val declared: suspend () -> Boolean,
     val readStates: suspend (List<Worktree>) -> Result<Map<String, WorktreeSimulator>>,
     val start: suspend (String) -> Result<WorktreeSimulator>,
     val stop: suspend (String) -> Result<WorktreeSimulator?>,
@@ -336,7 +351,7 @@ data class SimulatorUseCases(
 }
 
 data class HerdrUseCases(
-    val worktreesRoot: () -> String?,
+    val worktreesRoot: suspend () -> String?,
     val open: suspend (Worktree) -> Result<HerdrOpening>,
     val openWorkspaces: suspend (List<String>) -> Map<String, String> = { emptyMap() },
 ) {
@@ -371,7 +386,7 @@ interface SimulatorSetup {
 }
 
 data class EmulatorUseCases(
-    val declared: () -> Boolean,
+    val declared: suspend () -> Boolean,
     val readStates: suspend (List<Worktree>) -> Result<Map<String, WorktreeEmulator>>,
     val start: suspend (String) -> Result<WorktreeEmulator>,
     val stop: suspend (String) -> Result<WorktreeEmulator?>,
@@ -389,15 +404,15 @@ data class EmulatorUseCases(
 }
 
 data class GradleUseCases(
-    val provider: () -> GradleProvider?,
+    val provider: suspend () -> GradleProvider?,
     val listDaemons: ListGradleDaemonsUseCase,
     val stopDaemons: StopGradleDaemonsUseCase,
-    val isBuildCacheEnabled: () -> Boolean,
+    val isBuildCacheEnabled: suspend () -> Boolean,
 )
 
 data class XcodeUseCases(
-    val provider: () -> XcodeProvider?,
-    val supported: () -> Boolean,
+    val provider: suspend () -> XcodeProvider?,
+    val supported: suspend () -> Boolean,
     val list: ListDerivedDataUseCase,
     val deleteOrphans: DeleteOrphanedDerivedDataUseCase,
 )

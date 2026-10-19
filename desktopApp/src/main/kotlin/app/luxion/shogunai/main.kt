@@ -10,7 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.res.painterResource
+import app.luxion.shogunai.ui.components.rememberAppIconPainter
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -102,7 +102,7 @@ private fun openWindow() = application {
         onCloseRequest = requestQuit,
         state = windowState,
         title = "ShogunAi",
-        icon = painterResource("icons/icon.png"),
+        icon = rememberAppIconPainter(),
         onPreviewKeyEvent = { event ->
             if (event.key == Key.Escape) escapeWorktreeView.value?.invoke()
             false

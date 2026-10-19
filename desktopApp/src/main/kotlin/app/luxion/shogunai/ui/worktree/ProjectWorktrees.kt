@@ -25,11 +25,14 @@ import app.luxion.shogunai.domain.usecase.CleanupFailure
 import app.luxion.shogunai.domain.usecase.CleanupReport
 import app.luxion.shogunai.domain.usecase.idleDaemonsOfRemovedWorktrees
 import app.luxion.shogunai.domain.usecase.selectCleanupCandidates
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import java.time.Instant
 
 class ProjectWorktrees(
@@ -39,6 +42,7 @@ class ProjectWorktrees(
     private val sizeQueue: SizeQueue = SizeQueue(scope),
     private val clock: () -> Instant = Instant::now,
     private val onRemoved: (String) -> Unit = {},
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private var lastFingerprint: List<Pair<String, Long>>? = null
 
@@ -190,6 +194,7 @@ class ProjectWorktrees(
         scope.launch {
             val result = listPermits.withPermit {
                 lastFingerprint = useCases.readFingerprint().getOrNull() ?: lastFingerprint
+                useCases.invalidateEnvironments()
                 useCases.list()
             }
             applyListResult(generation, result, remeasureSizes)
@@ -269,7 +274,7 @@ class ProjectWorktrees(
     private fun loadOverview(generation: Int, listed: List<Worktree>, remeasureSizes: Boolean) {
         val listedPaths = listed.map { it.path }.toSet()
         sizes = sizes.filterKeys { it in listedPaths }
-        herdrWorktreesRoot = useCases.herdr.worktreesRoot()
+        scope.launch { herdrWorktreesRoot = useCases.herdr.worktreesRoot() }
         scope.launch {
             val detected = useCases.detectAgents(listed).getOrNull()
             if (generation == listGeneration) agents = detected
@@ -293,13 +298,13 @@ class ProjectWorktrees(
     }
 
     private fun loadSimulatorSection(generation: Int, listed: List<Worktree>) {
-        isSimulatorRepository = useCases.simulator.declared()
-        if (!isSimulatorRepository) {
-            simulators = emptyMap()
-            orphanedSimulators = emptyList()
-            return
-        }
         scope.launch {
+            isSimulatorRepository = useCases.simulator.declared()
+            if (!isSimulatorRepository) {
+                simulators = emptyMap()
+                orphanedSimulators = emptyList()
+                return@launch
+            }
             loadSimulators(generation, listed)
             val orphans = useCases.simulator.orphans().getOrNull() ?: return@launch
             if (generation == listGeneration) orphanedSimulators = orphans
@@ -349,12 +354,14 @@ class ProjectWorktrees(
     }
 
     private fun loadEmulatorSection(generation: Int, listed: List<Worktree>) {
-        isEmulatorRepository = useCases.emulator.declared()
-        if (!isEmulatorRepository) {
-            emulators = emptyMap()
-            return
+        scope.launch {
+            isEmulatorRepository = useCases.emulator.declared()
+            if (!isEmulatorRepository) {
+                emulators = emptyMap()
+                return@launch
+            }
+            loadEmulators(generation, listed)
         }
-        scope.launch { loadEmulators(generation, listed) }
     }
 
     private suspend fun loadEmulators(generation: Int, listed: List<Worktree>) {
@@ -403,22 +410,24 @@ class ProjectWorktrees(
     }
 
     private fun loadGradleSection() {
-        val provider = useCases.gradle.provider()
-        isGradleRepository = provider != null
-        gradleSettings = provider?.takeIf { it.hasSettings }
-        if (provider == null) return
-        isGradleBuildCacheEnabled = useCases.gradle.isBuildCacheEnabled()
+        scope.launch {
+            val provider = useCases.gradle.provider()
+            isGradleRepository = provider != null
+            gradleSettings = provider?.takeIf { it.hasSettings }
+            if (provider == null) return@launch
+            isGradleBuildCacheEnabled = useCases.gradle.isBuildCacheEnabled()
+        }
     }
 
     private fun loadXcodeSection(generation: Int, listed: List<Worktree>) {
-        val provider = useCases.xcode.provider()?.takeIf { useCases.xcode.supported() }
-        isXcodeRepository = provider != null
-        hasCompilationCache = provider?.compilationCache == true
-        if (provider == null) {
-            derivedDataOrphans = emptyList()
-            return
-        }
         scope.launch {
+            val provider = useCases.xcode.provider()?.takeIf { useCases.xcode.supported() }
+            isXcodeRepository = provider != null
+            hasCompilationCache = provider?.compilationCache == true
+            if (provider == null) {
+                derivedDataOrphans = emptyList()
+                return@launch
+            }
             val orphans = useCases.xcode.list(listed, false).getOrNull()?.orphans ?: return@launch
             if (generation == listGeneration) derivedDataOrphans = orphans
         }
@@ -458,7 +467,7 @@ class ProjectWorktrees(
         createError = null
         scope.launch {
             try {
-                creation()
+                withContext(ioDispatcher) { creation() }
                     .onSuccess { worktree ->
                         worktrees = worktrees.filterNot { it.path == worktree.path } + worktree
                         lastCreatedWorktree = worktree

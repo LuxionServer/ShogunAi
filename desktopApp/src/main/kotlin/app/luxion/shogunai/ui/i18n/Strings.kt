@@ -53,10 +53,8 @@ interface Strings {
     val aboutRepositoryLink: String
 
     val projectConfigTitle: String
-    val identitySection: String
     val nameLabel: String
     val nameEmptyError: String
-    val pathsSection: String
     val baseRepositoryPathLabel: String
     val baseRepositoryPathEmptyError: String
     val baseRepositoryNotTopLevelError: String
@@ -252,7 +250,6 @@ interface Strings {
     fun daemonIdle(since: String): String
     val daemonStateUnknown: String
     val daemonOwnerRemoved: String
-    val daemonOwnerOther: String
     val stopDaemon: String
     val stopIdleDaemons: String
     val gradleBuildCacheOff: String
@@ -262,7 +259,6 @@ interface Strings {
 
     val xcodeDerivedDataTitle: String
     val xcodeDerivedDataUnavailable: String
-    val noDerivedDataFolders: String
     fun derivedDataSummary(count: Int, totalSize: String): String
     fun derivedDataOrphans(count: Int, size: String): String
     val deleteOrphans: String
@@ -277,7 +273,6 @@ interface Strings {
     val ownerOutsideProjects: String
     val ownerLoading: String
     val notOwnedByWorktree: String
-    val goToWorktree: String
     val noMachineEmulators: String
     val unownedEmulatorsTitle: String
     val noMachineSimulators: String
@@ -299,7 +294,6 @@ interface Strings {
     val copied: String
     val close: String
     val worktreeCreatedWithError: String
-    val copyCommand: String
     val copyLaunchCommand: String
     fun worktreeCreated(folder: String): String
     fun worktreeCreatedCommandsSkipped(folder: String): String
@@ -359,6 +353,7 @@ interface Strings {
     val menuCommandPalette: String
     val paletteHint: String
     val paletteNoResults: String
+    val paletteCopyLaunchCommandHint: String
     val paletteKindView: String
     val paletteKindProject: String
     val paletteKindWorktree: String
@@ -367,7 +362,6 @@ interface Strings {
     val paletteViewAllWorktrees: String
     val paletteViewPreferences: String
     val paletteCleanUp: String
-    val paletteCopyLaunchCommandHint: String
     fun paletteNewWorktreeIn(project: String): String
     fun paletteSettingsOf(project: String): String
 }
