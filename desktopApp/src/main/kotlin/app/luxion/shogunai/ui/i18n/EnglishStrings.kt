@@ -348,6 +348,20 @@ object EnglishStrings : Strings {
     override val openInHerdr = "Open in Herdr"
     override fun openedInHerdr(name: String) = "Opened \"$name\" in Herdr with its agent"
     override fun focusedInHerdr(name: String) = "\"$name\" was already open in Herdr; switched to its workspace"
+    override val toolsLabel = "Tools"
+    override val terminalToolLabel = "Terminal"
+    override val editorToolLabel = "IDE"
+    override val noTerminalFound = "No supported terminal found"
+    override val noEditorFound = "No supported IDE found"
+    override fun openInTool(name: String) = "Open in $name"
+    override val openFolder = "Open folder"
+    override val chooseTerminalTitle = "Choose a terminal"
+    override val chooseTerminalMessage = "Worktrees will open in the terminal you choose. You can change it later in Preferences."
+    override val projectEditorLabel = "IDE on this machine"
+    override fun defaultEditorOption(name: String?) = if (name == null) "Default" else "Default ($name)"
+    override fun editorNotFoundOption(name: String) = "$name (not found)"
+    override fun editorOverrideMissing(name: String) =
+        "$name wasn't found on this machine, so this project's worktrees open in the default IDE."
 
 
     override val repositoryConfigSection = "Repository configuration"

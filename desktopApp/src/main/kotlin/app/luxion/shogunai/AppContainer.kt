@@ -10,6 +10,18 @@ import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.io.ShellPreferenceRepository
 import app.luxion.shogunai.domain.io.ThemePreferenceRepository
+import app.luxion.shogunai.domain.model.EditorId
+import app.luxion.shogunai.domain.model.TerminalId
+import app.luxion.shogunai.domain.usecase.OpenWorktreeInTerminalUseCase
+import app.luxion.shogunai.infrastructure.CommandEditorLauncher
+import app.luxion.shogunai.infrastructure.JsonToolPreferenceRepository
+import app.luxion.shogunai.infrastructure.LocalToolDetector
+import app.luxion.shogunai.infrastructure.MacTerminalLauncher
+import app.luxion.shogunai.infrastructure.SystemFolderLauncher
+import app.luxion.shogunai.infrastructure.TmuxTerminalLauncher
+import app.luxion.shogunai.infrastructure.WindowsTerminalLauncher
+import app.luxion.shogunai.infrastructure.ZellijTerminalLauncher
+import app.luxion.shogunai.ui.shell.ToolsPreferences
 import app.luxion.shogunai.domain.model.DaemonProcess
 import app.luxion.shogunai.domain.model.DaemonStopReport
 import app.luxion.shogunai.domain.model.DerivedDataDeletion
@@ -120,6 +132,16 @@ class AppContainer {
         userHome = System.getProperty("user.home"),
         isMac = derivedDataSource.isSupported(),
     )
+    val tools = ToolsPreferences(JsonToolPreferenceRepository(settingsFile), LocalToolDetector(shellCommandExecutor))
+    private val terminalLaunchers = listOf(
+        MacTerminalLauncher(TerminalId.TERMINAL, shellCommandExecutor),
+        MacTerminalLauncher(TerminalId.ITERM2, shellCommandExecutor),
+        WindowsTerminalLauncher(shellCommandExecutor),
+        TmuxTerminalLauncher(shellCommandExecutor),
+        ZellijTerminalLauncher(shellCommandExecutor),
+    )
+    private val editorLaunchers = EditorId.entries.map { CommandEditorLauncher(it, shellCommandExecutor) }
+    private val folderLauncher = SystemFolderLauncher(shellCommandExecutor)
     private val environmentCache = WorktreeEnvironmentCache()
     private val resolveEnvironment = resolverWith(contributions)
     private val startSimulator = StartWorktreeSimulatorUseCase(repositoryProvisioningSource, appleSimulators, { repository, worktree, requested ->
@@ -264,6 +286,13 @@ class AppContainer {
             orphans = { deleteSimulators.orphans(config) },
             delete = { udids -> deleteSimulators(udids) },
         ),
+        tools = ToolUseCases(
+            preferences = tools,
+            editorOverride = config.editorOverride,
+            openInTerminal = OpenWorktreeInTerminalUseCase(config, terminalLaunchers, resolveEnvironment)::invoke,
+            openInEditor = { path, editor -> editorLaunchers.first { it.editor == editor }.open(path) },
+            openFolder = folderLauncher::open,
+        ),
         herdr = HerdrUseCases(
             worktreesRoot = { withContext(Dispatchers.IO) { runCatching { herdrConfig.worktreesRoot() }.getOrNull() } },
             open = OpenWorktreeInHerdrUseCase(config, herdrClient, resolveEnvironment)::invoke,
@@ -315,6 +344,7 @@ data class WorktreeUseCases(
     val gradle: GradleUseCases,
     val xcode: XcodeUseCases,
     val herdr: HerdrUseCases = HerdrUseCases.NONE,
+    val tools: ToolUseCases = ToolUseCases.NONE,
 )
 
 class MachineUseCases(
@@ -350,6 +380,24 @@ data class SimulatorUseCases(
             stop = { Result.success(null) },
             orphans = { Result.success(emptyList()) },
             delete = { Result.success(emptyList()) },
+        )
+    }
+}
+
+data class ToolUseCases(
+    val preferences: ToolsPreferences,
+    val editorOverride: EditorId?,
+    val openInTerminal: suspend (path: String, terminal: TerminalId) -> Result<Unit>,
+    val openInEditor: suspend (path: String, editor: EditorId) -> Result<Unit>,
+    val openFolder: suspend (path: String) -> Result<Unit>,
+) {
+    companion object {
+        val NONE = ToolUseCases(
+            preferences = ToolsPreferences.NONE,
+            editorOverride = null,
+            openInTerminal = { _, terminal -> Result.failure(WorktreeError.TerminalUnsupported(terminal, "no launcher")) },
+            openInEditor = { _, editor -> Result.failure(WorktreeError.EditorLaunchFailed(editor, "no launcher")) },
+            openFolder = { path -> Result.failure(WorktreeError.FolderOpenFailed(path, "no launcher")) },
         )
     }
 }

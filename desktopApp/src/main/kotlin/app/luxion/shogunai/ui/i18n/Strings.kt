@@ -313,6 +313,20 @@ interface Strings {
     fun openedInHerdr(name: String): String
     fun focusedInHerdr(name: String): String
 
+    val toolsLabel: String
+    val terminalToolLabel: String
+    val editorToolLabel: String
+    val noTerminalFound: String
+    val noEditorFound: String
+    fun openInTool(name: String): String
+    val openFolder: String
+    val chooseTerminalTitle: String
+    val chooseTerminalMessage: String
+    val projectEditorLabel: String
+    fun defaultEditorOption(name: String?): String
+    fun editorNotFoundOption(name: String): String
+    fun editorOverrideMissing(name: String): String
+
     val repositoryConfigSection: String
     val repositoryConfigSharedNote: String
     val repositoryConfigProvidersTitle: String

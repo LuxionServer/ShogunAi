@@ -1,5 +1,6 @@
 package app.luxion.shogunai.infrastructure
 
+import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.EmulatorSettings
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -110,6 +111,23 @@ class JsonProjectRepositoryTest {
         val loaded = JsonProjectRepository(storagePath).list().single().config
         assertEquals(project.config.emulator, loaded.emulator)
         assertEquals(project.config.simulator, loaded.simulator)
+    }
+
+    @Test
+    fun `keeps the IDE override of a project and reads projects saved without one`() {
+        val config = ProjectConfig(
+            baseRepositoryPath = "/home/dev/projects/main-repo",
+            worktreesRoot = "/home/dev/projects",
+            secretFiles = emptyList(),
+        )
+        repository.save(Project("with", "With", config.copy(editorOverride = EditorId.ANDROID_STUDIO)))
+        Files.writeString(
+            tempDir.resolve("old.json"),
+            """[{"id":"old","name":"Old","config":{"baseRepositoryPath":"/a","worktreesRoot":"/b","secretFiles":[]}}]""",
+        )
+
+        assertEquals(EditorId.ANDROID_STUDIO, JsonProjectRepository(storagePath).list().single().config.editorOverride)
+        assertNull(JsonProjectRepository(tempDir.resolve("old.json")).list().single().config.editorOverride)
     }
 
     private fun project(id: String) = Project(

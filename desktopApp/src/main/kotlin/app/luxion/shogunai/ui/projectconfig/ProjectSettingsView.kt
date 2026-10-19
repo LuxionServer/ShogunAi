@@ -48,9 +48,11 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.unit.dp
+import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.ui.FilePicker
+import app.luxion.shogunai.ui.components.DropdownSelector
 import app.luxion.shogunai.ui.components.IconAction
 import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.Notice
@@ -560,6 +562,40 @@ private fun AgentSection(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        EditorOverrideField(viewModel)
+    }
+}
+
+@Composable
+private fun EditorOverrideField(viewModel: ProjectConfigViewModel) {
+    val strings = LocalStrings.current
+    val tools = viewModel.tools
+    if (tools.detected == null) return
+    val override = viewModel.editorOverride
+    val options = listOf<EditorId?>(null) + (tools.availableEditors + listOfNotNull(override)).distinct()
+    SettingsField(strings.projectEditorLabel) {
+        Text(strings.machineOnlyLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        DropdownSelector(
+            options = options,
+            selected = override,
+            onSelect = { viewModel.editorOverride = it },
+            label = { option ->
+                when {
+                    option == null -> strings.defaultEditorOption(tools.editorShown?.displayName)
+                    option !in tools.availableEditors -> strings.editorNotFoundOption(option.displayName)
+                    else -> option.displayName
+                }
+            },
+            placeholder = strings.projectEditorLabel,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (viewModel.editorOverrideMissing && override != null) {
+            Text(
+                strings.editorOverrideMissing(override.displayName),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
     }
 }
 

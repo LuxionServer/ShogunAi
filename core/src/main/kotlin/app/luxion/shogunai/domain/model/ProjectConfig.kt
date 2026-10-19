@@ -11,6 +11,7 @@ data class ProjectConfig(
     val mainBranch: String? = null,
     val emulator: EmulatorSettings = EmulatorSettings(),
     val simulator: SimulatorSettings = SimulatorSettings(),
+    val editorOverride: EditorId? = null,
 ) {
     fun worktreePathFor(taskId: String): String = joinPath(worktreesRoot, taskId.replace("/", "-"))
 

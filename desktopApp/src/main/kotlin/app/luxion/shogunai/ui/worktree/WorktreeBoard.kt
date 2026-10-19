@@ -12,6 +12,7 @@ import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.Project
+import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.components.TextInputFocus
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
@@ -217,6 +218,16 @@ class WorktreeBoard(
 
     val pendingRemoval: ProjectWorktrees?
         get() = entries.values.firstOrNull { it.holder.worktreePendingRemoval != null }?.holder
+
+    val terminalChoice: ProjectWorktrees?
+        get() = entries.values.firstOrNull { it.holder.terminalChoiceFor != null }?.holder
+
+    fun selectedOpenActions(strings: Strings): List<OpenAction> =
+        selectedWorktree?.let { it.holder.openActions(it.worktree, strings) }.orEmpty()
+
+    fun openSelected(kind: OpenKind) {
+        selectedWorktree?.let { it.holder.open(it.worktree, kind) }
+    }
 
     val isCatalogLoaded: Boolean
         get() = projects.isNotEmpty() && entries.values.all { it.holder.hasLoaded }
@@ -562,7 +573,7 @@ class WorktreeBoard(
     }
 
     fun deleteSelectedWorktree() {
-        if (isCreateDialogOpen || isCleanupDialogOpen || pendingRemoval != null || TextInputFocus.isActive) return
+        if (isCreateDialogOpen || isCleanupDialogOpen || pendingRemoval != null || terminalChoice != null || TextInputFocus.isActive) return
         selectedWorktree?.takeIf { !it.worktree.isMain }?.let { it.holder.requestRemoval(it.worktree) }
     }
 

@@ -203,7 +203,8 @@ private fun PaletteHost(
     onOpenPreferences: () -> Unit,
 ) {
     val strings = LocalStrings.current
-    val items = remember(viewModel.projects, board.paletteWorktrees, machine.visibleResources, board.canCleanUp(), strings) {
+    val openActions = board.selectedOpenActions(strings)
+    val items = remember(viewModel.projects, board.paletteWorktrees, machine.visibleResources, board.canCleanUp(), strings, openActions.map { it.label }) {
         buildPaletteIndex(
             projects = viewModel.projects,
             worktrees = board.paletteWorktrees,
@@ -211,6 +212,7 @@ private fun PaletteHost(
             canCleanUp = board.canCleanUp(),
             strings = strings,
             shortcutLabel = ::platformShortcutLabel,
+            openActions = openActions,
         )
     }
     val knownIds = remember(items) { items.mapTo(mutableSetOf()) { it.id } }
@@ -239,6 +241,7 @@ private fun runPaletteAction(
             board.revealInAllWorktrees(action.ref)
         }
         is PaletteAction.CopyLaunchCommand -> board.copyLaunchCommand(action.ref, onCopied)
+        is PaletteAction.OpenSelected -> board.openSelected(action.kind)
         is PaletteAction.NewWorktreeIn -> viewModel.navigate(ShellDestination.All(projectFilter = action.projectId)) {
             board.openCreateDialog(action.projectId)
         }
@@ -346,6 +349,7 @@ private fun ProjectForm(
             appContainer::inspectRepository,
             isMacOs,
             appContainer.repositoryTrust,
+            appContainer.tools,
         )
     }
     ProjectSettingsView(

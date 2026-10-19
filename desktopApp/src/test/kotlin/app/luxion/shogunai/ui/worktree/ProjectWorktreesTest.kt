@@ -1,5 +1,13 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.ToolUseCases
+import app.luxion.shogunai.domain.FakeToolDetector
+import app.luxion.shogunai.domain.FakeToolPreferenceRepository
+import app.luxion.shogunai.domain.model.DetectedTools
+import app.luxion.shogunai.domain.model.EditorId
+import app.luxion.shogunai.domain.model.TerminalId
+import app.luxion.shogunai.ui.i18n.EnglishStrings
+import app.luxion.shogunai.ui.shell.ToolsPreferences
 import app.luxion.shogunai.EmulatorUseCases
 import app.luxion.shogunai.GradleUseCases
 import app.luxion.shogunai.HerdrUseCases
@@ -2563,5 +2571,156 @@ class ProjectWorktreesTest {
 
         assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1), board.cleanupSuccess)
         assertEquals(listOf(worktreePath), board.project.herdrCloseFailures.map { it.path })
+    }
+
+    private class ToolCalls {
+        val terminals = mutableListOf<Pair<String, TerminalId>>()
+        val editors = mutableListOf<Pair<String, EditorId>>()
+        val folders = mutableListOf<String>()
+        var failure: Throwable? = null
+    }
+
+    private suspend fun withTools(
+        detected: DetectedTools,
+        chosenTerminal: TerminalId? = null,
+        chosenEditor: EditorId? = null,
+        editorOverride: EditorId? = null,
+        calls: ToolCalls = ToolCalls(),
+    ): Pair<ProjectWorktrees, FakeToolPreferenceRepository> {
+        val repository = FakeToolPreferenceRepository(chosenTerminal, chosenEditor)
+        val preferences = ToolsPreferences(repository, FakeToolDetector(detected)).also { it.refresh() }
+        val tools = ToolUseCases(
+            preferences = preferences,
+            editorOverride = editorOverride,
+            openInTerminal = { path, terminal -> calls.terminals += path to terminal; calls.failure?.let { Result.failure(it) } ?: Result.success(Unit) },
+            openInEditor = { path, editor -> calls.editors += path to editor; calls.failure?.let { Result.failure(it) } ?: Result.success(Unit) },
+            openFolder = { path -> calls.folders += path; calls.failure?.let { Result.failure(it) } ?: Result.success(Unit) },
+        )
+        val holder = projectWorktrees(useCases(listingResponder()).copy(tools = tools))
+        return holder to repository
+    }
+
+    private val installed = DetectedTools(
+        terminals = listOf(TerminalId.TERMINAL, TerminalId.ITERM2),
+        editors = listOf(EditorId.VS_CODE, EditorId.ANDROID_STUDIO),
+    )
+
+    @Test
+    fun `the open actions name the chosen terminal and the default IDE`() = runTest(dispatcher) {
+        val (holder) = withTools(installed, chosenTerminal = TerminalId.ITERM2)
+        advanceUntilIdle()
+
+        val actions = holder.openActions(holder.worktrees.first { it.path == worktreePath }, EnglishStrings)
+
+        assertEquals(
+            listOf(
+                OpenKind.TERMINAL to "Open in iTerm2",
+                OpenKind.EDITOR to "Open in VS Code",
+                OpenKind.FOLDER to "Open folder",
+            ),
+            actions.map { it.kind to it.label },
+        )
+    }
+
+    @Test
+    fun `a project's IDE override replaces the default and an uninstalled one falls back`() = runTest(dispatcher) {
+        val (overridden) = withTools(installed, chosenEditor = EditorId.VS_CODE, editorOverride = EditorId.ANDROID_STUDIO)
+        val (uninstalled) = withTools(installed, chosenEditor = EditorId.VS_CODE, editorOverride = EditorId.INTELLIJ_IDEA)
+        advanceUntilIdle()
+
+        fun labels(holder: ProjectWorktrees) =
+            holder.openActions(holder.worktrees.first { it.path == worktreePath }, EnglishStrings).map { it.label }
+
+        assertTrue("Open in Android Studio" in labels(overridden))
+        assertTrue("Open in VS Code" in labels(uninstalled))
+    }
+
+    @Test
+    fun `with nothing detected only the folder action is offered`() = runTest(dispatcher) {
+        val (holder) = withTools(DetectedTools())
+        advanceUntilIdle()
+
+        val actions = holder.openActions(holder.worktrees.first { it.path == worktreePath }, EnglishStrings)
+
+        assertEquals(listOf(OpenKind.FOLDER), actions.map { it.kind })
+    }
+
+    @Test
+    fun `a worktree whose folder is missing offers no open action`() = runTest(dispatcher) {
+        val (holder) = withTools(installed, chosenTerminal = TerminalId.TERMINAL)
+        advanceUntilIdle()
+
+        assertTrue(holder.openActions(Worktree(path = worktreePath, branch = null, isPrunable = true), EnglishStrings).isEmpty())
+    }
+
+    @Test
+    fun `opening in the chosen terminal, the IDE and the folder calls each launcher with the worktree path`() = runTest(dispatcher) {
+        val calls = ToolCalls()
+        val (holder) = withTools(installed, chosenTerminal = TerminalId.TERMINAL, chosenEditor = EditorId.ANDROID_STUDIO, calls = calls)
+        advanceUntilIdle()
+        val target = holder.worktrees.first { it.path == worktreePath }
+
+        holder.openInTerminal(target)
+        holder.openInEditor(target)
+        holder.openFolder(target)
+        advanceUntilIdle()
+
+        assertEquals(listOf(worktreePath to TerminalId.TERMINAL), calls.terminals)
+        assertEquals(listOf(worktreePath to EditorId.ANDROID_STUDIO), calls.editors)
+        assertEquals(listOf(worktreePath), calls.folders)
+    }
+
+    @Test
+    fun `the first use asks for a terminal, remembers the choice and opens it`() = runTest(dispatcher) {
+        val calls = ToolCalls()
+        val (holder, repository) = withTools(installed, calls = calls)
+        advanceUntilIdle()
+        val target = holder.worktrees.first { it.path == worktreePath }
+
+        holder.openInTerminal(target)
+        advanceUntilIdle()
+
+        assertEquals(target, holder.terminalChoiceFor)
+        assertTrue(calls.terminals.isEmpty())
+
+        holder.chooseTerminal(TerminalId.ITERM2)
+        advanceUntilIdle()
+
+        assertNull(holder.terminalChoiceFor)
+        assertEquals(TerminalId.ITERM2, repository.terminal)
+        assertEquals(listOf(worktreePath to TerminalId.ITERM2), calls.terminals)
+    }
+
+    @Test
+    fun `dismissing the terminal choice opens nothing`() = runTest(dispatcher) {
+        val calls = ToolCalls()
+        val (holder) = withTools(installed, calls = calls)
+        advanceUntilIdle()
+
+        holder.openInTerminal(holder.worktrees.first { it.path == worktreePath })
+        holder.dismissTerminalChoice()
+        advanceUntilIdle()
+
+        assertNull(holder.terminalChoiceFor)
+        assertTrue(calls.terminals.isEmpty())
+    }
+
+    @Test
+    fun `a failed launch is shown as the worktree's action error and a later success clears it`() = runTest(dispatcher) {
+        val calls = ToolCalls()
+        val (holder) = withTools(installed, chosenTerminal = TerminalId.TERMINAL, calls = calls)
+        advanceUntilIdle()
+        val target = holder.worktrees.first { it.path == worktreePath }
+        val failure = WorktreeError.TerminalLaunchFailed(TerminalId.TERMINAL, "boom")
+        calls.failure = failure
+
+        holder.openInTerminal(target)
+        advanceUntilIdle()
+        assertEquals(failure, holder.actionErrors[worktreePath])
+
+        calls.failure = null
+        holder.openInTerminal(target)
+        advanceUntilIdle()
+        assertNull(holder.actionErrors[worktreePath])
     }
 }

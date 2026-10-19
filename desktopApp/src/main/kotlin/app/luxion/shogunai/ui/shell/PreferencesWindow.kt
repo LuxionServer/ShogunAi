@@ -25,7 +25,7 @@ import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.i18n.strings
 
-private val PreferencesWindowSize = DpSize(440.dp, 260.dp)
+private val PreferencesWindowSize = DpSize(440.dp, 430.dp)
 
 fun ThemeMode.label(strings: Strings): String = when (this) {
     ThemeMode.LIGHT -> strings.themeLight
@@ -34,7 +34,7 @@ fun ThemeMode.label(strings: Strings): String = when (this) {
 }
 
 @Composable
-fun PreferencesWindow(appearance: Appearance, bringToFrontRequests: Int, onClose: () -> Unit) {
+fun PreferencesWindow(appearance: Appearance, tools: ToolsPreferences, bringToFrontRequests: Int, onClose: () -> Unit) {
     Window(
         onCloseRequest = onClose,
         title = appearance.strings.preferencesTitle,
@@ -43,14 +43,15 @@ fun PreferencesWindow(appearance: Appearance, bringToFrontRequests: Int, onClose
         state = rememberWindowState(size = PreferencesWindowSize, position = WindowPosition(Alignment.Center)),
     ) {
         LaunchedEffect(bringToFrontRequests) { window.toFront() }
+        LaunchedEffect(Unit) { tools.refresh() }
         AppearanceScope(appearance) {
-            PreferencesContent(appearance)
+            PreferencesContent(appearance, tools)
         }
     }
 }
 
 @Composable
-private fun PreferencesContent(appearance: Appearance) {
+private fun PreferencesContent(appearance: Appearance, tools: ToolsPreferences) {
     val strings = LocalStrings.current
     Column(
         modifier = Modifier.fillMaxWidth().padding(Spacing.lg),
@@ -76,5 +77,59 @@ private fun PreferencesContent(appearance: Appearance) {
             placeholder = strings.languageLabel,
             modifier = Modifier.fillMaxWidth(),
         )
+        ToolsSection(tools)
     }
+}
+
+@Composable
+fun ToolsSection(tools: ToolsPreferences) {
+    val strings = LocalStrings.current
+    Text(
+        strings.toolsLabel,
+        style = MaterialTheme.typography.labelLarge,
+        modifier = Modifier.padding(top = Spacing.md),
+    )
+    ToolChoice(
+        title = strings.terminalToolLabel,
+        options = tools.availableTerminals,
+        selected = tools.terminalShown,
+        onSelect = tools::chooseTerminal,
+        name = { it.displayName },
+        noneFound = strings.noTerminalFound,
+        isDetected = tools.detected != null,
+    )
+    ToolChoice(
+        title = strings.editorToolLabel,
+        options = tools.availableEditors,
+        selected = tools.editorShown,
+        onSelect = tools::chooseEditor,
+        name = { it.displayName },
+        noneFound = strings.noEditorFound,
+        isDetected = tools.detected != null,
+    )
+}
+
+@Composable
+private fun <T> ToolChoice(
+    title: String,
+    options: List<T>,
+    selected: T?,
+    onSelect: (T) -> Unit,
+    name: (T) -> String,
+    noneFound: String,
+    isDetected: Boolean,
+) {
+    Text(title, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    if (options.isEmpty()) {
+        if (isDetected) Text(noneFound, style = MaterialTheme.typography.bodyMedium)
+        return
+    }
+    DropdownSelector(
+        options = options,
+        selected = selected,
+        onSelect = onSelect,
+        label = name,
+        placeholder = title,
+        modifier = Modifier.fillMaxWidth(),
+    )
 }

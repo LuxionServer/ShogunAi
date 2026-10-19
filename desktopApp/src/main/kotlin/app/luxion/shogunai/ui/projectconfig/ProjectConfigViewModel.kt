@@ -17,6 +17,7 @@ import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.ui.shell.LeaveGuard
+import app.luxion.shogunai.ui.shell.ToolsPreferences
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.io.File
@@ -66,6 +67,7 @@ class ProjectConfigViewModel(
     },
     private val supportsApplePlatforms: Boolean = true,
     private val trust: RepositoryTrust = RepositoryTrust.NONE,
+    val tools: ToolsPreferences = ToolsPreferences.NONE,
 ) : ViewModel(), LeaveGuard {
     private val existingId = existingProject?.id
     val isNewProject: Boolean = existingProject == null
@@ -164,6 +166,8 @@ class ProjectConfigViewModel(
     var agentCommand by mutableStateOf(existingProject?.config?.agentLaunchConfig?.agentCommand ?: "claude")
     var useHeadroom by mutableStateOf(existingProject?.config?.agentLaunchConfig?.useHeadroom ?: true)
     var mainBranch by mutableStateOf(existingProject?.config?.mainBranch.orEmpty())
+    var editorOverride by mutableStateOf(existingProject?.config?.editorOverride)
+    val editorOverrideMissing: Boolean get() = editorOverride?.let { it !in tools.availableEditors } == true
     var emulatorAvd by mutableStateOf(existingProject?.config?.emulator?.avd)
     var emulatorNoWindow by mutableStateOf(existingProject?.config?.emulator?.noWindow ?: false)
 
@@ -188,6 +192,7 @@ class ProjectConfigViewModel(
     private var initialAgentCommand = agentCommand
     private var initialUseHeadroom = useHeadroom
     private var initialMainBranch = mainBranch
+    private var initialEditorOverride = editorOverride
     private var initialEmulatorAvd = emulatorAvd
     private var initialEmulatorNoWindow = emulatorNoWindow
     private var initialSimulatorDevice = simulatorDevice
@@ -455,6 +460,7 @@ class ProjectConfigViewModel(
             agentCommand != initialAgentCommand ||
             useHeadroom != initialUseHeadroom ||
             mainBranch != initialMainBranch ||
+            editorOverride != initialEditorOverride ||
             emulatorAvd != initialEmulatorAvd ||
             emulatorNoWindow != initialEmulatorNoWindow ||
             simulatorDevice != initialSimulatorDevice ||
@@ -513,6 +519,7 @@ class ProjectConfigViewModel(
                 mainBranch = mainBranch.trim().ifEmpty { null },
                 emulator = EmulatorSettings(avd = emulatorAvd?.trim()?.ifEmpty { null }, noWindow = emulatorNoWindow),
                 simulator = SimulatorSettings(device = simulatorDevice, runtime = simulatorRuntime),
+                editorOverride = editorOverride,
             ),
         )
         projectRepository.save(project)

@@ -1,0 +1,135 @@
+package app.luxion.shogunai.infrastructure
+
+import app.luxion.shogunai.domain.FakeShellCommandExecutor
+import app.luxion.shogunai.domain.model.EditorId
+import app.luxion.shogunai.domain.model.HostOs
+import app.luxion.shogunai.domain.model.WorktreeError
+import kotlinx.coroutines.test.runTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
+
+class EditorLaunchersTest {
+
+    private val path = "/home/dev/projects/worktrees/TASK-8"
+
+    private fun launcher(
+        editor: EditorId,
+        os: HostOs,
+        executor: FakeShellCommandExecutor,
+        files: Set<String> = emptySet(),
+    ) = CommandEditorLauncher(editor, executor, os, ExecutableLocator(os, "/home/dev", listOf("/usr/bin"), "C:\\L") { it in files })
+
+    @Test
+    fun `macOS opens the folder through the bundle identifier`() = runTest {
+        val executor = FakeShellCommandExecutor()
+
+        launcher(EditorId.VS_CODE, HostOs.MACOS, executor).open(path).getOrThrow()
+
+        assertEquals(listOf(listOf("open", "-b", "com.microsoft.VSCode", path)), executor.executedCommands)
+    }
+
+    @Test
+    fun `macOS tries the next bundle identifier of the IDE`() = runTest {
+        val executor = FakeShellCommandExecutor { command ->
+            if (command[2] == "com.jetbrains.intellij") {
+                FakeShellCommandExecutor.failure(command, stderr = "Unable to find application")
+            } else {
+                FakeShellCommandExecutor.success(command)
+            }
+        }
+
+        launcher(EditorId.INTELLIJ_IDEA, HostOs.MACOS, executor).open(path).getOrThrow()
+
+        assertEquals(
+            listOf(
+                listOf("open", "-b", "com.jetbrains.intellij", path),
+                listOf("open", "-b", "com.jetbrains.intellij.ce", path),
+            ),
+            executor.executedCommands,
+        )
+    }
+
+    @Test
+    fun `macOS falls back to the launcher script when no bundle opens`() = runTest {
+        val scripts = "/home/dev/Library/Application Support/JetBrains/Toolbox/scripts/studio"
+        val executor = FakeShellCommandExecutor { command ->
+            if (command.first() == "open") FakeShellCommandExecutor.failure(command) else FakeShellCommandExecutor.success(command)
+        }
+
+        launcher(EditorId.ANDROID_STUDIO, HostOs.MACOS, executor, setOf(scripts)).open(path).getOrThrow()
+
+        assertEquals(listOf(scripts, path), executor.executedCommands.last())
+    }
+
+    @Test
+    fun `Windows runs the launcher with the folder`() = runTest {
+        val executor = FakeShellCommandExecutor()
+
+        launcher(EditorId.VS_CODE, HostOs.WINDOWS, executor, setOf("/usr/bin\\code.cmd")).open("C:\\work\\TASK-8").getOrThrow()
+
+        assertEquals(listOf(listOf("/usr/bin\\code.cmd", "C:\\work\\TASK-8")), executor.executedCommands)
+    }
+
+    @Test
+    fun `Linux starts the launcher detached with the folder as an argument`() = runTest {
+        val executor = FakeShellCommandExecutor()
+
+        launcher(EditorId.INTELLIJ_IDEA, HostOs.LINUX, executor, setOf("/usr/bin/idea")).open(path).getOrThrow()
+
+        val command = executor.executedCommands.single()
+        assertEquals(listOf("sh", "-c"), command.take(2))
+        assertEquals(listOf("/usr/bin/idea", path), command.takeLast(2))
+        assertTrue(command[2].contains("nohup"))
+        assertTrue(!command[2].contains(path))
+    }
+
+    @Test
+    fun `a missing launcher names the IDE`() = runTest {
+        val executor = FakeShellCommandExecutor()
+
+        val error = launcher(EditorId.VS_CODE, HostOs.LINUX, executor).open(path).exceptionOrNull()
+
+        assertIs<WorktreeError.EditorLaunchFailed>(error)
+        assertEquals(EditorId.VS_CODE, error.editor)
+        assertTrue(error.message.orEmpty().contains("code"))
+    }
+
+    @Test
+    fun `a failing launcher reports its error output`() = runTest {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.failure(it, stderr = "license expired") }
+
+        val error = launcher(EditorId.ANDROID_STUDIO, HostOs.MACOS, executor).open(path).exceptionOrNull()
+
+        assertIs<WorktreeError.EditorLaunchFailed>(error)
+        assertTrue(error.message.orEmpty().contains("license expired"))
+    }
+
+    @Test
+    fun `shows the folder with the system's file manager`() = runTest {
+        val expected = mapOf(
+            HostOs.MACOS to listOf("open", path),
+            HostOs.WINDOWS to listOf("explorer.exe", path),
+            HostOs.LINUX to listOf("xdg-open", path),
+        )
+        expected.forEach { (os, command) ->
+            val executor = FakeShellCommandExecutor()
+
+            SystemFolderLauncher(executor, os).open(path).getOrThrow()
+
+            assertEquals(listOf(command), executor.executedCommands)
+        }
+    }
+
+    @Test
+    fun `Explorer's exit code 1 isn't a failure but other systems' is`() = runTest {
+        val failing = FakeShellCommandExecutor { FakeShellCommandExecutor.failure(it, exitCode = 1, stderr = "no such folder") }
+
+        SystemFolderLauncher(failing, HostOs.WINDOWS).open(path).getOrThrow()
+        val error = SystemFolderLauncher(failing, HostOs.MACOS).open(path).exceptionOrNull()
+
+        assertIs<WorktreeError.FolderOpenFailed>(error)
+        assertTrue(error.message.orEmpty().contains("no such folder"))
+    }
+}

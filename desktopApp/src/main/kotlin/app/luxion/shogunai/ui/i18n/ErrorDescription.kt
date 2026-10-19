@@ -58,6 +58,9 @@ private fun technicalDetailsOf(error: Throwable): TechnicalDetails? = when (erro
     is WorktreeError.AndroidToolFailed -> TechnicalDetails(error.command, error.exitCode, error.output)
     is WorktreeError.ProcessListingFailed -> TechnicalDetails(error.command, error.exitCode, "")
     is WorktreeError.HerdrCommandFailed -> TechnicalDetails(error.command, null, error.detail)
+    is WorktreeError.TerminalLaunchFailed -> TechnicalDetails(null, null, error.detail)
+    is WorktreeError.EditorLaunchFailed -> TechnicalDetails(null, null, error.detail)
+    is WorktreeError.FolderOpenFailed -> TechnicalDetails(null, null, error.detail)
     is WorktreeError.PostCreateCommandFailed -> TechnicalDetails(error.command, error.exitCode, error.errorOutput)
     is WorktreeError.InvalidRepositoryConfig -> error.detail?.let { TechnicalDetails(null, null, it) }
     is WorktreeError.AndroidSdkNotFound -> TechnicalDetails(null, null, error.checked.joinToString("\n"))
