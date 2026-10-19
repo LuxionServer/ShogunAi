@@ -6,7 +6,7 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -45,26 +45,21 @@ class ProcessBuilderShellCommandExecutor(
             throw CommandExecutionException(command, error)
         }
 
-        coroutineScope {
-            val stdout = async { process.inputStream.bufferedReader().use { it.readText() } }
-            val stderr = async { process.errorStream.bufferedReader().use { it.readText() } }
-            val exitCode = try {
-                if (timeout == null) waitFor(process) else withTimeoutOrNull(timeout) { waitFor(process) }
-            } finally {
-                if (process.isAlive) killWithDescendants(process)
-            }
-            if (exitCode == null) {
-                stdout.await()
-                stderr.await()
-                throw CommandExecutionException.TimedOut(command, timeout!!)
-            }
-            CommandResult(
-                command = command,
-                exitCode = exitCode,
-                stdout = stdout.await().trimEnd(),
-                stderr = stderr.await().trimEnd(),
-            )
+        val readers = CoroutineScope(ioDispatcher)
+        val stdout = readers.async { process.inputStream.bufferedReader().use { it.readText() } }
+        val stderr = readers.async { process.errorStream.bufferedReader().use { it.readText() } }
+        val exitCode = try {
+            if (timeout == null) waitFor(process) else withTimeoutOrNull(timeout) { waitFor(process) }
+        } finally {
+            if (process.isAlive) killWithDescendants(process)
         }
+        if (exitCode == null) throw CommandExecutionException.TimedOut(command, timeout!!)
+        CommandResult(
+            command = command,
+            exitCode = exitCode,
+            stdout = stdout.await().trimEnd(),
+            stderr = stderr.await().trimEnd(),
+        )
     }
 
     private suspend fun waitFor(process: Process): Int = runInterruptible { process.waitFor() }

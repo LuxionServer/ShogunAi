@@ -97,6 +97,7 @@ import app.luxion.shogunai.domain.usecase.totalResidentMemory
 import app.luxion.shogunai.infrastructure.CliHerdrClient
 import app.luxion.shogunai.infrastructure.FileKmpTestWiring
 import java.io.File
+import java.io.FileNotFoundException
 import java.time.Duration
 import java.time.Instant
 import java.util.Locale
@@ -816,7 +817,7 @@ class ShogunCli(
         val environment = resolveEnvironment(repository, worktree.path).getOrThrow()
         if (environment.isEmpty) return EXIT_OK
         environmentVariable(CLAUDE_ENV_FILE)?.takeIf { it.isNotBlank() }?.let { path ->
-            File(path).appendText(formatEnvironment(environment, EnvironmentFormat.SH))
+            appendToEnvironmentFile(path, formatEnvironment(environment, EnvironmentFormat.SH))
         }
         val variables = environment.variables.joinToString(", ") { (name, value) -> "$name=$value" }
         val emulatorHint = environment.variables.toMap()[ANDROID_SERIAL]
@@ -833,7 +834,7 @@ class ShogunCli(
                     "xcodebuild -destination \"id=\$$IOS_SIMULATOR_UDID\""
             }
             .orEmpty()
-        out.line("ShogunAi environment of worktree ${File(worktree.path).name}: $variables$emulatorHint$simulatorHint")
+        out.line("ShogunAi environment of worktree ${folderName(worktree.path)}: $variables$emulatorHint$simulatorHint")
         return EXIT_OK
     }
 
@@ -989,7 +990,7 @@ class ShogunCli(
         val directory = input.string("cwd") ?: workingDirectory
         val projectConfig = configFor(directory)
         val config = if (projectConfig.worktreesRoot.isBlank()) {
-            projectConfig.copy(worktreesRoot = File(projectConfig.baseRepositoryPath, CLAUDE_CODE_WORKTREES).path)
+            projectConfig.copy(worktreesRoot = "${projectConfig.baseRepositoryPath.trimEnd('/')}/$CLAUDE_CODE_WORKTREES")
         } else {
             projectConfig
         }
@@ -1078,7 +1079,7 @@ class ShogunCli(
 
     private suspend fun flagOutsideWorktreesRoot(worktree: Worktree, config: ProjectConfig) {
         if (config.worktreesRoot.isBlank() || classifyOrigin(worktree, config) == WorktreeOrigin.SHOGUNAI) return
-        val body = "${File(worktree.path).name} is outside ${displayPath(config.worktreesRoot)}; create worktrees from ShogunAi"
+        val body = "${folderName(worktree.path)} is outside ${displayPath(config.worktreesRoot)}; create worktrees from ShogunAi"
         val herdr = environmentVariable(HERDR_BIN_PATH)?.takeIf { it.isNotBlank() } ?: "herdr"
         val failure = try {
             val result = executor.execute(listOf(herdr, "notification", "show", "ShogunAi", "--body", body))
@@ -1136,11 +1137,22 @@ class ShogunCli(
         return (listOf(worktree.path) + details).joinToString("  ")
     }
 
+    private fun appendToEnvironmentFile(path: String, content: String) {
+        try {
+            File(path).appendText(content)
+        } catch (error: FileNotFoundException) {
+            throw FileNotFoundException(error.message.orEmpty().replaceFirst(File(path).path, path))
+        }
+    }
+
+    private fun folderName(path: String): String =
+        path.trimEnd('/', '\\').substringAfterLast('/').substringAfterLast('\\')
+
     private fun agentLabel(agent: RunningAgent): String =
         agent.herdrState?.let { "${agent.name}(${it.name.lowercase()})" } ?: agent.name
 
     private fun absolute(path: String): String =
-        if (File(path).isAbsolute) path else File(workingDirectory, path).toPath().normalize().toString()
+        if (path.startsWith('/') || File(path).isAbsolute) path else File(workingDirectory, path).toPath().normalize().toString().replace('\\', '/')
 
     private fun sameDirectory(first: String, second: String): Boolean =
         runCatching { canonicalPath(first) == canonicalPath(second) }.getOrDefault(first == second)
