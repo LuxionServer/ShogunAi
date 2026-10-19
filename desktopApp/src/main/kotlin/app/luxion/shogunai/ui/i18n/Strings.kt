@@ -57,6 +57,12 @@ interface Strings {
     val nameEmptyError: String
     val baseRepositoryPathLabel: String
     val baseRepositoryPathEmptyError: String
+    val baseRepositoryNotTopLevelError: String
+    fun baseRepositoryAlreadyAdded(projectName: String): String
+    val worktreesRootEmptyError: String
+    val agentCommandEmptyError: String
+    val discardRepositoryEditsTitle: String
+    fun discardRepositoryEditsMessage(path: String): String
     val worktreesRootLabel: String
     val mainBranchLabel: String
     val mainBranchPlaceholder: String
@@ -347,6 +353,7 @@ interface Strings {
     val menuCommandPalette: String
     val paletteHint: String
     val paletteNoResults: String
+    val paletteCopyLaunchCommandHint: String
     val paletteKindView: String
     val paletteKindProject: String
     val paletteKindWorktree: String

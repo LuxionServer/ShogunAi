@@ -312,6 +312,7 @@ class ShellViewModelTest {
                 onDeleteSelectedWorktree = { deleted++ },
                 onClearSelection = { cleared++ },
                 onEscape = {},
+                hasSelection = { true },
             ),
         )
         val actions = viewModel.worktreeActions

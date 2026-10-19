@@ -46,7 +46,9 @@ import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.PrimaryButton
 import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.SegmentedSelector
+import app.luxion.shogunai.ui.components.ErrorNotice
 import app.luxion.shogunai.ui.components.Spacing
+import app.luxion.shogunai.ui.components.trackTextInputFocus
 import app.luxion.shogunai.ui.components.handPointer
 import app.luxion.shogunai.ui.components.onNewItemShortcut
 import app.luxion.shogunai.ui.i18n.LocalStrings
@@ -186,7 +188,8 @@ private fun TextFilterField(board: WorktreeBoard) {
         singleLine = true,
         modifier = Modifier
             .width(FilterFieldWidth)
-            .focusRequester(focusRequester),
+            .focusRequester(focusRequester)
+            .trackTextInputFocus(),
     )
 }
 
@@ -213,6 +216,9 @@ private fun RemoveWorktreeDialog(holder: ProjectWorktrees) {
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(top = Spacing.sm),
                     )
+                }
+                holder.removeError?.let { error ->
+                    ErrorNotice(error = error, onDismiss = null, modifier = Modifier.padding(top = Spacing.sm))
                 }
                 worktree.branch?.let { branch ->
                     Row(

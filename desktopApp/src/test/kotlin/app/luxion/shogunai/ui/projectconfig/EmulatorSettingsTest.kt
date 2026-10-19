@@ -50,7 +50,13 @@ class EmulatorSettingsTest {
     )
 
     private fun viewModel(project: Project?, avds: Result<List<String>> = Result.success(listOf("Medium_Phone_API_35"))) =
-        ProjectConfigViewModel(projectRepository, provisioning, project, loadAvds = { path -> avdLoads += path; avds })
+        ProjectConfigViewModel(
+            projectRepository,
+            provisioning,
+            project,
+            loadAvds = { path -> avdLoads += path; avds },
+            inspectRepository = { folder -> Result.success(RepositoryInspection(folder, "main")) },
+        )
 
     @Test
     fun `projects without the provider show no section and run no Android tool`() = runTest(dispatcher) {
@@ -85,10 +91,12 @@ class EmulatorSettingsTest {
         advanceUntilIdle()
 
         viewModel.baseRepositoryPath = android
+        viewModel.settleBaseRepositoryPath()
         advanceUntilIdle()
         assertEquals(EmulatorSectionState.Available(listOf("Medium_Phone_API_35")), viewModel.emulatorSection)
 
         viewModel.baseRepositoryPath = web
+        viewModel.settleBaseRepositoryPath()
         assertEquals(EmulatorSectionState.Hidden, viewModel.emulatorSection)
     }
 

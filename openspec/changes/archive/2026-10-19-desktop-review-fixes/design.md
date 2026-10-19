@@ -40,11 +40,11 @@ See proposal.md for motivation. Relevant current state in `desktopApp`:
 
 **Copy path confirmation.** Reuse the snackbar path used by the launch command copy.
 
-**Shortcuts.** Keep Cmd/Ctrl+Backspace but only enable the menu item when a worktree is selected and no text field has focus (track focus of the filter and dialog fields through a `LocalTextInputFocus` flag set by the app's text field wrapper). Alternative: change the shortcut to Cmd+Delete-forward or Shift+Cmd+Backspace; rejected for now, the platform convention for "move to trash" on macOS is Cmd+Backspace and it's only harmful while typing.
+**Shortcuts.** Keep Cmd/Ctrl+Backspace but only enable the menu item when a worktree is selected and no text field has focus (the filter, palette and create dialog fields report focus through the `trackTextInputFocus` modifier into a global `TextInputFocus` flag; the board also ignores the shortcut actions while it is set). Alternative: change the shortcut to Cmd+Delete-forward or Shift+Cmd+Backspace; rejected for now, the platform convention for "move to trash" on macOS is Cmd+Backspace and it's only harmful while typing.
 
 **Palette hint.** Show `paletteCopyLaunchCommandHint` in the palette footer when the highlighted item is a worktree.
 
 ## Risks / Trade-offs
 
 - [Debounced path reload feels slower] → 400 ms and immediate on blur or Browse.
-- [Text field focus tracking misses a field] → All text inputs go through the app's text field components; a UI test covers the filter and the create dialog's field.
+- [Text field focus tracking misses a field] → Only the fields of the worktree view report focus; a UI test covers the modifier and a board test covers the guard.

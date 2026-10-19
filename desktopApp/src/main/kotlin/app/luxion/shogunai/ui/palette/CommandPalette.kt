@@ -63,6 +63,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import app.luxion.shogunai.ui.components.Spacing
+import app.luxion.shogunai.ui.components.trackTextInputFocus
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.isMacOs
@@ -75,6 +76,7 @@ private const val VisibleResults = 8
 private val KindIconSize = 16.dp
 private val IndicatorDotSize = 8.dp
 private val ContextMaxWidth = 200.dp
+private val SecondaryShortcutLabel = if (isMacOs) "⌘↵" else "Ctrl+↵"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -166,6 +168,15 @@ fun CommandPalette(
                         }
                     }
                 }
+                if (results.getOrNull(highlighted)?.secondary is PaletteAction.CopyLaunchCommand) {
+                    HorizontalDivider()
+                    Text(
+                        "${SecondaryShortcutLabel}  ${strings.paletteCopyLaunchCommandHint}",
+                        style = ShogunTheme.typography.dataSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md, vertical = Spacing.sm),
+                    )
+                }
             }
         }
     }
@@ -180,7 +191,7 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit, modifier
         singleLine = true,
         textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-        modifier = modifier,
+        modifier = modifier.trackTextInputFocus(),
         decorationBox = { inner ->
             Box(modifier = Modifier.heightIn(min = ResultRowHeight), contentAlignment = Alignment.CenterStart) {
                 if (query.isEmpty()) {

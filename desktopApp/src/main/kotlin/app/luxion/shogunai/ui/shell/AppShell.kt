@@ -296,6 +296,7 @@ private fun WorktreeView(destination: ShellDestination, shellViewModel: ShellVie
                 onDeleteSelectedWorktree = board::deleteSelectedWorktree,
                 onClearSelection = board::clearSelection,
                 onEscape = board::escape,
+                hasSelection = { board.selectedWorktree != null },
             ),
         )
         onDispose { shellViewModel.updateWorktreeActions(null) }

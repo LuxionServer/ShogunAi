@@ -12,6 +12,7 @@ import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.Project
+import app.luxion.shogunai.ui.components.TextInputFocus
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
@@ -123,7 +124,7 @@ class WorktreeBoard(
         get() = shownProjects.mapNotNull { project ->
             val holder = holder(project.id) ?: return@mapNotNull null
             val rows = listedRows(project, holder)
-            if ((isTextFiltering || isActiveView) && rows.isEmpty()) return@mapNotNull null
+            if ((isTextFiltering || isActiveView) && rows.isEmpty() && holder.listFailure == null) return@mapNotNull null
             WorktreeGroup(project, holder, rows, collapsed = project.id in collapsedProjects && !isFiltered)
         }
 
@@ -153,7 +154,9 @@ class WorktreeBoard(
         }
 
     val isNothingActive: Boolean
-        get() = isActiveView && !isTextFiltering && !isReadingActivity && isListEmpty
+        get() = isActiveView && !isTextFiltering && !isReadingActivity && isListEmpty && shownProjects.none {
+            holder(it.id)?.listFailure != null
+        }
 
     val activeCount: Int
         get() = entries.values.sumOf { activeCountOf(it.holder) }
@@ -280,6 +283,7 @@ class WorktreeBoard(
             listPermits = listPermits,
             sizeQueue = sizeQueue,
             clock = clock,
+            onRemoved = { path -> if (selected == WorktreeRef(project.id, path)) selected = null },
             ioDispatcher = ioDispatcher,
         )
         holder.refresh()
@@ -553,12 +557,12 @@ class WorktreeBoard(
     }
 
     fun copySelectedLaunchCommand() {
-        if (isCreateDialogOpen) return
+        if (isCreateDialogOpen || TextInputFocus.isActive) return
         selectedWorktree?.let { it.holder.copyLaunchCommand(it.worktree) }
     }
 
     fun deleteSelectedWorktree() {
-        if (isCreateDialogOpen || isCleanupDialogOpen || pendingRemoval != null) return
+        if (isCreateDialogOpen || isCleanupDialogOpen || pendingRemoval != null || TextInputFocus.isActive) return
         selectedWorktree?.takeIf { !it.worktree.isMain }?.let { it.holder.requestRemoval(it.worktree) }
     }
 
