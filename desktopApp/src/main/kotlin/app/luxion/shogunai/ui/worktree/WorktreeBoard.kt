@@ -50,6 +50,7 @@ class WorktreeBoard(
         private set
     var mode by mutableStateOf(GroupedView.ALL)
         private set
+    private var viewProjectFilters by mutableStateOf<Map<GroupedView, String>>(emptyMap())
     private var groupings by mutableStateOf(GroupedView.entries.associateWith(preferences::loadGrouping))
     var textFilter by mutableStateOf("")
         private set
@@ -83,11 +84,20 @@ class WorktreeBoard(
     var cleanupSuccess by mutableStateOf<WorktreeSuccess.CleanedUp?>(null)
         private set
 
+    val viewProjectFilter: String?
+        get() = viewProjectFilters[mode]
+
+    val isProjectView: Boolean
+        get() = projectFilter != null
+
+    private val effectiveProjectFilter: String?
+        get() = projectFilter ?: viewProjectFilter
+
     val shownProjects: List<Project>
-        get() = projectFilter?.let { id -> projects.filter { it.id == id } } ?: projects
+        get() = effectiveProjectFilter?.let { id -> projects.filter { it.id == id } } ?: projects
 
     val isFiltered: Boolean
-        get() = projectFilter != null
+        get() = effectiveProjectFilter != null
 
     val totalWorktreeCount: Int
         get() = entries.values.sumOf { it.holder.worktrees.size }
@@ -244,6 +254,7 @@ class WorktreeBoard(
         entries = next
         if (selected?.projectId?.let { it !in next } == true) selected = null
         if (projectFilter?.let { it !in next } == true) projectFilter = null
+        viewProjectFilters = viewProjectFilters.filterValues { it in next }
         if (createProjectId?.let { it !in next } == true) createProjectId = null
         cleanupScope = cleanupScope?.filter { it in next }?.takeIf { it.isNotEmpty() }
         sizeQueue.prioritize(shownHolders())
@@ -264,6 +275,15 @@ class WorktreeBoard(
     fun show(projectFilter: String?, mode: GroupedView = GroupedView.ALL) {
         this.mode = mode
         this.projectFilter = projectFilter?.takeIf { id -> mode == GroupedView.ALL && projects.any { it.id == id } }
+        sizeQueue.prioritize(shownHolders())
+    }
+
+    fun updateViewProjectFilter(projectId: String?) {
+        viewProjectFilters = if (projectId != null && projects.any { it.id == projectId }) {
+            viewProjectFilters + (mode to projectId)
+        } else {
+            viewProjectFilters - mode
+        }
         sizeQueue.prioritize(shownHolders())
     }
 
@@ -330,6 +350,15 @@ class WorktreeBoard(
         selected = ref
     }
 
+    fun revealInAllWorktrees(ref: WorktreeRef) {
+        clearTextFilter()
+        if (viewProjectFilters[GroupedView.ALL]?.let { it != ref.projectId } == true) {
+            viewProjectFilters = viewProjectFilters - GroupedView.ALL
+        }
+        if (ref.projectId in collapsedProjects) toggleCollapsed(ref.projectId)
+        select(ref)
+    }
+
     fun clearSelection() {
         selected = null
     }
@@ -369,8 +398,8 @@ class WorktreeBoard(
 
     fun openCreateDialog(projectId: String? = null) {
         if (isCreateDialogOpen) return
-        val target = projectId ?: projectFilter ?: defaultCreateProject() ?: return
-        createAsksForProject = projectId == null && projectFilter == null
+        val target = projectId ?: effectiveProjectFilter ?: defaultCreateProject() ?: return
+        createAsksForProject = projectId == null && effectiveProjectFilter == null
         taskId = ""
         selectedBranch = null
         holder(target)?.dismissCreateError()

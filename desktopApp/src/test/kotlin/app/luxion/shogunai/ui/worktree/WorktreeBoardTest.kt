@@ -325,6 +325,92 @@ class WorktreeBoardTest {
     }
 
     @Test
+    fun `the local filter narrows all worktrees to one project`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+
+        board.updateViewProjectFilter("api")
+
+        assertEquals(listOf("api"), board.groups.map { it.project.id })
+        assertTrue(board.isFiltered)
+        assertFalse(board.isProjectView)
+
+        board.updateViewProjectFilter(null)
+
+        assertEquals(listOf("api", "main-repo"), board.groups.map { it.project.id })
+    }
+
+    @Test
+    fun `the local filter narrows active to one project and each view keeps its own`() = runTest(dispatcher) {
+        divergenceOutput = "0\t0\n"
+        val board = board()
+        advanceUntilIdle()
+        board.show(null, GroupedView.ACTIVE)
+
+        board.updateViewProjectFilter("main-repo")
+
+        val paths = board.stateGroups.flatMap { group -> group.items.map { it.worktree.path } }
+        assertEquals(setOf("/home/dev/projects/TASK-123", "/home/dev/projects/task-456"), paths.toSet())
+
+        board.show(null, GroupedView.ALL)
+        assertNull(board.viewProjectFilter)
+        assertEquals(listOf("api", "main-repo"), board.groups.map { it.project.id })
+
+        board.show(null, GroupedView.ACTIVE)
+        assertEquals("main-repo", board.viewProjectFilter)
+    }
+
+    @Test
+    fun `a project view ignores the local filter`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.updateViewProjectFilter("api")
+
+        board.show("main-repo")
+
+        assertEquals(listOf("main-repo"), board.groups.map { it.project.id })
+        assertTrue(board.isProjectView)
+    }
+
+    @Test
+    fun `the local filter is cleared when its project is removed`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.updateViewProjectFilter("api")
+
+        board.syncCatalog(listOf(mainRepo.project))
+
+        assertNull(board.viewProjectFilter)
+        assertEquals(listOf("main-repo"), board.groups.map { it.project.id })
+    }
+
+    @Test
+    fun `revealing a worktree of another project clears the local filter of all worktrees`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.updateViewProjectFilter("api")
+        board.show(null, GroupedView.ACTIVE)
+
+        board.revealInAllWorktrees(WorktreeRef("main-repo", "/home/dev/projects/TASK-123"))
+        board.show(null, GroupedView.ALL)
+
+        assertNull(board.viewProjectFilter)
+        assertEquals("/home/dev/projects/TASK-123", board.selectedWorktree?.worktree?.path)
+    }
+
+    @Test
+    fun `revealing a worktree of the filtered project keeps the local filter`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.updateViewProjectFilter("api")
+
+        board.revealInAllWorktrees(WorktreeRef("api", "/home/dev/projects/api-TASK-12"))
+
+        assertEquals("api", board.viewProjectFilter)
+        assertEquals("/home/dev/projects/api-TASK-12", board.selectedWorktree?.worktree?.path)
+    }
+
+    @Test
     fun `projects are added and removed with the catalog`() = runTest(dispatcher) {
         val board = board(listOf(api.project))
         advanceUntilIdle()

@@ -84,14 +84,14 @@ class ShellViewModelTest {
     }
 
     @Test
-    fun `picking a filter saves it and all projects saves the unfiltered view`() {
+    fun `picking a project saves its view and all worktrees saves the unfiltered view`() {
         val viewModel = viewModel()
 
-        viewModel.selectFilter("api")
+        viewModel.selectProject(api)
         assertEquals(ShellDestination.All(projectFilter = "api"), viewModel.destination)
         assertEquals("project:api", preferences.lastDestination)
 
-        viewModel.selectFilter(null)
+        viewModel.selectAll()
         assertEquals(ShellDestination.All(), viewModel.destination)
         assertEquals("all", preferences.lastDestination)
 

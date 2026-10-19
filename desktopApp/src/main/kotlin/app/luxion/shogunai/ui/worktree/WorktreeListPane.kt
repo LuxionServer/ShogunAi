@@ -104,7 +104,7 @@ fun WorktreeListPane(
                         )
                     }
                     is ListItem.StateHeader -> stickyHeader(key = item.key) {
-                        StateGroupHeader(item.group.kind, item.group.items.size, board)
+                        StateGroupHeader(item.group.kind, item.group.items.size, board.canCleanUp(), { board.openCleanup() })
                     }
                     is ListItem.StateRow -> item(key = item.key) {
                         val entry = item.entry
@@ -294,7 +294,7 @@ private fun GroupState(holder: ProjectWorktrees, projectId: String) {
 }
 
 @Composable
-private fun StateGroupHeader(kind: StateGroupKind, count: Int, board: WorktreeBoard) {
+internal fun StateGroupHeader(kind: StateGroupKind, count: Int, canCleanUp: Boolean, onCleanUp: () -> Unit) {
     val strings = LocalStrings.current
     val colors = MaterialTheme.colorScheme
     Row(
@@ -305,19 +305,59 @@ private fun StateGroupHeader(kind: StateGroupKind, count: Int, board: WorktreeBo
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
-        Text(kind.label(strings), style = MaterialTheme.typography.titleSmall)
-        Text(strings.worktreeCount(count), style = ShogunTheme.typography.dataSmall, color = colors.onSurfaceVariant)
-        Box(Modifier.weight(1f))
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+        ) {
+            WithTooltip(label = kind.criterion(strings), modifier = Modifier.weight(1f, fill = false)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                ) {
+                    Text(kind.label(strings), style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                    Text(
+                        kind.hint(strings),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                }
+            }
+            Text(strings.worktreeCount(count), style = ShogunTheme.typography.dataSmall, color = colors.onSurfaceVariant, maxLines = 1)
+        }
         if (kind == StateGroupKind.MERGED) {
             DangerTextButton(
-                onClick = { board.openCleanup() },
-                enabled = board.canCleanUp(),
+                onClick = onCleanUp,
+                enabled = canCleanUp,
             ) { Text(strings.cleanUp, style = MaterialTheme.typography.bodySmall) }
         }
     }
 }
 
-private fun StateGroupKind.label(strings: Strings): String = when (this) {
+internal fun StateGroupKind.hint(strings: Strings): String = when (this) {
+    StateGroupKind.AGENT_WORKING -> strings.groupAgentWorkingHint
+    StateGroupKind.NEEDS_YOU -> strings.groupNeedsYouHint
+    StateGroupKind.IN_PROGRESS -> strings.groupInProgressHint
+    StateGroupKind.MERGED -> strings.groupMergedHint
+    StateGroupKind.INACTIVE -> strings.groupInactiveHint
+    StateGroupKind.FOLDER_MISSING -> strings.groupFolderMissingHint
+    StateGroupKind.OTHER -> strings.groupOtherHint
+}
+
+internal fun StateGroupKind.criterion(strings: Strings): String = when (this) {
+    StateGroupKind.AGENT_WORKING -> strings.groupAgentWorkingCriterion
+    StateGroupKind.NEEDS_YOU -> strings.groupNeedsYouCriterion
+    StateGroupKind.IN_PROGRESS -> strings.groupInProgressCriterion
+    StateGroupKind.MERGED -> strings.groupMergedCriterion
+    StateGroupKind.INACTIVE -> strings.groupInactiveCriterion
+    StateGroupKind.FOLDER_MISSING -> strings.groupFolderMissingCriterion
+    StateGroupKind.OTHER -> strings.groupOtherCriterion
+}
+
+internal fun StateGroupKind.label(strings: Strings): String = when (this) {
     StateGroupKind.AGENT_WORKING -> strings.groupAgentWorking
     StateGroupKind.NEEDS_YOU -> strings.groupNeedsYou
     StateGroupKind.IN_PROGRESS -> strings.groupInProgress
