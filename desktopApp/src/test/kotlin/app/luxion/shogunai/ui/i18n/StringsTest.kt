@@ -2,6 +2,7 @@ package app.luxion.shogunai.ui.i18n
 
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.AppLanguage
+import app.luxion.shogunai.domain.model.HerdrAgentState
 import app.luxion.shogunai.domain.model.RepositoryConfigIssue
 import app.luxion.shogunai.domain.model.RepositoryConfigRules
 import app.luxion.shogunai.domain.model.WorktreeError
@@ -140,8 +141,8 @@ class StringsTest {
 
     @Test
     fun `every state group has its own hint and criterion in both languages`() {
-        assertEquals("uncommitted or unpushed", StateGroupKind.NEEDS_YOU.hint(EnglishStrings))
-        assertEquals("sin commit o sin subir", StateGroupKind.NEEDS_YOU.hint(SpanishStrings))
+        assertEquals("agent waiting, uncommitted or unpushed", StateGroupKind.NEEDS_YOU.hint(EnglishStrings))
+        assertEquals("agente esperando, sin commit o sin subir", StateGroupKind.NEEDS_YOU.hint(SpanishStrings))
         allStrings.forEach { strings ->
             val hints = StateGroupKind.entries.map { it.hint(strings) }
             val criteria = StateGroupKind.entries.map { it.criterion(strings) }
@@ -279,6 +280,19 @@ class StringsTest {
     fun `each language names itself in its own language`() {
         assertEquals("English", EnglishStrings.languageName)
         assertEquals("Español", SpanishStrings.languageName)
+    }
+
+    @Test
+    fun `agent labels name the agent and translate each Herdr state`() {
+        HerdrAgentState.entries.forEach { state ->
+            val english = EnglishStrings.agentLabel("claude", state)
+            val spanish = SpanishStrings.agentLabel("claude", state)
+
+            assertTrue(english.startsWith("claude") && spanish.startsWith("claude"))
+            assertNotEquals(english, spanish)
+        }
+        assertEquals("claude", EnglishStrings.agentLabel("claude", null))
+        assertEquals("claude", SpanishStrings.agentLabel("claude", null))
     }
 
     @Test

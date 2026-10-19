@@ -22,6 +22,8 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EmulatorState
+import app.luxion.shogunai.domain.model.HerdrAgent
+import app.luxion.shogunai.domain.model.HerdrAgentState
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.IosSimulatorProvider
@@ -759,6 +761,42 @@ class ShogunCliTest {
     }
 
     @Test
+    fun `status shows the state Herdr reports for each agent`() {
+        val herdr = FakeHerdrClient(agents = listOf(HerdrAgent("claude", HerdrAgentState.BLOCKED, merged, "w1:p1")))
+
+        val exitCode = cli(repositoryExecutor(), herdr = herdr).run(listOf("status"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(
+            out.lines().contains("$merged  feature/TASK-1  origin=shogunai  agents=claude(blocked)  changes=0  merged"),
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `status json adds the agents with their Herdr state`() {
+        val herdr = FakeHerdrClient(
+            agents = listOf(
+                HerdrAgent("claude", HerdrAgentState.BLOCKED, merged, "w1:p1"),
+                HerdrAgent("aider", null, dirty, "w2:p1"),
+            ),
+        )
+
+        val exitCode = cli(repositoryExecutor(), herdr = herdr).run(listOf("status", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray
+        assertEquals(
+            Json.parseToJsonElement("""[{"name": "claude", "herdrState": "blocked"}]"""),
+            worktrees[1].jsonObject.getValue("agents"),
+        )
+        assertEquals(
+            Json.parseToJsonElement("""[{"name": "aider", "herdrState": null}]"""),
+            worktrees[2].jsonObject.getValue("agents"),
+        )
+    }
+
+    @Test
     fun `status shows a branch that never had commits as not started instead of merged`() {
         val executor = repositoryExecutor { command, directory ->
             when {
@@ -789,7 +827,7 @@ class ShogunCliTest {
               "worktrees": [
                 {
                   "path": "$base", "branch": "main", "head": "1111111111111111111111111111111111111111",
-                  "main": true, "locked": false, "folderMissing": false, "origin": null,
+                  "main": true, "locked": false, "folderMissing": false, "origin": null, "agents": [],
                   "status": {
                     "uncommittedChanges": 0, "upstream": null, "mainBranch": null,
                     "merged": false, "lastCommitAt": null
@@ -797,7 +835,7 @@ class ShogunCliTest {
                 },
                 {
                   "path": "$merged", "branch": "feature/TASK-1", "head": "2222222222222222222222222222222222222222",
-                  "main": false, "locked": false, "folderMissing": false, "origin": "shogunai",
+                  "main": false, "locked": false, "folderMissing": false, "origin": "shogunai", "agents": [],
                   "status": {
                     "uncommittedChanges": 0, "upstream": null, "mainBranch": {"ahead": 0, "behind": 3},
                     "merged": true, "lastCommitAt": null
@@ -805,7 +843,7 @@ class ShogunCliTest {
                 },
                 {
                   "path": "$dirty", "branch": "worktree-spike", "head": "3333333333333333333333333333333333333333",
-                  "main": false, "locked": true, "folderMissing": false, "origin": "claude-code",
+                  "main": false, "locked": true, "folderMissing": false, "origin": "claude-code", "agents": [],
                   "status": {
                     "uncommittedChanges": 2, "upstream": null, "mainBranch": {"ahead": 2, "behind": 0},
                     "merged": false, "lastCommitAt": null

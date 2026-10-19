@@ -61,7 +61,7 @@ class WorktreeHeaderUiTest {
         }
 
         onNodeWithText("Needs you").assertIsDisplayed()
-        onNodeWithText("uncommitted or unpushed").assertIsDisplayed()
+        onNodeWithText("agent waiting, uncommitted or unpushed").assertIsDisplayed()
     }
 
     @Test
@@ -73,7 +73,7 @@ class WorktreeHeaderUiTest {
         }
 
         onNodeWithText("Te necesitan").assertIsDisplayed()
-        onNodeWithText("sin commit o sin subir").assertIsDisplayed()
+        onNodeWithText("agente esperando, sin commit o sin subir").assertIsDisplayed()
     }
 
     @Test

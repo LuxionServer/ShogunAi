@@ -3,6 +3,7 @@ package app.luxion.shogunai.ui.i18n
 import androidx.compose.runtime.staticCompositionLocalOf
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.AppLanguage
+import app.luxion.shogunai.domain.model.HerdrAgentState
 import app.luxion.shogunai.domain.model.RepositoryConfigIssue
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
@@ -165,6 +166,7 @@ interface Strings {
     val menuActive: String
     val menuAllWorktrees: String
     fun agentsRunning(names: List<String>): String
+    fun agentLabel(name: String, state: HerdrAgentState?): String
     val allProjects: String
     val projectLabel: String
     val filterWorktreesPlaceholder: String

@@ -4,6 +4,8 @@ import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.model.HerdrAgent
+import app.luxion.shogunai.domain.model.HerdrAgentState
 import app.luxion.shogunai.domain.model.HerdrWorktreeOpening
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
@@ -105,6 +107,49 @@ class CliHerdrClientTest {
         val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("pane-close.json")) }
 
         assertFailsWith<WorktreeError.HerdrCommandFailed> { client(executor).openWorktreeWorkspaces("/r") }
+    }
+
+    @Test
+    fun `agents are listed with their state and foreground directory`() = runTest {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("agent-list.json")) }
+
+        val agents = client(executor).listAgents()
+
+        assertEquals(
+            listOf(
+                HerdrAgent("claude", HerdrAgentState.WORKING, "/home/dev/projects/TASK-1/app", "w1:p1"),
+                HerdrAgent("claude", HerdrAgentState.BLOCKED, "/home/dev/projects/TASK-2", "w2:p1"),
+                HerdrAgent("codex", HerdrAgentState.DONE, "/home/dev/projects/TASK-3", "w3:p1"),
+                HerdrAgent("gemini", HerdrAgentState.IDLE, "/home/dev/projects/TASK-4", "w4:p1"),
+                HerdrAgent("aider", null, "/home/dev/projects/TASK-5", "w5:p1"),
+                HerdrAgent("opencode", null, "/home/dev/projects/TASK-6", "w6:p1"),
+            ),
+            agents,
+        )
+        assertEquals(listOf("herdr", "agent", "list"), executor.executedCommands.single())
+    }
+
+    @Test
+    fun `a response without agents is unexpected`() = runTest {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("pane-close.json")) }
+
+        assertFailsWith<WorktreeError.HerdrCommandFailed> { client(executor).listAgents() }
+    }
+
+    @Test
+    fun `listing agents with the server stopped fails with Herdr's message`() = runTest {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("server-not-running.json")) }
+
+        assertFailsWith<WorktreeError.HerdrCommandFailed> { client(executor).listAgents() }
+    }
+
+    @Test
+    fun `an agent is focused by its pane`() = runTest {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, "") }
+
+        client(executor).focusAgent("w2:p1")
+
+        assertEquals(listOf("herdr", "agent", "focus", "w2:p1"), executor.executedCommands.single())
     }
 
     @Test

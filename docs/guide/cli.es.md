@@ -79,6 +79,7 @@ Lista todos los worktrees del repositorio, uno por línea: ruta, rama (o `(detac
 | `main` | El checkout principal. |
 | `origin=shogunai\|claude-code\|herdr\|other` | Dónde se creó el worktree. |
 | `locked` | Lo retiene una sesión de agente. |
+| `agents=claude(blocked),codex` | Agentes en ejecución en él, con el estado que informa Herdr (`working`, `blocked`, `done`, `idle`) cuando está en marcha. |
 | `changes=N` | Cambios sin commitear. |
 | `ahead=N behind=N` | Divergencia respecto a su upstream. |
 | `merged` | Mergeado en la rama principal. |
@@ -107,6 +108,7 @@ Imprime un único objeto JSON compacto en una línea, en vez de las líneas de t
       "locked": false,
       "folderMissing": false,
       "origin": null,
+      "agents": [{ "name": "claude", "herdrState": "blocked" }],
       "status": {
         "uncommittedChanges": 0,
         "upstream": { "ahead": 0, "behind": 0 },
@@ -125,6 +127,7 @@ Imprime un único objeto JSON compacto en una línea, en vez de las líneas de t
 | `branch`, `head` | La rama activa (`null` si está detached) y el commit. |
 | `main`, `locked`, `folderMissing` | El checkout principal, retenido por una sesión de agente, carpeta borrada a mano. |
 | `origin` | `shogunai`, `claude-code`, `herdr` u `other`; `null` para el checkout principal. |
+| `agents` | Los agentes en ejecución en él: `name` y `herdrState` (`working`, `blocked`, `done`, `idle`; `null` cuando Herdr no está en marcha o no informa de uno). |
 | `status` | `null` cuando falta la carpeta o no se pudo leer su estado. |
 | `statusProblem` | Solo aparece cuando no se pudo leer el estado: el motivo de Git. |
 | `status.uncommittedChanges`, `status.merged` | Cambios sin commitear; mergeado en la rama principal. |

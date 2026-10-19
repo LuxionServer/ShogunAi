@@ -29,6 +29,7 @@ import app.luxion.shogunai.domain.usecase.CleanupReport
 import app.luxion.shogunai.domain.usecase.CleanupSelection
 import app.luxion.shogunai.domain.usecase.idleDaemonsOfRemovedWorktrees
 import app.luxion.shogunai.domain.usecase.selectCleanup
+import app.luxion.shogunai.domain.usecase.waitsForUser
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -647,9 +648,15 @@ class ProjectWorktrees(
     fun openInHerdr(worktree: Worktree) {
         if (worktree.path in openingInHerdr) return
         openingInHerdr = openingInHerdr + worktree.path
+        val agentPane = agents.orEmpty()[worktree.path].orEmpty().agentPaneToFocus()
         scope.launch {
             try {
-                useCases.herdr.open(worktree)
+                val result = if (agentPane != null) {
+                    useCases.herdr.focusAgent(agentPane).map { HerdrOpening.FOCUSED }
+                } else {
+                    useCases.herdr.open(worktree)
+                }
+                result
                     .onSuccess { opening ->
                         clearActionError(worktree.path)
                         success = WorktreeSuccess.OpenedInHerdr(
@@ -663,6 +670,9 @@ class ProjectWorktrees(
             }
         }
     }
+
+    private fun List<RunningAgent>.agentPaneToFocus(): String? =
+        (firstOrNull { it.waitsForUser && it.herdrPaneId != null } ?: firstOrNull { it.herdrPaneId != null })?.herdrPaneId
 
     fun copyLastCreatedLaunchCommand() {
         lastCreatedWorktree?.let(::copyLaunchCommand)
