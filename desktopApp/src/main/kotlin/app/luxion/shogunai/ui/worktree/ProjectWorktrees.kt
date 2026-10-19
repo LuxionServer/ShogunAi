@@ -13,6 +13,8 @@ import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.MainBranch
+import app.luxion.shogunai.domain.model.ProvisionDrift
+import app.luxion.shogunai.domain.model.WorktreeEnvironment
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.TerminalId
 import app.luxion.shogunai.ui.i18n.Strings
@@ -30,6 +32,7 @@ import app.luxion.shogunai.domain.usecase.CleanupReport
 import app.luxion.shogunai.domain.usecase.CleanupSelection
 import app.luxion.shogunai.domain.usecase.idleDaemonsOfRemovedWorktrees
 import app.luxion.shogunai.domain.usecase.selectCleanup
+import app.luxion.shogunai.domain.usecase.waitsForUser
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -97,6 +100,12 @@ class ProjectWorktrees(
     var sizes by mutableStateOf<Map<String, Long>>(emptyMap())
         private set
     var ports by mutableStateOf<Map<String, Map<String, Int>>>(emptyMap())
+        private set
+    var environments by mutableStateOf<Map<String, WorktreeEnvironment>>(emptyMap())
+        private set
+    var provisioning by mutableStateOf<Map<String, ProvisioningState>>(emptyMap())
+        private set
+    var provisioningInProgress by mutableStateOf<Set<String>>(emptySet())
         private set
     var herdrWorktreesRoot by mutableStateOf<String?>(null)
         private set
@@ -215,6 +224,42 @@ class ProjectWorktrees(
                 useCases.list()
             }
             applyListResult(generation, result, remeasureSizes)
+        }
+    }
+
+    fun loadDetail(worktree: Worktree) {
+        if (worktree.isPrunable) return
+        scope.launch {
+            useCases.readEnvironment(worktree).onSuccess { environments = environments + (worktree.path to it) }
+        }
+        if (worktree.isMain) return
+        provisioning = provisioning + (worktree.path to ProvisioningState.Checking)
+        scope.launch { checkProvisioning(worktree) }
+    }
+
+    private suspend fun checkProvisioning(worktree: Worktree) {
+        val state = useCases.provisioning.check(worktree.path).fold(
+            onSuccess = { ProvisioningState.Checked(it) },
+            onFailure = { ProvisioningState.Unavailable },
+        )
+        provisioning = provisioning + (worktree.path to state)
+    }
+
+    fun provision(worktree: Worktree) {
+        if (worktree.path in provisioningInProgress) return
+        provisioningInProgress = provisioningInProgress + worktree.path
+        scope.launch {
+            try {
+                useCases.provisioning.provision(worktree.path)
+                    .onSuccess { clearActionError(worktree.path) }
+                    .onFailure { recordActionError(worktree.path, it) { provision(worktree) } }
+                checkProvisioning(worktree)
+                useCases.invalidateEnvironments()
+                useCases.readEnvironment(worktree).onSuccess { environments = environments + (worktree.path to it) }
+                loadPorts(listGeneration, worktrees)
+            } finally {
+                provisioningInProgress = provisioningInProgress - worktree.path
+            }
         }
     }
 
@@ -545,8 +590,10 @@ class ProjectWorktrees(
         scope.launch {
             isRemoving = true
             try {
+                val resources = useCases.releaseResources.plan(worktree, worktrees)
                 useCases.remove(worktree.path, branchToDelete, force)
                     .onSuccess { removal ->
+                        launch { useCases.releaseResources.release(resources) }
                         removal.herdrFailure?.let { herdrCloseFailures = listOf(CleanupFailure(worktree.path, it)) }
                         worktrees = worktrees.filterNot { it.path == worktree.path }
                         statuses = statuses - worktree.path
@@ -606,9 +653,15 @@ class ProjectWorktrees(
     fun openInHerdr(worktree: Worktree) {
         if (worktree.path in openingInHerdr) return
         openingInHerdr = openingInHerdr + worktree.path
+        val agentPane = agents.orEmpty()[worktree.path].orEmpty().agentPaneToFocus()
         scope.launch {
             try {
-                useCases.herdr.open(worktree)
+                val result = if (agentPane != null) {
+                    useCases.herdr.focusAgent(agentPane).map { HerdrOpening.FOCUSED }
+                } else {
+                    useCases.herdr.open(worktree)
+                }
+                result
                     .onSuccess { opening ->
                         clearActionError(worktree.path)
                         success = WorktreeSuccess.OpenedInHerdr(
@@ -683,6 +736,10 @@ class ProjectWorktrees(
                 .onFailure { recordActionError(worktree.path, it) }
         }
     }
+
+    private fun List<RunningAgent>.agentPaneToFocus(): String? =
+        (firstOrNull { it.waitsForUser && it.herdrPaneId != null } ?: firstOrNull { it.herdrPaneId != null })?.herdrPaneId
+
 
     fun copyLastCreatedLaunchCommand() {
         lastCreatedWorktree?.let(::copyLaunchCommand)
@@ -836,6 +893,12 @@ private const val COPIED_FEEDBACK_DURATION_MS = 2000L
 private const val MAX_PARALLEL_STATUS_READS = 4
 
 enum class CreateMode { NEW_BRANCH, EXISTING_BRANCH }
+
+sealed interface ProvisioningState {
+    data object Checking : ProvisioningState
+    data object Unavailable : ProvisioningState
+    data class Checked(val drift: List<ProvisionDrift>) : ProvisioningState
+}
 
 enum class FingerprintCheck { RELOADED, UNCHANGED, UNREADABLE }
 

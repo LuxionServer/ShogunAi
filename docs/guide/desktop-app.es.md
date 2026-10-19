@@ -32,8 +32,10 @@ Cuando el repositorio tiene un remoto `origin`, **Hacer fetch de origin antes** 
 
 Cada fila muestra un worktree con:
 
-- Su **rama**, la etiqueta "bloqueado" cuando una sesión de agente lo retiene, su **origen** (ShogunAi, Claude Code, Herdr u otra ubicación) y los **agentes en ejecución** en él.
+- Su **rama**, la etiqueta "bloqueado" cuando una sesión de agente lo retiene, su **origen** (ShogunAi, Claude Code, Herdr u otra ubicación) y los **agentes en ejecución** en él. Con Herdr en marcha, cada agente muestra además su estado (trabajando, bloqueado, terminado o inactivo).
 - Su **estado**: cambios sin commitear, commits por delante y por detrás de su upstream y de la rama principal, la fecha del último commit, "mergeada en <rama principal>", o "sin empezar" cuando su rama nunca tuvo commits propios. "Carpeta no encontrada" cuando su carpeta se borró a mano.
+- Sus **archivos provisionados**: si los archivos y enlaces declarados para los worktrees nuevos coinciden con los del repositorio base, listando los que faltan, difieren o no están enlazados. En un worktree creado por otra herramienta, o cuyas copias están desactualizadas, **Provisionar** los copia, reserva sus puertos y escribe su archivo de entorno, como hace `shogun provision`.
+- Su **entorno**: los puertos y cada variable de `"env"` en `.shogunai.json` con su valor, en el orden en que las imprime `shogun env`. **Copiar como .env** las pone en el portapapeles en formato dotenv. Los valores no se ocultan, porque salen de plantillas del repositorio.
 - Su **tamaño**, los **puertos** reservados para él (ver [entorno por worktree](../agents.md#entorno-por-worktree)) y la etiqueta "inactivo" cuando no tiene cambios sin commitear, ningún agente en ejecución ni commits en los últimos 14 días.
 - Las líneas de emulador y simulador con Arrancar y Parar, en repositorios que usan esos [providers](providers.md).
 
@@ -48,7 +50,7 @@ Agrupada por estado, la cabecera de cada grupo muestra una pista breve junto a s
 | Grupo | Pista | Criterio |
 |---|---|---|
 | Con agente | agente en marcha | Hay un agente de IA en marcha en el worktree. |
-| Te necesitan | sin commit o sin subir | Cambios sin commit, o commits sin subir a su upstream (o a la rama principal si no tiene). |
+| Te necesitan | agente esperando, sin commit o sin subir | Un agente bloqueado o terminado en Herdr, cambios sin commit, o commits sin subir a su upstream (o a la rama principal si no tiene). |
 | En curso | subido, sin fusionar | Limpio, subido, sin fusionar y con algún commit en los últimos 14 días, o una rama que nunca tuvo commits propios ("sin empezar"). |
 | Fusionados | ya en la rama principal | Sin commits propios por delante de la rama principal, habiéndolos tenido. Se puede limpiar. Una rama que nunca tuvo commits y no tiene upstream se muestra como "sin empezar" y nunca se ofrece para limpiar. |
 | Inactivos | sin commits en 14 días | Limpio, sin agente y sin commits en los últimos 14 días. |
@@ -58,7 +60,7 @@ Agrupada por estado, la cabecera de cada grupo muestra una pista breve junto a s
 ## Trabajar en un worktree
 
 - **Copiar comando** copia `cd "<worktree>" && <comando del agente>` para pegarlo en cualquier terminal.
-- **Abrir en Herdr** abre el worktree en [Herdr](../agents.md#herdr) con su entorno y ejecuta allí el comando del agente.
+- **Abrir en Herdr** abre el worktree en [Herdr](../agents.md#herdr) con su entorno y ejecuta allí el comando del agente; si el worktree ya tiene un agente en Herdr, enfoca el panel de ese agente en su lugar.
 - **Abrir en terminal** abre una ventana o pestaña nueva de tu terminal en la carpeta del worktree, con las variables de entorno del worktree y ejecutando el comando del agente; el shell sigue abierto cuando el agente termina. Se admiten Terminal e iTerm2 (macOS), Windows Terminal (Windows), y tmux (3.0 o posterior) y Zellij (macOS y Linux); tmux y Zellij abren una ventana o pestaña nueva en la última sesión que usaste, por lo que solo se ofrecen mientras haya una en marcha. La primera vez, la app pregunta qué terminal usar. En macOS, Terminal e iTerm2 piden tu permiso la primera vez que ShogunAi los controla; si lo rechazas, permítelo en Ajustes del Sistema > Privacidad y seguridad > Automatización.
 - **Abrir en IDE** abre la carpeta del worktree en VS Code, IntelliJ IDEA o Android Studio, según el IDE predeterminado o el elegido para el proyecto.
 - **Abrir carpeta** muestra la carpeta del worktree en Finder, el Explorador o el gestor de archivos.

@@ -183,6 +183,22 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "El archivo de entorno \"${error.path}\" resuelve fuera del worktree, así que no se escribió.",
         "Elige un archivo de entorno cuyas carpetas sean carpetas reales dentro del worktree.",
     )
+    is WorktreeError.WorktreeTargetNotFound -> ErrorTexts(
+        "Ningún worktree coincide con \"${error.target}\".",
+        "Revisa el id de tarea, la ruta o la rama.",
+    )
+    is WorktreeError.AmbiguousWorktreeTarget -> ErrorTexts(
+        "\"${error.target}\" coincide con más de un worktree.",
+        "Usa la ruta del que quieres: ${error.candidates.joinToString()}.",
+    )
+    is WorktreeError.CannotRemoveMainWorktree -> ErrorTexts(
+        "${error.path} es el worktree principal.",
+        "El worktree principal no se puede eliminar.",
+    )
+    is WorktreeError.AgentRunningInWorktree -> ErrorTexts(
+        "${error.agents.joinToString()} se está ejecutando en ${error.path}.",
+        "Páralo primero, o elimina el worktree forzándolo.",
+    )
     is WorktreeError.InvalidRef -> ErrorTexts(
         "\"${error.ref}\" no es una rama ni un punto de partida válidos.",
         "Los nombres de rama y los puntos de partida no pueden empezar por \"-\".",

@@ -22,6 +22,8 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EmulatorState
+import app.luxion.shogunai.domain.model.HerdrAgent
+import app.luxion.shogunai.domain.model.HerdrAgentState
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.IosSimulatorProvider
@@ -759,6 +761,42 @@ class ShogunCliTest {
     }
 
     @Test
+    fun `status shows the state Herdr reports for each agent`() {
+        val herdr = FakeHerdrClient(agents = listOf(HerdrAgent("claude", HerdrAgentState.BLOCKED, merged, "w1:p1")))
+
+        val exitCode = cli(repositoryExecutor(), herdr = herdr).run(listOf("status"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(
+            out.lines().contains("$merged  feature/TASK-1  origin=shogunai  agents=claude(blocked)  changes=0  merged"),
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `status json adds the agents with their Herdr state`() {
+        val herdr = FakeHerdrClient(
+            agents = listOf(
+                HerdrAgent("claude", HerdrAgentState.BLOCKED, merged, "w1:p1"),
+                HerdrAgent("aider", null, dirty, "w2:p1"),
+            ),
+        )
+
+        val exitCode = cli(repositoryExecutor(), herdr = herdr).run(listOf("status", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray
+        assertEquals(
+            Json.parseToJsonElement("""[{"name": "claude", "herdrState": "blocked"}]"""),
+            worktrees[1].jsonObject.getValue("agents"),
+        )
+        assertEquals(
+            Json.parseToJsonElement("""[{"name": "aider", "herdrState": null}]"""),
+            worktrees[2].jsonObject.getValue("agents"),
+        )
+    }
+
+    @Test
     fun `status shows a branch that never had commits as not started instead of merged`() {
         val executor = repositoryExecutor { command, directory ->
             when {
@@ -789,7 +827,7 @@ class ShogunCliTest {
               "worktrees": [
                 {
                   "path": "$base", "branch": "main", "head": "1111111111111111111111111111111111111111",
-                  "main": true, "locked": false, "folderMissing": false, "origin": null,
+                  "main": true, "locked": false, "folderMissing": false, "origin": null, "agents": [],
                   "status": {
                     "uncommittedChanges": 0, "upstream": null, "mainBranch": null,
                     "merged": false, "lastCommitAt": null
@@ -797,7 +835,7 @@ class ShogunCliTest {
                 },
                 {
                   "path": "$merged", "branch": "feature/TASK-1", "head": "2222222222222222222222222222222222222222",
-                  "main": false, "locked": false, "folderMissing": false, "origin": "shogunai",
+                  "main": false, "locked": false, "folderMissing": false, "origin": "shogunai", "agents": [],
                   "status": {
                     "uncommittedChanges": 0, "upstream": null, "mainBranch": {"ahead": 0, "behind": 3},
                     "merged": true, "lastCommitAt": null
@@ -805,7 +843,7 @@ class ShogunCliTest {
                 },
                 {
                   "path": "$dirty", "branch": "worktree-spike", "head": "3333333333333333333333333333333333333333",
-                  "main": false, "locked": true, "folderMissing": false, "origin": "claude-code",
+                  "main": false, "locked": true, "folderMissing": false, "origin": "claude-code", "agents": [],
                   "status": {
                     "uncommittedChanges": 2, "upstream": null, "mainBranch": {"ahead": 2, "behind": 0},
                     "merged": false, "lastCommitAt": null
@@ -1405,5 +1443,171 @@ class ShogunCliTest {
     fun `trust rejects an unknown option and combining yes with revoke`() {
         assertEquals(2, cli(linkingExecutor()).run(listOf("trust", "--bogus")))
         assertEquals(2, cli(linkingExecutor()).run(listOf("trust", "--yes", "--revoke")))
+    }
+
+    private val emulatorProvisioning = FakeRepositoryProvisioningSource(
+        byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(emulator = EmulatorProvider()))),
+    )
+
+    private fun executorWithAdminDirectories(extra: (List<String>, String?) -> CommandResult? = { _, _ -> null }) =
+        repositoryExecutor { command, directory ->
+            extra(command, directory) ?: if ("--git-dir" in command) {
+                val admin = if (directory == merged) "$base/.git/worktrees/TASK-1" else "$base/.git"
+                Executor.ok(command, "$admin\n$base/.git\n")
+            } else {
+                null
+            }
+        }
+
+    @Test
+    fun `remove by task id removes a clean worktree, keeps its branch and stops its emulator`() {
+        environmentStore.portsByAdminDirectory["$base/.git/worktrees/TASK-1"] = mapOf("emulator" to 5556)
+        androidSdk.states["emulator-5556"] = EmulatorState.RUNNING
+        val executor = executorWithAdminDirectories()
+
+        val exitCode = cli(executor, provisioning = emulatorProvisioning).run(listOf("remove", "TASK-1"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("removed $merged\nstopped emulator emulator-5556\n", out.toString())
+        assertTrue(executor.ran("git", "worktree", "remove", merged))
+        assertFalse(executor.calls.any { it.first.take(2) == listOf("git", "branch") })
+        assertEquals(listOf("emulator-5556"), androidSdk.stopped)
+    }
+
+    @Test
+    fun `remove by path and by branch resolve the same worktree`() {
+        listOf(merged, "feature/TASK-1").forEach { target ->
+            val executor = repositoryExecutor()
+
+            val exitCode = cli(executor).run(listOf("remove", target))
+
+            assertEquals(0, exitCode, err.toString())
+            assertTrue(executor.ran("git", "worktree", "remove", merged), target)
+        }
+    }
+
+    @Test
+    fun `remove refuses a worktree with changes and suggests force`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command.take(3) == listOf("git", "worktree", "remove")) {
+                Executor.fail(command, "fatal: '$merged' contains modified or untracked files, use --force to delete it")
+            } else {
+                null
+            }
+        }
+
+        val exitCode = cli(executor, provisioning = emulatorProvisioning).run(listOf("remove", "TASK-1"))
+
+        assertEquals(1, exitCode)
+        assertEquals("shogun: $merged has uncommitted or untracked changes; use --force to remove it anyway\n", err.toString())
+        assertEquals("", out.toString())
+        assertTrue(androidSdk.stopped.isEmpty())
+    }
+
+    @Test
+    fun `remove with force passes force to git`() {
+        val executor = repositoryExecutor()
+
+        val exitCode = cli(executor).run(listOf("remove", "TASK-1", "--force"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(executor.ran("git", "worktree", "remove", "--force", merged))
+    }
+
+    @Test
+    fun `remove refuses a worktree with a running agent unless forced`() {
+        val executor = agentRunningIn(merged)
+
+        val exitCode = cli(executor).run(listOf("remove", "TASK-1"))
+
+        assertEquals(1, exitCode)
+        assertEquals("shogun: claude is running in $merged; use --force to remove it anyway\n", err.toString())
+        assertFalse(executor.calls.any { it.first.take(3) == listOf("git", "worktree", "remove") })
+        err.clear()
+
+        assertEquals(0, cli(executor).run(listOf("remove", "TASK-1", "--force")), err.toString())
+        assertTrue(executor.ran("git", "worktree", "remove", "--force", merged))
+    }
+
+    @Test
+    fun `remove with delete-branch deletes a merged branch`() {
+        val executor = repositoryExecutor()
+
+        val exitCode = cli(executor).run(listOf("remove", "TASK-1", "--delete-branch"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("removed $merged\ndeleted branch feature/TASK-1\n", out.toString())
+        assertTrue(executor.ran("git", "branch", "-D", "--", "feature/TASK-1"))
+    }
+
+    @Test
+    fun `remove with delete-branch keeps a branch that isn't merged`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command.take(2) == listOf("git", "merge-base")) Executor.fail(command) else null
+        }
+
+        val exitCode = cli(executor).run(listOf("remove", "TASK-1", "--delete-branch"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("removed $merged\nkept branch feature/TASK-1 (not merged into the main branch)\n", out.toString())
+        assertFalse(executor.ran("git", "branch", "-D", "--", "feature/TASK-1"))
+    }
+
+    @Test
+    fun `remove fails without removing anything for an unknown target or the main worktree`() {
+        val executor = repositoryExecutor()
+
+        assertEquals(1, cli(executor).run(listOf("remove", "TASK-99")))
+        assertEquals("shogun: No worktree matches \"TASK-99\"\n", err.toString())
+        err.clear()
+
+        assertEquals(1, cli(executor).run(listOf("remove", base)))
+        assertTrue(err.contains("is the main worktree"), err.toString())
+        assertFalse(executor.calls.any { it.first.take(3) == listOf("git", "worktree", "remove") })
+    }
+
+    @Test
+    fun `remove lists the candidates when the target is ambiguous`() {
+        val twin = "$worktreesRoot/TASK-2"
+        val executor = repositoryExecutor { command, _ ->
+            if (command.take(3) == listOf("git", "worktree", "list")) {
+                Executor.ok(command, porcelain + "\n\nworktree $twin\nHEAD 4444444444444444444444444444444444444444\nbranch refs/heads/feature/TASK-1\n")
+            } else {
+                null
+            }
+        }
+
+        val exitCode = cli(executor).run(listOf("remove", "feature/TASK-1"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("  $merged\n") && err.contains("  $twin\n"), err.toString())
+        assertFalse(executor.calls.any { it.first.take(3) == listOf("git", "worktree", "remove") })
+    }
+
+    @Test
+    fun `repair re-links the worktrees that moved with the worktrees folder`() {
+        val moved = "/home/dev/old-place/TASK-1"
+        val executor = repositoryExecutor { command, _ ->
+            if (command.take(3) == listOf("git", "worktree", "list")) {
+                Executor.ok(command, porcelain.replace(merged, moved))
+            } else {
+                null
+            }
+        }
+        val fileManager = FakeFileManager(existing = listOf(base, merged))
+
+        val exitCode = cli(executor, fileManager = fileManager).run(listOf("repair"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("repaired $merged\n", out.toString())
+        assertTrue(executor.ran("git", "worktree", "repair", merged))
+    }
+
+    @Test
+    fun `repair says so when nothing moved`() {
+        val exitCode = cli(repositoryExecutor()).run(listOf("repair"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("Nothing to repair.\n", out.toString())
     }
 }

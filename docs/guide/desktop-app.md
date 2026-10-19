@@ -32,8 +32,10 @@ When the repository has an `origin` remote, **Fetch from origin first** fetches 
 
 Each row shows a worktree with:
 
-- Its **branch**, a "locked" label when an agent session holds it, its **origin** (ShogunAi, Claude Code, Herdr or another location) and the **agents running** in it.
+- Its **branch**, a "locked" label when an agent session holds it, its **origin** (ShogunAi, Claude Code, Herdr or another location) and the **agents running** in it. With Herdr running, each agent also shows its state (working, blocked, done or idle).
 - Its **status**: uncommitted changes, ahead/behind its upstream and the main branch, the last commit date, "merged into <main branch>", or "not started" when its branch never had commits of its own. "Folder missing" when its folder was deleted by hand.
+- Its **provisioned files**: whether the files and links declared for new worktrees match the base repository's, listing the missing, differing and not-linked ones. For a worktree made by another tool, or whose copies are stale, **Provision** copies them, reserves its ports and writes its environment file, as `shogun provision` does.
+- Its **environment**: the ports and every variable from `.shogunai.json` `"env"` with its value, in the order `shogun env` prints them. **Copy as .env** puts them on the clipboard in dotenv format. Values aren't masked, since they come from templates in the repository.
 - Its **size**, the **ports** reserved for it (see [per-worktree environment](../agents.md#per-worktree-environment)) and an "inactive" label when it has no uncommitted changes, no agent running and no commit in the last 14 days.
 - The emulator and simulator lines with Start and Stop, for repositories that use those [providers](providers.md).
 
@@ -48,7 +50,7 @@ Grouped by state, each group's header shows a short hint next to its title, and 
 | Group | Hint | Criterion |
 |---|---|---|
 | Agent working | agent running | An AI agent is running in the worktree. |
-| Needs you | uncommitted or unpushed | Uncommitted changes, or commits not pushed to its upstream (or to the main branch when it has none). |
+| Needs you | agent waiting, uncommitted or unpushed | An agent blocked or done in Herdr, uncommitted changes, or commits not pushed to its upstream (or to the main branch when it has none). |
 | In progress | pushed, not merged | Clean, pushed, not merged and with a commit in the last 14 days, or a branch that never had commits of its own ("not started"). |
 | Merged | in main branch | No commits of its own ahead of the main branch, after having had some. Can be cleaned up. A branch that never had commits and has no upstream reads as "not started" instead and is never offered for cleanup. |
 | Inactive | idle for 14+ days | Clean, no agent and no commit in the last 14 days. |
@@ -58,7 +60,7 @@ Grouped by state, each group's header shows a short hint next to its title, and 
 ## Working in a worktree
 
 - **Copy command** copies `cd "<worktree>" && <agent command>` to paste in any terminal.
-- **Open in Herdr** opens the worktree in [Herdr](../agents.md#herdr) with its environment and runs the agent command there.
+- **Open in Herdr** opens the worktree in [Herdr](../agents.md#herdr) with its environment and runs the agent command there; if the worktree already has an agent in Herdr, it focuses that agent's pane instead.
 - **Open in terminal** opens a new window or tab of your terminal in the worktree's folder, with the worktree's environment variables set, and runs the agent command; the shell stays open when the agent exits. Terminal and iTerm2 (macOS), Windows Terminal (Windows), and tmux (3.0 or later) and Zellij (macOS and Linux) are supported; tmux and Zellij open a new window or tab in the session you used last, so they're only offered while one is running. The first time, the app asks which terminal to use. On macOS, Terminal and iTerm2 ask your permission the first time ShogunAi controls them; if you decline, allow it in System Settings > Privacy & Security > Automation.
 - **Open in IDE** opens the worktree's folder in VS Code, IntelliJ IDEA or Android Studio, whichever is the default IDE or the one chosen for the project.
 - **Open folder** shows the worktree's folder in Finder, Explorer or the file manager.

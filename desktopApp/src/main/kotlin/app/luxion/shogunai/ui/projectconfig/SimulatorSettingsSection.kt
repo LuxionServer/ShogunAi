@@ -76,6 +76,7 @@ private fun AvailableSimulatorSettings(viewModel: ProjectConfigViewModel, state:
     if (!state.kotlinMultiplatform) return
     if (state.testsWired) {
         Text(strings.simulatorTestsWired, style = MaterialTheme.typography.bodySmall, color = ShogunTheme.status.success.color)
+        if (state.initScriptInstalled) UninstallInitScriptPanel(viewModel)
     } else {
         KmpWiringPanel(viewModel)
     }
@@ -109,6 +110,29 @@ private fun KmpWiringPanel(viewModel: ProjectConfigViewModel, modifier: Modifier
                     confirming = false
                     installError = viewModel.installSimulatorInitScript().exceptionOrNull()
                 }) { Text(strings.install) }
+            },
+            dismissButton = { NeutralTextButton(onClick = { confirming = false }) { Text(strings.cancel) } },
+        )
+    }
+}
+
+@Composable
+private fun UninstallInitScriptPanel(viewModel: ProjectConfigViewModel) {
+    val strings = LocalStrings.current
+    var confirming by remember { mutableStateOf(false) }
+    var uninstallError by remember { mutableStateOf<Throwable?>(null) }
+    SecondaryButton(onClick = { confirming = true }) { Text(strings.uninstallInitScript) }
+    uninstallError?.let { ErrorNotice(it, onDismiss = { uninstallError = null }) }
+    if (confirming) {
+        AlertDialog(
+            onDismissRequest = { confirming = false },
+            title = { Text(strings.uninstallInitScriptTitle) },
+            text = { Text(strings.uninstallInitScriptMessage(viewModel.simulatorInitScriptPath)) },
+            confirmButton = {
+                PrimaryButton(onClick = {
+                    confirming = false
+                    uninstallError = viewModel.uninstallSimulatorInitScript().exceptionOrNull()
+                }) { Text(strings.uninstall) }
             },
             dismissButton = { NeutralTextButton(onClick = { confirming = false }) { Text(strings.cancel) } },
         )

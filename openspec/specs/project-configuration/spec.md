@@ -419,3 +419,10 @@ The project settings view of an existing project SHALL show a title that names t
 #### Scenario: Name edited but not saved
 - **WHEN** the user changes the name field to `other-name` without saving
 - **THEN** the title still names `main-repo`
+
+### Requirement: Uninstall the KMP init script from settings
+When the KMP init script is installed, project settings SHALL offer to uninstall it, with the same effect as `shogun simulator gradle-init uninstall`.
+
+#### Scenario: Uninstall
+- **WHEN** the init script is installed and the user chooses to uninstall it in project settings
+- **THEN** the script is removed and the section shows that KMP tests no longer use the worktree's simulator

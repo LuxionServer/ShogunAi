@@ -19,6 +19,8 @@ sealed interface CliCommand {
 
     data class Provision(val path: String? = null, val check: Boolean = false) : CliCommand
     data class Trust(val path: String? = null, val yes: Boolean = false, val revoke: Boolean = false) : CliCommand
+    data class Remove(val target: String, val force: Boolean = false, val deleteBranch: Boolean = false) : CliCommand
+    data object Repair : CliCommand
     data class Status(val json: Boolean = false) : CliCommand
     data class Clean(
         val confirmed: Boolean = false,
@@ -73,6 +75,8 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "new" -> parseNew(rest)
                 "provision" -> parseProvision(rest)
                 "trust" -> parseTrust(rest)
+                "remove" -> parseRemove(rest)
+                "repair" -> noArguments(name, rest, CliCommand.Repair)
                 "status" -> parseStatus(rest)
                 "clean" -> parseClean(rest)
                 "hook" -> parseHook(rest)
@@ -130,6 +134,22 @@ private fun parseNew(rest: List<String>): CliCommand.New {
         from = from,
         fetch = fetch,
     )
+}
+
+private fun parseRemove(rest: List<String>): CliCommand.Remove {
+    var target: String? = null
+    var force = false
+    var deleteBranch = false
+    rest.forEach { argument ->
+        when {
+            argument == "--force" || argument == "-f" -> force = true
+            argument == "--delete-branch" -> deleteBranch = true
+            argument.startsWith("-") -> throw UsageException("unknown option '$argument' for 'remove'")
+            target != null -> throw UsageException("'remove' takes a single target, got '$target' and '$argument'")
+            else -> target = argument
+        }
+    }
+    return CliCommand.Remove(target ?: throw UsageException("'remove' needs a task id, path or branch"), force, deleteBranch)
 }
 
 private fun parseStatus(rest: List<String>): CliCommand.Status {
