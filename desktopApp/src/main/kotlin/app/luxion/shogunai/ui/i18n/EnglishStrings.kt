@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.HerdrAgentState
 import app.luxion.shogunai.domain.usecase.GitFailureCause
@@ -485,6 +486,25 @@ object EnglishStrings : Strings {
     override val showIconInMenuBar = "Show icon in the menu bar"
     override val showIconInTray = "Show icon in the system tray"
     override val keepRunningWhenClosed = "Keep running when the window is closed"
+    override val menuCheckForUpdates = "Check for Updates…"
+    override fun updateAvailableMessage(newVersion: String, runningVersion: String) =
+        "ShogunAi $newVersion is out! You're on $runningVersion."
+    override fun updateAvailableDialogMessage(newVersion: String, runningVersion: String) =
+        "ShogunAi $newVersion is available. You're on $runningVersion."
+    override val updateWhatsNew = "What's new"
+    override val updateSkipVersion = "Skip this version"
+    override val updateCopy = "Copy"
+    override val updateDownload = "Download"
+    override val updateOpenReleasePage = "Open"
+    override fun updateCommandReminder(channel: InstallChannel, command: String) =
+        "Installed with ${channel.installerName()}? Run $command to update."
+    override val updateDownloadReminder = "Download the new installer to update."
+    override fun updateInstallCommandReminder(command: String) = "After downloading, run $command"
+    override val updateReleasePageReminder = "See the release page to update."
+    override val updateDialogTitle = "Check for Updates"
+    override val updateChecking = "Checking for updates…"
+    override fun updateUpToDateMessage(version: String) = "ShogunAi is up to date (version $version)."
+    override val updateCheckAutomaticallyLabel = "Check for updates automatically"
 }
 
 internal fun String?.asSuffix(): String = if (isNullOrBlank()) "" else ": $this"

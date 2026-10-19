@@ -69,10 +69,6 @@ Hallazgos menores de revisar de punta a punta la interfaz rediseñada:
 - Los campos `link` y `hooks` de `.shogunai.json` no se muestran en la sección de archivos de un worktree.
 - La vista de emuladores Android muestra «—» en sus filas y no tiene etiquetas de columna.
 
-### Distribución
-
-- Comprobación de actualizaciones contra GitHub Releases: la app detecta una versión nueva y ofrece descargarla (o indica `brew upgrade` si se instaló con Homebrew).
-
 ## En estudio
 
 ### Integración con GitHub y gestores de tareas

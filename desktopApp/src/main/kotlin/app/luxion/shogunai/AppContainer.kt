@@ -1,6 +1,17 @@
 package app.luxion.shogunai
 
+import app.luxion.shogunai.BuildInfo
 import app.luxion.shogunai.domain.executor.ClipboardWriter
+import app.luxion.shogunai.domain.model.HostArchitecture
+import app.luxion.shogunai.domain.model.HostOs
+import app.luxion.shogunai.domain.usecase.CheckForUpdateUseCase
+import app.luxion.shogunai.domain.usecase.DetectInstallChannelUseCase
+import app.luxion.shogunai.infrastructure.GitHubReleaseSource
+import app.luxion.shogunai.infrastructure.JsonUpdatePreferenceRepository
+import app.luxion.shogunai.ui.shell.UpdateState
+import app.luxion.shogunai.ui.shell.openInBrowser
+import java.nio.file.Files
+import java.nio.file.Path
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.ui.worktree.DialogPostCreateApproval
@@ -125,6 +136,24 @@ class AppContainer {
     private val fileManager: FileManager = NioFileManager()
     private val shellCommandExecutor: ShellCommandExecutor = ProcessBuilderShellCommandExecutor()
     private val clipboardWriter: ClipboardWriter = AwtClipboardWriter()
+    private val updatePreferences = JsonUpdatePreferenceRepository(settingsFile)
+    val updates = UpdateState(
+        check = CheckForUpdateUseCase(
+            source = GitHubReleaseSource(BuildInfo.VERSION),
+            preferences = updatePreferences,
+            detectChannel = DetectInstallChannelUseCase(
+                os = HostOs.current(),
+                appLocation = System.getProperty("java.home").orEmpty(),
+                pathExists = { Files.exists(Path.of(it)) },
+                executor = shellCommandExecutor,
+            ),
+            runningVersion = BuildInfo.VERSION,
+            architecture = HostArchitecture.current(),
+        )::invoke,
+        preferences = updatePreferences,
+        clipboard = clipboardWriter,
+        openUrl = ::openInBrowser,
+    )
     val repositoryProvisioningSource: RepositoryProvisioningSource = RepositoryProvisioningFiles()
     private val gradleUserHome = defaultGradleUserHome()
     private val gradleDaemonSource = ProcessGradleDaemonSource(shellCommandExecutor, gradleUserHome)

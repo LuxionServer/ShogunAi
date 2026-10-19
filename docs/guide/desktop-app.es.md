@@ -82,7 +82,7 @@ En repositorios que los declaran en `.shogunai.json`, la pantalla de worktrees a
 
 ## Preferencias
 
-Preferencias (Cmd+Coma en macOS, Ctrl+Coma en los demás) reúne el tema, el idioma y la sección **Herramientas**, donde eliges el terminal y el IDE predeterminado entre los que ShogunAi ha encontrado en esta máquina. Si no encuentra ninguno, la sección lo dice y las acciones correspondientes no se ofrecen.
+Preferencias (Cmd+Coma en macOS, Ctrl+Coma en los demás) reúne el tema, el idioma, la sección **Herramientas**, donde eliges el terminal y el IDE predeterminado entre los que ShogunAi ha encontrado en esta máquina (si no encuentra ninguno, la sección lo dice y las acciones correspondientes no se ofrecen), y **Buscar actualizaciones automáticamente**, activada por defecto. Consulta [Actualizaciones](#actualizaciones).
 
 ## Icono en la barra de menús y en la bandeja del sistema
 
@@ -103,3 +103,21 @@ Preferencias tiene dos opciones para esto, que solo aparecen donde el sistema ti
 ## Tema e idioma
 
 La barra superior tiene un selector de tema (claro, oscuro, o automático para seguir al sistema) y un selector de idioma (English o Español). Las dos elecciones se recuerdan entre reinicios.
+
+## Actualizaciones
+
+Cada vez que arranca, y después una vez al día mientras sigue abierta, la app pregunta a GitHub por la última versión publicada. Si es más reciente que la que usas, aparece un aviso breve arriba de la ventana («¡Ya está aquí ShogunAi 1.3.0! Tienes la 1.2.0.») con un enlace **Novedades** a las notas de la versión. El aviso no interrumpe tu trabajo y te recuerda cómo actualizar según cómo se instaló ShogunAi:
+
+| Instalada con | El aviso |
+|---|---|
+| Homebrew | `brew upgrade --cask shogunai`, con un botón **Copiar** |
+| Scoop | `scoop update shogunai`, con un botón **Copiar** |
+| winget | `winget upgrade LuxionServer.ShogunAi`, con un botón **Copiar** |
+| El `.dmg`, `.msi` o `.deb` | Un botón **Descargar** para el nuevo instalador (con el `.deb`, también el comando `sudo apt install ./<archivo>` que ejecutar después) |
+| Otra forma | Un enlace a la página de la versión |
+
+La app nunca descarga, instala ni ejecuta nada por sí sola. **Omitir esta versión** oculta el aviso hasta que salga una versión más nueva; cerrarlo lo oculta hasta el siguiente arranque. A veces la versión se publica unos minutos antes de que llegue el paquete de Homebrew, Scoop o winget, así que el comando puede tardar un momento en funcionar.
+
+**Buscar actualizaciones…** en el menú Ayuda comprueba al instante, sin tener en cuenta el horario ni las versiones omitidas, y te dice si ShogunAi está al día, qué versión hay disponible o por qué falló la comprobación. Las compilaciones de desarrollo no comprueban por su cuenta.
+
+La única petición que la app hace por su cuenta es un `GET` anónimo a `https://api.github.com/repos/LuxionServer/ShogunAi/releases/latest`, que lleva la versión de la app en la cabecera `User-Agent` y nada más. Desactiva **Buscar actualizaciones automáticamente** en Preferencias y la app solo contactará con GitHub cuando elijas **Buscar actualizaciones…**.

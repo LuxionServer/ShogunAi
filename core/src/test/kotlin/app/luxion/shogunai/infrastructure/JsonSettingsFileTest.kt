@@ -1,6 +1,8 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.model.AppLanguage
+import app.luxion.shogunai.domain.model.AppVersion
+import app.luxion.shogunai.domain.model.UpdatePreferences
 import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.Grouping
@@ -29,6 +31,7 @@ class JsonSettingsFileTest {
     private val themeRepository = JsonThemePreferenceRepository(settingsFile)
     private val languageRepository = JsonLanguagePreferenceRepository(settingsFile)
     private val shellRepository = JsonShellPreferenceRepository(settingsFile)
+    private val updateRepository = JsonUpdatePreferenceRepository(settingsFile)
 
     @AfterTest
     fun tearDown() {
@@ -295,6 +298,24 @@ class JsonSettingsFileTest {
         val settings = JsonSettingsFile(storagePath).read()
         assertEquals(ThemeMode.DARK, settings.themeMode)
         assertTrue(settings.sidebarCollapsed)
+    }
+
+    @Test
+    fun `update checks are on with no history when the file was written before they existed`() {
+        Files.writeString(storagePath, """{ "themeMode": "DARK" }""")
+
+        assertEquals(UpdatePreferences(), updateRepository.load())
+    }
+
+    @Test
+    fun `saves the update preferences next to the other settings`() {
+        themeRepository.save(ThemeMode.DARK)
+
+        updateRepository.setCheckAutomatically(false)
+        updateRepository.skip(AppVersion(1, 3, 0))
+
+        assertEquals(UpdatePreferences(false, AppVersion(1, 3, 0)), updateRepository.load())
+        assertEquals(ThemeMode.DARK, themeRepository.load())
     }
 
     @Test

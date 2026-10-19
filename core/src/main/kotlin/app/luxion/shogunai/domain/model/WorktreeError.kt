@@ -35,6 +35,9 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class LocalFileUnreadable(val path: String, val reason: String?) :
         WorktreeError("Can't read $path" + if (reason.isNullOrBlank()) "" else ": $reason")
 
+    class UpdateCheckFailed(val reason: String?) :
+        WorktreeError("Couldn't check for updates" + if (reason.isNullOrBlank()) "" else ": $reason")
+
     class NotAWorktree(val path: String) :
         WorktreeError("$path is not a linked worktree of this repository")
 

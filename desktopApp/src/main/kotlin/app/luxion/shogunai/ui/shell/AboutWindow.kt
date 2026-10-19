@@ -22,8 +22,6 @@ import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.theme.ShogunTheme
-import java.awt.Desktop
-import java.net.URI
 
 private const val RepositoryUrl = "https://github.com/LuxionServer/ShogunAi"
 private val AboutWindowSize = DpSize(360.dp, 340.dp)
@@ -65,12 +63,6 @@ private fun AboutContent() {
             style = ShogunTheme.typography.dataSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        NeutralTextButton(onClick = ::openRepository) { Text(strings.aboutRepositoryLink) }
+        NeutralTextButton(onClick = { openInBrowser(RepositoryUrl) }) { Text(strings.aboutRepositoryLink) }
     }
-}
-
-private fun openRepository() {
-    if (!Desktop.isDesktopSupported()) return
-    val desktop = Desktop.getDesktop()
-    if (desktop.isSupported(Desktop.Action.BROWSE)) desktop.browse(URI(RepositoryUrl))
 }

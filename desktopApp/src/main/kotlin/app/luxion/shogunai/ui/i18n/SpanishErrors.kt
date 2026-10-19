@@ -87,6 +87,10 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "${error.path} cambió en disco desde que se abrieron los ajustes.",
         "Recarga los ajustes y aplica de nuevo tus cambios.",
     )
+    is WorktreeError.UpdateCheckFailed -> ErrorTexts(
+        "No se pudo buscar actualizaciones" + (error.reason?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: "."),
+        "Comprueba tu conexión e inténtalo de nuevo más tarde.",
+    )
     is WorktreeError.NotAWorktree -> ErrorTexts(
         "${error.path} no es un worktree de este repositorio.",
         "Recarga la lista; puede que la carpeta se haya eliminado.",

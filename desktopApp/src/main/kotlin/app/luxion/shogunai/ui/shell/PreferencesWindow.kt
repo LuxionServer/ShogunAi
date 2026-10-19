@@ -29,7 +29,7 @@ import app.luxion.shogunai.ui.i18n.strings
 import app.luxion.shogunai.ui.isMacOs
 import app.luxion.shogunai.ui.tray.TrayPreferences
 
-private val PreferencesWindowSize = DpSize(440.dp, 600.dp)
+private val PreferencesWindowSize = DpSize(440.dp, 700.dp)
 
 fun ThemeMode.label(strings: Strings): String = when (this) {
     ThemeMode.LIGHT -> strings.themeLight
@@ -41,6 +41,7 @@ fun ThemeMode.label(strings: Strings): String = when (this) {
 fun PreferencesWindow(
     appearance: Appearance,
     tools: ToolsPreferences,
+    updates: UpdateState,
     tray: TrayPreferences,
     bringToFrontRequests: Int,
     onClose: () -> Unit,
@@ -55,13 +56,13 @@ fun PreferencesWindow(
         LaunchedEffect(bringToFrontRequests) { window.toFront() }
         LaunchedEffect(Unit) { tools.refresh() }
         AppearanceScope(appearance) {
-            PreferencesContent(appearance, tools, tray)
+            PreferencesContent(appearance, tools, updates, tray)
         }
     }
 }
 
 @Composable
-private fun PreferencesContent(appearance: Appearance, tools: ToolsPreferences, tray: TrayPreferences) {
+private fun PreferencesContent(appearance: Appearance, tools: ToolsPreferences, updates: UpdateState, tray: TrayPreferences) {
     val strings = LocalStrings.current
     Column(
         modifier = Modifier.fillMaxWidth().padding(Spacing.lg),
@@ -89,6 +90,7 @@ private fun PreferencesContent(appearance: Appearance, tools: ToolsPreferences, 
         )
         ToolsSection(tools)
         if (tray.isSupported) TraySection(tray)
+        UpdatesPreferences(updates)
     }
 }
 
