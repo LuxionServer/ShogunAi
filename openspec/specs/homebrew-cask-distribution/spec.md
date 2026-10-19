@@ -29,7 +29,7 @@ The system SHALL automatically update the Cask in the tap every time a new relea
 
 #### Scenario: Release publicada con éxito
 - **WHEN** the release workflow publishes a new GitHub Release with its arm64 and x64 `.dmg` files
-- **THEN** a CI job computes the `sha256` of both `.dmg` files, regenerates `Casks/shogunai.rb` in the tap from the Cask template versioned in `LuxionServer/ShogunAi` with the new version and both checksums, and commits and pushes that change to the tap repository
+- **THEN** a CI job reads the `sha256` of both `.dmg` files from the release's `SHA256SUMS`, regenerates `Casks/shogunai.rb` in the tap from the Cask template versioned in `LuxionServer/ShogunAi` with the new version and both checksums, and commits and pushes that change to the tap repository
 
 #### Scenario: A macOS installer is missing
 - **WHEN** the update job runs and either the arm64 or the x64 `.dmg` cannot be downloaded from the release
@@ -53,3 +53,10 @@ The Cask SHALL link the desktop app's executable as `shogun` in Homebrew's `bin`
 #### Scenario: Uninstall
 - **WHEN** the user runs `brew uninstall --cask shogunai`
 - **THEN** the `shogun` link is removed together with the app
+
+### Requirement: The cask uses the published installers
+The cask rendered by each release SHALL download the `.dmg` names published by that release and declare the checksums from its `SHA256SUMS`, without recomputing the names with its own rule.
+
+#### Scenario: Release 2.0.0
+- **WHEN** version `2.0.0` is released
+- **THEN** `brew install --cask shogunai` downloads `ShogunAi-2.0.0-<arch>.dmg` and its checksum matches

@@ -8,8 +8,7 @@ on:
     types: [closed]
     branches: [main]
 
-permissions:
-  contents: write
+permissions: {}
 
 defaults:
   run:
@@ -23,42 +22,67 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.value }}
+      ref: ${{ steps.version.outputs.ref }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.ref }}
-
       - name: Resolve version
         id: version
         env:
+          EVENT_NAME: ${{ github.event_name }}
           BRANCH: ${{ github.event.pull_request.head.ref }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
+          if [ "$EVENT_NAME" = "pull_request" ]; then
             VERSION="${BRANCH#release/}"
+            REF="$MERGE_SHA"
           else
             VERSION="${GITHUB_REF#refs/tags/v}"
+            REF="$GITHUB_REF"
+          fi
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release version must match X.Y.Z (digits only), got: $VERSION" >&2
+            exit 1
           fi
           echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
 
+  test:
+    needs: resolve-version
+    permissions:
+      contents: read
+    uses: ./.github/workflows/test-suite.yml
+    with:
+      ref: ${{ needs.resolve-version.outputs.ref }}
+
+  create-release:
+    needs: [resolve-version, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.resolve-version.outputs.version }}
+      REF: ${{ needs.resolve-version.outputs.ref }}
+      EVENT_NAME: ${{ github.event_name }}
+    steps:
       - name: Tag merge commit
         if: github.event_name == 'pull_request'
         run: |
-          git tag "v${{ steps.version.outputs.value }}" ${{ github.event.pull_request.merge_commit_sha }}
-          git push origin "v${{ steps.version.outputs.value }}"
+          gh api "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f ref="refs/tags/v${VERSION}" \
+            -f sha="$REF"
 
-  create-release:
-    needs: resolve-version
-    runs-on: ubuntu-latest
-    steps:
       - name: Create draft release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ needs.resolve-version.outputs.version }}
-          draft: true
-          generate_release_notes: true
+        run: |
+          gh release create "v${VERSION}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --draft \
+            --generate-notes
 
   build:
     needs: [resolve-version, create-release]
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -78,10 +102,14 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    env:
+      VERSION: ${{ needs.resolve-version.outputs.version }}
+
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.ref }}
+          ref: ${{ needs.resolve-version.outputs.ref }}
+          persist-credentials: false
 
       - uses: actions/setup-java@v4
         with:
@@ -91,9 +119,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Build installer
-        run: ./gradlew :desktopApp:${{ matrix.task }} -PappVersion=${{ needs.resolve-version.outputs.version }}
+        env:
+          TASK: ${{ matrix.task }}
+        run: ./gradlew ":desktopApp:${TASK}" "-PappVersion=${VERSION}"
 
-      - name: Add architecture suffix to dmg
+      - name: Name dmg after release version and architecture
         if: runner.os == 'macOS'
         run: |
           ARCH="$(echo "$RUNNER_ARCH" | tr '[:upper:]' '[:lower:]')"
@@ -103,24 +133,27 @@ jobs:
             echo "Expected exactly one dmg, found ${#DMGS[@]}." >&2
             exit 1
           fi
-          mv "${DMGS[0]}" "${DMGS[0]%.dmg}-${ARCH}.dmg"
+          mv "${DMGS[0]}" "desktopApp/build/compose/binaries/main-release/dmg/ShogunAi-${VERSION}-${ARCH}.dmg"
 
-      - name: Upload asset to draft release
-        uses: softprops/action-gh-release@v2
+      - uses: actions/upload-artifact@v4
         with:
-          tag_name: v${{ needs.resolve-version.outputs.version }}
-          files: ${{ matrix.artifact-glob }}
-          fail_on_unmatched_files: true
-          draft: true
+          name: installer-${{ matrix.os }}
+          path: ${{ matrix.artifact-glob }}
+          if-no-files-found: error
 
   build-cli:
     needs: [resolve-version, create-release]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.resolve-version.outputs.version }}
 
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.ref }}
+          ref: ${{ needs.resolve-version.outputs.ref }}
+          persist-credentials: false
 
       - uses: actions/setup-java@v4
         with:
@@ -130,46 +163,58 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Build CLI zip
-        run: ./gradlew :cli:distZip -PappVersion=${{ needs.resolve-version.outputs.version }}
+        run: ./gradlew :cli:distZip "-PappVersion=${VERSION}"
 
-      - name: Upload asset to draft release
-        uses: softprops/action-gh-release@v2
+      - uses: actions/upload-artifact@v4
         with:
-          tag_name: v${{ needs.resolve-version.outputs.version }}
-          files: cli/build/distributions/shogun-${{ needs.resolve-version.outputs.version }}.zip
-          fail_on_unmatched_files: true
-          draft: true
+          name: cli
+          path: cli/build/distributions/shogun-${{ needs.resolve-version.outputs.version }}.zip
+          if-no-files-found: error
 
   publish-release:
     needs: [resolve-version, build, build-cli]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.resolve-version.outputs.version }}
     steps:
-      - name: Publish release
-        uses: softprops/action-gh-release@v2
+      - uses: actions/download-artifact@v4
         with:
-          tag_name: v${{ needs.resolve-version.outputs.version }}
-          draft: false
+          path: dist
+          merge-multiple: true
+
+      - name: Write checksums
+        working-directory: dist
+        run: sha256sum -- * > SHA256SUMS
+
+      - name: Upload assets and publish release
+        run: |
+          gh release upload "v${VERSION}" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          gh release edit "v${VERSION}" --repo "$GITHUB_REPOSITORY" --draft=false
 
   update-homebrew-cask:
     needs: [resolve-version, publish-release]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.ref }}
+          ref: ${{ needs.resolve-version.outputs.ref }}
           path: source
+          persist-credentials: false
 
-      - name: Download macOS dmgs and compute sha256
+      - name: Read checksums from the release
         id: sha
         env:
           VERSION: ${{ needs.resolve-version.outputs.version }}
         run: |
-          DMG_VERSION="1.${VERSION#*.}"
-          BASE_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}"
-          curl -sL -f -o arm64.dmg "${BASE_URL}/ShogunAi-${DMG_VERSION}-arm64.dmg"
-          curl -sL -f -o x64.dmg "${BASE_URL}/ShogunAi-${DMG_VERSION}-x64.dmg"
-          echo "arm=$(sha256sum arm64.dmg | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-          echo "intel=$(sha256sum x64.dmg | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          BASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}"
+          curl -sL -f -o SHA256SUMS "${BASE_URL}/SHA256SUMS"
+          echo "arm=$(grep -F " ShogunAi-${VERSION}-arm64.dmg" SHA256SUMS | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "intel=$(grep -F " ShogunAi-${VERSION}-x64.dmg" SHA256SUMS | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
       - name: Update Homebrew tap
         env:
@@ -178,12 +223,19 @@ jobs:
           SHA256_ARM: ${{ steps.sha.outputs.arm }}
           SHA256_INTEL: ${{ steps.sha.outputs.intel }}
         run: |
+          if [ -z "$SHA256_ARM" ] || [ -z "$SHA256_INTEL" ]; then
+            echo "Missing dmg checksums in SHA256SUMS." >&2
+            exit 1
+          fi
+
           git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/LuxionServer/homebrew-shogunai.git" tap
 
           sed -e "s|@VERSION@|${VERSION}|" \
               -e "s|@SHA256_ARM@|${SHA256_ARM}|" \
               -e "s|@SHA256_INTEL@|${SHA256_INTEL}|" \
               source/.github/homebrew/shogunai.rb > tap/Casks/shogunai.rb
+
+          cat tap/Casks/shogunai.rb
 
           cd tap
           git config user.name "github-actions[bot]"
@@ -200,20 +252,23 @@ jobs:
   update-scoop-bucket:
     needs: [resolve-version, publish-release]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.ref }}
+          ref: ${{ needs.resolve-version.outputs.ref }}
           path: source
+          persist-credentials: false
 
-      - name: Download Windows msi and compute sha256
+      - name: Read checksum from the release
         id: sha
         env:
           VERSION: ${{ needs.resolve-version.outputs.version }}
         run: |
-          BASE_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}"
-          curl -sL -f -o ShogunAi.msi "${BASE_URL}/ShogunAi-${VERSION}.msi"
-          echo "msi=$(sha256sum ShogunAi.msi | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          BASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}"
+          curl -sL -f -o SHA256SUMS "${BASE_URL}/SHA256SUMS"
+          echo "msi=$(grep -F " ShogunAi-${VERSION}.msi" SHA256SUMS | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
       - name: Update Scoop bucket
         env:
@@ -221,12 +276,19 @@ jobs:
           VERSION: ${{ needs.resolve-version.outputs.version }}
           SHA256_MSI: ${{ steps.sha.outputs.msi }}
         run: |
+          if [ -z "$SHA256_MSI" ]; then
+            echo "Missing msi checksum in SHA256SUMS." >&2
+            exit 1
+          fi
+
           git clone "https://x-access-token:${SCOOP_BUCKET_TOKEN}@github.com/LuxionServer/scoop-shogunai.git" bucket
           mkdir -p bucket/bucket
 
           sed -e "s|@VERSION@|${VERSION}|g" \
               -e "s|@SHA256_MSI@|${SHA256_MSI}|" \
               source/.github/scoop/shogunai.json > bucket/bucket/shogunai.json
+
+          cat bucket/bucket/shogunai.json
 
           cd bucket
           git config user.name "github-actions[bot]"
@@ -243,8 +305,10 @@ jobs:
   update-winget:
     needs: [resolve-version, publish-release]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: vedantmgoyal9/winget-releaser@v2
+      - uses: vedantmgoyal9/winget-releaser@b7370d4d152efdce803a26cc6ca9eee58cb2ad54
         with:
           identifier: LuxionServer.ShogunAi
           version: ${{ needs.resolve-version.outputs.version }}
