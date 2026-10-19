@@ -51,6 +51,7 @@ class ProjectWorktrees(
     private val sizeQueue: SizeQueue = SizeQueue(scope),
     private val clock: () -> Instant = Instant::now,
     private val onRemoved: (String) -> Unit = {},
+    private val onUsed: (String) -> Unit = {},
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private var lastFingerprint: List<Pair<String, Long>>? = null
@@ -556,6 +557,7 @@ class ProjectWorktrees(
                         lastCreatedWorktree = worktree
                         success = WorktreeSuccess.Created(worktree.path, worktree.skippedPostCreateCommands.isNotEmpty())
                         loadStatusOf(worktree)
+                        onUsed(worktree.path)
                         onCreated(worktree)
                     }
                     .onFailure { failure ->
@@ -639,6 +641,7 @@ class ProjectWorktrees(
     }
 
     fun copyLaunchCommand(worktree: Worktree, onCopied: () -> Unit = {}, picked: AgentLaunchConfig? = null) {
+        onUsed(worktree.path)
         val agent = resolveAgent(worktree, picked)
         scope.launch {
             useCases.copyLaunchCommand(worktree.path, agent)
@@ -655,6 +658,7 @@ class ProjectWorktrees(
 
     fun openInHerdr(worktree: Worktree, picked: AgentLaunchConfig? = null) {
         if (worktree.path in openingInHerdr) return
+        onUsed(worktree.path)
         val agent = resolveAgent(worktree, picked)
         openingInHerdr = openingInHerdr + worktree.path
         val agentPane = agents.orEmpty()[worktree.path].orEmpty().agentPaneToFocus()
@@ -756,6 +760,7 @@ class ProjectWorktrees(
             if (tools.availableTerminals.isNotEmpty()) terminalChoiceFor = worktree
             return
         }
+        onUsed(worktree.path)
         val agent = resolveAgent(worktree, picked)
         launchTool(worktree) { useCases.tools.openInTerminal(worktree.path, terminal, agent) }
     }
@@ -773,6 +778,7 @@ class ProjectWorktrees(
 
     fun openInEditor(worktree: Worktree) {
         val editor = tools.editorFor(useCases.tools.editorOverride) ?: return
+        onUsed(worktree.path)
         launchTool(worktree) { useCases.tools.openInEditor(worktree.path, editor) }
     }
 

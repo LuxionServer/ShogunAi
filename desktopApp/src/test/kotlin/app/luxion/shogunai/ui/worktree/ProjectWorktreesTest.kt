@@ -157,8 +157,9 @@ class ProjectWorktreesTest {
         Dispatchers.resetMain()
     }
 
-    private fun projectWorktrees(useCases: WorktreeUseCases): ProjectWorktrees =
-        ProjectWorktrees(useCases, CoroutineScope(SupervisorJob() + dispatcher), ioDispatcher = dispatcher).also { it.refresh() }
+    private fun projectWorktrees(useCases: WorktreeUseCases, onUsed: (String) -> Unit = {}): ProjectWorktrees =
+        ProjectWorktrees(useCases, CoroutineScope(SupervisorJob() + dispatcher), ioDispatcher = dispatcher, onUsed = onUsed)
+            .also { it.refresh() }
 
     private val project = Project(id = "main-repo", name = "main-repo", config = config)
 
@@ -2727,6 +2728,18 @@ class ProjectWorktreesTest {
 
         assertIs<WorktreeError.HerdrNotInstalled>(viewModel.actionErrors[worktreePath])
         assertNull(viewModel.actionRetry(worktreePath))
+    }
+
+    @Test
+    fun `copying the launch command reports the worktree as used`() = runTest(dispatcher) {
+        val used = mutableListOf<String>()
+        val viewModel = projectWorktrees(useCases(listingResponder()), used::add)
+        advanceUntilIdle()
+
+        viewModel.copyLaunchCommand(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+
+        assertEquals(listOf(worktreePath), used)
     }
 
     @Test

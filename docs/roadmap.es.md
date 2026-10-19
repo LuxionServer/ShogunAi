@@ -69,10 +69,6 @@ Hallazgos menores de revisar de punta a punta la interfaz rediseñada:
 - Los campos `link` y `hooks` de `.shogunai.json` no se muestran en la sección de archivos de un worktree.
 - La vista de emuladores Android muestra «—» en sus filas y no tiene etiquetas de columna.
 
-### Ergonomía de escritorio
-
-- Icono en la barra de menús / bandeja del sistema con los proyectos y worktrees recientes.
-
 ## En estudio
 
 ### Integración con GitHub y gestores de tareas

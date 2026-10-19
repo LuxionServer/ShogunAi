@@ -59,10 +59,6 @@ Copying the launch command stays as the default, but the app could also open it 
 - Terminals: iTerm2 and Terminal on macOS, Windows Terminal, tmux and Zellij.
 - "Open in IDE" (VS Code, IntelliJ IDEA, Android Studio) and "Open folder".
 
-### Desktop ergonomics
-
-- Menu bar / system tray icon with recent projects and worktrees.
-
 ## Under exploration
 
 ### Integration with GitHub and task trackers

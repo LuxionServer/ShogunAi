@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import app.luxion.shogunai.ui.components.rememberAppIconPainter
@@ -25,12 +26,23 @@ import app.luxion.shogunai.ui.shell.AppearanceScope
 import app.luxion.shogunai.ui.shell.PreferencesWindow
 import app.luxion.shogunai.ui.shell.ShellViewModel
 import app.luxion.shogunai.ui.shell.installMacAppMenuHandlers
+import app.luxion.shogunai.ui.shell.ShellDestination
 import app.luxion.shogunai.ui.shell.rememberRestoredWindowState
 import app.luxion.shogunai.ui.shell.saveWindowBounds
+import app.luxion.shogunai.ui.tray.CloseAction
+import app.luxion.shogunai.ui.tray.ShogunTray
+import app.luxion.shogunai.ui.tray.TrayAction
+import app.luxion.shogunai.ui.tray.TrayLaunchWatch
+import app.luxion.shogunai.ui.tray.TrayPreferences
+import app.luxion.shogunai.ui.tray.buildTrayMenu
+import app.luxion.shogunai.ui.tray.rememberTrayIconPainter
+import app.luxion.shogunai.ui.worktree.WorktreeBoard
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.awt.AWTEvent
+import java.awt.Desktop
 import java.awt.Dimension
+import java.awt.SystemTray
 import java.awt.Taskbar
 import java.awt.Toolkit
 import java.awt.Window as AwtWindow
@@ -71,7 +83,28 @@ private fun openWindow() = application {
         exitApplication()
     }
     val shellViewModelHolder = remember { mutableStateOf<ShellViewModel?>(null) }
-    val requestQuit = { shellViewModelHolder.value?.requestLeave(quit) ?: quit() }
+    val boardHolder = remember { mutableStateOf<WorktreeBoard?>(null) }
+    val trayPreferences = remember {
+        TrayPreferences(appContainer.shellPreferenceRepository, isSupported = SystemTray.isSupported())
+    }
+    var windowVisible by remember { mutableStateOf(true) }
+    var showWindowRequests by remember { mutableIntStateOf(0) }
+    val showMainWindow: () -> Unit = {
+        windowVisible = true
+        showWindowRequests++
+    }
+    val requestQuit = {
+        shellViewModelHolder.value?.let { shellViewModel ->
+            shellViewModel.requestLeave(quit)
+            if (shellViewModel.isLeaveConfirmationPending) showMainWindow()
+        } ?: quit()
+    }
+    val closeMainWindow = {
+        when (trayPreferences.closeAction) {
+            CloseAction.QUIT -> requestQuit()
+            CloseAction.HIDE -> shellViewModelHolder.value?.requestLeave { windowVisible = false } ?: run { windowVisible = false }
+        }
+    }
     val mainWindowHolder = remember { mutableStateOf<AwtWindow?>(null) }
     val focusMainWindow: () -> Unit = {
         mainWindowHolder.value?.takeIf { it.isShowing }?.let { window ->
@@ -83,6 +116,16 @@ private fun openWindow() = application {
                 frame.jMenuBar = menuBar
             }
         }
+    }
+    LaunchedEffect(showWindowRequests) {
+        if (showWindowRequests == 0) return@LaunchedEffect
+        windowState.isMinimized = false
+        withFrameNanos { }
+        focusMainWindow()
+        requestAppForeground()
+    }
+    LaunchedEffect(trayPreferences.isIconShown) {
+        if (!trayPreferences.isIconShown) windowVisible = true
     }
     DisposableEffect(Unit) {
         val closedWindowListener = AWTEventListener { event ->
@@ -100,13 +143,53 @@ private fun openWindow() = application {
             onAbout = { aboutOpen = true },
             onPreferences = openPreferences,
             onQuit = requestQuit,
+            onReopen = showMainWindow,
         )
         onDispose { }
     }
 
     val escapeWorktreeView = remember { mutableStateOf<(() -> Unit)?>(null) }
+    val trayLaunches = remember { TrayLaunchWatch() }
+    val shellViewModelForTray = shellViewModelHolder.value
+    val boardForTray = boardHolder.value
+    if (trayPreferences.isIconShown && shellViewModelForTray != null && boardForTray != null) {
+        val strings = appearance.strings
+        val entries = buildTrayMenu(
+            strings = strings,
+            recentProjects = shellViewModelForTray.recentProjects.mapNotNull { id ->
+                shellViewModelForTray.projects.firstOrNull { it.id == id }
+            },
+            recentWorktrees = boardForTray.trayWorktrees(shellViewModelForTray.recentWorktrees, strings),
+        )
+        ShogunTray(
+            entries = entries,
+            icon = rememberTrayIconPainter(),
+            onAction = { action ->
+                runTrayAction(
+                    action = action,
+                    viewModel = shellViewModelForTray,
+                    board = boardForTray,
+                    launches = trayLaunches,
+                    showMainWindow = showMainWindow,
+                    openPreferences = openPreferences,
+                    quit = requestQuit,
+                )
+            },
+        )
+        val launchErrors = boardForTray.actionErrors
+        LaunchedEffect(launchErrors) {
+            val failed = trayLaunches.failures(launchErrors)
+            if (failed.isEmpty()) return@LaunchedEffect
+            showMainWindow()
+            shellViewModelForTray.navigate(ShellDestination.All()) { boardForTray.revealInAllWorktrees(failed.last()) }
+        }
+        LaunchedEffect(boardForTray.terminalChoice) {
+            if (boardForTray.terminalChoice != null) showMainWindow()
+        }
+    }
     Window(
-        onCloseRequest = requestQuit,
+        visible = windowVisible,
+        onCloseRequest = closeMainWindow,
         state = windowState,
         title = "ShogunAi",
         icon = rememberAppIconPainter(),
@@ -157,16 +240,58 @@ private fun openWindow() = application {
             onQuit = requestQuit,
         )
         AppearanceScope(appearance) {
-            AppShell(appContainer, shellViewModel, openPreferences)
+            AppShell(appContainer, shellViewModel, openPreferences, onBoardReady = { boardHolder.value = it })
         }
     }
 
     if (preferencesOpen) {
-        PreferencesWindow(appearance, appContainer.tools, appContainer.updates, preferencesFrontRequests, onClose = { preferencesOpen = false })
+        PreferencesWindow(appearance, appContainer.tools, appContainer.updates, trayPreferences, preferencesFrontRequests, onClose = { preferencesOpen = false })
     }
     if (aboutOpen) {
         AboutWindow(appearance, onClose = { aboutOpen = false })
     }
+}
+
+private fun runTrayAction(
+    action: TrayAction,
+    viewModel: ShellViewModel,
+    board: WorktreeBoard,
+    launches: TrayLaunchWatch,
+    showMainWindow: () -> Unit,
+    openPreferences: () -> Unit,
+    quit: () -> Unit,
+) {
+    when (action) {
+        TrayAction.ShowWindow -> showMainWindow()
+        TrayAction.NewWorktree -> {
+            showMainWindow()
+            if (viewModel.canCreateWorktree) board.openCreateDialog() else viewModel.navigate(ShellDestination.All()) { board.openCreateDialog() }
+        }
+        is TrayAction.OpenProject -> {
+            showMainWindow()
+            viewModel.projects.firstOrNull { it.id == action.projectId }?.let(viewModel::selectProject)
+        }
+        is TrayAction.ShowWorktree -> {
+            showMainWindow()
+            viewModel.navigate(ShellDestination.All()) { board.revealInAllWorktrees(action.ref) }
+        }
+        is TrayAction.CopyLaunchCommand -> {
+            launches.started(action.ref, board.actionErrors[action.ref])
+            board.copyLaunchCommand(action.ref)
+        }
+        is TrayAction.Open -> {
+            launches.started(action.ref, board.actionErrors[action.ref])
+            board.open(action.ref, action.kind)
+        }
+        TrayAction.Preferences -> openPreferences()
+        TrayAction.Quit -> quit()
+    }
+}
+
+private fun requestAppForeground() {
+    if (!Desktop.isDesktopSupported()) return
+    val desktop = Desktop.getDesktop()
+    if (desktop.isSupported(Desktop.Action.APP_REQUEST_FOREGROUND)) desktop.requestForeground(true)
 }
 
 private fun setDockIcon() {

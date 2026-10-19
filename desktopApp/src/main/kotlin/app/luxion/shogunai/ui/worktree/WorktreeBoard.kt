@@ -12,6 +12,7 @@ import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.Project
+import app.luxion.shogunai.domain.model.RecentWorktree
 import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.components.TextInputFocus
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -19,6 +20,8 @@ import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.usecase.Activity
 import app.luxion.shogunai.ui.machine.MachineProject
+import app.luxion.shogunai.ui.tray.TrayOpenAction
+import app.luxion.shogunai.ui.tray.TrayWorktree
 import app.luxion.shogunai.domain.usecase.AgentSearch
 import app.luxion.shogunai.domain.usecase.isActive
 import app.luxion.shogunai.domain.usecase.worktreeActivity
@@ -50,6 +53,7 @@ class WorktreeBoard(
     val approval: DialogPostCreateApproval = DialogPostCreateApproval(),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val rememberFetchBeforeCreate: (projectId: String, fetch: Boolean) -> Unit = { _, _ -> },
+    private val onWorktreeUsed: (WorktreeRef) -> Unit = {},
 ) : ViewModel() {
     private val deviceRefreshes = mutableMapOf<String, Instant>()
     private val listPermits = Semaphore(MAX_PARALLEL_LISTS)
@@ -270,6 +274,32 @@ class WorktreeBoard(
             }
         }
 
+    val actionErrors: Map<WorktreeRef, Throwable>
+        get() = entries.values.flatMap { entry ->
+            entry.holder.actionErrors.map { (path, failure) -> WorktreeRef(entry.project.id, path) to failure }
+        }.toMap()
+
+    fun open(ref: WorktreeRef, kind: OpenKind) {
+        val holder = holder(ref.projectId) ?: return
+        holder.worktrees.firstOrNull { it.path == ref.path }?.let { holder.open(it, kind) }
+    }
+
+    fun trayWorktrees(recents: List<RecentWorktree>, strings: Strings): List<TrayWorktree> =
+        recents.mapNotNull { recent ->
+            val project = projects.firstOrNull { it.id == recent.projectId } ?: return@mapNotNull null
+            val holder = holder(project.id)
+            val worktree = holder?.worktrees?.firstOrNull { it.path == recent.path }
+            if (holder?.hasLoaded == true && worktree == null) return@mapNotNull null
+            TrayWorktree(
+                ref = WorktreeRef(project.id, recent.path),
+                name = worktree?.branch ?: recent.path.replace('\\', '/').trimEnd('/').substringAfterLast('/'),
+                projectName = project.name,
+                activity = if (holder != null && worktree != null) activityOf(holder, worktree) else Activity.Unknown,
+                isLoaded = worktree != null,
+                openActions = worktree?.let { holder.openActions(it, strings).map { action -> TrayOpenAction(action.kind, action.label) } }.orEmpty(),
+            )
+        }
+
     fun copyLaunchCommand(ref: WorktreeRef, onCopied: () -> Unit = {}) {
         val holder = holder(ref.projectId) ?: return
         holder.worktrees.firstOrNull { it.path == ref.path }?.let { holder.copyLaunchCommand(it, onCopied) }
@@ -307,6 +337,7 @@ class WorktreeBoard(
             sizeQueue = sizeQueue,
             clock = clock,
             onRemoved = { path -> if (selected == WorktreeRef(project.id, path)) selected = null },
+            onUsed = { path -> onWorktreeUsed(WorktreeRef(project.id, path)) },
             ioDispatcher = ioDispatcher,
         )
         holder.refresh()
@@ -421,6 +452,7 @@ class WorktreeBoard(
 
     fun select(ref: WorktreeRef) {
         selected = ref
+        onWorktreeUsed(ref)
     }
 
     fun revealInAllWorktrees(ref: WorktreeRef) {

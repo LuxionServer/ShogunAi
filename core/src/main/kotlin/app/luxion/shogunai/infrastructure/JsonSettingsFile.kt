@@ -3,6 +3,7 @@ package app.luxion.shogunai.infrastructure
 import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.Grouping
+import app.luxion.shogunai.domain.model.RecentWorktree
 import app.luxion.shogunai.domain.model.TerminalId
 import app.luxion.shogunai.domain.model.ThemeMode
 import app.luxion.shogunai.domain.model.WindowBounds
@@ -88,6 +89,10 @@ class JsonSettingsFile(
         val grouping: GroupingSettings = GroupingSettings(),
         val terminal: TerminalId? = null,
         val editor: EditorId? = null,
+        val recentProjects: List<String> = emptyList(),
+        val recentWorktrees: List<RecentWorktree> = emptyList(),
+        val showTrayIcon: Boolean = true,
+        val keepRunningInTray: Boolean = false,
         val checkForUpdates: Boolean = true,
         val skippedVersion: String? = null,
         val worktreeAgents: Map<String, String> = emptyMap(),

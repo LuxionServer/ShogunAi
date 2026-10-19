@@ -84,6 +84,22 @@ For repositories that declare them in `.shogunai.json`, the worktree screen adds
 
 Preferences (Cmd+Comma on macOS, Ctrl+Comma elsewhere) holds the theme, the language, the **Tools** section, where you choose the terminal and the default IDE among the ones ShogunAi found on this machine (if none is found, the section says so and the matching actions aren't offered), and **Check for updates automatically**, on by default. See [Updates](#updates).
 
+## Menu bar and system tray icon
+
+While ShogunAi runs, an icon in the macOS menu bar (or the system tray on Windows and Linux desktops that have one) opens a menu with:
+
+- **Show ShogunAi** and **New worktree…**, which bring the window forward.
+- **Recent projects**: up to 5, the ones whose view you opened most recently.
+- **Recent worktrees**: up to 8, the ones you selected, created or launched most recently. Each one is a submenu with **Show in ShogunAi**, **Copy launch command** and, as available, **Open in <terminal>**, **Open in <IDE>** and **Open folder**, which behave as in the worktree's detail. The terminal, IDE and folder actions run without bringing the window forward; if one fails, the window comes forward and shows the error.
+- **Preferences** and **Quit**.
+
+A worktree's label reads `<branch> — <project>`, prefixed with `●` when an agent is working in it and `!` when it needs you (uncommitted changes, unpushed commits, or an agent that is blocked or done). Recents are remembered between restarts, and removed projects and worktrees disappear from them.
+
+Preferences has two options for it, shown only where the system has a tray:
+
+- **Show icon in the menu bar** (system tray on Windows and Linux), on by default.
+- **Keep running when the window is closed**, off by default and available only while the icon is shown. With it on, closing the window hides it and the app keeps running in the icon; **Show ShogunAi** brings the window back and **Quit** (or Cmd/Ctrl+Q) quits. Unsaved project settings still ask before the window closes. With it off, closing the window quits, as before.
+
 ## Theme and language
 
 The top bar has a theme selector (light, dark, or automatic to follow the system) and a language selector (English or Español). Both choices are remembered between restarts.

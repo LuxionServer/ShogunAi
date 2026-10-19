@@ -19,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -68,7 +69,12 @@ private val NarrowWindowThreshold = 900.dp
 private val EmptyStateMaxWidth = 420.dp
 
 @Composable
-fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel, onOpenPreferences: () -> Unit) {
+fun AppShell(
+    appContainer: AppContainer,
+    viewModel: ShellViewModel,
+    onOpenPreferences: () -> Unit,
+    onBoardReady: (WorktreeBoard) -> Unit = {},
+) {
     var projectPendingRemoval by remember { mutableStateOf<Project?>(null) }
     val messages = rememberAppMessages()
     val board = viewModel {
@@ -78,9 +84,16 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel, onOpenPrefer
             preferences = appContainer.shellPreferenceRepository,
             approval = appContainer.postCreateApproval,
             rememberFetchBeforeCreate = viewModel::rememberFetchBeforeCreate,
+            onWorktreeUsed = { ref -> viewModel.recordWorktree(ref.projectId, ref.path) },
         )
     }
+    SideEffect { onBoardReady(board) }
     LaunchedEffect(viewModel.projects) { board.syncCatalog(viewModel.projects) }
+    viewModel.projects.forEach { project ->
+        val holder = board.holder(project.id)
+        val loadedPaths = holder?.takeIf { it.hasLoaded && it.listFailure == null }?.worktrees?.mapTo(mutableSetOf()) { it.path }
+        LaunchedEffect(project.id, loadedPaths) { loadedPaths?.let { viewModel.pruneRecentWorktrees(project.id, it) } }
+    }
     val machineScope = rememberCoroutineScope()
     val machine = remember {
         MachineResources(
