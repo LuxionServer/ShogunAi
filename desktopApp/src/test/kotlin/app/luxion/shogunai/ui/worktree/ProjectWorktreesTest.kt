@@ -10,7 +10,10 @@ import app.luxion.shogunai.ui.i18n.EnglishStrings
 import app.luxion.shogunai.ui.shell.ToolsPreferences
 import app.luxion.shogunai.EmulatorUseCases
 import app.luxion.shogunai.GradleUseCases
+import app.luxion.shogunai.AgentUseCases
 import app.luxion.shogunai.HerdrUseCases
+import app.luxion.shogunai.domain.model.AgentLaunchConfig
+import app.luxion.shogunai.ui.shell.AgentChoices
 import app.luxion.shogunai.SimulatorUseCases
 import app.luxion.shogunai.domain.model.HerdrAgentState
 import app.luxion.shogunai.domain.model.HerdrOpening
@@ -91,6 +94,7 @@ import app.luxion.shogunai.domain.FakeShellPreferenceRepository
 import app.luxion.shogunai.domain.model.Project
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
@@ -2170,6 +2174,32 @@ class ProjectWorktreesTest {
         onNodeWithContentDescription("Copied").assertIsDisplayed()
     }
 
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the detail of a multi-agent project names the worktree's agent on its launch actions`() = runComposeUiTest {
+        val holder = projectWorktrees(withAgents())
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, multiAgentConfig, holder) } }
+
+        onNodeWithText("Copy launch command · Claude").assertIsDisplayed()
+        onNodeWithText("Open in Herdr · Claude").assertIsDisplayed()
+
+        holder.setAgent(worktree, codex)
+        waitForIdle()
+
+        onNodeWithText("Copy launch command · Codex").assertIsDisplayed()
+        onNodeWithText("Open in Herdr · Codex").assertIsDisplayed()
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the detail of a single-agent project shows no agent choice`() = runComposeUiTest {
+        val holder = projectWorktrees(withAgents(projectConfig = config))
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder) } }
+
+        onNodeWithText("Copy launch command").assertIsDisplayed()
+        onNodeWithContentDescription("Choose agent").assertDoesNotExist()
+    }
+
     @Test
     fun `cleanup stops the running emulators of removed worktrees`() = runTest(dispatcher) {
         val emulators = RecordingEmulators(initial = mapOf(worktreePath to WorktreeEmulator("emulator-5556", EmulatorState.RUNNING)))
@@ -2465,7 +2495,7 @@ class ProjectWorktreesTest {
     @Test
     fun `opening in Herdr passes the worktree and reports the opening`() = runTest(dispatcher) {
         val calls = mutableListOf<Worktree>()
-        val herdr = HerdrUseCases.NONE.copy(open = { target -> calls += target; Result.success(HerdrOpening.OPENED) })
+        val herdr = HerdrUseCases.NONE.copy(open = { target, _ -> calls += target; Result.success(HerdrOpening.OPENED) })
         val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
         advanceUntilIdle()
         val target = viewModel.worktrees.first { it.path == worktreePath }
@@ -2484,7 +2514,7 @@ class ProjectWorktreesTest {
         val focused = mutableListOf<String>()
         var opened = 0
         val herdr = HerdrUseCases.NONE.copy(
-            open = { opened++; Result.success(HerdrOpening.OPENED) },
+            open = { _, _ -> opened++; Result.success(HerdrOpening.OPENED) },
             focusAgent = { pane -> focused += pane; Result.success(Unit) },
         )
         val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
@@ -2511,7 +2541,7 @@ class ProjectWorktreesTest {
         val focused = mutableListOf<String>()
         var opened = 0
         val herdr = HerdrUseCases.NONE.copy(
-            open = { opened++; Result.success(HerdrOpening.OPENED) },
+            open = { _, _ -> opened++; Result.success(HerdrOpening.OPENED) },
             focusAgent = { pane -> focused += pane; Result.success(Unit) },
         )
         val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
@@ -2527,7 +2557,7 @@ class ProjectWorktreesTest {
 
     @Test
     fun `an already open worktree is reported as focused`() = runTest(dispatcher) {
-        val herdr = HerdrUseCases.NONE.copy(open = { Result.success(HerdrOpening.FOCUSED) })
+        val herdr = HerdrUseCases.NONE.copy(open = { _, _ -> Result.success(HerdrOpening.FOCUSED) })
         val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
         advanceUntilIdle()
 
@@ -2906,7 +2936,7 @@ class ProjectWorktreesTest {
         val tools = ToolUseCases(
             preferences = preferences,
             editorOverride = editorOverride,
-            openInTerminal = { path, terminal -> calls.terminals += path to terminal; calls.failure?.let { Result.failure(it) } ?: Result.success(Unit) },
+            openInTerminal = { path, terminal, _ -> calls.terminals += path to terminal; calls.failure?.let { Result.failure(it) } ?: Result.success(Unit) },
             openInEditor = { path, editor -> calls.editors += path to editor; calls.failure?.let { Result.failure(it) } ?: Result.success(Unit) },
             openFolder = { path -> calls.folders += path; calls.failure?.let { Result.failure(it) } ?: Result.success(Unit) },
         )
@@ -3164,5 +3194,104 @@ class ProjectWorktreesTest {
 
         assertEquals(listOf("planned", "removed", "released emulator-5554"), steps)
 
+    }
+
+    private val codex = AgentLaunchConfig(name = "Codex", agentCommand = "codex", useHeadroom = false)
+    private val multiAgentConfig = config.copy(additionalAgents = listOf(codex))
+
+    private fun withAgents(choices: AgentChoices = AgentChoices(), projectConfig: ProjectConfig = multiAgentConfig) =
+        useCases(listingResponder()).copy(agents = AgentUseCases(projectConfig, choices))
+
+    @Test
+    fun `launching with another agent runs it and remembers it for the next launch`() = runTest(dispatcher) {
+        val holder = projectWorktrees(withAgents())
+        advanceUntilIdle()
+        val target = holder.worktrees.first { it.path == worktreePath }
+
+        holder.copyLaunchCommand(target, picked = codex)
+        advanceUntilIdle()
+        holder.copyLaunchCommand(target)
+        advanceUntilIdle()
+
+        assertEquals(listOf("cd '$worktreePath' && codex", "cd '$worktreePath' && codex"), clipboard.writtenText)
+        assertEquals(codex, holder.agentFor(target))
+        assertEquals("Copy launch command · Codex", holder.launchLabel("Copy launch command", target, EnglishStrings))
+    }
+
+    @Test
+    fun `setting the agent from the detail changes the launch without launching`() = runTest(dispatcher) {
+        val holder = projectWorktrees(withAgents())
+        advanceUntilIdle()
+        val target = holder.worktrees.first { it.path == worktreePath }
+
+        holder.setAgent(target, codex)
+        holder.copyLaunchCommand(target)
+        advanceUntilIdle()
+
+        assertEquals(listOf("cd '$worktreePath' && codex"), clipboard.writtenText)
+    }
+
+    @Test
+    fun `choosing the default agent clears the remembered one`() = runTest(dispatcher) {
+        val choices = AgentChoices()
+        val holder = projectWorktrees(withAgents(choices))
+        advanceUntilIdle()
+        val target = holder.worktrees.first { it.path == worktreePath }
+
+        holder.setAgent(target, codex)
+        holder.setAgent(target, config.agentLaunchConfig)
+
+        assertEquals(emptyMap(), choices.chosen)
+    }
+
+    @Test
+    fun `a removed agent falls back to the default one`() = runTest(dispatcher) {
+        val choices = AgentChoices(mapOf(worktreePath to "Codex"))
+        val holder = projectWorktrees(withAgents(choices, projectConfig = config))
+        advanceUntilIdle()
+        val target = holder.worktrees.first { it.path == worktreePath }
+
+        holder.copyLaunchCommand(target)
+        advanceUntilIdle()
+
+        assertEquals(listOf("cd '$worktreePath' && headroom wrap claude"), clipboard.writtenText)
+        assertEquals(emptyMap(), choices.chosen)
+    }
+
+    @Test
+    fun `a single agent shows no choice`() = runTest(dispatcher) {
+        val holder = projectWorktrees(withAgents(projectConfig = config))
+        advanceUntilIdle()
+        val target = holder.worktrees.first { it.path == worktreePath }
+
+        assertFalse(holder.hasAgentChoice)
+        assertEquals("Copy launch command", holder.launchLabel("Copy launch command", target, EnglishStrings))
+        assertTrue(holder.launchChoices(target, EnglishStrings).isEmpty())
+    }
+
+    @Test
+    fun `the launch choices offer the other agents`() = runTest(dispatcher) {
+        val holder = projectWorktrees(withAgents())
+        advanceUntilIdle()
+        val target = holder.worktrees.first { it.path == worktreePath }
+
+        val choices = holder.launchChoices(target, EnglishStrings)
+
+        assertTrue(choices.isNotEmpty())
+        assertTrue(choices.all { it.agent == codex })
+        assertEquals("Copy launch command · Codex", choices.first { it.kind == LaunchKind.COPY }.label)
+    }
+
+    @Test
+    fun `opening in Herdr with a picked agent passes it on`() = runTest(dispatcher) {
+        val used = mutableListOf<AgentLaunchConfig>()
+        val herdr = HerdrUseCases.NONE.copy(open = { _, agent -> used += agent; Result.success(HerdrOpening.OPENED) })
+        val holder = projectWorktrees(withAgents().copy(herdr = herdr))
+        advanceUntilIdle()
+
+        holder.openInHerdr(holder.worktrees.first { it.path == worktreePath }, codex)
+        advanceUntilIdle()
+
+        assertEquals(listOf(codex), used)
     }
 }

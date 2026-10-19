@@ -79,4 +79,14 @@ class CopyWorktreeLaunchCommandUseCaseTest {
 
         assertEquals(listOf("cd \"C:\\Users\\dev\\TASK-123\" && headroom wrap claude"), clipboard.writtenText)
     }
+
+    @Test
+    fun `copies the command of the given agent`() = runTest {
+        val clipboard = FakeClipboardWriter()
+        val codex = AgentLaunchConfig(agentCommand = "codex --full-auto", useHeadroom = false)
+
+        CopyWorktreeLaunchCommandUseCase(config, clipboard, windows = false)(worktreePath, codex).getOrThrow()
+
+        assertEquals(listOf("cd '$worktreePath' && codex --full-auto"), clipboard.writtenText)
+    }
 }

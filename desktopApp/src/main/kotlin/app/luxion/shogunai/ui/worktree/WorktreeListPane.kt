@@ -423,6 +423,9 @@ private fun WorktreeRowFor(
         onCopyPath = { scope.launch { clipboard.copyText(worktree.path) } },
         onOpenInHerdr = { holder.openInHerdr(worktree) },
         openActions = holder.openActions(worktree, strings),
+        agentName = holder.agentFor(worktree).displayName.takeIf { holder.hasAgentChoice },
+        launchChoices = holder.launchChoices(worktree, strings),
+        onLaunch = { holder.launch(worktree, it.kind, it.agent) },
         onRemove = { holder.requestRemoval(worktree) },
     )
 }

@@ -112,4 +112,14 @@ class OpenWorktreeInTerminalUseCaseTest {
 
         assertEquals(failure, error)
     }
+
+    @Test
+    fun `runs the given agent instead of the default one`() = runTest {
+        val codex = AgentLaunchConfig(agentCommand = "codex", useHeadroom = false)
+
+        useCase()("/home/dev/projects/worktrees/TASK-8", TerminalId.TERMINAL, codex).getOrThrow()
+
+        assertEquals("cd '/home/dev/projects/worktrees/TASK-8' && codex", posixTerminal.launches.single().line)
+        assertEquals("codex", posixTerminal.launches.single().agentCommand)
+    }
 }

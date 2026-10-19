@@ -52,6 +52,8 @@ import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.ui.FilePicker
+import app.luxion.shogunai.domain.model.AgentLaunchConfig
+import app.luxion.shogunai.ui.components.DangerTextButton
 import app.luxion.shogunai.ui.components.DropdownSelector
 import app.luxion.shogunai.ui.components.IconAction
 import app.luxion.shogunai.ui.components.NeutralTextButton
@@ -160,7 +162,7 @@ private fun SettingsForm(
                 ProjectConfigField.NAME -> nameFocus.requestFocus()
                 ProjectConfigField.BASE_REPOSITORY_PATH -> baseRepositoryFocus.requestFocus()
                 ProjectConfigField.WORKTREES_ROOT -> worktreesRootFocus.requestFocus()
-                ProjectConfigField.AGENT_COMMAND -> agentCommandFocus.requestFocus()
+                ProjectConfigField.AGENT_COMMAND, ProjectConfigField.AGENT_NAME -> agentCommandFocus.requestFocus()
             }
             is SaveOutcome.Failed -> saveError = outcome.error
         }
@@ -539,31 +541,93 @@ private fun AgentSection(
 ) {
     val strings = LocalStrings.current
     SettingsSection(strings.agentSection, Modifier.trackTop(SettingsSectionId.AGENT, tops)) {
-        SettingsField(strings.agentCommandLabel) {
-            OutlinedTextField(
-                value = viewModel.agentCommand,
-                onValueChange = { viewModel.agentCommand = it },
-                textStyle = ShogunTheme.typography.data,
-                singleLine = true,
-                isError = viewModel.agentCommand.isBlank(),
-                supportingText = if (viewModel.agentCommand.isBlank()) {
-                    { Text(strings.agentCommandEmptyError) }
-                } else {
-                    null
-                },
-                modifier = Modifier.fillMaxWidth().focusRequester(agentCommandFocus),
+        val duplicates = viewModel.duplicatedAgentNames
+        viewModel.agents.forEachIndexed { index, agent ->
+            AgentEditor(
+                viewModel = viewModel,
+                index = index,
+                agent = agent,
+                duplicated = agent.toConfig().displayName in duplicates,
+                commandFocus = agentCommandFocus.takeIf { index == 0 },
             )
+            if (index < viewModel.agents.lastIndex) HorizontalDivider()
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Switch(checked = viewModel.useHeadroom, onCheckedChange = { viewModel.useHeadroom = it }, modifier = Modifier.handPointer())
-            Text(strings.useHeadroomLabel, modifier = Modifier.padding(start = Spacing.sm))
-        }
+        SecondaryButton(onClick = viewModel::addAgent) { Text(strings.addAgent) }
         Text(
             strings.headroomDescription,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         EditorOverrideField(viewModel)
+    }
+}
+
+@Composable
+private fun AgentEditor(
+    viewModel: ProjectConfigViewModel,
+    index: Int,
+    agent: AgentDraft,
+    duplicated: Boolean,
+    commandFocus: FocusRequester?,
+) {
+    val strings = LocalStrings.current
+    val config = agent.toConfig()
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        if (viewModel.agents.size > 1) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (index == 0) "${config.displayName} · ${strings.defaultAgentMark}" else config.displayName,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f),
+                )
+                if (index > 0) NeutralTextButton(onClick = { viewModel.makeDefault(index) }) { Text(strings.makeDefaultAgent) }
+                if (index > 0) NeutralTextButton(onClick = { viewModel.moveAgent(index, index - 1) }) { Text(strings.moveAgentUp) }
+                if (index < viewModel.agents.lastIndex) {
+                    NeutralTextButton(onClick = { viewModel.moveAgent(index, index + 1) }) { Text(strings.moveAgentDown) }
+                }
+                DangerTextButton(onClick = { viewModel.removeAgent(index) }) { Text(strings.removeAgent) }
+            }
+        }
+        SettingsField(strings.agentNameLabel) {
+            OutlinedTextField(
+                value = agent.name,
+                onValueChange = { value -> viewModel.updateAgent(index) { it.copy(name = value) } },
+                textStyle = ShogunTheme.typography.data,
+                singleLine = true,
+                placeholder = { Text(AgentLaunchConfig(agentCommand = agent.command).displayName) },
+                isError = duplicated,
+                supportingText = if (duplicated) {
+                    { Text(strings.duplicateAgentNameError(config.displayName)) }
+                } else {
+                    null
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        SettingsField(strings.agentCommandLabel) {
+            OutlinedTextField(
+                value = agent.command,
+                onValueChange = { value -> viewModel.updateAgent(index) { it.copy(command = value) } },
+                textStyle = ShogunTheme.typography.data,
+                singleLine = true,
+                isError = agent.command.isBlank(),
+                supportingText = if (agent.command.isBlank()) {
+                    { Text(strings.agentCommandEmptyError) }
+                } else {
+                    null
+                },
+                modifier = Modifier.fillMaxWidth().let { if (commandFocus != null) it.focusRequester(commandFocus) else it },
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Switch(
+                checked = agent.useHeadroom,
+                onCheckedChange = { value -> viewModel.updateAgent(index) { it.copy(useHeadroom = value) } },
+                modifier = Modifier.handPointer(),
+            )
+            Text(strings.useHeadroomLabel, modifier = Modifier.padding(start = Spacing.sm))
+        }
     }
 }
 

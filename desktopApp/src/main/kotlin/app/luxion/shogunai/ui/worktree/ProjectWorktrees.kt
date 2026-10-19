@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -311,6 +312,7 @@ class ProjectWorktrees(
         result
             .onSuccess {
                 worktrees = it
+                useCases.agents.prune(it.map { worktree -> worktree.path }.toSet())
                 listFailure = null
                 loadStatuses(generation, it, remeasureSizes)
             }
@@ -519,7 +521,7 @@ class ProjectWorktrees(
 
     fun copyCreatedLaunchCommand() {
         val path = createdWithErrorPath ?: return
-        scope.launch { useCases.copyLaunchCommand(path).onFailure { recordActionError(path, it) } }
+        scope.launch { useCases.copyLaunchCommand(path, useCases.agents.agentFor(path)).onFailure { recordActionError(path, it) } }
     }
 
     fun create(
@@ -638,10 +640,11 @@ class ProjectWorktrees(
         pendingRemoval = pendingRemoval?.copy(deleteBranch = deleteBranch)
     }
 
-    fun copyLaunchCommand(worktree: Worktree, onCopied: () -> Unit = {}) {
+    fun copyLaunchCommand(worktree: Worktree, onCopied: () -> Unit = {}, picked: AgentLaunchConfig? = null) {
         onUsed(worktree.path)
+        val agent = resolveAgent(worktree, picked)
         scope.launch {
-            useCases.copyLaunchCommand(worktree.path)
+            useCases.copyLaunchCommand(worktree.path, agent)
                 .onSuccess {
                     clearActionError(worktree.path)
                     onCopied()
@@ -653,9 +656,10 @@ class ProjectWorktrees(
         }
     }
 
-    fun openInHerdr(worktree: Worktree) {
+    fun openInHerdr(worktree: Worktree, picked: AgentLaunchConfig? = null) {
         if (worktree.path in openingInHerdr) return
         onUsed(worktree.path)
+        val agent = resolveAgent(worktree, picked)
         openingInHerdr = openingInHerdr + worktree.path
         val agentPane = agents.orEmpty()[worktree.path].orEmpty().agentPaneToFocus()
         scope.launch {
@@ -663,7 +667,7 @@ class ProjectWorktrees(
                 val result = if (agentPane != null) {
                     useCases.herdr.focusAgent(agentPane).map { HerdrOpening.FOCUSED }
                 } else {
-                    useCases.herdr.open(worktree)
+                    useCases.herdr.open(worktree, agent)
                 }
                 result
                     .onSuccess { opening ->
@@ -682,12 +686,58 @@ class ProjectWorktrees(
 
     val tools: ToolsPreferences get() = useCases.tools.preferences
 
+    val agentOptions: List<AgentLaunchConfig> get() = useCases.agents.options
+    val hasAgentChoice: Boolean get() = useCases.agents.hasChoice
+
+    fun agentFor(worktree: Worktree): AgentLaunchConfig = useCases.agents.agentFor(worktree.path)
+
+    fun setAgent(worktree: Worktree, agent: AgentLaunchConfig) {
+        useCases.agents.choose(worktree.path, agent)
+    }
+
+    fun launchLabel(base: String, worktree: Worktree, strings: Strings): String =
+        if (hasAgentChoice) strings.launchWithAgent(base, agentFor(worktree).displayName) else base
+
+    fun launchChoices(worktree: Worktree, strings: Strings): List<LaunchChoice> {
+        if (!hasAgentChoice) return emptyList()
+        val current = agentFor(worktree)
+        val kinds = if (worktree.isPrunable) {
+            listOf(LaunchKind.COPY)
+        } else {
+            listOfNotNull(LaunchKind.COPY, LaunchKind.TERMINAL.takeIf { tools.terminalShown != null }, LaunchKind.HERDR)
+        }
+        return agentOptions.filter { it.displayName != current.displayName }.flatMap { agent ->
+            kinds.map { kind ->
+                val base = when (kind) {
+                    LaunchKind.COPY -> strings.copyLaunchCommand
+                    LaunchKind.TERMINAL -> strings.openInTool(tools.terminalInUse?.displayName ?: strings.terminalToolLabel.lowercase())
+                    LaunchKind.HERDR -> strings.openInHerdr
+                }
+                LaunchChoice(kind, agent, strings.launchWithAgent(base, agent.displayName))
+            }
+        }
+    }
+
+    fun launch(worktree: Worktree, kind: LaunchKind, agent: AgentLaunchConfig) {
+        when (kind) {
+            LaunchKind.COPY -> copyLaunchCommand(worktree, picked = agent)
+            LaunchKind.TERMINAL -> openInTerminal(worktree, agent)
+            LaunchKind.HERDR -> openInHerdr(worktree, agent)
+        }
+    }
+
+    private fun resolveAgent(worktree: Worktree, picked: AgentLaunchConfig?): AgentLaunchConfig {
+        if (picked == null) return agentFor(worktree)
+        setAgent(worktree, picked)
+        return picked
+    }
+
     fun openActions(worktree: Worktree, strings: Strings): List<OpenAction> {
         if (worktree.isPrunable) return emptyList()
         return listOfNotNull(
             tools.terminalShown?.let {
                 val name = tools.terminalInUse?.displayName ?: strings.terminalToolLabel.lowercase()
-                OpenAction(OpenKind.TERMINAL, strings.openInTool(name)) { openInTerminal(worktree) }
+                OpenAction(OpenKind.TERMINAL, launchLabel(strings.openInTool(name), worktree, strings)) { openInTerminal(worktree) }
             },
             tools.editorFor(useCases.tools.editorOverride)?.let {
                 OpenAction(OpenKind.EDITOR, strings.openInTool(it.displayName)) { openInEditor(worktree) }
@@ -704,14 +754,15 @@ class ProjectWorktrees(
         }
     }
 
-    fun openInTerminal(worktree: Worktree) {
+    fun openInTerminal(worktree: Worktree, picked: AgentLaunchConfig? = null) {
         val terminal = tools.terminalInUse
         if (terminal == null) {
             if (tools.availableTerminals.isNotEmpty()) terminalChoiceFor = worktree
             return
         }
         onUsed(worktree.path)
-        launchTool(worktree) { useCases.tools.openInTerminal(worktree.path, terminal) }
+        val agent = resolveAgent(worktree, picked)
+        launchTool(worktree) { useCases.tools.openInTerminal(worktree.path, terminal, agent) }
     }
 
     fun chooseTerminal(terminal: TerminalId) {

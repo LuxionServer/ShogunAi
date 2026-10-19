@@ -24,7 +24,7 @@ class DetectRunningAgentsUseCase(
     private var herdrRetryAt = 0L
 
     suspend operator fun invoke(config: ProjectConfig, worktrees: List<Worktree>): Result<Map<String, List<RunningAgent>>> =
-        invoke(listOf(AgentSearch(config.agentLaunchConfig.agentCommand, worktrees)))
+        invoke(listOf(AgentSearch(config.agents.map { it.agentCommand }, worktrees)))
 
     suspend operator fun invoke(searches: List<AgentSearch>): Result<Map<String, List<RunningAgent>>> = runCatching {
         val worktrees = searches.flatMap { it.worktrees }
@@ -48,7 +48,7 @@ class DetectRunningAgentsUseCase(
         val executables = run("ps", "-o", "pid=,comm=", "-p", worktreeByPid.keys.joinToString(","))
             .let(::parsePsExecutables)
         val agentNamesByPath = searches.flatMap { search ->
-            val names = KNOWN_AGENTS + listOfNotNull(agentName(search.agentCommand))
+            val names = KNOWN_AGENTS + search.agentCommands.mapNotNull(::agentName)
             search.worktrees.map { it.path to names }
         }.toMap()
 
@@ -125,7 +125,7 @@ class DetectRunningAgentsUseCase(
     }
 }
 
-data class AgentSearch(val agentCommand: String, val worktrees: List<Worktree>)
+data class AgentSearch(val agentCommands: List<String>, val worktrees: List<Worktree>)
 
 fun owningWorktree(cwd: String, worktrees: List<Worktree>): Worktree? {
     val path = normalizePath(cwd)

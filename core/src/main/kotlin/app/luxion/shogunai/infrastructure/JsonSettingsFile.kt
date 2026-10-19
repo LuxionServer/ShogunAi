@@ -93,6 +93,7 @@ class JsonSettingsFile(
         val recentWorktrees: List<RecentWorktree> = emptyList(),
         val showTrayIcon: Boolean = true,
         val keepRunningInTray: Boolean = false,
+        val worktreeAgents: Map<String, String> = emptyMap(),
     )
 
     @Serializable

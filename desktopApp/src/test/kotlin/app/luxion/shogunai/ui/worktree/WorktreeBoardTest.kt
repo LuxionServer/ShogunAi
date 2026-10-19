@@ -676,7 +676,7 @@ class WorktreeBoardTest {
         board.stopWatching()
 
         val searches = agentSearches.single()
-        assertEquals(listOf("codex", "claude"), searches.map { it.agentCommand })
+        assertEquals(listOf(listOf("codex"), listOf("claude")), searches.map { it.agentCommands })
         assertEquals(listOf(2, 3), searches.map { it.worktrees.size })
         assertEquals(listOf(RunningAgent("codex")), board.holder("api")?.agents?.get("/home/dev/projects/api-TASK-12"))
         assertEquals(listOf(RunningAgent("claude")), board.holder("main-repo")?.agents?.get("/home/dev/projects/TASK-123"))
@@ -719,7 +719,7 @@ class WorktreeBoardTest {
         board.stopWatching()
 
         assertEquals(1, mainRepo.lists)
-        assertEquals(listOf("codex", "claude"), agentSearches.first().map { it.agentCommand })
+        assertEquals(listOf(listOf("codex"), listOf("claude")), agentSearches.first().map { it.agentCommands })
     }
 
     @Test
@@ -998,7 +998,7 @@ class WorktreeBoardTest {
         assertEquals(1, api.lists)
         assertEquals(1, mainRepo.lists)
         assertEquals(statusReads + 5, executed.count { it == statusCommand })
-        assertEquals(listOf("codex", "claude"), agentSearches.single().map { it.agentCommand })
+        assertEquals(listOf(listOf("codex"), listOf("claude")), agentSearches.single().map { it.agentCommands })
         assertEquals(sizeRequests, api.files.sizeRequests.size + mainRepo.files.sizeRequests.size)
     }
 
@@ -1038,7 +1038,7 @@ class WorktreeBoardTest {
         advanceUntilIdle()
 
         assertTrue(apiHolder.isRemoving)
-        assertEquals(listOf("claude"), agentSearches.single().map { it.agentCommand })
+        assertEquals(listOf(listOf("claude")), agentSearches.single().map { it.agentCommands })
         api.removeGate?.complete(Unit)
         runCurrent()
     }

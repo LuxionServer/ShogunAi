@@ -81,6 +81,17 @@ interface Strings {
     val add: String
     val agentSection: String
     val agentCommandLabel: String
+    val agentNameLabel: String
+    fun duplicateAgentNameError(name: String): String
+    val addAgent: String
+    val removeAgent: String
+    val makeDefaultAgent: String
+    val defaultAgentMark: String
+    val moveAgentUp: String
+    val moveAgentDown: String
+    val worktreeAgentLabel: String
+    val chooseAgent: String
+    fun launchWithAgent(action: String, agent: String): String
     val useHeadroomLabel: String
     val headroomDescription: String
     val save: String

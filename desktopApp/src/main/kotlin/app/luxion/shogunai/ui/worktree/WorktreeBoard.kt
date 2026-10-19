@@ -232,6 +232,15 @@ class WorktreeBoard(
     fun selectedOpenActions(strings: Strings): List<OpenAction> =
         selectedWorktree?.let { it.holder.openActions(it.worktree, strings) }.orEmpty()
 
+    fun selectedLaunchChoices(strings: Strings): List<LaunchChoice> =
+        selectedWorktree?.let { it.holder.launchChoices(it.worktree, strings) }.orEmpty()
+
+    fun launchSelected(kind: LaunchKind, agentName: String) {
+        val selected = selectedWorktree ?: return
+        val agent = selected.holder.agentOptions.firstOrNull { it.displayName == agentName } ?: return
+        selected.holder.launch(selected.worktree, kind, agent)
+    }
+
     fun openSelected(kind: OpenKind) {
         selectedWorktree?.let { it.holder.open(it.worktree, kind) }
     }
@@ -379,7 +388,7 @@ class WorktreeBoard(
         if (due.isEmpty()) return
         due.forEach { it.holder.refreshStatuses() }
         viewModelScope.launch {
-            val searches = due.map { AgentSearch(it.project.config.agentLaunchConfig.agentCommand, it.holder.worktrees) }
+            val searches = due.map { AgentSearch(it.project.config.agents.map { agent -> agent.agentCommand }, it.holder.worktrees) }
             val detected = detectAgents(searches).getOrNull()
             due.forEach { it.holder.applyAgents(detected) }
         }
@@ -425,7 +434,7 @@ class WorktreeBoard(
         val hidden = entries.values.filter { it.project.id !in shownIds && !it.holder.isBusy && it.holder.hasLoaded }
         val loaded = unchanged + hidden
         if (loaded.isEmpty()) return
-        val searches = loaded.map { AgentSearch(it.project.config.agentLaunchConfig.agentCommand, it.holder.worktrees) }
+        val searches = loaded.map { AgentSearch(it.project.config.agents.map { agent -> agent.agentCommand }, it.holder.worktrees) }
         val detected = detectAgents(searches).getOrNull()
         loaded.forEach { it.holder.applyAgents(detected) }
         unchanged.forEach { entry ->
