@@ -14,7 +14,7 @@ shogun clean --yes                 # elimina los worktrees mergeados o sin carpe
 eval "$(shogun env)"               # carga las variables de este worktree desde "env" en .shogunai.json
 ```
 
-La salida es texto plano en inglés; los scripts deben leer la línea única de `new` y `status --json`.
+La salida es texto plano en inglés; los scripts deben usar `--json`, que aceptan todos los comandos que informan de un resultado (ver [Salida JSON](#salida-json)).
 
 ## Códigos de salida
 
@@ -229,6 +229,39 @@ shogun xcode clean
 ```
 
 `xcode` lista las carpetas de DerivedData de los worktrees del repositorio con su tamaño, las carpetas huérfanas de la máquina (`orphans: N (tamaño)`) y, cuando se declara la caché de compilación, su tamaño. `xcode clean` borra las carpetas huérfanas (`deleted <path>`, `freed <tamaño>`, o `Nothing to delete.`). Sin el provider de Xcode, o fuera de macOS, dice que el provider no está activo y sale con `0`.
+
+## Salida JSON
+
+Además de `status --json`, todos los comandos que informan de un resultado aceptan `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `clean`, `gradle`, `gradle stop`, `xcode`, `xcode clean`, `emulator` y `simulator` (no `simulator gradle-init`, `env`, `hook`, `help` ni `--version`; en ellos es una opción desconocida y sale con `2`). La opción puede ir en cualquier posición tras el comando.
+
+Las reglas son las mismas para todos:
+
+- Un único objeto JSON compacto en una línea por la salida estándar, en vez del texto, con el mismo código de salida que la salida de texto.
+- Un error anterior al resultado se imprime como texto por la salida de error, sin nada en la salida estándar.
+- Nunca pregunta. Los comandos posteriores a la creación que no están aprobados en esta máquina se omiten y se listan (`shogun trust` los aprueba), y `trust` solo informa salvo que se indique `--yes`.
+- Todos los campos documentados están siempre presentes, con `null` cuando no aplican, listas vacías en vez de ausentes y enumeraciones en minúsculas. Las rutas son absolutas. Las versiones posteriores solo añaden campos, nunca renombran, quitan ni cambian el tipo de uno.
+
+| Comando | Objeto |
+|---|---|
+| `new` | `path`, `branch`, `created` (siempre `true`), `skippedPostCreateCommands` (lista de listas argv) y `postCreateFailure`: `null`, o `{ command, exitCode, stderr }` si falló un comando posterior a la creación. En ese caso el objeto se imprime igualmente, porque el worktree existe, y el código de salida es `1`. |
+| `provision` | `path`, `copied`, `linked` y `copiedInsteadOfLinking` (rutas de archivos), `skippedPostCreateCommands` y `postCreateFailure`, como en `new`. Si falló un comando, las tres listas de archivos van vacías. |
+| `provision --check` | `path` y `drift`: lista de `{ path, state }` con `state` `missing`, `differs` o `not-linked`. El código de salida es `3` si `drift` no está vacío. |
+| `trust` | `repository`, `commands` (listas argv), `approved` y `changed` (esta ejecución lo aprobó o revocó). Un repositorio sin comandos posteriores a la creación es `approved: true` y sin comandos. `--revoke` informa `approved: false` si había comandos. |
+| `remove` | `path`, `branch` (la del worktree, o `null` si está desacoplado), `branchDeleted` (el nombre, o `null` si se conservó o no se pasó `--delete-branch`), `providers` (`emulatorsStopped` con los serial, `simulatorsStopped` con los udid y `gradleDaemonsStopped` con los pid) y `failures` (mensajes de lo que no se pudo detener, código de salida `1`). |
+| `repair` | `repaired`: las rutas de los worktrees re-enlazados. |
+| `clean` | `dryRun`; `candidates`: `{ path, branch, reason }` con `reason` `merged` o `folder-missing`; `keptForAgents`: `{ path, agents }`; `skipped`: `{ path, reason }` (estado no disponible); `removed`; `deletedBranches`; `failures`: `{ path, message }`; y `providers`: `gradleDaemonsStopped`, `emulatorsStopped`, `simulatorsDeleted` y `derivedDataDeleted`. Sin `--yes` (`dryRun: true`) `removed`, `deletedBranches` y las listas de `providers` van vacías. |
+| `gradle` | `daemons`: `{ pid, kind, version, memoryBytes, state, idleSince, worktree }` con `kind` `gradle` o `kotlin`, `state` `busy`, `idle`, `unknown` o `untracked`, `idleSince` en ISO-8601 UTC (solo si está inactivo) y `worktree` una ruta, `removed`, `other-project` o `null` fuera de un repositorio; y `totalMemoryBytes`. |
+| `gradle stop` | `stopped` (pids), `kept`: `{ pid, kind, reason }` con `reason` `busy`, `state-unknown` o `build-running`, `notDaemons` (pids) y `failures`: `{ pid, message }`. El código de salida es `1` si alguna de las dos últimas no está vacía. |
+| `xcode` | `active` (`false` si el provider no está activo, con el resto vacío), `folders`: `{ path, sizeBytes, worktree }`, `orphans`: `{ path, sizeBytes }`, `unavailableVolumeFolders` (un número) y `compilationCacheBytes` (`null` salvo que esté declarada). |
+| `xcode clean` | `active`, `deleted` (rutas), `freedBytes` y `failures`: `{ path, message }`. |
+| `emulator start\|stop\|status` | `worktree`, `serial` y `state` (`running`, `booting` o `stopped`). `serial` y `state` son `null` si el worktree aún no tiene puerto de emulador reservado. |
+| `simulator start\|stop\|status` | `worktree`, `udid`, `name` y `state` (`shutdown`, `booting` o `booted`), `null` si el worktree aún no tiene simulador. El aviso sobre los tests KMP no forma parte. |
+
+```bash
+shogun clean --json | jq -r '.candidates[].path'
+shogun emulator status --json | jq -r '.serial'
+shogun provision --check --json | jq -e '.drift | length == 0'
+```
 
 ## Hooks de agentes
 

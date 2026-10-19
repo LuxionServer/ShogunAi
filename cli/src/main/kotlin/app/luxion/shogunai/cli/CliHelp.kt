@@ -4,7 +4,7 @@ internal object CliHelp {
 
     private val sections: Map<String, String> = linkedMapOf(
         "new" to """
-  new <task-id> [--fix] [--from <ref>] [--fetch]
+  new <task-id> [--fix] [--from <ref>] [--fetch] [--json]
                               Create a worktree on a new feature/ (or fix/) branch and print its path;
                               the branch starts at the current worktree's HEAD unless --from is given
   new --branch <branch> [--fetch]
@@ -12,46 +12,52 @@ internal object CliHelp {
                               exists only on origin gets a local branch tracking it
       --fetch                 Fetch from origin first, so the start point or branch is current
       --worktrees-root <dir>  Folder for the worktree when the repository has no ShogunAi project
+      --json                  Print one JSON object instead of the path; never asks about post-creation commands
 """.trimIndent(),
         "provision" to """
-  provision [<path>]          Copy or link the declared files into an existing worktree and run its
+  provision [<path>] [--json] Copy or link the declared files into an existing worktree and run its
                               post-creation commands (default: current directory)
   provision --check [<path>]  List the declared files a worktree is missing, has stale or doesn't link;
                               exit code 3 when there are any, and nothing is changed
+                              --json prints one JSON object instead of text and never asks a question
 """.trimIndent(),
         "trust" to """
-  trust [<path>] [--yes] [--revoke]
+  trust [<path>] [--yes] [--revoke] [--json]
                               Show the post-creation commands the repository declares and whether they are
-                              approved on this machine; approve them (--yes skips the question) or revoke
+                              approved on this machine; approve them (--yes skips the question) or revoke;
+                              --json prints one JSON object and approves only with --yes
 """.trimIndent(),
         "status" to """
   status [--json]             List the repository's worktrees with their state
 """.trimIndent(),
         "remove" to """
-  remove <task id | path | branch> [--force] [--delete-branch]
+  remove <task id | path | branch> [--force] [--delete-branch] [--json]
                               Remove one worktree and stop its emulator, simulator and idle Gradle daemons;
                               refused while it has changes or an agent running unless --force;
-                              --delete-branch also deletes its branch when it is merged into the main branch
+                              --delete-branch also deletes its branch when it is merged into the main branch;
+                              --json prints one JSON object instead of text
 """.trimIndent(),
         "repair" to """
-  repair                      Re-link the worktrees after the repository or the worktrees folder moved
+  repair [--json]             Re-link the worktrees after the repository or the worktrees folder moved
 """.trimIndent(),
         "clean" to """
   clean [--yes] [--delete-branches] [--stop-gradle-daemons] [--stop-emulators] [--delete-simulators]
-        [--delete-derived-data]
+        [--delete-derived-data] [--json]
                               List merged or missing worktrees; remove them with --yes
                               (--stop-gradle-daemons / --stop-emulators: also stop their idle
                               Gradle daemons / their emulators; --delete-simulators: also delete
                               their iOS simulators and orphaned ShogunAi simulators;
-                              --delete-derived-data: also delete orphaned Xcode DerivedData)
+                              --delete-derived-data: also delete orphaned Xcode DerivedData;
+                              --json: print one JSON object instead of text)
 """.trimIndent(),
         "gradle" to """
-  gradle                      List the Gradle and Kotlin daemons with their memory, state and worktree
-  gradle stop [<pid>...]      Stop idle daemons (all of them, or only the given ones); busy ones are kept
+  gradle [--json]             List the Gradle and Kotlin daemons with their memory, state and worktree
+  gradle stop [<pid>...] [--json]
+                              Stop idle daemons (all of them, or only the given ones); busy ones are kept
 """.trimIndent(),
         "xcode" to """
-  xcode                       List Xcode DerivedData folders of the worktrees, orphans and compilation cache
-  xcode clean                 Delete orphaned Xcode DerivedData folders on the machine
+  xcode [--json]              List Xcode DerivedData folders of the worktrees, orphans and compilation cache
+  xcode clean [--json]        Delete orphaned Xcode DerivedData folders on the machine
 """.trimIndent(),
         "hook" to """
   hook worktree-create        Claude Code WorktreeCreate hook: create and provision the worktree, print its path
@@ -60,14 +66,14 @@ internal object CliHelp {
   hook herdr                  Herdr plugin hook: provision worktrees on worktree.created, delete merged branches on worktree.removed
 """.trimIndent(),
         "simulator" to """
-  simulator start|stop|status [<path>] [--device <type>] [--runtime <runtime>]
+  simulator start|stop|status [<path>] [--device <type>] [--runtime <runtime>] [--json]
                               Boot (and wait for), shut down or show the worktree's iOS simulator
                               (repositories with "providers": { "ios-simulator": {} } in .shogunai.json)
   simulator gradle-init install|uninstall [--yes]
                               Make every project's KMP iOS simulator tests use IOS_SIMULATOR_UDID
 """.trimIndent(),
         "emulator" to """
-  emulator start|stop|status [<path>] [--avd <name>] [--no-window]
+  emulator start|stop|status [<path>] [--avd <name>] [--no-window] [--json]
                               Start (and wait for), stop or show the worktree's Android emulator
                               (repositories with "providers": { "emulator": {} } in .shogunai.json)
 """.trimIndent(),

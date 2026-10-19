@@ -44,10 +44,6 @@ Pendientes que quedan fuera de esos cambios:
 
 Un recorrido de primer uso basado en la revisión hecha antes de mergear la capa de worktrees: la app crea un repositorio de ejemplo desechable con worktrees en todos los estados y abre un agente con un prompt preparado que guía al usuario por cada funcionalidad (estado, limpieza, provisionado, el CLI, los hooks, el entorno y los providers), paso a paso.
 
-### Salida del CLI para scripts
-
-- `shogun status --json` ya existe; el resto de comandos de `shogun` tendrán una salida legible por máquinas (`--json`) cuando un script la necesite.
-
 ### Provisionado Android, KMP y JVM
 
 Provisionado para los stacks en los que un worktree recién creado está más lejos de compilar:
