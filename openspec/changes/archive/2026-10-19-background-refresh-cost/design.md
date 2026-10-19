@@ -20,12 +20,12 @@ See proposal.md for motivation. `WorktreeBoard.startWatching` loops on `delay(au
 
 **Shown projects only.** `checkProjects` uses `shownEntries()` for fingerprints and device refreshes, and `entries.values` only for agent detection (one `ps` for all, as the "Refresh running agents on every check" requirement says).
 
-**Per-worktree cache for device reads.** A small `WorktreeEnvironmentCache` keyed by worktree path holds the resolved Git dir and the parsed repository declaration, invalidated when the project's fingerprint changes (worktree list reload) or when the repository file's fingerprint changes. `ResolveWorktreeEnvironmentUseCase` takes it as an optional dependency so the CLI keeps its uncached behavior.
+**Per-worktree cache for device reads.** A small `WorktreeEnvironmentCache` keyed by worktree path holds the resolved Git directories (the `git rev-parse` result, the only part that spawns a process). `ResolveWorktreeEnvironmentUseCase` takes it as an optional dependency so the CLI keeps its uncached behavior. The desktop app clears it whenever a project reloads its worktree list, which is when a worktree can be added, removed or recreated. The repository file is not cached: reading it is a file read, not a process, and a cached copy would need its own invalidation.
 
 **IO dispatcher.** The holder runs use cases with `withContext(Dispatchers.IO)` where they do file work (creation, provisioning, provider reads); the provider lambdas become `suspend` and are called from IO. Results are applied to state on Main as today.
 
 ## Risks / Trade-offs
 
 - [The sidebar's agent indicator is stale while unfocused] → It refreshes on focus, which is when the user can see it.
-- [Cache shows an outdated emulator AVD after editing `.shogunai.json` outside the app] → Invalidated by the repository file fingerprint the app already computes.
+- [A worktree is recreated at the same path outside the app and the cached Git directories are stale] → The cache is cleared on every worktree list reload, and the 3 s fingerprint check triggers one when worktrees change.
 - [Window focus isn't reported reliably on some Linux window managers] → Treat "unknown" as active, so the behavior falls back to today's.

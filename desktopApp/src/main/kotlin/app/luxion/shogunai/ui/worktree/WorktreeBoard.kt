@@ -12,6 +12,7 @@ import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.Project
+import app.luxion.shogunai.ui.components.TextInputFocus
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
@@ -22,10 +23,14 @@ import app.luxion.shogunai.domain.usecase.isActive
 import app.luxion.shogunai.domain.usecase.worktreeActivity
 import app.luxion.shogunai.domain.usecase.isValidGitRefSegment
 import app.luxion.shogunai.domain.usecase.normalizeTaskId
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import java.time.Instant
@@ -42,12 +47,14 @@ class WorktreeBoard(
     private val clock: () -> Instant = Instant::now,
     private val deviceRefreshInterval: Duration = DEVICE_REFRESH_INTERVAL,
     val approval: DialogPostCreateApproval = DialogPostCreateApproval(),
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
     private val deviceRefreshes = mutableMapOf<String, Instant>()
     private val listPermits = Semaphore(MAX_PARALLEL_LISTS)
     private val sizeQueue = SizeQueue(viewModelScope)
     private var entries by mutableStateOf<Map<String, Entry>>(emptyMap())
     private var watchJob: Job? = null
+    private val windowActive = MutableStateFlow(true)
 
     var projects by mutableStateOf<List<Project>>(emptyList())
         private set
@@ -117,7 +124,7 @@ class WorktreeBoard(
         get() = shownProjects.mapNotNull { project ->
             val holder = holder(project.id) ?: return@mapNotNull null
             val rows = listedRows(project, holder)
-            if ((isTextFiltering || isActiveView) && rows.isEmpty()) return@mapNotNull null
+            if ((isTextFiltering || isActiveView) && rows.isEmpty() && holder.listFailure == null) return@mapNotNull null
             WorktreeGroup(project, holder, rows, collapsed = project.id in collapsedProjects && !isFiltered)
         }
 
@@ -147,7 +154,9 @@ class WorktreeBoard(
         }
 
     val isNothingActive: Boolean
-        get() = isActiveView && !isTextFiltering && !isReadingActivity && isListEmpty
+        get() = isActiveView && !isTextFiltering && !isReadingActivity && isListEmpty && shownProjects.none {
+            holder(it.id)?.listFailure != null
+        }
 
     val activeCount: Int
         get() = entries.values.sumOf { activeCountOf(it.holder) }
@@ -274,6 +283,8 @@ class WorktreeBoard(
             listPermits = listPermits,
             sizeQueue = sizeQueue,
             clock = clock,
+            onRemoved = { path -> if (selected == WorktreeRef(project.id, path)) selected = null },
+            ioDispatcher = ioDispatcher,
         )
         holder.refresh()
         return Entry(project, holder, job)
@@ -346,10 +357,16 @@ class WorktreeBoard(
         watchJob = viewModelScope.launch {
             var check: Job? = null
             while (true) {
+                windowActive.first { it }
                 delay(autoRefreshInterval)
+                if (!windowActive.value) continue
                 if (check?.isActive != true) check = launch { checkProjects() }
             }
         }
+    }
+
+    fun setWindowActive(active: Boolean) {
+        windowActive.value = active
     }
 
     fun stopWatching() {
@@ -358,14 +375,17 @@ class WorktreeBoard(
     }
 
     private suspend fun checkProjects() {
-        val unchanged = entries.values
+        val unchanged = shownEntries()
             .filterNot { it.holder.isBusy }
             .filter { it.holder.checkFingerprint() == FingerprintCheck.UNCHANGED }
-        if (unchanged.isEmpty()) return
-        val searches = unchanged.map { AgentSearch(it.project.config.agentLaunchConfig.agentCommand, it.holder.worktrees) }
+        val shownIds = shownProjects.map { it.id }.toSet()
+        val hidden = entries.values.filter { it.project.id !in shownIds && !it.holder.isBusy && it.holder.hasLoaded }
+        val loaded = unchanged + hidden
+        if (loaded.isEmpty()) return
+        val searches = loaded.map { AgentSearch(it.project.config.agentLaunchConfig.agentCommand, it.holder.worktrees) }
         val detected = detectAgents(searches).getOrNull()
+        loaded.forEach { it.holder.applyAgents(detected) }
         unchanged.forEach { entry ->
-            entry.holder.applyAgents(detected)
             if (isDeviceRefreshDue(entry.project.id)) entry.holder.refreshDevices()
         }
     }
@@ -537,12 +557,12 @@ class WorktreeBoard(
     }
 
     fun copySelectedLaunchCommand() {
-        if (isCreateDialogOpen) return
+        if (isCreateDialogOpen || TextInputFocus.isActive) return
         selectedWorktree?.let { it.holder.copyLaunchCommand(it.worktree) }
     }
 
     fun deleteSelectedWorktree() {
-        if (isCreateDialogOpen || isCleanupDialogOpen || pendingRemoval != null) return
+        if (isCreateDialogOpen || isCleanupDialogOpen || pendingRemoval != null || TextInputFocus.isActive) return
         selectedWorktree?.takeIf { !it.worktree.isMain }?.let { it.holder.requestRemoval(it.worktree) }
     }
 

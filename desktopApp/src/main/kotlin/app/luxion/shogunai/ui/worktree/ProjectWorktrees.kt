@@ -26,11 +26,14 @@ import app.luxion.shogunai.domain.usecase.CleanupReport
 import app.luxion.shogunai.domain.usecase.CleanupSelection
 import app.luxion.shogunai.domain.usecase.idleDaemonsOfRemovedWorktrees
 import app.luxion.shogunai.domain.usecase.selectCleanup
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import java.time.Instant
 
 class ProjectWorktrees(
@@ -39,6 +42,8 @@ class ProjectWorktrees(
     private val listPermits: Semaphore = Semaphore(1),
     private val sizeQueue: SizeQueue = SizeQueue(scope),
     private val clock: () -> Instant = Instant::now,
+    private val onRemoved: (String) -> Unit = {},
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private var lastFingerprint: List<Pair<String, Long>>? = null
 
@@ -117,6 +122,8 @@ class ProjectWorktrees(
         private set
     var startingSimulators by mutableStateOf<Set<String>>(emptySet())
         private set
+    var stoppingSimulators by mutableStateOf<Set<String>>(emptySet())
+        private set
     var orphanedSimulators by mutableStateOf<List<SimulatorDevice>>(emptyList())
         private set
 
@@ -139,6 +146,8 @@ class ProjectWorktrees(
         private set
     var startingEmulators by mutableStateOf<Set<String>>(emptySet())
         private set
+    var stoppingEmulators by mutableStateOf<Set<String>>(emptySet())
+        private set
 
     var isGradleRepository by mutableStateOf(false)
         private set
@@ -157,6 +166,10 @@ class ProjectWorktrees(
     var localBranches by mutableStateOf<List<BranchOption>>(emptyList())
         private set
     var isLoadingBranches by mutableStateOf(false)
+        private set
+    var branchesError by mutableStateOf<Throwable?>(null)
+        private set
+    var removeError by mutableStateOf<Throwable?>(null)
         private set
 
     var createError by mutableStateOf<Throwable?>(null)
@@ -179,12 +192,14 @@ class ProjectWorktrees(
         get() = pendingRemoval?.worktree?.path in openInHerdrPaths
 
     fun refresh(remeasureSizes: Boolean = false) {
+        if (isCreating) return
         val generation = ++listGeneration
         isLoading = true
         lastReadAt = clock()
         scope.launch {
             val result = listPermits.withPermit {
                 lastFingerprint = useCases.readFingerprint().getOrNull() ?: lastFingerprint
+                useCases.invalidateEnvironments()
                 useCases.list()
             }
             applyListResult(generation, result, remeasureSizes)
@@ -264,7 +279,7 @@ class ProjectWorktrees(
     private fun loadOverview(generation: Int, listed: List<Worktree>, remeasureSizes: Boolean) {
         val listedPaths = listed.map { it.path }.toSet()
         sizes = sizes.filterKeys { it in listedPaths }
-        herdrWorktreesRoot = useCases.herdr.worktreesRoot()
+        scope.launch { herdrWorktreesRoot = useCases.herdr.worktreesRoot() }
         scope.launch {
             val detected = useCases.detectAgents(listed).getOrNull()
             if (generation == listGeneration) agents = detected
@@ -288,13 +303,13 @@ class ProjectWorktrees(
     }
 
     private fun loadSimulatorSection(generation: Int, listed: List<Worktree>) {
-        isSimulatorRepository = useCases.simulator.declared()
-        if (!isSimulatorRepository) {
-            simulators = emptyMap()
-            orphanedSimulators = emptyList()
-            return
-        }
         scope.launch {
+            isSimulatorRepository = useCases.simulator.declared()
+            if (!isSimulatorRepository) {
+                simulators = emptyMap()
+                orphanedSimulators = emptyList()
+                return@launch
+            }
             loadSimulators(generation, listed)
             val orphans = useCases.simulator.orphans().getOrNull() ?: return@launch
             if (generation == listGeneration) orphanedSimulators = orphans
@@ -329,21 +344,29 @@ class ProjectWorktrees(
     }
 
     fun stopSimulator(worktree: Worktree) {
+        if (worktree.path in stoppingSimulators) return
+        stoppingSimulators = stoppingSimulators + worktree.path
         scope.launch {
-            useCases.simulator.stop(worktree.path)
-                .onSuccess { clearActionError(worktree.path) }
-                .onFailure { recordActionError(worktree.path, it) { stopSimulator(worktree) } }
-            loadSimulators(listGeneration, worktrees)
+            try {
+                useCases.simulator.stop(worktree.path)
+                    .onSuccess { clearActionError(worktree.path) }
+                    .onFailure { recordActionError(worktree.path, it) { stopSimulator(worktree) } }
+                loadSimulators(listGeneration, worktrees)
+            } finally {
+                stoppingSimulators = stoppingSimulators - worktree.path
+            }
         }
     }
 
     private fun loadEmulatorSection(generation: Int, listed: List<Worktree>) {
-        isEmulatorRepository = useCases.emulator.declared()
-        if (!isEmulatorRepository) {
-            emulators = emptyMap()
-            return
+        scope.launch {
+            isEmulatorRepository = useCases.emulator.declared()
+            if (!isEmulatorRepository) {
+                emulators = emptyMap()
+                return@launch
+            }
+            loadEmulators(generation, listed)
         }
-        scope.launch { loadEmulators(generation, listed) }
     }
 
     private suspend fun loadEmulators(generation: Int, listed: List<Worktree>) {
@@ -368,11 +391,17 @@ class ProjectWorktrees(
     }
 
     fun stopEmulator(worktree: Worktree) {
+        if (worktree.path in stoppingEmulators) return
+        stoppingEmulators = stoppingEmulators + worktree.path
         scope.launch {
-            useCases.emulator.stop(worktree.path)
-                .onSuccess { clearActionError(worktree.path) }
-                .onFailure { recordActionError(worktree.path, it) { stopEmulator(worktree) } }
-            loadEmulators(listGeneration, worktrees)
+            try {
+                useCases.emulator.stop(worktree.path)
+                    .onSuccess { clearActionError(worktree.path) }
+                    .onFailure { recordActionError(worktree.path, it) { stopEmulator(worktree) } }
+                loadEmulators(listGeneration, worktrees)
+            } finally {
+                stoppingEmulators = stoppingEmulators - worktree.path
+            }
         }
     }
 
@@ -386,22 +415,24 @@ class ProjectWorktrees(
     }
 
     private fun loadGradleSection() {
-        val provider = useCases.gradle.provider()
-        isGradleRepository = provider != null
-        gradleSettings = provider?.takeIf { it.hasSettings }
-        if (provider == null) return
-        isGradleBuildCacheEnabled = useCases.gradle.isBuildCacheEnabled()
+        scope.launch {
+            val provider = useCases.gradle.provider()
+            isGradleRepository = provider != null
+            gradleSettings = provider?.takeIf { it.hasSettings }
+            if (provider == null) return@launch
+            isGradleBuildCacheEnabled = useCases.gradle.isBuildCacheEnabled()
+        }
     }
 
     private fun loadXcodeSection(generation: Int, listed: List<Worktree>) {
-        val provider = useCases.xcode.provider()?.takeIf { useCases.xcode.supported() }
-        isXcodeRepository = provider != null
-        hasCompilationCache = provider?.compilationCache == true
-        if (provider == null) {
-            derivedDataOrphans = emptyList()
-            return
-        }
         scope.launch {
+            val provider = useCases.xcode.provider()?.takeIf { useCases.xcode.supported() }
+            isXcodeRepository = provider != null
+            hasCompilationCache = provider?.compilationCache == true
+            if (provider == null) {
+                derivedDataOrphans = emptyList()
+                return@launch
+            }
             val orphans = useCases.xcode.list(listed, false).getOrNull()?.orphans ?: return@launch
             if (generation == listGeneration) derivedDataOrphans = orphans
         }
@@ -441,9 +472,9 @@ class ProjectWorktrees(
         createError = null
         scope.launch {
             try {
-                creation()
+                withContext(ioDispatcher) { creation() }
                     .onSuccess { worktree ->
-                        worktrees = worktrees + worktree
+                        worktrees = worktrees.filterNot { it.path == worktree.path } + worktree
                         lastCreatedWorktree = worktree
                         success = WorktreeSuccess.Created(worktree.path, worktree.skippedPostCreateCommands.isNotEmpty())
                         loadStatusOf(worktree)
@@ -453,6 +484,7 @@ class ProjectWorktrees(
                         createError = failure
                         if (failure is WorktreeError.PostCreateCommandFailed) {
                             createdWithErrorPath = failure.worktreePath
+                            isCreating = false
                             refresh()
                         }
                     }
@@ -466,8 +498,8 @@ class ProjectWorktrees(
         scope.launch {
             isLoadingBranches = true
             useCases.listLocalBranches()
-                .onSuccess { localBranches = it; dismissError() }
-                .onFailure { fail(it, ::loadLocalBranches) }
+                .onSuccess { localBranches = it; branchesError = null }
+                .onFailure { branchesError = it }
             isLoadingBranches = false
         }
     }
@@ -476,6 +508,7 @@ class ProjectWorktrees(
         runCreation(onCreated) { useCases.createFromBranch(branch) }
 
     fun remove(worktree: Worktree, branchToDelete: String?, force: Boolean = false) {
+        removeError = null
         scope.launch {
             isRemoving = true
             try {
@@ -487,12 +520,13 @@ class ProjectWorktrees(
                         sizes = sizes - worktree.path
                         dismissError()
                         pendingRemoval = null
+                        onRemoved(worktree.path)
                     }
                     .onFailure { failure ->
                         if (!force && failure.suggestsForceRetry()) {
                             pendingRemoval = PendingRemoval(worktree, deleteBranch = branchToDelete != null, requiresForce = true)
                         } else {
-                            fail(failure)
+                            removeError = failure
                         }
                     }
             } finally {
@@ -502,6 +536,7 @@ class ProjectWorktrees(
     }
 
     fun requestRemoval(worktree: Worktree) {
+        removeError = null
         pendingRemoval = PendingRemoval(worktree, deleteBranch = false)
         lookUpOpenInHerdr(listOf(worktree.path))
     }
@@ -566,7 +601,9 @@ class ProjectWorktrees(
     }
 
     fun dismissPendingRemoval() {
+        if (isRemoving) return
         pendingRemoval = null
+        removeError = null
     }
 
     suspend fun cleanUp(options: CleanupOptions): WorktreeSuccess.CleanedUp? {

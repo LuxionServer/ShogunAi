@@ -21,6 +21,7 @@ La salida es texto plano en inglés; los scripts deben leer la línea única de 
 | `0` | Éxito. |
 | `1` | La operación falló; el motivo va a la salida de error. Los fallos que un comando no trata de forma específica se imprimen en una sola línea que empieza por `shogun:`, nunca como un stack trace. |
 | `2` | Uso incorrecto: comando u opción desconocidos, argumento que falta, o entrada de un hook que no es el JSON esperado. |
+| `3` | `provision --check` encontró diferencias entre el worktree y el repositorio base. |
 
 ## Worktrees
 

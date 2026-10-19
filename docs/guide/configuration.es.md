@@ -83,7 +83,7 @@ El `.worktreeinclude` de Claude Code se lee como `copy`: un patrón al estilo gi
 | Archivo | Contenido |
 |---|---|
 | `projects.json` | El catálogo de proyectos de la app de escritorio: el nombre, repositorio base, carpeta de worktrees, rama principal, archivos locales, comando del agente y ajustes de emulador y simulador de cada proyecto. El comando `shogun` lo lee para encontrar el proyecto de un repositorio. |
-| `settings.json` | El tema de la app (`LIGHT`, `DARK` o `SYSTEM`, el valor por defecto) y su idioma (`ENGLISH`, por defecto, o `SPANISH`). |
+| `settings.json` | Las preferencias de la app: tema (`LIGHT`, `DARK` o `SYSTEM`, el valor por defecto), idioma (`ENGLISH`, por defecto, o `SPANISH`), posición y tamaño de la ventana, si la barra lateral está plegada, los proyectos plegados, el último destino, el último proyecto con el que se creó un worktree, los elementos recientes de la paleta de comandos y la agrupación de la lista de worktrees en cada vista. |
 | `reservations.json`, `reservations.lock` | Un índice de los worktrees, de cualquier repositorio, que tienen puertos reservados, y el bloqueo que se toma al reservar, para que dos worktrees nunca reciban el mismo puerto. |
 | `logs/emulator-<puerto>.log` | La salida de cada emulador que arrancó ShogunAi. |
 | `xcode/compilation-cache.xcconfig` | Los ajustes compartidos de Xcode que escribe la opción `compilationCache` del provider de Xcode. |

@@ -220,6 +220,7 @@ data class WorktreeActions(
     val onDeleteSelectedWorktree: () -> Unit,
     val onClearSelection: () -> Unit,
     val onEscape: () -> Unit,
+    val hasSelection: () -> Boolean,
 )
 
 private const val PROJECTS_FILE_NAME = "projects.json"

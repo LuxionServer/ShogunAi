@@ -52,12 +52,17 @@ object EnglishStrings : Strings {
     override val aboutRepositoryLink = "View on GitHub"
 
     override val projectConfigTitle = "Project settings"
-    override val identitySection = "Identity"
     override val nameLabel = "Name"
     override val nameEmptyError = "The name can't be empty"
-    override val pathsSection = "Paths"
     override val baseRepositoryPathLabel = "Base repository path"
     override val baseRepositoryPathEmptyError = "The repository path can't be empty"
+    override val baseRepositoryNotTopLevelError = "This folder isn't the repository's top folder"
+    override fun baseRepositoryAlreadyAdded(projectName: String) = "This repository is already added as \"$projectName\""
+    override val worktreesRootEmptyError = "The worktrees folder can't be empty"
+    override val agentCommandEmptyError = "The agent command can't be empty"
+    override val discardRepositoryEditsTitle = "Discard repository settings?"
+    override fun discardRepositoryEditsMessage(path: String) =
+        "You have unsaved changes to this repository's settings. Loading $path discards them."
     override val worktreesRootLabel = "Worktrees root folder"
     override val mainBranchLabel = "Main branch"
     override val mainBranchPlaceholder = "Detected from the repository"
@@ -259,7 +264,6 @@ object EnglishStrings : Strings {
     override fun daemonIdle(since: String) = "idle · $since"
     override val daemonStateUnknown = "state unknown"
     override val daemonOwnerRemoved = "removed worktree"
-    override val daemonOwnerOther = "other project"
     override val stopDaemon = "Stop"
     override val stopIdleDaemons = "Stop idle daemons"
     override val gradleBuildCacheOff =
@@ -279,7 +283,6 @@ object EnglishStrings : Strings {
 
     override val xcodeDerivedDataTitle = "Xcode DerivedData"
     override val xcodeDerivedDataUnavailable = "DerivedData can't be inspected on this system"
-    override val noDerivedDataFolders = "No DerivedData folders for these worktrees yet"
     override fun derivedDataSummary(count: Int, totalSize: String) =
         (if (count == 1) "1 DerivedData folder" else "$count DerivedData folders") + " · $totalSize"
     override fun derivedDataOrphans(count: Int, size: String) =
@@ -299,7 +302,6 @@ object EnglishStrings : Strings {
     override val ownerOutsideProjects = "outside saved projects"
     override val ownerLoading = "loading owner"
     override val notOwnedByWorktree = "not owned by a worktree"
-    override val goToWorktree = "Show in All worktrees"
     override val noMachineEmulators = "No worktree emulators in these projects"
     override val unownedEmulatorsTitle = "Running outside any worktree"
     override val noMachineSimulators = "No ShogunAi simulators yet"
@@ -328,7 +330,6 @@ object EnglishStrings : Strings {
     override val copied = "Copied"
     override val close = "Close"
     override val worktreeCreatedWithError = "The worktree was created, but its post-creation command failed."
-    override val copyCommand = "Copy command"
     override val copyLaunchCommand = "Copy launch command"
     override fun worktreeCreated(folder: String) = "Worktree created: $folder"
     override fun worktreeCreatedCommandsSkipped(folder: String) = "Worktree created: $folder. Its post-creation commands were skipped."
@@ -396,6 +397,7 @@ object EnglishStrings : Strings {
     override val menuCommandPalette = "Command palette"
     override val paletteHint = "Search views, projects, worktrees and actions"
     override val paletteNoResults = "No results"
+    override val paletteCopyLaunchCommandHint = "Copy launch command"
     override val paletteKindView = "View"
     override val paletteKindProject = "Project"
     override val paletteKindWorktree = "Worktree"
@@ -404,7 +406,6 @@ object EnglishStrings : Strings {
     override val paletteViewAllWorktrees = "All worktrees"
     override val paletteViewPreferences = "Preferences"
     override val paletteCleanUp = "Clean up"
-    override val paletteCopyLaunchCommandHint = "Copy launch command"
     override fun paletteNewWorktreeIn(project: String) = "New worktree in $project"
     override fun paletteSettingsOf(project: String) = "Settings of $project"
 }

@@ -5,8 +5,7 @@ cask "shogunai" do
   sha256 arm:   "@SHA256_ARM@",
          intel: "@SHA256_INTEL@"
 
-  dmg_version = "1." + version.split(".", 2).last
-  url "https://github.com/LuxionServer/ShogunAi/releases/download/v#{version}/ShogunAi-#{dmg_version}-#{arch}.dmg"
+  url "https://github.com/LuxionServer/ShogunAi/releases/download/v#{version}/ShogunAi-#{version}-#{arch}.dmg"
   name "ShogunAi"
   desc "Worktree layer for AI agents: provision, inspect and clean Git worktrees"
   homepage "https://github.com/LuxionServer/ShogunAi"

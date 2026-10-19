@@ -16,19 +16,22 @@ dependencies {
     implementation(compose.foundation)
     implementation(compose.material3)
     implementation(compose.ui)
-    implementation(libs.compose.materialIconsCore)
     implementation(libs.compose.materialIconsExtended)
     implementation(libs.kotlinx.coroutinesSwing)
     implementation(libs.kotlinx.coroutinesCore)
     implementation(libs.androidx.lifecycle.viewmodelCompose)
     implementation(libs.androidx.lifecycle.runtimeCompose)
 
-    implementation(libs.compose.uiToolingPreview)
 
     testImplementation(testFixtures(project(":core")))
     testImplementation(libs.kotlin.testJunit)
     testImplementation(compose.uiTest)
     testImplementation(libs.kotlinx.coroutinesTest)
+}
+
+fun macBundleVersion(version: String): String {
+    val (major, minor, patch) = version.split(".")
+    return "${major.toInt() + 1}.$minor.$patch"
 }
 
 compose.desktop {
@@ -43,7 +46,7 @@ compose.desktop {
             packageVersion = appVersion
 
             macOS {
-                packageVersion = if (appVersion.startsWith("0.")) "1." + appVersion.substringAfter(".") else appVersion
+                packageVersion = macBundleVersion(appVersion)
                 iconFile.set(project.file("icons/icon.icns"))
             }
             windows {

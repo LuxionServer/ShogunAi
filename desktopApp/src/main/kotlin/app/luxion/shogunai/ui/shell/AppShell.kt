@@ -98,6 +98,9 @@ fun AppShell(appContainer: AppContainer, viewModel: ShellViewModel, onOpenPrefer
     }
     val windowInfo = LocalWindowInfo.current
     LaunchedEffect(windowInfo) {
+        snapshotFlow { windowInfo.isWindowFocused }.collect(board::setWindowActive)
+    }
+    LaunchedEffect(windowInfo) {
         snapshotFlow { windowInfo.isWindowFocused }
             .drop(1)
             .filter { it }
@@ -304,6 +307,7 @@ private fun WorktreeView(destination: ShellDestination, shellViewModel: ShellVie
                 onDeleteSelectedWorktree = board::deleteSelectedWorktree,
                 onClearSelection = board::clearSelection,
                 onEscape = board::escape,
+                hasSelection = { board.selectedWorktree != null },
             ),
         )
         onDispose { shellViewModel.updateWorktreeActions(null) }

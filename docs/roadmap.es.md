@@ -27,10 +27,9 @@ graph LR
 
 Una revisión de todo el proyecto el 2026-10-19, tras usarlo en repositorios reales, se convirtió en seis cambios de OpenSpec, ya propuestos en `openspec/changes/`:
 
-- **Endurecimiento de releases** (`release-hardening`): la versión del bundle de macOS sigue siendo válida a partir de la 1.0 y la 2.0, las releases ejecutan antes los tests, CI prueba en Linux, macOS y Windows, las releases publican `SHA256SUMS` y el workflow usa el mínimo privilegio con acciones fijadas.
 - **Robustez del motor** (`process-robustness`): los comandos cancelados se detienen, ningún comando espera entrada, una creación fallida borra su rama, los ficheros locales corruptos se notifican y se conservan, los submódulos funcionan y las ramas se borran con una misma regla en todas partes; la limpieza nunca borra un worktree con un agente en marcha.
 - **Correcciones de escritorio tras el rediseño** (`desktop-review-fixes`): sin crash cuando una creación coincide con un refresco, errores visibles en cualquier agrupación, errores dentro del diálogo de borrado y edición de la ruta en ajustes sin perder cambios sin guardar.
-- **Coste del refresco en segundo plano** (`background-refresh-cost`): el watcher se pausa con la ventana en segundo plano y solo comprueba los proyectos mostrados, con lecturas de dispositivos más baratas.
+- **Coste del refresco en segundo plano** (`background-refresh-cost`): el watcher se pausa con la ventana en segundo plano y solo comprueba los proyectos mostrados, con lecturas de dispositivos más baratas (hecho).
 - **Paridad entre el CLI y la app** (`cli-desktop-parity`): `shogun remove` y `shogun repair`, y en la app el estado de provisionado y «Provisionar» para worktrees creados por otras herramientas, además de las variables de entorno del worktree.
 - **Higiene de documentación y build** (`docs-hygiene`): documentación que faltaba, el test del manifiesto del plugin de Herdr, avisos del compilador, strings y dependencias sin usar, y reglas de ignore.
 

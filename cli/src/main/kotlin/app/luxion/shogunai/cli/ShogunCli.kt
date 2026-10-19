@@ -844,8 +844,8 @@ class ShogunCli(
         val path = removed?.string("path")
             ?: return hookUsageError("herdr", "the event has no \"data.worktree.path\"")
         if (event == HERDR_WORKTREE_CREATED) return provisionWorktreeAt(path, PostCreateApproval.SKIP, ::flagOutsideWorktreesRoot)
-        val repoRoot = ((data?.get("workspace") as? JsonObject)?.get("worktree") as? JsonObject)?.string("repo_root")
-        return deleteMergedBranchOfRemovedWorktree(path, removed?.string("branch"), repoRoot)
+        val repoRoot = ((data.get("workspace") as? JsonObject)?.get("worktree") as? JsonObject)?.string("repo_root")
+        return deleteMergedBranchOfRemovedWorktree(path, removed.string("branch"), repoRoot)
     }
 
     private suspend fun deleteMergedBranchOfRemovedWorktree(path: String, branch: String?, repoRoot: String?): Int {

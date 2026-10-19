@@ -10,11 +10,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.res.painterResource
+import app.luxion.shogunai.ui.components.rememberAppIconPainter
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.luxion.shogunai.cli.runShogun
+import app.luxion.shogunai.ui.components.TextInputFocus
 import app.luxion.shogunai.ui.shell.AboutWindow
 import app.luxion.shogunai.ui.shell.AppMenuBar
 import app.luxion.shogunai.ui.shell.AppShell
@@ -101,7 +102,7 @@ private fun openWindow() = application {
         onCloseRequest = requestQuit,
         state = windowState,
         title = "ShogunAi",
-        icon = painterResource("icons/icon.png"),
+        icon = rememberAppIconPainter(),
         onPreviewKeyEvent = { event ->
             if (event.key == Key.Escape) escapeWorktreeView.value?.invoke()
             false
@@ -129,6 +130,8 @@ private fun openWindow() = application {
             onCopySelectedLaunchCommand = worktreeActions?.onCopySelectedLaunchCommand,
             onDeleteSelectedWorktree = worktreeActions?.onDeleteSelectedWorktree,
             onClearSelection = worktreeActions?.onClearSelection,
+            hasWorktreeSelection = worktreeActions?.hasSelection?.invoke() == true,
+            isEditingText = TextInputFocus.isActive,
             onShowActive = shellViewModel::selectActive.takeIf { shellViewModel.projects.isNotEmpty() },
             onShowAll = shellViewModel::selectAll.takeIf { shellViewModel.projects.isNotEmpty() },
             onReload = shellViewModel::reload,
