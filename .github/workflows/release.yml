@@ -106,7 +106,7 @@ jobs:
       VERSION: ${{ needs.resolve-version.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.resolve-version.outputs.ref }}
           persist-credentials: false
@@ -150,7 +150,7 @@ jobs:
       VERSION: ${{ needs.resolve-version.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.resolve-version.outputs.ref }}
           persist-credentials: false
@@ -200,7 +200,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.resolve-version.outputs.ref }}
           path: source
@@ -255,7 +255,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.resolve-version.outputs.ref }}
           path: source
