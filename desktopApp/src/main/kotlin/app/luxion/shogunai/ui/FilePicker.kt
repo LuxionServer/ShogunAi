@@ -38,12 +38,14 @@ object FilePicker {
 fun relativeToBase(baseRepositoryPath: String, absolutePath: String): String =
     relativeIfInsideBase(baseRepositoryPath, absolutePath) ?: File(absolutePath).name
 
+internal fun isAbsolutePath(path: String): Boolean = path.startsWith('/') || File(path).isAbsolute
+
 internal fun relativeIfInsideBase(baseRepositoryPath: String, absolutePath: String): String? {
     if (baseRepositoryPath.isBlank()) return null
     return try {
         val base = File(baseRepositoryPath).toPath().normalize()
         val relative = base.relativize(File(absolutePath).toPath().normalize()).toString()
-        relative.takeUnless { it.isEmpty() || it.startsWith("..") }
+        relative.replace('\\', '/').takeUnless { it.isEmpty() || it.startsWith("..") }
     } catch (e: IllegalArgumentException) {
         null
     }

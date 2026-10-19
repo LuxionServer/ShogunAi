@@ -2,6 +2,7 @@ package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import java.io.File
+import java.nio.file.Files
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
@@ -21,25 +22,27 @@ class HomebrewPathTest {
 
     @Test
     fun `antepone los directorios de Homebrew al PATH heredado`() {
-        val merged = HomebrewPath.merge("/usr/bin:/bin")
+        val merged = HomebrewPath.merge(listOf("/usr/bin", "/bin").joinToString(File.pathSeparator))
 
         assertEquals(
-            "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin",
+            listOf("/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin", "/usr/bin", "/bin").joinToString(File.pathSeparator),
             merged,
         )
     }
 
     @Test
     fun `no duplica un directorio de Homebrew ya presente en el PATH heredado`() {
-        val merged = HomebrewPath.merge("/usr/local/bin:/usr/bin")
+        val merged = HomebrewPath.merge(listOf("/usr/local/bin", "/usr/bin").joinToString(File.pathSeparator))
 
         assertEquals(1, merged.split(File.pathSeparator).count { it == "/usr/local/bin" })
     }
 
     @Test
     fun `funciona con un PATH nulo o vacío`() {
-        assertEquals("/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin", HomebrewPath.merge(null))
-        assertEquals("/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin", HomebrewPath.merge(""))
+        val expected = listOf("/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin").joinToString(File.pathSeparator)
+
+        assertEquals(expected, HomebrewPath.merge(null))
+        assertEquals(expected, HomebrewPath.merge(""))
     }
 }
 
@@ -87,11 +90,15 @@ class ProcessBuilderShellCommandExecutorTest {
 
     @Test
     fun `ejecuta el comando en el directorio de trabajo indicado`() = runTest {
-        val cwd = System.getProperty("java.io.tmpdir")
+        val cwd = Files.createTempDirectory("executor-cwd").toFile()
 
-        val result = executor.execute(listOf("pwd"), workingDirectory = cwd)
+        try {
+            executor.execute(listOf("sh", "-c", "echo created > marker.txt"), workingDirectory = cwd.path)
 
-        assertEquals(File(cwd).canonicalPath, File(result.stdout).canonicalPath)
+            assertTrue(File(cwd, "marker.txt").exists())
+        } finally {
+            cwd.deleteRecursively()
+        }
     }
 
     @Test
@@ -110,9 +117,10 @@ class ProcessBuilderShellCommandExecutorTest {
 
     @Test
     fun `el proceso lanzado ve el PATH ampliado con los directorios de Homebrew`() = runTest {
+        if (System.getProperty("os.name").startsWith("Windows")) return@runTest
         val result = executor.execute(listOf("sh", "-c", "echo \$PATH"))
 
-        val path = result.stdout.split(File.pathSeparator)
+        val path = result.stdout.split(":")
         assertTrue(path.contains("/opt/homebrew/bin"))
         assertTrue(path.contains("/opt/homebrew/sbin"))
         assertTrue(path.contains("/usr/local/bin"))
