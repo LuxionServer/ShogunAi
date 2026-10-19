@@ -182,6 +182,7 @@ class ProjectConfigViewModel(
     val simulatorInitScriptPath: String get() = simulatorSetup.initScriptPath
 
     private var initialName = name
+    val savedName: String get() = initialName
     private var initialBaseRepositoryPath = baseRepositoryPath
     private var initialWorktreesRoot = worktreesRoot
     private var initialSecretFiles = secretFiles

@@ -56,13 +56,6 @@ Provisionado para los stacks en los que un worktree recién creado está más le
 - «Abrir en Android Studio» en el worktree correcto.
 - Mostrar los emuladores que arranca ShogunAi dentro de la ventana Running Devices de Android Studio, como los que arranca el propio Android Studio, para poder ordenar varios en una sola ventana. Necesita un spike: Android Studio podría incrustar un emulador externo arrancado con las mismas opciones que usa él.
 
-### Elegir la base de un worktree nuevo
-
-`shogun new` y el hook `WorktreeCreate` de Claude Code ya hacen que una rama nueva parta del HEAD del worktree donde se ejecutan, y `shogun new --from <ref>` de cualquier rama, tag o commit. La app de escritorio sigue partiendo del `HEAD` del repositorio base, así que crear allí un worktree desde una rama actualizada obliga a pasar antes por otro cliente de Git. Sigue previsto:
-
-- Elegir la rama base (`develop`, `main`, …) al crear un worktree en la app de escritorio, con un `git fetch` previo opcional.
-- Crear un worktree desde una rama remota (`origin/...`), no solo desde las locales.
-
 ### Lanzar el agente y las herramientas directamente
 
 Copiar el comando de lanzamiento sigue siendo la opción por defecto, pero la app también podría abrirlo directamente con integraciones concretas y fiables en lugar de un lanzamiento genérico de terminal:

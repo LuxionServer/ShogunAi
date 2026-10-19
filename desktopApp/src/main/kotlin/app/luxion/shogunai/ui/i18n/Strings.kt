@@ -97,6 +97,9 @@ interface Strings {
     val unsavedChanges: String
     val menuSave: String
     val addProjectTitle: String
+    fun projectSettingsTitle(name: String): String
+    val linkedPattern: String
+    fun postCreationCommandsNote(count: Int): String
     val addProjectIntro: String
     val chooseRepositoryFolder: String
     val dropRepositoryHint: String
@@ -121,6 +124,12 @@ interface Strings {
     val noBranchesAvailable: String
     fun branchAlreadyHasWorktree(branch: String): String
     val selectBranchPlaceholder: String
+    val startFromLabel: String
+    fun startFromMainBranch(ref: String): String
+    fun startFromCurrentBranch(branch: String?): String
+    fun remoteBranchLabel(branch: String): String
+    val fetchFirstLabel: String
+    val createWithoutFetching: String
     val otherBranchesGroup: String
     val worktreesTitle: String
     val viewsTitle: String
@@ -175,6 +184,7 @@ interface Strings {
     fun uncommittedChanges(count: Int): String
     val upstream: String
     fun mergedInto(branch: String): String
+    val notStarted: String
     val statusUnavailable: String
     val folderMissing: String
     val mainWorktree: String
@@ -276,6 +286,12 @@ interface Strings {
     val ownerOutsideProjects: String
     val ownerLoading: String
     val notOwnedByWorktree: String
+    val machineColumnDevice: String
+    val machineColumnWorktree: String
+    val machineColumnState: String
+    val automaticAvd: String
+    val simulatorNotCreated: String
+    fun simulatorNotCreatedFor(device: String): String
     val noMachineEmulators: String
     val unownedEmulatorsTitle: String
     val noMachineSimulators: String

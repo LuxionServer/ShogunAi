@@ -258,7 +258,7 @@ class CreateWorktreeFromBranchUseCaseTest {
     @Test
     fun `a branch name with a wildcard matches only its exact name`() = runTest {
         val exec = FakeShellCommandExecutor {
-            if (it.getOrNull(1) == "show-ref" && it.last() == "refs/heads/feature/*") failure(it, exitCode = 1) else success(it)
+            if (it.getOrNull(1) == "show-ref" && it.last().endsWith("feature/*")) failure(it, exitCode = 1) else success(it)
         }
         val useCase = CreateWorktreeFromBranchUseCase(config, exec, FakeFileManager(existing = baseWithSecrets), FakeRepositoryProvisioningSource())
 
@@ -266,5 +266,67 @@ class CreateWorktreeFromBranchUseCaseTest {
 
         assertIs<WorktreeError.BranchNotFound>(error)
         assertTrue(exec.executed("git", "show-ref", "--verify", "--quiet", "refs/heads/feature/*"))
+    }
+
+    private val remoteBranch = "feature/TASK-9"
+    private val remoteWorktreePath = "/home/dev/projects/TASK-9"
+
+    private fun remoteOnlyExecutor() = FakeShellCommandExecutor {
+        when {
+            it.getOrNull(1) == "show-ref" && it.last() == "refs/remotes/origin/$remoteBranch" -> success(it)
+            it.getOrNull(1) == "show-ref" -> failure(it, exitCode = 1)
+            else -> success(it)
+        }
+    }
+
+    @Test
+    fun `creates a tracking branch from a remote only branch`() = runTest {
+        val exec = remoteOnlyExecutor()
+        val useCase = CreateWorktreeFromBranchUseCase(config, exec, FakeFileManager(existing = baseWithSecrets), FakeRepositoryProvisioningSource())
+
+        val worktree = useCase(remoteBranch).getOrThrow()
+
+        assertEquals(remoteWorktreePath, worktree.path)
+        assertEquals(remoteBranch, worktree.branch)
+        assertTrue(
+            exec.executed(
+                "git", "worktree", "add", "--track", "-b", remoteBranch, remoteWorktreePath, "origin/$remoteBranch",
+            ),
+        )
+    }
+
+    @Test
+    fun `accepts the remote branch with its origin prefix`() = runTest {
+        val exec = remoteOnlyExecutor()
+        val useCase = CreateWorktreeFromBranchUseCase(config, exec, FakeFileManager(existing = baseWithSecrets), FakeRepositoryProvisioningSource())
+
+        val worktree = useCase("origin/$remoteBranch").getOrThrow()
+
+        assertEquals(remoteBranch, worktree.branch)
+        assertEquals(remoteWorktreePath, worktree.path)
+    }
+
+    @Test
+    fun `a local branch takes precedence over the remote one`() = runTest {
+        val exec = FakeShellCommandExecutor { success(it) }
+        val useCase = CreateWorktreeFromBranchUseCase(config, exec, FakeFileManager(existing = baseWithSecrets), FakeRepositoryProvisioningSource())
+
+        useCase(remoteBranch).getOrThrow()
+
+        assertTrue(exec.executed("git", "worktree", "add", remoteWorktreePath, remoteBranch))
+        assertFalse(exec.executedCommands.any { "--track" in it })
+    }
+
+    @Test
+    fun `deletes the branch it created when copying a file fails`() = runTest {
+        val exec = remoteOnlyExecutor()
+        val fileManager = FakeFileManager(existing = baseWithSecrets, failCopyFor = setOf(secretsInBase.first()))
+        val useCase = CreateWorktreeFromBranchUseCase(config, exec, fileManager, FakeRepositoryProvisioningSource())
+
+        val error = useCase(remoteBranch).exceptionOrNull()
+
+        assertIs<WorktreeError.SecretCopyFailed>(error)
+        assertTrue(exec.executed("git", "worktree", "remove", "--force", remoteWorktreePath))
+        assertTrue(exec.executed("git", "branch", "-D", "--", remoteBranch))
     }
 }

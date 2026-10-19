@@ -58,6 +58,7 @@ import app.luxion.shogunai.domain.usecase.DeleteSimulatorsUseCase
 import app.luxion.shogunai.domain.usecase.EnvironmentFormat
 import app.luxion.shogunai.domain.usecase.ListDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.ListGradleDaemonsUseCase
+import app.luxion.shogunai.domain.usecase.FetchRemoteUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.MachineProviderContributions
 import app.luxion.shogunai.domain.usecase.effectiveGradleJvmArgs
@@ -233,6 +234,7 @@ class ShogunCli(
             err.line("Pass --worktrees-root <dir>, or add the repository as a project in the desktop app.")
             return EXIT_USAGE
         }
+        if (command.fetch) FetchRemoteUseCase(config, executor)().getOrThrow()
         val created = if (command.branch != null) {
             CreateWorktreeFromBranchUseCase(
                 config, executor, fileManager, provisioningSource, prepareEnvironment, trust, terminalApproval,
@@ -922,6 +924,7 @@ class ShogunCli(
                     add("changes=${status.uncommittedChanges}")
                     status.upstream?.let { add("ahead=${it.ahead} behind=${it.behind}") }
                     if (status.isMerged) add("merged")
+                    if (status.isNotStarted) add("not-started")
                 }
             }
         }

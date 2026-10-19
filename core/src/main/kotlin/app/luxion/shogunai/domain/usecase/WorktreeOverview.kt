@@ -44,6 +44,7 @@ fun worktreeActivity(worktree: Worktree, status: WorktreeStatus?, agents: List<R
     if (status.uncommittedChanges > 0) return Activity.NeedsYou
     return when {
         worktree.isMain -> Activity.Idle
+        status.isNotStarted -> Activity.InProgress
         status.isMerged -> Activity.Merged
         isInactive(worktree, status, agents, now) -> Activity.Inactive
         hasUnpushedCommits(status) -> Activity.NeedsYou

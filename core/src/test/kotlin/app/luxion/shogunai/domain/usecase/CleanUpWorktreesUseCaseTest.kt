@@ -96,6 +96,19 @@ class CleanUpWorktreesUseCaseTest {
     }
 
     @Test
+    fun `never selects a worktree that has not started`() {
+        val notStarted = WorktreeStatus(
+            uncommittedChanges = 0,
+            upstream = null,
+            mainBranch = Divergence(ahead = 0, behind = 2),
+            lastCommitAt = null,
+            neverCommitted = true,
+        )
+
+        assertEquals(emptyList(), selectCleanupCandidates(listOf(first), mapOf(first.path to notStarted)))
+    }
+
+    @Test
     fun `removes every worktree and prunes the missing ones`() = runTest {
         val executor = executor()
 

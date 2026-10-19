@@ -143,6 +143,11 @@ class ShellViewModel(
         select(destinationBeforeForm?.takeIf(::isAvailable) ?: fallbackDestination())
     }
 
+    fun discardForm() {
+        leaveGuard = null
+        cancelForm()
+    }
+
     fun onProjectSaved(saved: Project, previous: Project?) {
         leaveGuard = null
         projects = loadProjects()
@@ -150,6 +155,12 @@ class ShellViewModel(
             (previous.config.baseRepositoryPath != saved.config.baseRepositoryPath ||
                 previous.config.worktreesRoot != saved.config.worktreesRoot)
         select(ShellDestination.All(saved.id, previous?.config?.worktreesRoot?.takeIf { moved }))
+    }
+
+    fun rememberFetchBeforeCreate(projectId: String, fetch: Boolean) {
+        val project = projects.firstOrNull { it.id == projectId } ?: return
+        runCatching { projectRepository.save(project.copy(config = project.config.copy(fetchBeforeCreate = fetch))) }
+        projects = loadProjects()
     }
 
     fun removeProject(project: Project) {
