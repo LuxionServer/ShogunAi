@@ -1,6 +1,7 @@
 package app.luxion.shogunai.ui.machine
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.HorizontalDivider
@@ -27,7 +28,7 @@ fun AndroidEmulatorsView(machine: MachineResources, onOpenWorktree: (String, Str
             MachineLoad.Loading -> InlineProgress()
             MachineLoad.Unavailable -> MachineSecondaryText(strings.gradleDaemonsUnavailable)
             is MachineLoad.Loaded -> {
-                if (state.value.isEmpty()) MachineSecondaryText(strings.noMachineEmulators)
+                if (state.value.isEmpty()) MachineSecondaryText(strings.noMachineEmulators) else MachineColumnHeader()
                 state.value.forEach { entry ->
                     HorizontalDivider()
                     WorktreeEmulatorRow(entry, machine, onOpenWorktree)
@@ -42,7 +43,7 @@ fun AndroidEmulatorsView(machine: MachineResources, onOpenWorktree: (String, Str
                 MachineRowLine {
                     MachineDataText(emulator.serial, Modifier.weight(1f))
                     MachineDataText(strings.notOwnedByWorktree, Modifier.width(MachineOwnerColumnWidth))
-                    StatusChip(emulator.state.status(), emulatorStateLabel(emulator.state, strings))
+                    Box(Modifier.width(MachineStateColumnWidth)) { StatusChip(emulator.state.status(), emulatorStateLabel(emulator.state, strings)) }
                     Row(Modifier.width(MachineActionColumnWidth), horizontalArrangement = Arrangement.End) {
                         if (emulator.serial in machine.startingDevices) {
                             InlineProgress(size = ProgressSize.Small)
@@ -63,9 +64,9 @@ private fun WorktreeEmulatorRow(entry: MachineEmulator, machine: MachineResource
     val current = entry.emulator?.state ?: EmulatorState.STOPPED
     val state = if (isBusy && current != EmulatorState.RUNNING) EmulatorState.BOOTING else current
     MachineRowLine {
-        MachineDataText(entry.emulator?.serial ?: "—", Modifier.weight(1f))
+        MachineDataText(emulatorDeviceLabel(entry, machine.project(entry.projectId), strings), Modifier.weight(1f))
         OwnerCell(ProjectOwner.Owned(entry.projectId, entry.worktreePath), machine::projectName, onOpenWorktree, Modifier.width(MachineOwnerColumnWidth))
-        StatusChip(state.status(), emulatorStateLabel(state, strings))
+        Box(Modifier.width(MachineStateColumnWidth)) { StatusChip(state.status(), emulatorStateLabel(state, strings)) }
         Row(Modifier.width(MachineActionColumnWidth), horizontalArrangement = Arrangement.End) {
             when {
                 isBusy -> InlineProgress(size = ProgressSize.Small)

@@ -1,6 +1,7 @@
 package app.luxion.shogunai.ui.machine
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
@@ -39,6 +40,7 @@ fun IosSimulatorsView(machine: MachineResources, onOpenWorktree: (String, String
             MachineLoad.Unavailable -> MachineSecondaryText(strings.gradleDaemonsUnavailable)
             is MachineLoad.Loaded -> {
                 if (state.value.isEmpty() && machine.simulatorOrphans.isEmpty()) MachineSecondaryText(strings.noMachineSimulators)
+                if (state.value.isNotEmpty()) MachineColumnHeader()
                 state.value.forEach { entry ->
                     HorizontalDivider()
                     WorktreeSimulatorRow(entry, machine, onOpenWorktree)
@@ -91,9 +93,9 @@ private fun WorktreeSimulatorRow(entry: MachineSimulator, machine: MachineResour
     val current = entry.simulator?.state ?: SimulatorState.SHUTDOWN
     val state = if (isBusy && current != SimulatorState.BOOTED) SimulatorState.BOOTING else current
     MachineRowLine {
-        MachineDataText(entry.simulator?.name ?: "—", Modifier.weight(1f))
+        MachineDataText(simulatorDeviceLabel(entry, machine.project(entry.projectId), strings), Modifier.weight(1f))
         OwnerCell(ProjectOwner.Owned(entry.projectId, entry.worktreePath), machine::projectName, onOpenWorktree, Modifier.width(MachineOwnerColumnWidth))
-        StatusChip(state.status(), simulatorStateLabel(state, strings))
+        Box(Modifier.width(MachineStateColumnWidth)) { StatusChip(state.status(), simulatorStateLabel(state, strings)) }
         Row(Modifier.width(MachineActionColumnWidth), horizontalArrangement = Arrangement.End) {
             when {
                 isBusy -> InlineProgress(size = ProgressSize.Small)

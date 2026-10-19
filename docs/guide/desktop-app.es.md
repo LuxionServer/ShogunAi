@@ -30,7 +30,7 @@ Abre un proyecto y, en "Nuevo worktree", elige:
 Cada fila muestra un worktree con:
 
 - Su **rama**, la etiqueta "bloqueado" cuando una sesión de agente lo retiene, su **origen** (ShogunAi, Claude Code, Herdr u otra ubicación) y los **agentes en ejecución** en él.
-- Su **estado**: cambios sin commitear, commits por delante y por detrás de su upstream y de la rama principal, la fecha del último commit, o "mergeada en <rama principal>". "Carpeta no encontrada" cuando su carpeta se borró a mano.
+- Su **estado**: cambios sin commitear, commits por delante y por detrás de su upstream y de la rama principal, la fecha del último commit, "mergeada en <rama principal>", o "sin empezar" cuando su rama nunca tuvo commits propios. "Carpeta no encontrada" cuando su carpeta se borró a mano.
 - Su **tamaño**, los **puertos** reservados para él (ver [entorno por worktree](../agents.md#entorno-por-worktree)) y la etiqueta "inactivo" cuando no tiene cambios sin commitear, ningún agente en ejecución ni commits en los últimos 14 días.
 - Las líneas de emulador y simulador con Arrancar y Parar, en repositorios que usan esos [providers](providers.md).
 
@@ -46,8 +46,8 @@ Agrupada por estado, la cabecera de cada grupo muestra una pista breve junto a s
 |---|---|---|
 | Con agente | agente en marcha | Hay un agente de IA en marcha en el worktree. |
 | Te necesitan | sin commit o sin subir | Cambios sin commit, o commits sin subir a su upstream (o a la rama principal si no tiene). |
-| En curso | subido, sin fusionar | Limpio, subido, sin fusionar y con algún commit en los últimos 14 días. |
-| Fusionados | ya en la rama principal | Sin commits propios por delante de la rama principal. Se puede limpiar. |
+| En curso | subido, sin fusionar | Limpio, subido, sin fusionar y con algún commit en los últimos 14 días, o una rama que nunca tuvo commits propios ("sin empezar"). |
+| Fusionados | ya en la rama principal | Sin commits propios por delante de la rama principal, habiéndolos tenido. Se puede limpiar. Una rama que nunca tuvo commits y no tiene upstream se muestra como "sin empezar" y nunca se ofrece para limpiar. |
 | Inactivos | sin commits en 14 días | Limpio, sin agente y sin commits en los últimos 14 días. |
 | Carpeta no encontrada | carpeta borrada | Git aún lo lista, pero su carpeta ya no existe. Se puede limpiar. |
 | Otros | principal o sin leer | El worktree principal cuando está limpio, o un worktree cuyo estado aún no se ha leído. |

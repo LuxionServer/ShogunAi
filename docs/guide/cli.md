@@ -79,6 +79,7 @@ Lists every worktree of the repository, one per line: path, branch (or `(detache
 | `changes=N` | Uncommitted changes. |
 | `ahead=N behind=N` | Divergence from its upstream. |
 | `merged` | Merged into the main branch. |
+| `not-started` | The branch never had commits of its own (shown instead of `merged`). |
 | `folder-missing` | The folder was deleted by hand. |
 | `status-unavailable (reason)` | Its status couldn't be read, with Git's reason. |
 

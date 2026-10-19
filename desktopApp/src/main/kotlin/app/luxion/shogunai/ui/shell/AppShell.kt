@@ -360,6 +360,7 @@ private fun ProjectForm(
             shellViewModel.onProjectSaved(saved, previous = existingProject)
         },
         onCancel = shellViewModel::cancelForm,
+        onDiscard = shellViewModel::discardForm,
     )
 }
 

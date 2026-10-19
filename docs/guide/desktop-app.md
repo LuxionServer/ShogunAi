@@ -30,7 +30,7 @@ Open a project and, under "New worktree", choose:
 Each row shows a worktree with:
 
 - Its **branch**, a "locked" label when an agent session holds it, its **origin** (ShogunAi, Claude Code, Herdr or another location) and the **agents running** in it.
-- Its **status**: uncommitted changes, ahead/behind its upstream and the main branch, the last commit date, or "merged into <main branch>". "Folder missing" when its folder was deleted by hand.
+- Its **status**: uncommitted changes, ahead/behind its upstream and the main branch, the last commit date, "merged into <main branch>", or "not started" when its branch never had commits of its own. "Folder missing" when its folder was deleted by hand.
 - Its **size**, the **ports** reserved for it (see [per-worktree environment](../agents.md#per-worktree-environment)) and an "inactive" label when it has no uncommitted changes, no agent running and no commit in the last 14 days.
 - The emulator and simulator lines with Start and Stop, for repositories that use those [providers](providers.md).
 
@@ -46,8 +46,8 @@ Grouped by state, each group's header shows a short hint next to its title, and 
 |---|---|---|
 | Agent working | agent running | An AI agent is running in the worktree. |
 | Needs you | uncommitted or unpushed | Uncommitted changes, or commits not pushed to its upstream (or to the main branch when it has none). |
-| In progress | pushed, not merged | Clean, pushed, not merged and with a commit in the last 14 days. |
-| Merged | in main branch | No commits of its own ahead of the main branch. Can be cleaned up. |
+| In progress | pushed, not merged | Clean, pushed, not merged and with a commit in the last 14 days, or a branch that never had commits of its own ("not started"). |
+| Merged | in main branch | No commits of its own ahead of the main branch, after having had some. Can be cleaned up. A branch that never had commits and has no upstream reads as "not started" instead and is never offered for cleanup. |
 | Inactive | idle for 14+ days | Clean, no agent and no commit in the last 14 days. |
 | Folder missing | folder deleted | Git still lists it but its folder no longer exists. Can be cleaned up. |
 | Other | main or not read yet | The main worktree when it's clean, or a worktree whose status isn't read yet. |
