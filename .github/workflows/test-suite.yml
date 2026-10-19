@@ -35,7 +35,4 @@ jobs:
 
       - name: Run tests
         shell: bash
-        run: |
-          printf 'allprojects { tasks.withType(Test).configureEach { testLogging { events "started", "passed", "failed" } } }\n' > "$RUNNER_TEMP/log.init.gradle"
-          (sleep 240; for pid in $(jps -q | tr -d '\r'); do echo "=== jstack $pid"; jstack "$pid"; done) &
-          ./gradlew test -I "$RUNNER_TEMP/log.init.gradle"
+        run: ./gradlew test

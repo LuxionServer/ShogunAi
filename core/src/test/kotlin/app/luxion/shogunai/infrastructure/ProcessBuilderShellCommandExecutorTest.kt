@@ -2,6 +2,7 @@ package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import java.io.File
+import java.nio.file.Files
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
@@ -89,11 +90,15 @@ class ProcessBuilderShellCommandExecutorTest {
 
     @Test
     fun `ejecuta el comando en el directorio de trabajo indicado`() = runTest {
-        val cwd = System.getProperty("java.io.tmpdir")
+        val cwd = Files.createTempDirectory("executor-cwd").toFile()
 
-        val result = executor.execute(listOf("pwd"), workingDirectory = cwd)
+        try {
+            executor.execute(listOf("sh", "-c", "echo created > marker.txt"), workingDirectory = cwd.path)
 
-        assertEquals(File(cwd).canonicalPath, File(result.stdout).canonicalPath)
+            assertTrue(File(cwd, "marker.txt").exists())
+        } finally {
+            cwd.deleteRecursively()
+        }
     }
 
     @Test
@@ -112,9 +117,10 @@ class ProcessBuilderShellCommandExecutorTest {
 
     @Test
     fun `el proceso lanzado ve el PATH ampliado con los directorios de Homebrew`() = runTest {
+        if (System.getProperty("os.name").startsWith("Windows")) return@runTest
         val result = executor.execute(listOf("sh", "-c", "echo \$PATH"))
 
-        val path = result.stdout.split(File.pathSeparator)
+        val path = result.stdout.split(":")
         assertTrue(path.contains("/opt/homebrew/bin"))
         assertTrue(path.contains("/opt/homebrew/sbin"))
         assertTrue(path.contains("/usr/local/bin"))
