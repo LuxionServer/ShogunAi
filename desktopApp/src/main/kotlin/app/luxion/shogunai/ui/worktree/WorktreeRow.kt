@@ -38,6 +38,7 @@ import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.StatusChip
 import app.luxion.shogunai.ui.components.interactive
 import app.luxion.shogunai.ui.i18n.LocalStrings
+import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.theme.ShogunTheme
 
 @Composable
@@ -51,6 +52,9 @@ fun WorktreeRow(
     onCopyLaunchCommand: () -> Unit,
     onCopyPath: () -> Unit,
     onOpenInHerdr: () -> Unit,
+    agentName: String? = null,
+    launchChoices: List<LaunchChoice> = emptyList(),
+    onLaunch: (LaunchChoice) -> Unit = {},
     openActions: List<OpenAction> = emptyList(),
     onRemove: () -> Unit,
 ) {
@@ -61,11 +65,12 @@ fun WorktreeRow(
     ContextMenuArea(
         items = {
             buildList {
-                add(ContextMenuItem(strings.copyLaunchCommand, onClick = onCopyLaunchCommand))
+                add(ContextMenuItem(withAgent(strings.copyLaunchCommand, agentName, strings), onClick = onCopyLaunchCommand))
                 if (!prunable) {
-                    add(ContextMenuItem(strings.openInHerdr, onClick = onOpenInHerdr))
+                    add(ContextMenuItem(withAgent(strings.openInHerdr, agentName, strings), onClick = onOpenInHerdr))
                     openActions.forEach { add(ContextMenuItem(it.label, onClick = it.onClick)) }
                 }
+                launchChoices.forEach { choice -> add(ContextMenuItem(choice.label, onClick = { onLaunch(choice) })) }
                 add(ContextMenuItem(strings.copyPath, onClick = onCopyPath))
                 if (!isMain) {
                     add(ContextMenuItem(strings.deleteWorktree, onClick = onRemove))
@@ -158,3 +163,6 @@ private fun rowLabel(model: WorktreeRowModel, projectName: String?): AnnotatedSt
         }
     }
 }
+
+private fun withAgent(label: String, agentName: String?, strings: Strings): String =
+    if (agentName == null) label else strings.launchWithAgent(label, agentName)

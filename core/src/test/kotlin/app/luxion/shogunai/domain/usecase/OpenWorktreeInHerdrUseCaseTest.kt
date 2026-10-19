@@ -126,4 +126,14 @@ class OpenWorktreeInHerdrUseCaseTest {
         assertIs<WorktreeError.HerdrCommandFailed>(error)
         assertEquals("Herdr couldn't open the worktree: pane w1:p1 not found", error.message)
     }
+
+    @Test
+    fun `runs the given agent in the pane`() = runTest {
+        val herdr = FakeHerdrClient()
+        val codex = AgentLaunchConfig(agentCommand = "codex", useHeadroom = false)
+
+        useCase(herdr)(task, codex).getOrThrow()
+
+        assertEquals(listOf("w1:p1" to "codex"), herdr.ran)
+    }
 }

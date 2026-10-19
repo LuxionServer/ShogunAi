@@ -43,7 +43,19 @@ sealed interface EmulatorSectionState {
     data class Failed(val error: Throwable) : EmulatorSectionState
 }
 
-enum class ProjectConfigField { NAME, BASE_REPOSITORY_PATH, WORKTREES_ROOT, AGENT_COMMAND }
+enum class ProjectConfigField { NAME, BASE_REPOSITORY_PATH, WORKTREES_ROOT, AGENT_COMMAND, AGENT_NAME }
+
+data class AgentDraft(val name: String = "", val command: String = "claude", val useHeadroom: Boolean = true) {
+    fun toConfig() = AgentLaunchConfig(
+        name = name.trim().ifEmpty { null },
+        agentCommand = command,
+        useHeadroom = useHeadroom,
+    )
+
+    companion object {
+        fun from(config: AgentLaunchConfig) = AgentDraft(config.name.orEmpty(), config.agentCommand, config.useHeadroom)
+    }
+}
 
 enum class BasePathProblem { NOT_A_REPOSITORY, NOT_TOP_LEVEL }
 
@@ -164,8 +176,10 @@ class ProjectConfigViewModel(
             lastNonBlankBaseRepositoryPath = value
         }
 
-    var agentCommand by mutableStateOf(existingProject?.config?.agentLaunchConfig?.agentCommand ?: "claude")
-    var useHeadroom by mutableStateOf(existingProject?.config?.agentLaunchConfig?.useHeadroom ?: true)
+    var agents by mutableStateOf(
+        existingProject?.config?.agents?.map(AgentDraft::from) ?: listOf(AgentDraft()),
+    )
+        private set
     var mainBranch by mutableStateOf(existingProject?.config?.mainBranch.orEmpty())
     var editorOverride by mutableStateOf(existingProject?.config?.editorOverride)
     val editorOverrideMissing: Boolean get() = editorOverride?.let { it !in tools.availableEditors } == true
@@ -191,8 +205,7 @@ class ProjectConfigViewModel(
     private var initialBaseRepositoryPath = baseRepositoryPath
     private var initialWorktreesRoot = worktreesRoot
     private var initialSecretFiles = secretFiles
-    private var initialAgentCommand = agentCommand
-    private var initialUseHeadroom = useHeadroom
+    private var initialAgents = agents
     private var initialMainBranch = mainBranch
     private var initialEditorOverride = editorOverride
     private var initialEmulatorAvd = emulatorAvd
@@ -405,7 +418,34 @@ class ProjectConfigViewModel(
         ProjectConfigField.BASE_REPOSITORY_PATH ->
             baseRepositoryPath.isBlank() || duplicateProject != null || basePathProblem != null
         ProjectConfigField.WORKTREES_ROOT -> worktreesRoot.isBlank()
-        ProjectConfigField.AGENT_COMMAND -> agentCommand.isBlank()
+        ProjectConfigField.AGENT_COMMAND -> agents.any { it.command.isBlank() }
+        ProjectConfigField.AGENT_NAME -> duplicatedAgentNames.isNotEmpty()
+    }
+
+    val duplicatedAgentNames: Set<String>
+        get() = agents.map { it.toConfig().displayName }
+            .groupingBy { it }.eachCount()
+            .filterValues { it > 1 }.keys
+
+    fun updateAgent(index: Int, transform: (AgentDraft) -> AgentDraft) {
+        agents = agents.mapIndexed { position, agent -> if (position == index) transform(agent) else agent }
+    }
+
+    fun addAgent() {
+        agents = agents + AgentDraft(command = "")
+    }
+
+    fun removeAgent(index: Int) {
+        if (agents.size > 1) agents = agents.filterIndexed { position, _ -> position != index }
+    }
+
+    fun makeDefault(index: Int) = moveAgent(index, 0)
+
+    fun moveAgent(index: Int, target: Int) {
+        if (index !in agents.indices || target !in agents.indices) return
+        val reordered = agents.toMutableList()
+        reordered.add(target, reordered.removeAt(index))
+        agents = reordered
     }
 
     private fun touch(field: ProjectConfigField) {
@@ -471,8 +511,7 @@ class ProjectConfigViewModel(
             secretFiles != initialSecretFiles ||
             pendingRepositoryPatterns.isNotEmpty() ||
             repositoryDraftChanged ||
-            agentCommand != initialAgentCommand ||
-            useHeadroom != initialUseHeadroom ||
+            agents != initialAgents ||
             mainBranch != initialMainBranch ||
             editorOverride != initialEditorOverride ||
             emulatorAvd != initialEmulatorAvd ||
@@ -529,7 +568,8 @@ class ProjectConfigViewModel(
                 baseRepositoryPath = baseRepositoryPath,
                 worktreesRoot = worktreesRoot,
                 secretFiles = secretFiles,
-                agentLaunchConfig = AgentLaunchConfig(agentCommand = agentCommand, useHeadroom = useHeadroom),
+                agentLaunchConfig = agents.first().toConfig(),
+                additionalAgents = agents.drop(1).map(AgentDraft::toConfig),
                 mainBranch = mainBranch.trim().ifEmpty { null },
                 emulator = EmulatorSettings(avd = emulatorAvd?.trim()?.ifEmpty { null }, noWindow = emulatorNoWindow),
                 simulator = SimulatorSettings(device = simulatorDevice, runtime = simulatorRuntime),

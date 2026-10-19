@@ -21,6 +21,9 @@ import app.luxion.shogunai.infrastructure.SystemFolderLauncher
 import app.luxion.shogunai.infrastructure.TmuxTerminalLauncher
 import app.luxion.shogunai.infrastructure.WindowsTerminalLauncher
 import app.luxion.shogunai.infrastructure.ZellijTerminalLauncher
+import app.luxion.shogunai.domain.model.AgentLaunchConfig
+import app.luxion.shogunai.domain.model.WorktreeAgents
+import app.luxion.shogunai.ui.shell.AgentChoices
 import app.luxion.shogunai.ui.shell.ToolsPreferences
 import app.luxion.shogunai.domain.model.DaemonProcess
 import app.luxion.shogunai.domain.model.DaemonStopReport
@@ -142,6 +145,9 @@ class AppContainer {
         userHome = System.getProperty("user.home"),
         isMac = derivedDataSource.isSupported(),
     )
+    val agentChoices = AgentChoices(settingsFile.read().worktreeAgents) { transform ->
+        settingsFile.update { it.copy(worktreeAgents = transform(it.worktreeAgents)) }
+    }
     val tools = ToolsPreferences(JsonToolPreferenceRepository(settingsFile), LocalToolDetector(shellCommandExecutor))
     private val terminalLaunchers = listOf(
         MacTerminalLauncher(TerminalId.TERMINAL, shellCommandExecutor),
@@ -271,6 +277,7 @@ class AppContainer {
         resolveStartPoint = { ref -> ResolveStartPointUseCase(shellCommandExecutor)(config.baseRepositoryPath, ref) },
         remove = RemoveWorktreeUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient)),
         copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboardWriter),
+        agents = AgentUseCases(config, agentChoices),
         repair = RepairWorktreesUseCase(config, shellCommandExecutor, fileManager),
         resolveMainBranch = ResolveMainBranchUseCase(config, shellCommandExecutor),
         readStatus = ReadWorktreeStatusUseCase(shellCommandExecutor),
@@ -368,6 +375,29 @@ class AppContainer {
     )
 }
 
+class AgentUseCases(
+    val config: ProjectConfig,
+    val choices: AgentChoices,
+) {
+    val options: List<AgentLaunchConfig> get() = config.agents
+    val hasChoice: Boolean get() = options.size > 1
+
+    fun agentFor(worktreePath: String): AgentLaunchConfig =
+        WorktreeAgents.agentFor(config, choices.chosen, worktreePath)
+
+    fun choose(worktreePath: String, agent: AgentLaunchConfig) {
+        choices.update { WorktreeAgents.choose(config, it, worktreePath, agent) }
+    }
+
+    fun prune(existingWorktreePaths: Set<String>) {
+        choices.update { WorktreeAgents.prune(config, it, existingWorktreePaths) }
+    }
+
+    companion object {
+        val NONE = AgentUseCases(ProjectConfig("", "", emptyList()), AgentChoices())
+    }
+}
+
 data class WorktreeUseCases(
     val list: ListWorktreesUseCase,
     val create: CreateWorktreeUseCase,
@@ -395,6 +425,7 @@ data class WorktreeUseCases(
     val provisioning: ProvisioningUseCases = ProvisioningUseCases.NONE,
     val readEnvironment: suspend (Worktree) -> Result<WorktreeEnvironment> = { Result.success(WorktreeEnvironment()) },
     val releaseResources: ReleaseResourcesUseCases = ReleaseResourcesUseCases.NONE,
+    val agents: AgentUseCases = AgentUseCases.NONE,
 
 )
 
@@ -462,7 +493,7 @@ data class SimulatorUseCases(
 data class ToolUseCases(
     val preferences: ToolsPreferences,
     val editorOverride: EditorId?,
-    val openInTerminal: suspend (path: String, terminal: TerminalId) -> Result<Unit>,
+    val openInTerminal: suspend (path: String, terminal: TerminalId, agent: AgentLaunchConfig) -> Result<Unit>,
     val openInEditor: suspend (path: String, editor: EditorId) -> Result<Unit>,
     val openFolder: suspend (path: String) -> Result<Unit>,
 ) {
@@ -470,7 +501,7 @@ data class ToolUseCases(
         val NONE = ToolUseCases(
             preferences = ToolsPreferences.NONE,
             editorOverride = null,
-            openInTerminal = { _, terminal -> Result.failure(WorktreeError.TerminalUnsupported(terminal, "no launcher")) },
+            openInTerminal = { _, terminal, _ -> Result.failure(WorktreeError.TerminalUnsupported(terminal, "no launcher")) },
             openInEditor = { _, editor -> Result.failure(WorktreeError.EditorLaunchFailed(editor, "no launcher")) },
             openFolder = { path -> Result.failure(WorktreeError.FolderOpenFailed(path, "no launcher")) },
         )
@@ -479,14 +510,14 @@ data class ToolUseCases(
 
 data class HerdrUseCases(
     val worktreesRoot: suspend () -> String?,
-    val open: suspend (Worktree) -> Result<HerdrOpening>,
+    val open: suspend (Worktree, AgentLaunchConfig) -> Result<HerdrOpening>,
     val openWorkspaces: suspend (List<String>) -> Map<String, String> = { emptyMap() },
     val focusAgent: suspend (String) -> Result<Unit> = { Result.success(Unit) },
 ) {
     companion object {
         val NONE = HerdrUseCases(
             worktreesRoot = { null },
-            open = { Result.failure(WorktreeError.HerdrNotInstalled) },
+            open = { _, _ -> Result.failure(WorktreeError.HerdrNotInstalled) },
         )
     }
 }
