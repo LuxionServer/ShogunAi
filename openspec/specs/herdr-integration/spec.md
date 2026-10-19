@@ -141,14 +141,14 @@ Before the user confirms a removal, ShogunAi SHALL say which of the worktrees to
 - **THEN** the output includes `would close Herdr workspace of <path>` for it
 
 ### Requirement: Delete the branch of worktrees removed from Herdr
-For Herdr's `worktree.removed` event, `shogun hook herdr` SHALL read the removed worktree's `data.worktree.path` and `data.worktree.branch`, find its repository from `data.workspace.worktree.repo_root` or else from the ShogunAi project whose worktrees folder contains the path, and, when that repository has a ShogunAi project, delete the branch only if Git considers it merged, keeping it otherwise.
+For Herdr's `worktree.removed` event, `shogun hook herdr` SHALL read the removed worktree's `data.worktree.path` and `data.worktree.branch`, find its repository from `data.workspace.worktree.repo_root` or else from the ShogunAi project whose worktrees folder contains the path, and, when that repository has a ShogunAi project, delete the branch only if it is merged into the project's main branch, keeping it otherwise.
 
 #### Scenario: Merged branch
-- **WHEN** Herdr removes a worktree of a repository with a ShogunAi project and its branch is merged
+- **WHEN** Herdr removes a worktree of a repository with a ShogunAi project and its branch is merged into the main branch
 - **THEN** the branch is deleted and the command exits with code 0
 
 #### Scenario: Unmerged branch
-- **WHEN** the removed worktree's branch has commits that aren't merged
+- **WHEN** the removed worktree's branch has commits that aren't merged into the main branch, even if it is merged into its upstream
 - **THEN** the branch is kept, a note saying so goes to standard error, and the command exits with code 0
 
 #### Scenario: Repository without a ShogunAi project
