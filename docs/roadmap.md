@@ -63,10 +63,6 @@ Copying the launch command stays as the default, but the app could also open it 
 - Terminals: iTerm2 and Terminal on macOS, Windows Terminal, tmux and Zellij.
 - "Open in IDE" (VS Code, IntelliJ IDEA, Android Studio) and "Open folder".
 
-### Multi-agent mode
-
-Some users switch between AI agents on the same task, for example when one of them runs out of quota. A project would hold several agent commands instead of one (Claude, Antigravity, Codex, …), each with its default arguments, and the user would pick the agent when copying or launching the command. The current single-agent setup stays the default for users who don't need it.
-
 ### Desktop ergonomics
 
 - Menu bar / system tray icon with recent projects and worktrees.

@@ -63,10 +63,6 @@ Copiar el comando de lanzamiento sigue siendo la opción por defecto, pero la ap
 - Terminales: iTerm2 y Terminal en macOS, Windows Terminal, tmux y Zellij.
 - «Abrir en IDE» (VS Code, IntelliJ IDEA, Android Studio) y «Abrir carpeta».
 
-### Modo multiagente
-
-Hay quien alterna entre agentes de IA en una misma tarea, por ejemplo cuando a uno se le agota la cuota. Un proyecto guardaría varios comandos de agente en vez de uno (Claude, Antigravity, Codex, …), cada uno con sus argumentos por defecto, y el usuario elegiría el agente al copiar o lanzar el comando. La configuración actual de un solo agente sigue siendo la opción por defecto para quien no lo necesite.
-
 ### Pulido tras el rediseño de la interfaz
 
 Hallazgos menores de revisar de punta a punta la interfaz rediseñada:
