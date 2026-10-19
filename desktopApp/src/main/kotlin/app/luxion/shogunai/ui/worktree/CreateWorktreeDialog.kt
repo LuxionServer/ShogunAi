@@ -22,7 +22,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
+import app.luxion.shogunai.domain.io.PostCreateDecision
 import app.luxion.shogunai.domain.model.BranchType
+import app.luxion.shogunai.domain.model.ShellQuoting
 import app.luxion.shogunai.ui.components.DropdownSelector
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.NeutralTextButton
@@ -75,6 +77,8 @@ fun CreateWorktreeDialog(board: WorktreeBoard) {
                     CreateMode.NEW_BRANCH -> NewBranchFields(board, holder)
                     CreateMode.EXISTING_BRANCH -> ExistingBranchField(board, holder)
                 }
+                val approvalRequest = board.approval.pending
+                if (approvalRequest != null) PostCreateApprovalStep(approvalRequest, board.approval)
                 if (holder.createdWithErrorPath != null) {
                     Text(strings.worktreeCreatedWithError, style = MaterialTheme.typography.bodyMedium)
                 }
@@ -87,6 +91,11 @@ fun CreateWorktreeDialog(board: WorktreeBoard) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (isCreating) InlineProgress()
+                    if (approvalRequest != null) {
+                        NeutralTextButton(onClick = { board.approval.resolve(PostCreateDecision.SKIP) }) { Text(strings.skipCommands) }
+                        PrimaryButton(onClick = { board.approval.resolve(PostCreateDecision.RUN) }) { Text(strings.runAndRemember) }
+                        return@Row
+                    }
                     NeutralTextButton(onClick = { board.dismissCreateDialog() }, enabled = !isCreating) {
                         Text(if (holder.createdWithErrorPath != null) strings.close else strings.cancel)
                     }
@@ -97,6 +106,26 @@ fun CreateWorktreeDialog(board: WorktreeBoard) {
                             Text(strings.createWorktree)
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PostCreateApprovalStep(request: DialogPostCreateApproval.Request, approval: DialogPostCreateApproval) {
+    val strings = LocalStrings.current
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        Text(strings.postCreateApprovalTitle, style = MaterialTheme.typography.titleMedium)
+        Text(
+            strings.postCreateApprovalExplanation,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.surfaceContainerHighest) {
+            Column(modifier = Modifier.fillMaxWidth().padding(Spacing.sm)) {
+                request.commands.forEach { command ->
+                    Text(ShellQuoting.posixCommand(command), style = ShogunTheme.typography.data)
                 }
             }
         }

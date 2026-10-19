@@ -34,7 +34,23 @@ Each row shows a worktree with:
 - Its **size**, the **ports** reserved for it (see [per-worktree environment](../agents.md#per-worktree-environment)) and an "inactive" label when it has no uncommitted changes, no agent running and no commit in the last 14 days.
 - The emulator and simulator lines with Start and Stop, for repositories that use those [providers](providers.md).
 
-The list refreshes by itself: changes made from a terminal or by an agent show up within a few seconds, and when the window regains focus.
+The list refreshes by itself: changes made from a terminal or by an agent show up within a few seconds, and edits that aren't staged yet show up when the window regains focus. Statuses and sizes stay on screen while they are read again. Sizes are measured when a worktree first appears; "Reload" measures them all again, for example after a build.
+
+"Active" and "All worktrees" span every project; their project filter narrows the current view to one project without leaving it. Selecting a project in the sidebar opens that project's own view instead, which has no project filter.
+
+## States
+
+Grouped by state, each group's header shows a short hint next to its title, and hovering the title shows its full criterion. "Active" shows the first three groups; "All worktrees" shows all of them.
+
+| Group | Hint | Criterion |
+|---|---|---|
+| Agent working | agent running | An AI agent is running in the worktree. |
+| Needs you | uncommitted or unpushed | Uncommitted changes, or commits not pushed to its upstream (or to the main branch when it has none). |
+| In progress | pushed, not merged | Clean, pushed, not merged and with a commit in the last 14 days. |
+| Merged | in main branch | No commits of its own ahead of the main branch. Can be cleaned up. |
+| Inactive | idle for 14+ days | Clean, no agent and no commit in the last 14 days. |
+| Folder missing | folder deleted | Git still lists it but its folder no longer exists. Can be cleaned up. |
+| Other | main or not read yet | The main worktree when it's clean, or a worktree whose status isn't read yet. |
 
 ## Working in a worktree
 

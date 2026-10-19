@@ -222,6 +222,7 @@ jobs:
           SHA256_MSI: ${{ steps.sha.outputs.msi }}
         run: |
           git clone "https://x-access-token:${SCOOP_BUCKET_TOKEN}@github.com/LuxionServer/scoop-shogunai.git" bucket
+          mkdir -p bucket/bucket
 
           sed -e "s|@VERSION@|${VERSION}|g" \
               -e "s|@SHA256_MSI@|${SHA256_MSI}|" \

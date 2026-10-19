@@ -16,6 +16,7 @@ sealed interface CliCommand {
     ) : CliCommand
 
     data class Provision(val path: String? = null, val check: Boolean = false) : CliCommand
+    data class Trust(val path: String? = null, val yes: Boolean = false, val revoke: Boolean = false) : CliCommand
     data class Status(val json: Boolean = false) : CliCommand
     data class Clean(
         val confirmed: Boolean = false,
@@ -66,6 +67,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "version", "-v", "--version" -> noArguments(name, rest, CliCommand.Version)
                 "new" -> parseNew(rest)
                 "provision" -> parseProvision(rest)
+                "trust" -> parseTrust(rest)
                 "status" -> parseStatus(rest)
                 "clean" -> parseClean(rest)
                 "hook" -> parseHook(rest)
@@ -140,6 +142,16 @@ private fun parseProvision(rest: List<String>): CliCommand.Provision {
     others.firstOrNull { it.startsWith("-") }?.let { throw UsageException("unknown option '$it' for 'provision'") }
     if (others.size > 1) throw UsageException("'provision' takes at most one path")
     return CliCommand.Provision(others.firstOrNull(), check)
+}
+
+private fun parseTrust(rest: List<String>): CliCommand.Trust {
+    val yes = "--yes" in rest || "-y" in rest
+    val revoke = "--revoke" in rest
+    val others = rest.filter { it != "--yes" && it != "-y" && it != "--revoke" }
+    others.firstOrNull { it.startsWith("-") }?.let { throw UsageException("unknown option '$it' for 'trust'") }
+    if (others.size > 1) throw UsageException("'trust' takes at most one path")
+    if (yes && revoke) throw UsageException("--yes and --revoke can't be combined")
+    return CliCommand.Trust(others.firstOrNull(), yes, revoke)
 }
 
 private fun parseClean(rest: List<String>): CliCommand.Clean {

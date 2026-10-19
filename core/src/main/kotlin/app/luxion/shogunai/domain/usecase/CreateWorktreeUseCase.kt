@@ -2,6 +2,8 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
+import app.luxion.shogunai.domain.io.PostCreateApproval
+import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -14,9 +16,12 @@ class CreateWorktreeUseCase(
     private val fileManager: FileManager,
     private val provisioningSource: RepositoryProvisioningSource,
     private val environment: WorktreeEnvironmentPreparer = WorktreeEnvironmentPreparer.NONE,
+    private val trust: RepositoryTrust = RepositoryTrust.NONE,
+    private val approval: PostCreateApproval = PostCreateApproval.SKIP,
 ) {
     suspend operator fun invoke(taskId: String, branchType: BranchType, startPoint: String? = null): Result<Worktree> =
         runCatching {
+            if (startPoint != null && isOptionLikeRef(startPoint)) throw WorktreeError.InvalidRef(startPoint)
             val id = normalizeTaskId(taskId)
             if (!isValidGitRefSegment(id)) {
                 throw WorktreeError.InvalidTaskId(taskId)
@@ -44,9 +49,13 @@ class CreateWorktreeUseCase(
                 branchToDeleteOnLfsFailure = branch,
                 provisioned = provisioned,
                 environment = environment,
+                trust = trust,
+                approval = approval,
             )
         }
 }
+
+fun isOptionLikeRef(ref: String): Boolean = ref.trim().startsWith("-")
 
 fun normalizeTaskId(raw: String): String = raw.trim().replace(Regex("\\s+"), "-")
 

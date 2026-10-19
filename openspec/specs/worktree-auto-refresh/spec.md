@@ -45,3 +45,37 @@ The system SHALL only check the projects shown in the current worktree view, SHA
 #### Scenario: Action in progress
 - **WHEN** a check is due while a worktree is being created, removed or cleaned up in a project
 - **THEN** that project's check is skipped, the other projects are checked, and the next check runs normally
+
+### Requirement: Refresh device states at a slower pace
+While a worktree view is shown, the system SHALL refresh the emulator and simulator states of a checked project at most every 10 seconds rather than on every 3-second check. It SHALL refresh them right away after the user starts or stops a device from ShogunAi and whenever the project's worktree list reloads.
+
+#### Scenario: Nothing changes
+- **WHEN** a project that declares the emulator provider is checked every 3 seconds for 30 seconds without changes
+- **THEN** its emulator states are refreshed at most 3 times in that period
+
+#### Scenario: Emulator stopped outside ShogunAi
+- **WHEN** a worktree's emulator is closed from its own window
+- **THEN** its row and detail show it as stopped within about 10 seconds
+
+#### Scenario: Start from ShogunAi
+- **WHEN** the user starts a worktree's emulator and it finishes booting
+- **THEN** its row and detail show it as running as soon as the start completes, without waiting for the next device refresh
+
+#### Scenario: Worktree list reloads
+- **WHEN** a project's Git metadata changes and its worktree list reloads
+- **THEN** its device states are refreshed with that reload
+
+### Requirement: Light refresh when the window regains focus
+When the main window regains focus, the system SHALL read again the status of every listed worktree of the shown projects and detect running agents once for all of them, without listing the worktrees again and without reading disk usage, ports or devices. A project SHALL be skipped while it is busy (loading, creating, removing or cleaning up) or when it was loaded or refreshed less than 5 seconds earlier.
+
+#### Scenario: File edited in a terminal
+- **WHEN** a file is edited, without staging it, in a listed worktree while the app is in the background, and the user focuses the app
+- **THEN** that worktree's uncommitted changes count is updated, and no worktree's size is measured again
+
+#### Scenario: Quick switching between windows
+- **WHEN** the window regains focus twice within 5 seconds
+- **THEN** the statuses are read again only once
+
+#### Scenario: Busy project
+- **WHEN** the window regains focus while a worktree is being created in a shown project
+- **THEN** that project isn't refreshed and the other shown projects are

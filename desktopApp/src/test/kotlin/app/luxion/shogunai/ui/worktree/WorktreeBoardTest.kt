@@ -72,6 +72,8 @@ class WorktreeBoardTest {
     private val dispatcher = StandardTestDispatcher()
     private val listCommand = listOf("git", "worktree", "list", "--porcelain")
     private val forEachRefCommand = listOf("git", "for-each-ref", "--format=%(refname:short)", "refs/heads")
+    private val statusCommand = listOf("git", "--no-optional-locks", "status", "--porcelain")
+    private var now = Instant.parse("2026-10-19T10:00:00Z")
 
     private val api = FakeRepository(
         id = "api",
@@ -109,7 +111,9 @@ class WorktreeBoardTest {
         var worktrees: List<Pair<String, String>>,
         agentCommand: String = "claude",
         var exists: Boolean = true,
+        val declaresEmulator: Boolean = false,
     ) {
+        var emulatorReads = 0
         val base = "/home/dev/projects/$id"
         val config = ProjectConfig(
             baseRepositoryPath = base,
@@ -121,6 +125,7 @@ class WorktreeBoardTest {
         var lists = 0
         var listGate: CompletableDeferred<Unit>? = null
         var removeGate: CompletableDeferred<Unit>? = null
+        var statusGate: CompletableDeferred<Unit>? = null
         val files = FakeFileManager(existing = listOf(base), directories = setOf("$base/.git")).apply {
             stamps["$base/.git/HEAD"] = 1
         }
@@ -144,6 +149,10 @@ class WorktreeBoardTest {
                         success(command, porcelain)
                     }
                     command == forEachRefCommand -> success(command, stdout = "main\nhotfix/fix\n")
+                    command == statusCommand -> {
+                        statusGate?.await()
+                        success(command)
+                    }
                     command.getOrNull(1) == "symbolic-ref" -> success(command, stdout = "origin/main\n")
                     command == listOf("git", "rev-list", "--left-right", "--count", "origin/main...HEAD") ->
                         success(command, stdout = divergenceOutput)
@@ -172,7 +181,17 @@ class WorktreeBoardTest {
             measureSize = MeasureWorktreeSizeUseCase(files, dispatcher),
             readFingerprint = ReadGitMetadataFingerprintUseCase(config, files, dispatcher),
             readPorts = { Result.success(emptyMap()) },
-            emulator = EmulatorUseCases.NONE,
+            emulator = if (declaresEmulator) {
+                EmulatorUseCases.NONE.copy(
+                    declared = { true },
+                    readStates = {
+                        emulatorReads++
+                        Result.success(emptyMap())
+                    },
+                )
+            } else {
+                EmulatorUseCases.NONE
+            },
             simulator = SimulatorUseCases.NONE,
             gradle = GradleUseCases(
                 provider = { GradleProvider().takeIf { id in gradleDeclaredFor } },
@@ -189,9 +208,12 @@ class WorktreeBoardTest {
         )
     }
 
-    private val repositories = listOf(api, mainRepo)
+    private var repositories = listOf(api, mainRepo)
 
-    private fun board(projects: List<Project> = repositories.map { it.project }): WorktreeBoard = WorktreeBoard(
+    private fun board(
+        projects: List<Project> = repositories.map { it.project },
+        clock: () -> Instant = Instant::now,
+    ): WorktreeBoard = WorktreeBoard(
         useCasesFor = { config -> repositories.first { it.base == config.baseRepositoryPath }.useCases() },
         detectAgents = { searches ->
             agentSearches += searches
@@ -199,6 +221,7 @@ class WorktreeBoardTest {
             agentResult
         },
         preferences = preferences,
+        clock = clock,
     ).also {
         it.syncCatalog(projects)
         it.show(null)
@@ -325,6 +348,92 @@ class WorktreeBoardTest {
     }
 
     @Test
+    fun `the local filter narrows all worktrees to one project`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+
+        board.updateViewProjectFilter("api")
+
+        assertEquals(listOf("api"), board.groups.map { it.project.id })
+        assertTrue(board.isFiltered)
+        assertFalse(board.isProjectView)
+
+        board.updateViewProjectFilter(null)
+
+        assertEquals(listOf("api", "main-repo"), board.groups.map { it.project.id })
+    }
+
+    @Test
+    fun `the local filter narrows active to one project and each view keeps its own`() = runTest(dispatcher) {
+        divergenceOutput = "0\t0\n"
+        val board = board()
+        advanceUntilIdle()
+        board.show(null, GroupedView.ACTIVE)
+
+        board.updateViewProjectFilter("main-repo")
+
+        val paths = board.stateGroups.flatMap { group -> group.items.map { it.worktree.path } }
+        assertEquals(setOf("/home/dev/projects/TASK-123", "/home/dev/projects/task-456"), paths.toSet())
+
+        board.show(null, GroupedView.ALL)
+        assertNull(board.viewProjectFilter)
+        assertEquals(listOf("api", "main-repo"), board.groups.map { it.project.id })
+
+        board.show(null, GroupedView.ACTIVE)
+        assertEquals("main-repo", board.viewProjectFilter)
+    }
+
+    @Test
+    fun `a project view ignores the local filter`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.updateViewProjectFilter("api")
+
+        board.show("main-repo")
+
+        assertEquals(listOf("main-repo"), board.groups.map { it.project.id })
+        assertTrue(board.isProjectView)
+    }
+
+    @Test
+    fun `the local filter is cleared when its project is removed`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.updateViewProjectFilter("api")
+
+        board.syncCatalog(listOf(mainRepo.project))
+
+        assertNull(board.viewProjectFilter)
+        assertEquals(listOf("main-repo"), board.groups.map { it.project.id })
+    }
+
+    @Test
+    fun `revealing a worktree of another project clears the local filter of all worktrees`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.updateViewProjectFilter("api")
+        board.show(null, GroupedView.ACTIVE)
+
+        board.revealInAllWorktrees(WorktreeRef("main-repo", "/home/dev/projects/TASK-123"))
+        board.show(null, GroupedView.ALL)
+
+        assertNull(board.viewProjectFilter)
+        assertEquals("/home/dev/projects/TASK-123", board.selectedWorktree?.worktree?.path)
+    }
+
+    @Test
+    fun `revealing a worktree of the filtered project keeps the local filter`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.updateViewProjectFilter("api")
+
+        board.revealInAllWorktrees(WorktreeRef("api", "/home/dev/projects/api-TASK-12"))
+
+        assertEquals("api", board.viewProjectFilter)
+        assertEquals("/home/dev/projects/api-TASK-12", board.selectedWorktree?.worktree?.path)
+    }
+
+    @Test
     fun `projects are added and removed with the catalog`() = runTest(dispatcher) {
         val board = board(listOf(api.project))
         advanceUntilIdle()
@@ -426,6 +535,28 @@ class WorktreeBoardTest {
 
         assertEquals(1, api.lists)
         assertEquals(2, mainRepo.lists)
+    }
+
+    @Test
+    fun `device states are refreshed at most every ten seconds while agents are detected on every check`() = runTest(dispatcher) {
+        val emulatorProject = FakeRepository("emulator-app", emptyList(), declaresEmulator = true)
+        repositories = listOf(emulatorProject)
+        val board = board(listOf(emulatorProject.project), clock = { now })
+        advanceUntilIdle()
+        val baseline = emulatorProject.emulatorReads
+        board.startWatching()
+
+        repeat(4) {
+            now = now.plusSeconds(3)
+            tick()
+        }
+        assertEquals(baseline + 1, emulatorProject.emulatorReads)
+        assertEquals(4, agentSearches.size)
+
+        now = now.plusSeconds(3)
+        tick()
+        assertEquals(baseline + 2, emulatorProject.emulatorReads)
+        board.stopWatching()
     }
 
     @Test
@@ -715,4 +846,81 @@ class WorktreeBoardTest {
         assertEquals(mainRepoLists + 1, mainRepo.lists)
     }
 
+    @Test
+    fun `a reload keeps active worktrees in their group while their statuses are read again`() = runTest(dispatcher) {
+        divergenceOutput = "0\t0\n"
+        val board = board()
+        advanceUntilIdle()
+        board.show(null, GroupedView.ACTIVE)
+        val activePaths = board.stateGroups.flatMap { group -> group.items.map { it.worktree.path } }
+        assertEquals(3, activePaths.size)
+
+        mainRepo.statusGate = CompletableDeferred()
+        board.refreshShown()
+        advanceUntilIdle()
+
+        assertFalse(board.isReadingActivity)
+        assertEquals(activePaths, board.stateGroups.flatMap { group -> group.items.map { it.worktree.path } })
+        mainRepo.statusGate?.complete(Unit)
+        advanceUntilIdle()
+    }
+
+    @Test
+    fun `focus reads the statuses of shown projects again and detects agents once`() = runTest(dispatcher) {
+        val board = board(clock = { now })
+        advanceUntilIdle()
+        val statusReads = executed.count { it == statusCommand }
+        val sizeRequests = api.files.sizeRequests.size + mainRepo.files.sizeRequests.size
+
+        now = now.plusSeconds(10)
+        board.refreshOnFocus()
+        advanceUntilIdle()
+
+        assertEquals(1, api.lists)
+        assertEquals(1, mainRepo.lists)
+        assertEquals(statusReads + 5, executed.count { it == statusCommand })
+        assertEquals(listOf("codex", "claude"), agentSearches.single().map { it.agentCommand })
+        assertEquals(sizeRequests, api.files.sizeRequests.size + mainRepo.files.sizeRequests.size)
+    }
+
+    @Test
+    fun `focus skips projects read in the last five seconds`() = runTest(dispatcher) {
+        val board = board(clock = { now })
+        advanceUntilIdle()
+        val statusReads = executed.count { it == statusCommand }
+
+        now = now.plusSeconds(2)
+        board.refreshOnFocus()
+        advanceUntilIdle()
+        assertEquals(statusReads, executed.count { it == statusCommand })
+        assertTrue(agentSearches.isEmpty())
+
+        now = now.plusSeconds(10)
+        board.refreshOnFocus()
+        now = now.plusSeconds(2)
+        board.refreshOnFocus()
+        advanceUntilIdle()
+
+        assertEquals(statusReads + 5, executed.count { it == statusCommand })
+        assertEquals(1, agentSearches.size)
+    }
+
+    @Test
+    fun `focus skips a busy project and refreshes the others`() = runTest(dispatcher) {
+        val board = board(clock = { now })
+        advanceUntilIdle()
+        api.removeGate = CompletableDeferred()
+        val apiHolder = board.holder("api")!!
+        apiHolder.remove(apiHolder.worktrees.first { !it.isMain }, branchToDelete = null)
+        runCurrent()
+
+        now = now.plusSeconds(10)
+        board.refreshOnFocus()
+        advanceUntilIdle()
+
+        assertTrue(apiHolder.isRemoving)
+        assertEquals(listOf("claude"), agentSearches.single().map { it.agentCommand })
+        api.removeGate?.complete(Unit)
+        runCurrent()
+    }
 }

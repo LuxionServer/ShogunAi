@@ -5,6 +5,9 @@ import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.model.RepositoryConfigIssue
 import app.luxion.shogunai.domain.model.RepositoryConfigRules
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.ui.worktree.StateGroupKind
+import app.luxion.shogunai.ui.worktree.criterion
+import app.luxion.shogunai.ui.worktree.hint
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -115,6 +118,23 @@ class StringsTest {
         "fatal: '~/projects/task-1' contains modified or untracked files, use --force to delete it",
         "fatal: something nobody expected",
     ).map { WorktreeError.GitCommandFailed(listOf("git", "worktree", "add"), 128, it) }
+
+    @Test
+    fun `every state group has its own hint and criterion in both languages`() {
+        assertEquals("uncommitted or unpushed", StateGroupKind.NEEDS_YOU.hint(EnglishStrings))
+        assertEquals("sin commit o sin subir", StateGroupKind.NEEDS_YOU.hint(SpanishStrings))
+        allStrings.forEach { strings ->
+            val hints = StateGroupKind.entries.map { it.hint(strings) }
+            val criteria = StateGroupKind.entries.map { it.criterion(strings) }
+            assertTrue((hints + criteria).all { it.isNotBlank() })
+            assertEquals(hints.size, hints.toSet().size)
+            assertEquals(criteria.size, criteria.toSet().size)
+        }
+        StateGroupKind.entries.forEach { kind ->
+            assertNotEquals(kind.hint(EnglishStrings), kind.hint(SpanishStrings))
+            assertNotEquals(kind.criterion(EnglishStrings), kind.criterion(SpanishStrings))
+        }
+    }
 
     @Test
     fun `every error has a summary and a next step in both languages`() {
@@ -274,6 +294,7 @@ class StringsTest {
             RepositoryConfigIssue.InvalidMemorySize,
             RepositoryConfigIssue.InvalidMinutes,
             RepositoryConfigIssue.InvalidVariableName,
+            RepositoryConfigIssue.ReservedVariableName,
             RepositoryConfigIssue.DuplicateVariableName,
             RepositoryConfigIssue.UnclosedPlaceholder,
             RepositoryConfigIssue.UnknownPlaceholder("branch"),
@@ -297,5 +318,24 @@ class StringsTest {
         assertNotEquals(EnglishStrings.paletteNewWorktreeIn("api"), SpanishStrings.paletteNewWorktreeIn("api"))
         assertNotEquals(EnglishStrings.paletteSettingsOf("api"), SpanishStrings.paletteSettingsOf("api"))
         allStrings.forEach { assertTrue(it.paletteNewWorktreeIn("api").contains("api")) }
+    }
+
+    @Test
+    fun `the post-creation approval strings are translated`() {
+        listOf<(app.luxion.shogunai.ui.i18n.Strings) -> String>(
+            { it.postCreateApprovalTitle },
+            { it.postCreateApprovalExplanation },
+            { it.runAndRemember },
+            { it.skipCommands },
+            { it.postCreateCommandsTitle },
+            { it.postCreateApproved },
+            { it.postCreateNotApproved },
+            { it.approveCommands },
+            { it.revokeApproval },
+            { it.worktreeCreatedCommandsSkipped("TASK-1") },
+        ).forEach { text ->
+            assertTrue(text(EnglishStrings).isNotBlank() && text(SpanishStrings).isNotBlank())
+            assertNotEquals(text(EnglishStrings), text(SpanishStrings))
+        }
     }
 }

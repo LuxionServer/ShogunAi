@@ -3,6 +3,7 @@ package app.luxion.shogunai.cli
 import app.luxion.shogunai.infrastructure.FileKmpTestWiring
 import app.luxion.shogunai.infrastructure.HerdrConfigFile
 import app.luxion.shogunai.infrastructure.JsonProjectRepository
+import app.luxion.shogunai.infrastructure.JsonRepositoryTrust
 import app.luxion.shogunai.infrastructure.LocalAndroidSdk
 import app.luxion.shogunai.infrastructure.MacDerivedDataSource
 import app.luxion.shogunai.infrastructure.NioEnvironmentStateStore
@@ -43,6 +44,8 @@ fun runShogun(args: Array<String>): Int {
         out = System.out,
         err = System.err,
         readInput = { System.`in`.bufferedReader().readText() },
+        trust = JsonRepositoryTrust(),
+        readAnswer = { System.console()?.readLine() },
     ).run(args.toList())
     System.out.flush()
     System.err.flush()

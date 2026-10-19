@@ -128,6 +128,20 @@ interface Strings {
     val groupInactive: String
     val groupFolderMissing: String
     val groupOther: String
+    val groupAgentWorkingHint: String
+    val groupAgentWorkingCriterion: String
+    val groupNeedsYouHint: String
+    val groupNeedsYouCriterion: String
+    val groupInProgressHint: String
+    val groupInProgressCriterion: String
+    val groupMergedHint: String
+    val groupMergedCriterion: String
+    val groupInactiveHint: String
+    val groupInactiveCriterion: String
+    val groupFolderMissingHint: String
+    val groupFolderMissingCriterion: String
+    val groupOtherHint: String
+    val groupOtherCriterion: String
     val groupByState: String
     val groupByProject: String
     val readingWorktreeStatus: String
@@ -282,6 +296,17 @@ interface Strings {
     val copyCommand: String
     val copyLaunchCommand: String
     fun worktreeCreated(folder: String): String
+    fun worktreeCreatedCommandsSkipped(folder: String): String
+    val postCreateApprovalTitle: String
+    val postCreateApprovalExplanation: String
+    val runAndRemember: String
+    val skipCommands: String
+    val postCreateCommandsTitle: String
+    val postCreateApproved: String
+    val postCreateNotApproved: String
+    val approveCommands: String
+    val revokeApproval: String
+    val variableNameReserved: String
     val worktreesRepairedAfterMove: String
     val openInHerdr: String
     fun openedInHerdr(name: String): String
@@ -349,6 +374,7 @@ fun Strings.repositoryConfigIssue(issue: RepositoryConfigIssue): String = when (
     RepositoryConfigIssue.InvalidMemorySize -> memorySizeInvalid
     RepositoryConfigIssue.InvalidMinutes -> minutesInvalid
     RepositoryConfigIssue.InvalidVariableName -> variableNameInvalid
+    RepositoryConfigIssue.ReservedVariableName -> variableNameReserved
     RepositoryConfigIssue.DuplicateVariableName -> variableNameDuplicate
     RepositoryConfigIssue.UnclosedPlaceholder -> templateUnclosed
     is RepositoryConfigIssue.UnknownPlaceholder -> templateUnknown(issue.placeholder)

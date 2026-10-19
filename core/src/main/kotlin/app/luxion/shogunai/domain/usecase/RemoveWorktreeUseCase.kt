@@ -31,7 +31,7 @@ class RemoveWorktreeUseCase(
 
         if (branchToDelete != null) {
             val deleteBranch = executor.execute(
-                command = listOf("git", "branch", "-d", branchToDelete),
+                command = listOf("git", "branch", "-d", "--", branchToDelete),
                 workingDirectory = config.baseRepositoryPath,
             )
             if (!deleteBranch.isSuccess) {

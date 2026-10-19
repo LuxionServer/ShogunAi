@@ -15,9 +15,11 @@ class SizeQueue(private val scope: CoroutineScope) {
         worktrees: List<Worktree>,
         measure: suspend (Worktree) -> Long?,
         deliver: (path: String, size: Long) -> Unit,
+        replacePending: Boolean = true,
     ) {
-        pending.removeAll { it.owner == owner }
-        pending += worktrees.map { Request(owner, it, measure, deliver) }
+        if (replacePending) pending.removeAll { it.owner == owner }
+        val queued = pending.filter { it.owner == owner }.map { it.worktree.path }.toSet()
+        pending += worktrees.filterNot { it.path in queued }.map { Request(owner, it, measure, deliver) }
         if (worker?.isActive != true) worker = scope.launch { drain() }
     }
 

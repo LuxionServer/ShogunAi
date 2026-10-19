@@ -8,4 +8,5 @@ data class Worktree(
     val isBare: Boolean = false,
     val isLocked: Boolean = false,
     val isPrunable: Boolean = false,
+    val skippedPostCreateCommands: List<List<String>> = emptyList(),
 )

@@ -30,7 +30,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import java.time.Instant
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.toJavaDuration
 
 class WorktreeBoard(
     private val useCasesFor: (ProjectConfig) -> WorktreeUseCases,
@@ -38,7 +40,10 @@ class WorktreeBoard(
     private val preferences: ShellPreferenceRepository,
     private val autoRefreshInterval: Duration = AUTO_REFRESH_INTERVAL,
     private val clock: () -> Instant = Instant::now,
+    private val deviceRefreshInterval: Duration = DEVICE_REFRESH_INTERVAL,
+    val approval: DialogPostCreateApproval = DialogPostCreateApproval(),
 ) : ViewModel() {
+    private val deviceRefreshes = mutableMapOf<String, Instant>()
     private val listPermits = Semaphore(MAX_PARALLEL_LISTS)
     private val sizeQueue = SizeQueue(viewModelScope)
     private var entries by mutableStateOf<Map<String, Entry>>(emptyMap())
@@ -50,6 +55,7 @@ class WorktreeBoard(
         private set
     var mode by mutableStateOf(GroupedView.ALL)
         private set
+    private var viewProjectFilters by mutableStateOf<Map<GroupedView, String>>(emptyMap())
     private var groupings by mutableStateOf(GroupedView.entries.associateWith(preferences::loadGrouping))
     var textFilter by mutableStateOf("")
         private set
@@ -83,11 +89,20 @@ class WorktreeBoard(
     var cleanupSuccess by mutableStateOf<WorktreeSuccess.CleanedUp?>(null)
         private set
 
+    val viewProjectFilter: String?
+        get() = viewProjectFilters[mode]
+
+    val isProjectView: Boolean
+        get() = projectFilter != null
+
+    private val effectiveProjectFilter: String?
+        get() = projectFilter ?: viewProjectFilter
+
     val shownProjects: List<Project>
-        get() = projectFilter?.let { id -> projects.filter { it.id == id } } ?: projects
+        get() = effectiveProjectFilter?.let { id -> projects.filter { it.id == id } } ?: projects
 
     val isFiltered: Boolean
-        get() = projectFilter != null
+        get() = effectiveProjectFilter != null
 
     val totalWorktreeCount: Int
         get() = entries.values.sumOf { it.holder.worktrees.size }
@@ -237,6 +252,7 @@ class WorktreeBoard(
                 project.id to existing.copy(project = project)
             } else {
                 existing?.dispose()
+                deviceRefreshes.remove(project.id)
                 project.id to createEntry(project)
             }
         }
@@ -244,6 +260,7 @@ class WorktreeBoard(
         entries = next
         if (selected?.projectId?.let { it !in next } == true) selected = null
         if (projectFilter?.let { it !in next } == true) projectFilter = null
+        viewProjectFilters = viewProjectFilters.filterValues { it in next }
         if (createProjectId?.let { it !in next } == true) createProjectId = null
         cleanupScope = cleanupScope?.filter { it in next }?.takeIf { it.isNotEmpty() }
         sizeQueue.prioritize(shownHolders())
@@ -256,6 +273,7 @@ class WorktreeBoard(
             scope = CoroutineScope(viewModelScope.coroutineContext + job),
             listPermits = listPermits,
             sizeQueue = sizeQueue,
+            clock = clock,
         )
         holder.refresh()
         return Entry(project, holder, job)
@@ -264,6 +282,15 @@ class WorktreeBoard(
     fun show(projectFilter: String?, mode: GroupedView = GroupedView.ALL) {
         this.mode = mode
         this.projectFilter = projectFilter?.takeIf { id -> mode == GroupedView.ALL && projects.any { it.id == id } }
+        sizeQueue.prioritize(shownHolders())
+    }
+
+    fun updateViewProjectFilter(projectId: String?) {
+        viewProjectFilters = if (projectId != null && projects.any { it.id == projectId }) {
+            viewProjectFilters + (mode to projectId)
+        } else {
+            viewProjectFilters - mode
+        }
         sizeQueue.prioritize(shownHolders())
     }
 
@@ -286,11 +313,28 @@ class WorktreeBoard(
 
     fun refreshShown() {
         shownHolders().forEach { holder ->
-            holder.refresh()
+            holder.refresh(remeasureSizes = true)
             if (isCreateDialogOpen && createHolder == holder && createMode == CreateMode.EXISTING_BRANCH) {
                 holder.loadLocalBranches()
             }
         }
+    }
+
+    fun refreshOnFocus() {
+        val due = shownEntries().filter { isDueForFocusRefresh(it.holder) }
+        if (due.isEmpty()) return
+        due.forEach { it.holder.refreshStatuses() }
+        viewModelScope.launch {
+            val searches = due.map { AgentSearch(it.project.config.agentLaunchConfig.agentCommand, it.holder.worktrees) }
+            val detected = detectAgents(searches).getOrNull()
+            due.forEach { it.holder.applyAgents(detected) }
+        }
+    }
+
+    private fun isDueForFocusRefresh(holder: ProjectWorktrees): Boolean {
+        if (holder.isBusy || !holder.hasLoaded) return false
+        val lastRead = holder.lastReadAt ?: return true
+        return clock() >= lastRead + FOCUS_REFRESH_MIN_INTERVAL.toJavaDuration()
     }
 
     fun repairAfterMove(projectId: String, previousWorktreesRoot: String) {
@@ -322,12 +366,29 @@ class WorktreeBoard(
         val detected = detectAgents(searches).getOrNull()
         unchanged.forEach { entry ->
             entry.holder.applyAgents(detected)
-            entry.holder.refreshDevices()
+            if (isDeviceRefreshDue(entry.project.id)) entry.holder.refreshDevices()
         }
+    }
+
+    private fun isDeviceRefreshDue(projectId: String): Boolean {
+        val now = clock()
+        val last = deviceRefreshes[projectId]
+        if (last != null && (now.toEpochMilli() - last.toEpochMilli()).milliseconds < deviceRefreshInterval) return false
+        deviceRefreshes[projectId] = now
+        return true
     }
 
     fun select(ref: WorktreeRef) {
         selected = ref
+    }
+
+    fun revealInAllWorktrees(ref: WorktreeRef) {
+        clearTextFilter()
+        if (viewProjectFilters[GroupedView.ALL]?.let { it != ref.projectId } == true) {
+            viewProjectFilters = viewProjectFilters - GroupedView.ALL
+        }
+        if (ref.projectId in collapsedProjects) toggleCollapsed(ref.projectId)
+        select(ref)
     }
 
     fun clearSelection() {
@@ -369,8 +430,8 @@ class WorktreeBoard(
 
     fun openCreateDialog(projectId: String? = null) {
         if (isCreateDialogOpen) return
-        val target = projectId ?: projectFilter ?: defaultCreateProject() ?: return
-        createAsksForProject = projectId == null && projectFilter == null
+        val target = projectId ?: effectiveProjectFilter ?: defaultCreateProject() ?: return
+        createAsksForProject = projectId == null && effectiveProjectFilter == null
         taskId = ""
         selectedBranch = null
         holder(target)?.dismissCreateError()
@@ -531,3 +592,5 @@ internal fun isCreateEnabled(
 
 private const val MAX_PARALLEL_LISTS = 2
 private val AUTO_REFRESH_INTERVAL = 3.seconds
+private val DEVICE_REFRESH_INTERVAL = 10.seconds
+private val FOCUS_REFRESH_MIN_INTERVAL = 5.seconds

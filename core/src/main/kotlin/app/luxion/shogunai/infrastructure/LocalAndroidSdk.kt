@@ -10,6 +10,7 @@ import app.luxion.shogunai.domain.model.emulatorSerial
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.ConcurrentHashMap
 
 class LocalAndroidSdk(
     private val executor: ShellCommandExecutor,
@@ -20,6 +21,8 @@ class LocalAndroidSdk(
     private val logDirectory: Path = Path.of(System.getProperty("user.home"), ".shogunai", "logs"),
     private val launch: (command: List<String>, log: File) -> Unit = ::launchDetached,
 ) : AndroidSdk {
+
+    private val bootedSerials: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
     private val isWindows: Boolean get() = osName.startsWith("Windows", ignoreCase = true)
 
@@ -35,13 +38,22 @@ class LocalAndroidSdk(
             .map { it.trim() }
             .filter { it.isNotEmpty() && !it.startsWith("INFO") && !it.contains("|") }
 
-    override suspend fun deviceStates(sdk: SdkLocation): Map<String, EmulatorState> =
-        parseAdbDevices(run(listOf(sdk.adb, "devices"))).mapValues { (serial, status) ->
-            when (status) {
-                "device" -> if (bootCompleted(sdk, serial)) EmulatorState.RUNNING else EmulatorState.BOOTING
+    override suspend fun deviceStates(sdk: SdkLocation): Map<String, EmulatorState> {
+        val devices = parseAdbDevices(run(listOf(sdk.adb, "devices")))
+        val online = devices.filterValues { it == "device" }.keys
+        bootedSerials.retainAll(online)
+        return devices.mapValues { (serial, status) ->
+            when {
+                status != "device" -> EmulatorState.BOOTING
+                serial in bootedSerials -> EmulatorState.RUNNING
+                bootCompleted(sdk, serial) -> {
+                    bootedSerials.add(serial)
+                    EmulatorState.RUNNING
+                }
                 else -> EmulatorState.BOOTING
             }
         }
+    }
 
     override fun startEmulator(sdk: SdkLocation, avd: String, consolePort: Int, noWindow: Boolean) {
         Files.createDirectories(logDirectory)
@@ -49,6 +61,7 @@ class LocalAndroidSdk(
     }
 
     override suspend fun stopEmulator(sdk: SdkLocation, serial: String) {
+        bootedSerials.remove(serial)
         run(listOf(sdk.adb, "-s", serial, "emu", "kill"))
     }
 

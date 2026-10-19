@@ -140,4 +140,60 @@ class LocalAndroidSdkTest {
         assertEquals(listOf("/sdk/platform-tools/adb", "-s", "emulator-5556", "emu", "kill"), error.command)
         assertTrue(error.output.contains("device not found"))
     }
+
+    private fun listing(vararg serials: String) = serials.joinToString("\n", prefix = "List of devices attached\n") { "$it\tdevice" }
+
+    private fun bootExecutor(devices: () -> String, bootCompleted: () -> String, commands: MutableList<List<String>>) =
+        FakeShellCommandExecutor { command ->
+            commands += command
+            when {
+                command.contains("devices") -> FakeShellCommandExecutor.success(command, devices())
+                command.contains("getprop") -> FakeShellCommandExecutor.success(command, bootCompleted())
+                else -> FakeShellCommandExecutor.success(command)
+            }
+        }
+
+    private fun getprops(commands: List<List<String>>) = commands.count { it.contains("getprop") }
+
+    @Test
+    fun `a booted emulator isn't asked for its boot property again while it stays online`() = runTest {
+        val commands = mutableListOf<List<String>>()
+        val android = sdk(executor = bootExecutor({ listing("emulator-5554") }, { "1\n" }, commands))
+
+        android.deviceStates(location)
+        val second = android.deviceStates(location)
+
+        assertEquals(mapOf("emulator-5554" to EmulatorState.RUNNING), second)
+        assertEquals(1, getprops(commands))
+    }
+
+    @Test
+    fun `an emulator that disappears and comes back is asked for its boot property again`() = runTest {
+        val commands = mutableListOf<List<String>>()
+        var devices = listing("emulator-5554")
+        var bootCompleted = "1\n"
+        val android = sdk(executor = bootExecutor({ devices }, { bootCompleted }, commands))
+
+        android.deviceStates(location)
+        devices = listing()
+        android.deviceStates(location)
+        devices = listing("emulator-5554")
+        bootCompleted = "\n"
+        val states = android.deviceStates(location)
+
+        assertEquals(mapOf("emulator-5554" to EmulatorState.BOOTING), states)
+        assertEquals(2, getprops(commands))
+    }
+
+    @Test
+    fun `stopping an emulator makes the next listing ask for its boot property again`() = runTest {
+        val commands = mutableListOf<List<String>>()
+        val android = sdk(executor = bootExecutor({ listing("emulator-5554") }, { "1\n" }, commands))
+
+        android.deviceStates(location)
+        android.stopEmulator(location, "emulator-5554")
+        android.deviceStates(location)
+
+        assertEquals(2, getprops(commands))
+    }
 }

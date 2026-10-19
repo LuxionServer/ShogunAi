@@ -605,4 +605,15 @@ class RepositoryProvisioningFilesTest {
         assertTrue(empty != absent)
         assertTrue(files.fingerprint(repository.toString()) != empty)
     }
+
+    @Test
+    fun `fails with InvalidRepositoryConfig on a reserved variable name and accepts a regular one`() {
+        listOf("PATH", "LD_PRELOAD", "GIT_SSH_COMMAND").forEach { name ->
+            configFile.writeText("""{ "env": { "$name": "x" } }""")
+            val error = assertFailsWith<WorktreeError.InvalidRepositoryConfig>(name) { files.read(repository.toString()) }
+            assertTrue(error.detail.orEmpty().contains(name), name)
+        }
+        configFile.writeText("""{ "env": { "PORT": "x" } }""")
+        assertEquals(listOf("PORT"), files.read(repository.toString()).environment.variables.map { it.name })
+    }
 }

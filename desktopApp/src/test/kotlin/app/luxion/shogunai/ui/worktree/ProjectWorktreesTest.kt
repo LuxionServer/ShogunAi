@@ -20,6 +20,10 @@ import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
 import app.luxion.shogunai.domain.FakeGradleDaemonSource.Companion.gradleDaemon
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
+import app.luxion.shogunai.domain.FakeRepositoryTrust
+import app.luxion.shogunai.domain.io.PostCreateApproval
+import app.luxion.shogunai.domain.io.PostCreateDecision
+import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
@@ -152,10 +156,12 @@ class ProjectWorktreesTest {
         fileManager: FakeFileManager = FakeFileManager(),
         provisioning: FakeRepositoryProvisioningSource = FakeRepositoryProvisioningSource(),
         createFiles: FakeFileManager = FakeFileManager(),
+        trust: RepositoryTrust = RepositoryTrust.NONE,
+        approval: PostCreateApproval = PostCreateApproval.SKIP,
     ): WorktreeUseCases {
         return WorktreeUseCases(
             list = ListWorktreesUseCase(config, executor),
-            create = CreateWorktreeUseCase(config, executor, createFiles, provisioning),
+            create = CreateWorktreeUseCase(config, executor, createFiles, provisioning, trust = trust, approval = approval),
             createFromBranch = CreateWorktreeFromBranchUseCase(
                 config,
                 executor,
@@ -166,7 +172,7 @@ class ProjectWorktreesTest {
             ),
             listLocalBranches = ListLocalBranchesUseCase(config, executor),
             remove = RemoveWorktreeUseCase(config, executor),
-            copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboard),
+            copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboard, windows = false),
             repair = RepairWorktreesUseCase(config, executor, FakeFileManager(existing = listOf(config.baseRepositoryPath))),
             resolveMainBranch = ResolveMainBranchUseCase(config, executor),
             readStatus = ReadWorktreeStatusUseCase(executor),
@@ -259,8 +265,7 @@ class ProjectWorktreesTest {
             useCases { command ->
                 when {
                     command == listCommand -> success(command, porcelainOutput)
-                    command.getOrNull(1) == "branch" && command.getOrNull(2) == "--list" ->
-                        success(command, stdout = "  $branch\n")
+                    command.getOrNull(1) == "show-ref" -> success(command)
                     else -> success(command)
                 }
             },
@@ -282,7 +287,7 @@ class ProjectWorktreesTest {
             useCases { command ->
                 when {
                     command == listCommand -> success(command, porcelainOutput)
-                    command.getOrNull(1) == "branch" && command.getOrNull(2) == "--list" -> success(command, stdout = "")
+                    command.getOrNull(1) == "show-ref" -> failure(command, exitCode = 1)
                     else -> success(command)
                 }
             },
@@ -346,7 +351,8 @@ class ProjectWorktreesTest {
             }
         }
         val baseFiles = FakeFileManager(existing = listOf(config.baseRepositoryPath) + config.secretFiles.map { config.baseSecretPath(it) })
-        val board = board(useCasesWith(executor, provisioning = provisioning, createFiles = baseFiles))
+        val trust = FakeRepositoryTrust(mapOf(config.baseRepositoryPath to listOf(listOf("npm", "install"))))
+        val board = board(useCasesWith(executor, provisioning = provisioning, createFiles = baseFiles, trust = trust))
         advanceUntilIdle()
         board.openCreateDialog()
         board.updateTaskId("TASK-456")
@@ -360,6 +366,89 @@ class ProjectWorktreesTest {
         assertFalse(board.canCreate)
     }
 
+    private fun approvalScenario(approval: DialogPostCreateApproval, trust: FakeRepositoryTrust): Pair<WorktreeBoard, FakeShellCommandExecutor> {
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(
+                config.baseRepositoryPath to RepositoryProvisioning(postCreateCommands = listOf(listOf("npm", "install"))),
+            ),
+        )
+        val executor = FakeShellCommandExecutor { command ->
+            if (command == listCommand) success(command, porcelainOutput) else success(command)
+        }
+        val baseFiles = FakeFileManager(existing = listOf(config.baseRepositoryPath) + config.secretFiles.map { config.baseSecretPath(it) })
+        val useCases = useCasesWith(executor, provisioning = provisioning, createFiles = baseFiles, trust = trust, approval = approval)
+        val board = WorktreeBoard(
+            useCasesFor = { useCases },
+            detectAgents = { searches -> useCases.detectAgents(searches.flatMap { it.worktrees }) },
+            preferences = FakeShellPreferenceRepository(),
+            approval = approval,
+        ).also {
+            it.syncCatalog(listOf(project))
+            it.show(null)
+        }
+        return board to executor
+    }
+
+    @Test
+    fun `creation waits for the approval of unapproved commands and runs and remembers them on run`() = runTest(dispatcher) {
+        val approval = DialogPostCreateApproval()
+        val trust = FakeRepositoryTrust()
+        val (board, executor) = approvalScenario(approval, trust)
+        advanceUntilIdle()
+        board.openCreateDialog()
+        board.updateTaskId("TASK-456")
+
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        assertEquals(listOf(listOf("npm", "install")), board.approval.pending?.commands)
+        assertTrue(board.project.isCreating)
+        assertFalse(executor.executedCommands.any { it.first() == "npm" })
+
+        board.approval.resolve(PostCreateDecision.RUN)
+        advanceUntilIdle()
+
+        assertNull(board.approval.pending)
+        assertTrue(executor.executedCommands.any { it == listOf("npm", "install") })
+        assertTrue(trust.isApproved(config.baseRepositoryPath, listOf(listOf("npm", "install"))))
+        assertEquals(WorktreeSuccess.Created("${config.worktreesRoot}/TASK-456", commandsSkipped = false), board.project.success)
+    }
+
+    @Test
+    fun `skipping the approval creates the worktree without running the commands and says so`() = runTest(dispatcher) {
+        val approval = DialogPostCreateApproval()
+        val trust = FakeRepositoryTrust()
+        val (board, executor) = approvalScenario(approval, trust)
+        advanceUntilIdle()
+        board.openCreateDialog()
+        board.updateTaskId("TASK-456")
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        board.approval.resolve(PostCreateDecision.SKIP)
+        advanceUntilIdle()
+
+        assertFalse(executor.executedCommands.any { it.first() == "npm" })
+        assertFalse(trust.isApproved(config.baseRepositoryPath, listOf(listOf("npm", "install"))))
+        assertEquals(WorktreeSuccess.Created("${config.worktreesRoot}/TASK-456", commandsSkipped = true), board.project.success)
+    }
+
+    @Test
+    fun `approved commands are not asked again`() = runTest(dispatcher) {
+        val approval = DialogPostCreateApproval()
+        val trust = FakeRepositoryTrust(mapOf(config.baseRepositoryPath to listOf(listOf("npm", "install"))))
+        val (board, executor) = approvalScenario(approval, trust)
+        advanceUntilIdle()
+        board.openCreateDialog()
+        board.updateTaskId("TASK-456")
+
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        assertNull(board.approval.pending)
+        assertTrue(executor.executedCommands.any { it == listOf("npm", "install") })
+    }
+
     @Test
     fun `a successful creation closes the dialog and remembers the new worktree`() = runTest(dispatcher) {
         val branch = "hotfix/security-patch"
@@ -368,8 +457,7 @@ class ProjectWorktreesTest {
                 when {
                     command == listCommand -> success(command, porcelainOutput)
                     command == forEachRefCommand -> success(command, stdout = "$branch\n")
-                    command.getOrNull(1) == "branch" && command.getOrNull(2) == "--list" ->
-                        success(command, stdout = "  $branch\n")
+                    command.getOrNull(1) == "show-ref" -> success(command)
                     else -> success(command)
                 }
             },
@@ -426,8 +514,7 @@ class ProjectWorktreesTest {
             useCases { command ->
                 when {
                     command == listCommand -> success(command, porcelainOutput)
-                    command.getOrNull(1) == "branch" && command.getOrNull(2) == "--list" ->
-                        success(command, stdout = "  $branch\n")
+                    command.getOrNull(1) == "show-ref" -> success(command)
                     else -> success(command)
                 }
             },
@@ -440,7 +527,7 @@ class ProjectWorktreesTest {
         advanceUntilIdle()
 
         assertEquals(1, clipboard.writtenText.size)
-        assertTrue(clipboard.writtenText.single().startsWith("cd \"/home/dev/projects/hotfix-security-patch\" && "))
+        assertTrue(clipboard.writtenText.single().startsWith("cd '/home/dev/projects/hotfix-security-patch' && "))
     }
 
     @Test
@@ -553,7 +640,7 @@ class ProjectWorktreesTest {
 
         assertNull(viewModel.worktreePendingRemoval)
         assertTrue(viewModel.worktrees.none { it.path == worktreePath })
-        assertTrue(executedCommands.none { it == listOf("git", "branch", "-d", worktree.branch) })
+        assertTrue(executedCommands.none { it == listOf("git", "branch", "-d", "--", worktree.branch) })
     }
 
     @Test
@@ -577,7 +664,7 @@ class ProjectWorktreesTest {
 
         assertNull(viewModel.worktreePendingRemoval)
         assertTrue(viewModel.worktrees.none { it.path == worktreePath })
-        assertTrue(executedCommands.any { it == listOf("git", "branch", "-d", worktree.branch) })
+        assertTrue(executedCommands.any { it == listOf("git", "branch", "-d", "--", worktree.branch) })
     }
 
     @Test
@@ -608,7 +695,7 @@ class ProjectWorktreesTest {
         advanceUntilIdle()
 
         assertNull(viewModel.worktreePendingRemoval)
-        assertTrue(executedCommands.any { it == listOf("git", "branch", "-d", worktree.branch) })
+        assertTrue(executedCommands.any { it == listOf("git", "branch", "-d", "--", worktree.branch) })
     }
 
     @Test
@@ -962,6 +1049,98 @@ class ProjectWorktreesTest {
     }
 
     @Test
+    fun `a reload keeps the previous statuses until they are read again and new worktrees start loading`() = runTest(dispatcher) {
+        val otherPath = "/home/dev/projects/TASK-456"
+        var porcelain = porcelainOutput
+        var statusGate: CompletableDeferred<Unit>? = null
+        val executor = object : ShellCommandExecutor {
+            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+                if (command == statusCommand) statusGate?.await()
+                return when (command) {
+                    listCommand -> success(command, porcelain)
+                    statusCommand -> success(command, stdout = " M build.gradle.kts\n")
+                    else -> success(command)
+                }
+            }
+        }
+        val viewModel = projectWorktrees(useCasesWith(executor))
+        advanceUntilIdle()
+        val previous = assertIs<WorktreeStatusState.Loaded>(viewModel.statuses[worktreePath])
+
+        statusGate = CompletableDeferred()
+        porcelain = "$porcelainOutput\n\nworktree $otherPath\nHEAD def456\nbranch refs/heads/feature/TASK-456"
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertEquals(previous, viewModel.statuses[worktreePath])
+        assertEquals(WorktreeStatusState.Loading, viewModel.statuses[otherPath])
+
+        statusGate?.complete(Unit)
+        advanceUntilIdle()
+
+        assertIs<WorktreeStatusState.Loaded>(viewModel.statuses[otherPath])
+    }
+
+    @Test
+    fun `a reload drops the statuses and sizes of worktrees no longer listed`() = runTest(dispatcher) {
+        val otherPath = "/home/dev/projects/TASK-456"
+        val fileManager = FakeFileManager(
+            existing = listOf(worktreePath, otherPath),
+            sizes = mapOf(worktreePath to 1000L, otherPath to 500L),
+        )
+        var porcelain = "$porcelainOutput\n\nworktree $otherPath\nHEAD def456\nbranch refs/heads/feature/TASK-456"
+        val viewModel = projectWorktrees(
+            useCasesWithFiles(fileManager) { command ->
+                if (command == listCommand) success(command, porcelain) else success(command)
+            },
+        )
+        advanceUntilIdle()
+
+        porcelain = porcelainOutput
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertEquals(setOf(worktreePath), viewModel.statuses.keys)
+        assertEquals(mapOf(worktreePath to 1000L), viewModel.sizes)
+    }
+
+    @Test
+    fun `refreshStatuses reads the statuses again without listing the worktrees`() = runTest(dispatcher) {
+        var listCalls = 0
+        var statusOutput = ""
+        var statusGate: CompletableDeferred<Unit>? = null
+        val executor = object : ShellCommandExecutor {
+            override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+                if (command == statusCommand) statusGate?.await()
+                return when (command) {
+                    listCommand -> {
+                        listCalls++
+                        success(command, porcelainOutput)
+                    }
+                    statusCommand -> success(command, stdout = statusOutput)
+                    else -> success(command)
+                }
+            }
+        }
+        val viewModel = projectWorktrees(useCasesWith(executor))
+        advanceUntilIdle()
+
+        statusGate = CompletableDeferred()
+        statusOutput = " M build.gradle.kts\n"
+        viewModel.refreshStatuses()
+        advanceUntilIdle()
+
+        assertEquals(0, assertIs<WorktreeStatusState.Loaded>(viewModel.statuses[worktreePath]).status.uncommittedChanges)
+
+        statusGate?.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(1, listCalls)
+        assertEquals(1, assertIs<WorktreeStatusState.Loaded>(viewModel.statuses[worktreePath]).status.uncommittedChanges)
+        assertFalse(viewModel.isLoading)
+    }
+
+    @Test
     fun `a created worktree gets its status without reloading the list`() = runTest(dispatcher) {
         val branch = "hotfix/security-patch"
         var listCalls = 0
@@ -972,8 +1151,7 @@ class ProjectWorktreesTest {
                         listCalls++
                         success(command, porcelainOutput)
                     }
-                    command.getOrNull(1) == "branch" && command.getOrNull(2) == "--list" ->
-                        success(command, stdout = "  $branch\n")
+                    command.getOrNull(1) == "show-ref" -> success(command)
                     else -> success(command)
                 }
             },
@@ -1073,7 +1251,7 @@ class ProjectWorktreesTest {
         board.confirmCleanup()
         advanceUntilIdle()
 
-        assertTrue(executed.contains(listOf("git", "branch", "-D", "feature/TASK-123")))
+        assertTrue(executed.contains(listOf("git", "branch", "-D", "--", "feature/TASK-123")))
     }
 
     @Test
@@ -1128,7 +1306,7 @@ class ProjectWorktreesTest {
     }
 
     @Test
-    fun `sizes are measured for every worktree and added up, and measured again on reload`() = runTest(dispatcher) {
+    fun `sizes are measured for every worktree and added up, and measured again on a manual reload`() = runTest(dispatcher) {
         val otherPath = "/home/dev/projects/TASK-456"
         val fileManager = FakeFileManager(
             existing = listOf(worktreePath, otherPath),
@@ -1145,10 +1323,35 @@ class ProjectWorktreesTest {
         assertEquals(mapOf(worktreePath to 1000L, otherPath to 500L), viewModel.sizes)
         assertEquals(1500L, viewModel.totalSize)
 
-        viewModel.refresh()
+        viewModel.refresh(remeasureSizes = true)
+        assertEquals(mapOf(worktreePath to 1000L, otherPath to 500L), viewModel.sizes)
         advanceUntilIdle()
 
         assertEquals(4, fileManager.sizeRequests.size)
+        assertEquals(1500L, viewModel.totalSize)
+    }
+
+    @Test
+    fun `an automatic reload measures only worktrees without a size`() = runTest(dispatcher) {
+        val otherPath = "/home/dev/projects/TASK-456"
+        val fileManager = FakeFileManager(
+            existing = listOf(worktreePath, otherPath),
+            sizes = mapOf(worktreePath to 1000L, otherPath to 500L),
+        )
+        var porcelain = porcelainOutput
+        val viewModel = projectWorktrees(
+            useCasesWithFiles(fileManager) { command ->
+                if (command == listCommand) success(command, porcelain) else success(command)
+            },
+        )
+        advanceUntilIdle()
+
+        porcelain = "$porcelainOutput\n\nworktree $otherPath\nHEAD def456\nbranch refs/heads/feature/TASK-456"
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertEquals(listOf(worktreePath, otherPath), fileManager.sizeRequests.map { it.first })
+        assertEquals(mapOf(worktreePath to 1000L, otherPath to 500L), viewModel.sizes)
     }
 
     private val gitDir = "${config.baseRepositoryPath}/.git"
@@ -2056,7 +2259,7 @@ class ProjectWorktreesTest {
         advanceUntilIdle()
 
         assertEquals(1, clipboard.writtenText.size)
-        assertTrue(clipboard.writtenText.single().startsWith("cd \"$worktreePath\" && "))
+        assertTrue(clipboard.writtenText.single().startsWith("cd '$worktreePath' && "))
     }
 
     @Test
