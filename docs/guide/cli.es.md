@@ -79,6 +79,7 @@ Lista todos los worktrees del repositorio, uno por línea: ruta, rama (o `(detac
 | `changes=N` | Cambios sin commitear. |
 | `ahead=N behind=N` | Divergencia respecto a su upstream. |
 | `merged` | Mergeado en la rama principal. |
+| `not-started` | La rama nunca tuvo commits propios (se muestra en lugar de `merged`). |
 | `folder-missing` | Su carpeta se borró a mano. |
 | `status-unavailable (motivo)` | No se pudo leer su estado, con el motivo de Git. |
 

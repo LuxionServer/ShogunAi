@@ -79,6 +79,15 @@ class WorktreeRowModelTest {
     }
 
     @Test
+    fun `a branch that never had commits shows not started instead of merged`() {
+        val loaded = status(mainBranch = Divergence(0, 5)).copy(neverCommitted = true)
+        val model = model(status = WorktreeStatusState.Loaded(loaded))
+
+        assertEquals(null, model.indicator)
+        assertEquals(listOf(RowChipKind.DIVERGENCE, RowChipKind.NOT_STARTED), chipsOf(model))
+    }
+
+    @Test
     fun `merged beats inactive`() {
         val model = model(status = WorktreeStatusState.Loaded(status(mainBranch = Divergence(0, 5), lastCommitAt = now.minus(Duration.ofDays(20)))))
 

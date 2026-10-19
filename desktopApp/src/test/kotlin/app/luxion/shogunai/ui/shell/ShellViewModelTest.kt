@@ -378,6 +378,31 @@ class ShellViewModelTest {
     }
 
     @Test
+    fun `discarding the form leaves without asking even with unsaved changes`() {
+        val viewModel = viewModel()
+        viewModel.selectProject(mobile)
+        viewModel.editProject(api)
+        viewModel.attachLeaveGuard(FakeLeaveGuard(hasUnsavedChanges = true))
+
+        viewModel.discardForm()
+
+        assertFalse(viewModel.isLeaveConfirmationPending)
+        assertEquals(ShellDestination.All(projectFilter = "mobile"), viewModel.destination)
+    }
+
+    @Test
+    fun `leaving through the sidebar still asks while the form has unsaved changes`() {
+        val viewModel = viewModel()
+        viewModel.editProject(api)
+        viewModel.attachLeaveGuard(FakeLeaveGuard(hasUnsavedChanges = true))
+
+        viewModel.selectProject(mobile)
+
+        assertTrue(viewModel.isLeaveConfirmationPending)
+        assertEquals(ShellDestination.ProjectSettings(api.id), viewModel.destination)
+    }
+
+    @Test
     fun `closing the window asks while the form has unsaved changes`() {
         val viewModel = viewModel()
         viewModel.addProject()
