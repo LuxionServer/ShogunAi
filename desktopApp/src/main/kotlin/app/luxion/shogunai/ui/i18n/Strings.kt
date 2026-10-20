@@ -302,6 +302,7 @@ interface Strings {
 
     val xcodeDerivedDataTitle: String
     val xcodeDerivedDataUnavailable: String
+    val calculating: String
     fun derivedDataSummary(count: Int, totalSize: String): String
     fun derivedDataOrphans(count: Int, size: String): String
     val deleteOrphans: String
@@ -328,7 +329,7 @@ interface Strings {
     fun simulatorOrphansTitle(count: Int): String
     val confirmDeleteOrphansTitle: String
     fun confirmDeleteSimulatorOrphans(count: Int): String
-    fun confirmDeleteDerivedDataOrphans(count: Int, size: String): String
+    fun confirmDeleteDerivedDataOrphans(count: Int, size: String?): String
     val noDerivedData: String
     val derivedDataKept: String
     val gradleChipLabel: String
@@ -340,6 +341,7 @@ interface Strings {
     fun daysAgo(count: Long): String
     fun monthsAgo(count: Long): String
     fun yearsAgo(count: Long): String
+    val menuCopyDiagnosticReport: String
     val menuCheckForUpdates: String
     fun updateAvailableMessage(newVersion: String, runningVersion: String): String
     fun updateAvailableDialogMessage(newVersion: String, runningVersion: String): String

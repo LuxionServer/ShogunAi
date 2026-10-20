@@ -39,6 +39,7 @@ import app.luxion.shogunai.ui.shell.ToolsPreferences
 import app.luxion.shogunai.domain.model.DaemonProcess
 import app.luxion.shogunai.domain.model.DaemonStopReport
 import app.luxion.shogunai.domain.model.DerivedDataDeletion
+import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.domain.model.DerivedDataListing
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleProvider
@@ -64,6 +65,10 @@ import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.DeleteOrphanedDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.DeleteSimulatorsUseCase
 import app.luxion.shogunai.domain.usecase.DetectRunningAgentsUseCase
+import app.luxion.shogunai.domain.io.DiagnosticsLog
+import app.luxion.shogunai.domain.usecase.DerivedDataMeasure
+import app.luxion.shogunai.domain.usecase.DiagnosticReport
+import app.luxion.shogunai.domain.usecase.Redactor
 import app.luxion.shogunai.domain.usecase.ListDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.ListGradleDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.FetchRemoteUseCase
@@ -115,6 +120,7 @@ import app.luxion.shogunai.infrastructure.SharedDeviceStatesAndroidSdk
 import app.luxion.shogunai.infrastructure.MacDerivedDataSource
 import app.luxion.shogunai.infrastructure.NioEnvironmentStateStore
 import app.luxion.shogunai.infrastructure.NioFileManager
+import app.luxion.shogunai.infrastructure.RotatingFileDiagnosticsLog
 import app.luxion.shogunai.infrastructure.ProcessBuilderShellCommandExecutor
 import app.luxion.shogunai.infrastructure.ProcessGradleDaemonSource
 import app.luxion.shogunai.infrastructure.RepositoryProvisioningFiles
@@ -126,6 +132,15 @@ import kotlinx.coroutines.withContext
 
 class AppContainer {
     val projectRepository: ProjectRepository = JsonProjectRepository()
+    var loadedBranches: () -> Collection<String> = { emptyList() }
+    private val redactor = Redactor(
+        home = System.getProperty("user.home").orEmpty(),
+        userName = System.getProperty("user.name").orEmpty(),
+        projectNames = { runCatching { projectRepository.list().map { it.name } }.getOrDefault(emptyList()) },
+        branchNames = { runCatching { loadedBranches() }.getOrDefault(emptyList()) },
+    )
+    val diagnosticsLog: DiagnosticsLog = RotatingFileDiagnosticsLog(redact = redactor::redact)
+    val diagnosticReport = DiagnosticReport(BuildInfo.VERSION, diagnosticsLog)
     private val settingsFile = JsonSettingsFile()
     fun settingsProblem() = settingsFile.lastReadProblem
 
@@ -260,7 +275,9 @@ class AppContainer {
     val machineUseCases = MachineUseCases(
         listDaemons = { runCatching { gradleDaemonSource.list() } },
         stopDaemons = { pids -> StopGradleDaemonsUseCase(gradleDaemonSource, shellCommandExecutor)(pids) },
-        listDerivedData = { includeCompilationCache -> ListDerivedDataUseCase(derivedDataSource)(emptyList(), includeCompilationCache) },
+        listDerivedData = { ListDerivedDataUseCase(derivedDataSource)(emptyList(), includeCompilationCache = false, measure = DerivedDataMeasure.NONE) },
+        measureDerivedData = { folder -> runCatching { derivedDataSource.size(folder) } },
+        measureCompilationCache = { runCatching { derivedDataSource.compilationCacheBytes() } },
         deleteOrphanedDerivedData = { DeleteOrphanedDerivedDataUseCase(derivedDataSource)() },
         readEmulatorStates = { config, worktrees -> readEmulatorStates(config, worktrees) },
         readRunningEmulators = { config ->
@@ -488,7 +505,9 @@ class ReleaseResourcesUseCases(
 class MachineUseCases(
     val listDaemons: suspend () -> Result<List<DaemonProcess>>,
     val stopDaemons: suspend (List<Long>?) -> Result<DaemonStopReport>,
-    val listDerivedData: suspend (includeCompilationCache: Boolean) -> Result<DerivedDataListing>,
+    val listDerivedData: suspend () -> Result<DerivedDataListing>,
+    val measureDerivedData: suspend (DerivedDataFolder) -> Result<Long>,
+    val measureCompilationCache: suspend () -> Result<Long?>,
     val deleteOrphanedDerivedData: suspend () -> Result<DerivedDataDeletion>,
     val readEmulatorStates: suspend (ProjectConfig, List<Worktree>) -> Result<Map<String, WorktreeEmulator>>,
     val readRunningEmulators: suspend (ProjectConfig) -> Result<Map<String, EmulatorState>>,

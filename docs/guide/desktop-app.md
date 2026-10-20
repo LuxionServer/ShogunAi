@@ -78,7 +78,7 @@ Removing a worktree that's open in Herdr also closes its Herdr workspace; the di
 
 ## Provider sections
 
-For repositories that declare them in `.shogunai.json`, the worktree screen adds a "Gradle daemons" section and an "Xcode DerivedData" section. See [Providers](providers.md).
+For repositories that declare them in `.shogunai.json`, the worktree screen adds a "Gradle daemons" section and an "Xcode DerivedData" section. The DerivedData folders are listed right away and show "Calculating…" for their sizes until they are measured in the background. See [Providers](providers.md).
 
 ## Preferences
 
@@ -121,3 +121,9 @@ The app never downloads, installs or runs anything by itself. **Skip this versio
 **Check for Updates…** in the Help menu checks right away, ignoring the schedule and skipped versions, and tells you whether ShogunAi is up to date, which version is available or why the check failed. Development builds don't check on their own.
 
 The only request the app makes on its own is an anonymous `GET` to `https://api.github.com/repos/LuxionServer/ShogunAi/releases/latest`, which carries the app version in its `User-Agent` header and nothing else. Turn **Check for updates automatically** off in Preferences and the app contacts GitHub only when you choose **Check for Updates…**.
+
+## Diagnostics
+
+The app keeps a local diagnostics log in `~/.shogunai/logs/diagnostics.log` (rotated at 1 MB, three files at most). It records errors nothing handled, errors shown in the app and freezes of the interface (when it stops responding for 2 seconds or more, with how long it lasted and what it was doing). Before anything is written, absolute paths, your user name, the names of your saved projects and the branches of their worktrees are replaced by placeholders such as `<path>` or `<project>`.
+
+**Copy Diagnostic Report** in the Help menu copies to the clipboard the app version, your operating system and architecture, the Java runtime and the most recent entries of the log, ready to paste into a bug report. Nothing is ever sent anywhere: the log stays on your machine and the report only reaches the clipboard when you ask for it.

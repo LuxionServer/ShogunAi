@@ -25,7 +25,9 @@ import app.luxion.shogunai.domain.usecase.ProjectWorktreeSet
 import app.luxion.shogunai.domain.usecase.attributeToProjects
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -41,7 +43,7 @@ data class MachineProject(
     val compilationCache: Boolean = false,
 )
 
-data class MachineSummary(val count: Int, val bytes: Long? = null)
+data class MachineSummary(val count: Int, val bytes: Long? = null, val calculating: Boolean = false)
 
 sealed interface MachineLoad<out T> {
     data object Loading : MachineLoad<Nothing>
@@ -91,6 +93,10 @@ class MachineResources(
 
     private var daemonProcesses by mutableStateOf<MachineLoad<List<DaemonProcess>>>(MachineLoad.Loading)
     private var derivedDataListing by mutableStateOf<MachineLoad<DerivedDataListing>>(MachineLoad.Loading)
+    private var derivedDataSizes by mutableStateOf<Map<String, Long>>(emptyMap())
+    private var compilationCacheSize by mutableStateOf<Long?>(null)
+    private var compilationCacheMeasured by mutableStateOf(false)
+    private var sizeJob: Job? = null
     private var ownedEmulators by mutableStateOf<MachineLoad<Map<String, Map<String, WorktreeEmulator>>>>(MachineLoad.Loading)
     private var runningEmulators by mutableStateOf<Map<String, EmulatorState>>(emptyMap())
     private var ownedSimulators by mutableStateOf<MachineLoad<Map<String, Map<String, WorktreeSimulator>>>>(MachineLoad.Loading)
@@ -138,14 +144,25 @@ class MachineResources(
     val derivedData: MachineLoad<List<MachineDerivedData>>
         get() = derivedDataListing.map { listing ->
             val sets = worktreeSets
-            listing.folders.map { MachineDerivedData(it.folder, derivedOwnerOf(it.owner, it.folder, sets)) }
+            val sizes = derivedDataSizes
+            listing.folders.map { entry ->
+                val folder = entry.folder.copy(sizeBytes = sizes[entry.folder.path])
+                MachineDerivedData(folder, derivedOwnerOf(entry.owner, folder, sets))
+            }
         }
 
     val derivedDataOrphans: List<DerivedDataFolder>
-        get() = (derivedDataListing as? MachineLoad.Loaded)?.value?.orphans.orEmpty()
+        get() {
+            val sizes = derivedDataSizes
+            return (derivedDataListing as? MachineLoad.Loaded)?.value?.orphans.orEmpty()
+                .map { it.copy(sizeBytes = sizes[it.path]) }
+        }
 
     val compilationCacheBytes: Long?
-        get() = (derivedDataListing as? MachineLoad.Loaded)?.value?.compilationCacheBytes
+        get() = compilationCacheSize
+
+    val isCompilationCacheCalculating: Boolean
+        get() = projects().any { it.compilationCache } && derivedDataListing is MachineLoad.Loaded && !compilationCacheMeasured
 
     val worktreeEmulators: MachineLoad<List<MachineEmulator>>
         get() = ownedEmulators.map { byProject ->
@@ -219,8 +236,16 @@ class MachineResources(
         if (MachineResource.XCODE_DERIVED_DATA in resources) {
             if (derivedDataListing !is MachineLoad.Loaded) loadDerivedData()
             (derivedDataListing as? MachineLoad.Loaded)?.value?.let { listing ->
-                current[MachineResource.XCODE_DERIVED_DATA] = MachineSummary(listing.folders.size, listing.folders.sumOf { it.folder.sizeBytes })
+                val sizes = derivedDataSizes
+                val calculating = listing.folders.any { it.folder.path !in sizes }
+                current[MachineResource.XCODE_DERIVED_DATA] = MachineSummary(
+                    count = listing.folders.size,
+                    bytes = if (calculating) null else sizes.values.sum(),
+                    calculating = calculating,
+                )
             }
+        } else {
+            stopDerivedDataMeasuring()
         }
         summaries = current
     }
@@ -288,9 +313,37 @@ class MachineResources(
     }
 
     private suspend fun loadDerivedData() {
-        val includeCompilationCache = projects().any { it.compilationCache }
-        derivedDataListing = useCases.listDerivedData(includeCompilationCache)
-            .fold({ MachineLoad.Loaded(it) }, { MachineLoad.Unavailable })
+        sizeJob?.cancel()
+        val listing = useCases.listDerivedData()
+        derivedDataSizes = emptyMap()
+        compilationCacheSize = null
+        compilationCacheMeasured = false
+        derivedDataListing = listing.fold({ MachineLoad.Loaded(it) }, { MachineLoad.Unavailable })
+        listing.getOrNull()?.let { sizeJob = scope.launch { measureDerivedData(it.folders.map { entry -> entry.folder }) } }
+    }
+
+    private suspend fun measureDerivedData(folders: List<DerivedDataFolder>) {
+        folders.forEach { folder ->
+            val size = useCases.measureDerivedData(folder)
+            currentCoroutineContext().ensureActive()
+            derivedDataSizes = derivedDataSizes + (folder.path to size.getOrDefault(0L))
+        }
+        if (projects().any { it.compilationCache }) {
+            val size = useCases.measureCompilationCache()
+            currentCoroutineContext().ensureActive()
+            compilationCacheSize = size.getOrNull()
+        }
+        compilationCacheMeasured = true
+    }
+
+    private fun stopDerivedDataMeasuring() {
+        sizeJob?.cancel()
+        sizeJob = null
+        if (derivedDataListing is MachineLoad.Loading) return
+        derivedDataListing = MachineLoad.Loading
+        derivedDataSizes = emptyMap()
+        compilationCacheSize = null
+        compilationCacheMeasured = false
     }
 
     fun stopGradleDaemon(pid: Long) = stopGradleDaemons(listOf(pid))

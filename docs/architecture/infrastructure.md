@@ -66,7 +66,7 @@ Implementation of `GradleDaemonSource` that doesn't depend on a Gradle binary or
 Implementation of `DerivedDataSource` for macOS (`isSupported` checks `os.name`):
 
 - **Location**: `defaults read com.apple.dt.Xcode <key>` run as argv, first `IDEDerivedDataPathOverride`, then `IDECustomDerivedDataLocation` (keys confirmed in Xcode 27's `IDEFoundation`; a leading `~` is expanded); a failed `defaults` (key missing) falls back to `~/Library/Developer/Xcode/DerivedData`. A location that doesn't exist has no folders.
-- **Folders**: every direct child with a regular `info.plist` that has a `WorkspacePath`, parsed with the JDK's XML parser with external entities and DTDs off. A binary plist (`bplist00`) or an unreadable file is skipped, and so are Xcode's shared caches, which have none. `LastAccessedDate` gives `lastAccessed`; the size comes from `FileManager.directorySize`.
+- **Folders**: every direct child with a regular `info.plist` that has a `WorkspacePath`, parsed with the JDK's XML parser with external entities and DTDs off. A binary plist (`bplist00`) or an unreadable file is skipped, and so are Xcode's shared caches, which have none. `LastAccessedDate` gives `lastAccessed`; `folders()` doesn't measure them: `size(folder)` walks one folder on `Dispatchers.IO` and stops as soon as its coroutine is cancelled. `folders()` also runs on `Dispatchers.IO`.
 - **Compilation cache**: `IDECustomCompilationCacheLocation` when set, else `<location>/CompilationCache.noindex`.
 - **Volumes**: a path under `/Volumes/<name>` is on an unavailable volume when that mount point doesn't exist.
 - **Deletion**: refuses any path that isn't a direct child of the current location or has no `info.plist`, then deletes the folder recursively.
@@ -140,7 +140,7 @@ In `core/src/testFixtures/kotlin/app/luxion/shogunai/domain/`, `core`'s test fix
 - `FakeHerdrClient` — records opened worktrees, split and closed panes, closed workspaces, commands run and focused agents, reports the worktrees it's given as already open or as open workspaces and the agents it's given, and can fail opening, running, listing worktrees or agents, or closing a given workspace with a given error.
 - `FakeAndroidSdk` — substitutes `AndroidSdk` with AVDs, emulator states that move from booting to running after a number of polls, a missing-SDK switch, and records of starts and stops.
 - `FakeGradleDaemonSource` — substitutes `GradleDaemonSource` with a mutable list of daemons (or a failure) and counts the listings; `gradleDaemon(...)` and `kotlinDaemon(...)` build them.
-- `FakeDerivedDataSource` — substitutes `DerivedDataSource` with folders, existing projects, unmounted volumes, a compilation cache size, a macOS switch and failing deletions, and records the deletions; `derivedData(...)` builds a folder.
+- `FakeDerivedDataSource` — substitutes `DerivedDataSource` with folders, sizes by path (recording which folders were measured), existing projects, unmounted volumes, a compilation cache size, a macOS switch and failing deletions, and records the deletions; `derivedData(...)` builds a folder.
 - `FakeClipboardWriter` — substitutes `ClipboardWriter`.
 - `FakeProjectRepository` — substitutes `ProjectRepository` in ViewModel tests.
 - `FakeRepositoryProvisioningSource` — substitutes `RepositoryProvisioningSource` with provisioning per repository path, unreadable repositories and failing writes, and records the patterns added.

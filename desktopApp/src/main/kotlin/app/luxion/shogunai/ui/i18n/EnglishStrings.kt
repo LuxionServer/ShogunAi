@@ -342,6 +342,7 @@ object EnglishStrings : Strings {
 
     override val xcodeDerivedDataTitle = "Xcode DerivedData"
     override val xcodeDerivedDataUnavailable = "DerivedData can't be inspected on this system"
+    override val calculating = "Calculating…"
     override fun derivedDataSummary(count: Int, totalSize: String) =
         (if (count == 1) "1 DerivedData folder" else "$count DerivedData folders") + " · $totalSize"
     override fun derivedDataOrphans(count: Int, size: String) =
@@ -376,9 +377,11 @@ object EnglishStrings : Strings {
     override fun confirmDeleteSimulatorOrphans(count: Int) =
         if (count == 1) "1 simulator whose worktree no longer exists will be deleted."
         else "$count simulators whose worktrees no longer exist will be deleted."
-    override fun confirmDeleteDerivedDataOrphans(count: Int, size: String) =
-        if (count == 1) "1 DerivedData folder whose project no longer exists will be deleted ($size)."
-        else "$count DerivedData folders whose projects no longer exist will be deleted ($size)."
+    override fun confirmDeleteDerivedDataOrphans(count: Int, size: String?): String {
+        val total = size?.let { " ($it)" }.orEmpty()
+        return if (count == 1) "1 DerivedData folder whose project no longer exists will be deleted$total."
+        else "$count DerivedData folders whose projects no longer exist will be deleted$total."
+    }
     override val noDerivedData = "No DerivedData folders on this machine"
     override val derivedDataKept = "kept: unavailable volume"
     override val gradleChipLabel = "Gradle"
@@ -495,6 +498,7 @@ object EnglishStrings : Strings {
     override val showIconInMenuBar = "Show icon in the menu bar"
     override val showIconInTray = "Show icon in the system tray"
     override val keepRunningWhenClosed = "Keep running when the window is closed"
+    override val menuCopyDiagnosticReport = "Copy Diagnostic Report"
     override val menuCheckForUpdates = "Check for Updates…"
     override fun updateAvailableMessage(newVersion: String, runningVersion: String) =
         "ShogunAi $newVersion is out! You're on $runningVersion."

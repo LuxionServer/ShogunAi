@@ -13,12 +13,19 @@ class FakeDerivedDataSource(
     var failDeletionFor: Set<String> = emptySet(),
 ) : DerivedDataSource {
 
+    val sizes = mutableMapOf<String, Long>()
     val deleted = mutableListOf<String>()
+    val measured = mutableListOf<String>()
     var beforeDelete: () -> Unit = {}
 
     override fun isSupported(): Boolean = supported
 
     override suspend fun folders(): List<DerivedDataFolder> = existing
+
+    override suspend fun size(folder: DerivedDataFolder): Long {
+        measured += folder.path
+        return folder.sizeBytes ?: sizes[folder.path] ?: 0L
+    }
 
     override suspend fun compilationCacheBytes(): Long? = cacheBytes
 
@@ -35,7 +42,7 @@ class FakeDerivedDataSource(
     }
 
     companion object {
-        fun derivedData(name: String, workspacePath: String, sizeBytes: Long = 1_000_000_000L) =
+        fun derivedData(name: String, workspacePath: String, sizeBytes: Long? = 1_000_000_000L) =
             DerivedDataFolder("/home/dev/Library/Developer/Xcode/DerivedData/$name", workspacePath, sizeBytes, null)
     }
 }
