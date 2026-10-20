@@ -196,6 +196,7 @@ class ParseArgumentsTest {
     fun `remove takes a target with force and delete-branch`() {
         assertEquals(CliCommand.Remove("TASK-123"), command("remove", "TASK-123"))
         assertEquals(CliCommand.Remove("TASK-123", force = true, deleteBranch = true), command("remove", "--force", "TASK-123", "--delete-branch"))
+        assertEquals(CliCommand.Remove("TASK-123", forceDeleteBranch = true), command("remove", "TASK-123", "--force-delete-branch"))
         assertEquals(CliCommand.Remove("TASK-123", force = true), command("remove", "-f", "TASK-123"))
     }
 

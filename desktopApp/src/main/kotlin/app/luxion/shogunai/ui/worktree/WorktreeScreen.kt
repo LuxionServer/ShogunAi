@@ -120,7 +120,7 @@ fun WorktreeScreen(
                 ViewProjectFilter(board.projects, board.viewProjectFilter, board::updateViewProjectFilter)
             }
             TextFilterField(board)
-            GroupingSelector(board)
+            if (!board.isProjectView) GroupingSelector(board)
             if (board.isActiveView && board.isReadingActivity) {
                 InlineProgress()
                 Text(strings.readingWorktreeStatus, style = MaterialTheme.typography.bodySmall)
@@ -139,6 +139,7 @@ fun WorktreeScreen(
     }
 
     board.pendingRemoval?.let { holder -> RemoveWorktreeDialog(holder) }
+    board.keptBranchDeletion?.let { holder -> ForceDeleteBranchDialog(holder) }
     board.terminalChoice?.let { holder -> ChooseTerminalDialog(holder) }
 }
 
@@ -213,6 +214,32 @@ private fun ChooseTerminalDialog(holder: ProjectWorktrees) {
         confirmButton = {},
         dismissButton = {
             NeutralTextButton(onClick = { holder.dismissTerminalChoice() }) {
+                Text(strings.cancel)
+            }
+        },
+    )
+}
+
+@Composable
+private fun ForceDeleteBranchDialog(holder: ProjectWorktrees) {
+    val strings = LocalStrings.current
+    val branch = holder.keptBranchNotice?.branch ?: return
+    AlertDialog(
+        onDismissRequest = { holder.cancelForcedBranchDeletion() },
+        title = { Text(strings.deleteBranchAnywayTitle) },
+        text = { Text(strings.deleteBranchAnywayMessage(branch)) },
+        confirmButton = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (holder.isDeletingBranch) {
+                    InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
+                }
+                DangerButton(onClick = { holder.confirmForcedBranchDeletion() }, enabled = !holder.isDeletingBranch) {
+                    Text(strings.delete)
+                }
+            }
+        },
+        dismissButton = {
+            NeutralTextButton(onClick = { holder.cancelForcedBranchDeletion() }, enabled = !holder.isDeletingBranch) {
                 Text(strings.cancel)
             }
         },
@@ -403,6 +430,7 @@ private fun Strings.successMessage(success: WorktreeSuccess): String = when (suc
     is WorktreeSuccess.Created ->
         if (success.commandsSkipped) worktreeCreatedCommandsSkipped(File(success.path).name) else worktreeCreated(File(success.path).name)
     WorktreeSuccess.RepairedAfterMove -> worktreesRepairedAfterMove
+    is WorktreeSuccess.BranchDeleted -> branchDeleted(success.branch)
     is WorktreeSuccess.OpenedInHerdr -> {
         val name = File(success.path).name
         if (success.focused) focusedInHerdr(name) else openedInHerdr(name)

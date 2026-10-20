@@ -139,12 +139,12 @@ Todos los campos están siempre presentes, con `null` cuando no aplican. Los nom
 ### `remove`
 
 ```text
-shogun remove <id de tarea | ruta | rama> [--force|-f] [--delete-branch]
+shogun remove <id de tarea | ruta | rama> [--force|-f] [--delete-branch | --force-delete-branch]
 ```
 
 Elimina un worktree enlazado, igual que "Eliminar" en la app de escritorio. El objetivo es, por este orden, la ruta de un worktree, el nombre exacto de su rama o un id de tarea (el worktree en `<carpeta de worktrees>/<id de tarea>`); si no hay coincidencia, o hay más de una, no elimina nada y falla (listando los candidatos). El worktree principal nunca se elimina.
 
-Sin `--force` rechaza un worktree con cambios sin commitear o sin seguimiento, o donde se ejecuta un agente (`shogun: claude is running in <ruta>; use --force to remove it anyway`), y termina con `1`. Con `--force` lo elimina igualmente. La rama se conserva salvo que pases `--delete-branch`, que la borra solo si está mergeada en la rama principal del proyecto (`deleted branch …`, o `kept branch … (not merged into the main branch)`).
+Sin `--force` rechaza un worktree con cambios sin commitear o sin seguimiento, o donde se ejecuta un agente (`shogun: claude is running in <ruta>; use --force to remove it anyway`), y termina con `1`. Con `--force` lo elimina igualmente. La rama se conserva salvo que pases `--delete-branch`, que la borra solo si está mergeada en la rama principal del proyecto (`deleted branch …`, o `kept branch … (not merged into the main branch)`; una rama conservada no hace fallar el comando). `--force-delete-branch` la borra aunque no esté mergeada.
 
 Tras eliminarlo, el comando para lo que los providers del repositorio mantienen para ese worktree: su emulador de Android (`stopped emulator …`), su simulador de iOS (`stopped simulator …`) y los daemons de Gradle ociosos cuya última build fue en él (`stopped Gradle daemon …`). Un recurso que no se puede parar se indica en la salida de error y el código de salida es `1`; para entonces el worktree ya está eliminado. También se cierra su espacio de trabajo de Herdr.
 
@@ -247,7 +247,7 @@ Las reglas son las mismas para todos:
 | `provision` | `path`, `copied`, `linked` y `copiedInsteadOfLinking` (rutas de archivos), `skippedPostCreateCommands` y `postCreateFailure`, como en `new`. Si falló un comando, las tres listas de archivos van vacías. |
 | `provision --check` | `path` y `drift`: lista de `{ path, state }` con `state` `missing`, `differs` o `not-linked`. El código de salida es `3` si `drift` no está vacío. |
 | `trust` | `repository`, `commands` (listas argv), `approved` y `changed` (esta ejecución lo aprobó o revocó). Un repositorio sin comandos posteriores a la creación es `approved: true` y sin comandos. `--revoke` informa `approved: false` si había comandos. |
-| `remove` | `path`, `branch` (la del worktree, o `null` si está desacoplado), `branchDeleted` (el nombre, o `null` si se conservó o no se pasó `--delete-branch`), `providers` (`emulatorsStopped` con los serial, `simulatorsStopped` con los udid y `gradleDaemonsStopped` con los pid) y `failures` (mensajes de lo que no se pudo detener, código de salida `1`). |
+| `remove` | `path`, `branch` (la del worktree, o `null` si está desacoplado), `branchDeleted` (el nombre, o `null` si se conservó o no se pidió borrar la rama), `branchKeptReason` (por qué no se borró una rama cuya eliminación se pidió, o `null`), `providers` (`emulatorsStopped` con los serial, `simulatorsStopped` con los udid y `gradleDaemonsStopped` con los pid) y `failures` (mensajes de lo que no se pudo detener, código de salida `1`). |
 | `repair` | `repaired`: las rutas de los worktrees re-enlazados. |
 | `clean` | `dryRun`; `candidates`: `{ path, branch, reason }` con `reason` `merged` o `folder-missing`; `keptForAgents`: `{ path, agents }`; `skipped`: `{ path, reason }` (estado no disponible); `removed`; `deletedBranches`; `failures`: `{ path, message }`; y `providers`: `gradleDaemonsStopped`, `emulatorsStopped`, `simulatorsDeleted` y `derivedDataDeleted`. Sin `--yes` (`dryRun: true`) `removed`, `deletedBranches` y las listas de `providers` van vacías. |
 | `gradle` | `daemons`: `{ pid, kind, version, memoryBytes, state, idleSince, worktree }` con `kind` `gradle` o `kotlin`, `state` `busy`, `idle`, `unknown` o `untracked`, `idleSince` en ISO-8601 UTC (solo si está inactivo) y `worktree` una ruta, `removed`, `other-project` o `null` fuera de un repositorio; y `totalMemoryBytes`. |

@@ -1,16 +1,22 @@
 package app.luxion.shogunai.ui.worktree
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -62,6 +68,24 @@ class WorktreeHeaderUiTest {
 
         onNodeWithText("Needs you").assertIsDisplayed()
         onNodeWithText("agent waiting, uncommitted or unpushed").assertIsDisplayed()
+    }
+
+    @Test
+    fun `the merged group header keeps its cleanup button on one line in Spanish`() = runComposeUiTest {
+        setContent {
+            CompositionLocalProvider(LocalStrings provides SpanishStrings) {
+                MaterialTheme {
+                    Box(Modifier.width(220.dp)) {
+                        StateGroupHeader(StateGroupKind.MERGED, count = 12, canCleanUp = true, onCleanUp = {})
+                    }
+                }
+            }
+        }
+
+        val results = mutableListOf<TextLayoutResult>()
+        onNodeWithText(SpanishStrings.cleanUp).fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action?.invoke(results)
+
+        assertEquals(1, results.single().lineCount)
     }
 
     @Test

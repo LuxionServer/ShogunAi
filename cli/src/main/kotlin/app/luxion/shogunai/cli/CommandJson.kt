@@ -352,6 +352,7 @@ fun removeJson(
     path: String,
     branch: String?,
     branchDeleted: String?,
+    branchKeptReason: String?,
     emulatorsStopped: List<String>,
     simulatorsStopped: List<String>,
     gradleDaemonsStopped: List<Long>,
@@ -360,6 +361,7 @@ fun removeJson(
     put("path", path)
     put("branch", branch)
     put("branchDeleted", branchDeleted)
+    put("branchKeptReason", branchKeptReason)
     put(
         "providers",
         buildJsonObject {

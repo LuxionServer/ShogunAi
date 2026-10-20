@@ -231,6 +231,12 @@ interface Strings {
     fun worktreesCleanedUp(count: Int): String
     fun cleanupFailed(path: String, detail: String): String
     fun branchKept(branch: String): String
+    fun worktreeRemovedBranchKept(branch: String): String
+    fun worktreeRemovedBranchKeptFailed(branch: String, reason: String): String
+    val deleteBranchAnyway: String
+    val deleteBranchAnywayTitle: String
+    fun deleteBranchAnywayMessage(branch: String): String
+    fun branchDeleted(branch: String): String
     val herdrWorkspaceWillClose: String
     val herdrCleanupNotice: String
     fun keptForRunningAgent(name: String, agents: List<String>): String

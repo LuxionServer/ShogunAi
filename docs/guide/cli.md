@@ -139,12 +139,12 @@ Every field is always present, with `null` when it doesn't apply. The field name
 ### `remove`
 
 ```text
-shogun remove <task id | path | branch> [--force|-f] [--delete-branch]
+shogun remove <task id | path | branch> [--force|-f] [--delete-branch | --force-delete-branch]
 ```
 
 Removes one linked worktree, the way the desktop app's remove does. The target is, in this order, the path of a worktree, the exact name of its branch, or a task id (the worktree at `<worktrees folder>/<task id>`); no match, or more than one, removes nothing and fails (listing the candidates). The main worktree is never removed.
 
-Without `--force` it refuses a worktree with uncommitted or untracked changes, or one where an agent is running (`shogun: claude is running in <path>; use --force to remove it anyway`), and exits with `1`. With `--force` it removes it anyway. The branch is kept unless you pass `--delete-branch`, which deletes it only when it's merged into the project's main branch (`deleted branch …`, or `kept branch … (not merged into the main branch)`).
+Without `--force` it refuses a worktree with uncommitted or untracked changes, or one where an agent is running (`shogun: claude is running in <path>; use --force to remove it anyway`), and exits with `1`. With `--force` it removes it anyway. The branch is kept unless you pass `--delete-branch`, which deletes it only when it's merged into the project's main branch (`deleted branch …`, or `kept branch … (not merged into the main branch)`; a kept branch doesn't make the command fail). `--force-delete-branch` deletes it even if it isn't merged.
 
 After removing it, the command stops what the repository's providers keep for that worktree: its Android emulator (`stopped emulator …`), its iOS simulator (`stopped simulator …`) and the idle Gradle daemons whose last build was in it (`stopped Gradle daemon …`). A resource that can't be stopped is reported on standard error and the exit code is `1`; the worktree is already removed by then. Its Herdr workspace is closed too.
 
@@ -247,7 +247,7 @@ The rules are the same for all of them:
 | `provision` | `path`, `copied`, `linked` and `copiedInsteadOfLinking` (file paths), `skippedPostCreateCommands` and `postCreateFailure`, as in `new`. When a command failed, the three file lists are empty. |
 | `provision --check` | `path` and `drift`: a list of `{ path, state }` with `state` `missing`, `differs` or `not-linked`. The exit code is `3` when `drift` isn't empty. |
 | `trust` | `repository`, `commands` (argv lists), `approved` and `changed` (this run approved or revoked it). A repository without post-creation commands is `approved: true` with no commands. `--revoke` reports `approved: false` when there were commands. |
-| `remove` | `path`, `branch` (the worktree's, or `null` if detached), `branchDeleted` (the name, or `null` when it was kept or `--delete-branch` wasn't given), `providers` (`emulatorsStopped` serials, `simulatorsStopped` udids and `gradleDaemonsStopped` pids) and `failures` (messages of what couldn't be stopped, exit code `1`). |
+| `remove` | `path`, `branch` (the worktree's, or `null` if detached), `branchDeleted` (the name, or `null` when it was kept or no branch deletion was requested), `branchKeptReason` (why a requested deletion didn't happen, or `null`), `providers` (`emulatorsStopped` serials, `simulatorsStopped` udids and `gradleDaemonsStopped` pids) and `failures` (messages of what couldn't be stopped, exit code `1`). |
 | `repair` | `repaired`: the re-linked worktree paths. |
 | `clean` | `dryRun`; `candidates`: `{ path, branch, reason }` with `reason` `merged` or `folder-missing`; `keptForAgents`: `{ path, agents }`; `skipped`: `{ path, reason }` (status unavailable); `removed`; `deletedBranches`; `failures`: `{ path, message }`; and `providers`: `gradleDaemonsStopped`, `emulatorsStopped`, `simulatorsDeleted` and `derivedDataDeleted`. Without `--yes` (`dryRun: true`) `removed`, `deletedBranches` and the `providers` lists are empty. |
 | `gradle` | `daemons`: `{ pid, kind, version, memoryBytes, state, idleSince, worktree }` with `kind` `gradle` or `kotlin`, `state` `busy`, `idle`, `unknown` or `untracked`, `idleSince` in ISO-8601 UTC (only when idle) and `worktree` a path, `removed`, `other-project` or `null` outside a repository; and `totalMemoryBytes`. |

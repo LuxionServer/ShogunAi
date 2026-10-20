@@ -1,6 +1,7 @@
 package app.luxion.shogunai.ui.components
 
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonColors
 import androidx.compose.material3.ButtonDefaults
@@ -9,7 +10,20 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.ui.theme.ShogunTheme
+
+private val ButtonMinWidth = 64.dp
+
+private fun Modifier.singleLineLabel(): Modifier = this
+    .layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints.copy(maxWidth = Constraints.Infinity))
+        val width = placeable.width.coerceAtMost(constraints.maxWidth)
+        layout(width, placeable.height) { placeable.place(0, 0) }
+    }
+    .widthIn(min = ButtonMinWidth)
 
 @Composable
 fun dangerButtonColors(): ButtonColors {
@@ -30,7 +44,7 @@ fun PrimaryButton(
 ) {
     Button(
         onClick = onClick,
-        modifier = modifier.focusRing(PillShape).handPointer(enabled),
+        modifier = modifier.focusRing(PillShape).handPointer(enabled).singleLineLabel(),
         enabled = enabled,
         content = content,
     )
@@ -45,7 +59,7 @@ fun SecondaryButton(
 ) {
     OutlinedButton(
         onClick = onClick,
-        modifier = modifier.focusRing(PillShape).handPointer(enabled),
+        modifier = modifier.focusRing(PillShape).handPointer(enabled).singleLineLabel(),
         enabled = enabled,
         content = content,
     )
@@ -60,7 +74,7 @@ fun DangerButton(
 ) {
     Button(
         onClick = onClick,
-        modifier = modifier.focusRing(PillShape).handPointer(enabled),
+        modifier = modifier.focusRing(PillShape).handPointer(enabled).singleLineLabel(),
         enabled = enabled,
         colors = dangerButtonColors(),
         content = content,
@@ -76,7 +90,7 @@ fun DangerTextButton(
 ) {
     TextButton(
         onClick = onClick,
-        modifier = modifier.focusRing(PillShape).handPointer(enabled),
+        modifier = modifier.focusRing(PillShape).handPointer(enabled).singleLineLabel(),
         enabled = enabled,
         colors = dangerTextButtonColors(),
         content = content,
@@ -92,7 +106,7 @@ fun NeutralTextButton(
 ) {
     TextButton(
         onClick = onClick,
-        modifier = modifier.focusRing(PillShape).handPointer(enabled),
+        modifier = modifier.focusRing(PillShape).handPointer(enabled).singleLineLabel(),
         enabled = enabled,
         colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
         content = content,

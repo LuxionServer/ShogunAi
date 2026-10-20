@@ -248,6 +248,15 @@ object SpanishStrings : Strings {
     override val alsoDeleteLocalBranches = "Borrar también sus ramas locales"
     override fun worktreesCleanedUp(count: Int) = if (count == 1) "1 worktree limpiado" else "$count worktrees limpiados"
     override fun cleanupFailed(path: String, detail: String) = "No se pudo eliminar \"$path\": $detail"
+    override fun worktreeRemovedBranchKept(branch: String) =
+        "Worktree eliminado. Rama \"$branch\" conservada: no está mergeada en la rama principal"
+    override fun worktreeRemovedBranchKeptFailed(branch: String, reason: String) =
+        "Worktree eliminado. Rama \"$branch\" conservada: $reason"
+    override val deleteBranchAnyway = "Borrar la rama igualmente"
+    override val deleteBranchAnywayTitle = "¿Borrar la rama?"
+    override fun deleteBranchAnywayMessage(branch: String) =
+        "¿Borrar la rama \"$branch\" aunque no esté mergeada en la rama principal? Sus commits podrían perderse."
+    override fun branchDeleted(branch: String) = "Rama \"$branch\" borrada"
     override fun branchKept(branch: String) = "Rama \"$branch\" conservada: no está mergeada en la rama principal"
     override val herdrWorkspaceWillClose = "Está abierto en Herdr: se cerrará su espacio de trabajo y el agente que se ejecuta en él."
     override fun keptForRunningAgent(name: String, agents: List<String>) = "$name · se conserva, ${agents.joinToString()} está en ejecución"

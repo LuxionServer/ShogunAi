@@ -4,7 +4,10 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorktreeError
 
-data class WorktreeRemoval(val herdrFailure: WorktreeError? = null)
+data class WorktreeRemoval(
+    val herdrFailure: WorktreeError? = null,
+    val branch: BranchDeletion? = null,
+)
 
 class RemoveWorktreeUseCase(
     private val config: ProjectConfig,
@@ -15,6 +18,7 @@ class RemoveWorktreeUseCase(
         worktreePath: String,
         branchToDelete: String? = null,
         force: Boolean = false,
+        forceBranchDeletion: Boolean = false,
     ): Result<WorktreeRemoval> = runCatching {
         val workspaces = closeHerdrWorkspaces?.openWorkspaces(listOf(worktreePath)).orEmpty()
         val removeCommand = buildList {
@@ -29,19 +33,14 @@ class RemoveWorktreeUseCase(
 
         val herdrFailure = closeHerdrWorkspaces?.close(workspaces, listOf(worktreePath))?.firstOrNull()?.error
 
-        if (branchToDelete != null) {
-            val deleteBranch = executor.execute(
-                command = listOf("git", "branch", "-d", "--", branchToDelete),
-                workingDirectory = config.baseRepositoryPath,
-            )
-            if (!deleteBranch.isSuccess) {
-                throw WorktreeError.GitCommandFailed(
-                    deleteBranch.command,
-                    deleteBranch.exitCode,
-                    deleteBranch.stderr,
-                )
-            }
-        }
-        WorktreeRemoval(herdrFailure)
+        val branch = branchToDelete?.let { deleteBranch(it, forceBranchDeletion) }
+        WorktreeRemoval(herdrFailure, branch)
+    }
+
+    private suspend fun deleteBranch(branch: String, forced: Boolean): BranchDeletion {
+        if (isOptionLikeRef(branch)) return BranchDeletion.KeptFailed(WorktreeError.InvalidRef(branch).message.orEmpty())
+        if (forced) return forceDeleteBranch(executor, config, branch)
+        val mainBranch = ResolveMainBranchUseCase(config, executor)().getOrNull()
+        return deleteBranchIfContained(executor, config, branch, mainBranch)
     }
 }
