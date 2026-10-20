@@ -19,7 +19,14 @@ class EditorLaunchersTest {
         os: HostOs,
         executor: FakeShellCommandExecutor,
         files: Set<String> = emptySet(),
-    ) = CommandEditorLauncher(editor, executor, os, ExecutableLocator(os, "/home/dev", listOf("/usr/bin"), "C:\\L") { it in files })
+        xcodeTarget: String = path,
+    ) = CommandEditorLauncher(
+        editor,
+        executor,
+        os,
+        ExecutableLocator(os, "/home/dev", listOf("/usr/bin"), "C:\\L") { it in files },
+        XcodeWorkspaceFinder { xcodeTarget },
+    )
 
     @Test
     fun `macOS opens the folder through the bundle identifier`() = runTest {
@@ -104,6 +111,49 @@ class EditorLaunchersTest {
 
         assertIs<WorktreeError.EditorLaunchFailed>(error)
         assertTrue(error.message.orEmpty().contains("license expired"))
+    }
+
+    @Test
+    fun `macOS opens Xcode with the workspace found in the worktree`() = runTest {
+        val executor = FakeShellCommandExecutor()
+        val workspace = "$path/iosApp/App.xcworkspace"
+
+        launcher(EditorId.XCODE, HostOs.MACOS, executor, xcodeTarget = workspace).open(path).getOrThrow()
+
+        assertEquals(listOf(listOf("open", "-b", "com.apple.dt.Xcode", workspace)), executor.executedCommands)
+    }
+
+    @Test
+    fun `macOS opens Xcode with the folder when the worktree has no workspace`() = runTest {
+        val executor = FakeShellCommandExecutor()
+
+        launcher(EditorId.XCODE, HostOs.MACOS, executor).open(path).getOrThrow()
+
+        assertEquals(listOf(listOf("open", "-b", "com.apple.dt.Xcode", path)), executor.executedCommands)
+    }
+
+    @Test
+    fun `a failing Xcode launch reports its error output`() = runTest {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.failure(it, stderr = "Unable to find application") }
+
+        val error = launcher(EditorId.XCODE, HostOs.MACOS, executor).open(path).exceptionOrNull()
+
+        assertIs<WorktreeError.EditorLaunchFailed>(error)
+        assertEquals(EditorId.XCODE, error.editor)
+        assertTrue(error.message.orEmpty().contains("Unable to find application"))
+    }
+
+    @Test
+    fun `Xcode can't be opened outside macOS`() = runTest {
+        listOf(HostOs.WINDOWS, HostOs.LINUX).forEach { os ->
+            val executor = FakeShellCommandExecutor()
+
+            val error = launcher(EditorId.XCODE, os, executor).open(path).exceptionOrNull()
+
+            assertIs<WorktreeError.EditorLaunchFailed>(error)
+            assertEquals(EditorId.XCODE, error.editor)
+            assertTrue(executor.executedCommands.isEmpty())
+        }
     }
 
     @Test

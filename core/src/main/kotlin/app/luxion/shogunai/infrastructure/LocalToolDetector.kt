@@ -33,7 +33,8 @@ class LocalToolDetector(
 
     private suspend fun isEditorAvailable(editor: EditorId): Boolean {
         if (os == HostOs.MACOS && isMacAppInstalled(ToolCatalog.editorApps.getValue(editor))) return true
-        return locator.find(ToolCatalog.editorExecutable(editor, os), includeToolbox = true) != null
+        val executable = ToolCatalog.editorExecutable(editor, os) ?: return false
+        return locator.find(executable, includeToolbox = true) != null
     }
 
     private fun onPath(executable: String): Boolean = locator.find(executable) != null

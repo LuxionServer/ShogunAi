@@ -12,13 +12,15 @@ class CommandEditorLauncher(
     private val executor: ShellCommandExecutor,
     private val os: HostOs = HostOs.current(),
     private val locator: ExecutableLocator = ExecutableLocator(os),
+    private val xcodeWorkspaceFinder: XcodeWorkspaceFinder = FileSystemXcodeWorkspaceFinder(),
 ) : EditorLauncher {
 
     override suspend fun open(path: String): Result<Unit> = runCatching {
-        val failure = if (os == HostOs.MACOS) openBundle(path) else null
+        val target = if (editor == EditorId.XCODE) xcodeWorkspaceFinder.find(path) else path
+        val failure = if (os == HostOs.MACOS) openBundle(target) else null
         if (os == HostOs.MACOS && failure == null) return@runCatching
         try {
-            openExecutable(path)
+            openExecutable(target)
         } catch (executableFailure: ToolCommandFailed) {
             throw WorktreeError.EditorLaunchFailed(editor, failure?.detail ?: executableFailure.detail)
         }
@@ -39,6 +41,7 @@ class CommandEditorLauncher(
 
     private suspend fun openExecutable(path: String) {
         val name = ToolCatalog.editorExecutable(editor, os)
+            ?: throw ToolCommandFailed(null, "${editor.displayName} can't be opened on this system")
         val executable = locator.find(name, includeToolbox = true)
             ?: throw ToolCommandFailed(null, "$name wasn't found")
         val command = if (os == HostOs.LINUX) listOf("sh", "-c", DETACHED, executable, path) else listOf(executable, path)
