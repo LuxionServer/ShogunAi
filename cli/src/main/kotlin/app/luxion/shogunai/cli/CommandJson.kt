@@ -11,6 +11,7 @@ import app.luxion.shogunai.domain.model.DerivedDataListing
 import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleDaemon
+import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.ProvisionDrift
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.ProvisionMode
@@ -371,6 +372,13 @@ fun removeJson(
         },
     )
     put("failures", strings(failures))
+}
+
+fun openJson(path: String, branch: String?, opening: HerdrOpening, agent: String?): JsonObject = buildJsonObject {
+    put("path", path)
+    put("branch", branch)
+    put("herdr", opening.name.lowercase())
+    put("agent", agent)
 }
 
 fun repairJson(repaired: List<String>): JsonObject = buildJsonObject {
