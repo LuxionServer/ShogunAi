@@ -1,6 +1,6 @@
 # ShogunAi
 
-Desktop orchestrator (Kotlin + Compose Multiplatform) to automate complex development workflows:
+Run several AI coding agents in parallel on the same machine without them stepping on each other. ShogunAi is a `shogun` command and a desktop control tower (Kotlin + Compose Multiplatform) that take care of:
 
 - Creating and removing isolated **Git worktrees**.
 - Provisioning the local files needed to build (e.g. Android's `local.properties`), declared in a `.shogunai.json` versioned in the repository or in `.worktreeinclude`.
