@@ -1,5 +1,8 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.ResourceLimits
+import app.luxion.shogunai.domain.model.ResourceKind
+import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.HerdrAgentState
@@ -355,6 +358,41 @@ object EnglishStrings : Strings {
     override fun derivedDataDeleted(count: Int, freed: String) =
         if (count == 1) "1 DerivedData folder deleted · $freed freed" else "$count DerivedData folders deleted · $freed freed"
     override val machineTitle = "Machine"
+    override val resourcesLabel = "Resources"
+    override fun profileName(profile: CapacityProfile) = when (profile) {
+        CapacityProfile.AUTOMATIC -> "Automatic"
+        CapacityProfile.LIGHT -> "Light"
+        CapacityProfile.BALANCED -> "Balanced"
+        CapacityProfile.PER_WORKTREE -> "One per worktree"
+        CapacityProfile.CUSTOM -> "Custom"
+    }
+    override fun resourceLimitsSummary(limits: ResourceLimits, includeSimulators: Boolean) = listOfNotNull(
+        limits.emulators.let { if (it == null) "emulators: no limit" else if (it == 1) "1 emulator" else "$it emulators" },
+        limits.simulators.let { if (it == null) "iOS simulators: no limit" else if (it == 1) "1 iOS simulator" else "$it iOS simulators" }
+            .takeIf { includeSimulators },
+        limits.gradleDaemons.let { if (it == null) "Gradle daemons: no limit" else if (it == 1) "1 Gradle daemon" else "$it Gradle daemons" },
+    ).joinToString(" · ")
+    override fun resourceKindLabel(kind: ResourceKind) = when (kind) {
+        ResourceKind.EMULATOR -> "Emulators"
+        ResourceKind.IOS_SIMULATOR -> "iOS simulators"
+        ResourceKind.GRADLE_DAEMON -> "Gradle daemons"
+    }
+    override val noLimit = "No limit"
+    override val invalidLimit = "Must be a positive number, or no limit"
+    override val notAcquired = "Not acquired"
+    override fun poolUsage(inUse: Int, limit: Int?, profile: String) =
+        (if (limit == null) "$inUse in use" else "$inUse of $limit in use") + " · $profile"
+    override val overLimit = "over the limit"
+    override val changeInPreferences = "Change in Preferences"
+    override fun releasedNotice(kind: ResourceKind, released: String, forWorktree: String) = when (kind) {
+        ResourceKind.EMULATOR -> "The emulator of $released was released to make room for $forWorktree"
+        ResourceKind.IOS_SIMULATOR -> "The simulator of $released was deleted to make room for $forWorktree"
+        ResourceKind.GRADLE_DAEMON -> "A Gradle daemon of $released was stopped to make room for $forWorktree"
+    }
+    override fun trimmedNotice(count: Int, limit: Int?) =
+        (if (count == 1) "1 idle Gradle daemon was stopped" else "$count idle Gradle daemons were stopped") +
+            (limit?.let { " to stay within the limit of $it" } ?: "")
+    override fun poolSummary(inUse: Int, limit: Int?) = if (limit == null) "$inUse" else "$inUse/$limit"
     override val androidEmulatorsTitle = "Android emulators"
     override val iosSimulatorsTitle = "iOS simulators"
     override fun runningCount(count: Int) = "$count running"

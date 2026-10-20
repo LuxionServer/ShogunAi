@@ -276,7 +276,7 @@ private fun openWindow() = application {
 
     if (preferencesOpen) {
         CompositionLocalProvider(LocalDiagnosticsLog provides appContainer.diagnosticsLog) {
-            PreferencesWindow(appearance, appContainer.tools, appContainer.updates, trayPreferences, preferencesFrontRequests, onClose = { preferencesOpen = false })
+            PreferencesWindow(appearance, appContainer.tools, appContainer.resources, appContainer.updates, trayPreferences, preferencesFrontRequests, onClose = { preferencesOpen = false })
         }
     }
     if (aboutOpen) {

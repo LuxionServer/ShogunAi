@@ -9,7 +9,6 @@ import app.luxion.shogunai.domain.model.SimulatorDevice
 import app.luxion.shogunai.domain.model.SimulatorSettings
 import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.Worktree
-import app.luxion.shogunai.domain.model.WorktreeEnvironment
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import kotlinx.coroutines.delay
@@ -17,7 +16,8 @@ import kotlinx.coroutines.delay
 class StartWorktreeSimulatorUseCase(
     private val provisioningSource: RepositoryProvisioningSource,
     private val simulators: AppleSimulators,
-    private val resolveCreating: suspend (repositoryPath: String, worktreePath: String, requested: SimulatorSettings) -> Result<WorktreeEnvironment>,
+    private val acquire: AcquireWorktreeResourceUseCase,
+    private val resolveEnvironment: ResolveWorktreeEnvironmentUseCase,
     private val pause: suspend (Long) -> Unit = { delay(it) },
     private val pollIntervalMs: Long = POLL_INTERVAL_MS,
     private val timeoutMs: Long = BOOT_TIMEOUT_MS,
@@ -26,9 +26,10 @@ class StartWorktreeSimulatorUseCase(
         config: ProjectConfig,
         worktreePath: String,
         requested: SimulatorSettings = SimulatorSettings(),
-    ): Result<WorktreeSimulator> = runCatching {
+    ): Result<DeviceStart<WorktreeSimulator>> = runCatching {
         requireIosSimulatorProvider(provisioningSource, simulators, config)
-        val udid = resolveCreating(config.baseRepositoryPath, worktreePath, requested).getOrThrow()
+        val acquisition = acquire.simulator(config.baseRepositoryPath, worktreePath, requested).getOrThrow()
+        val udid = resolveEnvironment(config.baseRepositoryPath, worktreePath, reserve = false).getOrThrow()
             .resources.getValue(IOS_SIMULATOR_KEY)
         val device = simulators.devices().first { it.udid == udid }
         if (device.state == SimulatorState.SHUTDOWN) simulators.boot(udid)
@@ -39,7 +40,7 @@ class StartWorktreeSimulatorUseCase(
             waited += pollIntervalMs
         }
         runCatching { simulators.show(udid) }
-        WorktreeSimulator(udid, device.name, SimulatorState.BOOTED)
+        DeviceStart(WorktreeSimulator(udid, device.name, SimulatorState.BOOTED), acquisition)
     }
 
     companion object {

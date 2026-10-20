@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.machine
 
+import app.luxion.shogunai.ui.theme.Status
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -24,6 +25,7 @@ fun AndroidEmulatorsView(machine: MachineResources, onOpenWorktree: (String, Str
     val strings = LocalStrings.current
     MachineViewFrame(strings.androidEmulatorsTitle) {
         MachineErrorNotice(machine.error, machine::dismissError, machine.errorRetry?.let { { machine.retryError() } })
+        PoolUsageSection(machine, MachineResource.ANDROID_EMULATORS)
         when (val state = machine.worktreeEmulators) {
             MachineLoad.Loading -> InlineProgress()
             MachineLoad.Unavailable -> MachineSecondaryText(strings.gradleDaemonsUnavailable)
@@ -66,7 +68,13 @@ private fun WorktreeEmulatorRow(entry: MachineEmulator, machine: MachineResource
     MachineRowLine {
         MachineDataText(emulatorDeviceLabel(entry, machine.project(entry.projectId), strings), Modifier.weight(1f))
         OwnerCell(ProjectOwner.Owned(entry.projectId, entry.worktreePath), machine::projectName, onOpenWorktree, Modifier.width(MachineOwnerColumnWidth))
-        Box(Modifier.width(MachineStateColumnWidth)) { StatusChip(state.status(), emulatorStateLabel(state, strings)) }
+        Box(Modifier.width(MachineStateColumnWidth)) {
+            if (entry.emulator == null && !isBusy) {
+                StatusChip(Status.NEUTRAL, strings.notAcquired)
+            } else {
+                StatusChip(state.status(), emulatorStateLabel(state, strings))
+            }
+        }
         Row(Modifier.width(MachineActionColumnWidth), horizontalArrangement = Arrangement.End) {
             when {
                 isBusy -> InlineProgress(size = ProgressSize.Small)

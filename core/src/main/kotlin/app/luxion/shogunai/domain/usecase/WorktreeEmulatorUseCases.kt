@@ -16,6 +16,7 @@ import kotlinx.coroutines.delay
 class StartWorktreeEmulatorUseCase(
     private val provisioningSource: RepositoryProvisioningSource,
     private val resolveEnvironment: ResolveWorktreeEnvironmentUseCase,
+    private val acquire: AcquireWorktreeResourceUseCase,
     private val sdk: AndroidSdk,
     private val pause: suspend (Long) -> Unit = { delay(it) },
     private val pollIntervalMs: Long = POLL_INTERVAL_MS,
@@ -26,14 +27,17 @@ class StartWorktreeEmulatorUseCase(
         worktreePath: String,
         avd: String? = null,
         noWindow: Boolean? = null,
-    ): Result<WorktreeEmulator> = runCatching {
+    ): Result<DeviceStart<WorktreeEmulator>> = runCatching {
         val provider = emulatorProvider(provisioningSource, config)
-        val environment = resolveEnvironment(config.baseRepositoryPath, worktreePath).getOrThrow()
+        val location = sdk.locate(config.baseRepositoryPath)
+        val acquisition = acquire.emulator(config.baseRepositoryPath, worktreePath).getOrThrow()
+        val environment = resolveEnvironment(config.baseRepositoryPath, worktreePath, reserve = false).getOrThrow()
         val port = environment.ports.getValue(EMULATOR_PORT_KEY)
         val serial = emulatorSerial(port)
-        val location = sdk.locate(config.baseRepositoryPath)
         val current = sdk.deviceStates(location)[serial]
-        if (current == EmulatorState.RUNNING) return@runCatching WorktreeEmulator(serial, EmulatorState.RUNNING)
+        if (current == EmulatorState.RUNNING) {
+            return@runCatching DeviceStart(WorktreeEmulator(serial, EmulatorState.RUNNING), acquisition)
+        }
         val process = if (current == null) {
             val chosen = chooseAvd(avd, config.emulator, provider.preferredAvd, sdk.listAvds(location))
                 ?: throw WorktreeError.NoAvdAvailable
@@ -50,7 +54,7 @@ class StartWorktreeEmulatorUseCase(
             pause(pollIntervalMs)
             waited += pollIntervalMs
         }
-        WorktreeEmulator(serial, EmulatorState.RUNNING)
+        DeviceStart(WorktreeEmulator(serial, EmulatorState.RUNNING), acquisition)
     }
 
     companion object {

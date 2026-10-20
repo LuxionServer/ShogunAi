@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.luxion.shogunai.MachineUseCases
+import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.DaemonKind
 import app.luxion.shogunai.domain.model.DaemonProcess
 import app.luxion.shogunai.domain.model.DaemonStopReport
@@ -13,14 +14,17 @@ import app.luxion.shogunai.domain.model.DerivedDataListing
 import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleProvider
+import app.luxion.shogunai.domain.model.PoolUsage
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.SimulatorDevice
 import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.usecase.ProjectOwner
+import app.luxion.shogunai.domain.usecase.ResourceAcquisition
 import app.luxion.shogunai.domain.usecase.ProjectWorktreeSet
 import app.luxion.shogunai.domain.usecase.attributeToProjects
 import kotlinx.coroutines.CoroutineScope
@@ -43,7 +47,20 @@ data class MachineProject(
     val compilationCache: Boolean = false,
 )
 
-data class MachineSummary(val count: Int, val bytes: Long? = null, val calculating: Boolean = false)
+data class MachineSummary(
+    val count: Int,
+    val bytes: Long? = null,
+    val poolInUse: Int? = null,
+    val poolLimit: Int? = null,
+    val calculating: Boolean = false,
+)
+
+sealed interface PoolNoticeContent {
+    data class Released(val kind: ResourceKind, val released: String, val forWorktree: String) : PoolNoticeContent
+    data class Trimmed(val count: Int, val limit: Int?) : PoolNoticeContent
+}
+
+data class PoolNotice(val id: Long, val resource: MachineResource, val content: PoolNoticeContent)
 
 sealed interface MachineLoad<out T> {
     data object Loading : MachineLoad<Nothing>
@@ -117,11 +134,44 @@ class MachineResources(
         private set
     var startingDevices by mutableStateOf<Set<String>>(emptySet())
         private set
+    var pools by mutableStateOf<Map<ResourceKind, PoolUsage>>(emptyMap())
+        private set
+    var notices by mutableStateOf<List<PoolNotice>>(emptyList())
+        private set
+    private var nextNoticeId = 0L
     var error by mutableStateOf<Throwable?>(null)
         private set
     var errorRetry by mutableStateOf<(() -> Unit)?>(null)
         private set
     private var errorKey: String? = null
+
+    val profile: CapacityProfile get() = useCases.resourceSettings().profile
+
+    fun poolOf(resource: MachineResource): PoolUsage? = poolKindOf(resource)?.let { pools[it] }
+
+    fun noticesOf(resource: MachineResource): List<PoolNotice> = notices.filter { it.resource == resource }
+
+    fun dismissNotice(id: Long) {
+        notices = notices.filterNot { it.id == id }
+    }
+
+    private fun addNotice(resource: MachineResource, content: PoolNoticeContent) {
+        notices = notices + PoolNotice(nextNoticeId++, resource, content)
+    }
+
+    private fun recordReleases(resource: MachineResource, kind: ResourceKind, worktreePath: String, acquisition: ResourceAcquisition) {
+        acquisition.releases.forEach { release ->
+            addNotice(resource, PoolNoticeContent.Released(kind, release.holderName, worktreePath.substringAfterLast('/')))
+        }
+    }
+
+    private suspend fun loadPool(kind: ResourceKind) {
+        val resource = machineResourceOf(kind)
+        val project = projects().firstOrNull { resource in it.declares } ?: return
+        useCases.readPool(kind, project.project.config, project.worktrees).getOrNull()?.let { usage ->
+            pools = pools + (kind to usage)
+        }
+    }
 
     val declared: Set<MachineResource>
         get() = projects().flatMapTo(mutableSetOf()) { it.declares }
@@ -218,19 +268,31 @@ class MachineResources(
         val resources = declared
         val current = summaries.filterKeys { it in resources }.toMutableMap()
         if (MachineResource.GRADLE_DAEMONS in resources) {
+            trimGradleDaemons()
             useCases.listDaemons().getOrNull()?.let { daemons ->
-                current[MachineResource.GRADLE_DAEMONS] = MachineSummary(daemons.size, daemons.sumOf { it.residentMemoryBytes })
+                loadPool(ResourceKind.GRADLE_DAEMON)
+                val pool = pools[ResourceKind.GRADLE_DAEMON]
+                current[MachineResource.GRADLE_DAEMONS] =
+                    MachineSummary(daemons.size, daemons.sumOf { it.residentMemoryBytes }, pool?.inUse, pool?.effectiveLimit)
             }
         }
         if (MachineResource.ANDROID_EMULATORS in resources) {
             readRunningEmulators()?.let { running ->
-                current[MachineResource.ANDROID_EMULATORS] = MachineSummary(running.count { it.value != EmulatorState.STOPPED })
+                loadPool(ResourceKind.EMULATOR)
+                val pool = pools[ResourceKind.EMULATOR]
+                current[MachineResource.ANDROID_EMULATORS] =
+                    MachineSummary(running.count { it.value != EmulatorState.STOPPED }, poolInUse = pool?.inUse, poolLimit = pool?.effectiveLimit)
             }
         }
         if (MachineResource.IOS_SIMULATORS in resources) {
             readSimulators()?.let { byProject ->
-                current[MachineResource.IOS_SIMULATORS] =
-                    MachineSummary(byProject.values.sumOf { it.values.count { sim -> sim.state == SimulatorState.BOOTED } })
+                loadPool(ResourceKind.IOS_SIMULATOR)
+                val pool = pools[ResourceKind.IOS_SIMULATOR]
+                current[MachineResource.IOS_SIMULATORS] = MachineSummary(
+                    byProject.values.sumOf { it.values.count { sim -> sim.state == SimulatorState.BOOTED } },
+                    poolInUse = pool?.inUse,
+                    poolLimit = pool?.effectiveLimit,
+                )
             }
         }
         if (MachineResource.XCODE_DERIVED_DATA in resources) {
@@ -248,6 +310,11 @@ class MachineResources(
             stopDerivedDataMeasuring()
         }
         summaries = current
+    }
+
+    private suspend fun trimGradleDaemons() {
+        val trim = useCases.trimGradleDaemons(null).getOrNull() ?: return
+        if (trim.stopped.isNotEmpty()) addNotice(MachineResource.GRADLE_DAEMONS, PoolNoticeContent.Trimmed(trim.stopped.size, trim.limit))
     }
 
     private suspend fun runLoader(resource: MachineResource) {
@@ -272,6 +339,7 @@ class MachineResources(
 
     private suspend fun loadDaemons() {
         daemonProcesses = useCases.listDaemons().fold({ MachineLoad.Loaded(it) }, { MachineLoad.Unavailable })
+        loadPool(ResourceKind.GRADLE_DAEMON)
     }
 
     private suspend fun loadEmulators() {
@@ -288,6 +356,7 @@ class MachineResources(
             states.mapValues { (_, byPath) -> byPath.orEmpty() }.filterValues { it.isNotEmpty() },
         )
         runningEmulators = readRunningEmulators() ?: runningEmulators
+        loadPool(ResourceKind.EMULATOR)
     }
 
     private suspend fun readRunningEmulators(): Map<String, EmulatorState>? {
@@ -300,6 +369,7 @@ class MachineResources(
         ownedSimulators = if (owned == null) MachineLoad.Unavailable else MachineLoad.Loaded(owned)
         val declaring = projects().firstOrNull { MachineResource.IOS_SIMULATORS in it.declares } ?: return
         simulatorOrphans = useCases.readSimulatorOrphans(declaring.project.config).getOrNull() ?: simulatorOrphans
+        loadPool(ResourceKind.IOS_SIMULATOR)
     }
 
     private suspend fun readSimulators(): Map<String, Map<String, WorktreeSimulator>>? {
@@ -410,7 +480,9 @@ class MachineResources(
 
     fun startEmulator(projectId: String, worktreePath: String) =
         runDeviceAction(projectId, worktreePath) { config ->
-            useCases.startEmulator(config, worktreePath).also { loadEmulators() }
+            useCases.startEmulator(config, worktreePath)
+                .onSuccess { recordReleases(MachineResource.ANDROID_EMULATORS, ResourceKind.EMULATOR, worktreePath, it.acquisition) }
+                .also { loadEmulators() }
         }
 
     fun stopEmulator(projectId: String, worktreePath: String) =
@@ -420,7 +492,9 @@ class MachineResources(
 
     fun startSimulator(projectId: String, worktreePath: String) =
         runDeviceAction(projectId, worktreePath) { config ->
-            useCases.startSimulator(config, worktreePath).also { loadSimulators() }
+            useCases.startSimulator(config, worktreePath)
+                .onSuccess { recordReleases(MachineResource.IOS_SIMULATORS, ResourceKind.IOS_SIMULATOR, worktreePath, it.acquisition) }
+                .also { loadSimulators() }
         }
 
     fun stopSimulator(projectId: String, worktreePath: String) =
@@ -512,6 +586,19 @@ class MachineResources(
 
         fun deviceKey(projectId: String, worktreePath: String): String = "$projectId:$worktreePath"
     }
+}
+
+fun poolKindOf(resource: MachineResource): ResourceKind? = when (resource) {
+    MachineResource.GRADLE_DAEMONS -> ResourceKind.GRADLE_DAEMON
+    MachineResource.ANDROID_EMULATORS -> ResourceKind.EMULATOR
+    MachineResource.IOS_SIMULATORS -> ResourceKind.IOS_SIMULATOR
+    MachineResource.XCODE_DERIVED_DATA -> null
+}
+
+private fun machineResourceOf(kind: ResourceKind): MachineResource = when (kind) {
+    ResourceKind.GRADLE_DAEMON -> MachineResource.GRADLE_DAEMONS
+    ResourceKind.EMULATOR -> MachineResource.ANDROID_EMULATORS
+    ResourceKind.IOS_SIMULATOR -> MachineResource.IOS_SIMULATORS
 }
 
 private fun <T, R> MachineLoad<T>.map(transform: (T) -> R): MachineLoad<R> = when (this) {

@@ -1,6 +1,8 @@
 package app.luxion.shogunai.ui.i18n
 
 import app.luxion.shogunai.domain.executor.CommandExecutionException
+import app.luxion.shogunai.domain.model.PoolHolderState
+import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
@@ -135,6 +137,11 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "No queda ningún puerto de emulador entre ${error.from} y ${error.to}.",
         "Detén los emuladores de otros worktrees, o elimina worktrees que no uses.",
     )
+    is WorktreeError.ResourcePoolFull -> ErrorTexts(
+        "Se alcanzó el límite de ${error.limit} ${spanishKindName(error.kind)} y ninguno se puede liberar: " +
+            error.holders.joinToString("; ") { "${it.displayName} (${spanishHolderState(it.state)})" } + ".",
+        "Detén uno de ellos, o sube el límite en Preferencias.",
+    )
     is WorktreeError.AndroidSdkNotFound -> ErrorTexts(
         "No se encontró el SDK de Android.",
         "Instala el SDK de Android o define ANDROID_HOME.",
@@ -240,4 +247,21 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "Revisa los detalles técnicos.",
     )
     is WorktreeError.GitCommandFailed -> spanishGitTexts(GitFailureCause.Unknown)
+}
+
+private fun spanishKindName(kind: ResourceKind): String = when (kind) {
+    ResourceKind.EMULATOR -> "emuladores"
+    ResourceKind.IOS_SIMULATOR -> "simuladores de iOS"
+    ResourceKind.GRADLE_DAEMON -> "daemons de Gradle"
+}
+
+private fun spanishHolderState(state: PoolHolderState): String = when (state) {
+    PoolHolderState.STOPPED -> "detenido"
+    PoolHolderState.BOOTING -> "arrancando"
+    PoolHolderState.RUNNING -> "en ejecución"
+    PoolHolderState.SHUTDOWN -> "apagado"
+    PoolHolderState.BOOTED -> "arrancado"
+    PoolHolderState.BUSY -> "ocupado"
+    PoolHolderState.IDLE -> "inactivo"
+    PoolHolderState.UNKNOWN -> "desconocido"
 }

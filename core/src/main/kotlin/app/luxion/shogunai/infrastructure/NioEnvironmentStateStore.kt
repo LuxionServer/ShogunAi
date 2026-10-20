@@ -2,6 +2,7 @@ package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.io.EnvironmentStateStore
 import app.luxion.shogunai.domain.io.PortProbe
+import app.luxion.shogunai.domain.io.WorktreeReservations
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -9,6 +10,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.longOrNull
 import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -48,6 +50,19 @@ class NioEnvironmentStateStore(
 
     override fun writeResources(adminDirectory: String, resources: Map<String, String>) =
         writeField(adminDirectory, RESOURCES_FIELD, resources.mapValues { JsonPrimitive(it.value) })
+
+    override fun readLastUsed(adminDirectory: String): Map<String, Long> {
+        val times = readObject(stateFile(Path.of(adminDirectory)))[LAST_USED_FIELD] as? JsonObject ?: return emptyMap()
+        return times.mapNotNull { (key, value) -> (value as? JsonPrimitive)?.longOrNull?.let { key to it } }.toMap()
+    }
+
+    override fun writeLastUsed(adminDirectory: String, lastUsed: Map<String, Long>) =
+        writeField(adminDirectory, LAST_USED_FIELD, lastUsed.mapValues { JsonPrimitive(it.value) })
+
+    override fun reservationsOnMachine(commonDirectory: String): List<WorktreeReservations> =
+        machineAdminDirectories(commonDirectory).map { admin ->
+            WorktreeReservations(admin, readPorts(admin), readResources(admin), readLastUsed(admin))
+        }
 
     override fun reservedPortsOnMachine(commonDirectory: String): Set<Int> =
         machineAdminDirectories(commonDirectory).flatMap { readPorts(it).values }.toSet()
@@ -132,6 +147,7 @@ class NioEnvironmentStateStore(
         const val LOCK_FILE_NAME = "reservations.lock"
         private const val PORTS_FIELD = "ports"
         private const val RESOURCES_FIELD = "resources"
+        private const val LAST_USED_FIELD = "lastUsed"
         private const val WORKTREES_FIELD = "worktrees"
         private val processLock = ReentrantLock()
     }

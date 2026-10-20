@@ -1,5 +1,7 @@
 package app.luxion.shogunai.ui.machine
 
+import app.luxion.shogunai.domain.model.ResourceSettings
+import app.luxion.shogunai.domain.usecase.GradleTrim
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -49,6 +51,9 @@ class XcodeDerivedDataViewUiTest {
         stopSimulator = { _, _ -> Result.success(null) },
         readSimulatorOrphans = { Result.success(emptyList()) },
         deleteSimulators = { Result.success(it) },
+        readPool = { _, _, _ -> Result.failure(IllegalStateException()) },
+        trimGradleDaemons = { Result.success(GradleTrim(limit = null)) },
+        resourceSettings = { ResourceSettings() },
     )
 
     @Test

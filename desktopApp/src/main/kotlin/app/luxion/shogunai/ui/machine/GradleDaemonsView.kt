@@ -35,6 +35,7 @@ fun GradleDaemonsView(machine: MachineResources, onOpenWorktree: (String, String
     val strings = LocalStrings.current
     MachineViewFrame(strings.gradleDaemonsTitle) {
         MachineErrorNotice(machine.error, machine::dismissError, machine.errorRetry?.let { { machine.retryError() } })
+        PoolUsageSection(machine, MachineResource.GRADLE_DAEMONS)
         when (val state = machine.gradleDaemons) {
             MachineLoad.Loading -> InlineProgress()
             MachineLoad.Unavailable -> MachineSecondaryText(strings.gradleDaemonsUnavailable)
