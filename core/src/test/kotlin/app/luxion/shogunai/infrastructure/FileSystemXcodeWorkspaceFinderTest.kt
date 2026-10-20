@@ -19,7 +19,7 @@ class FileSystemXcodeWorkspaceFinderTest {
     private fun folder(relative: String) = File(root, relative).apply { mkdirs() }
 
     private suspend fun found(maxDepth: Int = 4): String =
-        FileSystemXcodeWorkspaceFinder(maxDepth).find(root.path).removePrefix(root.path).removePrefix("/")
+        FileSystemXcodeWorkspaceFinder(maxDepth).find(root.path).replace(File.separatorChar, '/').removePrefix(root.path.replace(File.separatorChar, '/')).removePrefix("/")
 
     @Test
     fun `prefers a workspace over a project`() = runTest {
