@@ -47,7 +47,7 @@ fun XcodeDerivedDataView(machine: MachineResources, onOpenWorktree: (String, Str
     if (confirmingDelete) {
         val orphans = machine.derivedDataOrphans
         ConfirmDeleteOrphansDialog(
-            message = strings.confirmDeleteDerivedDataOrphans(orphans.size, formatSize(orphans.sumOf { it.sizeBytes })),
+            message = strings.confirmDeleteDerivedDataOrphans(orphans.size, totalSize(orphans.map { it.sizeBytes })?.let(::formatSize)),
             onConfirm = {
                 confirmingDelete = false
                 machine.deleteOrphanedDerivedData()
@@ -65,18 +65,19 @@ private fun LoadedDerivedData(
     onDeleteOrphans: () -> Unit,
 ) {
     val strings = LocalStrings.current
+    val sizeText: (Long?) -> String = { size -> size?.let(::formatSize) ?: strings.calculating }
     val kept = folders.filter { it.owner == MachineDerivedDataOwner.UnavailableVolume }
     val orphans = folders.filter { it.owner == MachineDerivedDataOwner.Orphaned }
     val owned = folders - orphans.toSet()
     if (folders.isEmpty()) MachineSecondaryText(strings.noDerivedData)
     if (folders.isNotEmpty()) {
-        MachineDataText(strings.derivedDataSummary(folders.size, formatSize(folders.sumOf { it.folder.sizeBytes })))
+        MachineDataText(strings.derivedDataSummary(folders.size, sizeText(totalSize(folders.map { it.folder.sizeBytes }))))
     }
     owned.forEach { entry ->
         HorizontalDivider()
         MachineRowLine {
             MachineDataText(entry.folder.workspacePath.substringAfterLast('/'), Modifier.weight(1f))
-            MachineDataText(formatSize(entry.folder.sizeBytes), Modifier.width(80.dp))
+            MachineDataText(sizeText(entry.folder.sizeBytes), Modifier.width(80.dp))
             MachineDataText(
                 entry.folder.lastAccessed?.let { relativeTime(it, Instant.now(), strings) }.orEmpty(),
                 Modifier.width(120.dp),
@@ -94,7 +95,7 @@ private fun LoadedDerivedData(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        MachineDataText(strings.derivedDataOrphans(orphans.size, formatSize(orphans.sumOf { it.folder.sizeBytes })))
+        MachineDataText(strings.derivedDataOrphans(orphans.size, sizeText(totalSize(orphans.map { it.folder.sizeBytes }))))
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (machine.isDeletingDerivedData) InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
             DangerTextButton(onClick = onDeleteOrphans, enabled = !machine.isDeletingDerivedData && orphans.isNotEmpty()) {
@@ -103,5 +104,11 @@ private fun LoadedDerivedData(
         }
     }
     if (kept.isNotEmpty()) MachineSecondaryText(strings.derivedDataOnUnavailableVolumes(kept.size))
-    machine.compilationCacheBytes?.let { MachineDataText(strings.derivedDataCompilationCache(formatSize(it))) }
+    if (machine.isCompilationCacheCalculating) {
+        MachineDataText(strings.derivedDataCompilationCache(strings.calculating))
+    } else {
+        machine.compilationCacheBytes?.let { MachineDataText(strings.derivedDataCompilationCache(formatSize(it))) }
+    }
 }
+
+private fun totalSize(sizes: List<Long?>): Long? = if (sizes.any { it == null }) null else sizes.sumOf { it ?: 0L }

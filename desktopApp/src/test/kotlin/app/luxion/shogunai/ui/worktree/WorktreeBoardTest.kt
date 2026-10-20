@@ -43,6 +43,7 @@ import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.MeasureWorktreeSizeUseCase
 import app.luxion.shogunai.domain.usecase.ReadGitMetadataFingerprintUseCase
 import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
+import app.luxion.shogunai.domain.usecase.DeleteBranchUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.RepairWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
@@ -57,7 +58,9 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import app.luxion.shogunai.HerdrUseCases
 import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.RecentWorktree
 import app.luxion.shogunai.domain.usecase.Activity
 import app.luxion.shogunai.ui.i18n.EnglishStrings
@@ -102,6 +105,7 @@ class WorktreeBoardTest {
     private var agentResult: Result<Map<String, List<RunningAgent>>> = Result.success(emptyMap())
     private var agentGate: CompletableDeferred<Unit>? = null
     private val executed = mutableListOf<List<String>>()
+    private val openedInHerdr = mutableListOf<String>()
     private var divergenceOutput = "2\t0\n"
 
     @BeforeTest
@@ -182,6 +186,7 @@ class WorktreeBoardTest {
             fetchRemote = FetchRemoteUseCase(config, executor),
             resolveStartPoint = { ref -> ResolveStartPointUseCase(executor)(config.baseRepositoryPath, ref) },
             remove = RemoveWorktreeUseCase(config, executor),
+            deleteBranch = DeleteBranchUseCase(config, executor),
             copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, FakeClipboardWriter()),
             repair = RepairWorktreesUseCase(config, executor, files),
             resolveMainBranch = ResolveMainBranchUseCase(config, executor),
@@ -203,6 +208,7 @@ class WorktreeBoardTest {
                 EmulatorUseCases.NONE
             },
             simulator = SimulatorUseCases.NONE,
+            herdr = HerdrUseCases.NONE.copy(open = { target, _ -> openedInHerdr += target.path; Result.success(HerdrOpening.OPENED) }),
             gradle = GradleUseCases(
                 provider = { GradleProvider().takeIf { id in gradleDeclaredFor } },
                 listDaemons = ListGradleDaemonsUseCase(gradleDaemons, FakeFileManager(existing = listOf(base) + worktrees.map { it.first })),
@@ -408,6 +414,35 @@ class WorktreeBoardTest {
         board.updateGrouping(Grouping.BY_STATE)
         board.show(null, GroupedView.ACTIVE)
         assertEquals(Grouping.BY_PROJECT, board.grouping)
+    }
+
+    @Test
+    fun `a project's view groups by state whatever the stored choice is`() = runTest(dispatcher) {
+        val board = board(listOf(api.project))
+        advanceUntilIdle()
+        board.show(null, GroupedView.ALL)
+        board.updateGrouping(Grouping.BY_PROJECT)
+
+        board.show(api.project.id)
+
+        assertTrue(board.isProjectView)
+        assertEquals(Grouping.BY_STATE, board.grouping)
+        assertTrue(board.isGroupedByState)
+    }
+
+    @Test
+    fun `returning to all worktrees keeps its stored grouping`() = runTest(dispatcher) {
+        val board = board(listOf(api.project))
+        advanceUntilIdle()
+        board.show(null, GroupedView.ALL)
+        board.updateGrouping(Grouping.BY_PROJECT)
+        board.show(api.project.id)
+
+        board.show(null, GroupedView.ALL)
+
+        assertFalse(board.isProjectView)
+        assertEquals(Grouping.BY_PROJECT, board.grouping)
+        assertEquals(Grouping.BY_PROJECT, preferences.loadGrouping(GroupedView.ALL))
     }
 
     @Test
@@ -1130,5 +1165,44 @@ class WorktreeBoardTest {
 
         board.deleteSelectedWorktree()
         assertEquals("/home/dev/projects/TASK-123", board.pendingRemoval?.worktreePendingRemoval?.path)
+    }
+
+    @Test
+    fun `opening the selected worktree in Herdr opens it`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.select(WorktreeRef("main-repo", "/home/dev/projects/TASK-123"))
+
+        board.openSelectedInHerdr()
+        advanceUntilIdle()
+
+        assertEquals(listOf("/home/dev/projects/TASK-123"), openedInHerdr)
+    }
+
+    @Test
+    fun `opening in Herdr requires a selection`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+
+        board.openSelectedInHerdr()
+        advanceUntilIdle()
+
+        assertTrue(openedInHerdr.isEmpty())
+    }
+
+    @Test
+    fun `opening the selected worktree in Herdr does nothing while a text field has focus`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.select(WorktreeRef("main-repo", "/home/dev/projects/TASK-123"))
+
+        TextInputFocus.enter()
+        try {
+            board.openSelectedInHerdr()
+            advanceUntilIdle()
+            assertTrue(openedInHerdr.isEmpty())
+        } finally {
+            TextInputFocus.leave()
+        }
     }
 }

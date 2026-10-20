@@ -2,16 +2,29 @@
 
 [English](./README.md) · **Español**
 
-Orquestador de escritorio que automatiza la creación y gestión de **Git worktrees** aislados, con aprovisionamiento automático de secretos locales — pensado para eliminar el cambio de contexto manual cuando trabajas (o un agente de IA como Claude/Copilot trabaja) en varias tareas a la vez.
+Ejecuta varios agentes de IA en paralelo en la misma máquina sin que se pisen entre ellos.
 
-## Qué hace
+Un worktree de Git aísla el código de un agente, pero un agente necesita más que código para trabajar: los ficheros locales que espera la build, sus propios puertos, su propio emulador o simulador, y daemons y cachés de compilación que no choquen con los de su vecino. ShogunAi da a cada worktree todo ese entorno, listo en cuanto arranca el agente.
 
-- Crea y elimina **Git worktrees** aislados para cada tarea, cada uno en su propia rama nueva (`feature/` o `fix/`) o en una rama que ya exista en local.
-- Copia automáticamente a cada worktree nuevo los **archivos locales** que necesita para compilar (p. ej. `local.properties` de Android, ficheros `.env`), según lo que declare un `.shogunai.json` versionado en el repositorio o el `.worktreeinclude` de Claude Code.
-- Gestiona varios proyectos desde un catálogo, cada uno con su propia configuración (repositorio base, carpeta de worktrees, comando del agente).
-- Copia el comando para arrancar tu agente de IA en un worktree (`cd <worktree> && claude`, opcionalmente envuelto con Headroom), listo para pegar en cualquier terminal.
-- Si mueves un repositorio, actualiza su ruta en el proyecto y la app vuelve a enlazar sus worktrees (`git worktree repair`).
-- Incluye el comando `shogun`, para crear, provisionar, consultar y limpiar worktrees desde un terminal, un script o un hook de un agente.
+Tiene dos partes:
+
+- **El comando `shogun` y los hooks**, donde ocurre el trabajo. Claude Code, Codex, Cursor, Herdr o un simple script crean, provisionan y limpian sus worktrees a través de él.
+- **La app de escritorio, una torre de control**, para verlo todo. En todos tus proyectos, muestra qué agente trabaja dónde, cuál te está esperando y el estado de cada worktree, incluidos los que crearon otras herramientas.
+
+## Qué recibe cada agente
+
+- **Su propio worktree y su rama**: una rama `feature/` o `fix/` nueva, o una que ya exista.
+- **Los ficheros locales que necesita para compilar**, como el `local.properties` de Android o los ficheros `.env`, declarados en un `.shogunai.json` versionado en el repositorio o en el `.worktreeinclude` de Claude Code.
+- **Sus propios puertos y variables**, declarados una vez en `.shogunai.json` y entregados a la shell del agente con `shogun env` o el hook de sesión.
+- **Sus propios dispositivos y recursos de compilación acotados**, mediante providers: un emulador Android, un simulador iOS, daemons de Gradle limitados y una caché de compilación de Xcode compartida. Los repositorios que no los necesitan nunca los ven.
+- **Una salida limpia**: los worktrees ya mergeados o desaparecidos se listan y se eliminan con `shogun clean`.
+
+## La torre de control
+
+- Una vista "Activos", de todos tus proyectos, con los worktrees que tienen un agente trabajando, trabajo esperándote o en curso.
+- Un catálogo de proyectos, cada uno con su repositorio base, su carpeta de worktrees y su comando de agente.
+- Un clic para abrir un worktree en la terminal, el IDE, el gestor de archivos o Herdr, o para copiar el comando que arranca tu agente en él.
+- Si mueves un repositorio, actualiza su ruta y la app vuelve a enlazar sus worktrees (`git worktree repair`).
 
 ## Instalación
 
@@ -135,9 +148,11 @@ Un repositorio activa providers en su `.shogunai.json` para dar a cada worktree 
 ```
 
 - **Gradle**: ver y parar los daemons de Gradle y Kotlin que deja cada build de un worktree, y acotar su memoria y su vida.
-- **Emulador de Android**: cada worktree recibe su propio emulador y `ANDROID_SERIAL`, así que los agentes en paralelo no instalan en los dispositivos de los demás.
-- **Simulador de iOS** (macOS): cada worktree recibe su propio simulador e `IOS_SIMULATOR_UDID`, para `xcodebuild` y los tests de KMP.
+- **Emulador de Android**: cada worktree recibe su propio emulador y `ANDROID_SERIAL` la primera vez que lo arranca, así que los agentes en paralelo no instalan en los dispositivos de los demás.
+- **Simulador de iOS** (macOS): cada worktree recibe su propio simulador e `IOS_SIMULATOR_UDID` la primera vez que lo arranca, para `xcodebuild` y los tests de KMP.
 - **Xcode** (macOS): ver y borrar los DerivedData huérfanos, y compartir compilaciones entre worktrees.
+
+Los emuladores, los simuladores y los daemons de Gradle comparten pools de toda la máquina cuyos límites siguen un perfil de capacidad elegido en Preferencias (Automático por defecto, según la memoria y los núcleos de la máquina): cuando un pool está lleno, se libera el dispositivo inactivo usado menos recientemente para dejar sitio.
 
 Cómo configurar cada uno está en [Providers](./docs/guide/providers.es.md). Los repositorios sin un provider no ven nada de esto.
 

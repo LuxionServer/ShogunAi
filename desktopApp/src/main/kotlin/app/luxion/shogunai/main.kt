@@ -1,5 +1,6 @@
 package app.luxion.shogunai
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -11,6 +12,17 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.platform.LocalClipboard
+import app.luxion.shogunai.diagnostics.UiFreezeWatchdog
+import app.luxion.shogunai.diagnostics.copyDiagnosticReport
+import app.luxion.shogunai.diagnostics.diagnosticsExceptionHandler
+import app.luxion.shogunai.diagnostics.installUncaughtExceptionLogging
+import app.luxion.shogunai.domain.io.DiagnosticsLog
+import app.luxion.shogunai.ui.components.LocalDiagnosticsLog
+import app.luxion.shogunai.ui.components.copyText
+import app.luxion.shogunai.ui.shell.rememberAppMessages
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.input.key.key
 import app.luxion.shogunai.ui.components.rememberAppIconPainter
 import androidx.compose.ui.window.Window
@@ -66,6 +78,8 @@ fun main(args: Array<String>) {
 
 private fun openWindow() = application {
     val appContainer = remember { AppContainer() }
+    remember(appContainer) { installDiagnostics(appContainer.diagnosticsLog) }
+    val diagnosticsHandler = remember(appContainer) { diagnosticsExceptionHandler(appContainer.diagnosticsLog) }
     val appearance = remember {
         Appearance(appContainer.themePreferenceRepository, appContainer.languagePreferenceRepository)
     }
@@ -75,7 +89,7 @@ private fun openWindow() = application {
     val openPreferences: () -> Unit = {
         if (preferencesOpen) preferencesFrontRequests++ else preferencesOpen = true
     }
-    val updateScope = rememberCoroutineScope()
+    val updateScope = rememberCoroutineScope { diagnosticsHandler }
     val checkForUpdates: () -> Unit = { updateScope.launch { appContainer.updates.checkNow() } }
     val windowState = rememberRestoredWindowState(appContainer.shellPreferenceRepository)
     val quit = {
@@ -216,6 +230,19 @@ private fun openWindow() = application {
             )
         }
         SideEffect { shellViewModelHolder.value = shellViewModel }
+        val messages = rememberAppMessages()
+        val clipboard = LocalClipboard.current
+        val reportScope = rememberCoroutineScope { diagnosticsHandler }
+        val copiedLabel = appearance.strings.copied
+        val copyDiagnosticReport: () -> Unit = {
+            reportScope.launch {
+                copyDiagnosticReport(
+                    build = { withContext(Dispatchers.IO) { appContainer.diagnosticReport.build() } },
+                    copy = { clipboard.copyText(it) },
+                    confirm = { messages.show(copiedLabel) },
+                )
+            }
+        }
         val worktreeActions = shellViewModel.worktreeActions
         SideEffect { escapeWorktreeView.value = worktreeActions?.onEscape }
         AppMenuBar(
@@ -225,6 +252,7 @@ private fun openWindow() = application {
             onNewWorktree = shellViewModel::requestNewWorktree.takeIf { shellViewModel.canCreateWorktree },
             onFind = worktreeActions?.onFind,
             onCopySelectedLaunchCommand = worktreeActions?.onCopySelectedLaunchCommand,
+            onOpenSelectedInHerdr = worktreeActions?.onOpenSelectedInHerdr,
             onDeleteSelectedWorktree = worktreeActions?.onDeleteSelectedWorktree,
             onClearSelection = worktreeActions?.onClearSelection,
             hasWorktreeSelection = worktreeActions?.hasSelection?.invoke() == true,
@@ -236,20 +264,32 @@ private fun openWindow() = application {
             onToggleSidebar = shellViewModel::toggleSidebar,
             onPreferences = openPreferences,
             onCheckForUpdates = checkForUpdates,
+            onCopyDiagnosticReport = copyDiagnosticReport,
             onAbout = { aboutOpen = true },
             onQuit = requestQuit,
         )
-        AppearanceScope(appearance) {
-            AppShell(appContainer, shellViewModel, openPreferences, onBoardReady = { boardHolder.value = it })
+        CompositionLocalProvider(LocalDiagnosticsLog provides appContainer.diagnosticsLog) {
+            AppearanceScope(appearance) {
+                AppShell(appContainer, shellViewModel, openPreferences, onBoardReady = { boardHolder.value = it }, messages = messages)
+            }
         }
     }
 
     if (preferencesOpen) {
-        PreferencesWindow(appearance, appContainer.tools, appContainer.updates, trayPreferences, preferencesFrontRequests, onClose = { preferencesOpen = false })
+        CompositionLocalProvider(LocalDiagnosticsLog provides appContainer.diagnosticsLog) {
+            PreferencesWindow(appearance, appContainer.tools, appContainer.resources, appContainer.updates, trayPreferences, preferencesFrontRequests, onClose = { preferencesOpen = false })
+        }
     }
     if (aboutOpen) {
         AboutWindow(appearance, onClose = { aboutOpen = false })
     }
+}
+
+private fun installDiagnostics(log: DiagnosticsLog) {
+    installUncaughtExceptionLogging(log)
+    var eventThread: Thread? = null
+    SwingUtilities.invokeLater { eventThread = Thread.currentThread() }
+    UiFreezeWatchdog(log, post = SwingUtilities::invokeLater, uiThread = { eventThread }).start()
 }
 
 private fun runTrayAction(

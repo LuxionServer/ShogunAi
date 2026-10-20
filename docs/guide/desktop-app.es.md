@@ -62,7 +62,7 @@ Agrupada por estado, la cabecera de cada grupo muestra una pista breve junto a s
 - **Copiar comando** copia `cd "<worktree>" && <comando del agente>` para pegarlo en cualquier terminal.
 - **Abrir en Herdr** abre el worktree en [Herdr](../agents.md#herdr) con su entorno y ejecuta allí el comando del agente; si el worktree ya tiene un agente en Herdr, enfoca el panel de ese agente en su lugar.
 - **Abrir en terminal** abre una ventana o pestaña nueva de tu terminal en la carpeta del worktree, con las variables de entorno del worktree y ejecutando el comando del agente; el shell sigue abierto cuando el agente termina. Se admiten Terminal e iTerm2 (macOS), Windows Terminal (Windows), y tmux (3.0 o posterior) y Zellij (macOS y Linux); tmux y Zellij abren una ventana o pestaña nueva en la última sesión que usaste, por lo que solo se ofrecen mientras haya una en marcha. La primera vez, la app pregunta qué terminal usar. En macOS, Terminal e iTerm2 piden tu permiso la primera vez que ShogunAi los controla; si lo rechazas, permítelo en Ajustes del Sistema > Privacidad y seguridad > Automatización.
-- **Abrir en IDE** abre la carpeta del worktree en VS Code, IntelliJ IDEA o Android Studio, según el IDE predeterminado o el elegido para el proyecto.
+- **Abrir en IDE** abre la carpeta del worktree en VS Code, IntelliJ IDEA o Android Studio, o su workspace en Xcode (solo en macOS), según el IDE predeterminado o el elegido para el proyecto. Para Xcode busca un `.xcworkspace` y, si no hay, un `.xcodeproj` en el worktree y sus subcarpetas (p. ej. `iosApp/`), y abre la carpeta si no encuentra ninguno.
 - **Abrir carpeta** muestra la carpeta del worktree en Finder, el Explorador o el gestor de archivos.
 
 Con varios agentes, el detalle del worktree muestra un campo **Agente** y las tres acciones de lanzamiento nombran el agente que usan ("Copiar comando · Codex"). Elige otro agente en el campo, con la flecha junto a cada acción, en el menú contextual del worktree o en la paleta de comandos; lanzar con otro agente lo convierte en el agente del worktree, y sus siguientes lanzamientos continúan con él. La elección se recuerda solo en esta máquina, y elegir el agente predeterminado o quitar del proyecto el elegido vuelve al predeterminado. Los agentes en ejecución se reconocen para cada comando de agente del proyecto.
@@ -71,14 +71,14 @@ Con varios agentes, el detalle del worktree muestra un campo **Agente** y las tr
 
 ## Eliminar y limpiar
 
-- **Eliminar** elimina un worktree, con la opción de borrar también su rama local. El worktree principal no se puede eliminar.
+- **Eliminar** elimina un worktree, con la opción de borrar también su rama local, que solo se borra si está mergeada en la rama principal del proyecto. Si no lo está (por ejemplo tras un squash merge), el worktree se elimina igualmente y un aviso indica que la rama se conservó, con la acción **Borrar la rama igualmente**, que pide confirmación antes. El worktree principal no se puede eliminar.
 - **Limpiar**, junto al título "Worktrees", lista los worktrees mergeados o cuya carpeta ya no existe y los elimina de una vez, con la opción de borrar sus ramas. Según los providers del repositorio, ofrece también parar sus daemons de Gradle ociosos y sus emuladores, y borrar sus simuladores de iOS y los DerivedData de Xcode huérfanos.
 
 Eliminar un worktree abierto en Herdr cierra también su espacio de trabajo de Herdr; los diálogos lo avisan antes.
 
 ## Secciones de los providers
 
-En repositorios que los declaran en `.shogunai.json`, la pantalla de worktrees añade una sección "Daemons de Gradle" y otra "DerivedData de Xcode". Consulta [Providers](providers.md).
+En repositorios que los declaran en `.shogunai.json`, la pantalla de worktrees añade una sección "Daemons de Gradle" y otra "DerivedData de Xcode". Las carpetas de DerivedData se listan enseguida y muestran "Calculando…" en sus tamaños hasta que se miden en segundo plano. Consulta [Providers](providers.md).
 
 ## Preferencias
 
@@ -121,3 +121,9 @@ La app nunca descarga, instala ni ejecuta nada por sí sola. **Omitir esta versi
 **Buscar actualizaciones…** en el menú Ayuda comprueba al instante, sin tener en cuenta el horario ni las versiones omitidas, y te dice si ShogunAi está al día, qué versión hay disponible o por qué falló la comprobación. Las compilaciones de desarrollo no comprueban por su cuenta.
 
 La única petición que la app hace por su cuenta es un `GET` anónimo a `https://api.github.com/repos/LuxionServer/ShogunAi/releases/latest`, que lleva la versión de la app en la cabecera `User-Agent` y nada más. Desactiva **Buscar actualizaciones automáticamente** en Preferencias y la app solo contactará con GitHub cuando elijas **Buscar actualizaciones…**.
+
+## Diagnóstico
+
+La app guarda un registro de diagnóstico local en `~/.shogunai/logs/diagnostics.log` (rota a 1 MB, como mucho tres ficheros). Registra los errores que nada gestionó, los errores mostrados en la app y los bloqueos de la interfaz (cuando deja de responder durante 2 segundos o más, con cuánto duró y qué estaba haciendo). Antes de escribir nada, las rutas absolutas, tu nombre de usuario, los nombres de tus proyectos guardados y las ramas de sus worktrees se sustituyen por marcadores como `<path>` o `<project>`.
+
+**Copiar informe de diagnóstico** en el menú Ayuda copia al portapapeles la versión de la app, tu sistema operativo y arquitectura, el runtime de Java y las entradas más recientes del registro, listo para pegar en un reporte de error. Nunca se envía nada a ningún sitio: el registro se queda en tu máquina y el informe solo llega al portapapeles cuando lo pides.

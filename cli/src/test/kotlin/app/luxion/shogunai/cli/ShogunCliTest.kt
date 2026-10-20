@@ -1,5 +1,9 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.domain.FakeMachineCapacity
+import app.luxion.shogunai.domain.FakeResourceLimitsRepository
+import app.luxion.shogunai.domain.model.CapacityProfile
+import app.luxion.shogunai.domain.model.ResourceSettings
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.BuildInfo
 import app.luxion.shogunai.domain.FakeAndroidSdk
@@ -19,7 +23,10 @@ import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.DaemonState
+import app.luxion.shogunai.domain.model.EnvironmentDeclaration
+import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.HerdrAgent
@@ -45,6 +52,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ShogunCliTest {
+
+    private val resourceLimits = FakeResourceLimitsRepository(ResourceSettings(CapacityProfile.PER_WORKTREE))
 
     private val base = "/home/dev/projects/main-repo"
     private val worktreesRoot = "/home/dev/projects/worktrees"
@@ -139,6 +148,8 @@ class ShogunCliTest {
         androidSdk = androidSdk,
         appleSimulators = appleSimulators,
         kmpTestWiring = kmpTestWiring,
+        resourceLimits = resourceLimits,
+        machineCapacity = FakeMachineCapacity(),
         derivedDataSource = derivedDataSource,
         herdrConfig = FakeHerdrConfigSource(herdrWorktreesRoot),
         workingDirectory = workingDirectory,
@@ -1460,6 +1471,112 @@ class ShogunCliTest {
         }
 
     @Test
+    fun `open in herdr opens the worktree with its environment and the default agent`() {
+        val herdr = FakeHerdrClient()
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(
+                base to RepositoryProvisioning(environment = EnvironmentDeclaration(listOf(parseEnvironmentVariable("APP", "app")))),
+            ),
+        )
+
+        val exitCode = cli(executorWithAdminDirectories(), provisioning = provisioning, herdr = herdr).run(listOf("open", "TASK-1", "--herdr"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("opened $merged in Herdr with Claude\n", out.toString())
+        assertEquals(listOf(Triple(base, merged, "TASK-1")), herdr.opened)
+        assertEquals(listOf(FakeHerdrClient.Split("w1:p1", merged, listOf("APP" to "app"))), herdr.splits)
+        assertEquals(listOf("w1:p2" to "headroom wrap claude"), herdr.ran)
+    }
+
+    @Test
+    fun `open in herdr focuses a worktree herdr already has open`() {
+        val herdr = FakeHerdrClient(alreadyOpen = setOf(merged))
+
+        val exitCode = cli(repositoryExecutor(), herdr = herdr).run(listOf("open", "feature/TASK-1", "--herdr"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("focused $merged in Herdr (already open)\n", out.toString())
+        assertTrue(herdr.ran.isEmpty())
+    }
+
+    @Test
+    fun `open in herdr runs the agent named with --agent`() {
+        val herdr = FakeHerdrClient()
+        val codex = AgentLaunchConfig(name = "Codex", agentCommand = "codex", useHeadroom = false)
+        val withCodex = project.copy(config = project.config.copy(additionalAgents = listOf(codex)))
+
+        val exitCode = cli(repositoryExecutor(), projects = listOf(withCodex), herdr = herdr)
+            .run(listOf("open", "TASK-1", "--herdr", "--agent", "codex"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf("w1:p1" to "codex"), herdr.ran)
+    }
+
+    @Test
+    fun `open in herdr refuses an unknown agent and lists the project's agents`() {
+        val herdr = FakeHerdrClient()
+
+        val exitCode = cli(repositoryExecutor(), herdr = herdr).run(listOf("open", "TASK-1", "--herdr", "--agent", "missing"))
+
+        assertEquals(2, exitCode)
+        assertEquals("shogun: no agent named 'missing'; this project's agents are Claude\n", err.toString())
+        assertTrue(herdr.opened.isEmpty())
+    }
+
+    @Test
+    fun `open in herdr accepts the main worktree`() {
+        val herdr = FakeHerdrClient()
+
+        val exitCode = cli(repositoryExecutor(), herdr = herdr).run(listOf("open", base, "--herdr"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf(Triple(base, base, "main-repo")), herdr.opened)
+    }
+
+    @Test
+    fun `open in herdr prints json`() {
+        val exitCode = cli(repositoryExecutor()).run(listOf("open", "TASK-1", "--herdr", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            Json.parseToJsonElement("""{"path": "$merged", "branch": "feature/TASK-1", "herdr": "opened", "agent": "Claude"}"""),
+            Json.parseToJsonElement(out.toString()),
+        )
+    }
+
+    @Test
+    fun `open in herdr prints a null agent in json when only focused`() {
+        val herdr = FakeHerdrClient(alreadyOpen = setOf(merged))
+
+        cli(repositoryExecutor(), herdr = herdr).run(listOf("open", "TASK-1", "--herdr", "--json"))
+
+        val result = Json.parseToJsonElement(out.toString()).jsonObject
+        assertEquals(JsonPrimitive("focused"), result.getValue("herdr"))
+        assertEquals(JsonNull, result.getValue("agent"))
+    }
+
+    @Test
+    fun `open in herdr fails with an unknown target`() {
+        val herdr = FakeHerdrClient()
+
+        val exitCode = cli(repositoryExecutor(), herdr = herdr).run(listOf("open", "TASK-404", "--herdr"))
+
+        assertEquals(1, exitCode)
+        assertTrue(herdr.opened.isEmpty())
+    }
+
+    @Test
+    fun `open in herdr says when herdr isn't installed`() {
+        val herdr = FakeHerdrClient(failure = WorktreeError.HerdrNotInstalled)
+
+        val exitCode = cli(repositoryExecutor(), herdr = herdr).run(listOf("open", "TASK-1", "--herdr", "--json"))
+
+        assertEquals(1, exitCode)
+        assertEquals("", out.toString())
+        assertTrue(err.contains("https://herdr.dev"), err.toString())
+    }
+
+    @Test
     fun `remove by task id removes a clean worktree, keeps its branch and stops its emulator`() {
         environmentStore.portsByAdminDirectory["$base/.git/worktrees/TASK-1"] = mapOf("emulator" to 5556)
         androidSdk.states["emulator-5556"] = EmulatorState.RUNNING
@@ -1551,6 +1668,33 @@ class ShogunCliTest {
         assertEquals(0, exitCode, err.toString())
         assertEquals("removed $merged\nkept branch feature/TASK-1 (not merged into the main branch)\n", out.toString())
         assertFalse(executor.ran("git", "branch", "-D", "--", "feature/TASK-1"))
+    }
+
+    @Test
+    fun `remove with force-delete-branch deletes a branch that isn't merged`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command.take(2) == listOf("git", "merge-base")) Executor.fail(command) else null
+        }
+
+        val exitCode = cli(executor).run(listOf("remove", "TASK-1", "--force-delete-branch"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("removed $merged\ndeleted branch feature/TASK-1\n", out.toString())
+        assertTrue(executor.ran("git", "branch", "-D", "--", "feature/TASK-1"))
+    }
+
+    @Test
+    fun `remove json says why the branch was kept`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command.take(2) == listOf("git", "merge-base")) Executor.fail(command) else null
+        }
+
+        val exitCode = cli(executor).run(listOf("remove", "TASK-1", "--delete-branch", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = jsonOut()
+        assertEquals(JsonNull, json.getValue("branchDeleted"))
+        assertEquals("not merged into the main branch", (json.getValue("branchKeptReason") as JsonPrimitive).content)
     }
 
     @Test
@@ -2043,7 +2187,7 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         val json = jsonOut()
-        assertEquals(setOf("path", "branch", "branchDeleted", "providers", "failures"), json.keys)
+        assertEquals(setOf("path", "branch", "branchDeleted", "branchKeptReason", "providers", "failures"), json.keys)
         assertEquals(merged, (json.getValue("path") as JsonPrimitive).content)
         assertEquals("feature/TASK-1", (json.getValue("branchDeleted") as JsonPrimitive).content)
         assertEquals(
@@ -2059,6 +2203,7 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals(JsonNull, jsonOut().getValue("branchDeleted"))
+        assertEquals(JsonNull, jsonOut().getValue("branchKeptReason"))
     }
 
     @Test

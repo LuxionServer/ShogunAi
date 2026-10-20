@@ -17,8 +17,9 @@ class DeleteOrphanedDerivedDataUseCase(
         candidates.forEach { folder ->
             if (!source.projectExists(folder.workspacePath)) {
                 try {
+                    val measured = folder.copy(sizeBytes = folder.sizeBytes ?: source.size(folder))
                     source.delete(folder)
-                    deleted += folder
+                    deleted += measured
                 } catch (error: Exception) {
                     failures += DerivedDataDeletionFailure(folder.path, error.message ?: "delete failed")
                 }

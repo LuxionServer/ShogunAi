@@ -31,10 +31,18 @@ internal object CliHelp {
   status [--json]             List the repository's worktrees with their state
 """.trimIndent(),
         "remove" to """
-  remove <task id | path | branch> [--force] [--delete-branch] [--json]
+  remove <task id | path | branch> [--force] [--delete-branch | --force-delete-branch] [--json]
                               Remove one worktree and stop its emulator, simulator and idle Gradle daemons;
                               refused while it has changes or an agent running unless --force;
-                              --delete-branch also deletes its branch when it is merged into the main branch;
+                              --delete-branch also deletes its branch when it is merged into the main branch,
+                              --force-delete-branch deletes it even if it is not merged;
+                              --json prints one JSON object instead of text
+""".trimIndent(),
+        "open" to """
+  open <task id | path | branch> --herdr [--agent <name>] [--json]
+                              Open the worktree in Herdr with its environment and the project's agent
+                              (--agent picks another of the project's agents by name), or focus its
+                              workspace when Herdr already has it open;
                               --json prints one JSON object instead of text
 """.trimIndent(),
         "repair" to """
@@ -55,6 +63,11 @@ internal object CliHelp {
   gradle stop [<pid>...] [--json]
                               Stop idle daemons (all of them, or only the given ones); busy ones are kept
 """.trimIndent(),
+        "pool" to """
+  pool status [--json]        Show the emulator, iOS simulator and Gradle daemon pools: the limit of the
+                              machine's capacity profile, how many are in use and which worktree holds each
+  pool trim [--json]          Stop idle Gradle daemons, longest idle first, until they are within the limit
+""".trimIndent(),
         "xcode" to """
   xcode [--json]              List Xcode DerivedData folders of the worktrees, orphans and compilation cache
   xcode clean [--json]        Delete orphaned Xcode DerivedData folders on the machine
@@ -67,14 +80,17 @@ internal object CliHelp {
 """.trimIndent(),
         "simulator" to """
   simulator start|stop|status [<path>] [--device <type>] [--runtime <runtime>] [--json]
-                              Boot (and wait for), shut down or show the worktree's iOS simulator
+                              Boot (and wait for), shut down or show the worktree's iOS simulator; the first
+                              start creates it, releasing the least recently used idle one if the pool is full
                               (repositories with "providers": { "ios-simulator": {} } in .shogunai.json)
   simulator gradle-init install|uninstall [--yes]
                               Make every project's KMP iOS simulator tests use IOS_SIMULATOR_UDID
 """.trimIndent(),
         "emulator" to """
   emulator start|stop|status [<path>] [--avd <name>] [--no-window] [--json]
-                              Start (and wait for), stop or show the worktree's Android emulator
+                              Start (and wait for), stop or show the worktree's Android emulator; the first
+                              start reserves its console port, releasing the least recently used idle one if
+                              the pool is full
                               (repositories with "providers": { "emulator": {} } in .shogunai.json)
 """.trimIndent(),
         "env" to """

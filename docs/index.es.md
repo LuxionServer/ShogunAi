@@ -1,6 +1,6 @@
 # ShogunAi
 
-Orquestador de escritorio (Kotlin + Compose Multiplatform) para automatizar workflows de desarrollo complejos:
+Ejecuta varios agentes de IA en paralelo en la misma máquina sin que se pisen entre ellos. ShogunAi es un comando `shogun` y una torre de control de escritorio (Kotlin + Compose Multiplatform) que se encargan de:
 
 - Creación y eliminación de **Git worktrees** aislados.
 - Aprovisionamiento de los archivos locales necesarios para compilar (p. ej. `local.properties` de Android), declarados en un `.shogunai.json` versionado en el repositorio o en `.worktreeinclude`.
@@ -9,7 +9,7 @@ Orquestador de escritorio (Kotlin + Compose Multiplatform) para automatizar work
 
 ## Estado del proyecto
 
-En desarrollo activo y publicado como app de escritorio con el comando `shogun` incluido (ver [Instalación](guide/installation.md)). Gestiona un catálogo de proyectos y, para cada uno, crea worktrees desde ramas nuevas o existentes y los provisiona, muestra su estado, origen, tamaño y agentes en ejecución, se actualiza solo y limpia los mergeados. Sus providers añaden emuladores y simuladores por worktree y gestionan los daemons de Gradle y los DerivedData de Xcode, y sus hooks permiten que Claude Code y Herdr creen worktrees a través de él. La interfaz está en inglés y español, con tema claro, oscuro o del sistema. Ver [decisiones de diseño](decisions/index.md) para lo decidido antes de OpenSpec, y `openspec/changes/archive/` para cada cambio desde entonces.
+En desarrollo activo y publicado como app de escritorio con el comando `shogun` incluido (ver [Instalación](guide/installation.md)). Gestiona un catálogo de proyectos y, para cada uno, crea worktrees desde ramas nuevas, existentes o remotas, partiendo de la base que elijas, y los provisiona, muestra su estado, origen, tamaño y agentes en ejecución (con lo que está haciendo cada agente de Herdr), se actualiza solo y limpia los mergeados. Abre un worktree en el terminal, el IDE, el gestor de archivos o Herdr con uno de los agentes del proyecto, lista los worktrees recientes en un icono de la barra de menús o de la bandeja del sistema y avisa cuando sale una versión nueva. Sus providers añaden emuladores y simuladores por worktree y gestionan los daemons de Gradle y los DerivedData de Xcode, sus hooks permiten que Claude Code y Herdr creen worktrees a través de él, y todos los comandos de `shogun` pueden imprimir JSON para scripts. Los comandos post-creación que declara un repositorio solo se ejecutan cuando los apruebas en tu máquina. La interfaz está en inglés y español, con tema claro, oscuro o del sistema. Ver [decisiones de diseño](decisions/index.md) para lo decidido antes de OpenSpec, y `openspec/changes/archive/` para cada cambio desde entonces.
 
 ## Dónde mirar
 

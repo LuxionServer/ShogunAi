@@ -1,0 +1,79 @@
+## MODIFIED Requirements
+
+### Requirement: One simulator per worktree
+For a repository that declares the provider, the system SHALL create a new simulator for a worktree, never cloning an existing one, when the worktree acquires it from the simulator pool the first time its simulator is started, not when its environment is resolved. It SHALL be named `ShogunAi · <repository folder> · <worktree folder>`, its UDID kept with the worktree's reservations, and `IOS_SIMULATOR_UDID=<UDID>` added to the worktree's environment only while the worktree holds it.
+
+#### Scenario: Not created with the worktree
+- **WHEN** a worktree of a repository with the provider is created
+- **THEN** no simulator is created and its environment has no `IOS_SIMULATOR_UDID`
+
+#### Scenario: Created with the environment
+- **WHEN** the user starts the simulator of a worktree `TASK-123` of `main-repo` that holds none and the pool has room, and its environment is then resolved
+- **THEN** a new simulator named `ShogunAi · main-repo · TASK-123` exists and the worktree's environment contains its UDID
+
+#### Scenario: Two worktrees
+- **WHEN** two worktrees start their simulators
+- **THEN** each has its own simulator with a different UDID
+
+#### Scenario: Stable
+- **WHEN** a worktree that holds a simulator resolves its environment or starts it again
+- **THEN** the same simulator and UDID are used
+
+### Requirement: Recreate a lost simulator and honour a declared UDID
+A recorded simulator that no longer exists SHALL be created again the next time the worktree starts its simulator, and SHALL NOT be recreated when the environment is only resolved. A variable named `IOS_SIMULATOR_UDID` declared in `env` SHALL take precedence over the provider's.
+
+#### Scenario: Deleted outside ShogunAi
+- **WHEN** a worktree's simulator was deleted in Xcode and the user starts it again
+- **THEN** a new simulator is created and its UDID replaces the old one
+
+#### Scenario: Deleted and only resolved
+- **WHEN** a worktree's simulator was deleted in Xcode and its environment is resolved
+- **THEN** nothing is created and the environment has no `IOS_SIMULATOR_UDID`
+
+#### Scenario: Declared variable wins
+- **WHEN** `env` declares `IOS_SIMULATOR_UDID`
+- **THEN** the worktree's environment uses the declared value
+
+### Requirement: Boot, shut down and report a worktree's simulator
+Starting SHALL first acquire the worktree's simulator from the simulator pool when it holds none, then boot it and wait until it has finished booting or a timeout passes; starting a booted one SHALL succeed without changes. Every start SHALL record the time as the simulator's last use. Once booted, starting SHALL open Xcode's simulator viewer (the Simulator app, or Device Hub where Xcode no longer ships Simulator) showing that device, best effort: if the window can't be opened, the start still succeeds. Stopping SHALL shut it down, and stopping a shut-down or not acquired one SHALL succeed without changes. The state SHALL be reported as not acquired, shut down, booting or booted.
+
+#### Scenario: Start and wait
+- **WHEN** the user starts a worktree's shut-down simulator
+- **THEN** it boots and the start returns once booting has completed
+
+#### Scenario: Pool full
+- **WHEN** the user starts the simulator of a worktree that holds none and every simulator in the full pool is booted
+- **THEN** no simulator is created and the start fails with the pool's error
+
+#### Scenario: Window shown
+- **WHEN** a worktree's simulator finishes booting after a start
+- **THEN** Xcode's simulator viewer is opened showing that device
+
+#### Scenario: Start of a booted simulator
+- **WHEN** the user starts a worktree's simulator that is already booted
+- **THEN** it isn't booted again and Xcode's simulator viewer is brought up showing it
+
+#### Scenario: Xcode without the Simulator app
+- **WHEN** a simulator boots on a machine whose Xcode ships Device Hub instead of the Simulator app
+- **THEN** Device Hub is opened, listing the worktree's simulator
+
+#### Scenario: Window can't be opened
+- **WHEN** the simulator boots but opening Xcode's simulator viewer fails
+- **THEN** the start succeeds and reports the simulator as booted
+
+#### Scenario: Stop
+- **WHEN** the user stops a booted worktree simulator
+- **THEN** that simulator shuts down and the others keep running
+
+#### Scenario: Not acquired
+- **WHEN** a worktree never started its simulator
+- **THEN** its state is reported as not acquired
+
+## ADDED Requirements
+
+### Requirement: Released simulators are deleted
+When the simulator pool releases a worktree's idle simulator to make room for another worktree, the system SHALL delete that simulator and remove its UDID from the worktree's reservations, so the worktree acquires a new one the next time it starts its simulator.
+
+#### Scenario: Released to make room
+- **WHEN** the simulator limit is 1, `TASK-1` holds a shut-down simulator and the user starts the simulator of `TASK-2`
+- **THEN** `TASK-1`'s simulator is deleted, `TASK-2`'s is created and booted, and `TASK-1`'s environment no longer contains `IOS_SIMULATOR_UDID`

@@ -203,7 +203,8 @@ private fun projectListItems(board: WorktreeBoard): List<ListItem> = board.group
 }
 
 private val ProjectWorktrees.hasNotice: Boolean
-    get() = loadState is ProjectLoadState.Failed || error != null || cleanupIssues != null || herdrCloseFailures.isNotEmpty()
+    get() = loadState is ProjectLoadState.Failed || error != null || cleanupIssues != null || herdrCloseFailures.isNotEmpty() ||
+        keptBranchNotice != null
 
 private val ProjectWorktrees.hasGroupState: Boolean
     get() = loadState !is ProjectLoadState.Loaded || hasNotice
@@ -307,6 +308,11 @@ private fun GroupState(holder: ProjectWorktrees, projectId: String, projectName:
     holder.cleanupIssues?.let { report ->
         Box(Modifier.padding(horizontal = Spacing.md)) {
             CleanupIssues(report, onDismiss = { holder.dismissCleanupIssues() })
+        }
+    }
+    holder.keptBranchNotice?.let { kept ->
+        Box(Modifier.padding(horizontal = Spacing.md)) {
+            KeptBranchNotice(kept, onDelete = { holder.requestForcedBranchDeletion() }, onDismiss = { holder.dismissKeptBranchNotice() })
         }
     }
     if (holder.herdrCloseFailures.isNotEmpty()) {

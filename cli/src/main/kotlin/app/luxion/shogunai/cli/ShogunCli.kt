@@ -12,11 +12,13 @@ import app.luxion.shogunai.domain.io.GradleDaemonSource
 import app.luxion.shogunai.domain.io.HerdrClient
 import app.luxion.shogunai.domain.io.HerdrConfigSource
 import app.luxion.shogunai.domain.io.KmpTestWiring
+import app.luxion.shogunai.domain.io.MachineCapacity
 import app.luxion.shogunai.domain.io.PortProbe
 import app.luxion.shogunai.domain.io.PostCreateApproval
 import app.luxion.shogunai.domain.io.PostCreateDecision
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
+import app.luxion.shogunai.domain.io.ResourceLimitsRepository
 import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.model.ANDROID_SERIAL
 import app.luxion.shogunai.domain.model.AttributedDerivedData
@@ -30,9 +32,13 @@ import app.luxion.shogunai.domain.model.DaemonStopReport
 import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.EmulatorState
+import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.model.IOS_SIMULATOR_UDID
+import app.luxion.shogunai.domain.model.PoolHolder
+import app.luxion.shogunai.domain.model.PoolRelease
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.SimulatorDevice
 import app.luxion.shogunai.domain.model.SimulatorSettings
 import app.luxion.shogunai.domain.model.ProvisionDriftState
@@ -46,6 +52,8 @@ import app.luxion.shogunai.domain.model.WorktreeOrigin
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.model.WorktreeStatus
 import app.luxion.shogunai.domain.model.XcodeProvider
+import app.luxion.shogunai.domain.usecase.AcquireWorktreeResourceUseCase
+import app.luxion.shogunai.domain.usecase.BranchDeletion
 import app.luxion.shogunai.domain.usecase.CheckGradleBuildCacheUseCase
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.CloseHerdrWorkspacesUseCase
@@ -54,19 +62,23 @@ import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.DeleteMergedBranchUseCase
 import app.luxion.shogunai.domain.usecase.DetectRunningAgentsUseCase
 import app.luxion.shogunai.domain.usecase.DeleteOrphanedDerivedDataUseCase
+import app.luxion.shogunai.domain.usecase.DerivedDataMeasure
 import app.luxion.shogunai.domain.usecase.DeleteSimulatorsUseCase
 import app.luxion.shogunai.domain.usecase.EnvironmentFormat
 import app.luxion.shogunai.domain.usecase.ListDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.ListGradleDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.FetchRemoteUseCase
+import app.luxion.shogunai.domain.usecase.findWorktreeTarget
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.MachineProviderContributions
+import app.luxion.shogunai.domain.usecase.OpenWorktreeInHerdrUseCase
 import app.luxion.shogunai.domain.usecase.effectiveGradleJvmArgs
 import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.ProviderContributions
 import app.luxion.shogunai.domain.usecase.CheckProvisionedFilesUseCase
 import app.luxion.shogunai.domain.usecase.ProvisionWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.ReadEmulatorStatesUseCase
+import app.luxion.shogunai.domain.usecase.ReadResourcePoolUseCase
 import app.luxion.shogunai.domain.usecase.ReadSimulatorStatesUseCase
 import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
 import app.luxion.shogunai.domain.usecase.ReleaseWorktreeResourcesUseCase
@@ -77,13 +89,16 @@ import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.herdrDetail
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
 import app.luxion.shogunai.domain.usecase.ResolveRepositoryUseCase
+import app.luxion.shogunai.domain.usecase.ResolveResourceLimitsUseCase
 import app.luxion.shogunai.domain.usecase.ResolveStartPointUseCase
+import app.luxion.shogunai.domain.usecase.ResourceAcquisition
 import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.StartWorktreeEmulatorUseCase
 import app.luxion.shogunai.domain.usecase.StartWorktreeSimulatorUseCase
 import app.luxion.shogunai.domain.usecase.StopGradleDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.StopWorktreeEmulatorUseCase
 import app.luxion.shogunai.domain.usecase.StopWorktreeSimulatorUseCase
+import app.luxion.shogunai.domain.usecase.TrimGradleDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.WriteEnvironmentFileUseCase
 import app.luxion.shogunai.domain.usecase.classifyOrigin
 import app.luxion.shogunai.domain.usecase.formatEnvironment
@@ -122,6 +137,8 @@ class ShogunCli(
     private val androidSdk: AndroidSdk,
     private val appleSimulators: AppleSimulators,
     private val kmpTestWiring: KmpTestWiring,
+    private val resourceLimits: ResourceLimitsRepository,
+    private val machineCapacity: MachineCapacity,
     private val derivedDataSource: DerivedDataSource,
     private val herdrConfig: HerdrConfigSource,
     private val workingDirectory: String,
@@ -151,9 +168,32 @@ class ShogunCli(
     private val listDerivedData = ListDerivedDataUseCase(derivedDataSource)
     private val deleteOrphanedDerivedData = DeleteOrphanedDerivedDataUseCase(derivedDataSource)
     private val resolveEnvironment = resolverWith(contributions)
-    private val startSimulator = StartWorktreeSimulatorUseCase(provisioningSource, appleSimulators, { repository, worktree, requested ->
-        resolverWith(contributions.requesting(requested))(repository, worktree)
-    })
+    private val resolveLimits = ResolveResourceLimitsUseCase(resourceLimits, machineCapacity)
+    private val readPool = ReadResourcePoolUseCase(
+        resolveEnvironment,
+        environmentStateStore,
+        fileManager,
+        androidSdk,
+        appleSimulators,
+        resolveLimits,
+        ListGradleDaemonsUseCase(daemonSource, fileManager),
+    )
+    private val acquireResource = AcquireWorktreeResourceUseCase(
+        provisioningSource,
+        resolveEnvironment,
+        WriteEnvironmentFileUseCase(executor, fileManager, provisioningSource),
+        environmentStateStore,
+        portProbe,
+        appleSimulators,
+        readPool,
+        { requested -> contributions.requesting(requested) },
+    )
+    private val trimGradleDaemons = TrimGradleDaemonsUseCase(
+        ListGradleDaemonsUseCase(daemonSource, fileManager),
+        StopGradleDaemonsUseCase(daemonSource, executor),
+        resolveLimits,
+    )
+    private val startSimulator = StartWorktreeSimulatorUseCase(provisioningSource, appleSimulators, acquireResource, resolveEnvironment)
     private val stopSimulator = StopWorktreeSimulatorUseCase(provisioningSource, appleSimulators, resolveEnvironment)
     private val readSimulatorStates = ReadSimulatorStatesUseCase(provisioningSource, appleSimulators, resolveEnvironment)
     private val deleteSimulators = DeleteSimulatorsUseCase(provisioningSource, appleSimulators, resolveEnvironment)
@@ -168,7 +208,7 @@ class ShogunCli(
         resolveEnvironment,
         WriteEnvironmentFileUseCase(executor, fileManager, provisioningSource),
     )
-    private val startEmulator = StartWorktreeEmulatorUseCase(provisioningSource, resolveEnvironment, androidSdk)
+    private val startEmulator = StartWorktreeEmulatorUseCase(provisioningSource, resolveEnvironment, acquireResource, androidSdk)
     private val stopEmulator = StopWorktreeEmulatorUseCase(provisioningSource, resolveEnvironment, androidSdk)
     private val readEmulatorStates = ReadEmulatorStatesUseCase(provisioningSource, resolveEnvironment, androidSdk)
 
@@ -205,6 +245,7 @@ class ShogunCli(
             is CliCommand.Trust -> trust(command)
             is CliCommand.Remove -> remove(command)
             is CliCommand.Repair -> repair(command)
+            is CliCommand.Open -> open(command)
             is CliCommand.Status -> status(command)
             is CliCommand.Clean -> clean(command)
             CliCommand.HookWorktreeCreate -> hookWorktreeCreate()
@@ -217,6 +258,7 @@ class ShogunCli(
             CliCommand.HookSessionStart -> hookSessionStart()
             CliCommand.HookHerdr -> hookHerdr()
             is CliCommand.GradleStop -> gradleStop(command)
+            is CliCommand.Pool -> pool(command)
             is CliCommand.Xcode -> xcode(command)
             is CliCommand.XcodeClean -> xcodeClean(command)
         }
@@ -455,7 +497,12 @@ class ShogunCli(
             }
         }
         val plan = releaseResources.plan(config, worktree, worktrees)
-        val removal = RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr))(worktree.path, force = command.force)
+        val removal = RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr))(
+            worktree.path,
+            branchToDelete = worktree.branch?.takeIf { command.deleteBranch || command.forceDeleteBranch },
+            force = command.force,
+            forceBranchDeletion = command.forceDeleteBranch,
+        )
             .getOrElse { failure ->
                 if (failure is WorktreeError.GitCommandFailed && classifyGitFailure(failure.errorOutput) == GitFailureCause.LocalChanges) {
                     err.line("shogun: ${worktree.path} has uncommitted or untracked changes; use --force to remove it anyway")
@@ -471,15 +518,11 @@ class ShogunCli(
         released.stoppedSimulators.forEach { say("stopped simulator $it") }
         released.stoppedDaemons.forEach { say("stopped Gradle daemon $it") }
         released.failures.forEach { err.line("shogun: $it") }
-        val branch = worktree.branch?.takeIf { command.deleteBranch }
-        var branchDeleted: String? = null
-        if (branch != null) {
-            if (DeleteMergedBranchUseCase(config, executor)(branch).getOrThrow()) {
-                branchDeleted = branch
-                say("deleted branch $branch")
-            } else {
-                say("kept branch $branch (not merged into the main branch)")
-            }
+        val branch = worktree.branch
+        val branchDeleted = branch?.takeIf { removal.branch == BranchDeletion.Deleted }
+        val branchKeptReason = branch?.let { removal.branch?.keptReason() }
+        if (branch != null && removal.branch != null) {
+            say(if (branchDeleted != null) "deleted branch $branch" else "kept branch $branch ($branchKeptReason)")
         }
         if (command.json) {
             printJson(
@@ -487,6 +530,7 @@ class ShogunCli(
                     worktree.path,
                     worktree.branch,
                     branchDeleted,
+                    branchKeptReason,
                     released.stoppedEmulators,
                     released.stoppedSimulators,
                     released.stoppedDaemons,
@@ -495,6 +539,28 @@ class ShogunCli(
             )
         }
         return if (released.failures.isEmpty()) EXIT_OK else EXIT_FAILURE
+    }
+
+    private suspend fun open(command: CliCommand.Open): Int {
+        val config = configFor(workingDirectory)
+        val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
+        val worktree = findWorktreeTarget(command.target, worktrees, config, ::canonical)
+        val agent = if (command.agent == null) {
+            config.agentLaunchConfig
+        } else {
+            config.agents.firstOrNull { it.displayName.equals(command.agent, ignoreCase = true) } ?: run {
+                err.line("shogun: no agent named '${command.agent}'; this project's agents are ${config.agents.joinToString { it.displayName }}")
+                return EXIT_USAGE
+            }
+        }
+        val opening = OpenWorktreeInHerdrUseCase(config, herdr, resolveEnvironment)(worktree, agent).getOrThrow()
+        val startedAgent = agent.displayName.takeIf { opening == HerdrOpening.OPENED }
+        when {
+            command.json -> printJson(openJson(worktree.path, worktree.branch, opening, startedAgent))
+            startedAgent != null -> out.line("opened ${worktree.path} in Herdr with $startedAgent")
+            else -> out.line("focused ${worktree.path} in Herdr (already open)")
+        }
+        return EXIT_OK
     }
 
     private suspend fun repair(command: CliCommand.Repair): Int {
@@ -547,7 +613,7 @@ class ShogunCli(
         )
         val simulators = if (command.deleteSimulators) simulatorsBeforeCleanup(config, candidates) else SimulatorCleanup()
         val derivedDataOrphans = if (command.deleteDerivedData && derivedDataSource.isSupported() && xcodeProvider(config.baseRepositoryPath) != null) {
-            listDerivedData(worktrees, includeCompilationCache = false)
+            listDerivedData(worktrees, includeCompilationCache = false, measure = DerivedDataMeasure.ORPHANS)
                 .onFailure { err.line("shogun: couldn't list DerivedData: ${it.message}") }
                 .getOrNull()?.orphans.orEmpty()
         } else {
@@ -688,9 +754,13 @@ class ShogunCli(
 
     private suspend fun simulator(command: CliCommand.Simulator): Int {
         val (config, worktree) = configAndWorktreeContaining(absolute(command.path ?: workingDirectory))
+        var acquisition: ResourceAcquisition? = null
         val simulator = when (command.action) {
-            SimulatorAction.START ->
-                startSimulator(config, worktree.path, SimulatorSettings(command.device, command.runtime)).getOrThrow()
+            SimulatorAction.START -> {
+                val started = startSimulator(config, worktree.path, SimulatorSettings(command.device, command.runtime)).getOrThrow()
+                acquisition = started.acquisition
+                started.device
+            }
             SimulatorAction.STOP -> stopSimulator(config, worktree.path).getOrThrow()
             SimulatorAction.STATUS -> {
                 if (provisioningSource.read(config.baseRepositoryPath).providers.iosSimulator == null) {
@@ -700,18 +770,22 @@ class ShogunCli(
                 readSimulatorStates(config, listOf(worktree)).getOrThrow()[worktree.path]
             }
         }
+        acquisition?.releases?.forEach { err.line("released the simulator of ${releasedName(it)} to make room") }
         if (command.json) {
-            printJson(simulatorJson(worktree.path, simulator))
+            printJson(simulatorJson(worktree.path, simulator, acquisition))
             return EXIT_OK
         }
         if (simulator == null) {
-            out.line("No simulator for this worktree yet; 'shogun simulator start' creates and boots one.")
+            out.line("not acquired")
         } else {
             out.line("${simulator.udid} ${simulator.state.name.lowercase()}  ${simulator.name}")
+            if (acquisition?.acquiredNow == true) out.line("export $IOS_SIMULATOR_UDID=${simulator.udid}")
         }
         if (command.action == SimulatorAction.STATUS) printKmpWiring(config)
         return EXIT_OK
     }
+
+    private fun releasedName(release: PoolRelease): String = release.holderName.ifEmpty { "another worktree" }
 
     private fun printKmpWiring(config: ProjectConfig) {
         if (!kmpTestWiring.usesKotlinMultiplatform(config.baseRepositoryPath)) return
@@ -764,9 +838,13 @@ class ShogunCli(
     private suspend fun emulator(command: CliCommand.Emulator): Int {
         val target = absolute(command.path ?: workingDirectory)
         val (config, worktree) = configAndWorktreeContaining(target)
+        var acquisition: ResourceAcquisition? = null
         val emulator = when (command.action) {
-            EmulatorAction.START ->
-                startEmulator(config, worktree.path, command.avd, command.noWindow.takeIf { it }).getOrThrow()
+            EmulatorAction.START -> {
+                val started = startEmulator(config, worktree.path, command.avd, command.noWindow.takeIf { it }).getOrThrow()
+                acquisition = started.acquisition
+                started.device
+            }
             EmulatorAction.STOP -> stopEmulator(config, worktree.path).getOrThrow()
             EmulatorAction.STATUS -> {
                 if (provisioningSource.read(config.baseRepositoryPath).providers.emulator == null) {
@@ -775,17 +853,68 @@ class ShogunCli(
                 readEmulatorStates(config, listOf(worktree)).getOrThrow()[worktree.path]
             }
         }
+        acquisition?.releases?.forEach { err.line("released the emulator of ${releasedName(it)} to make room") }
         if (command.json) {
-            printJson(emulatorJson(worktree.path, emulator))
+            printJson(emulatorJson(worktree.path, emulator, acquisition))
             return EXIT_OK
         }
         if (emulator == null) {
-            out.line("No emulator port reserved for this worktree yet; 'shogun emulator start' reserves one and starts it.")
+            out.line("not acquired")
         } else {
             out.line("${emulator.serial} ${emulator.state.name.lowercase()}")
+            if (acquisition?.acquiredNow == true) out.line("export $ANDROID_SERIAL=${emulator.serial}")
         }
         return EXIT_OK
     }
+
+    private suspend fun pool(command: CliCommand.Pool): Int {
+        val config = configFor(workingDirectory)
+        val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
+        if (command.action == PoolAction.TRIM) return poolTrim(command, worktrees)
+        val usages = listOfNotNull(
+            readPool.emulators(config.baseRepositoryPath),
+            readPool.simulators(config.baseRepositoryPath).takeIf { appleSimulators.isSupported() },
+            readPool.gradleDaemons(worktrees),
+        )
+        if (command.json) {
+            printJson(poolJson(usages))
+            return EXIT_OK
+        }
+        usages.forEach { usage ->
+            val limit = usage.effectiveLimit?.toString() ?: "no limit"
+            out.line("${usage.kind.poolLabel} ${usage.inUse}/$limit${if (usage.isOverLimit) "  over the limit" else ""}")
+            usage.holders.forEach { holder -> out.line("  ${holderLine(holder)}") }
+        }
+        return EXIT_OK
+    }
+
+    private suspend fun poolTrim(command: CliCommand.Pool, worktrees: List<Worktree>): Int {
+        val trim = trimGradleDaemons(worktrees).getOrThrow()
+        if (command.json) {
+            printJson(poolTrimJson(trim))
+            return EXIT_OK
+        }
+        printStopReport(DaemonStopReport(stopped = trim.stopped, kept = trim.kept), saying(false))
+        val limit = trim.limit?.toString() ?: "no limit"
+        out.line("gradle daemons ${trim.remaining}/$limit")
+        return EXIT_OK
+    }
+
+    private fun holderLine(holder: PoolHolder): String {
+        val state = holder.state.name.lowercase()
+        return if (holder.kind == ResourceKind.GRADLE_DAEMON) {
+            "pid ${holder.reference} ${holder.displayName.ifEmpty { "-" }} $state"
+        } else {
+            "${holder.displayName} $state"
+        }
+    }
+
+    private val ResourceKind.poolLabel: String
+        get() = when (this) {
+            ResourceKind.EMULATOR -> "emulators"
+            ResourceKind.IOS_SIMULATOR -> "simulators"
+            ResourceKind.GRADLE_DAEMON -> "gradle daemons"
+        }
 
     private suspend fun daemonsBeforeCleanup(worktrees: List<Worktree>): List<GradleDaemon> =
         ListGradleDaemonsUseCase(daemonSource, fileManager)(worktrees)
@@ -815,28 +944,41 @@ class ShogunCli(
         if (ResolveRepositoryUseCase(executor)(directory).isFailure) return EXIT_OK
         val (repository, worktree) = worktreeContaining(directory)
         val environment = resolveEnvironment(repository, worktree.path).getOrThrow()
-        if (environment.isEmpty) return EXIT_OK
+        val providers = provisioningSource.read(repository).providers
+        val variables = environment.variables.toMap()
+        val emulatorHint = providers.emulator?.let { emulatorContext(variables[ANDROID_SERIAL]) }.orEmpty()
+        val simulatorHint = providers.iosSimulator?.takeIf { appleSimulators.isSupported() }
+            ?.let { simulatorContext(variables[IOS_SIMULATOR_UDID]) }
+            .orEmpty()
+        if (environment.isEmpty && emulatorHint.isEmpty() && simulatorHint.isEmpty()) return EXIT_OK
         environmentVariable(CLAUDE_ENV_FILE)?.takeIf { it.isNotBlank() }?.let { path ->
-            appendToEnvironmentFile(path, formatEnvironment(environment, EnvironmentFormat.SH))
+            if (!environment.isEmpty) appendToEnvironmentFile(path, formatEnvironment(environment, EnvironmentFormat.SH))
         }
-        val variables = environment.variables.joinToString(", ") { (name, value) -> "$name=$value" }
-        val emulatorHint = environment.variables.toMap()[ANDROID_SERIAL]
-            ?.takeIf { provisioningSource.read(repository).providers.emulator != null }
-            ?.let { serial ->
-                ". Its Android emulator is $ANDROID_SERIAL=$serial; start it with 'shogun emulator start' before installing the app or running instrumented tests. " +
-                    "The adb server is shared with other worktrees' agents: never run 'adb kill-server' or 'adb start-server', and don't pass -s, -e or -d to adb, so every command goes to $ANDROID_SERIAL"
-            }
-            .orEmpty()
-        val simulatorHint = environment.variables.toMap()[IOS_SIMULATOR_UDID]
-            ?.takeIf { provisioningSource.read(repository).providers.iosSimulator != null }
-            ?.let { udid ->
-                ". Its iOS simulator is $IOS_SIMULATOR_UDID=$udid; boot it with 'shogun simulator start' and build with " +
-                    "xcodebuild -destination \"id=\$$IOS_SIMULATOR_UDID\""
-            }
-            .orEmpty()
-        out.line("ShogunAi environment of worktree ${folderName(worktree.path)}: $variables$emulatorHint$simulatorHint")
+        val listed = environment.variables.joinToString(", ") { (name, value) -> "$name=$value" }
+        val heading = "ShogunAi environment of worktree ${folderName(worktree.path)}"
+        out.line((if (listed.isEmpty()) heading else "$heading: $listed") + emulatorHint + simulatorHint)
         return EXIT_OK
     }
+
+    private fun emulatorContext(serial: String?): String {
+        val sharedAdb = "The adb server is shared with other worktrees' agents: never run 'adb kill-server' or 'adb start-server', " +
+            "and don't pass -s, -e or -d to adb, so every command goes to $ANDROID_SERIAL"
+        return if (serial != null) {
+            ". Its Android emulator is $ANDROID_SERIAL=$serial; start it with 'shogun emulator start' before installing the app or running instrumented tests. $sharedAdb"
+        } else {
+            ". Its Android emulator isn't acquired yet: 'shogun emulator start' acquires and starts it and prints the $ANDROID_SERIAL to export " +
+                "before installing the app or running instrumented tests. $sharedAdb"
+        }
+    }
+
+    private fun simulatorContext(udid: String?): String =
+        if (udid != null) {
+            ". Its iOS simulator is $IOS_SIMULATOR_UDID=$udid; boot it with 'shogun simulator start' and build with " +
+                "xcodebuild -destination \"id=\$$IOS_SIMULATOR_UDID\""
+        } else {
+            ". Its iOS simulator isn't created yet: 'shogun simulator start' creates and boots it and prints the $IOS_SIMULATOR_UDID to export; " +
+                "then build with xcodebuild -destination \"id=\$$IOS_SIMULATOR_UDID\""
+        }
 
     private suspend fun worktreeContaining(directory: String): Pair<String, Worktree> {
         val (config, worktree) = configAndWorktreeContaining(directory)
@@ -906,17 +1048,17 @@ class ShogunCli(
         }
         val config = configFor(workingDirectory)
         val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
-        val listing = listDerivedData(worktrees, includeCompilationCache = provider.compilationCache).getOrThrow()
+        val listing = listDerivedData(worktrees, includeCompilationCache = provider.compilationCache, measure = DerivedDataMeasure.ALL).getOrThrow()
         if (command.json) {
             printJson(xcodeJson(active = true, listing = listing))
             return EXIT_OK
         }
         listing.ofWorktrees().forEach { item ->
             val worktree = (item.owner as DerivedDataOwner.Worktree).path
-            out.line("$worktree  ${formatMemory(item.folder.sizeBytes)}")
+            out.line("$worktree  ${formatMemory(item.folder.sizeBytes ?: 0L)}")
         }
         val orphans = listing.orphans
-        out.line("orphans: ${orphans.size} (${formatMemory(orphans.sumOf { it.sizeBytes })})")
+        out.line("orphans: ${orphans.size} (${formatMemory(orphans.sumOf { it.sizeBytes ?: 0L })})")
         val unavailableCount = listing.folders.count { it.owner == DerivedDataOwner.UnavailableVolume }
         if (unavailableCount > 0) {
             out.line("folders on unavailable volumes: $unavailableCount")
@@ -1027,15 +1169,13 @@ class ShogunCli(
         val worktree = ListWorktreesUseCase(config, executor)().getOrThrow()
             .firstOrNull { !it.isMain && sameDirectory(it.path, path) }
             ?: throw WorktreeError.NotAWorktree(path)
-        RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr))(worktree.path, force = true)
-            .getOrThrow()
-            .herdrFailure
-            ?.let { err.line(herdrCloseFailure(worktree.path, it)) }
-        worktree.branch?.let { branch ->
-            if (!DeleteMergedBranchUseCase(config, executor)(branch).getOrThrow()) {
-                err.line("shogun: kept branch $branch because it isn't merged into the main branch")
-            }
-        }
+        val removal = RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr))(
+            worktree.path,
+            branchToDelete = worktree.branch,
+            force = true,
+        ).getOrThrow()
+        removal.herdrFailure?.let { err.line(herdrCloseFailure(worktree.path, it)) }
+        reportKeptBranch(worktree.branch, removal.branch)
         return EXIT_OK
     }
 
@@ -1071,10 +1211,13 @@ class ShogunCli(
                 }
         }
         if (project == null || branch == null) return EXIT_OK
-        if (!DeleteMergedBranchUseCase(project.config, executor)(branch).getOrThrow()) {
-            err.line("shogun: kept branch $branch because it isn't merged into the main branch")
-        }
+        reportKeptBranch(branch, DeleteMergedBranchUseCase(project.config, executor).outcome(branch).getOrThrow())
         return EXIT_OK
+    }
+
+    private fun reportKeptBranch(branch: String?, deletion: BranchDeletion?) {
+        val reason = deletion?.keptBecause() ?: return
+        err.line("shogun: kept branch $branch because $reason")
     }
 
     private suspend fun flagOutsideWorktreesRoot(worktree: Worktree, config: ProjectConfig) {

@@ -67,6 +67,21 @@ class EditorOverrideTest {
     }
 
     @Test
+    fun `Xcode can be the project's IDE when it is installed`() = runTest(dispatcher) {
+        val viewModel = viewModel(project(EditorId.XCODE), listOf(EditorId.VS_CODE, EditorId.XCODE))
+
+        assertEquals(EditorId.XCODE, viewModel.editorOverride)
+        assertFalse(viewModel.editorOverrideMissing)
+    }
+
+    @Test
+    fun `an Xcode override is missing on a machine without it`() = runTest(dispatcher) {
+        val viewModel = viewModel(project(EditorId.XCODE), listOf(EditorId.VS_CODE))
+
+        assertTrue(viewModel.editorOverrideMissing)
+    }
+
+    @Test
     fun `the override is saved with the project and reloaded`() = runTest(dispatcher) {
         val viewModel = viewModel(project(), listOf(EditorId.VS_CODE, EditorId.ANDROID_STUDIO))
         viewModel.editorOverride = EditorId.ANDROID_STUDIO

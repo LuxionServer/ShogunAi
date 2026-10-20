@@ -126,7 +126,7 @@ class WorktreeBoard(
         get() = mode == GroupedView.ACTIVE
 
     val grouping: Grouping
-        get() = groupings.getValue(mode)
+        get() = if (isProjectView) Grouping.BY_STATE else groupings.getValue(mode)
 
     val groups: List<WorktreeGroup>
         get() = shownProjects.mapNotNull { project ->
@@ -225,6 +225,9 @@ class WorktreeBoard(
 
     val pendingRemoval: ProjectWorktrees?
         get() = entries.values.firstOrNull { it.holder.worktreePendingRemoval != null }?.holder
+
+    val keptBranchDeletion: ProjectWorktrees?
+        get() = entries.values.firstOrNull { it.holder.isConfirmingForcedBranchDeletion }?.holder
 
     val terminalChoice: ProjectWorktrees?
         get() = entries.values.firstOrNull { it.holder.terminalChoiceFor != null }?.holder
@@ -639,8 +642,13 @@ class WorktreeBoard(
         selectedWorktree?.let { it.holder.copyLaunchCommand(it.worktree) }
     }
 
+    fun openSelectedInHerdr() {
+        if (isCreateDialogOpen || TextInputFocus.isActive) return
+        selectedWorktree?.let { it.holder.openInHerdr(it.worktree) }
+    }
+
     fun deleteSelectedWorktree() {
-        if (isCreateDialogOpen || isCleanupDialogOpen || pendingRemoval != null || terminalChoice != null || TextInputFocus.isActive) return
+        if (isCreateDialogOpen || isCleanupDialogOpen || pendingRemoval != null || keptBranchDeletion != null || terminalChoice != null || TextInputFocus.isActive) return
         selectedWorktree?.takeIf { !it.worktree.isMain }?.let { it.holder.requestRemoval(it.worktree) }
     }
 

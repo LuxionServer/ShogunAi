@@ -17,6 +17,10 @@ The sidebar SHALL show a "Machine" section with an entry for each resource whose
 - **WHEN** no saved project declares any provider
 - **THEN** the sidebar shows no "Machine" section
 
+#### Scenario: DerivedData size still being calculated
+- **WHEN** a saved project declares the Xcode provider and the DerivedData folders are known but their sizes aren't yet
+- **THEN** the DerivedData entry shows the number of folders and a calculating state instead of a size, and the app stays responsive
+
 ### Requirement: Gradle daemons across projects
 The Gradle daemons view SHALL list every Gradle and Kotlin daemon on the machine with its kind, version, process id, memory, state and owner, the total memory, and actions to stop one daemon or every idle one, following the existing stop rules. The result of a stop SHALL stay visible until dismissed.
 
@@ -50,7 +54,7 @@ The Gradle daemons view SHALL state, for each saved project that declares Gradle
 - **THEN** the view states `api`'s 2 GB heap and shows the build cache notice for `main-repo`
 
 ### Requirement: Android emulators across projects
-The Android emulators view SHALL list the emulator of every worktree of the projects that declare the emulator provider, with its project, worktree, serial and state, and Start when stopped or Stop otherwise. A worktree emulator that isn't running SHALL show the AVD it will start instead of a serial. It SHALL also list running emulators that no worktree owns, with a Stop action. Listing SHALL NOT reserve ports or start anything.
+The Android emulators view SHALL list the emulator of every worktree of the projects that declare the emulator provider, with its project, worktree, serial and state, and Start when stopped or not acquired, or Stop otherwise. A worktree emulator that isn't running SHALL show the AVD it will start instead of a serial, and one not acquired SHALL say so. It SHALL also list running emulators that no worktree owns, with a Stop action. Listing SHALL NOT reserve ports or start anything.
 
 #### Scenario: Unowned emulator
 - **WHEN** an emulator started from Android Studio is running and no worktree has its port reserved
@@ -63,6 +67,10 @@ The Android emulators view SHALL list the emulator of every worktree of the proj
 #### Scenario: Stopped worktree emulator
 - **WHEN** a worktree's emulator isn't running and the project uses the AVD `Pixel_8_API_35`
 - **THEN** its row shows `Pixel_8_API_35` instead of "—", or "Automatic" when no AVD is set
+
+#### Scenario: Not acquired
+- **WHEN** a worktree never started its emulator
+- **THEN** its row says it isn't acquired and offers Start, and no port is reserved for it
 
 ### Requirement: iOS simulators across projects
 On macOS, the iOS simulators view SHALL list every simulator whose name starts with `ShogunAi · `, with its project and worktree, state, and Start or Stop. A worktree whose simulator doesn't exist yet SHALL show that it isn't created, with the configured device type when there is one. Orphaned simulators SHALL be listed apart with a "Delete orphans" action that asks for confirmation. Simulators not created by ShogunAi SHALL NOT be listed.
@@ -99,3 +107,51 @@ The Android emulators and iOS simulators views SHALL show a header row labeling 
 #### Scenario: Emulators listed
 - **WHEN** the Android emulators view lists at least one emulator
 - **THEN** a header row labels the device, worktree and state columns above the rows
+
+### Requirement: Pool usage in the machine views
+The Android emulators, iOS simulators and Gradle daemons views SHALL show their pool's usage against its effective limit and the active profile, with a link to Preferences' "Resources" section, and the sidebar summary SHALL include the usage against the limit. When a resource was released or stopped to make room or to stay within the limit, the view SHALL say which one and why until the user dismisses it.
+
+#### Scenario: Usage shown
+- **WHEN** the emulator limit is 2 and one worktree holds an emulator
+- **THEN** the Android emulators view says 1 of 2 in use with the profile's name
+
+#### Scenario: Release reported
+- **WHEN** starting `TASK-2`'s emulator released `TASK-1`'s idle emulator
+- **THEN** the Android emulators view says `TASK-1`'s emulator was released to make room for `TASK-2`
+
+#### Scenario: Over the limit
+- **WHEN** the Gradle limit is 2 and three busy daemons run
+- **THEN** the Gradle daemons view shows 3 of 2 in use, marked as over the limit
+
+### Requirement: DerivedData listed before its sizes
+The DerivedData view SHALL show its folders, their owners and the orphans as soon as the folders are read, without waiting for any size. Each folder whose size isn't known yet, the totals that include it and the compilation cache size SHALL show a calculating state, replaced by the size once computed. The app SHALL stay responsive while sizes are computed.
+
+#### Scenario: Many large folders
+- **WHEN** the user opens the DerivedData view and the location holds 200 folders taking 150 GB
+- **THEN** the 200 folders are listed with their owners before any size is known, each size and total reads as calculating, and the sizes appear as they are computed while the rest of the app keeps responding
+
+#### Scenario: Delete orphans before sizes are known
+- **WHEN** the orphans are listed but their sizes are still being calculated and the user activates "Delete orphans"
+- **THEN** the confirmation names the number of orphans, and their total size once it's known
+
+### Requirement: Cancellable size calculation
+DerivedData sizes SHALL be computed in the background, one folder at a time, and SHALL keep being computed when the user leaves the view so the sidebar summary can show the total. Reloading the view SHALL stop the running calculation and start it over from the folders read again, and the calculation SHALL stop when no saved project declares the Xcode provider anymore.
+
+#### Scenario: Leave the view
+- **WHEN** sizes are still being calculated and the user shows another view
+- **THEN** the calculation goes on without blocking the app, and the sidebar summary shows the total once every size is known
+
+#### Scenario: Reload
+- **WHEN** the user reloads the DerivedData view while sizes are being calculated
+- **THEN** the running calculation stops, the folders are read again and their sizes are calculated from scratch
+
+#### Scenario: Provider no longer declared
+- **WHEN** sizes are being calculated and the only project that declared the Xcode provider is removed
+- **THEN** the calculation stops
+
+### Requirement: Orphans found without measuring every folder
+Looking for orphaned DerivedData in a project's worktree view and before a cleanup SHALL measure only the orphaned folders, not every folder in the DerivedData location.
+
+#### Scenario: Cleanup dialog
+- **WHEN** the user opens the cleanup dialog of an Xcode project and the location holds 200 folders of which 2 are orphaned
+- **THEN** only the 2 orphaned folders are measured to show their total

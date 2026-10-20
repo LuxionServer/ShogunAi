@@ -23,6 +23,11 @@ import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.usecase.ProjectOwner
 import app.luxion.shogunai.ui.components.DangerButton
 import app.luxion.shogunai.ui.components.InlineProgress
+import app.luxion.shogunai.ui.components.LocalErrorFixActions
+import app.luxion.shogunai.ui.components.Notice
+import app.luxion.shogunai.ui.components.NoticeKind
+import app.luxion.shogunai.ui.components.StatusChip
+import app.luxion.shogunai.ui.theme.Status
 import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.interactive
@@ -42,6 +47,33 @@ fun MachineViewFrame(title: String, content: @Composable ColumnScope.() -> Unit)
     ) {
         Text(title, style = MaterialTheme.typography.titleLarge)
         content()
+    }
+}
+
+@Composable
+fun PoolUsageSection(machine: MachineResources, resource: MachineResource) {
+    val strings = LocalStrings.current
+    val usage = machine.poolOf(resource)
+    if (usage != null) {
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+            MachineDataText(strings.poolUsage(usage.inUse, usage.effectiveLimit, strings.profileName(machine.profile)))
+            if (usage.isOverLimit) StatusChip(Status.WARNING, strings.overLimit)
+            LocalErrorFixActions.current?.let { actions ->
+                NeutralTextButton(onClick = actions.openPreferences) {
+                    Text(strings.changeInPreferences, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+    }
+    machine.noticesOf(resource).forEach { notice ->
+        Notice(
+            kind = NoticeKind.INFO,
+            message = when (val content = notice.content) {
+                is PoolNoticeContent.Released -> strings.releasedNotice(content.kind, content.released, content.forWorktree)
+                is PoolNoticeContent.Trimmed -> strings.trimmedNotice(content.count, content.limit)
+            },
+            onDismiss = { machine.dismissNotice(notice.id) },
+        )
     }
 }
 

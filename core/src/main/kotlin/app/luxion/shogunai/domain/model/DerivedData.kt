@@ -5,7 +5,7 @@ import java.time.Instant
 data class DerivedDataFolder(
     val path: String,
     val workspacePath: String,
-    val sizeBytes: Long,
+    val sizeBytes: Long?,
     val lastAccessed: Instant?,
 )
 
@@ -33,5 +33,5 @@ data class DerivedDataDeletion(
     val deleted: List<DerivedDataFolder> = emptyList(),
     val failures: List<DerivedDataDeletionFailure> = emptyList(),
 ) {
-    val bytesFreed: Long get() = deleted.sumOf { it.sizeBytes }
+    val bytesFreed: Long get() = deleted.sumOf { it.sizeBytes ?: 0L }
 }

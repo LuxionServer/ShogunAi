@@ -36,6 +36,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import app.luxion.shogunai.AppContainer
 import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.Project
+import app.luxion.shogunai.diagnostics.diagnosticsExceptionHandler
 import app.luxion.shogunai.ui.components.DangerButton
 import app.luxion.shogunai.ui.isMacOs
 import app.luxion.shogunai.ui.components.FocusRingWidth
@@ -74,9 +75,9 @@ fun AppShell(
     viewModel: ShellViewModel,
     onOpenPreferences: () -> Unit,
     onBoardReady: (WorktreeBoard) -> Unit = {},
+    messages: AppMessages = rememberAppMessages(),
 ) {
     var projectPendingRemoval by remember { mutableStateOf<Project?>(null) }
-    val messages = rememberAppMessages()
     val board = viewModel {
         WorktreeBoard(
             useCasesFor = appContainer::worktreeUseCases,
@@ -88,13 +89,17 @@ fun AppShell(
         )
     }
     SideEffect { onBoardReady(board) }
+    SideEffect {
+        appContainer.loadedBranches = { board.machineProjects.flatMap { it.worktrees.orEmpty() }.mapNotNull { it.branch } }
+    }
     LaunchedEffect(viewModel.projects) { board.syncCatalog(viewModel.projects) }
     viewModel.projects.forEach { project ->
         val holder = board.holder(project.id)
         val loadedPaths = holder?.takeIf { it.hasLoaded && it.listFailure == null }?.worktrees?.mapTo(mutableSetOf()) { it.path }
         LaunchedEffect(project.id, loadedPaths) { loadedPaths?.let { viewModel.pruneRecentWorktrees(project.id, it) } }
     }
-    val machineScope = rememberCoroutineScope()
+    val diagnosticsHandler = remember(appContainer) { diagnosticsExceptionHandler(appContainer.diagnosticsLog) }
+    val machineScope = rememberCoroutineScope { diagnosticsHandler }
     val machine = remember {
         MachineResources(
             scope = machineScope,
@@ -330,6 +335,7 @@ private fun WorktreeView(destination: ShellDestination, shellViewModel: ShellVie
             WorktreeActions(
                 onFind = board::requestFind,
                 onCopySelectedLaunchCommand = board::copySelectedLaunchCommand,
+                onOpenSelectedInHerdr = board::openSelectedInHerdr,
                 onDeleteSelectedWorktree = board::deleteSelectedWorktree,
                 onClearSelection = board::clearSelection,
                 onEscape = board::escape,

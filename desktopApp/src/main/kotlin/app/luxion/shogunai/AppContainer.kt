@@ -2,6 +2,19 @@ package app.luxion.shogunai
 
 import app.luxion.shogunai.BuildInfo
 import app.luxion.shogunai.domain.executor.ClipboardWriter
+import app.luxion.shogunai.domain.io.ResourceLimitsRepository
+import app.luxion.shogunai.domain.model.PoolUsage
+import app.luxion.shogunai.domain.model.ResourceKind
+import app.luxion.shogunai.domain.model.ResourceSettings
+import app.luxion.shogunai.domain.usecase.AcquireWorktreeResourceUseCase
+import app.luxion.shogunai.domain.usecase.DeviceStart
+import app.luxion.shogunai.domain.usecase.GradleTrim
+import app.luxion.shogunai.domain.usecase.ReadResourcePoolUseCase
+import app.luxion.shogunai.domain.usecase.ResolveResourceLimitsUseCase
+import app.luxion.shogunai.domain.usecase.TrimGradleDaemonsUseCase
+import app.luxion.shogunai.infrastructure.JsonResourceLimitsRepository
+import app.luxion.shogunai.infrastructure.JvmMachineCapacity
+import app.luxion.shogunai.ui.shell.ResourcePreferences
 import app.luxion.shogunai.domain.model.HostArchitecture
 import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.usecase.CheckForUpdateUseCase
@@ -39,6 +52,7 @@ import app.luxion.shogunai.ui.shell.ToolsPreferences
 import app.luxion.shogunai.domain.model.DaemonProcess
 import app.luxion.shogunai.domain.model.DaemonStopReport
 import app.luxion.shogunai.domain.model.DerivedDataDeletion
+import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.domain.model.DerivedDataListing
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleProvider
@@ -64,6 +78,10 @@ import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.DeleteOrphanedDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.DeleteSimulatorsUseCase
 import app.luxion.shogunai.domain.usecase.DetectRunningAgentsUseCase
+import app.luxion.shogunai.domain.io.DiagnosticsLog
+import app.luxion.shogunai.domain.usecase.DerivedDataMeasure
+import app.luxion.shogunai.domain.usecase.DiagnosticReport
+import app.luxion.shogunai.domain.usecase.Redactor
 import app.luxion.shogunai.domain.usecase.ListDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.ListGradleDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.FetchRemoteUseCase
@@ -84,6 +102,7 @@ import app.luxion.shogunai.domain.usecase.ProvisionResult
 import app.luxion.shogunai.domain.usecase.ProvisionWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.ReleasedResources
 import app.luxion.shogunai.domain.usecase.ReleaseWorktreeResourcesUseCase
+import app.luxion.shogunai.domain.usecase.DeleteBranchUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.WorktreeResourcePlan
 import app.luxion.shogunai.domain.usecase.RepairWorktreesUseCase
@@ -114,6 +133,7 @@ import app.luxion.shogunai.infrastructure.SharedDeviceStatesAndroidSdk
 import app.luxion.shogunai.infrastructure.MacDerivedDataSource
 import app.luxion.shogunai.infrastructure.NioEnvironmentStateStore
 import app.luxion.shogunai.infrastructure.NioFileManager
+import app.luxion.shogunai.infrastructure.RotatingFileDiagnosticsLog
 import app.luxion.shogunai.infrastructure.ProcessBuilderShellCommandExecutor
 import app.luxion.shogunai.infrastructure.ProcessGradleDaemonSource
 import app.luxion.shogunai.infrastructure.RepositoryProvisioningFiles
@@ -125,6 +145,15 @@ import kotlinx.coroutines.withContext
 
 class AppContainer {
     val projectRepository: ProjectRepository = JsonProjectRepository()
+    var loadedBranches: () -> Collection<String> = { emptyList() }
+    private val redactor = Redactor(
+        home = System.getProperty("user.home").orEmpty(),
+        userName = System.getProperty("user.name").orEmpty(),
+        projectNames = { runCatching { projectRepository.list().map { it.name } }.getOrDefault(emptyList()) },
+        branchNames = { runCatching { loadedBranches() }.getOrDefault(emptyList()) },
+    )
+    val diagnosticsLog: DiagnosticsLog = RotatingFileDiagnosticsLog(redact = redactor::redact)
+    val diagnosticReport = DiagnosticReport(BuildInfo.VERSION, diagnosticsLog)
     private val settingsFile = JsonSettingsFile()
     fun settingsProblem() = settingsFile.lastReadProblem
 
@@ -189,9 +218,6 @@ class AppContainer {
     private val folderLauncher = SystemFolderLauncher(shellCommandExecutor)
     private val environmentCache = WorktreeEnvironmentCache()
     private val resolveEnvironment = resolverWith(contributions)
-    private val startSimulator = StartWorktreeSimulatorUseCase(repositoryProvisioningSource, appleSimulators, { repository, worktree, requested ->
-        resolverWith(contributions.requesting(requested))(repository, worktree)
-    })
     private val stopSimulator = StopWorktreeSimulatorUseCase(repositoryProvisioningSource, appleSimulators, resolveEnvironment)
     private val readSimulatorStates = ReadSimulatorStatesUseCase(repositoryProvisioningSource, appleSimulators, resolveEnvironment)
     private val deleteSimulators = DeleteSimulatorsUseCase(repositoryProvisioningSource, appleSimulators, resolveEnvironment)
@@ -235,7 +261,33 @@ class AppContainer {
     private val androidSdk = SharedDeviceStatesAndroidSdk(LocalAndroidSdk(shellCommandExecutor, fileManager))
     private val herdrConfig = HerdrConfigFile()
     private val herdrClient = CliHerdrClient(shellCommandExecutor)
-    private val startEmulator = StartWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)
+    private val resourceLimitsRepository: ResourceLimitsRepository = JsonResourceLimitsRepository(settingsFile)
+    private val resolveResourceLimits = ResolveResourceLimitsUseCase(resourceLimitsRepository, JvmMachineCapacity())
+    private val listGradleDaemons = ListGradleDaemonsUseCase(gradleDaemonSource, fileManager)
+    private val stopGradleDaemons = StopGradleDaemonsUseCase(gradleDaemonSource, shellCommandExecutor)
+    private val readPool = ReadResourcePoolUseCase(
+        resolveEnvironment,
+        environmentStateStore,
+        fileManager,
+        androidSdk,
+        appleSimulators,
+        resolveResourceLimits,
+        listGradleDaemons,
+    )
+    private val acquireResource = AcquireWorktreeResourceUseCase(
+        repositoryProvisioningSource,
+        resolveEnvironment,
+        WriteEnvironmentFileUseCase(shellCommandExecutor, fileManager, repositoryProvisioningSource),
+        environmentStateStore,
+        portProbe,
+        appleSimulators,
+        readPool,
+        { requested -> contributions.requesting(requested) },
+    )
+    private val trimGradleDaemons = TrimGradleDaemonsUseCase(listGradleDaemons, stopGradleDaemons, resolveResourceLimits)
+    val resources = ResourcePreferences(resourceLimitsRepository, resolveResourceLimits, showsSimulators = appleSimulators.isSupported())
+    private val startSimulator = StartWorktreeSimulatorUseCase(repositoryProvisioningSource, appleSimulators, acquireResource, resolveEnvironment)
+    private val startEmulator = StartWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, acquireResource, androidSdk)
     private val stopEmulator = StopWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)
     private val readEmulatorStates = ReadEmulatorStatesUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)
 
@@ -259,13 +311,20 @@ class AppContainer {
     val machineUseCases = MachineUseCases(
         listDaemons = { runCatching { gradleDaemonSource.list() } },
         stopDaemons = { pids -> StopGradleDaemonsUseCase(gradleDaemonSource, shellCommandExecutor)(pids) },
-        listDerivedData = { includeCompilationCache -> ListDerivedDataUseCase(derivedDataSource)(emptyList(), includeCompilationCache) },
+        listDerivedData = { ListDerivedDataUseCase(derivedDataSource)(emptyList(), includeCompilationCache = false, measure = DerivedDataMeasure.NONE) },
+        measureDerivedData = { folder -> runCatching { derivedDataSource.size(folder) } },
+        measureCompilationCache = { runCatching { derivedDataSource.compilationCacheBytes() } },
         deleteOrphanedDerivedData = { DeleteOrphanedDerivedDataUseCase(derivedDataSource)() },
         readEmulatorStates = { config, worktrees -> readEmulatorStates(config, worktrees) },
         readRunningEmulators = { config ->
             runCatching { androidSdk.deviceStates(androidSdk.locate(config.baseRepositoryPath)) }
         },
         startEmulator = { config, worktreePath -> startEmulator(config, worktreePath) },
+        readPool = { kind, config, worktrees ->
+            runCatching { readPool.of(kind, config.baseRepositoryPath, worktrees) }
+        },
+        trimGradleDaemons = { worktrees -> trimGradleDaemons(worktrees) },
+        resourceSettings = { resources.settings },
         stopEmulator = { config, worktreePath -> stopEmulator(config, worktreePath) },
         stopEmulatorSerials = { config, serials -> runCatching { stopEmulator.stopSerials(config, serials) } },
         readSimulatorStates = { config, worktrees -> readSimulatorStates(config, worktrees) },
@@ -305,6 +364,7 @@ class AppContainer {
         fetchRemote = FetchRemoteUseCase(config, shellCommandExecutor),
         resolveStartPoint = { ref -> ResolveStartPointUseCase(shellCommandExecutor)(config.baseRepositoryPath, ref) },
         remove = RemoveWorktreeUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient)),
+        deleteBranch = DeleteBranchUseCase(config, shellCommandExecutor),
         copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboardWriter),
         agents = AgentUseCases(config, agentChoices),
         repair = RepairWorktreesUseCase(config, shellCommandExecutor, fileManager),
@@ -435,6 +495,7 @@ data class WorktreeUseCases(
     val fetchRemote: FetchRemoteUseCase,
     val resolveStartPoint: suspend (String) -> Result<String>,
     val remove: RemoveWorktreeUseCase,
+    val deleteBranch: DeleteBranchUseCase,
     val copyLaunchCommand: CopyWorktreeLaunchCommandUseCase,
     val repair: RepairWorktreesUseCase,
     val resolveMainBranch: ResolveMainBranchUseCase,
@@ -485,15 +546,20 @@ class ReleaseResourcesUseCases(
 class MachineUseCases(
     val listDaemons: suspend () -> Result<List<DaemonProcess>>,
     val stopDaemons: suspend (List<Long>?) -> Result<DaemonStopReport>,
-    val listDerivedData: suspend (includeCompilationCache: Boolean) -> Result<DerivedDataListing>,
+    val listDerivedData: suspend () -> Result<DerivedDataListing>,
+    val measureDerivedData: suspend (DerivedDataFolder) -> Result<Long>,
+    val measureCompilationCache: suspend () -> Result<Long?>,
     val deleteOrphanedDerivedData: suspend () -> Result<DerivedDataDeletion>,
     val readEmulatorStates: suspend (ProjectConfig, List<Worktree>) -> Result<Map<String, WorktreeEmulator>>,
     val readRunningEmulators: suspend (ProjectConfig) -> Result<Map<String, EmulatorState>>,
-    val startEmulator: suspend (ProjectConfig, String) -> Result<WorktreeEmulator>,
+    val startEmulator: suspend (ProjectConfig, String) -> Result<DeviceStart<WorktreeEmulator>>,
+    val readPool: suspend (ResourceKind, ProjectConfig, List<Worktree>?) -> Result<PoolUsage>,
+    val trimGradleDaemons: suspend (List<Worktree>?) -> Result<GradleTrim>,
+    val resourceSettings: () -> ResourceSettings,
     val stopEmulator: suspend (ProjectConfig, String) -> Result<WorktreeEmulator?>,
     val stopEmulatorSerials: suspend (ProjectConfig, List<String>) -> Result<List<WorktreeEmulator>>,
     val readSimulatorStates: suspend (ProjectConfig, List<Worktree>) -> Result<Map<String, WorktreeSimulator>>,
-    val startSimulator: suspend (ProjectConfig, String) -> Result<WorktreeSimulator>,
+    val startSimulator: suspend (ProjectConfig, String) -> Result<DeviceStart<WorktreeSimulator>>,
     val stopSimulator: suspend (ProjectConfig, String) -> Result<WorktreeSimulator?>,
     val readSimulatorOrphans: suspend (ProjectConfig) -> Result<List<SimulatorDevice>>,
     val deleteSimulators: suspend (List<String>) -> Result<List<String>>,
@@ -502,7 +568,7 @@ class MachineUseCases(
 data class SimulatorUseCases(
     val declared: suspend () -> Boolean,
     val readStates: suspend (List<Worktree>) -> Result<Map<String, WorktreeSimulator>>,
-    val start: suspend (String) -> Result<WorktreeSimulator>,
+    val start: suspend (String) -> Result<DeviceStart<WorktreeSimulator>>,
     val stop: suspend (String) -> Result<WorktreeSimulator?>,
     val orphans: suspend () -> Result<List<SimulatorDevice>>,
     val delete: suspend (List<String>) -> Result<List<String>>,
@@ -580,7 +646,7 @@ interface SimulatorSetup {
 data class EmulatorUseCases(
     val declared: suspend () -> Boolean,
     val readStates: suspend (List<Worktree>) -> Result<Map<String, WorktreeEmulator>>,
-    val start: suspend (String) -> Result<WorktreeEmulator>,
+    val start: suspend (String) -> Result<DeviceStart<WorktreeEmulator>>,
     val stop: suspend (String) -> Result<WorktreeEmulator?>,
     val stopSerials: suspend (List<String>) -> Result<List<WorktreeEmulator>>,
 ) {

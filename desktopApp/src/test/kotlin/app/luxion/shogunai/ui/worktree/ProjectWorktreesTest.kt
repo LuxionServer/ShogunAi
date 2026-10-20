@@ -1,5 +1,10 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.domain.model.PoolRelease
+import app.luxion.shogunai.domain.model.PoolReleaseReason
+import app.luxion.shogunai.domain.model.ResourceKind
+import app.luxion.shogunai.domain.usecase.DeviceStart
+import app.luxion.shogunai.domain.usecase.ResourceAcquisition
 import app.luxion.shogunai.ToolUseCases
 import app.luxion.shogunai.domain.FakeToolDetector
 import app.luxion.shogunai.domain.FakeToolPreferenceRepository
@@ -86,6 +91,7 @@ import app.luxion.shogunai.domain.usecase.ListBranchesUseCase
 import app.luxion.shogunai.domain.usecase.ResolveStartPointUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
+import app.luxion.shogunai.domain.usecase.DeleteBranchUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.RepairWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
@@ -120,6 +126,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -212,6 +219,7 @@ class ProjectWorktreesTest {
             fetchRemote = FetchRemoteUseCase(config, executor),
             resolveStartPoint = { ref -> ResolveStartPointUseCase(executor)(config.baseRepositoryPath, ref) },
             remove = RemoveWorktreeUseCase(config, executor),
+            deleteBranch = DeleteBranchUseCase(config, executor),
             copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboard, windows = false),
             repair = RepairWorktreesUseCase(config, executor, FakeFileManager(existing = listOf(config.baseRepositoryPath))),
             resolveMainBranch = ResolveMainBranchUseCase(config, executor),
@@ -261,6 +269,7 @@ class ProjectWorktreesTest {
         override suspend fun compilationCacheBytes(): Long? = null
         override fun projectExists(workspacePath: String): Boolean = false
         override fun isOnUnavailableVolume(workspacePath: String): Boolean = false
+        override suspend fun size(folder: DerivedDataFolder): Long = 0L
         override suspend fun delete(folder: DerivedDataFolder) {}
     }
 
@@ -595,6 +604,83 @@ class ProjectWorktreesTest {
         assertNull(viewModel.error)
     }
 
+    private fun unmergedBranchResponder(executed: MutableList<List<String>> = mutableListOf()): (List<String>) -> CommandResult = { command ->
+        executed += command
+        when {
+            command == listCommand -> success(command, porcelainOutput)
+            command.getOrNull(1) == "symbolic-ref" -> success(command, stdout = "origin/main\n")
+            command.take(2) == listOf("git", "merge-base") -> failure(command, exitCode = 1, stderr = "")
+            else -> success(command)
+        }
+    }
+
+    @Test
+    fun `removal that keeps an unmerged branch still closes the dialog and keeps a notice`() = runTest(dispatcher) {
+        val executed = mutableListOf<List<String>>()
+        val viewModel = projectWorktrees(useCases(unmergedBranchResponder(executed)))
+        advanceUntilIdle()
+
+        viewModel.remove(worktree, branchToDelete = "feature/TASK-123")
+        advanceUntilIdle()
+
+        assertNull(viewModel.worktreePendingRemoval)
+        assertNull(viewModel.removeError)
+        assertNull(viewModel.error)
+        assertTrue(viewModel.worktrees.none { it.path == worktreePath })
+        assertEquals(ProjectWorktrees.KeptBranchNotice("feature/TASK-123"), viewModel.keptBranchNotice)
+        assertTrue(executed.none { it.take(3) == listOf("git", "branch", "-D") })
+    }
+
+    @Test
+    fun `confirming the forced deletion deletes the kept branch`() = runTest(dispatcher) {
+        val executed = mutableListOf<List<String>>()
+        val viewModel = projectWorktrees(useCases(unmergedBranchResponder(executed)))
+        advanceUntilIdle()
+        viewModel.remove(worktree, branchToDelete = "feature/TASK-123")
+        advanceUntilIdle()
+
+        viewModel.requestForcedBranchDeletion()
+        assertTrue(viewModel.isConfirmingForcedBranchDeletion)
+        viewModel.confirmForcedBranchDeletion()
+        advanceUntilIdle()
+
+        assertTrue(executed.contains(listOf("git", "branch", "-D", "--", "feature/TASK-123")))
+        assertNull(viewModel.keptBranchNotice)
+        assertFalse(viewModel.isConfirmingForcedBranchDeletion)
+        assertEquals(WorktreeSuccess.BranchDeleted("feature/TASK-123"), viewModel.success)
+    }
+
+    @Test
+    fun `cancelling the forced deletion keeps the branch and the notice`() = runTest(dispatcher) {
+        val executed = mutableListOf<List<String>>()
+        val viewModel = projectWorktrees(useCases(unmergedBranchResponder(executed)))
+        advanceUntilIdle()
+        viewModel.remove(worktree, branchToDelete = "feature/TASK-123")
+        advanceUntilIdle()
+
+        viewModel.requestForcedBranchDeletion()
+        viewModel.cancelForcedBranchDeletion()
+        advanceUntilIdle()
+
+        assertFalse(viewModel.isConfirmingForcedBranchDeletion)
+        assertNotNull(viewModel.keptBranchNotice)
+        assertTrue(executed.none { it.take(3) == listOf("git", "branch", "-D") })
+    }
+
+    @Test
+    fun `dismissing the notice leaves the branch`() = runTest(dispatcher) {
+        val executed = mutableListOf<List<String>>()
+        val viewModel = projectWorktrees(useCases(unmergedBranchResponder(executed)))
+        advanceUntilIdle()
+        viewModel.remove(worktree, branchToDelete = "feature/TASK-123")
+        advanceUntilIdle()
+
+        viewModel.dismissKeptBranchNotice()
+
+        assertNull(viewModel.keptBranchNotice)
+        assertTrue(executed.none { it.take(3) == listOf("git", "branch", "-D") })
+    }
+
     @Test
     fun `sets pending removal in force state when remove fails suggesting force`() = runTest(dispatcher) {
         val viewModel = projectWorktrees(
@@ -791,7 +877,7 @@ class ProjectWorktreesTest {
 
         assertNull(viewModel.worktreePendingRemoval)
         assertTrue(viewModel.worktrees.none { it.path == worktreePath })
-        assertTrue(executedCommands.none { it == listOf("git", "branch", "-d", "--", worktree.branch) })
+        assertTrue(executedCommands.none { it == listOf("git", "branch", "-D", "--", worktree.branch) })
     }
 
     @Test
@@ -802,7 +888,7 @@ class ProjectWorktreesTest {
                 executedCommands += command
                 when (command) {
                     listCommand -> success(command, porcelainOutput)
-                    else -> success(command)
+                    else -> if (command.getOrNull(1) == "symbolic-ref") success(command, stdout = "origin/main\n") else success(command)
                 }
             },
         )
@@ -815,7 +901,7 @@ class ProjectWorktreesTest {
 
         assertNull(viewModel.worktreePendingRemoval)
         assertTrue(viewModel.worktrees.none { it.path == worktreePath })
-        assertTrue(executedCommands.any { it == listOf("git", "branch", "-d", "--", worktree.branch) })
+        assertTrue(executedCommands.any { it == listOf("git", "branch", "-D", "--", worktree.branch) })
     }
 
     @Test
@@ -828,7 +914,7 @@ class ProjectWorktreesTest {
                     listCommand -> success(command, porcelainOutput)
                     removeCommand -> failure(command, stderr = "use --force to delete it")
                     forceRemoveCommand -> success(command)
-                    else -> success(command)
+                    else -> if (command.getOrNull(1) == "symbolic-ref") success(command, stdout = "origin/main\n") else success(command)
                 }
             },
         )
@@ -846,7 +932,7 @@ class ProjectWorktreesTest {
         advanceUntilIdle()
 
         assertNull(viewModel.worktreePendingRemoval)
-        assertTrue(executedCommands.any { it == listOf("git", "branch", "-d", "--", worktree.branch) })
+        assertTrue(executedCommands.any { it == listOf("git", "branch", "-D", "--", worktree.branch) })
     }
 
     @Test
@@ -2087,7 +2173,7 @@ class ProjectWorktreesTest {
                 started += path
                 val emulator = WorktreeEmulator("emulator-5554", EmulatorState.RUNNING)
                 states = states + (path to emulator)
-                Result.success(emulator)
+                Result.success(DeviceStart(emulator, ResourceAcquisition(false, emptyList())))
             },
             stop = { path ->
                 stopped += path
@@ -2247,7 +2333,7 @@ class ProjectWorktreesTest {
                 started += path
                 val simulator = WorktreeSimulator("UDID-1", "ShogunAi · main-repo · TASK-123", SimulatorState.BOOTED)
                 states = states + (path to simulator)
-                Result.success(simulator)
+                Result.success(DeviceStart(simulator, ResourceAcquisition(false, emptyList())))
             },
             stop = { path ->
                 stopped += path
@@ -2381,6 +2467,20 @@ class ProjectWorktreesTest {
         assertEquals(listOf(orphan.path), viewModel.derivedDataOrphans.map { it.path })
         assertTrue(viewModel.hasCompilationCache)
         assertEquals(1, source.listings)
+    }
+
+    @Test
+    fun `xcode repositories measure only the orphans`() = runTest(dispatcher) {
+        val project = worktreeProject()
+        val worktreeFolder = FakeDerivedDataSource.derivedData("TASK-123", project, null)
+        val orphan = FakeDerivedDataSource.derivedData("Orphan-1", "/gone/App.xcodeproj", null)
+        val fake = FakeDerivedDataSource(existing = listOf(worktreeFolder, orphan), existingProjects = setOf(project))
+        fake.sizes[orphan.path] = 500_000_000L
+        val viewModel = projectWorktrees(xcodeRepository(listingResponder(), CountingDerivedDataSource(fake)))
+        advanceUntilIdle()
+
+        assertEquals(listOf(orphan.path), fake.measured)
+        assertEquals(listOf(500_000_000L), viewModel.derivedDataOrphans.map { it.sizeBytes })
     }
 
     @Test
@@ -2690,6 +2790,35 @@ class ProjectWorktreesTest {
     }
 
     @Test
+    fun `a start that released another emulator keeps a notice until dismissed`() = runTest(dispatcher) {
+        val release = PoolRelease(ResourceKind.EMULATOR, "/home/dev/other", PoolReleaseReason.MAKE_ROOM, "api · TASK-1")
+        val emulators = EmulatorUseCases(
+            declared = { true },
+            readStates = { Result.success(emptyMap()) },
+            start = {
+                Result.success(
+                    DeviceStart(WorktreeEmulator("emulator-5554", EmulatorState.RUNNING), ResourceAcquisition(true, listOf(release))),
+                )
+            },
+            stop = { Result.success(WorktreeEmulator("emulator-5554", EmulatorState.STOPPED)) },
+            stopSerials = { Result.success(emptyList()) },
+        )
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(emulator = emulators))
+        advanceUntilIdle()
+
+        viewModel.startEmulator(worktree)
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf(ProjectWorktrees.ReleaseNotice(ResourceKind.EMULATOR, "api · TASK-1", worktreePath.substringAfterLast('/'))),
+            viewModel.releaseNotices[worktreePath],
+        )
+
+        viewModel.dismissReleaseNotices(worktreePath)
+        assertNull(viewModel.releaseNotices[worktreePath])
+    }
+
+    @Test
     fun `retrying a failed emulator start repeats it and clears the error on success`() = runTest(dispatcher) {
         var failing = true
         var starts = 0
@@ -2698,7 +2827,11 @@ class ProjectWorktreesTest {
             readStates = { Result.success(emptyMap()) },
             start = {
                 starts++
-                if (failing) Result.failure(IOException("no emulator")) else Result.success(WorktreeEmulator("emulator-5554", EmulatorState.RUNNING))
+                if (failing) {
+                    Result.failure(IOException("no emulator"))
+                } else {
+                    Result.success(DeviceStart(WorktreeEmulator("emulator-5554", EmulatorState.RUNNING), ResourceAcquisition(false, emptyList())))
+                }
             },
             stop = { Result.success(WorktreeEmulator("emulator-5554", EmulatorState.STOPPED)) },
             stopSerials = { Result.success(emptyList()) },

@@ -54,7 +54,7 @@ Android builds install on every connected device unless `ANDROID_SERIAL` names o
 { "providers": { "emulator": { "avd": "Pixel_8_API_35" } } }
 ```
 
-`avd` is optional: the AVD this repository prefers when the machine has it. Each worktree then reserves an emulator port and gets `ANDROID_SERIAL=emulator-<port>` in its environment (`shogun env`, the `SessionStart` hook, `envFile`). Emulators only start when you ask:
+`avd` is optional: the AVD this repository prefers when the machine has it. A worktree reserves an emulator port, and gets `ANDROID_SERIAL=emulator-<port>` in its environment (`shogun env`, the `SessionStart` hook, `envFile`), the first time you start its emulator, not when it is created; `shogun emulator start` prints the `export ANDROID_SERIAL=…` line to run in a shell that started before. Emulators only start when you ask:
 
 ```bash
 shogun emulator start      # start this worktree's emulator (read-only, so one AVD serves every worktree) and wait for it
@@ -75,7 +75,7 @@ Parallel agents on a KMP or iOS project would otherwise share the same simulator
 { "providers": { "ios-simulator": { "device": "iPhone 16", "runtime": "iOS 18.5" } } }
 ```
 
-Both options are optional preferences used when the machine has them. Each worktree gets a new simulator (created, never cloned: about 17 MB, 360 MB once booted) named `ShogunAi · <repository> · <worktree>`, and `IOS_SIMULATOR_UDID` in its environment. Build for it with `xcodebuild -destination "id=$IOS_SIMULATOR_UDID"`.
+Both options are optional preferences used when the machine has them. A worktree gets a new simulator (created, never cloned: about 17 MB, 360 MB once booted) named `ShogunAi · <repository> · <worktree>`, and `IOS_SIMULATOR_UDID` in its environment, the first time you start it. Build for it with `xcodebuild -destination "id=$IOS_SIMULATOR_UDID"`.
 
 ```bash
 shogun simulator start     # create if needed, boot this worktree's simulator and open it (Simulator, or Device Hub in Xcode 27)
@@ -98,6 +98,14 @@ If you'd rather not touch the repository, `shogun simulator gradle-init install`
 - The project configuration also chooses the device type and runtime per machine.
 - "Clean up" (or `shogun clean --delete-simulators`) deletes the simulators of removed worktrees and ShogunAi simulators whose worktree is gone.
 
+## Capacity
+
+Emulators, iOS simulators and Gradle daemons are limited per machine, shared by every repository and worktree. The limits come from the capacity profile in Preferences > Resources and are never read from the repository: **Automatic** (the default, from the machine's memory and cores), **Light** (1 emulator, 1 simulator, 2 Gradle daemons), **Balanced** (2, 2 and 4), **One per worktree** (no limit beyond the 16 emulator ports) or **Custom** (a number or no limit per kind). Both the app and `shogun` apply them.
+
+- When you start a device and its pool is full, the least recently used idle one is released: a stopped emulator loses its port and a shut-down simulator is deleted. Running and booting devices are never released; if none is idle the start fails and names the worktrees that hold them.
+- Gradle daemons are started by your builds, so they can't be refused: the app (every 30 seconds) and `shogun pool trim` stop the idle ones, longest idle first, until they are within the limit.
+- `shogun pool status` shows each pool with its limit and holders, and the machine views of the app show the same with a notice for what was released.
+
 ## Xcode
 
 Xcode keeps one DerivedData folder per project path, so every worktree gets its own (several gigabytes for a real app) and Xcode never removes the folder of a deleted worktree. Turn on the Xcode provider (macOS only):
@@ -106,7 +114,7 @@ Xcode keeps one DerivedData folder per project path, so every worktree gets its 
 { "providers": { "xcode": { "compilationCache": true } } }
 ```
 
-The worktree screen then shows an "Xcode DerivedData" section with each worktree's folder, its size and last access, and the orphaned folders on the machine: those whose project no longer exists, whichever tool created them. "Delete orphans" removes them, and "Clean up" (checked by default) also deletes the orphans after removing worktrees, including the folders of the worktrees it removes.
+The worktree screen then shows an "Xcode DerivedData" section with each worktree's folder, its size and last access, and the orphaned folders on the machine: those whose project no longer exists, whichever tool created them. The folders appear at once; their sizes and the totals read "Calculating…" until each folder has been measured in the background, one at a time, without freezing the app. The calculation goes on if you leave the view (the sidebar entry shows the total once it's ready) and starts over when you reload it. "Delete orphans" removes them, and "Clean up" (checked by default) also deletes the orphans after removing worktrees, including the folders of the worktrees it removes.
 
 Only orphaned folders are ever deleted: never the DerivedData of a project that still exists, never Xcode's shared caches (`CompilationCache.noindex`, `ModuleCache.noindex`, …), and never a folder whose project is on a volume that isn't mounted. ShogunAi finds DerivedData in Xcode's default location or the custom one set in Xcode's preferences.
 

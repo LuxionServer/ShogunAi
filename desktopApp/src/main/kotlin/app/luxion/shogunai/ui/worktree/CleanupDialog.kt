@@ -15,7 +15,9 @@ import app.luxion.shogunai.domain.usecase.CleanupFailure
 import app.luxion.shogunai.domain.usecase.CleanupReport
 import app.luxion.shogunai.domain.usecase.herdrDetail
 import app.luxion.shogunai.ui.components.DangerButton
+import app.luxion.shogunai.ui.components.DangerTextButton
 import app.luxion.shogunai.ui.components.InlineProgress
+import app.luxion.shogunai.ui.components.RecordShownError
 import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.Notice
 import app.luxion.shogunai.ui.components.NoticeKind
@@ -116,7 +118,7 @@ fun CleanupDialog(board: WorktreeBoard) {
                         Text(
                             strings.orphanedDerivedData(
                                 derivedDataOrphans.size,
-                                formatSize(derivedDataOrphans.sumOf { it.sizeBytes }),
+                                formatSize(derivedDataOrphans.sumOf { it.sizeBytes ?: 0L }),
                             ),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -165,6 +167,10 @@ private fun CleanupOption(
 @Composable
 fun CleanupIssues(report: CleanupReport, onDismiss: () -> Unit) {
     val strings = LocalStrings.current
+    report.failures.forEach {
+        val description = strings.describe(it.error)
+        RecordShownError(it.error, description.summary, description.details?.asPlainText())
+    }
     val lines = report.failures.map { strings.cleanupFailed(it.path, strings.describe(it.error).summary) } +
         report.keptBranches.map { strings.branchKept(it) }
     Notice(
@@ -183,5 +189,20 @@ fun HerdrCloseFailures(failures: List<CleanupFailure>, onDismiss: () -> Unit) {
         message = failures.joinToString("\n") { strings.herdrCloseFailed(it.path, it.error.herdrDetail()) },
         onDismiss = onDismiss,
         modifier = Modifier.padding(top = Spacing.sm),
+    )
+}
+
+@Composable
+fun KeptBranchNotice(notice: ProjectWorktrees.KeptBranchNotice, onDelete: () -> Unit, onDismiss: () -> Unit) {
+    val strings = LocalStrings.current
+    Notice(
+        kind = NoticeKind.WARNING,
+        message = notice.failureReason?.let { strings.worktreeRemovedBranchKeptFailed(notice.branch, it) }
+            ?: strings.worktreeRemovedBranchKept(notice.branch),
+        onDismiss = onDismiss,
+        modifier = Modifier.padding(top = Spacing.sm),
+        details = {
+            DangerTextButton(onClick = onDelete) { Text(strings.deleteBranchAnyway) }
+        },
     )
 }

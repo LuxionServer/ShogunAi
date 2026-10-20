@@ -193,9 +193,27 @@ class ParseArgumentsTest {
     }
 
     @Test
+    fun `open takes a target, herdr, an agent and json`() {
+        assertEquals(CliCommand.Open("TASK-123", herdr = true), command("open", "TASK-123", "--herdr"))
+        assertEquals(CliCommand.Open("TASK-123", herdr = true, agent = "codex"), command("open", "--herdr", "--agent", "codex", "TASK-123"))
+        assertEquals(CliCommand.Open("TASK-123", herdr = true, json = true), command("open", "TASK-123", "--herdr", "--json"))
+        assertEquals(CliCommand.CommandHelp("open"), command("open", "--help"))
+    }
+
+    @Test
+    fun `open needs a target and a destination and knows its options`() {
+        assertEquals("'open' needs a task id, path or branch", usageError("open", "--herdr"))
+        assertEquals("'open' needs where to open the worktree: --herdr", usageError("open", "TASK-123"))
+        assertEquals("unknown option '--terminal' for 'open'", usageError("open", "TASK-123", "--terminal"))
+        assertEquals("--agent needs a value", usageError("open", "TASK-123", "--herdr", "--agent"))
+        assertEquals("'open' takes a single target, got 'TASK-1' and 'TASK-2'", usageError("open", "TASK-1", "TASK-2", "--herdr"))
+    }
+
+    @Test
     fun `remove takes a target with force and delete-branch`() {
         assertEquals(CliCommand.Remove("TASK-123"), command("remove", "TASK-123"))
         assertEquals(CliCommand.Remove("TASK-123", force = true, deleteBranch = true), command("remove", "--force", "TASK-123", "--delete-branch"))
+        assertEquals(CliCommand.Remove("TASK-123", forceDeleteBranch = true), command("remove", "TASK-123", "--force-delete-branch"))
         assertEquals(CliCommand.Remove("TASK-123", force = true), command("remove", "-f", "TASK-123"))
     }
 
@@ -237,5 +255,13 @@ class ParseArgumentsTest {
         )
         assertTrue(parseArguments(listOf("simulator", "gradle-init", "install", "--json")) is ParsedArguments.UsageError)
         assertTrue(parseArguments(listOf("version", "--json")) is ParsedArguments.UsageError)
+    }
+
+    @Test
+    fun `pool takes status or trim and accepts json`() {
+        assertEquals(ParsedArguments.Command(CliCommand.Pool(PoolAction.STATUS)), parseArguments(listOf("pool", "status")))
+        assertEquals(ParsedArguments.Command(CliCommand.Pool(PoolAction.TRIM, json = true)), parseArguments(listOf("pool", "trim", "--json")))
+        assertIs<ParsedArguments.UsageError>(parseArguments(listOf("pool")))
+        assertIs<ParsedArguments.UsageError>(parseArguments(listOf("pool", "status", "extra")))
     }
 }

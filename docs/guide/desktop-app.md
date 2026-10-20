@@ -62,7 +62,7 @@ Grouped by state, each group's header shows a short hint next to its title, and 
 - **Copy command** copies `cd "<worktree>" && <agent command>` to paste in any terminal.
 - **Open in Herdr** opens the worktree in [Herdr](../agents.md#herdr) with its environment and runs the agent command there; if the worktree already has an agent in Herdr, it focuses that agent's pane instead.
 - **Open in terminal** opens a new window or tab of your terminal in the worktree's folder, with the worktree's environment variables set, and runs the agent command; the shell stays open when the agent exits. Terminal and iTerm2 (macOS), Windows Terminal (Windows), and tmux (3.0 or later) and Zellij (macOS and Linux) are supported; tmux and Zellij open a new window or tab in the session you used last, so they're only offered while one is running. The first time, the app asks which terminal to use. On macOS, Terminal and iTerm2 ask your permission the first time ShogunAi controls them; if you decline, allow it in System Settings > Privacy & Security > Automation.
-- **Open in IDE** opens the worktree's folder in VS Code, IntelliJ IDEA or Android Studio, whichever is the default IDE or the one chosen for the project.
+- **Open in IDE** opens the worktree's folder in VS Code, IntelliJ IDEA or Android Studio, or its Xcode workspace in Xcode (macOS only), whichever is the default IDE or the one chosen for the project. For Xcode it looks for a `.xcworkspace`, then an `.xcodeproj`, in the worktree and its subfolders (e.g. `iosApp/`), and opens the folder if there is none.
 - **Open folder** shows the worktree's folder in Finder, Explorer or the file manager.
 
 With several agents, the worktree's detail shows an **Agent** field and the three launch actions name the agent they use ("Copy command · Codex"). Pick another agent in the field, or with the arrow next to each action, the worktree's context menu or the command palette; launching with another agent makes it the worktree's agent, and its next launches continue with it. The choice is remembered on this machine only, and choosing the default agent or removing the chosen one from the project goes back to the default. Running agents are recognized for every agent command of the project.
@@ -71,14 +71,14 @@ With several agents, the worktree's detail shows an **Agent** field and the thre
 
 ## Removing and cleaning up
 
-- **Remove** removes one worktree, optionally deleting its local branch. The main worktree can't be removed.
+- **Remove** removes one worktree, optionally deleting its local branch, which is deleted only if it's merged into the project's main branch. If it isn't (for example after a squash merge), the worktree is still removed and a notice says the branch was kept, with a **Delete branch anyway** action that asks for confirmation first. The main worktree can't be removed.
 - **Clean up**, next to the "Worktrees" title, lists the worktrees that are merged or whose folder is gone and removes them in one go, optionally deleting their branches. Depending on the repository's providers it also offers to stop their idle Gradle daemons and their emulators, and to delete their iOS simulators and orphaned Xcode DerivedData.
 
 Removing a worktree that's open in Herdr also closes its Herdr workspace; the dialogs say so beforehand.
 
 ## Provider sections
 
-For repositories that declare them in `.shogunai.json`, the worktree screen adds a "Gradle daemons" section and an "Xcode DerivedData" section. See [Providers](providers.md).
+For repositories that declare them in `.shogunai.json`, the worktree screen adds a "Gradle daemons" section and an "Xcode DerivedData" section. The DerivedData folders are listed right away and show "Calculating…" for their sizes until they are measured in the background. See [Providers](providers.md).
 
 ## Preferences
 
@@ -121,3 +121,9 @@ The app never downloads, installs or runs anything by itself. **Skip this versio
 **Check for Updates…** in the Help menu checks right away, ignoring the schedule and skipped versions, and tells you whether ShogunAi is up to date, which version is available or why the check failed. Development builds don't check on their own.
 
 The only request the app makes on its own is an anonymous `GET` to `https://api.github.com/repos/LuxionServer/ShogunAi/releases/latest`, which carries the app version in its `User-Agent` header and nothing else. Turn **Check for updates automatically** off in Preferences and the app contacts GitHub only when you choose **Check for Updates…**.
+
+## Diagnostics
+
+The app keeps a local diagnostics log in `~/.shogunai/logs/diagnostics.log` (rotated at 1 MB, three files at most). It records errors nothing handled, errors shown in the app and freezes of the interface (when it stops responding for 2 seconds or more, with how long it lasted and what it was doing). Before anything is written, absolute paths, your user name, the names of your saved projects and the branches of their worktrees are replaced by placeholders such as `<path>` or `<project>`.
+
+**Copy Diagnostic Report** in the Help menu copies to the clipboard the app version, your operating system and architecture, the Java runtime and the most recent entries of the log, ready to paste into a bug report. Nothing is ever sent anywhere: the log stays on your machine and the report only reaches the clipboard when you ask for it.
