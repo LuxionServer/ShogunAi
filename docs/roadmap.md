@@ -4,7 +4,7 @@ Ideas accepted for ShogunAi's future, in priority order. This page is a directio
 
 ## Direction
 
-ShogunAi is evolving from a desktop app that creates worktrees into **the worktree layer for any AI agent**: it prepares each worktree so it's ready to build, and gives you an overview of all of them, whoever created them. It doesn't embed terminals or run agents itself; Claude, Codex or any other agent keeps doing that, inside the worktrees ShogunAi prepares and oversees.
+ShogunAi is evolving from a desktop app that creates worktrees into **the environment layer for AI agents working in parallel on one machine**: it gives each worktree everything its agent needs to build and run without colliding with the others, and gives you an overview of all of them, whoever created them. It doesn't embed terminals or run agents itself; Claude, Codex or any other agent keeps doing that, inside the worktrees ShogunAi prepares and oversees.
 
 That direction is built in three layers:
 
@@ -12,7 +12,7 @@ That direction is built in three layers:
 |---|---|---|
 | **Engine and CLI** | The foundation | Worktree provisioning defined in the repository (`.shogunai.json`) and a `shogun` command that the desktop app, agents and their hooks all use, including a per-worktree environment (reserved ports and variables) delivered to each agent's shell, and JSON output on every command for scripts. **Available.** |
 | **Control tower** | The view | The desktop app shows the state of every worktree, including the ones created by other tools, keeps them clean and follows changes as they happen. It opens each one in the terminal, the IDE or Herdr with the project's agents, and stays one click away in the menu bar. **Available.** |
-| **Android, KMP and JVM** | The content | Provisioning for the stacks where a worktree is hardest to prepare: Gradle, local secrets, emulators and IDEs. **Started**: Gradle repositories show their daemons, can stop the idle ones and bound the memory and lifetime of the daemons agents start, Android repositories can give each worktree its own emulator, KMP and iOS repositories its own iOS simulator, both acquired on demand within limits that follow a machine capacity profile, and Xcode repositories see and clean up their DerivedData and share compilations between worktrees. |
+| **Platforms** | The content | Providers for the stacks where a worktree is hardest to prepare, starting with Android, KMP, iOS and JVM: Gradle, local secrets, emulators, simulators and IDEs. **Started**: Gradle repositories show their daemons, can stop the idle ones and bound the memory and lifetime of the daemons agents start, Android repositories can give each worktree its own emulator, KMP and iOS repositories its own iOS simulator, both acquired on demand within limits that follow a machine capacity profile, and Xcode repositories see and clean up their DerivedData and share compilations between worktrees. |
 
 It plugs into the tools that run agents rather than replacing them: Claude Code's worktree and session hooks, and [Herdr](https://herdr.dev), the terminal multiplexer for agents, whose worktrees a ShogunAi plugin provisions and where the desktop app opens a worktree with its environment and agent and shows what each agent is doing. **Available.**
 
@@ -30,7 +30,7 @@ The current groups don't tell apart what matters: a worktree with an agent hides
 
 ### 3. Platforms and IDEs beyond Android
 
-The project grew around Android. This item reviews the coverage of the other stacks (iOS and Xcode, JVM backends) and of the IDEs a worktree can be opened in, and reframes the third layer as platforms instead of Android, KMP and JVM. It starts with an exploration to decide what's missing before it's split into changes.
+The project grew around Android. This item reviews the coverage of the other stacks (iOS and Xcode, JVM backends) and of the IDEs a worktree can be opened in. It starts with an exploration to decide what's missing before it's split into changes.
 
 ### 4. Follow-ups of the 2026-10-19 changes
 

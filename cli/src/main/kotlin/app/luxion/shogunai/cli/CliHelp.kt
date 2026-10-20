@@ -38,6 +38,13 @@ internal object CliHelp {
                               --force-delete-branch deletes it even if it is not merged;
                               --json prints one JSON object instead of text
 """.trimIndent(),
+        "open" to """
+  open <task id | path | branch> --herdr [--agent <name>] [--json]
+                              Open the worktree in Herdr with its environment and the project's agent
+                              (--agent picks another of the project's agents by name), or focus its
+                              workspace when Herdr already has it open;
+                              --json prints one JSON object instead of text
+""".trimIndent(),
         "repair" to """
   repair [--json]             Re-link the worktrees after the repository or the worktrees folder moved
 """.trimIndent(),

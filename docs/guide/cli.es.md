@@ -10,6 +10,7 @@ shogun status                      # todos los worktrees con sus cambios, diverg
 shogun status --json               # lo mismo, como un documento JSON para scripts
 shogun remove TASK-123             # elimina un worktree y para su emulador y simulador
 shogun repair                      # re-enlaza los worktrees tras mover el repositorio
+shogun open TASK-123 --herdr       # abre un worktree en Herdr con su entorno y el agente del proyecto
 shogun clean --yes                 # elimina los worktrees mergeados o sin carpeta (sin --yes solo los lista)
 eval "$(shogun env)"               # carga las variables de este worktree desde "env" en .shogunai.json
 ```
@@ -156,6 +157,16 @@ shogun repair
 
 Vuelve a enlazar los worktrees tras mover el repositorio o la carpeta de worktrees, como hace la app de escritorio al cambiar las carpetas de un proyecto: los worktrees que Git aún lista en su ubicación antigua se buscan en la carpeta de worktrees del proyecto, por el nombre de su carpeta, y se re-enlazan (`repaired <ruta>`). Si no hay nada que re-enlazar imprime `Nothing to repair.` Necesita el proyecto del repositorio en la app de escritorio, porque ahí se guarda la carpeta de worktrees; sin él, termina con `2`.
 
+### `open`
+
+```text
+shogun open <id de tarea | ruta | rama> --herdr [--agent <nombre>]
+```
+
+Abre un worktree en [Herdr](https://herdr.dev) como lo hace "Abrir en Herdr" en la app de escritorio: un espacio de trabajo enfocado bajo el espacio del repositorio, una shell con el entorno del worktree (lo que imprime `shogun env`) y el comando de lanzamiento del agente del proyecto ejecutándose en ella (`opened <ruta> in Herdr with Claude`). Si Herdr ya tiene el worktree abierto, enfoca su espacio de trabajo sin escribir nada en él (`focused <ruta> in Herdr (already open)`).
+
+El destino se busca como en `remove`, salvo que se admite el worktree principal. `--herdr` es el destino y es obligatorio; `--agent <nombre>` ejecuta otro de los agentes del proyecto, buscado por nombre sin distinguir mayúsculas, y un nombre desconocido termina con `2` listando los agentes del proyecto. Si Herdr no está instalado o su comando falla, el error va a la salida de error y el código de salida es `1`.
+
 ### `clean`
 
 ```text
@@ -241,7 +252,7 @@ shogun xcode clean
 
 ## Salida JSON
 
-Además de `status --json`, todos los comandos que informan de un resultado aceptan `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `clean`, `gradle`, `gradle stop`, `pool status`, `pool trim`, `xcode`, `xcode clean`, `emulator` y `simulator` (no `simulator gradle-init`, `env`, `hook`, `help` ni `--version`; en ellos es una opción desconocida y sale con `2`). La opción puede ir en cualquier posición tras el comando.
+Además de `status --json`, todos los comandos que informan de un resultado aceptan `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `pool status`, `pool trim`, `xcode`, `xcode clean`, `emulator` y `simulator` (no `simulator gradle-init`, `env`, `hook`, `help` ni `--version`; en ellos es una opción desconocida y sale con `2`). La opción puede ir en cualquier posición tras el comando.
 
 Las reglas son las mismas para todos:
 
@@ -258,6 +269,7 @@ Las reglas son las mismas para todos:
 | `trust` | `repository`, `commands` (listas argv), `approved` y `changed` (esta ejecución lo aprobó o revocó). Un repositorio sin comandos posteriores a la creación es `approved: true` y sin comandos. `--revoke` informa `approved: false` si había comandos. |
 | `remove` | `path`, `branch` (la del worktree, o `null` si está desacoplado), `branchDeleted` (el nombre, o `null` si se conservó o no se pidió borrar la rama), `branchKeptReason` (por qué no se borró una rama cuya eliminación se pidió, o `null`), `providers` (`emulatorsStopped` con los serial, `simulatorsStopped` con los udid y `gradleDaemonsStopped` con los pid) y `failures` (mensajes de lo que no se pudo detener, código de salida `1`). |
 | `repair` | `repaired`: las rutas de los worktrees re-enlazados. |
+| `open` | `path`, `branch` (o `null` si está desacoplado), `herdr` (`opened` o `focused`) y `agent` (el nombre del agente arrancado, o `null` cuando solo se enfocó el espacio de trabajo). |
 | `clean` | `dryRun`; `candidates`: `{ path, branch, reason }` con `reason` `merged` o `folder-missing`; `keptForAgents`: `{ path, agents }`; `skipped`: `{ path, reason }` (estado no disponible); `removed`; `deletedBranches`; `failures`: `{ path, message }`; y `providers`: `gradleDaemonsStopped`, `emulatorsStopped`, `simulatorsDeleted` y `derivedDataDeleted`. Sin `--yes` (`dryRun: true`) `removed`, `deletedBranches` y las listas de `providers` van vacías. |
 | `gradle` | `daemons`: `{ pid, kind, version, memoryBytes, state, idleSince, worktree }` con `kind` `gradle` o `kotlin`, `state` `busy`, `idle`, `unknown` o `untracked`, `idleSince` en ISO-8601 UTC (solo si está inactivo) y `worktree` una ruta, `removed`, `other-project` o `null` fuera de un repositorio; y `totalMemoryBytes`. |
 | `gradle stop` | `stopped` (pids), `kept`: `{ pid, kind, reason }` con `reason` `busy`, `state-unknown` o `build-running`, `notDaemons` (pids) y `failures`: `{ pid, message }`. El código de salida es `1` si alguna de las dos últimas no está vacía. |

@@ -2,16 +2,29 @@
 
 **English** · [Español](./README.es.md)
 
-Desktop orchestrator that automates creating and managing isolated **Git worktrees**, with automatic provisioning of local secrets — designed to remove the manual context switching when you (or an AI agent like Claude/Copilot) work on several tasks at once.
+Run several AI coding agents in parallel on the same machine without them stepping on each other.
 
-## What it does
+A Git worktree isolates an agent's code, but an agent needs more than code to work: the local files the build expects, its own ports, its own emulator or simulator, and build daemons and caches that don't collide with its neighbour's. ShogunAi gives every worktree that whole environment, ready the moment the agent starts.
 
-- Creates and removes isolated **Git worktrees** for each task, each on its own new branch (`feature/` or `fix/`) or on a branch that already exists locally.
-- Automatically copies to each new worktree the **local files** it needs to build (e.g. Android's `local.properties`, `.env` files), as declared in a `.shogunai.json` versioned in the repository or in Claude Code's `.worktreeinclude`.
-- Manages several projects from a catalog, each with its own configuration (base repository, worktrees folder, agent command).
-- Copies the command to start your AI agent in a worktree (`cd <worktree> && claude`, optionally wrapped with Headroom), ready to paste in any terminal.
-- If you move a repository, update its path in the project and the app re-links its worktrees (`git worktree repair`).
-- Includes the `shogun` command, to create, provision, inspect and clean worktrees from a terminal, a script or an agent hook.
+It's built in two parts:
+
+- **The `shogun` command and hooks**, where the work happens. Claude Code, Codex, Cursor, Herdr or a plain script create, provision and clean their worktrees through it.
+- **The desktop app, a control tower**, to see it all. Across every project, it shows which agent is working where, which one is waiting for you, and the state of each worktree, including the ones other tools created.
+
+## What each agent gets
+
+- **Its own worktree and branch**: a new `feature/` or `fix/` branch, or one that already exists.
+- **The local files it needs to build**, such as Android's `local.properties` or `.env` files, declared in a `.shogunai.json` versioned in the repository or in Claude Code's `.worktreeinclude`.
+- **Its own ports and variables**, declared once in `.shogunai.json` and delivered to the agent's shell by `shogun env` or the session hook.
+- **Its own devices and bounded build resources**, through providers: an Android emulator, an iOS simulator, capped Gradle daemons and a shared Xcode compilation cache. Repositories that don't need them never see them.
+- **A clean exit**: merged or missing worktrees are listed and removed with `shogun clean`.
+
+## The control tower
+
+- An "Active" view, across all your projects, of the worktrees with an agent working, with work waiting for you or still in progress.
+- A catalog of projects, each with its own base repository, worktrees folder and agent command.
+- One click to open a worktree in the terminal, the IDE, the file manager or Herdr, or to copy the command that starts your agent there.
+- If you move a repository, update its path and the app re-links its worktrees (`git worktree repair`).
 
 ## Installation
 
