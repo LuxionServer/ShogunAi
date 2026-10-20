@@ -1,6 +1,6 @@
 # Roadmap
 
-Ideas accepted for ShogunAi's future, grouped by theme. This page is a direction, not a commitment to dates: each item becomes an OpenSpec change (`/opsx:propose`) when it's picked up, and its design is decided there. Once a change is archived, its item is removed from this page.
+Ideas accepted for ShogunAi's future, in priority order. This page is a direction, not a commitment to dates: each item becomes an OpenSpec change (`/opsx:propose`) when it's picked up, and its design is decided there. Once a change is archived, its item is removed from this page.
 
 ## Direction
 
@@ -18,7 +18,25 @@ It plugs into the tools that run agents rather than replacing them: Claude Code'
 
 ## Planned
 
-### Follow-ups of the 2026-10-19 changes
+Numbered in the order they will be picked up: the number is the priority.
+
+### 1. A responsive DerivedData view and local diagnostics
+
+On machines with a lot of DerivedData, listing it can freeze the app: each folder's size is computed in full before anything is shown. Folder sizes will be calculated lazily and be cancellable, showing the list first and a "calculating" state per folder. Alongside it, errors and freezes are recorded in a local rotating log, and the app offers a "Copy diagnostic report" action (version, operating system and recent errors, with no real paths or project names) to attach to a bug report. Nothing leaves the machine.
+
+### 2. Emulators and simulators on demand, with configurable limits
+
+A worktree gets an emulator or simulator, and the port that goes with it, when it needs one, not when it's created, so worktrees that never run the app don't use up the limited range of emulator ports. The limit becomes configurable. The model behind it is a pool: emulators, simulators, Gradle daemons and DerivedData are resources of limited capacity that a worktree acquires and releases, and the providers should share that model instead of each solving it on its own.
+
+### 3. Redesigned worktree states and row layout
+
+The current groups don't tell apart what matters: a worktree with an agent hides most of the others, and the group of worktrees that need the user is the most useful one. The states will separate worktrees that need the user, worktrees that are new and were never started, worktrees stopped for another reason and worktrees with an agent working. The date in each row will say what it measures (today it's the last commit, which in a new worktree is inherited from the base branch and reads as activity), and the row's information will be ordered and given fixed sizes so it's easier to scan, without repeating the project name.
+
+### 4. Platforms and IDEs beyond Android
+
+The project grew around Android. This item reviews the coverage of the other stacks (iOS and Xcode, JVM backends) and of the IDEs a worktree can be opened in, and reframes the third layer as platforms instead of Android, KMP and JVM. It starts with an exploration to decide what's missing before it's split into changes.
+
+### 5. Follow-ups of the 2026-10-19 changes
 
 The review of the whole project on 2026-10-19 and the changes built after it are archived. These follow-ups were left out of them:
 
@@ -29,11 +47,11 @@ The review of the whole project on 2026-10-19 and the changes built after it are
 - More terminals for "Open in terminal" (Ghostty, Warp, Alacritty, Kitty, GNOME Terminal), each as one more adapter.
 - A notification when a Herdr agent becomes blocked or done; today the worktree's row and the menu bar icon's menu are the signal.
 
-### Guided onboarding demo
+### 6. Guided onboarding demo
 
 A first-run walkthrough built on the review done before merging the worktree layer: the app creates a throwaway sample repository with worktrees in every state, and opens an agent with a prepared prompt that walks the user through each feature (status, cleanup, provisioning, the CLI, hooks, environment and providers), one step at a time.
 
-### Android, KMP and JVM provisioning
+### 7. Android, KMP and JVM provisioning
 
 Provisioning for the stacks where a fresh worktree is furthest from building:
 
@@ -45,6 +63,10 @@ Provisioning for the stacks where a fresh worktree is furthest from building:
 ### Integration with GitHub and task trackers
 
 Creating a worktree from a GitHub issue or a tracker task (deriving the task id and title), and showing the pull request state of each branch (open, in review, CI failing, merged). The value is clear, but the integration model isn't yet: which providers, how to authenticate, and how much to rely on external CLIs such as `gh`. It needs more thought before becoming a change.
+
+### Opt-in remote error reporting
+
+Sending anonymous errors and crashes to a remote service, in the style of the crash reporters used in mobile apps. It would only exist as an explicit opt-in on top of the local diagnostics of item 1, and needs a decision on where reports go and how to guarantee that no paths, project names or branch names are sent, since the repository is public and the users are developers.
 
 ## Out of scope for now
 
