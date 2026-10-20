@@ -28,6 +28,7 @@ import app.luxion.shogunai.domain.model.WorktreeStatus
 import app.luxion.shogunai.domain.model.withoutLocalTwins
 import app.luxion.shogunai.ui.machine.MachineResource
 import app.luxion.shogunai.ui.shell.ToolsPreferences
+import app.luxion.shogunai.domain.usecase.BranchDeletion
 import app.luxion.shogunai.domain.usecase.CleanupFailure
 import app.luxion.shogunai.domain.usecase.CleanupReport
 import app.luxion.shogunai.domain.usecase.CleanupSelection
@@ -193,6 +194,12 @@ class ProjectWorktrees(
     var branchesError by mutableStateOf<Throwable?>(null)
         private set
     var removeError by mutableStateOf<Throwable?>(null)
+        private set
+    var keptBranchNotice by mutableStateOf<KeptBranchNotice?>(null)
+        private set
+    var isConfirmingForcedBranchDeletion by mutableStateOf(false)
+        private set
+    var isDeletingBranch by mutableStateOf(false)
         private set
 
     var createError by mutableStateOf<Throwable?>(null)
@@ -604,6 +611,7 @@ class ProjectWorktrees(
                         sizes = sizes - worktree.path
                         dismissError()
                         pendingRemoval = null
+                        keptBranchNotice = removal.branch?.let { keptBranchNoticeOf(worktree.branch, it) }
                         onRemoved(worktree.path)
                     }
                     .onFailure { failure ->
@@ -615,6 +623,47 @@ class ProjectWorktrees(
                     }
             } finally {
                 isRemoving = false
+            }
+        }
+    }
+
+    private fun keptBranchNoticeOf(branch: String?, deletion: BranchDeletion): KeptBranchNotice? = when {
+        branch == null || deletion == BranchDeletion.Deleted -> null
+        else -> KeptBranchNotice(branch, (deletion as? BranchDeletion.KeptFailed)?.reason)
+    }
+
+    fun dismissKeptBranchNotice() {
+        if (isDeletingBranch) return
+        keptBranchNotice = null
+        isConfirmingForcedBranchDeletion = false
+    }
+
+    fun requestForcedBranchDeletion() {
+        if (keptBranchNotice != null) isConfirmingForcedBranchDeletion = true
+    }
+
+    fun cancelForcedBranchDeletion() {
+        if (!isDeletingBranch) isConfirmingForcedBranchDeletion = false
+    }
+
+    fun confirmForcedBranchDeletion() {
+        val notice = keptBranchNotice ?: return
+        if (isDeletingBranch) return
+        scope.launch {
+            isDeletingBranch = true
+            try {
+                useCases.deleteBranch(notice.branch)
+                    .onSuccess { deletion ->
+                        keptBranchNotice = keptBranchNoticeOf(notice.branch, deletion)
+                        isConfirmingForcedBranchDeletion = false
+                        if (deletion == BranchDeletion.Deleted) success = WorktreeSuccess.BranchDeleted(notice.branch)
+                    }
+                    .onFailure { failure ->
+                        isConfirmingForcedBranchDeletion = false
+                        fail(failure)
+                    }
+            } finally {
+                isDeletingBranch = false
             }
         }
     }
@@ -936,6 +985,8 @@ class ProjectWorktrees(
         actionRetries = if (retry != null) actionRetries + (path to retry) else actionRetries - path
     }
 
+    data class KeptBranchNotice(val branch: String, val failureReason: String? = null)
+
     private data class PendingRemoval(
         val worktree: Worktree,
         val deleteBranch: Boolean,
@@ -983,6 +1034,7 @@ sealed interface WorktreeSuccess {
     data class Created(val path: String, val commandsSkipped: Boolean = false) : WorktreeSuccess
     data object RepairedAfterMove : WorktreeSuccess
     data class OpenedInHerdr(val path: String, val focused: Boolean) : WorktreeSuccess
+    data class BranchDeleted(val branch: String) : WorktreeSuccess
     data class CleanedUp(
         val removedCount: Int,
         val stoppedDaemons: Int = 0,

@@ -83,7 +83,7 @@ class CleanUpWorktreesUseCase(
 
         if (deleteBranches) {
             removedWorktrees.mapNotNull { it.branch }.forEach { branch ->
-                if (!deleteBranchIfContained(executor, config, branch, mainBranch)) keptBranches += branch
+                if (deleteBranchIfContained(executor, config, branch, mainBranch) != BranchDeletion.Deleted) keptBranches += branch
             }
         }
 

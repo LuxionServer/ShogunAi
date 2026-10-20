@@ -248,6 +248,15 @@ object EnglishStrings : Strings {
     override val alsoDeleteLocalBranches = "Also delete their local branches"
     override fun worktreesCleanedUp(count: Int) = if (count == 1) "1 worktree cleaned up" else "$count worktrees cleaned up"
     override fun cleanupFailed(path: String, detail: String) = "Couldn't remove \"$path\": $detail"
+    override fun worktreeRemovedBranchKept(branch: String) =
+        "Worktree removed. Branch \"$branch\" kept: it isn't merged into the main branch"
+    override fun worktreeRemovedBranchKeptFailed(branch: String, reason: String) =
+        "Worktree removed. Branch \"$branch\" kept: $reason"
+    override val deleteBranchAnyway = "Delete branch anyway"
+    override val deleteBranchAnywayTitle = "Delete the branch?"
+    override fun deleteBranchAnywayMessage(branch: String) =
+        "Delete the branch \"$branch\" even though it isn't merged into the main branch? Its commits may be lost."
+    override fun branchDeleted(branch: String) = "Branch \"$branch\" deleted"
     override fun branchKept(branch: String) = "Branch \"$branch\" kept: it isn't merged into the main branch"
     override val herdrWorkspaceWillClose = "It's open in Herdr: its workspace, and the agent running there, will be closed."
     override fun keptForRunningAgent(name: String, agents: List<String>) = "$name · kept, ${agents.joinToString()} is running"

@@ -15,6 +15,7 @@ import app.luxion.shogunai.domain.usecase.CleanupFailure
 import app.luxion.shogunai.domain.usecase.CleanupReport
 import app.luxion.shogunai.domain.usecase.herdrDetail
 import app.luxion.shogunai.ui.components.DangerButton
+import app.luxion.shogunai.ui.components.DangerTextButton
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.Notice
@@ -183,5 +184,20 @@ fun HerdrCloseFailures(failures: List<CleanupFailure>, onDismiss: () -> Unit) {
         message = failures.joinToString("\n") { strings.herdrCloseFailed(it.path, it.error.herdrDetail()) },
         onDismiss = onDismiss,
         modifier = Modifier.padding(top = Spacing.sm),
+    )
+}
+
+@Composable
+fun KeptBranchNotice(notice: ProjectWorktrees.KeptBranchNotice, onDelete: () -> Unit, onDismiss: () -> Unit) {
+    val strings = LocalStrings.current
+    Notice(
+        kind = NoticeKind.WARNING,
+        message = notice.failureReason?.let { strings.worktreeRemovedBranchKeptFailed(notice.branch, it) }
+            ?: strings.worktreeRemovedBranchKept(notice.branch),
+        onDismiss = onDismiss,
+        modifier = Modifier.padding(top = Spacing.sm),
+        details = {
+            DangerTextButton(onClick = onDelete) { Text(strings.deleteBranchAnyway) }
+        },
     )
 }

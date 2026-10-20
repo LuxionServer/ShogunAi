@@ -32,15 +32,66 @@ class RemoveWorktreeUseCaseTest {
         assertEquals(listOf(listOf("git", "worktree", "remove", worktreePath)), executor.executedCommands)
     }
 
-    @Test
-    fun `deletes branch when requested`() = runTest {
-        val executor = FakeShellCommandExecutor { success(it) }
-        val useCase = RemoveWorktreeUseCase(config, executor)
+    private fun branchExecutor(contained: Boolean = true, deleteStderr: String? = null) = FakeShellCommandExecutor { command ->
+        when {
+            command.take(3) == listOf("git", "merge-base", "--is-ancestor") ->
+                if (contained) success(command) else failure(command, exitCode = 1, stderr = "")
+            command.getOrNull(1) == "symbolic-ref" -> failure(command)
+            command.take(3) == listOf("git", "branch", "-D") && deleteStderr != null ->
+                failure(command, exitCode = 1, stderr = deleteStderr)
+            else -> success(command)
+        }
+    }
 
-        useCase(worktreePath, branchToDelete = "feature/TASK-123").getOrThrow()
+    @Test
+    fun `deletes a merged branch when requested`() = runTest {
+        val executor = branchExecutor()
+
+        val removal = RemoveWorktreeUseCase(config, executor)(worktreePath, branchToDelete = "feature/TASK-123").getOrThrow()
 
         assertTrue(executor.executed("git", "worktree", "remove", worktreePath))
-        assertTrue(executor.executed("git", "branch", "-d", "--", "feature/TASK-123"))
+        assertTrue(executor.executed("git", "branch", "-D", "--", "feature/TASK-123"))
+        assertEquals(BranchDeletion.Deleted, removal.branch)
+    }
+
+    @Test
+    fun `keeps an unmerged branch and still succeeds`() = runTest {
+        val executor = branchExecutor(contained = false)
+
+        val removal = RemoveWorktreeUseCase(config, executor)(worktreePath, branchToDelete = "feature/TASK-123").getOrThrow()
+
+        assertEquals(BranchDeletion.KeptNotMerged, removal.branch)
+        assertTrue(executor.executedCommands.none { it.take(3) == listOf("git", "branch", "-D") })
+    }
+
+    @Test
+    fun `keeps the branch with Git's reason when its deletion fails`() = runTest {
+        val executor = branchExecutor(deleteStderr = "branch is checked out\n")
+
+        val removal = RemoveWorktreeUseCase(config, executor)(worktreePath, branchToDelete = "feature/TASK-123").getOrThrow()
+
+        assertEquals(BranchDeletion.KeptFailed("branch is checked out"), removal.branch)
+    }
+
+    @Test
+    fun `force-deletes an unmerged branch`() = runTest {
+        val executor = branchExecutor(contained = false)
+
+        val removal = RemoveWorktreeUseCase(config, executor)(
+            worktreePath,
+            branchToDelete = "feature/TASK-123",
+            forceBranchDeletion = true,
+        ).getOrThrow()
+
+        assertEquals(BranchDeletion.Deleted, removal.branch)
+        assertTrue(executor.executed("git", "branch", "-D", "--", "feature/TASK-123"))
+    }
+
+    @Test
+    fun `reports no branch outcome when no deletion was requested`() = runTest {
+        val removal = RemoveWorktreeUseCase(config, branchExecutor())(worktreePath).getOrThrow()
+
+        assertEquals(null, removal.branch)
     }
 
     @Test

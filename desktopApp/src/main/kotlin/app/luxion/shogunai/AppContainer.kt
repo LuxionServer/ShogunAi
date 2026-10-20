@@ -84,6 +84,7 @@ import app.luxion.shogunai.domain.usecase.ProvisionResult
 import app.luxion.shogunai.domain.usecase.ProvisionWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.ReleasedResources
 import app.luxion.shogunai.domain.usecase.ReleaseWorktreeResourcesUseCase
+import app.luxion.shogunai.domain.usecase.DeleteBranchUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.WorktreeResourcePlan
 import app.luxion.shogunai.domain.usecase.RepairWorktreesUseCase
@@ -305,6 +306,7 @@ class AppContainer {
         fetchRemote = FetchRemoteUseCase(config, shellCommandExecutor),
         resolveStartPoint = { ref -> ResolveStartPointUseCase(shellCommandExecutor)(config.baseRepositoryPath, ref) },
         remove = RemoveWorktreeUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient)),
+        deleteBranch = DeleteBranchUseCase(config, shellCommandExecutor),
         copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboardWriter),
         agents = AgentUseCases(config, agentChoices),
         repair = RepairWorktreesUseCase(config, shellCommandExecutor, fileManager),
@@ -435,6 +437,7 @@ data class WorktreeUseCases(
     val fetchRemote: FetchRemoteUseCase,
     val resolveStartPoint: suspend (String) -> Result<String>,
     val remove: RemoveWorktreeUseCase,
+    val deleteBranch: DeleteBranchUseCase,
     val copyLaunchCommand: CopyWorktreeLaunchCommandUseCase,
     val repair: RepairWorktreesUseCase,
     val resolveMainBranch: ResolveMainBranchUseCase,

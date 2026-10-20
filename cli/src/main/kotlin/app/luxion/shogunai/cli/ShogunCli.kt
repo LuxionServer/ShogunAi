@@ -46,6 +46,7 @@ import app.luxion.shogunai.domain.model.WorktreeOrigin
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.model.WorktreeStatus
 import app.luxion.shogunai.domain.model.XcodeProvider
+import app.luxion.shogunai.domain.usecase.BranchDeletion
 import app.luxion.shogunai.domain.usecase.CheckGradleBuildCacheUseCase
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.CloseHerdrWorkspacesUseCase
@@ -455,7 +456,12 @@ class ShogunCli(
             }
         }
         val plan = releaseResources.plan(config, worktree, worktrees)
-        val removal = RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr))(worktree.path, force = command.force)
+        val removal = RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr))(
+            worktree.path,
+            branchToDelete = worktree.branch?.takeIf { command.deleteBranch || command.forceDeleteBranch },
+            force = command.force,
+            forceBranchDeletion = command.forceDeleteBranch,
+        )
             .getOrElse { failure ->
                 if (failure is WorktreeError.GitCommandFailed && classifyGitFailure(failure.errorOutput) == GitFailureCause.LocalChanges) {
                     err.line("shogun: ${worktree.path} has uncommitted or untracked changes; use --force to remove it anyway")
@@ -471,15 +477,11 @@ class ShogunCli(
         released.stoppedSimulators.forEach { say("stopped simulator $it") }
         released.stoppedDaemons.forEach { say("stopped Gradle daemon $it") }
         released.failures.forEach { err.line("shogun: $it") }
-        val branch = worktree.branch?.takeIf { command.deleteBranch }
-        var branchDeleted: String? = null
-        if (branch != null) {
-            if (DeleteMergedBranchUseCase(config, executor)(branch).getOrThrow()) {
-                branchDeleted = branch
-                say("deleted branch $branch")
-            } else {
-                say("kept branch $branch (not merged into the main branch)")
-            }
+        val branch = worktree.branch
+        val branchDeleted = branch?.takeIf { removal.branch == BranchDeletion.Deleted }
+        val branchKeptReason = branch?.let { removal.branch?.keptReason() }
+        if (branch != null && removal.branch != null) {
+            say(if (branchDeleted != null) "deleted branch $branch" else "kept branch $branch ($branchKeptReason)")
         }
         if (command.json) {
             printJson(
@@ -487,6 +489,7 @@ class ShogunCli(
                     worktree.path,
                     worktree.branch,
                     branchDeleted,
+                    branchKeptReason,
                     released.stoppedEmulators,
                     released.stoppedSimulators,
                     released.stoppedDaemons,
@@ -1027,15 +1030,13 @@ class ShogunCli(
         val worktree = ListWorktreesUseCase(config, executor)().getOrThrow()
             .firstOrNull { !it.isMain && sameDirectory(it.path, path) }
             ?: throw WorktreeError.NotAWorktree(path)
-        RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr))(worktree.path, force = true)
-            .getOrThrow()
-            .herdrFailure
-            ?.let { err.line(herdrCloseFailure(worktree.path, it)) }
-        worktree.branch?.let { branch ->
-            if (!DeleteMergedBranchUseCase(config, executor)(branch).getOrThrow()) {
-                err.line("shogun: kept branch $branch because it isn't merged into the main branch")
-            }
-        }
+        val removal = RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr))(
+            worktree.path,
+            branchToDelete = worktree.branch,
+            force = true,
+        ).getOrThrow()
+        removal.herdrFailure?.let { err.line(herdrCloseFailure(worktree.path, it)) }
+        reportKeptBranch(worktree.branch, removal.branch)
         return EXIT_OK
     }
 
@@ -1071,10 +1072,13 @@ class ShogunCli(
                 }
         }
         if (project == null || branch == null) return EXIT_OK
-        if (!DeleteMergedBranchUseCase(project.config, executor)(branch).getOrThrow()) {
-            err.line("shogun: kept branch $branch because it isn't merged into the main branch")
-        }
+        reportKeptBranch(branch, DeleteMergedBranchUseCase(project.config, executor).outcome(branch).getOrThrow())
         return EXIT_OK
+    }
+
+    private fun reportKeptBranch(branch: String?, deletion: BranchDeletion?) {
+        val reason = deletion?.keptBecause() ?: return
+        err.line("shogun: kept branch $branch because $reason")
     }
 
     private suspend fun flagOutsideWorktreesRoot(worktree: Worktree, config: ProjectConfig) {

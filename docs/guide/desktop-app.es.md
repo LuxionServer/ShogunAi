@@ -71,7 +71,7 @@ Con varios agentes, el detalle del worktree muestra un campo **Agente** y las tr
 
 ## Eliminar y limpiar
 
-- **Eliminar** elimina un worktree, con la opción de borrar también su rama local. El worktree principal no se puede eliminar.
+- **Eliminar** elimina un worktree, con la opción de borrar también su rama local, que solo se borra si está mergeada en la rama principal del proyecto. Si no lo está (por ejemplo tras un squash merge), el worktree se elimina igualmente y un aviso indica que la rama se conservó, con la acción **Borrar la rama igualmente**, que pide confirmación antes. El worktree principal no se puede eliminar.
 - **Limpiar**, junto al título "Worktrees", lista los worktrees mergeados o cuya carpeta ya no existe y los elimina de una vez, con la opción de borrar sus ramas. Según los providers del repositorio, ofrece también parar sus daemons de Gradle ociosos y sus emuladores, y borrar sus simuladores de iOS y los DerivedData de Xcode huérfanos.
 
 Eliminar un worktree abierto en Herdr cierra también su espacio de trabajo de Herdr; los diálogos lo avisan antes.

@@ -1554,6 +1554,33 @@ class ShogunCliTest {
     }
 
     @Test
+    fun `remove with force-delete-branch deletes a branch that isn't merged`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command.take(2) == listOf("git", "merge-base")) Executor.fail(command) else null
+        }
+
+        val exitCode = cli(executor).run(listOf("remove", "TASK-1", "--force-delete-branch"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("removed $merged\ndeleted branch feature/TASK-1\n", out.toString())
+        assertTrue(executor.ran("git", "branch", "-D", "--", "feature/TASK-1"))
+    }
+
+    @Test
+    fun `remove json says why the branch was kept`() {
+        val executor = repositoryExecutor { command, _ ->
+            if (command.take(2) == listOf("git", "merge-base")) Executor.fail(command) else null
+        }
+
+        val exitCode = cli(executor).run(listOf("remove", "TASK-1", "--delete-branch", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = jsonOut()
+        assertEquals(JsonNull, json.getValue("branchDeleted"))
+        assertEquals("not merged into the main branch", (json.getValue("branchKeptReason") as JsonPrimitive).content)
+    }
+
+    @Test
     fun `remove fails without removing anything for an unknown target or the main worktree`() {
         val executor = repositoryExecutor()
 
@@ -2043,7 +2070,7 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         val json = jsonOut()
-        assertEquals(setOf("path", "branch", "branchDeleted", "providers", "failures"), json.keys)
+        assertEquals(setOf("path", "branch", "branchDeleted", "branchKeptReason", "providers", "failures"), json.keys)
         assertEquals(merged, (json.getValue("path") as JsonPrimitive).content)
         assertEquals("feature/TASK-1", (json.getValue("branchDeleted") as JsonPrimitive).content)
         assertEquals(
@@ -2059,6 +2086,7 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals(JsonNull, jsonOut().getValue("branchDeleted"))
+        assertEquals(JsonNull, jsonOut().getValue("branchKeptReason"))
     }
 
     @Test

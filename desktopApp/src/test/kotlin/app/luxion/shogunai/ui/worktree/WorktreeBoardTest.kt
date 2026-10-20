@@ -43,6 +43,7 @@ import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.MeasureWorktreeSizeUseCase
 import app.luxion.shogunai.domain.usecase.ReadGitMetadataFingerprintUseCase
 import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
+import app.luxion.shogunai.domain.usecase.DeleteBranchUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.RepairWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
@@ -182,6 +183,7 @@ class WorktreeBoardTest {
             fetchRemote = FetchRemoteUseCase(config, executor),
             resolveStartPoint = { ref -> ResolveStartPointUseCase(executor)(config.baseRepositoryPath, ref) },
             remove = RemoveWorktreeUseCase(config, executor),
+            deleteBranch = DeleteBranchUseCase(config, executor),
             copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, FakeClipboardWriter()),
             repair = RepairWorktreesUseCase(config, executor, files),
             resolveMainBranch = ResolveMainBranchUseCase(config, executor),
@@ -408,6 +410,35 @@ class WorktreeBoardTest {
         board.updateGrouping(Grouping.BY_STATE)
         board.show(null, GroupedView.ACTIVE)
         assertEquals(Grouping.BY_PROJECT, board.grouping)
+    }
+
+    @Test
+    fun `a project's view groups by state whatever the stored choice is`() = runTest(dispatcher) {
+        val board = board(listOf(api.project))
+        advanceUntilIdle()
+        board.show(null, GroupedView.ALL)
+        board.updateGrouping(Grouping.BY_PROJECT)
+
+        board.show(api.project.id)
+
+        assertTrue(board.isProjectView)
+        assertEquals(Grouping.BY_STATE, board.grouping)
+        assertTrue(board.isGroupedByState)
+    }
+
+    @Test
+    fun `returning to all worktrees keeps its stored grouping`() = runTest(dispatcher) {
+        val board = board(listOf(api.project))
+        advanceUntilIdle()
+        board.show(null, GroupedView.ALL)
+        board.updateGrouping(Grouping.BY_PROJECT)
+        board.show(api.project.id)
+
+        board.show(null, GroupedView.ALL)
+
+        assertFalse(board.isProjectView)
+        assertEquals(Grouping.BY_PROJECT, board.grouping)
+        assertEquals(Grouping.BY_PROJECT, preferences.loadGrouping(GroupedView.ALL))
     }
 
     @Test

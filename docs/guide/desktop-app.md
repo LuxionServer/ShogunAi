@@ -71,7 +71,7 @@ With several agents, the worktree's detail shows an **Agent** field and the thre
 
 ## Removing and cleaning up
 
-- **Remove** removes one worktree, optionally deleting its local branch. The main worktree can't be removed.
+- **Remove** removes one worktree, optionally deleting its local branch, which is deleted only if it's merged into the project's main branch. If it isn't (for example after a squash merge), the worktree is still removed and a notice says the branch was kept, with a **Delete branch anyway** action that asks for confirmation first. The main worktree can't be removed.
 - **Clean up**, next to the "Worktrees" title, lists the worktrees that are merged or whose folder is gone and removes them in one go, optionally deleting their branches. Depending on the repository's providers it also offers to stop their idle Gradle daemons and their emulators, and to delete their iOS simulators and orphaned Xcode DerivedData.
 
 Removing a worktree that's open in Herdr also closes its Herdr workspace; the dialogs say so beforehand.
