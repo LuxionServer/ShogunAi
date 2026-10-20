@@ -154,7 +154,7 @@ What the worktree overview shows about each worktree (`WorktreeOverview.kt`): `W
 
 ### Tools
 
-`Tools.kt` describes what the desktop app can launch a worktree in: `HostOs` (`MACOS`, `WINDOWS`, `LINUX`), `TerminalId` (`TERMINAL`, `ITERM2`, `WINDOWS_TERMINAL`, which uses PowerShell, `TMUX`, `ZELLIJ`), `EditorId` (`VS_CODE`, `INTELLIJ_IDEA`, `ANDROID_STUDIO`), `DetectedTools` (the terminals and IDEs found on the machine) and `TerminalLaunch` (the worktree path, its variables, the agent command and the full launch line a terminal runs).
+`Tools.kt` describes what the desktop app can launch a worktree in: `HostOs` (`MACOS`, `WINDOWS`, `LINUX`), `TerminalId` (`TERMINAL`, `ITERM2`, `WINDOWS_TERMINAL`, which uses PowerShell, `TMUX`, `ZELLIJ`), `EditorId` (`VS_CODE`, `INTELLIJ_IDEA`, `ANDROID_STUDIO`, `XCODE`, the last only on macOS), `DetectedTools` (the terminals and IDEs found on the machine) and `TerminalLaunch` (the worktree path, its variables, the agent command and the full launch line a terminal runs).
 
 `ShellQuoting` quotes values for the shell they end up in: `posix` (single quotes, `'\''` for an embedded one), `posixCommand` (an argv list as a line, quoting only words that need it), `powershell` (single quotes, doubling every kind of single quote) and `windows` (double quotes).
 

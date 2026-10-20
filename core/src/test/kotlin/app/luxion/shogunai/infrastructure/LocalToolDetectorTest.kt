@@ -133,4 +133,29 @@ class LocalToolDetectorTest {
 
         assertEquals(DetectedTools(), detector.detect())
     }
+
+    @Test
+    fun `finds Xcode on macOS by bundle identifier and by application folder`() = runTest {
+        val byBundle = detector(HostOs.MACOS, bundles = setOf("com.apple.dt.Xcode")).detect()
+        val byFolder = detector(HostOs.MACOS, directories = setOf("/Applications/Xcode.app")).detect()
+
+        assertEquals(listOf(EditorId.XCODE), byBundle.editors)
+        assertEquals(listOf(EditorId.XCODE), byFolder.editors)
+    }
+
+    @Test
+    fun `doesn't offer Xcode on a Mac without it`() = runTest {
+        val tools = detector(HostOs.MACOS, bundles = setOf("com.microsoft.VSCode")).detect()
+
+        assertEquals(listOf(EditorId.VS_CODE), tools.editors)
+    }
+
+    @Test
+    fun `never offers Xcode outside macOS`() = runTest {
+        listOf(HostOs.WINDOWS, HostOs.LINUX).forEach { os ->
+            val tools = detector(os, files = setOf("/usr/bin/xcode", "/usr/bin/xcode.cmd"), directories = setOf("/Applications/Xcode.app")).detect()
+
+            assertEquals(emptyList(), tools.editors)
+        }
+    }
 }
