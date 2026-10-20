@@ -37,11 +37,15 @@ val MachineResource.icon: ImageVector
         MachineResource.XCODE_DERIVED_DATA -> Icons.Default.Storage
     }
 
-fun MachineSummary.text(resource: MachineResource, strings: Strings): String = when (resource) {
-    MachineResource.GRADLE_DAEMONS -> "$count · ${formatSize(bytes ?: 0)}"
-    MachineResource.ANDROID_EMULATORS -> strings.runningCount(count)
-    MachineResource.IOS_SIMULATORS -> strings.bootedCount(count)
-    MachineResource.XCODE_DERIVED_DATA -> formatSize(bytes ?: 0)
+fun MachineSummary.text(resource: MachineResource, strings: Strings): String {
+    val base = when (resource) {
+        MachineResource.GRADLE_DAEMONS -> "$count · ${formatSize(bytes ?: 0)}"
+        MachineResource.ANDROID_EMULATORS -> strings.runningCount(count)
+        MachineResource.IOS_SIMULATORS -> strings.bootedCount(count)
+        MachineResource.XCODE_DERIVED_DATA -> formatSize(bytes ?: 0)
+    }
+    val pool = poolInUse?.takeIf { poolKindOf(resource) != null }?.let { strings.poolSummary(it, poolLimit) }
+    return if (pool == null) base else "$base · $pool"
 }
 
 fun formatMemorySetting(size: String): String {

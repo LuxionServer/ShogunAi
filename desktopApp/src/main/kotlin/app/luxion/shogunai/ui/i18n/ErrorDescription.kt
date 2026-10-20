@@ -46,6 +46,7 @@ private fun fixOf(error: Throwable, gitCause: GitFailureCause): ErrorFix? = when
     WorktreeError.EmulatorProviderNotDeclared,
     WorktreeError.IosSimulatorProviderNotDeclared,
     -> ErrorFix.OpenProjectSettings
+    is WorktreeError.ResourcePoolFull -> ErrorFix.OpenPreferences
     is WorktreeError.GitCommandFailed ->
         if (gitCause == GitFailureCause.NotARepository) ErrorFix.OpenProjectSettings else null
     else -> null

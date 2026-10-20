@@ -1,5 +1,16 @@
 package app.luxion.shogunai.ui.machine
 
+import app.luxion.shogunai.domain.model.CapacityProfile
+import app.luxion.shogunai.domain.model.PoolHolder
+import app.luxion.shogunai.domain.model.PoolHolderState
+import app.luxion.shogunai.domain.model.PoolRelease
+import app.luxion.shogunai.domain.model.PoolReleaseReason
+import app.luxion.shogunai.domain.model.PoolUsage
+import app.luxion.shogunai.domain.model.ResourceKind
+import app.luxion.shogunai.domain.model.ResourceSettings
+import app.luxion.shogunai.domain.usecase.DeviceStart
+import app.luxion.shogunai.domain.usecase.GradleTrim
+import app.luxion.shogunai.domain.usecase.ResourceAcquisition
 import app.luxion.shogunai.MachineUseCases
 import app.luxion.shogunai.domain.FakeGradleDaemonSource.Companion.gradleDaemon
 import app.luxion.shogunai.domain.model.DaemonKeptReason
@@ -85,6 +96,7 @@ class MachineResourcesTest {
         val deletedSimulators = mutableListOf<List<String>>()
         var derivedDataDeletions = 0
         val includeCompilationCache = mutableListOf<Boolean>()
+        var trims = 0
     }
 
     private fun useCases(
@@ -95,10 +107,13 @@ class MachineResourcesTest {
         orphans: List<SimulatorDevice> = emptyList(),
         derivedData: DerivedDataListing = DerivedDataListing(emptyList(), null),
         stopReport: DaemonStopReport = DaemonStopReport(),
-        startEmulator: suspend (ProjectConfig, String) -> Result<WorktreeEmulator> = { _, path ->
+        startEmulator: suspend (ProjectConfig, String) -> Result<DeviceStart<WorktreeEmulator>> = { _, path ->
             calls.startedEmulators += path
-            Result.success(WorktreeEmulator("emulator-5554", EmulatorState.RUNNING))
+            Result.success(DeviceStart(WorktreeEmulator("emulator-5554", EmulatorState.RUNNING), ResourceAcquisition(true, emptyList())))
         },
+        pools: Map<ResourceKind, PoolUsage> = emptyMap(),
+        trim: GradleTrim = GradleTrim(limit = null),
+        settings: ResourceSettings = ResourceSettings(),
         stopDaemons: suspend (List<Long>?) -> Result<DaemonStopReport> = { pids ->
             calls.stoppedDaemons += pids
             Result.success(stopReport)
@@ -115,6 +130,9 @@ class MachineResourcesTest {
         readEmulatorStates = { _, _ -> calls.emulatorReads++; Result.success(emulators) },
         readRunningEmulators = { Result.success(running) },
         startEmulator = startEmulator,
+        readPool = { kind, _, _ -> pools[kind]?.let { Result.success(it) } ?: Result.failure(IllegalStateException()) },
+        trimGradleDaemons = { calls.trims++; Result.success(trim) },
+        resourceSettings = { settings },
         stopEmulator = { _, _ -> Result.success(null) },
         stopEmulatorSerials = { _, serials -> calls.stoppedSerials += serials; Result.success(emptyList()) },
         readSimulatorStates = { _, _ -> calls.simulatorReads++; Result.success(simulators) },
@@ -303,7 +321,11 @@ class MachineResourcesTest {
                 calls,
                 startEmulator = { _, path ->
                     calls.startedEmulators += path
-                    if (failing) Result.failure(failure) else Result.success(WorktreeEmulator("emulator-5554", EmulatorState.RUNNING))
+                    if (failing) {
+                        Result.failure(failure)
+                    } else {
+                        Result.success(DeviceStart(WorktreeEmulator("emulator-5554", EmulatorState.RUNNING), ResourceAcquisition(true, emptyList())))
+                    }
                 },
             ),
             listOf(machineProject("api", listOf(apiWorktree), MachineResource.ANDROID_EMULATORS)),
@@ -447,5 +469,101 @@ class MachineResourcesTest {
         runCurrent()
         assertEquals(MachineSummary(2, 3_000L), machine.summaries.getValue(MachineResource.GRADLE_DAEMONS))
         ticks.cancel()
+    }
+
+    private fun usage(kind: ResourceKind, limit: Int?, vararg holders: Int) = PoolUsage(
+        kind,
+        limit,
+        limit,
+        holders.map { PoolHolder(kind, "/home/dev/projects/api-TASK-$it", null, PoolHolderState.RUNNING, false, null) },
+    )
+
+    @Test
+    fun `a view shows its pool usage against the effective limit`() = machineTest {
+        val machine = machine(
+            useCases(
+                Calls(),
+                pools = mapOf(ResourceKind.EMULATOR to usage(ResourceKind.EMULATOR, 2, 9)),
+                settings = ResourceSettings(CapacityProfile.BALANCED),
+            ),
+            listOf(machineProject("api", listOf(apiWorktree), MachineResource.ANDROID_EMULATORS)),
+        )
+
+        machine.show(MachineResource.ANDROID_EMULATORS)
+        runCurrent()
+
+        val pool = machine.poolOf(MachineResource.ANDROID_EMULATORS)
+        assertEquals(1, pool?.inUse)
+        assertEquals(2, pool?.effectiveLimit)
+        assertEquals(CapacityProfile.BALANCED, machine.profile)
+        assertFalse(pool?.isOverLimit ?: true)
+    }
+
+    @Test
+    fun `a Gradle pool above its limit is over the limit`() = machineTest {
+        val calls = Calls().apply { daemons = (1L..3L).map { gradleDaemon(it, DaemonState.Busy) } }
+        val machine = machine(
+            useCases(calls, pools = mapOf(ResourceKind.GRADLE_DAEMON to usage(ResourceKind.GRADLE_DAEMON, 2, 1, 2, 3))),
+            listOf(machineProject("api", listOf(apiWorktree), MachineResource.GRADLE_DAEMONS)),
+        )
+
+        machine.refreshSummaries()
+
+        assertTrue(machine.poolOf(MachineResource.GRADLE_DAEMONS)?.isOverLimit == true)
+        assertEquals(3, machine.summaries.getValue(MachineResource.GRADLE_DAEMONS).poolInUse)
+        assertEquals(2, machine.summaries.getValue(MachineResource.GRADLE_DAEMONS).poolLimit)
+    }
+
+    @Test
+    fun `starting an emulator that released another one leaves a notice until dismissed`() = machineTest {
+        val release = PoolRelease(ResourceKind.EMULATOR, "/home/dev/projects/api-TASK-1", PoolReleaseReason.MAKE_ROOM, "api · TASK-1")
+        val machine = machine(
+            useCases(
+                Calls(),
+                startEmulator = { _, _ ->
+                    Result.success(
+                        DeviceStart(WorktreeEmulator("emulator-5554", EmulatorState.RUNNING), ResourceAcquisition(true, listOf(release))),
+                    )
+                },
+            ),
+            listOf(machineProject("api", listOf(apiWorktree), MachineResource.ANDROID_EMULATORS)),
+        )
+
+        machine.startEmulator("api", apiWorktree.path)
+        runCurrent()
+
+        val notice = machine.noticesOf(MachineResource.ANDROID_EMULATORS).single()
+        assertEquals(PoolNoticeContent.Released(ResourceKind.EMULATOR, "api · TASK-1", "api-TASK-9"), notice.content)
+
+        machine.dismissNotice(notice.id)
+        assertTrue(machine.noticesOf(MachineResource.ANDROID_EMULATORS).isEmpty())
+    }
+
+    @Test
+    fun `the summary refresh trims Gradle daemons and reports what it stopped`() = machineTest {
+        val calls = Calls()
+        val trim = GradleTrim(limit = 2, stopped = listOf(gradleDaemon(7, idle)), remaining = 2)
+        val machine = machine(
+            useCases(calls, trim = trim),
+            listOf(machineProject("api", listOf(apiWorktree), MachineResource.GRADLE_DAEMONS)),
+        )
+
+        machine.refreshSummaries()
+
+        assertEquals(1, calls.trims)
+        assertEquals(PoolNoticeContent.Trimmed(1, 2), machine.noticesOf(MachineResource.GRADLE_DAEMONS).single().content)
+    }
+
+    @Test
+    fun `the summary refresh does not trim when no project declares Gradle`() = machineTest {
+        val calls = Calls()
+        val machine = machine(
+            useCases(calls),
+            listOf(machineProject("api", listOf(apiWorktree), MachineResource.ANDROID_EMULATORS)),
+        )
+
+        machine.refreshSummaries()
+
+        assertEquals(0, calls.trims)
     }
 }

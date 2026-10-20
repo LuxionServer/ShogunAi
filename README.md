@@ -135,9 +135,11 @@ A repository turns on providers in its `.shogunai.json` to give each worktree wh
 ```
 
 - **Gradle**: see and stop the Gradle and Kotlin daemons every worktree build leaves behind, and bound their memory and lifetime.
-- **Android emulator**: each worktree gets its own emulator and `ANDROID_SERIAL`, so parallel agents don't install on each other's devices.
-- **iOS simulator** (macOS): each worktree gets its own simulator and `IOS_SIMULATOR_UDID`, for `xcodebuild` and KMP tests.
+- **Android emulator**: each worktree gets its own emulator and `ANDROID_SERIAL` the first time it starts one, so parallel agents don't install on each other's devices.
+- **iOS simulator** (macOS): each worktree gets its own simulator and `IOS_SIMULATOR_UDID` the first time it starts one, for `xcodebuild` and KMP tests.
 - **Xcode** (macOS): see and delete orphaned DerivedData, and share compilations between worktrees.
+
+Emulators, simulators and Gradle daemons share machine-wide pools whose limits follow a capacity profile chosen in Preferences (Automatic from the machine's memory and cores by default): when a pool is full, the least recently used idle device is released to make room.
 
 How to set up each one is in [Providers](./docs/guide/providers.md). Repositories without a provider never see any of this.
 

@@ -239,4 +239,12 @@ class ParseArgumentsTest {
         assertTrue(parseArguments(listOf("simulator", "gradle-init", "install", "--json")) is ParsedArguments.UsageError)
         assertTrue(parseArguments(listOf("version", "--json")) is ParsedArguments.UsageError)
     }
+
+    @Test
+    fun `pool takes status or trim and accepts json`() {
+        assertEquals(ParsedArguments.Command(CliCommand.Pool(PoolAction.STATUS)), parseArguments(listOf("pool", "status")))
+        assertEquals(ParsedArguments.Command(CliCommand.Pool(PoolAction.TRIM, json = true)), parseArguments(listOf("pool", "trim", "--json")))
+        assertIs<ParsedArguments.UsageError>(parseArguments(listOf("pool")))
+        assertIs<ParsedArguments.UsageError>(parseArguments(listOf("pool", "status", "extra")))
+    }
 }

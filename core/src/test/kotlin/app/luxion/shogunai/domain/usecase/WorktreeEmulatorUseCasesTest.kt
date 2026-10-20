@@ -2,7 +2,7 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
-import app.luxion.shogunai.domain.FakePortProbe
+import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
@@ -45,20 +45,36 @@ class WorktreeEmulatorUseCasesTest {
         byRepository = mapOf(repository to RepositoryProvisioning(providers = RepositoryProviders(emulator = emulator))),
     )
 
+    private val files = FakeFileManager().also {
+        it.writeText("$common/worktrees/TASK-123/gitdir", "$task/.git")
+        it.writeText("$common/worktrees/TASK-456/gitdir", "$other/.git")
+    }
     private val store = FakeEnvironmentStateStore()
     private val pauses = mutableListOf<Long>()
 
-    private fun resolve(source: FakeRepositoryProvisioningSource) =
-        ResolveWorktreeEnvironmentUseCase(git, source, store, FakePortProbe())
+    private fun harness(sdk: FakeAndroidSdk, source: FakeRepositoryProvisioningSource = provisioning()) =
+        PoolHarness(git, source, store, sdk, files = files)
 
-    private fun start(sdk: FakeAndroidSdk, source: FakeRepositoryProvisioningSource = provisioning(), timeoutMs: Long = 10_000) =
-        StartWorktreeEmulatorUseCase(source, resolve(source), sdk, pause = { pauses += it }, pollIntervalMs = 2_000, timeoutMs = timeoutMs)
+    private fun resolve(source: FakeRepositoryProvisioningSource) = harness(FakeAndroidSdk(), source).resolve
+
+    private fun start(sdk: FakeAndroidSdk, source: FakeRepositoryProvisioningSource = provisioning(), timeoutMs: Long = 10_000): StartWorktreeEmulatorUseCase {
+        val harness = harness(sdk, source)
+        return StartWorktreeEmulatorUseCase(
+            source,
+            harness.resolve,
+            harness.acquire,
+            sdk,
+            pause = { pauses += it },
+            pollIntervalMs = 2_000,
+            timeoutMs = timeoutMs,
+        )
+    }
 
     @Test
     fun `starts the chosen AVD read-only on the worktree's port and waits for the boot`() = runTest {
         val sdk = FakeAndroidSdk(bootAfterPolls = 2)
 
-        val emulator = start(sdk)(config, task).getOrThrow()
+        val emulator = start(sdk)(config, task).getOrThrow().device
 
         assertEquals(WorktreeEmulator("emulator-5554", EmulatorState.RUNNING), emulator)
         assertEquals(listOf(FakeAndroidSdk.Started("Medium_Phone_API_35", 5554, noWindow = false)), sdk.started)
@@ -121,7 +137,7 @@ class WorktreeEmulatorUseCasesTest {
         val sdk = FakeAndroidSdk(states = mutableMapOf("emulator-5554" to EmulatorState.RUNNING))
         val stop = StopWorktreeEmulatorUseCase(source, resolve(source), sdk)
 
-        assertNull(stop(config, task).getOrThrow(), "nothing reserved yet")
+        assertNull(stop(config, task).getOrThrow(), "not acquired yet")
 
         start(sdk, source)(config, task).getOrThrow()
         assertEquals(WorktreeEmulator("emulator-5554", EmulatorState.STOPPED), stop(config, task).getOrThrow())
@@ -135,7 +151,7 @@ class WorktreeEmulatorUseCasesTest {
     fun `reads states without reserving and without Android tools for other repositories`() = runTest {
         val source = provisioning()
         val sdk = FakeAndroidSdk(states = mutableMapOf("emulator-5554" to EmulatorState.RUNNING))
-        resolve(source)(repository, task).getOrThrow()
+        start(sdk, source)(config, task).getOrThrow()
         val writes = store.writes
 
         val states = ReadEmulatorStatesUseCase(source, resolve(source), sdk)(
@@ -151,5 +167,55 @@ class WorktreeEmulatorUseCasesTest {
         assertEquals(emptyMap(), none.getOrThrow())
         assertEquals(0, untouched.locates)
         assertEquals(0, untouched.stateQueries)
+    }
+
+    @Test
+    fun `resolving the environment reserves no port and the first start acquires it`() = runTest {
+        val source = provisioning()
+        val environment = resolve(source)(repository, task).getOrThrow()
+
+        assertTrue(environment.variables.isEmpty())
+        assertTrue(environment.ports.isEmpty())
+        assertTrue(store.portsByAdminDirectory.isEmpty())
+
+        val started = start(FakeAndroidSdk(), source)(config, task).getOrThrow()
+
+        assertTrue(started.acquisition.acquiredNow)
+        assertEquals(mapOf("emulator" to 5554), store.portsByAdminDirectory["$common/worktrees/TASK-123"])
+        assertEquals("emulator-5554", resolve(source)(repository, task).getOrThrow().variables.toMap()["ANDROID_SERIAL"])
+    }
+
+    @Test
+    fun `a start with the pool full and every emulator running fails and reserves nothing`() = runTest {
+        val source = provisioning()
+        val sdk = FakeAndroidSdk()
+        val harness = harness(sdk, source).also { it.limit(emulators = 1) }
+        val startFirst = StartWorktreeEmulatorUseCase(source, harness.resolve, harness.acquire, sdk, pause = {})
+        startFirst(config, task).getOrThrow()
+
+        val error = startFirst(config, other).exceptionOrNull()
+
+        assertIs<WorktreeError.ResourcePoolFull>(error)
+        assertEquals(1, error.limit)
+        assertEquals(listOf(task), error.holders.map { it.worktreePath })
+        assertEquals(1, sdk.started.size)
+        assertNull(store.portsByAdminDirectory["$common/worktrees/TASK-456"])
+    }
+
+    @Test
+    fun `a full pool releases the least recently used stopped emulator and reports it`() = runTest {
+        val source = provisioning()
+        val sdk = FakeAndroidSdk()
+        val harness = harness(sdk, source).also { it.limit(emulators = 1) }
+        val useCase = StartWorktreeEmulatorUseCase(source, harness.resolve, harness.acquire, sdk, pause = {})
+        useCase(config, task).getOrThrow()
+        sdk.states.clear()
+
+        val started = useCase(config, other).getOrThrow()
+
+        assertEquals(listOf(task), started.acquisition.releases.map { it.worktreePath })
+        assertNull(store.portsByAdminDirectory["$common/worktrees/TASK-123"])
+        assertEquals(mapOf("emulator" to 5554), store.portsByAdminDirectory["$common/worktrees/TASK-456"])
+        assertTrue(harness.resolve(repository, task).getOrThrow().variables.isEmpty())
     }
 }

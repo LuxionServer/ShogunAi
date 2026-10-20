@@ -1,5 +1,10 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.domain.model.PoolRelease
+import app.luxion.shogunai.domain.model.PoolReleaseReason
+import app.luxion.shogunai.domain.model.ResourceKind
+import app.luxion.shogunai.domain.usecase.DeviceStart
+import app.luxion.shogunai.domain.usecase.ResourceAcquisition
 import app.luxion.shogunai.ToolUseCases
 import app.luxion.shogunai.domain.FakeToolDetector
 import app.luxion.shogunai.domain.FakeToolPreferenceRepository
@@ -2167,7 +2172,7 @@ class ProjectWorktreesTest {
                 started += path
                 val emulator = WorktreeEmulator("emulator-5554", EmulatorState.RUNNING)
                 states = states + (path to emulator)
-                Result.success(emulator)
+                Result.success(DeviceStart(emulator, ResourceAcquisition(false, emptyList())))
             },
             stop = { path ->
                 stopped += path
@@ -2327,7 +2332,7 @@ class ProjectWorktreesTest {
                 started += path
                 val simulator = WorktreeSimulator("UDID-1", "ShogunAi · main-repo · TASK-123", SimulatorState.BOOTED)
                 states = states + (path to simulator)
-                Result.success(simulator)
+                Result.success(DeviceStart(simulator, ResourceAcquisition(false, emptyList())))
             },
             stop = { path ->
                 stopped += path
@@ -2770,6 +2775,35 @@ class ProjectWorktreesTest {
     }
 
     @Test
+    fun `a start that released another emulator keeps a notice until dismissed`() = runTest(dispatcher) {
+        val release = PoolRelease(ResourceKind.EMULATOR, "/home/dev/other", PoolReleaseReason.MAKE_ROOM, "api · TASK-1")
+        val emulators = EmulatorUseCases(
+            declared = { true },
+            readStates = { Result.success(emptyMap()) },
+            start = {
+                Result.success(
+                    DeviceStart(WorktreeEmulator("emulator-5554", EmulatorState.RUNNING), ResourceAcquisition(true, listOf(release))),
+                )
+            },
+            stop = { Result.success(WorktreeEmulator("emulator-5554", EmulatorState.STOPPED)) },
+            stopSerials = { Result.success(emptyList()) },
+        )
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(emulator = emulators))
+        advanceUntilIdle()
+
+        viewModel.startEmulator(worktree)
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf(ProjectWorktrees.ReleaseNotice(ResourceKind.EMULATOR, "api · TASK-1", worktreePath.substringAfterLast('/'))),
+            viewModel.releaseNotices[worktreePath],
+        )
+
+        viewModel.dismissReleaseNotices(worktreePath)
+        assertNull(viewModel.releaseNotices[worktreePath])
+    }
+
+    @Test
     fun `retrying a failed emulator start repeats it and clears the error on success`() = runTest(dispatcher) {
         var failing = true
         var starts = 0
@@ -2778,7 +2812,11 @@ class ProjectWorktreesTest {
             readStates = { Result.success(emptyMap()) },
             start = {
                 starts++
-                if (failing) Result.failure(IOException("no emulator")) else Result.success(WorktreeEmulator("emulator-5554", EmulatorState.RUNNING))
+                if (failing) {
+                    Result.failure(IOException("no emulator"))
+                } else {
+                    Result.success(DeviceStart(WorktreeEmulator("emulator-5554", EmulatorState.RUNNING), ResourceAcquisition(false, emptyList())))
+                }
             },
             stop = { Result.success(WorktreeEmulator("emulator-5554", EmulatorState.STOPPED)) },
             stopSerials = { Result.success(emptyList()) },

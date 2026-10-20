@@ -11,14 +11,18 @@ import app.luxion.shogunai.domain.model.DerivedDataListing
 import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleDaemon
+import app.luxion.shogunai.domain.model.PoolUsage
 import app.luxion.shogunai.domain.model.ProvisionDrift
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.ProvisionMode
 import app.luxion.shogunai.domain.model.ProvisionedFile
+import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeSimulator
+import app.luxion.shogunai.domain.usecase.GradleTrim
+import app.luxion.shogunai.domain.usecase.ResourceAcquisition
 import app.luxion.shogunai.domain.usecase.totalResidentMemory
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -329,21 +333,89 @@ fun xcodeCleanJson(active: Boolean, deletion: DerivedDataDeletion?): JsonObject 
     )
 }
 
-fun emulatorJson(worktree: String, emulator: WorktreeEmulator?): JsonObject = buildJsonObject {
+fun emulatorJson(worktree: String, emulator: WorktreeEmulator?, acquisition: ResourceAcquisition? = null): JsonObject = buildJsonObject {
     put("worktree", worktree)
     put("serial", emulator?.serial)
     put("state", emulator?.state?.jsonLabel)
+    put("acquired", emulator != null)
+    acquisition?.let { put("acquiredNow", it.acquiredNow) }
+    acquisition?.let { put("released", strings(it.releases.mapNotNull { release -> release.worktreePath })) }
 }
 
 private val EmulatorState.jsonLabel: String
     get() = name.lowercase()
 
-fun simulatorJson(worktree: String, simulator: WorktreeSimulator?): JsonObject = buildJsonObject {
+fun simulatorJson(worktree: String, simulator: WorktreeSimulator?, acquisition: ResourceAcquisition? = null): JsonObject = buildJsonObject {
     put("worktree", worktree)
     put("udid", simulator?.udid)
     put("name", simulator?.name)
     put("state", simulator?.state?.jsonLabel)
+    put("acquired", simulator != null)
+    acquisition?.let { put("acquiredNow", it.acquiredNow) }
+    acquisition?.let { put("released", strings(it.releases.mapNotNull { release -> release.worktreePath })) }
 }
+
+fun poolJson(usages: List<PoolUsage>): JsonObject = buildJsonObject {
+    put(
+        "pools",
+        buildJsonArray {
+            usages.forEach { usage ->
+                add(
+                    buildJsonObject {
+                        put("kind", usage.kind.jsonLabel)
+                        put("limit", usage.limit)
+                        put("effectiveLimit", usage.effectiveLimit)
+                        put("inUse", usage.inUse)
+                        put("overLimit", usage.isOverLimit)
+                        put(
+                            "holders",
+                            buildJsonArray {
+                                usage.holders.forEach { holder ->
+                                    add(
+                                        buildJsonObject {
+                                            put("holder", holder.displayName)
+                                            put("worktree", holder.worktreePath)
+                                            put("reference", holder.reference)
+                                            put("state", holder.state.name.lowercase())
+                                            put("idle", holder.idle)
+                                            put("lastUsed", holder.lastUsed?.toString())
+                                        },
+                                    )
+                                }
+                            },
+                        )
+                    },
+                )
+            }
+        },
+    )
+}
+
+fun poolTrimJson(trim: GradleTrim): JsonObject = buildJsonObject {
+    put("limit", trim.limit)
+    put("stopped", numbers(trim.stopped.map { it.pid }))
+    put(
+        "kept",
+        buildJsonArray {
+            trim.kept.forEach {
+                add(
+                    buildJsonObject {
+                        put("pid", it.pid)
+                        put("reason", it.reason.name.lowercase())
+                    },
+                )
+            }
+        },
+    )
+    put("remaining", trim.remaining)
+}
+
+val ResourceKind.jsonLabel: String
+    get() = when (this) {
+        ResourceKind.EMULATOR -> "emulators"
+        ResourceKind.IOS_SIMULATOR -> "simulators"
+        ResourceKind.GRADLE_DAEMON -> "gradleDaemons"
+    }
 
 private val SimulatorState.jsonLabel: String
     get() = name.lowercase()

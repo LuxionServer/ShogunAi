@@ -2,6 +2,19 @@ package app.luxion.shogunai
 
 import app.luxion.shogunai.BuildInfo
 import app.luxion.shogunai.domain.executor.ClipboardWriter
+import app.luxion.shogunai.domain.io.ResourceLimitsRepository
+import app.luxion.shogunai.domain.model.PoolUsage
+import app.luxion.shogunai.domain.model.ResourceKind
+import app.luxion.shogunai.domain.model.ResourceSettings
+import app.luxion.shogunai.domain.usecase.AcquireWorktreeResourceUseCase
+import app.luxion.shogunai.domain.usecase.DeviceStart
+import app.luxion.shogunai.domain.usecase.GradleTrim
+import app.luxion.shogunai.domain.usecase.ReadResourcePoolUseCase
+import app.luxion.shogunai.domain.usecase.ResolveResourceLimitsUseCase
+import app.luxion.shogunai.domain.usecase.TrimGradleDaemonsUseCase
+import app.luxion.shogunai.infrastructure.JsonResourceLimitsRepository
+import app.luxion.shogunai.infrastructure.JvmMachineCapacity
+import app.luxion.shogunai.ui.shell.ResourcePreferences
 import app.luxion.shogunai.domain.model.HostArchitecture
 import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.usecase.CheckForUpdateUseCase
@@ -190,9 +203,6 @@ class AppContainer {
     private val folderLauncher = SystemFolderLauncher(shellCommandExecutor)
     private val environmentCache = WorktreeEnvironmentCache()
     private val resolveEnvironment = resolverWith(contributions)
-    private val startSimulator = StartWorktreeSimulatorUseCase(repositoryProvisioningSource, appleSimulators, { repository, worktree, requested ->
-        resolverWith(contributions.requesting(requested))(repository, worktree)
-    })
     private val stopSimulator = StopWorktreeSimulatorUseCase(repositoryProvisioningSource, appleSimulators, resolveEnvironment)
     private val readSimulatorStates = ReadSimulatorStatesUseCase(repositoryProvisioningSource, appleSimulators, resolveEnvironment)
     private val deleteSimulators = DeleteSimulatorsUseCase(repositoryProvisioningSource, appleSimulators, resolveEnvironment)
@@ -236,7 +246,33 @@ class AppContainer {
     private val androidSdk = SharedDeviceStatesAndroidSdk(LocalAndroidSdk(shellCommandExecutor, fileManager))
     private val herdrConfig = HerdrConfigFile()
     private val herdrClient = CliHerdrClient(shellCommandExecutor)
-    private val startEmulator = StartWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)
+    private val resourceLimitsRepository: ResourceLimitsRepository = JsonResourceLimitsRepository(settingsFile)
+    private val resolveResourceLimits = ResolveResourceLimitsUseCase(resourceLimitsRepository, JvmMachineCapacity())
+    private val listGradleDaemons = ListGradleDaemonsUseCase(gradleDaemonSource, fileManager)
+    private val stopGradleDaemons = StopGradleDaemonsUseCase(gradleDaemonSource, shellCommandExecutor)
+    private val readPool = ReadResourcePoolUseCase(
+        resolveEnvironment,
+        environmentStateStore,
+        fileManager,
+        androidSdk,
+        appleSimulators,
+        resolveResourceLimits,
+        listGradleDaemons,
+    )
+    private val acquireResource = AcquireWorktreeResourceUseCase(
+        repositoryProvisioningSource,
+        resolveEnvironment,
+        WriteEnvironmentFileUseCase(shellCommandExecutor, fileManager, repositoryProvisioningSource),
+        environmentStateStore,
+        portProbe,
+        appleSimulators,
+        readPool,
+        { requested -> contributions.requesting(requested) },
+    )
+    private val trimGradleDaemons = TrimGradleDaemonsUseCase(listGradleDaemons, stopGradleDaemons, resolveResourceLimits)
+    val resources = ResourcePreferences(resourceLimitsRepository, resolveResourceLimits, showsSimulators = appleSimulators.isSupported())
+    private val startSimulator = StartWorktreeSimulatorUseCase(repositoryProvisioningSource, appleSimulators, acquireResource, resolveEnvironment)
+    private val startEmulator = StartWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, acquireResource, androidSdk)
     private val stopEmulator = StopWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)
     private val readEmulatorStates = ReadEmulatorStatesUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)
 
@@ -267,6 +303,11 @@ class AppContainer {
             runCatching { androidSdk.deviceStates(androidSdk.locate(config.baseRepositoryPath)) }
         },
         startEmulator = { config, worktreePath -> startEmulator(config, worktreePath) },
+        readPool = { kind, config, worktrees ->
+            runCatching { readPool.of(kind, config.baseRepositoryPath, worktrees) }
+        },
+        trimGradleDaemons = { worktrees -> trimGradleDaemons(worktrees) },
+        resourceSettings = { resources.settings },
         stopEmulator = { config, worktreePath -> stopEmulator(config, worktreePath) },
         stopEmulatorSerials = { config, serials -> runCatching { stopEmulator.stopSerials(config, serials) } },
         readSimulatorStates = { config, worktrees -> readSimulatorStates(config, worktrees) },
@@ -492,11 +533,14 @@ class MachineUseCases(
     val deleteOrphanedDerivedData: suspend () -> Result<DerivedDataDeletion>,
     val readEmulatorStates: suspend (ProjectConfig, List<Worktree>) -> Result<Map<String, WorktreeEmulator>>,
     val readRunningEmulators: suspend (ProjectConfig) -> Result<Map<String, EmulatorState>>,
-    val startEmulator: suspend (ProjectConfig, String) -> Result<WorktreeEmulator>,
+    val startEmulator: suspend (ProjectConfig, String) -> Result<DeviceStart<WorktreeEmulator>>,
+    val readPool: suspend (ResourceKind, ProjectConfig, List<Worktree>?) -> Result<PoolUsage>,
+    val trimGradleDaemons: suspend (List<Worktree>?) -> Result<GradleTrim>,
+    val resourceSettings: () -> ResourceSettings,
     val stopEmulator: suspend (ProjectConfig, String) -> Result<WorktreeEmulator?>,
     val stopEmulatorSerials: suspend (ProjectConfig, List<String>) -> Result<List<WorktreeEmulator>>,
     val readSimulatorStates: suspend (ProjectConfig, List<Worktree>) -> Result<Map<String, WorktreeSimulator>>,
-    val startSimulator: suspend (ProjectConfig, String) -> Result<WorktreeSimulator>,
+    val startSimulator: suspend (ProjectConfig, String) -> Result<DeviceStart<WorktreeSimulator>>,
     val stopSimulator: suspend (ProjectConfig, String) -> Result<WorktreeSimulator?>,
     val readSimulatorOrphans: suspend (ProjectConfig) -> Result<List<SimulatorDevice>>,
     val deleteSimulators: suspend (List<String>) -> Result<List<String>>,
@@ -505,7 +549,7 @@ class MachineUseCases(
 data class SimulatorUseCases(
     val declared: suspend () -> Boolean,
     val readStates: suspend (List<Worktree>) -> Result<Map<String, WorktreeSimulator>>,
-    val start: suspend (String) -> Result<WorktreeSimulator>,
+    val start: suspend (String) -> Result<DeviceStart<WorktreeSimulator>>,
     val stop: suspend (String) -> Result<WorktreeSimulator?>,
     val orphans: suspend () -> Result<List<SimulatorDevice>>,
     val delete: suspend (List<String>) -> Result<List<String>>,
@@ -583,7 +627,7 @@ interface SimulatorSetup {
 data class EmulatorUseCases(
     val declared: suspend () -> Boolean,
     val readStates: suspend (List<Worktree>) -> Result<Map<String, WorktreeEmulator>>,
-    val start: suspend (String) -> Result<WorktreeEmulator>,
+    val start: suspend (String) -> Result<DeviceStart<WorktreeEmulator>>,
     val stop: suspend (String) -> Result<WorktreeEmulator?>,
     val stopSerials: suspend (List<String>) -> Result<List<WorktreeEmulator>>,
 ) {
