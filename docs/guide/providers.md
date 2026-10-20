@@ -106,7 +106,7 @@ Xcode keeps one DerivedData folder per project path, so every worktree gets its 
 { "providers": { "xcode": { "compilationCache": true } } }
 ```
 
-The worktree screen then shows an "Xcode DerivedData" section with each worktree's folder, its size and last access, and the orphaned folders on the machine: those whose project no longer exists, whichever tool created them. "Delete orphans" removes them, and "Clean up" (checked by default) also deletes the orphans after removing worktrees, including the folders of the worktrees it removes.
+The worktree screen then shows an "Xcode DerivedData" section with each worktree's folder, its size and last access, and the orphaned folders on the machine: those whose project no longer exists, whichever tool created them. The folders appear at once; their sizes and the totals read "Calculating…" until each folder has been measured in the background, one at a time, without freezing the app. The calculation goes on if you leave the view (the sidebar entry shows the total once it's ready) and starts over when you reload it. "Delete orphans" removes them, and "Clean up" (checked by default) also deletes the orphans after removing worktrees, including the folders of the worktrees it removes.
 
 Only orphaned folders are ever deleted: never the DerivedData of a project that still exists, never Xcode's shared caches (`CompilationCache.noindex`, `ModuleCache.noindex`, …), and never a folder whose project is on a volume that isn't mounted. ShogunAi finds DerivedData in Xcode's default location or the custom one set in Xcode's preferences.
 

@@ -8,6 +8,8 @@ interface DerivedDataSource {
 
     suspend fun folders(): List<DerivedDataFolder>
 
+    suspend fun size(folder: DerivedDataFolder): Long
+
     suspend fun compilationCacheBytes(): Long?
 
     fun projectExists(workspacePath: String): Boolean

@@ -6,7 +6,10 @@ import app.luxion.shogunai.domain.model.DaemonKeptReason
 import app.luxion.shogunai.domain.model.DaemonProcess
 import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.DaemonStopReport
+import app.luxion.shogunai.domain.model.AttributedDerivedData
 import app.luxion.shogunai.domain.model.DerivedDataDeletion
+import app.luxion.shogunai.domain.model.DerivedDataFolder
+import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.DerivedDataListing
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.KeptDaemon
@@ -18,6 +21,7 @@ import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.usecase.ProjectOwner
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -84,7 +88,9 @@ class MachineResourcesTest {
         val stoppedSerials = mutableListOf<List<String>>()
         val deletedSimulators = mutableListOf<List<String>>()
         var derivedDataDeletions = 0
-        val includeCompilationCache = mutableListOf<Boolean>()
+        val measured = mutableListOf<String>()
+        var cacheMeasurements = 0
+        var measureGate: CompletableDeferred<Unit>? = null
     }
 
     private fun useCases(
@@ -95,6 +101,7 @@ class MachineResourcesTest {
         orphans: List<SimulatorDevice> = emptyList(),
         derivedData: DerivedDataListing = DerivedDataListing(emptyList(), null),
         stopReport: DaemonStopReport = DaemonStopReport(),
+        sizes: Map<String, Long> = emptyMap(),
         startEmulator: suspend (ProjectConfig, String) -> Result<WorktreeEmulator> = { _, path ->
             calls.startedEmulators += path
             Result.success(WorktreeEmulator("emulator-5554", EmulatorState.RUNNING))
@@ -106,11 +113,16 @@ class MachineResourcesTest {
     ) = MachineUseCases(
         listDaemons = { calls.daemonListings++; Result.success(calls.daemons) },
         stopDaemons = stopDaemons,
-        listDerivedData = { includeCache ->
+        listDerivedData = {
             calls.derivedDataListings++
-            calls.includeCompilationCache += includeCache
             Result.success(derivedData)
         },
+        measureDerivedData = { folder ->
+            calls.measured += folder.path
+            calls.measureGate?.await()
+            Result.success(sizes[folder.path] ?: 1_000L)
+        },
+        measureCompilationCache = { calls.cacheMeasurements++; Result.success(7_000L) },
         deleteOrphanedDerivedData = { calls.derivedDataDeletions++; Result.success(DerivedDataDeletion()) },
         readEmulatorStates = { _, _ -> calls.emulatorReads++; Result.success(emulators) },
         readRunningEmulators = { Result.success(running) },
@@ -416,7 +428,6 @@ class MachineResourcesTest {
         )
         machine.show(MachineResource.XCODE_DERIVED_DATA)
         runCurrent()
-        assertEquals(listOf(true), calls.includeCompilationCache)
 
         machine.deleteOrphanedDerivedData()
         runCurrent()
@@ -447,5 +458,137 @@ class MachineResourcesTest {
         runCurrent()
         assertEquals(MachineSummary(2, 3_000L), machine.summaries.getValue(MachineResource.GRADLE_DAEMONS))
         ticks.cancel()
+    }
+
+    private val derivedFolders = listOf(
+        AttributedDerivedData(DerivedDataFolder("/dd/A", "/home/dev/projects/main-repo/A.xcodeproj", null, null), DerivedDataOwner.OtherProject),
+        AttributedDerivedData(DerivedDataFolder("/dd/B", "/gone/B.xcodeproj", null, null), DerivedDataOwner.Orphaned),
+    )
+
+    private fun derivedDataMachine(calls: Calls, compilationCache: Boolean = false) = machine(
+        useCases(calls, derivedData = DerivedDataListing(derivedFolders, null), sizes = mapOf("/dd/A" to 300L, "/dd/B" to 200L)),
+        listOf(machineProject("main-repo", listOf(mainWorktree), MachineResource.XCODE_DERIVED_DATA, compilationCache = compilationCache)),
+    )
+
+    private fun MachineResources.loadedFolders() = (derivedData as MachineLoad.Loaded).value
+
+    @Test
+    fun `derived data folders are listed before their sizes are known`() = machineTest {
+        val calls = Calls().apply { measureGate = CompletableDeferred() }
+        val machine = derivedDataMachine(calls)
+
+        machine.show(MachineResource.XCODE_DERIVED_DATA)
+        runCurrent()
+
+        assertEquals(listOf("/dd/A", "/dd/B"), machine.loadedFolders().map { it.folder.path })
+        assertTrue(machine.loadedFolders().all { it.folder.sizeBytes == null })
+        assertEquals(listOf(null), machine.derivedDataOrphans.map { it.sizeBytes }.distinct())
+    }
+
+    @Test
+    fun `derived data sizes arrive one by one`() = machineTest {
+        val calls = Calls()
+        val gates = listOf(CompletableDeferred<Unit>(), CompletableDeferred())
+        var next = 0
+        val machine = machine(
+            useCases(calls, derivedData = DerivedDataListing(derivedFolders, null), sizes = mapOf("/dd/A" to 300L, "/dd/B" to 200L))
+                .let { base ->
+                    MachineUseCases(
+                        listDaemons = base.listDaemons, stopDaemons = base.stopDaemons, listDerivedData = base.listDerivedData,
+                        measureDerivedData = { folder -> gates[next++].await(); base.measureDerivedData(folder) },
+                        measureCompilationCache = base.measureCompilationCache,
+                        deleteOrphanedDerivedData = base.deleteOrphanedDerivedData, readEmulatorStates = base.readEmulatorStates,
+                        readRunningEmulators = base.readRunningEmulators, startEmulator = base.startEmulator,
+                        stopEmulator = base.stopEmulator, stopEmulatorSerials = base.stopEmulatorSerials,
+                        readSimulatorStates = base.readSimulatorStates, startSimulator = base.startSimulator,
+                        stopSimulator = base.stopSimulator, readSimulatorOrphans = base.readSimulatorOrphans,
+                        deleteSimulators = base.deleteSimulators,
+                    )
+                },
+            listOf(machineProject("main-repo", listOf(mainWorktree), MachineResource.XCODE_DERIVED_DATA)),
+        )
+
+        machine.show(MachineResource.XCODE_DERIVED_DATA)
+        runCurrent()
+        gates[0].complete(Unit)
+        runCurrent()
+        assertEquals(listOf(300L, null), machine.loadedFolders().map { it.folder.sizeBytes })
+        gates[1].complete(Unit)
+        runCurrent()
+
+        assertEquals(listOf(300L, 200L), machine.loadedFolders().map { it.folder.sizeBytes })
+        assertEquals(listOf(200L), machine.derivedDataOrphans.map { it.sizeBytes })
+    }
+
+    @Test
+    fun `reloading derived data restarts the calculation`() = machineTest {
+        val calls = Calls().apply { measureGate = CompletableDeferred() }
+        val machine = derivedDataMachine(calls)
+        machine.show(MachineResource.XCODE_DERIVED_DATA)
+        runCurrent()
+        assertEquals(listOf("/dd/A"), calls.measured)
+
+        machine.reload()
+        runCurrent()
+
+        assertEquals(2, calls.derivedDataListings)
+        assertEquals(listOf("/dd/A", "/dd/A"), calls.measured)
+    }
+
+    @Test
+    fun `leaving the derived data view keeps the calculation going`() = machineTest {
+        val calls = Calls().apply { measureGate = CompletableDeferred() }
+        val machine = derivedDataMachine(calls, compilationCache = true)
+        machine.show(MachineResource.XCODE_DERIVED_DATA)
+        runCurrent()
+
+        machine.show(MachineResource.GRADLE_DAEMONS)
+        calls.measureGate!!.complete(Unit)
+        runCurrent()
+
+        assertEquals(listOf("/dd/A", "/dd/B"), calls.measured)
+        assertEquals(1, calls.cacheMeasurements)
+        assertEquals(7_000L, machine.compilationCacheBytes)
+    }
+
+    @Test
+    fun `the sidebar summary calculates until every size is known`() = machineTest {
+        val calls = Calls().apply { measureGate = CompletableDeferred() }
+        val machine = derivedDataMachine(calls)
+
+        machine.refreshSummaries()
+        runCurrent()
+        machine.refreshSummaries()
+        assertEquals(MachineSummary(2, null, calculating = true), machine.summaries.getValue(MachineResource.XCODE_DERIVED_DATA))
+
+        calls.measureGate!!.complete(Unit)
+        runCurrent()
+        machine.refreshSummaries()
+
+        assertEquals(MachineSummary(2, 500L), machine.summaries.getValue(MachineResource.XCODE_DERIVED_DATA))
+    }
+
+    @Test
+    fun `removing the xcode provider stops the calculation`() = machineTest {
+        val calls = Calls().apply { measureGate = CompletableDeferred() }
+        var declared = true
+        val machine = MachineResources(
+            scope = scope,
+            useCases = useCases(calls, derivedData = DerivedDataListing(derivedFolders, null)),
+            projects = {
+                listOf(machineProject("main-repo", listOf(mainWorktree), *(if (declared) arrayOf(MachineResource.XCODE_DERIVED_DATA) else emptyArray())))
+            },
+            pathExists = { false },
+        )
+        machine.refreshSummaries()
+        runCurrent()
+
+        declared = false
+        machine.refreshSummaries()
+        calls.measureGate!!.complete(Unit)
+        runCurrent()
+
+        assertEquals(listOf("/dd/A"), calls.measured)
+        assertTrue(machine.derivedData is MachineLoad.Loading)
     }
 }

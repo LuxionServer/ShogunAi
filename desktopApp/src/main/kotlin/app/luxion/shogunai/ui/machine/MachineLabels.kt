@@ -41,7 +41,7 @@ fun MachineSummary.text(resource: MachineResource, strings: Strings): String = w
     MachineResource.GRADLE_DAEMONS -> "$count · ${formatSize(bytes ?: 0)}"
     MachineResource.ANDROID_EMULATORS -> strings.runningCount(count)
     MachineResource.IOS_SIMULATORS -> strings.bootedCount(count)
-    MachineResource.XCODE_DERIVED_DATA -> formatSize(bytes ?: 0)
+    MachineResource.XCODE_DERIVED_DATA -> if (calculating) "$count · ${strings.calculating}" else formatSize(bytes ?: 0)
 }
 
 fun formatMemorySetting(size: String): String {
