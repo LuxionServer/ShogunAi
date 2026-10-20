@@ -330,6 +330,7 @@ private fun WorktreeView(destination: ShellDestination, shellViewModel: ShellVie
             WorktreeActions(
                 onFind = board::requestFind,
                 onCopySelectedLaunchCommand = board::copySelectedLaunchCommand,
+                onOpenSelectedInHerdr = board::openSelectedInHerdr,
                 onDeleteSelectedWorktree = board::deleteSelectedWorktree,
                 onClearSelection = board::clearSelection,
                 onEscape = board::escape,

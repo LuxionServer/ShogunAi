@@ -225,6 +225,7 @@ private fun openWindow() = application {
             onNewWorktree = shellViewModel::requestNewWorktree.takeIf { shellViewModel.canCreateWorktree },
             onFind = worktreeActions?.onFind,
             onCopySelectedLaunchCommand = worktreeActions?.onCopySelectedLaunchCommand,
+            onOpenSelectedInHerdr = worktreeActions?.onOpenSelectedInHerdr,
             onDeleteSelectedWorktree = worktreeActions?.onDeleteSelectedWorktree,
             onClearSelection = worktreeActions?.onClearSelection,
             hasWorktreeSelection = worktreeActions?.hasSelection?.invoke() == true,
