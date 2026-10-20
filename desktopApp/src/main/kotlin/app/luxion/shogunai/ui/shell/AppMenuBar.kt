@@ -16,6 +16,7 @@ fun FrameWindowScope.AppMenuBar(
     onNewWorktree: (() -> Unit)?,
     onFind: (() -> Unit)?,
     onCopySelectedLaunchCommand: (() -> Unit)?,
+    onOpenSelectedInHerdr: (() -> Unit)?,
     onDeleteSelectedWorktree: (() -> Unit)?,
     onClearSelection: (() -> Unit)?,
     hasWorktreeSelection: Boolean,
@@ -47,6 +48,9 @@ fun FrameWindowScope.AppMenuBar(
             val actsOnSelection = hasWorktreeSelection && !isEditingText
             onCopySelectedLaunchCommand?.let {
                 Item(strings.copyLaunchCommand, shortcut = shortcut(Key.C, shift = true), enabled = actsOnSelection, onClick = it)
+            }
+            onOpenSelectedInHerdr?.let {
+                Item(strings.openInHerdr, shortcut = shortcut(Key.E), enabled = actsOnSelection, onClick = it)
             }
             onDeleteSelectedWorktree?.let {
                 Item(strings.deleteWorktree, shortcut = shortcut(Key.Backspace), enabled = actsOnSelection, onClick = it)

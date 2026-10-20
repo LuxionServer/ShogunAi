@@ -269,6 +269,7 @@ class ShellViewModel(
 data class WorktreeActions(
     val onFind: () -> Unit,
     val onCopySelectedLaunchCommand: () -> Unit,
+    val onOpenSelectedInHerdr: () -> Unit,
     val onDeleteSelectedWorktree: () -> Unit,
     val onClearSelection: () -> Unit,
     val onEscape: () -> Unit,
