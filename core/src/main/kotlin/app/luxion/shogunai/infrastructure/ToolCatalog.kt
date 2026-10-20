@@ -20,15 +20,17 @@ internal object ToolCatalog {
             listOf("IntelliJ IDEA.app", "IntelliJ IDEA CE.app"),
         ),
         EditorId.ANDROID_STUDIO to MacApp(listOf("com.google.android.studio"), listOf("Android Studio.app")),
+        EditorId.XCODE to MacApp(listOf("com.apple.dt.Xcode"), listOf("Xcode.app")),
     )
 
     val applicationFolders = listOf("/Applications", "/System/Applications", "~/Applications")
 
-    fun editorExecutable(editor: EditorId, os: HostOs): String {
+    fun editorExecutable(editor: EditorId, os: HostOs): String? {
         val name = when (editor) {
             EditorId.VS_CODE -> "code"
             EditorId.INTELLIJ_IDEA -> "idea"
             EditorId.ANDROID_STUDIO -> "studio"
+            EditorId.XCODE -> return null
         }
         return if (os == HostOs.WINDOWS) "$name.cmd" else name
     }

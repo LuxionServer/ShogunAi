@@ -32,6 +32,7 @@ enum class EditorId(val displayName: String) {
     VS_CODE("VS Code"),
     INTELLIJ_IDEA("IntelliJ IDEA"),
     ANDROID_STUDIO("Android Studio"),
+    XCODE("Xcode"),
 }
 
 data class TerminalLaunch(

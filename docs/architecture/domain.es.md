@@ -154,7 +154,7 @@ Lo que la vista general de worktrees muestra de cada worktree (`WorktreeOverview
 
 ### Herramientas
 
-`Tools.kt` describe en qué puede abrir un worktree la app de escritorio: `HostOs` (`MACOS`, `WINDOWS`, `LINUX`), `TerminalId` (`TERMINAL`, `ITERM2`, `WINDOWS_TERMINAL`, que usa PowerShell, `TMUX`, `ZELLIJ`), `EditorId` (`VS_CODE`, `INTELLIJ_IDEA`, `ANDROID_STUDIO`), `DetectedTools` (los terminales e IDEs encontrados en la máquina) y `TerminalLaunch` (la ruta del worktree, sus variables, el comando del agente y la línea de lanzamiento completa que ejecuta un terminal).
+`Tools.kt` describe en qué puede abrir un worktree la app de escritorio: `HostOs` (`MACOS`, `WINDOWS`, `LINUX`), `TerminalId` (`TERMINAL`, `ITERM2`, `WINDOWS_TERMINAL`, que usa PowerShell, `TMUX`, `ZELLIJ`), `EditorId` (`VS_CODE`, `INTELLIJ_IDEA`, `ANDROID_STUDIO`, `XCODE`, este último solo en macOS), `DetectedTools` (los terminales e IDEs encontrados en la máquina) y `TerminalLaunch` (la ruta del worktree, sus variables, el comando del agente y la línea de lanzamiento completa que ejecuta un terminal).
 
 `ShellQuoting` entrecomilla valores para la shell en la que acaban: `posix` (comillas simples, `'\''` para una comilla interior), `posixCommand` (una lista argv como línea, entrecomillando solo las palabras que lo necesitan), `powershell` (comillas simples, duplicando cualquier tipo de comilla simple) y `windows` (comillas dobles).
 
