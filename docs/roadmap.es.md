@@ -10,35 +10,24 @@ Esa dirección se construye en tres capas:
 
 | Capa | Papel | Qué aporta |
 |---|---|---|
-| **Motor y CLI** | La base | Provisionado de worktrees definido en el repositorio (`.shogunai.json`) y un comando `shogun` que usan la app de escritorio, los agentes y sus hooks, con un entorno por worktree (puertos reservados y variables) que llega a la shell de cada agente. **Disponible.** |
-| **Torre de control** | La vista | La app de escritorio muestra el estado de todos los worktrees, incluidos los creados por otras herramientas, los mantiene limpios y sigue los cambios según ocurren. **Disponible.** |
+| **Motor y CLI** | La base | Provisionado de worktrees definido en el repositorio (`.shogunai.json`) y un comando `shogun` que usan la app de escritorio, los agentes y sus hooks, con un entorno por worktree (puertos reservados y variables) que llega a la shell de cada agente, y salida JSON en todos los comandos para scripts. **Disponible.** |
+| **Torre de control** | La vista | La app de escritorio muestra el estado de todos los worktrees, incluidos los creados por otras herramientas, los mantiene limpios y sigue los cambios según ocurren. Abre cada uno en el terminal, el IDE o Herdr con los agentes del proyecto, y queda a un clic en la barra de menús. **Disponible.** |
 | **Android, KMP y JVM** | El contenido | Provisionado para los stacks en los que más cuesta preparar un worktree: Gradle, secretos locales, emuladores e IDEs. **Empezado**: los repositorios Gradle muestran sus daemons, pueden parar los ociosos y acotar la memoria y la vida de los daemons que arrancan los agentes, los repositorios Android pueden dar a cada worktree su propio emulador, los KMP e iOS su propio simulador de iOS, y los repositorios Xcode ven y limpian sus DerivedData y comparten compilaciones entre worktrees. |
 
-Se conecta con las herramientas que ejecutan agentes en vez de sustituirlas: los hooks de worktree y de sesión de Claude Code, y [Herdr](https://herdr.dev), el multiplexor de terminal para agentes, cuyos worktrees provisiona un plugin de ShogunAi y en el que la app de escritorio abre un worktree con su entorno y su agente. **Disponible.**
-
-```mermaid
-graph LR
-    R["Robustez del motor"] --> P["Paridad entre el CLI y la app"]
-```
+Se conecta con las herramientas que ejecutan agentes en vez de sustituirlas: los hooks de worktree y de sesión de Claude Code, y [Herdr](https://herdr.dev), el multiplexor de terminal para agentes, cuyos worktrees provisiona un plugin de ShogunAi y en el que la app de escritorio abre un worktree con su entorno y su agente y muestra qué está haciendo cada agente. **Disponible.**
 
 ## Planificado
 
-### Endurecimiento tras el uso real
+### Pendientes de los cambios del 2026-10-19
 
-Una revisión de todo el proyecto el 2026-10-19, tras usarlo en repositorios reales, se convirtió en seis cambios de OpenSpec, ya propuestos en `openspec/changes/`:
+La revisión de todo el proyecto del 2026-10-19 y los cambios hechos a partir de ella están archivados. Estos pendientes quedaron fuera de ellos:
 
-- **Robustez del motor** (`process-robustness`): los comandos cancelados se detienen, ningún comando espera entrada, una creación fallida borra su rama, los ficheros locales corruptos se notifican y se conservan, los submódulos funcionan y las ramas se borran con una misma regla en todas partes; la limpieza nunca borra un worktree con un agente en marcha.
-- **Correcciones de escritorio tras el rediseño** (`desktop-review-fixes`): sin crash cuando una creación coincide con un refresco, errores visibles en cualquier agrupación, errores dentro del diálogo de borrado y edición de la ruta en ajustes sin perder cambios sin guardar.
-- **Coste del refresco en segundo plano** (`background-refresh-cost`): el watcher se pausa con la ventana en segundo plano y solo comprueba los proyectos mostrados, con lecturas de dispositivos más baratas (hecho).
-- **Paridad entre el CLI y la app** (`cli-desktop-parity`): `shogun remove` y `shogun repair`, y en la app el estado de provisionado y «Provisionar» para worktrees creados por otras herramientas, además de las variables de entorno del worktree.
-- **Higiene de documentación y build** (`docs-hygiene`): documentación que faltaba, el test del manifiesto del plugin de Herdr, avisos del compilador, strings y dependencias sin usar, y reglas de ignore.
-
-Pendientes que quedan fuera de esos cambios:
-
-- Soporte de repositorios bare con worktrees (el esquema «bare clone»), que cambia lo que significan el repositorio base y copiar desde él.
+- Soporte de repositorios bare con worktrees (el esquema «bare clone»), que cambia lo que significan el repositorio base y copiar desde él. Hoy ShogunAi los rechaza con un error específico.
 - Watchers del sistema de ficheros en vez de polling para los cambios de metadatos de Git.
 - Dividir `ProjectWorktrees.kt` y `ProjectSettingsView.kt` en holders y secciones más pequeños.
-- Atestaciones de procedencia del build para los artefactos de release, y tratar los avisos del compilador como errores cuando el build esté limpio.
+- Atestaciones de procedencia de build para los assets de las releases, y tratar los avisos del compilador como errores ahora que la build está limpia.
+- Más terminales para «Abrir en terminal» (Ghostty, Warp, Alacritty, Kitty, GNOME Terminal), cada uno como un adaptador más.
+- Una notificación cuando un agente de Herdr pasa a bloqueado o terminado; hoy la señal es la fila del worktree y el menú del icono de la barra de menús.
 
 ### Demo guiada de bienvenida
 
@@ -49,25 +38,7 @@ Un recorrido de primer uso basado en la revisión hecha antes de mergear la capa
 Provisionado para los stacks en los que un worktree recién creado está más lejos de compilar:
 
 - `local.properties`, keystores y `google-services.json`.
-- «Abrir en Android Studio» en el worktree correcto.
 - Mostrar los emuladores que arranca ShogunAi dentro de la ventana Running Devices de Android Studio, como los que arranca el propio Android Studio, para poder ordenar varios en una sola ventana. Necesita un spike: Android Studio podría incrustar un emulador externo arrancado con las mismas opciones que usa él.
-
-### Lanzar el agente y las herramientas directamente
-
-Copiar el comando de lanzamiento sigue siendo la opción por defecto, pero la app también podría abrirlo directamente con integraciones concretas y fiables en lugar de un lanzamiento genérico de terminal:
-
-- Terminales: iTerm2 y Terminal en macOS, Windows Terminal, tmux y Zellij.
-- «Abrir en IDE» (VS Code, IntelliJ IDEA, Android Studio) y «Abrir carpeta».
-
-### Pulido tras el rediseño de la interfaz
-
-Hallazgos menores de revisar de punta a punta la interfaz rediseñada:
-
-- Una rama sin commits propios aparece como «integrada en main» y queda en «Te necesitan»; debería leerse como no empezada.
-- El «Descartar» de la barra de guardado vuelve a preguntar «¿Descartar cambios?»; el botón debería bastar.
-- El título «Ajustes del proyecto» no nombra el proyecto.
-- Los campos `link` y `hooks` de `.shogunai.json` no se muestran en la sección de archivos de un worktree.
-- La vista de emuladores Android muestra «—» en sus filas y no tiene etiquetas de columna.
 
 ## En estudio
 
