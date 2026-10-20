@@ -114,7 +114,7 @@ El provider de emulador (`Emulator.kt`) solo actúa en repositorios que declaran
 
 - `EmulatorSettings` — los ajustes de máquina guardados en `ProjectConfig.emulator`.
 - `chooseAvd(requested, settings, preferred, available)` — la AVD que arrancar: la pedida para este arranque; si no, el ajuste de la máquina; si no, la AVD preferida del repositorio si esta máquina la tiene; si no, la primera disponible; `null` cuando no hay ninguna.
-- Cada worktree reserva la clave de puerto de consola `emulator` entre los puertos pares 5554–5584 (el rango que explora `adb`), con el puerto siguiente (el puerto adb del emulador) también libre, y recibe `ANDROID_SERIAL=emulator-<puerto>` (`emulatorSerial`). El plugin de Android para Gradle lee `ANDROID_SERIAL` en `installDebug`, `uninstall*` y `connectedAndroidTest` para usar solo ese dispositivo.
+- Un worktree reserva la clave de puerto de consola `emulator` entre los puertos pares 5554–5584 (el rango que explora `adb`), con el puerto siguiente (el puerto adb del emulador) también libre, cuando adquiere su emulador del [pool de emuladores](#pools-de-recursos), la primera vez que lo arranca y no cuando se resuelve su entorno. A partir de entonces recibe `ANDROID_SERIAL=emulator-<puerto>` (`emulatorSerial`); antes, su entorno no tiene `ANDROID_SERIAL`.
 - `SdkLocation` (raíz del SDK, ejecutables `emulator` y `adb`), `EmulatorState` (`STOPPED`, `BOOTING`, `RUNNING`) y `WorktreeEmulator` (serial y estado) describen lo que informa el [puerto del SDK de Android](#androidsdk).
 
 ### Simulador de iOS
@@ -124,7 +124,17 @@ El provider de simulador de iOS (`IosSimulator.kt`) solo actúa en macOS y en re
 - `SimulatorSettings` — los ajustes de máquina guardados en `ProjectConfig.simulator`.
 - `SimulatorRuntime` / `SimulatorDeviceType` — lo que Xcode tiene instalado, tal como lo informa `simctl` (identificador, nombre visible, versión, plataforma y los tipos de dispositivo que admite cada runtime).
 - `chooseSimulator(requested, settings, preferred, runtimes)` — el runtime por nombre visible (`iOS 18.5`, sin distinguir mayúsculas) a partir del primero de esta operación, el ajuste de máquina y la preferencia del repositorio que esté instalado; si no, el runtime de iOS más reciente por versión. Después, el tipo de dispositivo por nombre entre los iPhone e iPad del runtime en el mismo orden; si no, su iPhone más reciente: el número de modelo más alto del nombre y, entre esos, el nombre más corto (el modelo base, o el Pro si no hay base), sea cual sea el orden en que Apple los liste. `null` sin runtime de iOS.
-- Cada worktree guarda el recurso `ios-simulator`, el UDID de un simulador creado para él con el nombre `ShogunAi · <carpeta del repositorio> · <carpeta del worktree>` (`worktreeSimulatorName`), y recibe `IOS_SIMULATOR_UDID=<UDID>` en su entorno. El prefijo `ShogunAi · ` es lo que distingue los simuladores huérfanos de los del usuario.
+- Un worktree guarda el recurso `ios-simulator`, el UDID de un simulador creado para él con el nombre `ShogunAi · <carpeta del repositorio> · <carpeta del worktree>` (`worktreeSimulatorName`), cuando lo adquiere del [pool de simuladores](#pools-de-recursos), la primera vez que lo arranca; entonces recibe `IOS_SIMULATOR_UDID=<UDID>` en su entorno. El prefijo `ShogunAi · ` es lo que distingue los simuladores huérfanos de los del usuario.
+
+### Pools de recursos
+
+Los emuladores, los simuladores de iOS y los daemons de Gradle son recursos de capacidad limitada que comparten los worktrees (`ResourcePool.kt`). No hay un registro de pools: un pool se calcula a partir de lo que ya existe.
+
+- `ResourceKind` (`EMULATOR`, `IOS_SIMULATOR`, `GRADLE_DAEMON`), `CapacityProfile` (`AUTOMATIC`, `LIGHT`, `BALANCED`, `PER_WORKTREE`, `CUSTOM`), `ResourceLimits` (`emulators`, `simulators` y `gradleDaemons`, donde `null` significa sin límite) y `ResourceSettings` (el perfil y sus límites personalizados, guardados como `resources` en los ajustes de la app y nunca en el repositorio).
+- `PoolHolder` es un recurso en uso: su tipo, la ruta del worktree, el directorio de administración de Git, el estado, si está inactivo y cuándo se usó por última vez. `PoolUsage` es un pool: su `limit`, su `effectiveLimit` (el límite de emuladores nunca supera los 16 pares de puertos de consola) y sus holders. `PoolRelease` es lo que liberó una adquisición o un recorte.
+- Un worktree tiene un emulador mientras tiene reservado el puerto `emulator`, un simulador mientras tiene registrado un UDID `ios-simulator`, y un daemon de Gradle pertenece al worktree de su última build. Los daemons de Kotlin no cuentan en ningún pool.
+- La tabla de perfiles: Automático da `clamp(min((GB − 8) / 8, núcleos / 4), 1, 4)` emuladores y simuladores y `clamp(GB / 8, 2, 8)` daemons de Gradle (Ligero cuando no se puede leer la memoria); Ligero es 1, 1 y 2; Equilibrado es 2, 2 y 4; Uno por worktree no tiene límite; Personalizado es un número positivo o sin límite por tipo.
+- El `shogunai-env.json` de cada worktree guarda un objeto `lastUsed` (clave a milisegundos de época) junto a sus puertos y recursos. Un recurso sin registro es el usado menos recientemente.
 
 ### Herdr
 
@@ -143,7 +153,7 @@ Lo que el provider de Gradle observa en la máquina (`GradleDaemon.kt`):
 
 Lo que el provider de Xcode encuentra en la ubicación de DerivedData de Xcode (`DerivedData.kt`), solo en macOS y en repositorios que declaran `"providers": { "xcode": {} }`:
 
-- `DerivedDataFolder` — la carpeta de un proyecto: `path`, `workspacePath` (el `.xcodeproj`, `.xcworkspace` o paquete que registra su `info.plist`), `sizeBytes` y `lastAccessed`.
+- `DerivedDataFolder` — la carpeta de un proyecto: `path`, `workspacePath` (el `.xcodeproj`, `.xcworkspace` o paquete que registra su `info.plist`), `sizeBytes` (`null` hasta que se mide) y `lastAccessed`.
 - `DerivedDataOwner` — `Worktree(path)` (el worktree del repositorio que contiene el workspace, con los worktrees anidados resueltos), `OtherProject` (el workspace existe en otro sitio), `Orphaned` (el workspace ya no existe) o `UnavailableVolume` (el workspace está en un volumen no montado, así que no se distingue de un proyecto vivo).
 - `DerivedDataListing` — cada carpeta con su dueño (`AttributedDerivedData`) y el tamaño de la caché de compilación compartida cuando se pide; `orphans` y `ofWorktrees()` la filtran.
 - `DerivedDataDeletion` — el resultado de borrar huérfanas: `deleted`, `failures` (`DerivedDataDeletionFailure`: ruta y detalle) y `bytesFreed`.
@@ -189,6 +199,7 @@ Preferencias del usuario: `LIGHT` / `DARK` / `SYSTEM` y `ENGLISH` / `SPANISH`. S
 - `StartPointNotFound` — el punto de partida que se pasa a `shogun new --from` no identifica un commit.
 - `ProcessListingFailed` — `lsof` o `ps` fallaron al detectar los agentes en ejecución (p. ej. en Windows).
 - `NoEmulatorPort` — todos los puertos de consola de emulador entre 5554 y 5584 están reservados u ocupados.
+- `ResourcePoolFull` — un pool está en su límite y ninguno de sus recursos está inactivo; guarda el tipo, el límite y cada holder con su worktree y estado.
 - `AndroidSdkNotFound` — no se encontró el Android SDK; guarda los sitios revisados.
 - `NoAvdAvailable` — la máquina no tiene ningún Android Virtual Device.
 - `EmulatorBootTimeout` — el emulador no terminó de arrancar a tiempo; se deja arrancando.
@@ -289,6 +300,10 @@ interface EnvironmentStateStore {
     fun writePorts(adminDirectory: String, ports: Map<String, Int>)
     fun readResources(adminDirectory: String): Map<String, String>
     fun writeResources(adminDirectory: String, resources: Map<String, String>)
+    fun readLastUsed(adminDirectory: String): Map<String, Long>
+    fun writeLastUsed(adminDirectory: String, lastUsed: Map<String, Long>)
+    fun reservationsOnMachine(commonDirectory: String): List<WorktreeReservations>
+    fun release(adminDirectory: String, key: String)
     fun reservedPortsOnMachine(commonDirectory: String): Set<Int>
     fun recordedResourcesOnMachine(commonDirectory: String, key: String): Set<String>
     fun <T> withLock(block: () -> T): T
@@ -384,6 +399,7 @@ Lista los daemons de Gradle y de Kotlin que se ejecutan en la máquina con su es
 interface DerivedDataSource {
     fun isSupported(): Boolean
     suspend fun folders(): List<DerivedDataFolder>
+    suspend fun size(folder: DerivedDataFolder): Long
     suspend fun compilationCacheBytes(): Long?
     fun projectExists(workspacePath: String): Boolean
     fun isOnUnavailableVolume(workspacePath: String): Boolean
@@ -391,7 +407,7 @@ interface DerivedDataSource {
 }
 ```
 
-Todo lo que el provider de Xcode necesita de los DerivedData de Xcode: si el sistema es macOS, las carpetas de proyecto de la ubicación actual (nunca las cachés compartidas de Xcode, que no tienen `info.plist`), el tamaño de la caché de compilación compartida (`null` si no existe), si un workspace sigue existiendo o está en un volumen no montado, y borrar una carpeta.
+Todo lo que el provider de Xcode necesita de los DerivedData de Xcode: si el sistema es macOS, las carpetas de proyecto de la ubicación actual sin su tamaño (nunca las cachés compartidas de Xcode, que no tienen `info.plist`), el tamaño de una carpeta medido bajo demanda y cancelable, el tamaño de la caché de compilación compartida (`null` si no existe), si un workspace sigue existiendo o está en un volumen no montado, y borrar una carpeta.
 
 ### `TerminalLauncher` / `EditorLauncher` / `FolderLauncher` / `ToolDetector`
 
@@ -529,7 +545,14 @@ Ejecuta `git worktree remove [--force] <path>` y, opcionalmente, `git branch -d 
 
 Eliminar un worktree también libera lo que retienen sus providers, en dos pasos alrededor de la eliminación. `plan(config, worktree, allWorktrees)` lee, mientras el worktree aún existe, su emulador en marcha, su simulador arrancado y los daemons de Gradle ociosos cuya última build fue en él, cada uno solo si el repositorio declara ese provider; `release(config, plan)` los para después de que la eliminación haya salido bien. Los fallos se recogen como mensajes en `ReleasedResources.failures` en vez de hacer fallar: `shogun remove` los informa y la app de escritorio los ignora. La limpieza mantiene sus propias paradas, opcionales y por lotes.
 
-`resolveWorktreeTarget(target, worktrees, config, canonicalPath)` es como `shogun remove` encuentra su worktree: una ruta existente de un worktree listado; si no, una rama que coincida exactamente con la de un único worktree; y si no, un id de tarea traducido con `worktreePathFor`. Sin coincidencias es `WorktreeTargetNotFound`, con varias es `AmbiguousWorktreeTarget` con sus rutas, y el worktree principal es `CannotRemoveMainWorktree`.
+`resolveWorktreeTarget(target, worktrees, config, canonicalPath)` es como `shogun remove` encuentra su worktree: una ruta existente de un worktree listado; si no, una rama que coincida exactamente con la de un único worktree; y si no, un id de tarea traducido con `worktreePathFor`. Sin coincidencias es `WorktreeTargetNotFound`, con varias es `AmbiguousWorktreeTarget` con sus rutas, y el worktree principal es `CannotRemoveMainWorktree`. `findWorktreeTarget` hace la misma búsqueda sin rechazar el worktree principal, para `shogun open`.
+
+### Casos de uso de los pools de recursos
+
+- `ResolveResourceLimitsUseCase` convierte los `ResourceSettings` guardados en `ResourceLimits` con la tabla de perfiles, usando el puerto `MachineCapacity` (`totalMemoryBytes()` y `cores()`, implementado sobre el `OperatingSystemMXBean` de la JVM). Un ajuste ausente o ilegible significa Automático.
+- `ReadResourcePoolUseCase` construye un `PoolUsage` de emuladores y simuladores a partir de todas las reservas de la máquina (asignando cada directorio de administración a su worktree mediante su archivo `gitdir`) y del estado de los dispositivos, y el de los daemons de Gradle a partir de `ListGradleDaemonsUseCase`.
+- `AcquireWorktreeResourceUseCase` es lo primero que llaman los casos de uso de arranque del emulador y del simulador. Bajo el lock de reservas: un recurso que el worktree ya tiene solo actualiza su último uso; con hueco en el pool reserva un puerto o crea el simulador; en el límite libera el holder inactivo usado menos recientemente (la reserva de puerto de un emulador detenido, un simulador apagado, que se elimina) y reserva; sin ningún holder inactivo falla con `ResourcePoolFull`. Devuelve los `PoolRelease` que hizo y reescribe el archivo de entorno declarado del worktree y el de cada uno liberado. `StartWorktreeEmulatorUseCase` y `StartWorktreeSimulatorUseCase` devuelven un `DeviceStart` con el dispositivo y ese resultado.
+- `TrimGradleDaemonsUseCase` detiene los daemons de Gradle inactivos, primero los que llevan más tiempo inactivos, mediante `StopGradleDaemonsUseCase`, hasta que el número esté dentro del límite; los daemons ocupados y los de estado desconocido nunca se detienen por esto.
 
 ### `CloseHerdrWorkspacesUseCase`
 
@@ -545,7 +568,7 @@ Abre un worktree en el terminal elegido con su entorno y un agente (el de por de
 
 ### `OpenWorktreeInHerdrUseCase`
 
-Abre un worktree en Herdr con su entorno y un agente (el de por defecto del proyecto salvo que se indique otro). Pide a Herdr que abra el worktree del repositorio base del proyecto, con el nombre de su carpeta; si Herdr ya lo tenía abierto, ese workspace queda enfocado y devuelve `FOCUSED` sin tocar sus panes. Si no, resuelve el entorno del worktree (el mismo que `shogun env`, con las variables de los proveedores como `ANDROID_SERIAL`, reservando puertos si hace falta); si no está vacío, divide el pane raíz en otro cuya shell arranca en el worktree con esas variables y cierra el raíz, para que el workspace se quede con un único pane. Después ejecuta el `resolvedCommand()` del agente en ese pane y devuelve `OPENED`. Cuando Herdr ya informa de un agente en el worktree, la app de escritorio enfoca el pane de ese agente con `HerdrClient.focusAgent` en vez de llamar a este caso de uso.
+Abre un worktree en Herdr con su entorno y un agente (el de por defecto del proyecto salvo que se indique otro). Pide a Herdr que abra el worktree del repositorio base del proyecto, con el nombre de su carpeta; si Herdr ya lo tenía abierto, ese workspace queda enfocado y devuelve `FOCUSED` sin tocar sus panes. Si no, resuelve el entorno del worktree (el mismo que `shogun env`, con las variables de los proveedores como `ANDROID_SERIAL`, reservando puertos si hace falta); si no está vacío, divide el pane raíz en otro cuya shell arranca en el worktree con esas variables y cierra el raíz, para que el workspace se quede con un único pane. Después ejecuta el `resolvedCommand()` del agente en ese pane y devuelve `OPENED`. Cuando Herdr ya informa de un agente en el worktree, la app de escritorio enfoca el pane de ese agente con `HerdrClient.focusAgent` en vez de llamar a este caso de uso. `shogun open <destino> --herdr` también lo llama, sin esa comprobación de agentes.
 
 ### `ResolveStartPointUseCase`
 
@@ -624,8 +647,8 @@ Se usan cuando el repositorio declara el provider de Gradle (y desde `shogun gra
 
 Se usan en macOS cuando el repositorio declara el provider de Xcode:
 
-- `ListDerivedDataUseCase(worktrees, includeCompilationCache)` atribuye cada carpeta de `DerivedDataSource`: un workspace que no existe es `UnavailableVolume` si su volumen no está montado y, si no, `Orphaned`; uno que existe pertenece al worktree de ruta más larga que lo contiene (`owningWorktree`, la misma regla que los agentes en ejecución y los daemons de Gradle) y, si no, a `OtherProject`. Las huérfanas son de toda la máquina: cuando su proyecto ya no existe, nada puede usar la carpeta, la creara la herramienta que la creara.
-- `DeleteOrphanedDerivedDataUseCase` vuelve a listar las carpetas, se queda con las que siguen huérfanas, comprueba cada workspace otra vez justo antes de borrar (un proyecto restaurado entretanto conserva su carpeta) y devuelve un `DerivedDataDeletion`; un fallo no detiene el resto. La carpeta de un worktree eliminado es huérfana por definición, así que la limpieza solo ejecuta este caso de uso después de eliminar.
+- `ListDerivedDataUseCase(worktrees, includeCompilationCache, measure)` atribuye cada carpeta de `DerivedDataSource`: un workspace que no existe es `UnavailableVolume` si su volumen no está montado y, si no, `Orphaned`; uno que existe pertenece al worktree de ruta más larga que lo contiene (`owningWorktree`, la misma regla que los agentes en ejecución y los daemons de Gradle) y, si no, a `OtherProject`. `measure` indica a qué carpetas se les mide el tamaño: `NONE`, `ORPHANS` o `ALL`. Las huérfanas son de toda la máquina: cuando su proyecto ya no existe, nada puede usar la carpeta, la creara la herramienta que la creara.
+- `DeleteOrphanedDerivedDataUseCase` vuelve a listar las carpetas, se queda con las que siguen huérfanas, comprueba cada workspace otra vez justo antes de borrar (un proyecto restaurado entretanto conserva su carpeta), mide cada huérfana que aún no tiene tamaño para que `bytesFreed` sea correcto y devuelve un `DerivedDataDeletion`; un fallo no detiene el resto. La carpeta de un worktree eliminado es huérfana por definición, así que la limpieza solo ejecuta este caso de uso después de eliminar.
 - `xcodeCompilationCacheContribution` es la contribución al entorno del provider cuando `XcodeProvider.compilationCache` está activo, en macOS (`MachineProviderContributions`): un recurso `xcode-compilation-cache` cuyo `create` escribe `~/.shogunai/xcode/compilation-cache.xcconfig` (`COMPILATION_CACHE_ENABLE_CACHING` y prefix mapping de Swift y Clang, cinco líneas `KEY = YES`) y cuyo `exists` comprueba que el fichero tiene ese contenido, más la variable `XCODE_XCCONFIG_FILE=<ruta>`. Al ser un recurso, solo se escribe al resolver con reserva y se vuelve a crear si se borra; el fichero es el mismo para todos los repositorios de la máquina. Un `XCODE_XCCONFIG_FILE` declarado en `env` gana.
 
 ### Casos de uso de la comprobación de actualizaciones

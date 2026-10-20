@@ -16,6 +16,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -26,8 +27,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboard
 import app.luxion.shogunai.ui.components.copyText
 import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.time.Instant
 import androidx.compose.ui.unit.dp
+import app.luxion.shogunai.domain.model.DiagnosticEntry
+import app.luxion.shogunai.domain.model.DiagnosticKind
 import app.luxion.shogunai.ui.i18n.ErrorFix
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.TechnicalDetails
@@ -53,6 +59,7 @@ fun ErrorNotice(
 ) {
     val strings = LocalStrings.current
     val description = strings.describe(error)
+    RecordShownError(error, description.summary, description.details?.asPlainText())
     val fixAction = fixActionFor(description.fix, projectId)
     Notice(
         kind = NoticeKind.ERROR,
@@ -76,6 +83,15 @@ fun ErrorNotice(
             }
         },
     )
+}
+
+@Composable
+fun RecordShownError(error: Throwable, summary: String, details: String?) {
+    val log = LocalDiagnosticsLog.current ?: return
+    LaunchedEffect(error) {
+        val entry = DiagnosticEntry(Instant.now(), DiagnosticKind.SHOWN_ERROR, summary, details?.takeIf { it.isNotBlank() } ?: error.stackTraceToString())
+        withContext(Dispatchers.IO) { log.record(entry) }
+    }
 }
 
 @Composable

@@ -31,6 +31,8 @@ class ResolveWorktreeEnvironmentUseCase(
         val directories = gitDirectories(worktreePath)
         val portKeys = requests.map { it.key }.toSet()
         val resourceKeys = resourceRequests.map { it.key }.toSet()
+        val requiredPortKeys = requests.filterNot { it.onDemand }.map { it.key }
+        val requiredResourceKeys = resourceRequests.filterNot { it.onDemand }.map { it.key }
         val ports = if (reserve) {
             stateStore.withLock { reservePorts(requests, directories) }
         } else {
@@ -41,13 +43,15 @@ class ResolveWorktreeEnvironmentUseCase(
         } else {
             stateStore.readResources(directories.admin).filterKeys { it in resourceKeys }
         }
-        if (!portKeys.all { it in ports } || !resourceKeys.all { it in resources }) {
+        if (!requiredPortKeys.all { it in ports } || !requiredResourceKeys.all { it in resources }) {
             return@runCatching WorktreeEnvironment(ports = ports, resources = resources)
         }
         val declared = declaration.variables.map { it.name to it.render(folderName(worktreePath), ports) }
         val declaredNames = declared.map { it.first }.toSet()
         val reservations = EnvironmentReservations(ports, resources)
-        val fromProviders = contributed.flatMap { it.variables(reservations) }.filterNot { it.first in declaredNames }
+        val fromProviders = contributed.filter { it.isAcquiredIn(reservations) }
+            .flatMap { it.variables(reservations) }
+            .filterNot { it.first in declaredNames }
         WorktreeEnvironment(variables = fromProviders + declared, ports = ports, resources = resources)
     }
 
@@ -64,6 +68,10 @@ class ResolveWorktreeEnvironmentUseCase(
             .toMutableMap()
         requests.forEach { request ->
             val stored = resources[request.key]
+            if (request.onDemand) {
+                if (stored != null && !request.exists(stored)) resources.remove(request.key)
+                return@forEach
+            }
             if (stored != null && request.exists(stored)) return@forEach
             val created = request.create(context)
             val winner = stateStore.withLock {
@@ -91,7 +99,7 @@ class ResolveWorktreeEnvironmentUseCase(
         val taken = (stateStore.reservedPortsOnMachine(directories.common) - stored.values.toSet() + kept.values)
             .toMutableSet()
         val reserved = kept.toMutableMap()
-        requests.filterNot { it.key in reserved }.forEach { request ->
+        requests.filterNot { it.key in reserved || it.onDemand }.forEach { request ->
             val port = request.candidates.firstOrNull { candidate ->
                 val needed = listOf(candidate) + request.alsoFree(candidate)
                 needed.none { it in taken } && needed.all(portProbe::isFree)
@@ -103,6 +111,9 @@ class ResolveWorktreeEnvironmentUseCase(
         if (reserved != stored) stateStore.writePorts(directories.admin, reserved)
         return reserved
     }
+
+    suspend fun directoriesOf(worktreePath: String): WorktreeGitDirectories =
+        gitDirectories(worktreePath).let { WorktreeGitDirectories(it.admin, it.common) }
 
     private suspend fun gitDirectories(worktreePath: String): GitDirectories {
         cache?.directoriesOf(worktreePath)?.let { return GitDirectories(it.admin, it.common) }
@@ -128,6 +139,8 @@ class ResolveWorktreeEnvironmentUseCase(
         const val LAST_PORT = LAST_VARIABLE_PORT
     }
 }
+
+data class WorktreeGitDirectories(val admin: String, val common: String)
 
 enum class EnvironmentFormat { SH, DOTENV, JSON }
 

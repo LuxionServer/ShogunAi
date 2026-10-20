@@ -82,4 +82,16 @@ class DeleteOrphanedDerivedDataUseCaseTest {
         assertEquals(listOf(stuck.path), deletion.failures.map { it.path })
         assertEquals("can't delete ${stuck.path}", deletion.failures.single().detail)
     }
+
+    @Test
+    fun `measures an unmeasured orphan before deleting it`() = runTest {
+        val orphan = derivedData("Gone-hash", orphanProject, sizeBytes = null)
+        val source = FakeDerivedDataSource(existing = listOf(orphan))
+        source.sizes[orphan.path] = 5_000L
+
+        val deletion = useCase(source)().getOrThrow()
+
+        assertEquals(5_000L, deletion.bytesFreed)
+        assertEquals(listOf(orphan.path), source.measured)
+    }
 }

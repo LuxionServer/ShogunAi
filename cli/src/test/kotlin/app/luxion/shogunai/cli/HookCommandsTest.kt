@@ -1,5 +1,9 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.domain.FakeMachineCapacity
+import app.luxion.shogunai.domain.FakeResourceLimitsRepository
+import app.luxion.shogunai.domain.model.CapacityProfile
+import app.luxion.shogunai.domain.model.ResourceSettings
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeDerivedDataSource
@@ -27,6 +31,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class HookCommandsTest {
+
+    private val resourceLimits = FakeResourceLimitsRepository(ResourceSettings(CapacityProfile.PER_WORKTREE))
 
     private val base = "/home/dev/projects/main-repo"
     private val worktreesRoot = "/home/dev/projects/worktrees"
@@ -95,6 +101,8 @@ class HookCommandsTest {
         androidSdk = androidSdk,
         appleSimulators = appleSimulators,
         kmpTestWiring = kmpTestWiring,
+        resourceLimits = resourceLimits,
+        machineCapacity = FakeMachineCapacity(),
         derivedDataSource = FakeDerivedDataSource(),
         herdrConfig = FakeHerdrConfigSource(),
         workingDirectory = "/",

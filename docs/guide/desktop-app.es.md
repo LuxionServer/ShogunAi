@@ -78,7 +78,7 @@ Eliminar un worktree abierto en Herdr cierra también su espacio de trabajo de H
 
 ## Secciones de los providers
 
-En repositorios que los declaran en `.shogunai.json`, la pantalla de worktrees añade una sección "Daemons de Gradle" y otra "DerivedData de Xcode". Consulta [Providers](providers.md).
+En repositorios que los declaran en `.shogunai.json`, la pantalla de worktrees añade una sección "Daemons de Gradle" y otra "DerivedData de Xcode". Las carpetas de DerivedData se listan enseguida y muestran "Calculando…" en sus tamaños hasta que se miden en segundo plano. Consulta [Providers](providers.md).
 
 ## Preferencias
 
@@ -121,3 +121,9 @@ La app nunca descarga, instala ni ejecuta nada por sí sola. **Omitir esta versi
 **Buscar actualizaciones…** en el menú Ayuda comprueba al instante, sin tener en cuenta el horario ni las versiones omitidas, y te dice si ShogunAi está al día, qué versión hay disponible o por qué falló la comprobación. Las compilaciones de desarrollo no comprueban por su cuenta.
 
 La única petición que la app hace por su cuenta es un `GET` anónimo a `https://api.github.com/repos/LuxionServer/ShogunAi/releases/latest`, que lleva la versión de la app en la cabecera `User-Agent` y nada más. Desactiva **Buscar actualizaciones automáticamente** en Preferencias y la app solo contactará con GitHub cuando elijas **Buscar actualizaciones…**.
+
+## Diagnóstico
+
+La app guarda un registro de diagnóstico local en `~/.shogunai/logs/diagnostics.log` (rota a 1 MB, como mucho tres ficheros). Registra los errores que nada gestionó, los errores mostrados en la app y los bloqueos de la interfaz (cuando deja de responder durante 2 segundos o más, con cuánto duró y qué estaba haciendo). Antes de escribir nada, las rutas absolutas, tu nombre de usuario, los nombres de tus proyectos guardados y las ramas de sus worktrees se sustituyen por marcadores como `<path>` o `<project>`.
+
+**Copiar informe de diagnóstico** en el menú Ayuda copia al portapapeles la versión de la app, tu sistema operativo y arquitectura, el runtime de Java y las entradas más recientes del registro, listo para pegar en un reporte de error. Nunca se envía nada a ningún sitio: el registro se queda en tu máquina y el informe solo llega al portapapeles cuando lo pides.

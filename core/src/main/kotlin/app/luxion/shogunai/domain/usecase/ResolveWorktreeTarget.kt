@@ -10,13 +10,20 @@ fun resolveWorktreeTarget(
     config: ProjectConfig,
     canonicalPath: (String) -> String,
 ): Worktree {
-    val resolved = byPath(target, worktrees, canonicalPath)
-        ?: unique(target, worktrees.filter { it.branch == target })
-        ?: byTaskId(target, worktrees, config, canonicalPath)
-        ?: throw WorktreeError.WorktreeTargetNotFound(target)
+    val resolved = findWorktreeTarget(target, worktrees, config, canonicalPath)
     if (resolved.isMain) throw WorktreeError.CannotRemoveMainWorktree(resolved.path)
     return resolved
 }
+
+fun findWorktreeTarget(
+    target: String,
+    worktrees: List<Worktree>,
+    config: ProjectConfig,
+    canonicalPath: (String) -> String,
+): Worktree = byPath(target, worktrees, canonicalPath)
+    ?: unique(target, worktrees.filter { it.branch == target })
+    ?: byTaskId(target, worktrees, config, canonicalPath)
+    ?: throw WorktreeError.WorktreeTargetNotFound(target)
 
 private fun byPath(target: String, worktrees: List<Worktree>, canonicalPath: (String) -> String): Worktree? =
     worktrees.firstOrNull { canonicalPath(it.path) == canonicalPath(target) }

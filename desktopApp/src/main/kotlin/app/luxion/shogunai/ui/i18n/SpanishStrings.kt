@@ -1,5 +1,8 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.ResourceLimits
+import app.luxion.shogunai.domain.model.ResourceKind
+import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.HerdrAgentState
@@ -342,6 +345,7 @@ object SpanishStrings : Strings {
 
     override val xcodeDerivedDataTitle = "DerivedData de Xcode"
     override val xcodeDerivedDataUnavailable = "No se pueden inspeccionar los DerivedData en este sistema"
+    override val calculating = "Calculando…"
     override fun derivedDataSummary(count: Int, totalSize: String) =
         (if (count == 1) "1 carpeta de DerivedData" else "$count carpetas de DerivedData") + " · $totalSize"
     override fun derivedDataOrphans(count: Int, size: String) =
@@ -354,6 +358,41 @@ object SpanishStrings : Strings {
     override fun derivedDataDeleted(count: Int, freed: String) =
         if (count == 1) "1 carpeta de DerivedData borrada · $freed liberados"
         else "$count carpetas de DerivedData borradas · $freed liberados"
+    override val resourcesLabel = "Recursos"
+    override fun profileName(profile: CapacityProfile) = when (profile) {
+        CapacityProfile.AUTOMATIC -> "Automático"
+        CapacityProfile.LIGHT -> "Ligero"
+        CapacityProfile.BALANCED -> "Equilibrado"
+        CapacityProfile.PER_WORKTREE -> "Uno por worktree"
+        CapacityProfile.CUSTOM -> "Personalizado"
+    }
+    override fun resourceLimitsSummary(limits: ResourceLimits, includeSimulators: Boolean) = listOfNotNull(
+        limits.emulators.let { if (it == null) "emuladores: sin límite" else if (it == 1) "1 emulador" else "$it emuladores" },
+        limits.simulators.let { if (it == null) "simuladores de iOS: sin límite" else if (it == 1) "1 simulador de iOS" else "$it simuladores de iOS" }
+            .takeIf { includeSimulators },
+        limits.gradleDaemons.let { if (it == null) "daemons de Gradle: sin límite" else if (it == 1) "1 daemon de Gradle" else "$it daemons de Gradle" },
+    ).joinToString(" · ")
+    override fun resourceKindLabel(kind: ResourceKind) = when (kind) {
+        ResourceKind.EMULATOR -> "Emuladores"
+        ResourceKind.IOS_SIMULATOR -> "Simuladores de iOS"
+        ResourceKind.GRADLE_DAEMON -> "Daemons de Gradle"
+    }
+    override val noLimit = "Sin límite"
+    override val invalidLimit = "Debe ser un número positivo, o sin límite"
+    override val notAcquired = "Sin adquirir"
+    override fun poolUsage(inUse: Int, limit: Int?, profile: String) =
+        (if (limit == null) "$inUse en uso" else "$inUse de $limit en uso") + " · $profile"
+    override val overLimit = "por encima del límite"
+    override val changeInPreferences = "Cambiar en Preferencias"
+    override fun releasedNotice(kind: ResourceKind, released: String, forWorktree: String) = when (kind) {
+        ResourceKind.EMULATOR -> "El emulador de $released se liberó para dejar sitio a $forWorktree"
+        ResourceKind.IOS_SIMULATOR -> "El simulador de $released se eliminó para dejar sitio a $forWorktree"
+        ResourceKind.GRADLE_DAEMON -> "Un daemon de Gradle de $released se detuvo para dejar sitio a $forWorktree"
+    }
+    override fun trimmedNotice(count: Int, limit: Int?) =
+        (if (count == 1) "Se detuvo 1 daemon de Gradle inactivo" else "Se detuvieron $count daemons de Gradle inactivos") +
+            (limit?.let { " para mantenerse dentro del límite de $it" } ?: "")
+    override fun poolSummary(inUse: Int, limit: Int?) = if (limit == null) "$inUse" else "$inUse/$limit"
     override val machineTitle = "Máquina"
     override val androidEmulatorsTitle = "Emuladores Android"
     override val iosSimulatorsTitle = "Simuladores iOS"
@@ -377,9 +416,11 @@ object SpanishStrings : Strings {
     override fun confirmDeleteSimulatorOrphans(count: Int) =
         if (count == 1) "Se borrará 1 simulador cuyo worktree ya no existe."
         else "Se borrarán $count simuladores cuyos worktrees ya no existen."
-    override fun confirmDeleteDerivedDataOrphans(count: Int, size: String) =
-        if (count == 1) "Se borrará 1 carpeta de DerivedData cuyo proyecto ya no existe ($size)."
-        else "Se borrarán $count carpetas de DerivedData cuyos proyectos ya no existen ($size)."
+    override fun confirmDeleteDerivedDataOrphans(count: Int, size: String?): String {
+        val total = size?.let { " ($it)" }.orEmpty()
+        return if (count == 1) "Se borrará 1 carpeta de DerivedData cuyo proyecto ya no existe$total."
+        else "Se borrarán $count carpetas de DerivedData cuyos proyectos ya no existen$total."
+    }
     override val noDerivedData = "No hay carpetas de DerivedData en esta máquina"
     override val derivedDataKept = "conservada: volumen no disponible"
     override val gradleChipLabel = "Gradle"
@@ -495,6 +536,7 @@ object SpanishStrings : Strings {
     override val showIconInMenuBar = "Mostrar el icono en la barra de menús"
     override val showIconInTray = "Mostrar el icono en la bandeja del sistema"
     override val keepRunningWhenClosed = "Seguir ejecutándose al cerrar la ventana"
+    override val menuCopyDiagnosticReport = "Copiar informe de diagnóstico"
     override val menuCheckForUpdates = "Buscar actualizaciones…"
     override fun updateAvailableMessage(newVersion: String, runningVersion: String) =
         "¡Ya está aquí ShogunAi $newVersion! Tienes la $runningVersion."

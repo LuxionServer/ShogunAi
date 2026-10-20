@@ -215,36 +215,31 @@ class ResolveWorktreeEnvironmentUseCaseTest {
         assertEquals(mapOf("PORT" to 20001), environment.ports)
     }
 
+    private val acquiredEmulator = mapOf("/home/dev/projects/main-repo/.git/worktrees/TASK-123" to mapOf("emulator" to 5554))
+
     @Test
-    fun `the emulator provider adds the worktree's serial`() = runTest {
-        val environment = useCase(withEmulator())(repository, task).getOrThrow()
+    fun `the emulator provider adds the serial once the worktree holds its port`() = runTest {
+        val environment = useCase(withEmulator(), FakeEnvironmentStateStore(acquiredEmulator))(repository, task).getOrThrow()
 
         assertEquals(listOf("ANDROID_SERIAL" to "emulator-5554"), environment.variables)
         assertEquals(mapOf("emulator" to 5554), environment.ports)
     }
 
     @Test
-    fun `emulator ports are even, skip a busy adb port and differ between worktrees`() = runTest {
+    fun `an emulator that was never acquired is not reserved by resolving and the other variables are delivered`() = runTest {
         val store = FakeEnvironmentStateStore()
-        val probe = FakePortProbe(busy = setOf(5555))
 
-        val first = useCase(withEmulator(), store, probe)(repository, task).getOrThrow()
-        val second = useCase(withEmulator(), store, probe)(repository, other).getOrThrow()
+        val environment = useCase(withEmulator("APP_SUFFIX" to "-\${worktree}"), store)(repository, task).getOrThrow()
 
-        assertEquals("emulator-5556", first.variables.toMap()["ANDROID_SERIAL"])
-        assertEquals("emulator-5558", second.variables.toMap()["ANDROID_SERIAL"])
-    }
-
-    @Test
-    fun `fails when every emulator port is taken`() = runTest {
-        val probe = FakePortProbe(busy = (5554..5585).toSet())
-
-        assertIs<WorktreeError.NoEmulatorPort>(useCase(withEmulator(), probe = probe)(repository, task).exceptionOrNull())
+        assertEquals(listOf("APP_SUFFIX" to "-TASK-123"), environment.variables)
+        assertTrue(environment.ports.isEmpty())
+        assertTrue(store.portsByAdminDirectory.isEmpty())
+        assertEquals(0, store.writes)
     }
 
     @Test
     fun `a declared ANDROID_SERIAL wins over the provider`() = runTest {
-        val environment = useCase(withEmulator("ANDROID_SERIAL" to "emulator-5600"))(repository, task).getOrThrow()
+        val environment = useCase(withEmulator("ANDROID_SERIAL" to "emulator-5600"), FakeEnvironmentStateStore(acquiredEmulator))(repository, task).getOrThrow()
 
         assertEquals(listOf("ANDROID_SERIAL" to "emulator-5600"), environment.variables)
     }

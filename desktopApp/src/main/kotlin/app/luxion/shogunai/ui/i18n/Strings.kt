@@ -1,5 +1,8 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.ResourceLimits
+import app.luxion.shogunai.domain.model.ResourceKind
+import app.luxion.shogunai.domain.model.CapacityProfile
 import androidx.compose.runtime.staticCompositionLocalOf
 import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.ProvisionDriftState
@@ -302,6 +305,7 @@ interface Strings {
 
     val xcodeDerivedDataTitle: String
     val xcodeDerivedDataUnavailable: String
+    val calculating: String
     fun derivedDataSummary(count: Int, totalSize: String): String
     fun derivedDataOrphans(count: Int, size: String): String
     val deleteOrphans: String
@@ -309,6 +313,19 @@ interface Strings {
     fun derivedDataCompilationCache(size: String): String
     fun derivedDataDeleted(count: Int, freed: String): String
     val machineTitle: String
+    val resourcesLabel: String
+    fun profileName(profile: CapacityProfile): String
+    fun resourceLimitsSummary(limits: ResourceLimits, includeSimulators: Boolean): String
+    fun resourceKindLabel(kind: ResourceKind): String
+    val noLimit: String
+    val invalidLimit: String
+    val notAcquired: String
+    fun poolUsage(inUse: Int, limit: Int?, profile: String): String
+    val overLimit: String
+    val changeInPreferences: String
+    fun releasedNotice(kind: ResourceKind, released: String, forWorktree: String): String
+    fun trimmedNotice(count: Int, limit: Int?): String
+    fun poolSummary(inUse: Int, limit: Int?): String
     val androidEmulatorsTitle: String
     val iosSimulatorsTitle: String
     fun runningCount(count: Int): String
@@ -328,7 +345,7 @@ interface Strings {
     fun simulatorOrphansTitle(count: Int): String
     val confirmDeleteOrphansTitle: String
     fun confirmDeleteSimulatorOrphans(count: Int): String
-    fun confirmDeleteDerivedDataOrphans(count: Int, size: String): String
+    fun confirmDeleteDerivedDataOrphans(count: Int, size: String?): String
     val noDerivedData: String
     val derivedDataKept: String
     val gradleChipLabel: String
@@ -340,6 +357,7 @@ interface Strings {
     fun daysAgo(count: Long): String
     fun monthsAgo(count: Long): String
     fun yearsAgo(count: Long): String
+    val menuCopyDiagnosticReport: String
     val menuCheckForUpdates: String
     fun updateAvailableMessage(newVersion: String, runningVersion: String): String
     fun updateAvailableDialogMessage(newVersion: String, runningVersion: String): String

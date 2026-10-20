@@ -2,6 +2,10 @@ package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.model.DerivedDataFolder
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import java.nio.file.Files
 import java.nio.file.Path
@@ -50,7 +54,8 @@ class MacDerivedDataSourceTest {
         assertEquals(listOf(main.toString()), folders.map { it.path })
         assertEquals("/home/dev/projects/main-repo/iosApp/iosApp.xcodeproj", folders.single().workspacePath)
         assertEquals(Instant.parse("2024-12-17T14:01:19Z"), folders.single().lastAccessed)
-        assertEquals(expectedSize, folders.single().sizeBytes)
+        assertNull(folders.single().sizeBytes)
+        assertEquals(expectedSize, dataSource(executor).size(folders.single()))
         assertTrue(executor.executed("defaults", "read", "com.apple.dt.Xcode", "IDEDerivedDataPathOverride"))
         assertTrue(executor.executed("defaults", "read", "com.apple.dt.Xcode", "IDECustomDerivedDataLocation"))
     }
@@ -158,6 +163,22 @@ class MacDerivedDataSourceTest {
         val folders = source.folders()
 
         assertTrue(folders.isEmpty())
+    }
+
+    @Test
+    fun `stops measuring a folder when its coroutine is cancelled`() = runTest {
+        val big = folder("Big-hash").apply {
+            writePlist(this, "/home/dev/projects/main-repo/App.xcodeproj")
+            repeat(200) { resolve("Build/$it").createDirectories().resolve("file").writeText("x") }
+        }
+        val source = dataSource()
+        val entry = source.folders().single()
+
+        val measuring = async(Dispatchers.IO, start = CoroutineStart.LAZY) { source.size(entry) }
+        measuring.cancel()
+
+        assertFailsWith<CancellationException> { measuring.await() }
+        assertTrue(big.toFile().exists())
     }
 
     @Test

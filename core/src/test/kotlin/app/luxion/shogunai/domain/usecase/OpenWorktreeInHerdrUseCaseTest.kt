@@ -51,10 +51,11 @@ class OpenWorktreeInHerdrUseCaseTest {
     private fun useCase(
         herdr: FakeHerdrClient,
         source: FakeRepositoryProvisioningSource = provisioning(),
+        store: FakeEnvironmentStateStore = FakeEnvironmentStateStore(),
     ) = OpenWorktreeInHerdrUseCase(
         config,
         herdr,
-        ResolveWorktreeEnvironmentUseCase(gitExecutor, source, FakeEnvironmentStateStore(), FakePortProbe()),
+        ResolveWorktreeEnvironmentUseCase(gitExecutor, source, store, FakePortProbe()),
     )
 
     @Test
@@ -80,7 +81,9 @@ class OpenWorktreeInHerdrUseCaseTest {
             byRepository = mapOf(repository to RepositoryProvisioning(providers = RepositoryProviders(emulator = EmulatorProvider()))),
         )
 
-        useCase(herdr, source)(task).getOrThrow()
+        val acquired = FakeEnvironmentStateStore(mapOf("$common/worktrees/TASK-8" to mapOf("emulator" to 5554)))
+
+        useCase(herdr, source, acquired)(task).getOrThrow()
 
         assertEquals(listOf(ANDROID_SERIAL to "emulator-5554"), herdr.splits.single().environment)
     }

@@ -4,6 +4,11 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.DerivedDataSource
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.model.DerivedDataFolder
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.job
+import kotlinx.coroutines.withContext
+import kotlin.coroutines.coroutineContext
 import java.io.IOException
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
@@ -30,25 +35,50 @@ class MacDerivedDataSource(
 
     override suspend fun folders(): List<DerivedDataFolder> {
         val locationPath = Path.of(location())
-        if (!fileManager.exists(locationPath.toString())) return emptyList()
-        return locationPath.toFile().listFiles()
-            ?.filter { it.isDirectory }
-            ?.mapNotNull { folder ->
-                val entry = plistEntry(folder.toPath().resolve(INFO_PLIST)) ?: return@mapNotNull null
-                DerivedDataFolder(
-                    path = folder.toString(),
-                    workspacePath = realPathOrRecorded(entry.workspacePath),
-                    sizeBytes = fileManager.directorySize(folder.toString()),
-                    lastAccessed = entry.lastAccessed,
-                )
-            }
-            .orEmpty()
+        return withContext(Dispatchers.IO) {
+            if (!fileManager.exists(locationPath.toString())) return@withContext emptyList()
+            locationPath.toFile().listFiles()
+                ?.filter { it.isDirectory }
+                ?.mapNotNull { folder ->
+                    val entry = plistEntry(folder.toPath().resolve(INFO_PLIST)) ?: return@mapNotNull null
+                    DerivedDataFolder(
+                        path = folder.toString(),
+                        workspacePath = realPathOrRecorded(entry.workspacePath),
+                        sizeBytes = null,
+                        lastAccessed = entry.lastAccessed,
+                    )
+                }
+                .orEmpty()
+        }
     }
+
+    override suspend fun size(folder: DerivedDataFolder): Long = measure(folder.path)
 
     override suspend fun compilationCacheBytes(): Long? {
         val cache = defaults(CUSTOM_COMPILATION_CACHE_LOCATION_KEY)?.let(::expandHome)
             ?: Path.of(location(), COMPILATION_CACHE_NAME).toString()
-        return if (fileManager.exists(cache)) fileManager.directorySize(cache) else null
+        return if (fileManager.exists(cache)) measure(cache) else null
+    }
+
+    private suspend fun measure(path: String): Long = withContext(Dispatchers.IO) {
+        val job = coroutineContext.job
+        var total = 0L
+        Files.walkFileTree(
+            Path.of(path),
+            object : SimpleFileVisitor<Path>() {
+                override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult =
+                    if (job.isActive) FileVisitResult.CONTINUE else FileVisitResult.TERMINATE
+
+                override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+                    if (attrs.isRegularFile) total += attrs.size()
+                    return if (job.isActive) FileVisitResult.CONTINUE else FileVisitResult.TERMINATE
+                }
+
+                override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult = FileVisitResult.CONTINUE
+            },
+        )
+        job.ensureActive()
+        total
     }
 
     override fun projectExists(workspacePath: String): Boolean = fileManager.exists(workspacePath)

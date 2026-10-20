@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.RecentWorktree
+import app.luxion.shogunai.domain.model.ResourceSettings
 import app.luxion.shogunai.domain.model.TerminalId
 import app.luxion.shogunai.domain.model.ThemeMode
 import app.luxion.shogunai.domain.model.WindowBounds
@@ -96,6 +97,7 @@ class JsonSettingsFile(
         val checkForUpdates: Boolean = true,
         val skippedVersion: String? = null,
         val worktreeAgents: Map<String, String> = emptyMap(),
+        val resources: ResourceSettings = ResourceSettings(),
     )
 
     @Serializable
