@@ -33,6 +33,7 @@ sealed interface CliCommand {
         val json: Boolean = false,
     ) : CliCommand
     data class Repair(val json: Boolean = false) : CliCommand
+    data class Open(val target: String, val herdr: Boolean = false, val agent: String? = null, val json: Boolean = false) : CliCommand
     data class Status(val json: Boolean = false) : CliCommand
     data class Clean(
         val confirmed: Boolean = false,
@@ -94,6 +95,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "trust" -> parseTrust(arguments)
                 "remove" -> parseRemove(arguments)
                 "repair" -> noArguments(name, arguments, CliCommand.Repair())
+                "open" -> parseOpen(arguments)
                 "status" -> parseStatus(arguments)
                 "clean" -> parseClean(arguments)
                 "hook" -> parseHook(arguments)
@@ -112,7 +114,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
 
 private const val JSON_FLAG = "--json"
 
-private val JSON_COMMANDS = setOf("new", "provision", "trust", "remove", "repair", "clean", "gradle", "xcode", "emulator", "simulator")
+private val JSON_COMMANDS = setOf("new", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "xcode", "emulator", "simulator")
 
 private fun isSimulatorGradleInit(name: String, rest: List<String>) = name == "simulator" && rest.firstOrNull() == "gradle-init"
 
@@ -122,6 +124,7 @@ private fun CliCommand.withJson(json: Boolean): CliCommand = if (!json) this els
     is CliCommand.Trust -> copy(json = true)
     is CliCommand.Remove -> copy(json = true)
     is CliCommand.Repair -> copy(json = true)
+    is CliCommand.Open -> copy(json = true)
     is CliCommand.Clean -> copy(json = true)
     is CliCommand.Xcode -> copy(json = true)
     is CliCommand.XcodeClean -> copy(json = true)
@@ -194,6 +197,27 @@ private fun parseRemove(rest: List<String>): CliCommand.Remove {
         }
     }
     return CliCommand.Remove(target ?: throw UsageException("'remove' needs a task id, path or branch"), force, deleteBranch, forceDeleteBranch)
+}
+
+private fun parseOpen(rest: List<String>): CliCommand.Open {
+    var target: String? = null
+    var herdr = false
+    var agent: String? = null
+    val remaining = ArrayDeque(rest)
+    while (remaining.isNotEmpty()) {
+        when (val argument = remaining.removeFirst()) {
+            "--herdr" -> herdr = true
+            "--agent" -> agent = remaining.valueOf(argument)
+            else -> {
+                if (argument.startsWith("-")) throw UsageException("unknown option '$argument' for 'open'")
+                if (target != null) throw UsageException("'open' takes a single target, got '$target' and '$argument'")
+                target = argument
+            }
+        }
+    }
+    if (target == null) throw UsageException("'open' needs a task id, path or branch")
+    if (!herdr) throw UsageException("'open' needs where to open the worktree: --herdr")
+    return CliCommand.Open(target, herdr, agent)
 }
 
 private fun parseStatus(rest: List<String>): CliCommand.Status {

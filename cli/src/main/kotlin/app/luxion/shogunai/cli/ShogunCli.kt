@@ -30,6 +30,7 @@ import app.luxion.shogunai.domain.model.DaemonStopReport
 import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.EmulatorState
+import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.model.IOS_SIMULATOR_UDID
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -60,8 +61,10 @@ import app.luxion.shogunai.domain.usecase.EnvironmentFormat
 import app.luxion.shogunai.domain.usecase.ListDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.ListGradleDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.FetchRemoteUseCase
+import app.luxion.shogunai.domain.usecase.findWorktreeTarget
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.MachineProviderContributions
+import app.luxion.shogunai.domain.usecase.OpenWorktreeInHerdrUseCase
 import app.luxion.shogunai.domain.usecase.effectiveGradleJvmArgs
 import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.ProviderContributions
@@ -206,6 +209,7 @@ class ShogunCli(
             is CliCommand.Trust -> trust(command)
             is CliCommand.Remove -> remove(command)
             is CliCommand.Repair -> repair(command)
+            is CliCommand.Open -> open(command)
             is CliCommand.Status -> status(command)
             is CliCommand.Clean -> clean(command)
             CliCommand.HookWorktreeCreate -> hookWorktreeCreate()
@@ -498,6 +502,28 @@ class ShogunCli(
             )
         }
         return if (released.failures.isEmpty()) EXIT_OK else EXIT_FAILURE
+    }
+
+    private suspend fun open(command: CliCommand.Open): Int {
+        val config = configFor(workingDirectory)
+        val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
+        val worktree = findWorktreeTarget(command.target, worktrees, config, ::canonical)
+        val agent = if (command.agent == null) {
+            config.agentLaunchConfig
+        } else {
+            config.agents.firstOrNull { it.displayName.equals(command.agent, ignoreCase = true) } ?: run {
+                err.line("shogun: no agent named '${command.agent}'; this project's agents are ${config.agents.joinToString { it.displayName }}")
+                return EXIT_USAGE
+            }
+        }
+        val opening = OpenWorktreeInHerdrUseCase(config, herdr, resolveEnvironment)(worktree, agent).getOrThrow()
+        val startedAgent = agent.displayName.takeIf { opening == HerdrOpening.OPENED }
+        when {
+            command.json -> printJson(openJson(worktree.path, worktree.branch, opening, startedAgent))
+            startedAgent != null -> out.line("opened ${worktree.path} in Herdr with $startedAgent")
+            else -> out.line("focused ${worktree.path} in Herdr (already open)")
+        }
+        return EXIT_OK
     }
 
     private suspend fun repair(command: CliCommand.Repair): Int {
