@@ -291,7 +291,7 @@ fun xcodeJson(active: Boolean, listing: DerivedDataListing?): JsonObject = build
                 add(
                     buildJsonObject {
                         put("path", it.folder.path)
-                        put("sizeBytes", it.folder.sizeBytes)
+                        put("sizeBytes", it.folder.sizeBytes ?: 0L)
                         put("worktree", (it.owner as DerivedDataOwner.Worktree).path)
                     },
                 )
@@ -308,7 +308,7 @@ private fun derivedDataFolders(folders: List<DerivedDataFolder>): JsonArray = bu
         add(
             buildJsonObject {
                 put("path", it.path)
-                put("sizeBytes", it.sizeBytes)
+                put("sizeBytes", it.sizeBytes ?: 0L)
             },
         )
     }

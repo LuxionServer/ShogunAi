@@ -30,6 +30,7 @@ import app.luxion.shogunai.domain.model.WorktreeStatus
 import app.luxion.shogunai.domain.model.withoutLocalTwins
 import app.luxion.shogunai.ui.machine.MachineResource
 import app.luxion.shogunai.ui.shell.ToolsPreferences
+import app.luxion.shogunai.domain.usecase.DerivedDataMeasure
 import app.luxion.shogunai.domain.usecase.BranchDeletion
 import app.luxion.shogunai.domain.usecase.CleanupFailure
 import app.luxion.shogunai.domain.usecase.CleanupReport
@@ -510,7 +511,7 @@ class ProjectWorktrees(
                 derivedDataOrphans = emptyList()
                 return@launch
             }
-            val orphans = useCases.xcode.list(listed, false).getOrNull()?.orphans ?: return@launch
+            val orphans = useCases.xcode.list(listed, false, DerivedDataMeasure.ORPHANS).getOrNull()?.orphans ?: return@launch
             if (generation == listGeneration) derivedDataOrphans = orphans
         }
     }

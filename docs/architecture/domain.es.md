@@ -153,7 +153,7 @@ Lo que el provider de Gradle observa en la máquina (`GradleDaemon.kt`):
 
 Lo que el provider de Xcode encuentra en la ubicación de DerivedData de Xcode (`DerivedData.kt`), solo en macOS y en repositorios que declaran `"providers": { "xcode": {} }`:
 
-- `DerivedDataFolder` — la carpeta de un proyecto: `path`, `workspacePath` (el `.xcodeproj`, `.xcworkspace` o paquete que registra su `info.plist`), `sizeBytes` y `lastAccessed`.
+- `DerivedDataFolder` — la carpeta de un proyecto: `path`, `workspacePath` (el `.xcodeproj`, `.xcworkspace` o paquete que registra su `info.plist`), `sizeBytes` (`null` hasta que se mide) y `lastAccessed`.
 - `DerivedDataOwner` — `Worktree(path)` (el worktree del repositorio que contiene el workspace, con los worktrees anidados resueltos), `OtherProject` (el workspace existe en otro sitio), `Orphaned` (el workspace ya no existe) o `UnavailableVolume` (el workspace está en un volumen no montado, así que no se distingue de un proyecto vivo).
 - `DerivedDataListing` — cada carpeta con su dueño (`AttributedDerivedData`) y el tamaño de la caché de compilación compartida cuando se pide; `orphans` y `ofWorktrees()` la filtran.
 - `DerivedDataDeletion` — el resultado de borrar huérfanas: `deleted`, `failures` (`DerivedDataDeletionFailure`: ruta y detalle) y `bytesFreed`.
@@ -399,6 +399,7 @@ Lista los daemons de Gradle y de Kotlin que se ejecutan en la máquina con su es
 interface DerivedDataSource {
     fun isSupported(): Boolean
     suspend fun folders(): List<DerivedDataFolder>
+    suspend fun size(folder: DerivedDataFolder): Long
     suspend fun compilationCacheBytes(): Long?
     fun projectExists(workspacePath: String): Boolean
     fun isOnUnavailableVolume(workspacePath: String): Boolean
@@ -406,7 +407,7 @@ interface DerivedDataSource {
 }
 ```
 
-Todo lo que el provider de Xcode necesita de los DerivedData de Xcode: si el sistema es macOS, las carpetas de proyecto de la ubicación actual (nunca las cachés compartidas de Xcode, que no tienen `info.plist`), el tamaño de la caché de compilación compartida (`null` si no existe), si un workspace sigue existiendo o está en un volumen no montado, y borrar una carpeta.
+Todo lo que el provider de Xcode necesita de los DerivedData de Xcode: si el sistema es macOS, las carpetas de proyecto de la ubicación actual sin su tamaño (nunca las cachés compartidas de Xcode, que no tienen `info.plist`), el tamaño de una carpeta medido bajo demanda y cancelable, el tamaño de la caché de compilación compartida (`null` si no existe), si un workspace sigue existiendo o está en un volumen no montado, y borrar una carpeta.
 
 ### `TerminalLauncher` / `EditorLauncher` / `FolderLauncher` / `ToolDetector`
 
@@ -646,8 +647,8 @@ Se usan cuando el repositorio declara el provider de Gradle (y desde `shogun gra
 
 Se usan en macOS cuando el repositorio declara el provider de Xcode:
 
-- `ListDerivedDataUseCase(worktrees, includeCompilationCache)` atribuye cada carpeta de `DerivedDataSource`: un workspace que no existe es `UnavailableVolume` si su volumen no está montado y, si no, `Orphaned`; uno que existe pertenece al worktree de ruta más larga que lo contiene (`owningWorktree`, la misma regla que los agentes en ejecución y los daemons de Gradle) y, si no, a `OtherProject`. Las huérfanas son de toda la máquina: cuando su proyecto ya no existe, nada puede usar la carpeta, la creara la herramienta que la creara.
-- `DeleteOrphanedDerivedDataUseCase` vuelve a listar las carpetas, se queda con las que siguen huérfanas, comprueba cada workspace otra vez justo antes de borrar (un proyecto restaurado entretanto conserva su carpeta) y devuelve un `DerivedDataDeletion`; un fallo no detiene el resto. La carpeta de un worktree eliminado es huérfana por definición, así que la limpieza solo ejecuta este caso de uso después de eliminar.
+- `ListDerivedDataUseCase(worktrees, includeCompilationCache, measure)` atribuye cada carpeta de `DerivedDataSource`: un workspace que no existe es `UnavailableVolume` si su volumen no está montado y, si no, `Orphaned`; uno que existe pertenece al worktree de ruta más larga que lo contiene (`owningWorktree`, la misma regla que los agentes en ejecución y los daemons de Gradle) y, si no, a `OtherProject`. `measure` indica a qué carpetas se les mide el tamaño: `NONE`, `ORPHANS` o `ALL`. Las huérfanas son de toda la máquina: cuando su proyecto ya no existe, nada puede usar la carpeta, la creara la herramienta que la creara.
+- `DeleteOrphanedDerivedDataUseCase` vuelve a listar las carpetas, se queda con las que siguen huérfanas, comprueba cada workspace otra vez justo antes de borrar (un proyecto restaurado entretanto conserva su carpeta), mide cada huérfana que aún no tiene tamaño para que `bytesFreed` sea correcto y devuelve un `DerivedDataDeletion`; un fallo no detiene el resto. La carpeta de un worktree eliminado es huérfana por definición, así que la limpieza solo ejecuta este caso de uso después de eliminar.
 - `xcodeCompilationCacheContribution` es la contribución al entorno del provider cuando `XcodeProvider.compilationCache` está activo, en macOS (`MachineProviderContributions`): un recurso `xcode-compilation-cache` cuyo `create` escribe `~/.shogunai/xcode/compilation-cache.xcconfig` (`COMPILATION_CACHE_ENABLE_CACHING` y prefix mapping de Swift y Clang, cinco líneas `KEY = YES`) y cuyo `exists` comprueba que el fichero tiene ese contenido, más la variable `XCODE_XCCONFIG_FILE=<ruta>`. Al ser un recurso, solo se escribe al resolver con reserva y se vuelve a crear si se borra; el fichero es el mismo para todos los repositorios de la máquina. Un `XCODE_XCCONFIG_FILE` declarado en `env` gana.
 
 ### Casos de uso de la comprobación de actualizaciones

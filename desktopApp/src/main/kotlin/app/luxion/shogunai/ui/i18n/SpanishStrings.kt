@@ -345,6 +345,7 @@ object SpanishStrings : Strings {
 
     override val xcodeDerivedDataTitle = "DerivedData de Xcode"
     override val xcodeDerivedDataUnavailable = "No se pueden inspeccionar los DerivedData en este sistema"
+    override val calculating = "Calculando…"
     override fun derivedDataSummary(count: Int, totalSize: String) =
         (if (count == 1) "1 carpeta de DerivedData" else "$count carpetas de DerivedData") + " · $totalSize"
     override fun derivedDataOrphans(count: Int, size: String) =
@@ -415,9 +416,11 @@ object SpanishStrings : Strings {
     override fun confirmDeleteSimulatorOrphans(count: Int) =
         if (count == 1) "Se borrará 1 simulador cuyo worktree ya no existe."
         else "Se borrarán $count simuladores cuyos worktrees ya no existen."
-    override fun confirmDeleteDerivedDataOrphans(count: Int, size: String) =
-        if (count == 1) "Se borrará 1 carpeta de DerivedData cuyo proyecto ya no existe ($size)."
-        else "Se borrarán $count carpetas de DerivedData cuyos proyectos ya no existen ($size)."
+    override fun confirmDeleteDerivedDataOrphans(count: Int, size: String?): String {
+        val total = size?.let { " ($it)" }.orEmpty()
+        return if (count == 1) "Se borrará 1 carpeta de DerivedData cuyo proyecto ya no existe$total."
+        else "Se borrarán $count carpetas de DerivedData cuyos proyectos ya no existen$total."
+    }
     override val noDerivedData = "No hay carpetas de DerivedData en esta máquina"
     override val derivedDataKept = "conservada: volumen no disponible"
     override val gradleChipLabel = "Gradle"
@@ -533,6 +536,7 @@ object SpanishStrings : Strings {
     override val showIconInMenuBar = "Mostrar el icono en la barra de menús"
     override val showIconInTray = "Mostrar el icono en la bandeja del sistema"
     override val keepRunningWhenClosed = "Seguir ejecutándose al cerrar la ventana"
+    override val menuCopyDiagnosticReport = "Copiar informe de diagnóstico"
     override val menuCheckForUpdates = "Buscar actualizaciones…"
     override fun updateAvailableMessage(newVersion: String, runningVersion: String) =
         "¡Ya está aquí ShogunAi $newVersion! Tienes la $runningVersion."

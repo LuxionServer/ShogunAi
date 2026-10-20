@@ -61,6 +61,7 @@ import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.DeleteMergedBranchUseCase
 import app.luxion.shogunai.domain.usecase.DetectRunningAgentsUseCase
 import app.luxion.shogunai.domain.usecase.DeleteOrphanedDerivedDataUseCase
+import app.luxion.shogunai.domain.usecase.DerivedDataMeasure
 import app.luxion.shogunai.domain.usecase.DeleteSimulatorsUseCase
 import app.luxion.shogunai.domain.usecase.EnvironmentFormat
 import app.luxion.shogunai.domain.usecase.ListDerivedDataUseCase
@@ -586,7 +587,7 @@ class ShogunCli(
         )
         val simulators = if (command.deleteSimulators) simulatorsBeforeCleanup(config, candidates) else SimulatorCleanup()
         val derivedDataOrphans = if (command.deleteDerivedData && derivedDataSource.isSupported() && xcodeProvider(config.baseRepositoryPath) != null) {
-            listDerivedData(worktrees, includeCompilationCache = false)
+            listDerivedData(worktrees, includeCompilationCache = false, measure = DerivedDataMeasure.ORPHANS)
                 .onFailure { err.line("shogun: couldn't list DerivedData: ${it.message}") }
                 .getOrNull()?.orphans.orEmpty()
         } else {
@@ -1021,17 +1022,17 @@ class ShogunCli(
         }
         val config = configFor(workingDirectory)
         val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
-        val listing = listDerivedData(worktrees, includeCompilationCache = provider.compilationCache).getOrThrow()
+        val listing = listDerivedData(worktrees, includeCompilationCache = provider.compilationCache, measure = DerivedDataMeasure.ALL).getOrThrow()
         if (command.json) {
             printJson(xcodeJson(active = true, listing = listing))
             return EXIT_OK
         }
         listing.ofWorktrees().forEach { item ->
             val worktree = (item.owner as DerivedDataOwner.Worktree).path
-            out.line("$worktree  ${formatMemory(item.folder.sizeBytes)}")
+            out.line("$worktree  ${formatMemory(item.folder.sizeBytes ?: 0L)}")
         }
         val orphans = listing.orphans
-        out.line("orphans: ${orphans.size} (${formatMemory(orphans.sumOf { it.sizeBytes })})")
+        out.line("orphans: ${orphans.size} (${formatMemory(orphans.sumOf { it.sizeBytes ?: 0L })})")
         val unavailableCount = listing.folders.count { it.owner == DerivedDataOwner.UnavailableVolume }
         if (unavailableCount > 0) {
             out.line("folders on unavailable volumes: $unavailableCount")

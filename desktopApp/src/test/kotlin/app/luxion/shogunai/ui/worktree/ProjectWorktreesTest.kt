@@ -269,6 +269,7 @@ class ProjectWorktreesTest {
         override suspend fun compilationCacheBytes(): Long? = null
         override fun projectExists(workspacePath: String): Boolean = false
         override fun isOnUnavailableVolume(workspacePath: String): Boolean = false
+        override suspend fun size(folder: DerivedDataFolder): Long = 0L
         override suspend fun delete(folder: DerivedDataFolder) {}
     }
 
@@ -2466,6 +2467,20 @@ class ProjectWorktreesTest {
         assertEquals(listOf(orphan.path), viewModel.derivedDataOrphans.map { it.path })
         assertTrue(viewModel.hasCompilationCache)
         assertEquals(1, source.listings)
+    }
+
+    @Test
+    fun `xcode repositories measure only the orphans`() = runTest(dispatcher) {
+        val project = worktreeProject()
+        val worktreeFolder = FakeDerivedDataSource.derivedData("TASK-123", project, null)
+        val orphan = FakeDerivedDataSource.derivedData("Orphan-1", "/gone/App.xcodeproj", null)
+        val fake = FakeDerivedDataSource(existing = listOf(worktreeFolder, orphan), existingProjects = setOf(project))
+        fake.sizes[orphan.path] = 500_000_000L
+        val viewModel = projectWorktrees(xcodeRepository(listingResponder(), CountingDerivedDataSource(fake)))
+        advanceUntilIdle()
+
+        assertEquals(listOf(orphan.path), fake.measured)
+        assertEquals(listOf(500_000_000L), viewModel.derivedDataOrphans.map { it.sizeBytes })
     }
 
     @Test
