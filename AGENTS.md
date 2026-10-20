@@ -28,6 +28,7 @@ Rules:
 - This file (`AGENTS.md`) is for agents only: style and process rules, not project content. If you're going to add an architecture explanation or a decision, it goes in `docs/` or OpenSpec, not here.
 - Non-trivial changes are planned with OpenSpec (`/opsx:propose` → `/opsx:apply` → `/opsx:archive`) before being implemented — see `docs/process/openspec.md`.
 - Archive a change (`/opsx:archive`) right after its implementation is tested and validated, in the same branch and **before** opening the pull request, so the archive, synced specs and roadmap update ship in that pull request. Don't leave archiving for a follow-up pull request after merge.
+- When archiving a change, check whether it affects the roadmap (`docs/roadmap.md` and `docs/roadmap.es.md`) and update both in the same branch: remove the items the change completes and renumber the remaining ones, update the status of the layers in "Direction" if it changes, and add the follow-ups the change left out.
 
 ## Commands
 
