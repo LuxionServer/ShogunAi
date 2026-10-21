@@ -267,7 +267,7 @@ private fun ColumnScope.AgentsSection(agents: List<RunningAgent>) {
     val strings = LocalStrings.current
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         SectionTitle(strings.agentsTitle)
-        agents.forEach { DetailValue(strings.agentLabel(it.name, it.herdrState)) }
+        agents.forEach { DetailValue(strings.agentLabel(it.name, it.state)) }
     }
 }
 
@@ -444,7 +444,8 @@ fun statusSegments(status: WorktreeStatus, mainBranchName: String?, now: Instant
         status.mainBranch?.takeUnless { status.isMerged }?.arrows()?.let { arrows ->
             listOfNotNull(arrows, mainBranchName).joinToString(" ")
         },
-        status.lastCommitAt?.let { relativeTime(it, now, strings) },
+        status.lastCommitAt?.let { strings.commitAgo(relativeTime(it, now, strings)) },
+        status.createdAt?.let { strings.createdAgo(relativeTime(it, now, strings)) },
     )
 
 fun portsLabel(ports: Map<String, Int>): String =

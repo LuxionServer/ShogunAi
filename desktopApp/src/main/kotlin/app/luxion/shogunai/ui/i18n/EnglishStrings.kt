@@ -5,7 +5,11 @@ import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.ProvisionDriftState
-import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.usecase.HookEntry
+import app.luxion.shogunai.domain.usecase.HookReplacement
+import app.luxion.shogunai.domain.usecase.HooksInstallState
+import app.luxion.shogunai.ui.shell.HooksAction
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
 object EnglishStrings : Strings {
@@ -158,21 +162,25 @@ object EnglishStrings : Strings {
     override val activeWorktrees = "Active"
     override val groupAgentWorking = "Agent working"
     override val groupNeedsYou = "Needs you"
-    override val groupInProgress = "In progress"
+    override val groupNew = "New"
+    override val groupStopped = "Stopped"
     override val groupMerged = "Merged"
     override val groupInactive = "Inactive"
     override val groupFolderMissing = "Folder missing"
     override val groupOther = "Other"
     override val groupAgentWorkingHint = "agent running"
-    override val groupAgentWorkingCriterion = "An AI agent is running in the worktree."
+    override val groupAgentWorkingCriterion = "An AI agent is working in the worktree, or runs without a known state."
     override val groupNeedsYouHint = "agent waiting, uncommitted or unpushed"
-    override val groupNeedsYouCriterion = "An agent blocked or done in Herdr, uncommitted changes, or commits not pushed to its upstream (or to the main branch when it has none)."
-    override val groupInProgressHint = "pushed, not merged"
-    override val groupInProgressCriterion = "Clean, pushed, not merged and with a commit in the last 14 days."
+    override val groupNeedsYouCriterion = "An agent is blocked or done, or no agent is working and there are uncommitted changes or commits not pushed to its upstream (or to the main branch when it has none)."
+    override val groupNewHint = "no commits yet"
+    override val groupNewCriterion = "No commits of its own, no uncommitted changes and no agent running."
+    override val groupStoppedHint = "pushed, waiting"
+    override val groupStoppedCriterion = "Commits of its own, all pushed, nothing uncommitted, not merged and no agent working."
     override val groupMergedHint = "in main branch"
     override val groupMergedCriterion = "No commits of its own ahead of the main branch. Can be cleaned up."
-    override val groupInactiveHint = "idle for 14+ days"
-    override val groupInactiveCriterion = "Clean, no agent and no commit in the last 14 days."
+    override fun groupInactiveHint(days: Int) = "no activity for $days+ days"
+    override fun groupInactiveCriterion(days: Int) =
+        "Clean, no agent running and no activity in the last " + (if (days == 1) "day." else "$days days.")
     override val groupFolderMissingHint = "folder deleted"
     override val groupFolderMissingCriterion = "Git still lists it but its folder no longer exists. Can be cleaned up."
     override val groupOtherHint = "main or not read yet"
@@ -185,12 +193,36 @@ object EnglishStrings : Strings {
     override val seeAllWorktrees = "See all worktrees"
     override val menuActive = "Show Active"
     override val menuAllWorktrees = "Show All worktrees"
-    override fun agentLabel(name: String, state: HerdrAgentState?) = when (state) {
+    override val claudeCodeLabel = "Claude Code"
+    override fun claudeHooksStatus(state: HooksInstallState) = when (state) {
+        HooksInstallState.INSTALLED -> "ShogunAi's hooks are installed"
+        HooksInstallState.OUTDATED -> "ShogunAi's hooks are out of date"
+        HooksInstallState.MISSING -> "ShogunAi's hooks aren't installed"
+    }
+    override val claudeHooksInstall = "Install"
+    override val claudeHooksUpdate = "Update"
+    override val claudeHooksRemove = "Remove"
+    override val claudeHooksCancel = "Cancel"
+    override val claudeHooksConfirm = "Apply"
+    override val claudeHooksPathWarning = "shogun isn't on your PATH, so Claude Code won't find the hooks. Install the command line tool first."
+    override fun claudeHooksDialogTitle(action: HooksAction) = when (action) {
+        HooksAction.INSTALL -> "Install the hooks"
+        HooksAction.UPDATE -> "Update the hooks"
+        HooksAction.REMOVE -> "Remove the hooks"
+    }
+    override fun claudeHooksChangesIn(path: String) = "Changes to $path:"
+    override fun claudeHooksAdded(entry: HookEntry) = "Add to ${entry.event}: ${entry.command}"
+    override fun claudeHooksReplaced(replacement: HookReplacement) =
+        "Replace in ${replacement.event}: ${replacement.from.joinToString()} with ${replacement.to}"
+    override fun claudeHooksRemoved(entry: HookEntry) = "Remove from ${entry.event}: ${entry.command}"
+    override val claudeHooksNoticeMessage = "Claude is running without a known state. Install ShogunAi's Claude Code hooks to see when it needs you."
+    override val claudeHooksNoticeDismiss = "Dismiss"
+    override fun agentLabel(name: String, state: AgentState?) = when (state) {
         null -> name
-        HerdrAgentState.WORKING -> "$name · working"
-        HerdrAgentState.BLOCKED -> "$name · blocked"
-        HerdrAgentState.DONE -> "$name · done"
-        HerdrAgentState.IDLE -> "$name · idle"
+        AgentState.WORKING -> "$name · working"
+        AgentState.BLOCKED -> "$name · blocked"
+        AgentState.DONE -> "$name · done"
+        AgentState.IDLE -> "$name · idle"
     }
     override fun agentsRunning(names: List<String>) = "Agents running: ${names.joinToString(", ")}"
     override val allProjects = "All projects"
@@ -213,14 +245,29 @@ object EnglishStrings : Strings {
     override val upstream = "upstream"
     override fun mergedInto(branch: String) = "merged into $branch"
     override val notStarted = "not started"
+    override val mergedLabel = "merged"
+    override fun commitAgo(relative: String) = "commit $relative"
+    override fun createdAgo(relative: String) = "created $relative"
+    override fun agentStateName(state: AgentState?) = when (state) {
+        null -> "state unknown"
+        AgentState.WORKING -> "working"
+        AgentState.BLOCKED -> "blocked"
+        AgentState.DONE -> "done"
+        AgentState.IDLE -> "idle"
+    }
+    override val sortLabel = "Sort"
+    override val sortByName = "Name"
+    override val sortByLastActivity = "Last activity"
+    override val createdTitle = "Created"
+    override val inactivityThresholdLabel = "Inactive after (days)"
+    override val inactivityThresholdHint = "A clean worktree with no agent and no activity for this many days is listed as inactive. From 1 to 90."
+    override val inactivityThresholdInvalid = "Enter a whole number from 1 to 90."
     override val statusUnavailable = "Status unavailable"
-    override val folderMissing = "Folder missing"
     override val mainWorktree = "main"
     override val originShogunAi = "ShogunAi"
     override val originClaudeCode = "Claude Code"
     override val originHerdr = "Herdr"
     override val originOther = "other location"
-    override val inactive = "inactive"
     override fun worktreesSummary(count: Int, totalSize: String) =
         (if (count == 1) "1 worktree" else "$count worktrees") + " · $totalSize"
     override fun cleanupCandidatesSummary(count: Int) = "$count to clean up"

@@ -14,7 +14,8 @@ class WorktreeGroupingTest {
     fun `active worktrees are grouped in order and the rest is left out`() {
         val groups = groupByState(
             items(
-                "progress" to Activity.InProgress,
+                "new" to Activity.New,
+                "stopped" to Activity.Stopped,
                 "merged" to Activity.Merged,
                 "needs" to Activity.NeedsYou,
                 "agent" to Activity.AgentWorking,
@@ -25,10 +26,10 @@ class WorktreeGroupingTest {
         )
 
         assertEquals(
-            listOf(StateGroupKind.AGENT_WORKING, StateGroupKind.NEEDS_YOU, StateGroupKind.IN_PROGRESS),
+            listOf(StateGroupKind.NEEDS_YOU, StateGroupKind.AGENT_WORKING, StateGroupKind.NEW, StateGroupKind.STOPPED),
             kinds(groups),
         )
-        assertEquals(listOf("agent"), groups.first().items)
+        assertEquals(listOf("needs"), groups.first().items)
     }
 
     @Test
@@ -39,7 +40,7 @@ class WorktreeGroupingTest {
                 "inactive" to Activity.Inactive,
                 "merged-1" to Activity.Merged,
                 "merged-2" to Activity.Merged,
-                "progress" to Activity.InProgress,
+                "stopped" to Activity.Stopped,
                 "main" to Activity.Idle,
             ),
             includeInactive = true,
@@ -47,7 +48,7 @@ class WorktreeGroupingTest {
 
         assertEquals(
             listOf(
-                StateGroupKind.IN_PROGRESS,
+                StateGroupKind.STOPPED,
                 StateGroupKind.MERGED,
                 StateGroupKind.INACTIVE,
                 StateGroupKind.FOLDER_MISSING,
@@ -66,11 +67,11 @@ class WorktreeGroupingTest {
     @Test
     fun `a pinned worktree stays in the group for its real state`() {
         val groups = groupByState(
-            items("merged" to Activity.Merged, "progress" to Activity.InProgress),
+            items("merged" to Activity.Merged, "stopped" to Activity.Stopped),
             includeInactive = false,
             isPinned = { it == "merged" },
         )
 
-        assertEquals(listOf(StateGroupKind.IN_PROGRESS, StateGroupKind.MERGED), kinds(groups))
+        assertEquals(listOf(StateGroupKind.STOPPED, StateGroupKind.MERGED), kinds(groups))
     }
 }

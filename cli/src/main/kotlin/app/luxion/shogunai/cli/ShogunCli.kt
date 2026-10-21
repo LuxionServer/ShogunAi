@@ -3,6 +3,7 @@ package app.luxion.shogunai.cli
 import app.luxion.shogunai.BuildInfo
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.io.AgentSessionStore
 import app.luxion.shogunai.domain.io.AndroidSdk
 import app.luxion.shogunai.domain.io.AppleSimulators
 import app.luxion.shogunai.domain.io.DerivedDataSource
@@ -21,6 +22,8 @@ import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.io.ResourceLimitsRepository
 import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.model.ANDROID_SERIAL
+import app.luxion.shogunai.domain.model.AgentSessionRecord
+import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.AttributedDerivedData
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.DaemonKeptReason
@@ -54,6 +57,9 @@ import app.luxion.shogunai.domain.model.WorktreeStatus
 import app.luxion.shogunai.domain.model.XcodeProvider
 import app.luxion.shogunai.domain.usecase.AcquireWorktreeResourceUseCase
 import app.luxion.shogunai.domain.usecase.BranchDeletion
+import app.luxion.shogunai.domain.usecase.ClaudeCodeHooks
+import app.luxion.shogunai.domain.usecase.HooksInstallState
+import app.luxion.shogunai.domain.usecase.HooksPreview
 import app.luxion.shogunai.domain.usecase.CheckGradleBuildCacheUseCase
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.CloseHerdrWorkspacesUseCase
@@ -110,6 +116,7 @@ import app.luxion.shogunai.domain.usecase.hint
 import app.luxion.shogunai.domain.usecase.selectCleanup
 import app.luxion.shogunai.domain.usecase.totalResidentMemory
 import app.luxion.shogunai.infrastructure.CliHerdrClient
+import app.luxion.shogunai.infrastructure.FileAgentSessionStore
 import app.luxion.shogunai.infrastructure.FileKmpTestWiring
 import java.io.File
 import java.io.FileNotFoundException
@@ -152,6 +159,8 @@ class ShogunCli(
     private val herdr: HerdrClient = CliHerdrClient(executor, userHome = userHome),
     private val trust: RepositoryTrust = RepositoryTrust.NONE,
     private val readAnswer: () -> String? = { null },
+    private val sessionStore: AgentSessionStore = FileAgentSessionStore(),
+    private val agentProcessId: () -> Long? = ::claudeAncestorPid,
 ) {
     private val terminalApproval = PostCreateApproval { repository, commands ->
         if (confirm("${commandLines(repository, commands)}Run these commands? [y/N] ")) PostCreateDecision.RUN else PostCreateDecision.SKIP
@@ -257,6 +266,8 @@ class ShogunCli(
             is CliCommand.SimulatorGradleInit -> simulatorGradleInit(command)
             CliCommand.HookSessionStart -> hookSessionStart()
             CliCommand.HookHerdr -> hookHerdr()
+            CliCommand.HookAgentState -> hookAgentState()
+            is CliCommand.Hooks -> hooks(command)
             is CliCommand.GradleStop -> gradleStop(command)
             is CliCommand.Pool -> pool(command)
             is CliCommand.Xcode -> xcode(command)
@@ -452,9 +463,9 @@ class ShogunCli(
         val config = configFor(workingDirectory)
         val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
         val mainBranch = ResolveMainBranchUseCase(config, executor)().getOrNull()
-        val readStatus = ReadWorktreeStatusUseCase(executor)
+        val readStatus = ReadWorktreeStatusUseCase(executor, fileManager)
         val herdrWorktreesRoot = herdrConfig.worktreesRoot()
-        val agents = DetectRunningAgentsUseCase(executor, herdr)(config, worktrees.filterNot { it.isPrunable }).getOrNull().orEmpty()
+        val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore)(config, worktrees.filterNot { it.isPrunable }).getOrNull().orEmpty()
         val entries = worktrees.map { worktree ->
             val read = if (worktree.isPrunable) null else readStatus(worktree, mainBranch)
             WorktreeEntry(
@@ -488,7 +499,7 @@ class ShogunCli(
         val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
         val worktree = resolveWorktreeTarget(command.target, worktrees, config, ::canonical)
         if (!command.force && !worktree.isPrunable) {
-            val agents = DetectRunningAgentsUseCase(executor)(config, listOf(worktree))
+            val agents = DetectRunningAgentsUseCase(executor, sessionStore = sessionStore)(config, listOf(worktree))
                 .onFailure { err.line("shogun: couldn't check for running agents, so none were taken into account: ${it.message}") }
                 .getOrNull()?.get(worktree.path).orEmpty()
             if (agents.isNotEmpty()) {
@@ -586,12 +597,12 @@ class ShogunCli(
         val config = configFor(workingDirectory)
         val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
         val mainBranch = ResolveMainBranchUseCase(config, executor)().getOrNull()
-        val readStatus = ReadWorktreeStatusUseCase(executor)
+        val readStatus = ReadWorktreeStatusUseCase(executor, fileManager)
         val statusReads = worktrees
             .filterNot { it.isMain || it.isPrunable || it.isLocked }
             .associateWith { worktree -> readStatus(worktree, mainBranch) }
         val statuses = statusReads.mapNotNull { (worktree, read) -> read.getOrNull()?.let { worktree.path to it } }.toMap()
-        val agents = DetectRunningAgentsUseCase(executor, herdr)(config, worktrees.filterNot { it.isMain || it.isPrunable })
+        val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore)(config, worktrees.filterNot { it.isMain || it.isPrunable })
             .onFailure { err.line("shogun: couldn't check for running agents, so none were taken into account: ${it.message}") }
             .getOrNull()
         val selection = selectCleanup(worktrees, statuses, agents)
@@ -1182,6 +1193,102 @@ class ShogunCli(
     private fun herdrCloseFailure(path: String, error: WorktreeError) =
         "shogun: couldn't close the Herdr workspace of $path: ${error.herdrDetail()}"
 
+    private suspend fun hookAgentState(): Int {
+        val input = hookInput("agent-state") ?: return EXIT_USAGE
+        val sessionId = input.string("session_id") ?: return EXIT_OK
+        val event = input.string("hook_event_name") ?: return EXIT_OK
+        val state = if (event == SESSION_END) null else agentStateOf(event, input.string("notification_type")) ?: return EXIT_OK
+        try {
+            val directory = input.string("cwd") ?: workingDirectory
+            if (ResolveRepositoryUseCase(executor)(directory).isFailure) return EXIT_OK
+            val worktree = worktreeContaining(directory).second
+            if (state == null) {
+                sessionStore.remove(worktree.path, sessionId)
+            } else {
+                sessionStore.write(
+                    worktree.path,
+                    AgentSessionRecord(sessionId, "claude", state, now().toEpochMilli(), input.string("transcript_path"), agentProcessId()),
+                )
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            return EXIT_OK
+        }
+        return EXIT_OK
+    }
+
+    private fun agentStateOf(event: String, notificationType: String?): AgentState? = when (event) {
+        "UserPromptSubmit" -> AgentState.WORKING
+        "Stop" -> AgentState.DONE
+        "Notification" -> when (notificationType) {
+            "idle_prompt" -> AgentState.DONE
+            "auth_success" -> null
+            else -> AgentState.BLOCKED
+        }
+        else -> null
+    }
+
+    private val claudeHooks = ClaudeCodeHooks(fileManager)
+
+    private suspend fun hooks(command: CliCommand.Hooks): Int {
+        if (command.action == HooksAction.STATUS) return hooksStatus(command)
+        val path = hooksSettingsPath(command.project)
+        val install = command.action == HooksAction.INSTALL
+        val preview = (if (install) claudeHooks.previewInstall(path) else claudeHooks.previewUninstall(path)).getOrThrow()
+        if (preview.isEmpty) {
+            if (command.json) printJson(hooksResultJson(path, preview, applied = false)) else out.line(hooksUpToDate(install, path))
+            return EXIT_OK
+        }
+        if (!command.json) printHooksPreview(path, preview)
+        val confirmed = command.yes || (!command.json && confirm(if (install) "Install them? [y/N] " else "Remove them? [y/N] "))
+        if (confirmed) (if (install) claudeHooks.install(path) else claudeHooks.uninstall(path)).getOrThrow()
+        when {
+            command.json -> printJson(hooksResultJson(path, preview, applied = confirmed))
+            confirmed -> out.line(if (install) "Installed in $path" else "Removed from $path")
+            else -> out.line("Nothing written.")
+        }
+        return EXIT_OK
+    }
+
+    private fun hooksUpToDate(install: Boolean, path: String) =
+        if (install) "ShogunAi's hooks are already installed in $path" else "There are no ShogunAi hooks in $path"
+
+    private fun printHooksPreview(path: String, preview: HooksPreview) {
+        out.line("Changes to $path:")
+        preview.added.forEach { out.line("  + ${it.event}: ${it.command}") }
+        preview.replaced.forEach { out.line("  ~ ${it.event}: ${it.from.joinToString()} -> ${it.to}") }
+        preview.removed.forEach { out.line("  - ${it.event}: ${it.command}") }
+    }
+
+    private suspend fun hooksSettingsPath(project: Boolean): String =
+        if (project) {
+            ClaudeCodeHooks.projectSettingsPath(ResolveRepositoryUseCase(executor)(workingDirectory).getOrThrow())
+        } else {
+            userHooksSettingsPath()
+        }
+
+    private fun userHooksSettingsPath() =
+        ClaudeCodeHooks.userSettingsPath(environmentVariable(CLAUDE_CONFIG_DIR), userHome)
+
+    private suspend fun hooksStatus(command: CliCommand.Hooks): Int {
+        val scopes = buildList {
+            add("user" to userHooksSettingsPath())
+            ResolveRepositoryUseCase(executor)(workingDirectory).getOrNull()
+                ?.let { add("project" to ClaudeCodeHooks.projectSettingsPath(it)) }
+        }
+        val statuses = scopes.map { (scope, path) -> scope to claudeHooks.status(path).getOrThrow() }
+        if (command.json) {
+            printJson(hooksStatusJson(statuses))
+            return EXIT_OK
+        }
+        statuses.forEach { (scope, status) ->
+            val detail = if (status.state == HooksInstallState.OUTDATED) " (${status.events.joinToString()})" else ""
+            out.line("$scope: ${status.state.name.lowercase()}$detail  ${status.path}")
+        }
+        return EXIT_OK
+    }
+
     private suspend fun hookHerdr(): Int {
         val event = environmentVariable(HERDR_PLUGIN_EVENT)?.takeIf { it.isNotBlank() }
             ?: return hookUsageError("herdr", "$HERDR_PLUGIN_EVENT isn't set; run it from Herdr's plugin")
@@ -1292,7 +1399,7 @@ class ShogunCli(
         path.trimEnd('/', '\\').substringAfterLast('/').substringAfterLast('\\')
 
     private fun agentLabel(agent: RunningAgent): String =
-        agent.herdrState?.let { "${agent.name}(${it.name.lowercase()})" } ?: agent.name
+        agent.state?.let { "${agent.name}(${it.name.lowercase()})" } ?: agent.name
 
     private fun absolute(path: String): String =
         if (path.startsWith('/') || File(path).isAbsolute) path else File(workingDirectory, path).toPath().normalize().toString().replace('\\', '/')
@@ -1324,6 +1431,8 @@ class ShogunCli(
         const val EXIT_DRIFT = 3
         private const val CLAUDE_CODE_WORKTREES = ".claude/worktrees"
         private const val CLAUDE_ENV_FILE = "CLAUDE_ENV_FILE"
+        private const val CLAUDE_CONFIG_DIR = "CLAUDE_CONFIG_DIR"
+        private const val SESSION_END = "SessionEnd"
         private const val HERDR_PLUGIN_EVENT = "HERDR_PLUGIN_EVENT"
         private const val HERDR_PLUGIN_EVENT_JSON = "HERDR_PLUGIN_EVENT_JSON"
         private const val HERDR_WORKTREE_CREATED = "worktree.created"
@@ -1357,3 +1466,8 @@ class ShogunCli(
 
     }
 }
+
+internal fun claudeAncestorPid(): Long? =
+    generateSequence(ProcessHandle.current().parent().orElse(null)) { it.parent().orElse(null) }
+        .firstOrNull { it.info().command().orElse("").substringAfterLast('/') == "claude" }
+        ?.pid()

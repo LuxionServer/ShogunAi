@@ -24,15 +24,11 @@ Numbered in the order they will be picked up: the number is the priority.
 
 DerivedData is the one resource of the machine's pools that is limited by disk instead of by count. A quota in Preferences, applied by reusing the resource pool model (release the least recently used folders of worktrees that are not in use when the quota is exceeded), would keep it from growing without bound.
 
-### 2. Redesigned worktree states and row layout
-
-The current groups don't tell apart what matters: a worktree with an agent hides most of the others, and the group of worktrees that need the user is the most useful one. The states will separate worktrees that need the user, worktrees that are new and were never started, worktrees stopped for another reason and worktrees with an agent working. The date in each row will say what it measures (today it's the last commit, which in a new worktree is inherited from the base branch and reads as activity), and the row's information will be ordered and given fixed sizes so it's easier to scan, without repeating the project name.
-
-### 3. Platforms and IDEs beyond Android
+### 2. Platforms and IDEs beyond Android
 
 The project grew around Android. This item reviews the coverage of the other stacks (iOS and Xcode, JVM backends) and of the IDEs a worktree can be opened in. It starts with an exploration to decide what's missing before it's split into changes.
 
-### 4. Follow-ups of the 2026-10-19 changes
+### 3. Follow-ups of the 2026-10-19 changes
 
 The review of the whole project on 2026-10-19 and the changes built after it are archived. These follow-ups were left out of them:
 
@@ -42,14 +38,15 @@ The review of the whole project on 2026-10-19 and the changes built after it are
 - Build provenance attestations for release assets, and treating compiler warnings as errors now that the build is clean.
 - More terminals for "Open in terminal" (Ghostty, Warp, Alacritty, Kitty, GNOME Terminal), each as one more adapter.
 - Faster DerivedData sizes: measuring several folders in parallel and remembering sizes between app runs.
-- A notification when a Herdr agent becomes blocked or done; today the worktree's row and the menu bar icon's menu are the signal.
+- A notification when an agent (reported by Herdr or by Claude Code's hooks) becomes blocked or done; today the worktree's row and the menu bar icon's menu are the signal.
+- Agent states for agents other than Claude Code (Codex, Gemini…), which have no equivalent hooks today.
 - Finding the root cause of the errors that closed the Preferences window, from the entries the isolation now leaves in the diagnostics log, and of the native crash seen on another machine that left an empty diagnostic report.
 
-### 5. Guided onboarding demo
+### 4. Guided onboarding demo
 
 A first-run walkthrough built on the review done before merging the worktree layer: the app creates a throwaway sample repository with worktrees in every state, and opens an agent with a prepared prompt that walks the user through each feature (status, cleanup, provisioning, the CLI, hooks, environment and providers), one step at a time.
 
-### 6. Android, KMP and JVM provisioning
+### 5. Android, KMP and JVM provisioning
 
 Provisioning for the stacks where a fresh worktree is furthest from building:
 

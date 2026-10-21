@@ -76,7 +76,17 @@ internal object CliHelp {
   hook worktree-create        Claude Code WorktreeCreate hook: create and provision the worktree, print its path
   hook worktree-remove        Claude Code WorktreeRemove hook: remove the worktree, delete its branch if merged
   hook session-start          Claude Code SessionStart hook: export the worktree's environment to the session
+  hook agent-state            Claude Code UserPromptSubmit, Notification, Stop and SessionEnd hook: record the session's state
   hook herdr                  Herdr plugin hook: provision worktrees on worktree.created, delete merged branches on worktree.removed
+""".trimIndent(),
+        "hooks" to """
+  hooks install|uninstall [--project] [--yes] [--json]
+                              Add or remove every ShogunAi hook in Claude Code's user settings
+                              (--project: the repository's .claude/settings.json); shows what changes
+                              and asks first unless --yes is given
+  hooks status [--json]
+                              Say whether the hooks are installed, outdated or missing, in the user
+                              settings and in the current repository's
 """.trimIndent(),
         "simulator" to """
   simulator start|stop|status [<path>] [--device <type>] [--runtime <runtime>] [--json]

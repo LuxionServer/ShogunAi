@@ -43,23 +43,24 @@ Después los hooks los ejecutan, hasta que cambien los comandos del repositorio;
 
 ## Claude Code
 
-El hook `WorktreeCreate` de Claude Code **sustituye** su propia creación de worktrees para `claude --worktree`, `EnterWorktree`, los subagentes con `isolation: "worktree"` y las sesiones en segundo plano. Apúntalo a `shogun`, junto con `WorktreeRemove` para que la limpieza también pase por ShogunAi. En el `.claude/settings.json` del repositorio (compartido con el equipo) o en tu `~/.claude/settings.json` (todos los repositorios):
+El hook `WorktreeCreate` de Claude Code **sustituye** su propia creación de worktrees para `claude --worktree`, `EnterWorktree`, los subagentes con `isolation: "worktree"` y las sesiones en segundo plano. Un solo comando lo apunta a `shogun`, junto con `WorktreeRemove` para que la limpieza también pase por ShogunAi, y con los hooks que informan del estado del agente ([más abajo](#estados-de-los-agentes-fuera-de-herdr)):
 
-```json
-{
-  "hooks": {
-    "WorktreeCreate": [
-      { "hooks": [{ "type": "command", "command": "shogun hook worktree-create" }] }
-    ],
-    "WorktreeRemove": [
-      { "hooks": [{ "type": "command", "command": "shogun hook worktree-remove" }] }
-    ],
-    "SessionStart": [
-      { "hooks": [{ "type": "command", "command": "shogun hook session-start" }] }
-    ]
-  }
-}
+```bash
+shogun hooks install
 ```
+
+Muestra lo que va a añadir a tu `~/.claude/settings.json` y pregunta antes de escribir; `--yes` se salta la pregunta. El resto de tus ajustes y hooks se conserva, ejecutarlo otra vez no cambia nada y, tras actualizar ShogunAi, solo añade o reemplaza los hooks que cambiaron. `shogun hooks install --project` escribe en su lugar el `.claude/settings.json` del repositorio (compartido con el equipo), `shogun hooks status` dice si están instalados, desactualizados o ausentes y `shogun hooks uninstall` los quita. La app de escritorio hace lo mismo desde Ajustes › Claude Code, con "Instalar", "Actualizar" y "Quitar", y lo sugiere una vez cuando encuentra un agente Claude sin estado conocido. Se respeta `CLAUDE_CONFIG_DIR`. Un archivo de ajustes que no sea JSON válido nunca se sobrescribe.
+
+Los hooks que instala, todos de tipo `command`:
+
+| Evento | Comando |
+|---|---|
+| `WorktreeCreate` | `shogun hook worktree-create` |
+| `WorktreeRemove` | `shogun hook worktree-remove` |
+| `SessionStart` | `shogun hook session-start` |
+| `UserPromptSubmit`, `Notification`, `Stop`, `SessionEnd` | `shogun hook agent-state` |
+
+Los hooks ejecutan `shogun`, así que debe estar en el `PATH` del shell desde el que ejecutas Claude Code.
 
 Qué pasa entonces:
 
@@ -71,7 +72,17 @@ Qué pasa entonces:
 
 Claude Code solo ejecuta los hooks de proyecto de un repositorio cuando has aceptado confiar en su carpeta. Si los hooks están en el `.claude/settings.json` del repositorio y nunca has ejecutado `claude` ahí, `claude -w` se detiene con "Workspace trust not yet accepted": ejecuta `claude` una vez en el repositorio, acepta el diálogo de confianza y vuelve a intentarlo. Los hooks de `~/.claude/settings.json` no lo necesitan en los repositorios en los que ya confías.
 
-El worktree nuevo parte del HEAD del worktree donde se ejecuta Claude Code (el commit actual del checkout principal si empiezas ahí), como `shogun new`, y el ajuste `worktree.baseRef` de Claude Code no se aplica. Comprobado con Claude Code 2.1.301.
+El worktree nuevo parte del HEAD del worktree donde se ejecuta Claude Code (el commit actual del checkout principal si empiezas ahí), como `shogun new`, y el ajuste `worktree.baseRef` de Claude Code no se aplica. Comprobado con Claude Code 2.1.306.
+
+### Estados de los agentes fuera de Herdr
+
+Los hooks `agent-state` registran si cada sesión de Claude está trabajando (`UserPromptSubmit`), bloqueada (`Notification`, por ejemplo un permiso), terminada (`Stop`, o una `Notification` que avisa de que el prompt lleva inactivo) o cerrada (`SessionEnd`). La app de escritorio y `shogun status` muestran ese estado para los agentes Claude sin Herdr, y un agente bloqueado o terminado pone su worktree en "Te necesitan".
+
+- Cada sesión es un archivo pequeño en la carpeta Git propia del worktree (`<git-dir>/shogunai/agent-sessions/`), así que nunca aparece como un cambio, no se copia a otros worktrees y desaparece con el worktree.
+- Un registro cuenta solo mientras su proceso de Claude sigue en marcha; los que deja un cierre abrupto se ignoran y se borran.
+- Conceder un permiso no dispara ningún hook. Una sesión bloqueada cuyo transcript se escribe después se lee como trabajando, así que el estado sigue a la concesión del permiso.
+- Cuando Herdr también informa del agente, se usa el estado de Herdr.
+- Los demás agentes (Codex, Gemini…) no tienen esos hooks y se muestran sin estado salvo que Herdr los informe.
 
 ## Herdr
 

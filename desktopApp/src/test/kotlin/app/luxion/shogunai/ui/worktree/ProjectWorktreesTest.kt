@@ -20,7 +20,7 @@ import app.luxion.shogunai.HerdrUseCases
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.ui.shell.AgentChoices
 import app.luxion.shogunai.SimulatorUseCases
-import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.WorktreeUseCases
 import app.luxion.shogunai.ProvisioningUseCases
@@ -223,7 +223,7 @@ class ProjectWorktreesTest {
             copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboard, windows = false),
             repair = RepairWorktreesUseCase(config, executor, FakeFileManager(existing = listOf(config.baseRepositoryPath))),
             resolveMainBranch = ResolveMainBranchUseCase(config, executor),
-            readStatus = ReadWorktreeStatusUseCase(executor),
+            readStatus = ReadWorktreeStatusUseCase(executor, FakeFileManager()),
             cleanUp = CleanUpWorktreesUseCase(config, executor),
             detectAgents = { worktrees -> DetectRunningAgentsUseCase(executor)(config, worktrees) },
             measureSize = MeasureWorktreeSizeUseCase(fileManager, dispatcher),
@@ -2622,8 +2622,8 @@ class ProjectWorktreesTest {
         viewModel.applyAgents(
             mapOf(
                 worktreePath to listOf(
-                    RunningAgent("codex", HerdrAgentState.WORKING, "w1:p1"),
-                    RunningAgent("claude", HerdrAgentState.BLOCKED, "w1:p2"),
+                    RunningAgent("codex", AgentState.WORKING, "w1:p1"),
+                    RunningAgent("claude", AgentState.BLOCKED, "w1:p2"),
                 ),
             ),
         )
@@ -2725,7 +2725,7 @@ class ProjectWorktreesTest {
         advanceUntilIdle()
 
         assertNull(board.selectedWorktree?.worktree?.path)
-        assertEquals(config.baseRepositoryPath, board.project.orderedWorktrees.single().path)
+        assertEquals(config.baseRepositoryPath, board.project.worktrees.single().path)
     }
 
     @Test

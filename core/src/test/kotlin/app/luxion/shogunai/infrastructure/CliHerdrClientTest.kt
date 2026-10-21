@@ -5,7 +5,7 @@ import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.HerdrAgent
-import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.HerdrWorktreeOpening
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
@@ -117,10 +117,10 @@ class CliHerdrClientTest {
 
         assertEquals(
             listOf(
-                HerdrAgent("claude", HerdrAgentState.WORKING, "/home/dev/projects/TASK-1/app", "w1:p1"),
-                HerdrAgent("claude", HerdrAgentState.BLOCKED, "/home/dev/projects/TASK-2", "w2:p1"),
-                HerdrAgent("codex", HerdrAgentState.DONE, "/home/dev/projects/TASK-3", "w3:p1"),
-                HerdrAgent("gemini", HerdrAgentState.IDLE, "/home/dev/projects/TASK-4", "w4:p1"),
+                HerdrAgent("claude", AgentState.WORKING, "/home/dev/projects/TASK-1/app", "w1:p1"),
+                HerdrAgent("claude", AgentState.BLOCKED, "/home/dev/projects/TASK-2", "w2:p1"),
+                HerdrAgent("codex", AgentState.DONE, "/home/dev/projects/TASK-3", "w3:p1"),
+                HerdrAgent("gemini", AgentState.IDLE, "/home/dev/projects/TASK-4", "w4:p1"),
                 HerdrAgent("aider", null, "/home/dev/projects/TASK-5", "w5:p1"),
                 HerdrAgent("opencode", null, "/home/dev/projects/TASK-6", "w6:p1"),
             ),

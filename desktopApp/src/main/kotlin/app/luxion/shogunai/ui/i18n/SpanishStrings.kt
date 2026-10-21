@@ -5,7 +5,11 @@ import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.ProvisionDriftState
-import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.usecase.HookEntry
+import app.luxion.shogunai.domain.usecase.HookReplacement
+import app.luxion.shogunai.domain.usecase.HooksInstallState
+import app.luxion.shogunai.ui.shell.HooksAction
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
 object SpanishStrings : Strings {
@@ -158,21 +162,25 @@ object SpanishStrings : Strings {
     override val activeWorktrees = "Activos"
     override val groupAgentWorking = "Con agente"
     override val groupNeedsYou = "Te necesitan"
-    override val groupInProgress = "En curso"
+    override val groupNew = "Nuevos"
+    override val groupStopped = "Parados"
     override val groupMerged = "Fusionados"
     override val groupInactive = "Inactivos"
     override val groupFolderMissing = "Carpeta no encontrada"
     override val groupOther = "Otros"
     override val groupAgentWorkingHint = "agente en marcha"
-    override val groupAgentWorkingCriterion = "Hay un agente de IA en marcha en el worktree."
+    override val groupAgentWorkingCriterion = "Un agente de IA está trabajando en el worktree, o se ejecuta sin estado conocido."
     override val groupNeedsYouHint = "agente esperando, sin commit o sin subir"
-    override val groupNeedsYouCriterion = "Un agente bloqueado o terminado en Herdr, cambios sin commit, o commits sin subir a su upstream (o a la rama principal si no tiene)."
-    override val groupInProgressHint = "subido, sin fusionar"
-    override val groupInProgressCriterion = "Limpio, subido, sin fusionar y con algún commit en los últimos 14 días."
+    override val groupNeedsYouCriterion = "Un agente está bloqueado o ha terminado, o ningún agente trabaja y hay cambios sin commit o commits sin subir a su upstream (o a la rama principal si no tiene)."
+    override val groupNewHint = "aún sin commits"
+    override val groupNewCriterion = "Sin commits propios, sin cambios sin commit y sin agente en marcha."
+    override val groupStoppedHint = "subido, en espera"
+    override val groupStoppedCriterion = "Con commits propios, todos subidos, sin cambios pendientes, sin fusionar y sin agente trabajando."
     override val groupMergedHint = "ya en la rama principal"
     override val groupMergedCriterion = "Sin commits propios por delante de la rama principal. Se puede limpiar."
-    override val groupInactiveHint = "sin commits en 14 días"
-    override val groupInactiveCriterion = "Limpio, sin agente y sin commits en los últimos 14 días."
+    override fun groupInactiveHint(days: Int) = "sin actividad en $days+ días"
+    override fun groupInactiveCriterion(days: Int) =
+        "Limpio, sin agente en marcha y sin actividad en " + (if (days == 1) "el último día." else "los últimos $days días.")
     override val groupFolderMissingHint = "carpeta borrada"
     override val groupFolderMissingCriterion = "Git aún lo lista, pero su carpeta ya no existe. Se puede limpiar."
     override val groupOtherHint = "principal o sin leer"
@@ -185,12 +193,36 @@ object SpanishStrings : Strings {
     override val seeAllWorktrees = "Ver todos los worktrees"
     override val menuActive = "Mostrar activos"
     override val menuAllWorktrees = "Mostrar todos los worktrees"
-    override fun agentLabel(name: String, state: HerdrAgentState?) = when (state) {
+    override val claudeCodeLabel = "Claude Code"
+    override fun claudeHooksStatus(state: HooksInstallState) = when (state) {
+        HooksInstallState.INSTALLED -> "Los hooks de ShogunAi están instalados"
+        HooksInstallState.OUTDATED -> "Los hooks de ShogunAi están desactualizados"
+        HooksInstallState.MISSING -> "Los hooks de ShogunAi no están instalados"
+    }
+    override val claudeHooksInstall = "Instalar"
+    override val claudeHooksUpdate = "Actualizar"
+    override val claudeHooksRemove = "Quitar"
+    override val claudeHooksCancel = "Cancelar"
+    override val claudeHooksConfirm = "Aplicar"
+    override val claudeHooksPathWarning = "shogun no está en el PATH, así que Claude Code no encontrará los hooks. Instala antes la herramienta de línea de comandos."
+    override fun claudeHooksDialogTitle(action: HooksAction) = when (action) {
+        HooksAction.INSTALL -> "Instalar los hooks"
+        HooksAction.UPDATE -> "Actualizar los hooks"
+        HooksAction.REMOVE -> "Quitar los hooks"
+    }
+    override fun claudeHooksChangesIn(path: String) = "Cambios en $path:"
+    override fun claudeHooksAdded(entry: HookEntry) = "Añadir a ${entry.event}: ${entry.command}"
+    override fun claudeHooksReplaced(replacement: HookReplacement) =
+        "Reemplazar en ${replacement.event}: ${replacement.from.joinToString()} por ${replacement.to}"
+    override fun claudeHooksRemoved(entry: HookEntry) = "Quitar de ${entry.event}: ${entry.command}"
+    override val claudeHooksNoticeMessage = "Claude se está ejecutando sin un estado conocido. Instala los hooks de ShogunAi para Claude Code y verás cuándo te necesita."
+    override val claudeHooksNoticeDismiss = "Descartar"
+    override fun agentLabel(name: String, state: AgentState?) = when (state) {
         null -> name
-        HerdrAgentState.WORKING -> "$name · trabajando"
-        HerdrAgentState.BLOCKED -> "$name · bloqueado"
-        HerdrAgentState.DONE -> "$name · terminado"
-        HerdrAgentState.IDLE -> "$name · inactivo"
+        AgentState.WORKING -> "$name · trabajando"
+        AgentState.BLOCKED -> "$name · bloqueado"
+        AgentState.DONE -> "$name · terminado"
+        AgentState.IDLE -> "$name · inactivo"
     }
     override fun agentsRunning(names: List<String>) = "Agentes en ejecución: ${names.joinToString(", ")}"
     override val allProjects = "Todos los proyectos"
@@ -212,15 +244,30 @@ object SpanishStrings : Strings {
     override fun uncommittedChanges(count: Int) = if (count == 1) "1 cambio" else "$count cambios"
     override val upstream = "upstream"
     override fun mergedInto(branch: String) = "mergeada en $branch"
+    override val mergedLabel = "fusionado"
+    override fun commitAgo(relative: String) = "commit $relative"
+    override fun createdAgo(relative: String) = "creado $relative"
+    override fun agentStateName(state: AgentState?) = when (state) {
+        null -> "estado desconocido"
+        AgentState.WORKING -> "trabajando"
+        AgentState.BLOCKED -> "bloqueado"
+        AgentState.DONE -> "terminado"
+        AgentState.IDLE -> "inactivo"
+    }
+    override val sortLabel = "Orden"
+    override val sortByName = "Nombre"
+    override val sortByLastActivity = "Última actividad"
+    override val createdTitle = "Creado"
+    override val inactivityThresholdLabel = "Inactivo tras (días)"
+    override val inactivityThresholdHint = "Un worktree limpio, sin agente y sin actividad durante estos días se lista como inactivo. De 1 a 90."
+    override val inactivityThresholdInvalid = "Escribe un número entero de 1 a 90."
     override val notStarted = "sin empezar"
     override val statusUnavailable = "Estado no disponible"
-    override val folderMissing = "Carpeta no encontrada"
     override val mainWorktree = "principal"
     override val originShogunAi = "ShogunAi"
     override val originClaudeCode = "Claude Code"
     override val originHerdr = "Herdr"
     override val originOther = "otra ubicación"
-    override val inactive = "inactivo"
     override fun worktreesSummary(count: Int, totalSize: String) =
         (if (count == 1) "1 worktree" else "$count worktrees") + " · $totalSize"
     override fun cleanupCandidatesSummary(count: Int) = "$count para limpiar"

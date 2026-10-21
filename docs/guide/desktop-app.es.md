@@ -30,32 +30,44 @@ Cuando el repositorio tiene un remoto `origin`, **Hacer fetch de origin antes** 
 
 ## La lista de worktrees
 
-Cada fila muestra un worktree con:
+Cada fila tiene dos líneas y un sitio fijo para cada dato, así que las filas se alinean y se comparan de un vistazo:
 
-- Su **rama**, la etiqueta "bloqueado" cuando una sesión de agente lo retiene, su **origen** (ShogunAi, Claude Code, Herdr u otra ubicación) y los **agentes en ejecución** en él. Con Herdr en marcha, cada agente muestra además su estado (trabajando, bloqueado, terminado o inactivo).
-- Su **estado**: cambios sin commitear, commits por delante y por detrás de su upstream y de la rama principal, la fecha del último commit, "mergeada en <rama principal>", o "sin empezar" cuando su rama nunca tuvo commits propios. "Carpeta no encontrada" cuando su carpeta se borró a mano.
+- Una **insignia de estado**: un círculo de color con un icono distinto para cada [estado](#estados), de modo que se distingue sin color. Al pasar el ratón muestra el nombre del estado.
+- La columna de **ejecución**: el agente en la primera línea (su nombre y, con Herdr en marcha, su estado: trabajando, bloqueado, terminado o inactivo) y el emulador o simulador en la segunda, solo mientras arranca o está en marcha. Con varios agentes muestra el más urgente con un "+N". En una lista estrecha se reduce a iconos que conservan sus colores; pasa el ratón para ver las etiquetas.
+- El **nombre**: la rama en la primera línea; en la segunda, la carpeta cuando difiere del último segmento de la rama, el **origen** (ShogunAi, Claude Code, Herdr u otra ubicación) y, en las vistas que abarcan varios proyectos y no están agrupadas por proyecto, el proyecto.
+- La columna **Git**: los cambios sin commitear en la primera línea y, en la segunda, los commits por delante y por detrás de la rama principal, o "fusionado". Un guion significa que no se pudo leer el estado.
+- La columna de **tiempo**: cuándo estuvo activo el worktree por última vez, diciendo qué mide ("commit hace 3 horas" cuando su rama tiene commits propios, "creado hace 2 días" en otro caso), y debajo las marcas "principal" y "bloqueado".
+
+El detalle muestra más:
+
+- Su **estado**: cambios sin commitear, commits por delante y por detrás de su upstream y de la rama principal, la fecha del último commit, la fecha de creación, y "mergeada en <rama principal>" o "sin empezar" cuando su rama nunca tuvo commits propios. "Carpeta no encontrada" cuando su carpeta se borró a mano.
 - Sus **archivos provisionados**: si los archivos y enlaces declarados para los worktrees nuevos coinciden con los del repositorio base, listando los que faltan, difieren o no están enlazados. En un worktree creado por otra herramienta, o cuyas copias están desactualizadas, **Provisionar** los copia, reserva sus puertos y escribe su archivo de entorno, como hace `shogun provision`.
 - Su **entorno**: los puertos y cada variable de `"env"` en `.shogunai.json` con su valor, en el orden en que las imprime `shogun env`. **Copiar como .env** las pone en el portapapeles en formato dotenv. Los valores no se ocultan, porque salen de plantillas del repositorio.
-- Su **tamaño**, los **puertos** reservados para él (ver [entorno por worktree](../agents.md#entorno-por-worktree)) y la etiqueta "inactivo" cuando no tiene cambios sin commitear, ningún agente en ejecución ni commits en los últimos 14 días.
+- Su **tamaño** y los **puertos** reservados para él (ver [entorno por worktree](../agents.md#entorno-por-worktree)).
 - Las líneas de emulador y simulador con Arrancar y Parar, en repositorios que usan esos [providers](providers.md).
 
 La lista se actualiza sola: los cambios hechos desde un terminal o por un agente aparecen en pocos segundos, y las ediciones que aún no están en el índice aparecen al recuperar el foco la ventana. Los estados y tamaños se siguen mostrando mientras se vuelven a leer. Los tamaños se miden cuando un worktree aparece por primera vez; "Recargar" los vuelve a medir todos, por ejemplo tras una compilación.
 
 "Activos" y "Todos los worktrees" abarcan todos los proyectos; su filtro de proyecto reduce la vista actual a un proyecto sin salir de ella. Al seleccionar un proyecto en la barra lateral se abre, en cambio, la vista propia de ese proyecto, que no tiene filtro de proyecto.
 
+Todas las vistas tienen un selector de orden junto al de agrupación: **Nombre** (el predeterminado; ramas en orden natural, así que `TASK-9` va antes que `TASK-10`) o **Última actividad** (la más reciente primero). El worktree principal siempre va primero en su grupo. Cada vista recuerda su propia elección.
+
 ## Estados
 
-Agrupada por estado, la cabecera de cada grupo muestra una pista breve junto a su título, y al pasar el ratón por el título se ve su criterio completo. "Activos" muestra los tres primeros grupos; "Todos los worktrees", todos.
+Cada worktree está en el primer estado que se cumple. Agrupada por estado, la cabecera de cada grupo muestra una pista breve junto a su título, y al pasar el ratón por el título se ve su criterio completo. "Activos" muestra los cuatro primeros grupos; "Todos los worktrees", todos.
 
 | Grupo | Pista | Criterio |
 |---|---|---|
-| Con agente | agente en marcha | Hay un agente de IA en marcha en el worktree. |
-| Te necesitan | agente esperando, sin commit o sin subir | Un agente bloqueado o terminado en Herdr, cambios sin commit, o commits sin subir a su upstream (o a la rama principal si no tiene). |
-| En curso | subido, sin fusionar | Limpio, subido, sin fusionar y con algún commit en los últimos 14 días, o una rama que nunca tuvo commits propios ("sin empezar"). |
-| Fusionados | ya en la rama principal | Sin commits propios por delante de la rama principal, habiéndolos tenido. Se puede limpiar. Una rama que nunca tuvo commits y no tiene upstream se muestra como "sin empezar" y nunca se ofrece para limpiar. |
-| Inactivos | sin commits en 14 días | Limpio, sin agente y sin commits en los últimos 14 días. |
+| Te necesitan | agente esperando, sin commit o sin subir | Un agente está bloqueado o ha terminado, o ningún agente trabaja y hay cambios sin commit o commits sin subir a su upstream (o a la rama principal si no tiene). |
+| Con agente | agente en marcha | Un agente de IA está trabajando en el worktree, o se ejecuta sin estado conocido. Un agente inactivo no decide el estado. |
+| Nuevos | aún sin commits | Sin commits propios, sin cambios sin commit y sin agente en marcha. |
+| Parados | subido, en espera | Con commits propios, todos subidos, sin cambios pendientes, sin fusionar y sin agente trabajando. |
+| Fusionados | ya en la rama principal | Sin commits propios por delante de la rama principal, habiéndolos tenido. Se puede limpiar. Una rama que nunca tuvo commits y no tiene upstream se muestra como "nueva" y nunca se ofrece para limpiar. |
+| Inactivos | sin actividad en 3+ días | Limpio, sin agente en marcha y sin actividad en los últimos 3 días (ver abajo). |
 | Carpeta no encontrada | carpeta borrada | Git aún lo lista, pero su carpeta ya no existe. Se puede limpiar. |
 | Otros | principal o sin leer | El worktree principal cuando está limpio, o un worktree cuyo estado aún no se ha leído. |
+
+La actividad de un worktree es la fecha de su último commit cuando su rama tiene commits propios, y la fecha en que se creó en otro caso, de modo que un worktree nuevo no se fecha por el commit antiguo del que partió. Un worktree sin commits propios nunca está inactivo. El umbral de inactividad es de 3 días por defecto; cámbialo en [Preferencias](#preferencias) (de 1 a 90 días) y todas las vistas se actualizan a la vez.
 
 ## Trabajar en un worktree
 
@@ -82,7 +94,7 @@ En repositorios que los declaran en `.shogunai.json`, la pantalla de worktrees a
 
 ## Preferencias
 
-Preferencias (Cmd+Coma en macOS, Ctrl+Coma en los demás) reúne el tema, el idioma, la sección **Herramientas**, donde eliges el terminal y el IDE predeterminado entre los que ShogunAi ha encontrado en esta máquina (si no encuentra ninguno, la sección lo dice y las acciones correspondientes no se ofrecen), y **Buscar actualizaciones automáticamente**, activada por defecto. Consulta [Actualizaciones](#actualizaciones).
+Preferencias (Cmd+Coma en macOS, Ctrl+Coma en los demás) reúne el tema, el idioma, el **umbral de inactividad** en días, la sección **Herramientas**, donde eliges el terminal y el IDE predeterminado entre los que ShogunAi ha encontrado en esta máquina (si no encuentra ninguno, la sección lo dice y las acciones correspondientes no se ofrecen), y **Buscar actualizaciones automáticamente**, activada por defecto. Consulta [Actualizaciones](#actualizaciones).
 
 ## Icono en la barra de menús y en la bandeja del sistema
 

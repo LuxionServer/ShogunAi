@@ -9,6 +9,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -40,6 +41,8 @@ import app.luxion.shogunai.ui.components.copyText
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import app.luxion.shogunai.domain.model.DEFAULT_INACTIVE_AFTER_DAYS
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.usecase.classifyOrigin
@@ -69,7 +72,7 @@ fun WorktreeListPane(
         val index = items.indexOfFirst { (it is ListItem.WorktreeItem && it.ref == selected) || (it is ListItem.StateRow && it.ref == selected) }
         if (index >= 0) listState.bringIntoViewBelowHeader(index)
     }
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .onPreviewKeyEvent { event ->
@@ -90,6 +93,7 @@ fun WorktreeListPane(
                 }
             },
     ) {
+        val compact = maxWidth < CompactListWidth
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
@@ -106,18 +110,18 @@ fun WorktreeListPane(
                         )
                     }
                     is ListItem.StateHeader -> stickyHeader(key = item.key) {
-                        StateGroupHeader(item.group.kind, item.group.items.size, board.canCleanUp(), { board.openCleanup() })
+                        StateGroupHeader(item.group.kind, item.group.items.size, board.canCleanUp(), { board.openCleanup() }, board.inactivity.days)
                     }
                     is ListItem.StateRow -> item(key = item.key) {
                         val entry = item.entry
-                        WorktreeRowFor(board, entry.project, entry.holder, entry.worktree, projectName = entry.project.name)
+                        WorktreeRowFor(board, entry.project, entry.holder, entry.worktree, projectName = entry.project.name.takeIf { board.shownProjects.size > 1 }, compact = compact)
                         HorizontalDivider()
                     }
                     is ListItem.GroupState -> item(key = item.key) {
                         GroupState(item.group.holder, item.group.project.id, projectName = item.group.project.name.takeIf { item.showsProjectName })
                     }
                     is ListItem.WorktreeItem -> item(key = item.key) {
-                        WorktreeRowFor(board, item.group.project, item.group.holder, item.worktree, projectName = null)
+                        WorktreeRowFor(board, item.group.project, item.group.holder, item.worktree, projectName = null, compact = compact)
                         HorizontalDivider()
                     }
                 }
@@ -125,6 +129,8 @@ fun WorktreeListPane(
         }
     }
 }
+
+private val CompactListWidth = 760.dp
 
 private suspend fun LazyListState.bringIntoViewBelowHeader(index: Int) {
     repeat(2) {
@@ -323,7 +329,13 @@ private fun GroupState(holder: ProjectWorktrees, projectId: String, projectName:
 }
 
 @Composable
-internal fun StateGroupHeader(kind: StateGroupKind, count: Int, canCleanUp: Boolean, onCleanUp: () -> Unit) {
+internal fun StateGroupHeader(
+    kind: StateGroupKind,
+    count: Int,
+    canCleanUp: Boolean,
+    onCleanUp: () -> Unit,
+    inactiveDays: Int = DEFAULT_INACTIVE_AFTER_DAYS,
+) {
     val strings = LocalStrings.current
     val colors = MaterialTheme.colorScheme
     Row(
@@ -339,14 +351,14 @@ internal fun StateGroupHeader(kind: StateGroupKind, count: Int, canCleanUp: Bool
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
-            WithTooltip(label = kind.criterion(strings), modifier = Modifier.weight(1f, fill = false)) {
+            WithTooltip(label = kind.criterion(strings, inactiveDays), modifier = Modifier.weight(1f, fill = false)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                 ) {
                     Text(kind.label(strings), style = MaterialTheme.typography.titleSmall, maxLines = 1)
                     Text(
-                        kind.hint(strings),
+                        kind.hint(strings, inactiveDays),
                         style = MaterialTheme.typography.bodySmall,
                         color = colors.onSurfaceVariant,
                         maxLines = 1,
@@ -366,22 +378,24 @@ internal fun StateGroupHeader(kind: StateGroupKind, count: Int, canCleanUp: Bool
     }
 }
 
-internal fun StateGroupKind.hint(strings: Strings): String = when (this) {
+internal fun StateGroupKind.hint(strings: Strings, inactiveDays: Int = DEFAULT_INACTIVE_AFTER_DAYS): String = when (this) {
     StateGroupKind.AGENT_WORKING -> strings.groupAgentWorkingHint
     StateGroupKind.NEEDS_YOU -> strings.groupNeedsYouHint
-    StateGroupKind.IN_PROGRESS -> strings.groupInProgressHint
+    StateGroupKind.NEW -> strings.groupNewHint
+    StateGroupKind.STOPPED -> strings.groupStoppedHint
     StateGroupKind.MERGED -> strings.groupMergedHint
-    StateGroupKind.INACTIVE -> strings.groupInactiveHint
+    StateGroupKind.INACTIVE -> strings.groupInactiveHint(inactiveDays)
     StateGroupKind.FOLDER_MISSING -> strings.groupFolderMissingHint
     StateGroupKind.OTHER -> strings.groupOtherHint
 }
 
-internal fun StateGroupKind.criterion(strings: Strings): String = when (this) {
+internal fun StateGroupKind.criterion(strings: Strings, inactiveDays: Int = DEFAULT_INACTIVE_AFTER_DAYS): String = when (this) {
     StateGroupKind.AGENT_WORKING -> strings.groupAgentWorkingCriterion
     StateGroupKind.NEEDS_YOU -> strings.groupNeedsYouCriterion
-    StateGroupKind.IN_PROGRESS -> strings.groupInProgressCriterion
+    StateGroupKind.NEW -> strings.groupNewCriterion
+    StateGroupKind.STOPPED -> strings.groupStoppedCriterion
     StateGroupKind.MERGED -> strings.groupMergedCriterion
-    StateGroupKind.INACTIVE -> strings.groupInactiveCriterion
+    StateGroupKind.INACTIVE -> strings.groupInactiveCriterion(inactiveDays)
     StateGroupKind.FOLDER_MISSING -> strings.groupFolderMissingCriterion
     StateGroupKind.OTHER -> strings.groupOtherCriterion
 }
@@ -389,7 +403,8 @@ internal fun StateGroupKind.criterion(strings: Strings): String = when (this) {
 internal fun StateGroupKind.label(strings: Strings): String = when (this) {
     StateGroupKind.AGENT_WORKING -> strings.groupAgentWorking
     StateGroupKind.NEEDS_YOU -> strings.groupNeedsYou
-    StateGroupKind.IN_PROGRESS -> strings.groupInProgress
+    StateGroupKind.NEW -> strings.groupNew
+    StateGroupKind.STOPPED -> strings.groupStopped
     StateGroupKind.MERGED -> strings.groupMerged
     StateGroupKind.INACTIVE -> strings.groupInactive
     StateGroupKind.FOLDER_MISSING -> strings.groupFolderMissing
@@ -403,6 +418,7 @@ private fun WorktreeRowFor(
     holder: ProjectWorktrees,
     worktree: Worktree,
     projectName: String?,
+    compact: Boolean,
 ) {
     val strings = LocalStrings.current
     val clipboard = LocalClipboard.current
@@ -417,13 +433,15 @@ private fun WorktreeRowFor(
             emulator = holder.emulators[worktree.path]?.takeIf { holder.isEmulatorRepository },
             simulator = holder.simulators[worktree.path]?.takeIf { holder.isSimulatorRepository },
             origin = classifyOrigin(worktree, project.config, holder.herdrWorktreesRoot),
+            projectName = projectName,
+            inactiveAfter = board.inactivity.threshold,
             now = Instant.now(),
             strings = strings,
         ),
         selected = board.selected == ref,
         isCopied = holder.copiedWorktreePath == worktree.path,
         isMain = worktree.isMain,
-        projectName = projectName,
+        compact = compact,
         onSelect = { board.select(ref) },
         onCopyLaunchCommand = { holder.copyLaunchCommand(worktree) },
         onCopyPath = { scope.launch { clipboard.copyText(worktree.path) } },

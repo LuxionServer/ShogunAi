@@ -59,6 +59,7 @@ import app.luxion.shogunai.ui.palette.buildPaletteIndex
 import app.luxion.shogunai.ui.palette.platformShortcutLabel
 import app.luxion.shogunai.ui.palette.pruneRecent
 import app.luxion.shogunai.ui.machine.MachineView
+import app.luxion.shogunai.ui.worktree.InactivityPreferences
 import app.luxion.shogunai.ui.worktree.WorktreeBoard
 import app.luxion.shogunai.ui.worktree.WorktreeRef
 import app.luxion.shogunai.ui.worktree.WorktreeScreen
@@ -74,6 +75,7 @@ fun AppShell(
     appContainer: AppContainer,
     viewModel: ShellViewModel,
     onOpenPreferences: () -> Unit,
+    inactivity: InactivityPreferences,
     onBoardReady: (WorktreeBoard) -> Unit = {},
     messages: AppMessages = rememberAppMessages(),
 ) {
@@ -86,6 +88,7 @@ fun AppShell(
             approval = appContainer.postCreateApproval,
             rememberFetchBeforeCreate = viewModel::rememberFetchBeforeCreate,
             onWorktreeUsed = { ref -> viewModel.recordWorktree(ref.projectId, ref.path) },
+            inactivity = inactivity,
         )
     }
     SideEffect { onBoardReady(board) }
@@ -171,6 +174,8 @@ fun AppShell(
             VerticalDivider(modifier = Modifier.fillMaxHeight())
             Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
                 appContainer.updates.notice?.let { UpdateNotice(appContainer.updates, Modifier.padding(Spacing.md)) }
+                LaunchedEffect(Unit) { appContainer.claudeHooks.refresh() }
+                ClaudeHooksNotice(appContainer.claudeHooks, board.hasClaudeWithoutState, Modifier.padding(Spacing.md))
                 Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     val fixActions = remember(viewModel, onOpenPreferences) {
                         ErrorFixActions(

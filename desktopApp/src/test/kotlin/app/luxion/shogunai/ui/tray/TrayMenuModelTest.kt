@@ -23,7 +23,7 @@ class TrayMenuModelTest {
     private val ref = WorktreeRef("api", "~/projects/TASK-123")
 
     private fun worktree(
-        activity: Activity = Activity.InProgress,
+        activity: Activity = Activity.Stopped,
         isLoaded: Boolean = true,
         openActions: List<TrayOpenAction> = emptyList(),
         name: String = "feature/TASK-123",
@@ -125,7 +125,7 @@ class TrayMenuModelTest {
 
     @Test
     fun `other activities leave the label unmarked`() {
-        listOf(Activity.InProgress, Activity.Merged, Activity.Inactive, Activity.Idle, Activity.Unknown).forEach {
+        listOf(Activity.New, Activity.Stopped, Activity.Merged, Activity.Inactive, Activity.Idle, Activity.Unknown).forEach {
             assertEquals("feature/TASK-123 — api", trayWorktreeLabel(worktree(it)))
         }
     }

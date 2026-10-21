@@ -11,6 +11,9 @@ import app.luxion.shogunai.domain.io.ShellPreferenceRepository
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.Grouping
+import app.luxion.shogunai.domain.model.SortedView
+import app.luxion.shogunai.domain.model.WorktreeSort
+import app.luxion.shogunai.domain.usecase.activityDate
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.RecentWorktree
 import app.luxion.shogunai.ui.i18n.Strings
@@ -54,6 +57,7 @@ class WorktreeBoard(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val rememberFetchBeforeCreate: (projectId: String, fetch: Boolean) -> Unit = { _, _ -> },
     private val onWorktreeUsed: (WorktreeRef) -> Unit = {},
+    val inactivity: InactivityPreferences = InactivityPreferences(preferences),
 ) : ViewModel() {
     private val deviceRefreshes = mutableMapOf<String, Instant>()
     private val listPermits = Semaphore(MAX_PARALLEL_LISTS)
@@ -70,6 +74,7 @@ class WorktreeBoard(
         private set
     private var viewProjectFilters by mutableStateOf<Map<GroupedView, String>>(emptyMap())
     private var groupings by mutableStateOf(GroupedView.entries.associateWith(preferences::loadGrouping))
+    private var sorts by mutableStateOf(SortedView.entries.associateWith(preferences::loadSort))
     var textFilter by mutableStateOf("")
         private set
     var findRequests by mutableIntStateOf(0)
@@ -128,6 +133,16 @@ class WorktreeBoard(
     val grouping: Grouping
         get() = if (isProjectView) Grouping.BY_STATE else groupings.getValue(mode)
 
+    val sortedView: SortedView
+        get() = when {
+            isProjectView -> SortedView.PROJECT
+            mode == GroupedView.ACTIVE -> SortedView.ACTIVE
+            else -> SortedView.ALL
+        }
+
+    val sort: WorktreeSort
+        get() = sorts.getValue(sortedView)
+
     val groups: List<WorktreeGroup>
         get() = shownProjects.mapNotNull { project ->
             val holder = holder(project.id) ?: return@mapNotNull null
@@ -138,12 +153,17 @@ class WorktreeBoard(
 
     val stateGroups: List<StateGroup<WorktreeEntry>>
         get() = groupByState(
-            items = shownProjects.flatMap { project ->
-                val holder = holder(project.id) ?: return@flatMap emptyList()
-                filterWorktrees(holder.orderedWorktrees, textFilter).map { worktree ->
-                    ActivityItem(WorktreeEntry(project, holder, worktree), activityOf(holder, worktree))
-                }
-            },
+            items = sortWorktreeItems(
+                items = shownProjects.flatMap { project ->
+                    val holder = holder(project.id) ?: return@flatMap emptyList()
+                    filterWorktrees(holder.worktrees, textFilter).map { worktree ->
+                        ActivityItem(WorktreeEntry(project, holder, worktree), activityOf(holder, worktree))
+                    }
+                },
+                sort = sort,
+                worktreeOf = { it.item.worktree },
+                activityDateOf = { activityDateOf(it.item.holder, it.item.worktree) },
+            ),
             includeInactive = !isActiveView,
             isPinned = { it.ref == selected },
         )
@@ -171,6 +191,11 @@ class WorktreeBoard(
 
     fun activeCountOf(projectId: String): Int = holder(projectId)?.let(::activeCountOf) ?: 0
 
+    val hasClaudeWithoutState: Boolean
+        get() = entries.values.any { entry ->
+            entry.holder.agents.orEmpty().values.flatten().any { it.name == "claude" && it.stateSource == null }
+        }
+
     fun agentNamesOf(projectId: String): List<String> =
         holder(projectId)?.agents.orEmpty().values.flatten().map { it.name }.distinct()
 
@@ -179,11 +204,19 @@ class WorktreeBoard(
 
     private fun activityOf(holder: ProjectWorktrees, worktree: Worktree): Activity {
         val status = (holder.statuses[worktree.path] as? WorktreeStatusState.Loaded)?.status
-        return worktreeActivity(worktree, status, holder.agents?.get(worktree.path), clock())
+        return worktreeActivity(worktree, status, holder.agents?.get(worktree.path), clock(), inactivity.threshold)
     }
 
+    private fun activityDateOf(holder: ProjectWorktrees, worktree: Worktree): Instant? {
+        val status = (holder.statuses[worktree.path] as? WorktreeStatusState.Loaded)?.status
+        return activityDate(worktree, status)?.at
+    }
+
+    private fun ordered(holder: ProjectWorktrees): List<Worktree> =
+        sortWorktreeItems(holder.worktrees, sort, worktreeOf = { it }, activityDateOf = { activityDateOf(holder, it) })
+
     private fun listedRows(project: Project, holder: ProjectWorktrees): List<Worktree> {
-        val rows = filterWorktrees(holder.orderedWorktrees, textFilter)
+        val rows = filterWorktrees(ordered(holder), textFilter)
         if (!isActiveView) return rows
         return rows.filter { WorktreeRef(project.id, it.path) == selected || activityOf(holder, it).isActive }
     }
@@ -199,7 +232,7 @@ class WorktreeBoard(
             val ref = selected ?: return null
             val project = shownProjects.firstOrNull { it.id == ref.projectId } ?: return null
             val holder = holder(project.id) ?: return null
-            val worktree = holder.orderedWorktrees.firstOrNull { it.path == ref.path } ?: return null
+            val worktree = holder.worktrees.firstOrNull { it.path == ref.path } ?: return null
             return SelectedWorktree(project, holder, worktree)
         }
 
@@ -269,11 +302,9 @@ class WorktreeBoard(
     val paletteWorktrees: List<PaletteWorktree>
         get() = projects.flatMap { project ->
             val holder = holder(project.id) ?: return@flatMap emptyList()
-            val now = clock()
-            holder.orderedWorktrees.map { worktree ->
-                val status = (holder.statuses[worktree.path] as? WorktreeStatusState.Loaded)?.status
-                val agents = holder.agents.orEmpty()[worktree.path].orEmpty()
-                PaletteWorktree(project, worktree, indicatorOf(worktree, status, holder.mainBranch?.name, agents, now))
+            ordered(holder).map { worktree ->
+                val kind = activityOf(holder, worktree).badgeKind()
+                PaletteWorktree(project, worktree, kind.takeIf { it != StateBadgeKind.OTHER })
             }
         }
 
@@ -365,6 +396,11 @@ class WorktreeBoard(
     fun updateGrouping(grouping: Grouping) {
         groupings = groupings + (mode to grouping)
         preferences.saveGrouping(mode, grouping)
+    }
+
+    fun updateSort(sort: WorktreeSort) {
+        sorts = sorts + (sortedView to sort)
+        preferences.saveSort(sortedView, sort)
     }
 
     fun updateTextFilter(text: String) {
@@ -681,7 +717,7 @@ data class WorktreeEntry(val project: Project, val holder: ProjectWorktrees, val
     val ref = WorktreeRef(project.id, worktree.path)
 }
 
-data class PaletteWorktree(val project: Project, val worktree: Worktree, val indicator: RowIndicator?)
+data class PaletteWorktree(val project: Project, val worktree: Worktree, val indicator: StateBadgeKind?)
 
 data class SelectedWorktree(val project: Project, val holder: ProjectWorktrees, val worktree: Worktree)
 

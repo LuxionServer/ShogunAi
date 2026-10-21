@@ -11,10 +11,14 @@ data class WorktreeStatus(
     val upstream: Divergence?,
     val mainBranch: Divergence?,
     val lastCommitAt: Instant?,
+    val createdAt: Instant? = null,
     val neverCommitted: Boolean = false,
 ) {
     val isNotStarted: Boolean
         get() = neverCommitted
+
+    val hasOwnCommits: Boolean
+        get() = if (mainBranch != null) mainBranch.ahead > 0 else !isNotStarted
 
     val isMerged: Boolean
         get() = !neverCommitted && mainBranch != null && mainBranch.ahead == 0 && mainBranch.behind > 0

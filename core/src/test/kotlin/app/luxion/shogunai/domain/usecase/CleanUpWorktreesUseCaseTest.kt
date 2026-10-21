@@ -8,7 +8,7 @@ import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.ProjectConfig
-import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
@@ -56,7 +56,7 @@ class CleanUpWorktreesUseCaseTest {
     @Test
     fun `keeps a worktree whose agent only Herdr reports`() {
         val statuses = mapOf(first.path to status(merged = true))
-        val herdrAgent = RunningAgent("claude", HerdrAgentState.BLOCKED, "w1:p1")
+        val herdrAgent = RunningAgent("claude", AgentState.BLOCKED, "w1:p1")
 
         val selection = selectCleanup(listOf(first), statuses, mapOf(first.path to listOf(herdrAgent)))
 

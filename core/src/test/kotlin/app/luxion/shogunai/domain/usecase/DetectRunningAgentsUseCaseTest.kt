@@ -1,12 +1,15 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeAgentSessionStore
 import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
+import app.luxion.shogunai.domain.model.AgentSessionRecord
+import app.luxion.shogunai.domain.model.AgentStateSource
 import app.luxion.shogunai.domain.model.HerdrAgent
-import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
@@ -153,16 +156,16 @@ class DetectRunningAgentsUseCaseTest {
         assertTrue(executor.executedCommands.isEmpty())
     }
 
-    private fun herdrAgent(directory: String, state: HerdrAgentState?, name: String = "claude", pane: String = "w1:p1") =
+    private fun herdrAgent(directory: String, state: AgentState?, name: String = "claude", pane: String = "w1:p1") =
         HerdrAgent(name, state, directory, pane)
 
     @Test
     fun `a blocked agent Herdr reports enriches the process found in its worktree`() = runTest {
-        val herdr = FakeHerdrClient(agents = listOf(herdrAgent(nested.path, HerdrAgentState.BLOCKED, pane = "w2:p1")))
+        val herdr = FakeHerdrClient(agents = listOf(herdrAgent(nested.path, AgentState.BLOCKED, pane = "w2:p1")))
 
         val agents = DetectRunningAgentsUseCase(executor(), herdr)(config, worktrees).getOrThrow()
 
-        assertEquals(listOf(RunningAgent("claude", HerdrAgentState.BLOCKED, "w2:p1")), agents[nested.path])
+        assertEquals(listOf(RunningAgent("claude", AgentState.BLOCKED, "w2:p1", AgentStateSource.HERDR)), agents[nested.path])
         assertEquals(listOf(RunningAgent("codex")), agents[main.path])
     }
 
@@ -170,40 +173,40 @@ class DetectRunningAgentsUseCaseTest {
     fun `the most urgent state wins among several panes of the same agent`() = runTest {
         val herdr = FakeHerdrClient(
             agents = listOf(
-                herdrAgent(sibling.path, HerdrAgentState.WORKING, pane = "w1:p1"),
-                herdrAgent(sibling.path, HerdrAgentState.BLOCKED, pane = "w1:p2"),
-                herdrAgent(sibling.path, HerdrAgentState.IDLE, pane = "w1:p3"),
+                herdrAgent(sibling.path, AgentState.WORKING, pane = "w1:p1"),
+                herdrAgent(sibling.path, AgentState.BLOCKED, pane = "w1:p2"),
+                herdrAgent(sibling.path, AgentState.IDLE, pane = "w1:p3"),
             ),
         )
 
         val agents = DetectRunningAgentsUseCase(executor(), herdr)(config, worktrees).getOrThrow()
 
-        assertEquals(listOf(RunningAgent("claude", HerdrAgentState.BLOCKED, "w1:p2")), agents[sibling.path])
+        assertEquals(listOf(RunningAgent("claude", AgentState.BLOCKED, "w1:p2", AgentStateSource.HERDR)), agents[sibling.path])
     }
 
     @Test
     fun `herdr agents are attributed to the deepest worktree by their directory`() = runTest {
-        val herdr = FakeHerdrClient(agents = listOf(herdrAgent("${nested.path}/src", HerdrAgentState.DONE)))
+        val herdr = FakeHerdrClient(agents = listOf(herdrAgent("${nested.path}/src", AgentState.DONE)))
 
         val agents = DetectRunningAgentsUseCase(executor(), herdr)(config, worktrees).getOrThrow()
 
-        assertEquals(RunningAgent("claude", HerdrAgentState.DONE, "w1:p1"), agents.getValue(nested.path).single())
+        assertEquals(RunningAgent("claude", AgentState.DONE, "w1:p1", AgentStateSource.HERDR), agents.getValue(nested.path).single())
     }
 
     @Test
     fun `an agent only Herdr sees is added and survives an unreadable process list`() = runTest {
-        val herdr = FakeHerdrClient(agents = listOf(herdrAgent(sibling.path, HerdrAgentState.WORKING)))
+        val herdr = FakeHerdrClient(agents = listOf(herdrAgent(sibling.path, AgentState.WORKING)))
 
         val agents = DetectRunningAgentsUseCase(executor(failLsof = true), herdr)(config, worktrees).getOrThrow()
 
-        assertEquals(mapOf(sibling.path to listOf(RunningAgent("claude", HerdrAgentState.WORKING, "w1:p1"))), agents)
+        assertEquals(mapOf(sibling.path to listOf(RunningAgent("claude", AgentState.WORKING, "w1:p1", AgentStateSource.HERDR))), agents)
     }
 
     @Test
     fun `agents outside every worktree and agents without a state are handled`() = runTest {
         val herdr = FakeHerdrClient(
             agents = listOf(
-                herdrAgent("/home/dev/elsewhere", HerdrAgentState.BLOCKED),
+                herdrAgent("/home/dev/elsewhere", AgentState.BLOCKED),
                 herdrAgent(sibling.path, null, name = "aider"),
             ),
         )
@@ -227,7 +230,7 @@ class DetectRunningAgentsUseCaseTest {
     fun `after a Herdr failure the next read waits 30 seconds`() = runTest {
         val herdr = FakeHerdrClient(agentsFailure = WorktreeError.HerdrNotInstalled)
         var clock = 1_000L
-        val useCase = DetectRunningAgentsUseCase(executor(), herdr) { clock }
+        val useCase = DetectRunningAgentsUseCase(executor(), herdr, now = { clock })
 
         useCase(config, worktrees)
         clock += 29_000
@@ -269,5 +272,147 @@ class DetectRunningAgentsUseCaseTest {
         val agents = DetectRunningAgentsUseCase(executor)(multi, worktrees).getOrThrow()
 
         assertEquals(listOf(RunningAgent("antigravity")), agents[sibling.path])
+    }
+
+    private val claudeAtNestedLsof = "p100\ncclaude\nfcwd\nn${nested.path}"
+
+    private fun session(
+        id: String,
+        state: AgentState,
+        updatedAt: Long = 10_000L,
+        pid: Long? = 100,
+        transcript: String? = null,
+    ) = AgentSessionRecord(id, "claude", state, updatedAt, transcript, pid)
+
+    private fun detectWith(
+        store: FakeAgentSessionStore,
+        herdr: FakeHerdrClient? = null,
+        transcripts: Map<String, Long> = emptyMap(),
+        clock: Long = 20_000L,
+    ) = DetectRunningAgentsUseCase(
+        executor(lsof = claudeAtNestedLsof, ps = "100 claude"),
+        herdr,
+        store,
+        { transcripts[it] },
+        { clock },
+    )
+
+    @Test
+    fun `a blocked session recorded by Claude Code's hooks gives the agent that state`() = runTest {
+        val store = FakeAgentSessionStore(mapOf(nested.path to listOf(session("s1", AgentState.BLOCKED))))
+
+        val agents = detectWith(store)(config, worktrees).getOrThrow()
+
+        assertEquals(
+            listOf(RunningAgent("claude", AgentState.BLOCKED, null, AgentStateSource.CLAUDE_CODE)),
+            agents[nested.path],
+        )
+    }
+
+    @Test
+    fun `a blocked session whose transcript was written afterwards reads as working`() = runTest {
+        val store = FakeAgentSessionStore(
+            mapOf(nested.path to listOf(session("s1", AgentState.BLOCKED, transcript = "/home/dev/t.jsonl"))),
+        )
+
+        val agents = detectWith(store, transcripts = mapOf("/home/dev/t.jsonl" to 15_000L))(config, worktrees).getOrThrow()
+
+        assertEquals(AgentState.WORKING, agents.getValue(nested.path).single().state)
+    }
+
+    @Test
+    fun `a done session whose transcript was only written in the same moment stays done`() = runTest {
+        val store = FakeAgentSessionStore(
+            mapOf(nested.path to listOf(session("s1", AgentState.DONE, transcript = "/home/dev/t.jsonl"))),
+        )
+
+        val agents = detectWith(store, transcripts = mapOf("/home/dev/t.jsonl" to 10_400L))(config, worktrees).getOrThrow()
+
+        assertEquals(AgentState.DONE, agents.getValue(nested.path).single().state)
+    }
+
+    @Test
+    fun `a record whose Claude process is gone is ignored and deleted`() = runTest {
+        val store = FakeAgentSessionStore(mapOf(nested.path to listOf(session("s1", AgentState.BLOCKED, pid = 999))))
+
+        val agents = detectWith(store)(config, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("claude")), agents[nested.path])
+        assertEquals(emptyList(), store.list(nested.path))
+    }
+
+    @Test
+    fun `a record whose pid now belongs to another program is ignored`() = runTest {
+        val store = FakeAgentSessionStore(mapOf(nested.path to listOf(session("s1", AgentState.BLOCKED))))
+        val useCase = DetectRunningAgentsUseCase(
+            executor(lsof = "p100\ncnode\nfcwd\nn${nested.path}\np101\ncclaude\nfcwd\nn${nested.path}", ps = "100 node\n101 claude"),
+            null,
+            store,
+            { null },
+            { 20_000L },
+        )
+
+        val agents = useCase(config, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("claude")), agents[nested.path])
+    }
+
+    @Test
+    fun `a record without a pid is live while Claude runs there and it is recent`() = runTest {
+        val recent = FakeAgentSessionStore(mapOf(nested.path to listOf(session("s1", AgentState.DONE, pid = null))))
+        val old = FakeAgentSessionStore(mapOf(nested.path to listOf(session("s1", AgentState.DONE, updatedAt = 0, pid = null))))
+        val day = 24 * 60 * 60 * 1_000L
+
+        assertEquals(AgentState.DONE, detectWith(recent)(config, worktrees).getOrThrow().getValue(nested.path).single().state)
+        assertEquals(null, detectWith(old, clock = day)(config, worktrees).getOrThrow().getValue(nested.path).single().state)
+    }
+
+    @Test
+    fun `the most urgent live session of the worktree wins`() = runTest {
+        val store = FakeAgentSessionStore(
+            mapOf(
+                nested.path to listOf(
+                    session("s1", AgentState.WORKING),
+                    session("s2", AgentState.DONE),
+                    session("s3", AgentState.BLOCKED),
+                ),
+            ),
+        )
+
+        val agents = detectWith(store)(config, worktrees).getOrThrow()
+
+        assertEquals(AgentState.BLOCKED, agents.getValue(nested.path).single().state)
+    }
+
+    @Test
+    fun `Herdr's state wins over the hook record`() = runTest {
+        val store = FakeAgentSessionStore(mapOf(nested.path to listOf(session("s1", AgentState.DONE))))
+        val herdr = FakeHerdrClient(agents = listOf(herdrAgent(nested.path, AgentState.WORKING, pane = "w2:p1")))
+
+        val agents = detectWith(store, herdr)(config, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("claude", AgentState.WORKING, "w2:p1", AgentStateSource.HERDR)), agents[nested.path])
+    }
+
+    @Test
+    fun `a Herdr agent without a state keeps the hook record's state`() = runTest {
+        val store = FakeAgentSessionStore(mapOf(nested.path to listOf(session("s1", AgentState.BLOCKED))))
+        val herdr = FakeHerdrClient(agents = listOf(herdrAgent(nested.path, null, pane = "w2:p1")))
+
+        val agents = detectWith(store, herdr)(config, worktrees).getOrThrow()
+
+        assertEquals(
+            listOf(RunningAgent("claude", AgentState.BLOCKED, "w2:p1", AgentStateSource.CLAUDE_CODE)),
+            agents[nested.path],
+        )
+    }
+
+    @Test
+    fun `records of a worktree without a Claude process give no agent`() = runTest {
+        val store = FakeAgentSessionStore(mapOf(sibling.path to listOf(session("s1", AgentState.BLOCKED, pid = null))))
+
+        val agents = detectWith(store)(config, worktrees).getOrThrow()
+
+        assertEquals(null, agents[sibling.path])
     }
 }

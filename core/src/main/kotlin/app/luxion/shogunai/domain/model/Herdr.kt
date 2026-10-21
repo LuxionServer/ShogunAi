@@ -4,7 +4,7 @@ data class HerdrWorktreeOpening(val workspaceId: String, val rootPaneId: String,
 
 data class HerdrAgent(
     val name: String,
-    val state: HerdrAgentState?,
+    val state: AgentState?,
     val directory: String,
     val paneId: String,
 )

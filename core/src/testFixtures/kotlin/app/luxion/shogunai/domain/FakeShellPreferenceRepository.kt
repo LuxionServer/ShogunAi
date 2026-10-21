@@ -4,7 +4,10 @@ import app.luxion.shogunai.domain.io.ShellPreferenceRepository
 import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.RecentWorktree
+import app.luxion.shogunai.domain.model.DEFAULT_INACTIVE_AFTER_DAYS
+import app.luxion.shogunai.domain.model.SortedView
 import app.luxion.shogunai.domain.model.WindowBounds
+import app.luxion.shogunai.domain.model.WorktreeSort
 
 class FakeShellPreferenceRepository(
     var lastDestination: String? = null,
@@ -14,6 +17,8 @@ class FakeShellPreferenceRepository(
     var lastCreateProject: String? = null,
     var recentPaletteItems: List<String> = emptyList(),
     val groupings: MutableMap<GroupedView, Grouping> = mutableMapOf(),
+    val sorts: MutableMap<SortedView, WorktreeSort> = mutableMapOf(),
+    var inactiveAfterDays: Int = DEFAULT_INACTIVE_AFTER_DAYS,
     var recentProjects: List<String> = emptyList(),
     var recentWorktrees: List<RecentWorktree> = emptyList(),
     var showTrayIcon: Boolean = true,
@@ -60,6 +65,18 @@ class FakeShellPreferenceRepository(
 
     override fun saveGrouping(view: GroupedView, grouping: Grouping) {
         groupings[view] = grouping
+    }
+
+    override fun loadSort(view: SortedView): WorktreeSort = sorts[view] ?: WorktreeSort.NAME
+
+    override fun saveSort(view: SortedView, sort: WorktreeSort) {
+        sorts[view] = sort
+    }
+
+    override fun loadInactiveAfterDays(): Int = inactiveAfterDays
+
+    override fun saveInactiveAfterDays(days: Int) {
+        inactiveAfterDays = days
     }
 
     override fun loadRecentProjects(): List<String> = recentProjects
