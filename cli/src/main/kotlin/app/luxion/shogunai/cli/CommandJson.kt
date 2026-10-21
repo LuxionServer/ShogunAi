@@ -9,6 +9,7 @@ import app.luxion.shogunai.domain.model.DerivedDataDeletion
 import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.domain.model.DerivedDataListing
 import app.luxion.shogunai.domain.model.DerivedDataOwner
+import app.luxion.shogunai.domain.model.DerivedDataTrim
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.model.PoolUsage
@@ -326,6 +327,31 @@ fun xcodeCleanJson(active: Boolean, deletion: DerivedDataDeletion?): JsonObject 
         "failures",
         buildJsonArray {
             deletion?.failures.orEmpty().forEach {
+                add(
+                    buildJsonObject {
+                        put("path", it.path)
+                        put("message", it.detail)
+                    },
+                )
+            }
+        },
+    )
+}
+
+fun xcodeTrimJson(active: Boolean, trim: DerivedDataTrim?): JsonObject = buildJsonObject {
+    put("active", active)
+    put("quotaBytes", trim?.quotaBytes)
+    put("dryRun", trim?.dryRun ?: false)
+    put("usageBeforeBytes", trim?.usageBefore ?: 0L)
+    put("usageAfterBytes", trim?.usageAfter ?: 0L)
+    put("exceeded", trim?.isExceeded ?: false)
+    put("released", strings(trim?.released.orEmpty().map { it.folder.path }))
+    put("freedBytes", trim?.bytesFreed ?: 0L)
+    put("inUse", strings(trim?.inUse.orEmpty().map { (it.owner as DerivedDataOwner.Worktree).path }))
+    put(
+        "failures",
+        buildJsonArray {
+            trim?.failures.orEmpty().forEach {
                 add(
                     buildJsonObject {
                         put("path", it.path)

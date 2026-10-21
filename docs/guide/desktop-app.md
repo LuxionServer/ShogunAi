@@ -90,7 +90,7 @@ Removing a worktree that's open in Herdr also closes its Herdr workspace; the di
 
 ## Provider sections
 
-For repositories that declare them in `.shogunai.json`, the worktree screen adds a "Gradle daemons" section and an "Xcode DerivedData" section. The DerivedData folders are listed right away and show "Calculating…" for their sizes until they are measured in the background. See [Providers](providers.md).
+For repositories that declare them in `.shogunai.json`, the worktree screen adds a "Gradle daemons" section and an "Xcode DerivedData" section. The DerivedData folders are listed right away and show "Calculating…" for their sizes until they are measured in the background. With a DerivedData quota set in Preferences > Resources, the view also shows the usage against the quota and releases the least recently used folders of worktrees that are not in use when it is exceeded. See [Providers](providers.md).
 
 ## Preferences
 

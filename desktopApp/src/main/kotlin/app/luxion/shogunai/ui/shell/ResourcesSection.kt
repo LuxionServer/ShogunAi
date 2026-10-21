@@ -54,6 +54,52 @@ fun ResourcesSection(resources: ResourcePreferences) {
     if (resources.settings.profile == CapacityProfile.CUSTOM) {
         resources.kinds.forEach { kind -> CustomLimitRow(resources, kind) }
     }
+    if (resources.showsDerivedDataQuota) {
+        DerivedDataQuotaRow(resources)
+    }
+}
+
+@Composable
+private fun DerivedDataQuotaRow(resources: ResourcePreferences) {
+    val strings = LocalStrings.current
+    val draft = resources.quotaDraft
+    Column(modifier = Modifier.padding(top = Spacing.md)) {
+        Text(strings.derivedDataQuotaLabel, style = MaterialTheme.typography.labelLarge)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+            modifier = Modifier.padding(start = Spacing.lg),
+        ) {
+            OutlinedTextField(
+                value = draft.text,
+                onValueChange = { resources.editQuota(it) },
+                enabled = !draft.unlimited,
+                singleLine = true,
+                isError = draft.invalid,
+                modifier = Modifier.width(88.dp).trackTextInputFocus(),
+            )
+            Text(strings.gigabytesUnit, style = MaterialTheme.typography.bodySmall)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.toggleable(
+                    value = draft.unlimited,
+                    onValueChange = { resources.setNoQuota(it) },
+                    role = Role.Checkbox,
+                ),
+            ) {
+                Checkbox(checked = draft.unlimited, onCheckedChange = null)
+                Text(strings.noQuota, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = Spacing.xs))
+            }
+        }
+        if (draft.invalid) {
+            Text(
+                strings.invalidQuota,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(start = Spacing.lg),
+            )
+        }
+    }
 }
 
 @Composable

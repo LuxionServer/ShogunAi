@@ -42,7 +42,11 @@ fun MachineSummary.text(resource: MachineResource, strings: Strings): String {
         MachineResource.GRADLE_DAEMONS -> "$count · ${formatSize(bytes ?: 0)}"
         MachineResource.ANDROID_EMULATORS -> strings.runningCount(count)
         MachineResource.IOS_SIMULATORS -> strings.bootedCount(count)
-        MachineResource.XCODE_DERIVED_DATA -> if (calculating) "$count · ${strings.calculating}" else formatSize(bytes ?: 0)
+        MachineResource.XCODE_DERIVED_DATA -> when {
+            calculating -> "$count · ${strings.calculating}"
+            quotaBytes != null -> strings.derivedDataQuotaUsage(formatSize(bytes ?: 0), formatSize(quotaBytes))
+            else -> formatSize(bytes ?: 0)
+        }
     }
     val pool = poolInUse?.takeIf { poolKindOf(resource) != null }?.let { strings.poolSummary(it, poolLimit) }
     return if (pool == null) base else "$base · $pool"

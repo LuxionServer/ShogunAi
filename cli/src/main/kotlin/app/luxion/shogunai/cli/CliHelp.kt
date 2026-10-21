@@ -71,6 +71,8 @@ internal object CliHelp {
         "xcode" to """
   xcode [--json]              List Xcode DerivedData folders of the worktrees, orphans and compilation cache
   xcode clean [--json]        Delete orphaned Xcode DerivedData folders on the machine
+  xcode trim [--dry-run] [--json]
+                              Release DerivedData folders until it is within the quota in Preferences
 """.trimIndent(),
         "hook" to """
   hook worktree-create        Claude Code WorktreeCreate hook: create and provision the worktree, print its path

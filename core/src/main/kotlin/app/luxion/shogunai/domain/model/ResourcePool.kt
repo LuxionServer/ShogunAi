@@ -30,7 +30,13 @@ data class ResourceLimits(
 data class ResourceSettings(
     val profile: CapacityProfile = CapacityProfile.AUTOMATIC,
     val custom: ResourceLimits = ResourceLimits.LIGHT,
-)
+    val derivedDataQuotaGigabytes: Int? = null,
+) {
+    val derivedDataQuotaBytes: Long?
+        get() = derivedDataQuotaGigabytes?.takeIf { it > 0 }?.let { it * BYTES_PER_GIGABYTE }
+}
+
+const val BYTES_PER_GIGABYTE = 1024L * 1024 * 1024
 
 enum class PoolHolderState { STOPPED, BOOTING, RUNNING, SHUTDOWN, BOOTED, BUSY, IDLE, UNKNOWN }
 

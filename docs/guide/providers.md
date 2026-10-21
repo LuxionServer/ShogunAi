@@ -116,11 +116,18 @@ Xcode keeps one DerivedData folder per project path, so every worktree gets its 
 
 The worktree screen then shows an "Xcode DerivedData" section with each worktree's folder, its size and last access, and the orphaned folders on the machine: those whose project no longer exists, whichever tool created them. The folders appear at once; their sizes and the totals read "Calculating…" until each folder has been measured in the background, one at a time, without freezing the app. The calculation goes on if you leave the view (the sidebar entry shows the total once it's ready) and starts over when you reload it. "Delete orphans" removes them, and "Clean up" (checked by default) also deletes the orphans after removing worktrees, including the folders of the worktrees it removes.
 
-Only orphaned folders are ever deleted: never the DerivedData of a project that still exists, never Xcode's shared caches (`CompilationCache.noindex`, `ModuleCache.noindex`, …), and never a folder whose project is on a volume that isn't mounted. ShogunAi finds DerivedData in Xcode's default location or the custom one set in Xcode's preferences.
+Unless you set a quota, only orphaned folders are ever deleted, and never the DerivedData of a project that still exists, never Xcode's shared caches (`CompilationCache.noindex`, `ModuleCache.noindex`, …), and never a folder whose project is on a volume that isn't mounted. ShogunAi finds DerivedData in Xcode's default location or the custom one set in Xcode's preferences.
+
+### DerivedData quota
+
+DerivedData grows with every worktree an agent builds in. Set a quota in Preferences > Resources (a number of gigabytes, or "No quota", the default) and ShogunAi keeps the folders within it. The quota is a machine setting, not part of the capacity profiles, and is never read from the repository.
+
+When the folders add up to more than the quota, ShogunAi releases the orphaned folders first and then the least recently accessed folders of worktrees that are not in use, and stops as soon as the total fits. A worktree is in use while its agent is working or blocked, or its folder was accessed within the last hour. Folders of other projects, folders on unavailable volumes and the compilation cache are never released; if only those remain, the view says the quota is still exceeded and names the worktrees in use. The app applies the quota every time the folder sizes have been measured, and shows the usage against the quota, in the sidebar too, and the folders it released until you dismiss the notice. `shogun xcode trim` applies it from the command line.
 
 ```bash
 shogun xcode                               # this repository's DerivedData folders, the orphans and the compilation cache size
 shogun xcode clean                         # delete the orphaned folders
+shogun xcode trim [--dry-run]              # release folders until DerivedData fits the quota
 shogun clean --yes --delete-derived-data   # also delete them after removing worktrees
 ```
 
