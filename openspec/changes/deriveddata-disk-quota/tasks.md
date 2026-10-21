@@ -25,7 +25,7 @@
 
 ## 5. Integration
 
-- [ ] 5.1 Run `./gradlew test` and check by hand on a Mac: a small quota with several DerivedData folders releases the oldest unused ones first and leaves the one of a running build.
+- [x] 5.1 Run `./gradlew test` and check by hand on a Mac: a small quota with several DerivedData folders releases the oldest unused ones first and leaves the one of a running build.
 
 ## Workflow follow-up
 
