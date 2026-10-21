@@ -5,7 +5,11 @@ import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.ProvisionDriftState
-import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.usecase.HookEntry
+import app.luxion.shogunai.domain.usecase.HookReplacement
+import app.luxion.shogunai.domain.usecase.HooksInstallState
+import app.luxion.shogunai.ui.shell.HooksAction
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
 object SpanishStrings : Strings {
@@ -189,12 +193,36 @@ object SpanishStrings : Strings {
     override val seeAllWorktrees = "Ver todos los worktrees"
     override val menuActive = "Mostrar activos"
     override val menuAllWorktrees = "Mostrar todos los worktrees"
-    override fun agentLabel(name: String, state: HerdrAgentState?) = when (state) {
+    override val claudeCodeLabel = "Claude Code"
+    override fun claudeHooksStatus(state: HooksInstallState) = when (state) {
+        HooksInstallState.INSTALLED -> "Los hooks de ShogunAi están instalados"
+        HooksInstallState.OUTDATED -> "Los hooks de ShogunAi están desactualizados"
+        HooksInstallState.MISSING -> "Los hooks de ShogunAi no están instalados"
+    }
+    override val claudeHooksInstall = "Instalar"
+    override val claudeHooksUpdate = "Actualizar"
+    override val claudeHooksRemove = "Quitar"
+    override val claudeHooksCancel = "Cancelar"
+    override val claudeHooksConfirm = "Aplicar"
+    override val claudeHooksPathWarning = "shogun no está en el PATH, así que Claude Code no encontrará los hooks. Instala antes la herramienta de línea de comandos."
+    override fun claudeHooksDialogTitle(action: HooksAction) = when (action) {
+        HooksAction.INSTALL -> "Instalar los hooks"
+        HooksAction.UPDATE -> "Actualizar los hooks"
+        HooksAction.REMOVE -> "Quitar los hooks"
+    }
+    override fun claudeHooksChangesIn(path: String) = "Cambios en $path:"
+    override fun claudeHooksAdded(entry: HookEntry) = "Añadir a ${entry.event}: ${entry.command}"
+    override fun claudeHooksReplaced(replacement: HookReplacement) =
+        "Reemplazar en ${replacement.event}: ${replacement.from.joinToString()} por ${replacement.to}"
+    override fun claudeHooksRemoved(entry: HookEntry) = "Quitar de ${entry.event}: ${entry.command}"
+    override val claudeHooksNoticeMessage = "Claude se está ejecutando sin un estado conocido. Instala los hooks de ShogunAi para Claude Code y verás cuándo te necesita."
+    override val claudeHooksNoticeDismiss = "Descartar"
+    override fun agentLabel(name: String, state: AgentState?) = when (state) {
         null -> name
-        HerdrAgentState.WORKING -> "$name · trabajando"
-        HerdrAgentState.BLOCKED -> "$name · bloqueado"
-        HerdrAgentState.DONE -> "$name · terminado"
-        HerdrAgentState.IDLE -> "$name · inactivo"
+        AgentState.WORKING -> "$name · trabajando"
+        AgentState.BLOCKED -> "$name · bloqueado"
+        AgentState.DONE -> "$name · terminado"
+        AgentState.IDLE -> "$name · inactivo"
     }
     override fun agentsRunning(names: List<String>) = "Agentes en ejecución: ${names.joinToString(", ")}"
     override val allProjects = "Todos los proyectos"
@@ -219,12 +247,12 @@ object SpanishStrings : Strings {
     override val mergedLabel = "fusionado"
     override fun commitAgo(relative: String) = "commit $relative"
     override fun createdAgo(relative: String) = "creado $relative"
-    override fun agentStateName(state: HerdrAgentState?) = when (state) {
+    override fun agentStateName(state: AgentState?) = when (state) {
         null -> "estado desconocido"
-        HerdrAgentState.WORKING -> "trabajando"
-        HerdrAgentState.BLOCKED -> "bloqueado"
-        HerdrAgentState.DONE -> "terminado"
-        HerdrAgentState.IDLE -> "inactivo"
+        AgentState.WORKING -> "trabajando"
+        AgentState.BLOCKED -> "bloqueado"
+        AgentState.DONE -> "terminado"
+        AgentState.IDLE -> "inactivo"
     }
     override val sortLabel = "Orden"
     override val sortByName = "Nombre"

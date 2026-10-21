@@ -138,7 +138,7 @@ Emulators, iOS simulators and Gradle daemons are resources of limited capacity t
 
 ### Herdr
 
-`Herdr.kt` holds what the [Herdr port](#herdrclient) reports: `HerdrWorktreeOpening` (workspace id, its root pane id and whether Herdr already had the worktree open), `HerdrAgent` (an agent pane: the agent's `name`, its `HerdrAgentState` or `null` when Herdr reports `unknown`, the directory it works in and its pane id), plus `HerdrOpening` (`OPENED`, `FOCUSED`), the outcome of opening a worktree in Herdr.
+`Herdr.kt` holds what the [Herdr port](#herdrclient) reports: `HerdrWorktreeOpening` (workspace id, its root pane id and whether Herdr already had the worktree open), `HerdrAgent` (an agent pane: the agent's `name`, its `AgentState` or `null` when Herdr reports `unknown`, the directory it works in and its pane id), plus `HerdrOpening` (`OPENED`, `FOCUSED`), the outcome of opening a worktree in Herdr.
 
 ### Gradle daemons
 
@@ -160,7 +160,7 @@ What the Xcode provider finds in Xcode's DerivedData location (`DerivedData.kt`)
 
 ### `WorktreeOrigin` / `RunningAgent`
 
-What the worktree overview shows about each worktree (`WorktreeOverview.kt`): `WorktreeOrigin` (`SHOGUNAI`, `CLAUDE_CODE`, `HERDR`, `OTHER`), the tool that created it as told by its location (`classifyOrigin`, see [Worktree overview](#worktree-overview)), and `RunningAgent`, an agent CLI running in it: its `name` and, when Herdr reports it, its `herdrState` (`HerdrAgentState`: `WORKING`, `BLOCKED`, `DONE`, `IDLE`) and `herdrPaneId`. `waitsForUser` is true for a blocked or done agent.
+What the worktree overview shows about each worktree (`WorktreeOverview.kt`): `WorktreeOrigin` (`SHOGUNAI`, `CLAUDE_CODE`, `HERDR`, `OTHER`), the tool that created it as told by its location (`classifyOrigin`, see [Worktree overview](#worktree-overview)), and `RunningAgent`, an agent CLI running in it: its `name` and, when Herdr reports it, its `state` (`AgentState`: `WORKING`, `BLOCKED`, `DONE`, `IDLE`), the `stateSource` that reported it (`AgentStateSource`: `HERDR`, `CLAUDE_CODE`) and, when Herdr reports it, its `herdrPaneId`. `AgentSessionRecord` (`AgentSession.kt`) is what Claude Code's hooks leave per session: `sessionId`, `agent`, `state`, `updatedAt`, `transcriptPath` and `pid`. `waitsForUser` is true for a blocked or done agent.
 
 ### Tools
 
@@ -460,6 +460,10 @@ fun interface PostCreateApproval {
 
 `RepositoryTrust` remembers, per repository and on this machine, the exact post-creation commands the user approved; a different list isn't approved. `PostCreateApproval` asks the user when they aren't, and answers `RUN` or `SKIP`: the desktop app shows the commands in the dialog that started the creation, the CLI asks on a terminal, and hooks and `--json` use `PostCreateApproval.SKIP`. `RepositoryTrust.NONE` approves nothing, which is the default for use cases built without a trust store.
 
+### `AgentSessionStore`
+
+Keeps the `AgentSessionRecord`s of the sessions of a worktree: `write`, `remove` and `list`, by worktree path. `FileAgentSessionStore` is the implementation (see [infrastructure](infrastructure.md#fileagentsessionstore)); the CLI's `hook agent-state` writes and `DetectRunningAgentsUseCase` reads and deletes dead records.
+
 ### Repositories
 
 - `ProjectRepository` — `list()`, `save(project)`, `delete(id)` over the project catalog.
@@ -532,9 +536,14 @@ Squash and rebase merges aren't detected as merged, and remote-tracking branches
 - `activityDate(worktree, status)` returns an `ActivityDate(at, kind)`: the last commit's date (`COMMIT`) when the worktree is the main one or its branch has commits of its own, and otherwise the worktree's creation date (`CREATED`), falling back to the last commit when it can't be read. The row, the "Last activity" order and `isInactive` all use it.
 - `isInactive(worktree, status, agents, now, inactiveAfter)` is true for a non-main worktree with commits of its own, no uncommitted changes, no running agents (an idle one counts) and an activity date older than `inactiveAfter`, a `Duration` that the app takes from its `inactiveAfterDays` setting (3 days by default, `DEFAULT_INACTIVITY_THRESHOLD`).
 - `DetectRunningAgentsUseCase` returns the `RunningAgent`s per worktree path, from two sources read concurrently. The process scan runs `lsof -d cwd -F pcn` once to get every process's working directory, assigns each process to the worktree with the longest path containing it (`owningWorktree`, so a process in `.claude/worktrees/<name>` isn't attributed to the main worktree), and runs `ps -o pid=,comm=` for those processes. Their executable's file name is matched against the known agent CLIs (`claude`, `codex`, `gemini`, `cursor-agent`, `opencode`, `aider`, `copilot`) and the executables of every agent of the project. It can search several projects at once (`AgentSearch`, a project's agent commands and worktrees): `lsof` and `ps` still run once, and a project's own agents are only recognized in that project's worktrees. The `lsof` command name isn't used because Claude Code renames its process to its version. When it's given a `HerdrClient`, it also reads `listAgents()` (5-second limit) and attributes each Herdr agent to a worktree by its directory: it enriches the process-detected agent of the same name with its Herdr state and pane, or is added when the process scan can't see it, and several panes of one agent in a worktree keep the most urgent state (blocked, done, working, idle). A Herdr failure (not installed, no server, timeout) gives no Herdr data, never fails detection, and makes the next 30 seconds skip Herdr. If `lsof` or `ps` fail (e.g. on Windows) and Herdr reports nothing, it fails with `WorktreeError.ProcessListingFailed`.
+- Given an `AgentSessionStore`, it also reads the records of every worktree and gives the `claude` agent the state of its most urgent live session (blocked, done, working) with source `CLAUDE_CODE`. A record is live while its `pid` is a `claude` process found by the same `ps` call (so a reused pid doesn't revive it); a record without a pid is live while a `claude` process runs in that worktree and it is under 12 hours old. Dead records are deleted. A blocked or done record whose transcript was modified more than one second after the record reads as working. Herdr's state, applied after, wins; a Herdr agent without a state keeps the hook's.
 - `worktreeActivity(worktree, status, agents, now, inactiveAfter)` gives each worktree one state for the desktop app's views and the menu bar, the first that applies: `Missing`; `NeedsYou` when an agent is blocked or done (`waitsForUser`); `AgentWorking` when an agent is working or has no known state (idle agents are skipped, so they never decide the state); `Unknown` (status not read); `NeedsYou` for uncommitted or unpushed commits; `Idle` (main worktree); `New` (no commits of its own and not merged); `Merged`; `Inactive`; and `Stopped` otherwise. The first four are the *active* ones (`isActive`).
 - `MeasureWorktreeSizeUseCase` returns a worktree's size with `FileManager.directorySize`, on the IO dispatcher, excluding every other listed worktree nested inside it. It returns `null` for a missing folder.
 - `ReadGitMetadataFingerprintUseCase` returns a fingerprint of the main repository's Git metadata: the sorted (path relative to `.git`, last-modified time) pairs of `HEAD`, `index`, `packed-refs`, `FETCH_HEAD` and everything under `refs` and `worktrees`, read on the IO dispatcher. Commits, checkouts, locks, fetches and worktrees added or removed by any tool change it; `objects` isn't included. It's empty when `<baseRepositoryPath>/.git` isn't a directory.
+
+### `ClaudeCodeHooks`
+
+Installs, updates, checks and removes ShogunAi's hooks in a Claude Code `settings.json`, working on the parsed JSON tree (never on text) through `FileManager`. The desired hooks are one table (`DESIRED`: event → command); a hook is ShogunAi's when it is a `command` hook whose command starts with `shogun hook `. `previewInstall` / `previewUninstall` compute a `HooksPreview` (added, replaced and removed hooks); `install` removes ShogunAi hooks that differ and appends the missing ones as their own matcher group, `uninstall` removes them and the groups and events left empty, and neither writes when the preview is empty. `status` gives `HooksInstallState.INSTALLED`, `OUTDATED` or `MISSING` with the events that differ. A file that isn't a JSON object, or whose `hooks` isn't one, is `WorktreeError.InvalidClaudeSettings` and is never written. `userSettingsPath` honors `CLAUDE_CONFIG_DIR`; `projectSettingsPath` is `<repository>/.claude/settings.json`.
 
 ### `RemoveWorktreeUseCase`
 

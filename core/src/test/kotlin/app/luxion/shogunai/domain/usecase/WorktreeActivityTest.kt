@@ -1,7 +1,7 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.model.Divergence
-import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeStatus
@@ -47,49 +47,49 @@ class WorktreeActivityTest {
 
     @Test
     fun `a blocked or done agent needs the user`() {
-        listOf(HerdrAgentState.BLOCKED, HerdrAgentState.DONE).forEach { state ->
+        listOf(AgentState.BLOCKED, AgentState.DONE).forEach { state ->
             assertEquals(Activity.NeedsYou, activity(worktree, null, listOf(RunningAgent("claude", state))))
         }
     }
 
     @Test
     fun `a working agent or one without a state keeps the worktree agent working`() {
-        listOf(HerdrAgentState.WORKING, null).forEach { state ->
+        listOf(AgentState.WORKING, null).forEach { state ->
             assertEquals(Activity.AgentWorking, activity(worktree, null, listOf(RunningAgent("claude", state))))
         }
     }
 
     @Test
     fun `an idle agent with pending changes needs the user`() {
-        val idle = listOf(RunningAgent("claude", HerdrAgentState.IDLE))
+        val idle = listOf(RunningAgent("claude", AgentState.IDLE))
 
         assertEquals(Activity.NeedsYou, activity(worktree, status(changes = 2), idle))
     }
 
     @Test
     fun `an agent working over uncommitted changes stays agent working`() {
-        val working = listOf(RunningAgent("claude", HerdrAgentState.WORKING))
+        val working = listOf(RunningAgent("claude", AgentState.WORKING))
 
         assertEquals(Activity.AgentWorking, activity(worktree, status(changes = 2), working))
     }
 
     @Test
     fun `an idle agent without pending work leaves the worktree stopped`() {
-        val idle = listOf(RunningAgent("claude", HerdrAgentState.IDLE))
+        val idle = listOf(RunningAgent("claude", AgentState.IDLE))
 
         assertEquals(Activity.Stopped, activity(worktree, status(), idle))
     }
 
     @Test
     fun `a blocked agent needs the user whatever the git status`() {
-        val blocked = listOf(RunningAgent("claude", HerdrAgentState.BLOCKED))
+        val blocked = listOf(RunningAgent("claude", AgentState.BLOCKED))
 
         assertEquals(Activity.NeedsYou, activity(worktree, status(), blocked))
     }
 
     @Test
     fun `one blocked agent among working ones needs the user`() {
-        val agents = listOf(RunningAgent("claude", HerdrAgentState.WORKING), RunningAgent("codex", HerdrAgentState.BLOCKED))
+        val agents = listOf(RunningAgent("claude", AgentState.WORKING), RunningAgent("codex", AgentState.BLOCKED))
 
         assertEquals(Activity.NeedsYou, activity(worktree, null, agents))
     }

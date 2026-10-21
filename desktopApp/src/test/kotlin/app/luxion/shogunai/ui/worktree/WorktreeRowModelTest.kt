@@ -2,7 +2,7 @@ package app.luxion.shogunai.ui.worktree
 
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.EmulatorState
-import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.Worktree
@@ -76,7 +76,7 @@ class WorktreeRowModelTest {
         assertEquals(StateBadgeKind.NEEDS_YOU, kind(model(status = WorktreeStatusState.Loaded(status(changes = 3)))))
         assertEquals(
             StateBadgeKind.AGENT_WORKING,
-            kind(model(status = WorktreeStatusState.Loaded(status(changes = 3)), agents = listOf(RunningAgent("claude", HerdrAgentState.WORKING)))),
+            kind(model(status = WorktreeStatusState.Loaded(status(changes = 3)), agents = listOf(RunningAgent("claude", AgentState.WORKING)))),
         )
         assertEquals(StateBadgeKind.NEW, kind(model(status = WorktreeStatusState.Loaded(status(mainBranch = Divergence(0, 0), upstream = null)))))
         assertEquals(StateBadgeKind.STOPPED, kind(model()))
@@ -91,8 +91,8 @@ class WorktreeRowModelTest {
     @Test
     fun `the execution cell shows the most urgent agent with the count of the others`() {
         val agents = listOf(
-            RunningAgent("codex", HerdrAgentState.WORKING),
-            RunningAgent("claude", HerdrAgentState.BLOCKED),
+            RunningAgent("codex", AgentState.WORKING),
+            RunningAgent("claude", AgentState.BLOCKED),
         )
 
         val agent = model(agents = agents).execution.agent!!
@@ -106,10 +106,10 @@ class WorktreeRowModelTest {
     @Test
     fun `the agent's status follows the state Herdr reports`() {
         val expected = mapOf(
-            HerdrAgentState.WORKING to ("Claude · working" to Status.INFO),
-            HerdrAgentState.BLOCKED to ("Claude · blocked" to Status.WARNING),
-            HerdrAgentState.DONE to ("Claude · done" to Status.SUCCESS),
-            HerdrAgentState.IDLE to ("Claude · idle" to Status.NEUTRAL),
+            AgentState.WORKING to ("Claude · working" to Status.INFO),
+            AgentState.BLOCKED to ("Claude · blocked" to Status.WARNING),
+            AgentState.DONE to ("Claude · done" to Status.SUCCESS),
+            AgentState.IDLE to ("Claude · idle" to Status.NEUTRAL),
         )
 
         expected.forEach { (state, label) ->

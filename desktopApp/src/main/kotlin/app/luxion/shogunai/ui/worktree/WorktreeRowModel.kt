@@ -2,7 +2,7 @@ package app.luxion.shogunai.ui.worktree
 
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.EmulatorState
-import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.Worktree
@@ -45,7 +45,7 @@ data class StateBadge(val kind: StateBadgeKind, val label: String)
 data class AgentLine(
     val label: String,
     val name: String,
-    val state: HerdrAgentState?,
+    val state: AgentState?,
     val status: Status,
     val moreCount: Int,
     val tooltip: String,
@@ -158,24 +158,24 @@ private fun nameCell(worktree: Worktree, origin: WorktreeOrigin?, projectName: S
 }
 
 private val AgentUrgency = listOf(
-    HerdrAgentState.BLOCKED,
-    HerdrAgentState.DONE,
-    HerdrAgentState.WORKING,
+    AgentState.BLOCKED,
+    AgentState.DONE,
+    AgentState.WORKING,
     null,
-    HerdrAgentState.IDLE,
+    AgentState.IDLE,
 )
 
 private fun agentLine(agents: List<RunningAgent>, strings: Strings): AgentLine? {
-    val urgent = agents.minByOrNull { AgentUrgency.indexOf(it.herdrState) } ?: return null
+    val urgent = agents.minByOrNull { AgentUrgency.indexOf(it.state) } ?: return null
     val displayName = urgent.name.replaceFirstChar { it.uppercase() }
     return AgentLine(
-        label = strings.agentLabel(displayName, urgent.herdrState),
+        label = strings.agentLabel(displayName, urgent.state),
         name = displayName,
-        state = urgent.herdrState,
-        status = urgent.herdrState.status(),
+        state = urgent.state,
+        status = urgent.state.status(),
         moreCount = agents.size - 1,
-        tooltip = agents.sortedBy { AgentUrgency.indexOf(it.herdrState) }.joinToString("\n") {
-            "${it.name.replaceFirstChar { letter -> letter.uppercase() }}: ${strings.agentStateName(it.herdrState)}"
+        tooltip = agents.sortedBy { AgentUrgency.indexOf(it.state) }.joinToString("\n") {
+            "${it.name.replaceFirstChar { letter -> letter.uppercase() }}: ${strings.agentStateName(it.state)}"
         },
     )
 }
@@ -217,11 +217,11 @@ private fun gitCell(
     )
 }
 
-internal fun HerdrAgentState?.status(): Status = when (this) {
-    HerdrAgentState.BLOCKED -> Status.WARNING
-    HerdrAgentState.DONE -> Status.SUCCESS
-    HerdrAgentState.IDLE -> Status.NEUTRAL
-    HerdrAgentState.WORKING, null -> Status.INFO
+internal fun AgentState?.status(): Status = when (this) {
+    AgentState.BLOCKED -> Status.WARNING
+    AgentState.DONE -> Status.SUCCESS
+    AgentState.IDLE -> Status.NEUTRAL
+    AgentState.WORKING, null -> Status.INFO
 }
 
 private fun activeEmulator(emulator: WorktreeEmulator?): EmulatorState? = when (emulator?.state) {

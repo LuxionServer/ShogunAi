@@ -4,7 +4,7 @@ import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.HerdrClient
 import app.luxion.shogunai.domain.model.HerdrAgent
-import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.HerdrWorktreeOpening
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.serialization.json.Json
@@ -80,11 +80,11 @@ class CliHerdrClient(
         run(listOf("agent", "focus", paneId))
     }
 
-    private fun agentState(status: String?): HerdrAgentState? = when (status) {
-        "working" -> HerdrAgentState.WORKING
-        "blocked" -> HerdrAgentState.BLOCKED
-        "done" -> HerdrAgentState.DONE
-        "idle" -> HerdrAgentState.IDLE
+    private fun agentState(status: String?): AgentState? = when (status) {
+        "working" -> AgentState.WORKING
+        "blocked" -> AgentState.BLOCKED
+        "done" -> AgentState.DONE
+        "idle" -> AgentState.IDLE
         else -> null
     }
 

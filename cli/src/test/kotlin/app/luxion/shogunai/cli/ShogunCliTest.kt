@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.ResourceSettings
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.BuildInfo
+import app.luxion.shogunai.domain.FakeAgentSessionStore
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeDerivedDataSource
@@ -30,7 +31,8 @@ import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.HerdrAgent
-import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.AgentSessionRecord
+import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.IosSimulatorProvider
@@ -137,6 +139,8 @@ class ShogunCliTest {
         trust: FakeRepositoryTrust = FakeRepositoryTrust(),
         answer: String? = null,
         projectRepository: ProjectRepository = FakeProjectRepository(projects),
+        sessionStore: FakeAgentSessionStore = FakeAgentSessionStore(),
+        environment: Map<String, String> = emptyMap(),
     ) = ShogunCli(
         executor = executor,
         fileManager = fileManager,
@@ -161,6 +165,9 @@ class ShogunCliTest {
         herdr = herdr,
         trust = trust,
         readAnswer = { answer },
+        environmentVariable = { environment[it] },
+        userHome = "/home/dev",
+        sessionStore = sessionStore,
     )
 
     private val gradleUserHome = "/home/dev/.gradle"
@@ -772,9 +779,43 @@ class ShogunCliTest {
         assertTrue(out.lines().contains("$merged  feature/TASK-1  origin=herdr  changes=0  merged"), out.toString())
     }
 
+    private fun claudeProcessExecutor() = repositoryExecutor { command, _ ->
+        when (command.first()) {
+            "lsof" -> Executor.ok(command, "p4242\ncclaude\nfcwd\nn$merged\n")
+            "ps" -> Executor.ok(command, "4242 /home/dev/.local/bin/claude\n")
+            else -> null
+        }
+    }
+
+    private fun blockedSession() = FakeAgentSessionStore(
+        mapOf(merged to listOf(AgentSessionRecord("s1", "claude", AgentState.BLOCKED, now.toEpochMilli(), null, 4242L))),
+    )
+
+    @Test
+    fun `status shows the state Claude Code's hooks report`() {
+        val exitCode = cli(claudeProcessExecutor(), sessionStore = blockedSession()).run(listOf("status"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(
+            out.lines().contains("$merged  feature/TASK-1  origin=shogunai  agents=claude(blocked)  changes=0  merged"),
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `status json reports the state and its source`() {
+        cli(claudeProcessExecutor(), sessionStore = blockedSession()).run(listOf("status", "--json"))
+
+        val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray
+        assertEquals(
+            Json.parseToJsonElement("""[{"name": "claude", "state": "blocked", "stateSource": "claude-code", "herdrState": null}]"""),
+            worktrees[1].jsonObject.getValue("agents"),
+        )
+    }
+
     @Test
     fun `status shows the state Herdr reports for each agent`() {
-        val herdr = FakeHerdrClient(agents = listOf(HerdrAgent("claude", HerdrAgentState.BLOCKED, merged, "w1:p1")))
+        val herdr = FakeHerdrClient(agents = listOf(HerdrAgent("claude", AgentState.BLOCKED, merged, "w1:p1")))
 
         val exitCode = cli(repositoryExecutor(), herdr = herdr).run(listOf("status"))
 
@@ -789,7 +830,7 @@ class ShogunCliTest {
     fun `status json adds the agents with their Herdr state`() {
         val herdr = FakeHerdrClient(
             agents = listOf(
-                HerdrAgent("claude", HerdrAgentState.BLOCKED, merged, "w1:p1"),
+                HerdrAgent("claude", AgentState.BLOCKED, merged, "w1:p1"),
                 HerdrAgent("aider", null, dirty, "w2:p1"),
             ),
         )
@@ -799,11 +840,11 @@ class ShogunCliTest {
         assertEquals(0, exitCode, err.toString())
         val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray
         assertEquals(
-            Json.parseToJsonElement("""[{"name": "claude", "herdrState": "blocked"}]"""),
+            Json.parseToJsonElement("""[{"name": "claude", "state": "blocked", "stateSource": "herdr", "herdrState": "blocked"}]"""),
             worktrees[1].jsonObject.getValue("agents"),
         )
         assertEquals(
-            Json.parseToJsonElement("""[{"name": "aider", "herdrState": null}]"""),
+            Json.parseToJsonElement("""[{"name": "aider", "state": null, "stateSource": null, "herdrState": null}]"""),
             worktrees[2].jsonObject.getValue("agents"),
         )
     }
@@ -1150,7 +1191,7 @@ class ShogunCliTest {
         cli(repositoryExecutor()).run(listOf("help"))
 
         val hookLines = out.lines().filter { it.trimStart().startsWith("hook ") }
-        assertEquals(4, hookLines.size)
+        assertEquals(5, hookLines.size)
         assertEquals(1, hookLines.map { it.indexOf("  ", it.indexOf("hook") + 5).let { gap -> it.substring(gap).indexOfFirst { c -> c != ' ' } + gap } }.distinct().size)
     }
 
@@ -2251,5 +2292,117 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals(emptyList(), jsonOut().strings("repaired"))
+    }
+
+    private val userSettings = "/home/dev/.claude/settings.json"
+    private val projectSettings = "$base/.claude/settings.json"
+
+    @Test
+    fun `hooks install writes the hooks after confirming`() {
+        val files = FakeFileManager(existing = listOf(base))
+
+        val exitCode = cli(repositoryExecutor(), fileManager = files, answer = "y").run(listOf("hooks", "install"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.contains("+ Stop: shogun hook agent-state"), out.toString())
+        assertTrue(err.contains("Install them? [y/N]"), err.toString())
+        assertTrue(files.writtenTexts.getValue(userSettings).contains("shogun hook agent-state"))
+        assertEquals(setOf(userSettings), files.writtenTexts.keys)
+    }
+
+    @Test
+    fun `hooks install declined writes nothing and exits with 0`() {
+        val files = FakeFileManager(existing = listOf(base))
+
+        val exitCode = cli(repositoryExecutor(), fileManager = files, answer = "n").run(listOf("hooks", "install"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(files.writtenTexts.isEmpty())
+        assertTrue(out.contains("Nothing written."), out.toString())
+    }
+
+    @Test
+    fun `hooks install with yes does not ask`() {
+        val files = FakeFileManager(existing = listOf(base))
+
+        val exitCode = cli(repositoryExecutor(), fileManager = files).run(listOf("hooks", "install", "--yes"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertFalse(err.contains("[y/N]"), err.toString())
+        assertTrue(files.writtenTexts.containsKey(userSettings))
+    }
+
+    @Test
+    fun `hooks install in a repository writes the project settings only`() {
+        val files = FakeFileManager(existing = listOf(base))
+
+        val exitCode = cli(repositoryExecutor(), fileManager = files).run(listOf("hooks", "install", "--project", "--yes"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(setOf(projectSettings), files.writtenTexts.keys)
+    }
+
+    @Test
+    fun `hooks follow CLAUDE_CONFIG_DIR`() {
+        val files = FakeFileManager(existing = listOf(base))
+
+        cli(repositoryExecutor(), fileManager = files, environment = mapOf("CLAUDE_CONFIG_DIR" to "/custom/claude"))
+            .run(listOf("hooks", "install", "--yes"))
+
+        assertEquals(setOf("/custom/claude/settings.json"), files.writtenTexts.keys)
+    }
+
+    @Test
+    fun `hooks install with broken settings exits with 1 and leaves the file`() {
+        val files = FakeFileManager(existing = listOf(base))
+        files.writeText(userSettings, "{ nope")
+
+        val exitCode = cli(repositoryExecutor(), fileManager = files).run(listOf("hooks", "install", "--yes"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains(userSettings), err.toString())
+        assertEquals("{ nope", files.writtenTexts[userSettings])
+    }
+
+    @Test
+    fun `hooks uninstall removes the hooks`() {
+        val files = FakeFileManager(existing = listOf(base))
+        cli(repositoryExecutor(), fileManager = files).run(listOf("hooks", "install", "--yes"))
+        out.clear()
+
+        val exitCode = cli(repositoryExecutor(), fileManager = files).run(listOf("hooks", "uninstall", "--yes"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("{}\n", files.writtenTexts.getValue(userSettings))
+    }
+
+    @Test
+    fun `hooks status names the missing events`() {
+        val files = FakeFileManager(existing = listOf(base))
+        files.writeText(userSettings, """{"hooks":{"WorktreeCreate":[{"hooks":[{"type":"command","command":"shogun hook worktree-create"}]}]}}""")
+
+        val exitCode = cli(repositoryExecutor(), fileManager = files).run(listOf("hooks", "status"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.lines().any { it.startsWith("user: outdated (WorktreeRemove, SessionStart, UserPromptSubmit, Notification, Stop, SessionEnd)") }, out.toString())
+        assertTrue(out.lines().any { it.startsWith("project: missing") }, out.toString())
+    }
+
+    @Test
+    fun `hooks status json describes both scopes`() {
+        cli(repositoryExecutor(), fileManager = FakeFileManager(existing = listOf(base))).run(listOf("hooks", "status", "--json"))
+
+        val json = Json.parseToJsonElement(out.toString()).jsonObject
+        assertEquals("missing", json.getValue("user").jsonObject.getValue("state").jsonPrimitive.content)
+        assertEquals(projectSettings, json.getValue("project").jsonObject.getValue("path").jsonPrimitive.content)
+    }
+
+    @Test
+    fun `hooks help describes the three subcommands`() {
+        val exitCode = cli(repositoryExecutor()).run(listOf("hooks", "--help"))
+
+        assertEquals(0, exitCode)
+        assertTrue(out.contains("hooks install|uninstall"), out.toString())
+        assertTrue(out.contains("hooks status"), out.toString())
     }
 }

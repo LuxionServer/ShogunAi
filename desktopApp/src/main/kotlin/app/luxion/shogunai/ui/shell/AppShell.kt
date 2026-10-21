@@ -174,6 +174,8 @@ fun AppShell(
             VerticalDivider(modifier = Modifier.fillMaxHeight())
             Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
                 appContainer.updates.notice?.let { UpdateNotice(appContainer.updates, Modifier.padding(Spacing.md)) }
+                LaunchedEffect(Unit) { appContainer.claudeHooks.refresh() }
+                ClaudeHooksNotice(appContainer.claudeHooks, board.hasClaudeWithoutState, Modifier.padding(Spacing.md))
                 Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     val fixActions = remember(viewModel, onOpenPreferences) {
                         ErrorFixActions(

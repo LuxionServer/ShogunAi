@@ -2,9 +2,12 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.io.AgentSessionStore
 import app.luxion.shogunai.domain.io.HerdrClient
+import app.luxion.shogunai.domain.model.AgentSessionRecord
 import app.luxion.shogunai.domain.model.HerdrAgent
-import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.AgentStateSource
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
@@ -14,10 +17,13 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withTimeout
+import java.io.File
 
 class DetectRunningAgentsUseCase(
     private val executor: ShellCommandExecutor,
     private val herdr: HerdrClient? = null,
+    private val sessionStore: AgentSessionStore? = null,
+    private val transcriptModifiedAt: (String) -> Long? = { path -> File(path).lastModified().takeIf { it > 0 } },
     private val now: () -> Long = System::currentTimeMillis,
 ) {
     @Volatile
@@ -34,16 +40,17 @@ class DetectRunningAgentsUseCase(
             val processes = runCatching { scanProcesses(searches, worktrees) }
             processes to herdrAgents.await()
         }
-        merge(processes.getOrDefault(emptyMap()), herdrAgents, worktrees)
+        val scan = processes.getOrDefault(ProcessScan())
+        merge(withSessionStates(scan, worktrees), herdrAgents, worktrees)
             .also { merged -> if (merged.isEmpty()) processes.getOrThrow() }
     }
 
-    private suspend fun scanProcesses(searches: List<AgentSearch>, worktrees: List<Worktree>): Map<String, List<RunningAgent>> {
+    private suspend fun scanProcesses(searches: List<AgentSearch>, worktrees: List<Worktree>): ProcessScan {
         val processes = run("lsof", "-d", "cwd", "-F", "pcn").let(::parseLsofWorkingDirectories)
         val worktreeByPid = processes.mapNotNull { (pid, cwd) ->
             owningWorktree(cwd, worktrees)?.let { pid to it.path }
         }.toMap()
-        if (worktreeByPid.isEmpty()) return emptyMap()
+        if (worktreeByPid.isEmpty()) return ProcessScan()
 
         val executables = run("ps", "-o", "pid=,comm=", "-p", worktreeByPid.keys.joinToString(","))
             .let(::parsePsExecutables)
@@ -52,13 +59,48 @@ class DetectRunningAgentsUseCase(
             search.worktrees.map { it.path to names }
         }.toMap()
 
-        return executables.mapNotNull { (pid, executable) ->
+        val agents = executables.mapNotNull { (pid, executable) ->
             val name = executable.substringAfterLast('/')
             val path = worktreeByPid[pid]
             if (path != null && name in agentNamesByPath[path].orEmpty()) path to RunningAgent(name) else null
         }
             .groupBy({ it.first }, { it.second })
             .mapValues { (_, agents) -> agents.distinct() }
+        val claudePids = executables
+            .filter { (_, executable) -> executable.substringAfterLast('/') == CLAUDE }
+            .mapNotNull { (pid, _) -> pid.toLongOrNull() }
+            .toSet()
+        return ProcessScan(agents, claudePids)
+    }
+
+    private fun withSessionStates(scan: ProcessScan, worktrees: List<Worktree>): Map<String, List<RunningAgent>> {
+        val store = sessionStore ?: return scan.agents
+        val claudeWorktrees = scan.agents.filterValues { agents -> agents.any { it.name == CLAUDE } }.keys
+        val states = worktrees.mapNotNull { worktree ->
+            val live = liveSessions(store, worktree.path, scan.claudePids, worktree.path in claudeWorktrees)
+            live.maxByOrNull { urgency(it) }?.let { worktree.path to it }
+        }.toMap()
+        return scan.agents.mapValues { (path, agents) ->
+            val state = states[path] ?: return@mapValues agents
+            agents.map { agent ->
+                if (agent.name == CLAUDE && agent.state == null) agent.copy(state = state, stateSource = AgentStateSource.CLAUDE_CODE) else agent
+            }
+        }
+    }
+
+    private fun liveSessions(store: AgentSessionStore, path: String, claudePids: Set<Long>, hasClaudeProcess: Boolean): List<AgentState> =
+        store.list(path).mapNotNull { record ->
+            val live = record.pid?.let { it in claudePids } ?: (hasClaudeProcess && now() - record.updatedAt < UNKNOWN_PID_MAX_AGE_MILLIS)
+            if (!live) {
+                runCatching { store.remove(path, record.sessionId) }
+                return@mapNotNull null
+            }
+            if (record.state in setOf(AgentState.BLOCKED, AgentState.DONE) && transcriptWrittenAfter(record)) AgentState.WORKING else record.state
+        }
+
+    private fun transcriptWrittenAfter(record: AgentSessionRecord): Boolean {
+        val modifiedAt = record.transcriptPath?.let(transcriptModifiedAt) ?: return false
+        return modifiedAt > record.updatedAt + TRANSCRIPT_GRACE_MILLIS
     }
 
     private suspend fun readHerdrAgents(): List<HerdrAgent> {
@@ -90,22 +132,25 @@ class DetectRunningAgentsUseCase(
         return (processAgents.keys + herdrByPath.keys).associateWith { path ->
             val herdrByName = herdrByPath[path].orEmpty().groupBy { it.name }.mapValues { (_, agents) -> mostUrgent(agents) }
             val processNames = processAgents[path].orEmpty().map { it.name }.toSet()
-            processAgents[path].orEmpty().map { agent -> herdrByName[agent.name]?.let(::runningAgent) ?: agent } +
+            processAgents[path].orEmpty().map { agent -> herdrByName[agent.name]?.let { runningAgent(it, agent) } ?: agent } +
                 herdrByName.filterKeys { it !in processNames }.values.map(::runningAgent)
         }
     }
 
     private fun mostUrgent(agents: List<HerdrAgent>): HerdrAgent = agents.maxBy { urgency(it.state) }
 
-    private fun urgency(state: HerdrAgentState?): Int = when (state) {
-        HerdrAgentState.BLOCKED -> 4
-        HerdrAgentState.DONE -> 3
-        HerdrAgentState.WORKING -> 2
-        HerdrAgentState.IDLE -> 1
+    private fun urgency(state: AgentState?): Int = when (state) {
+        AgentState.BLOCKED -> 4
+        AgentState.DONE -> 3
+        AgentState.WORKING -> 2
+        AgentState.IDLE -> 1
         null -> 0
     }
 
-    private fun runningAgent(agent: HerdrAgent) = RunningAgent(agent.name, agent.state, agent.paneId)
+    private fun runningAgent(agent: HerdrAgent) = RunningAgent(agent.name, agent.state, agent.paneId, agent.state?.let { AgentStateSource.HERDR })
+
+    private fun runningAgent(agent: HerdrAgent, process: RunningAgent?): RunningAgent =
+        if (agent.state == null && process != null) process.copy(herdrPaneId = agent.paneId) else runningAgent(agent)
 
     private fun agentName(agentCommand: String): String? =
         agentCommand.trim().substringBefore(' ').substringAfterLast('/').ifEmpty { null }
@@ -119,11 +164,19 @@ class DetectRunningAgentsUseCase(
     }
 
     private companion object {
+        const val CLAUDE = "claude"
+        const val TRANSCRIPT_GRACE_MILLIS = 1_000L
+        const val UNKNOWN_PID_MAX_AGE_MILLIS = 12 * 60 * 60 * 1_000L
         val KNOWN_AGENTS = setOf("claude", "codex", "gemini", "cursor-agent", "opencode", "aider", "copilot")
         const val HERDR_TIMEOUT_MILLIS = 5_000L
         const val HERDR_BACK_OFF_MILLIS = 30_000L
     }
 }
+
+private data class ProcessScan(
+    val agents: Map<String, List<RunningAgent>> = emptyMap(),
+    val claudePids: Set<Long> = emptySet(),
+)
 
 data class AgentSearch(val agentCommands: List<String>, val worktrees: List<Worktree>)
 

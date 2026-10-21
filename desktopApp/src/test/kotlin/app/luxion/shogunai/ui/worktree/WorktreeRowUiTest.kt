@@ -20,7 +20,7 @@ import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.Divergence
-import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeEmulator
@@ -89,7 +89,7 @@ class WorktreeRowUiTest {
         val busy = model(
             "feature/TASK-1",
             status = status(changes = 3),
-            agents = listOf(RunningAgent("claude", HerdrAgentState.BLOCKED)),
+            agents = listOf(RunningAgent("claude", AgentState.BLOCKED)),
             emulator = WorktreeEmulator("emulator-5556", EmulatorState.RUNNING),
         )
         val bare = model("feature/TASK-2")
@@ -135,8 +135,8 @@ class WorktreeRowUiTest {
 
     @Test
     fun `a narrow row shows icons only and keeps the agent's state in its tooltip`() = runComposeUiTest {
-        val blocked = model("feature/TASK-1", agents = listOf(RunningAgent("claude", HerdrAgentState.BLOCKED)))
-        val working = model("feature/TASK-2", agents = listOf(RunningAgent("codex", HerdrAgentState.WORKING)))
+        val blocked = model("feature/TASK-1", agents = listOf(RunningAgent("claude", AgentState.BLOCKED)))
+        val working = model("feature/TASK-2", agents = listOf(RunningAgent("codex", AgentState.WORKING)))
         setContent {
             MaterialTheme {
                 Column(Modifier.width(500.dp)) {
@@ -158,7 +158,7 @@ class WorktreeRowUiTest {
 
     @Test
     fun `a wide row shows the agent's label`() = runComposeUiTest {
-        val blocked = model("feature/TASK-1", agents = listOf(RunningAgent("claude", HerdrAgentState.BLOCKED)))
+        val blocked = model("feature/TASK-1", agents = listOf(RunningAgent("claude", AgentState.BLOCKED)))
         setContent { MaterialTheme { Column(Modifier.width(900.dp)) { Row(blocked) } } }
 
         onNodeWithText("Claude · blocked").assertIsDisplayed()

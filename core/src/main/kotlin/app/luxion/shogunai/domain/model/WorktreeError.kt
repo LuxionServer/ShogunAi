@@ -152,6 +152,9 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
             "Branch '$branch' is already checked out" + if (path != null) " at $path" else "",
         )
 
+    class InvalidClaudeSettings(val path: String, val detail: String) :
+        WorktreeError("Claude Code's settings file $path isn't valid: $detail")
+
     object HerdrNotInstalled : WorktreeError(
         "Herdr isn't installed: the herdr command wasn't found. Install it from https://herdr.dev",
     )

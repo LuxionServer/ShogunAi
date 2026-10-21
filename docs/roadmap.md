@@ -38,7 +38,8 @@ The review of the whole project on 2026-10-19 and the changes built after it are
 - Build provenance attestations for release assets, and treating compiler warnings as errors now that the build is clean.
 - More terminals for "Open in terminal" (Ghostty, Warp, Alacritty, Kitty, GNOME Terminal), each as one more adapter.
 - Faster DerivedData sizes: measuring several folders in parallel and remembering sizes between app runs.
-- A notification when a Herdr agent becomes blocked or done; today the worktree's row and the menu bar icon's menu are the signal.
+- A notification when an agent (reported by Herdr or by Claude Code's hooks) becomes blocked or done; today the worktree's row and the menu bar icon's menu are the signal.
+- Agent states for agents other than Claude Code (Codex, Gemini…), which have no equivalent hooks today.
 - Finding the root cause of the errors that closed the Preferences window, from the entries the isolation now leaves in the diagnostics log, and of the native crash seen on another machine that left an empty diagnostic report.
 
 ### 4. Guided onboarding demo
