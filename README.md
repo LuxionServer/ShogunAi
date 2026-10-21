@@ -32,8 +32,12 @@ It's built in two parts:
 
 ```bash
 brew tap LuxionServer/shogunai
+brew trust --tap LuxionServer/shogunai
 brew install --cask shogunai
 ```
+
+> [!IMPORTANT]
+> Recent Homebrew versions only load casks from non-official taps you trust. Run `brew trust --tap LuxionServer/shogunai` after `brew tap` and before `brew install`, or Homebrew refuses to load the cask.
 
 > [!NOTE]
 > Homebrew picks the installer for your Mac's architecture (Apple Silicon or Intel) automatically. The app isn't notarized by Apple: if macOS warns that "the developer cannot be verified" the first time you open it, open it with right click → Open, or run `xattr -dr com.apple.quarantine "/Applications/ShogunAi.app"`.
