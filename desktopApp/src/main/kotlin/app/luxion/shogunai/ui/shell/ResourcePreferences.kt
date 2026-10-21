@@ -12,15 +12,21 @@ import app.luxion.shogunai.domain.usecase.ResolveResourceLimitsUseCase
 
 data class CustomLimitDraft(val text: String, val unlimited: Boolean, val invalid: Boolean = false)
 
+const val DEFAULT_QUOTA_GIGABYTES = 50
+
 class ResourcePreferences(
     private val repository: ResourceLimitsRepository,
     private val resolveLimits: ResolveResourceLimitsUseCase,
     val showsSimulators: Boolean,
+    val showsDerivedDataQuota: Boolean = false,
 ) {
     var settings by mutableStateOf(repository.load())
         private set
 
     var drafts by mutableStateOf(draftsOf(settings.custom))
+        private set
+
+    var quotaDraft by mutableStateOf(quotaDraftOf(settings.derivedDataQuotaGigabytes))
         private set
 
     val kinds: List<ResourceKind>
@@ -63,6 +69,26 @@ class ResourcePreferences(
         }
     }
 
+    fun editQuota(text: String) {
+        val number = text.trim().toIntOrNull()?.takeIf { it > 0 }
+        if (number == null) {
+            quotaDraft = CustomLimitDraft(text, unlimited = false, invalid = true)
+            return
+        }
+        quotaDraft = CustomLimitDraft(number.toString(), unlimited = false)
+        save(settings.copy(derivedDataQuotaGigabytes = number))
+    }
+
+    fun setNoQuota(none: Boolean) {
+        if (none) {
+            quotaDraft = CustomLimitDraft("", unlimited = true)
+            save(settings.copy(derivedDataQuotaGigabytes = null))
+        } else {
+            quotaDraft = CustomLimitDraft(DEFAULT_QUOTA_GIGABYTES.toString(), unlimited = false)
+            save(settings.copy(derivedDataQuotaGigabytes = DEFAULT_QUOTA_GIGABYTES))
+        }
+    }
+
     private fun saveCustom(kind: ResourceKind, limit: Int?) {
         val current = settings.custom
         val updated = when (kind) {
@@ -80,6 +106,8 @@ class ResourcePreferences(
 
     companion object {
         const val DEFAULT_CUSTOM_LIMIT = 2
+
+        private fun quotaDraftOf(quota: Int?) = CustomLimitDraft(quota?.toString().orEmpty(), unlimited = quota == null)
 
         private fun draftsOf(custom: ResourceLimits): Map<ResourceKind, CustomLimitDraft> =
             ResourceKind.entries.associateWith { kind ->

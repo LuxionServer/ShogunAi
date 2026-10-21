@@ -21,6 +21,7 @@ import app.luxion.shogunai.domain.model.AttributedDerivedData
 import app.luxion.shogunai.domain.model.DerivedDataDeletion
 import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.domain.model.DerivedDataOwner
+import app.luxion.shogunai.domain.model.DerivedDataTrim
 import app.luxion.shogunai.domain.model.DerivedDataListing
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.KeptDaemon
@@ -103,6 +104,7 @@ class MachineResourcesTest {
         var cacheMeasurements = 0
         var measureGate: CompletableDeferred<Unit>? = null
         var trims = 0
+        val derivedDataTrims = mutableListOf<Long>()
     }
 
     private fun useCases(
@@ -121,6 +123,7 @@ class MachineResourcesTest {
         pools: Map<ResourceKind, PoolUsage> = emptyMap(),
         trim: GradleTrim = GradleTrim(limit = null),
         settings: ResourceSettings = ResourceSettings(),
+        derivedDataTrim: (Long) -> DerivedDataTrim = { DerivedDataTrim(it, 0L, 0L) },
         stopDaemons: suspend (List<Long>?) -> Result<DaemonStopReport> = { pids ->
             calls.stoppedDaemons += pids
             Result.success(stopReport)
@@ -145,6 +148,7 @@ class MachineResourcesTest {
         readPool = { kind, _, _ -> pools[kind]?.let { Result.success(it) } ?: Result.failure(IllegalStateException()) },
         trimGradleDaemons = { calls.trims++; Result.success(trim) },
         resourceSettings = { settings },
+        trimDerivedData = { quota, _, _ -> calls.derivedDataTrims += quota; Result.success(derivedDataTrim(quota)) },
         stopEmulator = { _, _ -> Result.success(null) },
         stopEmulatorSerials = { _, serials -> calls.stoppedSerials += serials; Result.success(emptyList()) },
         readSimulatorStates = { _, _ -> calls.simulatorReads++; Result.success(simulators) },
@@ -709,5 +713,87 @@ class MachineResourcesTest {
 
         assertEquals(listOf("/dd/A"), calls.measured)
         assertTrue(machine.derivedData is MachineLoad.Loading)
+    }
+
+    private val gigabyte = 1_073_741_824L
+
+    private fun quotaMachine(calls: Calls, quotaGigabytes: Int?, trim: (Long) -> DerivedDataTrim = { DerivedDataTrim(it, 0L, 0L) }) = machine(
+        useCases(
+            calls,
+            derivedData = DerivedDataListing(derivedFolders, null),
+            sizes = mapOf("/dd/A" to 30 * gigabyte, "/dd/B" to 30 * gigabyte),
+            settings = ResourceSettings(derivedDataQuotaGigabytes = quotaGigabytes),
+            derivedDataTrim = trim,
+        ),
+        listOf(machineProject("main-repo", listOf(mainWorktree), MachineResource.XCODE_DERIVED_DATA)),
+    )
+
+    @Test
+    fun `the quota is applied once per measurement`() = machineTest {
+        val calls = Calls()
+        val machine = quotaMachine(calls, 50)
+
+        machine.show(MachineResource.XCODE_DERIVED_DATA)
+        runCurrent()
+        assertEquals(listOf(50 * gigabyte), calls.derivedDataTrims)
+
+        machine.reload()
+        runCurrent()
+        assertEquals(listOf(50 * gigabyte, 50 * gigabyte), calls.derivedDataTrims)
+    }
+
+    @Test
+    fun `the quota is not applied while sizes are being calculated`() = machineTest {
+        val calls = Calls().apply { measureGate = CompletableDeferred() }
+        val machine = quotaMachine(calls, 50)
+
+        machine.show(MachineResource.XCODE_DERIVED_DATA)
+        runCurrent()
+
+        assertTrue(calls.derivedDataTrims.isEmpty())
+        assertNull(machine.derivedDataUsageBytes)
+    }
+
+    @Test
+    fun `nothing is applied without a quota`() = machineTest {
+        val calls = Calls()
+        val machine = quotaMachine(calls, null)
+
+        machine.show(MachineResource.XCODE_DERIVED_DATA)
+        runCurrent()
+
+        assertTrue(calls.derivedDataTrims.isEmpty())
+        assertNull(machine.derivedDataQuotaBytes)
+    }
+
+    @Test
+    fun `released folders leave the list and are reported until dismissed`() = machineTest {
+        val calls = Calls()
+        val machine = quotaMachine(calls, 40) { quota ->
+            DerivedDataTrim(quota, 60 * gigabyte, 30 * gigabyte, released = listOf(derivedFolders[1].let { it.copy(folder = it.folder.copy(sizeBytes = 30 * gigabyte)) }))
+        }
+
+        machine.show(MachineResource.XCODE_DERIVED_DATA)
+        runCurrent()
+
+        assertEquals(listOf("/dd/A"), machine.loadedFolders().map { it.folder.path })
+        assertEquals(30 * gigabyte, machine.derivedDataUsageBytes)
+        assertEquals(1, machine.derivedDataTrimReport?.released?.size)
+        machine.dismissDerivedDataTrimReport()
+        assertNull(machine.derivedDataTrimReport)
+    }
+
+    @Test
+    fun `an exceeded quota names the worktrees in use`() = machineTest {
+        val calls = Calls()
+        val inUse = AttributedDerivedData(derivedFolders[0].folder, DerivedDataOwner.Worktree("/home/dev/projects/TASK-1"))
+        val machine = quotaMachine(calls, 10) { quota -> DerivedDataTrim(quota, 60 * gigabyte, 60 * gigabyte, inUse = listOf(inUse)) }
+
+        machine.show(MachineResource.XCODE_DERIVED_DATA)
+        runCurrent()
+
+        assertTrue(machine.derivedDataQuotaExceeded)
+        assertEquals(listOf("TASK-1"), machine.derivedDataInUse)
+        assertNull(machine.derivedDataTrimReport)
     }
 }

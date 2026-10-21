@@ -45,4 +45,5 @@ data class TerminalLaunch(
 data class DetectedTools(
     val terminals: List<TerminalId> = emptyList(),
     val editors: List<EditorId> = emptyList(),
+    val claudeDesktop: Boolean = false,
 )

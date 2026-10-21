@@ -799,6 +799,8 @@ class ProjectWorktrees(
             tools.editorFor(useCases.tools.editorOverride)?.let {
                 OpenAction(OpenKind.EDITOR, strings.openInTool(it.displayName)) { openInEditor(worktree) }
             },
+            OpenAction(OpenKind.CLAUDE_DESKTOP, strings.openInTool(strings.claudeDesktopName)) { openInClaudeDesktop(worktree) }
+                .takeIf { tools.claudeDesktopAvailable },
             OpenAction(OpenKind.FOLDER, strings.openFolder) { openFolder(worktree) },
         )
     }
@@ -807,6 +809,7 @@ class ProjectWorktrees(
         when (kind) {
             OpenKind.TERMINAL -> openInTerminal(worktree)
             OpenKind.EDITOR -> openInEditor(worktree)
+            OpenKind.CLAUDE_DESKTOP -> openInClaudeDesktop(worktree)
             OpenKind.FOLDER -> openFolder(worktree)
         }
     }
@@ -837,6 +840,11 @@ class ProjectWorktrees(
         val editor = tools.editorFor(useCases.tools.editorOverride) ?: return
         onUsed(worktree.path)
         launchTool(worktree) { useCases.tools.openInEditor(worktree.path, editor) }
+    }
+
+    fun openInClaudeDesktop(worktree: Worktree) {
+        if (!tools.claudeDesktopAvailable) return
+        launchTool(worktree) { useCases.tools.openInClaudeDesktop(worktree.path) }
     }
 
     fun openFolder(worktree: Worktree) {

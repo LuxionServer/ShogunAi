@@ -44,18 +44,26 @@ fun FrameWindowScope.AppMenuBar(
                 Item(strings.menuQuit, shortcut = shortcut(Key.Q), onClick = onQuit)
             }
         }
-        Menu(strings.menuWorktree) {
-            val actsOnSelection = hasWorktreeSelection && !isEditingText
-            onCopySelectedLaunchCommand?.let {
-                Item(strings.copyLaunchCommand, shortcut = shortcut(Key.C, shift = true), enabled = actsOnSelection, onClick = it)
+        val hasWorktreeActions = listOf(
+            onCopySelectedLaunchCommand,
+            onOpenSelectedInHerdr,
+            onDeleteSelectedWorktree,
+            onClearSelection,
+        ).any { it != null }
+        if (hasWorktreeActions) {
+            Menu(strings.menuWorktree) {
+                val actsOnSelection = hasWorktreeSelection && !isEditingText
+                onCopySelectedLaunchCommand?.let {
+                    Item(strings.copyLaunchCommand, shortcut = shortcut(Key.C, shift = true), enabled = actsOnSelection, onClick = it)
+                }
+                onOpenSelectedInHerdr?.let {
+                    Item(strings.openInHerdr, shortcut = shortcut(Key.E), enabled = actsOnSelection, onClick = it)
+                }
+                onDeleteSelectedWorktree?.let {
+                    Item(strings.deleteWorktree, shortcut = shortcut(Key.Backspace), enabled = actsOnSelection, onClick = it)
+                }
+                onClearSelection?.let { Item(strings.clearSelection, enabled = hasWorktreeSelection, onClick = it) }
             }
-            onOpenSelectedInHerdr?.let {
-                Item(strings.openInHerdr, shortcut = shortcut(Key.E), enabled = actsOnSelection, onClick = it)
-            }
-            onDeleteSelectedWorktree?.let {
-                Item(strings.deleteWorktree, shortcut = shortcut(Key.Backspace), enabled = actsOnSelection, onClick = it)
-            }
-            onClearSelection?.let { Item(strings.clearSelection, enabled = hasWorktreeSelection, onClick = it) }
         }
         Menu(strings.menuView) {
             onShowActive?.let { Item(strings.menuActive, shortcut = shortcut(Key.One), onClick = it) }

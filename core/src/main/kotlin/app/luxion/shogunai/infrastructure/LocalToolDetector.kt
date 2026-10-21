@@ -21,6 +21,7 @@ class LocalToolDetector(
     override suspend fun detect(): DetectedTools = DetectedTools(
         terminals = TerminalId.entries.filter { isTerminalAvailable(it) },
         editors = EditorId.entries.filter { isEditorAvailable(it) },
+        claudeDesktop = os == HostOs.MACOS && isMacAppInstalled(ToolCatalog.claudeDesktopApp),
     )
 
     private suspend fun isTerminalAvailable(terminal: TerminalId): Boolean = when (terminal) {

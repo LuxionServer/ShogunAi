@@ -402,6 +402,11 @@ object EnglishStrings : Strings {
         if (count == 1) "1 folder is on an unavailable volume and is kept"
         else "$count folders are on unavailable volumes and are kept"
     override fun derivedDataCompilationCache(size: String) = "Compilation cache · $size"
+    override fun derivedDataQuotaUsage(usage: String, quota: String) = "$usage of $quota quota"
+    override fun derivedDataQuotaExceeded(inUse: List<String>) =
+        "Over the quota" + if (inUse.isEmpty()) "" else "; kept because they are in use: ${inUse.joinToString(", ")}"
+    override fun derivedDataReleased(count: Int, freed: String) =
+        "Released $count ${if (count == 1) "folder" else "folders"} to honour the quota, freeing $freed"
     override fun derivedDataDeleted(count: Int, freed: String) =
         if (count == 1) "1 DerivedData folder deleted · $freed freed" else "$count DerivedData folders deleted · $freed freed"
     override val machineTitle = "Machine"
@@ -426,6 +431,10 @@ object EnglishStrings : Strings {
     }
     override val noLimit = "No limit"
     override val invalidLimit = "Must be a positive number, or no limit"
+    override val derivedDataQuotaLabel = "DerivedData quota"
+    override val noQuota = "No quota"
+    override val gigabytesUnit = "GB"
+    override val invalidQuota = "Must be a positive whole number, or no quota"
     override val notAcquired = "Not acquired"
     override fun poolUsage(inUse: Int, limit: Int?, profile: String) =
         (if (limit == null) "$inUse in use" else "$inUse of $limit in use") + " · $profile"
@@ -507,6 +516,7 @@ object EnglishStrings : Strings {
     override val noTerminalFound = "No supported terminal found"
     override val noEditorFound = "No supported IDE found"
     override fun openInTool(name: String) = "Open in $name"
+    override val claudeDesktopName = "Claude Desktop"
     override val openFolder = "Open folder"
     override val chooseTerminalTitle = "Choose a terminal"
     override val chooseTerminalMessage = "Worktrees will open in the terminal you choose. You can change it later in Preferences."

@@ -12,7 +12,7 @@ That direction is built in three layers:
 |---|---|---|
 | **Engine and CLI** | The foundation | Worktree provisioning defined in the repository (`.shogunai.json`) and a `shogun` command that the desktop app, agents and their hooks all use, including a per-worktree environment (reserved ports and variables) delivered to each agent's shell, and JSON output on every command for scripts. **Available.** |
 | **Control tower** | The view | The desktop app shows the state of every worktree, including the ones created by other tools, keeps them clean and follows changes as they happen. It opens each one in the terminal, the IDE or Herdr with the project's agents, and stays one click away in the menu bar. **Available.** |
-| **Platforms** | The content | Providers for the stacks where a worktree is hardest to prepare, starting with Android, KMP, iOS and JVM: Gradle, local secrets, emulators, simulators and IDEs. **Started**: Gradle repositories show their daemons, can stop the idle ones and bound the memory and lifetime of the daemons agents start, Android repositories can give each worktree its own emulator, KMP and iOS repositories its own iOS simulator, both acquired on demand within limits that follow a machine capacity profile, and Xcode repositories see and clean up their DerivedData and share compilations between worktrees. |
+| **Platforms** | The content | Providers for the stacks where a worktree is hardest to prepare, starting with Android, KMP, iOS and JVM: Gradle, local secrets, emulators, simulators and IDEs. **Started**: Gradle repositories show their daemons, can stop the idle ones and bound the memory and lifetime of the daemons agents start, Android repositories can give each worktree its own emulator, KMP and iOS repositories its own iOS simulator, both acquired on demand within limits that follow a machine capacity profile, and Xcode repositories see and clean up their DerivedData, keep it within a disk quota and share compilations between worktrees. |
 
 It plugs into the tools that run agents rather than replacing them: Claude Code's worktree and session hooks, and [Herdr](https://herdr.dev), the terminal multiplexer for agents, whose worktrees a ShogunAi plugin provisions and where the desktop app opens a worktree with its environment and agent and shows what each agent is doing. **Available.**
 
@@ -20,15 +20,11 @@ It plugs into the tools that run agents rather than replacing them: Claude Code'
 
 Numbered in the order they will be picked up: the number is the priority.
 
-### 1. A disk quota for Xcode DerivedData
+### 1. Platforms and IDEs beyond Android
 
-DerivedData is the one resource of the machine's pools that is limited by disk instead of by count. A quota in Preferences, applied by reusing the resource pool model (release the least recently used folders of worktrees that are not in use when the quota is exceeded), would keep it from growing without bound.
+The project grew around Android. This item reviews the coverage of the other stacks (iOS and Xcode, JVM backends) and of the IDEs a worktree can be opened in. It starts with an exploration to decide what's missing before it's split into changes. It also covers "Open in Claude Desktop" beyond macOS: whether its `claude://code/new?folder=` link accepts a folder on Windows is unverified.
 
-### 2. Platforms and IDEs beyond Android
-
-The project grew around Android. This item reviews the coverage of the other stacks (iOS and Xcode, JVM backends) and of the IDEs a worktree can be opened in. It starts with an exploration to decide what's missing before it's split into changes.
-
-### 3. Follow-ups of the 2026-10-19 changes
+### 2. Follow-ups of the 2026-10-19 changes
 
 The review of the whole project on 2026-10-19 and the changes built after it are archived. These follow-ups were left out of them:
 
@@ -38,15 +34,16 @@ The review of the whole project on 2026-10-19 and the changes built after it are
 - Build provenance attestations for release assets, and treating compiler warnings as errors now that the build is clean.
 - More terminals for "Open in terminal" (Ghostty, Warp, Alacritty, Kitty, GNOME Terminal), each as one more adapter.
 - Faster DerivedData sizes: measuring several folders in parallel and remembering sizes between app runs.
+- An automatic DerivedData quota derived from the free space on the disk, as the Automatic capacity profile does with memory, instead of no quota by default.
 - A notification when an agent (reported by Herdr or by Claude Code's hooks) becomes blocked or done; today the worktree's row and the menu bar icon's menu are the signal.
 - Agent states for agents other than Claude Code (Codex, Gemini…), which have no equivalent hooks today.
 - Finding the root cause of the errors that closed the Preferences window, from the entries the isolation now leaves in the diagnostics log, and of the native crash seen on another machine that left an empty diagnostic report.
 
-### 4. Guided onboarding demo
+### 3. Guided onboarding demo
 
 A first-run walkthrough built on the review done before merging the worktree layer: the app creates a throwaway sample repository with worktrees in every state, and opens an agent with a prepared prompt that walks the user through each feature (status, cleanup, provisioning, the CLI, hooks, environment and providers), one step at a time.
 
-### 5. Android, KMP and JVM provisioning
+### 4. Android, KMP and JVM provisioning
 
 Provisioning for the stacks where a fresh worktree is furthest from building:
 

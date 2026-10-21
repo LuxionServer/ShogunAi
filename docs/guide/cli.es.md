@@ -264,13 +264,16 @@ shogun pool trim [--json]
 ```text
 shogun xcode
 shogun xcode clean
+shogun xcode trim [--dry-run]
 ```
 
 `xcode` lista las carpetas de DerivedData de los worktrees del repositorio con su tamaño, las carpetas huérfanas de la máquina (`orphans: N (tamaño)`) y, cuando se declara la caché de compilación, su tamaño. `xcode clean` borra las carpetas huérfanas (`deleted <path>`, `freed <tamaño>`, o `Nothing to delete.`). Sin el provider de Xcode, o fuera de macOS, dice que el provider no está activo y sale con `0`.
 
+`xcode trim` aplica la cuota de DerivedData fijada en Preferencias > Recursos: cuando las carpetas suman más que la cuota, libera primero las carpetas huérfanas y después las de los worktrees de tus proyectos guardados que no están en uso, de la menos a la más recientemente accedida, y se detiene en cuanto el total cabe (`released <path>  <tamaño>`, `freed <tamaño>`, `usage <tamaño> of <cuota>`). Un worktree está en uso mientras su agente trabaja o está bloqueado, o su carpeta se accedió hace menos de una hora, y nunca se liberan las carpetas de otros proyectos, de volúmenes no disponibles ni la caché de compilación; si solo quedan esas, imprime `quota still exceeded` y los worktrees en uso. `--dry-run` imprime `would release` y `would free` sin borrar. Sin cuota lo dice y no borra nada.
+
 ## Salida JSON
 
-Además de `status --json`, todos los comandos que informan de un resultado aceptan `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `pool status`, `pool trim`, `xcode`, `xcode clean`, `emulator`, `simulator` y `hooks` (no `simulator gradle-init`, `env`, `hook`, `help` ni `--version`; en ellos es una opción desconocida y sale con `2`). La opción puede ir en cualquier posición tras el comando.
+Además de `status --json`, todos los comandos que informan de un resultado aceptan `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `pool status`, `pool trim`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator` y `hooks` (no `simulator gradle-init`, `env`, `hook`, `help` ni `--version`; en ellos es una opción desconocida y sale con `2`). La opción puede ir en cualquier posición tras el comando.
 
 Las reglas son las mismas para todos:
 
@@ -295,6 +298,7 @@ Las reglas son las mismas para todos:
 | `gradle stop` | `stopped` (pids), `kept`: `{ pid, kind, reason }` con `reason` `busy`, `state-unknown` o `build-running`, `notDaemons` (pids) y `failures`: `{ pid, message }`. El código de salida es `1` si alguna de las dos últimas no está vacía. |
 | `xcode` | `active` (`false` si el provider no está activo, con el resto vacío), `folders`: `{ path, sizeBytes, worktree }`, `orphans`: `{ path, sizeBytes }`, `unavailableVolumeFolders` (un número) y `compilationCacheBytes` (`null` salvo que esté declarada). |
 | `xcode clean` | `active`, `deleted` (rutas), `freedBytes` y `failures`: `{ path, message }`. |
+| `xcode trim` | `active`, `quotaBytes` (`null` sin cuota), `dryRun`, `usageBeforeBytes`, `usageAfterBytes`, `exceeded`, `released` (rutas; con `--dry-run`, las que se liberarían), `freedBytes`, `inUse` (rutas de worktrees) y `failures`: `{ path, message }`. |
 | `emulator start\|stop\|status` | `worktree`, `serial` y `state` (`running`, `booting` o `stopped`). `serial` y `state` son `null` si el worktree aún no tiene puerto de emulador reservado. |
 | `simulator start\|stop\|status` | `worktree`, `udid`, `name` y `state` (`shutdown`, `booting` o `booted`), `null` si el worktree aún no tiene simulador. El aviso sobre los tests KMP no forma parte. |
 

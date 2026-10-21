@@ -23,6 +23,8 @@ internal object ToolCatalog {
         EditorId.XCODE to MacApp(listOf("com.apple.dt.Xcode"), listOf("Xcode.app")),
     )
 
+    val claudeDesktopApp = MacApp(listOf("com.anthropic.claudefordesktop"), listOf("Claude.app"))
+
     val applicationFolders = listOf("/Applications", "/System/Applications", "~/Applications")
 
     fun editorExecutable(editor: EditorId, os: HostOs): String? {

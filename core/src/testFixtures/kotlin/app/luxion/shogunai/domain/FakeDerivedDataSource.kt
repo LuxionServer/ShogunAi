@@ -17,10 +17,15 @@ class FakeDerivedDataSource(
     val deleted = mutableListOf<String>()
     val measured = mutableListOf<String>()
     var beforeDelete: () -> Unit = {}
+    var onFolders: (Int) -> Unit = {}
+    private var folderCalls = 0
 
     override fun isSupported(): Boolean = supported
 
-    override suspend fun folders(): List<DerivedDataFolder> = existing
+    override suspend fun folders(): List<DerivedDataFolder> {
+        onFolders(++folderCalls)
+        return existing
+    }
 
     override suspend fun size(folder: DerivedDataFolder): Long {
         measured += folder.path

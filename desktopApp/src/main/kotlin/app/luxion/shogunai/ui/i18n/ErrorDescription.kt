@@ -61,6 +61,7 @@ private fun technicalDetailsOf(error: Throwable): TechnicalDetails? = when (erro
     is WorktreeError.HerdrCommandFailed -> TechnicalDetails(error.command, null, error.detail)
     is WorktreeError.TerminalLaunchFailed -> TechnicalDetails(null, null, error.detail)
     is WorktreeError.EditorLaunchFailed -> TechnicalDetails(null, null, error.detail)
+    is WorktreeError.ClaudeDesktopLaunchFailed -> TechnicalDetails(null, null, error.detail)
     is WorktreeError.FolderOpenFailed -> TechnicalDetails(null, null, error.detail)
     is WorktreeError.PostCreateCommandFailed -> TechnicalDetails(error.command, error.exitCode, error.errorOutput)
     is WorktreeError.InvalidRepositoryConfig -> error.detail?.let { TechnicalDetails(null, null, it) }

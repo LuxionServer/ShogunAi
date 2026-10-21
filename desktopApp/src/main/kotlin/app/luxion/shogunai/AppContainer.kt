@@ -11,7 +11,12 @@ import app.luxion.shogunai.domain.usecase.DeviceStart
 import app.luxion.shogunai.domain.usecase.GradleTrim
 import app.luxion.shogunai.domain.usecase.ReadResourcePoolUseCase
 import app.luxion.shogunai.domain.usecase.ResolveResourceLimitsUseCase
+import app.luxion.shogunai.domain.usecase.TrimDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.TrimGradleDaemonsUseCase
+import app.luxion.shogunai.domain.usecase.AgentSearch
+import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.DerivedDataTrim
+import app.luxion.shogunai.ui.machine.MachineProject
 import app.luxion.shogunai.infrastructure.JsonResourceLimitsRepository
 import app.luxion.shogunai.infrastructure.JvmMachineCapacity
 import app.luxion.shogunai.ui.shell.ResourcePreferences
@@ -45,6 +50,7 @@ import app.luxion.shogunai.infrastructure.CommandEditorLauncher
 import app.luxion.shogunai.infrastructure.JsonToolPreferenceRepository
 import app.luxion.shogunai.infrastructure.LocalToolDetector
 import app.luxion.shogunai.infrastructure.MacTerminalLauncher
+import app.luxion.shogunai.infrastructure.MacClaudeDesktopLauncher
 import app.luxion.shogunai.infrastructure.SystemFolderLauncher
 import app.luxion.shogunai.infrastructure.TmuxTerminalLauncher
 import app.luxion.shogunai.infrastructure.WindowsTerminalLauncher
@@ -227,6 +233,7 @@ class AppContainer {
     )
     private val editorLaunchers = EditorId.entries.map { CommandEditorLauncher(it, shellCommandExecutor) }
     private val folderLauncher = SystemFolderLauncher(shellCommandExecutor)
+    private val claudeDesktopLauncher = MacClaudeDesktopLauncher(shellCommandExecutor)
     private val environmentCache = WorktreeEnvironmentCache()
     private val resolveEnvironment = resolverWith(contributions)
     private val stopSimulator = StopWorktreeSimulatorUseCase(repositoryProvisioningSource, appleSimulators, resolveEnvironment)
@@ -296,7 +303,7 @@ class AppContainer {
         { requested -> contributions.requesting(requested) },
     )
     private val trimGradleDaemons = TrimGradleDaemonsUseCase(listGradleDaemons, stopGradleDaemons, resolveResourceLimits)
-    val resources = ResourcePreferences(resourceLimitsRepository, resolveResourceLimits, showsSimulators = appleSimulators.isSupported())
+    val resources = ResourcePreferences(resourceLimitsRepository, resolveResourceLimits, showsSimulators = appleSimulators.isSupported(), showsDerivedDataQuota = derivedDataSource.isSupported())
     private val startSimulator = StartWorktreeSimulatorUseCase(repositoryProvisioningSource, appleSimulators, acquireResource, resolveEnvironment)
     private val startEmulator = StartWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, acquireResource, androidSdk)
     private val stopEmulator = StopWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)
@@ -343,6 +350,20 @@ class AppContainer {
         stopSimulator = { config, worktreePath -> stopSimulator(config, worktreePath) },
         readSimulatorOrphans = { config -> deleteSimulators.orphans(config) },
         deleteSimulators = { udids -> deleteSimulators(udids) },
+        trimDerivedData = { quotaBytes, declaring, listing ->
+            runCatching {
+                val searches = declaring.map { machineProject ->
+                    AgentSearch(
+                        machineProject.project.config.agents.map { it.agentCommand },
+                        machineProject.worktrees.orEmpty().filterNot { it.isPrunable },
+                    )
+                }
+                val worktrees = searches.flatMap { it.worktrees }
+                val agents = detectRunningAgents(searches).getOrNull().orEmpty()
+                val active = agents.filterValues { running -> running.any { it.state == AgentState.WORKING || it.state == AgentState.BLOCKED } }.keys
+                TrimDerivedDataUseCase(derivedDataSource, ListDerivedDataUseCase(derivedDataSource))(quotaBytes, worktrees, active, measured = listing).getOrThrow()
+            }
+        },
     )
 
     val pathExists: (String) -> Boolean = fileManager::exists
@@ -415,6 +436,7 @@ class AppContainer {
             openInTerminal = OpenWorktreeInTerminalUseCase(config, terminalLaunchers, resolveEnvironment)::invoke,
             openInEditor = { path, editor -> editorLaunchers.first { it.editor == editor }.open(path) },
             openFolder = folderLauncher::open,
+            openInClaudeDesktop = claudeDesktopLauncher::open,
         ),
         provisioning = ProvisioningUseCases(
             check = CheckProvisionedFilesUseCase(config, shellCommandExecutor, fileManager, repositoryProvisioningSource)::invoke,
@@ -574,6 +596,8 @@ class MachineUseCases(
     val stopSimulator: suspend (ProjectConfig, String) -> Result<WorktreeSimulator?>,
     val readSimulatorOrphans: suspend (ProjectConfig) -> Result<List<SimulatorDevice>>,
     val deleteSimulators: suspend (List<String>) -> Result<List<String>>,
+    val trimDerivedData: suspend (Long, List<MachineProject>, DerivedDataListing) -> Result<DerivedDataTrim> =
+        { quotaBytes, _, _ -> Result.success(DerivedDataTrim(quotaBytes, 0L, 0L)) },
 )
 
 data class SimulatorUseCases(
@@ -602,6 +626,8 @@ data class ToolUseCases(
     val openInTerminal: suspend (path: String, terminal: TerminalId, agent: AgentLaunchConfig) -> Result<Unit>,
     val openInEditor: suspend (path: String, editor: EditorId) -> Result<Unit>,
     val openFolder: suspend (path: String) -> Result<Unit>,
+    val openInClaudeDesktop: suspend (path: String) -> Result<Unit> =
+        { Result.failure(WorktreeError.ClaudeDesktopLaunchFailed("no launcher")) },
 ) {
     companion object {
         val NONE = ToolUseCases(

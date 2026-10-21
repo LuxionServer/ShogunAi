@@ -21,6 +21,10 @@ interface FolderLauncher {
     suspend fun open(path: String): Result<Unit>
 }
 
+interface ClaudeDesktopLauncher {
+    suspend fun open(path: String): Result<Unit>
+}
+
 interface ToolDetector {
     suspend fun detect(): DetectedTools
 }

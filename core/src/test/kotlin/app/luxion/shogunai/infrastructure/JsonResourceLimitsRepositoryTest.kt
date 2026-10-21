@@ -46,4 +46,19 @@ class JsonResourceLimitsRepositoryTest {
         repository.save(settings)
         assertEquals(settings, JsonResourceLimitsRepository(JsonSettingsFile(storagePath)).load())
     }
+
+    @Test
+    fun `no quota is the default`() {
+        assertEquals(null, repository.load().derivedDataQuotaGigabytes)
+        storagePath.writeText("""{"resources":{"profile":"LIGHT"}}""")
+        assertEquals(null, repository.load().derivedDataQuotaGigabytes)
+    }
+
+    @Test
+    fun `a saved quota is read back`() {
+        repository.save(ResourceSettings(derivedDataQuotaGigabytes = 40))
+        val loaded = JsonResourceLimitsRepository(JsonSettingsFile(storagePath)).load()
+        assertEquals(40, loaded.derivedDataQuotaGigabytes)
+        assertEquals(40L * 1024 * 1024 * 1024, loaded.derivedDataQuotaBytes)
+    }
 }

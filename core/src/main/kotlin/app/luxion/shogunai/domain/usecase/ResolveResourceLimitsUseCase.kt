@@ -2,6 +2,7 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.io.MachineCapacity
 import app.luxion.shogunai.domain.io.ResourceLimitsRepository
+import app.luxion.shogunai.domain.model.BYTES_PER_GIGABYTE
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.ResourceLimits
 import app.luxion.shogunai.domain.model.ResourceSettings
@@ -32,7 +33,6 @@ class ResolveResourceLimitsUseCase(
     }
 
     private companion object {
-        const val BYTES_PER_GIGABYTE = 1024L * 1024 * 1024
         const val DEVICE_MEMORY_RESERVE_GB = 8
         const val MEMORY_PER_UNIT_GB = 8
         const val CORES_PER_DEVICE = 4

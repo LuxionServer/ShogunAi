@@ -36,6 +36,17 @@ fun XcodeDerivedDataView(machine: MachineResources, onOpenWorktree: (String, Str
             MachineLoad.Unavailable -> MachineSecondaryText(strings.xcodeDerivedDataUnavailable)
             is MachineLoad.Loaded -> LoadedDerivedData(state.value, machine, onOpenWorktree) { confirmingDelete = true }
         }
+        machine.derivedDataTrimReport?.let { report ->
+            Notice(
+                kind = NoticeKind.SUCCESS,
+                message = strings.derivedDataReleased(report.released.size, formatSize(report.bytesFreed)),
+                onDismiss = machine::dismissDerivedDataTrimReport,
+            )
+            report.released.forEach { entry ->
+                val worktree = (entry.owner as? app.luxion.shogunai.domain.model.DerivedDataOwner.Worktree)?.path?.substringAfterLast('/')
+                MachineDataText(listOfNotNull(entry.folder.workspacePath.substringAfterLast('/'), worktree).joinToString(" · "))
+            }
+        }
         machine.derivedDataDeletionReport?.let { report ->
             Notice(
                 kind = NoticeKind.SUCCESS,
@@ -72,6 +83,13 @@ private fun LoadedDerivedData(
     if (folders.isEmpty()) MachineSecondaryText(strings.noDerivedData)
     if (folders.isNotEmpty()) {
         MachineDataText(strings.derivedDataSummary(folders.size, sizeText(totalSize(folders.map { it.folder.sizeBytes }))))
+    }
+    val quota = machine.derivedDataQuotaBytes
+    if (quota != null) {
+        MachineDataText(strings.derivedDataQuotaUsage(sizeText(machine.derivedDataUsageBytes), formatSize(quota)))
+        if (machine.derivedDataQuotaExceeded) {
+            MachineDataText(strings.derivedDataQuotaExceeded(machine.derivedDataInUse))
+        }
     }
     owned.forEach { entry ->
         HorizontalDivider()
