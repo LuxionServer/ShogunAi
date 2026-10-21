@@ -1,6 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
-import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
@@ -53,7 +53,7 @@ fun worktreeActivity(worktree: Worktree, status: WorktreeStatus?, agents: List<R
 }
 
 val RunningAgent.waitsForUser: Boolean
-    get() = herdrState == HerdrAgentState.BLOCKED || herdrState == HerdrAgentState.DONE
+    get() = state == AgentState.BLOCKED || state == AgentState.DONE
 
 private fun hasUnpushedCommits(status: WorktreeStatus): Boolean =
     if (status.upstream != null) {

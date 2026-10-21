@@ -2,7 +2,11 @@ package app.luxion.shogunai.ui.i18n
 
 import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.ProvisionDriftState
-import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.usecase.HookEntry
+import app.luxion.shogunai.domain.usecase.HookReplacement
+import app.luxion.shogunai.domain.usecase.HooksInstallState
+import app.luxion.shogunai.ui.shell.HooksAction
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
 object EnglishStrings : Strings {
@@ -182,12 +186,36 @@ object EnglishStrings : Strings {
     override val seeAllWorktrees = "See all worktrees"
     override val menuActive = "Show Active"
     override val menuAllWorktrees = "Show All worktrees"
-    override fun agentLabel(name: String, state: HerdrAgentState?) = when (state) {
+    override val claudeCodeLabel = "Claude Code"
+    override fun claudeHooksStatus(state: HooksInstallState) = when (state) {
+        HooksInstallState.INSTALLED -> "ShogunAi's hooks are installed"
+        HooksInstallState.OUTDATED -> "ShogunAi's hooks are out of date"
+        HooksInstallState.MISSING -> "ShogunAi's hooks aren't installed"
+    }
+    override val claudeHooksInstall = "Install"
+    override val claudeHooksUpdate = "Update"
+    override val claudeHooksRemove = "Remove"
+    override val claudeHooksCancel = "Cancel"
+    override val claudeHooksConfirm = "Apply"
+    override val claudeHooksPathWarning = "shogun isn't on your PATH, so Claude Code won't find the hooks. Install the command line tool first."
+    override fun claudeHooksDialogTitle(action: HooksAction) = when (action) {
+        HooksAction.INSTALL -> "Install the hooks"
+        HooksAction.UPDATE -> "Update the hooks"
+        HooksAction.REMOVE -> "Remove the hooks"
+    }
+    override fun claudeHooksChangesIn(path: String) = "Changes to $path:"
+    override fun claudeHooksAdded(entry: HookEntry) = "Add to ${entry.event}: ${entry.command}"
+    override fun claudeHooksReplaced(replacement: HookReplacement) =
+        "Replace in ${replacement.event}: ${replacement.from.joinToString()} with ${replacement.to}"
+    override fun claudeHooksRemoved(entry: HookEntry) = "Remove from ${entry.event}: ${entry.command}"
+    override val claudeHooksNoticeMessage = "Claude is running without a known state. Install ShogunAi's Claude Code hooks to see when it needs you."
+    override val claudeHooksNoticeDismiss = "Dismiss"
+    override fun agentLabel(name: String, state: AgentState?) = when (state) {
         null -> name
-        HerdrAgentState.WORKING -> "$name · working"
-        HerdrAgentState.BLOCKED -> "$name · blocked"
-        HerdrAgentState.DONE -> "$name · done"
-        HerdrAgentState.IDLE -> "$name · idle"
+        AgentState.WORKING -> "$name · working"
+        AgentState.BLOCKED -> "$name · blocked"
+        AgentState.DONE -> "$name · done"
+        AgentState.IDLE -> "$name · idle"
     }
     override fun agentsRunning(names: List<String>) = "Agents running: ${names.joinToString(", ")}"
     override val allProjects = "All projects"

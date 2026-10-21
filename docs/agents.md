@@ -43,23 +43,24 @@ After that the hooks run them, until the repository's commands change; then you 
 
 ## Claude Code
 
-Claude Code's `WorktreeCreate` hook **replaces** its own worktree creation for `claude --worktree`, `EnterWorktree`, subagents with `isolation: "worktree"` and background sessions. Point it at `shogun`, together with `WorktreeRemove` so cleanup goes through ShogunAi too. In the repository's `.claude/settings.json` (shared with the team) or your `~/.claude/settings.json` (every repository):
+Claude Code's `WorktreeCreate` hook **replaces** its own worktree creation for `claude --worktree`, `EnterWorktree`, subagents with `isolation: "worktree"` and background sessions. One command points it at `shogun`, together with `WorktreeRemove` so cleanup goes through ShogunAi too, and with the hooks that report the agent's state ([below](#agent-states-outside-herdr)):
 
-```json
-{
-  "hooks": {
-    "WorktreeCreate": [
-      { "hooks": [{ "type": "command", "command": "shogun hook worktree-create" }] }
-    ],
-    "WorktreeRemove": [
-      { "hooks": [{ "type": "command", "command": "shogun hook worktree-remove" }] }
-    ],
-    "SessionStart": [
-      { "hooks": [{ "type": "command", "command": "shogun hook session-start" }] }
-    ]
-  }
-}
+```bash
+shogun hooks install
 ```
+
+It shows what it will add to your `~/.claude/settings.json` and asks before writing; `--yes` skips the question. Your other settings and hooks are kept, running it again changes nothing, and after upgrading ShogunAi it adds or replaces only the hooks that changed. `shogun hooks install --project` writes the repository's `.claude/settings.json` instead (shared with the team), `shogun hooks status` says whether they are installed, outdated or missing, and `shogun hooks uninstall` removes them. The desktop app does the same from Settings › Claude Code, with "Install", "Update" and "Remove", and suggests it once when it finds a Claude agent without a known state. `CLAUDE_CONFIG_DIR` is honored. A settings file that isn't valid JSON is never overwritten.
+
+The hooks it installs, each one a `command` hook:
+
+| Event | Command |
+|---|---|
+| `WorktreeCreate` | `shogun hook worktree-create` |
+| `WorktreeRemove` | `shogun hook worktree-remove` |
+| `SessionStart` | `shogun hook session-start` |
+| `UserPromptSubmit`, `Notification`, `Stop`, `SessionEnd` | `shogun hook agent-state` |
+
+The hooks run `shogun`, so it must be on the `PATH` of the shell you run Claude Code from.
 
 What happens then:
 
@@ -71,7 +72,17 @@ What happens then:
 
 Claude Code only runs a repository's project hooks once you've trusted its folder. If the hooks live in the repository's `.claude/settings.json` and you've never run `claude` there, `claude -w` stops with "Workspace trust not yet accepted": run `claude` once in the repository, accept the trust dialog, and retry. Hooks in `~/.claude/settings.json` don't need this for repositories you already trust.
 
-The new worktree starts from the HEAD of the worktree Claude Code runs in (the main checkout's current commit when you start there), like `shogun new`, and Claude Code's `worktree.baseRef` setting doesn't apply. Checked with Claude Code 2.1.301.
+The new worktree starts from the HEAD of the worktree Claude Code runs in (the main checkout's current commit when you start there), like `shogun new`, and Claude Code's `worktree.baseRef` setting doesn't apply. Checked with Claude Code 2.1.306.
+
+### Agent states outside Herdr
+
+The `agent-state` hooks record whether each Claude session is working (`UserPromptSubmit`), blocked (`Notification`, for example a permission prompt), done (`Stop`, or a `Notification` saying the prompt has been idle) or over (`SessionEnd`). The desktop app and `shogun status` show that state for Claude agents without Herdr, and a blocked or done agent puts its worktree under "Needs you".
+
+- Each session is a small file in the worktree's own Git folder (`<git-dir>/shogunai/agent-sessions/`), so it never shows up as a change, isn't copied to other worktrees and goes away with the worktree.
+- A record counts only while its Claude process runs; records left by a crash are ignored and deleted.
+- Granting a permission fires no hook. A blocked session whose transcript is written to afterwards reads as working, so the state follows the permission being granted.
+- When Herdr also reports the agent, Herdr's state is used.
+- Other agents (Codex, Gemini…) have no such hooks and show without a state unless Herdr reports them.
 
 ## Herdr
 
@@ -79,7 +90,7 @@ The new worktree starts from the HEAD of the worktree Claude Code runs in (the m
 
 **Recommended flow.** Create the worktree from ShogunAi (the desktop app or `shogun new`), so it lands in the project's worktrees folder, provisioned, with its ports and environment. Then use the "Open in Herdr" action of its row in the desktop app: Herdr opens it as a worktree of its repository, grouped under the repository's space like its own "Open worktree…", focused, with a single pane whose shell already has the worktree's environment (`PORT`, `ANDROID_SERIAL`, …, everything `shogun env` prints), and runs the project's agent command there, the same command "Copy command" copies. If Herdr already has that worktree open, the action only focuses it and doesn't type anything into its panes. Herdr's server must be running (`herdr`); the action calls `herdr` directly and doesn't need `shogun` on any `PATH`. From a terminal, or from an agent, `shogun open <task id> --herdr` does the same (`--agent <name>` picks another of the project's agents).
 
-**Agent states.** While Herdr is running, the desktop app and `shogun status` show the state Herdr reports for each agent in a worktree: working, blocked (waiting for you, for example on a permission prompt), done or idle. A worktree whose agent is blocked or done is listed under "Needs you", and "Open in Herdr" focuses that agent's pane instead of only opening the workspace. Agents Herdr sees count as running even if the process list can't, so cleanup keeps their worktrees. If Herdr isn't installed or its server isn't running, agents are shown without a state and nothing reports an error; ShogunAi asks Herdr at most once every 30 seconds after a failure.
+**Agent states.** While Herdr is running (for Claude without Herdr, see [Agent states outside Herdr](#agent-states-outside-herdr)), the desktop app and `shogun status` show the state Herdr reports for each agent in a worktree: working, blocked (waiting for you, for example on a permission prompt), done or idle. A worktree whose agent is blocked or done is listed under "Needs you", and "Open in Herdr" focuses that agent's pane instead of only opening the workspace. Agents Herdr sees count as running even if the process list can't, so cleanup keeps their worktrees. If Herdr isn't installed or its server isn't running, agents are shown without a state and nothing reports an error; ShogunAi asks Herdr at most once every 30 seconds after a failure.
 
 Don't use Herdr's "New worktree" (or `herdr worktree create`) for ShogunAi projects: Herdr always places those checkouts in its own folder (`~/.herdr/worktrees/<repo>/<branch>`, or the `[worktrees] directory` of its `config.toml`), outside the project's worktrees folder, and ShogunAi lists them with the Herdr origin.
 

@@ -58,7 +58,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.RecentWorktree
 import app.luxion.shogunai.domain.usecase.Activity
 import app.luxion.shogunai.ui.i18n.EnglishStrings
@@ -326,7 +326,7 @@ class WorktreeBoardTest {
     @Test
     fun `the tray marks a worktree whose agent is blocked as needing the user`() = runTest(dispatcher) {
         agentResult = Result.success(
-            mapOf("/home/dev/projects/api-TASK-12" to listOf(RunningAgent("codex", herdrState = HerdrAgentState.BLOCKED))),
+            mapOf("/home/dev/projects/api-TASK-12" to listOf(RunningAgent("codex", state = AgentState.BLOCKED))),
         )
         val board = board()
         advanceUntilIdle()
@@ -343,7 +343,7 @@ class WorktreeBoardTest {
     @Test
     fun `the tray marks a worktree whose agent is working`() = runTest(dispatcher) {
         agentResult = Result.success(
-            mapOf("/home/dev/projects/api-TASK-12" to listOf(RunningAgent("codex", herdrState = HerdrAgentState.WORKING))),
+            mapOf("/home/dev/projects/api-TASK-12" to listOf(RunningAgent("codex", state = AgentState.WORKING))),
         )
         val board = board()
         advanceUntilIdle()

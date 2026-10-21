@@ -2,7 +2,7 @@ package app.luxion.shogunai.ui.worktree
 
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.EmulatorState
-import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.Worktree
@@ -74,10 +74,10 @@ class WorktreeRowModelTest {
     @Test
     fun `the agent chip shows the state Herdr reports with its own status`() {
         val expected = mapOf(
-            HerdrAgentState.WORKING to ("claude · working" to Status.INFO),
-            HerdrAgentState.BLOCKED to ("claude · blocked" to Status.WARNING),
-            HerdrAgentState.DONE to ("claude · done" to Status.SUCCESS),
-            HerdrAgentState.IDLE to ("claude · idle" to Status.NEUTRAL),
+            AgentState.WORKING to ("claude · working" to Status.INFO),
+            AgentState.BLOCKED to ("claude · blocked" to Status.WARNING),
+            AgentState.DONE to ("claude · done" to Status.SUCCESS),
+            AgentState.IDLE to ("claude · idle" to Status.NEUTRAL),
         )
 
         expected.forEach { (state, label) ->

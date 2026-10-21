@@ -8,7 +8,11 @@ import app.luxion.shogunai.domain.usecase.CheckForUpdateUseCase
 import app.luxion.shogunai.domain.usecase.DetectInstallChannelUseCase
 import app.luxion.shogunai.infrastructure.GitHubReleaseSource
 import app.luxion.shogunai.infrastructure.JsonUpdatePreferenceRepository
+import app.luxion.shogunai.ui.shell.ClaudeHooksState
 import app.luxion.shogunai.ui.shell.UpdateState
+import app.luxion.shogunai.domain.usecase.ClaudeCodeHooks
+import app.luxion.shogunai.infrastructure.ExecutableLocator
+import app.luxion.shogunai.infrastructure.FileAgentSessionStore
 import app.luxion.shogunai.ui.shell.openInBrowser
 import java.nio.file.Files
 import java.nio.file.Path
@@ -193,6 +197,13 @@ class AppContainer {
     val agentChoices = AgentChoices(settingsFile.read().worktreeAgents) { transform ->
         settingsFile.update { it.copy(worktreeAgents = transform(it.worktreeAgents)) }
     }
+    val claudeHooks = ClaudeHooksState(
+        hooks = ClaudeCodeHooks(fileManager),
+        settingsPath = { ClaudeCodeHooks.userSettingsPath(System.getenv("CLAUDE_CONFIG_DIR"), System.getProperty("user.home")) },
+        isShogunOnPath = { ExecutableLocator().find("shogun") != null },
+        noticeDismissedStore = { settingsFile.read().claudeHooksNoticeDismissed },
+        rememberNoticeDismissed = { settingsFile.update { it.copy(claudeHooksNoticeDismissed = true) } },
+    )
     val tools = ToolsPreferences(JsonToolPreferenceRepository(settingsFile), LocalToolDetector(shellCommandExecutor))
     private val terminalLaunchers = listOf(
         MacTerminalLauncher(TerminalId.TERMINAL, shellCommandExecutor),
@@ -265,7 +276,7 @@ class AppContainer {
             RepositoryInspection(topLevel, mainBranch?.name)
         }
 
-    val detectRunningAgents = DetectRunningAgentsUseCase(shellCommandExecutor, herdrClient)
+    val detectRunningAgents = DetectRunningAgentsUseCase(shellCommandExecutor, herdrClient, FileAgentSessionStore())
 
     private val prepareEnvironment = PrepareWorktreeEnvironmentUseCase(
         resolveEnvironment,

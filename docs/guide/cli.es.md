@@ -80,7 +80,7 @@ Lista todos los worktrees del repositorio, uno por línea: ruta, rama (o `(detac
 | `main` | El checkout principal. |
 | `origin=shogunai\|claude-code\|herdr\|other` | Dónde se creó el worktree. |
 | `locked` | Lo retiene una sesión de agente. |
-| `agents=claude(blocked),codex` | Agentes en ejecución en él, con el estado que informa Herdr (`working`, `blocked`, `done`, `idle`) cuando está en marcha. |
+| `agents=claude(blocked),codex` | Agentes en ejecución en él, con su estado (`working`, `blocked`, `done`, `idle`) cuando lo informa Herdr o, para Claude, sus [hooks](agents.md#estados-de-los-agentes-fuera-de-herdr). |
 | `changes=N` | Cambios sin commitear. |
 | `ahead=N behind=N` | Divergencia respecto a su upstream. |
 | `merged` | Mergeado en la rama principal. |
@@ -109,7 +109,7 @@ Imprime un único objeto JSON compacto en una línea, en vez de las líneas de t
       "locked": false,
       "folderMissing": false,
       "origin": null,
-      "agents": [{ "name": "claude", "herdrState": "blocked" }],
+      "agents": [{ "name": "claude", "state": "blocked", "stateSource": "claude-code", "herdrState": null }],
       "status": {
         "uncommittedChanges": 0,
         "upstream": { "ahead": 0, "behind": 0 },
@@ -128,7 +128,7 @@ Imprime un único objeto JSON compacto en una línea, en vez de las líneas de t
 | `branch`, `head` | La rama activa (`null` si está detached) y el commit. |
 | `main`, `locked`, `folderMissing` | El checkout principal, retenido por una sesión de agente, carpeta borrada a mano. |
 | `origin` | `shogunai`, `claude-code`, `herdr` u `other`; `null` para el checkout principal. |
-| `agents` | Los agentes en ejecución en él: `name` y `herdrState` (`working`, `blocked`, `done`, `idle`; `null` cuando Herdr no está en marcha o no informa de uno). |
+| `agents` | Los agentes en ejecución en él: `name`, `state` (`working`, `blocked`, `done`, `idle`; `null` cuando nada informa de uno), `stateSource` (`herdr`, `claude-code` o `null`) y `herdrState`, el estado cuando la fuente es Herdr y `null` si no. |
 | `status` | `null` cuando falta la carpeta o no se pudo leer su estado. |
 | `statusProblem` | Solo aparece cuando no se pudo leer el estado: el motivo de Git. |
 | `status.uncommittedChanges`, `status.merged` | Cambios sin commitear; mergeado en la rama principal. |
@@ -136,6 +136,22 @@ Imprime un único objeto JSON compacto en una línea, en vez de las líneas de t
 | `status.lastCommitAt` | Hora del último commit en ISO-8601 UTC, o `null`. |
 
 Todos los campos están siempre presentes, con `null` cuando no aplican. Los nombres de los campos son un contrato: las versiones futuras solo añaden campos y nunca renombran, eliminan ni cambian el tipo de uno.
+
+### `hooks`
+
+```text
+shogun hooks install   [--project] [--yes] [--json]
+shogun hooks uninstall [--project] [--yes] [--json]
+shogun hooks status    [--json]
+```
+
+Gestiona los [hooks de Claude Code](../agents.md#claude-code) de ShogunAi en el archivo de ajustes de Claude Code: `$CLAUDE_CONFIG_DIR/settings.json`, o `~/.claude/settings.json`; con `--project`, el `.claude/settings.json` del repositorio.
+
+- `install` añade los hooks `WorktreeCreate`, `WorktreeRemove`, `SessionStart`, `UserPromptSubmit`, `Notification`, `Stop` y `SessionEnd`, conservando todos los demás ajustes y hooks. Un hook es de ShogunAi cuando su comando empieza por `shogun hook `; instalar otra vez añade los que faltan, reemplaza los que difieren y nunca duplica. Imprime lo que va a añadir (`+`), reemplazar (`~`) o quitar (`-`) y pregunta `[y/N]` salvo con `--yes`; si respondes que no, no escribe nada y sale con `0`.
+- `uninstall` quita todos los hooks de ShogunAi, conserva todo lo demás y elimina un evento que se queda vacío.
+- `status` dice si los hooks están `installed`, `outdated` (nombrando los eventos que faltan o difieren) o `missing`, para los ajustes del usuario y, dentro de un repositorio, para los del repositorio.
+- Un archivo de ajustes que no sea JSON válido nunca se escribe: el comando imprime su ruta y el problema por la salida de error y sale con `1`.
+- Con `--json` no se pregunta nada: `install` y `uninstall` solo escriben con `--yes`, e imprimen `path`, `applied` y los hooks `added`, `replaced` y `removed`. `status --json` imprime `user` y `project` (`null` fuera de un repositorio), cada uno con `path`, `state` y `events`.
 
 ### `remove`
 
@@ -243,7 +259,7 @@ shogun xcode clean
 
 ## Salida JSON
 
-Además de `status --json`, todos los comandos que informan de un resultado aceptan `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `xcode`, `xcode clean`, `emulator` y `simulator` (no `simulator gradle-init`, `env`, `hook`, `help` ni `--version`; en ellos es una opción desconocida y sale con `2`). La opción puede ir en cualquier posición tras el comando.
+Además de `status --json`, todos los comandos que informan de un resultado aceptan `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `xcode`, `xcode clean`, `emulator`, `simulator` y `hooks` (no `simulator gradle-init`, `env`, `hook`, `help` ni `--version`; en ellos es una opción desconocida y sale con `2`). La opción puede ir en cualquier posición tras el comando.
 
 Las reglas son las mismas para todos:
 
@@ -259,6 +275,8 @@ Las reglas son las mismas para todos:
 | `provision --check` | `path` y `drift`: lista de `{ path, state }` con `state` `missing`, `differs` o `not-linked`. El código de salida es `3` si `drift` no está vacío. |
 | `trust` | `repository`, `commands` (listas argv), `approved` y `changed` (esta ejecución lo aprobó o revocó). Un repositorio sin comandos posteriores a la creación es `approved: true` y sin comandos. `--revoke` informa `approved: false` si había comandos. |
 | `remove` | `path`, `branch` (la del worktree, o `null` si está desacoplado), `branchDeleted` (el nombre, o `null` si se conservó o no se pidió borrar la rama), `branchKeptReason` (por qué no se borró una rama cuya eliminación se pidió, o `null`), `providers` (`emulatorsStopped` con los serial, `simulatorsStopped` con los udid y `gradleDaemonsStopped` con los pid) y `failures` (mensajes de lo que no se pudo detener, código de salida `1`). |
+| `hooks install`, `hooks uninstall` | `path`, `applied` (escrito en esta ejecución) y los hooks `added` y `removed` como `{ event, command }` más `replaced` como `{ event, from, to }`. |
+| `hooks status` | `user` y `project` (`null` fuera de un repositorio): `path`, `state` (`installed`, `outdated`, `missing`) y `events`. |
 | `repair` | `repaired`: las rutas de los worktrees re-enlazados. |
 | `open` | `path`, `branch` (o `null` si está desacoplado), `herdr` (`opened` o `focused`) y `agent` (el nombre del agente arrancado, o `null` cuando solo se enfocó el espacio de trabajo). |
 | `clean` | `dryRun`; `candidates`: `{ path, branch, reason }` con `reason` `merged` o `folder-missing`; `keptForAgents`: `{ path, agents }`; `skipped`: `{ path, reason }` (estado no disponible); `removed`; `deletedBranches`; `failures`: `{ path, message }`; y `providers`: `gradleDaemonsStopped`, `emulatorsStopped`, `simulatorsDeleted` y `derivedDataDeleted`. Sin `--yes` (`dryRun: true`) `removed`, `deletedBranches` y las listas de `providers` van vacías. |
@@ -284,6 +302,7 @@ Estos comandos están pensados para que los llamen agentes y herramientas, no pa
 | `shogun hook worktree-create` | El hook `WorktreeCreate` de Claude Code. Lee `name` y `cwd` de la entrada estándar, crea (o reutiliza) un worktree provisionado en `feature/<name>` que parte del HEAD del worktree de `cwd`, e imprime su ruta. Si falla un comando posterior a la creación, imprime igualmente la ruta como última línea y sale con 0, con el fallo en la salida de error, para que Claude Code use el worktree. Los comandos posteriores a la creación sin aprobar se omiten con una nota por la salida de error; nunca pregunta. |
 | `shogun hook worktree-remove` | El hook `WorktreeRemove` de Claude Code. Elimina el worktree de `worktree_path`, borra su rama solo si está mergeada en la rama principal del proyecto (una rama mergeada solo en su propio upstream se conserva, con una nota en la salida de error) y cierra su espacio de Herdr. |
 | `shogun hook session-start` | El hook `SessionStart` de Claude Code. Añade el entorno del worktree a `CLAUDE_ENV_FILE` y le dice a Claude qué valores usa. |
+| `shogun hook agent-state` | Los hooks `UserPromptSubmit`, `Notification`, `Stop` y `SessionEnd` de Claude Code. Lee el JSON del hook por la entrada estándar y registra el estado de la sesión (trabajando, bloqueada, terminada) para el worktree que contiene `cwd`, o borra el registro en `SessionEnd`; una `Notification` de tipo `idle_prompt` significa terminada y `auth_success` se ignora. No imprime nada, nunca bloquea la sesión y sale con 0 también fuera de un repositorio; una entrada que no es JSON sale con 2. Ver [Estados de los agentes fuera de Herdr](agents.md#estados-de-los-agentes-fuera-de-herdr). |
 | `shogun hook herdr` | El plugin de ShogunAi para Herdr, en `worktree.created` (provisiona el worktree, omitiendo con una nota los comandos posteriores a la creación sin aprobar) y `worktree.removed` (borra su rama si está mergeada en la rama principal del proyecto). Lee `HERDR_PLUGIN_EVENT`, `HERDR_PLUGIN_EVENT_JSON` y `HERDR_BIN_PATH`. |
 
 ## Ayuda y versión

@@ -29,7 +29,7 @@ import app.luxion.shogunai.ui.i18n.strings
 import app.luxion.shogunai.ui.isMacOs
 import app.luxion.shogunai.ui.tray.TrayPreferences
 
-private val PreferencesWindowSize = DpSize(440.dp, 700.dp)
+private val PreferencesWindowSize = DpSize(440.dp, 820.dp)
 
 fun ThemeMode.label(strings: Strings): String = when (this) {
     ThemeMode.LIGHT -> strings.themeLight
@@ -41,6 +41,7 @@ fun ThemeMode.label(strings: Strings): String = when (this) {
 fun PreferencesWindow(
     appearance: Appearance,
     tools: ToolsPreferences,
+    claudeHooks: ClaudeHooksState,
     updates: UpdateState,
     tray: TrayPreferences,
     bringToFrontRequests: Int,
@@ -55,14 +56,15 @@ fun PreferencesWindow(
     ) {
         LaunchedEffect(bringToFrontRequests) { window.toFront() }
         LaunchedEffect(Unit) { tools.refresh() }
+        LaunchedEffect(Unit) { claudeHooks.refresh() }
         AppearanceScope(appearance) {
-            PreferencesContent(appearance, tools, updates, tray)
+            PreferencesContent(appearance, tools, claudeHooks, updates, tray)
         }
     }
 }
 
 @Composable
-private fun PreferencesContent(appearance: Appearance, tools: ToolsPreferences, updates: UpdateState, tray: TrayPreferences) {
+private fun PreferencesContent(appearance: Appearance, tools: ToolsPreferences, claudeHooks: ClaudeHooksState, updates: UpdateState, tray: TrayPreferences) {
     val strings = LocalStrings.current
     Column(
         modifier = Modifier.fillMaxWidth().padding(Spacing.lg),
@@ -89,6 +91,7 @@ private fun PreferencesContent(appearance: Appearance, tools: ToolsPreferences, 
             modifier = Modifier.fillMaxWidth(),
         )
         ToolsSection(tools)
+        ClaudeHooksSection(claudeHooks)
         if (tray.isSupported) TraySection(tray)
         UpdatesPreferences(updates)
     }

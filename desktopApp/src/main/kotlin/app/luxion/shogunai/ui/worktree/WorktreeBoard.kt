@@ -171,6 +171,11 @@ class WorktreeBoard(
 
     fun activeCountOf(projectId: String): Int = holder(projectId)?.let(::activeCountOf) ?: 0
 
+    val hasClaudeWithoutState: Boolean
+        get() = entries.values.any { entry ->
+            entry.holder.agents.orEmpty().values.flatten().any { it.name == "claude" && it.stateSource == null }
+        }
+
     fun agentNamesOf(projectId: String): List<String> =
         holder(projectId)?.agents.orEmpty().values.flatten().map { it.name }.distinct()
 

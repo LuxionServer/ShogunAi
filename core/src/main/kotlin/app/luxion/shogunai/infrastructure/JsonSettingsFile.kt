@@ -96,6 +96,7 @@ class JsonSettingsFile(
         val checkForUpdates: Boolean = true,
         val skippedVersion: String? = null,
         val worktreeAgents: Map<String, String> = emptyMap(),
+        val claudeHooksNoticeDismissed: Boolean = false,
     )
 
     @Serializable

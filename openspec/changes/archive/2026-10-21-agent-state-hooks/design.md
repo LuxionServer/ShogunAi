@@ -4,7 +4,7 @@
 
 `DetectRunningAgentsUseCase` merges two sources: the process list (`lsof` working directories plus `ps` executables), which gives agents without a state, and Herdr's API, which gives `HerdrAgentState`. `worktree-states-redesign` makes "Needs you" depend on an agent being blocked or done, so agents outside Herdr can never reach it. The CLI already handles three Claude Code hooks (`hook worktree-create`, `worktree-remove`, `session-start`) that read the hook's JSON from standard input; users configure them by copying JSON from `docs/agents.md`.
 
-Checked on this machine: `shogun` is a native executable that starts in about 0.13 s, and Claude Code is 2.1.305.
+Checked on this machine: `shogun` is a native executable that starts in about 0.13 s, and Claude Code is 2.1.306.
 
 ## Goals / Non-Goals
 
@@ -31,7 +31,7 @@ Checked on this machine: `shogun` is a native executable that starts in about 0.
 
 `PreToolUse` and `PostToolUse` would track a granted permission exactly, but they run on every tool call and each one would start `shogun`. Instead, the record keeps the session's `transcript_path`, and a blocked or done record reads as working when the transcript's modification time is later than the record's: after a permission is granted Claude writes the tool's result to the transcript. A done session isn't written to until the next prompt, which fires `UserPromptSubmit` anyway.
 
-The `notification_type` field and its values are checked against Claude Code 2.1.305 when implementing (task 1.1); if the field is missing, every notification means blocked.
+The `notification_type` field is read from the `Notification` input: `idle_prompt` means done, `auth_success` is ignored (nothing is waiting), and any other value or a missing field means blocked. The inputs of `UserPromptSubmit`, `Stop` and `SessionEnd` were recorded from a real session of Claude Code 2.1.306 (all carry `session_id`, `transcript_path`, `cwd` and `hook_event_name`); `Notification` couldn't be provoked in a non-interactive session, so its shape (`message`, `notification_type`) follows Claude Code's documentation and is covered by tests only.
 
 ### Where records live
 

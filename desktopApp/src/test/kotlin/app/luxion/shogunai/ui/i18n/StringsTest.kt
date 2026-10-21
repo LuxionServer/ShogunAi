@@ -2,7 +2,7 @@ package app.luxion.shogunai.ui.i18n
 
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.AppLanguage
-import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.RepositoryConfigIssue
 import app.luxion.shogunai.domain.model.RepositoryConfigRules
@@ -285,7 +285,7 @@ class StringsTest {
 
     @Test
     fun `agent labels name the agent and translate each Herdr state`() {
-        HerdrAgentState.entries.forEach { state ->
+        AgentState.entries.forEach { state ->
             val english = EnglishStrings.agentLabel("claude", state)
             val spanish = SpanishStrings.agentLabel("claude", state)
 

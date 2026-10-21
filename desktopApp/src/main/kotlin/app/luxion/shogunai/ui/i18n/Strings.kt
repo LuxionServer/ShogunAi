@@ -4,7 +4,11 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.AppLanguage
-import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.usecase.HookEntry
+import app.luxion.shogunai.domain.usecase.HookReplacement
+import app.luxion.shogunai.domain.usecase.HooksInstallState
+import app.luxion.shogunai.ui.shell.HooksAction
 import app.luxion.shogunai.domain.model.RepositoryConfigIssue
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
@@ -178,7 +182,22 @@ interface Strings {
     val menuActive: String
     val menuAllWorktrees: String
     fun agentsRunning(names: List<String>): String
-    fun agentLabel(name: String, state: HerdrAgentState?): String
+    fun agentLabel(name: String, state: AgentState?): String
+    val claudeCodeLabel: String
+    fun claudeHooksStatus(state: HooksInstallState): String
+    val claudeHooksInstall: String
+    val claudeHooksUpdate: String
+    val claudeHooksRemove: String
+    val claudeHooksCancel: String
+    val claudeHooksConfirm: String
+    val claudeHooksPathWarning: String
+    fun claudeHooksDialogTitle(action: HooksAction): String
+    fun claudeHooksChangesIn(path: String): String
+    fun claudeHooksAdded(entry: HookEntry): String
+    fun claudeHooksReplaced(replacement: HookReplacement): String
+    fun claudeHooksRemoved(entry: HookEntry): String
+    val claudeHooksNoticeMessage: String
+    val claudeHooksNoticeDismiss: String
     val allProjects: String
     val projectLabel: String
     val filterWorktreesPlaceholder: String

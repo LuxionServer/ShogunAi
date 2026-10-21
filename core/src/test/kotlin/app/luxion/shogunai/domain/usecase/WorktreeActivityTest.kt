@@ -1,7 +1,7 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.model.Divergence
-import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeStatus
@@ -41,21 +41,21 @@ class WorktreeActivityTest {
 
     @Test
     fun `a blocked or done agent needs the user`() {
-        listOf(HerdrAgentState.BLOCKED, HerdrAgentState.DONE).forEach { state ->
+        listOf(AgentState.BLOCKED, AgentState.DONE).forEach { state ->
             assertEquals(Activity.NeedsYou, activity(worktree, null, listOf(RunningAgent("claude", state))))
         }
     }
 
     @Test
     fun `a working or idle agent keeps the worktree agent working`() {
-        listOf(HerdrAgentState.WORKING, HerdrAgentState.IDLE, null).forEach { state ->
+        listOf(AgentState.WORKING, AgentState.IDLE, null).forEach { state ->
             assertEquals(Activity.AgentWorking, activity(worktree, null, listOf(RunningAgent("claude", state))))
         }
     }
 
     @Test
     fun `one blocked agent among working ones needs the user`() {
-        val agents = listOf(RunningAgent("claude", HerdrAgentState.WORKING), RunningAgent("codex", HerdrAgentState.BLOCKED))
+        val agents = listOf(RunningAgent("claude", AgentState.WORKING), RunningAgent("codex", AgentState.BLOCKED))
 
         assertEquals(Activity.NeedsYou, activity(worktree, null, agents))
     }
