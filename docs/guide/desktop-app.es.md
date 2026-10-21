@@ -126,4 +126,6 @@ La única petición que la app hace por su cuenta es un `GET` anónimo a `https:
 
 La app guarda un registro de diagnóstico local en `~/.shogunai/logs/diagnostics.log` (rota a 1 MB, como mucho tres ficheros). Registra los errores que nada gestionó, los errores mostrados en la app y los bloqueos de la interfaz (cuando deja de responder durante 2 segundos o más, con cuánto duró y qué estaba haciendo). Antes de escribir nada, las rutas absolutas, tu nombre de usuario, los nombres de tus proyectos guardados y las ramas de sus worktrees se sustituyen por marcadores como `<path>` o `<project>`.
 
+Si la ventana de Preferencias o la de Acerca de sufre un error inesperado, solo se cierra esa ventana: el error queda en el registro y la ventana principal muestra un mensaje, de modo que el resto de la app y tu trabajo siguen funcionando.
+
 **Copiar informe de diagnóstico** en el menú Ayuda copia al portapapeles la versión de la app, tu sistema operativo y arquitectura, el runtime de Java y las entradas más recientes del registro, listo para pegar en un reporte de error. Nunca se envía nada a ningún sitio: el registro se queda en tu máquina y el informe solo llega al portapapeles cuando lo pides.
