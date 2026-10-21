@@ -50,6 +50,7 @@ import app.luxion.shogunai.ui.tray.ShogunTray
 import app.luxion.shogunai.ui.tray.TrayAction
 import app.luxion.shogunai.ui.tray.TrayLaunchWatch
 import app.luxion.shogunai.ui.tray.TrayPreferences
+import app.luxion.shogunai.ui.worktree.InactivityPreferences
 import app.luxion.shogunai.ui.tray.buildTrayMenu
 import app.luxion.shogunai.ui.tray.rememberTrayIconPainter
 import app.luxion.shogunai.ui.worktree.WorktreeBoard
@@ -118,6 +119,7 @@ private fun openWindow() = application {
     val trayPreferences = remember {
         TrayPreferences(appContainer.shellPreferenceRepository, isSupported = SystemTray.isSupported())
     }
+    val inactivityPreferences = remember { InactivityPreferences(appContainer.shellPreferenceRepository) }
     var windowVisible by remember { mutableStateOf(true) }
     var showWindowRequests by remember { mutableIntStateOf(0) }
     val showMainWindow: () -> Unit = {
@@ -286,7 +288,7 @@ private fun openWindow() = application {
         )
         CompositionLocalProvider(LocalDiagnosticsLog provides appContainer.diagnosticsLog) {
             AppearanceScope(appearance) {
-                AppShell(appContainer, shellViewModel, openPreferences, onBoardReady = { boardHolder.value = it }, messages = messages)
+                AppShell(appContainer, shellViewModel, openPreferences, inactivityPreferences, onBoardReady = { boardHolder.value = it }, messages = messages)
             }
         }
     }
@@ -296,7 +298,7 @@ private fun openWindow() = application {
             LocalDiagnosticsLog provides appContainer.diagnosticsLog,
             LocalWindowExceptionHandlerFactory provides preferencesErrorHandlers,
         ) {
-            PreferencesWindow(appearance, appContainer.tools, appContainer.resources, appContainer.claudeHooks, appContainer.updates, trayPreferences, preferencesFrontRequests, onClose = { preferencesOpen = false })
+            PreferencesWindow(appearance, appContainer.tools, appContainer.resources, appContainer.claudeHooks, appContainer.updates, trayPreferences, inactivityPreferences, preferencesFrontRequests, onClose = { preferencesOpen = false })
         }
     }
     if (aboutOpen) {

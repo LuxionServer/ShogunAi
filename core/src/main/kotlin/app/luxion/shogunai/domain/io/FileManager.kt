@@ -25,6 +25,8 @@ interface FileManager {
     fun writeText(path: String, text: String)
 
     fun readText(path: String): String?
+
+    fun lastModifiedMillis(path: String): Long?
 }
 
 class SymbolicLinksNotSupported(cause: Throwable? = null) : Exception("Symbolic links aren't supported here", cause)

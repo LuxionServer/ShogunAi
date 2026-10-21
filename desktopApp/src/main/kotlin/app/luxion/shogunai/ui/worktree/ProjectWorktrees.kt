@@ -90,9 +90,6 @@ class ProjectWorktrees(
     var errorRetry by mutableStateOf<(() -> Unit)?>(null)
         private set
 
-    val orderedWorktrees: List<Worktree>
-        get() = orderMainFirst(worktrees)
-
     val loadState: ProjectLoadState
         get() = listFailure?.let(ProjectLoadState::Failed)
             ?: if (hasLoaded) ProjectLoadState.Loaded else ProjectLoadState.Loading

@@ -67,19 +67,23 @@ The system SHALL compute each worktree's disk usage in the background, without b
 - **THEN** no size is shown for it
 
 ### Requirement: Flag inactive worktrees
-The system SHALL flag a non-main worktree as inactive, in its row and its detail, when it has no uncommitted changes, no AI agent running in it, and its last commit is older than 14 days.
+The system SHALL flag a non-main worktree as inactive, in its row and its detail, when it has commits of its own, no uncommitted changes, no AI agent running in it, and its activity date is older than the inactivity threshold. The threshold SHALL default to 3 days. A worktree without commits of its own SHALL NOT be flagged as inactive.
 
 #### Scenario: Abandoned worktree
-- **WHEN** a clean worktree with no running agent had its last commit 20 days ago
+- **WHEN** a clean worktree with no running agent had its last commit of its own 5 days ago, with the default threshold
 - **THEN** its row and detail show it as inactive
 
 #### Scenario: Recent work
-- **WHEN** a clean worktree with no running agent had its last commit 3 days ago
+- **WHEN** a clean worktree with no running agent had its last commit of its own 2 days ago, with the default threshold
 - **THEN** it isn't flagged as inactive
 
 #### Scenario: Agent running or pending changes
-- **WHEN** a worktree whose last commit is 20 days old has uncommitted changes or an agent running in it
+- **WHEN** a worktree whose last commit of its own is 20 days old has uncommitted changes or an agent running in it
 - **THEN** it isn't flagged as inactive
+
+#### Scenario: Old base commit in a new worktree
+- **WHEN** a worktree was created today from a branch whose last commit is 30 days old, and has no commits of its own
+- **THEN** it isn't flagged as inactive and is shown as new
 
 ### Requirement: Reload the overview with the list
 The system SHALL detect running agents every time the worktree list is reloaded. A manual reload SHALL compute every listed worktree's disk usage again; any other reload SHALL compute it only for worktrees whose size isn't known yet. Sizes already computed SHALL stay shown until they are computed again.
@@ -152,6 +156,16 @@ When Herdr is running, the system SHALL read the agents Herdr tracks and attribu
 - **WHEN** the process list can't be read and Herdr reports an agent in a worktree
 - **THEN** that worktree shows the agent with its state, and cleanup keeps the worktree
 
+### Requirement: Configure the inactivity threshold
+The app's settings SHALL let the user set the inactivity threshold as a whole number of days from 1 to 90, and SHALL remember it across restarts. A change SHALL apply to every view without reloading the worktrees.
+
+#### Scenario: Longer threshold
+- **WHEN** the user sets the threshold to 7 days and a clean worktree's last commit of its own was 5 days ago
+- **THEN** the worktree is no longer flagged as inactive, and it moves out of "Inactive" without a reload
+
+#### Scenario: Out of range
+- **WHEN** the user enters 0 or 120 days
+- **THEN** the value isn't accepted and the setting keeps its previous value
 ### Requirement: Show the state Claude Code's hooks report
 When a Claude process runs in a worktree and a live session of that worktree has a recorded state, the agent SHALL carry that state. A record SHALL be live while its session's Claude process runs. A blocked or done record whose session's transcript was written after it SHALL read as working. When Herdr reports the same agent, Herdr's state SHALL be used.
 

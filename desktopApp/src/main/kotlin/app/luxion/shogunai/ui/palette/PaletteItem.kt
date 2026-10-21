@@ -4,7 +4,7 @@ import app.luxion.shogunai.ui.machine.MachineResource
 import app.luxion.shogunai.ui.shell.ShellDestination
 import app.luxion.shogunai.ui.worktree.LaunchKind
 import app.luxion.shogunai.ui.worktree.OpenKind
-import app.luxion.shogunai.ui.worktree.RowIndicator
+import app.luxion.shogunai.ui.worktree.StateBadgeKind
 import app.luxion.shogunai.ui.worktree.WorktreeRef
 
 enum class PaletteKind { VIEW, PROJECT, WORKTREE, ACTION }
@@ -29,7 +29,7 @@ data class PaletteItem(
     val contextKeys: List<String> = emptyList(),
     val context: String? = null,
     val shortcut: String? = null,
-    val indicator: RowIndicator? = null,
+    val indicator: StateBadgeKind? = null,
     val machineResource: MachineResource? = null,
     val primary: PaletteAction,
     val secondary: PaletteAction? = null,

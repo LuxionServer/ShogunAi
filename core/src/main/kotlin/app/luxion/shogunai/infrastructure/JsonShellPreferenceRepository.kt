@@ -4,7 +4,10 @@ import app.luxion.shogunai.domain.io.ShellPreferenceRepository
 import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.RecentWorktree
+import app.luxion.shogunai.domain.model.INACTIVE_AFTER_DAYS_RANGE
+import app.luxion.shogunai.domain.model.SortedView
 import app.luxion.shogunai.domain.model.WindowBounds
+import app.luxion.shogunai.domain.model.WorktreeSort
 
 class JsonShellPreferenceRepository(
     private val settingsFile: JsonSettingsFile = JsonSettingsFile(),
@@ -52,6 +55,18 @@ class JsonShellPreferenceRepository(
         settingsFile.update { it.copy(grouping = it.grouping.with(view, grouping)) }
     }
 
+    override fun loadSort(view: SortedView): WorktreeSort = settingsFile.read().sorting.of(view)
+
+    override fun saveSort(view: SortedView, sort: WorktreeSort) {
+        settingsFile.update { it.copy(sorting = it.sorting.with(view, sort)) }
+    }
+
+    override fun loadInactiveAfterDays(): Int = settingsFile.read().inactiveAfterDays.coerceIn(INACTIVE_AFTER_DAYS_RANGE)
+
+    override fun saveInactiveAfterDays(days: Int) {
+        settingsFile.update { it.copy(inactiveAfterDays = days.coerceIn(INACTIVE_AFTER_DAYS_RANGE)) }
+    }
+
     override fun loadRecentProjects(): List<String> = settingsFile.read().recentProjects
 
     override fun saveRecentProjects(ids: List<String>) {
@@ -84,5 +99,17 @@ class JsonShellPreferenceRepository(
     private fun JsonSettingsFile.GroupingSettings.with(view: GroupedView, grouping: Grouping) = when (view) {
         GroupedView.ACTIVE -> copy(active = grouping)
         GroupedView.ALL -> copy(all = grouping)
+    }
+
+    private fun JsonSettingsFile.SortingSettings.of(view: SortedView): WorktreeSort = when (view) {
+        SortedView.ACTIVE -> active
+        SortedView.ALL -> all
+        SortedView.PROJECT -> project
+    }
+
+    private fun JsonSettingsFile.SortingSettings.with(view: SortedView, sort: WorktreeSort) = when (view) {
+        SortedView.ACTIVE -> copy(active = sort)
+        SortedView.ALL -> copy(all = sort)
+        SortedView.PROJECT -> copy(project = sort)
     }
 }

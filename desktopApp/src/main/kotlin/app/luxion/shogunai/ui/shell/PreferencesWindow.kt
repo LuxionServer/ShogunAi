@@ -11,7 +11,14 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.testTag
+import app.luxion.shogunai.domain.model.INACTIVE_AFTER_DAYS_RANGE
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import app.luxion.shogunai.ui.components.rememberAppIconPainter
@@ -30,6 +37,7 @@ import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.i18n.strings
 import app.luxion.shogunai.ui.isMacOs
 import app.luxion.shogunai.ui.tray.TrayPreferences
+import app.luxion.shogunai.ui.worktree.InactivityPreferences
 
 private val PreferencesWindowSize = DpSize(440.dp, 820.dp)
 
@@ -47,6 +55,7 @@ fun PreferencesWindow(
     claudeHooks: ClaudeHooksState,
     updates: UpdateState,
     tray: TrayPreferences,
+    inactivity: InactivityPreferences,
     bringToFrontRequests: Int,
     onClose: () -> Unit,
 ) {
@@ -61,7 +70,7 @@ fun PreferencesWindow(
         LaunchedEffect(Unit) { tools.refresh() }
         LaunchedEffect(Unit) { claudeHooks.refresh() }
         AppearanceScope(appearance) {
-            PreferencesContent(appearance, tools, resources, claudeHooks, updates, tray)
+            PreferencesContent(appearance, tools, resources, claudeHooks, updates, tray, inactivity)
         }
     }
 }
@@ -74,6 +83,7 @@ private fun PreferencesContent(
     claudeHooks: ClaudeHooksState,
     updates: UpdateState,
     tray: TrayPreferences,
+    inactivity: InactivityPreferences,
 ) {
     val strings = LocalStrings.current
     Column(
@@ -101,6 +111,7 @@ private fun PreferencesContent(
             modifier = Modifier.fillMaxWidth(),
         )
         ToolsSection(tools)
+        InactivitySection(inactivity)
         ResourcesSection(resources)
         ClaudeHooksSection(claudeHooks)
         if (tray.isSupported) TraySection(tray)
@@ -135,6 +146,31 @@ fun ToolsSection(tools: ToolsPreferences) {
         isDetected = tools.detected != null,
     )
 }
+
+@Composable
+fun InactivitySection(inactivity: InactivityPreferences) {
+    val strings = LocalStrings.current
+    var text by remember(inactivity.days) { mutableStateOf(inactivity.days.toString()) }
+    val isValid = text.toIntOrNull()?.let { it in INACTIVE_AFTER_DAYS_RANGE } == true
+    Text(
+        strings.inactivityThresholdLabel,
+        style = MaterialTheme.typography.labelLarge,
+        modifier = Modifier.padding(top = Spacing.md),
+    )
+    OutlinedTextField(
+        value = text,
+        onValueChange = { input ->
+            text = input.filter(Char::isDigit).take(3)
+            text.toIntOrNull()?.let(inactivity::change)
+        },
+        singleLine = true,
+        isError = !isValid,
+        supportingText = { Text(if (isValid) strings.inactivityThresholdHint else strings.inactivityThresholdInvalid) },
+        modifier = Modifier.fillMaxWidth().testTag(InactivityFieldTag),
+    )
+}
+
+internal const val InactivityFieldTag = "inactivity-days"
 
 @Composable
 private fun TraySection(tray: TrayPreferences) {

@@ -24,7 +24,7 @@ class StatusSegmentsTest {
             lastCommitAt = now.minus(Duration.ofDays(2)),
         )
 
-        assertEquals(listOf("↑2 upstream", "↑4 ↓1 develop", "2 days ago"), segments(status))
+        assertEquals(listOf("↑2 upstream", "↑4 ↓1 develop", "commit 2 days ago"), segments(status))
     }
 
     @Test
@@ -36,7 +36,20 @@ class StatusSegmentsTest {
             lastCommitAt = now.minus(Duration.ofHours(3)),
         )
 
-        assertEquals(listOf("3 hours ago"), segments(status))
+        assertEquals(listOf("commit 3 hours ago"), segments(status))
+    }
+
+    @Test
+    fun `shows the creation date after the last commit date`() {
+        val status = WorktreeStatus(
+            uncommittedChanges = 0,
+            upstream = null,
+            mainBranch = Divergence(ahead = 0, behind = 0),
+            lastCommitAt = now.minus(Duration.ofDays(10)),
+            createdAt = now.minus(Duration.ofDays(2)),
+        )
+
+        assertEquals(listOf("commit 10 days ago", "created 2 days ago"), segments(status))
     }
 
     @Test

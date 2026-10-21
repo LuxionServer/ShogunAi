@@ -2,6 +2,7 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.Worktree
@@ -11,6 +12,7 @@ import java.time.Instant
 
 class ReadWorktreeStatusUseCase(
     private val executor: ShellCommandExecutor,
+    private val fileManager: FileManager,
 ) {
     suspend operator fun invoke(worktree: Worktree, mainBranch: MainBranch?): Result<WorktreeStatus> = runCatching {
         val uncommittedChanges = uncommittedChanges(worktree)
@@ -26,6 +28,7 @@ class ReadWorktreeStatusUseCase(
             upstream = upstream,
             mainBranch = mainBranchDivergence,
             lastCommitAt = lastCommitAt(worktree),
+            createdAt = createdAt(worktree),
             neverCommitted = wouldReadAsMerged && upstream == null && worktree.branch != null &&
                 branchNeverCommitted(worktree, worktree.branch),
         )
@@ -60,9 +63,24 @@ class ReadWorktreeStatusUseCase(
         return result.stdout.trim().toLongOrNull()?.let(Instant::ofEpochSecond)
     }
 
+    private fun createdAt(worktree: Worktree): Instant? {
+        if (worktree.isMain) return null
+        val pointer = fileManager.readText("${worktree.path.trimEnd('/')}/.git") ?: return null
+        val administrativeFolder = pointer.lineSequence()
+            .firstOrNull { it.startsWith(GITDIR_PREFIX) }
+            ?.removePrefix(GITDIR_PREFIX)
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: return null
+        return fileManager.lastModifiedMillis("${administrativeFolder.trimEnd('/')}/commondir")
+            ?.let(Instant::ofEpochMilli)
+    }
+
     private suspend fun git(worktree: Worktree, vararg args: String) =
         executor.executeWithin(listOf("git", *args), CommandTimeouts.GIT_READ, workingDirectory = worktree.path)
 }
+
+private const val GITDIR_PREFIX = "gitdir:"
 
 internal fun parseLeftRightCount(output: String): Divergence? {
     val counts = output.trim().split(Regex("\\s+")).mapNotNull { it.toIntOrNull() }

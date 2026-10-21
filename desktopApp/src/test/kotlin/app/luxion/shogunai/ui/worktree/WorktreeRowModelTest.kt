@@ -18,6 +18,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.assertFalse
 
 class WorktreeRowModelTest {
 
@@ -34,13 +35,15 @@ class WorktreeRowModelTest {
     private fun status(
         changes: Int = 0,
         upstream: Divergence? = Divergence(0, 0),
-        mainBranch: Divergence? = Divergence(0, 0),
-        lastCommitAt: Instant? = now.minus(Duration.ofDays(1)),
+        mainBranch: Divergence? = Divergence(2, 0),
+        lastCommitAt: Instant? = now.minus(Duration.ofHours(3)),
+        createdAt: Instant? = null,
     ) = WorktreeStatus(
         uncommittedChanges = changes,
         upstream = upstream,
         mainBranch = mainBranch,
         lastCommitAt = lastCommitAt,
+        createdAt = createdAt,
     )
 
     private fun model(
@@ -51,168 +54,208 @@ class WorktreeRowModelTest {
         emulator: WorktreeEmulator? = null,
         simulator: WorktreeSimulator? = null,
         origin: WorktreeOrigin? = WorktreeOrigin.SHOGUNAI,
-    ) = worktreeRowModel(worktree, status, mainBranchName, agents, emulator, simulator, origin, now, EnglishStrings)
-
-    private fun chipsOf(model: WorktreeRowModel) = model.chips.map { it.kind }
+        projectName: String? = null,
+        inactiveAfter: Duration = Duration.ofDays(3),
+    ) = worktreeRowModel(
+        worktree, status, mainBranchName, agents, emulator, simulator, origin, projectName, inactiveAfter, now, EnglishStrings,
+    )
 
     @Test
-    fun `a missing folder indicator beats a running agent`() {
+    fun `a missing folder badge beats a running agent`() {
         val model = model(worktree(isPrunable = true), agents = listOf(RunningAgent("claude")))
 
-        assertEquals(RowIndicator.FOLDER_MISSING, model.indicator)
-        assertTrue(RowChipKind.FOLDER_MISSING in chipsOf(model))
+        assertEquals(StateBadgeKind.FOLDER_MISSING, model.badge.kind)
+        assertEquals("Folder missing", model.badge.label)
+        assertTrue(model.isFolderMissing)
     }
 
     @Test
-    fun `a running agent indicator beats uncommitted changes`() {
-        val model = model(status = WorktreeStatusState.Loaded(status(changes = 3)), agents = listOf(RunningAgent("claude")))
+    fun `the badge follows the worktree's state`() {
+        fun kind(model: WorktreeRowModel) = model.badge.kind
 
-        assertEquals(RowIndicator.AGENT_RUNNING, model.indicator)
-        assertEquals(listOf(RowChipKind.AGENT, RowChipKind.CHANGES), chipsOf(model))
+        assertEquals(StateBadgeKind.NEEDS_YOU, kind(model(status = WorktreeStatusState.Loaded(status(changes = 3)))))
+        assertEquals(
+            StateBadgeKind.AGENT_WORKING,
+            kind(model(status = WorktreeStatusState.Loaded(status(changes = 3)), agents = listOf(RunningAgent("claude", AgentState.WORKING)))),
+        )
+        assertEquals(StateBadgeKind.NEW, kind(model(status = WorktreeStatusState.Loaded(status(mainBranch = Divergence(0, 0), upstream = null)))))
+        assertEquals(StateBadgeKind.STOPPED, kind(model()))
+        assertEquals(StateBadgeKind.MERGED, kind(model(status = WorktreeStatusState.Loaded(status(mainBranch = Divergence(0, 5))))))
+        assertEquals(
+            StateBadgeKind.INACTIVE,
+            kind(model(status = WorktreeStatusState.Loaded(status(lastCommitAt = now.minus(Duration.ofDays(5)))))),
+        )
+        assertEquals(StateBadgeKind.OTHER, kind(model(status = WorktreeStatusState.Loading)))
     }
 
     @Test
-    fun `the agent chip shows the state Herdr reports with its own status`() {
+    fun `the execution cell shows the most urgent agent with the count of the others`() {
+        val agents = listOf(
+            RunningAgent("codex", AgentState.WORKING),
+            RunningAgent("claude", AgentState.BLOCKED),
+        )
+
+        val agent = model(agents = agents).execution.agent!!
+
+        assertEquals("Claude · blocked", agent.label)
+        assertEquals(Status.WARNING, agent.status)
+        assertEquals(1, agent.moreCount)
+        assertEquals("Claude: blocked\nCodex: working", agent.tooltip)
+    }
+
+    @Test
+    fun `the agent's status follows the state Herdr reports`() {
         val expected = mapOf(
-            AgentState.WORKING to ("claude · working" to Status.INFO),
-            AgentState.BLOCKED to ("claude · blocked" to Status.WARNING),
-            AgentState.DONE to ("claude · done" to Status.SUCCESS),
-            AgentState.IDLE to ("claude · idle" to Status.NEUTRAL),
+            AgentState.WORKING to ("Claude · working" to Status.INFO),
+            AgentState.BLOCKED to ("Claude · blocked" to Status.WARNING),
+            AgentState.DONE to ("Claude · done" to Status.SUCCESS),
+            AgentState.IDLE to ("Claude · idle" to Status.NEUTRAL),
         )
 
         expected.forEach { (state, label) ->
-            val chip = model(agents = listOf(RunningAgent("claude", state))).chips.single { it.kind == RowChipKind.AGENT }
+            val agent = model(agents = listOf(RunningAgent("claude", state))).execution.agent!!
 
-            assertEquals(label, chip.label to chip.status)
+            assertEquals(label, agent.label to agent.status)
         }
     }
 
     @Test
     fun `an agent without a state shows only its name`() {
-        val chip = model(agents = listOf(RunningAgent("claude"))).chips.single { it.kind == RowChipKind.AGENT }
+        val agent = model(agents = listOf(RunningAgent("claude"))).execution.agent!!
 
-        assertEquals("claude", chip.label)
-        assertEquals(Status.INFO, chip.status)
+        assertEquals("Claude", agent.label)
+        assertEquals(Status.INFO, agent.status)
+        assertEquals("Claude: state unknown", agent.tooltip)
     }
 
     @Test
-    fun `uncommitted changes beat merged`() {
-        val model = model(status = WorktreeStatusState.Loaded(status(changes = 3, mainBranch = Divergence(0, 5))))
+    fun `without agents or devices the execution cell is empty`() {
+        val execution = model().execution
 
-        assertEquals(RowIndicator.UNCOMMITTED_CHANGES, model.indicator)
-        assertEquals(listOf(RowChipKind.CHANGES, RowChipKind.MERGED), chipsOf(model))
+        assertNull(execution.agent)
+        assertNull(execution.device)
     }
 
     @Test
-    fun `a branch that never had commits shows not started instead of merged`() {
-        val loaded = status(mainBranch = Divergence(0, 5)).copy(neverCommitted = true)
-        val model = model(status = WorktreeStatusState.Loaded(loaded))
-
-        assertEquals(null, model.indicator)
-        assertEquals(listOf(RowChipKind.DIVERGENCE, RowChipKind.NOT_STARTED), chipsOf(model))
-    }
-
-    @Test
-    fun `merged beats inactive`() {
-        val model = model(status = WorktreeStatusState.Loaded(status(mainBranch = Divergence(0, 5), lastCommitAt = now.minus(Duration.ofDays(20)))))
-
-        assertEquals(RowIndicator.MERGED, model.indicator)
-        assertEquals(listOf(RowChipKind.MERGED, RowChipKind.INACTIVE), chipsOf(model))
-    }
-
-    @Test
-    fun `inactive is the indicator when nothing more urgent applies`() {
-        val model = model(status = WorktreeStatusState.Loaded(status(lastCommitAt = now.minus(Duration.ofDays(20)))))
-
-        assertEquals(RowIndicator.INACTIVE, model.indicator)
-        assertEquals(listOf(RowChipKind.INACTIVE), chipsOf(model))
-    }
-
-    @Test
-    fun `chips are omitted when no state applies`() {
-        val model = model(status = WorktreeStatusState.Loaded(status(lastCommitAt = now.minus(Duration.ofDays(3)))))
-
-        assertNull(model.indicator)
-        assertEquals(emptyList(), chipsOf(model))
-        assertEquals("3 days ago", model.lastCommitLabel)
-    }
-
-    @Test
-    fun `divergence against the main branch is a chip that names it`() {
-        val model = model(status = WorktreeStatusState.Loaded(status(mainBranch = Divergence(2, 5))))
-
-        assertEquals(
-            RowChip(RowChipKind.DIVERGENCE, Status.NEUTRAL, "↑2 ↓5 main"),
-            model.chips.single(),
-        )
-    }
-
-    @Test
-    fun `the device chip appears only while the emulator or the simulator is active`() {
+    fun `the device line appears only while the emulator or the simulator is active`() {
         val booting = model(emulator = WorktreeEmulator("emulator-5556", EmulatorState.BOOTING))
         val running = model(emulator = WorktreeEmulator("emulator-5556", EmulatorState.RUNNING))
         val stopped = model(emulator = WorktreeEmulator("emulator-5556", EmulatorState.STOPPED))
         val bootedSimulator = model(simulator = WorktreeSimulator("ABCD-EFGH", "iPhone 16", SimulatorState.BOOTED))
         val shutdownSimulator = model(simulator = WorktreeSimulator("ABCD-EFGH", "iPhone 16", SimulatorState.SHUTDOWN))
 
-        assertEquals(listOf(RowChipKind.DEVICE), chipsOf(booting))
-        assertEquals(listOf(RowChipKind.DEVICE), chipsOf(running))
-        assertEquals(emptyList(), chipsOf(stopped))
-        assertEquals(listOf(RowChipKind.DEVICE), chipsOf(bootedSimulator))
-        assertEquals(emptyList(), chipsOf(shutdownSimulator))
+        assertEquals(Status.INFO, booting.execution.device?.status)
+        assertEquals(Status.SUCCESS, running.execution.device?.status)
+        assertNull(stopped.execution.device)
+        assertTrue(bootedSimulator.execution.device!!.isSimulator)
+        assertNull(shutdownSimulator.execution.device)
     }
 
     @Test
-    fun `loading and unavailable statuses are shown without failing the other chips`() {
-        val loading = model(status = WorktreeStatusState.Loading, agents = listOf(RunningAgent("claude")))
+    fun `the name cell hides the folder when it matches the last segment of the branch`() {
+        val name = model().name
 
-        assertTrue(loading.isStatusLoading)
-        assertEquals(listOf(RowChipKind.AGENT), chipsOf(loading))
-
-        val unavailable = model(status = WorktreeStatusState.Unavailable)
-
-        assertEquals(listOf(RowChipKind.STATUS_UNAVAILABLE), chipsOf(unavailable))
+        assertEquals("feature/TASK-123", name.branch)
+        assertNull(name.folder)
+        assertEquals("ShogunAi", name.origin)
     }
 
     @Test
-    fun `the main worktree is marked and ordered first`() {
-        val branch = worktree(path = "/home/dev/projects/main-repo-worktrees/feature/TASK-123")
-        val main = worktree(path = "/home/dev/projects/main-repo", branch = "main", isMain = true)
+    fun `the name cell shows the folder when it differs from the branch`() {
+        val name = model(worktree = worktree(path = "/home/dev/projects/main-repo-worktrees/task-123-wt")).name
 
-        val model = model(worktree = main, origin = null)
-
-        assertEquals(listOf(RowChipKind.MAIN), chipsOf(model))
-        assertEquals(listOf(main, branch), orderMainFirst(listOf(branch, main)))
+        assertEquals("task-123-wt", name.folder)
     }
 
     @Test
-    fun `the branch is the main label and the folder is the secondary one`() {
-        val model = model()
-
-        assertEquals("feature/TASK-123", model.branchLabel)
-        assertEquals("TASK-123", model.folderName)
-        assertEquals("ShogunAi", model.originLabel)
+    fun `the name cell carries the project only when asked to`() {
+        assertNull(model().name.project)
+        assertEquals("api", model(projectName = "api").name.project)
     }
 
     @Test
     fun `a detached worktree shows the detached label`() {
-        val model = model(worktree = worktree(branch = null))
+        val name = model(worktree = worktree(branch = null)).name
 
-        assertEquals("(detached)", model.branchLabel)
+        assertEquals("(detached)", name.branch)
+        assertEquals("TASK-123", name.folder)
     }
 
     @Test
-    fun `a locked worktree carries its chip`() {
-        val model = model(worktree = worktree(isLocked = true))
+    fun `the git cell shows changes above and divergence below naming the main branch`() {
+        val git = model(status = WorktreeStatusState.Loaded(status(changes = 3, mainBranch = Divergence(2, 1)))).git
 
-        assertEquals(listOf(RowChipKind.LOCKED), chipsOf(model))
+        assertEquals(GitCellState.READY, git.state)
+        assertEquals("✎ 3", git.changes)
+        assertEquals("3 changes", git.changesTooltip)
+        assertEquals("↑2 ↓1", git.secondLine)
+        assertEquals("↑2 ↓1 main", git.secondLineTooltip)
     }
 
     @Test
-    fun `row context puts the project before the origin so the origin truncates first`() {
-        val model = WorktreeRowModel("TASK-202", "TASK-202", "ShogunAi", null, emptyList(), false, null)
+    fun `a clean worktree has no changes line`() {
+        assertNull(model().git.changes)
+    }
 
-        assertEquals("TASK-202 · mobile-app · ShogunAi", rowContext(model, "mobile-app"))
-        assertEquals("TASK-202 · ShogunAi", rowContext(model, null))
+    @Test
+    fun `the git cell shows merged with the main branch in its tooltip`() {
+        val git = model(status = WorktreeStatusState.Loaded(status(mainBranch = Divergence(0, 5)))).git
+
+        assertEquals("merged", git.secondLine)
+        assertEquals("merged into main", git.secondLineTooltip)
+    }
+
+    @Test
+    fun `a branch that never had commits is not shown as merged`() {
+        val loaded = status(mainBranch = Divergence(0, 5)).copy(neverCommitted = true)
+
+        assertEquals("↓5", model(status = WorktreeStatusState.Loaded(loaded)).git.secondLine)
+    }
+
+    @Test
+    fun `the git cell reports loading and unavailable statuses`() {
+        assertEquals(GitCellState.LOADING, model(status = WorktreeStatusState.Loading).git.state)
+
+        val unavailable = model(status = WorktreeStatusState.Unavailable).git
+
+        assertEquals(GitCellState.UNAVAILABLE, unavailable.state)
+        assertEquals("Status unavailable", unavailable.unavailableTooltip)
+    }
+
+    @Test
+    fun `a branch with commits of its own is dated by its last commit`() {
+        assertEquals("commit 3 hours ago", model().time.activity)
+    }
+
+    @Test
+    fun `a new worktree is dated by its creation, not by the base commit`() {
+        val loaded = status(
+            mainBranch = Divergence(0, 0),
+            lastCommitAt = now.minus(Duration.ofDays(10)),
+            createdAt = now.minus(Duration.ofHours(2)),
+        )
+
+        assertEquals("created 2 hours ago", model(status = WorktreeStatusState.Loaded(loaded)).time.activity)
+    }
+
+    @Test
+    fun `the time cell has no date while the status is loading`() {
+        assertNull(model(status = WorktreeStatusState.Loading).time.activity)
+    }
+
+    @Test
+    fun `the time cell marks the main and locked worktrees`() {
+        val main = worktree(path = "/home/dev/projects/main-repo", branch = "main", isMain = true, isLocked = true)
+
+        assertEquals(listOf("main", "locked"), model(worktree = main, origin = null).time.marks)
+        assertEquals(emptyList(), model().time.marks)
+        assertFalse(model().isFolderMissing)
+    }
+
+    @Test
+    fun `a longer inactivity threshold keeps the worktree stopped`() {
+        val loaded = WorktreeStatusState.Loaded(status(lastCommitAt = now.minus(Duration.ofDays(5))))
+
+        assertEquals(StateBadgeKind.STOPPED, model(status = loaded, inactiveAfter = Duration.ofDays(7)).badge.kind)
     }
 }

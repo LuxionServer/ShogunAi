@@ -223,7 +223,7 @@ class ProjectWorktreesTest {
             copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboard, windows = false),
             repair = RepairWorktreesUseCase(config, executor, FakeFileManager(existing = listOf(config.baseRepositoryPath))),
             resolveMainBranch = ResolveMainBranchUseCase(config, executor),
-            readStatus = ReadWorktreeStatusUseCase(executor),
+            readStatus = ReadWorktreeStatusUseCase(executor, FakeFileManager()),
             cleanUp = CleanUpWorktreesUseCase(config, executor),
             detectAgents = { worktrees -> DetectRunningAgentsUseCase(executor)(config, worktrees) },
             measureSize = MeasureWorktreeSizeUseCase(fileManager, dispatcher),
@@ -2725,7 +2725,7 @@ class ProjectWorktreesTest {
         advanceUntilIdle()
 
         assertNull(board.selectedWorktree?.worktree?.path)
-        assertEquals(config.baseRepositoryPath, board.project.orderedWorktrees.single().path)
+        assertEquals(config.baseRepositoryPath, board.project.worktrees.single().path)
     }
 
     @Test

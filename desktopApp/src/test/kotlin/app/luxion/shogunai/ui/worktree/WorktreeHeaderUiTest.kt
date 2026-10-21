@@ -1,6 +1,7 @@
 package app.luxion.shogunai.ui.worktree
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
@@ -109,6 +110,49 @@ class WorktreeHeaderUiTest {
         onNodeWithText("Inactive").performMouseInput { moveTo(center) }
         mainClock.advanceTimeBy(2_000)
 
-        onNodeWithText("Clean, no agent and no commit in the last 14 days.").assertIsDisplayed()
+        onNodeWithText("Clean, no agent running and no activity in the last 3 days.").assertIsDisplayed()
+    }
+
+    @Test
+    fun `the inactive criterion names the configured number of days`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                StateGroupHeader(StateGroupKind.INACTIVE, count = 1, canCleanUp = false, onCleanUp = {}, inactiveDays = 7)
+            }
+        }
+
+        onNodeWithText("no activity for 7+ days").assertIsDisplayed()
+        onNodeWithText("Inactive").performMouseInput { moveTo(center) }
+        mainClock.advanceTimeBy(2_000)
+
+        onNodeWithText("Clean, no agent running and no activity in the last 7 days.").assertIsDisplayed()
+    }
+
+    @Test
+    fun `the new and stopped groups explain themselves in both languages`() = runComposeUiTest {
+        var strings by mutableStateOf<app.luxion.shogunai.ui.i18n.Strings>(app.luxion.shogunai.ui.i18n.EnglishStrings)
+        setContent {
+            CompositionLocalProvider(LocalStrings provides strings) {
+                MaterialTheme {
+                    Column {
+                        StateGroupHeader(StateGroupKind.NEW, count = 1, canCleanUp = false, onCleanUp = {})
+                        StateGroupHeader(StateGroupKind.STOPPED, count = 1, canCleanUp = false, onCleanUp = {})
+                    }
+                }
+            }
+        }
+
+        onNodeWithText("New").assertIsDisplayed()
+        onNodeWithText("no commits yet").assertIsDisplayed()
+        onNodeWithText("Stopped").assertIsDisplayed()
+        onNodeWithText("pushed, waiting").assertIsDisplayed()
+
+        strings = SpanishStrings
+        waitForIdle()
+
+        onNodeWithText("Nuevos").assertIsDisplayed()
+        onNodeWithText("aún sin commits").assertIsDisplayed()
+        onNodeWithText("Parados").assertIsDisplayed()
+        onNodeWithText("subido, en espera").assertIsDisplayed()
     }
 }

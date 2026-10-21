@@ -30,32 +30,44 @@ When the repository has an `origin` remote, **Fetch from origin first** fetches 
 
 ## The worktree list
 
-Each row shows a worktree with:
+Each row is two lines with a fixed place for every piece of information, so rows line up and can be compared at a glance:
 
-- Its **branch**, a "locked" label when an agent session holds it, its **origin** (ShogunAi, Claude Code, Herdr or another location) and the **agents running** in it. With Herdr running, each agent also shows its state (working, blocked, done or idle).
-- Its **status**: uncommitted changes, ahead/behind its upstream and the main branch, the last commit date, "merged into <main branch>", or "not started" when its branch never had commits of its own. "Folder missing" when its folder was deleted by hand.
+- A **state badge**: a colored circle with an icon that is different for each [state](#states), so it can be told without color. Hovering it shows the state's name.
+- The **execution** column: the agent on the first line (its name and, with Herdr running, its state: working, blocked, done or idle) and the emulator or simulator on the second, only while it boots or runs. With several agents it shows the most urgent one with a "+N". In a narrow list it collapses to icons that keep their colors; hover them for the labels.
+- The **name**: the branch on the first line; on the second, the folder when it differs from the branch's last segment, the **origin** (ShogunAi, Claude Code, Herdr or another location) and, in views that span several projects and aren't grouped by project, the project.
+- The **Git** column: uncommitted changes on the first line and, on the second, the commits ahead of and behind the main branch, or "merged". A dash means the status couldn't be read.
+- The **time** column: when the worktree was last active, saying what it measures ("commit 3 h ago" when its branch has commits of its own, "created 2 d ago" otherwise), and the "main" and "locked" marks below.
+
+The detail shows more:
+
+- Its **status**: uncommitted changes, ahead/behind its upstream and the main branch, the last commit date, the creation date, and "merged into <main branch>" or "not started" when its branch never had commits of its own. "Folder missing" when its folder was deleted by hand.
 - Its **provisioned files**: whether the files and links declared for new worktrees match the base repository's, listing the missing, differing and not-linked ones. For a worktree made by another tool, or whose copies are stale, **Provision** copies them, reserves its ports and writes its environment file, as `shogun provision` does.
 - Its **environment**: the ports and every variable from `.shogunai.json` `"env"` with its value, in the order `shogun env` prints them. **Copy as .env** puts them on the clipboard in dotenv format. Values aren't masked, since they come from templates in the repository.
-- Its **size**, the **ports** reserved for it (see [per-worktree environment](../agents.md#per-worktree-environment)) and an "inactive" label when it has no uncommitted changes, no agent running and no commit in the last 14 days.
+- Its **size** and the **ports** reserved for it (see [per-worktree environment](../agents.md#per-worktree-environment)).
 - The emulator and simulator lines with Start and Stop, for repositories that use those [providers](providers.md).
 
 The list refreshes by itself: changes made from a terminal or by an agent show up within a few seconds, and edits that aren't staged yet show up when the window regains focus. Statuses and sizes stay on screen while they are read again. Sizes are measured when a worktree first appears; "Reload" measures them all again, for example after a build.
 
 "Active" and "All worktrees" span every project; their project filter narrows the current view to one project without leaving it. Selecting a project in the sidebar opens that project's own view instead, which has no project filter.
 
+Every view has a sort selector next to the grouping one: **Name** (the default; branches in natural order, so `TASK-9` comes before `TASK-10`) or **Last activity** (most recent first). The main worktree always comes first in its group. Each view remembers its own choice.
+
 ## States
 
-Grouped by state, each group's header shows a short hint next to its title, and hovering the title shows its full criterion. "Active" shows the first three groups; "All worktrees" shows all of them.
+Each worktree is in the first state that applies. Grouped by state, each group's header shows a short hint next to its title, and hovering the title shows its full criterion. "Active" shows the first four groups; "All worktrees" shows all of them.
 
 | Group | Hint | Criterion |
 |---|---|---|
-| Agent working | agent running | An AI agent is running in the worktree. |
-| Needs you | agent waiting, uncommitted or unpushed | An agent blocked or done in Herdr, uncommitted changes, or commits not pushed to its upstream (or to the main branch when it has none). |
-| In progress | pushed, not merged | Clean, pushed, not merged and with a commit in the last 14 days, or a branch that never had commits of its own ("not started"). |
-| Merged | in main branch | No commits of its own ahead of the main branch, after having had some. Can be cleaned up. A branch that never had commits and has no upstream reads as "not started" instead and is never offered for cleanup. |
-| Inactive | idle for 14+ days | Clean, no agent and no commit in the last 14 days. |
+| Needs you | agent waiting, uncommitted or unpushed | An agent is blocked or done, or no agent is working and there are uncommitted changes or commits not pushed to its upstream (or to the main branch when it has none). |
+| Agent working | agent running | An AI agent is working in the worktree, or runs without a known state. An agent that is idle doesn't decide the state. |
+| New | no commits yet | No commits of its own, no uncommitted changes and no agent running. |
+| Stopped | pushed, waiting | Commits of its own, all pushed, nothing uncommitted, not merged and no agent working. |
+| Merged | in main branch | No commits of its own ahead of the main branch, after having had some. Can be cleaned up. A branch that never had commits and has no upstream reads as "new" instead and is never offered for cleanup. |
+| Inactive | no activity for 3+ days | Clean, no agent running and no activity in the last 3 days (see below). |
 | Folder missing | folder deleted | Git still lists it but its folder no longer exists. Can be cleaned up. |
 | Other | main or not read yet | The main worktree when it's clean, or a worktree whose status isn't read yet. |
+
+A worktree's activity is the date of its last commit when its branch has commits of its own, and the date it was created otherwise, so a new worktree isn't dated by the old commit it started from. A worktree without commits of its own is never inactive. The inactivity threshold is 3 days by default; change it in [Preferences](#preferences) (from 1 to 90 days) and every view updates at once.
 
 ## Working in a worktree
 
@@ -82,7 +94,7 @@ For repositories that declare them in `.shogunai.json`, the worktree screen adds
 
 ## Preferences
 
-Preferences (Cmd+Comma on macOS, Ctrl+Comma elsewhere) holds the theme, the language, the **Tools** section, where you choose the terminal and the default IDE among the ones ShogunAi found on this machine (if none is found, the section says so and the matching actions aren't offered), and **Check for updates automatically**, on by default. See [Updates](#updates).
+Preferences (Cmd+Comma on macOS, Ctrl+Comma elsewhere) holds the theme, the language, the **inactivity threshold** in days, the **Tools** section, where you choose the terminal and the default IDE among the ones ShogunAi found on this machine (if none is found, the section says so and the matching actions aren't offered), and **Check for updates automatically**, on by default. See [Updates](#updates).
 
 ## Menu bar and system tray icon
 

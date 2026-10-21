@@ -3,7 +3,9 @@ package app.luxion.shogunai.domain.io
 import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.RecentWorktree
+import app.luxion.shogunai.domain.model.SortedView
 import app.luxion.shogunai.domain.model.WindowBounds
+import app.luxion.shogunai.domain.model.WorktreeSort
 
 interface ShellPreferenceRepository {
     fun loadLastDestination(): String?
@@ -20,6 +22,10 @@ interface ShellPreferenceRepository {
     fun saveRecentPaletteItems(ids: List<String>)
     fun loadGrouping(view: GroupedView): Grouping
     fun saveGrouping(view: GroupedView, grouping: Grouping)
+    fun loadSort(view: SortedView): WorktreeSort
+    fun saveSort(view: SortedView, sort: WorktreeSort)
+    fun loadInactiveAfterDays(): Int
+    fun saveInactiveAfterDays(days: Int)
     fun loadRecentProjects(): List<String>
     fun saveRecentProjects(ids: List<String>)
     fun loadRecentWorktrees(): List<RecentWorktree>
