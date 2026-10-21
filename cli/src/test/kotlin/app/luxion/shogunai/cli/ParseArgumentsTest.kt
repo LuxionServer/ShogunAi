@@ -267,4 +267,33 @@ class ParseArgumentsTest {
         assertIs<ParsedArguments.UsageError>(parseArguments(listOf("pool")))
         assertIs<ParsedArguments.UsageError>(parseArguments(listOf("pool", "status", "extra")))
     }
+
+    @Test
+    fun `guide parses a topic and its options`() {
+        assertEquals(CliCommand.Guide(), command("guide"))
+        assertEquals(CliCommand.Guide(topic = "parallel", plain = true), command("guide", "parallel", "--plain"))
+        assertEquals(CliCommand.Guide(migrate = true, file = "AGENTS.md"), command("guide", "--migrate", "--file", "AGENTS.md"))
+    }
+
+    @Test
+    fun `guide rejects unknown topics and misplaced options`() {
+        assertEquals("unknown topic 'parties' for 'guide', expected worktrees, parallel, resources, cleanup", usageError("guide", "parties"))
+        assertEquals("--file only applies to 'guide --migrate'", usageError("guide", "--file", "x"))
+        assertEquals("--migrate can't be combined with a topic or --plain", usageError("guide", "worktrees", "--migrate"))
+    }
+
+    @Test
+    fun `guide install parses its target`() {
+        assertEquals(CliCommand.GuideBlock(GuideAction.INSTALL, agent = "gemini", yes = true), command("guide", "install", "--agent", "gemini", "--yes"))
+        assertEquals(CliCommand.GuideBlock(GuideAction.UNINSTALL, project = true), command("guide", "uninstall", "--project"))
+        assertEquals(CliCommand.GuideBlock(GuideAction.STATUS, json = true), command("guide", "status", "--json"))
+    }
+
+    @Test
+    fun `guide install needs exactly one target and a known agent`() {
+        assertEquals("'guide install' needs where: --agent <codex|gemini>, --project or --file <path>", usageError("guide", "install"))
+        assertEquals("--agent, --project and --file can't be combined", usageError("guide", "install", "--project", "--file", "x"))
+        assertEquals("unknown agent 'zed' for 'guide', expected codex, gemini", usageError("guide", "install", "--agent", "zed"))
+        assertEquals("Cursor has no user-level instructions file; use --project (its AGENTS.md) or --file", usageError("guide", "install", "--agent", "cursor"))
+    }
 }

@@ -25,6 +25,7 @@ import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.usecase.GradleTrim
 import app.luxion.shogunai.domain.usecase.ResourceAcquisition
+import app.luxion.shogunai.domain.usecase.GuideBlockStatus
 import app.luxion.shogunai.domain.usecase.HookEntry
 import app.luxion.shogunai.domain.usecase.HooksPreview
 import app.luxion.shogunai.domain.usecase.HooksStatus
@@ -525,4 +526,30 @@ fun hooksStatusJson(statuses: List<Pair<String, HooksStatus>>): JsonObject = bui
             },
         )
     }
+}
+
+fun guideResultJson(status: GuideBlockStatus, applied: Boolean, warnings: List<String>): JsonObject = buildJsonObject {
+    put("path", status.path)
+    put("applied", applied)
+    put("state", status.state.name.lowercase())
+    put("warnings", buildJsonArray { warnings.forEach { add(JsonPrimitive(it)) } })
+}
+
+fun guideStatusJson(targets: List<Pair<String, GuideBlockStatus>>, warnings: List<String>): JsonObject = buildJsonObject {
+    put(
+        "targets",
+        buildJsonArray {
+            targets.forEach { (target, status) ->
+                add(
+                    buildJsonObject {
+                        put("target", target)
+                        put("path", status.path)
+                        put("state", status.state.name.lowercase())
+                        put("duplicates", status.duplicatesOutside)
+                    },
+                )
+            }
+        },
+    )
+    put("warnings", buildJsonArray { warnings.forEach { add(JsonPrimitive(it)) } })
 }

@@ -52,4 +52,8 @@ Rollback: `shogun guide uninstall` removes the block; reverting the hook change 
 
 ## Open Questions
 
-- Which user-level files do Codex, Cursor and Gemini read, and does each follow `AGENTS.md`? Answered while implementing the `--agent` table.
+None. The `--agent` table was settled against each tool's documentation:
+
+- **Codex**: reads `AGENTS.md` from its home directory, `~/.codex` unless `CODEX_HOME` is set (`AGENTS.override.md` wins when present). `--agent codex` writes `$CODEX_HOME/AGENTS.md`.
+- **Gemini CLI**: reads `~/.gemini/GEMINI.md` as its global context file; it reads `AGENTS.md` only when `context.fileName` in its settings lists it. `--agent gemini` writes `~/.gemini/GEMINI.md`.
+- **Cursor**: user rules are set in its settings, not in a file on disk, and it reads the project's `AGENTS.md`. There is no `--agent cursor`; the usage error points to `--project` and `--file`.
