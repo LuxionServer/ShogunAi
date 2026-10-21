@@ -38,6 +38,10 @@ class FakeFileManager(
 
     override fun isDirectory(path: String): Boolean = path in directories
 
+    val directoryFiles = mutableMapOf<String, List<String>>()
+
+    override fun listFiles(directory: String): List<String> = directoryFiles[directory].orEmpty()
+
     override fun modificationStamps(path: String): List<Pair<String, Long>> =
         stamps.filterKeys { it == path || it.startsWith("$path/") }.toList()
 

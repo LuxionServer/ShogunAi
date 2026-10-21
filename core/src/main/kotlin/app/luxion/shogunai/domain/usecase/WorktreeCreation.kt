@@ -32,20 +32,29 @@ internal suspend fun checkProvisioningAndResolveFiles(
     if (missingSecrets.isNotEmpty()) {
         throw WorktreeError.SecretFileNotFound(missingSecrets, config.baseRepositoryPath)
     }
-    return resolveProvisionedFiles(config, executor, provisioningSource)
+    return resolveProvisionedFiles(config, executor, fileManager, provisioningSource)
 }
 
 internal suspend fun resolveProvisionedFiles(
     config: ProjectConfig,
     executor: ShellCommandExecutor,
+    fileManager: FileManager,
     provisioningSource: RepositoryProvisioningSource,
 ): ProvisionedFiles {
     val provisioning = provisioningSource.read(config.baseRepositoryPath)
-    val linked = listUntrackedFiles(config, executor, provisioning.linkPatterns).filterNot { it in config.secretFiles }
-    val copied = (config.secretFiles + listUntrackedFiles(config, executor, provisioning.allPatterns))
+    val localFiles = config.secretFiles.flatMap { expandLocalEntry(config, fileManager, it) }
+    val linked = listUntrackedFiles(config, executor, provisioning.linkPatterns).filterNot { it in localFiles }
+    val copied = (localFiles + listUntrackedFiles(config, executor, provisioning.allPatterns))
         .distinct()
         .filterNot { it in linked }
     return ProvisionedFiles(copied, linked, provisioning.postCreateCommands)
+}
+
+private fun expandLocalEntry(config: ProjectConfig, fileManager: FileManager, entry: String): List<String> {
+    val path = config.baseSecretPath(entry)
+    if (!fileManager.isDirectory(path)) return listOf(entry)
+    val folder = entry.trimEnd('/', '\\')
+    return fileManager.listFiles(path).map { "$folder/$it" }
 }
 
 private suspend fun listUntrackedFiles(

@@ -5,8 +5,9 @@ import app.luxion.shogunai.ui.relativeIfInsideBase
 import java.io.File
 
 internal fun normalizeSecretFile(baseRepositoryPath: String, entry: String): String {
-    if (!isAbsolutePath(entry)) return entry
-    return relativeIfInsideBase(baseRepositoryPath, entry) ?: entry
+    val trimmed = entry.trimEnd('/', '\\').ifEmpty { entry }
+    if (!isAbsolutePath(trimmed)) return trimmed
+    return relativeIfInsideBase(baseRepositoryPath, trimmed) ?: trimmed
 }
 
 internal fun worktreesRootOffset(baseRepositoryPath: String, worktreesRoot: String): String? {

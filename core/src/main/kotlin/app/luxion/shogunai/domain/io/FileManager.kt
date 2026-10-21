@@ -18,6 +18,8 @@ interface FileManager {
 
     fun isDirectory(path: String): Boolean
 
+    fun listFiles(directory: String): List<String>
+
     fun modificationStamps(path: String): List<Pair<String, Long>>
 
     fun readProperties(path: String): Map<String, String>

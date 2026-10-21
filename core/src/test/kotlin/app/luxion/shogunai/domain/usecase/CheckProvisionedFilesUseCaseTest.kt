@@ -91,4 +91,32 @@ class CheckProvisionedFilesUseCaseTest {
 
         assertIs<WorktreeError.NotAWorktree>(error)
     }
+
+    @Test
+    fun `reports a missing and a different file of a local folder`() = runTest {
+        val keysFolder = "$base/keys"
+        val files = FakeFileManager(
+            existing = listOf(base, linked, keysFolder, "$keysFolder/a.pem", "$keysFolder/ci/b.pem", "$linked/keys/ci/b.pem", "$base/.env", "$linked/.env"),
+            directories = setOf(keysFolder),
+        )
+        files.directoryFiles[keysFolder] = listOf("a.pem", "ci/b.pem")
+        files.contents["$keysFolder/ci/b.pem"] = "new"
+        files.contents["$linked/keys/ci/b.pem"] = "old"
+        files.contents["$base/.env"] = "KEY=1"
+        files.contents["$linked/.env"] = "KEY=1"
+        val withFolder = config.copy(secretFiles = listOf("keys"))
+        val onlyCopies = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(copyPatterns = listOf(".env"))),
+        )
+
+        val drift = CheckProvisionedFilesUseCase(withFolder, executor, files, onlyCopies)(linked).getOrThrow()
+
+        assertEquals(
+            listOf(
+                ProvisionDrift("keys/a.pem", ProvisionDriftState.MISSING),
+                ProvisionDrift("keys/ci/b.pem", ProvisionDriftState.DIFFERS),
+            ),
+            drift,
+        )
+    }
 }
