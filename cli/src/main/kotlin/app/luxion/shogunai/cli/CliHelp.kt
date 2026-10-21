@@ -77,7 +77,7 @@ internal object CliHelp {
         "hook" to """
   hook worktree-create        Claude Code WorktreeCreate hook: create and provision the worktree, print its path
   hook worktree-remove        Claude Code WorktreeRemove hook: remove the worktree, delete its branch if merged
-  hook session-start          Claude Code SessionStart hook: export the worktree's environment to the session
+  hook session-start          Claude Code SessionStart hook: export the worktree's environment and give the session ShogunAi's workflow rules
   hook agent-state            Claude Code UserPromptSubmit, Notification, Stop and SessionEnd hook: record the session's state
   hook herdr                  Herdr plugin hook: provision worktrees on worktree.created, delete merged branches on worktree.removed
 """.trimIndent(),
@@ -89,6 +89,20 @@ internal object CliHelp {
   hooks status [--json]
                               Say whether the hooks are installed, outdated or missing, in the user
                               settings and in the current repository's
+""".trimIndent(),
+        "guide" to """
+  guide [<topic>] [--plain]   Print ShogunAi's workflow rules for agents that apply here (topics: worktrees,
+                              parallel, resources, cleanup); the others are listed after them, marked with
+                              what they need; --plain prints every rule without looking at the directory
+  guide --migrate [--file <path>]
+                              Print every rule with its id and an instruction for an agent to propose,
+                              without applying, the lines of an AGENTS.md that repeat them
+  guide install|uninstall [--agent codex|gemini | --project | --file <path>] [--yes] [--json]
+                              Add or remove a block that points to 'shogun guide' in an agent's user-level
+                              instructions file, the repository's AGENTS.md or another file; shows what
+                              changes and asks first unless --yes is given
+  guide status [--file <path>] [--json]
+                              Say whether the block is installed, outdated or missing in each known file
 """.trimIndent(),
         "simulator" to """
   simulator start|stop|status [<path>] [--device <type>] [--runtime <runtime>] [--json]

@@ -54,6 +54,9 @@ import app.luxion.shogunai.domain.model.ProvisionMode
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.ProvisionedFile
 import app.luxion.shogunai.domain.model.ShellQuoting
+import app.luxion.shogunai.domain.model.WorkflowContext
+import app.luxion.shogunai.domain.model.WorkflowRules
+import app.luxion.shogunai.domain.model.WorkflowTopic
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeOrigin
@@ -62,7 +65,10 @@ import app.luxion.shogunai.domain.model.WorktreeStatus
 import app.luxion.shogunai.domain.model.XcodeProvider
 import app.luxion.shogunai.domain.usecase.AcquireWorktreeResourceUseCase
 import app.luxion.shogunai.domain.usecase.BranchDeletion
+import app.luxion.shogunai.domain.usecase.AgentInstructionsBlock
 import app.luxion.shogunai.domain.usecase.ClaudeCodeHooks
+import app.luxion.shogunai.domain.usecase.GuideBlockState
+import app.luxion.shogunai.domain.usecase.GuideBlockStatus
 import app.luxion.shogunai.domain.usecase.HooksInstallState
 import app.luxion.shogunai.domain.usecase.HooksPreview
 import app.luxion.shogunai.domain.usecase.CheckGradleBuildCacheUseCase
@@ -132,6 +138,8 @@ import java.time.Duration
 import java.time.Instant
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
@@ -280,6 +288,8 @@ class ShogunCli(
             CliCommand.HookHerdr -> hookHerdr()
             CliCommand.HookAgentState -> hookAgentState()
             is CliCommand.Hooks -> hooks(command)
+            is CliCommand.Guide -> guide(command)
+            is CliCommand.GuideBlock -> guideBlock(command)
             is CliCommand.GradleStop -> gradleStop(command)
             is CliCommand.Pool -> pool(command)
             is CliCommand.Xcode -> xcode(command)
@@ -973,42 +983,142 @@ class ShogunCli(
         if (ResolveRepositoryUseCase(executor)(directory).isFailure) return EXIT_OK
         val (repository, worktree) = worktreeContaining(directory)
         val environment = resolveEnvironment(repository, worktree.path).getOrThrow()
-        val providers = provisioningSource.read(repository).providers
-        val variables = environment.variables.toMap()
-        val emulatorHint = providers.emulator?.let { emulatorContext(variables[ANDROID_SERIAL]) }.orEmpty()
-        val simulatorHint = providers.iosSimulator?.takeIf { appleSimulators.isSupported() }
-            ?.let { simulatorContext(variables[IOS_SIMULATOR_UDID]) }
-            .orEmpty()
-        if (environment.isEmpty && emulatorHint.isEmpty() && simulatorHint.isEmpty()) return EXIT_OK
-        environmentVariable(CLAUDE_ENV_FILE)?.takeIf { it.isNotBlank() }?.let { path ->
-            if (!environment.isEmpty) appendToEnvironmentFile(path, formatEnvironment(environment, EnvironmentFormat.SH))
+        val context = workflowContext(repository, worktree)
+        if (!environment.isEmpty) {
+            environmentVariable(CLAUDE_ENV_FILE)?.takeIf { it.isNotBlank() }?.let { path ->
+                appendToEnvironmentFile(path, formatEnvironment(environment, EnvironmentFormat.SH))
+            }
+            val listed = environment.variables.joinToString(", ") { (name, value) -> "$name=$value" }
+            out.line("ShogunAi environment of worktree ${folderName(worktree.path)}: $listed")
         }
-        val listed = environment.variables.joinToString(", ") { (name, value) -> "$name=$value" }
-        val heading = "ShogunAi environment of worktree ${folderName(worktree.path)}"
-        out.line((if (listed.isEmpty()) heading else "$heading: $listed") + emulatorHint + simulatorHint)
+        WorkflowRules.sessionStartLines(context).forEach { out.line(it) }
         return EXIT_OK
     }
 
-    private fun emulatorContext(serial: String?): String {
-        val sharedAdb = "The adb server is shared with other worktrees' agents: never run 'adb kill-server' or 'adb start-server', " +
-            "and don't pass -s, -e or -d to adb, so every command goes to $ANDROID_SERIAL"
-        return if (serial != null) {
-            ". Its Android emulator is $ANDROID_SERIAL=$serial; run 'shogun emulator start' before every use (installing the app, running instrumented tests): " +
-                "the emulator may have been released to another worktree since this session began, and the command re-acquires one and prints the $ANDROID_SERIAL to export. $sharedAdb"
-        } else {
-            ". Its Android emulator isn't acquired yet: run 'shogun emulator start' before every use (installing the app, running instrumented tests); " +
-                "it acquires and starts the emulator, prints the $ANDROID_SERIAL to export, and re-acquires one if it was released to another worktree. $sharedAdb"
+    private suspend fun workflowContext(repository: String, worktree: Worktree): WorkflowContext {
+        val providers = provisioningSource.read(repository).providers
+        return WorkflowContext(
+            inMainCheckout = worktree.isMain,
+            herdrAvailable = herdrAvailable(),
+            emulatorProvider = providers.emulator != null,
+            simulatorProvider = providers.iosSimulator != null && appleSimulators.isSupported(),
+        )
+    }
+
+    private suspend fun herdrAvailable(): Boolean = try {
+        withTimeout(HERDR_PROBE_MILLIS) { herdr.listAgents() }
+        true
+    } catch (error: TimeoutCancellationException) {
+        false
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Exception) {
+        false
+    }
+
+    private suspend fun guide(command: CliCommand.Guide): Int {
+        val topic = command.topic?.let(WorkflowTopic::parse)
+        when {
+            command.migrate -> migrateText(command.file?.let(::absolute)).forEach { out.line(it) }
+            command.plain -> plainGuideText(WorkflowRules.all.filter { topic == null || it.topic == topic }).forEach { out.line(it) }
+            else -> {
+                if (ResolveRepositoryUseCase(executor)(workingDirectory).isFailure) {
+                    err.line("shogun: No Git repository found here, so the rules that apply can't be chosen.")
+                    err.line("Run 'shogun guide --plain' to print every rule.")
+                    return EXIT_FAILURE
+                }
+                val (repository, worktree) = worktreeContaining(workingDirectory)
+                guideText(WorkflowRules.rulesFor(workflowContext(repository, worktree), topic)).forEach { out.line(it) }
+            }
+        }
+        return EXIT_OK
+    }
+
+    private val instructionsBlock = AgentInstructionsBlock(fileManager)
+
+    private suspend fun guideBlock(command: CliCommand.GuideBlock): Int {
+        if (command.action == GuideAction.STATUS) return guideStatus(command)
+        val (_, path) = guideTarget(command)
+        val install = command.action == GuideAction.INSTALL
+        val current = instructionsBlock.status(path)
+        val warnings = guideDuplicateWarnings(listOf(current)).takeIf { install }.orEmpty()
+        val upToDate = if (install) current.state == GuideBlockState.INSTALLED else !current.hasBlock
+        if (upToDate) {
+            if (command.json) printJson(guideResultJson(current, applied = false, warnings = warnings)) else {
+                out.line(if (install) "The ShogunAi guide block is already installed in $path" else "There is no ShogunAi guide block in $path")
+                warnings.forEach { err.line("shogun: warning: $it") }
+            }
+            return EXIT_OK
+        }
+        if (!command.json) {
+            out.line(if (install) "Will write this block to $path:" else "Will remove the ShogunAi guide block from $path")
+            if (install) out.line(AgentInstructionsBlock.current())
+        }
+        val confirmed = command.yes || (!command.json && confirm(if (install) "Write it? [y/N] " else "Remove it? [y/N] "))
+        val result = if (!confirmed) current else if (install) instructionsBlock.install(path) else instructionsBlock.uninstall(path)
+        when {
+            command.json -> printJson(guideResultJson(result, applied = confirmed, warnings = warnings))
+            confirmed -> {
+                out.line(if (install) "Installed in $path" else "Removed from $path")
+                warnings.forEach { err.line("shogun: warning: $it") }
+            }
+            else -> out.line("Nothing written.")
+        }
+        return EXIT_OK
+    }
+
+    private suspend fun guideTarget(command: CliCommand.GuideBlock): Pair<String, String> = when {
+        command.agent != null -> command.agent to guideAgentPath(command.agent)
+        command.project -> "project" to projectInstructionsPath()
+        else -> "file" to absolute(command.file.orEmpty())
+    }
+
+    private fun guideAgentPath(agent: String): String = when (agent) {
+        "codex" -> (environmentVariable(CODEX_HOME)?.takeIf { it.isNotBlank() } ?: "$userHome/.codex").trimEnd('/') + "/AGENTS.md"
+        else -> "$userHome/.gemini/GEMINI.md"
+    }
+
+    private suspend fun projectInstructionsPath(): String =
+        ResolveRepositoryUseCase(executor)(workingDirectory).getOrThrow().trimEnd('/') + "/AGENTS.md"
+
+    private fun guideDuplicateWarnings(statuses: List<GuideBlockStatus>): List<String> =
+        statuses.filter { it.duplicatesOutside }.map {
+            "${it.path} mentions 'shogun new', 'shogun open' or 'shogun clean' outside the block, so it may repeat the guide; " +
+                "run 'shogun guide --migrate --file ${it.path}' to review it"
+        }
+
+    private suspend fun guideStatus(command: CliCommand.GuideBlock): Int {
+        val targets = buildList {
+            GUIDE_AGENTS.forEach { add(it to guideAgentPath(it)) }
+            ResolveRepositoryUseCase(executor)(workingDirectory).getOrNull()?.let { add("project" to it.trimEnd('/') + "/AGENTS.md") }
+            command.file?.let { add("file" to absolute(it)) }
+        }
+        val statuses = targets.map { (label, path) -> label to instructionsBlock.status(path) }
+        val warnings = guideDuplicateWarnings(statuses.map { it.second }) + hookAndBlockWarnings(statuses)
+        if (command.json) {
+            printJson(guideStatusJson(statuses, warnings))
+            return EXIT_OK
+        }
+        statuses.forEach { (label, status) -> out.line("$label: ${status.state.name.lowercase()}  ${status.path}") }
+        warnings.forEach { err.line("shogun: warning: $it") }
+        return EXIT_OK
+    }
+
+    private suspend fun hookAndBlockWarnings(statuses: List<Pair<String, GuideBlockStatus>>): List<String> {
+        val readByClaude = statuses.filter { (label, status) -> label in setOf("project", "file") && status.hasBlock }
+        if (readByClaude.isEmpty() || !sessionStartHookInstalled()) return emptyList()
+        return readByClaude.map { (_, status) ->
+            "Claude Code gets the rules twice: its SessionStart hook is installed and ${status.path} also has the block"
         }
     }
 
-    private fun simulatorContext(udid: String?): String =
-        if (udid != null) {
-            ". Its iOS simulator is $IOS_SIMULATOR_UDID=$udid; boot it with 'shogun simulator start' and build with " +
-                "xcodebuild -destination \"id=\$$IOS_SIMULATOR_UDID\""
-        } else {
-            ". Its iOS simulator isn't created yet: 'shogun simulator start' creates and boots it and prints the $IOS_SIMULATOR_UDID to export; " +
-                "then build with xcodebuild -destination \"id=\$$IOS_SIMULATOR_UDID\""
-        }
+    private suspend fun sessionStartHookInstalled(): Boolean {
+        val paths = listOfNotNull(
+            userHooksSettingsPath(),
+            ResolveRepositoryUseCase(executor)(workingDirectory).getOrNull()?.let(ClaudeCodeHooks::projectSettingsPath),
+        )
+        return paths.any { claudeHooks.status(it).getOrNull()?.state == HooksInstallState.INSTALLED }
+    }
 
     private suspend fun worktreeContaining(directory: String): Pair<String, Worktree> {
         val (config, worktree) = configAndWorktreeContaining(directory)
@@ -1493,6 +1603,8 @@ class ShogunCli(
         private const val CLAUDE_CODE_WORKTREES = ".claude/worktrees"
         private const val CLAUDE_ENV_FILE = "CLAUDE_ENV_FILE"
         private const val CLAUDE_CONFIG_DIR = "CLAUDE_CONFIG_DIR"
+        private const val CODEX_HOME = "CODEX_HOME"
+        private const val HERDR_PROBE_MILLIS = 2_000L
         private const val SESSION_END = "SessionEnd"
         private const val HERDR_PLUGIN_EVENT = "HERDR_PLUGIN_EVENT"
         private const val HERDR_PLUGIN_EVENT_JSON = "HERDR_PLUGIN_EVENT_JSON"

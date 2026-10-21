@@ -27,7 +27,7 @@ object SpanishStrings : Strings {
     override val collapse = "Contraer"
 
     override val selectFolderDialogTitle = "Selecciona una carpeta"
-    override val selectLocalFilesDialogTitle = "Selecciona archivos locales"
+    override val selectLocalFilesDialogTitle = "Selecciona archivos o carpetas locales"
 
     override val projectsTitle = "Proyectos"
     override val addProject = "Añadir proyecto"
@@ -77,10 +77,10 @@ object SpanishStrings : Strings {
     override val mainBranchLabel = "Rama principal"
     override val mainBranchPlaceholder = "Detectada a partir del repositorio"
     override val localFilesSection = "Archivos locales"
-    override val removeLocalFile = "Eliminar archivo local"
-    override val newLocalFileLabel = "Nuevo archivo local"
+    override val removeLocalFile = "Eliminar archivo o carpeta local"
+    override val newLocalFileLabel = "Nuevo archivo o carpeta local"
     override val localFilesDescription =
-        "Rutas exactas que se copian a cada nuevo worktree. Solo se guardan en esta máquina."
+        "Rutas exactas de archivos o carpetas que se copian a cada nuevo worktree; una carpeta incluye todos los archivos que contiene. Solo se guardan en esta máquina."
     override val repositoryProvisioningSection = "Del repositorio"
     override val repositoryProvisioningDescription =
         "Patrones versionados en .shogunai.json y .worktreeinclude. Cada archivo no versionado que coincida se copia a cada nuevo worktree."

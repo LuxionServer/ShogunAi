@@ -329,4 +329,58 @@ class CreateWorktreeFromBranchUseCaseTest {
         assertTrue(exec.executed("git", "worktree", "remove", "--force", remoteWorktreePath))
         assertTrue(exec.executed("git", "branch", "-D", "--", remoteBranch))
     }
+
+    private val keysFolder = config.baseSecretPath("keys")
+
+    private fun folderConfig() = config.copy(secretFiles = listOf("keys"))
+
+    private fun fileManagerWithKeys(failCopyFor: Set<String> = emptySet()) = FakeFileManager(
+        existing = listOf(config.baseRepositoryPath, keysFolder),
+        directories = setOf(keysFolder),
+        failCopyFor = failCopyFor,
+    ).also { it.directoryFiles[keysFolder] = listOf("a.pem", "ci/b.pem") }
+
+    @Test
+    fun `copies every file under a local folder and merges into an existing one`() = runTest {
+        val fileManager = fileManagerWithKeys()
+        fileManager.copy("unused", "$worktreePath/keys/old.pem")
+        fileManager.copied.clear()
+        val useCase = CreateWorktreeFromBranchUseCase(folderConfig(), executor(), fileManager, FakeRepositoryProvisioningSource())
+
+        useCase(branch).getOrThrow()
+
+        assertEquals(
+            listOf(
+                "$keysFolder/a.pem" to "$worktreePath/keys/a.pem",
+                "$keysFolder/ci/b.pem" to "$worktreePath/keys/ci/b.pem",
+            ),
+            fileManager.copied,
+        )
+        assertTrue(fileManager.exists("$worktreePath/keys/old.pem"))
+    }
+
+    @Test
+    fun `fails before creating anything when a local folder is missing`() = runTest {
+        val exec = executor()
+        val fileManager = FakeFileManager(existing = listOf(config.baseRepositoryPath))
+        val useCase = CreateWorktreeFromBranchUseCase(folderConfig(), exec, fileManager, FakeRepositoryProvisioningSource())
+
+        val error = useCase(branch).exceptionOrNull()
+
+        assertIs<WorktreeError.SecretFileNotFound>(error)
+        assertEquals(listOf("keys"), error.files)
+        assertFalse(exec.executedCommands.any { it.getOrNull(2) == "add" })
+    }
+
+    @Test
+    fun `rolls back the worktree when copying a file of a local folder fails`() = runTest {
+        val exec = executor()
+        val fileManager = fileManagerWithKeys(failCopyFor = setOf("$keysFolder/ci/b.pem"))
+        val useCase = CreateWorktreeFromBranchUseCase(folderConfig(), exec, fileManager, FakeRepositoryProvisioningSource())
+
+        val error = useCase(branch).exceptionOrNull()
+
+        assertIs<WorktreeError.SecretCopyFailed>(error)
+        assertTrue(exec.executed("git", "worktree", "remove", "--force", worktreePath))
+    }
 }

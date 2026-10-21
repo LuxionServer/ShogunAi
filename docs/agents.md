@@ -68,7 +68,7 @@ What happens then:
 - Running `claude -w TASK-123` again reuses that worktree.
 - When Claude Code removes the worktree (you choose to remove it when exiting, or it had no changes), `shogun` removes it and deletes its branch only if it's merged; a branch with work is kept.
 - With this hook Claude Code no longer processes `.worktreeinclude` itself; ShogunAi reads it instead, so its files are still copied.
-- `SessionStart` appends the worktree's `env` variables to the session's `CLAUDE_ENV_FILE`, so every Bash command Claude runs sees them (`$PORT`), and tells Claude which values this worktree uses, including how to start its emulator or its iOS simulator when the repository uses those providers. It works for any session started inside a worktree, also without `--worktree`, and does nothing in repositories without `env`.
+- `SessionStart` appends the worktree's `env` variables to the session's `CLAUDE_ENV_FILE`, so every Bash command Claude runs sees them (`$PORT`), and tells Claude which values this worktree uses. It also gives the session [ShogunAi's workflow rules](#shogunais-workflow-rules): a short list adapted to where it runs, including how to start the emulator or the iOS simulator when the repository uses those providers. It works for any session started inside a worktree or the main checkout of a Git repository, also without `--worktree` and also when the repository declares no `env` (then there is no variables line and nothing is written to `CLAUDE_ENV_FILE`).
 
 Claude Code only runs a repository's project hooks once you've trusted its folder. If the hooks live in the repository's `.claude/settings.json` and you've never run `claude` there, `claude -w` stops with "Workspace trust not yet accepted": run `claude` once in the repository, accept the trust dialog, and retry. Hooks in `~/.claude/settings.json` don't need this for repositories you already trust.
 
@@ -110,6 +110,29 @@ The other way round needs no plugin: removing a worktree from ShogunAi (the row'
 - The plugin runs `shogun`, so it must be on the `PATH` of the shell you start Herdr from (Herdr's background server keeps that shell's environment; restart it with `herdr server stop` after installing `shogun`). `herdr plugin log` shows each run with the files it copied, or the error.
 - Herdr opens the new workspace a moment before the plugin runs; an agent you start instantly could find the files still being copied.
 - The plugin doesn't type anything into the new workspace's shell. Its variables reach agents the usual way: Claude Code's `SessionStart` hook above, the `envFile`, or `direnv` (see below).
+
+## ShogunAi's workflow rules
+
+Agents that work in ShogunAi's worktrees tend to break its flow: they switch the branch of the worktree a session starts in, create worktrees outside `shogun`, type into another session's terminal or clean worktrees without asking. The rules that follow from how `shogun` works are kept in one catalog, versioned with the binary, in four topics: `worktrees`, `parallel`, `resources` and `cleanup`. They are defaults: every output says that the project's `AGENTS.md` and your own instructions take precedence. Personal or team preferences (code style, commits, pull requests) are not part of it.
+
+- **Claude Code** gets the short subset, adapted to the session, from the [`SessionStart` hook](#claude-code) (at most ten lines, ending with a pointer to the rest): the rule about the main checkout or the worktree, branching with `--from`, opening sessions with `shogun open --herdr` and messaging them only when Herdr is available, the emulator and simulator rules only when the repository declares those providers, and asking before `shogun clean --yes`.
+- **Any agent** can read all of it with `shogun guide [<topic>]`: the rules that apply where it runs first, then the ones that don't, each marked with what it needs. `shogun guide --plain` prints every rule without looking at the directory, so it also works outside a repository.
+- **Agents without hooks** (Codex, Gemini CLI, Cursor) get a minimal block in the `AGENTS.md`-style file they read, which only says to run `shogun guide`, so the rules always come from the installed binary:
+
+    ```bash
+    shogun guide install --agent codex      # ~/.codex/AGENTS.md (or $CODEX_HOME/AGENTS.md)
+    shogun guide install --agent gemini     # ~/.gemini/GEMINI.md
+    shogun guide install --project          # the repository's AGENTS.md, which Cursor reads
+    shogun guide install --file <path>      # any other file
+    shogun guide status                     # installed, outdated or missing in each of them
+    shogun guide uninstall --agent codex
+    ```
+
+    The block sits between `<!-- shogun:guide v1 -->` and `<!-- /shogun:guide -->`; everything else in the file is kept byte for byte, installing again never duplicates it and an older block is replaced. It shows what it will write and asks `[y/N]` unless `--yes` is given. Cursor keeps user rules in its settings, not in a file, so for it use `--project` or `--file`. Claude Code isn't an `--agent`: it has the hook, and a block in the project's `AGENTS.md` (which Claude Code reads through `CLAUDE.md`) would give it the rules twice, which `shogun guide status` warns about.
+
+### Migrating your own instructions
+
+If your `AGENTS.md` already repeats these rules, run `shogun guide --migrate --file <path>` and give its output to your agent. It prints every rule with its id and asks the agent to list what the file repeats, propose removing it and show the diff without applying anything until you confirm. The command doesn't read or write the file. `shogun guide install` and `status` also warn when the file mentions `shogun new`, `shogun open` or `shogun clean` outside the block, and never change that text. For a repository's `AGENTS.md`, do the same through a pull request.
 
 ## Cursor
 

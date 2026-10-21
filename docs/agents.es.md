@@ -68,7 +68,7 @@ Qué pasa entonces:
 - Ejecutar otra vez `claude -w TASK-123` reutiliza ese worktree.
 - Cuando Claude Code elimina el worktree (eliges eliminarlo al salir, o no tenía cambios), `shogun` lo elimina y borra su rama solo si está mergeada; una rama con trabajo se conserva.
 - Con este hook Claude Code deja de procesar `.worktreeinclude` por su cuenta; lo lee ShogunAi, así que sus archivos se siguen copiando.
-- `SessionStart` añade las variables `env` del worktree al `CLAUDE_ENV_FILE` de la sesión, así que todos los comandos Bash que ejecuta Claude las ven (`$PORT`), y le dice a Claude qué valores usa este worktree, incluido cómo arrancar su emulador o su simulador de iOS cuando el repositorio usa esos providers. Funciona en cualquier sesión que arranque dentro de un worktree, también sin `--worktree`, y no hace nada en repositorios sin `env`.
+- `SessionStart` añade las variables `env` del worktree al `CLAUDE_ENV_FILE` de la sesión, así que todos los comandos Bash que ejecuta Claude las ven (`$PORT`), y le dice a Claude qué valores usa este worktree. También le da a la sesión las [reglas de flujo de ShogunAi](#reglas-de-flujo-de-shogunai): una lista corta adaptada a donde se ejecuta, que incluye cómo arrancar el emulador o el simulador de iOS cuando el repositorio usa esos providers. Funciona en cualquier sesión que arranque dentro de un worktree o del checkout principal de un repositorio Git, también sin `--worktree` y también cuando el repositorio no declara `env` (entonces no hay línea de variables y no se escribe nada en `CLAUDE_ENV_FILE`).
 
 Claude Code solo ejecuta los hooks de proyecto de un repositorio cuando has aceptado confiar en su carpeta. Si los hooks están en el `.claude/settings.json` del repositorio y nunca has ejecutado `claude` ahí, `claude -w` se detiene con "Workspace trust not yet accepted": ejecuta `claude` una vez en el repositorio, acepta el diálogo de confianza y vuelve a intentarlo. Los hooks de `~/.claude/settings.json` no lo necesitan en los repositorios en los que ya confías.
 
@@ -110,6 +110,29 @@ En el otro sentido no hace falta el plugin: eliminar un worktree desde ShogunAi 
 - El plugin ejecuta `shogun`, así que tiene que estar en el `PATH` de la shell desde la que arrancas Herdr (el servidor en segundo plano de Herdr conserva el entorno de esa shell; reinícialo con `herdr server stop` después de instalar `shogun`). `herdr plugin log` muestra cada ejecución con los ficheros copiados, o el error.
 - Herdr abre el workspace nuevo un instante antes de que se ejecute el plugin; un agente que arranques al momento podría encontrarse los ficheros todavía copiándose.
 - El plugin no escribe nada en la shell del workspace nuevo. Sus variables llegan a los agentes por los caminos de siempre: el hook `SessionStart` de Claude Code de arriba, el `envFile` o `direnv` (ver más abajo).
+
+## Reglas de flujo de ShogunAi
+
+Los agentes que trabajan en los worktrees de ShogunAi suelen romper su flujo: cambian la rama del worktree en el que arranca la sesión, crean worktrees fuera de `shogun`, escriben en el terminal de otra sesión o limpian worktrees sin preguntar. Las reglas que se derivan de cómo funciona `shogun` están en un único catálogo, versionado con el binario, en cuatro temas: `worktrees`, `parallel`, `resources` y `cleanup`. Son valores por defecto: cada salida dice que el `AGENTS.md` del proyecto y tus propias instrucciones tienen prioridad. Las preferencias personales o de equipo (estilo de código, commits, pull requests) no forman parte de él.
+
+- **Claude Code** recibe el subconjunto corto, adaptado a la sesión, desde el [hook `SessionStart`](#claude-code) (como máximo diez líneas, que terminan con un puntero al resto): la regla del checkout principal o del worktree, ramificar con `--from`, abrir sesiones con `shogun open --herdr` y escribirles mensajes solo cuando Herdr está disponible, las reglas del emulador y el simulador solo cuando el repositorio declara esos providers, y preguntar antes de `shogun clean --yes`.
+- **Cualquier agente** puede leerlo todo con `shogun guide [<tema>]`: primero las reglas que aplican donde se ejecuta y después las que no, cada una marcada con lo que necesita. `shogun guide --plain` imprime todas las reglas sin mirar el directorio, así que también funciona fuera de un repositorio.
+- **Los agentes sin hooks** (Codex, Gemini CLI, Cursor) reciben un bloque mínimo en el fichero tipo `AGENTS.md` que leen, que solo dice que ejecuten `shogun guide`, de modo que las reglas salen siempre del binario instalado:
+
+    ```bash
+    shogun guide install --agent codex      # ~/.codex/AGENTS.md (o $CODEX_HOME/AGENTS.md)
+    shogun guide install --agent gemini     # ~/.gemini/GEMINI.md
+    shogun guide install --project          # el AGENTS.md del repositorio, que lee Cursor
+    shogun guide install --file <ruta>      # cualquier otro fichero
+    shogun guide status                     # installed, outdated o missing en cada uno
+    shogun guide uninstall --agent codex
+    ```
+
+    El bloque va entre `<!-- shogun:guide v1 -->` y `<!-- /shogun:guide -->`; todo lo demás del fichero se conserva byte a byte, instalar otra vez nunca lo duplica y un bloque antiguo se reemplaza. Muestra lo que va a escribir y pregunta `[y/N]` salvo con `--yes`. Cursor guarda las reglas de usuario en sus ajustes, no en un fichero, así que para él usa `--project` o `--file`. Claude Code no es un `--agent`: tiene el hook, y un bloque en el `AGENTS.md` del proyecto (que Claude Code lee a través de `CLAUDE.md`) le daría las reglas dos veces, algo de lo que avisa `shogun guide status`.
+
+### Migrar tus propias instrucciones
+
+Si tu `AGENTS.md` ya repite estas reglas, ejecuta `shogun guide --migrate --file <ruta>` y pásale la salida a tu agente. Imprime cada regla con su id y le pide al agente que liste lo que el fichero repite, proponga quitarlo y muestre el diff sin aplicar nada hasta que lo confirmes. El comando no lee ni escribe el fichero. `shogun guide install` y `status` también avisan cuando el fichero menciona `shogun new`, `shogun open` o `shogun clean` fuera del bloque, y nunca cambian ese texto. Para el `AGENTS.md` de un repositorio, haz lo mismo mediante una pull request.
 
 ## Cursor
 

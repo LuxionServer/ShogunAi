@@ -62,6 +62,24 @@ class NioFileManager : FileManager {
 
     override fun isDirectory(path: String): Boolean = Files.isDirectory(Path.of(path))
 
+    override fun listFiles(directory: String): List<String> {
+        val root = Path.of(directory)
+        if (!Files.isDirectory(root)) return emptyList()
+        val files = mutableListOf<String>()
+        Files.walkFileTree(
+            root,
+            object : SimpleFileVisitor<Path>() {
+                override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+                    if (attrs.isRegularFile) files += root.relativize(file).joinToString("/")
+                    return FileVisitResult.CONTINUE
+                }
+
+                override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult = FileVisitResult.CONTINUE
+            },
+        )
+        return files
+    }
+
     override fun writeText(path: String, text: String) {
         val file = Path.of(path)
         val parent = file.toAbsolutePath().parent

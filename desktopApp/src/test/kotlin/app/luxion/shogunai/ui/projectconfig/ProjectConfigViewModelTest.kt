@@ -159,6 +159,34 @@ class ProjectConfigViewModelTest {
     }
 
     @Test
+    fun `a folder entry with a trailing separator is the same entry as without it`() {
+        val viewModel = viewModelFor(projectWith(listOf("keys")))
+
+        viewModel.addSecretFile("keys/")
+
+        assertEquals(listOf("keys"), viewModel.secretFiles)
+    }
+
+    @Test
+    fun `adding an absolute folder inside the base repository stores it relative without the separator`() {
+        val viewModel = viewModelFor(projectWith(emptyList()))
+
+        viewModel.addSecretFile("/home/dev/projects/main-repo/config/keys/")
+
+        assertEquals(listOf("config/keys"), viewModel.secretFiles)
+    }
+
+    @Test
+    fun `folder entries follow the base repository when it moves`() {
+        val viewModel = viewModelFor(projectWith(listOf("/home/dev/projects/main-repo/keys", "/etc/shared/keys")))
+
+        viewModel.baseRepositoryPath = "/home/dev/moved/main-repo"
+        val saved = viewModel.save().getOrThrow()
+
+        assertEquals(listOf("keys", "/etc/shared/keys"), saved.config.secretFiles)
+    }
+
+    @Test
     fun `adding an absolute path inside the base repository stores it as relative`() {
         val viewModel = viewModelFor(projectWith(emptyList()))
 

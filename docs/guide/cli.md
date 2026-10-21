@@ -155,6 +155,27 @@ Manages ShogunAi's [Claude Code hooks](../agents.md#claude-code) in Claude Code'
 - A settings file that isn't valid JSON is never written: the command prints its path and the problem on standard error and exits with `1`.
 - With `--json` nothing is asked: `install` and `uninstall` write only with `--yes`, and print `path`, `applied` and the `added`, `replaced` and `removed` hooks. `status --json` prints `user` and `project` (`null` outside a repository), each with `path`, `state` and `events`.
 
+### `guide`
+
+```text
+shogun guide [<topic>] [--plain]
+shogun guide --migrate [--file <path>]
+shogun guide install   (--agent codex|gemini | --project | --file <path>) [--yes] [--json]
+shogun guide uninstall (--agent codex|gemini | --project | --file <path>) [--yes] [--json]
+shogun guide status    [--file <path>] [--json]
+```
+
+ShogunAi's workflow rules for agents, in the topics `worktrees`, `parallel`, `resources` and `cleanup`. See [Using with agents](../agents.md#shogunais-workflow-rules).
+
+- `guide [<topic>]` prints the first line (the rules are defaults; the project's `AGENTS.md` and the person's instructions take precedence) and then the rules of the topic, or of every topic, that apply in the current directory: main checkout or worktree, whether Herdr is available and which providers the repository declares. The rules that don't apply follow under "Not applicable here:", each with the condition it needs. An unknown topic is a usage error (exit `2`) listing the topics; outside a Git repository it exits with `1` and points to `--plain`.
+- `--plain` prints every rule of the requested topics with its condition, without looking at the current directory, so it works anywhere.
+- `--migrate` prints every rule with its id and an instruction for an agent: compare the given file with the rules, list what it repeats, propose removing it and show the diff without applying anything until the person confirms. It doesn't read or write the file.
+- `install` writes a block that says to run `shogun guide` between `<!-- shogun:guide v1 -->` and `<!-- /shogun:guide -->` into a file chosen with `--agent` (`codex`: `$CODEX_HOME/AGENTS.md`, or `~/.codex/AGENTS.md`; `gemini`: `~/.gemini/GEMINI.md`), `--project` (the repository's `AGENTS.md`) or `--file`; one of them is required, and Cursor has no user-level file, so `--agent cursor` is a usage error. It creates the file when missing, keeps every other byte, never duplicates the block, replaces one from an older version, prints what it will write and asks `[y/N]` unless `--yes` is given; answering no writes nothing and exits with `0`.
+- `uninstall` removes the block and the line break `install` added from the same targets, leaving everything else.
+- `status` says for the Codex and Gemini files, the repository's `AGENTS.md` (inside a repository) and `--file` whether the block is `installed`, `outdated` or `missing`.
+- `install` and `status` warn on standard error when a file mentions `shogun new`, `shogun open` or `shogun clean` outside the block, suggesting `guide --migrate`, and `status` warns when Claude Code's `SessionStart` hook is installed and the repository's `AGENTS.md` or the `--file` also has the block, since Claude Code would get the rules twice. Warnings never change a file.
+- With `--json`, `install` and `uninstall` ask nothing and write only with `--yes`, and print `path`, `applied`, `state` and `warnings`; `status --json` prints `targets` (`{ target, path, state, duplicates }`) and `warnings`.
+
 ### `remove`
 
 ```text
@@ -271,7 +292,7 @@ shogun xcode trim [--dry-run]
 
 ## JSON output
 
-Besides `status --json` above, every command that reports a result accepts `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `pool status`, `pool trim`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator` and `hooks` (not `simulator gradle-init`, `env`, `hook`, `help` or `--version`; on those it is an unknown option and exits with `2`). The option can go anywhere after the command.
+Besides `status --json` above, every command that reports a result accepts `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `pool status`, `pool trim`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks` and `guide install|uninstall|status` (not `simulator gradle-init`, `env`, `hook`, `help` or `--version`; on those it is an unknown option and exits with `2`). The option can go anywhere after the command.
 
 The rules are the same for all of them:
 
@@ -289,6 +310,8 @@ The rules are the same for all of them:
 | `remove` | `path`, `branch` (the worktree's, or `null` if detached), `branchDeleted` (the name, or `null` when it was kept or no branch deletion was requested), `branchKeptReason` (why a requested deletion didn't happen, or `null`), `providers` (`emulatorsStopped` serials, `simulatorsStopped` udids and `gradleDaemonsStopped` pids) and `failures` (messages of what couldn't be stopped, exit code `1`). |
 | `hooks install`, `hooks uninstall` | `path`, `applied` (written this run) and the `added` and `removed` hooks as `{ event, command }` plus `replaced` as `{ event, from, to }`. |
 | `hooks status` | `user` and `project` (`null` outside a repository): `path`, `state` (`installed`, `outdated`, `missing`) and `events`. |
+| `guide install`, `guide uninstall` | `path`, `applied` (written this run), `state` (`installed`, `outdated`, `missing`) and `warnings` (messages). |
+| `guide status` | `targets`: `{ target, path, state, duplicates }` with `target` `codex`, `gemini`, `project` or `file` and `duplicates` `true` when the file mentions `shogun new`, `open` or `clean` outside the block; and `warnings`. |
 | `repair` | `repaired`: the re-linked worktree paths. |
 | `open` | `path`, `branch` (or `null` if detached), `herdr` (`opened` or `focused`) and `agent` (the started agent's name, or `null` when the workspace was only focused). |
 | `clean` | `dryRun`; `candidates`: `{ path, branch, reason }` with `reason` `merged` or `folder-missing`; `keptForAgents`: `{ path, agents }`; `skipped`: `{ path, reason }` (status unavailable); `removed`; `deletedBranches`; `failures`: `{ path, message }`; and `providers`: `gradleDaemonsStopped`, `emulatorsStopped`, `simulatorsDeleted` and `derivedDataDeleted`. Without `--yes` (`dryRun: true`) `removed`, `deletedBranches` and the `providers` lists are empty. |
@@ -314,7 +337,7 @@ These commands are meant to be called by agents and tools, not typed. How to con
 |---|---|
 | `shogun hook worktree-create` | Claude Code's `WorktreeCreate` hook. Reads `name` and `cwd` from standard input, creates (or reuses) a provisioned worktree on `feature/<name>` starting at the HEAD of the worktree in `cwd`, and prints its path. If a post-creation command fails it still prints the path as the last line and exits with 0, with the failure on standard error, so Claude Code uses the worktree. Unapproved post-creation commands are skipped with a note on standard error; it never asks. |
 | `shogun hook worktree-remove` | Claude Code's `WorktreeRemove` hook. Removes the worktree in `worktree_path`, deletes its branch only if it's merged into the project's main branch (a branch merged only into its own upstream is kept, with a note on standard error) and closes its Herdr workspace. |
-| `shogun hook session-start` | Claude Code's `SessionStart` hook. Appends the worktree's environment to `CLAUDE_ENV_FILE` and tells Claude which values it uses. |
+| `shogun hook session-start` | Claude Code's `SessionStart` hook. Inside a Git repository, appends the worktree's environment to `CLAUDE_ENV_FILE` (nothing when the repository declares no `env`) and prints the context: a line with the variables and their values when there are any, then the short [workflow rules](#guide) that apply to that location, at most ten lines, starting with the precedence line and ending with a pointer to `shogun guide`. Without Herdr it leaves out the rules about `shogun open --herdr` and messaging sessions; the emulator and simulator rules appear only when the repository declares those providers. Outside a Git repository it prints nothing and exits with `0`. |
 | `shogun hook agent-state` | Claude Code's `UserPromptSubmit`, `Notification`, `Stop` and `SessionEnd` hooks. Reads the hook's JSON from standard input and records the session's state (working, blocked, done) for the worktree containing `cwd`, or removes the record on `SessionEnd`; a `Notification` of type `idle_prompt` means done and `auth_success` is ignored. When the state is working it also renews the leases of the emulator and simulator the worktree holds. It prints nothing, never blocks the session and exits with 0 also outside a repository; input that isn't JSON exits with 2. See [Agent states outside Herdr](agents.md#agent-states-outside-herdr). |
 | `shogun hook herdr` | The ShogunAi plugin for Herdr, on `worktree.created` (provisions the worktree, skipping unapproved post-creation commands with a note) and `worktree.removed` (deletes its branch if merged into the project's main branch). Reads `HERDR_PLUGIN_EVENT`, `HERDR_PLUGIN_EVENT_JSON` and `HERDR_BIN_PATH`. |
 

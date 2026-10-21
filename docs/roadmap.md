@@ -43,15 +43,24 @@ The review of the whole project on 2026-10-19 and the changes built after it are
 - Agent states for agents other than Claude Code (Codex, Gemini…), which have no equivalent hooks today.
 - Finding the root cause of the errors that closed the Preferences window, from the entries the isolation now leaves in the diagnostics log, and of the native crash seen on another machine that left an empty diagnostic report.
 
-### 4. Guided onboarding demo
+### 4. Follow-ups of the agent workflow guide
+
+The workflow rules reach agents through `shogun guide`, the `SessionStart` hook and a block in `AGENTS.md`. Left out:
+
+- A Settings section in the desktop app to install, update and remove the block, as it already does for Claude Code's hooks.
+- Recording the origin ref of each worktree, so the rule for choosing a pull request's base could be answered by `shogun` instead of staying a team policy.
+- Other agents' user-level files, as their documentation confirms them (Cursor keeps user rules in its settings today).
+
+### 5. Guided onboarding demo
 
 A first-run walkthrough built on the review done before merging the worktree layer: the app creates a throwaway sample repository with worktrees in every state, and opens an agent with a prepared prompt that walks the user through each feature (status, cleanup, provisioning, the CLI, hooks, environment and providers), one step at a time.
 
-### 5. Android, KMP and JVM provisioning
+### 6. Android, KMP and JVM provisioning
 
 Provisioning for the stacks where a fresh worktree is furthest from building:
 
 - `local.properties`, keystores and `google-services.json`.
+- Follow-ups of local folders: linking a local folder instead of copying it, glob patterns in the local list, reporting the symbolic links a folder skips, and removing from a worktree the files deleted from the base folder.
 - Showing the emulators ShogunAi starts inside Android Studio's Running Devices window, as the ones Android Studio starts itself, so several of them can be arranged in one window. It needs a spike: Android Studio may embed an external emulator started with the options it uses itself.
 
 ## Under exploration
