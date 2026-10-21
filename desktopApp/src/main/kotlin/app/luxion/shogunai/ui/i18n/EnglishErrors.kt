@@ -1,6 +1,8 @@
 package app.luxion.shogunai.ui.i18n
 
 import app.luxion.shogunai.domain.executor.CommandExecutionException
+import app.luxion.shogunai.domain.model.PoolHolderState
+import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
@@ -139,6 +141,11 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "No emulator port is left between ${error.from} and ${error.to}.",
         "Stop emulators of other worktrees, or remove unused worktrees.",
     )
+    is WorktreeError.ResourcePoolFull -> ErrorTexts(
+        "The limit of ${error.limit} ${englishKindName(error.kind)} is reached and none is free to release: " +
+            error.holders.joinToString("; ") { "${it.displayName} (${englishHolderState(it.state)})" } + ".",
+        "Stop one of them, or raise the limit in Preferences.",
+    )
     is WorktreeError.AndroidSdkNotFound -> ErrorTexts(
         "The Android SDK wasn't found.",
         "Install the Android SDK or set ANDROID_HOME.",
@@ -245,3 +252,11 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     )
     is WorktreeError.GitCommandFailed -> englishGitTexts(GitFailureCause.Unknown)
 }
+
+private fun englishKindName(kind: ResourceKind): String = when (kind) {
+    ResourceKind.EMULATOR -> "emulators"
+    ResourceKind.IOS_SIMULATOR -> "iOS simulators"
+    ResourceKind.GRADLE_DAEMON -> "Gradle daemons"
+}
+
+private fun englishHolderState(state: PoolHolderState): String = state.name.lowercase()

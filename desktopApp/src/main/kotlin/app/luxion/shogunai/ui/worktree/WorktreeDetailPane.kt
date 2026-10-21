@@ -1,5 +1,7 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.ui.components.NoticeKind
+import app.luxion.shogunai.ui.components.Notice
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -199,6 +201,13 @@ fun WorktreeDetailPane(
                 onRetry = viewModel.actionRetry(worktree.path),
             )
         }
+        viewModel.releaseNotices[worktree.path]?.forEach { notice ->
+            Notice(
+                kind = NoticeKind.INFO,
+                message = strings.releasedNotice(notice.kind, notice.released, notice.forWorktree),
+                onDismiss = { viewModel.dismissReleaseNotices(worktree.path) },
+            )
+        }
         StatusSection(status, viewModel.mainBranch?.name)
         AgentsSection(viewModel.agents.orEmpty()[worktree.path].orEmpty())
         ProvisioningSection(
@@ -386,7 +395,11 @@ private fun ColumnScope.EmulatorValue(
     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
         Text(strings.emulatorLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         emulator?.serial?.let { Text(it, style = ShogunTheme.typography.dataSmall) }
-        StatusChip(state.status(), emulatorStateLabel(state, strings))
+        if (emulator == null && !isStarting) {
+            StatusChip(Status.NEUTRAL, strings.notAcquired)
+        } else {
+            StatusChip(state.status(), emulatorStateLabel(state, strings))
+        }
         if (isStarting || isStopping) {
             InlineProgress(size = ProgressSize.Small)
         } else if (state == EmulatorState.STOPPED) {
@@ -410,7 +423,11 @@ private fun ColumnScope.SimulatorValue(
     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
         Text(strings.simulatorLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         simulator?.name?.let { Text(it, style = ShogunTheme.typography.dataSmall) }
-        StatusChip(state.status(), simulatorStateLabel(state, strings))
+        if (simulator == null && !isStarting) {
+            StatusChip(Status.NEUTRAL, strings.notAcquired)
+        } else {
+            StatusChip(state.status(), simulatorStateLabel(state, strings))
+        }
         if (isStarting || isStopping) {
             InlineProgress(size = ProgressSize.Small)
         } else if (state == SimulatorState.SHUTDOWN) {

@@ -83,6 +83,13 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class NoEmulatorPort(val from: Int, val to: Int) :
         WorktreeError("No emulator port left between $from and $to; stop or remove other worktrees' emulators")
 
+    class ResourcePoolFull(val kind: ResourceKind, val limit: Int, val holders: List<PoolHolder>) :
+        WorktreeError(
+            "The limit of $limit ${kind.name.lowercase().replace('_', ' ')}${if (limit == 1) "" else "s"} is reached and none can be released: " +
+                holders.joinToString("; ") { "${it.displayName} (${it.state.name.lowercase()})" } +
+                ". Stop one, or raise the limit in Preferences",
+        )
+
     class AndroidSdkNotFound(val checked: List<String>) :
         WorktreeError("Android SDK not found. Checked: ${checked.joinToString()}")
 

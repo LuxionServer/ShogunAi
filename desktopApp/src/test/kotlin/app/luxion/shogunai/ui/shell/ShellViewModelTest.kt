@@ -316,6 +316,7 @@ class ShellViewModelTest {
         val viewModel = viewModel()
         var found = 0
         var copied = 0
+        var openedInHerdr = 0
         var deleted = 0
         var cleared = 0
 
@@ -323,6 +324,7 @@ class ShellViewModelTest {
             WorktreeActions(
                 onFind = { found++ },
                 onCopySelectedLaunchCommand = { copied++ },
+                onOpenSelectedInHerdr = { openedInHerdr++ },
                 onDeleteSelectedWorktree = { deleted++ },
                 onClearSelection = { cleared++ },
                 onEscape = {},
@@ -332,11 +334,13 @@ class ShellViewModelTest {
         val actions = viewModel.worktreeActions
         actions?.onFind?.invoke()
         actions?.onCopySelectedLaunchCommand?.invoke()
+        actions?.onOpenSelectedInHerdr?.invoke()
         actions?.onDeleteSelectedWorktree?.invoke()
         actions?.onClearSelection?.invoke()
 
         assertEquals(1, found)
         assertEquals(1, copied)
+        assertEquals(1, openedInHerdr)
         assertEquals(1, deleted)
         assertEquals(1, cleared)
 

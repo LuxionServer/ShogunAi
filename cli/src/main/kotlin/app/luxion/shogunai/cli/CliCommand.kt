@@ -49,6 +49,7 @@ sealed interface CliCommand {
     data class XcodeClean(val json: Boolean = false) : CliCommand
 
     data class Gradle(val json: Boolean = false) : CliCommand
+    data class Pool(val action: PoolAction, val json: Boolean = false) : CliCommand
     data class GradleStop(val pids: List<Long> = emptyList(), val json: Boolean = false) : CliCommand
     data object HookWorktreeCreate : CliCommand
     data object HookWorktreeRemove : CliCommand
@@ -108,6 +109,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "hook" -> parseHook(arguments)
                 "hooks" -> parseHooks(arguments)
                 "gradle" -> parseGradle(arguments)
+                "pool" -> parsePool(arguments)
                 "xcode" -> parseXcode(arguments)
                 "env" -> parseEnv(arguments)
                 "emulator" -> parseEmulator(arguments)
@@ -122,7 +124,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
 
 private const val JSON_FLAG = "--json"
 
-private val JSON_COMMANDS = setOf("new", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "xcode", "emulator", "simulator", "hooks")
+private val JSON_COMMANDS = setOf("new", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "pool", "xcode", "emulator", "simulator", "hooks")
 
 private fun isSimulatorGradleInit(name: String, rest: List<String>) = name == "simulator" && rest.firstOrNull() == "gradle-init"
 
@@ -138,6 +140,7 @@ private fun CliCommand.withJson(json: Boolean): CliCommand = if (!json) this els
     is CliCommand.XcodeClean -> copy(json = true)
     is CliCommand.Gradle -> copy(json = true)
     is CliCommand.GradleStop -> copy(json = true)
+    is CliCommand.Pool -> copy(json = true)
     is CliCommand.Emulator -> copy(json = true)
     is CliCommand.Simulator -> copy(json = true)
     is CliCommand.Hooks -> copy(json = true)
@@ -302,6 +305,16 @@ private fun parseGradle(rest: List<String>): CliCommand {
             ?: throw UsageException("'gradle stop' takes process ids, got '$argument'")
     }
     return CliCommand.GradleStop(pids)
+}
+
+enum class PoolAction { STATUS, TRIM }
+
+private fun parsePool(rest: List<String>): CliCommand {
+    val name = rest.firstOrNull() ?: throw UsageException("'pool' needs an action: status or trim")
+    val action = PoolAction.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
+        ?: throw UsageException("unknown action '$name' for 'pool', expected status or trim")
+    rest.drop(1).firstOrNull()?.let { throw UsageException("'pool $name' takes no arguments, got '$it'") }
+    return CliCommand.Pool(action)
 }
 
 private fun parseHook(rest: List<String>): CliCommand {

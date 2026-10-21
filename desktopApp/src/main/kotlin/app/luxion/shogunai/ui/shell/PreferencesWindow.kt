@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -41,6 +43,7 @@ fun ThemeMode.label(strings: Strings): String = when (this) {
 fun PreferencesWindow(
     appearance: Appearance,
     tools: ToolsPreferences,
+    resources: ResourcePreferences,
     claudeHooks: ClaudeHooksState,
     updates: UpdateState,
     tray: TrayPreferences,
@@ -58,16 +61,23 @@ fun PreferencesWindow(
         LaunchedEffect(Unit) { tools.refresh() }
         LaunchedEffect(Unit) { claudeHooks.refresh() }
         AppearanceScope(appearance) {
-            PreferencesContent(appearance, tools, claudeHooks, updates, tray)
+            PreferencesContent(appearance, tools, resources, claudeHooks, updates, tray)
         }
     }
 }
 
 @Composable
-private fun PreferencesContent(appearance: Appearance, tools: ToolsPreferences, claudeHooks: ClaudeHooksState, updates: UpdateState, tray: TrayPreferences) {
+private fun PreferencesContent(
+    appearance: Appearance,
+    tools: ToolsPreferences,
+    resources: ResourcePreferences,
+    claudeHooks: ClaudeHooksState,
+    updates: UpdateState,
+    tray: TrayPreferences,
+) {
     val strings = LocalStrings.current
     Column(
-        modifier = Modifier.fillMaxWidth().padding(Spacing.lg),
+        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
         Text(strings.appearanceLabel, style = MaterialTheme.typography.labelLarge)
@@ -91,6 +101,7 @@ private fun PreferencesContent(appearance: Appearance, tools: ToolsPreferences, 
             modifier = Modifier.fillMaxWidth(),
         )
         ToolsSection(tools)
+        ResourcesSection(resources)
         ClaudeHooksSection(claudeHooks)
         if (tray.isSupported) TraySection(tray)
         UpdatesPreferences(updates)

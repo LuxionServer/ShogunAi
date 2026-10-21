@@ -13,7 +13,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalClipboard
+import app.luxion.shogunai.diagnostics.SecondaryWindowErrorHandler
 import app.luxion.shogunai.diagnostics.UiFreezeWatchdog
+import app.luxion.shogunai.diagnostics.asWindowExceptionHandlerFactory
 import app.luxion.shogunai.diagnostics.copyDiagnosticReport
 import app.luxion.shogunai.diagnostics.diagnosticsExceptionHandler
 import app.luxion.shogunai.diagnostics.installUncaughtExceptionLogging
@@ -25,6 +27,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.input.key.key
 import app.luxion.shogunai.ui.components.rememberAppIconPainter
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.window.LocalWindowExceptionHandlerFactory
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -76,6 +80,7 @@ fun main(args: Array<String>) {
     openWindow()
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 private fun openWindow() = application {
     val appContainer = remember { AppContainer() }
     remember(appContainer) { installDiagnostics(appContainer.diagnosticsLog) }
@@ -83,12 +88,24 @@ private fun openWindow() = application {
     val appearance = remember {
         Appearance(appContainer.themePreferenceRepository, appContainer.languagePreferenceRepository)
     }
+    val messages = rememberAppMessages()
     var preferencesOpen by remember { mutableStateOf(false) }
     var preferencesFrontRequests by remember { mutableIntStateOf(0) }
     var aboutOpen by remember { mutableStateOf(false) }
     val openPreferences: () -> Unit = {
         if (preferencesOpen) preferencesFrontRequests++ else preferencesOpen = true
     }
+    val reportSecondaryWindowError = { messages.show(appearance.strings.secondaryWindowError) }
+    val preferencesErrorHandlers = SecondaryWindowErrorHandler(
+        appContainer.diagnosticsLog,
+        onClosed = { preferencesOpen = false },
+        onReport = reportSecondaryWindowError,
+    ).asWindowExceptionHandlerFactory()
+    val aboutErrorHandlers = SecondaryWindowErrorHandler(
+        appContainer.diagnosticsLog,
+        onClosed = { aboutOpen = false },
+        onReport = reportSecondaryWindowError,
+    ).asWindowExceptionHandlerFactory()
     val updateScope = rememberCoroutineScope { diagnosticsHandler }
     val checkForUpdates: () -> Unit = { updateScope.launch { appContainer.updates.checkNow() } }
     val windowState = rememberRestoredWindowState(appContainer.shellPreferenceRepository)
@@ -230,7 +247,6 @@ private fun openWindow() = application {
             )
         }
         SideEffect { shellViewModelHolder.value = shellViewModel }
-        val messages = rememberAppMessages()
         val clipboard = LocalClipboard.current
         val reportScope = rememberCoroutineScope { diagnosticsHandler }
         val copiedLabel = appearance.strings.copied
@@ -252,6 +268,7 @@ private fun openWindow() = application {
             onNewWorktree = shellViewModel::requestNewWorktree.takeIf { shellViewModel.canCreateWorktree },
             onFind = worktreeActions?.onFind,
             onCopySelectedLaunchCommand = worktreeActions?.onCopySelectedLaunchCommand,
+            onOpenSelectedInHerdr = worktreeActions?.onOpenSelectedInHerdr,
             onDeleteSelectedWorktree = worktreeActions?.onDeleteSelectedWorktree,
             onClearSelection = worktreeActions?.onClearSelection,
             hasWorktreeSelection = worktreeActions?.hasSelection?.invoke() == true,
@@ -275,12 +292,17 @@ private fun openWindow() = application {
     }
 
     if (preferencesOpen) {
-        CompositionLocalProvider(LocalDiagnosticsLog provides appContainer.diagnosticsLog) {
-            PreferencesWindow(appearance, appContainer.tools, appContainer.claudeHooks, appContainer.updates, trayPreferences, preferencesFrontRequests, onClose = { preferencesOpen = false })
+        CompositionLocalProvider(
+            LocalDiagnosticsLog provides appContainer.diagnosticsLog,
+            LocalWindowExceptionHandlerFactory provides preferencesErrorHandlers,
+        ) {
+            PreferencesWindow(appearance, appContainer.tools, appContainer.resources, appContainer.claudeHooks, appContainer.updates, trayPreferences, preferencesFrontRequests, onClose = { preferencesOpen = false })
         }
     }
     if (aboutOpen) {
-        AboutWindow(appearance, onClose = { aboutOpen = false })
+        CompositionLocalProvider(LocalWindowExceptionHandlerFactory provides aboutErrorHandlers) {
+            AboutWindow(appearance, onClose = { aboutOpen = false })
+        }
     }
 }
 

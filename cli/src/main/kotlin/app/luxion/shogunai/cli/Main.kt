@@ -3,7 +3,9 @@ package app.luxion.shogunai.cli
 import app.luxion.shogunai.infrastructure.FileKmpTestWiring
 import app.luxion.shogunai.infrastructure.HerdrConfigFile
 import app.luxion.shogunai.infrastructure.JsonProjectRepository
+import app.luxion.shogunai.infrastructure.JsonResourceLimitsRepository
 import app.luxion.shogunai.infrastructure.JsonRepositoryTrust
+import app.luxion.shogunai.infrastructure.JvmMachineCapacity
 import app.luxion.shogunai.infrastructure.LocalAndroidSdk
 import app.luxion.shogunai.infrastructure.MacDerivedDataSource
 import app.luxion.shogunai.infrastructure.NioEnvironmentStateStore
@@ -38,6 +40,8 @@ fun runShogun(args: Array<String>): Int {
         androidSdk = LocalAndroidSdk(executor, fileManager),
         appleSimulators = SimctlAppleSimulators(executor),
         kmpTestWiring = FileKmpTestWiring(gradleUserHome),
+        resourceLimits = JsonResourceLimitsRepository(),
+        machineCapacity = JvmMachineCapacity(),
         derivedDataSource = derivedDataSource,
         herdrConfig = HerdrConfigFile(),
         workingDirectory = System.getProperty("user.dir"),

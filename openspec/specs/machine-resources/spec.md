@@ -54,7 +54,7 @@ The Gradle daemons view SHALL state, for each saved project that declares Gradle
 - **THEN** the view states `api`'s 2 GB heap and shows the build cache notice for `main-repo`
 
 ### Requirement: Android emulators across projects
-The Android emulators view SHALL list the emulator of every worktree of the projects that declare the emulator provider, with its project, worktree, serial and state, and Start when stopped or Stop otherwise. A worktree emulator that isn't running SHALL show the AVD it will start instead of a serial. It SHALL also list running emulators that no worktree owns, with a Stop action. Listing SHALL NOT reserve ports or start anything.
+The Android emulators view SHALL list the emulator of every worktree of the projects that declare the emulator provider, with its project, worktree, serial and state, and Start when stopped or not acquired, or Stop otherwise. A worktree emulator that isn't running SHALL show the AVD it will start instead of a serial, and one not acquired SHALL say so. It SHALL also list running emulators that no worktree owns, with a Stop action. Listing SHALL NOT reserve ports or start anything.
 
 #### Scenario: Unowned emulator
 - **WHEN** an emulator started from Android Studio is running and no worktree has its port reserved
@@ -67,6 +67,10 @@ The Android emulators view SHALL list the emulator of every worktree of the proj
 #### Scenario: Stopped worktree emulator
 - **WHEN** a worktree's emulator isn't running and the project uses the AVD `Pixel_8_API_35`
 - **THEN** its row shows `Pixel_8_API_35` instead of "—", or "Automatic" when no AVD is set
+
+#### Scenario: Not acquired
+- **WHEN** a worktree never started its emulator
+- **THEN** its row says it isn't acquired and offers Start, and no port is reserved for it
 
 ### Requirement: iOS simulators across projects
 On macOS, the iOS simulators view SHALL list every simulator whose name starts with `ShogunAi · `, with its project and worktree, state, and Start or Stop. A worktree whose simulator doesn't exist yet SHALL show that it isn't created, with the configured device type when there is one. Orphaned simulators SHALL be listed apart with a "Delete orphans" action that asks for confirmation. Simulators not created by ShogunAi SHALL NOT be listed.
@@ -103,6 +107,21 @@ The Android emulators and iOS simulators views SHALL show a header row labeling 
 #### Scenario: Emulators listed
 - **WHEN** the Android emulators view lists at least one emulator
 - **THEN** a header row labels the device, worktree and state columns above the rows
+
+### Requirement: Pool usage in the machine views
+The Android emulators, iOS simulators and Gradle daemons views SHALL show their pool's usage against its effective limit and the active profile, with a link to Preferences' "Resources" section, and the sidebar summary SHALL include the usage against the limit. When a resource was released or stopped to make room or to stay within the limit, the view SHALL say which one and why until the user dismisses it.
+
+#### Scenario: Usage shown
+- **WHEN** the emulator limit is 2 and one worktree holds an emulator
+- **THEN** the Android emulators view says 1 of 2 in use with the profile's name
+
+#### Scenario: Release reported
+- **WHEN** starting `TASK-2`'s emulator released `TASK-1`'s idle emulator
+- **THEN** the Android emulators view says `TASK-1`'s emulator was released to make room for `TASK-2`
+
+#### Scenario: Over the limit
+- **WHEN** the Gradle limit is 2 and three busy daemons run
+- **THEN** the Gradle daemons view shows 3 of 2 in use, marked as over the limit
 
 ### Requirement: DerivedData listed before its sizes
 The DerivedData view SHALL show its folders, their owners and the orphans as soon as the folders are read, without waiting for any size. Each folder whose size isn't known yet, the totals that include it and the compilation cache size SHALL show a calculating state, replaced by the size once computed. The app SHALL stay responsive while sizes are computed.

@@ -4,8 +4,11 @@ import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.InstallChannel
+import app.luxion.shogunai.domain.model.PoolHolder
+import app.luxion.shogunai.domain.model.PoolHolderState
 import app.luxion.shogunai.domain.model.RepositoryConfigIssue
 import app.luxion.shogunai.domain.model.RepositoryConfigRules
+import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.ui.worktree.StateGroupKind
 import app.luxion.shogunai.ui.worktree.criterion
@@ -18,6 +21,41 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class StringsTest {
+
+    private val poolHolders = listOf(
+        PoolHolder(
+            ResourceKind.EMULATOR,
+            "/home/dev/worktrees/TASK-1",
+            "/home/dev/projects/api/.git/worktrees/TASK-1",
+            PoolHolderState.RUNNING,
+            false,
+            null,
+        ),
+        PoolHolder(
+            ResourceKind.EMULATOR,
+            "/home/dev/worktrees/TASK-2",
+            "/home/dev/projects/main-repo/.git/worktrees/TASK-2",
+            PoolHolderState.BOOTING,
+            false,
+            null,
+        ),
+    )
+
+    @Test
+    fun `a full pool names the limit, each holder as project and worktree and the way out`() {
+        val error = WorktreeError.ResourcePoolFull(ResourceKind.EMULATOR, 2, poolHolders)
+
+        val english = EnglishStrings.describe(error)
+        assertTrue(english.summary.contains("limit of 2 emulators"))
+        assertTrue(english.summary.contains("api · TASK-1 (running)"))
+        assertTrue(english.summary.contains("main-repo · TASK-2 (booting)"))
+        assertTrue(english.nextStep.contains("Preferences"))
+        assertEquals(ErrorFix.OpenPreferences, english.fix)
+
+        val spanish = SpanishStrings.describe(error)
+        assertTrue(spanish.summary.contains("api · TASK-1 (en ejecución)"))
+        assertTrue(spanish.nextStep.contains("Preferencias"))
+    }
 
     private val allStrings = AppLanguage.entries.map { it.strings() }
 
@@ -111,6 +149,7 @@ class StringsTest {
         WorktreeError.ProcessListingFailed(listOf("lsof", "-d", "cwd"), 1),
         WorktreeError.NoFreePort(20000, 29999),
         WorktreeError.NoEmulatorPort(5554, 5584),
+        WorktreeError.ResourcePoolFull(ResourceKind.EMULATOR, 2, poolHolders),
         WorktreeError.AndroidSdkNotFound(listOf("ANDROID_HOME (/opt/sdk)")),
         WorktreeError.NoAvdAvailable,
         WorktreeError.EmulatorBootTimeout("emulator-5556", 180),
