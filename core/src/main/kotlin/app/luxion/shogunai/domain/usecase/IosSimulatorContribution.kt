@@ -34,7 +34,8 @@ class MachineProviderContributions(
                 val manager = fileManager ?: return@let null
                 xcodeCompilationCacheContribution(manager, userHome)
             },
-        )
+            providers.maven?.let(::mavenContribution),
+        ) + providers.dockerCompose?.let(::dockerComposeContributions).orEmpty()
 
     fun requesting(simulator: SimulatorSettings): MachineProviderContributions =
         MachineProviderContributions(

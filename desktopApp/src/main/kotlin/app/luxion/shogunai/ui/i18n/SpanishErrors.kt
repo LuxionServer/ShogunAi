@@ -136,6 +136,10 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "No se pudieron listar los procesos en ejecución.",
         "La detección de agentes no está disponible; comprueba que lsof está instalado.",
     )
+    is WorktreeError.DockerUnavailable -> ErrorTexts(
+        "Docker no está disponible" + if (error.reason.isNullOrBlank()) "." else ": ${error.reason}",
+        "Arranca Docker e inténtalo de nuevo.",
+    )
     is WorktreeError.NoFreePort -> ErrorTexts(
         "No queda ningún puerto libre entre ${error.from} y ${error.to}.",
         "Libera puertos de ese rango, o elimina worktrees que no uses.",

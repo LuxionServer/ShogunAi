@@ -36,6 +36,8 @@ data class EnvironmentContribution(
     val ports: List<PortRequest> = emptyList(),
     val resources: List<ResourceRequest> = emptyList(),
     val variables: (EnvironmentReservations) -> List<Pair<String, String>>,
+    val names: Set<String> = emptySet(),
+    val contextual: (ResourceContext) -> List<Pair<String, String>> = { emptyList() },
 ) {
     fun isAcquiredIn(reservations: EnvironmentReservations): Boolean =
         ports.all { it.key in reservations.ports } && resources.all { it.key in reservations.resources }

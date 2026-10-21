@@ -23,6 +23,8 @@ data class RepositoryProviders(
     val emulator: EmulatorProvider? = null,
     val iosSimulator: IosSimulatorProvider? = null,
     val xcode: XcodeProvider? = null,
+    val maven: MavenProvider? = null,
+    val dockerCompose: DockerComposeProvider? = null,
 )
 
 data class GradleProvider(
@@ -38,6 +40,10 @@ data class EmulatorProvider(val preferredAvd: String? = null)
 data class IosSimulatorProvider(val device: String? = null, val runtime: String? = null)
 
 data class XcodeProvider(val compilationCache: Boolean = false)
+
+data class MavenProvider(val mavenMaxHeap: String? = null)
+
+data class DockerComposeProvider(val portVariables: List<String> = emptyList())
 
 enum class ProvisionMode { COPIED, LINKED, COPIED_INSTEAD_OF_LINKING }
 

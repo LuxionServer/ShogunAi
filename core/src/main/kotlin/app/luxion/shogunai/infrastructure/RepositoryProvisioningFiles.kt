@@ -1,6 +1,7 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
+import app.luxion.shogunai.domain.model.DockerComposeProvider
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
 import app.luxion.shogunai.domain.model.RepositoryConfigEdit
@@ -8,6 +9,9 @@ import app.luxion.shogunai.domain.model.RepositoryConfigRules
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.InvalidEnvironmentTemplate
 import app.luxion.shogunai.domain.model.IosSimulatorProvider
+import app.luxion.shogunai.domain.model.MavenProvider
+import app.luxion.shogunai.domain.model.isReservedVariableName
+import app.luxion.shogunai.domain.model.isValidVariableName
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
@@ -121,6 +125,8 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         updatedProviders.applyProvider(EMULATOR_PROVIDER, edit.providers.emulator?.let { emulatorOptions(it) })
         updatedProviders.applyProvider(IOS_SIMULATOR_PROVIDER, edit.providers.iosSimulator?.let { simulatorOptions(it) })
         updatedProviders.applyProvider(XCODE_PROVIDER, edit.providers.xcode?.let { xcodeOptions(it) })
+        updatedProviders.applyProvider(MAVEN_PROVIDER, edit.providers.maven?.let { mavenOptions(it) })
+        updatedProviders.applyProvider(DOCKER_COMPOSE_PROVIDER, edit.providers.dockerCompose?.let { composeOptions(it) })
         result.putOrRemove(PROVIDERS_FIELD, updatedProviders.takeIf { it.isNotEmpty() }?.let(::JsonObject))
         result.putOrRemove(
             ENV_FIELD,
@@ -172,6 +178,14 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
 
     private fun xcodeOptions(xcode: XcodeProvider): Map<String, JsonElement> = buildMap {
         if (xcode.compilationCache) put(COMPILATION_CACHE_FIELD, JsonPrimitive(true))
+    }
+
+    private fun mavenOptions(maven: MavenProvider): Map<String, JsonElement> = buildMap {
+        maven.mavenMaxHeap?.let { put(MAVEN_MAX_HEAP_FIELD, JsonPrimitive(it)) }
+    }
+
+    private fun composeOptions(compose: DockerComposeProvider): Map<String, JsonElement> = buildMap {
+        if (compose.portVariables.isNotEmpty()) put(PORT_VARIABLES_FIELD, JsonArray(compose.portVariables.map(::JsonPrimitive)))
     }
 
     private fun JsonObject?.orEmpty(): JsonObject = this ?: JsonObject(emptyMap())
@@ -241,9 +255,9 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
             gradle = providers[GRADLE_PROVIDER]?.let { value ->
                 val options = providerOptions(value, GRADLE_PROVIDER, path)
                 GradleProvider(
-                    daemonMaxHeap = optionalMemorySize(options, DAEMON_MAX_HEAP_FIELD, path),
+                    daemonMaxHeap = optionalMemorySize(options, GRADLE_PROVIDER, DAEMON_MAX_HEAP_FIELD, path),
                     idleTimeoutMinutes = optionalPositiveWholeNumber(options, IDLE_TIMEOUT_MINUTES_FIELD, path),
-                    kotlinDaemonMaxHeap = optionalMemorySize(options, KOTLIN_DAEMON_MAX_HEAP_FIELD, path),
+                    kotlinDaemonMaxHeap = optionalMemorySize(options, GRADLE_PROVIDER, KOTLIN_DAEMON_MAX_HEAP_FIELD, path),
                 )
             },
             emulator = providers[EMULATOR_PROVIDER]?.let { value ->
@@ -260,6 +274,14 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
             xcode = providers[XCODE_PROVIDER]?.let { value ->
                 val options = providerOptions(value, XCODE_PROVIDER, path)
                 XcodeProvider(compilationCache = optionalBoolean(options, XCODE_PROVIDER, COMPILATION_CACHE_FIELD, path) ?: false)
+            },
+            maven = providers[MAVEN_PROVIDER]?.let { value ->
+                val options = providerOptions(value, MAVEN_PROVIDER, path)
+                MavenProvider(mavenMaxHeap = optionalMemorySize(options, MAVEN_PROVIDER, MAVEN_MAX_HEAP_FIELD, path))
+            },
+            dockerCompose = providers[DOCKER_COMPOSE_PROVIDER]?.let { value ->
+                val options = providerOptions(value, DOCKER_COMPOSE_PROVIDER, path)
+                DockerComposeProvider(portVariables = portVariablesOf(options, path))
             },
         )
     }
@@ -289,16 +311,37 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         }
     }
 
-    private fun optionalMemorySize(options: JsonObject, field: String, path: Path): String? {
+    private fun optionalMemorySize(options: JsonObject, provider: String, field: String, path: Path): String? {
         val invalid = WorktreeError.InvalidRepositoryConfig(
             path.toString(),
-            "\"$PROVIDERS_FIELD.$GRADLE_PROVIDER.$field\" must be a memory size such as \"2g\" or \"512m\"",
+            "\"$PROVIDERS_FIELD.$provider.$field\" must be a memory size such as \"2g\" or \"512m\"",
         )
         return when (val value = options[field]) {
             null, is JsonNull -> null
             is JsonPrimitive -> value.takeIf { it.isString }?.content?.takeIf(RepositoryConfigRules::isMemorySize) ?: throw invalid
             else -> throw invalid
         }
+    }
+
+    private fun portVariablesOf(options: JsonObject, path: Path): List<String> {
+        val label = "$PROVIDERS_FIELD.$DOCKER_COMPOSE_PROVIDER.$PORT_VARIABLES_FIELD"
+        val invalid = { detail: String -> WorktreeError.InvalidRepositoryConfig(path.toString(), detail) }
+        val array = when (val value = options[PORT_VARIABLES_FIELD]) {
+            null, is JsonNull -> return emptyList()
+            is JsonArray -> value
+            else -> throw invalid("\"$label\" must be a list of variable names")
+        }
+        val names = array.map { element ->
+            val primitive = element as? JsonPrimitive
+            if (primitive == null || !primitive.isString) throw invalid("\"$label\" must be a list of variable names")
+            primitive.content
+        }
+        names.forEach { name ->
+            if (!isValidVariableName(name)) throw invalid("\"$label\": \"$name\" isn't a valid variable name")
+            if (isReservedVariableName(name)) throw invalid("\"$label\": \"$name\" is a reserved variable name")
+        }
+        names.groupBy { it }.entries.firstOrNull { it.value.size > 1 }?.let { throw invalid("\"$label\": \"${it.key}\" is listed more than once") }
+        return names
     }
 
     private fun optionalPositiveWholeNumber(options: JsonObject, field: String, path: Path): Int? {
@@ -343,6 +386,10 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         const val RUNTIME_FIELD = "runtime"
         const val XCODE_PROVIDER = "xcode"
         const val COMPILATION_CACHE_FIELD = "compilationCache"
+        const val MAVEN_PROVIDER = "maven"
+        const val MAVEN_MAX_HEAP_FIELD = "mavenMaxHeap"
+        const val DOCKER_COMPOSE_PROVIDER = "docker-compose"
+        const val PORT_VARIABLES_FIELD = "portVariables"
         const val ENV_FIELD = "env"
         const val ENV_FILE_FIELD = "envFile"
         const val ABSENT_FINGERPRINT = "absent"
@@ -351,6 +398,8 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
             EMULATOR_PROVIDER to listOf(AVD_FIELD),
             IOS_SIMULATOR_PROVIDER to listOf(DEVICE_FIELD, RUNTIME_FIELD),
             XCODE_PROVIDER to listOf(COMPILATION_CACHE_FIELD),
+            MAVEN_PROVIDER to listOf(MAVEN_MAX_HEAP_FIELD),
+            DOCKER_COMPOSE_PROVIDER to listOf(PORT_VARIABLES_FIELD),
         )
     }
 }

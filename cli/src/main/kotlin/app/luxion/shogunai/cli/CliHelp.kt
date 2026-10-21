@@ -50,18 +50,34 @@ internal object CliHelp {
 """.trimIndent(),
         "clean" to """
   clean [--yes] [--delete-branches] [--stop-gradle-daemons] [--stop-emulators] [--delete-simulators]
-        [--delete-derived-data] [--json]
+        [--delete-derived-data] [--down-compose-projects] [--json]
                               List merged or missing worktrees; remove them with --yes
                               (--stop-gradle-daemons / --stop-emulators: also stop their idle
                               Gradle daemons / their emulators; --delete-simulators: also delete
                               their iOS simulators and orphaned ShogunAi simulators;
                               --delete-derived-data: also delete orphaned Xcode DerivedData;
+                              --down-compose-projects: also take down the Docker Compose projects of
+                              the removed worktrees, keeping their volumes;
                               --json: print one JSON object instead of text)
 """.trimIndent(),
         "gradle" to """
   gradle [--json]             List the Gradle and Kotlin daemons with their memory, state and worktree
   gradle stop [<pid>...] [--json]
                               Stop idle daemons (all of them, or only the given ones); busy ones are kept
+""".trimIndent(),
+        "stacks" to """
+  stacks [--json]             Show the stacks detected in the repository (Gradle, Android, Xcode, Maven,
+                              Docker Compose) and the providers they suggest; nothing is changed
+""".trimIndent(),
+        "maven" to """
+  maven [--json]              List the Maven daemons (mvnd) with their memory and worktree
+""".trimIndent(),
+        "compose" to """
+  compose [--json]            List the Docker Compose projects of the worktrees with their status
+  compose down [<worktree>] [--volumes] [--json]
+                              Take down the projects of removed worktrees (or of the given worktree);
+                              volumes are kept unless --volumes is given
+                              (repositories with "providers": { "docker-compose": {} } in .shogunai.json)
 """.trimIndent(),
         "pool" to """
   pool status [--json]        Show the emulator, iOS simulator and Gradle daemon pools: the limit of the

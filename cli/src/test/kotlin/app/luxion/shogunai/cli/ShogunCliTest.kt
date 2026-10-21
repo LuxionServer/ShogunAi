@@ -9,6 +9,12 @@ import app.luxion.shogunai.BuildInfo
 import app.luxion.shogunai.domain.FakeAgentSessionStore
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeAppleSimulators
+import app.luxion.shogunai.domain.FakeComposeProjectSource
+import app.luxion.shogunai.domain.FakeMavenDaemonSource
+import app.luxion.shogunai.domain.model.ComposeProject
+import app.luxion.shogunai.domain.model.DockerComposeProvider
+import app.luxion.shogunai.domain.model.MavenDaemonProcess
+import app.luxion.shogunai.domain.model.MavenProvider
 import app.luxion.shogunai.domain.FakeDerivedDataSource
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
@@ -141,6 +147,8 @@ class ShogunCliTest {
         projectRepository: ProjectRepository = FakeProjectRepository(projects),
         sessionStore: FakeAgentSessionStore = FakeAgentSessionStore(),
         environment: Map<String, String> = emptyMap(),
+        mavenDaemons: FakeMavenDaemonSource = FakeMavenDaemonSource(),
+        composeProjects: FakeComposeProjectSource = FakeComposeProjectSource(),
     ) = ShogunCli(
         executor = executor,
         fileManager = fileManager,
@@ -168,11 +176,220 @@ class ShogunCliTest {
         environmentVariable = { environment[it] },
         userHome = "/home/dev",
         sessionStore = sessionStore,
+        mavenDaemonSource = mavenDaemons,
+        composeSource = composeProjects,
     )
 
     private val gradleUserHome = "/home/dev/.gradle"
     private val now = Instant.parse("2026-10-16T11:00:00Z")
     private val idleSinceTenMinutes = DaemonState.Idle(Instant.parse("2026-10-16T10:50:00Z"))
+
+
+    private fun declaring(providers: RepositoryProviders) = FakeRepositoryProvisioningSource(
+        byRepository = mapOf(base to RepositoryProvisioning(providers = providers)),
+    )
+
+    @Test
+    fun `stacks lists the detected stacks with their suggested providers`() {
+        val fileManager = FakeFileManager(existing = listOf(base, "$base/pom.xml"))
+
+        val exitCode = cli(repositoryExecutor(), fileManager = fileManager).run(listOf("stacks"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("Maven  evidence=pom.xml  maven=suggested\n", out.toString())
+    }
+
+    @Test
+    fun `stacks shows a declared provider as declared`() {
+        val fileManager = FakeFileManager(existing = listOf(base, "$base/pom.xml"))
+
+        cli(repositoryExecutor(), fileManager = fileManager, provisioning = declaring(RepositoryProviders(maven = MavenProvider())))
+            .run(listOf("stacks"))
+
+        assertEquals("Maven  evidence=pom.xml  maven=declared\n", out.toString())
+    }
+
+    @Test
+    fun `stacks says so and exits with 0 when nothing is detected`() {
+        val exitCode = cli(repositoryExecutor(), fileManager = FakeFileManager(existing = listOf(base, "$base/README.md"))).run(listOf("stacks"))
+
+        assertEquals(0, exitCode)
+        assertEquals("No known stack detected.\n", out.toString())
+    }
+
+    @Test
+    fun `stacks outside a repository fails with 1`() {
+        val executor = Executor { command, _ -> Executor.fail(command, "fatal: not a git repository", 128) }
+
+        val exitCode = cli(executor, workingDirectory = "/tmp").run(listOf("stacks"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.isNotEmpty())
+    }
+
+    @Test
+    fun `stacks json lists the stacks with their providers`() {
+        val fileManager = FakeFileManager(existing = listOf(base, "$base/pom.xml"))
+
+        cli(repositoryExecutor(), fileManager = fileManager).run(listOf("stacks", "--json"))
+
+        val stack = Json.parseToJsonElement(out.toString()).jsonObject.getValue("stacks").jsonArray.single().jsonObject
+        assertEquals("maven", stack.getValue("stack").jsonPrimitive.content)
+        assertEquals(false, stack.getValue("providers").jsonArray.single().jsonObject.getValue("declared").jsonPrimitive.content.toBoolean())
+    }
+
+    @Test
+    fun `maven lists the daemons with their memory and worktree`() {
+        val daemons = FakeMavenDaemonSource(
+            listOf(
+                MavenDaemonProcess(20, 1_073_741_824, "$merged/service"),
+                MavenDaemonProcess(21, 1_073_741_824, "/home/dev/other"),
+            ),
+        )
+        val fileManager = FakeFileManager(existing = listOf(base, merged, "/home/dev/other"))
+
+        val exitCode = cli(repositoryExecutor(), fileManager = fileManager, mavenDaemons = daemons).run(listOf("maven"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            """
+            20  memory=1.0 GB  worktree=$merged
+            21  memory=1.0 GB  worktree=other-project
+            total  memory=2.0 GB  daemons=2
+
+            """.trimIndent(),
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `maven without daemons says so`() {
+        assertEquals(0, cli(repositoryExecutor()).run(listOf("maven")))
+        assertEquals("No Maven daemons running.\n", out.toString())
+    }
+
+    @Test
+    fun `maven works outside a repository`() {
+        val executor = Executor { command, _ -> Executor.fail(command, "not a git repository", 128) }
+        val daemons = FakeMavenDaemonSource(listOf(MavenDaemonProcess(20, 1_048_576, "/x")))
+
+        val exitCode = cli(executor, mavenDaemons = daemons, workingDirectory = "/tmp").run(listOf("maven"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("20  memory=1.0 MB\ntotal  memory=1.0 MB  daemons=1\n", out.toString())
+    }
+
+    private val composeDeclared = declaring(RepositoryProviders(dockerCompose = DockerComposeProvider()))
+
+    private fun composeProject(name: String, file: String) = ComposeProject(name, "running(1)", listOf(file))
+
+    @Test
+    fun `compose lists the projects of the worktrees with their status`() {
+        val projects = FakeComposeProjectSource(
+            listOf(composeProject("main-repo-task-1", "$merged/compose.yaml"), composeProject("main-repo-task-9", "$worktreesRoot/TASK-9/compose.yaml")),
+        )
+
+        val exitCode = cli(repositoryExecutor(), provisioning = composeDeclared, composeProjects = projects).run(listOf("compose"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            "main-repo-task-1  status=running(1)  worktree=$merged\nmain-repo-task-9  status=running(1)  worktree=removed\n",
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `compose down takes down the projects of removed worktrees keeping volumes`() {
+        val projects = FakeComposeProjectSource(
+            listOf(composeProject("main-repo-task-1", "$merged/compose.yaml"), composeProject("main-repo-task-9", "$worktreesRoot/TASK-9/compose.yaml")),
+        )
+
+        val exitCode = cli(repositoryExecutor(), provisioning = composeDeclared, composeProjects = projects).run(listOf("compose", "down"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf("main-repo-task-9" to false), projects.downs)
+        assertEquals("took down main-repo-task-9 (volumes kept)\n", out.toString())
+    }
+
+    @Test
+    fun `compose down --volumes removes the volumes too`() {
+        val projects = FakeComposeProjectSource(listOf(composeProject("main-repo-task-9", "$worktreesRoot/TASK-9/compose.yaml")))
+
+        cli(repositoryExecutor(), provisioning = composeDeclared, composeProjects = projects).run(listOf("compose", "down", "--volumes"))
+
+        assertEquals(listOf("main-repo-task-9" to true), projects.downs)
+    }
+
+    @Test
+    fun `compose down of a given worktree takes down its project`() {
+        val projects = FakeComposeProjectSource()
+
+        val exitCode = cli(repositoryExecutor(), provisioning = composeDeclared, composeProjects = projects)
+            .run(listOf("compose", "down", "TASK-1"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf("main-repo-task-1" to false), projects.downs)
+    }
+
+    @Test
+    fun `compose down of a worktree that doesn't exist fails with 1`() {
+        val projects = FakeComposeProjectSource()
+
+        val exitCode = cli(repositoryExecutor(), provisioning = composeDeclared, composeProjects = projects)
+            .run(listOf("compose", "down", "TASK-404"))
+
+        assertEquals(1, exitCode)
+        assertTrue(projects.downs.isEmpty())
+    }
+
+    @Test
+    fun `compose without the provider declared fails with 1 and never runs docker`() {
+        val projects = FakeComposeProjectSource()
+
+        val listed = cli(repositoryExecutor(), composeProjects = projects).run(listOf("compose"))
+        val down = cli(repositoryExecutor(), composeProjects = projects).run(listOf("compose", "down"))
+
+        assertEquals(1, listed)
+        assertEquals(1, down)
+        assertTrue(err.contains("docker-compose"), err.toString())
+        assertTrue(projects.listings.isEmpty() && projects.downs.isEmpty())
+    }
+
+    private fun cleanableExecutor() = repositoryExecutor()
+
+    @Test
+    fun `clean --yes --down-compose-projects takes down the projects of the removed worktrees`() {
+        val projects = FakeComposeProjectSource(listOf(composeProject("main-repo-task-1", "$merged/compose.yaml")))
+
+        val exitCode = cli(cleanableExecutor(), provisioning = composeDeclared, composeProjects = projects)
+            .run(listOf("clean", "--yes", "--down-compose-projects"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf("main-repo-task-1" to false), projects.downs)
+        assertTrue(out.contains("took down Compose project main-repo-task-1"), out.toString())
+    }
+
+    @Test
+    fun `clean --yes without the option takes down no project`() {
+        val projects = FakeComposeProjectSource(listOf(composeProject("main-repo-task-1", "$merged/compose.yaml")))
+
+        cli(cleanableExecutor(), provisioning = composeDeclared, composeProjects = projects).run(listOf("clean", "--yes"))
+
+        assertTrue(projects.downs.isEmpty())
+        assertTrue(projects.listings.isEmpty())
+    }
+
+    @Test
+    fun `clean --down-compose-projects without --yes only lists what would be taken down`() {
+        val projects = FakeComposeProjectSource(listOf(composeProject("main-repo-task-1", "$merged/compose.yaml")))
+
+        val exitCode = cli(cleanableExecutor(), provisioning = composeDeclared, composeProjects = projects)
+            .run(listOf("clean", "--down-compose-projects"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(projects.downs.isEmpty())
+        assertTrue(out.contains("would take down Compose project main-repo-task-1"), out.toString())
+    }
 
     @Test
     fun `gradle lists daemons with their state, worktree and total memory`() {

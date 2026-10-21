@@ -384,6 +384,7 @@ private fun ProjectForm(
             isMacOs,
             appContainer.repositoryTrust,
             appContainer.tools,
+            appContainer::detectStacks,
         )
     }
     ProjectSettingsView(

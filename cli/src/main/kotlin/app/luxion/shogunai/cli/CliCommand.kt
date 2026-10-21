@@ -43,6 +43,7 @@ sealed interface CliCommand {
         val stopEmulators: Boolean = false,
         val deleteSimulators: Boolean = false,
         val deleteDerivedData: Boolean = false,
+        val downComposeProjects: Boolean = false,
         val json: Boolean = false,
     ) : CliCommand
 
@@ -51,6 +52,10 @@ sealed interface CliCommand {
     data class XcodeTrim(val dryRun: Boolean = false, val json: Boolean = false) : CliCommand
 
     data class Gradle(val json: Boolean = false) : CliCommand
+    data class Stacks(val json: Boolean = false) : CliCommand
+    data class Maven(val json: Boolean = false) : CliCommand
+    data class Compose(val json: Boolean = false) : CliCommand
+    data class ComposeDown(val target: String? = null, val volumes: Boolean = false, val json: Boolean = false) : CliCommand
     data class Pool(val action: PoolAction, val json: Boolean = false) : CliCommand
     data class GradleStop(val pids: List<Long> = emptyList(), val json: Boolean = false) : CliCommand
     data object HookWorktreeCreate : CliCommand
@@ -126,6 +131,9 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "hooks" -> parseHooks(arguments)
                 "guide" -> parseGuide(arguments)
                 "gradle" -> parseGradle(arguments)
+                "stacks" -> noArguments(name, arguments, CliCommand.Stacks())
+                "maven" -> noArguments(name, arguments, CliCommand.Maven())
+                "compose" -> parseCompose(arguments)
                 "pool" -> parsePool(arguments)
                 "xcode" -> parseXcode(arguments)
                 "env" -> parseEnv(arguments)
@@ -141,7 +149,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
 
 private const val JSON_FLAG = "--json"
 
-private val JSON_COMMANDS = setOf("new", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "pool", "xcode", "emulator", "simulator", "hooks", "guide")
+private val JSON_COMMANDS = setOf("new", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "stacks", "maven", "compose", "pool", "xcode", "emulator", "simulator", "hooks", "guide")
 
 private fun isSimulatorGradleInit(name: String, rest: List<String>) = name == "simulator" && rest.firstOrNull() == "gradle-init"
 
@@ -159,6 +167,10 @@ private fun CliCommand.withJson(json: Boolean): CliCommand = if (!json) this els
     is CliCommand.XcodeClean -> copy(json = true)
     is CliCommand.XcodeTrim -> copy(json = true)
     is CliCommand.Gradle -> copy(json = true)
+    is CliCommand.Stacks -> copy(json = true)
+    is CliCommand.Maven -> copy(json = true)
+    is CliCommand.Compose -> copy(json = true)
+    is CliCommand.ComposeDown -> copy(json = true)
     is CliCommand.GradleStop -> copy(json = true)
     is CliCommand.Pool -> copy(json = true)
     is CliCommand.Emulator -> copy(json = true)
@@ -290,6 +302,7 @@ private fun parseClean(rest: List<String>): CliCommand.Clean {
     var stopEmulators = false
     var deleteSimulators = false
     var deleteDerivedData = false
+    var downComposeProjects = false
     rest.forEach { argument ->
         when (argument) {
             "--yes", "-y" -> confirmed = true
@@ -298,6 +311,7 @@ private fun parseClean(rest: List<String>): CliCommand.Clean {
             "--stop-emulators" -> stopEmulators = true
             "--delete-simulators" -> deleteSimulators = true
             "--delete-derived-data" -> deleteDerivedData = true
+            "--down-compose-projects" -> downComposeProjects = true
             else -> throw UsageException("unknown argument '$argument' for 'clean'")
         }
     }
@@ -308,7 +322,24 @@ private fun parseClean(rest: List<String>): CliCommand.Clean {
         stopEmulators = stopEmulators,
         deleteSimulators = deleteSimulators,
         deleteDerivedData = deleteDerivedData,
+        downComposeProjects = downComposeProjects,
     )
+}
+
+private fun parseCompose(rest: List<String>): CliCommand {
+    val subcommand = rest.firstOrNull() ?: return CliCommand.Compose()
+    if (subcommand != "down") throw UsageException("unknown subcommand '$subcommand' for 'compose', expected down")
+    var volumes = false
+    val targets = mutableListOf<String>()
+    rest.drop(1).forEach { argument ->
+        when {
+            argument == "--volumes" -> volumes = true
+            argument.startsWith("-") -> throw UsageException("unknown option '$argument' for 'compose down'")
+            else -> targets += argument
+        }
+    }
+    if (targets.size > 1) throw UsageException("'compose down' takes at most one worktree")
+    return CliCommand.ComposeDown(targets.firstOrNull(), volumes)
 }
 
 private fun parseXcode(rest: List<String>): CliCommand {

@@ -1,6 +1,7 @@
 package app.luxion.shogunai.ui.machine
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PhoneIphone
@@ -27,6 +28,8 @@ fun MachineResource.title(strings: Strings): String = when (this) {
     MachineResource.ANDROID_EMULATORS -> strings.androidEmulatorsTitle
     MachineResource.IOS_SIMULATORS -> strings.iosSimulatorsTitle
     MachineResource.XCODE_DERIVED_DATA -> strings.xcodeDerivedDataTitle
+    MachineResource.MAVEN_DAEMONS -> strings.mavenDaemonsTitle
+    MachineResource.COMPOSE_PROJECTS -> strings.composeProjectsTitle
 }
 
 val MachineResource.icon: ImageVector
@@ -35,6 +38,8 @@ val MachineResource.icon: ImageVector
         MachineResource.ANDROID_EMULATORS -> Icons.Default.PhoneAndroid
         MachineResource.IOS_SIMULATORS -> Icons.Default.PhoneIphone
         MachineResource.XCODE_DERIVED_DATA -> Icons.Default.Storage
+        MachineResource.MAVEN_DAEMONS -> Icons.Default.Memory
+        MachineResource.COMPOSE_PROJECTS -> Icons.Default.Dns
     }
 
 fun MachineSummary.text(resource: MachineResource, strings: Strings): String {
@@ -42,6 +47,8 @@ fun MachineSummary.text(resource: MachineResource, strings: Strings): String {
         MachineResource.GRADLE_DAEMONS -> "$count · ${formatSize(bytes ?: 0)}"
         MachineResource.ANDROID_EMULATORS -> strings.runningCount(count)
         MachineResource.IOS_SIMULATORS -> strings.bootedCount(count)
+        MachineResource.MAVEN_DAEMONS -> "$count · ${formatSize(bytes ?: 0)}"
+        MachineResource.COMPOSE_PROJECTS -> strings.composeProjectsSummary(count)
         MachineResource.XCODE_DERIVED_DATA -> when {
             calculating -> "$count · ${strings.calculating}"
             quotaBytes != null -> strings.derivedDataQuotaUsage(formatSize(bytes ?: 0), formatSize(quotaBytes))

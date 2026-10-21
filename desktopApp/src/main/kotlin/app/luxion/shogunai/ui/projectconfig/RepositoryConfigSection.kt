@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.domain.model.SuggestedProvider
 import app.luxion.shogunai.domain.model.ShellQuoting
 import app.luxion.shogunai.ui.components.IconAction
 import app.luxion.shogunai.ui.components.NeutralTextButton
@@ -85,6 +86,7 @@ private fun UnreadableRepositoryConfig(state: RepositoryProvisioningState.Unread
 private fun ProvidersEditor(viewModel: ProjectConfigViewModel, strings: Strings) {
     val draft = viewModel.repositoryDraft
     SettingsField(strings.repositoryConfigProvidersTitle) {
+        StackSuggestions(viewModel, strings)
         ProviderSwitch(strings.providerGradle, draft.gradle != null, viewModel::setGradleEnabled)
         draft.gradle?.let { gradle ->
             OptionField(
@@ -117,6 +119,31 @@ private fun ProvidersEditor(viewModel: ProjectConfigViewModel, strings: Strings)
                 placeholder = "Pixel_8",
                 issue = null,
                 onChange = { value -> viewModel.updateRepositoryDraft { it.copy(emulator = emulator.copy(preferredAvd = value)) } },
+            )
+        }
+        ProviderSwitch(strings.providerMaven, draft.maven != null, viewModel::setMavenEnabled)
+        draft.maven?.let { maven ->
+            OptionField(
+                label = strings.mavenMaxHeapLabel,
+                value = maven.mavenMaxHeap,
+                placeholder = "1g",
+                issue = draft.issueFor(RepositoryConfigField.MavenMaxHeap),
+                onChange = { value -> viewModel.updateRepositoryDraft { it.copy(maven = maven.copy(mavenMaxHeap = value)) } },
+            )
+        }
+        ProviderSwitch(strings.providerDockerCompose, draft.dockerCompose != null, viewModel::setDockerComposeEnabled)
+        draft.dockerCompose?.let { compose ->
+            val issue = draft.issueFor(RepositoryConfigField.ComposePortVariables)
+            OutlinedTextField(
+                value = compose.portVariables,
+                onValueChange = { value -> viewModel.updateRepositoryDraft { it.copy(dockerCompose = compose.copy(portVariables = value)) } },
+                label = { Text(strings.composePortVariablesLabel) },
+                placeholder = { Text("DB_PORT, API_PORT") },
+                textStyle = ShogunTheme.typography.data,
+                singleLine = true,
+                isError = issue != null,
+                supportingText = { Text(issue?.let(strings::repositoryConfigIssue) ?: strings.composePortVariablesHelp) },
+                modifier = Modifier.fillMaxWidth().padding(start = OptionIndent),
             )
         }
         if (viewModel.showsApplePlatformProviders) {
@@ -152,6 +179,38 @@ private fun ProvidersEditor(viewModel: ProjectConfigViewModel, strings: Strings)
             }
         }
     }
+}
+
+@Composable
+private fun StackSuggestions(viewModel: ProjectConfigViewModel, strings: Strings) {
+    val suggestions = viewModel.stackSuggestions
+    if (suggestions.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+        Text(
+            strings.stackSuggestionsTitle,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        suggestions.forEach { suggestion ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                Text(
+                    strings.stackSuggestion(suggestion.provider.label(strings), suggestion.evidence.joinToString(", ")),
+                    style = ShogunTheme.typography.data,
+                    modifier = Modifier.weight(1f),
+                )
+                SecondaryButton(onClick = { viewModel.acceptSuggestion(suggestion.provider) }) { Text(strings.turnOnProvider) }
+            }
+        }
+    }
+}
+
+internal fun SuggestedProvider.label(strings: Strings): String = when (this) {
+    SuggestedProvider.GRADLE -> strings.providerGradle
+    SuggestedProvider.EMULATOR -> strings.providerEmulator
+    SuggestedProvider.IOS_SIMULATOR -> strings.providerIosSimulator
+    SuggestedProvider.XCODE -> strings.providerXcode
+    SuggestedProvider.MAVEN -> strings.providerMaven
+    SuggestedProvider.DOCKER_COMPOSE -> strings.providerDockerCompose
 }
 
 @Composable

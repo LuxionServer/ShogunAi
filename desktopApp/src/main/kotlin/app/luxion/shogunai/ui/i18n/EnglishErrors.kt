@@ -136,6 +136,10 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "Couldn't list the running processes.",
         "Agent detection is unavailable; make sure lsof is installed.",
     )
+    is WorktreeError.DockerUnavailable -> ErrorTexts(
+        "Docker isn't available" + if (error.reason.isNullOrBlank()) "." else ": ${error.reason}",
+        "Start Docker and try again.",
+    )
     is WorktreeError.NoFreePort -> ErrorTexts(
         "No free port is left between ${error.from} and ${error.to}.",
         "Free ports in that range, or remove unused worktrees.",

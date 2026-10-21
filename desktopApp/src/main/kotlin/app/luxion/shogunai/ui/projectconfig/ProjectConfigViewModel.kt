@@ -13,7 +13,11 @@ import app.luxion.shogunai.SimulatorSetup
 import app.luxion.shogunai.domain.model.EmulatorSettings
 import app.luxion.shogunai.domain.model.SimulatorRuntime
 import app.luxion.shogunai.domain.model.SimulatorSettings
+import app.luxion.shogunai.domain.model.DetectedStack
 import app.luxion.shogunai.domain.model.Project
+import app.luxion.shogunai.domain.model.ProviderSuggestion
+import app.luxion.shogunai.domain.model.SuggestedProvider
+import app.luxion.shogunai.domain.model.suggestProviders
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.ui.shell.LeaveGuard
@@ -80,6 +84,7 @@ class ProjectConfigViewModel(
     private val supportsApplePlatforms: Boolean = true,
     private val trust: RepositoryTrust = RepositoryTrust.NONE,
     val tools: ToolsPreferences = ToolsPreferences.NONE,
+    private val detectStacks: (repositoryPath: String) -> List<DetectedStack> = { emptyList() },
 ) : ViewModel(), LeaveGuard {
     private val existingId = existingProject?.id
     val isNewProject: Boolean = existingProject == null
@@ -145,6 +150,7 @@ class ProjectConfigViewModel(
     var postCreateCommands by mutableStateOf(emptyList<List<String>>())
         private set
 
+    private var detectedStacks by mutableStateOf(emptyList<DetectedStack>())
     private var initialRepositoryDraft = RepositoryConfigDraft()
     private var repositoryFingerprint = ABSENT_FINGERPRINT
     private var nextEnvironmentRowId = 0
@@ -276,6 +282,7 @@ class ProjectConfigViewModel(
         repositoryFingerprint = if (path.isBlank()) ABSENT_FINGERPRINT else runCatching { provisioningSource.fingerprint(path) }.getOrDefault(ABSENT_FINGERPRINT)
         repositoryDraft = RepositoryConfigDraft.of(provisioning)
         postCreateCommands = provisioning?.postCreateCommands.orEmpty()
+        detectedStacks = if (path.isBlank()) emptyList() else runCatching { detectStacks(path) }.getOrDefault(emptyList())
         initialRepositoryDraft = repositoryDraft
         nextEnvironmentRowId = repositoryDraft.environment.size
         repositoryChangedOnDisk = false
@@ -323,6 +330,30 @@ class ProjectConfigViewModel(
 
     fun setXcodeEnabled(enabled: Boolean) =
         updateRepositoryDraft { it.copy(xcode = if (enabled) it.xcode ?: XcodeDraft() else null) }
+
+    fun setMavenEnabled(enabled: Boolean) =
+        updateRepositoryDraft { it.copy(maven = if (enabled) it.maven ?: MavenDraft() else null) }
+
+    fun setDockerComposeEnabled(enabled: Boolean) =
+        updateRepositoryDraft { it.copy(dockerCompose = if (enabled) it.dockerCompose ?: ComposeDraft() else null) }
+
+    val stackSuggestions: List<ProviderSuggestion>
+        get() = if (!repositoryConfigEditable) {
+            emptyList()
+        } else {
+            suggestProviders(detectedStacks, repositoryDraft.toEdit().providers, supportsApplePlatforms).suggestions
+        }
+
+    fun acceptSuggestion(provider: SuggestedProvider) {
+        when (provider) {
+            SuggestedProvider.GRADLE -> setGradleEnabled(true)
+            SuggestedProvider.EMULATOR -> setEmulatorEnabled(true)
+            SuggestedProvider.IOS_SIMULATOR -> setIosSimulatorEnabled(true)
+            SuggestedProvider.XCODE -> setXcodeEnabled(true)
+            SuggestedProvider.MAVEN -> setMavenEnabled(true)
+            SuggestedProvider.DOCKER_COMPOSE -> setDockerComposeEnabled(true)
+        }
+    }
 
     fun addEnvironmentRow() =
         updateRepositoryDraft { it.copy(environment = it.environment + EnvironmentRow(nextEnvironmentRowId++, "", "")) }
