@@ -12,6 +12,7 @@ import app.luxion.shogunai.domain.model.DerivedDataDeletion
 import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.domain.model.DerivedDataListing
 import app.luxion.shogunai.domain.model.DerivedDataOwner
+import app.luxion.shogunai.domain.model.DerivedDataTrim
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.PoolUsage
@@ -53,6 +54,7 @@ data class MachineSummary(
     val poolInUse: Int? = null,
     val poolLimit: Int? = null,
     val calculating: Boolean = false,
+    val quotaBytes: Long? = null,
 )
 
 sealed interface PoolNoticeContent {
@@ -128,6 +130,10 @@ class MachineResources(
         private set
     var derivedDataDeletionReport by mutableStateOf<DerivedDataDeletion?>(null)
         private set
+    var derivedDataTrimReport by mutableStateOf<DerivedDataTrim?>(null)
+        private set
+    private var derivedDataTrim by mutableStateOf<DerivedDataTrim?>(null)
+    private var isTrimmingDerivedData = false
     var isDeletingSimulators by mutableStateOf(false)
         private set
     var simulatorsDeleted by mutableStateOf<Int?>(null)
@@ -207,6 +213,26 @@ class MachineResources(
             return (derivedDataListing as? MachineLoad.Loaded)?.value?.orphans.orEmpty()
                 .map { it.copy(sizeBytes = sizes[it.path]) }
         }
+
+    val derivedDataQuotaBytes: Long?
+        get() = useCases.resourceSettings().derivedDataQuotaBytes
+
+    val derivedDataUsageBytes: Long?
+        get() {
+            val listing = (derivedDataListing as? MachineLoad.Loaded)?.value ?: return null
+            val sizes = derivedDataSizes
+            if (listing.folders.any { it.folder.path !in sizes }) return null
+            return sizes.values.sum()
+        }
+
+    val derivedDataQuotaExceeded: Boolean
+        get() {
+            val quota = derivedDataQuotaBytes ?: return false
+            return (derivedDataUsageBytes ?: return false) > quota
+        }
+
+    val derivedDataInUse: List<String>
+        get() = derivedDataTrim?.inUse.orEmpty().map { (it.owner as DerivedDataOwner.Worktree).path.substringAfterLast('/') }
 
     val compilationCacheBytes: Long?
         get() = compilationCacheSize
@@ -304,6 +330,7 @@ class MachineResources(
                     count = listing.folders.size,
                     bytes = if (calculating) null else sizes.values.sum(),
                     calculating = calculating,
+                    quotaBytes = derivedDataQuotaBytes,
                 )
             }
         } else {
@@ -404,6 +431,43 @@ class MachineResources(
             compilationCacheSize = size.getOrNull()
         }
         compilationCacheMeasured = true
+        applyDerivedDataQuota()
+    }
+
+    private suspend fun applyDerivedDataQuota() {
+        val quota = derivedDataQuotaBytes
+        if (quota == null) {
+            derivedDataTrim = null
+            return
+        }
+        val listing = (derivedDataListing as? MachineLoad.Loaded)?.value ?: return
+        if (isTrimmingDerivedData) return
+        isTrimmingDerivedData = true
+        try {
+            val sizes = derivedDataSizes
+            val measured = listing.copy(folders = listing.folders.map { it.copy(folder = it.folder.copy(sizeBytes = sizes[it.folder.path])) })
+            val declaring = projects().filter { MachineResource.XCODE_DERIVED_DATA in it.declares }
+            useCases.trimDerivedData(quota, declaring, measured)
+                .onSuccess { trim ->
+                    derivedDataTrim = trim
+                    if (trim.released.isNotEmpty() || trim.failures.isNotEmpty()) derivedDataTrimReport = trim
+                    val gone = trim.released.map { it.folder.path }.toSet()
+                    derivedDataListing = MachineLoad.Loaded(listing.copy(folders = listing.folders.filterNot { it.folder.path in gone }))
+                    derivedDataSizes = derivedDataSizes - gone
+                    clearError(DERIVED_DATA_KEY)
+                }
+                .onFailure { fail(DERIVED_DATA_KEY, it) { reloadDerivedData() } }
+        } finally {
+            isTrimmingDerivedData = false
+        }
+    }
+
+    private fun reloadDerivedData() {
+        scope.launch { loadDerivedData() }
+    }
+
+    fun dismissDerivedDataTrimReport() {
+        derivedDataTrimReport = null
     }
 
     private fun stopDerivedDataMeasuring() {

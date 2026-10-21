@@ -116,11 +116,18 @@ Xcode guarda una carpeta de DerivedData por ruta de proyecto, así que cada work
 
 La pantalla de worktrees muestra entonces una sección "DerivedData de Xcode" con la carpeta de cada worktree, su tamaño y su último acceso, y las carpetas huérfanas de la máquina: las de proyectos que ya no existen, las cree la herramienta que las cree. Las carpetas aparecen enseguida; sus tamaños y los totales muestran "Calculando…" hasta que cada carpeta se mide en segundo plano, de una en una, sin congelar la app. El cálculo continúa si sales de la vista (la entrada de la barra lateral muestra el total cuando está listo) y vuelve a empezar al recargarla. "Eliminar huérfanas" las borra, y "Limpiar" (marcado por defecto) también borra las huérfanas tras eliminar worktrees, incluidas las carpetas de los worktrees que elimina.
 
-Solo se borran carpetas huérfanas: nunca los DerivedData de un proyecto que sigue existiendo, nunca las cachés compartidas de Xcode (`CompilationCache.noindex`, `ModuleCache.noindex`, …) y nunca una carpeta cuyo proyecto está en un volumen no montado. ShogunAi busca los DerivedData en la ubicación por defecto de Xcode o en la personalizada de sus preferencias.
+Salvo que fijes una cuota, solo se borran carpetas huérfanas, y nunca los DerivedData de un proyecto que sigue existiendo, nunca las cachés compartidas de Xcode (`CompilationCache.noindex`, `ModuleCache.noindex`, …) y nunca una carpeta cuyo proyecto está en un volumen no montado. ShogunAi busca los DerivedData en la ubicación por defecto de Xcode o en la personalizada de sus preferencias.
+
+### Cuota de DerivedData
+
+El DerivedData crece con cada worktree en el que un agente compila. Fija una cuota en Preferencias > Recursos (un número de gigabytes, o "Sin cuota", el valor por defecto) y ShogunAi mantiene las carpetas dentro de ella. La cuota es un ajuste de la máquina, no forma parte de los perfiles de capacidad y nunca se lee del repositorio.
+
+Cuando las carpetas suman más que la cuota, ShogunAi libera primero las carpetas huérfanas y después las de los worktrees que no están en uso, de la menos a la más recientemente accedida, y se detiene en cuanto el total cabe. Un worktree está en uso mientras su agente trabaja o está bloqueado, o su carpeta se accedió hace menos de una hora. Nunca se liberan las carpetas de otros proyectos, las de volúmenes no disponibles ni la caché de compilación; si solo quedan esas, la vista dice que la cuota sigue superada y nombra los worktrees en uso. La app aplica la cuota cada vez que se han medido los tamaños de las carpetas, y muestra el uso frente a la cuota, también en la barra lateral, y las carpetas que liberó hasta que cierres el aviso. `shogun xcode trim` la aplica desde la línea de comandos.
 
 ```bash
 shogun xcode                               # carpetas de DerivedData de este repositorio, huérfanas y tamaño de la caché de compilación
 shogun xcode clean                         # borrar las carpetas huérfanas
+shogun xcode trim [--dry-run]              # liberar carpetas hasta que el DerivedData quepa en la cuota
 shogun clean --yes --delete-derived-data   # borrarlas también tras eliminar worktrees
 ```
 

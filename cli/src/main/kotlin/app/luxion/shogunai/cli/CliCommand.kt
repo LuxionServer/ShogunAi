@@ -47,6 +47,7 @@ sealed interface CliCommand {
 
     data class Xcode(val json: Boolean = false) : CliCommand
     data class XcodeClean(val json: Boolean = false) : CliCommand
+    data class XcodeTrim(val dryRun: Boolean = false, val json: Boolean = false) : CliCommand
 
     data class Gradle(val json: Boolean = false) : CliCommand
     data class Pool(val action: PoolAction, val json: Boolean = false) : CliCommand
@@ -138,6 +139,7 @@ private fun CliCommand.withJson(json: Boolean): CliCommand = if (!json) this els
     is CliCommand.Clean -> copy(json = true)
     is CliCommand.Xcode -> copy(json = true)
     is CliCommand.XcodeClean -> copy(json = true)
+    is CliCommand.XcodeTrim -> copy(json = true)
     is CliCommand.Gradle -> copy(json = true)
     is CliCommand.GradleStop -> copy(json = true)
     is CliCommand.Pool -> copy(json = true)
@@ -292,7 +294,12 @@ private fun parseClean(rest: List<String>): CliCommand.Clean {
 
 private fun parseXcode(rest: List<String>): CliCommand {
     val subcommand = rest.firstOrNull() ?: return CliCommand.Xcode()
-    if (subcommand != "clean") throw UsageException("unknown subcommand '$subcommand' for 'xcode', expected clean")
+    if (subcommand == "trim") {
+        val flags = rest.drop(1)
+        flags.firstOrNull { it != "--dry-run" }?.let { throw UsageException("unknown argument '$it' for 'xcode trim', expected --dry-run") }
+        return CliCommand.XcodeTrim(dryRun = flags.isNotEmpty())
+    }
+    if (subcommand != "clean") throw UsageException("unknown subcommand '$subcommand' for 'xcode', expected clean or trim")
     rest.drop(1).firstOrNull()?.let { throw UsageException("'xcode clean' takes no arguments, got '$it'") }
     return CliCommand.XcodeClean()
 }
