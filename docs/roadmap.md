@@ -22,7 +22,7 @@ Numbered in the order they will be picked up: the number is the priority.
 
 ### 1. Platforms and IDEs beyond Android
 
-The project grew around Android. This item reviews the coverage of the other stacks (iOS and Xcode, JVM backends) and of the IDEs a worktree can be opened in. It starts with an exploration to decide what's missing before it's split into changes.
+The project grew around Android. This item reviews the coverage of the other stacks (iOS and Xcode, JVM backends) and of the IDEs a worktree can be opened in. It starts with an exploration to decide what's missing before it's split into changes. It also covers "Open in Claude Desktop" beyond macOS: whether its `claude://code/new?folder=` link accepts a folder on Windows is unverified.
 
 ### 2. Follow-ups of the 2026-10-19 changes
 

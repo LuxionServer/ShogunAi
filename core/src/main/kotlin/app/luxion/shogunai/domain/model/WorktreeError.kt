@@ -177,6 +177,9 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class EditorLaunchFailed(val editor: EditorId, val detail: String) :
         WorktreeError("${editor.displayName} couldn't open the worktree" + if (detail.isBlank()) "" else ": $detail")
 
+    class ClaudeDesktopLaunchFailed(val detail: String) :
+        WorktreeError("Claude Desktop couldn't open the worktree" + if (detail.isBlank()) "" else ": $detail")
+
     class FolderOpenFailed(val path: String, val detail: String) :
         WorktreeError("Couldn't show $path" + if (detail.isBlank()) "" else ": $detail")
 

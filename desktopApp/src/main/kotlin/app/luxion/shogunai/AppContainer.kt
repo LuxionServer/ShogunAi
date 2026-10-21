@@ -50,6 +50,7 @@ import app.luxion.shogunai.infrastructure.CommandEditorLauncher
 import app.luxion.shogunai.infrastructure.JsonToolPreferenceRepository
 import app.luxion.shogunai.infrastructure.LocalToolDetector
 import app.luxion.shogunai.infrastructure.MacTerminalLauncher
+import app.luxion.shogunai.infrastructure.MacClaudeDesktopLauncher
 import app.luxion.shogunai.infrastructure.SystemFolderLauncher
 import app.luxion.shogunai.infrastructure.TmuxTerminalLauncher
 import app.luxion.shogunai.infrastructure.WindowsTerminalLauncher
@@ -232,6 +233,7 @@ class AppContainer {
     )
     private val editorLaunchers = EditorId.entries.map { CommandEditorLauncher(it, shellCommandExecutor) }
     private val folderLauncher = SystemFolderLauncher(shellCommandExecutor)
+    private val claudeDesktopLauncher = MacClaudeDesktopLauncher(shellCommandExecutor)
     private val environmentCache = WorktreeEnvironmentCache()
     private val resolveEnvironment = resolverWith(contributions)
     private val stopSimulator = StopWorktreeSimulatorUseCase(repositoryProvisioningSource, appleSimulators, resolveEnvironment)
@@ -434,6 +436,7 @@ class AppContainer {
             openInTerminal = OpenWorktreeInTerminalUseCase(config, terminalLaunchers, resolveEnvironment)::invoke,
             openInEditor = { path, editor -> editorLaunchers.first { it.editor == editor }.open(path) },
             openFolder = folderLauncher::open,
+            openInClaudeDesktop = claudeDesktopLauncher::open,
         ),
         provisioning = ProvisioningUseCases(
             check = CheckProvisionedFilesUseCase(config, shellCommandExecutor, fileManager, repositoryProvisioningSource)::invoke,
@@ -623,6 +626,8 @@ data class ToolUseCases(
     val openInTerminal: suspend (path: String, terminal: TerminalId, agent: AgentLaunchConfig) -> Result<Unit>,
     val openInEditor: suspend (path: String, editor: EditorId) -> Result<Unit>,
     val openFolder: suspend (path: String) -> Result<Unit>,
+    val openInClaudeDesktop: suspend (path: String) -> Result<Unit> =
+        { Result.failure(WorktreeError.ClaudeDesktopLaunchFailed("no launcher")) },
 ) {
     companion object {
         val NONE = ToolUseCases(

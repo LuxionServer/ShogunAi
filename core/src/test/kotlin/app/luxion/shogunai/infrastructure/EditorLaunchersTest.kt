@@ -182,4 +182,46 @@ class EditorLaunchersTest {
         assertIs<WorktreeError.FolderOpenFailed>(error)
         assertTrue(error.message.orEmpty().contains("no such folder"))
     }
+
+    @Test
+    fun `macOS opens a new Claude Desktop session with the encoded folder`() = runTest {
+        val executor = FakeShellCommandExecutor()
+
+        MacClaudeDesktopLauncher(executor, HostOs.MACOS).open(path).getOrThrow()
+
+        assertEquals(
+            listOf(listOf("open", "claude://code/new?folder=%2Fhome%2Fdev%2Fprojects%2Fworktrees%2FTASK-8&source=shogunai")),
+            executor.executedCommands,
+        )
+    }
+
+    @Test
+    fun `Claude Desktop link encodes spaces and non-ASCII characters`() {
+        assertEquals(
+            "claude://code/new?folder=%2Fhome%2Fdev%2Fmy%20projects%2Fcaf%C3%A9&source=shogunai",
+            MacClaudeDesktopLauncher.link("/home/dev/my projects/café"),
+        )
+    }
+
+    @Test
+    fun `a failing Claude Desktop launch reports its error output`() = runTest {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.failure(it, stderr = "no application knows how to open the URL") }
+
+        val error = MacClaudeDesktopLauncher(executor, HostOs.MACOS).open(path).exceptionOrNull()
+
+        assertIs<WorktreeError.ClaudeDesktopLaunchFailed>(error)
+        assertTrue(error.message.orEmpty().contains("no application knows how to open the URL"))
+    }
+
+    @Test
+    fun `Claude Desktop isn't launched on other systems`() = runTest {
+        for (os in listOf(HostOs.WINDOWS, HostOs.LINUX)) {
+            val executor = FakeShellCommandExecutor()
+
+            val error = MacClaudeDesktopLauncher(executor, os).open(path).exceptionOrNull()
+
+            assertIs<WorktreeError.ClaudeDesktopLaunchFailed>(error)
+            assertTrue(executor.executedCommands.isEmpty())
+        }
+    }
 }

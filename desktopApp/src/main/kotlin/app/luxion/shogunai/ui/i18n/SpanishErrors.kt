@@ -246,6 +246,10 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "${error.editor.displayName} no pudo abrir el worktree.",
         "Revisa los detalles técnicos.",
     )
+    is WorktreeError.ClaudeDesktopLaunchFailed -> ErrorTexts(
+        "Claude Desktop no pudo abrir el worktree.",
+        "Revisa los detalles técnicos.",
+    )
     is WorktreeError.FolderOpenFailed -> ErrorTexts(
         "No se pudo mostrar \"${error.path}\".",
         "Revisa los detalles técnicos.",

@@ -25,6 +25,8 @@ class ToolsPreferences(
     val availableTerminals: List<TerminalId> get() = detected?.terminals.orEmpty()
     val availableEditors: List<EditorId> get() = detected?.editors.orEmpty()
 
+    val claudeDesktopAvailable: Boolean get() = detected?.claudeDesktop == true
+
     val terminalInUse: TerminalId? get() = chosenTerminal?.takeIf { it in availableTerminals }
 
     val terminalShown: TerminalId? get() = terminalInUse ?: availableTerminals.firstOrNull()

@@ -440,6 +440,7 @@ interface Strings {
     val noTerminalFound: String
     val noEditorFound: String
     fun openInTool(name: String): String
+    val claudeDesktopName: String
     val openFolder: String
     val chooseTerminalTitle: String
     val chooseTerminalMessage: String
