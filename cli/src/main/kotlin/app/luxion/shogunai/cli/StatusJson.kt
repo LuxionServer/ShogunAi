@@ -1,5 +1,6 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.domain.model.AgentStateSource
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
@@ -49,7 +50,14 @@ private fun worktreeJson(entry: WorktreeEntry): JsonObject = buildJsonObject {
 
 private fun agentJson(agent: RunningAgent): JsonObject = buildJsonObject {
     put("name", agent.name)
-    put("herdrState", agent.herdrState?.name?.lowercase())
+    put("state", agent.state?.name?.lowercase())
+    put("stateSource", agent.stateSource?.let(::sourceLabel))
+    put("herdrState", agent.state?.takeIf { agent.stateSource == AgentStateSource.HERDR }?.name?.lowercase())
+}
+
+private fun sourceLabel(source: AgentStateSource): String = when (source) {
+    AgentStateSource.HERDR -> "herdr"
+    AgentStateSource.CLAUDE_CODE -> "claude-code"
 }
 
 private fun statusObject(status: WorktreeStatus): JsonObject = buildJsonObject {

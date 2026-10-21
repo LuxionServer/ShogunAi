@@ -44,6 +44,7 @@ fun PreferencesWindow(
     appearance: Appearance,
     tools: ToolsPreferences,
     resources: ResourcePreferences,
+    claudeHooks: ClaudeHooksState,
     updates: UpdateState,
     tray: TrayPreferences,
     bringToFrontRequests: Int,
@@ -58,8 +59,9 @@ fun PreferencesWindow(
     ) {
         LaunchedEffect(bringToFrontRequests) { window.toFront() }
         LaunchedEffect(Unit) { tools.refresh() }
+        LaunchedEffect(Unit) { claudeHooks.refresh() }
         AppearanceScope(appearance) {
-            PreferencesContent(appearance, tools, resources, updates, tray)
+            PreferencesContent(appearance, tools, resources, claudeHooks, updates, tray)
         }
     }
 }
@@ -69,6 +71,7 @@ private fun PreferencesContent(
     appearance: Appearance,
     tools: ToolsPreferences,
     resources: ResourcePreferences,
+    claudeHooks: ClaudeHooksState,
     updates: UpdateState,
     tray: TrayPreferences,
 ) {
@@ -99,6 +102,7 @@ private fun PreferencesContent(
         )
         ToolsSection(tools)
         ResourcesSection(resources)
+        ClaudeHooksSection(claudeHooks)
         if (tray.isSupported) TraySection(tray)
         UpdatesPreferences(updates)
     }

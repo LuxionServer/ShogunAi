@@ -296,7 +296,7 @@ private fun openWindow() = application {
             LocalDiagnosticsLog provides appContainer.diagnosticsLog,
             LocalWindowExceptionHandlerFactory provides preferencesErrorHandlers,
         ) {
-            PreferencesWindow(appearance, appContainer.tools, appContainer.resources, appContainer.updates, trayPreferences, preferencesFrontRequests, onClose = { preferencesOpen = false })
+            PreferencesWindow(appearance, appContainer.tools, appContainer.resources, appContainer.claudeHooks, appContainer.updates, trayPreferences, preferencesFrontRequests, onClose = { preferencesOpen = false })
         }
     }
     if (aboutOpen) {

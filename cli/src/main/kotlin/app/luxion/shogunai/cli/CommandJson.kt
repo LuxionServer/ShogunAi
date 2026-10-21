@@ -24,6 +24,9 @@ import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.usecase.GradleTrim
 import app.luxion.shogunai.domain.usecase.ResourceAcquisition
+import app.luxion.shogunai.domain.usecase.HookEntry
+import app.luxion.shogunai.domain.usecase.HooksPreview
+import app.luxion.shogunai.domain.usecase.HooksStatus
 import app.luxion.shogunai.domain.usecase.totalResidentMemory
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -455,4 +458,45 @@ fun openJson(path: String, branch: String?, opening: HerdrOpening, agent: String
 
 fun repairJson(repaired: List<String>): JsonObject = buildJsonObject {
     put("repaired", strings(repaired))
+}
+
+fun hooksResultJson(path: String, preview: HooksPreview, applied: Boolean): JsonObject = buildJsonObject {
+    put("path", path)
+    put("applied", applied)
+    put("added", buildJsonArray { preview.added.forEach { add(hookEntryJson(it)) } })
+    put("removed", buildJsonArray { preview.removed.forEach { add(hookEntryJson(it)) } })
+    put(
+        "replaced",
+        buildJsonArray {
+            preview.replaced.forEach { replacement ->
+                add(
+                    buildJsonObject {
+                        put("event", replacement.event)
+                        put("from", buildJsonArray { replacement.from.forEach { add(JsonPrimitive(it)) } })
+                        put("to", replacement.to)
+                    },
+                )
+            }
+        },
+    )
+}
+
+private fun hookEntryJson(entry: HookEntry): JsonObject = buildJsonObject {
+    put("event", entry.event)
+    put("command", entry.command)
+}
+
+fun hooksStatusJson(statuses: List<Pair<String, HooksStatus>>): JsonObject = buildJsonObject {
+    put("user", JsonNull)
+    put("project", JsonNull)
+    statuses.forEach { (scope, status) ->
+        put(
+            scope,
+            buildJsonObject {
+                put("path", status.path)
+                put("state", status.state.name.lowercase())
+                put("events", buildJsonArray { status.events.forEach { add(JsonPrimitive(it)) } })
+            },
+        )
+    }
 }

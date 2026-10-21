@@ -20,7 +20,7 @@ import app.luxion.shogunai.HerdrUseCases
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.ui.shell.AgentChoices
 import app.luxion.shogunai.SimulatorUseCases
-import app.luxion.shogunai.domain.model.HerdrAgentState
+import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.WorktreeUseCases
 import app.luxion.shogunai.ProvisioningUseCases
@@ -2622,8 +2622,8 @@ class ProjectWorktreesTest {
         viewModel.applyAgents(
             mapOf(
                 worktreePath to listOf(
-                    RunningAgent("codex", HerdrAgentState.WORKING, "w1:p1"),
-                    RunningAgent("claude", HerdrAgentState.BLOCKED, "w1:p2"),
+                    RunningAgent("codex", AgentState.WORKING, "w1:p1"),
+                    RunningAgent("claude", AgentState.BLOCKED, "w1:p2"),
                 ),
             ),
         )

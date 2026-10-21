@@ -1,5 +1,6 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.domain.FakeAgentSessionStore
 import app.luxion.shogunai.domain.FakeMachineCapacity
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
 import app.luxion.shogunai.domain.model.CapacityProfile
@@ -20,6 +21,8 @@ import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.model.AgentSessionRecord
+import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
@@ -87,6 +90,7 @@ class HookCommandsTest {
         provisioning: RepositoryProvisioning = RepositoryProvisioning(worktreeIncludePatterns = listOf(".env")),
         herdr: FakeHerdrClient = FakeHerdrClient(),
         trust: FakeRepositoryTrust = FakeRepositoryTrust(),
+        sessionStore: FakeAgentSessionStore = FakeAgentSessionStore(),
     ) = ShogunCli(
         executor = executor,
         fileManager = FakeFileManager(existing = existing),
@@ -115,6 +119,8 @@ class HookCommandsTest {
         herdr = herdr,
         trust = trust,
         readAnswer = { "y" },
+        sessionStore = sessionStore,
+        agentProcessId = { 4242L },
     )
 
     private fun createInput(name: String, cwd: String = base) =
@@ -588,5 +594,123 @@ class HookCommandsTest {
 
         assertEquals(0, herdr.listings)
         assertTrue(executor.notifications().isEmpty())
+    }
+
+    private val transcript = "/home/dev/.claude/projects/main-repo/963d9441.jsonl"
+
+    private fun stateInput(event: String, extra: String = "", cwd: String = base) =
+        """{"session_id":"963d9441","transcript_path":"$transcript","cwd":"$cwd","prompt_id":"cf942c2e","hook_event_name":"$event"$extra}"""
+
+    private fun runAgentState(input: String, store: FakeAgentSessionStore = FakeAgentSessionStore()): Pair<Int, FakeAgentSessionStore> {
+        val exitCode = cli(Executor(porcelain()), input, sessionStore = store).run(listOf("hook", "agent-state"))
+        return exitCode to store
+    }
+
+    private fun recorded(store: FakeAgentSessionStore) = store.records[base].orEmpty().singleOrNull()
+
+    @Test
+    fun `agent-state records working on UserPromptSubmit`() {
+        val (exitCode, store) = runAgentState(stateInput("UserPromptSubmit", ""","permission_mode":"auto","prompt":"fix it""""))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("", out.toString())
+        assertEquals(AgentSessionRecord("963d9441", "claude", AgentState.WORKING, recorded(store)!!.updatedAt, transcript, 4242L), recorded(store))
+    }
+
+    @Test
+    fun `agent-state records blocked on a permission prompt`() {
+        val (exitCode, store) = runAgentState(
+            stateInput("Notification", ""","message":"Claude needs your permission to use Bash","notification_type":"permission_prompt""""),
+        )
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("", out.toString())
+        assertEquals(AgentState.BLOCKED, recorded(store)?.state)
+    }
+
+    @Test
+    fun `agent-state records blocked on a notification without a type`() {
+        val (_, store) = runAgentState(stateInput("Notification", ""","message":"Claude needs your attention""""))
+
+        assertEquals(AgentState.BLOCKED, recorded(store)?.state)
+    }
+
+    @Test
+    fun `agent-state records done when the prompt has been idle`() {
+        val (_, store) = runAgentState(
+            stateInput("Notification", ""","message":"Claude is waiting for your input","notification_type":"idle_prompt""""),
+        )
+
+        assertEquals(AgentState.DONE, recorded(store)?.state)
+    }
+
+    @Test
+    fun `agent-state ignores notifications that are not about waiting`() {
+        val (exitCode, store) = runAgentState(stateInput("Notification", ""","notification_type":"auth_success""""))
+
+        assertEquals(0, exitCode)
+        assertEquals(null, recorded(store))
+    }
+
+    @Test
+    fun `agent-state records done on Stop`() {
+        val (_, store) = runAgentState(
+            stateInput("Stop", ""","permission_mode":"auto","stop_hook_active":false,"last_assistant_message":"ok","background_tasks":[]"""),
+        )
+
+        assertEquals(AgentState.DONE, recorded(store)?.state)
+    }
+
+    @Test
+    fun `agent-state removes the record when the session ends`() {
+        val store = FakeAgentSessionStore(
+            mapOf(base to listOf(AgentSessionRecord("963d9441", "claude", AgentState.DONE, 1L, transcript, 4242L))),
+        )
+
+        val (exitCode, _) = runAgentState(stateInput("SessionEnd", ""","reason":"other""""), store)
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(null, recorded(store))
+    }
+
+    @Test
+    fun `agent-state records the session in the worktree containing cwd`() {
+        val linked = "/home/dev/projects/worktrees/TASK-1"
+        val executor = Executor(porcelain(linked to "feature/TASK-1"))
+        val store = FakeAgentSessionStore()
+
+        cli(executor, stateInput("Stop", cwd = "$linked/src"), sessionStore = store).run(listOf("hook", "agent-state"))
+
+        assertEquals(setOf(linked), store.records.keys)
+    }
+
+    @Test
+    fun `agent-state outside a repository records nothing and exits with 0`() {
+        val executor = Executor(porcelain()) { command ->
+            if ("--git-common-dir" in command) CommandResult(command, 128, "", "fatal: not a git repository") else null
+        }
+        val store = FakeAgentSessionStore()
+
+        val exitCode = cli(executor, stateInput("Stop", cwd = "/tmp/elsewhere"), sessionStore = store).run(listOf("hook", "agent-state"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(store.records.isEmpty())
+        assertEquals("", out.toString() + err.toString())
+    }
+
+    @Test
+    fun `agent-state ignores unknown events`() {
+        val (exitCode, store) = runAgentState(stateInput("PreToolUse"))
+
+        assertEquals(0, exitCode)
+        assertTrue(store.records.isEmpty())
+    }
+
+    @Test
+    fun `agent-state with invalid input prints the error and exits with 2`() {
+        val exitCode = cli(Executor(porcelain()), "not json").run(listOf("hook", "agent-state"))
+
+        assertEquals(2, exitCode)
+        assertTrue(err.contains("agent-state"), err.toString())
     }
 }

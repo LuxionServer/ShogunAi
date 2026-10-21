@@ -57,6 +57,10 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "The repository has no commits yet.",
         "Make a first commit and try again.",
     )
+    is WorktreeError.InvalidClaudeSettings -> ErrorTexts(
+        "Claude Code's settings file ${error.path} isn't valid JSON, so it was left unchanged.",
+        "Fix the file (${error.detail}) and try again.",
+    )
      is WorktreeError.LocalFileUnreadable ->
         if (error.path.endsWith("settings.json")) {
             ErrorTexts(

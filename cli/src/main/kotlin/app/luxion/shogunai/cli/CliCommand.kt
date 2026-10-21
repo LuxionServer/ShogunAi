@@ -55,6 +55,13 @@ sealed interface CliCommand {
     data object HookWorktreeRemove : CliCommand
     data object HookSessionStart : CliCommand
     data object HookHerdr : CliCommand
+    data object HookAgentState : CliCommand
+    data class Hooks(
+        val action: HooksAction,
+        val project: Boolean = false,
+        val yes: Boolean = false,
+        val json: Boolean = false,
+    ) : CliCommand
     data class Emulator(
         val action: EmulatorAction,
         val path: String? = null,
@@ -100,6 +107,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "status" -> parseStatus(arguments)
                 "clean" -> parseClean(arguments)
                 "hook" -> parseHook(arguments)
+                "hooks" -> parseHooks(arguments)
                 "gradle" -> parseGradle(arguments)
                 "pool" -> parsePool(arguments)
                 "xcode" -> parseXcode(arguments)
@@ -116,7 +124,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
 
 private const val JSON_FLAG = "--json"
 
-private val JSON_COMMANDS = setOf("new", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "pool", "xcode", "emulator", "simulator")
+private val JSON_COMMANDS = setOf("new", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "pool", "xcode", "emulator", "simulator", "hooks")
 
 private fun isSimulatorGradleInit(name: String, rest: List<String>) = name == "simulator" && rest.firstOrNull() == "gradle-init"
 
@@ -135,6 +143,7 @@ private fun CliCommand.withJson(json: Boolean): CliCommand = if (!json) this els
     is CliCommand.Pool -> copy(json = true)
     is CliCommand.Emulator -> copy(json = true)
     is CliCommand.Simulator -> copy(json = true)
+    is CliCommand.Hooks -> copy(json = true)
     else -> this
 }
 
@@ -315,12 +324,32 @@ private fun parseHook(rest: List<String>): CliCommand {
         "worktree-remove" -> CliCommand.HookWorktreeRemove
         "session-start" -> CliCommand.HookSessionStart
         "herdr" -> CliCommand.HookHerdr
+        "agent-state" -> CliCommand.HookAgentState
         else -> throw UsageException("unknown hook '$event', expected $HOOK_EVENTS")
     }
     return noArguments("hook $event", rest.drop(1), command)
 }
 
-private const val HOOK_EVENTS = "worktree-create, worktree-remove, session-start or herdr"
+private const val HOOK_EVENTS = "worktree-create, worktree-remove, session-start, agent-state or herdr"
+
+enum class HooksAction { INSTALL, UNINSTALL, STATUS }
+
+private fun parseHooks(rest: List<String>): CliCommand {
+    val name = rest.firstOrNull() ?: throw UsageException("'hooks' needs an action: install, uninstall or status")
+    val action = HooksAction.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
+        ?: throw UsageException("unknown action '$name' for 'hooks', expected install, uninstall or status")
+    var project = false
+    var yes = false
+    rest.drop(1).forEach { argument ->
+        when {
+            argument == "--project" -> project = true
+            argument == "--yes" || argument == "-y" -> yes = true
+            argument.startsWith("-") -> throw UsageException("unknown option '$argument' for 'hooks'")
+            else -> throw UsageException("'hooks $name' takes no arguments, got '$argument'")
+        }
+    }
+    return CliCommand.Hooks(action, project, yes)
+}
 
 enum class EmulatorAction { START, STOP, STATUS }
 
