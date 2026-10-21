@@ -1,5 +1,7 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.domain.usecase.ResourceAcquisition
+import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -80,6 +82,8 @@ class ProjectWorktrees(
     var success by mutableStateOf<WorktreeSuccess?>(null)
         private set
 
+    var releaseNotices by mutableStateOf<Map<String, List<ReleaseNotice>>>(emptyMap())
+        private set
     var actionErrors by mutableStateOf<Map<String, Throwable>>(emptyMap())
         private set
     private var actionRetries by mutableStateOf<Map<String, () -> Unit>>(emptyMap())
@@ -399,7 +403,10 @@ class ProjectWorktrees(
         scope.launch {
             try {
                 useCases.simulator.start(worktree.path)
-                    .onSuccess { clearActionError(worktree.path) }
+                    .onSuccess {
+                        clearActionError(worktree.path)
+                        recordReleases(worktree.path, ResourceKind.IOS_SIMULATOR, it.acquisition)
+                    }
                     .onFailure { recordActionError(worktree.path, it) { startSimulator(worktree) } }
                 loadSimulators(listGeneration, worktrees)
             } finally {
@@ -445,7 +452,10 @@ class ProjectWorktrees(
         scope.launch {
             try {
                 useCases.emulator.start(worktree.path)
-                    .onSuccess { clearActionError(worktree.path) }
+                    .onSuccess {
+                        clearActionError(worktree.path)
+                        recordReleases(worktree.path, ResourceKind.EMULATOR, it.acquisition)
+                    }
                     .onFailure { recordActionError(worktree.path, it) { startEmulator(worktree) } }
                 loadEmulators(listGeneration, worktrees)
                 loadPorts(listGeneration, worktrees)
@@ -971,6 +981,19 @@ class ProjectWorktrees(
             clearActionError(path)
             retry()
         }
+    }
+
+    data class ReleaseNotice(val kind: ResourceKind, val released: String, val forWorktree: String)
+
+    fun dismissReleaseNotices(path: String) {
+        releaseNotices = releaseNotices - path
+    }
+
+    private fun recordReleases(path: String, kind: ResourceKind, acquisition: ResourceAcquisition) {
+        if (acquisition.releases.isEmpty()) return
+        releaseNotices = releaseNotices + (
+            path to acquisition.releases.map { ReleaseNotice(kind, it.holderName, path.trimEnd('/').substringAfterLast('/')) }
+            )
     }
 
     private fun clearActionError(path: String) {

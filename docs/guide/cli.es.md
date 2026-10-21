@@ -221,7 +221,7 @@ shogun gradle stop [<pid>...]
 shogun emulator start|stop|status [<path>] [--avd <name>] [--no-window]
 ```
 
-Arranca (y espera a), para o muestra el emulador de Android del worktree. `--avd` y `--no-window` solo se aplican a `start` y sustituyen los ajustes del proyecto en ese arranque. `status` imprime `emulator-5556 running|booting|stopped`.
+Arranca (y espera a), para o muestra el emulador de Android del worktree. `--avd` y `--no-window` solo se aplican a `start` y sustituyen los ajustes del proyecto en ese arranque. `status` imprime `emulator-5556 running|booting|stopped`, o `not acquired` antes del primer arranque. El primer `start` reserva el puerto de consola (liberando el emulador inactivo usado menos recientemente si el pool está lleno, lo que se informa por la salida de errores) e imprime `export ANDROID_SERIAL=…`; con todos los emuladores en marcha falla con el código de salida `1` nombrando los worktrees que los tienen.
 
 ### `simulator`
 
@@ -234,6 +234,15 @@ Crea si hace falta, arranca (y espera a) y abre, apaga o muestra el simulador de
 
 `gradle-init install` instala un init script de Gradle para toda la máquina que hace que los tests de simulador KMP de todos los proyectos usen el simulador del worktree; muestra el script y pregunta `[y/N]` salvo con `--yes`. `uninstall` lo elimina.
 
+### `pool`
+
+```text
+shogun pool status [--json]
+shogun pool trim [--json]
+```
+
+`status` imprime cada pool (`emulators 1/2`, `simulators 0/1`, `gradle daemons 3/2  over the limit`) con el límite del perfil de capacidad de la máquina y, debajo, el proyecto, el worktree y el estado de cada recurso en uso. `trim` detiene los daemons de Gradle inactivos, primero los que llevan más tiempo inactivos, hasta quedar dentro del límite, e imprime lo que detuvo y conservó.
+
 ### `xcode`
 
 ```text
@@ -245,7 +254,7 @@ shogun xcode clean
 
 ## Salida JSON
 
-Además de `status --json`, todos los comandos que informan de un resultado aceptan `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `xcode`, `xcode clean`, `emulator` y `simulator` (no `simulator gradle-init`, `env`, `hook`, `help` ni `--version`; en ellos es una opción desconocida y sale con `2`). La opción puede ir en cualquier posición tras el comando.
+Además de `status --json`, todos los comandos que informan de un resultado aceptan `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `pool status`, `pool trim`, `xcode`, `xcode clean`, `emulator` y `simulator` (no `simulator gradle-init`, `env`, `hook`, `help` ni `--version`; en ellos es una opción desconocida y sale con `2`). La opción puede ir en cualquier posición tras el comando.
 
 Las reglas son las mismas para todos:
 

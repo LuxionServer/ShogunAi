@@ -673,6 +673,11 @@ class WorktreeBoard(
         selectedWorktree?.let { it.holder.copyLaunchCommand(it.worktree) }
     }
 
+    fun openSelectedInHerdr() {
+        if (isCreateDialogOpen || TextInputFocus.isActive) return
+        selectedWorktree?.let { it.holder.openInHerdr(it.worktree) }
+    }
+
     fun deleteSelectedWorktree() {
         if (isCreateDialogOpen || isCleanupDialogOpen || pendingRemoval != null || keptBranchDeletion != null || terminalChoice != null || TextInputFocus.isActive) return
         selectedWorktree?.takeIf { !it.worktree.isMain }?.let { it.holder.requestRemoval(it.worktree) }

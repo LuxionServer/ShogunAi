@@ -1,5 +1,13 @@
 package app.luxion.shogunai.cli
 
+import java.time.Instant
+import app.luxion.shogunai.domain.model.ResourceLimits
+import app.luxion.shogunai.domain.model.EmulatorState
+import app.luxion.shogunai.domain.model.DaemonState
+import app.luxion.shogunai.domain.FakeMachineCapacity
+import app.luxion.shogunai.domain.FakeResourceLimitsRepository
+import app.luxion.shogunai.domain.model.CapacityProfile
+import app.luxion.shogunai.domain.model.ResourceSettings
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeDerivedDataSource
@@ -29,6 +37,8 @@ import kotlin.test.assertTrue
 
 class EnvironmentCommandsTest {
 
+    private val resourceLimits = FakeResourceLimitsRepository(ResourceSettings(CapacityProfile.PER_WORKTREE))
+
     private val base = "/home/dev/projects/main-repo"
     private val linked = "/home/dev/projects/worktrees/TASK-123"
     private val common = "$base/.git"
@@ -56,8 +66,13 @@ class EnvironmentCommandsTest {
         Files.deleteIfExists(envFile)
     }
 
+    private val daemons = FakeGradleDaemonSource()
+    private val executedCommands = mutableListOf<List<String>>()
+
     private val executor = object : ShellCommandExecutor {
         override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
+            executedCommands += command
+            if (command.first() == "kill") return CommandResult(command, 0, "", "")
             val inLinked = workingDirectory?.startsWith(linked) == true
             val stdout = when {
                 "--git-dir" in command -> if (inLinked) "$common/worktrees/TASK-123\n$common\n" else "$common\n$common\n"
@@ -88,13 +103,15 @@ class EnvironmentCommandsTest {
         fileManager = FakeFileManager(existing = listOf(base, linked)),
         projectRepository = FakeProjectRepository(emptyList()),
         provisioningSource = provisioning,
-        daemonSource = FakeGradleDaemonSource(),
+        daemonSource = daemons,
         gradleUserHome = "/home/dev/.gradle",
         environmentStateStore = store,
         portProbe = FakePortProbe(),
         androidSdk = androidSdk,
         appleSimulators = appleSimulators,
         kmpTestWiring = kmpTestWiring,
+        resourceLimits = resourceLimits,
+        machineCapacity = FakeMachineCapacity(),
         derivedDataSource = FakeDerivedDataSource(),
         herdrConfig = FakeHerdrConfigSource(),
         workingDirectory = workingDirectory,
@@ -118,7 +135,7 @@ class EnvironmentCommandsTest {
         val exitCode = cli(withSimulator()).run(listOf("simulator", "start", "--device", "iPhone 16"))
 
         assertEquals(0, exitCode, err.toString())
-        assertEquals("UDID-1 booted  ShogunAi · main-repo · TASK-123\n", out.toString())
+        assertEquals("UDID-1 booted  ShogunAi · main-repo · TASK-123\nexport IOS_SIMULATOR_UDID=UDID-1\n", out.toString())
         assertEquals("ShogunAi · main-repo · TASK-123", appleSimulators.created.single().name)
         assertEquals(listOf("UDID-1"), appleSimulators.shown)
     }
@@ -180,6 +197,8 @@ class EnvironmentCommandsTest {
 
     @Test
     fun `session-start tells Claude about its iOS simulator`() {
+        store.writeResources("$common/worktrees/TASK-123", mapOf("ios-simulator" to "UDID-1"))
+        appleSimulators.addExisting("UDID-1", "ShogunAi · main-repo · TASK-123")
         val exitCode = cli(withSimulator(), input = """{"cwd": "$linked"}""").run(listOf("hook", "session-start"))
 
         assertEquals(0, exitCode, err.toString())
@@ -197,13 +216,13 @@ class EnvironmentCommandsTest {
 
         assertEquals(0, cli(withEmulator()).run(listOf("emulator", "stop")))
         assertEquals(0, cli(withEmulator()).run(listOf("emulator", "status", linked)))
-        assertEquals("emulator-5554 running\nemulator-5554 stopped\nemulator-5554 stopped\n", out.toString())
+        assertEquals("emulator-5554 running\nexport ANDROID_SERIAL=emulator-5554\nemulator-5554 stopped\nemulator-5554 stopped\n", out.toString())
     }
 
     @Test
-    fun `emulator status before any reservation says how to start one`() {
+    fun `emulator status before the first start says not acquired`() {
         assertEquals(0, cli(withEmulator()).run(listOf("emulator", "status")))
-        assertTrue(out.startsWith("No emulator port reserved"), out.toString())
+        assertEquals("not acquired\n", out.toString())
         assertTrue(androidSdk.started.isEmpty())
     }
 
@@ -218,6 +237,7 @@ class EnvironmentCommandsTest {
 
     @Test
     fun `session-start tells Claude how to start the emulator`() {
+        store.writePorts("$common/worktrees/TASK-123", mapOf("emulator" to 5554))
         val exitCode = cli(withEmulator(), input = """{"cwd": "$linked"}""").run(listOf("hook", "session-start"))
 
         assertEquals(0, exitCode, err.toString())
@@ -325,7 +345,7 @@ class EnvironmentCommandsTest {
     fun `emulator json reports the serial and state`() {
         assertEquals(0, cli(withEmulator()).run(listOf("emulator", "start", "--no-window", "--json")))
         val started = jsonOut()
-        assertEquals(setOf("worktree", "serial", "state"), started.keys)
+        assertEquals(setOf("worktree", "serial", "state", "acquired", "acquiredNow", "released"), started.keys)
         assertEquals(linked, started.text("worktree"))
         assertEquals("emulator-5554", started.text("serial"))
         assertEquals("running", started.text("state"))
@@ -361,7 +381,7 @@ class EnvironmentCommandsTest {
     fun `simulator json reports the udid, name and state`() {
         assertEquals(0, cli(withSimulator()).run(listOf("simulator", "start", "--json")))
         val started = jsonOut()
-        assertEquals(setOf("worktree", "udid", "name", "state"), started.keys)
+        assertEquals(setOf("worktree", "udid", "name", "state", "acquired", "acquiredNow", "released"), started.keys)
         assertEquals("UDID-1", started.text("udid"))
         assertEquals("ShogunAi · main-repo · TASK-123", started.text("name"))
         assertEquals("booted", started.text("state"))
@@ -385,5 +405,108 @@ class EnvironmentCommandsTest {
 
         assertEquals(2, exitCode)
         assertTrue(err.contains("--json"), err.toString())
+    }
+
+    @Test
+    fun `session-start before the first emulator start reserves nothing and explains how to get it`() {
+        val exitCode = cli(withEmulator(), input = """{"cwd": "$linked"}""").run(listOf("hook", "session-start"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertFalse(out.contains("ANDROID_SERIAL="), out.toString())
+        assertTrue(out.contains("'shogun emulator start' acquires and starts it and prints the ANDROID_SERIAL to export"), out.toString())
+        assertTrue(out.contains("never run 'adb kill-server' or 'adb start-server'"), out.toString())
+        assertEquals("", envFile.readText())
+        assertTrue(store.portsByAdminDirectory.isEmpty())
+    }
+
+    @Test
+    fun `session-start before the first simulator start creates nothing`() {
+        val exitCode = cli(withSimulator(), input = """{"cwd": "$linked"}""").run(listOf("hook", "session-start"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.contains("'shogun simulator start' creates and boots it and prints the IOS_SIMULATOR_UDID to export"), out.toString())
+        assertTrue(appleSimulators.created.isEmpty())
+        assertTrue(store.resourcesByAdminDirectory.isEmpty())
+    }
+
+    @Test
+    fun `emulator start applies the limits from the machine settings and reports what it released`() {
+        resourceLimits.settings = ResourceSettings(CapacityProfile.CUSTOM, ResourceLimits(emulators = 1, simulators = null, gradleDaemons = null))
+        store.writePorts("$common/worktrees/TASK-9", mapOf("emulator" to 5556))
+
+        val exitCode = cli(withEmulator()).run(listOf("emulator", "start"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(err.contains("released the emulator of main-repo · TASK-9 to make room"), err.toString())
+        assertEquals(emptyMap(), store.readPorts("$common/worktrees/TASK-9"))
+        assertEquals(mapOf("emulator" to 5554), store.readPorts("$common/worktrees/TASK-123"))
+    }
+
+    @Test
+    fun `emulator start fails with the pool error when every emulator is running`() {
+        resourceLimits.settings = ResourceSettings(CapacityProfile.CUSTOM, ResourceLimits(emulators = 1, simulators = null, gradleDaemons = null))
+        store.writePorts("$common/worktrees/TASK-9", mapOf("emulator" to 5556))
+        androidSdk.states["emulator-5556"] = EmulatorState.RUNNING
+
+        val exitCode = cli(withEmulator()).run(listOf("emulator", "start"))
+
+        assertEquals(1, exitCode)
+        assertEquals("", out.toString())
+        assertTrue(err.contains("limit of 1 emulator is reached"), err.toString())
+        assertTrue(err.contains("main-repo · TASK-9 (running)"), err.toString())
+        assertTrue(androidSdk.started.isEmpty())
+    }
+
+    @Test
+    fun `pool status shows each pool with its limit and holders`() {
+        resourceLimits.settings = ResourceSettings(CapacityProfile.CUSTOM, ResourceLimits(emulators = 2, simulators = 1, gradleDaemons = 4))
+        store.writePorts("$common/worktrees/TASK-123", mapOf("emulator" to 5554))
+        androidSdk.states["emulator-5554"] = EmulatorState.RUNNING
+
+        val exitCode = cli(withEmulator()).run(listOf("pool", "status"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            "emulators 1/2\n  main-repo · TASK-123 running\nsimulators 0/1\ngradle daemons 0/4\n",
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `pool status json lists the pools`() {
+        resourceLimits.settings = ResourceSettings(CapacityProfile.CUSTOM, ResourceLimits(emulators = 2, simulators = null, gradleDaemons = 4))
+        store.writePorts("$common/worktrees/TASK-123", mapOf("emulator" to 5554))
+
+        assertEquals(0, cli(withEmulator()).run(listOf("pool", "status", "--json")))
+
+        val pools = jsonOut().getValue("pools") as kotlinx.serialization.json.JsonArray
+        val emulators = pools.first() as kotlinx.serialization.json.JsonObject
+        assertEquals("emulators", emulators.text("kind"))
+        assertEquals("2", emulators.getValue("effectiveLimit").toString())
+        assertEquals("1", emulators.getValue("inUse").toString())
+        assertEquals(1, (emulators.getValue("holders") as kotlinx.serialization.json.JsonArray).size)
+    }
+
+    @Test
+    fun `pool trim stops the longest idle Gradle daemon over the limit`() {
+        resourceLimits.settings = ResourceSettings(CapacityProfile.CUSTOM, ResourceLimits(emulators = null, simulators = null, gradleDaemons = 2))
+        daemons.daemons = listOf(
+            FakeGradleDaemonSource.gradleDaemon(11, DaemonState.Idle(Instant.parse("2026-01-01T11:00:00Z"))),
+            FakeGradleDaemonSource.gradleDaemon(12, DaemonState.Idle(Instant.parse("2026-01-01T10:00:00Z"))),
+            FakeGradleDaemonSource.gradleDaemon(13, DaemonState.Idle(Instant.parse("2026-01-01T12:00:00Z"))),
+        )
+
+        val exitCode = cli(withEmulator()).run(listOf("pool", "trim"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.contains("stopped 12"), out.toString())
+        assertTrue(out.contains("gradle daemons 2/2"), out.toString())
+        assertTrue(executedCommands.any { it == listOf("kill", "12") })
+    }
+
+    @Test
+    fun `pool needs an action and accepts only status or trim`() {
+        assertEquals(2, cli(withEmulator()).run(listOf("pool")))
+        assertEquals(2, cli(withEmulator()).run(listOf("pool", "grow")))
     }
 }

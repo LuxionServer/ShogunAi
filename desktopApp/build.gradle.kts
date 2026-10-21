@@ -45,7 +45,7 @@ compose.desktop {
             val appVersion = (findProperty("appVersion") as String?) ?: "0.0.0"
             packageVersion = appVersion
 
-            modules("java.net.http")
+            modules("java.net.http", "java.management", "jdk.management")
 
             macOS {
                 packageVersion = macBundleVersion(appVersion)

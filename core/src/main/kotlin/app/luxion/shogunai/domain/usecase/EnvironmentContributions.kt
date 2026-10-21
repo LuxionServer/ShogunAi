@@ -13,6 +13,7 @@ data class PortRequest(
     val key: String,
     val candidates: IntProgression,
     val alsoFree: (Int) -> List<Int> = { emptyList() },
+    val onDemand: Boolean = false,
     val exhausted: () -> WorktreeError,
 )
 
@@ -23,6 +24,7 @@ data class ResourceRequest(
     val exists: suspend (String) -> Boolean,
     val create: suspend (ResourceContext) -> String,
     val discard: suspend (String) -> Unit,
+    val onDemand: Boolean = false,
 )
 
 data class EnvironmentReservations(
@@ -34,7 +36,10 @@ data class EnvironmentContribution(
     val ports: List<PortRequest> = emptyList(),
     val resources: List<ResourceRequest> = emptyList(),
     val variables: (EnvironmentReservations) -> List<Pair<String, String>>,
-)
+) {
+    fun isAcquiredIn(reservations: EnvironmentReservations): Boolean =
+        ports.all { it.key in reservations.ports } && resources.all { it.key in reservations.resources }
+}
 
 fun interface ProviderContributions {
     fun forRepository(repositoryPath: String, providers: RepositoryProviders): List<EnvironmentContribution>
@@ -61,6 +66,7 @@ val emulatorContribution = EnvironmentContribution(
             candidates = FIRST_EMULATOR_PORT..LAST_EMULATOR_PORT step 2,
             alsoFree = { listOf(it + 1) },
             exhausted = { WorktreeError.NoEmulatorPort(FIRST_EMULATOR_PORT, LAST_EMULATOR_PORT) },
+            onDemand = true,
         ),
     ),
     variables = { reservations -> listOf(ANDROID_SERIAL to emulatorSerial(reservations.ports.getValue(EMULATOR_PORT_KEY))) },

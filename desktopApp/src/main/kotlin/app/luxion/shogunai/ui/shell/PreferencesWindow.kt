@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -37,7 +39,7 @@ import app.luxion.shogunai.ui.isMacOs
 import app.luxion.shogunai.ui.tray.TrayPreferences
 import app.luxion.shogunai.ui.worktree.InactivityPreferences
 
-private val PreferencesWindowSize = DpSize(440.dp, 840.dp)
+private val PreferencesWindowSize = DpSize(440.dp, 820.dp)
 
 fun ThemeMode.label(strings: Strings): String = when (this) {
     ThemeMode.LIGHT -> strings.themeLight
@@ -49,6 +51,7 @@ fun ThemeMode.label(strings: Strings): String = when (this) {
 fun PreferencesWindow(
     appearance: Appearance,
     tools: ToolsPreferences,
+    resources: ResourcePreferences,
     updates: UpdateState,
     tray: TrayPreferences,
     inactivity: InactivityPreferences,
@@ -65,7 +68,7 @@ fun PreferencesWindow(
         LaunchedEffect(bringToFrontRequests) { window.toFront() }
         LaunchedEffect(Unit) { tools.refresh() }
         AppearanceScope(appearance) {
-            PreferencesContent(appearance, tools, updates, tray, inactivity)
+            PreferencesContent(appearance, tools, resources, updates, tray, inactivity)
         }
     }
 }
@@ -74,13 +77,14 @@ fun PreferencesWindow(
 private fun PreferencesContent(
     appearance: Appearance,
     tools: ToolsPreferences,
+    resources: ResourcePreferences,
     updates: UpdateState,
     tray: TrayPreferences,
     inactivity: InactivityPreferences,
 ) {
     val strings = LocalStrings.current
     Column(
-        modifier = Modifier.fillMaxWidth().padding(Spacing.lg),
+        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
         Text(strings.appearanceLabel, style = MaterialTheme.typography.labelLarge)
@@ -105,6 +109,7 @@ private fun PreferencesContent(
         )
         ToolsSection(tools)
         InactivitySection(inactivity)
+        ResourcesSection(resources)
         if (tray.isSupported) TraySection(tray)
         UpdatesPreferences(updates)
     }

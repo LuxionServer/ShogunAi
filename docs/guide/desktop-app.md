@@ -138,4 +138,6 @@ The only request the app makes on its own is an anonymous `GET` to `https://api.
 
 The app keeps a local diagnostics log in `~/.shogunai/logs/diagnostics.log` (rotated at 1 MB, three files at most). It records errors nothing handled, errors shown in the app and freezes of the interface (when it stops responding for 2 seconds or more, with how long it lasted and what it was doing). Before anything is written, absolute paths, your user name, the names of your saved projects and the branches of their worktrees are replaced by placeholders such as `<path>` or `<project>`.
 
+If the Preferences or About window hits an unexpected error, only that window closes: the error is recorded in the log and the main window shows a message, so the rest of the app and your work keep running.
+
 **Copy Diagnostic Report** in the Help menu copies to the clipboard the app version, your operating system and architecture, the Java runtime and the most recent entries of the log, ready to paste into a bug report. Nothing is ever sent anywhere: the log stays on your machine and the report only reaches the clipboard when you ask for it.

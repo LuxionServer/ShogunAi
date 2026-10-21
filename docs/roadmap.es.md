@@ -12,7 +12,7 @@ Esa dirección se construye en tres capas:
 |---|---|---|
 | **Motor y CLI** | La base | Provisionado de worktrees definido en el repositorio (`.shogunai.json`) y un comando `shogun` que usan la app de escritorio, los agentes y sus hooks, con un entorno por worktree (puertos reservados y variables) que llega a la shell de cada agente, y salida JSON en todos los comandos para scripts. **Disponible.** |
 | **Torre de control** | La vista | La app de escritorio muestra el estado de todos los worktrees, incluidos los creados por otras herramientas, los mantiene limpios y sigue los cambios según ocurren. Abre cada uno en el terminal, el IDE o Herdr con los agentes del proyecto, y queda a un clic en la barra de menús. **Disponible.** |
-| **Plataformas** | El contenido | Providers para los stacks en los que más cuesta preparar un worktree, empezando por Android, KMP, iOS y JVM: Gradle, secretos locales, emuladores, simuladores e IDEs. **Empezado**: los repositorios Gradle muestran sus daemons, pueden parar los ociosos y acotar la memoria y la vida de los daemons que arrancan los agentes, los repositorios Android pueden dar a cada worktree su propio emulador, los KMP e iOS su propio simulador de iOS, y los repositorios Xcode ven y limpian sus DerivedData y comparten compilaciones entre worktrees. |
+| **Plataformas** | El contenido | Providers para los stacks en los que más cuesta preparar un worktree, empezando por Android, KMP, iOS y JVM: Gradle, secretos locales, emuladores, simuladores e IDEs. **Empezado**: los repositorios Gradle muestran sus daemons, pueden parar los ociosos y acotar la memoria y la vida de los daemons que arrancan los agentes, los repositorios Android pueden dar a cada worktree su propio emulador, los KMP e iOS su propio simulador de iOS, ambos adquiridos bajo demanda dentro de límites que siguen un perfil de capacidad de la máquina, y los repositorios Xcode ven y limpian sus DerivedData y comparten compilaciones entre worktrees. |
 
 Se conecta con las herramientas que ejecutan agentes en vez de sustituirlas: los hooks de worktree y de sesión de Claude Code, y [Herdr](https://herdr.dev), el multiplexor de terminal para agentes, cuyos worktrees provisiona un plugin de ShogunAi y en el que la app de escritorio abre un worktree con su entorno y su agente y muestra qué está haciendo cada agente. **Disponible.**
 
@@ -20,9 +20,9 @@ Se conecta con las herramientas que ejecutan agentes en vez de sustituirlas: los
 
 Numerados en el orden en que se abordarán: el número es la prioridad.
 
-### 1. Emuladores y simuladores bajo demanda, con límites configurables
+### 1. Una cuota de disco para el DerivedData de Xcode
 
-Un worktree recibe un emulador o simulador, y el puerto que lo acompaña, cuando lo necesita y no cuando se crea, de modo que los worktrees que nunca ejecutan la app no gastan el rango limitado de puertos de emulador. El límite pasa a ser configurable. El modelo que hay detrás es un pool: emuladores, simuladores, daemons de Gradle y DerivedData son recursos de capacidad limitada que un worktree adquiere y libera, y los providers deberían compartir ese modelo en vez de resolverlo cada uno por su cuenta.
+El DerivedData es el único recurso de la máquina que se limita por disco y no por número. Una cuota en Preferencias, aplicada reutilizando el modelo de pools de recursos (liberar las carpetas usadas menos recientemente de los worktrees que no están en uso cuando se supera la cuota), evitaría que crezca sin límite.
 
 ### 2. Plataformas e IDEs más allá de Android
 
@@ -39,6 +39,7 @@ La revisión de todo el proyecto del 2026-10-19 y los cambios hechos a partir de
 - Más terminales para «Abrir en terminal» (Ghostty, Warp, Alacritty, Kitty, GNOME Terminal), cada uno como un adaptador más.
 - Tamaños de DerivedData más rápidos: medir varias carpetas en paralelo y recordar los tamaños entre ejecuciones de la app.
 - Una notificación cuando un agente de Herdr pasa a bloqueado o terminado; hoy la señal es la fila del worktree y el menú del icono de la barra de menús.
+- Encontrar la causa raíz de los errores que cerraban la ventana de Preferencias, a partir de las entradas que el aislamiento deja ahora en el registro de diagnóstico, y del crash nativo visto en otra máquina que dejó un informe de diagnóstico vacío.
 
 ### 4. Demo guiada de bienvenida
 

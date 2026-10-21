@@ -68,6 +68,7 @@ fun iosSimulatorContribution(
                 )
             },
             discard = { udid -> simulators.delete(udid) },
+            onDemand = true,
         ),
     ),
     variables = { reservations -> listOf(IOS_SIMULATOR_UDID to reservations.resources.getValue(IOS_SIMULATOR_KEY)) },

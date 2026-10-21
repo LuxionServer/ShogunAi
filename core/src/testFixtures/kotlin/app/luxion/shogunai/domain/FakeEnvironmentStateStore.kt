@@ -2,6 +2,7 @@ package app.luxion.shogunai.domain
 
 import app.luxion.shogunai.domain.io.EnvironmentStateStore
 import app.luxion.shogunai.domain.io.PortProbe
+import app.luxion.shogunai.domain.io.WorktreeReservations
 
 class FakeEnvironmentStateStore(
     initial: Map<String, Map<String, Int>> = emptyMap(),
@@ -28,6 +29,19 @@ class FakeEnvironmentStateStore(
         writes++
         if (resources.isEmpty()) resourcesByAdminDirectory.remove(adminDirectory) else resourcesByAdminDirectory[adminDirectory] = resources
     }
+
+    val lastUsedByAdminDirectory = mutableMapOf<String, Map<String, Long>>()
+
+    override fun readLastUsed(adminDirectory: String): Map<String, Long> = lastUsedByAdminDirectory[adminDirectory].orEmpty()
+
+    override fun writeLastUsed(adminDirectory: String, lastUsed: Map<String, Long>) {
+        if (lastUsed.isEmpty()) lastUsedByAdminDirectory.remove(adminDirectory) else lastUsedByAdminDirectory[adminDirectory] = lastUsed
+    }
+
+    override fun reservationsOnMachine(commonDirectory: String): List<WorktreeReservations> =
+        (portsByAdminDirectory.keys + resourcesByAdminDirectory.keys + lastUsedByAdminDirectory.keys).distinct().map { admin ->
+            WorktreeReservations(admin, readPorts(admin), readResources(admin), readLastUsed(admin))
+        }
 
     override fun reservedPortsOnMachine(commonDirectory: String): Set<Int> =
         portsByAdminDirectory.values.flatMap { it.values }.toSet()

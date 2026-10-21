@@ -125,4 +125,43 @@ class NioEnvironmentStateStoreTest {
             assertFalse(SocketPortProbe().isFree(socket.localPort))
         }
     }
+
+    @Test
+    fun `writes and reads last use times`() {
+        store.writeLastUsed(linked.toString(), mapOf("emulator" to 1_000L))
+
+        assertEquals(mapOf("emulator" to 1_000L), store.readLastUsed(linked.toString()))
+    }
+
+    @Test
+    fun `releasing a key keeps the other keys and updates the index`() {
+        val admin = linked.toString()
+        store.writePorts(admin, mapOf("emulator" to 5554, "PORT" to 20000))
+        store.writeResources(admin, mapOf("ios-simulator" to "UDID-1"))
+        store.writeLastUsed(admin, mapOf("emulator" to 1L, "ios-simulator" to 2L))
+
+        store.release(admin, "emulator")
+
+        assertEquals(mapOf("PORT" to 20000), store.readPorts(admin))
+        assertEquals(mapOf("ios-simulator" to "UDID-1"), store.readResources(admin))
+        assertEquals(mapOf("ios-simulator" to 2L), store.readLastUsed(admin))
+
+        store.release(admin, "ios-simulator")
+        store.writePorts(admin, emptyMap())
+
+        assertFalse(linked.resolve(NioEnvironmentStateStore.STATE_FILE_NAME).exists())
+    }
+
+    @Test
+    fun `reservations on the machine list every worktree with its ports, resources and last use`() {
+        store.writePorts(linked.toString(), mapOf("emulator" to 5554))
+        store.writeLastUsed(linked.toString(), mapOf("emulator" to 7L))
+        store.writeResources(otherLinked.toString(), mapOf("ios-simulator" to "UDID-1"))
+
+        val reservations = store.reservationsOnMachine(common.toString()).associateBy { it.adminDirectory }
+
+        assertEquals(mapOf("emulator" to 5554), reservations.getValue(linked.toString()).ports)
+        assertEquals(mapOf("emulator" to 7L), reservations.getValue(linked.toString()).lastUsed)
+        assertEquals(mapOf("ios-simulator" to "UDID-1"), reservations.getValue(otherLinked.toString()).resources)
+    }
 }

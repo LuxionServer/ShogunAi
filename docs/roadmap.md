@@ -12,7 +12,7 @@ That direction is built in three layers:
 |---|---|---|
 | **Engine and CLI** | The foundation | Worktree provisioning defined in the repository (`.shogunai.json`) and a `shogun` command that the desktop app, agents and their hooks all use, including a per-worktree environment (reserved ports and variables) delivered to each agent's shell, and JSON output on every command for scripts. **Available.** |
 | **Control tower** | The view | The desktop app shows the state of every worktree, including the ones created by other tools, keeps them clean and follows changes as they happen. It opens each one in the terminal, the IDE or Herdr with the project's agents, and stays one click away in the menu bar. **Available.** |
-| **Platforms** | The content | Providers for the stacks where a worktree is hardest to prepare, starting with Android, KMP, iOS and JVM: Gradle, local secrets, emulators, simulators and IDEs. **Started**: Gradle repositories show their daemons, can stop the idle ones and bound the memory and lifetime of the daemons agents start, Android repositories can give each worktree its own emulator, KMP and iOS repositories its own iOS simulator, and Xcode repositories see and clean up their DerivedData and share compilations between worktrees. |
+| **Platforms** | The content | Providers for the stacks where a worktree is hardest to prepare, starting with Android, KMP, iOS and JVM: Gradle, local secrets, emulators, simulators and IDEs. **Started**: Gradle repositories show their daemons, can stop the idle ones and bound the memory and lifetime of the daemons agents start, Android repositories can give each worktree its own emulator, KMP and iOS repositories its own iOS simulator, both acquired on demand within limits that follow a machine capacity profile, and Xcode repositories see and clean up their DerivedData and share compilations between worktrees. |
 
 It plugs into the tools that run agents rather than replacing them: Claude Code's worktree and session hooks, and [Herdr](https://herdr.dev), the terminal multiplexer for agents, whose worktrees a ShogunAi plugin provisions and where the desktop app opens a worktree with its environment and agent and shows what each agent is doing. **Available.**
 
@@ -20,9 +20,9 @@ It plugs into the tools that run agents rather than replacing them: Claude Code'
 
 Numbered in the order they will be picked up: the number is the priority.
 
-### 1. Emulators and simulators on demand, with configurable limits
+### 1. A disk quota for Xcode DerivedData
 
-A worktree gets an emulator or simulator, and the port that goes with it, when it needs one, not when it's created, so worktrees that never run the app don't use up the limited range of emulator ports. The limit becomes configurable. The model behind it is a pool: emulators, simulators, Gradle daemons and DerivedData are resources of limited capacity that a worktree acquires and releases, and the providers should share that model instead of each solving it on its own.
+DerivedData is the one resource of the machine's pools that is limited by disk instead of by count. A quota in Preferences, applied by reusing the resource pool model (release the least recently used folders of worktrees that are not in use when the quota is exceeded), would keep it from growing without bound.
 
 ### 2. Platforms and IDEs beyond Android
 
@@ -39,6 +39,7 @@ The review of the whole project on 2026-10-19 and the changes built after it are
 - More terminals for "Open in terminal" (Ghostty, Warp, Alacritty, Kitty, GNOME Terminal), each as one more adapter.
 - Faster DerivedData sizes: measuring several folders in parallel and remembering sizes between app runs.
 - A notification when a Herdr agent becomes blocked or done; today the worktree's row and the menu bar icon's menu are the signal.
+- Finding the root cause of the errors that closed the Preferences window, from the entries the isolation now leaves in the diagnostics log, and of the native crash seen on another machine that left an empty diagnostic report.
 
 ### 4. Guided onboarding demo
 

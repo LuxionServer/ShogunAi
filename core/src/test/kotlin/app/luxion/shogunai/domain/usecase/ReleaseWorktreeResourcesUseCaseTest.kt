@@ -15,7 +15,6 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.Worktree
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -41,8 +40,8 @@ class ReleaseWorktreeResourcesUseCaseTest {
         val source = FakeRepositoryProvisioningSource(
             byRepository = mapOf(repository to RepositoryProvisioning(providers = RepositoryProviders(emulator = emulator))),
         )
-        val resolve = ResolveWorktreeEnvironmentUseCase(git, source, FakeEnvironmentStateStore(), FakePortProbe())
-        runBlocking { resolve(repository, task).getOrThrow() }
+        val acquired = FakeEnvironmentStateStore(mapOf("$common/worktrees/TASK-123" to mapOf("emulator" to 5554)))
+        val resolve = ResolveWorktreeEnvironmentUseCase(git, source, acquired, FakePortProbe())
         val simulators = FakeAppleSimulators()
         val daemons = FakeGradleDaemonSource()
         return ReleaseWorktreeResourcesUseCase(
