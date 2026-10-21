@@ -1,7 +1,13 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.domain.usecase.worktreeComposeProjectName
+import app.luxion.shogunai.domain.model.ComposeProject
+import app.luxion.shogunai.domain.model.DockerComposeProvider
+import app.luxion.shogunai.ComposeUseCases
+import app.luxion.shogunai.domain.FakeComposeProjectSource
 import app.luxion.shogunai.domain.model.PoolRelease
 import app.luxion.shogunai.domain.model.PoolReleaseReason
+import app.luxion.shogunai.domain.model.ReleaseRecord
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.usecase.DeviceStart
 import app.luxion.shogunai.domain.usecase.ResourceAcquisition
@@ -2070,6 +2076,79 @@ class ProjectWorktreesTest {
         assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1, stoppedDaemons = 1), board.cleanupSuccess)
     }
 
+    private fun composeRepository(
+        responder: (List<String>) -> CommandResult,
+        source: FakeComposeProjectSource,
+        declared: Boolean = true,
+    ): WorktreeUseCases {
+        val executor = FakeShellCommandExecutor(responder)
+        return useCasesWith(executor).copy(
+            compose = ComposeUseCases(provider = { DockerComposeProvider().takeIf { declared } }),
+            cleanUp = CleanUpWorktreesUseCase(config, executor, composeProjects = source),
+        )
+    }
+
+    private val worktreeComposeName get() = worktreeComposeProjectName(config.baseRepositoryPath, worktreePath)
+
+    @Test
+    fun `cleanup takes down the compose projects of the removed worktrees`() = runTest(dispatcher) {
+        val source = FakeComposeProjectSource(listOf(ComposeProject(worktreeComposeName, "running(1)", emptyList())))
+        val board = board(composeRepository(mergedResponder(), source))
+        advanceUntilIdle()
+
+        board.openCleanup()
+        assertTrue(board.project.isComposeRepository)
+        assertTrue(board.cleanupDownComposeProjects)
+        board.confirmCleanup()
+        advanceUntilIdle()
+
+        assertEquals(listOf(worktreeComposeName to false), source.downs)
+        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1, takenDownComposeProjects = 1), board.cleanupSuccess)
+    }
+
+    @Test
+    fun `cleanup leaves compose projects alone when the option is unchecked`() = runTest(dispatcher) {
+        val source = FakeComposeProjectSource(listOf(ComposeProject(worktreeComposeName, "running(1)", emptyList())))
+        val board = board(composeRepository(mergedResponder(), source))
+        advanceUntilIdle()
+
+        board.openCleanup()
+        board.cleanupDownComposeProjects = false
+        board.confirmCleanup()
+        advanceUntilIdle()
+
+        assertTrue(source.downs.isEmpty())
+        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1), board.cleanupSuccess)
+    }
+
+    @Test
+    fun `a repository without the compose provider shows no option and never runs docker`() = runTest(dispatcher) {
+        val source = FakeComposeProjectSource(listOf(ComposeProject(worktreeComposeName, "running(1)", emptyList())))
+        val board = board(composeRepository(mergedResponder(), source, declared = false))
+        advanceUntilIdle()
+
+        board.openCleanup()
+        board.confirmCleanup()
+        advanceUntilIdle()
+
+        assertFalse(board.project.isComposeRepository)
+        assertTrue(source.listings.isEmpty() && source.downs.isEmpty())
+    }
+
+    @Test
+    fun `cleanup still removes the worktrees when docker is unavailable and reports the kept projects`() = runTest(dispatcher) {
+        val source = FakeComposeProjectSource(unavailable = "daemon not reachable")
+        val board = board(composeRepository(mergedResponder(), source))
+        advanceUntilIdle()
+
+        board.openCleanup()
+        board.confirmCleanup()
+        advanceUntilIdle()
+
+        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1), board.cleanupSuccess)
+        assertEquals("daemon not reachable", board.project.cleanupIssues?.composeUnavailable)
+    }
+
     @Test
     fun `cleanup keeps daemons that became busy and reports them`() = runTest(dispatcher) {
         val executed = mutableListOf<List<String>>()
@@ -2767,6 +2846,40 @@ class ProjectWorktreesTest {
 
         viewModel.dismissActionError(worktreePath)
         assertNull(viewModel.actionErrors[worktreePath])
+    }
+
+    @Test
+    fun `a worktree without an emulator exposes why it was released`() = runTest(dispatcher) {
+        val record = ReleaseRecord(1_000L, "main-repo · TASK-9", "emulator-5554")
+        val emulators = EmulatorUseCases(
+            declared = { true },
+            readStates = { Result.success(emptyMap()) },
+            start = { Result.failure(IOException("unused")) },
+            stop = { Result.success(null) },
+            stopSerials = { Result.success(emptyList()) },
+            readRelease = { path -> record.takeIf { path == worktreePath } },
+        )
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(emulator = emulators))
+        advanceUntilIdle()
+
+        assertEquals(mapOf(worktreePath to record), viewModel.emulatorReleases)
+    }
+
+    @Test
+    fun `a worktree that holds an emulator has no release note`() = runTest(dispatcher) {
+        val record = ReleaseRecord(1_000L, "main-repo · TASK-9", "emulator-5554")
+        val emulators = EmulatorUseCases(
+            declared = { true },
+            readStates = { Result.success(mapOf(worktreePath to WorktreeEmulator("emulator-5554", EmulatorState.STOPPED))) },
+            start = { Result.failure(IOException("unused")) },
+            stop = { Result.success(null) },
+            stopSerials = { Result.success(emptyList()) },
+            readRelease = { record },
+        )
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(emulator = emulators))
+        advanceUntilIdle()
+
+        assertTrue(viewModel.emulatorReleases.isEmpty())
     }
 
     @Test

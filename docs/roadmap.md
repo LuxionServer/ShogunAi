@@ -12,7 +12,7 @@ That direction is built in three layers:
 |---|---|---|
 | **Engine and CLI** | The foundation | Worktree provisioning defined in the repository (`.shogunai.json`) and a `shogun` command that the desktop app, agents and their hooks all use, including a per-worktree environment (reserved ports and variables) delivered to each agent's shell, and JSON output on every command for scripts. **Available.** |
 | **Control tower** | The view | The desktop app shows the state of every worktree, including the ones created by other tools, keeps them clean and follows changes as they happen. It opens each one in the terminal, the IDE or Herdr with the project's agents, and stays one click away in the menu bar. **Available.** |
-| **Platforms** | The content | Providers for the stacks where a worktree is hardest to prepare, starting with Android, KMP, iOS and JVM: Gradle, local secrets, emulators, simulators and IDEs. **Started**: Gradle repositories show their daemons, can stop the idle ones and bound the memory and lifetime of the daemons agents start, Android repositories can give each worktree its own emulator, KMP and iOS repositories its own iOS simulator, both acquired on demand within limits that follow a machine capacity profile, and Xcode repositories see and clean up their DerivedData, keep it within a disk quota and share compilations between worktrees. |
+| **Platforms** | The content | Providers for the stacks where a worktree is hardest to prepare, starting with Android, KMP, iOS and JVM: Gradle, local secrets, emulators, simulators and IDEs. **Started**: Gradle repositories show their daemons, can stop the idle ones and bound the memory and lifetime of the daemons agents start, Android repositories can give each worktree its own emulator, KMP and iOS repositories its own iOS simulator, both acquired on demand within limits that follow a machine capacity profile, Xcode repositories see and clean up their DerivedData, keep it within a disk quota and share compilations between worktrees, and JVM backends get Maven builds bounded in memory and a Docker Compose project and ports per worktree. The app and `shogun stacks` also detect a repository's stack and suggest the providers that fit. |
 
 It plugs into the tools that run agents rather than replacing them: Claude Code's worktree and session hooks, and [Herdr](https://herdr.dev), the terminal multiplexer for agents, whose worktrees a ShogunAi plugin provisions and where the desktop app opens a worktree with its environment and agent and shows what each agent is doing. **Available.**
 
@@ -22,9 +22,13 @@ Numbered in the order they will be picked up: the number is the priority.
 
 ### 1. Platforms and IDEs beyond Android
 
-The project grew around Android. This item reviews the coverage of the other stacks (iOS and Xcode, JVM backends) and of the IDEs a worktree can be opened in. It starts with an exploration to decide what's missing before it's split into changes. It also covers "Open in Claude Desktop" beyond macOS: whether its `claude://code/new?folder=` link accepts a folder on Windows is unverified.
+The project grew around Android. Stack detection and the Maven and Docker Compose providers are done; what remains is the coverage of the IDEs a worktree can be opened in, which starts with an exploration to decide what's missing before it's split into changes. It also covers "Open in Claude Desktop" beyond macOS (whether its `claude://code/new?folder=` link accepts a folder on Windows is unverified), the caches of iOS packages, and the follow-ups the JVM backends left out: stopping Maven daemons once their state can be read reliably, and managing the Compose lifecycle (`up`, `build`) and Docker resources beyond projects.
 
-### 2. Follow-ups of the 2026-10-19 changes
+### 2. Wait for device capacity
+
+`shogun emulator start --wait` (and the simulator equivalent): instead of failing when every emulator is protected by a lease, queue until capacity frees up. It builds on the device leases, which already say when each lease expires.
+
+### 3. Follow-ups of the 2026-10-19 changes
 
 The review of the whole project on 2026-10-19 and the changes built after it are archived. These follow-ups were left out of them:
 
@@ -39,15 +43,24 @@ The review of the whole project on 2026-10-19 and the changes built after it are
 - Agent states for agents other than Claude Code (Codex, Gemini…), which have no equivalent hooks today.
 - Finding the root cause of the errors that closed the Preferences window, from the entries the isolation now leaves in the diagnostics log, and of the native crash seen on another machine that left an empty diagnostic report.
 
-### 3. Guided onboarding demo
+### 4. Follow-ups of the agent workflow guide
+
+The workflow rules reach agents through `shogun guide`, the `SessionStart` hook and a block in `AGENTS.md`. Left out:
+
+- A Settings section in the desktop app to install, update and remove the block, as it already does for Claude Code's hooks.
+- Recording the origin ref of each worktree, so the rule for choosing a pull request's base could be answered by `shogun` instead of staying a team policy.
+- Other agents' user-level files, as their documentation confirms them (Cursor keeps user rules in its settings today).
+
+### 5. Guided onboarding demo
 
 A first-run walkthrough built on the review done before merging the worktree layer: the app creates a throwaway sample repository with worktrees in every state, and opens an agent with a prepared prompt that walks the user through each feature (status, cleanup, provisioning, the CLI, hooks, environment and providers), one step at a time.
 
-### 4. Android, KMP and JVM provisioning
+### 6. Android, KMP and JVM provisioning
 
 Provisioning for the stacks where a fresh worktree is furthest from building:
 
 - `local.properties`, keystores and `google-services.json`.
+- Follow-ups of local folders: linking a local folder instead of copying it, glob patterns in the local list, reporting the symbolic links a folder skips, and removing from a worktree the files deleted from the base folder.
 - Showing the emulators ShogunAi starts inside Android Studio's Running Devices window, as the ones Android Studio starts itself, so several of them can be arranged in one window. It needs a spike: Android Studio may embed an external emulator started with the options it uses itself.
 
 ## Under exploration

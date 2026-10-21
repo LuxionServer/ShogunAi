@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.io.AndroidSdk
 import app.luxion.shogunai.domain.io.AppleSimulators
 import app.luxion.shogunai.domain.io.EnvironmentStateStore
 import app.luxion.shogunai.domain.io.PortProbe
@@ -10,7 +11,9 @@ import app.luxion.shogunai.domain.model.IOS_SIMULATOR_KEY
 import app.luxion.shogunai.domain.model.LAST_EMULATOR_PORT
 import app.luxion.shogunai.domain.model.PoolHolder
 import app.luxion.shogunai.domain.model.PoolRelease
+import app.luxion.shogunai.domain.model.PoolHolderState
 import app.luxion.shogunai.domain.model.PoolReleaseReason
+import app.luxion.shogunai.domain.model.ReleaseRecord
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.SimulatorSettings
 import app.luxion.shogunai.domain.model.WorktreeError
@@ -30,6 +33,7 @@ class AcquireWorktreeResourceUseCase(
     private val stateStore: EnvironmentStateStore,
     private val portProbe: PortProbe,
     private val simulators: AppleSimulators,
+    private val sdk: AndroidSdk,
     private val readPool: ReadResourcePoolUseCase,
     private val contributions: (SimulatorSettings) -> ProviderContributions,
     private val clock: () -> Instant = Instant::now,
@@ -76,6 +80,7 @@ class AcquireWorktreeResourceUseCase(
             touch(directories.admin, key)
             return LockedOutcome(acquiredNow = false, released = emptyList())
         }
+        val beneficiary = "${folderName(repositoryPath)} · ${folderName(worktreePath)}"
         if (own != null) {
             stateStore.release(directories.admin, key)
             usage = usage.copy(holders = usage.holders - own)
@@ -84,18 +89,19 @@ class AcquireWorktreeResourceUseCase(
         val limit = usage.effectiveLimit
         var remaining = usage.holders
         while (limit != null && remaining.size >= limit) {
-            val victim = leastRecentlyUsedIdle(remaining) ?: throw WorktreeError.ResourcePoolFull(kind, limit, remaining)
-            release(victim, key)
+            val victim = nextVictim(remaining) ?: throw WorktreeError.ResourcePoolFull(kind, limit, remaining)
+            release(victim, key, repositoryPath, beneficiary)
             released += PoolRelease(kind, victim.worktreePath, PoolReleaseReason.MAKE_ROOM, victim.displayName)
             remaining = remaining - victim
         }
         while (true) {
             if (reserve(kind, key, repositoryPath, worktreePath, directories, requested)) break
-            val victim = leastRecentlyUsedIdle(remaining) ?: throw WorktreeError.NoEmulatorPort(FIRST_EMULATOR_PORT, LAST_EMULATOR_PORT)
-            release(victim, key)
+            val victim = nextVictim(remaining) ?: throw WorktreeError.NoEmulatorPort(FIRST_EMULATOR_PORT, LAST_EMULATOR_PORT)
+            release(victim, key, repositoryPath, beneficiary)
             released += PoolRelease(kind, victim.worktreePath, PoolReleaseReason.MAKE_ROOM, victim.displayName)
             remaining = remaining - victim
         }
+        stateStore.writeReleases(directories.admin, stateStore.readReleases(directories.admin) - key)
         touch(directories.admin, key)
         return LockedOutcome(acquiredNow = true, released = released)
     }
@@ -110,9 +116,12 @@ class AcquireWorktreeResourceUseCase(
     ): Boolean = when (kind) {
         ResourceKind.EMULATOR -> {
             val taken = stateStore.reservedPortsOnMachine(directories.common)
-            val port = (FIRST_EMULATOR_PORT..LAST_EMULATOR_PORT step 2).firstOrNull { candidate ->
+            val free = (FIRST_EMULATOR_PORT..LAST_EMULATOR_PORT step 2).filter { candidate ->
                 candidate !in taken && portProbe.isFree(candidate) && portProbe.isFree(candidate + 1)
             }
+            val previous = stateStore.readReleases(directories.admin)[key]?.previous?.let(::portOf)
+            val quarantined = recentlyReleasedPorts(directories.common, key)
+            val port = free.firstOrNull { it == previous } ?: free.firstOrNull { it !in quarantined } ?: free.firstOrNull()
             if (port != null) {
                 stateStore.writePorts(directories.admin, stateStore.readPorts(directories.admin) + (key to port))
             }
@@ -130,24 +139,48 @@ class AcquireWorktreeResourceUseCase(
         ResourceKind.GRADLE_DAEMON -> throw IllegalArgumentException("Gradle daemons aren't acquired")
     }
 
-    private suspend fun release(holder: PoolHolder, key: String) {
+    private suspend fun release(holder: PoolHolder, key: String, repositoryPath: String, beneficiary: String) {
         val admin = checkNotNull(holder.adminDirectory)
+        if (holder.state == PoolHolderState.RUNNING) {
+            val serial = checkNotNull(holder.reference)
+            sdk.stopEmulator(sdk.locate(repositoryPath), serial)
+        }
         if (holder.kind == ResourceKind.IOS_SIMULATOR) {
             val udid = holder.reference
-            if (udid != null && simulators.devices().any { it.udid == udid }) simulators.delete(udid)
+            if (udid != null && simulators.devices().any { it.udid == udid }) {
+                if (holder.state == PoolHolderState.BOOTED) simulators.shutdown(udid)
+                simulators.delete(udid)
+            }
         }
         stateStore.release(admin, key)
+        stateStore.writeReleases(
+            admin,
+            stateStore.readReleases(admin) + (key to ReleaseRecord(clock().toEpochMilli(), beneficiary, holder.reference)),
+        )
     }
+
+    private fun recentlyReleasedPorts(commonDirectory: String, key: String): Set<Int> {
+        val horizon = clock().toEpochMilli() - readPool.leaseDuration().toMillis()
+        return stateStore.reservationsOnMachine(commonDirectory)
+            .mapNotNull { it.releases[key] }
+            .filter { it.releasedAt > horizon }
+            .mapNotNull { it.previous?.let(::portOf) }
+            .toSet()
+    }
+
+    private fun portOf(serial: String): Int? = serial.substringAfterLast('-').toIntOrNull()
 
     private suspend fun isStale(kind: ResourceKind, holder: PoolHolder): Boolean =
         kind == ResourceKind.IOS_SIMULATOR && simulators.devices().none { it.udid == holder.reference }
 
-    private fun leastRecentlyUsedIdle(holders: List<PoolHolder>): PoolHolder? =
-        holders.filter { it.idle && it.adminDirectory != null }
-            .minWithOrNull(compareBy<PoolHolder> { it.lastUsed != null }.thenBy { it.lastUsed })
+    private fun nextVictim(holders: List<PoolHolder>): PoolHolder? =
+        holders.filter { it.releaseRank != null && it.adminDirectory != null }
+            .minWithOrNull(compareBy<PoolHolder> { it.releaseRank }.thenBy { it.lastUsed != null }.thenBy { it.lastUsed })
 
     private fun touch(admin: String, key: String) {
-        stateStore.writeLastUsed(admin, stateStore.readLastUsed(admin) + (key to clock().toEpochMilli()))
+        val now = clock().toEpochMilli()
+        stateStore.writeLastUsed(admin, stateStore.readLastUsed(admin) + (key to now))
+        stateStore.writeLeases(admin, stateStore.readLeases(admin) + (key to now))
     }
 
     private suspend fun refreshEnvironmentFile(repositoryPath: String, worktreePath: String) {

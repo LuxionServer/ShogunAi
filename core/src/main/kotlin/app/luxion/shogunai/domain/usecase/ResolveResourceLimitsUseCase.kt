@@ -6,12 +6,15 @@ import app.luxion.shogunai.domain.model.BYTES_PER_GIGABYTE
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.ResourceLimits
 import app.luxion.shogunai.domain.model.ResourceSettings
+import java.time.Duration
 
 class ResolveResourceLimitsUseCase(
     private val repository: ResourceLimitsRepository,
     private val capacity: MachineCapacity,
 ) {
     operator fun invoke(): ResourceLimits = limitsFor(runCatching { repository.load() }.getOrDefault(ResourceSettings()))
+
+    fun leaseDuration(): Duration = runCatching { repository.load() }.getOrDefault(ResourceSettings()).leaseDuration
 
     fun limitsFor(settings: ResourceSettings): ResourceLimits = limitsFor(settings.profile, settings.custom)
 

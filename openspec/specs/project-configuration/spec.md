@@ -32,11 +32,15 @@ The system SHALL let the user edit an existing project's configuration from the 
 - **THEN** the app persists the updated `ProjectConfig` for that project's id and navigates back to the worktree management screen
 
 ### Requirement: Add or remove secret files
-The system SHALL let the user add or remove entries in the project's `secretFiles` list within the configuration form, shown as "Local files": exact paths, stored only on this machine, copied into each new worktree in addition to what the repository declares. The system SHALL NOT add a file name that is already present in the list.
+The system SHALL let the user add or remove entries in the project's `secretFiles` list within the configuration form, shown as "Local files": exact paths of files or folders, stored only on this machine, copied into each new worktree in addition to what the repository declares. The browse dialog SHALL allow selecting files and folders. The system SHALL NOT add an entry that is already present in the list.
 
 #### Scenario: Add a secret file entry
 - **WHEN** the user adds a file name to the secret files list and saves
 - **THEN** the saved `ProjectConfig.secretFiles` includes the new entry
+
+#### Scenario: Add a folder entry
+- **WHEN** the user selects a folder inside the base repository with the browse dialog and saves
+- **THEN** the saved `ProjectConfig.secretFiles` includes the folder's path relative to the base repository
 
 #### Scenario: Remove a secret file entry
 - **WHEN** the user removes a file name from the secret files list and saves
@@ -44,6 +48,10 @@ The system SHALL let the user add or remove entries in the project's `secretFile
 
 #### Scenario: Duplicate secret file entry is ignored
 - **WHEN** the user adds a file name that is already present in the secret files list
+- **THEN** the list is unchanged and no duplicate entry is added
+
+#### Scenario: Duplicate folder entry with a trailing separator is ignored
+- **WHEN** the list contains `keys` and the user adds `keys/`
 - **THEN** the list is unchanged and no duplicate entry is added
 
 #### Scenario: Existing projects keep their files
@@ -70,14 +78,14 @@ The system SHALL let the user set the project's `AgentLaunchConfig` from the pro
 - **THEN** the app treats it as `agentCommand = "claude"` and `useHeadroom = true` instead of failing to deserialize the project
 
 ### Requirement: Paths follow the base repository when it moves
-The system SHALL keep secret files and the worktrees root pointing to the right place when the user changes the base repository path of a project (e.g. because the repository was moved on disk).
+The system SHALL keep secret files and folders and the worktrees root pointing to the right place when the user changes the base repository path of a project (e.g. because the repository was moved on disk).
 
 #### Scenario: Secret files follow the base repository
-- **WHEN** a project has secret files inside its base repository (stored relative, or as absolute paths inside it) and the user changes the base repository path and saves
+- **WHEN** a project has secret files or folders inside its base repository (stored relative, or as absolute paths inside it) and the user changes the base repository path and saves
 - **THEN** the saved `ProjectConfig.secretFiles` are relative to the base repository, so they resolve inside the new base repository path
 
 #### Scenario: Secret files outside the base repository are kept
-- **WHEN** a secret file entry is an absolute path outside the base repository
+- **WHEN** a secret file or folder entry is an absolute path outside the base repository
 - **THEN** the entry is kept unchanged when the base repository path changes
 
 #### Scenario: Worktrees root tied to the base repository follows it
@@ -445,3 +453,41 @@ The project settings' Agent section SHALL let the user add, edit, remove and reo
 #### Scenario: Stored project with one agent
 - **WHEN** the app loads a project saved before this change
 - **THEN** it has a single agent, its stored agent command, and its settings look as before
+
+### Requirement: Suggest the providers of the detected stacks
+The "Repository configuration" section SHALL show, for the providers the platform supports and the repository doesn't declare, a suggestion for each stack detected in the repository, with the files that revealed it and an action to turn the provider on. Using it SHALL turn the switch on as an unsaved change. Nothing SHALL be written to the repository until the user saves and confirms the preview. Nothing is suggested when there is nothing to suggest.
+
+#### Scenario: Suggestion shown
+- **WHEN** the user opens the settings of a project whose repository has `pom.xml` and declares no provider
+- **THEN** the section suggests the Maven provider and names `pom.xml` as the evidence
+
+#### Scenario: Accept a suggestion
+- **WHEN** the user uses the Maven suggestion
+- **THEN** the Maven switch is on, the change counts as unsaved and `.shogunai.json` is unchanged until the user saves
+
+#### Scenario: Nothing to suggest
+- **WHEN** every detected stack already has its provider on
+- **THEN** the section shows no suggestion
+
+#### Scenario: Suggestion for another platform
+- **WHEN** the repository has an Xcode project and the app runs on Windows
+- **THEN** no iOS or Xcode suggestion is shown
+
+### Requirement: Turn on the Maven and Docker Compose providers
+The section SHALL offer a switch for the Maven and Docker Compose providers on every operating system. With Maven on it SHALL show the heap option, and with Docker Compose on it SHALL show the list of port variables, both following the rules of option editing: an empty option is omitted from the file and an invalid value is flagged and blocks saving.
+
+#### Scenario: Maven heap
+- **WHEN** the user turns on Maven, enters `1g` as heap and saves
+- **THEN** `providers.maven` is `{ "mavenMaxHeap": "1g" }`
+
+#### Scenario: Compose port variables
+- **WHEN** the user turns on Docker Compose, adds `DB_PORT` and `API_PORT` and saves
+- **THEN** `providers.docker-compose` is `{ "portVariables": ["DB_PORT", "API_PORT"] }`
+
+#### Scenario: Invalid variable name
+- **WHEN** the user adds `1DB` as a port variable
+- **THEN** the field explains that names use letters, digits and `_`, not starting with a digit, and saving is blocked
+
+#### Scenario: Turn a provider off
+- **WHEN** the repository declares Maven, the user turns it off and saves
+- **THEN** `.shogunai.json` no longer contains `providers.maven` and its other providers are kept

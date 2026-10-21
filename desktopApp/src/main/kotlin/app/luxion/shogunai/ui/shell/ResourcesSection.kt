@@ -57,6 +57,44 @@ fun ResourcesSection(resources: ResourcePreferences) {
     if (resources.showsDerivedDataQuota) {
         DerivedDataQuotaRow(resources)
     }
+    LeaseDurationRow(resources)
+}
+
+@Composable
+private fun LeaseDurationRow(resources: ResourcePreferences) {
+    val strings = LocalStrings.current
+    val draft = resources.leaseDraft
+    Column(modifier = Modifier.padding(top = Spacing.md)) {
+        Text(strings.leaseDurationLabel, style = MaterialTheme.typography.labelLarge)
+        Text(
+            strings.leaseDurationHint,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = Spacing.lg),
+        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+            modifier = Modifier.padding(start = Spacing.lg),
+        ) {
+            OutlinedTextField(
+                value = draft.text,
+                onValueChange = { resources.editLease(it) },
+                singleLine = true,
+                isError = draft.invalid,
+                modifier = Modifier.width(88.dp).trackTextInputFocus(),
+            )
+            Text(strings.minutesUnit, style = MaterialTheme.typography.bodySmall)
+        }
+        if (draft.invalid) {
+            Text(
+                strings.invalidLeaseDuration,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(start = Spacing.lg),
+            )
+        }
+    }
 }
 
 @Composable

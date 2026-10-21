@@ -1,5 +1,7 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.domain.model.ComposeDownReport
+import app.luxion.shogunai.domain.model.ComposeOwner
 import app.luxion.shogunai.domain.model.DaemonKeptReason
 import app.luxion.shogunai.domain.model.DaemonKind
 import app.luxion.shogunai.domain.model.DaemonOwner
@@ -10,10 +12,16 @@ import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.domain.model.DerivedDataListing
 import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.DerivedDataTrim
+import app.luxion.shogunai.domain.model.DetectedStack
+import app.luxion.shogunai.domain.model.Stack
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.model.PoolUsage
+import app.luxion.shogunai.domain.model.ReleaseRecord
 import app.luxion.shogunai.domain.model.HerdrOpening
+import app.luxion.shogunai.domain.model.MavenDaemon
+import app.luxion.shogunai.domain.model.SuggestionReport
+import app.luxion.shogunai.domain.model.WorktreeComposeProject
 import app.luxion.shogunai.domain.model.ProvisionDrift
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.ProvisionMode
@@ -25,9 +33,11 @@ import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.usecase.GradleTrim
 import app.luxion.shogunai.domain.usecase.ResourceAcquisition
+import app.luxion.shogunai.domain.usecase.GuideBlockStatus
 import app.luxion.shogunai.domain.usecase.HookEntry
 import app.luxion.shogunai.domain.usecase.HooksPreview
 import app.luxion.shogunai.domain.usecase.HooksStatus
+import app.luxion.shogunai.domain.usecase.totalMavenResidentMemory
 import app.luxion.shogunai.domain.usecase.totalResidentMemory
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -38,6 +48,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import java.time.Instant
 
 fun JsonObject.compact(): String = Json.encodeToString(JsonElement.serializer(), this)
 
@@ -134,6 +145,7 @@ data class CleanJson(
     val emulatorsStopped: List<String> = emptyList(),
     val simulatorsDeleted: List<String> = emptyList(),
     val derivedDataDeleted: List<String> = emptyList(),
+    val composeProjectsDown: List<String>? = null,
 )
 
 fun cleanJson(clean: CleanJson): JsonObject = buildJsonObject {
@@ -188,6 +200,7 @@ fun cleanJson(clean: CleanJson): JsonObject = buildJsonObject {
             put("emulatorsStopped", strings(clean.emulatorsStopped))
             put("simulatorsDeleted", strings(clean.simulatorsDeleted))
             put("derivedDataDeleted", strings(clean.derivedDataDeleted))
+            clean.composeProjectsDown?.let { put("composeProjectsDown", strings(it)) }
         },
     )
 }
@@ -224,6 +237,102 @@ fun gradleJson(daemons: List<GradleDaemon>, attributed: Boolean): JsonObject = b
         },
     )
     put("totalMemoryBytes", totalResidentMemory(daemons))
+}
+
+fun mavenJson(daemons: List<MavenDaemon>, attributed: Boolean): JsonObject = buildJsonObject {
+    put(
+        "daemons",
+        buildJsonArray {
+            daemons.forEach { daemon ->
+                add(
+                    buildJsonObject {
+                        put("pid", daemon.pid)
+                        put("memoryBytes", daemon.process.residentMemoryBytes)
+                        put("worktree", daemon.owner.takeIf { attributed }?.jsonLabel)
+                    },
+                )
+            }
+        },
+    )
+    put("totalMemoryBytes", totalMavenResidentMemory(daemons))
+}
+
+fun stacksJson(stacks: List<DetectedStack>, report: SuggestionReport): JsonObject = buildJsonObject {
+    put(
+        "stacks",
+        buildJsonArray {
+            stacks.forEach { detected ->
+                add(
+                    buildJsonObject {
+                        put("stack", detected.stack.jsonLabel)
+                        put("evidence", strings(detected.evidence))
+                        put(
+                            "providers",
+                            buildJsonArray {
+                                (report.suggestions + report.declared).filter { it.stack == detected.stack }.forEach { suggestion ->
+                                    add(
+                                        buildJsonObject {
+                                            put("id", suggestion.provider.id)
+                                            put("declared", suggestion in report.declared)
+                                        },
+                                    )
+                                }
+                            },
+                        )
+                    },
+                )
+            }
+        },
+    )
+}
+
+val Stack.jsonLabel: String
+    get() = when (this) {
+        Stack.GRADLE -> "gradle"
+        Stack.ANDROID -> "android"
+        Stack.XCODE -> "xcode"
+        Stack.MAVEN -> "maven"
+        Stack.DOCKER_COMPOSE -> "docker-compose"
+    }
+
+fun composeJson(projects: List<WorktreeComposeProject>): JsonObject = buildJsonObject {
+    put(
+        "projects",
+        buildJsonArray {
+            projects.forEach {
+                add(
+                    buildJsonObject {
+                        put("name", it.project.name)
+                        put("status", it.project.status)
+                        put(
+                            "worktree",
+                            when (val owner = it.owner) {
+                                is ComposeOwner.Worktree -> owner.path
+                                ComposeOwner.RemovedWorktree -> "removed"
+                            },
+                        )
+                    },
+                )
+            }
+        },
+    )
+}
+
+fun composeDownJson(report: ComposeDownReport): JsonObject = buildJsonObject {
+    put("takenDown", strings(report.takenDown))
+    put(
+        "failures",
+        buildJsonArray {
+            report.failures.forEach {
+                add(
+                    buildJsonObject {
+                        put("name", it.name)
+                        put("message", it.detail)
+                    },
+                )
+            }
+        },
+    )
 }
 
 fun gradleStopJson(report: DaemonStopReport): JsonObject = buildJsonObject {
@@ -363,19 +472,38 @@ fun xcodeTrimJson(active: Boolean, trim: DerivedDataTrim?): JsonObject = buildJs
     )
 }
 
-fun emulatorJson(worktree: String, emulator: WorktreeEmulator?, acquisition: ResourceAcquisition? = null): JsonObject = buildJsonObject {
+fun emulatorJson(
+    worktree: String,
+    emulator: WorktreeEmulator?,
+    acquisition: ResourceAcquisition? = null,
+    releaseRecord: ReleaseRecord? = null,
+): JsonObject = buildJsonObject {
     put("worktree", worktree)
     put("serial", emulator?.serial)
     put("state", emulator?.state?.jsonLabel)
     put("acquired", emulator != null)
     acquisition?.let { put("acquiredNow", it.acquiredNow) }
     acquisition?.let { put("released", strings(it.releases.mapNotNull { release -> release.worktreePath })) }
+    releaseRecord?.let {
+        put(
+            "releasedFor",
+            buildJsonObject {
+                put("worktree", it.forWorktree)
+                put("at", Instant.ofEpochMilli(it.releasedAt).toString())
+            },
+        )
+    }
 }
 
 private val EmulatorState.jsonLabel: String
     get() = name.lowercase()
 
-fun simulatorJson(worktree: String, simulator: WorktreeSimulator?, acquisition: ResourceAcquisition? = null): JsonObject = buildJsonObject {
+fun simulatorJson(
+    worktree: String,
+    simulator: WorktreeSimulator?,
+    acquisition: ResourceAcquisition? = null,
+    releaseRecord: ReleaseRecord? = null,
+): JsonObject = buildJsonObject {
     put("worktree", worktree)
     put("udid", simulator?.udid)
     put("name", simulator?.name)
@@ -383,6 +511,15 @@ fun simulatorJson(worktree: String, simulator: WorktreeSimulator?, acquisition: 
     put("acquired", simulator != null)
     acquisition?.let { put("acquiredNow", it.acquiredNow) }
     acquisition?.let { put("released", strings(it.releases.mapNotNull { release -> release.worktreePath })) }
+    releaseRecord?.let {
+        put(
+            "releasedFor",
+            buildJsonObject {
+                put("worktree", it.forWorktree)
+                put("at", Instant.ofEpochMilli(it.releasedAt).toString())
+            },
+        )
+    }
 }
 
 fun poolJson(usages: List<PoolUsage>): JsonObject = buildJsonObject {
@@ -525,4 +662,30 @@ fun hooksStatusJson(statuses: List<Pair<String, HooksStatus>>): JsonObject = bui
             },
         )
     }
+}
+
+fun guideResultJson(status: GuideBlockStatus, applied: Boolean, warnings: List<String>): JsonObject = buildJsonObject {
+    put("path", status.path)
+    put("applied", applied)
+    put("state", status.state.name.lowercase())
+    put("warnings", buildJsonArray { warnings.forEach { add(JsonPrimitive(it)) } })
+}
+
+fun guideStatusJson(targets: List<Pair<String, GuideBlockStatus>>, warnings: List<String>): JsonObject = buildJsonObject {
+    put(
+        "targets",
+        buildJsonArray {
+            targets.forEach { (target, status) ->
+                add(
+                    buildJsonObject {
+                        put("target", target)
+                        put("path", status.path)
+                        put("state", status.state.name.lowercase())
+                        put("duplicates", status.duplicatesOutside)
+                    },
+                )
+            }
+        },
+    )
+    put("warnings", buildJsonArray { warnings.forEach { add(JsonPrimitive(it)) } })
 }

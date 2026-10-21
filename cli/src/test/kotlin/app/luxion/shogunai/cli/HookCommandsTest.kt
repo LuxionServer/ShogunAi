@@ -602,7 +602,10 @@ class HookCommandsTest {
         """{"session_id":"963d9441","transcript_path":"$transcript","cwd":"$cwd","prompt_id":"cf942c2e","hook_event_name":"$event"$extra}"""
 
     private fun runAgentState(input: String, store: FakeAgentSessionStore = FakeAgentSessionStore()): Pair<Int, FakeAgentSessionStore> {
-        val exitCode = cli(Executor(porcelain()), input, sessionStore = store).run(listOf("hook", "agent-state"))
+        val executor = Executor(porcelain()) { command ->
+            CommandResult(command, 0, "$base/.git\n$base/.git\n", "").takeIf { "--git-dir" in command }
+        }
+        val exitCode = cli(executor, input, sessionStore = store).run(listOf("hook", "agent-state"))
         return exitCode to store
     }
 
@@ -615,6 +618,40 @@ class HookCommandsTest {
         assertEquals(0, exitCode, err.toString())
         assertEquals("", out.toString())
         assertEquals(AgentSessionRecord("963d9441", "claude", AgentState.WORKING, recorded(store)!!.updatedAt, transcript, 4242L), recorded(store))
+    }
+
+    private fun holdEmulator() {
+        environmentStore.writePorts("$base/.git", mapOf("emulator" to 5554))
+    }
+
+    @Test
+    fun `agent-state renews the lease of the devices a worktree holds when the agent is working`() {
+        holdEmulator()
+        environmentStore.writeLastUsed("$base/.git", mapOf("emulator" to 5L))
+
+        val (exitCode, _) = runAgentState(stateInput("UserPromptSubmit", ""","prompt":"fix it""""))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(environmentStore.readLeases("$base/.git").getValue("emulator") > 5L)
+        assertEquals(5L, environmentStore.readLastUsed("$base/.git")["emulator"])
+    }
+
+    @Test
+    fun `agent-state does not renew the lease when the agent stops or waits`() {
+        holdEmulator()
+
+        runAgentState(stateInput("Stop", ""","stop_hook_active":false"""))
+        runAgentState(stateInput("Notification", ""","notification_type":"permission_prompt""""))
+
+        assertTrue(environmentStore.readLeases("$base/.git").isEmpty())
+    }
+
+    @Test
+    fun `agent-state acquires and records nothing for a worktree without devices`() {
+        runAgentState(stateInput("UserPromptSubmit", ""","prompt":"fix it""""))
+
+        assertTrue(environmentStore.portsByAdminDirectory.isEmpty())
+        assertTrue(environmentStore.leasesByAdminDirectory.isEmpty())
     }
 
     @Test

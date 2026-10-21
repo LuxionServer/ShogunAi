@@ -3,6 +3,7 @@ package app.luxion.shogunai.domain
 import app.luxion.shogunai.domain.io.EnvironmentStateStore
 import app.luxion.shogunai.domain.io.PortProbe
 import app.luxion.shogunai.domain.io.WorktreeReservations
+import app.luxion.shogunai.domain.model.ReleaseRecord
 
 class FakeEnvironmentStateStore(
     initial: Map<String, Map<String, Int>> = emptyMap(),
@@ -38,9 +39,28 @@ class FakeEnvironmentStateStore(
         if (lastUsed.isEmpty()) lastUsedByAdminDirectory.remove(adminDirectory) else lastUsedByAdminDirectory[adminDirectory] = lastUsed
     }
 
+    val leasesByAdminDirectory = mutableMapOf<String, Map<String, Long>>()
+
+    override fun readLeases(adminDirectory: String): Map<String, Long> = leasesByAdminDirectory[adminDirectory].orEmpty()
+
+    override fun writeLeases(adminDirectory: String, leases: Map<String, Long>) {
+        if (leases.isEmpty()) leasesByAdminDirectory.remove(adminDirectory) else leasesByAdminDirectory[adminDirectory] = leases
+    }
+
+    val releasesByAdminDirectory = mutableMapOf<String, Map<String, ReleaseRecord>>()
+
+    override fun readReleases(adminDirectory: String): Map<String, ReleaseRecord> = releasesByAdminDirectory[adminDirectory].orEmpty()
+
+    override fun writeReleases(adminDirectory: String, releases: Map<String, ReleaseRecord>) {
+        if (releases.isEmpty()) releasesByAdminDirectory.remove(adminDirectory) else releasesByAdminDirectory[adminDirectory] = releases
+    }
+
     override fun reservationsOnMachine(commonDirectory: String): List<WorktreeReservations> =
-        (portsByAdminDirectory.keys + resourcesByAdminDirectory.keys + lastUsedByAdminDirectory.keys).distinct().map { admin ->
-            WorktreeReservations(admin, readPorts(admin), readResources(admin), readLastUsed(admin))
+        (
+            portsByAdminDirectory.keys + resourcesByAdminDirectory.keys + lastUsedByAdminDirectory.keys +
+                leasesByAdminDirectory.keys + releasesByAdminDirectory.keys
+            ).distinct().map { admin ->
+            WorktreeReservations(admin, readPorts(admin), readResources(admin), readLastUsed(admin), readLeases(admin), readReleases(admin))
         }
 
     override fun reservedPortsOnMachine(commonDirectory: String): Set<Int> =

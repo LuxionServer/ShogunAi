@@ -1,5 +1,6 @@
 package app.luxion.shogunai.infrastructure
 
+import app.luxion.shogunai.domain.model.ReleaseRecord
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
@@ -38,6 +39,38 @@ class NioEnvironmentStateStoreTest {
 
         assertEquals(mapOf("PORT" to 20000, "port:api" to 20001), store.readPorts(linked.toString()))
         assertTrue(linked.resolve(NioEnvironmentStateStore.STATE_FILE_NAME).readText().contains("kept"))
+    }
+
+    @Test
+    fun `leases and release records are written, read, listed and cleared`() {
+        val record = ReleaseRecord(1_000L, "main-repo · TASK-2", "emulator-5554")
+
+        store.writeLeases(linked.toString(), mapOf("emulator" to 2_000L))
+        store.writeReleases(linked.toString(), mapOf("emulator" to record, "ios-simulator" to ReleaseRecord(3_000L, "api · TASK-9")))
+
+        assertEquals(mapOf("emulator" to 2_000L), store.readLeases(linked.toString()))
+        assertEquals(record, store.readReleases(linked.toString()).getValue("emulator"))
+        assertEquals(ReleaseRecord(3_000L, "api · TASK-9", null), store.readReleases(linked.toString()).getValue("ios-simulator"))
+        val reservation = store.reservationsOnMachine(common.toString()).single { it.adminDirectory == linked.toString() }
+        assertEquals(mapOf("emulator" to 2_000L), reservation.leases)
+        assertEquals(2, reservation.releases.size)
+
+        store.writeLeases(linked.toString(), emptyMap())
+        store.writeReleases(linked.toString(), emptyMap())
+
+        assertTrue(store.readLeases(linked.toString()).isEmpty())
+        assertTrue(store.readReleases(linked.toString()).isEmpty())
+        assertFalse(linked.resolve(NioEnvironmentStateStore.STATE_FILE_NAME).exists())
+    }
+
+    @Test
+    fun `releasing a key drops its lease`() {
+        store.writePorts(linked.toString(), mapOf("emulator" to 5554))
+        store.writeLeases(linked.toString(), mapOf("emulator" to 2_000L, "ios-simulator" to 3_000L))
+
+        store.release(linked.toString(), "emulator")
+
+        assertEquals(mapOf("ios-simulator" to 3_000L), store.readLeases(linked.toString()))
     }
 
     @Test

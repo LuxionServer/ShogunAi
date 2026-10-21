@@ -1,9 +1,12 @@
 package app.luxion.shogunai.ui.i18n
 
 import app.luxion.shogunai.domain.executor.CommandExecutionException
+import app.luxion.shogunai.domain.model.HolderProtection
+import app.luxion.shogunai.domain.model.PoolHolder
 import app.luxion.shogunai.domain.model.PoolHolderState
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.toLocalClockTime
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
 internal fun englishErrorTexts(error: Throwable, gitCause: GitFailureCause): ErrorTexts = when (error) {
@@ -133,6 +136,10 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "Couldn't list the running processes.",
         "Agent detection is unavailable; make sure lsof is installed.",
     )
+    is WorktreeError.DockerUnavailable -> ErrorTexts(
+        "Docker isn't available" + if (error.reason.isNullOrBlank()) "." else ": ${error.reason}",
+        "Start Docker and try again.",
+    )
     is WorktreeError.NoFreePort -> ErrorTexts(
         "No free port is left between ${error.from} and ${error.to}.",
         "Free ports in that range, or remove unused worktrees.",
@@ -143,8 +150,8 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     )
     is WorktreeError.ResourcePoolFull -> ErrorTexts(
         "The limit of ${error.limit} ${englishKindName(error.kind)} is reached and none is free to release: " +
-            error.holders.joinToString("; ") { "${it.displayName} (${englishHolderState(it.state)})" } + ".",
-        "Stop one of them, or raise the limit in Preferences.",
+            error.holders.joinToString("; ") { "${it.displayName} (${englishHolderState(it.state)}${englishProtection(it)})" } + ".",
+        "Wait for a lease to expire, stop one of them, or raise the limit in Preferences.",
     )
     is WorktreeError.AndroidSdkNotFound -> ErrorTexts(
         "The Android SDK wasn't found.",
@@ -264,3 +271,9 @@ private fun englishKindName(kind: ResourceKind): String = when (kind) {
 }
 
 private fun englishHolderState(state: PoolHolderState): String = state.name.lowercase()
+
+private fun englishProtection(holder: PoolHolder): String = when (holder.protection) {
+    HolderProtection.AGENT_WORKING -> ", agent working"
+    HolderProtection.LEASED -> ", lease until ${holder.leaseExpiresAt?.toLocalClockTime()}"
+    null -> ""
+}

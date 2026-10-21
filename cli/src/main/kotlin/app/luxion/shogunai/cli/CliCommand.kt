@@ -1,6 +1,7 @@
 package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.domain.model.BranchType
+import app.luxion.shogunai.domain.model.WorkflowTopic
 import app.luxion.shogunai.domain.usecase.EnvironmentFormat
 
 sealed interface CliCommand {
@@ -42,6 +43,7 @@ sealed interface CliCommand {
         val stopEmulators: Boolean = false,
         val deleteSimulators: Boolean = false,
         val deleteDerivedData: Boolean = false,
+        val downComposeProjects: Boolean = false,
         val json: Boolean = false,
     ) : CliCommand
 
@@ -50,6 +52,10 @@ sealed interface CliCommand {
     data class XcodeTrim(val dryRun: Boolean = false, val json: Boolean = false) : CliCommand
 
     data class Gradle(val json: Boolean = false) : CliCommand
+    data class Stacks(val json: Boolean = false) : CliCommand
+    data class Maven(val json: Boolean = false) : CliCommand
+    data class Compose(val json: Boolean = false) : CliCommand
+    data class ComposeDown(val target: String? = null, val volumes: Boolean = false, val json: Boolean = false) : CliCommand
     data class Pool(val action: PoolAction, val json: Boolean = false) : CliCommand
     data class GradleStop(val pids: List<Long> = emptyList(), val json: Boolean = false) : CliCommand
     data object HookWorktreeCreate : CliCommand
@@ -60,6 +66,20 @@ sealed interface CliCommand {
     data class Hooks(
         val action: HooksAction,
         val project: Boolean = false,
+        val yes: Boolean = false,
+        val json: Boolean = false,
+    ) : CliCommand
+    data class Guide(
+        val topic: String? = null,
+        val plain: Boolean = false,
+        val migrate: Boolean = false,
+        val file: String? = null,
+    ) : CliCommand
+    data class GuideBlock(
+        val action: GuideAction,
+        val agent: String? = null,
+        val project: Boolean = false,
+        val file: String? = null,
         val yes: Boolean = false,
         val json: Boolean = false,
     ) : CliCommand
@@ -92,7 +112,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
     if (name in CliHelp.commandNames && rest.any { it == "--help" || it == "-h" }) {
         return ParsedArguments.Command(CliCommand.CommandHelp(name))
     }
-    val json = name in JSON_COMMANDS && !isSimulatorGradleInit(name, rest) && JSON_FLAG in rest
+    val json = name in JSON_COMMANDS && !isSimulatorGradleInit(name, rest) && !isGuideReading(name, rest) && JSON_FLAG in rest
     val arguments = if (json) rest.filter { it != JSON_FLAG } else rest
     return try {
         ParsedArguments.Command(
@@ -109,7 +129,11 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "clean" -> parseClean(arguments)
                 "hook" -> parseHook(arguments)
                 "hooks" -> parseHooks(arguments)
+                "guide" -> parseGuide(arguments)
                 "gradle" -> parseGradle(arguments)
+                "stacks" -> noArguments(name, arguments, CliCommand.Stacks())
+                "maven" -> noArguments(name, arguments, CliCommand.Maven())
+                "compose" -> parseCompose(arguments)
                 "pool" -> parsePool(arguments)
                 "xcode" -> parseXcode(arguments)
                 "env" -> parseEnv(arguments)
@@ -125,9 +149,11 @@ fun parseArguments(args: List<String>): ParsedArguments {
 
 private const val JSON_FLAG = "--json"
 
-private val JSON_COMMANDS = setOf("new", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "pool", "xcode", "emulator", "simulator", "hooks")
+private val JSON_COMMANDS = setOf("new", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "stacks", "maven", "compose", "pool", "xcode", "emulator", "simulator", "hooks", "guide")
 
 private fun isSimulatorGradleInit(name: String, rest: List<String>) = name == "simulator" && rest.firstOrNull() == "gradle-init"
+
+private fun isGuideReading(name: String, rest: List<String>) = name == "guide" && rest.firstOrNull() !in GUIDE_ACTIONS
 
 private fun CliCommand.withJson(json: Boolean): CliCommand = if (!json) this else when (this) {
     is CliCommand.New -> copy(json = true)
@@ -141,11 +167,16 @@ private fun CliCommand.withJson(json: Boolean): CliCommand = if (!json) this els
     is CliCommand.XcodeClean -> copy(json = true)
     is CliCommand.XcodeTrim -> copy(json = true)
     is CliCommand.Gradle -> copy(json = true)
+    is CliCommand.Stacks -> copy(json = true)
+    is CliCommand.Maven -> copy(json = true)
+    is CliCommand.Compose -> copy(json = true)
+    is CliCommand.ComposeDown -> copy(json = true)
     is CliCommand.GradleStop -> copy(json = true)
     is CliCommand.Pool -> copy(json = true)
     is CliCommand.Emulator -> copy(json = true)
     is CliCommand.Simulator -> copy(json = true)
     is CliCommand.Hooks -> copy(json = true)
+    is CliCommand.GuideBlock -> copy(json = true)
     else -> this
 }
 
@@ -271,6 +302,7 @@ private fun parseClean(rest: List<String>): CliCommand.Clean {
     var stopEmulators = false
     var deleteSimulators = false
     var deleteDerivedData = false
+    var downComposeProjects = false
     rest.forEach { argument ->
         when (argument) {
             "--yes", "-y" -> confirmed = true
@@ -279,6 +311,7 @@ private fun parseClean(rest: List<String>): CliCommand.Clean {
             "--stop-emulators" -> stopEmulators = true
             "--delete-simulators" -> deleteSimulators = true
             "--delete-derived-data" -> deleteDerivedData = true
+            "--down-compose-projects" -> downComposeProjects = true
             else -> throw UsageException("unknown argument '$argument' for 'clean'")
         }
     }
@@ -289,7 +322,24 @@ private fun parseClean(rest: List<String>): CliCommand.Clean {
         stopEmulators = stopEmulators,
         deleteSimulators = deleteSimulators,
         deleteDerivedData = deleteDerivedData,
+        downComposeProjects = downComposeProjects,
     )
+}
+
+private fun parseCompose(rest: List<String>): CliCommand {
+    val subcommand = rest.firstOrNull() ?: return CliCommand.Compose()
+    if (subcommand != "down") throw UsageException("unknown subcommand '$subcommand' for 'compose', expected down")
+    var volumes = false
+    val targets = mutableListOf<String>()
+    rest.drop(1).forEach { argument ->
+        when {
+            argument == "--volumes" -> volumes = true
+            argument.startsWith("-") -> throw UsageException("unknown option '$argument' for 'compose down'")
+            else -> targets += argument
+        }
+    }
+    if (targets.size > 1) throw UsageException("'compose down' takes at most one worktree")
+    return CliCommand.ComposeDown(targets.firstOrNull(), volumes)
 }
 
 private fun parseXcode(rest: List<String>): CliCommand {
@@ -356,6 +406,75 @@ private fun parseHooks(rest: List<String>): CliCommand {
         }
     }
     return CliCommand.Hooks(action, project, yes)
+}
+
+enum class GuideAction { INSTALL, UNINSTALL, STATUS }
+
+private val GUIDE_ACTIONS = GuideAction.entries.map { it.name.lowercase() }.toSet()
+
+val GUIDE_AGENTS = listOf("codex", "gemini")
+
+private fun parseGuide(rest: List<String>): CliCommand {
+    val action = rest.firstOrNull()?.let { name -> GuideAction.entries.firstOrNull { it.name.equals(name, ignoreCase = true) } }
+    return if (action != null) parseGuideBlock(action, rest.drop(1)) else parseGuideReading(rest)
+}
+
+private fun parseGuideReading(rest: List<String>): CliCommand.Guide {
+    var topic: String? = null
+    var plain = false
+    var migrate = false
+    var file: String? = null
+    val remaining = ArrayDeque(rest)
+    while (remaining.isNotEmpty()) {
+        when (val argument = remaining.removeFirst()) {
+            "--plain" -> plain = true
+            "--migrate" -> migrate = true
+            "--file" -> file = remaining.valueOf(argument)
+            else -> {
+                if (argument.startsWith("-")) throw UsageException("unknown option '$argument' for 'guide'")
+                if (topic != null) throw UsageException("'guide' takes a single topic, got '$topic' and '$argument'")
+                if (WorkflowTopic.parse(argument) == null) throw UsageException("unknown topic '$argument' for 'guide', expected ${guideTopics()}")
+                topic = argument
+            }
+        }
+    }
+    if (file != null && !migrate) throw UsageException("--file only applies to 'guide --migrate'")
+    if (migrate && (plain || topic != null)) throw UsageException("--migrate can't be combined with a topic or --plain")
+    return CliCommand.Guide(topic, plain, migrate, file)
+}
+
+private fun guideTopics() = WorkflowTopic.entries.joinToString(", ") { it.id }
+
+private fun parseGuideBlock(action: GuideAction, rest: List<String>): CliCommand.GuideBlock {
+    var agent: String? = null
+    var project = false
+    var file: String? = null
+    var yes = false
+    val remaining = ArrayDeque(rest)
+    while (remaining.isNotEmpty()) {
+        when (val argument = remaining.removeFirst()) {
+            "--agent" -> agent = remaining.valueOf(argument)
+            "--project" -> project = true
+            "--file" -> file = remaining.valueOf(argument)
+            "--yes", "-y" -> yes = true
+            else -> {
+                if (argument.startsWith("-")) throw UsageException("unknown option '$argument' for 'guide ${action.name.lowercase()}'")
+                throw UsageException("'guide ${action.name.lowercase()}' takes no arguments, got '$argument'")
+            }
+        }
+    }
+    if (agent == "cursor") {
+        throw UsageException("Cursor has no user-level instructions file; use --project (its AGENTS.md) or --file")
+    }
+    if (agent != null && agent !in GUIDE_AGENTS) {
+        throw UsageException("unknown agent '$agent' for 'guide', expected ${GUIDE_AGENTS.joinToString(", ")}")
+    }
+    val targets = listOfNotNull(agent, "project".takeIf { project }, file)
+    if (action != GuideAction.STATUS && targets.isEmpty()) {
+        throw UsageException("'guide ${action.name.lowercase()}' needs where: --agent <${GUIDE_AGENTS.joinToString("|")}>, --project or --file <path>")
+    }
+    if (targets.size > 1) throw UsageException("--agent, --project and --file can't be combined")
+    return CliCommand.GuideBlock(action, agent, project, file, yes)
 }
 
 enum class EmulatorAction { START, STOP, STATUS }

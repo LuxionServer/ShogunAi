@@ -77,6 +77,9 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class ProcessListingFailed(val command: List<String>, val exitCode: Int) :
         WorktreeError("Couldn't list processes (exit code $exitCode): ${command.joinToString(" ")}")
 
+    class DockerUnavailable(val reason: String?) :
+        WorktreeError("Docker isn't available" + if (reason.isNullOrBlank()) "" else ": $reason")
+
     class NoFreePort(val from: Int, val to: Int) :
         WorktreeError("No free port left between $from and $to for this worktree")
 
@@ -86,8 +89,8 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class ResourcePoolFull(val kind: ResourceKind, val limit: Int, val holders: List<PoolHolder>) :
         WorktreeError(
             "The limit of $limit ${kind.name.lowercase().replace('_', ' ')}${if (limit == 1) "" else "s"} is reached and none can be released: " +
-                holders.joinToString("; ") { "${it.displayName} (${it.state.name.lowercase()})" } +
-                ". Stop one, or raise the limit in Preferences",
+                holders.joinToString("; ") { "${it.displayName} (${it.state.name.lowercase()}${it.protectionNote()})" } +
+                ". Wait for a lease to expire, stop one, or raise the limit in Preferences",
         )
 
     class AndroidSdkNotFound(val checked: List<String>) :
@@ -195,4 +198,10 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class AgentRunningInWorktree(val path: String, val agents: List<String>) :
         WorktreeError("${agents.joinToString()} is running in $path")
 
+}
+
+private fun PoolHolder.protectionNote(): String = when (protection) {
+    HolderProtection.AGENT_WORKING -> ", agent working"
+    HolderProtection.LEASED -> ", lease until ${leaseExpiresAt?.toLocalClockTime()}"
+    null -> ""
 }

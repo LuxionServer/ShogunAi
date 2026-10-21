@@ -9,6 +9,8 @@ import app.luxion.shogunai.domain.model.ResourceSettings
 import app.luxion.shogunai.domain.usecase.AcquireWorktreeResourceUseCase
 import app.luxion.shogunai.domain.usecase.DeviceStart
 import app.luxion.shogunai.domain.usecase.GradleTrim
+import app.luxion.shogunai.domain.usecase.ReadAgentActivityUseCase
+import app.luxion.shogunai.domain.usecase.ReadReleaseRecordUseCase
 import app.luxion.shogunai.domain.usecase.ReadResourcePoolUseCase
 import app.luxion.shogunai.domain.usecase.ResolveResourceLimitsUseCase
 import app.luxion.shogunai.domain.usecase.TrimDerivedDataUseCase
@@ -76,11 +78,23 @@ import app.luxion.shogunai.domain.model.SimulatorRuntime
 import app.luxion.shogunai.domain.model.SimulatorSettings
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeEmulator
+import app.luxion.shogunai.domain.model.ReleaseRecord
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.model.XcodeProvider
 import app.luxion.shogunai.domain.usecase.CheckGradleBuildCacheUseCase
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
+import app.luxion.shogunai.domain.usecase.DetectRepositoryStacksUseCase
+import app.luxion.shogunai.domain.usecase.ListComposeProjectsUseCase
+import app.luxion.shogunai.domain.usecase.ListMavenDaemonsUseCase
+import app.luxion.shogunai.domain.usecase.TakeDownComposeProjectsUseCase
+import app.luxion.shogunai.domain.model.ComposeDownReport
+import app.luxion.shogunai.domain.model.DockerComposeProvider
+import app.luxion.shogunai.domain.model.MavenDaemonProcess
+import app.luxion.shogunai.domain.model.MavenProvider
+import app.luxion.shogunai.domain.model.WorktreeComposeProject
+import app.luxion.shogunai.infrastructure.DockerComposeProjectSource
+import app.luxion.shogunai.infrastructure.ProcessMavenDaemonSource
 import app.luxion.shogunai.domain.usecase.CloseHerdrWorkspacesUseCase
 import app.luxion.shogunai.domain.usecase.CopyWorktreeLaunchCommandUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
@@ -196,6 +210,8 @@ class AppContainer {
     val repositoryProvisioningSource: RepositoryProvisioningSource = RepositoryProvisioningFiles()
     private val gradleUserHome = defaultGradleUserHome()
     private val gradleDaemonSource = ProcessGradleDaemonSource(shellCommandExecutor, gradleUserHome)
+    private val mavenDaemonSource = ProcessMavenDaemonSource(shellCommandExecutor)
+    private val composeProjectSource = DockerComposeProjectSource(shellCommandExecutor)
     private val derivedDataSource = MacDerivedDataSource(
         shellCommandExecutor,
         fileManager,
@@ -283,6 +299,7 @@ class AppContainer {
     private val resolveResourceLimits = ResolveResourceLimitsUseCase(resourceLimitsRepository, JvmMachineCapacity())
     private val listGradleDaemons = ListGradleDaemonsUseCase(gradleDaemonSource, fileManager)
     private val stopGradleDaemons = StopGradleDaemonsUseCase(gradleDaemonSource, shellCommandExecutor)
+    private val agentSessionStore = FileAgentSessionStore()
     private val readPool = ReadResourcePoolUseCase(
         resolveEnvironment,
         environmentStateStore,
@@ -291,6 +308,7 @@ class AppContainer {
         appleSimulators,
         resolveResourceLimits,
         listGradleDaemons,
+        agentActivity = ReadAgentActivityUseCase(agentSessionStore)::invoke,
     )
     private val acquireResource = AcquireWorktreeResourceUseCase(
         repositoryProvisioningSource,
@@ -299,6 +317,7 @@ class AppContainer {
         environmentStateStore,
         portProbe,
         appleSimulators,
+        androidSdk,
         readPool,
         { requested -> contributions.requesting(requested) },
     )
@@ -307,7 +326,10 @@ class AppContainer {
     private val startSimulator = StartWorktreeSimulatorUseCase(repositoryProvisioningSource, appleSimulators, acquireResource, resolveEnvironment)
     private val startEmulator = StartWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, acquireResource, androidSdk)
     private val stopEmulator = StopWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)
+    private val readReleaseRecord = ReadReleaseRecordUseCase(resolveEnvironment, environmentStateStore)
     private val readEmulatorStates = ReadEmulatorStatesUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)
+
+    fun detectStacks(repositoryPath: String) = DetectRepositoryStacksUseCase(fileManager)(repositoryPath)
 
     suspend fun loadAvds(repositoryPath: String): Result<List<String>> =
         runCatching { androidSdk.listAvds(androidSdk.locate(repositoryPath)) }
@@ -319,7 +341,7 @@ class AppContainer {
             RepositoryInspection(topLevel, mainBranch?.name)
         }
 
-    val detectRunningAgents = DetectRunningAgentsUseCase(shellCommandExecutor, herdrClient, FileAgentSessionStore())
+    val detectRunningAgents = DetectRunningAgentsUseCase(shellCommandExecutor, herdrClient, agentSessionStore)
 
     private val prepareEnvironment = PrepareWorktreeEnvironmentUseCase(
         resolveEnvironment,
@@ -328,6 +350,11 @@ class AppContainer {
 
     val machineUseCases = MachineUseCases(
         listDaemons = { runCatching { gradleDaemonSource.list() } },
+        listMavenDaemons = { runCatching { mavenDaemonSource.list() } },
+        listComposeProjects = { config, worktrees, root ->
+            ListComposeProjectsUseCase(composeProjectSource)(config.baseRepositoryPath, worktrees, root)
+        },
+        takeDownComposeProjects = { names -> TakeDownComposeProjectsUseCase(composeProjectSource)(names) },
         stopDaemons = { pids -> StopGradleDaemonsUseCase(gradleDaemonSource, shellCommandExecutor)(pids) },
         listDerivedData = { ListDerivedDataUseCase(derivedDataSource)(emptyList(), includeCompilationCache = false, measure = DerivedDataMeasure.NONE) },
         measureDerivedData = { folder -> runCatching { derivedDataSource.size(folder) } },
@@ -402,7 +429,7 @@ class AppContainer {
         repair = RepairWorktreesUseCase(config, shellCommandExecutor, fileManager),
         resolveMainBranch = ResolveMainBranchUseCase(config, shellCommandExecutor),
         readStatus = ReadWorktreeStatusUseCase(shellCommandExecutor, fileManager),
-        cleanUp = CleanUpWorktreesUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient)),
+        cleanUp = CleanUpWorktreesUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient), composeProjectSource),
         detectAgents = { worktrees -> detectRunningAgents(config, worktrees) },
         measureSize = MeasureWorktreeSizeUseCase(fileManager),
         readFingerprint = ReadGitMetadataFingerprintUseCase(config, fileManager),
@@ -421,6 +448,7 @@ class AppContainer {
             start = { worktreePath -> startEmulator(config, worktreePath) },
             stop = { worktreePath -> stopEmulator(config, worktreePath) },
             stopSerials = { serials -> runCatching { stopEmulator.stopSerials(config, serials) } },
+            readRelease = { worktreePath -> readReleaseRecord(worktreePath, ResourceKind.EMULATOR) },
         ),
         simulator = SimulatorUseCases(
             declared = { withContext(Dispatchers.IO) { simulatorSetup.isAvailable(config.baseRepositoryPath) } },
@@ -429,6 +457,7 @@ class AppContainer {
             stop = { worktreePath -> stopSimulator(config, worktreePath) },
             orphans = { deleteSimulators.orphans(config) },
             delete = { udids -> deleteSimulators(udids) },
+            readRelease = { worktreePath -> readReleaseRecord(worktreePath, ResourceKind.IOS_SIMULATOR) },
         ),
         tools = ToolUseCases(
             preferences = tools,
@@ -482,6 +511,20 @@ class AppContainer {
             stopDaemons = StopGradleDaemonsUseCase(gradleDaemonSource, shellCommandExecutor),
             isBuildCacheEnabled = {
                 withContext(Dispatchers.IO) { CheckGradleBuildCacheUseCase(fileManager, gradleUserHome)(config.baseRepositoryPath) }
+            },
+        ),
+        maven = MavenUseCases(
+            provider = {
+                withContext(Dispatchers.IO) {
+                    runCatching { repositoryProvisioningSource.read(config.baseRepositoryPath).providers.maven }.getOrNull()
+                }
+            },
+        ),
+        compose = ComposeUseCases(
+            provider = {
+                withContext(Dispatchers.IO) {
+                    runCatching { repositoryProvisioningSource.read(config.baseRepositoryPath).providers.dockerCompose }.getOrNull()
+                }
             },
         ),
         xcode = XcodeUseCases(
@@ -543,6 +586,8 @@ data class WorktreeUseCases(
     val simulator: SimulatorUseCases,
     val gradle: GradleUseCases,
     val xcode: XcodeUseCases,
+    val maven: MavenUseCases = MavenUseCases.NONE,
+    val compose: ComposeUseCases = ComposeUseCases.NONE,
     val herdr: HerdrUseCases = HerdrUseCases.NONE,
     val tools: ToolUseCases = ToolUseCases.NONE,
     val provisioning: ProvisioningUseCases = ProvisioningUseCases.NONE,
@@ -598,6 +643,10 @@ class MachineUseCases(
     val deleteSimulators: suspend (List<String>) -> Result<List<String>>,
     val trimDerivedData: suspend (Long, List<MachineProject>, DerivedDataListing) -> Result<DerivedDataTrim> =
         { quotaBytes, _, _ -> Result.success(DerivedDataTrim(quotaBytes, 0L, 0L)) },
+    val listMavenDaemons: suspend () -> Result<List<MavenDaemonProcess>> = { Result.success(emptyList()) },
+    val listComposeProjects: suspend (ProjectConfig, List<Worktree>, String?) -> Result<List<WorktreeComposeProject>> =
+        { _, _, _ -> Result.success(emptyList()) },
+    val takeDownComposeProjects: suspend (List<String>) -> ComposeDownReport = { ComposeDownReport() },
 )
 
 data class SimulatorUseCases(
@@ -607,6 +656,7 @@ data class SimulatorUseCases(
     val stop: suspend (String) -> Result<WorktreeSimulator?>,
     val orphans: suspend () -> Result<List<SimulatorDevice>>,
     val delete: suspend (List<String>) -> Result<List<String>>,
+    val readRelease: suspend (String) -> ReleaseRecord? = { null },
 ) {
     companion object {
         val NONE = SimulatorUseCases(
@@ -686,6 +736,7 @@ data class EmulatorUseCases(
     val start: suspend (String) -> Result<DeviceStart<WorktreeEmulator>>,
     val stop: suspend (String) -> Result<WorktreeEmulator?>,
     val stopSerials: suspend (List<String>) -> Result<List<WorktreeEmulator>>,
+    val readRelease: suspend (String) -> ReleaseRecord? = { null },
 ) {
     companion object {
         val NONE = EmulatorUseCases(
@@ -704,6 +755,18 @@ data class GradleUseCases(
     val stopDaemons: StopGradleDaemonsUseCase,
     val isBuildCacheEnabled: suspend () -> Boolean,
 )
+
+data class MavenUseCases(val provider: suspend () -> MavenProvider?) {
+    companion object {
+        val NONE = MavenUseCases(provider = { null })
+    }
+}
+
+data class ComposeUseCases(val provider: suspend () -> DockerComposeProvider?) {
+    companion object {
+        val NONE = ComposeUseCases(provider = { null })
+    }
+}
 
 data class XcodeUseCases(
     val provider: suspend () -> XcodeProvider?,

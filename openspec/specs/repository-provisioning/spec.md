@@ -352,3 +352,68 @@ Before copying or linking a file into a worktree, the system SHALL resolve the r
 #### Scenario: Regular folder
 - **WHEN** the destination's parent is a regular folder inside the worktree
 - **THEN** the file is copied or linked as before
+
+### Requirement: Copy local folders
+For each folder in the project's local files, the system SHALL copy every file under it, at any depth and including hidden files, to the same relative path in the worktree, creating the folders it needs. The folder SHALL be read each time a worktree is created or provisioned, so files added to it later are included. Local folders are copied, not linked, and their files are copied whether or not Git tracks them.
+
+#### Scenario: Nested and hidden files
+- **WHEN** the local files include `keys` and the base repository's `keys` holds `a.pem`, `.hidden` and `ci/b.pem`
+- **THEN** the new worktree contains `keys/a.pem`, `keys/.hidden` and `keys/ci/b.pem` with the same content
+
+#### Scenario: File added to the folder later
+- **WHEN** a file is added to a local folder after the project was saved and a worktree is created
+- **THEN** the new worktree contains that file
+
+#### Scenario: Folder already exists in the worktree
+- **WHEN** the worktree already holds `keys/a.pem` with other content and `keys/old.pem`, and the base repository's `keys` holds `a.pem`
+- **THEN** `keys/a.pem` is overwritten with the base repository's content and `keys/old.pem` is kept
+
+#### Scenario: Symbolic links inside the folder
+- **WHEN** a local folder holds a symbolic link to a file or folder
+- **THEN** the link is skipped and nothing it points to is copied
+
+#### Scenario: Empty folder
+- **WHEN** a local folder holds no files
+- **THEN** creation succeeds and nothing is copied for it
+
+#### Scenario: Provisioning an existing worktree
+- **WHEN** an existing linked worktree is provisioned and a local folder is among the local files
+- **THEN** the folder's files are copied into it, overwriting those that already exist
+
+#### Scenario: Drift check on a local folder
+- **WHEN** the provisioning of a worktree is checked and a file of a local folder is missing from it or differs from the base repository's
+- **THEN** that file is reported with its path relative to the repository root, like any other copied file
+
+### Requirement: Declare the Maven provider
+The system SHALL read `providers.maven` of `.shogunai.json` as an object with the optional field `mavenMaxHeap`, a memory size such as `1g` or `512m`. A non-object value or an invalid size SHALL make the file invalid with an error that names `.shogunai.json` and the field.
+
+#### Scenario: Maven declared
+- **WHEN** `.shogunai.json` contains `{ "providers": { "maven": { "mavenMaxHeap": "1g" } } }`
+- **THEN** the repository declares the Maven provider with a heap of `1g`
+
+#### Scenario: Maven without options
+- **WHEN** `providers.maven` is `{}`
+- **THEN** the repository declares the Maven provider without a heap
+
+#### Scenario: Invalid heap
+- **WHEN** `mavenMaxHeap` is `1 GB` or `1000`
+- **THEN** the file is reported as invalid with an error that names the field
+
+### Requirement: Declare the Docker Compose provider
+The system SHALL read `providers.docker-compose` of `.shogunai.json` as an object with the optional field `portVariables`, a list of unique, valid and non-reserved variable names. Any other shape SHALL make the file invalid with an error that names `.shogunai.json` and the field.
+
+#### Scenario: Compose declared
+- **WHEN** `.shogunai.json` contains `{ "providers": { "docker-compose": { "portVariables": ["DB_PORT"] } } }`
+- **THEN** the repository declares the Compose provider with the port variable `DB_PORT`
+
+#### Scenario: Not a list
+- **WHEN** `portVariables` is `"DB_PORT"`
+- **THEN** the file is reported as invalid with an error that names the field
+
+#### Scenario: Duplicate name
+- **WHEN** `portVariables` is `["DB_PORT", "DB_PORT"]`
+- **THEN** the file is reported as invalid with an error that names the variable
+
+#### Scenario: Written back
+- **WHEN** a repository declaring both new providers is saved from the settings
+- **THEN** `.shogunai.json` keeps their options and every other field it had

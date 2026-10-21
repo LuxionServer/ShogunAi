@@ -14,7 +14,12 @@ import app.luxion.shogunai.domain.model.DerivedDataListing
 import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.DerivedDataTrim
 import app.luxion.shogunai.domain.model.EmulatorState
+import app.luxion.shogunai.domain.model.ComposeDownReport
+import app.luxion.shogunai.domain.model.ComposeOwner
 import app.luxion.shogunai.domain.model.GradleProvider
+import app.luxion.shogunai.domain.model.MavenDaemonProcess
+import app.luxion.shogunai.domain.model.WorktreeComposeProject
+import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.PoolUsage
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -37,7 +42,7 @@ import kotlinx.coroutines.launch
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
-enum class MachineResource { GRADLE_DAEMONS, ANDROID_EMULATORS, IOS_SIMULATORS, XCODE_DERIVED_DATA }
+enum class MachineResource { GRADLE_DAEMONS, ANDROID_EMULATORS, IOS_SIMULATORS, XCODE_DERIVED_DATA, MAVEN_DAEMONS, COMPOSE_PROJECTS }
 
 data class MachineProject(
     val project: Project,
@@ -71,6 +76,10 @@ sealed interface MachineLoad<out T> {
 }
 
 data class MachineDaemon(val process: DaemonProcess, val owner: ProjectOwner?)
+
+data class MachineMavenDaemon(val process: MavenDaemonProcess, val owner: ProjectOwner?)
+
+data class MachineComposeProject(val projectId: String, val entry: WorktreeComposeProject)
 
 data class MachineDerivedData(val folder: DerivedDataFolder, val owner: MachineDerivedDataOwner)
 
@@ -111,6 +120,14 @@ class MachineResources(
         private set
 
     private var daemonProcesses by mutableStateOf<MachineLoad<List<DaemonProcess>>>(MachineLoad.Loading)
+    private var mavenProcesses by mutableStateOf<MachineLoad<List<MavenDaemonProcess>>>(MachineLoad.Loading)
+    private var composeProjects by mutableStateOf<MachineLoad<List<MachineComposeProject>>>(MachineLoad.Loading)
+    var composeUnavailableReason by mutableStateOf<String?>(null)
+        private set
+    var isTakingDownCompose by mutableStateOf(false)
+        private set
+    var composeDownReport by mutableStateOf<ComposeDownReport?>(null)
+        private set
     private var derivedDataListing by mutableStateOf<MachineLoad<DerivedDataListing>>(MachineLoad.Loading)
     private var derivedDataSizes by mutableStateOf<Map<String, Long>>(emptyMap())
     private var compilationCacheSize by mutableStateOf<Long?>(null)
@@ -193,6 +210,22 @@ class MachineResources(
             val sets = worktreeSets
             processes.map { process -> MachineDaemon(process, ownerOf(process, sets)) }
         }
+
+    val mavenDaemons: MachineLoad<List<MachineMavenDaemon>>
+        get() = mavenProcesses.map { processes ->
+            val sets = worktreeSets
+            processes.map { process ->
+                MachineMavenDaemon(process, process.workingDirectory?.let { attributeToProjects(it, sets, pathExists) })
+            }
+        }
+
+    val composeProjectList: MachineLoad<List<MachineComposeProject>> get() = composeProjects
+
+    val removedComposeProjectNames: List<String>
+        get() = (composeProjects as? MachineLoad.Loaded)?.value.orEmpty()
+            .filter { it.entry.owner == ComposeOwner.RemovedWorktree }
+            .map { it.entry.project.name }
+            .distinct()
 
     val gradleProjects: List<MachineProject>
         get() = projects().filter { MachineResource.GRADLE_DAEMONS in it.declares }
@@ -302,6 +335,16 @@ class MachineResources(
                     MachineSummary(daemons.size, daemons.sumOf { it.residentMemoryBytes }, pool?.inUse, pool?.effectiveLimit)
             }
         }
+        if (MachineResource.MAVEN_DAEMONS in resources) {
+            useCases.listMavenDaemons().getOrNull()?.let { daemons ->
+                current[MachineResource.MAVEN_DAEMONS] = MachineSummary(daemons.size, daemons.sumOf { it.residentMemoryBytes })
+            }
+        }
+        if (MachineResource.COMPOSE_PROJECTS in resources) {
+            readComposeProjects()?.let { projects ->
+                current[MachineResource.COMPOSE_PROJECTS] = MachineSummary(projects.size)
+            }
+        }
         if (MachineResource.ANDROID_EMULATORS in resources) {
             readRunningEmulators()?.let { running ->
                 loadPool(ResourceKind.EMULATOR)
@@ -361,7 +404,51 @@ class MachineResources(
             MachineResource.ANDROID_EMULATORS -> loadEmulators()
             MachineResource.IOS_SIMULATORS -> loadSimulators()
             MachineResource.XCODE_DERIVED_DATA -> loadDerivedData()
+            MachineResource.MAVEN_DAEMONS -> loadMavenDaemons()
+            MachineResource.COMPOSE_PROJECTS -> loadComposeProjects()
         }
+    }
+
+    private suspend fun loadMavenDaemons() {
+        mavenProcesses = useCases.listMavenDaemons().fold({ MachineLoad.Loaded(it) }, { MachineLoad.Unavailable })
+    }
+
+    private suspend fun loadComposeProjects() {
+        val projects = readComposeProjects()
+        composeProjects = if (projects == null) MachineLoad.Unavailable else MachineLoad.Loaded(projects)
+    }
+
+    private suspend fun readComposeProjects(): List<MachineComposeProject>? {
+        val declaring = projects().filter { MachineResource.COMPOSE_PROJECTS in it.declares && it.worktrees != null }
+        val listed = declaring.map { machineProject ->
+            val config = machineProject.project.config
+            val root = config.worktreesRoot.takeIf { it.isNotBlank() }
+            machineProject.project.id to useCases.listComposeProjects(config, machineProject.worktrees.orEmpty(), root)
+        }
+        listed.firstNotNullOfOrNull { (_, result) -> result.exceptionOrNull() }?.let { failure ->
+            composeUnavailableReason = (failure as? WorktreeError.DockerUnavailable)?.reason ?: failure.message
+            return null
+        }
+        composeUnavailableReason = null
+        return listed.flatMap { (projectId, result) -> result.getOrThrow().map { MachineComposeProject(projectId, it) } }
+    }
+
+    fun takeDownRemovedComposeProjects() {
+        val names = removedComposeProjectNames
+        if (isTakingDownCompose || names.isEmpty()) return
+        isTakingDownCompose = true
+        scope.launch {
+            try {
+                composeDownReport = useCases.takeDownComposeProjects(names)
+                loadComposeProjects()
+            } finally {
+                isTakingDownCompose = false
+            }
+        }
+    }
+
+    fun dismissComposeDownReport() {
+        composeDownReport = null
     }
 
     private suspend fun loadDaemons() {
@@ -657,6 +744,8 @@ fun poolKindOf(resource: MachineResource): ResourceKind? = when (resource) {
     MachineResource.ANDROID_EMULATORS -> ResourceKind.EMULATOR
     MachineResource.IOS_SIMULATORS -> ResourceKind.IOS_SIMULATOR
     MachineResource.XCODE_DERIVED_DATA -> null
+    MachineResource.MAVEN_DAEMONS -> null
+    MachineResource.COMPOSE_PROJECTS -> null
 }
 
 private fun machineResourceOf(kind: ResourceKind): MachineResource = when (kind) {

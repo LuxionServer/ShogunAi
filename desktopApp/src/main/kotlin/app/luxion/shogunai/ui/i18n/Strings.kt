@@ -357,6 +357,11 @@ interface Strings {
     val noQuota: String
     val gigabytesUnit: String
     val invalidQuota: String
+    val leaseDurationLabel: String
+    val minutesUnit: String
+    val invalidLeaseDuration: String
+    val leaseDurationHint: String
+    fun releasedFor(worktree: String, time: String): String
     val notAcquired: String
     fun poolUsage(inUse: Int, limit: Int?, profile: String): String
     val overLimit: String
@@ -464,6 +469,30 @@ interface Strings {
     val preferredDeviceLabel: String
     val preferredRuntimeLabel: String
     val xcodeCompilationCacheLabel: String
+    val providerMaven: String
+    val providerDockerCompose: String
+    val mavenMaxHeapLabel: String
+    val composePortVariablesLabel: String
+    val composePortVariablesHelp: String
+    val stackSuggestionsTitle: String
+    fun stackSuggestion(provider: String, evidence: String): String
+    val turnOnProvider: String
+    val mavenDaemonsTitle: String
+    fun mavenDaemonsSummary(count: Int, totalMemory: String): String
+    val noMavenDaemons: String
+    val mavenDaemonsUnavailable: String
+    val mavenDaemonsNotStopped: String
+    val composeProjectsTitle: String
+    fun composeProjectsSummary(count: Int): String
+    val noComposeProjects: String
+    fun composeProjectsUnavailable(reason: String?): String
+    val composeOwnerRemoved: String
+    val takeDownRemovedComposeProjects: String
+    val composeVolumesKept: String
+    fun composeProjectsTakenDown(count: Int): String
+    fun composeProjectDownFailed(name: String, detail: String): String
+    val alsoTakeDownComposeProjects: String
+    fun cleanupComposeKept(reason: String?): String
     val environmentVariableNameLabel: String
     val environmentVariableTemplateLabel: String
     val addVariable: String

@@ -75,6 +75,10 @@ class ResourcePoolUseCasesTest {
         store.writeLastUsed(admin, store.readLastUsed(admin) + (key to Instant.parse(instant).toEpochMilli()))
     }
 
+    private fun lease(admin: String, key: String, instant: Instant = harness.now) {
+        store.writeLeases(admin, store.readLeases(admin) + (key to instant.toEpochMilli()))
+    }
+
     @Test
     fun `the emulator pool counts holders in every repository with their worktree and state`() = runTest {
         store.writePorts(admin1, mapOf("emulator" to 5554))
@@ -165,7 +169,7 @@ class ResourcePoolUseCasesTest {
         assertEquals(listOf(task2), acquisition.releases.map { it.worktreePath })
         assertEquals(mapOf("emulator" to 5554), store.readPorts(admin1))
         assertTrue(store.readPorts(admin2).isEmpty())
-        assertEquals(mapOf("emulator" to 5556), store.readPorts(admin3))
+        assertEquals(mapOf("emulator" to 5558), store.readPorts(admin3))
     }
 
     @Test
@@ -185,6 +189,7 @@ class ResourcePoolUseCasesTest {
         harness.limit(emulators = 2)
         store.writePorts(adminApi, mapOf("emulator" to 5554))
         store.writePorts(admin2, mapOf("emulator" to 5556))
+        lease(adminApi, "emulator")
         sdk.states["emulator-5554"] = EmulatorState.RUNNING
         sdk.states["emulator-5556"] = EmulatorState.BOOTING
 
@@ -204,6 +209,8 @@ class ResourcePoolUseCasesTest {
     fun `lowering the limit stops nothing and the next acquisition finds the pool full`() = runTest {
         store.writePorts(admin1, mapOf("emulator" to 5554))
         store.writePorts(admin2, mapOf("emulator" to 5556))
+        lease(admin1, "emulator")
+        lease(admin2, "emulator")
         sdk.states["emulator-5554"] = EmulatorState.RUNNING
         sdk.states["emulator-5556"] = EmulatorState.RUNNING
         harness.limit(emulators = 1)
@@ -243,7 +250,7 @@ class ResourcePoolUseCasesTest {
 
         pool.acquire.emulator(repository, task2).getOrThrow()
 
-        assertEquals("ANDROID_SERIAL=emulator-5554\n", files.writtenTexts["$task2/.env.local"])
+        assertEquals("ANDROID_SERIAL=emulator-5556\n", files.writtenTexts["$task2/.env.local"])
         assertEquals("", files.writtenTexts["$task1/.env.local"])
     }
 

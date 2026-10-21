@@ -9,5 +9,7 @@ fun MachineView(resource: MachineResource, machine: MachineResources, onOpenWork
         MachineResource.ANDROID_EMULATORS -> AndroidEmulatorsView(machine, onOpenWorktree)
         MachineResource.IOS_SIMULATORS -> IosSimulatorsView(machine, onOpenWorktree)
         MachineResource.XCODE_DERIVED_DATA -> XcodeDerivedDataView(machine, onOpenWorktree)
+        MachineResource.MAVEN_DAEMONS -> MavenDaemonsView(machine, onOpenWorktree)
+        MachineResource.COMPOSE_PROJECTS -> ComposeProjectsView(machine, onOpenWorktree)
     }
 }

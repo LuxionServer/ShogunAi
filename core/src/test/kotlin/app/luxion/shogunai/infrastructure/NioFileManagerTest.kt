@@ -1,6 +1,7 @@
 package app.luxion.shogunai.infrastructure
 
 import java.nio.file.Files
+import kotlin.io.path.createSymbolicLinkPointingTo
 import kotlin.io.path.createDirectories
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.writeBytes
@@ -150,5 +151,38 @@ class NioFileManagerTest {
 
         assertTrue(fileManager.isInside(worktree.toString(), worktree.resolve("config/.env").toString()))
         assertTrue(fileManager.isInside(worktree.toString(), worktree.resolve("missing/deeper/.env").toString()))
+    }
+
+    @Test
+    fun `lists nested and hidden regular files with relative paths`() {
+        val keys = root.resolve("repo/keys").createDirectories()
+        keys.resolve("a.pem").writeBytes(ByteArray(1))
+        keys.resolve(".hidden").writeBytes(ByteArray(1))
+        keys.resolve("ci/deep").createDirectories().resolve("b.pem").writeBytes(ByteArray(1))
+
+        assertEquals(
+            listOf(".hidden", "a.pem", "ci/deep/b.pem"),
+            fileManager.listFiles(keys.toString()).sorted(),
+        )
+    }
+
+    @Test
+    fun `listing skips symbolic links to files and folders`() {
+        val outside = root.resolve("outside").createDirectories()
+        outside.resolve("secret.txt").writeBytes(ByteArray(1))
+        val keys = root.resolve("repo/keys").createDirectories()
+        keys.resolve("a.pem").writeBytes(ByteArray(1))
+        keys.resolve("link.txt").createSymbolicLinkPointingTo(outside.resolve("secret.txt"))
+        keys.resolve("linked-dir").createSymbolicLinkPointingTo(outside)
+
+        assertEquals(listOf("a.pem"), fileManager.listFiles(keys.toString()))
+    }
+
+    @Test
+    fun `listing an empty or missing folder yields nothing`() {
+        val empty = root.resolve("repo/empty").createDirectories()
+
+        assertEquals(emptyList(), fileManager.listFiles(empty.toString()))
+        assertEquals(emptyList(), fileManager.listFiles(root.resolve("missing").toString()))
     }
 }

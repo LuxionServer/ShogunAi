@@ -24,7 +24,9 @@ class ResolveWorktreeEnvironmentUseCase(
     ): Result<WorktreeEnvironment> = runCatching {
         val provisioning = provisioningSource.read(repositoryPath)
         val declaration = provisioning.environment
+        val declaredNames = declaration.variables.map { it.name }.toSet()
         val contributed = contributions.forRepository(repositoryPath, provisioning.providers)
+            .filterNot { it.names.isNotEmpty() && it.names.all { name -> name in declaredNames } }
         val requests = declaredPortRequests(declaration) + contributed.flatMap { it.ports }
         val resourceRequests = contributed.flatMap { it.resources }
         if (declaration.isEmpty && contributed.isEmpty()) return@runCatching WorktreeEnvironment()
@@ -47,10 +49,10 @@ class ResolveWorktreeEnvironmentUseCase(
             return@runCatching WorktreeEnvironment(ports = ports, resources = resources)
         }
         val declared = declaration.variables.map { it.name to it.render(folderName(worktreePath), ports) }
-        val declaredNames = declared.map { it.first }.toSet()
         val reservations = EnvironmentReservations(ports, resources)
+        val context = ResourceContext(folderName(repositoryPath), folderName(worktreePath))
         val fromProviders = contributed.filter { it.isAcquiredIn(reservations) }
-            .flatMap { it.variables(reservations) }
+            .flatMap { it.variables(reservations) + it.contextual(context) }
             .filterNot { it.first in declaredNames }
         WorktreeEnvironment(variables = fromProviders + declared, ports = ports, resources = resources)
     }

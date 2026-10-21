@@ -12,6 +12,7 @@ shogun remove TASK-123             # remove one worktree and stop its emulator a
 shogun repair                      # re-link the worktrees after the repository moved
 shogun open TASK-123 --herdr       # open a worktree in Herdr with its environment and the project's agent
 shogun clean --yes                 # remove merged or missing worktrees (without --yes it only lists them)
+shogun stacks                      # the stacks detected in the repository and the providers they suggest
 eval "$(shogun env)"               # load this worktree's variables from .shogunai.json "env"
 ```
 
@@ -155,6 +156,27 @@ Manages ShogunAi's [Claude Code hooks](../agents.md#claude-code) in Claude Code'
 - A settings file that isn't valid JSON is never written: the command prints its path and the problem on standard error and exits with `1`.
 - With `--json` nothing is asked: `install` and `uninstall` write only with `--yes`, and print `path`, `applied` and the `added`, `replaced` and `removed` hooks. `status --json` prints `user` and `project` (`null` outside a repository), each with `path`, `state` and `events`.
 
+### `guide`
+
+```text
+shogun guide [<topic>] [--plain]
+shogun guide --migrate [--file <path>]
+shogun guide install   (--agent codex|gemini | --project | --file <path>) [--yes] [--json]
+shogun guide uninstall (--agent codex|gemini | --project | --file <path>) [--yes] [--json]
+shogun guide status    [--file <path>] [--json]
+```
+
+ShogunAi's workflow rules for agents, in the topics `worktrees`, `parallel`, `resources` and `cleanup`. See [Using with agents](../agents.md#shogunais-workflow-rules).
+
+- `guide [<topic>]` prints the first line (the rules are defaults; the project's `AGENTS.md` and the person's instructions take precedence) and then the rules of the topic, or of every topic, that apply in the current directory: main checkout or worktree, whether Herdr is available and which providers the repository declares. The rules that don't apply follow under "Not applicable here:", each with the condition it needs. An unknown topic is a usage error (exit `2`) listing the topics; outside a Git repository it exits with `1` and points to `--plain`.
+- `--plain` prints every rule of the requested topics with its condition, without looking at the current directory, so it works anywhere.
+- `--migrate` prints every rule with its id and an instruction for an agent: compare the given file with the rules, list what it repeats, propose removing it and show the diff without applying anything until the person confirms. It doesn't read or write the file.
+- `install` writes a block that says to run `shogun guide` between `<!-- shogun:guide v1 -->` and `<!-- /shogun:guide -->` into a file chosen with `--agent` (`codex`: `$CODEX_HOME/AGENTS.md`, or `~/.codex/AGENTS.md`; `gemini`: `~/.gemini/GEMINI.md`), `--project` (the repository's `AGENTS.md`) or `--file`; one of them is required, and Cursor has no user-level file, so `--agent cursor` is a usage error. It creates the file when missing, keeps every other byte, never duplicates the block, replaces one from an older version, prints what it will write and asks `[y/N]` unless `--yes` is given; answering no writes nothing and exits with `0`.
+- `uninstall` removes the block and the line break `install` added from the same targets, leaving everything else.
+- `status` says for the Codex and Gemini files, the repository's `AGENTS.md` (inside a repository) and `--file` whether the block is `installed`, `outdated` or `missing`.
+- `install` and `status` warn on standard error when a file mentions `shogun new`, `shogun open` or `shogun clean` outside the block, suggesting `guide --migrate`, and `status` warns when Claude Code's `SessionStart` hook is installed and the repository's `AGENTS.md` or the `--file` also has the block, since Claude Code would get the rules twice. Warnings never change a file.
+- With `--json`, `install` and `uninstall` ask nothing and write only with `--yes`, and print `path`, `applied`, `state` and `warnings`; `status --json` prints `targets` (`{ target, path, state, duplicates }`) and `warnings`.
+
 ### `remove`
 
 ```text
@@ -189,7 +211,7 @@ The target is found as in `remove`, except that the main worktree is allowed. `-
 
 ```text
 shogun clean [--yes|-y] [--delete-branches] [--stop-gradle-daemons] [--stop-emulators]
-             [--delete-simulators] [--delete-derived-data]
+             [--delete-simulators] [--delete-derived-data] [--down-compose-projects]
 ```
 
 Selects the same worktrees as the desktop app's "Clean up": not the main one, not locked, not one where an agent is running, and either merged with no uncommitted changes or with their folder gone. Without `--yes` it only lists what it would do (`would remove …`) and ends with the command to run, repeating the options you gave and naming only what would be removed; with `--yes` it does it (`removed …`). With nothing to do it prints `Nothing to clean up.`
@@ -203,6 +225,7 @@ A worktree where an agent is running is listed as `kept <path> (claude is runnin
 | `--stop-emulators` | Stops the removed worktrees' Android emulators. |
 | `--delete-simulators` | Deletes the removed worktrees' iOS simulators and orphaned ShogunAi simulators. |
 | `--delete-derived-data` | Deletes orphaned Xcode DerivedData, the removed worktrees' folders included. |
+| `--down-compose-projects` | Takes down the Docker Compose projects of the removed worktrees, keeping their volumes (`took down Compose project …`; `would take down Compose project …` without `--yes`). Only for repositories that declare the `docker-compose` provider; a project that can't be taken down, or Docker being unavailable, is reported on standard error without changing the exit code. |
 
 The Herdr workspaces of removed worktrees are closed too (`would close Herdr workspace of …` in the listing). A daemon, emulator or Herdr workspace that can't be stopped or closed is reported on standard error without changing the exit code.
 
@@ -215,6 +238,16 @@ shogun env [<path>] [--format sh|dotenv|json]
 ```
 
 Prints the environment of the worktree containing the path (or the current directory), from `.shogunai.json` `env` and the providers, reserving its ports the first time. `sh` (the default) prints `export NAME='value'` lines for `eval "$(shogun env)"`; `dotenv` and `json` suit other tools. An empty environment prints nothing.
+
+## Stacks
+
+### `stacks`
+
+```text
+shogun stacks
+```
+
+Prints one line per stack detected in the repository (`Maven  evidence=pom.xml  maven=suggested`): the files that revealed it and, per provider it suggests, `suggested` or `declared` when `.shogunai.json` already has it. Providers the operating system doesn't support are not mentioned. It changes nothing, prints `No known stack detected.` and exits with `0` when there is none, and exits with `1` outside a Git repository. See [detecting stacks](providers.md#detecting-stacks).
 
 ## Providers
 
@@ -231,13 +264,30 @@ shogun gradle stop [<pid>...]
 
 `gradle stop` stops every idle daemon, or only the given process ids; busy and unknown daemons are kept (`kept <pid> … (<reason>)`). A pid that isn't a daemon exits with `1`.
 
+### `maven`
+
+```text
+shogun maven
+```
+
+`maven` lists the Maven daemons (mvnd) on the machine: pid, `memory=` and, inside a Git repository, `worktree=<path>|removed|other-project|unknown`, then the total (`No Maven daemons running.` when there are none). It works outside a repository too and never stops anything.
+
+### `compose`
+
+```text
+shogun compose
+shogun compose down [<worktree>] [--volumes]
+```
+
+`compose` lists the Docker Compose projects of the repository's worktrees: name, `status=` and `worktree=<path>|removed`. `compose down` takes down the projects of removed worktrees, or the project of the given worktree (found as in `remove`, the main one allowed), with `docker compose -p <name> down`: volumes are kept unless `--volumes` is given. It prints `took down <name> (volumes kept)`, reports a failure on standard error and exits with `1` for it. If the repository doesn't declare the `docker-compose` provider, or the given worktree doesn't exist, it exits with `1` and runs no Docker command.
+
 ### `emulator`
 
 ```text
 shogun emulator start|stop|status [<path>] [--avd <name>] [--no-window]
 ```
 
-Starts (and waits for), stops or shows the Android emulator of the worktree. `--avd` and `--no-window` only apply to `start` and override the project's settings for that start. `status` prints `emulator-5556 running|booting|stopped`, or `not acquired` before the first start. The first `start` reserves the console port (releasing the least recently used idle emulator if the pool is full, reported on standard error) and prints `export ANDROID_SERIAL=…`; with every emulator running it fails with exit code `1` naming the worktrees that hold them.
+Starts (and waits for), stops or shows the Android emulator of the worktree. `--avd` and `--no-window` only apply to `start` and override the project's settings for that start. `status` prints `emulator-5556 running|booting|stopped`, or `not acquired` before the first start. Every `start` renews the worktree's lease, and prints `export ANDROID_SERIAL=…` with the serial to use. The first `start` reserves the console port (releasing an emulator whose lease expired if the pool is full, reported on standard error); run it before every use of the device, since it re-acquires one if it was released. After a release, `status` prints `not acquired (released for <worktree> at <time>)`. With every emulator protected it fails with exit code `1` naming the worktrees that hold them and when their leases expire.
 
 ### `simulator`
 
@@ -271,7 +321,7 @@ shogun xcode trim [--dry-run]
 
 ## JSON output
 
-Besides `status --json` above, every command that reports a result accepts `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `pool status`, `pool trim`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator` and `hooks` (not `simulator gradle-init`, `env`, `hook`, `help` or `--version`; on those it is an unknown option and exits with `2`). The option can go anywhere after the command.
+Besides `status --json` above, every command that reports a result accepts `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `compose`, `compose down`, `pool status`, `pool trim`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks` and `guide install|uninstall|status` (not `simulator gradle-init`, `env`, `hook`, `help` or `--version`; on those it is an unknown option and exits with `2`). The option can go anywhere after the command.
 
 The rules are the same for all of them:
 
@@ -289,11 +339,17 @@ The rules are the same for all of them:
 | `remove` | `path`, `branch` (the worktree's, or `null` if detached), `branchDeleted` (the name, or `null` when it was kept or no branch deletion was requested), `branchKeptReason` (why a requested deletion didn't happen, or `null`), `providers` (`emulatorsStopped` serials, `simulatorsStopped` udids and `gradleDaemonsStopped` pids) and `failures` (messages of what couldn't be stopped, exit code `1`). |
 | `hooks install`, `hooks uninstall` | `path`, `applied` (written this run) and the `added` and `removed` hooks as `{ event, command }` plus `replaced` as `{ event, from, to }`. |
 | `hooks status` | `user` and `project` (`null` outside a repository): `path`, `state` (`installed`, `outdated`, `missing`) and `events`. |
+| `guide install`, `guide uninstall` | `path`, `applied` (written this run), `state` (`installed`, `outdated`, `missing`) and `warnings` (messages). |
+| `guide status` | `targets`: `{ target, path, state, duplicates }` with `target` `codex`, `gemini`, `project` or `file` and `duplicates` `true` when the file mentions `shogun new`, `open` or `clean` outside the block; and `warnings`. |
 | `repair` | `repaired`: the re-linked worktree paths. |
 | `open` | `path`, `branch` (or `null` if detached), `herdr` (`opened` or `focused`) and `agent` (the started agent's name, or `null` when the workspace was only focused). |
-| `clean` | `dryRun`; `candidates`: `{ path, branch, reason }` with `reason` `merged` or `folder-missing`; `keptForAgents`: `{ path, agents }`; `skipped`: `{ path, reason }` (status unavailable); `removed`; `deletedBranches`; `failures`: `{ path, message }`; and `providers`: `gradleDaemonsStopped`, `emulatorsStopped`, `simulatorsDeleted` and `derivedDataDeleted`. Without `--yes` (`dryRun: true`) `removed`, `deletedBranches` and the `providers` lists are empty. |
+| `clean` | `dryRun`; `candidates`: `{ path, branch, reason }` with `reason` `merged` or `folder-missing`; `keptForAgents`: `{ path, agents }`; `skipped`: `{ path, reason }` (status unavailable); `removed`; `deletedBranches`; `failures`: `{ path, message }`; and `providers`: `gradleDaemonsStopped`, `emulatorsStopped`, `simulatorsDeleted`, `derivedDataDeleted` and, with `--down-compose-projects`, `composeProjectsDown`. Without `--yes` (`dryRun: true`) `removed`, `deletedBranches` and the `providers` lists are empty. |
 | `gradle` | `daemons`: `{ pid, kind, version, memoryBytes, state, idleSince, worktree }` with `kind` `gradle` or `kotlin`, `state` `busy`, `idle`, `unknown` or `untracked`, `idleSince` in ISO-8601 UTC (only when idle) and `worktree` a path, `removed`, `other-project` or `null` outside a repository; and `totalMemoryBytes`. |
 | `gradle stop` | `stopped` (pids), `kept`: `{ pid, kind, reason }` with `reason` `busy`, `state-unknown` or `build-running`, `notDaemons` (pids) and `failures`: `{ pid, message }`. The exit code is `1` when either of the last two isn't empty. |
+| `stacks` | `stacks`: `{ stack, evidence, providers }` with `stack` `gradle`, `android`, `xcode`, `maven` or `docker-compose`, `evidence` the files that revealed it and `providers`: `{ id, declared }` for each provider it suggests. |
+| `maven` | `daemons`: `{ pid, memoryBytes, worktree }` with `worktree` a path, `removed`, `other-project` or `null` (unknown, or outside a repository); and `totalMemoryBytes`. |
+| `compose` | `projects`: `{ name, status, worktree }` with `worktree` a path or `removed`. |
+| `compose down` | `takenDown` (project names) and `failures`: `{ name, message }`. The exit code is `1` when `failures` isn't empty. |
 | `xcode` | `active` (`false` when the provider isn't active, with the rest empty), `folders`: `{ path, sizeBytes, worktree }`, `orphans`: `{ path, sizeBytes }`, `unavailableVolumeFolders` (a count) and `compilationCacheBytes` (`null` unless declared). |
 | `xcode clean` | `active`, `deleted` (paths), `freedBytes` and `failures`: `{ path, message }`. |
 | `xcode trim` | `active`, `quotaBytes` (`null` without a quota), `dryRun`, `usageBeforeBytes`, `usageAfterBytes`, `exceeded`, `released` (paths, those that would be released with `--dry-run`), `freedBytes`, `inUse` (worktree paths) and `failures`: `{ path, message }`. |
@@ -314,8 +370,8 @@ These commands are meant to be called by agents and tools, not typed. How to con
 |---|---|
 | `shogun hook worktree-create` | Claude Code's `WorktreeCreate` hook. Reads `name` and `cwd` from standard input, creates (or reuses) a provisioned worktree on `feature/<name>` starting at the HEAD of the worktree in `cwd`, and prints its path. If a post-creation command fails it still prints the path as the last line and exits with 0, with the failure on standard error, so Claude Code uses the worktree. Unapproved post-creation commands are skipped with a note on standard error; it never asks. |
 | `shogun hook worktree-remove` | Claude Code's `WorktreeRemove` hook. Removes the worktree in `worktree_path`, deletes its branch only if it's merged into the project's main branch (a branch merged only into its own upstream is kept, with a note on standard error) and closes its Herdr workspace. |
-| `shogun hook session-start` | Claude Code's `SessionStart` hook. Appends the worktree's environment to `CLAUDE_ENV_FILE` and tells Claude which values it uses. |
-| `shogun hook agent-state` | Claude Code's `UserPromptSubmit`, `Notification`, `Stop` and `SessionEnd` hooks. Reads the hook's JSON from standard input and records the session's state (working, blocked, done) for the worktree containing `cwd`, or removes the record on `SessionEnd`; a `Notification` of type `idle_prompt` means done and `auth_success` is ignored. It prints nothing, never blocks the session and exits with 0 also outside a repository; input that isn't JSON exits with 2. See [Agent states outside Herdr](agents.md#agent-states-outside-herdr). |
+| `shogun hook session-start` | Claude Code's `SessionStart` hook. Inside a Git repository, appends the worktree's environment to `CLAUDE_ENV_FILE` (nothing when the repository declares no `env`) and prints the context: a line with the variables and their values when there are any, then the short [workflow rules](#guide) that apply to that location, at most ten lines, starting with the precedence line and ending with a pointer to `shogun guide`. Without Herdr it leaves out the rules about `shogun open --herdr` and messaging sessions; the emulator and simulator rules appear only when the repository declares those providers. Outside a Git repository it prints nothing and exits with `0`. |
+| `shogun hook agent-state` | Claude Code's `UserPromptSubmit`, `Notification`, `Stop` and `SessionEnd` hooks. Reads the hook's JSON from standard input and records the session's state (working, blocked, done) for the worktree containing `cwd`, or removes the record on `SessionEnd`; a `Notification` of type `idle_prompt` means done and `auth_success` is ignored. When the state is working it also renews the leases of the emulator and simulator the worktree holds. It prints nothing, never blocks the session and exits with 0 also outside a repository; input that isn't JSON exits with 2. See [Agent states outside Herdr](agents.md#agent-states-outside-herdr). |
 | `shogun hook herdr` | The ShogunAi plugin for Herdr, on `worktree.created` (provisions the worktree, skipping unapproved post-creation commands with a note) and `worktree.removed` (deletes its branch if merged into the project's main branch). Reads `HERDR_PLUGIN_EVENT`, `HERDR_PLUGIN_EVENT_JSON` and `HERDR_BIN_PATH`. |
 
 ## Help and version

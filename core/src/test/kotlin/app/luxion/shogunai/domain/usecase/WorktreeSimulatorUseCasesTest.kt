@@ -19,6 +19,7 @@ import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import kotlinx.coroutines.test.runTest
+import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -254,6 +255,7 @@ class WorktreeSimulatorUseCasesTest {
         val useCase = StartWorktreeSimulatorUseCase(source, simulators, pool.acquire, pool.resolve, pause = {})
         useCase(config, task).getOrThrow()
         simulators.shutdown("UDID-1")
+        pool.now = pool.now.plus(Duration.ofMinutes(21))
 
         val started = useCase(config, other).getOrThrow()
 

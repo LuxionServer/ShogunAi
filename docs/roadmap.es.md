@@ -12,7 +12,7 @@ Esa dirección se construye en tres capas:
 |---|---|---|
 | **Motor y CLI** | La base | Provisionado de worktrees definido en el repositorio (`.shogunai.json`) y un comando `shogun` que usan la app de escritorio, los agentes y sus hooks, con un entorno por worktree (puertos reservados y variables) que llega a la shell de cada agente, y salida JSON en todos los comandos para scripts. **Disponible.** |
 | **Torre de control** | La vista | La app de escritorio muestra el estado de todos los worktrees, incluidos los creados por otras herramientas, los mantiene limpios y sigue los cambios según ocurren. Abre cada uno en el terminal, el IDE o Herdr con los agentes del proyecto, y queda a un clic en la barra de menús. **Disponible.** |
-| **Plataformas** | El contenido | Providers para los stacks en los que más cuesta preparar un worktree, empezando por Android, KMP, iOS y JVM: Gradle, secretos locales, emuladores, simuladores e IDEs. **Empezado**: los repositorios Gradle muestran sus daemons, pueden parar los ociosos y acotar la memoria y la vida de los daemons que arrancan los agentes, los repositorios Android pueden dar a cada worktree su propio emulador, los KMP e iOS su propio simulador de iOS, ambos adquiridos bajo demanda dentro de límites que siguen un perfil de capacidad de la máquina, y los repositorios Xcode ven y limpian sus DerivedData, los mantienen dentro de una cuota de disco y comparten compilaciones entre worktrees. |
+| **Plataformas** | El contenido | Providers para los stacks en los que más cuesta preparar un worktree, empezando por Android, KMP, iOS y JVM: Gradle, secretos locales, emuladores, simuladores e IDEs. **Empezado**: los repositorios Gradle muestran sus daemons, pueden parar los ociosos y acotar la memoria y la vida de los daemons que arrancan los agentes, los repositorios Android pueden dar a cada worktree su propio emulador, los KMP e iOS su propio simulador de iOS, ambos adquiridos bajo demanda dentro de límites que siguen un perfil de capacidad de la máquina, los repositorios Xcode ven y limpian sus DerivedData, los mantienen dentro de una cuota de disco y comparten compilaciones entre worktrees, y los backends JVM obtienen compilaciones de Maven acotadas en memoria y un proyecto de Docker Compose y puertos por worktree. La app y `shogun stacks` también detectan el stack de un repositorio y sugieren los providers que encajan. |
 
 Se conecta con las herramientas que ejecutan agentes en vez de sustituirlas: los hooks de worktree y de sesión de Claude Code, y [Herdr](https://herdr.dev), el multiplexor de terminal para agentes, cuyos worktrees provisiona un plugin de ShogunAi y en el que la app de escritorio abre un worktree con su entorno y su agente y muestra qué está haciendo cada agente. **Disponible.**
 
@@ -22,9 +22,13 @@ Numerados en el orden en que se abordarán: el número es la prioridad.
 
 ### 1. Plataformas e IDEs más allá de Android
 
-El proyecto creció alrededor de Android. Este punto revisa la cobertura de los demás stacks (iOS y Xcode, backends JVM) y de los IDEs en los que se puede abrir un worktree. Empieza con una exploración para decidir qué falta antes de dividirlo en cambios. También cubre "Abrir en Claude Desktop" fuera de macOS: no está verificado que su enlace `claude://code/new?folder=` admita una carpeta en Windows.
+El proyecto creció alrededor de Android. La detección de stacks y los providers de Maven y Docker Compose están hechos; queda la cobertura de los IDEs en los que se puede abrir un worktree, que empieza con una exploración para decidir qué falta antes de dividirla en cambios. También cubre "Abrir en Claude Desktop" fuera de macOS (no está verificado que su enlace `claude://code/new?folder=` admita una carpeta en Windows), las cachés de paquetes de iOS y lo que los backends JVM dejaron fuera: parar los daemons de Maven cuando su estado se pueda leer con fiabilidad, y gestionar el ciclo de vida de Compose (`up`, `build`) y los recursos de Docker más allá de los proyectos.
 
-### 2. Pendientes de los cambios del 2026-10-19
+### 2. Esperar capacidad de dispositivos
+
+`shogun emulator start --wait` (y su equivalente para simuladores): en vez de fallar cuando todos los emuladores están protegidos por una concesión, esperar en cola hasta que se libere capacidad. Se apoya en las concesiones de dispositivos, que ya indican cuándo caduca cada una.
+
+### 3. Pendientes de los cambios del 2026-10-19
 
 La revisión de todo el proyecto del 2026-10-19 y los cambios hechos a partir de ella están archivados. Estos pendientes quedaron fuera de ellos:
 
@@ -39,15 +43,24 @@ La revisión de todo el proyecto del 2026-10-19 y los cambios hechos a partir de
 - Estados de agente para agentes distintos de Claude Code (Codex, Gemini…), que hoy no tienen hooks equivalentes.
 - Encontrar la causa raíz de los errores que cerraban la ventana de Preferencias, a partir de las entradas que el aislamiento deja ahora en el registro de diagnóstico, y del crash nativo visto en otra máquina que dejó un informe de diagnóstico vacío.
 
-### 3. Demo guiada de bienvenida
+### 4. Pendientes de la guía de flujo para agentes
+
+Las reglas de flujo llegan a los agentes mediante `shogun guide`, el hook `SessionStart` y un bloque en `AGENTS.md`. Quedó fuera:
+
+- Una sección en Ajustes de la app de escritorio para instalar, actualizar y quitar el bloque, como ya hace con los hooks de Claude Code.
+- Registrar la ref de origen de cada worktree, para que la regla de elegir la base de una pull request pudiera responderla `shogun` en lugar de seguir siendo una política del equipo.
+- Los ficheros de usuario de otros agentes, a medida que su documentación los confirme (Cursor guarda hoy las reglas de usuario en sus ajustes).
+
+### 5. Demo guiada de bienvenida
 
 Un recorrido de primer uso basado en la revisión hecha antes de mergear la capa de worktrees: la app crea un repositorio de ejemplo desechable con worktrees en todos los estados y abre un agente con un prompt preparado que guía al usuario por cada funcionalidad (estado, limpieza, provisionado, el CLI, los hooks, el entorno y los providers), paso a paso.
 
-### 4. Provisionado Android, KMP y JVM
+### 6. Provisionado Android, KMP y JVM
 
 Provisionado para los stacks en los que un worktree recién creado está más lejos de compilar:
 
 - `local.properties`, keystores y `google-services.json`.
+- Seguimientos de las carpetas locales: enlazar una carpeta local en vez de copiarla, patrones glob en la lista local, avisar de los enlaces simbólicos que una carpeta omite y borrar del worktree los archivos eliminados de la carpeta base.
 - Mostrar los emuladores que arranca ShogunAi dentro de la ventana Running Devices de Android Studio, como los que arranca el propio Android Studio, para poder ordenar varios en una sola ventana. Necesita un spike: Android Studio podría incrustar un emulador externo arrancado con las mismas opciones que usa él.
 
 ## En estudio

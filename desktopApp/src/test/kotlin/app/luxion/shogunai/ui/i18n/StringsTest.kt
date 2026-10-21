@@ -107,6 +107,20 @@ class StringsTest {
     }
 
     @Test
+    fun `the local files strings mention folders in both languages`() {
+        val english = EnglishStrings
+        val spanish = SpanishStrings
+
+        assertTrue(english.removeLocalFile.contains("folder"))
+        assertTrue(spanish.removeLocalFile.contains("carpeta"))
+        assertTrue(english.selectLocalFilesDialogTitle.contains("folders"))
+        assertTrue(spanish.selectLocalFilesDialogTitle.contains("carpetas"))
+        assertTrue(english.localFilesDescription.contains("folder"))
+        assertTrue(spanish.localFilesDescription.contains("carpeta"))
+        assertNotEquals(english.newLocalFileLabel, spanish.newLocalFileLabel)
+    }
+
+    @Test
     fun `the worktree view strings are translated and differ between languages`() {
         val english = EnglishStrings
         val spanish = SpanishStrings

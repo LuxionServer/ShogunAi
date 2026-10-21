@@ -1,7 +1,10 @@
 package app.luxion.shogunai.domain.model
 
 import kotlinx.serialization.Serializable
+import java.time.Duration
 import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 enum class ResourceKind { EMULATOR, IOS_SIMULATOR, GRADLE_DAEMON }
 
@@ -31,14 +34,27 @@ data class ResourceSettings(
     val profile: CapacityProfile = CapacityProfile.AUTOMATIC,
     val custom: ResourceLimits = ResourceLimits.LIGHT,
     val derivedDataQuotaGigabytes: Int? = null,
+    val leaseMinutes: Int = DEFAULT_LEASE_MINUTES,
 ) {
+    val leaseDuration: Duration
+        get() = Duration.ofMinutes(leaseMinutes.takeIf { it > 0 }?.toLong() ?: DEFAULT_LEASE_MINUTES.toLong())
+
+
     val derivedDataQuotaBytes: Long?
         get() = derivedDataQuotaGigabytes?.takeIf { it > 0 }?.let { it * BYTES_PER_GIGABYTE }
 }
 
+const val DEFAULT_LEASE_MINUTES = 20
+
 const val BYTES_PER_GIGABYTE = 1024L * 1024 * 1024
 
 enum class PoolHolderState { STOPPED, BOOTING, RUNNING, SHUTDOWN, BOOTED, BUSY, IDLE, UNKNOWN }
+
+enum class HolderProtection { AGENT_WORKING, LEASED }
+
+fun Instant.toLocalClockTime(): String = CLOCK_TIME.format(this)
+
+private val CLOCK_TIME = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault())
 
 data class PoolHolder(
     val kind: ResourceKind,
@@ -48,7 +64,17 @@ data class PoolHolder(
     val idle: Boolean,
     val lastUsed: Instant?,
     val reference: String? = null,
+    val leaseExpiresAt: Instant? = null,
+    val agentState: AgentState? = null,
+    val releaseRank: Int? = null,
 ) {
+    val protection: HolderProtection?
+        get() = when {
+            agentState == AgentState.WORKING -> HolderProtection.AGENT_WORKING
+            releaseRank == null && leaseExpiresAt != null && state != PoolHolderState.BOOTING -> HolderProtection.LEASED
+            else -> null
+        }
+
     val displayName: String
         get() {
             val repository = adminDirectory?.substringBefore("/.git")?.substringAfterLast('/').orEmpty()
@@ -66,6 +92,12 @@ data class PoolUsage(
     val inUse: Int get() = holders.size
     val isOverLimit: Boolean get() = effectiveLimit != null && inUse > effectiveLimit
 }
+
+data class ReleaseRecord(
+    val releasedAt: Long,
+    val forWorktree: String,
+    val previous: String? = null,
+)
 
 data class PoolRelease(
     val kind: ResourceKind,

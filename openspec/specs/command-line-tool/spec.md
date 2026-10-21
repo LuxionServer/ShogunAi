@@ -261,18 +261,34 @@ With `--yes`, `shogun clean --stop-gradle-daemons` SHALL also stop the idle Grad
 - **THEN** an error is printed on standard error and the command exits with code 1
 
 ### Requirement: Deliver the environment through Claude Code's SessionStart hook
-`shogun hook session-start` SHALL read the hook's JSON from standard input, resolve the environment of the worktree containing its `cwd` field, append one `export` line per variable to the file named by `CLAUDE_ENV_FILE`, and print a single line of context naming the variables and their values. With an empty environment it SHALL write and print nothing and exit with code 0.
+`shogun hook session-start` SHALL read the hook's JSON from standard input and, inside a Git repository, resolve the environment of the worktree containing its `cwd` field, append one `export` line per variable to the file named by `CLAUDE_ENV_FILE`, and print the context: a line naming the variables and their values when there are any, followed by the short workflow rules of `shogun guide` that apply to that location. Outside a Git repository it SHALL write and print nothing and exit with code 0.
 
 #### Scenario: Session in a worktree
 - **WHEN** Claude Code starts a session in a worktree whose `PORT` resolves to 20001
-- **THEN** `export PORT='20001'` is appended to `$CLAUDE_ENV_FILE` and the context line says this worktree uses `PORT=20001`
+- **THEN** `export PORT='20001'` is appended to `$CLAUDE_ENV_FILE`, the context says this worktree uses `PORT=20001` and includes the rule not to change the worktree's branch
 
 #### Scenario: No environment file variable
 - **WHEN** `CLAUDE_ENV_FILE` isn't set
-- **THEN** only the context line is printed and the command exits with code 0
+- **THEN** only the context is printed and the command exits with code 0
 
 #### Scenario: Repository without environment
 - **WHEN** the repository declares no `env`
+- **THEN** nothing is written to `$CLAUDE_ENV_FILE`, the context has the workflow rules but no variables line, and the command exits with code 0
+
+#### Scenario: Main checkout
+- **WHEN** Claude Code starts a session in the repository's main checkout
+- **THEN** the context says to create a worktree with `shogun new` for each change and not to change the checkout's branch
+
+#### Scenario: Herdr not available
+- **WHEN** Herdr isn't installed or its server isn't running
+- **THEN** the context has no rule about `shogun open --herdr` nor about messaging other sessions
+
+#### Scenario: Short context
+- **WHEN** a session starts in a worktree of a repository with every provider declared
+- **THEN** the workflow rules in the context take at most ten lines and end with how to read the rest with `shogun guide`
+
+#### Scenario: Not a repository
+- **WHEN** the `cwd` isn't inside a Git repository
 - **THEN** nothing is written or printed and the command exits with code 0
 
 #### Scenario: Invalid declaration
@@ -742,3 +758,67 @@ Session records SHALL be stored in the worktree's Git administrative folder, so 
 #### Scenario: Provider not active
 - **WHEN** the repository doesn't declare the Xcode provider
 - **THEN** it says the provider isn't active and exits with `0`
+
+### Requirement: Show the detected stacks from the command line
+`shogun stacks` SHALL print one line per stack detected in the repository with its evidence and, per suggested provider, whether the repository already declares it. Providers not supported by the platform SHALL NOT be suggested. It SHALL change nothing and exit with code 0 when no stack is detected.
+
+#### Scenario: Stacks detected
+- **WHEN** the user runs `shogun stacks` in a repository with `pom.xml` that declares no provider
+- **THEN** the output lists Maven with `pom.xml` and the suggested provider `maven`
+
+#### Scenario: Already declared
+- **WHEN** the repository already declares the `maven` provider
+- **THEN** the output shows it as declared and not as a suggestion
+
+#### Scenario: Nothing detected
+- **WHEN** no stack is detected
+- **THEN** the command says so and exits with code 0
+
+#### Scenario: Outside a repository
+- **WHEN** the user runs `shogun stacks` outside any Git repository
+- **THEN** an error on standard error says so and the command exits with code 1
+
+### Requirement: List Maven daemons from the command line
+`shogun maven` SHALL print one line per Maven daemon with its process id, memory and, inside a Git repository, its worktree, followed by the total memory. It SHALL work outside a Git repository.
+
+#### Scenario: Daemons running
+- **WHEN** the user runs `shogun maven` while two Maven daemons run
+- **THEN** each has a line with its memory and worktree, and the total memory is printed
+
+#### Scenario: No daemons
+- **WHEN** no Maven daemon is running
+- **THEN** the command says so and exits with code 0
+
+### Requirement: List and take down Compose projects from the command line
+`shogun compose` SHALL print one line per Compose project of the repository's worktrees with its status and worktree. `shogun compose down` SHALL take down the projects of removed worktrees, and `shogun compose down <worktree>` the project of the given worktree, both keeping volumes unless `--volumes` is given. It SHALL report what was taken down and what failed with the reason, and exit with code 1 when the given worktree doesn't exist or the repository doesn't declare the provider.
+
+#### Scenario: List
+- **WHEN** the user runs `shogun compose` and two projects exist
+- **THEN** each has a line with its status and worktree
+
+#### Scenario: Take down orphans
+- **WHEN** the user runs `shogun compose down` and the project of a removed worktree exists
+- **THEN** that project is taken down, volumes are kept and the output says so
+
+#### Scenario: Remove volumes
+- **WHEN** the user runs `shogun compose down --volumes`
+- **THEN** the volumes of the projects taken down are removed too
+
+#### Scenario: Provider not declared
+- **WHEN** the repository doesn't declare the Compose provider
+- **THEN** an error on standard error says so, Docker isn't run and the command exits with code 1
+
+### Requirement: Take down Compose projects when cleaning up from the command line
+With `--yes`, `shogun clean --down-compose-projects` SHALL also take down the Compose projects of the removed worktrees, keeping their volumes, and report how many were taken down and how many failed. Without the option no project SHALL be taken down.
+
+#### Scenario: Projects of removed worktrees
+- **WHEN** the user runs `shogun clean --yes --down-compose-projects` and a removed worktree had a project
+- **THEN** that project is taken down and the output says so
+
+#### Scenario: Without the option
+- **WHEN** the user runs `shogun clean --yes`
+- **THEN** no Compose project is taken down
+
+#### Scenario: Option without confirmation
+- **WHEN** the user runs `shogun clean --down-compose-projects` without `--yes`
+- **THEN** nothing is removed or taken down, and the output also lists the projects that would be taken down

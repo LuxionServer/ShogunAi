@@ -35,6 +35,15 @@ class JsonResourceLimitsRepositoryTest {
     }
 
     @Test
+    fun `the lease duration defaults to 20 minutes and survives a save`() {
+        assertEquals(20, repository.load().leaseMinutes)
+
+        repository.save(ResourceSettings(leaseMinutes = 45))
+
+        assertEquals(45, repository.load().leaseMinutes)
+    }
+
+    @Test
     fun `an unreadable file reads as Automatic`() {
         storagePath.writeText("{ not json")
         assertEquals(CapacityProfile.AUTOMATIC, repository.load().profile)

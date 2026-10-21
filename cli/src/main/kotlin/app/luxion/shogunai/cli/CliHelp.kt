@@ -50,18 +50,34 @@ internal object CliHelp {
 """.trimIndent(),
         "clean" to """
   clean [--yes] [--delete-branches] [--stop-gradle-daemons] [--stop-emulators] [--delete-simulators]
-        [--delete-derived-data] [--json]
+        [--delete-derived-data] [--down-compose-projects] [--json]
                               List merged or missing worktrees; remove them with --yes
                               (--stop-gradle-daemons / --stop-emulators: also stop their idle
                               Gradle daemons / their emulators; --delete-simulators: also delete
                               their iOS simulators and orphaned ShogunAi simulators;
                               --delete-derived-data: also delete orphaned Xcode DerivedData;
+                              --down-compose-projects: also take down the Docker Compose projects of
+                              the removed worktrees, keeping their volumes;
                               --json: print one JSON object instead of text)
 """.trimIndent(),
         "gradle" to """
   gradle [--json]             List the Gradle and Kotlin daemons with their memory, state and worktree
   gradle stop [<pid>...] [--json]
                               Stop idle daemons (all of them, or only the given ones); busy ones are kept
+""".trimIndent(),
+        "stacks" to """
+  stacks [--json]             Show the stacks detected in the repository (Gradle, Android, Xcode, Maven,
+                              Docker Compose) and the providers they suggest; nothing is changed
+""".trimIndent(),
+        "maven" to """
+  maven [--json]              List the Maven daemons (mvnd) with their memory and worktree
+""".trimIndent(),
+        "compose" to """
+  compose [--json]            List the Docker Compose projects of the worktrees with their status
+  compose down [<worktree>] [--volumes] [--json]
+                              Take down the projects of removed worktrees (or of the given worktree);
+                              volumes are kept unless --volumes is given
+                              (repositories with "providers": { "docker-compose": {} } in .shogunai.json)
 """.trimIndent(),
         "pool" to """
   pool status [--json]        Show the emulator, iOS simulator and Gradle daemon pools: the limit of the
@@ -77,7 +93,7 @@ internal object CliHelp {
         "hook" to """
   hook worktree-create        Claude Code WorktreeCreate hook: create and provision the worktree, print its path
   hook worktree-remove        Claude Code WorktreeRemove hook: remove the worktree, delete its branch if merged
-  hook session-start          Claude Code SessionStart hook: export the worktree's environment to the session
+  hook session-start          Claude Code SessionStart hook: export the worktree's environment and give the session ShogunAi's workflow rules
   hook agent-state            Claude Code UserPromptSubmit, Notification, Stop and SessionEnd hook: record the session's state
   hook herdr                  Herdr plugin hook: provision worktrees on worktree.created, delete merged branches on worktree.removed
 """.trimIndent(),
@@ -89,6 +105,20 @@ internal object CliHelp {
   hooks status [--json]
                               Say whether the hooks are installed, outdated or missing, in the user
                               settings and in the current repository's
+""".trimIndent(),
+        "guide" to """
+  guide [<topic>] [--plain]   Print ShogunAi's workflow rules for agents that apply here (topics: worktrees,
+                              parallel, resources, cleanup); the others are listed after them, marked with
+                              what they need; --plain prints every rule without looking at the directory
+  guide --migrate [--file <path>]
+                              Print every rule with its id and an instruction for an agent to propose,
+                              without applying, the lines of an AGENTS.md that repeat them
+  guide install|uninstall [--agent codex|gemini | --project | --file <path>] [--yes] [--json]
+                              Add or remove a block that points to 'shogun guide' in an agent's user-level
+                              instructions file, the repository's AGENTS.md or another file; shows what
+                              changes and asks first unless --yes is given
+  guide status [--file <path>] [--json]
+                              Say whether the block is installed, outdated or missing in each known file
 """.trimIndent(),
         "simulator" to """
   simulator start|stop|status [<path>] [--device <type>] [--runtime <runtime>] [--json]
