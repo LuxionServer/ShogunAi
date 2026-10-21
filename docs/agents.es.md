@@ -83,6 +83,7 @@ Los hooks `agent-state` registran si cada sesión de Claude está trabajando (`U
 - Conceder un permiso no dispara ningún hook. Una sesión bloqueada cuyo transcript se escribe después se lee como trabajando, así que el estado sigue a la concesión del permiso.
 - Cuando Herdr también informa del agente, se usa el estado de Herdr.
 - Los demás agentes (Codex, Gemini…) no tienen esos hooks y se muestran sin estado salvo que Herdr los informe.
+- Estas sesiones registradas también protegen el emulador y el simulador de un worktree: una sesión trabajando renueva la concesión del dispositivo y nunca se le libera por debajo, mientras que una bloqueada se libera la última. Los estados de Herdr no se usan para esto. Ver [Providers](guide/providers.md).
 
 ## Herdr
 

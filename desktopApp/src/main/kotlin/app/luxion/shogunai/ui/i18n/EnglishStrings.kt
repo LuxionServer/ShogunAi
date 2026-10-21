@@ -435,6 +435,11 @@ object EnglishStrings : Strings {
     override val noQuota = "No quota"
     override val gigabytesUnit = "GB"
     override val invalidQuota = "Must be a positive whole number, or no quota"
+    override val leaseDurationLabel = "Device lease"
+    override val minutesUnit = "min"
+    override val invalidLeaseDuration = "Must be a positive whole number of minutes"
+    override val leaseDurationHint = "How long a worktree keeps its emulator or simulator after its last activity before another worktree can take it"
+    override fun releasedFor(worktree: String, time: String) = "Released for $worktree at $time"
     override val notAcquired = "Not acquired"
     override fun poolUsage(inUse: Int, limit: Int?, profile: String) =
         (if (limit == null) "$inUse in use" else "$inUse of $limit in use") + " · $profile"

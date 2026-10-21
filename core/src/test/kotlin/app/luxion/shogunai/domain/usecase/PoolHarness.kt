@@ -10,6 +10,7 @@ import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.ResourceLimits
 import app.luxion.shogunai.domain.model.ResourceSettings
@@ -42,7 +43,19 @@ class PoolHarness(
 
     val resolve get() = ResolveWorktreeEnvironmentUseCase(git, source, store, portProbe, contributions)
 
-    val readPool get() = ReadResourcePoolUseCase(resolve, store, files, sdk, simulators, limits, ListGradleDaemonsUseCase(daemons, files))
+    var agentStates: Map<String, AgentState> = emptyMap()
+
+    val readPool get() = ReadResourcePoolUseCase(
+        resolve,
+        store,
+        files,
+        sdk,
+        simulators,
+        limits,
+        ListGradleDaemonsUseCase(daemons, files),
+        agentActivity = { agentStates[it] },
+        clock = { now },
+    )
 
     val acquire get() = AcquireWorktreeResourceUseCase(
         source,
@@ -51,6 +64,7 @@ class PoolHarness(
         store,
         portProbe,
         simulators,
+        sdk,
         readPool,
         { requested -> contributions.requesting(requested) },
         clock = { now },

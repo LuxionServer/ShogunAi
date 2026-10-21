@@ -9,6 +9,8 @@ import app.luxion.shogunai.domain.model.ResourceSettings
 import app.luxion.shogunai.domain.usecase.AcquireWorktreeResourceUseCase
 import app.luxion.shogunai.domain.usecase.DeviceStart
 import app.luxion.shogunai.domain.usecase.GradleTrim
+import app.luxion.shogunai.domain.usecase.ReadAgentActivityUseCase
+import app.luxion.shogunai.domain.usecase.ReadReleaseRecordUseCase
 import app.luxion.shogunai.domain.usecase.ReadResourcePoolUseCase
 import app.luxion.shogunai.domain.usecase.ResolveResourceLimitsUseCase
 import app.luxion.shogunai.domain.usecase.TrimDerivedDataUseCase
@@ -76,6 +78,7 @@ import app.luxion.shogunai.domain.model.SimulatorRuntime
 import app.luxion.shogunai.domain.model.SimulatorSettings
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeEmulator
+import app.luxion.shogunai.domain.model.ReleaseRecord
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.model.XcodeProvider
@@ -283,6 +286,7 @@ class AppContainer {
     private val resolveResourceLimits = ResolveResourceLimitsUseCase(resourceLimitsRepository, JvmMachineCapacity())
     private val listGradleDaemons = ListGradleDaemonsUseCase(gradleDaemonSource, fileManager)
     private val stopGradleDaemons = StopGradleDaemonsUseCase(gradleDaemonSource, shellCommandExecutor)
+    private val agentSessionStore = FileAgentSessionStore()
     private val readPool = ReadResourcePoolUseCase(
         resolveEnvironment,
         environmentStateStore,
@@ -291,6 +295,7 @@ class AppContainer {
         appleSimulators,
         resolveResourceLimits,
         listGradleDaemons,
+        agentActivity = ReadAgentActivityUseCase(agentSessionStore)::invoke,
     )
     private val acquireResource = AcquireWorktreeResourceUseCase(
         repositoryProvisioningSource,
@@ -299,6 +304,7 @@ class AppContainer {
         environmentStateStore,
         portProbe,
         appleSimulators,
+        androidSdk,
         readPool,
         { requested -> contributions.requesting(requested) },
     )
@@ -307,6 +313,7 @@ class AppContainer {
     private val startSimulator = StartWorktreeSimulatorUseCase(repositoryProvisioningSource, appleSimulators, acquireResource, resolveEnvironment)
     private val startEmulator = StartWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, acquireResource, androidSdk)
     private val stopEmulator = StopWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)
+    private val readReleaseRecord = ReadReleaseRecordUseCase(resolveEnvironment, environmentStateStore)
     private val readEmulatorStates = ReadEmulatorStatesUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)
 
     suspend fun loadAvds(repositoryPath: String): Result<List<String>> =
@@ -319,7 +326,7 @@ class AppContainer {
             RepositoryInspection(topLevel, mainBranch?.name)
         }
 
-    val detectRunningAgents = DetectRunningAgentsUseCase(shellCommandExecutor, herdrClient, FileAgentSessionStore())
+    val detectRunningAgents = DetectRunningAgentsUseCase(shellCommandExecutor, herdrClient, agentSessionStore)
 
     private val prepareEnvironment = PrepareWorktreeEnvironmentUseCase(
         resolveEnvironment,
@@ -421,6 +428,7 @@ class AppContainer {
             start = { worktreePath -> startEmulator(config, worktreePath) },
             stop = { worktreePath -> stopEmulator(config, worktreePath) },
             stopSerials = { serials -> runCatching { stopEmulator.stopSerials(config, serials) } },
+            readRelease = { worktreePath -> readReleaseRecord(worktreePath, ResourceKind.EMULATOR) },
         ),
         simulator = SimulatorUseCases(
             declared = { withContext(Dispatchers.IO) { simulatorSetup.isAvailable(config.baseRepositoryPath) } },
@@ -429,6 +437,7 @@ class AppContainer {
             stop = { worktreePath -> stopSimulator(config, worktreePath) },
             orphans = { deleteSimulators.orphans(config) },
             delete = { udids -> deleteSimulators(udids) },
+            readRelease = { worktreePath -> readReleaseRecord(worktreePath, ResourceKind.IOS_SIMULATOR) },
         ),
         tools = ToolUseCases(
             preferences = tools,
@@ -607,6 +616,7 @@ data class SimulatorUseCases(
     val stop: suspend (String) -> Result<WorktreeSimulator?>,
     val orphans: suspend () -> Result<List<SimulatorDevice>>,
     val delete: suspend (List<String>) -> Result<List<String>>,
+    val readRelease: suspend (String) -> ReleaseRecord? = { null },
 ) {
     companion object {
         val NONE = SimulatorUseCases(
@@ -686,6 +696,7 @@ data class EmulatorUseCases(
     val start: suspend (String) -> Result<DeviceStart<WorktreeEmulator>>,
     val stop: suspend (String) -> Result<WorktreeEmulator?>,
     val stopSerials: suspend (List<String>) -> Result<List<WorktreeEmulator>>,
+    val readRelease: suspend (String) -> ReleaseRecord? = { null },
 ) {
     companion object {
         val NONE = EmulatorUseCases(

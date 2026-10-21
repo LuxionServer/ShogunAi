@@ -1,6 +1,7 @@
 package app.luxion.shogunai.ui.worktree
 
 import app.luxion.shogunai.domain.usecase.ResourceAcquisition
+import app.luxion.shogunai.domain.model.ReleaseRecord
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import androidx.compose.runtime.getValue
@@ -163,6 +164,12 @@ class ProjectWorktrees(
     var isEmulatorRepository by mutableStateOf(false)
         private set
     var emulators by mutableStateOf<Map<String, WorktreeEmulator>>(emptyMap())
+        private set
+
+    var emulatorReleases by mutableStateOf<Map<String, ReleaseRecord>>(emptyMap())
+        private set
+
+    var simulatorReleases by mutableStateOf<Map<String, ReleaseRecord>>(emptyMap())
         private set
     var startingEmulators by mutableStateOf<Set<String>>(emptySet())
         private set
@@ -387,7 +394,13 @@ class ProjectWorktrees(
 
     private suspend fun loadSimulators(generation: Int, listed: List<Worktree>) {
         val loaded = useCases.simulator.readStates(listed).getOrNull() ?: return
-        if (generation == listGeneration) simulators = loaded
+        val releases = listed.filter { it.path !in loaded }.mapNotNull { worktree ->
+            useCases.simulator.readRelease(worktree.path)?.let { worktree.path to it }
+        }.toMap()
+        if (generation == listGeneration) {
+            simulators = loaded
+            simulatorReleases = releases
+        }
     }
 
     private suspend fun deleteSimulatorsAfterCleanup(ofRemoved: List<String>, knownOrphans: List<SimulatorDevice>): Int {
@@ -443,7 +456,13 @@ class ProjectWorktrees(
 
     private suspend fun loadEmulators(generation: Int, listed: List<Worktree>) {
         val loaded = useCases.emulator.readStates(listed).getOrNull() ?: return
-        if (generation == listGeneration) emulators = loaded
+        val releases = listed.filter { it.path !in loaded }.mapNotNull { worktree ->
+            useCases.emulator.readRelease(worktree.path)?.let { worktree.path to it }
+        }.toMap()
+        if (generation == listGeneration) {
+            emulators = loaded
+            emulatorReleases = releases
+        }
     }
 
     fun startEmulator(worktree: Worktree) {

@@ -40,6 +40,8 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.Worktree
+import app.luxion.shogunai.domain.model.ReleaseRecord
+import app.luxion.shogunai.domain.model.toLocalClockTime
 import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.model.WorktreeStatus
@@ -224,6 +226,8 @@ fun WorktreeDetailPane(
         EnvironmentSection(viewModel.environments[worktree.path], viewModel.ports[worktree.path].orEmpty())
         DevicesSection(
             emulator = viewModel.emulators[worktree.path],
+            emulatorRelease = viewModel.emulatorReleases[worktree.path],
+            simulatorRelease = viewModel.simulatorReleases[worktree.path],
             showEmulator = viewModel.isEmulatorRepository && !worktree.isPrunable,
             isStartingEmulator = worktree.path in viewModel.startingEmulators,
             isStoppingEmulator = worktree.path in viewModel.stoppingEmulators,
@@ -337,6 +341,8 @@ fun environmentAsDotenv(environment: WorktreeEnvironment): String =
 @Composable
 private fun ColumnScope.DevicesSection(
     emulator: WorktreeEmulator?,
+    emulatorRelease: ReleaseRecord?,
+    simulatorRelease: ReleaseRecord?,
     showEmulator: Boolean,
     isStartingEmulator: Boolean,
     isStoppingEmulator: Boolean,
@@ -354,10 +360,10 @@ private fun ColumnScope.DevicesSection(
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         SectionTitle(strings.devicesTitle)
         if (showEmulator) {
-            EmulatorValue(emulator, isStartingEmulator, isStoppingEmulator, strings, onStartEmulator, onStopEmulator)
+            EmulatorValue(emulator, emulatorRelease, isStartingEmulator, isStoppingEmulator, strings, onStartEmulator, onStopEmulator)
         }
         if (showSimulator) {
-            SimulatorValue(simulator, isStartingSimulator, isStoppingSimulator, strings, onStartSimulator, onStopSimulator)
+            SimulatorValue(simulator, simulatorRelease, isStartingSimulator, isStoppingSimulator, strings, onStartSimulator, onStopSimulator)
         }
     }
 }
@@ -390,6 +396,7 @@ private fun ColumnScope.MutedText(text: String) {
 @Composable
 private fun ColumnScope.EmulatorValue(
     emulator: WorktreeEmulator?,
+    release: ReleaseRecord?,
     isStarting: Boolean,
     isStopping: Boolean,
     strings: Strings,
@@ -413,11 +420,13 @@ private fun ColumnScope.EmulatorValue(
             NeutralTextButton(onClick = onStop) { Text(strings.stopEmulator, style = MaterialTheme.typography.bodySmall) }
         }
     }
+    ReleaseNote(emulator == null, release, strings)
 }
 
 @Composable
 private fun ColumnScope.SimulatorValue(
     simulator: WorktreeSimulator?,
+    release: ReleaseRecord?,
     isStarting: Boolean,
     isStopping: Boolean,
     strings: Strings,
@@ -441,6 +450,13 @@ private fun ColumnScope.SimulatorValue(
             NeutralTextButton(onClick = onStop) { Text(strings.stopSimulator, style = MaterialTheme.typography.bodySmall) }
         }
     }
+    ReleaseNote(simulator == null, release, strings)
+}
+
+@Composable
+private fun ColumnScope.ReleaseNote(notAcquired: Boolean, release: ReleaseRecord?, strings: Strings) {
+    if (!notAcquired || release == null) return
+    MutedText(strings.releasedFor(release.forWorktree, Instant.ofEpochMilli(release.releasedAt).toLocalClockTime()))
 }
 
 fun statusSegments(status: WorktreeStatus, mainBranchName: String?, now: Instant, strings: Strings): List<String> =

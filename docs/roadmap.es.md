@@ -24,7 +24,11 @@ Numerados en el orden en que se abordarán: el número es la prioridad.
 
 El proyecto creció alrededor de Android. Este punto revisa la cobertura de los demás stacks (iOS y Xcode, backends JVM) y de los IDEs en los que se puede abrir un worktree. Empieza con una exploración para decidir qué falta antes de dividirlo en cambios. También cubre "Abrir en Claude Desktop" fuera de macOS: no está verificado que su enlace `claude://code/new?folder=` admita una carpeta en Windows.
 
-### 2. Pendientes de los cambios del 2026-10-19
+### 2. Esperar capacidad de dispositivos
+
+`shogun emulator start --wait` (y su equivalente para simuladores): en vez de fallar cuando todos los emuladores están protegidos por una concesión, esperar en cola hasta que se libere capacidad. Se apoya en las concesiones de dispositivos, que ya indican cuándo caduca cada una.
+
+### 3. Pendientes de los cambios del 2026-10-19
 
 La revisión de todo el proyecto del 2026-10-19 y los cambios hechos a partir de ella están archivados. Estos pendientes quedaron fuera de ellos:
 
@@ -39,7 +43,7 @@ La revisión de todo el proyecto del 2026-10-19 y los cambios hechos a partir de
 - Estados de agente para agentes distintos de Claude Code (Codex, Gemini…), que hoy no tienen hooks equivalentes.
 - Encontrar la causa raíz de los errores que cerraban la ventana de Preferencias, a partir de las entradas que el aislamiento deja ahora en el registro de diagnóstico, y del crash nativo visto en otra máquina que dejó un informe de diagnóstico vacío.
 
-### 3. Pendientes de la guía de flujo para agentes
+### 4. Pendientes de la guía de flujo para agentes
 
 Las reglas de flujo llegan a los agentes mediante `shogun guide`, el hook `SessionStart` y un bloque en `AGENTS.md`. Quedó fuera:
 
@@ -47,11 +51,11 @@ Las reglas de flujo llegan a los agentes mediante `shogun guide`, el hook `Sessi
 - Registrar la ref de origen de cada worktree, para que la regla de elegir la base de una pull request pudiera responderla `shogun` en lugar de seguir siendo una política del equipo.
 - Los ficheros de usuario de otros agentes, a medida que su documentación los confirme (Cursor guarda hoy las reglas de usuario en sus ajustes).
 
-### 4. Demo guiada de bienvenida
+### 5. Demo guiada de bienvenida
 
 Un recorrido de primer uso basado en la revisión hecha antes de mergear la capa de worktrees: la app crea un repositorio de ejemplo desechable con worktrees en todos los estados y abre un agente con un prompt preparado que guía al usuario por cada funcionalidad (estado, limpieza, provisionado, el CLI, los hooks, el entorno y los providers), paso a paso.
 
-### 5. Provisionado Android, KMP y JVM
+### 6. Provisionado Android, KMP y JVM
 
 Provisionado para los stacks en los que un worktree recién creado está más lejos de compilar:
 

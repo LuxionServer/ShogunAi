@@ -3,6 +3,7 @@ package app.luxion.shogunai.infrastructure
 import app.luxion.shogunai.domain.io.EnvironmentStateStore
 import app.luxion.shogunai.domain.io.PortProbe
 import app.luxion.shogunai.domain.io.WorktreeReservations
+import app.luxion.shogunai.domain.model.ReleaseRecord
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -59,9 +60,43 @@ class NioEnvironmentStateStore(
     override fun writeLastUsed(adminDirectory: String, lastUsed: Map<String, Long>) =
         writeField(adminDirectory, LAST_USED_FIELD, lastUsed.mapValues { JsonPrimitive(it.value) })
 
+    override fun readLeases(adminDirectory: String): Map<String, Long> {
+        val times = readObject(stateFile(Path.of(adminDirectory)))[LEASES_FIELD] as? JsonObject ?: return emptyMap()
+        return times.mapNotNull { (key, value) -> (value as? JsonPrimitive)?.longOrNull?.let { key to it } }.toMap()
+    }
+
+    override fun writeLeases(adminDirectory: String, leases: Map<String, Long>) =
+        writeField(adminDirectory, LEASES_FIELD, leases.mapValues { JsonPrimitive(it.value) })
+
+    override fun readReleases(adminDirectory: String): Map<String, ReleaseRecord> {
+        val records = readObject(stateFile(Path.of(adminDirectory)))[RELEASES_FIELD] as? JsonObject ?: return emptyMap()
+        return records.mapNotNull { (key, value) ->
+            val record = value as? JsonObject ?: return@mapNotNull null
+            val releasedAt = (record[RELEASED_AT_FIELD] as? JsonPrimitive)?.longOrNull ?: return@mapNotNull null
+            val forWorktree = (record[FOR_WORKTREE_FIELD] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return@mapNotNull null
+            val previous = (record[PREVIOUS_FIELD] as? JsonPrimitive)?.takeIf { it.isString }?.content
+            key to ReleaseRecord(releasedAt, forWorktree, previous)
+        }.toMap()
+    }
+
+    override fun writeReleases(adminDirectory: String, releases: Map<String, ReleaseRecord>) =
+        writeField(
+            adminDirectory,
+            RELEASES_FIELD,
+            releases.mapValues { (_, record) ->
+                JsonObject(
+                    buildMap {
+                        put(RELEASED_AT_FIELD, JsonPrimitive(record.releasedAt))
+                        put(FOR_WORKTREE_FIELD, JsonPrimitive(record.forWorktree))
+                        record.previous?.let { put(PREVIOUS_FIELD, JsonPrimitive(it)) }
+                    },
+                )
+            },
+        )
+
     override fun reservationsOnMachine(commonDirectory: String): List<WorktreeReservations> =
         machineAdminDirectories(commonDirectory).map { admin ->
-            WorktreeReservations(admin, readPorts(admin), readResources(admin), readLastUsed(admin))
+            WorktreeReservations(admin, readPorts(admin), readResources(admin), readLastUsed(admin), readLeases(admin), readReleases(admin))
         }
 
     override fun reservedPortsOnMachine(commonDirectory: String): Set<Int> =
@@ -70,7 +105,7 @@ class NioEnvironmentStateStore(
     override fun recordedResourcesOnMachine(commonDirectory: String, key: String): Set<String> =
         machineAdminDirectories(commonDirectory).mapNotNull { readResources(it)[key] }.toSet()
 
-    private fun writeField(adminDirectory: String, field: String, values: Map<String, JsonPrimitive>) {
+    private fun writeField(adminDirectory: String, field: String, values: Map<String, JsonElement>) {
         val file = stateFile(Path.of(adminDirectory))
         val state = readObject(file)
         val updated = if (values.isEmpty()) JsonObject(state - field) else JsonObject(state + (field to JsonObject(values)))
@@ -148,6 +183,11 @@ class NioEnvironmentStateStore(
         private const val PORTS_FIELD = "ports"
         private const val RESOURCES_FIELD = "resources"
         private const val LAST_USED_FIELD = "lastUsed"
+        private const val LEASES_FIELD = "leases"
+        private const val RELEASES_FIELD = "releases"
+        private const val RELEASED_AT_FIELD = "releasedAt"
+        private const val FOR_WORKTREE_FIELD = "forWorktree"
+        private const val PREVIOUS_FIELD = "previous"
         private const val WORKTREES_FIELD = "worktrees"
         private val processLock = ReentrantLock()
     }

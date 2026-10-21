@@ -115,8 +115,9 @@ object WorkflowRules {
         WorkflowRule(
             "resources.emulator",
             WorkflowTopic.RESOURCES,
-            "Start the worktree's Android emulator with `shogun emulator start` before installing the app or running instrumented tests; " +
-                "`shogun emulator status` shows it, and ANDROID_SERIAL is the one to use.",
+            "Run `shogun emulator start` before every use of the worktree's Android emulator (installing the app, running instrumented tests): " +
+                "it may have been released to another worktree since the session began, and the command re-acquires one and prints the ANDROID_SERIAL to use. " +
+                "`shogun emulator status` shows it.",
             WorkflowCondition.EMULATOR_PROVIDER,
             inSessionStart = true,
         ),

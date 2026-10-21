@@ -357,6 +357,11 @@ interface Strings {
     val noQuota: String
     val gigabytesUnit: String
     val invalidQuota: String
+    val leaseDurationLabel: String
+    val minutesUnit: String
+    val invalidLeaseDuration: String
+    val leaseDurationHint: String
+    fun releasedFor(worktree: String, time: String): String
     val notAcquired: String
     fun poolUsage(inUse: Int, limit: Int?, profile: String): String
     val overLimit: String

@@ -154,4 +154,38 @@ class ResourcesSectionUiTest {
 
         assertEquals(0, onAllNodesWithText("DerivedData quota").fetchSemanticsNodes().size)
     }
+
+    @Test
+    fun `the lease duration shows its default and stores a new value immediately`() = runComposeUiTest {
+        show(preferences(showsQuota = false))
+
+        onNodeWithText("Device lease").assertIsDisplayed()
+        onNodeWithText("20").assertIsDisplayed()
+        onAllNodes(hasSetTextAction())[0].performTextClearance()
+        onAllNodes(hasSetTextAction())[0].performTextInput("30")
+
+        assertEquals(30, repository.settings.leaseMinutes)
+    }
+
+    @Test
+    fun `an invalid lease duration shows the message and keeps the previous one`() = runComposeUiTest {
+        repository.settings = repository.settings.copy(leaseMinutes = 25)
+        show(preferences(showsQuota = false))
+
+        onAllNodes(hasSetTextAction())[0].performTextClearance()
+        onAllNodes(hasSetTextAction())[0].performTextInput("0")
+
+        onNodeWithText("Must be a positive whole number of minutes").assertIsDisplayed()
+        assertEquals(25, repository.settings.leaseMinutes)
+    }
+
+    @Test
+    fun `changing the profile keeps the lease duration`() = runComposeUiTest {
+        repository.settings = repository.settings.copy(leaseMinutes = 25)
+        show(preferences())
+
+        onNodeWithText("Light").performClick()
+
+        assertEquals(25, repository.settings.leaseMinutes)
+    }
 }
