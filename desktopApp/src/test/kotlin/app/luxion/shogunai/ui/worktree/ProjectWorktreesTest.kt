@@ -3054,6 +3054,7 @@ class ProjectWorktreesTest {
         val terminals = mutableListOf<Pair<String, TerminalId>>()
         val editors = mutableListOf<Pair<String, EditorId>>()
         val folders = mutableListOf<String>()
+        val claudeDesktop = mutableListOf<String>()
         var failure: Throwable? = null
     }
 
@@ -3072,6 +3073,7 @@ class ProjectWorktreesTest {
             openInTerminal = { path, terminal, _ -> calls.terminals += path to terminal; calls.failure?.let { Result.failure(it) } ?: Result.success(Unit) },
             openInEditor = { path, editor -> calls.editors += path to editor; calls.failure?.let { Result.failure(it) } ?: Result.success(Unit) },
             openFolder = { path -> calls.folders += path; calls.failure?.let { Result.failure(it) } ?: Result.success(Unit) },
+            openInClaudeDesktop = { path -> calls.claudeDesktop += path; calls.failure?.let { Result.failure(it) } ?: Result.success(Unit) },
         )
         val holder = projectWorktrees(useCases(listingResponder()).copy(tools = tools))
         return holder to repository
@@ -3097,6 +3099,49 @@ class ProjectWorktreesTest {
             ),
             actions.map { it.kind to it.label },
         )
+    }
+
+    @Test
+    fun `Claude Desktop is offered after the IDE and before the folder when detected`() = runTest(dispatcher) {
+        val (holder) = withTools(installed.copy(claudeDesktop = true), chosenTerminal = TerminalId.ITERM2)
+        advanceUntilIdle()
+
+        val actions = holder.openActions(holder.worktrees.first { it.path == worktreePath }, EnglishStrings)
+
+        assertEquals(
+            listOf(OpenKind.TERMINAL, OpenKind.EDITOR, OpenKind.CLAUDE_DESKTOP, OpenKind.FOLDER),
+            actions.map { it.kind },
+        )
+        assertEquals("Open in Claude Desktop", actions.first { it.kind == OpenKind.CLAUDE_DESKTOP }.label)
+    }
+
+    @Test
+    fun `Claude Desktop isn't offered when it isn't detected or the folder is missing`() = runTest(dispatcher) {
+        val (missingApp) = withTools(installed)
+        val (prunable) = withTools(installed.copy(claudeDesktop = true))
+        advanceUntilIdle()
+
+        val offered = missingApp.openActions(missingApp.worktrees.first { it.path == worktreePath }, EnglishStrings)
+
+        assertTrue(offered.none { it.kind == OpenKind.CLAUDE_DESKTOP })
+        assertTrue(prunable.openActions(Worktree(path = worktreePath, branch = null, isPrunable = true), EnglishStrings).isEmpty())
+    }
+
+    @Test
+    fun `opening in Claude Desktop calls the launcher with the worktree path and records a failure`() = runTest(dispatcher) {
+        val calls = ToolCalls()
+        val (holder) = withTools(installed.copy(claudeDesktop = true), calls = calls)
+        advanceUntilIdle()
+        val target = holder.worktrees.first { it.path == worktreePath }
+
+        holder.open(target, OpenKind.CLAUDE_DESKTOP)
+        advanceUntilIdle()
+        calls.failure = WorktreeError.ClaudeDesktopLaunchFailed("boom")
+        holder.open(target, OpenKind.CLAUDE_DESKTOP)
+        advanceUntilIdle()
+
+        assertEquals(listOf(worktreePath, worktreePath), calls.claudeDesktop)
+        assertIs<WorktreeError.ClaudeDesktopLaunchFailed>(holder.actionErrors[worktreePath])
     }
 
     @Test

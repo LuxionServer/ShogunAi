@@ -1,11 +1,13 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.io.ClaudeDesktopLauncher
 import app.luxion.shogunai.domain.io.EditorLauncher
 import app.luxion.shogunai.domain.io.FolderLauncher
 import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.WorktreeError
+import java.net.URLEncoder
 
 class CommandEditorLauncher(
     override val editor: EditorId,
@@ -72,5 +74,31 @@ class SystemFolderLauncher(
         HostOs.MACOS -> listOf("open", path)
         HostOs.WINDOWS -> listOf("explorer.exe", path)
         HostOs.LINUX -> listOf("xdg-open", path)
+    }
+}
+
+class MacClaudeDesktopLauncher(
+    private val executor: ShellCommandExecutor,
+    private val os: HostOs = HostOs.current(),
+) : ClaudeDesktopLauncher {
+
+    override suspend fun open(path: String): Result<Unit> = runCatching {
+        if (os != HostOs.MACOS) throw WorktreeError.ClaudeDesktopLaunchFailed("it can't be opened on this system")
+        try {
+            executor.runTool(listOf("open", link(path)))
+        } catch (failure: ToolCommandFailed) {
+            throw WorktreeError.ClaudeDesktopLaunchFailed(failure.detail)
+        }
+        Unit
+    }
+
+    companion object {
+        const val NEW_SESSION_LINK = "claude://code/new"
+        const val SOURCE = "shogunai"
+
+        fun link(path: String): String {
+            val folder = URLEncoder.encode(path, Charsets.UTF_8).replace("+", "%20")
+            return "$NEW_SESSION_LINK?folder=$folder&source=$SOURCE"
+        }
     }
 }

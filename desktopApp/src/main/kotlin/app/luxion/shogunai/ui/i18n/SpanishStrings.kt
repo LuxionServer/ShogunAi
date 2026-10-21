@@ -508,6 +508,7 @@ object SpanishStrings : Strings {
     override val noTerminalFound = "No se ha encontrado ningún terminal compatible"
     override val noEditorFound = "No se ha encontrado ningún IDE compatible"
     override fun openInTool(name: String) = "Abrir en $name"
+    override val claudeDesktopName = "Claude Desktop"
     override val openFolder = "Abrir carpeta"
     override val chooseTerminalTitle = "Elige un terminal"
     override val chooseTerminalMessage = "Los worktrees se abrirán en el terminal que elijas. Puedes cambiarlo después en Preferencias."

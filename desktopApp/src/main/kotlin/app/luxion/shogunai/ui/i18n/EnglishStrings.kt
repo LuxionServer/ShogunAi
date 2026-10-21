@@ -507,6 +507,7 @@ object EnglishStrings : Strings {
     override val noTerminalFound = "No supported terminal found"
     override val noEditorFound = "No supported IDE found"
     override fun openInTool(name: String) = "Open in $name"
+    override val claudeDesktopName = "Claude Desktop"
     override val openFolder = "Open folder"
     override val chooseTerminalTitle = "Choose a terminal"
     override val chooseTerminalMessage = "Worktrees will open in the terminal you choose. You can change it later in Preferences."

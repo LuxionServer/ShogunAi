@@ -26,7 +26,7 @@ El DerivedData es el único recurso de la máquina que se limita por disco y no 
 
 ### 2. Plataformas e IDEs más allá de Android
 
-El proyecto creció alrededor de Android. Este punto revisa la cobertura de los demás stacks (iOS y Xcode, backends JVM) y de los IDEs en los que se puede abrir un worktree. Empieza con una exploración para decidir qué falta antes de dividirlo en cambios.
+El proyecto creció alrededor de Android. Este punto revisa la cobertura de los demás stacks (iOS y Xcode, backends JVM) y de los IDEs en los que se puede abrir un worktree. Empieza con una exploración para decidir qué falta antes de dividirlo en cambios. También cubre "Abrir en Claude Desktop" fuera de macOS: no está verificado que su enlace `claude://code/new?folder=` admita una carpeta en Windows.
 
 ### 3. Pendientes de los cambios del 2026-10-19
 

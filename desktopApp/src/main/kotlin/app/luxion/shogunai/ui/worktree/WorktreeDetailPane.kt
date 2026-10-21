@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -158,7 +159,11 @@ fun WorktreeDetailPane(
         }
         val openActions = viewModel.openActions(worktree, strings)
         if (openActions.isNotEmpty()) {
-            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+                itemVerticalAlignment = Alignment.CenterVertically,
+            ) {
                 openActions.forEach { action ->
                     if (action.kind == OpenKind.FOLDER) {
                         IconAction(icon = Icons.Default.FolderOpen, label = action.label, onClick = action.onClick)

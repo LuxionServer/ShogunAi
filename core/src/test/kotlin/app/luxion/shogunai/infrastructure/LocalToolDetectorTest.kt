@@ -158,4 +158,20 @@ class LocalToolDetectorTest {
             assertEquals(emptyList(), tools.editors)
         }
     }
+
+    @Test
+    fun `finds Claude Desktop on macOS by bundle identifier or application folder`() = runTest {
+        assertEquals(true, detector(HostOs.MACOS, bundles = setOf("com.anthropic.claudefordesktop")).detect().claudeDesktop)
+        assertEquals(true, detector(HostOs.MACOS, directories = setOf("/Applications/Claude.app")).detect().claudeDesktop)
+        assertEquals(false, detector(HostOs.MACOS).detect().claudeDesktop)
+    }
+
+    @Test
+    fun `doesn't offer Claude Desktop on Windows or Linux`() = runTest {
+        val folders = setOf("/Applications/Claude.app")
+        val bundles = setOf("com.anthropic.claudefordesktop")
+
+        assertEquals(false, detector(HostOs.WINDOWS, directories = folders, bundles = bundles).detect().claudeDesktop)
+        assertEquals(false, detector(HostOs.LINUX, directories = folders, bundles = bundles).detect().claudeDesktop)
+    }
 }
