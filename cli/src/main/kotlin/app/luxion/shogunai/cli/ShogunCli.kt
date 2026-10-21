@@ -74,6 +74,12 @@ import app.luxion.shogunai.domain.usecase.HooksPreview
 import app.luxion.shogunai.domain.usecase.CheckGradleBuildCacheUseCase
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.CloseHerdrWorkspacesUseCase
+import app.luxion.shogunai.domain.usecase.DetectRepositoryStacksUseCase
+import app.luxion.shogunai.domain.usecase.ListComposeProjectsUseCase
+import app.luxion.shogunai.domain.usecase.ListMavenDaemonsUseCase
+import app.luxion.shogunai.domain.usecase.TakeDownComposeProjectsUseCase
+import app.luxion.shogunai.domain.usecase.totalMavenResidentMemory
+import app.luxion.shogunai.domain.usecase.worktreeComposeProjectName
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.DeleteMergedBranchUseCase
@@ -129,7 +135,15 @@ import app.luxion.shogunai.domain.usecase.classifyGitFailure
 import app.luxion.shogunai.domain.usecase.hint
 import app.luxion.shogunai.domain.usecase.selectCleanup
 import app.luxion.shogunai.domain.usecase.totalResidentMemory
+import app.luxion.shogunai.domain.io.ComposeProjectSource
+import app.luxion.shogunai.domain.io.MavenDaemonSource
+import app.luxion.shogunai.domain.model.ComposeOwner
+import app.luxion.shogunai.domain.model.MavenDaemon
+import app.luxion.shogunai.domain.model.suggestProviders
+import app.luxion.shogunai.domain.model.SuggestionReport
 import app.luxion.shogunai.infrastructure.CliHerdrClient
+import app.luxion.shogunai.infrastructure.DockerComposeProjectSource
+import app.luxion.shogunai.infrastructure.ProcessMavenDaemonSource
 import app.luxion.shogunai.infrastructure.FileAgentSessionStore
 import app.luxion.shogunai.infrastructure.FileKmpTestWiring
 import java.io.File
@@ -177,6 +191,8 @@ class ShogunCli(
     private val readAnswer: () -> String? = { null },
     private val sessionStore: AgentSessionStore = FileAgentSessionStore(),
     private val agentProcessId: () -> Long? = ::claudeAncestorPid,
+    private val mavenDaemonSource: MavenDaemonSource = ProcessMavenDaemonSource(executor),
+    private val composeSource: ComposeProjectSource = DockerComposeProjectSource(executor),
 ) {
     private val terminalApproval = PostCreateApproval { repository, commands ->
         if (confirm("${commandLines(repository, commands)}Run these commands? [y/N] ")) PostCreateDecision.RUN else PostCreateDecision.SKIP
@@ -280,6 +296,10 @@ class ShogunCli(
             CliCommand.HookWorktreeCreate -> hookWorktreeCreate()
             CliCommand.HookWorktreeRemove -> hookWorktreeRemove()
             is CliCommand.Gradle -> gradle(command)
+            is CliCommand.Stacks -> stacks(command)
+            is CliCommand.Maven -> maven(command)
+            is CliCommand.Compose -> compose(command)
+            is CliCommand.ComposeDown -> composeDown(command)
             is CliCommand.Env -> env(command)
             is CliCommand.Emulator -> emulator(command)
             is CliCommand.Simulator -> simulator(command)
@@ -660,6 +680,7 @@ class ShogunCli(
         val daemons = if (command.stopGradleDaemons) daemonsBeforeCleanup(worktrees) else emptyList()
         val emulators = if (command.stopEmulators) emulatorsBeforeCleanup(config, candidates) else emptyMap()
         val closeHerdrWorkspaces = CloseHerdrWorkspacesUseCase(config, herdr)
+        val downCompose = command.downComposeProjects && declaresCompose(config.baseRepositoryPath)
         if (!command.confirmed) {
             if (command.json) {
                 printJson(cleanJson(plan))
@@ -676,14 +697,23 @@ class ShogunCli(
             simulators.byWorktree.values.forEach { out.line("would delete simulator ${it.name} (${it.udid})") }
             simulators.orphans.forEach { out.line("would delete orphaned simulator ${it.name} (${it.udid})") }
             derivedDataOrphans.forEach { out.line("would delete orphaned DerivedData ${it.path}") }
+            if (downCompose) composeProjectsOf(config, candidates).forEach { out.line("would take down Compose project $it") }
             out.line(dryRunHint(command, candidates.size, simulators.orphans.isNotEmpty(), derivedDataOrphans.isNotEmpty()))
             return EXIT_OK
         }
-        val report = CleanUpWorktreesUseCase(config, executor, closeHerdrWorkspaces)(candidates, mainBranch, command.deleteBranches).getOrThrow()
+        val report = CleanUpWorktreesUseCase(config, executor, closeHerdrWorkspaces, composeSource)(
+            candidates,
+            mainBranch,
+            command.deleteBranches,
+            downComposeProjects = downCompose,
+        ).getOrThrow()
         report.removed.forEach { say("removed $it") }
         report.keptBranches.forEach { say("kept branch $it (not merged)") }
         report.failures.forEach { err.line("shogun: couldn't remove ${it.path}: ${it.error.message}") }
         report.herdrFailures.forEach { err.line(herdrCloseFailure(it.path, it.error)) }
+        report.composeDown?.takenDown?.forEach { say("took down Compose project $it") }
+        report.composeDown?.failures?.forEach { err.line("shogun: couldn't take down Compose project ${it.name}: ${it.detail}") }
+        report.composeUnavailable?.let { err.line("shogun: Docker isn't available ($it), so the Compose projects were kept") }
         val deletedBranches = if (command.deleteBranches) {
             candidates.filter { it.path in report.removed }.mapNotNull { it.branch }.filterNot { it in report.keptBranches }
         } else {
@@ -731,6 +761,7 @@ class ShogunCli(
                         emulatorsStopped = stoppedEmulators,
                         simulatorsDeleted = deletedSimulators,
                         derivedDataDeleted = derivedDataDeleted,
+                        composeProjectsDown = report.composeDown?.takenDown,
                     ),
                 ),
             )
@@ -745,6 +776,7 @@ class ShogunCli(
             "--stop-emulators".takeIf { command.stopEmulators },
             "--delete-simulators".takeIf { command.deleteSimulators },
             "--delete-derived-data".takeIf { command.deleteDerivedData },
+            "--down-compose-projects".takeIf { command.downComposeProjects },
             "--yes",
         )
         val what = listOfNotNull(
@@ -1155,6 +1187,136 @@ class ShogunCli(
             out.line(BUILD_CACHE_NOTICE)
         }
         return EXIT_OK
+    }
+
+    private suspend fun stacks(command: CliCommand.Stacks): Int {
+        val repository = ResolveRepositoryUseCase(executor)(workingDirectory).getOrThrow()
+        val detected = DetectRepositoryStacksUseCase(fileManager)(repository)
+        val declared = provisioningSource.read(repository).providers
+        val report = suggestProviders(detected, declared, isMac = derivedDataSource.isSupported())
+        if (command.json) {
+            printJson(stacksJson(detected, report))
+            return EXIT_OK
+        }
+        if (detected.isEmpty()) {
+            out.line("No known stack detected.")
+            return EXIT_OK
+        }
+        detected.forEach { stack ->
+            val providers = (report.suggestions + report.declared).filter { it.stack == stack.stack }.joinToString("  ") {
+                "${it.provider.id}=${if (it in report.declared) "declared" else "suggested"}"
+            }
+            out.line(listOf(stackLabel(stack.stack), "evidence=${stack.evidence.joinToString(",")}", providers).filter { it.isNotEmpty() }.joinToString("  "))
+        }
+        return EXIT_OK
+    }
+
+    private fun stackLabel(stack: app.luxion.shogunai.domain.model.Stack): String = when (stack) {
+        app.luxion.shogunai.domain.model.Stack.GRADLE -> "Gradle"
+        app.luxion.shogunai.domain.model.Stack.ANDROID -> "Android"
+        app.luxion.shogunai.domain.model.Stack.XCODE -> "Xcode"
+        app.luxion.shogunai.domain.model.Stack.MAVEN -> "Maven"
+        app.luxion.shogunai.domain.model.Stack.DOCKER_COMPOSE -> "Docker Compose"
+    }
+
+    private suspend fun maven(command: CliCommand.Maven): Int {
+        val repository = ResolveRepositoryUseCase(executor)(workingDirectory).getOrNull()
+        val config = repository?.let { configFor(workingDirectory) }
+        val worktrees = config?.let { ListWorktreesUseCase(it, executor)().getOrNull() }
+        val daemons = ListMavenDaemonsUseCase(mavenDaemonSource, fileManager)(worktrees, worktreesRootOf(config, worktrees)).getOrThrow()
+        if (command.json) {
+            printJson(mavenJson(daemons, attributed = worktrees != null))
+            return EXIT_OK
+        }
+        if (daemons.isEmpty()) {
+            out.line("No Maven daemons running.")
+            return EXIT_OK
+        }
+        daemons.forEach { out.line(mavenDaemonLine(it, attributed = worktrees != null)) }
+        out.line("total  memory=${formatMemory(totalMavenResidentMemory(daemons))}  daemons=${daemons.size}")
+        return EXIT_OK
+    }
+
+    private fun mavenDaemonLine(daemon: MavenDaemon, attributed: Boolean): String {
+        val details = buildList {
+            add("memory=${formatMemory(daemon.process.residentMemoryBytes)}")
+            if (attributed) {
+                when (val owner = daemon.owner) {
+                    is DaemonOwner.Worktree -> add("worktree=${owner.path}")
+                    DaemonOwner.RemovedWorktree -> add("worktree=removed")
+                    DaemonOwner.OtherProject -> add("worktree=other-project")
+                    null -> add("worktree=unknown")
+                }
+            }
+        }
+        return (listOf(daemon.pid.toString()) + details).joinToString("  ")
+    }
+
+    private fun worktreesRootOf(config: ProjectConfig?, worktrees: List<Worktree>?): String? =
+        config?.worktreesRoot?.takeIf { it.isNotBlank() }
+            ?: worktrees?.firstOrNull { !it.isMain }?.path?.replace('\\', '/')?.trimEnd('/')?.substringBeforeLast('/', "")?.ifEmpty { null }
+
+    private fun declaresCompose(repository: String): Boolean =
+        runCatching { provisioningSource.read(repository).providers.dockerCompose != null }.getOrDefault(false)
+
+    private suspend fun composeProjectsOf(config: ProjectConfig, worktrees: List<Worktree>): List<String> {
+        val names = worktrees.map { worktreeComposeProjectName(config.baseRepositoryPath, it.path) }.toSet()
+        return runCatching { composeSource.list() }.getOrDefault(emptyList()).map { it.name }.filter { it in names }
+    }
+
+    private suspend fun requireComposeProvider(): ProjectConfig? {
+        val config = configFor(workingDirectory)
+        if (declaresCompose(config.baseRepositoryPath)) return config
+        err.line("shogun: this repository doesn't declare the docker-compose provider in .shogunai.json")
+        return null
+    }
+
+    private suspend fun compose(command: CliCommand.Compose): Int {
+        val config = requireComposeProvider() ?: return EXIT_FAILURE
+        val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
+        val projects = ListComposeProjectsUseCase(composeSource)(config.baseRepositoryPath, worktrees, worktreesRootOf(config, worktrees)).getOrThrow()
+        if (command.json) {
+            printJson(composeJson(projects))
+            return EXIT_OK
+        }
+        if (projects.isEmpty()) {
+            out.line("No Compose projects for the worktrees.")
+            return EXIT_OK
+        }
+        projects.forEach {
+            val worktree = when (val owner = it.owner) {
+                is ComposeOwner.Worktree -> owner.path
+                ComposeOwner.RemovedWorktree -> "removed"
+            }
+            out.line("${it.project.name}  status=${it.project.status.ifEmpty { "unknown" }}  worktree=$worktree")
+        }
+        return EXIT_OK
+    }
+
+    private suspend fun composeDown(command: CliCommand.ComposeDown): Int {
+        val config = requireComposeProvider() ?: return EXIT_FAILURE
+        val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
+        val names = if (command.target != null) {
+            val worktree = findWorktreeTarget(command.target, worktrees, config, ::canonical)
+            listOf(worktreeComposeProjectName(config.baseRepositoryPath, worktree.path))
+        } else {
+            ListComposeProjectsUseCase(composeSource)(config.baseRepositoryPath, worktrees, worktreesRootOf(config, worktrees))
+                .getOrThrow()
+                .filter { it.owner == ComposeOwner.RemovedWorktree }
+                .map { it.project.name }
+        }
+        if (names.isEmpty()) {
+            if (command.json) printJson(composeDownJson(app.luxion.shogunai.domain.model.ComposeDownReport())) else out.line("No Compose projects to take down.")
+            return EXIT_OK
+        }
+        val report = TakeDownComposeProjectsUseCase(composeSource)(names, command.volumes)
+        if (command.json) {
+            printJson(composeDownJson(report))
+        } else {
+            report.takenDown.forEach { out.line("took down $it${if (command.volumes) " (volumes removed)" else " (volumes kept)"}") }
+        }
+        report.failures.forEach { err.line("shogun: couldn't take down ${it.name}: ${it.detail}") }
+        return if (report.failures.isEmpty()) EXIT_OK else EXIT_FAILURE
     }
 
     private suspend fun gradleStop(command: CliCommand.GradleStop): Int {

@@ -3,7 +3,7 @@
 A provider adds support for one kind of tooling to a repository's worktrees. A repository turns providers on in its [`.shogunai.json`](configuration.md#repository-configuration-shogunaijson) under `providers`; repositories without a provider never see any of its sections, buttons or commands, and none of its tools run.
 
 ```json
-{ "providers": { "gradle": {}, "emulator": {}, "ios-simulator": {}, "xcode": {} } }
+{ "providers": { "gradle": {}, "emulator": {}, "ios-simulator": {}, "xcode": {}, "maven": {}, "docker-compose": {} } }
 ```
 
 | Provider | For | Platforms |
@@ -12,6 +12,22 @@ A provider adds support for one kind of tooling to a repository's worktrees. A r
 | [`emulator`](#android-emulator) | An Android emulator per worktree. | Any with the Android SDK |
 | [`ios-simulator`](#ios-simulator) | An iOS simulator per worktree. | macOS |
 | [`xcode`](#xcode) | Xcode DerivedData and the shared compilation cache. | macOS |
+| [`maven`](#maven) | Maven builds: a memory bound and the Maven daemons. | Any; the daemon list needs `ps` (macOS, Linux) |
+| [`docker-compose`](#docker-compose) | A Docker Compose project and ports per worktree. | Any with the Docker CLI |
+
+## Detecting stacks
+
+You don't have to know which providers exist. ShogunAi looks at the files of the repository's main folder and its direct subfolders (never hidden folders, `build`, `node_modules` or `Pods`) and recognises five stacks:
+
+| Stack | Revealed by | Suggests |
+|---|---|---|
+| Gradle | `gradlew`, `settings.gradle` or `settings.gradle.kts` in the main folder | `gradle` |
+| Android | `com.android.` in a `build.gradle(.kts)` of those folders, or in `gradle/libs.versions.toml` | `emulator` |
+| Xcode | an `.xcodeproj` folder, or `Package.swift` in the main folder | `ios-simulator` and `xcode` (macOS only) |
+| Maven | `pom.xml` or `mvnw` in the main folder | `maven` |
+| Docker Compose | `compose.yaml`, `compose.yml`, `docker-compose.yaml` or `docker-compose.yml` in the main folder | `docker-compose` |
+
+In the project settings, "Repository configuration" lists the providers the repository could use and doesn't declare yet, with the files that revealed them, and "Turn on" switches the provider on as an unsaved change: nothing is written until you save and confirm the preview. `shogun stacks` prints the same from a terminal and changes nothing. A suggestion is only a hint (a `pom.xml` in a fixture folder also counts), so the evidence is always shown.
 
 ## Gradle
 
@@ -45,6 +61,45 @@ Every setting is optional. Memory sizes are a number followed by `k`, `m` or `g`
 - Builds started from Android Studio or IntelliJ don't inherit the agent's shell: they keep using `gradle.properties` and don't share daemons with agent builds. Put the limits in `gradle.properties` too if you want them everywhere.
 - New settings apply to new daemons; idle daemons started with other arguments aren't reused and time out on their own, or stop them from the section.
 - The quoting is designed for Windows' `gradlew.bat` too, but has only been verified on macOS.
+
+## Maven
+
+```json
+{ "providers": { "maven": { "mavenMaxHeap": "1g" } } }
+```
+
+Parallel builds in several worktrees each start a JVM with Maven's default heap, and Maven daemons (mvnd) stay alive after the build. `mavenMaxHeap` is optional, a size such as `512m` or `1g`: with it, every worktree's environment (the main one included) gets `MAVEN_OPTS=-Xmx<size>`. A `MAVEN_OPTS` you declare in `env` takes precedence, one you set yourself in that shell is replaced, and builds started from an IDE don't inherit it.
+
+For a Maven repository the app shows a "Maven daemons" section with every mvnd daemon on the machine: its memory and the worktree it works in (the working directory of the process decides: the deepest worktree that contains it, "removed worktree" when the folder is gone inside the worktrees folder, "other project" otherwise, nothing when it can't be read). Plain `mvn` builds and IDEs are not listed. ShogunAi never stops a Maven daemon, because whether one is busy can't be known reliably, and cleaning up worktrees leaves them running.
+
+```bash
+shogun maven                       # list the Maven daemons, their memory and worktree
+```
+
+Daemon inspection needs `ps` and `lsof` (macOS and Linux).
+
+## Docker Compose
+
+```json
+{ "providers": { "docker-compose": { "portVariables": ["DB_PORT", "API_PORT"] } } }
+```
+
+Two worktrees running `docker compose up` share container, network and volume names, and publish the same host ports. The provider gives each worktree its own:
+
+- `COMPOSE_PROJECT_NAME` is `<repository folder>-<worktree folder>`, lowercased, with every character other than letters, digits, `-` and `_` replaced by `-` (`main-repo` and `TASK-123` give `main-repo-task-123`). A folder name that normalising would make ambiguous (`fix login (2)`, or mixed case) gets a short stable hash, and a name over 50 characters is shortened keeping it, so different worktrees get different names. The name is derived, not stored, so nothing is left behind when a worktree is removed. A `COMPOSE_PROJECT_NAME` declared in `env` takes precedence.
+- `portVariables` is optional: each name becomes a variable with a free port in 20000-29999 reserved for that worktree (the same rules as `${port}`), so the Compose file can publish `${DB_PORT}:5432` without colliding. Names follow the variable name rule and can't be reserved names; a name also declared in `env` gets the declared value and no port.
+
+The app shows a "Compose projects" section with the projects `docker compose ls` reports for the repository's worktrees (status and worktree) and the projects of removed worktrees: those whose name starts with the repository folder's name, whose compose files lived in the repository or its worktrees folder, and that match no existing worktree. Projects of other repositories, even with a similar prefix, are never touched. "Take down the projects of removed worktrees" runs `docker compose -p <name> down`, which removes containers and networks and keeps volumes (volumes are only removed with `--volumes` from the command line). "Clean up" has a checked option to take down the projects of the worktrees it removes; if Docker isn't available the worktrees are still removed and the report says the projects were kept.
+
+```bash
+shogun compose                     # the Compose projects of the worktrees and their status
+shogun compose down                # take down the projects of removed worktrees (volumes kept)
+shogun compose down TASK-123       # take down one worktree's project
+shogun compose down --volumes      # also remove their volumes
+shogun clean --yes --down-compose-projects  # also take down the projects of the removed worktrees
+```
+
+Docker is only run for repositories that declare the provider, and only the Docker CLI is used.
 
 ## Android emulator
 

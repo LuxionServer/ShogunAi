@@ -1,10 +1,12 @@
 package app.luxion.shogunai.infrastructure
 
+import app.luxion.shogunai.domain.model.DockerComposeProvider
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EnvironmentEntry
 import app.luxion.shogunai.domain.model.RepositoryConfigEdit
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.IosSimulatorProvider
+import app.luxion.shogunai.domain.model.MavenProvider
 import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.WorktreeError
@@ -239,6 +241,77 @@ class RepositoryProvisioningFilesTest {
     }
 
     @Test
+    fun `reads the maven provider with and without a heap`() {
+        configFile.writeText("""{ "providers": { "maven": { "mavenMaxHeap": "1g" } } }""")
+        assertEquals(MavenProvider("1g"), files.read(repository.toString()).providers.maven)
+
+        configFile.writeText("""{ "providers": { "maven": {} } }""")
+        assertEquals(MavenProvider(), files.read(repository.toString()).providers.maven)
+    }
+
+    @Test
+    fun `fails with InvalidRepositoryConfig naming the field on an invalid maven provider`() {
+        listOf(
+            """{ "providers": { "maven": true } }""",
+            """{ "providers": { "maven": { "mavenMaxHeap": "1 GB" } } }""",
+            """{ "providers": { "maven": { "mavenMaxHeap": "1000" } } }""",
+            """{ "providers": { "maven": { "mavenMaxHeap": 1 } } }""",
+        ).forEach { content ->
+            configFile.writeText(content)
+            val error = assertFailsWith<WorktreeError.InvalidRepositoryConfig>(content) { files.read(repository.toString()) }
+            assertTrue(error.message.orEmpty().contains("providers.maven"), content)
+        }
+    }
+
+    @Test
+    fun `reads the docker compose provider with its port variables`() {
+        configFile.writeText("""{ "providers": { "docker-compose": { "portVariables": ["DB_PORT"] } } }""")
+        assertEquals(DockerComposeProvider(listOf("DB_PORT")), files.read(repository.toString()).providers.dockerCompose)
+
+        configFile.writeText("""{ "providers": { "docker-compose": {} } }""")
+        assertEquals(DockerComposeProvider(), files.read(repository.toString()).providers.dockerCompose)
+    }
+
+    @Test
+    fun `fails with InvalidRepositoryConfig on invalid docker compose port variables`() {
+        mapOf(
+            """{ "providers": { "docker-compose": true } }""" to "providers.docker-compose",
+            """{ "providers": { "docker-compose": { "portVariables": "DB_PORT" } } }""" to "portVariables",
+            """{ "providers": { "docker-compose": { "portVariables": [1] } } }""" to "portVariables",
+            """{ "providers": { "docker-compose": { "portVariables": ["1DB"] } } }""" to "1DB",
+            """{ "providers": { "docker-compose": { "portVariables": ["PATH"] } } }""" to "PATH",
+            """{ "providers": { "docker-compose": { "portVariables": ["DB_PORT", "DB_PORT"] } } }""" to "DB_PORT",
+        ).forEach { (content, mention) ->
+            configFile.writeText(content)
+            val error = assertFailsWith<WorktreeError.InvalidRepositoryConfig>(content) { files.read(repository.toString()) }
+            assertTrue(error.message.orEmpty().contains(mention), content)
+        }
+    }
+
+    @Test
+    fun `writes maven and docker compose options and omits empty ones`() {
+        write(
+            edit(
+                providers = RepositoryProviders(
+                    maven = MavenProvider("1g"),
+                    dockerCompose = DockerComposeProvider(listOf("DB_PORT", "API_PORT")),
+                ),
+            ),
+        )
+        val providers = written().getValue("providers").jsonObject
+        assertEquals("1g", providers.getValue("maven").jsonObject.getValue("mavenMaxHeap").jsonPrimitive.content)
+        assertEquals(
+            listOf("DB_PORT", "API_PORT"),
+            providers.getValue("docker-compose").jsonObject.getValue("portVariables").jsonArray.map { it.jsonPrimitive.content },
+        )
+
+        write(edit(providers = RepositoryProviders(maven = MavenProvider(), dockerCompose = DockerComposeProvider())))
+        val emptied = written().getValue("providers").jsonObject
+        assertEquals(emptySet(), emptied.getValue("maven").jsonObject.keys)
+        assertEquals(emptySet(), emptied.getValue("docker-compose").jsonObject.keys)
+    }
+
+    @Test
     fun `reads the emulator provider with and without a preferred AVD`() {
         configFile.writeText("""{ "providers": { "emulator": { "avd": "Pixel_8_API_35" } } }""")
         assertEquals(EmulatorProvider("Pixel_8_API_35"), files.read(repository.toString()).providers.emulator)
@@ -433,6 +506,8 @@ class RepositoryProvisioningFilesTest {
             emulator = EmulatorProvider("Pixel_8"),
             iosSimulator = IosSimulatorProvider("iPhone 16", "iOS 18.0"),
             xcode = XcodeProvider(compilationCache = true),
+            maven = MavenProvider(mavenMaxHeap = "1g"),
+            dockerCompose = DockerComposeProvider(portVariables = listOf("DB_PORT", "API_PORT")),
         )
 
         write(edit(providers = providers))

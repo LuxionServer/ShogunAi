@@ -65,12 +65,14 @@ Opciones de los providers:
 | `emulator` | `avd`: el nombre de la AVD preferida. |
 | `ios-simulator` | `device`, `runtime`: los nombres del tipo de dispositivo y del runtime preferidos. |
 | `xcode` | `compilationCache`: `true` o `false`. |
+| `maven` | `mavenMaxHeap`: un tamaño como `512m` o `1g`. |
+| `docker-compose` | `portVariables`: una lista de nombres de variable únicos que siguen las reglas de nombres de `env` y no son reservados. |
 
 Las claves y los providers desconocidos se ignoran. Un fichero que no es JSON válido, o una clave conocida con el tipo equivocado, hace que crear y provisionar worktrees falle con un mensaje que indica el fichero y el problema, sin crear nada.
 
 ### Editarlo desde la app
 
-No hace falta escribir este archivo a mano. Los ajustes del proyecto tienen una sección "Configuración del repositorio" donde activas los providers con sus opciones, editas las variables de `env` (con ayuda sobre las plantillas `${port}`, `${port:key}` y `${worktree}`) y fijas la ruta de `envFile`. Los valores se comprueban mientras escribes con las mismas reglas de arriba. Antes del primer guardado que escribe el archivo, la app muestra el `.shogunai.json` resultante y recuerda que pertenece al repositorio y conviene hacer commit.
+No hace falta escribir este archivo a mano. Los ajustes del proyecto tienen una sección "Configuración del repositorio" donde activas los providers con sus opciones, editas las variables de `env` (con ayuda sobre las plantillas `${port}`, `${port:key}` y `${worktree}`) y fijas la ruta de `envFile`. La sección también sugiere los providers que encajan con los archivos que encuentra en el repositorio (ver [detección de stacks](providers.md#deteccion-de-stacks)); usar una sugerencia solo enciende el interruptor, y no se escribe nada hasta que guardas. Los valores se comprueban mientras escribes con las mismas reglas de arriba. Antes del primer guardado que escribe el archivo, la app muestra el `.shogunai.json` resultante y recuerda que pertenece al repositorio y conviene hacer commit.
 
 Guardar solo cambia `providers`, `env`, `envFile` y, con "Mover a .shogunai.json", `copy`: cualquier otra clave, provider desconocido u opción desconocida de un provider se queda como estaba (las claves conservan su orden, la indentación se normaliza a dos espacios). La app nunca escribe sobre un archivo que no pudo leer, ni sobre uno que cambió en disco desde que se abrieron los ajustes: en el primer caso la sección explica el problema, en el segundo ofrece recargar. Los ajustes que solo valen para esta máquina (el AVD a usar, el modo sin ventana, el dispositivo y runtime del simulador) siguen en sus secciones, marcados como "Solo en esta máquina".
 

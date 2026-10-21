@@ -93,6 +93,11 @@ fun CleanupDialog(board: WorktreeBoard) {
                         board.cleanupStopGradleDaemons = it
                     }
                 }
+                if (holders.any { it.isComposeRepository }) {
+                    CleanupOption(strings.alsoTakeDownComposeProjects, board.cleanupDownComposeProjects, enabled) {
+                        board.cleanupDownComposeProjects = it
+                    }
+                }
                 if (holders.any { it.isEmulatorRepository }) {
                     CleanupOption(strings.alsoStopEmulators, board.cleanupStopEmulators, enabled) {
                         board.cleanupStopEmulators = it
@@ -172,7 +177,9 @@ fun CleanupIssues(report: CleanupReport, onDismiss: () -> Unit) {
         RecordShownError(it.error, description.summary, description.details?.asPlainText())
     }
     val lines = report.failures.map { strings.cleanupFailed(it.path, strings.describe(it.error).summary) } +
-        report.keptBranches.map { strings.branchKept(it) }
+        report.keptBranches.map { strings.branchKept(it) } +
+        report.composeDown?.failures.orEmpty().map { strings.composeProjectDownFailed(it.name, it.detail) } +
+        listOfNotNull(report.composeUnavailable?.let { strings.cleanupComposeKept(it) })
     Notice(
         kind = NoticeKind.WARNING,
         message = lines.joinToString("\n"),

@@ -23,7 +23,19 @@ class FakeFileManager(
         paths += path
     }
 
-    override fun readText(path: String): String? = writtenTexts[path]
+    val unreadableTexts = mutableSetOf<String>()
+
+    override fun readText(path: String): String? = if (path in unreadableTexts) null else writtenTexts[path]
+
+    val unreadable = mutableSetOf<String>()
+
+    override fun listNames(path: String): List<String>? {
+        if (path in unreadable) return null
+        val prefix = "${path.trimEnd('/')}/"
+        val children = (paths + directories).filter { it.startsWith(prefix) }.map { it.removePrefix(prefix).substringBefore('/') }
+        if (children.isEmpty() && path !in directories) return null
+        return children.distinct().sorted()
+    }
 
     val modifiedAt = mutableMapOf<String, Long>()
 

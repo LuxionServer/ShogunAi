@@ -104,6 +104,7 @@ class WorktreeBoard(
     var cleanupStopEmulators by mutableStateOf(true)
     var cleanupDeleteSimulators by mutableStateOf(true)
     var cleanupDeleteDerivedData by mutableStateOf(true)
+    var cleanupDownComposeProjects by mutableStateOf(true)
     var isCleaningUp by mutableStateOf(false)
         private set
     var cleanupSuccess by mutableStateOf<WorktreeSuccess.CleanedUp?>(null)
@@ -639,6 +640,7 @@ class WorktreeBoard(
         cleanupStopEmulators = true
         cleanupDeleteSimulators = true
         cleanupDeleteDerivedData = true
+        cleanupDownComposeProjects = true
         cleanupScope = cleanupTargets(projectId).also { targets ->
             targets.forEach { holder(it)?.lookUpCleanupCandidatesInHerdr() }
         }
@@ -657,6 +659,7 @@ class WorktreeBoard(
             stopEmulators = cleanupStopEmulators,
             deleteSimulators = cleanupDeleteSimulators,
             deleteDerivedData = cleanupDeleteDerivedData,
+            downComposeProjects = cleanupDownComposeProjects,
         )
         isCleaningUp = true
         viewModelScope.launch {

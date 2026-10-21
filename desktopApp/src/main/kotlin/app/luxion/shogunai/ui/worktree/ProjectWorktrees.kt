@@ -154,6 +154,8 @@ class ProjectWorktrees(
             if (isEmulatorRepository) add(MachineResource.ANDROID_EMULATORS)
             if (isSimulatorRepository) add(MachineResource.IOS_SIMULATORS)
             if (isXcodeRepository) add(MachineResource.XCODE_DERIVED_DATA)
+            if (isMavenRepository) add(MachineResource.MAVEN_DAEMONS)
+            if (isComposeRepository) add(MachineResource.COMPOSE_PROJECTS)
         }
 
     val canCleanUp: Boolean
@@ -181,6 +183,11 @@ class ProjectWorktrees(
     var isGradleBuildCacheEnabled by mutableStateOf(true)
         private set
     var gradleSettings by mutableStateOf<GradleProvider?>(null)
+        private set
+
+    var isMavenRepository by mutableStateOf(false)
+        private set
+    var isComposeRepository by mutableStateOf(false)
         private set
 
     var isXcodeRepository by mutableStateOf(false)
@@ -361,6 +368,7 @@ class ProjectWorktrees(
             if (generation == listGeneration) agents = detected
         }
         loadGradleSection()
+        loadMavenAndComposeSections()
         loadPorts(generation, listed)
         loadEmulatorSection(generation, listed)
         loadSimulatorSection(generation, listed)
@@ -515,6 +523,13 @@ class ProjectWorktrees(
             gradleSettings = provider?.takeIf { it.hasSettings }
             if (provider == null) return@launch
             isGradleBuildCacheEnabled = useCases.gradle.isBuildCacheEnabled()
+        }
+    }
+
+    private fun loadMavenAndComposeSections() {
+        scope.launch {
+            isMavenRepository = useCases.maven.provider() != null
+            isComposeRepository = useCases.compose.provider() != null
         }
     }
 
@@ -920,7 +935,7 @@ class ProjectWorktrees(
         var cleanedUp: WorktreeSuccess.CleanedUp? = null
         try {
             val daemonsBefore = if (stopDaemons) useCases.gradle.listDaemons(listed).getOrNull().orEmpty() else emptyList()
-            useCases.cleanUp(candidates, mainBranch, options.deleteBranches)
+            useCases.cleanUp(candidates, mainBranch, options.deleteBranches, downComposeProjects = isComposeRepository && options.downComposeProjects)
                 .onSuccess { report ->
                     dismissError()
                     val daemonReport = stopDaemonsOfRemovedWorktrees(daemonsBefore, listed, report.removed)
@@ -948,9 +963,13 @@ class ProjectWorktrees(
                         deletedSimulators = deletedSimulators,
                         deletedDerivedDataFolders = deletedDerivedData?.deleted?.size ?: 0,
                         derivedDataBytesFreed = deletedDerivedData?.bytesFreed ?: 0,
+                        takenDownComposeProjects = report.composeDown?.takenDown?.size ?: 0,
                     )
                     herdrCloseFailures = report.herdrFailures
-                    cleanupIssues = report.takeIf { it.failures.isNotEmpty() || it.keptBranches.isNotEmpty() }
+                    cleanupIssues = report.takeIf {
+                        it.failures.isNotEmpty() || it.keptBranches.isNotEmpty() ||
+                            it.composeUnavailable != null || it.composeDown?.failures?.isNotEmpty() == true
+                    }
                 }
                 .onFailure { fail(it) }
         } finally {
@@ -1070,6 +1089,7 @@ data class CleanupOptions(
     val stopEmulators: Boolean = true,
     val deleteSimulators: Boolean = true,
     val deleteDerivedData: Boolean = true,
+    val downComposeProjects: Boolean = true,
 )
 
 sealed interface WorktreeStatusState {
@@ -1091,6 +1111,7 @@ sealed interface WorktreeSuccess {
         val deletedSimulators: Int = 0,
         val deletedDerivedDataFolders: Int = 0,
         val derivedDataBytesFreed: Long = 0,
+        val takenDownComposeProjects: Int = 0,
     ) : WorktreeSuccess {
         operator fun plus(other: CleanedUp) = CleanedUp(
             removedCount = removedCount + other.removedCount,
@@ -1100,6 +1121,7 @@ sealed interface WorktreeSuccess {
             deletedSimulators = deletedSimulators + other.deletedSimulators,
             deletedDerivedDataFolders = deletedDerivedDataFolders + other.deletedDerivedDataFolders,
             derivedDataBytesFreed = derivedDataBytesFreed + other.derivedDataBytesFreed,
+            takenDownComposeProjects = takenDownComposeProjects + other.takenDownComposeProjects,
         )
     }
 }

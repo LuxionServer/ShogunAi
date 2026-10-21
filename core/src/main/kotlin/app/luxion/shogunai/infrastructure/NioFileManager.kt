@@ -98,6 +98,10 @@ class NioFileManager : FileManager {
         Files.getLastModifiedTime(Path.of(path)).toMillis()
     }.getOrNull()
 
+    override fun listNames(path: String): List<String>? = runCatching {
+        Files.newDirectoryStream(Path.of(path)).use { entries -> entries.map { it.fileName.toString() }.sorted() }
+    }.getOrNull()
+
     override fun readProperties(path: String): Map<String, String> {
         val file = Path.of(path)
         if (!Files.isRegularFile(file)) return emptyMap()

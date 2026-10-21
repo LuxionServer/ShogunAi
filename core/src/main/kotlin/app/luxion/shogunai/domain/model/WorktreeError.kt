@@ -77,6 +77,9 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class ProcessListingFailed(val command: List<String>, val exitCode: Int) :
         WorktreeError("Couldn't list processes (exit code $exitCode): ${command.joinToString(" ")}")
 
+    class DockerUnavailable(val reason: String?) :
+        WorktreeError("Docker isn't available" + if (reason.isNullOrBlank()) "" else ": $reason")
+
     class NoFreePort(val from: Int, val to: Int) :
         WorktreeError("No free port left between $from and $to for this worktree")
 

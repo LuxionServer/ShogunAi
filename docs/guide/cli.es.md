@@ -12,6 +12,7 @@ shogun remove TASK-123             # elimina un worktree y para su emulador y si
 shogun repair                      # re-enlaza los worktrees tras mover el repositorio
 shogun open TASK-123 --herdr       # abre un worktree en Herdr con su entorno y el agente del proyecto
 shogun clean --yes                 # elimina los worktrees mergeados o sin carpeta (sin --yes solo los lista)
+shogun stacks                      # los stacks detectados en el repositorio y los providers que sugieren
 eval "$(shogun env)"               # carga las variables de este worktree desde "env" en .shogunai.json
 ```
 
@@ -210,7 +211,7 @@ El destino se busca como en `remove`, salvo que se admite el worktree principal.
 
 ```text
 shogun clean [--yes|-y] [--delete-branches] [--stop-gradle-daemons] [--stop-emulators]
-             [--delete-simulators] [--delete-derived-data]
+             [--delete-simulators] [--delete-derived-data] [--down-compose-projects]
 ```
 
 Selecciona los mismos worktrees que "Limpiar" en la app de escritorio: ni el principal, ni los bloqueados, ni uno donde se ejecute un agente, y o bien mergeados sin cambios sin commitear o bien sin carpeta. Sin `--yes` solo lista lo que haría (`would remove …`) y termina con el comando que hay que ejecutar, repitiendo las opciones que diste y nombrando solo lo que se eliminaría; con `--yes` lo hace (`removed …`). Si no hay nada que hacer imprime `Nothing to clean up.`
@@ -224,6 +225,7 @@ Un worktree donde se ejecuta un agente se lista como `kept <ruta> (claude is run
 | `--stop-emulators` | Para los emuladores de Android de los worktrees eliminados. |
 | `--delete-simulators` | Borra los simuladores de iOS de los worktrees eliminados y los simuladores de ShogunAi huérfanos. |
 | `--delete-derived-data` | Borra los DerivedData de Xcode huérfanos, incluidas las carpetas de los worktrees eliminados. |
+| `--down-compose-projects` | Baja los proyectos de Docker Compose de los worktrees eliminados, conservando sus volúmenes (`took down Compose project …`; `would take down Compose project …` sin `--yes`). Solo en repositorios que declaran el provider `docker-compose`; un proyecto que no se puede bajar, o que Docker no esté disponible, se informa en la salida de error sin cambiar el código de salida. |
 
 También se cierran los espacios de trabajo de Herdr de los worktrees eliminados (`would close Herdr workspace of …` en el listado). Un daemon, emulador o espacio de Herdr que no se puede parar o cerrar se indica en la salida de error sin cambiar el código de salida.
 
@@ -236,6 +238,16 @@ shogun env [<path>] [--format sh|dotenv|json]
 ```
 
 Imprime el entorno del worktree que contiene la ruta (o el directorio actual), a partir de `env` en `.shogunai.json` y de los providers, reservando sus puertos la primera vez. `sh` (por defecto) imprime líneas `export NOMBRE='valor'` para `eval "$(shogun env)"`; `dotenv` y `json` sirven para otras herramientas. Un entorno vacío no imprime nada.
+
+## Stacks
+
+### `stacks`
+
+```text
+shogun stacks
+```
+
+Imprime una línea por cada stack detectado en el repositorio (`Maven  evidence=pom.xml  maven=suggested`): los archivos que lo delataron y, por cada provider que sugiere, `suggested` o `declared` si `.shogunai.json` ya lo tiene. Los providers que el sistema operativo no admite no se mencionan. No cambia nada, imprime `No known stack detected.` y sale con `0` si no hay ninguno, y sale con `1` fuera de un repositorio Git. Ver [detección de stacks](providers.md#deteccion-de-stacks).
 
 ## Providers
 
@@ -251,6 +263,23 @@ shogun gradle stop [<pid>...]
 `gradle` lista los daemons de Gradle y Kotlin de la máquina: pid, tipo y versión, `memory=`, `state=busy|idle|unknown` (con `idle-for=`) y `worktree=<path>|removed|other-project`, y después el total (`No Gradle or Kotlin daemons running.` si no hay ninguno). Funciona también fuera de un repositorio. Dentro de un repositorio Gradle sin la caché de build de Gradle, termina con un aviso.
 
 `gradle stop` para todos los daemons ociosos, o solo los ids de proceso indicados; los ocupados y los de estado desconocido se conservan (`kept <pid> … (<motivo>)`). Un pid que no es un daemon sale con `1`.
+
+### `maven`
+
+```text
+shogun maven
+```
+
+`maven` lista los daemons de Maven (mvnd) de la máquina: pid, `memory=` y, dentro de un repositorio Git, `worktree=<ruta>|removed|other-project|unknown`, y luego el total (`No Maven daemons running.` si no hay ninguno). También funciona fuera de un repositorio y nunca para nada.
+
+### `compose`
+
+```text
+shogun compose
+shogun compose down [<worktree>] [--volumes]
+```
+
+`compose` lista los proyectos de Docker Compose de los worktrees del repositorio: nombre, `status=` y `worktree=<ruta>|removed`. `compose down` baja los proyectos de worktrees eliminados, o el proyecto del worktree indicado (que se busca como en `remove`, admitiendo el principal), con `docker compose -p <nombre> down`: los volúmenes se conservan salvo que se pase `--volumes`. Imprime `took down <nombre> (volumes kept)`, informa de un fallo en la salida de error y sale con `1` por él. Si el repositorio no declara el provider `docker-compose`, o el worktree indicado no existe, sale con `1` y no ejecuta ningún comando de Docker.
 
 ### `emulator`
 
@@ -294,7 +323,7 @@ shogun xcode trim [--dry-run]
 
 ## Salida JSON
 
-Además de `status --json`, todos los comandos que informan de un resultado aceptan `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `pool status`, `pool trim`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks` y `guide install|uninstall|status` (no `simulator gradle-init`, `env`, `hook`, `help` ni `--version`; en ellos es una opción desconocida y sale con `2`). La opción puede ir en cualquier posición tras el comando.
+Además de `status --json`, todos los comandos que informan de un resultado aceptan `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `compose`, `compose down`, `pool status`, `pool trim`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks` y `guide install|uninstall|status` (no `simulator gradle-init`, `env`, `hook`, `help` ni `--version`; en ellos es una opción desconocida y sale con `2`). La opción puede ir en cualquier posición tras el comando.
 
 Las reglas son las mismas para todos:
 
@@ -316,9 +345,13 @@ Las reglas son las mismas para todos:
 | `guide status` | `targets`: `{ target, path, state, duplicates }` con `target` `codex`, `gemini`, `project` o `file` y `duplicates` `true` cuando el fichero menciona `shogun new`, `open` o `clean` fuera del bloque; y `warnings`. |
 | `repair` | `repaired`: las rutas de los worktrees re-enlazados. |
 | `open` | `path`, `branch` (o `null` si está desacoplado), `herdr` (`opened` o `focused`) y `agent` (el nombre del agente arrancado, o `null` cuando solo se enfocó el espacio de trabajo). |
-| `clean` | `dryRun`; `candidates`: `{ path, branch, reason }` con `reason` `merged` o `folder-missing`; `keptForAgents`: `{ path, agents }`; `skipped`: `{ path, reason }` (estado no disponible); `removed`; `deletedBranches`; `failures`: `{ path, message }`; y `providers`: `gradleDaemonsStopped`, `emulatorsStopped`, `simulatorsDeleted` y `derivedDataDeleted`. Sin `--yes` (`dryRun: true`) `removed`, `deletedBranches` y las listas de `providers` van vacías. |
+| `clean` | `dryRun`; `candidates`: `{ path, branch, reason }` con `reason` `merged` o `folder-missing`; `keptForAgents`: `{ path, agents }`; `skipped`: `{ path, reason }` (estado no disponible); `removed`; `deletedBranches`; `failures`: `{ path, message }`; y `providers`: `gradleDaemonsStopped`, `emulatorsStopped`, `simulatorsDeleted`, `derivedDataDeleted` y, con `--down-compose-projects`, `composeProjectsDown`. Sin `--yes` (`dryRun: true`) `removed`, `deletedBranches` y las listas de `providers` van vacías. |
 | `gradle` | `daemons`: `{ pid, kind, version, memoryBytes, state, idleSince, worktree }` con `kind` `gradle` o `kotlin`, `state` `busy`, `idle`, `unknown` o `untracked`, `idleSince` en ISO-8601 UTC (solo si está inactivo) y `worktree` una ruta, `removed`, `other-project` o `null` fuera de un repositorio; y `totalMemoryBytes`. |
 | `gradle stop` | `stopped` (pids), `kept`: `{ pid, kind, reason }` con `reason` `busy`, `state-unknown` o `build-running`, `notDaemons` (pids) y `failures`: `{ pid, message }`. El código de salida es `1` si alguna de las dos últimas no está vacía. |
+| `stacks` | `stacks`: `{ stack, evidence, providers }` con `stack` `gradle`, `android`, `xcode`, `maven` o `docker-compose`, `evidence` los archivos que lo delataron y `providers`: `{ id, declared }` por cada provider que sugiere. |
+| `maven` | `daemons`: `{ pid, memoryBytes, worktree }` con `worktree` una ruta, `removed`, `other-project` o `null` (desconocido, o fuera de un repositorio); y `totalMemoryBytes`. |
+| `compose` | `projects`: `{ name, status, worktree }` con `worktree` una ruta o `removed`. |
+| `compose down` | `takenDown` (nombres de proyecto) y `failures`: `{ name, message }`. El código de salida es `1` si `failures` no está vacío. |
 | `xcode` | `active` (`false` si el provider no está activo, con el resto vacío), `folders`: `{ path, sizeBytes, worktree }`, `orphans`: `{ path, sizeBytes }`, `unavailableVolumeFolders` (un número) y `compilationCacheBytes` (`null` salvo que esté declarada). |
 | `xcode clean` | `active`, `deleted` (rutas), `freedBytes` y `failures`: `{ path, message }`. |
 | `xcode trim` | `active`, `quotaBytes` (`null` sin cuota), `dryRun`, `usageBeforeBytes`, `usageAfterBytes`, `exceeded`, `released` (rutas; con `--dry-run`, las que se liberarían), `freedBytes`, `inUse` (rutas de worktrees) y `failures`: `{ path, message }`. |
