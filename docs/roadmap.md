@@ -56,6 +56,7 @@ A first-run walkthrough built on the review done before merging the worktree lay
 Provisioning for the stacks where a fresh worktree is furthest from building:
 
 - `local.properties`, keystores and `google-services.json`.
+- Follow-ups of local folders: linking a local folder instead of copying it, glob patterns in the local list, reporting the symbolic links a folder skips, and removing from a worktree the files deleted from the base folder.
 - Showing the emulators ShogunAi starts inside Android Studio's Running Devices window, as the ones Android Studio starts itself, so several of them can be arranged in one window. It needs a spike: Android Studio may embed an external emulator started with the options it uses itself.
 
 ## Under exploration

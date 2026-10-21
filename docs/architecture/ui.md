@@ -207,7 +207,7 @@ Editing the base repository path only updates the text; the repository is read a
 The configuration form has two file sections:
 
 - **From the repository** (read-only): the patterns of the base repository's `.shogunai.json` and `.worktreeinclude`, each with the file it comes from. `ProjectConfigViewModel.repositoryProvisioning` holds a `RepositoryProvisioningState` (`None`, `Declared`, or `Unreadable` with the file and the parse error), read through `RepositoryProvisioningSource` when the form opens and every time the base repository path changes.
-- **Local files**: the project's `secretFiles`, exact paths stored only in `~/.shogunai/projects.json`.
+- **Local files**: the project's `secretFiles`, exact paths of files or folders stored only in `~/.shogunai/projects.json`. A folder brings every file under it when a worktree is created or provisioned; `keys` and `keys/` are the same entry.
 
 "Move to .shogunai.json" (`moveLocalFilesToRepository`) is offered when some local file is inside the repository (relative, not starting with `..`) and `.shogunai.json` isn't unreadable. It turns those entries into patterns anchored to the root (`local.properties` → `/local.properties`), lists them under "From the repository" marked "on save", and removes them from the local list; absolute entries stay local. Nothing is written yet: pending patterns count as an unsaved change, so cancelling discards them. `save()` returns `Result<Project>`: it first appends the pending patterns with `addCopyPatterns`, then saves the project; if writing the repository file fails, the project isn't saved and the screen shows the error above the buttons, keeping the form open.
 
@@ -215,7 +215,7 @@ The configuration form has two file sections:
 
 When the user edits a project because its repository moved on disk:
 
-- `ProjectConfigViewModel` turns absolute local file entries inside the base repository into relative ones, so they follow the repository.
+- `ProjectConfigViewModel` turns absolute local file or folder entries inside the base repository into relative ones, so they follow the repository, and drops a trailing separator so a folder has one spelling.
 - Changing the base repository path also moves the worktrees root when it was inside the repository, its parent or a sibling folder, unless the user edited it by hand (`RepositoryRelocation.kt`).
 - After saving with a different base path or worktrees root, `ShellViewModel.onProjectSaved` selects the view filtered to the project with the previous worktrees root, and `WorktreeBoard.repairAfterMove` runs `RepairWorktreesUseCase` on that project before listing. A failed repair stays visible as an error.
 - The board recreates a project's `ProjectWorktrees` when its configuration changes, not only its id, so an edited project never reuses use cases bound to the old paths.
@@ -288,7 +288,7 @@ The entry point of the packaged app. With arguments (ignoring macOS's legacy `-p
 
 ## `FilePicker`
 
-Wraps `JFileChooser` for the "Browse…" buttons on the configuration screen (base repo path, worktrees folder, local files). Chosen over a native Compose picker because Compose Desktop doesn't ship one and `JFileChooser` is already available on the JVM target with no new dependencies. Both dialogs show hidden files (`isFileHidingEnabled = false`), so dotfiles such as `.env` can be picked. `relativeToBase` converts the absolute path of a chosen local file into the path relative to the repo that `ProjectConfig.secretFiles` expects.
+Wraps `JFileChooser` for the "Browse…" buttons on the configuration screen (base repo path, worktrees folder, local files). Chosen over a native Compose picker because Compose Desktop doesn't ship one and `JFileChooser` is already available on the JVM target with no new dependencies. Both dialogs show hidden files (`isFileHidingEnabled = false`), so dotfiles such as `.env` can be picked. `relativeToBase` converts the absolute path of a chosen local file into the path relative to the repo that `ProjectConfig.secretFiles` expects. `pickFiles` accepts files and folders (`FILES_AND_DIRECTORIES`) with multiple selection.
 
 ## Errors
 

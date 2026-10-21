@@ -207,7 +207,7 @@ Editar la ruta del repositorio base solo actualiza el texto; el repositorio se v
 El formulario de configuración tiene dos secciones de archivos:
 
 - **Del repositorio** (solo lectura): los patrones de `.shogunai.json` y `.worktreeinclude` del repositorio base, cada uno con el fichero del que viene. `ProjectConfigViewModel.repositoryProvisioning` guarda un `RepositoryProvisioningState` (`None`, `Declared`, o `Unreadable` con el fichero y el error de lectura), leído a través de `RepositoryProvisioningSource` al abrir el formulario y cada vez que cambia la ruta del repositorio base.
-- **Archivos locales**: los `secretFiles` del proyecto, rutas exactas guardadas solo en `~/.shogunai/projects.json`.
+- **Archivos locales**: los `secretFiles` del proyecto, rutas exactas de archivos o carpetas guardadas solo en `~/.shogunai/projects.json`. Una carpeta aporta todos los archivos que contiene al crear o provisionar un worktree; `keys` y `keys/` son la misma entrada.
 
 "Mover a .shogunai.json" (`moveLocalFilesToRepository`) se ofrece cuando algún archivo local está dentro del repositorio (relativo, sin empezar por `..`) y `.shogunai.json` no está ilegible. Convierte esas entradas en patrones anclados a la raíz (`local.properties` → `/local.properties`), los muestra en "Del repositorio" marcados "al guardar" y los quita de la lista local; las entradas absolutas se quedan como locales. Todavía no se escribe nada: los patrones pendientes cuentan como cambio sin guardar, así que cancelar los descarta. `save()` devuelve `Result<Project>`: primero añade los patrones pendientes con `addCopyPatterns` y después guarda el proyecto; si falla la escritura del fichero del repositorio, el proyecto no se guarda y la pantalla muestra el error sobre los botones, sin cerrar el formulario.
 
@@ -215,7 +215,7 @@ El formulario de configuración tiene dos secciones de archivos:
 
 Cuando el usuario edita un proyecto porque su repositorio se movió en disco:
 
-- `ProjectConfigViewModel` convierte en relativas las entradas absolutas de archivos locales que están dentro del repositorio base, para que sigan al repositorio.
+- `ProjectConfigViewModel` convierte en relativas las entradas absolutas de archivos o carpetas locales que están dentro del repositorio base, para que sigan al repositorio, y quita el separador final para que una carpeta tenga una sola grafía.
 - Cambiar la ruta del repositorio base también mueve la carpeta raíz de worktrees cuando estaba dentro del repositorio, era su carpeta padre o una carpeta hermana, salvo que el usuario la haya editado a mano (`RepositoryRelocation.kt`).
 - Al guardar con otra ruta base u otra carpeta raíz de worktrees, `ShellViewModel.onProjectSaved` selecciona la vista filtrada por el proyecto con la carpeta raíz anterior, y `WorktreeBoard.repairAfterMove` ejecuta `RepairWorktreesUseCase` en ese proyecto antes de listar. Si la reparación falla, el error queda visible.
 - El tablero vuelve a crear el `ProjectWorktrees` de un proyecto cuando cambia su configuración, no solo su id, así un proyecto editado nunca reutiliza casos de uso ligados a las rutas antiguas.
@@ -288,7 +288,7 @@ El punto de entrada de la app empaquetada. Con argumentos (ignorando el antiguo 
 
 ## `FilePicker`
 
-Envuelve `JFileChooser` para los botones "Examinar…" de la pantalla de configuración (ruta del repo base, carpeta de worktrees, archivos locales). Se eligió sobre un selector nativo de Compose porque Compose Desktop no trae uno y `JFileChooser` ya está disponible en el target JVM sin dependencias nuevas. Los dos diálogos muestran los ficheros ocultos (`isFileHidingEnabled = false`), para poder elegir dotfiles como `.env`. `relativeToBase` convierte la ruta absoluta de un archivo local elegido a la forma relativa al repo que espera `ProjectConfig.secretFiles`.
+Envuelve `JFileChooser` para los botones "Examinar…" de la pantalla de configuración (ruta del repo base, carpeta de worktrees, archivos locales). Se eligió sobre un selector nativo de Compose porque Compose Desktop no trae uno y `JFileChooser` ya está disponible en el target JVM sin dependencias nuevas. Los dos diálogos muestran los ficheros ocultos (`isFileHidingEnabled = false`), para poder elegir dotfiles como `.env`. `relativeToBase` convierte la ruta absoluta de un archivo local elegido a la forma relativa al repo que espera `ProjectConfig.secretFiles`. `pickFiles` admite archivos y carpetas (`FILES_AND_DIRECTORIES`) con selección múltiple.
 
 ## Errores
 

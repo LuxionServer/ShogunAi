@@ -27,7 +27,7 @@ object EnglishStrings : Strings {
     override val collapse = "Collapse"
 
     override val selectFolderDialogTitle = "Select a folder"
-    override val selectLocalFilesDialogTitle = "Select local files"
+    override val selectLocalFilesDialogTitle = "Select local files or folders"
 
     override val projectsTitle = "Projects"
     override val addProject = "Add project"
@@ -77,10 +77,10 @@ object EnglishStrings : Strings {
     override val mainBranchLabel = "Main branch"
     override val mainBranchPlaceholder = "Detected from the repository"
     override val localFilesSection = "Local files"
-    override val removeLocalFile = "Remove local file"
-    override val newLocalFileLabel = "New local file"
+    override val removeLocalFile = "Remove local file or folder"
+    override val newLocalFileLabel = "New local file or folder"
     override val localFilesDescription =
-        "Exact paths copied into each new worktree. They're stored on this machine only."
+        "Exact paths of files or folders copied into each new worktree; a folder brings every file under it. They're stored on this machine only."
     override val repositoryProvisioningSection = "From the repository"
     override val repositoryProvisioningDescription =
         "Patterns versioned in .shogunai.json and .worktreeinclude. Every untracked file that matches is copied into each new worktree."

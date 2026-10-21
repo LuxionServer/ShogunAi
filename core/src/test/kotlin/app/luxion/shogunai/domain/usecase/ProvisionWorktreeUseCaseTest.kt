@@ -284,4 +284,37 @@ class ProvisionWorktreeUseCaseTest {
 
         assertTrue(approval.asked.isEmpty())
     }
+
+    private val keysFolder = "$base/keys"
+
+    private fun folderConfig() = config.copy(secretFiles = listOf("keys"))
+
+    private fun fileManagerWithKeys(failCopyFor: Set<String> = emptySet()) = FakeFileManager(
+        existing = listOf(keysFolder),
+        directories = setOf(keysFolder),
+        failCopyFor = failCopyFor,
+    ).also { it.directoryFiles[keysFolder] = listOf("a.pem", "ci/b.pem") }
+
+    @Test
+    fun `copies the files of a local folder into an existing worktree and keeps the others`() = runTest {
+        val fileManager = fileManagerWithKeys()
+        fileManager.copy("unused", "$linked/keys/old.pem")
+        fileManager.copied.clear()
+
+        val provisioned = ProvisionWorktreeUseCase(folderConfig(), executor(), fileManager, provisioning)(linked).getOrThrow().files
+
+        assertEquals(listOf("keys/a.pem", "keys/ci/b.pem", ".env"), provisioned.map { it.path })
+        assertTrue(fileManager.exists("$linked/keys/old.pem"))
+    }
+
+    @Test
+    fun `a failed copy of a local folder file leaves the worktree in place`() = runTest {
+        val exec = executor()
+        val fileManager = fileManagerWithKeys(failCopyFor = setOf("$keysFolder/ci/b.pem"))
+
+        val error = ProvisionWorktreeUseCase(folderConfig(), exec, fileManager, provisioning)(linked).exceptionOrNull()
+
+        assertIs<WorktreeError.SecretCopyFailed>(error)
+        assertFalse(exec.executedCommands.any { it.take(3) == listOf("git", "worktree", "remove") })
+    }
 }

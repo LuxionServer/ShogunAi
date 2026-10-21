@@ -13,8 +13,8 @@ Every icon-only action control (an `IconButton` with no visible text) SHALL prov
 - **THEN** each `IconButton` exposes a non-empty `contentDescription` describing that action (e.g. "Edit project", "Delete project")
 
 #### Scenario: Remove secret file icon has a description
-- **WHEN** the project configuration screen renders the remove action for a secret file entry
-- **THEN** the `IconButton` exposes a non-empty `contentDescription` describing the action (e.g. "Remove secret file")
+- **WHEN** the project configuration screen renders the remove action for a local files entry, whether it is a file or a folder
+- **THEN** the `IconButton` exposes a non-empty `contentDescription` describing the action (e.g. "Remove local file or folder")
 
 ### Requirement: Choice controls follow one of two consistent shapes
 Every "pick one of N" control in the desktop app SHALL be rendered as either a segmented selector (for a small, fixed set of options) or a dropdown (for a longer or dynamically loaded list of options), instead of an ad hoc `RadioButton` group.
