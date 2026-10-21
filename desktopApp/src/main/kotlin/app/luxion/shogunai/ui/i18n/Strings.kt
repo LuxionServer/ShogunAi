@@ -343,6 +343,9 @@ interface Strings {
     fun derivedDataOnUnavailableVolumes(count: Int): String
     fun derivedDataCompilationCache(size: String): String
     fun derivedDataDeleted(count: Int, freed: String): String
+    fun derivedDataQuotaUsage(usage: String, quota: String): String
+    fun derivedDataQuotaExceeded(inUse: List<String>): String
+    fun derivedDataReleased(count: Int, freed: String): String
     val machineTitle: String
     val resourcesLabel: String
     fun profileName(profile: CapacityProfile): String
@@ -350,6 +353,10 @@ interface Strings {
     fun resourceKindLabel(kind: ResourceKind): String
     val noLimit: String
     val invalidLimit: String
+    val derivedDataQuotaLabel: String
+    val noQuota: String
+    val gigabytesUnit: String
+    val invalidQuota: String
     val notAcquired: String
     fun poolUsage(inUse: Int, limit: Int?, profile: String): String
     val overLimit: String

@@ -264,13 +264,14 @@ shogun pool trim [--json]
 ```text
 shogun xcode
 shogun xcode clean
+shogun xcode trim [--dry-run]
 ```
 
-`xcode` lists the DerivedData folders of the repository's worktrees with their size, the orphaned folders on the machine (`orphans: N (size)`) and, when compilation caching is declared, the cache size. `xcode clean` deletes the orphaned folders (`deleted <path>`, `freed <size>`, or `Nothing to delete.`). Without the Xcode provider, or off macOS, it says the provider isn't active and exits with `0`.
+`xcode` lists the DerivedData folders of the repository's worktrees with their size, the orphaned folders on the machine (`orphans: N (size)`) and, when compilation caching is declared, the cache size. `xcode clean` deletes the orphaned folders (`deleted <path>`, `freed <size>`, or `Nothing to delete.`). `xcode trim` applies the DerivedData quota set in Preferences > Resources: when the folders add up to more than the quota it releases orphaned folders first and then the least recently accessed folders of worktrees of your saved projects that are not in use, and stops as soon as the total fits (`released <path>  <size>`, `freed <size>`, `usage <size> of <quota>`). A worktree is in use while its agent is working or blocked or its folder was accessed within the last hour, and folders of other projects, on unavailable volumes and the compilation cache are never released; if only those remain it prints `quota still exceeded` and the worktrees in use. `--dry-run` prints `would release` and `would free` without deleting. Without a quota it says so and deletes nothing. Without the Xcode provider, or off macOS, `xcode` says the provider isn't active and exits with `0`.
 
 ## JSON output
 
-Besides `status --json` above, every command that reports a result accepts `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `pool status`, `pool trim`, `xcode`, `xcode clean`, `emulator`, `simulator` and `hooks` (not `simulator gradle-init`, `env`, `hook`, `help` or `--version`; on those it is an unknown option and exits with `2`). The option can go anywhere after the command.
+Besides `status --json` above, every command that reports a result accepts `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `pool status`, `pool trim`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator` and `hooks` (not `simulator gradle-init`, `env`, `hook`, `help` or `--version`; on those it is an unknown option and exits with `2`). The option can go anywhere after the command.
 
 The rules are the same for all of them:
 
@@ -295,6 +296,7 @@ The rules are the same for all of them:
 | `gradle stop` | `stopped` (pids), `kept`: `{ pid, kind, reason }` with `reason` `busy`, `state-unknown` or `build-running`, `notDaemons` (pids) and `failures`: `{ pid, message }`. The exit code is `1` when either of the last two isn't empty. |
 | `xcode` | `active` (`false` when the provider isn't active, with the rest empty), `folders`: `{ path, sizeBytes, worktree }`, `orphans`: `{ path, sizeBytes }`, `unavailableVolumeFolders` (a count) and `compilationCacheBytes` (`null` unless declared). |
 | `xcode clean` | `active`, `deleted` (paths), `freedBytes` and `failures`: `{ path, message }`. |
+| `xcode trim` | `active`, `quotaBytes` (`null` without a quota), `dryRun`, `usageBeforeBytes`, `usageAfterBytes`, `exceeded`, `released` (paths, those that would be released with `--dry-run`), `freedBytes`, `inUse` (worktree paths) and `failures`: `{ path, message }`. |
 | `emulator start\|stop\|status` | `worktree`, `serial` and `state` (`running`, `booting` or `stopped`). `serial` and `state` are `null` when the worktree has no emulator port reserved yet. |
 | `simulator start\|stop\|status` | `worktree`, `udid`, `name` and `state` (`shutdown`, `booting` or `booted`), `null` when the worktree has no simulator yet. The KMP wiring hint isn't part of it. |
 

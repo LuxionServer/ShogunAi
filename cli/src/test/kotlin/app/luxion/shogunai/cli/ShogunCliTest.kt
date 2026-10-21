@@ -1341,6 +1341,89 @@ class ShogunCliTest {
         assertEquals("shogun: couldn't delete ${orphan.path}: can't delete ${orphan.path}\n", err.toString())
     }
 
+    private fun trimSetup(quotaGigabytes: Int?, vararg folders: app.luxion.shogunai.domain.model.DerivedDataFolder): Pair<FakeDerivedDataSource, FakeRepositoryProvisioningSource> {
+        resourceLimits.settings = ResourceSettings(derivedDataQuotaGigabytes = quotaGigabytes)
+        val derivedData = FakeDerivedDataSource(existing = folders.toList(), existingProjects = setOf("$base/App.xcodeproj"))
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(xcode = XcodeProvider()))),
+        )
+        return derivedData to provisioning
+    }
+
+    @Test
+    fun `xcode trim releases orphans over the quota and reports usage`() {
+        val gigabyte = 1_073_741_824L
+        val orphan = FakeDerivedDataSource.derivedData("Gone-hash", "/home/dev/projects/gone/App.xcodeproj", 15 * gigabyte)
+        val live = FakeDerivedDataSource.derivedData("Live-hash", "$base/App.xcodeproj", 10 * gigabyte)
+        val (derivedData, provisioning) = trimSetup(12, orphan, live)
+
+        val exitCode = cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData)
+            .run(listOf("xcode", "trim"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf(orphan.path), derivedData.deleted)
+        assertEquals(
+            """
+            released ${orphan.path}  15.0 GB
+            freed 15.0 GB
+            usage 10.0 GB of 12.0 GB
+            """.trimIndent() + "\n",
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `xcode trim dry run lists candidates and deletes nothing`() {
+        val gigabyte = 1_073_741_824L
+        val orphan = FakeDerivedDataSource.derivedData("Gone-hash", "/home/dev/projects/gone/App.xcodeproj", 15 * gigabyte)
+        val (derivedData, provisioning) = trimSetup(5, orphan)
+
+        val exitCode = cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData)
+            .run(listOf("xcode", "trim", "--dry-run"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(derivedData.deleted.isEmpty())
+        assertTrue(out.toString().startsWith("would release ${orphan.path}  15.0 GB\nwould free 15.0 GB\n"), out.toString())
+    }
+
+    @Test
+    fun `xcode trim says no quota is set and deletes nothing`() {
+        val orphan = FakeDerivedDataSource.derivedData("Gone-hash", "/home/dev/projects/gone/App.xcodeproj")
+        val (derivedData, provisioning) = trimSetup(null, orphan)
+
+        val exitCode = cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData)
+            .run(listOf("xcode", "trim"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(derivedData.deleted.isEmpty())
+        assertTrue(out.toString().startsWith("No DerivedData quota is set"), out.toString())
+    }
+
+    @Test
+    fun `xcode trim reports that the quota is still exceeded when only foreign folders remain`() {
+        val gigabyte = 1_073_741_824L
+        val other = FakeDerivedDataSource.derivedData("Other-hash", "/home/dev/projects/other/Other.xcodeproj", 20 * gigabyte)
+        val (derivedData, provisioning) = trimSetup(5, other)
+        derivedData.existingProjects = derivedData.existingProjects + "/home/dev/projects/other/Other.xcodeproj"
+
+        val exitCode = cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData)
+            .run(listOf("xcode", "trim"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(derivedData.deleted.isEmpty())
+        assertEquals("usage 20.0 GB of 5.0 GB\nquota still exceeded\n", out.toString())
+    }
+
+    @Test
+    fun `xcode trim reports the provider is not active when not declared`() {
+        resourceLimits.settings = ResourceSettings(derivedDataQuotaGigabytes = 5)
+
+        val exitCode = cli(repositoryExecutor()).run(listOf("xcode", "trim"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("The Xcode provider isn't active.\n", out.toString())
+    }
+
     @Test
     fun `clean with delete derived data removes worktrees and deletes their derived data`() {
         val mergedProject = "$merged/iosApp/iosApp.xcodeproj"

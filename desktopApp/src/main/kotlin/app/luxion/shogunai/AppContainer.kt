@@ -11,7 +11,12 @@ import app.luxion.shogunai.domain.usecase.DeviceStart
 import app.luxion.shogunai.domain.usecase.GradleTrim
 import app.luxion.shogunai.domain.usecase.ReadResourcePoolUseCase
 import app.luxion.shogunai.domain.usecase.ResolveResourceLimitsUseCase
+import app.luxion.shogunai.domain.usecase.TrimDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.TrimGradleDaemonsUseCase
+import app.luxion.shogunai.domain.usecase.AgentSearch
+import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.DerivedDataTrim
+import app.luxion.shogunai.ui.machine.MachineProject
 import app.luxion.shogunai.infrastructure.JsonResourceLimitsRepository
 import app.luxion.shogunai.infrastructure.JvmMachineCapacity
 import app.luxion.shogunai.ui.shell.ResourcePreferences
@@ -298,7 +303,7 @@ class AppContainer {
         { requested -> contributions.requesting(requested) },
     )
     private val trimGradleDaemons = TrimGradleDaemonsUseCase(listGradleDaemons, stopGradleDaemons, resolveResourceLimits)
-    val resources = ResourcePreferences(resourceLimitsRepository, resolveResourceLimits, showsSimulators = appleSimulators.isSupported())
+    val resources = ResourcePreferences(resourceLimitsRepository, resolveResourceLimits, showsSimulators = appleSimulators.isSupported(), showsDerivedDataQuota = derivedDataSource.isSupported())
     private val startSimulator = StartWorktreeSimulatorUseCase(repositoryProvisioningSource, appleSimulators, acquireResource, resolveEnvironment)
     private val startEmulator = StartWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, acquireResource, androidSdk)
     private val stopEmulator = StopWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)
@@ -345,6 +350,20 @@ class AppContainer {
         stopSimulator = { config, worktreePath -> stopSimulator(config, worktreePath) },
         readSimulatorOrphans = { config -> deleteSimulators.orphans(config) },
         deleteSimulators = { udids -> deleteSimulators(udids) },
+        trimDerivedData = { quotaBytes, declaring, listing ->
+            runCatching {
+                val searches = declaring.map { machineProject ->
+                    AgentSearch(
+                        machineProject.project.config.agents.map { it.agentCommand },
+                        machineProject.worktrees.orEmpty().filterNot { it.isPrunable },
+                    )
+                }
+                val worktrees = searches.flatMap { it.worktrees }
+                val agents = detectRunningAgents(searches).getOrNull().orEmpty()
+                val active = agents.filterValues { running -> running.any { it.state == AgentState.WORKING || it.state == AgentState.BLOCKED } }.keys
+                TrimDerivedDataUseCase(derivedDataSource, ListDerivedDataUseCase(derivedDataSource))(quotaBytes, worktrees, active, measured = listing).getOrThrow()
+            }
+        },
     )
 
     val pathExists: (String) -> Boolean = fileManager::exists
@@ -577,6 +596,8 @@ class MachineUseCases(
     val stopSimulator: suspend (ProjectConfig, String) -> Result<WorktreeSimulator?>,
     val readSimulatorOrphans: suspend (ProjectConfig) -> Result<List<SimulatorDevice>>,
     val deleteSimulators: suspend (List<String>) -> Result<List<String>>,
+    val trimDerivedData: suspend (Long, List<MachineProject>, DerivedDataListing) -> Result<DerivedDataTrim> =
+        { quotaBytes, _, _ -> Result.success(DerivedDataTrim(quotaBytes, 0L, 0L)) },
 )
 
 data class SimulatorUseCases(

@@ -35,3 +35,16 @@ data class DerivedDataDeletion(
 ) {
     val bytesFreed: Long get() = deleted.sumOf { it.sizeBytes ?: 0L }
 }
+
+data class DerivedDataTrim(
+    val quotaBytes: Long?,
+    val usageBefore: Long,
+    val usageAfter: Long,
+    val released: List<AttributedDerivedData> = emptyList(),
+    val inUse: List<AttributedDerivedData> = emptyList(),
+    val failures: List<DerivedDataDeletionFailure> = emptyList(),
+    val dryRun: Boolean = false,
+) {
+    val bytesFreed: Long get() = released.sumOf { it.folder.sizeBytes ?: 0L }
+    val isExceeded: Boolean get() = quotaBytes != null && usageAfter > quotaBytes
+}

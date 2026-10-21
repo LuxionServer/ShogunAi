@@ -402,6 +402,11 @@ object SpanishStrings : Strings {
         if (count == 1) "1 carpeta está en un volumen no montado y se conserva"
         else "$count carpetas están en volúmenes no montados y se conservan"
     override fun derivedDataCompilationCache(size: String) = "Caché de compilación · $size"
+    override fun derivedDataQuotaUsage(usage: String, quota: String) = "$usage de $quota de cuota"
+    override fun derivedDataQuotaExceeded(inUse: List<String>) =
+        "Por encima de la cuota" + if (inUse.isEmpty()) "" else "; se conservan por estar en uso: ${inUse.joinToString(", ")}"
+    override fun derivedDataReleased(count: Int, freed: String) =
+        "Se ${if (count == 1) "liberó 1 carpeta" else "liberaron $count carpetas"} para cumplir la cuota, liberando $freed"
     override fun derivedDataDeleted(count: Int, freed: String) =
         if (count == 1) "1 carpeta de DerivedData borrada · $freed liberados"
         else "$count carpetas de DerivedData borradas · $freed liberados"
@@ -426,6 +431,10 @@ object SpanishStrings : Strings {
     }
     override val noLimit = "Sin límite"
     override val invalidLimit = "Debe ser un número positivo, o sin límite"
+    override val derivedDataQuotaLabel = "Cuota de DerivedData"
+    override val noQuota = "Sin cuota"
+    override val gigabytesUnit = "GB"
+    override val invalidQuota = "Debe ser un número entero positivo, o sin cuota"
     override val notAcquired = "Sin adquirir"
     override fun poolUsage(inUse: Int, limit: Int?, profile: String) =
         (if (limit == null) "$inUse en uso" else "$inUse de $limit en uso") + " · $profile"

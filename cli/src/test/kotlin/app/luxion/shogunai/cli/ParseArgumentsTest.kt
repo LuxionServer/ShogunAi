@@ -120,7 +120,10 @@ class ParseArgumentsTest {
     fun `xcode commands`() {
         assertEquals(CliCommand.Xcode(), command("xcode"))
         assertEquals(CliCommand.XcodeClean(), command("xcode", "clean"))
-        assertEquals("unknown subcommand 'build' for 'xcode', expected clean", usageError("xcode", "build"))
+        assertEquals("unknown subcommand 'build' for 'xcode', expected clean or trim", usageError("xcode", "build"))
+        assertEquals(CliCommand.XcodeTrim(), command("xcode", "trim"))
+        assertEquals(CliCommand.XcodeTrim(dryRun = true), command("xcode", "trim", "--dry-run"))
+        assertEquals("unknown argument 'extra' for 'xcode trim', expected --dry-run", usageError("xcode", "trim", "extra"))
         assertEquals("'xcode clean' takes no arguments, got 'extra'", usageError("xcode", "clean", "extra"))
     }
 

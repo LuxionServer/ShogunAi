@@ -24,6 +24,10 @@ import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.model.ANDROID_SERIAL
 import app.luxion.shogunai.domain.model.AgentSessionRecord
 import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.DerivedDataTrim
+import app.luxion.shogunai.domain.model.ResourceSettings
+import app.luxion.shogunai.domain.usecase.AgentSearch
+import app.luxion.shogunai.domain.usecase.TrimDerivedDataUseCase
 import app.luxion.shogunai.domain.model.AttributedDerivedData
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.DaemonKeptReason
@@ -272,6 +276,7 @@ class ShogunCli(
             is CliCommand.Pool -> pool(command)
             is CliCommand.Xcode -> xcode(command)
             is CliCommand.XcodeClean -> xcodeClean(command)
+            is CliCommand.XcodeTrim -> xcodeTrim(command)
         }
     } catch (error: WorktreeError) {
         err.line("shogun: ${error.message}")
@@ -1103,6 +1108,47 @@ class ShogunCli(
         }
         deletion.failures.forEach { err.line("shogun: couldn't delete ${it.path}: ${it.detail}") }
         return if (deletion.failures.isEmpty()) EXIT_OK else EXIT_FAILURE
+    }
+
+    private suspend fun xcodeTrim(command: CliCommand.XcodeTrim): Int {
+        val repository = ResolveRepositoryUseCase(executor)(workingDirectory).getOrNull()
+        val provider = repository?.let { xcodeProvider(it) }
+        if (repository == null || provider == null || !derivedDataSource.isSupported()) {
+            if (command.json) printJson(xcodeTrimJson(active = false, trim = null)) else out.line("The Xcode provider isn't active.")
+            return EXIT_OK
+        }
+        val quotaBytes = runCatching { resourceLimits.load() }.getOrDefault(ResourceSettings()).derivedDataQuotaBytes
+        if (quotaBytes == null) {
+            if (command.json) printJson(xcodeTrimJson(active = true, trim = DerivedDataTrim(null, 0L, 0L, dryRun = command.dryRun)))
+            else out.line("No DerivedData quota is set; set one in Preferences > Resources.")
+            return EXIT_OK
+        }
+        val configs = (listOf(configFor(workingDirectory)) + projectRepository.list().map { it.config })
+            .distinctBy { it.baseRepositoryPath.trimEnd('/') }
+        val searches = configs.mapNotNull { config ->
+            ListWorktreesUseCase(config, executor)().getOrNull()?.filterNot { it.isPrunable }?.let { AgentSearch(config.agents.map { agent -> agent.agentCommand }, it) }
+        }
+        val worktrees = searches.flatMap { it.worktrees }.distinctBy { it.path.trimEnd('/') }
+        val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore)(searches).getOrNull().orEmpty()
+        val active = agents.filterValues { running -> running.any { it.state == AgentState.WORKING || it.state == AgentState.BLOCKED } }.keys
+        val trim = TrimDerivedDataUseCase(derivedDataSource, listDerivedData, now)(quotaBytes, worktrees, active, command.dryRun).getOrThrow()
+        if (command.json) {
+            printJson(xcodeTrimJson(active = true, trim = trim))
+            trim.failures.forEach { err.line("shogun: couldn't delete ${it.path}: ${it.detail}") }
+            return if (trim.failures.isEmpty()) EXIT_OK else EXIT_FAILURE
+        }
+        val releasedLabel = if (trim.dryRun) "would release" else "released"
+        trim.released.forEach { out.line("$releasedLabel ${it.folder.path}  ${formatMemory(it.folder.sizeBytes ?: 0L)}") }
+        if (trim.released.isNotEmpty()) {
+            out.line("${if (trim.dryRun) "would free" else "freed"} ${formatMemory(trim.bytesFreed)}")
+        }
+        out.line("usage ${formatMemory(trim.usageAfter)} of ${formatMemory(quotaBytes)}")
+        if (trim.isExceeded) {
+            val inUse = trim.inUse.joinToString(", ") { (it.owner as DerivedDataOwner.Worktree).path }
+            out.line("quota still exceeded" + if (inUse.isNotEmpty()) "; worktrees in use: $inUse" else "")
+        }
+        trim.failures.forEach { err.line("shogun: couldn't delete ${it.path}: ${it.detail}") }
+        return if (trim.failures.isEmpty()) EXIT_OK else EXIT_FAILURE
     }
 
     private fun xcodeProvider(repository: String): XcodeProvider? =

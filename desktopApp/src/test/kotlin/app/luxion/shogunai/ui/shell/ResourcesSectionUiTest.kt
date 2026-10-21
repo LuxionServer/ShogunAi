@@ -30,10 +30,11 @@ class ResourcesSectionUiTest {
 
     private val repository = FakeResourceLimitsRepository()
 
-    private fun preferences(showsSimulators: Boolean = true) = ResourcePreferences(
+    private fun preferences(showsSimulators: Boolean = true, showsQuota: Boolean = true) = ResourcePreferences(
         repository,
         ResolveResourceLimitsUseCase(repository, FakeMachineCapacity()),
         showsSimulators,
+        showsQuota,
     )
 
     private fun androidx.compose.ui.test.ComposeUiTest.show(resources: ResourcePreferences) = setContent {
@@ -101,5 +102,56 @@ class ResourcesSectionUiTest {
         onAllNodesWithText("No limit")[0].performClick()
 
         assertEquals(null, repository.settings.custom.emulators)
+    }
+
+    @Test
+    fun `turning off no quota and typing a size stores the quota`() = runComposeUiTest {
+        show(preferences())
+
+        onNodeWithText("No quota").performClick()
+        onAllNodes(hasSetTextAction())[0].performTextClearance()
+        onAllNodes(hasSetTextAction())[0].performTextInput("40")
+
+        assertEquals(40, repository.settings.derivedDataQuotaGigabytes)
+    }
+
+    @Test
+    fun `an invalid quota shows the message and keeps the previous one`() = runComposeUiTest {
+        repository.settings = repository.settings.copy(derivedDataQuotaGigabytes = 30)
+        show(preferences())
+
+        onAllNodes(hasSetTextAction())[0].performTextClearance()
+        onAllNodes(hasSetTextAction())[0].performTextInput("0")
+
+        onNodeWithText("Must be a positive whole number, or no quota").assertIsDisplayed()
+        assertEquals(30, repository.settings.derivedDataQuotaGigabytes)
+    }
+
+    @Test
+    fun `no quota clears the stored quota`() = runComposeUiTest {
+        repository.settings = repository.settings.copy(derivedDataQuotaGigabytes = 30)
+        show(preferences())
+
+        onNodeWithText("No quota").performClick()
+
+        assertEquals(null, repository.settings.derivedDataQuotaGigabytes)
+    }
+
+    @Test
+    fun `changing the profile keeps the quota`() = runComposeUiTest {
+        repository.settings = repository.settings.copy(derivedDataQuotaGigabytes = 50)
+        show(preferences())
+
+        onNodeWithText("Light").performClick()
+
+        assertEquals(CapacityProfile.LIGHT, repository.settings.profile)
+        assertEquals(50, repository.settings.derivedDataQuotaGigabytes)
+    }
+
+    @Test
+    fun `the quota is hidden off macOS`() = runComposeUiTest {
+        show(preferences(showsQuota = false))
+
+        assertEquals(0, onAllNodesWithText("DerivedData quota").fetchSemanticsNodes().size)
     }
 }
