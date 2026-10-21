@@ -358,6 +358,7 @@ interface Strings {
     fun monthsAgo(count: Long): String
     fun yearsAgo(count: Long): String
     val menuCopyDiagnosticReport: String
+    val secondaryWindowError: String
     val menuCheckForUpdates: String
     fun updateAvailableMessage(newVersion: String, runningVersion: String): String
     fun updateAvailableDialogMessage(newVersion: String, runningVersion: String): String

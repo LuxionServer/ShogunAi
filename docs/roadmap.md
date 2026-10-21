@@ -43,6 +43,7 @@ The review of the whole project on 2026-10-19 and the changes built after it are
 - More terminals for "Open in terminal" (Ghostty, Warp, Alacritty, Kitty, GNOME Terminal), each as one more adapter.
 - Faster DerivedData sizes: measuring several folders in parallel and remembering sizes between app runs.
 - A notification when a Herdr agent becomes blocked or done; today the worktree's row and the menu bar icon's menu are the signal.
+- Finding the root cause of the errors that closed the Preferences window, from the entries the isolation now leaves in the diagnostics log, and of the native crash seen on another machine that left an empty diagnostic report.
 
 ### 5. Guided onboarding demo
 

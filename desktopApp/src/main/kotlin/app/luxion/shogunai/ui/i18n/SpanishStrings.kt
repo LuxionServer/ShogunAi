@@ -537,6 +537,7 @@ object SpanishStrings : Strings {
     override val showIconInTray = "Mostrar el icono en la bandeja del sistema"
     override val keepRunningWhenClosed = "Seguir ejecutándose al cerrar la ventana"
     override val menuCopyDiagnosticReport = "Copiar informe de diagnóstico"
+    override val secondaryWindowError = "La ventana se cerró por un error. Quedó registrado en el registro de diagnóstico."
     override val menuCheckForUpdates = "Buscar actualizaciones…"
     override fun updateAvailableMessage(newVersion: String, runningVersion: String) =
         "¡Ya está aquí ShogunAi $newVersion! Tienes la $runningVersion."
