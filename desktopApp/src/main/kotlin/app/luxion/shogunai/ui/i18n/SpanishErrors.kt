@@ -1,9 +1,12 @@
 package app.luxion.shogunai.ui.i18n
 
 import app.luxion.shogunai.domain.executor.CommandExecutionException
+import app.luxion.shogunai.domain.model.HolderProtection
+import app.luxion.shogunai.domain.model.PoolHolder
 import app.luxion.shogunai.domain.model.PoolHolderState
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.toLocalClockTime
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
 internal fun spanishErrorTexts(error: Throwable, gitCause: GitFailureCause): ErrorTexts = when (error) {
@@ -143,8 +146,8 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     )
     is WorktreeError.ResourcePoolFull -> ErrorTexts(
         "Se alcanzó el límite de ${error.limit} ${spanishKindName(error.kind)} y ninguno se puede liberar: " +
-            error.holders.joinToString("; ") { "${it.displayName} (${spanishHolderState(it.state)})" } + ".",
-        "Detén uno de ellos, o sube el límite en Preferencias.",
+            error.holders.joinToString("; ") { "${it.displayName} (${spanishHolderState(it.state)}${spanishProtection(it)})" } + ".",
+        "Espera a que expire una concesión, detén uno de ellos, o sube el límite en Preferencias.",
     )
     is WorktreeError.AndroidSdkNotFound -> ErrorTexts(
         "No se encontró el SDK de Android.",
@@ -272,4 +275,10 @@ private fun spanishHolderState(state: PoolHolderState): String = when (state) {
     PoolHolderState.BUSY -> "ocupado"
     PoolHolderState.IDLE -> "inactivo"
     PoolHolderState.UNKNOWN -> "desconocido"
+}
+
+private fun spanishProtection(holder: PoolHolder): String = when (holder.protection) {
+    HolderProtection.AGENT_WORKING -> ", agente trabajando"
+    HolderProtection.LEASED -> ", concesión hasta ${holder.leaseExpiresAt?.toLocalClockTime()}"
+    null -> ""
 }

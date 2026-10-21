@@ -131,10 +131,12 @@ The iOS simulator provider (`IosSimulator.kt`) only acts on macOS for repositori
 Emulators, iOS simulators and Gradle daemons are resources of limited capacity that worktrees share (`ResourcePool.kt`). There is no pool registry: a pool is computed from what already exists.
 
 - `ResourceKind` (`EMULATOR`, `IOS_SIMULATOR`, `GRADLE_DAEMON`), `CapacityProfile` (`AUTOMATIC`, `LIGHT`, `BALANCED`, `PER_WORKTREE`, `CUSTOM`), `ResourceLimits` (`emulators`, `simulators` and `gradleDaemons`, where `null` means no limit) and `ResourceSettings` (the profile and its custom limits, stored as `resources` in the app settings and never in the repository).
-- `PoolHolder` is one resource in use: its kind, worktree path, Git admin directory, state, whether it is idle and when it was last used. `PoolUsage` is a pool: its `limit`, its `effectiveLimit` (an emulator limit never exceeds the 16 console port pairs) and its holders. `PoolRelease` is what acquiring or trimming released.
+- `PoolHolder` is one resource in use: its kind, worktree path, Git admin directory, state, whether it is idle, when it was last used, when its lease expires (`leaseExpiresAt`), the state of its worktree's agent (`agentState`, `null` without a live session) and its `releaseRank`. `PoolUsage` is a pool: its `limit`, its `effectiveLimit` (an emulator limit never exceeds the 16 console port pairs) and its holders. `PoolRelease` is what acquiring or trimming released.
 - A worktree holds an emulator while it has the `emulator` port reserved, a simulator while it has an `ios-simulator` UDID recorded, and a Gradle daemon is held by the worktree of its last build. Kotlin daemons count against no pool.
 - The profile table: Automatic gives `clamp(min((GB − 8) / 8, cores / 4), 1, 4)` emulators and simulators and `clamp(GB / 8, 2, 8)` Gradle daemons (Light when memory can't be read); Light is 1, 1 and 2; Balanced is 2, 2 and 4; One per worktree has no limit; Custom is a positive number or no limit per kind.
 - Each worktree's `shogunai-env.json` keeps a `lastUsed` object (key to epoch milliseconds) next to its ports and resources. A resource without a record is the least recently used.
+- The same file keeps `leases` (key to the epoch milliseconds of the last renewal) and `releases` (key to a `ReleaseRecord`: when it was released, the worktree it was released for and the previous port or UDID). A lease expires `ResourceSettings.leaseDuration` (`leaseMinutes`, 20 by default, a machine setting) after its last renewal; a missing lease counts as expired. The release record is cleared when the worktree acquires that kind again, and recent records of other worktrees quarantine their ports.
+- `releaseRank` decides who can be released, and in what order: `null` for a worktree whose agent is working, a valid lease or a booting device; 1 for a stopped device with no agent session; 2 for a stopped device whose agent is done or idle; 3 for a running or booted device; 4 when the agent is blocked. Least recently used breaks ties.
 
 ### Herdr
 
@@ -199,7 +201,7 @@ User preferences: `LIGHT` / `DARK` / `SYSTEM` and `ENGLISH` / `SPANISH`. They're
 - `StartPointNotFound` — the start point given to `shogun new --from` doesn't name a commit.
 - `ProcessListingFailed` — `lsof` or `ps` failed while detecting running agents (e.g. on Windows).
 - `NoEmulatorPort` — every emulator console port from 5554 to 5584 is reserved or busy.
-- `ResourcePoolFull` — a pool is at its limit and none of its resources is idle; keeps the kind, the limit and every holder with its worktree and state.
+- `ResourcePoolFull` — a pool is at its limit and none of its resources is releasable; keeps the kind, the limit and every holder with its worktree, state and, while protected, its lease expiry or that its agent is working.
 - `AndroidSdkNotFound` — the Android SDK wasn't found; keeps the places checked.
 - `NoAvdAvailable` — the machine has no Android Virtual Device.
 - `EmulatorBootTimeout` — the emulator didn't finish booting in time; it's left booting.
@@ -303,6 +305,10 @@ interface EnvironmentStateStore {
     fun writeResources(adminDirectory: String, resources: Map<String, String>)
     fun readLastUsed(adminDirectory: String): Map<String, Long>
     fun writeLastUsed(adminDirectory: String, lastUsed: Map<String, Long>)
+    fun readLeases(adminDirectory: String): Map<String, Long>
+    fun writeLeases(adminDirectory: String, leases: Map<String, Long>)
+    fun readReleases(adminDirectory: String): Map<String, ReleaseRecord>
+    fun writeReleases(adminDirectory: String, releases: Map<String, ReleaseRecord>)
     fun reservationsOnMachine(commonDirectory: String): List<WorktreeReservations>
     fun release(adminDirectory: String, key: String)
     fun reservedPortsOnMachine(commonDirectory: String): Set<Int>
@@ -562,7 +568,8 @@ Removing one worktree also releases what its providers hold, in two steps around
 
 - `ResolveResourceLimitsUseCase` turns the stored `ResourceSettings` into `ResourceLimits` with the profile table, using the `MachineCapacity` port (`totalMemoryBytes()` and `cores()`, implemented over the JVM's `OperatingSystemMXBean`). A missing or unreadable setting means Automatic.
 - `ReadResourcePoolUseCase` builds a `PoolUsage` for emulators and simulators from every reservation on the machine (mapping each admin directory to its worktree through its `gitdir` file) and the device states, and for Gradle daemons from `ListGradleDaemonsUseCase`.
-- `AcquireWorktreeResourceUseCase` is what the emulator and simulator start use cases call first. Under the reservation lock: a resource the worktree already holds only has its last use updated; with room in the pool it reserves a port or creates the simulator; at the limit it releases the idle holder used least recently (a stopped emulator's port reservation, a shut-down simulator, which is deleted) and reserves; with no idle holder it fails with `ResourcePoolFull`. It returns the `PoolRelease`s it made and rewrites the declared environment file of the worktree and of each released one. `StartWorktreeEmulatorUseCase` and `StartWorktreeSimulatorUseCase` return a `DeviceStart` with the device and that result.
+- `AcquireWorktreeResourceUseCase` is what the emulator and simulator start use cases call first. Under the reservation lock: a resource the worktree already holds only has its last use and lease updated; with room in the pool it reserves a port or creates the simulator; at the limit it releases the holder with the lowest `releaseRank` (stopping a running emulator or shutting down a booted simulator first, deleting the simulator, and recording a `ReleaseRecord` on the victim) and reserves; with no releasable holder it fails with `ResourcePoolFull`. Ports are chosen in this order: the worktree's previous port when free, a port not released within the lease duration, any free port. It returns the `PoolRelease`s it made and rewrites the declared environment file of the worktree and of each released one. `StartWorktreeEmulatorUseCase` and `StartWorktreeSimulatorUseCase` return a `DeviceStart` with the device and that result.
+- `ReadAgentActivityUseCase` gives the state of a worktree's agent from the live sessions in `AgentSessionStore` (working over blocked over done over idle; `null` without one), `RenewWorktreeLeasesUseCase` renews the leases of the devices a worktree holds without touching their last use or acquiring anything, and `ReadReleaseRecordUseCase` reads a worktree's release record.
 - `TrimGradleDaemonsUseCase` stops idle Gradle daemons, longest idle first, through `StopGradleDaemonsUseCase` until the count is within the limit; busy daemons and daemons of unknown state are never stopped for it.
 
 ### `CloseHerdrWorkspacesUseCase`

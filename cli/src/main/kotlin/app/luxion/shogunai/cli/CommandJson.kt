@@ -13,6 +13,7 @@ import app.luxion.shogunai.domain.model.DerivedDataTrim
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.model.PoolUsage
+import app.luxion.shogunai.domain.model.ReleaseRecord
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.ProvisionDrift
 import app.luxion.shogunai.domain.model.ProvisionDriftState
@@ -38,6 +39,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import java.time.Instant
 
 fun JsonObject.compact(): String = Json.encodeToString(JsonElement.serializer(), this)
 
@@ -363,19 +365,38 @@ fun xcodeTrimJson(active: Boolean, trim: DerivedDataTrim?): JsonObject = buildJs
     )
 }
 
-fun emulatorJson(worktree: String, emulator: WorktreeEmulator?, acquisition: ResourceAcquisition? = null): JsonObject = buildJsonObject {
+fun emulatorJson(
+    worktree: String,
+    emulator: WorktreeEmulator?,
+    acquisition: ResourceAcquisition? = null,
+    releaseRecord: ReleaseRecord? = null,
+): JsonObject = buildJsonObject {
     put("worktree", worktree)
     put("serial", emulator?.serial)
     put("state", emulator?.state?.jsonLabel)
     put("acquired", emulator != null)
     acquisition?.let { put("acquiredNow", it.acquiredNow) }
     acquisition?.let { put("released", strings(it.releases.mapNotNull { release -> release.worktreePath })) }
+    releaseRecord?.let {
+        put(
+            "releasedFor",
+            buildJsonObject {
+                put("worktree", it.forWorktree)
+                put("at", Instant.ofEpochMilli(it.releasedAt).toString())
+            },
+        )
+    }
 }
 
 private val EmulatorState.jsonLabel: String
     get() = name.lowercase()
 
-fun simulatorJson(worktree: String, simulator: WorktreeSimulator?, acquisition: ResourceAcquisition? = null): JsonObject = buildJsonObject {
+fun simulatorJson(
+    worktree: String,
+    simulator: WorktreeSimulator?,
+    acquisition: ResourceAcquisition? = null,
+    releaseRecord: ReleaseRecord? = null,
+): JsonObject = buildJsonObject {
     put("worktree", worktree)
     put("udid", simulator?.udid)
     put("name", simulator?.name)
@@ -383,6 +404,15 @@ fun simulatorJson(worktree: String, simulator: WorktreeSimulator?, acquisition: 
     put("acquired", simulator != null)
     acquisition?.let { put("acquiredNow", it.acquiredNow) }
     acquisition?.let { put("released", strings(it.releases.mapNotNull { release -> release.worktreePath })) }
+    releaseRecord?.let {
+        put(
+            "releasedFor",
+            buildJsonObject {
+                put("worktree", it.forWorktree)
+                put("at", Instant.ofEpochMilli(it.releasedAt).toString())
+            },
+        )
+    }
 }
 
 fun poolJson(usages: List<PoolUsage>): JsonObject = buildJsonObject {

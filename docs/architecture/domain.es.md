@@ -131,10 +131,12 @@ El provider de simulador de iOS (`IosSimulator.kt`) solo actúa en macOS y en re
 Los emuladores, los simuladores de iOS y los daemons de Gradle son recursos de capacidad limitada que comparten los worktrees (`ResourcePool.kt`). No hay un registro de pools: un pool se calcula a partir de lo que ya existe.
 
 - `ResourceKind` (`EMULATOR`, `IOS_SIMULATOR`, `GRADLE_DAEMON`), `CapacityProfile` (`AUTOMATIC`, `LIGHT`, `BALANCED`, `PER_WORKTREE`, `CUSTOM`), `ResourceLimits` (`emulators`, `simulators` y `gradleDaemons`, donde `null` significa sin límite) y `ResourceSettings` (el perfil y sus límites personalizados, guardados como `resources` en los ajustes de la app y nunca en el repositorio).
-- `PoolHolder` es un recurso en uso: su tipo, la ruta del worktree, el directorio de administración de Git, el estado, si está inactivo y cuándo se usó por última vez. `PoolUsage` es un pool: su `limit`, su `effectiveLimit` (el límite de emuladores nunca supera los 16 pares de puertos de consola) y sus holders. `PoolRelease` es lo que liberó una adquisición o un recorte.
+- `PoolHolder` es un recurso en uso: su tipo, la ruta del worktree, el directorio de administración de Git, el estado, si está inactivo, cuándo se usó por última vez, cuándo caduca su concesión (`leaseExpiresAt`), el estado del agente de su worktree (`agentState`, `null` sin sesión viva) y su `releaseRank`. `PoolUsage` es un pool: su `limit`, su `effectiveLimit` (el límite de emuladores nunca supera los 16 pares de puertos de consola) y sus holders. `PoolRelease` es lo que liberó una adquisición o un recorte.
 - Un worktree tiene un emulador mientras tiene reservado el puerto `emulator`, un simulador mientras tiene registrado un UDID `ios-simulator`, y un daemon de Gradle pertenece al worktree de su última build. Los daemons de Kotlin no cuentan en ningún pool.
 - La tabla de perfiles: Automático da `clamp(min((GB − 8) / 8, núcleos / 4), 1, 4)` emuladores y simuladores y `clamp(GB / 8, 2, 8)` daemons de Gradle (Ligero cuando no se puede leer la memoria); Ligero es 1, 1 y 2; Equilibrado es 2, 2 y 4; Uno por worktree no tiene límite; Personalizado es un número positivo o sin límite por tipo.
 - El `shogunai-env.json` de cada worktree guarda un objeto `lastUsed` (clave a milisegundos de época) junto a sus puertos y recursos. Un recurso sin registro es el usado menos recientemente.
+- El mismo archivo guarda `leases` (clave a los milisegundos de época de la última renovación) y `releases` (clave a un `ReleaseRecord`: cuándo se liberó, el worktree para el que se liberó y el puerto o UDID anterior). Una concesión caduca `ResourceSettings.leaseDuration` (`leaseMinutes`, 20 por defecto, un ajuste de la máquina) después de su última renovación; una concesión ausente cuenta como caducada. El registro de liberación se borra cuando el worktree vuelve a adquirir ese tipo, y los registros recientes de otros worktrees ponen en cuarentena sus puertos.
+- `releaseRank` decide quién se puede liberar y en qué orden: `null` para un worktree cuyo agente trabaja, con una concesión vigente o con un dispositivo arrancando; 1 para un dispositivo detenido sin sesión de agente; 2 para uno detenido cuyo agente ha terminado o está inactivo; 3 para uno en marcha; 4 cuando el agente está bloqueado. El menos recientemente usado desempata.
 
 ### Herdr
 
@@ -199,7 +201,7 @@ Preferencias del usuario: `LIGHT` / `DARK` / `SYSTEM` y `ENGLISH` / `SPANISH`. S
 - `StartPointNotFound` — el punto de partida que se pasa a `shogun new --from` no identifica un commit.
 - `ProcessListingFailed` — `lsof` o `ps` fallaron al detectar los agentes en ejecución (p. ej. en Windows).
 - `NoEmulatorPort` — todos los puertos de consola de emulador entre 5554 y 5584 están reservados u ocupados.
-- `ResourcePoolFull` — un pool está en su límite y ninguno de sus recursos está inactivo; guarda el tipo, el límite y cada holder con su worktree y estado.
+- `ResourcePoolFull` — un pool está en su límite y ninguno de sus recursos se puede liberar; guarda el tipo, el límite y cada holder con su worktree, estado y, mientras está protegido, la caducidad de su concesión o que su agente está trabajando.
 - `AndroidSdkNotFound` — no se encontró el Android SDK; guarda los sitios revisados.
 - `NoAvdAvailable` — la máquina no tiene ningún Android Virtual Device.
 - `EmulatorBootTimeout` — el emulador no terminó de arrancar a tiempo; se deja arrancando.
@@ -303,6 +305,10 @@ interface EnvironmentStateStore {
     fun writeResources(adminDirectory: String, resources: Map<String, String>)
     fun readLastUsed(adminDirectory: String): Map<String, Long>
     fun writeLastUsed(adminDirectory: String, lastUsed: Map<String, Long>)
+    fun readLeases(adminDirectory: String): Map<String, Long>
+    fun writeLeases(adminDirectory: String, leases: Map<String, Long>)
+    fun readReleases(adminDirectory: String): Map<String, ReleaseRecord>
+    fun writeReleases(adminDirectory: String, releases: Map<String, ReleaseRecord>)
     fun reservationsOnMachine(commonDirectory: String): List<WorktreeReservations>
     fun release(adminDirectory: String, key: String)
     fun reservedPortsOnMachine(commonDirectory: String): Set<Int>
@@ -562,7 +568,8 @@ Eliminar un worktree también libera lo que retienen sus providers, en dos pasos
 
 - `ResolveResourceLimitsUseCase` convierte los `ResourceSettings` guardados en `ResourceLimits` con la tabla de perfiles, usando el puerto `MachineCapacity` (`totalMemoryBytes()` y `cores()`, implementado sobre el `OperatingSystemMXBean` de la JVM). Un ajuste ausente o ilegible significa Automático.
 - `ReadResourcePoolUseCase` construye un `PoolUsage` de emuladores y simuladores a partir de todas las reservas de la máquina (asignando cada directorio de administración a su worktree mediante su archivo `gitdir`) y del estado de los dispositivos, y el de los daemons de Gradle a partir de `ListGradleDaemonsUseCase`.
-- `AcquireWorktreeResourceUseCase` es lo primero que llaman los casos de uso de arranque del emulador y del simulador. Bajo el lock de reservas: un recurso que el worktree ya tiene solo actualiza su último uso; con hueco en el pool reserva un puerto o crea el simulador; en el límite libera el holder inactivo usado menos recientemente (la reserva de puerto de un emulador detenido, un simulador apagado, que se elimina) y reserva; sin ningún holder inactivo falla con `ResourcePoolFull`. Devuelve los `PoolRelease` que hizo y reescribe el archivo de entorno declarado del worktree y el de cada uno liberado. `StartWorktreeEmulatorUseCase` y `StartWorktreeSimulatorUseCase` devuelven un `DeviceStart` con el dispositivo y ese resultado.
+- `AcquireWorktreeResourceUseCase` es lo primero que llaman los casos de uso de arranque del emulador y del simulador. Bajo el lock de reservas: un recurso que el worktree ya tiene solo actualiza su último uso y su concesión; con hueco en el pool reserva un puerto o crea el simulador; en el límite libera el holder con el `releaseRank` más bajo (deteniendo antes un emulador en marcha o apagando un simulador arrancado, eliminando el simulador y guardando un `ReleaseRecord` en la víctima) y reserva; sin ningún holder liberable falla con `ResourcePoolFull`. Los puertos se eligen en este orden: el puerto anterior del worktree si está libre, uno no liberado dentro de la duración de la concesión, cualquiera libre. Devuelve los `PoolRelease` que hizo y reescribe el archivo de entorno declarado del worktree y el de cada uno liberado. `StartWorktreeEmulatorUseCase` y `StartWorktreeSimulatorUseCase` devuelven un `DeviceStart` con el dispositivo y ese resultado.
+- `ReadAgentActivityUseCase` da el estado del agente de un worktree a partir de las sesiones vivas de `AgentSessionStore` (trabajando antes que bloqueado, que terminado, que inactivo; `null` sin ninguna), `RenewWorktreeLeasesUseCase` renueva las concesiones de los dispositivos que tiene un worktree sin tocar su último uso ni adquirir nada, y `ReadReleaseRecordUseCase` lee el registro de liberación de un worktree.
 - `TrimGradleDaemonsUseCase` detiene los daemons de Gradle inactivos, primero los que llevan más tiempo inactivos, mediante `StopGradleDaemonsUseCase`, hasta que el número esté dentro del límite; los daemons ocupados y los de estado desconocido nunca se detienen por esto.
 
 ### `CloseHerdrWorkspacesUseCase`

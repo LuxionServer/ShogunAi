@@ -3,6 +3,7 @@ package app.luxion.shogunai.cli
 import java.time.Instant
 import app.luxion.shogunai.domain.model.ResourceLimits
 import app.luxion.shogunai.domain.model.EmulatorState
+import app.luxion.shogunai.domain.model.ReleaseRecord
 import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.FakeMachineCapacity
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
@@ -227,6 +228,47 @@ class EnvironmentCommandsTest {
     }
 
     @Test
+    fun `emulator status after a release says why and for whom`() {
+        store.writeReleases("$common/worktrees/TASK-123", mapOf("emulator" to ReleaseRecord(1_000L, "main-repo · TASK-9", "emulator-5554")))
+
+        assertEquals(0, cli(withEmulator()).run(listOf("emulator", "status")))
+
+        assertEquals("not acquired (released for main-repo · TASK-9 at 1970-01-01T00:00:01Z)\n", out.toString())
+    }
+
+    @Test
+    fun `emulator status json after a release names the worktree it was released for`() {
+        store.writeReleases("$common/worktrees/TASK-123", mapOf("emulator" to ReleaseRecord(1_000L, "main-repo · TASK-9", "emulator-5554")))
+
+        assertEquals(0, cli(withEmulator()).run(listOf("emulator", "status", "--json")))
+
+        val released = jsonOut().getValue("releasedFor") as kotlinx.serialization.json.JsonObject
+        assertEquals("main-repo · TASK-9", released.text("worktree"))
+        assertEquals("1970-01-01T00:00:01Z", released.text("at"))
+    }
+
+    @Test
+    fun `simulator status after a release says why and for whom`() {
+        store.writeReleases("$common/worktrees/TASK-123", mapOf("ios-simulator" to ReleaseRecord(1_000L, "main-repo · TASK-9", "UDID-1")))
+
+        assertEquals(0, cli(withSimulator()).run(listOf("simulator", "status")))
+
+        assertTrue(out.contains("not acquired (released for main-repo · TASK-9 at 1970-01-01T00:00:01Z)"), out.toString())
+    }
+
+    @Test
+    fun `emulator start of a running emulator renews its lease and prints the serial to export`() {
+        store.writePorts("$common/worktrees/TASK-123", mapOf("emulator" to 5554))
+        androidSdk.states["emulator-5554"] = EmulatorState.RUNNING
+
+        assertEquals(0, cli(withEmulator()).run(listOf("emulator", "start")))
+
+        assertEquals("emulator-5554 running\nexport ANDROID_SERIAL=emulator-5554\n", out.toString())
+        assertTrue(store.readLeases("$common/worktrees/TASK-123").getValue("emulator") > 0)
+        assertTrue(androidSdk.started.isEmpty())
+    }
+
+    @Test
     fun `emulator commands fail without the provider and never touch the SDK`() {
         val exitCode = cli(declaring("PORT" to "\${port}")).run(listOf("emulator", "start"))
 
@@ -242,7 +284,8 @@ class EnvironmentCommandsTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals("export ANDROID_SERIAL='emulator-5554'\n", envFile.readText())
-        assertTrue(out.contains("ANDROID_SERIAL=emulator-5554; start it with 'shogun emulator start'"), out.toString())
+        assertTrue(out.contains("ANDROID_SERIAL=emulator-5554; run 'shogun emulator start' before every use"), out.toString())
+        assertTrue(out.contains("may have been released to another worktree"), out.toString())
         assertTrue(out.contains("never run 'adb kill-server' or 'adb start-server'"), out.toString())
         assertEquals(0, androidSdk.locates)
     }
@@ -413,7 +456,8 @@ class EnvironmentCommandsTest {
 
         assertEquals(0, exitCode, err.toString())
         assertFalse(out.contains("ANDROID_SERIAL="), out.toString())
-        assertTrue(out.contains("'shogun emulator start' acquires and starts it and prints the ANDROID_SERIAL to export"), out.toString())
+        assertTrue(out.contains("run 'shogun emulator start' before every use"), out.toString())
+        assertTrue(out.contains("prints the ANDROID_SERIAL to export, and re-acquires one if it was released"), out.toString())
         assertTrue(out.contains("never run 'adb kill-server' or 'adb start-server'"), out.toString())
         assertEquals("", envFile.readText())
         assertTrue(store.portsByAdminDirectory.isEmpty())
@@ -446,6 +490,7 @@ class EnvironmentCommandsTest {
     fun `emulator start fails with the pool error when every emulator is running`() {
         resourceLimits.settings = ResourceSettings(CapacityProfile.CUSTOM, ResourceLimits(emulators = 1, simulators = null, gradleDaemons = null))
         store.writePorts("$common/worktrees/TASK-9", mapOf("emulator" to 5556))
+        store.writeLeases("$common/worktrees/TASK-9", mapOf("emulator" to System.currentTimeMillis()))
         androidSdk.states["emulator-5556"] = EmulatorState.RUNNING
 
         val exitCode = cli(withEmulator()).run(listOf("emulator", "start"))
@@ -453,7 +498,7 @@ class EnvironmentCommandsTest {
         assertEquals(1, exitCode)
         assertEquals("", out.toString())
         assertTrue(err.contains("limit of 1 emulator is reached"), err.toString())
-        assertTrue(err.contains("main-repo · TASK-9 (running)"), err.toString())
+        assertTrue(err.contains("main-repo · TASK-9 (running, lease until"), err.toString())
         assertTrue(androidSdk.started.isEmpty())
     }
 

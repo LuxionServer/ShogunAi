@@ -29,6 +29,9 @@ class ResourcePreferences(
     var quotaDraft by mutableStateOf(quotaDraftOf(settings.derivedDataQuotaGigabytes))
         private set
 
+    var leaseDraft by mutableStateOf(CustomLimitDraft(settings.leaseMinutes.toString(), unlimited = false))
+        private set
+
     val kinds: List<ResourceKind>
         get() = listOfNotNull(
             ResourceKind.EMULATOR,
@@ -77,6 +80,16 @@ class ResourcePreferences(
         }
         quotaDraft = CustomLimitDraft(number.toString(), unlimited = false)
         save(settings.copy(derivedDataQuotaGigabytes = number))
+    }
+
+    fun editLease(text: String) {
+        val number = text.trim().toIntOrNull()?.takeIf { it > 0 }
+        if (number == null) {
+            leaseDraft = CustomLimitDraft(text, unlimited = false, invalid = true)
+            return
+        }
+        leaseDraft = CustomLimitDraft(number.toString(), unlimited = false)
+        save(settings.copy(leaseMinutes = number))
     }
 
     fun setNoQuota(none: Boolean) {

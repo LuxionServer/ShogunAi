@@ -83,6 +83,7 @@ The `agent-state` hooks record whether each Claude session is working (`UserProm
 - Granting a permission fires no hook. A blocked session whose transcript is written to afterwards reads as working, so the state follows the permission being granted.
 - When Herdr also reports the agent, Herdr's state is used.
 - Other agents (Codex, Gemini…) have no such hooks and show without a state unless Herdr reports them.
+- These recorded sessions also protect a worktree's emulator and simulator: a working session renews the device lease and is never released from under it, while a blocked one is released last. Herdr's states aren't used for this. See [Providers](guide/providers.md).
 
 ## Herdr
 

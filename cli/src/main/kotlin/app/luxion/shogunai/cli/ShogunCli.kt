@@ -45,6 +45,7 @@ import app.luxion.shogunai.domain.model.IOS_SIMULATOR_UDID
 import app.luxion.shogunai.domain.model.PoolHolder
 import app.luxion.shogunai.domain.model.PoolRelease
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.ReleaseRecord
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.SimulatorDevice
 import app.luxion.shogunai.domain.model.SimulatorSettings
@@ -88,7 +89,10 @@ import app.luxion.shogunai.domain.usecase.ProviderContributions
 import app.luxion.shogunai.domain.usecase.CheckProvisionedFilesUseCase
 import app.luxion.shogunai.domain.usecase.ProvisionWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.ReadEmulatorStatesUseCase
+import app.luxion.shogunai.domain.usecase.ReadAgentActivityUseCase
+import app.luxion.shogunai.domain.usecase.ReadReleaseRecordUseCase
 import app.luxion.shogunai.domain.usecase.ReadResourcePoolUseCase
+import app.luxion.shogunai.domain.usecase.RenewWorktreeLeasesUseCase
 import app.luxion.shogunai.domain.usecase.ReadSimulatorStatesUseCase
 import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
 import app.luxion.shogunai.domain.usecase.ReleaseWorktreeResourcesUseCase
@@ -190,7 +194,10 @@ class ShogunCli(
         appleSimulators,
         resolveLimits,
         ListGradleDaemonsUseCase(daemonSource, fileManager),
+        agentActivity = ReadAgentActivityUseCase(sessionStore)::invoke,
     )
+    private val readReleaseRecord = ReadReleaseRecordUseCase(resolveEnvironment, environmentStateStore)
+    private val renewLeases = RenewWorktreeLeasesUseCase(resolveEnvironment, environmentStateStore)
     private val acquireResource = AcquireWorktreeResourceUseCase(
         provisioningSource,
         resolveEnvironment,
@@ -198,6 +205,7 @@ class ShogunCli(
         environmentStateStore,
         portProbe,
         appleSimulators,
+        androidSdk,
         readPool,
         { requested -> contributions.requesting(requested) },
     )
@@ -787,12 +795,13 @@ class ShogunCli(
             }
         }
         acquisition?.releases?.forEach { err.line("released the simulator of ${releasedName(it)} to make room") }
+        val released = if (simulator == null) readReleaseRecord(worktree.path, ResourceKind.IOS_SIMULATOR) else null
         if (command.json) {
-            printJson(simulatorJson(worktree.path, simulator, acquisition))
+            printJson(simulatorJson(worktree.path, simulator, acquisition, released))
             return EXIT_OK
         }
         if (simulator == null) {
-            out.line("not acquired")
+            out.line("not acquired" + releaseExplanation(released))
         } else {
             out.line("${simulator.udid} ${simulator.state.name.lowercase()}  ${simulator.name}")
             if (acquisition?.acquiredNow == true) out.line("export $IOS_SIMULATOR_UDID=${simulator.udid}")
@@ -870,18 +879,22 @@ class ShogunCli(
             }
         }
         acquisition?.releases?.forEach { err.line("released the emulator of ${releasedName(it)} to make room") }
+        val released = if (emulator == null) readReleaseRecord(worktree.path, ResourceKind.EMULATOR) else null
         if (command.json) {
-            printJson(emulatorJson(worktree.path, emulator, acquisition))
+            printJson(emulatorJson(worktree.path, emulator, acquisition, released))
             return EXIT_OK
         }
         if (emulator == null) {
-            out.line("not acquired")
+            out.line("not acquired" + releaseExplanation(released))
         } else {
             out.line("${emulator.serial} ${emulator.state.name.lowercase()}")
-            if (acquisition?.acquiredNow == true) out.line("export $ANDROID_SERIAL=${emulator.serial}")
+            if (command.action == EmulatorAction.START) out.line("export $ANDROID_SERIAL=${emulator.serial}")
         }
         return EXIT_OK
     }
+
+    private fun releaseExplanation(record: ReleaseRecord?): String =
+        record?.let { " (released for ${it.forWorktree} at ${Instant.ofEpochMilli(it.releasedAt)})" }.orEmpty()
 
     private suspend fun pool(command: CliCommand.Pool): Int {
         val config = configFor(workingDirectory)
@@ -980,10 +993,11 @@ class ShogunCli(
         val sharedAdb = "The adb server is shared with other worktrees' agents: never run 'adb kill-server' or 'adb start-server', " +
             "and don't pass -s, -e or -d to adb, so every command goes to $ANDROID_SERIAL"
         return if (serial != null) {
-            ". Its Android emulator is $ANDROID_SERIAL=$serial; start it with 'shogun emulator start' before installing the app or running instrumented tests. $sharedAdb"
+            ". Its Android emulator is $ANDROID_SERIAL=$serial; run 'shogun emulator start' before every use (installing the app, running instrumented tests): " +
+                "the emulator may have been released to another worktree since this session began, and the command re-acquires one and prints the $ANDROID_SERIAL to export. $sharedAdb"
         } else {
-            ". Its Android emulator isn't acquired yet: 'shogun emulator start' acquires and starts it and prints the $ANDROID_SERIAL to export " +
-                "before installing the app or running instrumented tests. $sharedAdb"
+            ". Its Android emulator isn't acquired yet: run 'shogun emulator start' before every use (installing the app, running instrumented tests); " +
+                "it acquires and starts the emulator, prints the $ANDROID_SERIAL to export, and re-acquires one if it was released to another worktree. $sharedAdb"
         }
     }
 
@@ -1255,6 +1269,7 @@ class ShogunCli(
                     worktree.path,
                     AgentSessionRecord(sessionId, "claude", state, now().toEpochMilli(), input.string("transcript_path"), agentProcessId()),
                 )
+                if (state == AgentState.WORKING) renewLeases(worktree.path)
             }
         } catch (error: CancellationException) {
             throw error

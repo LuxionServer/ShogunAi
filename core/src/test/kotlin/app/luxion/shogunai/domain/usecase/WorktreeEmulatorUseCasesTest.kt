@@ -16,6 +16,7 @@ import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
+import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -210,12 +211,13 @@ class WorktreeEmulatorUseCasesTest {
         val useCase = StartWorktreeEmulatorUseCase(source, harness.resolve, harness.acquire, sdk, pause = {})
         useCase(config, task).getOrThrow()
         sdk.states.clear()
+        harness.now = harness.now.plus(Duration.ofMinutes(21))
 
         val started = useCase(config, other).getOrThrow()
 
         assertEquals(listOf(task), started.acquisition.releases.map { it.worktreePath })
         assertNull(store.portsByAdminDirectory["$common/worktrees/TASK-123"])
-        assertEquals(mapOf("emulator" to 5554), store.portsByAdminDirectory["$common/worktrees/TASK-456"])
+        assertEquals(mapOf("emulator" to 5556), store.portsByAdminDirectory["$common/worktrees/TASK-456"])
         assertTrue(harness.resolve(repository, task).getOrThrow().variables.isEmpty())
     }
 }

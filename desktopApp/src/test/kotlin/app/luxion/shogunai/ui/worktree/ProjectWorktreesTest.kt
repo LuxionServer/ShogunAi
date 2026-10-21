@@ -2,6 +2,7 @@ package app.luxion.shogunai.ui.worktree
 
 import app.luxion.shogunai.domain.model.PoolRelease
 import app.luxion.shogunai.domain.model.PoolReleaseReason
+import app.luxion.shogunai.domain.model.ReleaseRecord
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.usecase.DeviceStart
 import app.luxion.shogunai.domain.usecase.ResourceAcquisition
@@ -2767,6 +2768,40 @@ class ProjectWorktreesTest {
 
         viewModel.dismissActionError(worktreePath)
         assertNull(viewModel.actionErrors[worktreePath])
+    }
+
+    @Test
+    fun `a worktree without an emulator exposes why it was released`() = runTest(dispatcher) {
+        val record = ReleaseRecord(1_000L, "main-repo · TASK-9", "emulator-5554")
+        val emulators = EmulatorUseCases(
+            declared = { true },
+            readStates = { Result.success(emptyMap()) },
+            start = { Result.failure(IOException("unused")) },
+            stop = { Result.success(null) },
+            stopSerials = { Result.success(emptyList()) },
+            readRelease = { path -> record.takeIf { path == worktreePath } },
+        )
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(emulator = emulators))
+        advanceUntilIdle()
+
+        assertEquals(mapOf(worktreePath to record), viewModel.emulatorReleases)
+    }
+
+    @Test
+    fun `a worktree that holds an emulator has no release note`() = runTest(dispatcher) {
+        val record = ReleaseRecord(1_000L, "main-repo · TASK-9", "emulator-5554")
+        val emulators = EmulatorUseCases(
+            declared = { true },
+            readStates = { Result.success(mapOf(worktreePath to WorktreeEmulator("emulator-5554", EmulatorState.STOPPED))) },
+            start = { Result.failure(IOException("unused")) },
+            stop = { Result.success(null) },
+            stopSerials = { Result.success(emptyList()) },
+            readRelease = { record },
+        )
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(emulator = emulators))
+        advanceUntilIdle()
+
+        assertTrue(viewModel.emulatorReleases.isEmpty())
     }
 
     @Test
