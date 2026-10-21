@@ -4,9 +4,10 @@ import app.luxion.shogunai.domain.usecase.Activity
 import app.luxion.shogunai.domain.usecase.isActive
 
 enum class StateGroupKind(val activities: Set<Activity>) {
-    AGENT_WORKING(setOf(Activity.AgentWorking)),
     NEEDS_YOU(setOf(Activity.NeedsYou)),
-    IN_PROGRESS(setOf(Activity.InProgress)),
+    AGENT_WORKING(setOf(Activity.AgentWorking)),
+    NEW(setOf(Activity.New)),
+    STOPPED(setOf(Activity.Stopped)),
     MERGED(setOf(Activity.Merged)),
     INACTIVE(setOf(Activity.Inactive)),
     FOLDER_MISSING(setOf(Activity.Missing)),

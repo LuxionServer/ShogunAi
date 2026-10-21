@@ -19,6 +19,8 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.GroupedView
+import app.luxion.shogunai.domain.model.SortedView
+import app.luxion.shogunai.domain.model.WorktreeSort
 import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.Project
@@ -104,6 +106,8 @@ class WorktreeBoardTest {
     private var agentGate: CompletableDeferred<Unit>? = null
     private val executed = mutableListOf<List<String>>()
     private var divergenceOutput = "2\t0\n"
+    private var upstreamOutput: String? = null
+    private var lastCommitOutput = ""
 
     @BeforeTest
     fun setUp() {
@@ -165,6 +169,9 @@ class WorktreeBoardTest {
                     command.getOrNull(1) == "symbolic-ref" -> success(command, stdout = "origin/main\n")
                     command == listOf("git", "rev-list", "--left-right", "--count", "origin/main...HEAD") ->
                         success(command, stdout = divergenceOutput)
+                    command == listOf("git", "rev-list", "--left-right", "--count", "@{upstream}...HEAD") && upstreamOutput != null ->
+                        success(command, stdout = upstreamOutput!!)
+                    command == listOf("git", "log", "-1", "--format=%ct") -> success(command, stdout = lastCommitOutput)
                     command.getOrNull(1) == "rev-list" -> failure(command, stderr = "no upstream")
                     command.take(3) == listOf("git", "worktree", "remove") -> {
                         removeGate?.await()
@@ -187,7 +194,7 @@ class WorktreeBoardTest {
             copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, FakeClipboardWriter()),
             repair = RepairWorktreesUseCase(config, executor, files),
             resolveMainBranch = ResolveMainBranchUseCase(config, executor),
-            readStatus = ReadWorktreeStatusUseCase(executor),
+            readStatus = ReadWorktreeStatusUseCase(executor, FakeFileManager()),
             cleanUp = CleanUpWorktreesUseCase(config, executor),
             detectAgents = { worktrees -> DetectRunningAgentsUseCase(executor)(config, worktrees) },
             measureSize = MeasureWorktreeSizeUseCase(files, dispatcher),
@@ -259,7 +266,7 @@ class WorktreeBoardTest {
     }
 
     @Test
-    fun `active lists the in progress worktrees of every project without the clean main worktrees`() = runTest(dispatcher) {
+    fun `active lists the new worktrees of every project without the clean main worktrees`() = runTest(dispatcher) {
         divergenceOutput = "0\t0\n"
         val board = board()
         advanceUntilIdle()
@@ -271,10 +278,71 @@ class WorktreeBoardTest {
             setOf("/home/dev/projects/api-TASK-12", "/home/dev/projects/TASK-123", "/home/dev/projects/task-456"),
             paths.toSet(),
         )
-        assertEquals(listOf(StateGroupKind.IN_PROGRESS), board.stateGroups.map { it.kind })
+        assertEquals(listOf(StateGroupKind.NEW), board.stateGroups.map { it.kind })
         assertEquals(3, board.activeCount)
         assertEquals(1, board.activeCountOf("api"))
         assertEquals(2, board.activeCountOf("main-repo"))
+    }
+
+    @Test
+    fun `each view keeps its own sort and remembers it across restarts`() = runTest(dispatcher) {
+        val first = board()
+        advanceUntilIdle()
+
+        first.show(null, GroupedView.ACTIVE)
+        assertEquals(WorktreeSort.NAME, first.sort)
+        first.updateSort(WorktreeSort.ACTIVITY)
+        first.show(null, GroupedView.ALL)
+        assertEquals(WorktreeSort.NAME, first.sort)
+        first.show("api", GroupedView.ALL)
+        assertEquals(WorktreeSort.NAME, first.sort)
+        first.updateSort(WorktreeSort.ACTIVITY)
+
+        assertEquals(WorktreeSort.ACTIVITY, preferences.loadSort(SortedView.ACTIVE))
+        assertEquals(WorktreeSort.ACTIVITY, preferences.loadSort(SortedView.PROJECT))
+        assertEquals(WorktreeSort.NAME, preferences.loadSort(SortedView.ALL))
+        val restarted = board()
+        restarted.show(null, GroupedView.ACTIVE)
+        assertEquals(WorktreeSort.ACTIVITY, restarted.sort)
+        restarted.show(null, GroupedView.ALL)
+        assertEquals(WorktreeSort.NAME, restarted.sort)
+    }
+
+    @Test
+    fun `worktrees are listed in natural name order inside a group`() = runTest(dispatcher) {
+        divergenceOutput = "0\t0\n"
+        mainRepo.worktrees = listOf(
+            "/home/dev/projects/TASK-10" to "feature/TASK-10",
+            "/home/dev/projects/TASK-9" to "feature/TASK-9",
+            "/home/dev/projects/task-11" to "feature/task-11",
+        )
+        repositories = listOf(mainRepo)
+        val board = board()
+        advanceUntilIdle()
+
+        board.show(null, GroupedView.ACTIVE)
+
+        val branches = board.stateGroups.single().items.map { it.worktree.branch }
+        assertEquals(listOf("feature/TASK-9", "feature/TASK-10", "feature/task-11"), branches)
+    }
+
+    @Test
+    fun `a longer inactivity threshold moves worktrees out of inactive without reloading`() = runTest(dispatcher) {
+        divergenceOutput = "0\t2\n"
+        upstreamOutput = "0\t0\n"
+        lastCommitOutput = "${now.minusSeconds(5 * 24 * 3600L).epochSecond}\n"
+        repositories = listOf(api)
+        val board = board(clock = { now })
+        advanceUntilIdle()
+        board.updateGrouping(Grouping.BY_STATE)
+        val listsBefore = api.lists
+
+        assertEquals(listOf(StateGroupKind.INACTIVE, StateGroupKind.OTHER), board.stateGroups.map { it.kind })
+
+        board.inactivity.change(7)
+
+        assertEquals(listOf(StateGroupKind.STOPPED, StateGroupKind.OTHER), board.stateGroups.map { it.kind })
+        assertEquals(listsBefore, api.lists)
     }
 
     @Test
@@ -287,7 +355,7 @@ class WorktreeBoardTest {
         tick()
         board.show(null, GroupedView.ACTIVE)
 
-        assertEquals(listOf(StateGroupKind.AGENT_WORKING, StateGroupKind.IN_PROGRESS), board.stateGroups.map { it.kind })
+        assertEquals(listOf(StateGroupKind.AGENT_WORKING, StateGroupKind.NEW), board.stateGroups.map { it.kind })
         assertEquals(listOf("codex"), board.agentNamesOf("api"))
         assertEquals(emptyList(), board.agentNamesOf("main-repo"))
         board.stopWatching()

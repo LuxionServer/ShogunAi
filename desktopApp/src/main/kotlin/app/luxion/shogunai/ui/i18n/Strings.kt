@@ -150,7 +150,8 @@ interface Strings {
     val activeWorktrees: String
     val groupAgentWorking: String
     val groupNeedsYou: String
-    val groupInProgress: String
+    val groupNew: String
+    val groupStopped: String
     val groupMerged: String
     val groupInactive: String
     val groupFolderMissing: String
@@ -159,12 +160,14 @@ interface Strings {
     val groupAgentWorkingCriterion: String
     val groupNeedsYouHint: String
     val groupNeedsYouCriterion: String
-    val groupInProgressHint: String
-    val groupInProgressCriterion: String
+    val groupNewHint: String
+    val groupNewCriterion: String
+    val groupStoppedHint: String
+    val groupStoppedCriterion: String
     val groupMergedHint: String
     val groupMergedCriterion: String
-    val groupInactiveHint: String
-    val groupInactiveCriterion: String
+    fun groupInactiveHint(days: Int): String
+    fun groupInactiveCriterion(days: Int): String
     val groupFolderMissingHint: String
     val groupFolderMissingCriterion: String
     val groupOtherHint: String
@@ -198,14 +201,23 @@ interface Strings {
     val upstream: String
     fun mergedInto(branch: String): String
     val notStarted: String
+    val mergedLabel: String
+    fun commitAgo(relative: String): String
+    fun createdAgo(relative: String): String
+    fun agentStateName(state: HerdrAgentState?): String
+    val sortLabel: String
+    val sortByName: String
+    val sortByLastActivity: String
+    val createdTitle: String
+    val inactivityThresholdLabel: String
+    val inactivityThresholdHint: String
+    val inactivityThresholdInvalid: String
     val statusUnavailable: String
-    val folderMissing: String
     val mainWorktree: String
     val originShogunAi: String
     val originClaudeCode: String
     val originHerdr: String
     val originOther: String
-    val inactive: String
     fun worktreesSummary(count: Int, totalSize: String): String
     fun cleanupCandidatesSummary(count: Int): String
     val locked: String

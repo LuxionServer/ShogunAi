@@ -1,12 +1,14 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.model.AppLanguage
+import app.luxion.shogunai.domain.model.DEFAULT_INACTIVE_AFTER_DAYS
 import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.RecentWorktree
 import app.luxion.shogunai.domain.model.TerminalId
 import app.luxion.shogunai.domain.model.ThemeMode
 import app.luxion.shogunai.domain.model.WindowBounds
+import app.luxion.shogunai.domain.model.WorktreeSort
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -87,6 +89,8 @@ class JsonSettingsFile(
         val lastCreateProject: String? = null,
         val recentPaletteItems: List<String> = emptyList(),
         val grouping: GroupingSettings = GroupingSettings(),
+        val sorting: SortingSettings = SortingSettings(),
+        val inactiveAfterDays: Int = DEFAULT_INACTIVE_AFTER_DAYS,
         val terminal: TerminalId? = null,
         val editor: EditorId? = null,
         val recentProjects: List<String> = emptyList(),
@@ -102,5 +106,12 @@ class JsonSettingsFile(
     data class GroupingSettings(
         val active: Grouping = Grouping.BY_STATE,
         val all: Grouping = Grouping.BY_PROJECT,
+    )
+
+    @Serializable
+    data class SortingSettings(
+        val active: WorktreeSort = WorktreeSort.NAME,
+        val all: WorktreeSort = WorktreeSort.NAME,
+        val project: WorktreeSort = WorktreeSort.NAME,
     )
 }

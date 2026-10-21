@@ -115,7 +115,8 @@ Imprime un único objeto JSON compacto en una línea, en vez de las líneas de t
         "upstream": { "ahead": 0, "behind": 0 },
         "mainBranch": null,
         "merged": false,
-        "lastCommitAt": "2026-10-18T09:12:44Z"
+        "lastCommitAt": "2026-10-18T09:12:44Z",
+        "createdAt": "2026-10-17T16:40:02Z"
       }
     }
   ]
@@ -134,6 +135,7 @@ Imprime un único objeto JSON compacto en una línea, en vez de las líneas de t
 | `status.uncommittedChanges`, `status.merged` | Cambios sin commitear; mergeado en la rama principal. |
 | `status.upstream`, `status.mainBranch` | `{ "ahead": n, "behind": n }` respecto al upstream y a la rama principal; `null` si no hay. |
 | `status.lastCommitAt` | Hora del último commit en ISO-8601 UTC, o `null`. |
+| `status.createdAt` | Hora en que se creó el worktree, en ISO-8601 UTC, leída de la carpeta administrativa de Git para él; `null` para el checkout principal o si no se puede leer. |
 
 Todos los campos están siempre presentes, con `null` cuando no aplican. Los nombres de los campos son un contrato: las versiones futuras solo añaden campos y nunca renombran, eliminan ni cambian el tipo de uno.
 

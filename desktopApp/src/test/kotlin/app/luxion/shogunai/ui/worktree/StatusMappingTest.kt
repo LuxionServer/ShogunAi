@@ -10,17 +10,25 @@ import kotlin.test.assertEquals
 class StatusMappingTest {
 
     @Test
-    fun `row indicators follow the status table`() {
+    fun `state badges follow the status table`() {
         assertEquals(
             mapOf(
-                RowIndicator.FOLDER_MISSING to Status.DANGER,
-                RowIndicator.AGENT_RUNNING to Status.INFO,
-                RowIndicator.UNCOMMITTED_CHANGES to Status.WARNING,
-                RowIndicator.MERGED to Status.SUCCESS,
-                RowIndicator.INACTIVE to Status.NEUTRAL,
+                StateBadgeKind.NEEDS_YOU to Status.WARNING,
+                StateBadgeKind.AGENT_WORKING to Status.INFO,
+                StateBadgeKind.NEW to null,
+                StateBadgeKind.STOPPED to Status.NEUTRAL,
+                StateBadgeKind.MERGED to Status.SUCCESS,
+                StateBadgeKind.INACTIVE to Status.NEUTRAL,
+                StateBadgeKind.FOLDER_MISSING to Status.DANGER,
+                StateBadgeKind.OTHER to Status.NEUTRAL,
             ),
-            RowIndicator.entries.associateWith { it.status },
+            StateBadgeKind.entries.associateWith { it.status },
         )
+    }
+
+    @Test
+    fun `every state badge has its own icon`() {
+        assertEquals(StateBadgeKind.entries.size, StateBadgeKind.entries.map { it.icon() }.toSet().size)
     }
 
     @Test

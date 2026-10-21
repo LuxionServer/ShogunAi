@@ -42,6 +42,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -816,6 +817,20 @@ class ShogunCliTest {
     }
 
     @Test
+    fun `status json reports when a worktree was created`() {
+        val fileManager = FakeFileManager(existing = listOf(base, "$base/local.properties"))
+        fileManager.writtenTexts["$merged/.git"] = "gitdir: $base/.git/worktrees/TASK-1\n"
+        fileManager.modifiedAt["$base/.git/worktrees/TASK-1/commondir"] = 1_760_000_000_000
+
+        val exitCode = cli(repositoryExecutor(), fileManager = fileManager).run(listOf("status", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray
+        assertEquals("2025-10-09T08:53:20Z", worktrees[1].jsonObject.getValue("status").jsonObject.getValue("createdAt").jsonPrimitive.content)
+        assertEquals(JsonNull, worktrees[0].jsonObject.getValue("status").jsonObject.getValue("createdAt"))
+    }
+
+    @Test
     fun `status json prints one compact document`() {
         val exitCode = cli(repositoryExecutor()).run(listOf("status", "--json"))
 
@@ -833,7 +848,7 @@ class ShogunCliTest {
                   "main": true, "locked": false, "folderMissing": false, "origin": null, "agents": [],
                   "status": {
                     "uncommittedChanges": 0, "upstream": null, "mainBranch": null,
-                    "merged": false, "lastCommitAt": null
+                    "merged": false, "lastCommitAt": null, "createdAt": null
                   }
                 },
                 {
@@ -841,7 +856,7 @@ class ShogunCliTest {
                   "main": false, "locked": false, "folderMissing": false, "origin": "shogunai", "agents": [],
                   "status": {
                     "uncommittedChanges": 0, "upstream": null, "mainBranch": {"ahead": 0, "behind": 3},
-                    "merged": true, "lastCommitAt": null
+                    "merged": true, "lastCommitAt": null, "createdAt": null
                   }
                 },
                 {
@@ -849,7 +864,7 @@ class ShogunCliTest {
                   "main": false, "locked": true, "folderMissing": false, "origin": "claude-code", "agents": [],
                   "status": {
                     "uncommittedChanges": 2, "upstream": null, "mainBranch": {"ahead": 2, "behind": 0},
-                    "merged": false, "lastCommitAt": null
+                    "merged": false, "lastCommitAt": null, "createdAt": null
                   }
                 }
               ]

@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
@@ -51,7 +52,7 @@ class ReadWorktreeStatusUseCaseTest {
 
     @Test
     fun `reads changes, divergences and last commit date`() = runTest {
-        val status = ReadWorktreeStatusUseCase(executor())(worktree, mainBranch).getOrThrow()
+        val status = ReadWorktreeStatusUseCase(executor(), FakeFileManager())(worktree, mainBranch).getOrThrow()
 
         assertEquals(3, status.uncommittedChanges)
         assertEquals(Divergence(ahead = 2, behind = 0), status.upstream)
@@ -62,14 +63,14 @@ class ReadWorktreeStatusUseCaseTest {
     @Test
     fun `reads state with a limit and reports a timeout as a failed read`() = runTest {
         val fake = executor()
-        ReadWorktreeStatusUseCase(fake)(worktree, mainBranch).getOrThrow()
+        ReadWorktreeStatusUseCase(fake, FakeFileManager())(worktree, mainBranch).getOrThrow()
         assertEquals(CommandTimeouts.GIT_READ, fake.timeouts[statusCommand])
 
         val hung = object : ShellCommandExecutor {
             override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult =
                 throw CommandExecutionException.TimedOut(command, CommandTimeouts.GIT_READ)
         }
-        val failure = ReadWorktreeStatusUseCase(hung)(worktree, mainBranch).exceptionOrNull()
+        val failure = ReadWorktreeStatusUseCase(hung, FakeFileManager())(worktree, mainBranch).exceptionOrNull()
 
         assertIs<CommandExecutionException.TimedOut>(failure)
     }
@@ -78,7 +79,7 @@ class ReadWorktreeStatusUseCaseTest {
     fun `a clean worktree has no uncommitted changes`() = runTest {
         val executor = executor(mapOf(statusCommand to { command -> success(command, stdout = "") }))
 
-        assertEquals(0, ReadWorktreeStatusUseCase(executor)(worktree, mainBranch).getOrThrow().uncommittedChanges)
+        assertEquals(0, ReadWorktreeStatusUseCase(executor, FakeFileManager())(worktree, mainBranch).getOrThrow().uncommittedChanges)
     }
 
     @Test
@@ -87,7 +88,7 @@ class ReadWorktreeStatusUseCaseTest {
             mapOf(upstreamCommand to { command -> failure(command, exitCode = 128, stderr = "fatal: no upstream configured") }),
         )
 
-        val status = ReadWorktreeStatusUseCase(executor)(worktree, mainBranch).getOrThrow()
+        val status = ReadWorktreeStatusUseCase(executor, FakeFileManager())(worktree, mainBranch).getOrThrow()
 
         assertNull(status.upstream)
         assertEquals(Divergence(ahead = 4, behind = 1), status.mainBranch)
@@ -97,7 +98,7 @@ class ReadWorktreeStatusUseCaseTest {
     fun `a detached HEAD is compared without upstream`() = runTest {
         val executor = executor()
 
-        val status = ReadWorktreeStatusUseCase(executor)(worktree.copy(branch = null), mainBranch).getOrThrow()
+        val status = ReadWorktreeStatusUseCase(executor, FakeFileManager())(worktree.copy(branch = null), mainBranch).getOrThrow()
 
         assertNull(status.upstream)
         assertEquals(Divergence(ahead = 4, behind = 1), status.mainBranch)
@@ -108,7 +109,7 @@ class ReadWorktreeStatusUseCaseTest {
     fun `a worktree on the main branch has no main branch comparison`() = runTest {
         val executor = executor()
 
-        val status = ReadWorktreeStatusUseCase(executor)(worktree.copy(branch = "develop"), mainBranch).getOrThrow()
+        val status = ReadWorktreeStatusUseCase(executor, FakeFileManager())(worktree.copy(branch = "develop"), mainBranch).getOrThrow()
 
         assertNull(status.mainBranch)
         assertEquals(0, executor.executedCommands.count { it == mainBranchCommand })
@@ -116,7 +117,7 @@ class ReadWorktreeStatusUseCaseTest {
 
     @Test
     fun `without a main branch there is no main branch comparison`() = runTest {
-        assertNull(ReadWorktreeStatusUseCase(executor())(worktree, null).getOrThrow().mainBranch)
+        assertNull(ReadWorktreeStatusUseCase(executor(), FakeFileManager())(worktree, null).getOrThrow().mainBranch)
     }
 
     @Test
@@ -125,7 +126,7 @@ class ReadWorktreeStatusUseCaseTest {
             mapOf(lastCommitCommand to { command -> failure(command, exitCode = 128, stderr = "fatal: bad default revision 'HEAD'") }),
         )
 
-        assertNull(ReadWorktreeStatusUseCase(executor)(worktree, mainBranch).getOrThrow().lastCommitAt)
+        assertNull(ReadWorktreeStatusUseCase(executor, FakeFileManager())(worktree, mainBranch).getOrThrow().lastCommitAt)
     }
 
     @Test
@@ -134,7 +135,7 @@ class ReadWorktreeStatusUseCaseTest {
             mapOf(statusCommand to { command -> failure(command, exitCode = 128, stderr = "fatal: cannot change to directory") }),
         )
 
-        val error = ReadWorktreeStatusUseCase(executor)(worktree, mainBranch).exceptionOrNull()
+        val error = ReadWorktreeStatusUseCase(executor, FakeFileManager())(worktree, mainBranch).exceptionOrNull()
 
         assertEquals(128, assertIs<WorktreeError.GitCommandFailed>(error).exitCode)
     }
@@ -149,7 +150,7 @@ class ReadWorktreeStatusUseCaseTest {
     fun `a merged-looking branch whose only reflog entry is its tip never had commits`() = runTest {
         val executor = executor(mergedMainBranch + (reflogCommand to { command -> success(command, stdout = "abc123\n") }))
 
-        val status = ReadWorktreeStatusUseCase(executor)(worktree, mainBranch).getOrThrow()
+        val status = ReadWorktreeStatusUseCase(executor, FakeFileManager())(worktree, mainBranch).getOrThrow()
 
         assertTrue(status.neverCommitted)
         assertFalse(status.isMerged)
@@ -159,7 +160,7 @@ class ReadWorktreeStatusUseCaseTest {
     fun `a fast-forward merged branch has several reflog entries and stays merged`() = runTest {
         val executor = executor(mergedMainBranch + (reflogCommand to { command -> success(command, stdout = "abc123\ndef456\n") }))
 
-        val status = ReadWorktreeStatusUseCase(executor)(worktree, mainBranch).getOrThrow()
+        val status = ReadWorktreeStatusUseCase(executor, FakeFileManager())(worktree, mainBranch).getOrThrow()
 
         assertFalse(status.neverCommitted)
         assertTrue(status.isMerged)
@@ -174,7 +175,7 @@ class ReadWorktreeStatusUseCaseTest {
             ),
         )
 
-        val status = ReadWorktreeStatusUseCase(executor)(worktree, mainBranch).getOrThrow()
+        val status = ReadWorktreeStatusUseCase(executor, FakeFileManager())(worktree, mainBranch).getOrThrow()
 
         assertTrue(status.isMerged)
         assertEquals(0, executor.executedCommands.count { it == reflogCommand })
@@ -186,15 +187,44 @@ class ReadWorktreeStatusUseCaseTest {
             mergedMainBranch + (reflogCommand to { command -> failure(command, exitCode = 128, stderr = "fatal: bad ref") }),
         )
 
-        assertTrue(ReadWorktreeStatusUseCase(executor)(worktree, mainBranch).getOrThrow().isMerged)
+        assertTrue(ReadWorktreeStatusUseCase(executor, FakeFileManager())(worktree, mainBranch).getOrThrow().isMerged)
     }
 
     @Test
     fun `a branch that doesn't read as merged never reads the reflog`() = runTest {
         val executor = executor()
 
-        ReadWorktreeStatusUseCase(executor)(worktree, mainBranch).getOrThrow()
+        ReadWorktreeStatusUseCase(executor, FakeFileManager())(worktree, mainBranch).getOrThrow()
 
         assertEquals(0, executor.executedCommands.count { it == reflogCommand })
+    }
+
+    @Test
+    fun `a linked worktree is created when its administrative folder was written`() = runTest {
+        val files = FakeFileManager()
+        files.writtenTexts["${worktree.path}/.git"] = "gitdir: /repo/.git/worktrees/TASK-123\n"
+        files.modifiedAt["/repo/.git/worktrees/TASK-123/commondir"] = 1750000000000
+
+        val status = ReadWorktreeStatusUseCase(executor(), files)(worktree, mainBranch).getOrThrow()
+
+        assertEquals(Instant.ofEpochMilli(1750000000000), status.createdAt)
+    }
+
+    @Test
+    fun `the main worktree has no creation time`() = runTest {
+        val files = FakeFileManager()
+        files.writtenTexts["${worktree.path}/.git"] = "gitdir: /repo/.git/worktrees/TASK-123\n"
+        files.modifiedAt["/repo/.git/worktrees/TASK-123/commondir"] = 1750000000000
+
+        val status = ReadWorktreeStatusUseCase(executor(), files)(worktree.copy(isMain = true), mainBranch).getOrThrow()
+
+        assertNull(status.createdAt)
+    }
+
+    @Test
+    fun `an unreadable git file leaves the creation time empty`() = runTest {
+        val status = ReadWorktreeStatusUseCase(executor(), FakeFileManager())(worktree, mainBranch).getOrThrow()
+
+        assertNull(status.createdAt)
     }
 }

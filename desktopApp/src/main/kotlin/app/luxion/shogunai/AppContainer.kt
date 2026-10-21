@@ -328,7 +328,7 @@ class AppContainer {
         agents = AgentUseCases(config, agentChoices),
         repair = RepairWorktreesUseCase(config, shellCommandExecutor, fileManager),
         resolveMainBranch = ResolveMainBranchUseCase(config, shellCommandExecutor),
-        readStatus = ReadWorktreeStatusUseCase(shellCommandExecutor),
+        readStatus = ReadWorktreeStatusUseCase(shellCommandExecutor, fileManager),
         cleanUp = CleanUpWorktreesUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient)),
         detectAgents = { worktrees -> detectRunningAgents(config, worktrees) },
         measureSize = MeasureWorktreeSizeUseCase(fileManager),

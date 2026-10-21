@@ -88,6 +88,8 @@ class WorktreeOverviewTest {
         assertEquals(WorktreeOrigin.CLAUDE_CODE, classifyOrigin(worktreeAt("C:\\dev\\repo\\.claude\\worktrees\\x"), windowsConfig))
     }
 
+    private val threshold = Duration.ofDays(3)
+
     private fun status(changes: Int = 0, daysSinceCommit: Long? = 20) = WorktreeStatus(
         uncommittedChanges = changes,
         upstream = null,
@@ -97,31 +99,44 @@ class WorktreeOverviewTest {
 
     @Test
     fun `a clean worktree without agents and an old last commit is inactive`() {
-        assertTrue(isInactive(worktreeAt("/w"), status(), emptyList(), now))
+        assertTrue(isInactive(worktreeAt("/w"), status(), emptyList(), now, threshold))
     }
 
     @Test
     fun `recent work is not inactive`() {
-        assertFalse(isInactive(worktreeAt("/w"), status(daysSinceCommit = 3), emptyList(), now))
+        assertFalse(isInactive(worktreeAt("/w"), status(daysSinceCommit = 2), emptyList(), now, threshold))
     }
 
     @Test
     fun `pending changes or a running agent keep a worktree active`() {
-        assertFalse(isInactive(worktreeAt("/w"), status(changes = 1), emptyList(), now))
-        assertFalse(isInactive(worktreeAt("/w"), status(), listOf(RunningAgent("claude")), now))
+        assertFalse(isInactive(worktreeAt("/w"), status(changes = 1), emptyList(), now, threshold))
+        assertFalse(isInactive(worktreeAt("/w"), status(), listOf(RunningAgent("claude")), now, threshold))
     }
 
     @Test
     fun `without a last commit or a status it is not inactive`() {
-        assertFalse(isInactive(worktreeAt("/w"), status(daysSinceCommit = null), emptyList(), now))
-        assertFalse(isInactive(worktreeAt("/w"), null, emptyList(), now))
+        assertFalse(isInactive(worktreeAt("/w"), status(daysSinceCommit = null), emptyList(), now, threshold))
+        assertFalse(isInactive(worktreeAt("/w"), null, emptyList(), now, threshold))
     }
 
     @Test
     fun `the main worktree is never inactive`() {
         val main = Worktree(path = "/w", branch = "main", isMain = true)
 
-        assertFalse(isInactive(main, status(), emptyList(), now))
+        assertFalse(isInactive(main, status(), emptyList(), now, threshold))
+    }
+
+    @Test
+    fun `a longer threshold keeps a worktree out of inactive`() {
+        assertTrue(isInactive(worktreeAt("/w"), status(daysSinceCommit = 5), emptyList(), now, threshold))
+        assertFalse(isInactive(worktreeAt("/w"), status(daysSinceCommit = 5), emptyList(), now, Duration.ofDays(7)))
+    }
+
+    @Test
+    fun `an old base commit in a new worktree is not inactive`() {
+        val fresh = WorktreeStatus(0, null, Divergence(0, 0), now.minus(Duration.ofDays(30)), createdAt = now)
+
+        assertFalse(isInactive(worktreeAt("/w"), fresh, emptyList(), now, threshold))
     }
 
     private fun notStartedStatus(changes: Int) = WorktreeStatus(
@@ -133,10 +148,10 @@ class WorktreeOverviewTest {
     )
 
     @Test
-    fun `a not started worktree without changes is in progress even when its base commit is old`() {
+    fun `a not started worktree without changes is new even when its base commit is old`() {
         val activity = worktreeActivity(worktreeAt("/home/dev/projects/TASK-1"), notStartedStatus(0), emptyList(), now)
 
-        assertEquals(Activity.InProgress, activity)
+        assertEquals(Activity.New, activity)
     }
 
     @Test

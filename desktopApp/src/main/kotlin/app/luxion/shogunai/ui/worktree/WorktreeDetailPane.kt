@@ -427,7 +427,8 @@ fun statusSegments(status: WorktreeStatus, mainBranchName: String?, now: Instant
         status.mainBranch?.takeUnless { status.isMerged }?.arrows()?.let { arrows ->
             listOfNotNull(arrows, mainBranchName).joinToString(" ")
         },
-        status.lastCommitAt?.let { relativeTime(it, now, strings) },
+        status.lastCommitAt?.let { strings.commitAgo(relativeTime(it, now, strings)) },
+        status.createdAt?.let { strings.createdAgo(relativeTime(it, now, strings)) },
     )
 
 fun portsLabel(ports: Map<String, Int>): String =

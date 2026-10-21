@@ -43,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import app.luxion.shogunai.ui.worktree.color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -233,7 +234,7 @@ private fun ResultRow(item: PaletteItem, query: String, highlighted: Boolean, on
                 modifier = Modifier.weight(1f, fill = false),
             )
             item.indicator?.let {
-                Box(modifier = Modifier.size(IndicatorDotSize).background(ShogunTheme.status.of(it.status).color, CircleShape))
+                Box(modifier = Modifier.size(IndicatorDotSize).background(it.color(), CircleShape))
             }
             item.context?.let {
                 Text(

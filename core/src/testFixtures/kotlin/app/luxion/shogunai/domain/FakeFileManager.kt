@@ -25,6 +25,10 @@ class FakeFileManager(
 
     override fun readText(path: String): String? = writtenTexts[path]
 
+    val modifiedAt = mutableMapOf<String, Long>()
+
+    override fun lastModifiedMillis(path: String): Long? = modifiedAt[path]
+
     fun delete(path: String) {
         paths -= path
         writtenTexts.remove(path)

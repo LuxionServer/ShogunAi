@@ -76,6 +76,10 @@ class NioFileManager : FileManager {
         if (Files.isRegularFile(file)) Files.readString(file) else null
     }.getOrNull()
 
+    override fun lastModifiedMillis(path: String): Long? = runCatching {
+        Files.getLastModifiedTime(Path.of(path)).toMillis()
+    }.getOrNull()
+
     override fun readProperties(path: String): Map<String, String> {
         val file = Path.of(path)
         if (!Files.isRegularFile(file)) return emptyMap()

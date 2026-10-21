@@ -416,7 +416,7 @@ class ShogunCli(
         val config = configFor(workingDirectory)
         val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
         val mainBranch = ResolveMainBranchUseCase(config, executor)().getOrNull()
-        val readStatus = ReadWorktreeStatusUseCase(executor)
+        val readStatus = ReadWorktreeStatusUseCase(executor, fileManager)
         val herdrWorktreesRoot = herdrConfig.worktreesRoot()
         val agents = DetectRunningAgentsUseCase(executor, herdr)(config, worktrees.filterNot { it.isPrunable }).getOrNull().orEmpty()
         val entries = worktrees.map { worktree ->
@@ -550,7 +550,7 @@ class ShogunCli(
         val config = configFor(workingDirectory)
         val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
         val mainBranch = ResolveMainBranchUseCase(config, executor)().getOrNull()
-        val readStatus = ReadWorktreeStatusUseCase(executor)
+        val readStatus = ReadWorktreeStatusUseCase(executor, fileManager)
         val statusReads = worktrees
             .filterNot { it.isMain || it.isPrunable || it.isLocked }
             .associateWith { worktree -> readStatus(worktree, mainBranch) }

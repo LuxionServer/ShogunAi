@@ -115,7 +115,8 @@ Prints one compact JSON object on a single line instead of the text lines. Error
         "upstream": { "ahead": 0, "behind": 0 },
         "mainBranch": null,
         "merged": false,
-        "lastCommitAt": "2026-10-18T09:12:44Z"
+        "lastCommitAt": "2026-10-18T09:12:44Z",
+        "createdAt": "2026-10-17T16:40:02Z"
       }
     }
   ]
@@ -134,6 +135,7 @@ Prints one compact JSON object on a single line instead of the text lines. Error
 | `status.uncommittedChanges`, `status.merged` | Uncommitted changes; merged into the main branch. |
 | `status.upstream`, `status.mainBranch` | `{ "ahead": n, "behind": n }` against the upstream and the main branch; `null` when there is none. |
 | `status.lastCommitAt` | Time of the last commit in ISO-8601 UTC, or `null`. |
+| `status.createdAt` | Time the worktree was created, in ISO-8601 UTC, read from Git's administrative folder for it; `null` for the main checkout or when it can't be read. |
 
 Every field is always present, with `null` when it doesn't apply. The field names are a contract: later versions only add fields and never rename, remove or change the type of one.
 

@@ -58,6 +58,7 @@ private fun statusObject(status: WorktreeStatus): JsonObject = buildJsonObject {
     put("mainBranch", status.mainBranch?.let(::divergenceObject) ?: JsonNull)
     put("merged", status.isMerged)
     put("lastCommitAt", status.lastCommitAt?.toString())
+    put("createdAt", status.createdAt?.toString())
 }
 
 private fun divergenceObject(divergence: Divergence): JsonObject = buildJsonObject {

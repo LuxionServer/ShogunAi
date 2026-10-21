@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -36,6 +38,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.Grouping
+import app.luxion.shogunai.domain.model.WorktreeSort
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.ui.components.DangerButton
 import app.luxion.shogunai.ui.components.DangerTextButton
@@ -58,6 +61,7 @@ import app.luxion.shogunai.ui.shell.LocalAppMessages
 import app.luxion.shogunai.ui.shell.MessageAction
 import java.io.File
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun WorktreeScreen(
     board: WorktreeBoard,
@@ -111,16 +115,18 @@ fun WorktreeScreen(
             }
         }
 
-        Row(
+        FlowRow(
             modifier = Modifier.fillMaxWidth().padding(start = Spacing.md, end = Spacing.md, bottom = Spacing.md),
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+            itemVerticalAlignment = Alignment.CenterVertically,
         ) {
             if (!board.isProjectView) {
                 ViewProjectFilter(board.projects, board.viewProjectFilter, board::updateViewProjectFilter)
             }
             TextFilterField(board)
             if (!board.isProjectView) GroupingSelector(board)
+            SortSelector(board.sort, board::updateSort)
             if (board.isActiveView && board.isReadingActivity) {
                 InlineProgress()
                 Text(strings.readingWorktreeStatus, style = MaterialTheme.typography.bodySmall)
@@ -151,6 +157,17 @@ private fun GroupingSelector(board: WorktreeBoard) {
         selected = board.grouping,
         onSelect = board::updateGrouping,
         label = { if (it == Grouping.BY_STATE) strings.groupByState else strings.groupByProject },
+    )
+}
+
+@Composable
+internal fun SortSelector(selected: WorktreeSort, onSelect: (WorktreeSort) -> Unit) {
+    val strings = LocalStrings.current
+    SegmentedSelector(
+        options = WorktreeSort.entries,
+        selected = selected,
+        onSelect = onSelect,
+        label = { if (it == WorktreeSort.NAME) strings.sortByName else strings.sortByLastActivity },
     )
 }
 

@@ -9,7 +9,9 @@ import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.RecentWorktree
 import app.luxion.shogunai.domain.model.TerminalId
 import app.luxion.shogunai.domain.model.ThemeMode
+import app.luxion.shogunai.domain.model.SortedView
 import app.luxion.shogunai.domain.model.WindowBounds
+import app.luxion.shogunai.domain.model.WorktreeSort
 import java.nio.file.Files
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.deleteIfExists
@@ -185,6 +187,34 @@ class JsonSettingsFileTest {
         reloaded.saveGrouping(GroupedView.ALL, Grouping.BY_STATE)
         assertEquals(Grouping.BY_PROJECT, reloaded.loadGrouping(GroupedView.ACTIVE))
         assertEquals(Grouping.BY_STATE, reloaded.loadGrouping(GroupedView.ALL))
+    }
+
+    @Test
+    fun `a file written before sorting and the inactivity threshold existed reads their defaults`() {
+        storagePath.toFile().writeText("""{"language":"SPANISH"}""")
+
+        assertEquals(WorktreeSort.NAME, shellRepository.loadSort(SortedView.ACTIVE))
+        assertEquals(WorktreeSort.NAME, shellRepository.loadSort(SortedView.PROJECT))
+        assertEquals(3, shellRepository.loadInactiveAfterDays())
+    }
+
+    @Test
+    fun `each view's sort is remembered independently`() {
+        shellRepository.saveSort(SortedView.ACTIVE, WorktreeSort.ACTIVITY)
+
+        val reloaded = JsonShellPreferenceRepository(JsonSettingsFile(storagePath))
+        assertEquals(WorktreeSort.ACTIVITY, reloaded.loadSort(SortedView.ACTIVE))
+        assertEquals(WorktreeSort.NAME, reloaded.loadSort(SortedView.ALL))
+        assertEquals(WorktreeSort.NAME, reloaded.loadSort(SortedView.PROJECT))
+    }
+
+    @Test
+    fun `the inactivity threshold is remembered and kept within its range`() {
+        shellRepository.saveInactiveAfterDays(7)
+        assertEquals(7, JsonShellPreferenceRepository(JsonSettingsFile(storagePath)).loadInactiveAfterDays())
+
+        shellRepository.saveInactiveAfterDays(500)
+        assertEquals(90, shellRepository.loadInactiveAfterDays())
     }
 
     @Test

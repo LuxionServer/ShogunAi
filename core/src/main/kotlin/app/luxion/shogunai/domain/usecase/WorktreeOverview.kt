@@ -9,7 +9,7 @@ import app.luxion.shogunai.domain.model.WorktreeStatus
 import java.time.Duration
 import java.time.Instant
 
-val INACTIVITY_THRESHOLD: Duration = Duration.ofDays(14)
+val DEFAULT_INACTIVITY_THRESHOLD: Duration = Duration.ofDays(3)
 
 private const val CLAUDE_CODE_WORKTREES = "/.claude/worktrees/"
 
@@ -24,31 +24,55 @@ fun classifyOrigin(worktree: Worktree, config: ProjectConfig, herdrWorktreesRoot
     }
 }
 
-fun isInactive(worktree: Worktree, status: WorktreeStatus?, agents: List<RunningAgent>?, now: Instant): Boolean {
-    if (worktree.isMain || status == null) return false
-    val lastCommitAt = status.lastCommitAt ?: return false
-    return status.uncommittedChanges == 0 &&
-        agents.isNullOrEmpty() &&
-        Duration.between(lastCommitAt, now) > INACTIVITY_THRESHOLD
+enum class ActivityKind { COMMIT, CREATED }
+
+data class ActivityDate(val at: Instant, val kind: ActivityKind)
+
+fun activityDate(worktree: Worktree, status: WorktreeStatus?): ActivityDate? {
+    if (status == null) return null
+    val commit = status.lastCommitAt?.let { ActivityDate(it, ActivityKind.COMMIT) }
+    if (worktree.isMain || status.hasOwnCommits) return commit
+    return status.createdAt?.let { ActivityDate(it, ActivityKind.CREATED) } ?: commit
 }
 
-enum class Activity { AgentWorking, NeedsYou, InProgress, Merged, Inactive, Missing, Idle, Unknown }
+fun isInactive(
+    worktree: Worktree,
+    status: WorktreeStatus?,
+    agents: List<RunningAgent>?,
+    now: Instant,
+    inactiveAfter: Duration,
+): Boolean {
+    if (worktree.isMain || status == null || !status.hasOwnCommits) return false
+    val lastActivity = activityDate(worktree, status)?.at ?: return false
+    return status.uncommittedChanges == 0 &&
+        agents.isNullOrEmpty() &&
+        Duration.between(lastActivity, now) > inactiveAfter
+}
+
+enum class Activity { NeedsYou, AgentWorking, New, Stopped, Merged, Inactive, Missing, Idle, Unknown }
 
 val Activity.isActive: Boolean
-    get() = this == Activity.AgentWorking || this == Activity.NeedsYou || this == Activity.InProgress
+    get() = this == Activity.NeedsYou || this == Activity.AgentWorking || this == Activity.New || this == Activity.Stopped
 
-fun worktreeActivity(worktree: Worktree, status: WorktreeStatus?, agents: List<RunningAgent>?, now: Instant): Activity {
-    if (!agents.isNullOrEmpty()) return if (agents.any { it.waitsForUser }) Activity.NeedsYou else Activity.AgentWorking
+fun worktreeActivity(
+    worktree: Worktree,
+    status: WorktreeStatus?,
+    agents: List<RunningAgent>?,
+    now: Instant,
+    inactiveAfter: Duration = DEFAULT_INACTIVITY_THRESHOLD,
+): Activity {
     if (worktree.isPrunable) return Activity.Missing
+    val deciding = agents.orEmpty().filter { it.herdrState != HerdrAgentState.IDLE }
+    if (deciding.any { it.waitsForUser }) return Activity.NeedsYou
+    if (deciding.isNotEmpty()) return Activity.AgentWorking
     if (status == null) return Activity.Unknown
-    if (status.uncommittedChanges > 0) return Activity.NeedsYou
     return when {
+        status.uncommittedChanges > 0 || hasUnpushedCommits(status) -> Activity.NeedsYou
         worktree.isMain -> Activity.Idle
-        status.isNotStarted -> Activity.InProgress
+        !status.hasOwnCommits && !status.isMerged -> Activity.New
         status.isMerged -> Activity.Merged
-        isInactive(worktree, status, agents, now) -> Activity.Inactive
-        hasUnpushedCommits(status) -> Activity.NeedsYou
-        else -> Activity.InProgress
+        isInactive(worktree, status, agents, now, inactiveAfter) -> Activity.Inactive
+        else -> Activity.Stopped
     }
 }
 

@@ -24,15 +24,11 @@ Numerados en el orden en que se abordarán: el número es la prioridad.
 
 Un worktree recibe un emulador o simulador, y el puerto que lo acompaña, cuando lo necesita y no cuando se crea, de modo que los worktrees que nunca ejecutan la app no gastan el rango limitado de puertos de emulador. El límite pasa a ser configurable. El modelo que hay detrás es un pool: emuladores, simuladores, daemons de Gradle y DerivedData son recursos de capacidad limitada que un worktree adquiere y libera, y los providers deberían compartir ese modelo en vez de resolverlo cada uno por su cuenta.
 
-### 2. Estados de worktree y diseño de la fila rediseñados
-
-Los grupos actuales no distinguen lo que importa: un worktree con agente se come a la mayoría de los demás, y el grupo de los que necesitan al usuario es el más útil. Los estados separarán los worktrees que te necesitan, los nuevos que nunca se han arrancado, los parados por otro motivo y los que tienen un agente trabajando. La fecha de cada fila dirá qué mide (hoy es el último commit, que en un worktree nuevo se hereda de la rama base y parece actividad), y la información de la fila se ordenará y tendrá tamaños fijos para que sea más fácil de recorrer, sin repetir el nombre del proyecto.
-
-### 3. Plataformas e IDEs más allá de Android
+### 2. Plataformas e IDEs más allá de Android
 
 El proyecto creció alrededor de Android. Este punto revisa la cobertura de los demás stacks (iOS y Xcode, backends JVM) y de los IDEs en los que se puede abrir un worktree. Empieza con una exploración para decidir qué falta antes de dividirlo en cambios.
 
-### 4. Pendientes de los cambios del 2026-10-19
+### 3. Pendientes de los cambios del 2026-10-19
 
 La revisión de todo el proyecto del 2026-10-19 y los cambios hechos a partir de ella están archivados. Estos pendientes quedaron fuera de ellos:
 
@@ -44,11 +40,11 @@ La revisión de todo el proyecto del 2026-10-19 y los cambios hechos a partir de
 - Tamaños de DerivedData más rápidos: medir varias carpetas en paralelo y recordar los tamaños entre ejecuciones de la app.
 - Una notificación cuando un agente de Herdr pasa a bloqueado o terminado; hoy la señal es la fila del worktree y el menú del icono de la barra de menús.
 
-### 5. Demo guiada de bienvenida
+### 4. Demo guiada de bienvenida
 
 Un recorrido de primer uso basado en la revisión hecha antes de mergear la capa de worktrees: la app crea un repositorio de ejemplo desechable con worktrees en todos los estados y abre un agente con un prompt preparado que guía al usuario por cada funcionalidad (estado, limpieza, provisionado, el CLI, los hooks, el entorno y los providers), paso a paso.
 
-### 6. Provisionado Android, KMP y JVM
+### 5. Provisionado Android, KMP y JVM
 
 Provisionado para los stacks en los que un worktree recién creado está más lejos de compilar:
 
