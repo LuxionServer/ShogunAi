@@ -203,7 +203,8 @@ class EnvironmentCommandsTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals("export IOS_SIMULATOR_UDID='UDID-1'\n", envFile.readText())
-        assertTrue(out.contains("boot it with 'shogun simulator start'"), out.toString())
+        assertTrue(out.contains("IOS_SIMULATOR_UDID=UDID-1"), out.toString())
+        assertTrue(out.contains("`shogun simulator start`"), out.toString())
         assertTrue(out.contains("xcodebuild -destination \"id=\$IOS_SIMULATOR_UDID\""), out.toString())
     }
 
@@ -242,7 +243,8 @@ class EnvironmentCommandsTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals("export ANDROID_SERIAL='emulator-5554'\n", envFile.readText())
-        assertTrue(out.contains("ANDROID_SERIAL=emulator-5554; start it with 'shogun emulator start'"), out.toString())
+        assertTrue(out.contains("ANDROID_SERIAL=emulator-5554"), out.toString())
+        assertTrue(out.contains("`shogun emulator start`"), out.toString())
         assertTrue(out.contains("never run 'adb kill-server' or 'adb start-server'"), out.toString())
         assertEquals(0, androidSdk.locates)
     }
@@ -287,7 +289,8 @@ class EnvironmentCommandsTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals("export OTHER='1'\nexport PORT='20000'\n", envFile.readText())
-        assertEquals("ShogunAi environment of worktree TASK-123: PORT=20000\n", out.toString())
+        assertEquals("ShogunAi environment of worktree TASK-123: PORT=20000", out.lines().first())
+        assertTrue(out.contains("change the branch of the worktree a session starts in"), out.toString())
     }
 
     @Test
@@ -313,12 +316,45 @@ class EnvironmentCommandsTest {
     }
 
     @Test
-    fun `session-start does nothing without an environment or outside a repository`() {
-        assertEquals(0, cli(declaring(), input = """{"cwd": "$linked"}""").run(listOf("hook", "session-start")))
+    fun `session-start prints nothing outside a repository`() {
         assertEquals(0, cli(declaring("PORT" to "\${port}"), input = """{"cwd": "/tmp/elsewhere"}""").run(listOf("hook", "session-start")))
 
         assertEquals("", out.toString())
         assertEquals("", envFile.readText())
+    }
+
+    @Test
+    fun `session-start without an environment prints the rules and writes no variables`() {
+        assertEquals(0, cli(declaring(), input = """{"cwd": "$linked"}""").run(listOf("hook", "session-start")))
+
+        assertFalse(out.contains("ShogunAi environment"), out.toString())
+        assertTrue(out.contains("change the branch of the worktree a session starts in"), out.toString())
+        assertEquals("", envFile.readText())
+    }
+
+    @Test
+    fun `session-start states precedence first and points to the guide last`() {
+        assertEquals(0, cli(declaring(), input = """{"cwd": "$linked"}""").run(listOf("hook", "session-start")))
+
+        val lines = out.lines().filter { it.isNotBlank() }
+        assertTrue(lines.first().contains("take precedence"), out.toString())
+        assertTrue(lines.last().contains("shogun guide"), out.toString())
+    }
+
+    @Test
+    fun `session-start in the main checkout says to create a worktree`() {
+        assertEquals(0, cli(declaring(), workingDirectory = base, input = """{"cwd": "$base"}""").run(listOf("hook", "session-start")))
+
+        assertTrue(out.contains("create a worktree with `shogun new <id>`"), out.toString())
+        assertFalse(out.contains("change the branch of the worktree a session starts in"), out.toString())
+    }
+
+    @Test
+    fun `session-start without Herdr has no rule about opening or messaging sessions`() {
+        assertEquals(0, cli(declaring(), input = """{"cwd": "$linked"}""").run(listOf("hook", "session-start")))
+
+        assertFalse(out.contains("--herdr"), out.toString())
+        assertFalse(out.contains("messages"), out.toString())
     }
 
     @Test
@@ -413,7 +449,7 @@ class EnvironmentCommandsTest {
 
         assertEquals(0, exitCode, err.toString())
         assertFalse(out.contains("ANDROID_SERIAL="), out.toString())
-        assertTrue(out.contains("'shogun emulator start' acquires and starts it and prints the ANDROID_SERIAL to export"), out.toString())
+        assertTrue(out.contains("`shogun emulator start`"), out.toString())
         assertTrue(out.contains("never run 'adb kill-server' or 'adb start-server'"), out.toString())
         assertEquals("", envFile.readText())
         assertTrue(store.portsByAdminDirectory.isEmpty())
@@ -424,7 +460,7 @@ class EnvironmentCommandsTest {
         val exitCode = cli(withSimulator(), input = """{"cwd": "$linked"}""").run(listOf("hook", "session-start"))
 
         assertEquals(0, exitCode, err.toString())
-        assertTrue(out.contains("'shogun simulator start' creates and boots it and prints the IOS_SIMULATOR_UDID to export"), out.toString())
+        assertTrue(out.contains("`shogun simulator start`"), out.toString())
         assertTrue(appleSimulators.created.isEmpty())
         assertTrue(store.resourcesByAdminDirectory.isEmpty())
     }
