@@ -24,7 +24,11 @@ Numbered in the order they will be picked up: the number is the priority.
 
 The project grew around Android. This item reviews the coverage of the other stacks (iOS and Xcode, JVM backends) and of the IDEs a worktree can be opened in. It starts with an exploration to decide what's missing before it's split into changes. It also covers "Open in Claude Desktop" beyond macOS: whether its `claude://code/new?folder=` link accepts a folder on Windows is unverified.
 
-### 2. Follow-ups of the 2026-10-19 changes
+### 2. Wait for device capacity
+
+`shogun emulator start --wait` (and the simulator equivalent): instead of failing when every emulator is protected by a lease, queue until capacity frees up. It builds on the device leases, which already say when each lease expires.
+
+### 3. Follow-ups of the 2026-10-19 changes
 
 The review of the whole project on 2026-10-19 and the changes built after it are archived. These follow-ups were left out of them:
 
@@ -39,11 +43,11 @@ The review of the whole project on 2026-10-19 and the changes built after it are
 - Agent states for agents other than Claude Code (Codex, Gemini…), which have no equivalent hooks today.
 - Finding the root cause of the errors that closed the Preferences window, from the entries the isolation now leaves in the diagnostics log, and of the native crash seen on another machine that left an empty diagnostic report.
 
-### 3. Guided onboarding demo
+### 4. Guided onboarding demo
 
 A first-run walkthrough built on the review done before merging the worktree layer: the app creates a throwaway sample repository with worktrees in every state, and opens an agent with a prepared prompt that walks the user through each feature (status, cleanup, provisioning, the CLI, hooks, environment and providers), one step at a time.
 
-### 4. Android, KMP and JVM provisioning
+### 5. Android, KMP and JVM provisioning
 
 Provisioning for the stacks where a fresh worktree is furthest from building:
 
