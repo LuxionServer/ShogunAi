@@ -48,6 +48,14 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "No se encontró el repositorio del proyecto en ${error.path}.",
         "Actualiza la ruta del repositorio en los ajustes del proyecto.",
     )
+    WorktreeError.AppNotAvailable -> ErrorTexts(
+        "La app de escritorio de ShogunAi no está disponible en esta instalación.",
+        "Instala la app de escritorio para usar 'shogun app'.",
+    )
+    is WorktreeError.ProjectNotRegistered -> ErrorTexts(
+        "No hay ningún proyecto registrado para ${error.path}.",
+        "Añade antes el repositorio como proyecto.",
+    )
     is WorktreeError.RepositoryNotFound -> ErrorTexts(
         "No se encontró ningún repositorio de Git en ${error.path}.",
         "Actualiza la ruta del repositorio en los ajustes del proyecto.",

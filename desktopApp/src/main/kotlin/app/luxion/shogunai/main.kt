@@ -35,7 +35,10 @@ import androidx.compose.ui.window.application
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.luxion.shogunai.cli.runShogun
 import app.luxion.shogunai.ui.components.TextInputFocus
+import app.luxion.shogunai.infrastructure.FileAppInstanceLock
+import app.luxion.shogunai.infrastructure.FileAppRequestChannel
 import app.luxion.shogunai.ui.shell.AboutWindow
+import app.luxion.shogunai.ui.shell.AppRequestHandler
 import app.luxion.shogunai.ui.shell.AppMenuBar
 import app.luxion.shogunai.ui.shell.AppShell
 import app.luxion.shogunai.ui.shell.Appearance
@@ -73,6 +76,7 @@ import kotlin.time.Duration.Companion.hours
 
 private val MinimumWindowSize = Dimension(720, 480)
 private val UpdateCheckInterval = 24.hours
+private const val AppRequestPollInterval = 500L
 
 fun main(args: Array<String>) {
     val cliArguments = args.filterNot { it.startsWith("-psn_") }
@@ -160,6 +164,20 @@ private fun openWindow() = application {
     }
     LaunchedEffect(trayPreferences.isIconShown) {
         if (!trayPreferences.isIconShown) windowVisible = true
+    }
+    val appInstanceLock = remember { FileAppInstanceLock() }
+    val servesAppRequests = remember { appInstanceLock.acquire() }
+    DisposableEffect(Unit) { onDispose { appInstanceLock.release() } }
+    val shellViewModelForRequests = shellViewModelHolder.value
+    LaunchedEffect(shellViewModelForRequests, servesAppRequests) {
+        if (!servesAppRequests || shellViewModelForRequests == null) return@LaunchedEffect
+        val requests = FileAppRequestChannel()
+        val handler = AppRequestHandler(shellViewModelForRequests, showMainWindow)
+        while (true) {
+            val pending = withContext(Dispatchers.IO) { requests.receive(System.currentTimeMillis()) }
+            pending.forEach { request -> runCatching { handler.handle(request) } }
+            delay(AppRequestPollInterval)
+        }
     }
     DisposableEffect(Unit) {
         val closedWindowListener = AWTEventListener { event ->

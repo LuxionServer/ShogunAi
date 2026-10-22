@@ -4,6 +4,10 @@ import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.EmulatorSettings
 import app.luxion.shogunai.domain.model.Project
+import app.luxion.shogunai.domain.model.newProject
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.SimulatorSettings
 import java.nio.file.Files
@@ -214,5 +218,30 @@ class JsonProjectRepositoryTest {
         repository.save(project)
 
         assertEquals(agents, repository.list().single().config.agents)
+    }
+
+    @Test
+    fun `adding and removing a project leaves the other entries and the file's keys unchanged`() {
+        val existing = Project(
+            id = "existing",
+            name = "Main",
+            config = ProjectConfig(
+                baseRepositoryPath = "/home/dev/projects/main-repo",
+                worktreesRoot = "/home/dev/custom-worktrees",
+                secretFiles = listOf(".env"),
+                mainBranch = "develop",
+                fetchBeforeCreate = true,
+            ),
+        )
+        val added = newProject("added", "/home/dev/projects/other-repo")
+        repository.save(existing)
+
+        repository.save(added)
+        assertEquals(listOf(existing, added), repository.list())
+        repository.delete("added")
+
+        assertEquals(listOf(existing), repository.list())
+        val written = Json.parseToJsonElement(Files.readString(storagePath)).jsonArray.single().jsonObject
+        assertEquals(setOf("id", "name", "config"), written.keys)
     }
 }

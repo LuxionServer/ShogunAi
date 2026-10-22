@@ -14,6 +14,8 @@ shogun open TASK-123 --herdr       # open a worktree in Herdr with its environme
 shogun clean --yes                 # remove merged or missing worktrees (without --yes it only lists them)
 shogun stacks                      # the stacks detected in the repository and the providers they suggest
 shogun multirepo show              # in a multirepo: its repositories, defaults and agent
+shogun project add                 # register this repository as a project of the desktop app
+shogun app --settings              # open the desktop app on this repository's project settings
 eval "$(shogun env)"               # load this worktree's variables from .shogunai.json "env"
 ```
 
@@ -255,6 +257,35 @@ shogun open --herdr
 - `open <id> --herdr` opens each worktree of the group with its project's agent (`--agent` exits with `2`); an id matching both `feature/<id>` and `fix/<id>` exits with `2`, no match with `1`. `open --herdr` without a target opens the multirepo's agent.
 - `clean` lists the candidate groups (`would remove the group …`) and the kept ones with their reason (`kept feature/TASK-2 (api isn't merged)`), and accepts every option of `clean`.
 
+## Projects and the app
+
+### `project`
+
+```text
+shogun project add [<path>] [--json]
+shogun project list [--json]
+shogun project remove [<path>] [--json]
+```
+
+`add` registers the repository containing the path (the current directory by default, or its main checkout when run from a worktree) as a project of the desktop app, with the values the app's "Add project" form proposes: the folder's name as the project name, `<parent>/<name>-worktrees` as the worktrees folder, no local files and the main branch detected. Nothing inside the repository is written. A repository that is already registered is left exactly as it was (its settings aren't touched) and the command says so, exiting with `0`.
+
+`list` prints one line per project (`name  repository path`) and works outside a repository. `remove` unregisters the repository's project and leaves the repository and its worktrees on disk; it finds a project whose folder no longer exists by the path it was registered with, and exits with `1` when the repository has no project.
+
+A running app picks up the change when its window regains focus or on **View > Reload**.
+
+### `app`
+
+```text
+shogun app [<path>] [--settings]
+```
+
+Opens the desktop app on the project of the repository containing the path (the current directory by default), registering the repository first if it has no project. With `--settings` it opens the project's settings instead of its worktrees, which needs a repository (exit code `2` without one). Outside a repository, without a path, it just opens the app or brings it to the front. With a path that isn't a repository it exits with `1` and asks for nothing.
+
+The command returns as soon as the app has been asked, without waiting for it:
+
+- **The app is open**: it serves the request in a second or so, through the same navigation as the sidebar. Its window, size and position are kept, and a form with unsaved changes asks whether to discard them instead of being replaced. If the project's settings are already open, nothing changes.
+- **The app is closed**: `shogun` launches it and the app opens on the project once started. This works where the app's own launcher is the `shogun` command (macOS with Homebrew, Linux `.deb`, Windows `.msi`). From the standalone zip, with no app installed, the command says the desktop app isn't available from that install and exits with `1`.
+
 ## Environment
 
 ### `env`
@@ -347,7 +378,7 @@ shogun xcode trim [--dry-run]
 
 ## JSON output
 
-Besides `status --json` above, every command that reports a result accepts `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `compose`, `compose down`, `pool status`, `pool trim`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks` and `guide install|uninstall|status` (not `simulator gradle-init`, `env`, `hook`, `help` or `--version`; on those it is an unknown option and exits with `2`). The option can go anywhere after the command.
+Besides `status --json` above, every command that reports a result accepts `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `compose`, `compose down`, `pool status`, `pool trim`, `project add`, `project list`, `project remove`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks` and `guide install|uninstall|status` (not `simulator gradle-init`, `env`, `hook`, `help` or `--version`; on those it is an unknown option and exits with `2`). The option can go anywhere after the command.
 
 The rules are the same for all of them:
 
@@ -368,6 +399,8 @@ The rules are the same for all of them:
 | `guide install`, `guide uninstall` | `path`, `applied` (written this run), `state` (`installed`, `outdated`, `missing`) and `warnings` (messages). |
 | `guide status` | `targets`: `{ target, path, state, duplicates }` with `target` `codex`, `gemini`, `project` or `file` and `duplicates` `true` when the file mentions `shogun new`, `open` or `clean` outside the block; and `warnings`. |
 | `repair` | `repaired`: the re-linked worktree paths. |
+| `project add`, `project remove` | `action` (`added`, `alreadyRegistered` or `removed`), and the project's `id`, `name` and `repository`. |
+| `project list` | `projects`: `{ id, name, repository }`, empty without projects. |
 | `open` | `path`, `branch` (or `null` if detached), `herdr` (`opened` or `focused`) and `agent` (the started agent's name, or `null` when the workspace was only focused). |
 | `clean` | `dryRun`; `candidates`: `{ path, branch, reason }` with `reason` `merged` or `folder-missing`; `keptForAgents`: `{ path, agents }`; `skipped`: `{ path, reason }` (status unavailable); `removed`; `deletedBranches`; `failures`: `{ path, message }`; and `providers`: `gradleDaemonsStopped`, `emulatorsStopped`, `simulatorsDeleted`, `derivedDataDeleted` and, with `--down-compose-projects`, `composeProjectsDown`. Without `--yes` (`dryRun: true`) `removed`, `deletedBranches` and the `providers` lists are empty. |
 | `gradle` | `daemons`: `{ pid, kind, version, memoryBytes, state, idleSince, worktree }` with `kind` `gradle` or `kotlin`, `state` `busy`, `idle`, `unknown` or `untracked`, `idleSince` in ISO-8601 UTC (only when idle) and `worktree` a path, `removed`, `other-project` or `null` outside a repository; and `totalMemoryBytes`. |

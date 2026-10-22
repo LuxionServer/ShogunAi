@@ -14,6 +14,8 @@ shogun open TASK-123 --herdr       # abre un worktree en Herdr con su entorno y 
 shogun clean --yes                 # elimina los worktrees mergeados o sin carpeta (sin --yes solo los lista)
 shogun stacks                      # los stacks detectados en el repositorio y los providers que sugieren
 shogun multirepo show              # en un multirepo: sus repositorios, los de por defecto y su agente
+shogun project add                 # registra este repositorio como proyecto de la app de escritorio
+shogun app --settings              # abre la app de escritorio en los ajustes del proyecto de este repositorio
 eval "$(shogun env)"               # carga las variables de este worktree desde "env" en .shogunai.json
 ```
 
@@ -255,6 +257,35 @@ shogun open --herdr
 - `open <id> --herdr` abre cada worktree del grupo con el agente de su proyecto (`--agent` sale con `2`); un id que encaja con `feature/<id>` y `fix/<id>` a la vez sale con `2`, y sin coincidencias con `1`. `open --herdr` sin destino abre el agente del multirepo.
 - `clean` lista los grupos candidatos (`would remove the group …`) y los que se conservan con su motivo (`kept feature/TASK-2 (api isn't merged)`), y acepta todas las opciones de `clean`.
 
+## Proyectos y la app
+
+### `project`
+
+```text
+shogun project add [<ruta>] [--json]
+shogun project list [--json]
+shogun project remove [<ruta>] [--json]
+```
+
+`add` registra el repositorio que contiene la ruta (el directorio actual por defecto, o su checkout principal si se ejecuta desde un worktree) como proyecto de la app de escritorio, con los valores que propone el formulario "Añadir proyecto": el nombre de la carpeta como nombre del proyecto, `<padre>/<nombre>-worktrees` como carpeta de worktrees, sin archivos locales y con la rama principal detectada. No escribe nada dentro del repositorio. Un repositorio que ya está registrado se deja exactamente como estaba (no se tocan sus ajustes) y el comando lo dice, con código de salida `0`.
+
+`list` imprime una línea por proyecto (`nombre  ruta del repositorio`) y funciona fuera de un repositorio. `remove` da de baja el proyecto del repositorio y deja el repositorio y sus worktrees en disco; encuentra un proyecto cuya carpeta ya no existe por la ruta con la que se registró, y sale con `1` cuando el repositorio no tiene proyecto.
+
+Una app abierta recoge el cambio cuando su ventana recupera el foco o con **Ver > Recargar**.
+
+### `app`
+
+```text
+shogun app [<ruta>] [--settings]
+```
+
+Abre la app de escritorio en el proyecto del repositorio que contiene la ruta (el directorio actual por defecto), registrándolo antes si no tiene proyecto. Con `--settings` abre los ajustes del proyecto en lugar de sus worktrees, lo que exige un repositorio (código de salida `2` sin él). Fuera de un repositorio y sin ruta, solo abre la app o la trae al frente. Con una ruta que no es un repositorio sale con `1` y no pide nada.
+
+El comando vuelve en cuanto se ha avisado a la app, sin esperarla:
+
+- **La app está abierta**: atiende la orden en un segundo más o menos, con la misma navegación que la barra lateral. Se conservan su ventana, tamaño y posición, y un formulario con cambios sin guardar pregunta si descartarlos en lugar de ser sustituido. Si los ajustes del proyecto ya están abiertos, no cambia nada.
+- **La app está cerrada**: `shogun` la lanza y la app se abre en el proyecto cuando ha arrancado. Funciona donde el lanzador de la propia app es el comando `shogun` (macOS con Homebrew, `.deb` de Linux, `.msi` de Windows). Desde el zip independiente, sin la app instalada, el comando dice que la app de escritorio no está disponible en esa instalación y sale con `1`.
+
 ## Entorno
 
 ### `env`
@@ -349,7 +380,7 @@ shogun xcode trim [--dry-run]
 
 ## Salida JSON
 
-Además de `status --json`, todos los comandos que informan de un resultado aceptan `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `compose`, `compose down`, `pool status`, `pool trim`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks` y `guide install|uninstall|status` (no `simulator gradle-init`, `env`, `hook`, `help` ni `--version`; en ellos es una opción desconocida y sale con `2`). La opción puede ir en cualquier posición tras el comando.
+Además de `status --json`, todos los comandos que informan de un resultado aceptan `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `compose`, `compose down`, `pool status`, `pool trim`, `project add`, `project list`, `project remove`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks` y `guide install|uninstall|status` (no `simulator gradle-init`, `env`, `hook`, `help` ni `--version`; en ellos es una opción desconocida y sale con `2`). La opción puede ir en cualquier posición tras el comando.
 
 Las reglas son las mismas para todos:
 
@@ -370,6 +401,8 @@ Las reglas son las mismas para todos:
 | `guide install`, `guide uninstall` | `path`, `applied` (escrito en esta ejecución), `state` (`installed`, `outdated`, `missing`) y `warnings` (mensajes). |
 | `guide status` | `targets`: `{ target, path, state, duplicates }` con `target` `codex`, `gemini`, `project` o `file` y `duplicates` `true` cuando el fichero menciona `shogun new`, `open` o `clean` fuera del bloque; y `warnings`. |
 | `repair` | `repaired`: las rutas de los worktrees re-enlazados. |
+| `project add`, `project remove` | `action` (`added`, `alreadyRegistered` o `removed`), y el `id`, `name` y `repository` del proyecto. |
+| `project list` | `projects`: `{ id, name, repository }`, vacío sin proyectos. |
 | `open` | `path`, `branch` (o `null` si está desacoplado), `herdr` (`opened` o `focused`) y `agent` (el nombre del agente arrancado, o `null` cuando solo se enfocó el espacio de trabajo). |
 | `clean` | `dryRun`; `candidates`: `{ path, branch, reason }` con `reason` `merged` o `folder-missing`; `keptForAgents`: `{ path, agents }`; `skipped`: `{ path, reason }` (estado no disponible); `removed`; `deletedBranches`; `failures`: `{ path, message }`; y `providers`: `gradleDaemonsStopped`, `emulatorsStopped`, `simulatorsDeleted`, `derivedDataDeleted` y, con `--down-compose-projects`, `composeProjectsDown`. Sin `--yes` (`dryRun: true`) `removed`, `deletedBranches` y las listas de `providers` van vacías. |
 | `gradle` | `daemons`: `{ pid, kind, version, memoryBytes, state, idleSince, worktree }` con `kind` `gradle` o `kotlin`, `state` `busy`, `idle`, `unknown` o `untracked`, `idleSince` en ISO-8601 UTC (solo si está inactivo) y `worktree` una ruta, `removed`, `other-project` o `null` fuera de un repositorio; y `totalMemoryBytes`. |

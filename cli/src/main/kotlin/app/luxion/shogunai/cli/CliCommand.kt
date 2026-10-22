@@ -60,6 +60,8 @@ sealed interface CliCommand {
     data class Compose(val json: Boolean = false) : CliCommand
     data class ComposeDown(val target: String? = null, val volumes: Boolean = false, val json: Boolean = false) : CliCommand
     data class Pool(val action: PoolAction, val json: Boolean = false) : CliCommand
+    data class Project(val action: ProjectAction, val path: String? = null, val json: Boolean = false) : CliCommand
+    data class App(val path: String? = null, val settings: Boolean = false) : CliCommand
     data class GradleStop(val pids: List<Long> = emptyList(), val json: Boolean = false) : CliCommand
     data object HookWorktreeCreate : CliCommand
     data object HookWorktreeRemove : CliCommand
@@ -139,6 +141,8 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "maven" -> noArguments(name, arguments, CliCommand.Maven())
                 "compose" -> parseCompose(arguments)
                 "pool" -> parsePool(arguments)
+                "project" -> parseProject(arguments)
+                "app" -> parseApp(arguments)
                 "xcode" -> parseXcode(arguments)
                 "env" -> parseEnv(arguments)
                 "emulator" -> parseEmulator(arguments)
@@ -153,7 +157,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
 
 private const val JSON_FLAG = "--json"
 
-private val JSON_COMMANDS = setOf("new", "multirepo", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "stacks", "maven", "compose", "pool", "xcode", "emulator", "simulator", "hooks", "guide")
+private val JSON_COMMANDS = setOf("new", "multirepo", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "stacks", "maven", "compose", "pool", "project", "xcode", "emulator", "simulator", "hooks", "guide")
 
 private fun isSimulatorGradleInit(name: String, rest: List<String>) = name == "simulator" && rest.firstOrNull() == "gradle-init"
 
@@ -178,6 +182,7 @@ private fun CliCommand.withJson(json: Boolean): CliCommand = if (!json) this els
     is CliCommand.ComposeDown -> copy(json = true)
     is CliCommand.GradleStop -> copy(json = true)
     is CliCommand.Pool -> copy(json = true)
+    is CliCommand.Project -> copy(json = true)
     is CliCommand.Emulator -> copy(json = true)
     is CliCommand.Simulator -> copy(json = true)
     is CliCommand.Hooks -> copy(json = true)
@@ -377,6 +382,30 @@ private fun parseGradle(rest: List<String>): CliCommand {
 }
 
 enum class PoolAction { STATUS, TRIM }
+
+enum class ProjectAction { ADD, LIST, REMOVE }
+
+private fun parseProject(rest: List<String>): CliCommand {
+    val name = rest.firstOrNull() ?: throw UsageException("'project' needs an action: add, list or remove")
+    val action = ProjectAction.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
+        ?: throw UsageException("unknown action '$name' for 'project', expected add, list or remove")
+    val arguments = rest.drop(1)
+    arguments.firstOrNull { it.startsWith("-") }?.let { throw UsageException("unknown option '$it' for 'project $name'") }
+    if (action == ProjectAction.LIST) {
+        arguments.firstOrNull()?.let { throw UsageException("'project list' takes no arguments, got '$it'") }
+        return CliCommand.Project(action)
+    }
+    if (arguments.size > 1) throw UsageException("'project $name' takes at most one path")
+    return CliCommand.Project(action, arguments.firstOrNull())
+}
+
+private fun parseApp(rest: List<String>): CliCommand.App {
+    val settings = "--settings" in rest
+    val others = rest.filter { it != "--settings" }
+    others.firstOrNull { it.startsWith("-") }?.let { throw UsageException("unknown option '$it' for 'app'") }
+    if (others.size > 1) throw UsageException("'app' takes at most one path")
+    return CliCommand.App(others.firstOrNull(), settings)
+}
 
 private fun parsePool(rest: List<String>): CliCommand {
     val name = rest.firstOrNull() ?: throw UsageException("'pool' needs an action: status or trim")
