@@ -79,6 +79,15 @@ import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
+import app.luxion.shogunai.domain.model.BranchType
+import app.luxion.shogunai.domain.model.Multirepo
+import app.luxion.shogunai.domain.model.MultirepoDeclaration
+import app.luxion.shogunai.domain.usecase.GroupCreation
+import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
+import app.luxion.shogunai.domain.usecase.GroupRepositoryResult
+import app.luxion.shogunai.ui.multirepo.MultirepoActions
+import app.luxion.shogunai.ui.multirepo.MultirepoNotice
+import app.luxion.shogunai.ui.multirepo.multirepoMemberships
 
 class WorktreeBoardTest {
 
@@ -109,6 +118,7 @@ class WorktreeBoardTest {
     private val executed = mutableListOf<List<String>>()
     private val openedInHerdr = mutableListOf<String>()
     private var divergenceOutput = "2\t0\n"
+    private val unmergedPaths = mutableSetOf<String>()
     private var upstreamOutput: String? = null
     private var lastCommitOutput = ""
 
@@ -171,7 +181,7 @@ class WorktreeBoardTest {
                     }
                     command.getOrNull(1) == "symbolic-ref" -> success(command, stdout = "origin/main\n")
                     command == listOf("git", "rev-list", "--left-right", "--count", "origin/main...HEAD") ->
-                        success(command, stdout = divergenceOutput)
+                        success(command, stdout = if (workingDirectory in unmergedPaths) "0\t1\n" else divergenceOutput)
                     command == listOf("git", "rev-list", "--left-right", "--count", "@{upstream}...HEAD") && upstreamOutput != null ->
                         success(command, stdout = upstreamOutput!!)
                     command == listOf("git", "log", "-1", "--format=%ct") -> success(command, stdout = lastCommitOutput)
@@ -237,6 +247,7 @@ class WorktreeBoardTest {
         projects: List<Project> = repositories.map { it.project },
         clock: () -> Instant = Instant::now,
         onWorktreeUsed: (WorktreeRef) -> Unit = {},
+        multirepoActions: MultirepoActions = MultirepoActions.NONE,
     ): WorktreeBoard = WorktreeBoard(
         useCasesFor = { config -> repositories.first { it.base == config.baseRepositoryPath }.useCases() },
         detectAgents = { searches ->
@@ -248,6 +259,7 @@ class WorktreeBoardTest {
         clock = clock,
         ioDispatcher = dispatcher,
         onWorktreeUsed = onWorktreeUsed,
+        multirepoActions = multirepoActions,
     ).also {
         it.syncCatalog(projects)
         it.show(null)
@@ -1273,4 +1285,252 @@ class WorktreeBoardTest {
             TextInputFocus.leave()
         }
     }
+
+    private val productApp = FakeRepository(
+        id = "app",
+        worktrees = listOf(
+            "/home/dev/projects/app-TASK-1" to "feature/TASK-1",
+            "/home/dev/projects/app-TASK-2" to "feature/TASK-2",
+        ),
+    )
+    private val productApi = FakeRepository(
+        id = "api",
+        worktrees = listOf(
+            "/home/dev/projects/api-TASK-1" to "feature/TASK-1",
+            "/home/dev/projects/api-loose" to "feature/loose",
+        ),
+    )
+    private val productDocs = FakeRepository(id = "docs", worktrees = listOf("/home/dev/projects/docs-TASK-2" to "feature/TASK-2"))
+    private val tools = FakeRepository(id = "tools", worktrees = listOf("/home/dev/projects/tools-TASK-1" to "feature/TASK-1"))
+    private val product = Multirepo(
+        "/home/dev/projects/product",
+        MultirepoDeclaration(
+            repos = mapOf("app" to productApp.base, "api" to productApi.base, "docs" to productDocs.base),
+            worktreesRoot = "../product-worktrees",
+            defaultRepos = listOf("app", "api"),
+        ),
+    )
+
+    private fun TestScope.productBoard(multirepoActions: MultirepoActions = MultirepoActions.NONE): WorktreeBoard {
+        repositories = listOf(productApp, productApi, productDocs, tools)
+        val board = board(multirepoActions = multirepoActions)
+        board.syncMultirepos(multirepoMemberships(listOf(product), board.projects))
+        advanceUntilIdle()
+        board.showMultirepo(product.folder)
+        return board
+    }
+
+    @Test
+    fun `the multirepo view groups its worktrees by change with the loose ones ungrouped`() = runTest(dispatcher) {
+        val board = productBoard()
+
+        val view = board.changeView
+        assertTrue(board.isGroupedByChange)
+        assertEquals(listOf("TASK-1", "TASK-2"), view.groups.map { it.title })
+        assertEquals(listOf(listOf("api", "app"), listOf("app", "docs")), view.groups.map { group -> group.entries.map { it.alias } })
+        assertEquals(listOf("/home/dev/projects/api-loose"), view.ungrouped.map { it.entry.worktree.path })
+        assertEquals(listOf("app", "api", "docs"), board.shownProjects.map { it.id })
+        assertEquals("api", board.aliasOf("api"))
+    }
+
+    @Test
+    fun `the multirepo view can be grouped by state and remembers it`() = runTest(dispatcher) {
+        val board = productBoard()
+
+        assertEquals(listOf(Grouping.BY_CHANGE, Grouping.BY_STATE), board.groupingOptions)
+        board.updateGrouping(Grouping.BY_STATE)
+
+        assertTrue(board.isGroupedByState)
+        assertEquals(5, board.stateGroups.sumOf { it.items.size })
+        assertTrue(board.stateGroups.flatMap { it.items }.none { it.worktree.isMain })
+        assertEquals(Grouping.BY_STATE, preferences.loadGrouping(GroupedView.MULTIREPO))
+        board.show(null, GroupedView.ALL)
+        assertEquals(Grouping.BY_PROJECT, board.grouping)
+    }
+
+    @Test
+    fun `a group reads as merged only when every worktree of it is merged`() = runTest(dispatcher) {
+        unmergedPaths += "/home/dev/projects/docs-TASK-2"
+        val board = productBoard()
+
+        val states = board.changeView.groups.associate { it.title to it.state }
+        assertEquals(StateBadgeKind.MERGED, states["TASK-1"])
+        assertTrue(states["TASK-2"] != StateBadgeKind.MERGED)
+    }
+
+    @Test
+    fun `rows of other views carry the group tag and the project header the multirepo name`() = runTest(dispatcher) {
+        val board = productBoard()
+        board.show(null, GroupedView.ALL)
+
+        assertEquals("TASK-1 · +api", board.groupTagOf(WorktreeRef("app", "/home/dev/projects/app-TASK-1"))?.label)
+        assertEquals("TASK-2 · +app", board.groupTagOf(WorktreeRef("docs", "/home/dev/projects/docs-TASK-2"))?.label)
+        assertNull(board.groupTagOf(WorktreeRef("api", "/home/dev/projects/api-loose")))
+        assertNull(board.groupTagOf(WorktreeRef("tools", "/home/dev/projects/tools-TASK-1")))
+        assertEquals("product", board.multirepoNameOf("app"))
+        assertNull(board.multirepoNameOf("tools"))
+
+        board.showMultirepo(product.folder)
+        assertNull(board.groupTagOf(WorktreeRef("app", "/home/dev/projects/app-TASK-1")))
+    }
+
+    @Test
+    fun `revealing a group expands it and selects one of its worktrees`() = runTest(dispatcher) {
+        val board = productBoard()
+        board.toggleChangeCollapsed("feature/TASK-2")
+        assertTrue(board.changeView.groups.single { it.title == "TASK-2" }.collapsed)
+
+        board.revealGroup("feature/TASK-2")
+
+        assertFalse(board.changeView.groups.single { it.title == "TASK-2" }.collapsed)
+        assertEquals(WorktreeRef("app", "/home/dev/projects/app-TASK-2"), board.selected)
+        assertTrue(board.visibleRefs().contains(WorktreeRef("docs", "/home/dev/projects/docs-TASK-2")))
+    }
+
+    @Test
+    fun `a group with an unmerged worktree can't be cleaned up and says which repository`() = runTest(dispatcher) {
+        unmergedPaths += "/home/dev/projects/api-TASK-1"
+        val board = productBoard()
+        val group = board.changeView.groups.single { it.title == "TASK-1" }
+
+        val blocker = board.groupCleanupBlocker(group)
+
+        assertEquals("api", blocker?.alias)
+        assertEquals("api isn't merged", blocker?.describe(EnglishStrings))
+        assertFalse(board.canCleanUpGroup(group))
+    }
+
+    @Test
+    fun `cleaning up a group removes only its worktrees`() = runTest(dispatcher) {
+        val board = productBoard()
+        val group = board.changeView.groups.single { it.title == "TASK-1" }
+
+        board.openGroupCleanup(group)
+        assertEquals(listOf("api", "app"), board.cleanupProjects.map { it.project.id })
+        assertEquals(listOf(1, 1), board.cleanupProjects.map { it.worktrees.size })
+        board.confirmCleanup()
+        advanceUntilIdle()
+
+        assertEquals(
+            setOf("/home/dev/projects/app-TASK-1", "/home/dev/projects/api-TASK-1"),
+            executed.filter { it.take(3) == listOf("git", "worktree", "remove") }.map { it[3] }.toSet(),
+        )
+        assertNull(board.cleanupOnly)
+    }
+
+    @Test
+    fun `open all in Herdr opens every worktree of the group`() = runTest(dispatcher) {
+        val board = productBoard()
+
+        board.openAllInHerdr(board.changeView.groups.single { it.title == "TASK-2" })
+        advanceUntilIdle()
+
+        assertEquals(setOf("/home/dev/projects/app-TASK-2", "/home/dev/projects/docs-TASK-2"), openedInHerdr.toSet())
+    }
+
+    @Test
+    fun `adding a repository to a group creates its worktree on the group's branch`() = runTest(dispatcher) {
+        val calls = mutableListOf<Triple<List<String>, String, BranchType>>()
+        val board = productBoard(
+            MultirepoActions(
+                createGroup = { members, taskId, type, _, _ ->
+                    calls += Triple(members.map { it.alias }, taskId, type)
+                    Result.success(GroupCreation("feature/$taskId", members.map { GroupRepositoryResult(it.alias, GroupRepositoryOutcome.CREATED) }))
+                },
+                openAgent = { Result.success(HerdrOpening.OPENED) },
+            ),
+        )
+        val group = board.changeView.groups.single { it.title == "TASK-1" }
+
+        assertEquals(listOf("docs"), board.missingAliases(group))
+        board.addRepositoryToGroup(group, "docs")
+        advanceUntilIdle()
+
+        assertEquals(listOf(Triple(listOf("docs"), "TASK-1", BranchType.FEATURE)), calls)
+        assertEquals(MultirepoNotice.AddedToGroup("docs", "TASK-1"), board.multirepoNotice)
+        assertTrue(board.addingToGroup.isEmpty())
+    }
+
+    @Test
+    fun `a new change creates the group in the checked repositories and closes`() = runTest(dispatcher) {
+        val created = mutableListOf<List<String>>()
+        val board = productBoard(
+            MultirepoActions(
+                createGroup = { members, taskId, _, _, _ ->
+                    created += members.map { it.alias }
+                    Result.success(GroupCreation("feature/$taskId", members.map { GroupRepositoryResult(it.alias, GroupRepositoryOutcome.CREATED) }))
+                },
+                openAgent = { Result.success(HerdrOpening.OPENED) },
+            ),
+        )
+
+        board.openNewChange()
+        val change = board.newChange!!
+        assertEquals(setOf("app", "api"), change.selected)
+        assertFalse(change.canConfirm)
+        change.updateTaskId("TASK-20")
+        change.toggle("docs")
+        board.confirmNewChange()
+        advanceUntilIdle()
+
+        assertEquals(listOf(listOf("api", "app", "docs")), created)
+        assertNull(board.newChange)
+        assertEquals(MultirepoNotice.ChangeCreated("TASK-20", listOf("api", "app", "docs")), board.multirepoNotice)
+    }
+
+    @Test
+    fun `a new change keeps the dialog open with each repository's result when one fails`() = runTest(dispatcher) {
+        val failure = IllegalStateException("post-create failed")
+        val board = productBoard(
+            MultirepoActions(
+                createGroup = { members, taskId, _, _, _ ->
+                    Result.success(
+                        GroupCreation(
+                            "feature/$taskId",
+                            members.map {
+                                if (it.alias == "api") GroupRepositoryResult("api", GroupRepositoryOutcome.FAILED, error = failure)
+                                else GroupRepositoryResult(it.alias, GroupRepositoryOutcome.CREATED)
+                            },
+                        ),
+                    )
+                },
+                openAgent = { Result.success(HerdrOpening.OPENED) },
+            ),
+        )
+
+        board.openNewChange()
+        board.newChange!!.updateTaskId("TASK-20")
+        board.confirmNewChange()
+        advanceUntilIdle()
+
+        val change = board.newChange!!
+        assertEquals(
+            mapOf("api" to GroupRepositoryOutcome.FAILED, "app" to GroupRepositoryOutcome.CREATED),
+            change.results!!.associate { it.alias to it.outcome },
+        )
+        assertFalse(change.canConfirm)
+        board.dismissNewChange()
+        assertNull(board.newChange)
+    }
+
+    @Test
+    fun `opening the multirepo agent reports whether it was focused`() = runTest(dispatcher) {
+        val opened = mutableListOf<String>()
+        val board = productBoard(
+            MultirepoActions(
+                createGroup = { _, _, _, _, _ -> Result.failure(UnsupportedOperationException()) },
+                openAgent = { multirepo ->
+                    opened += multirepo.folder
+                    Result.success(HerdrOpening.FOCUSED)
+                },
+            ),
+        )
+
+        board.openMultirepoAgent()
+        advanceUntilIdle()
+
+        assertEquals(listOf(product.folder), opened)
+        assertEquals(MultirepoNotice.AgentOpened(focused = true), board.multirepoNotice)
+    }
 }
+

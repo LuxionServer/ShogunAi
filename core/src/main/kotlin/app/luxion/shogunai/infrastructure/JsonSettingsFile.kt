@@ -87,6 +87,7 @@ class JsonSettingsFile(
         val windowBounds: WindowBounds? = null,
         val sidebarCollapsed: Boolean = false,
         val collapsedProjects: List<String> = emptyList(),
+        val collapsedMultirepos: List<String> = emptyList(),
         val lastCreateProject: String? = null,
         val recentPaletteItems: List<String> = emptyList(),
         val grouping: GroupingSettings = GroupingSettings(),
@@ -109,6 +110,7 @@ class JsonSettingsFile(
     data class GroupingSettings(
         val active: Grouping = Grouping.BY_STATE,
         val all: Grouping = Grouping.BY_PROJECT,
+        val multirepo: Grouping = Grouping.BY_CHANGE,
     )
 
     @Serializable

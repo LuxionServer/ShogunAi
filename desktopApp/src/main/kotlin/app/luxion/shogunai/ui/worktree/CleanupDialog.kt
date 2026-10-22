@@ -33,13 +33,14 @@ fun CleanupDialog(board: WorktreeBoard) {
     val groups = board.cleanupProjects
     val holders = groups.map { it.holder }
     val candidateCount = groups.sumOf { it.worktrees.size }
+    val isGroupCleanup = board.cleanupOnly != null
     val showHeadings = groups.size > 1 || !board.isFiltered
     val enabled = !board.isCleaningUp
-    val orphanedSimulators = holders.filter { it.isSimulatorRepository }.flatMap { it.orphanedSimulators }
-    val derivedDataOrphans = holders.filter { it.isXcodeRepository }.flatMap { it.derivedDataOrphans }
+    val orphanedSimulators = holders.filter { it.isSimulatorRepository && !isGroupCleanup }.flatMap { it.orphanedSimulators }
+    val derivedDataOrphans = holders.filter { it.isXcodeRepository && !isGroupCleanup }.flatMap { it.derivedDataOrphans }
     AlertDialog(
         onDismissRequest = { board.dismissCleanup() },
-        title = { Text(strings.cleanUpTitle) },
+        title = { Text(if (isGroupCleanup) strings.cleanUpGroupTitle else strings.cleanUpTitle) },
         text = {
             Column {
                 if (candidateCount > 0) Text(strings.cleanUpMessage(candidateCount))
@@ -73,7 +74,7 @@ fun CleanupDialog(board: WorktreeBoard) {
                         )
                     }
                 }
-                groups.forEach { group ->
+                groups.filter { !isGroupCleanup }.forEach { group ->
                     group.holder.cleanupKeptForRunningAgent.forEach { (worktree, running) ->
                         Text(
                             strings.keptForRunningAgent(worktree.path.substringAfterLast('/'), running.map { it.name }),
@@ -115,7 +116,7 @@ fun CleanupDialog(board: WorktreeBoard) {
                         )
                     }
                 }
-                if (holders.any { it.isXcodeRepository }) {
+                if (holders.any { it.isXcodeRepository } && !isGroupCleanup) {
                     CleanupOption(strings.alsoDeleteDerivedData, board.cleanupDeleteDerivedData, enabled) {
                         board.cleanupDeleteDerivedData = it
                     }

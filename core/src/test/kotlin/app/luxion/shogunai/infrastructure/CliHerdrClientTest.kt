@@ -5,6 +5,8 @@ import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.HerdrAgent
+import app.luxion.shogunai.domain.model.HerdrPane
+import app.luxion.shogunai.domain.model.HerdrWorkspace
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.HerdrWorktreeOpening
 import app.luxion.shogunai.domain.model.WorktreeError
@@ -242,5 +244,53 @@ class CliHerdrClientTest {
             client(executor, files = setOf("/opt/homebrew/bin/herdr", "/home/dev/.cargo/bin/herdr")).executable(),
         )
         assertEquals("herdr.exe", client(executor, osName = "Windows 11").executable())
+    }
+
+    @Test
+    fun `a plain workspace is created focused in a folder with a label`() = runTest {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("workspace-create.json")) }
+
+        val opening = client(executor).createWorkspace("/home/dev/projects/product", "product")
+
+        assertEquals(HerdrWorktreeOpening(workspaceId = "w9", rootPaneId = "w9:p1", alreadyOpen = false), opening)
+        assertEquals(
+            listOf("herdr", "workspace", "create", "--cwd", "/home/dev/projects/product", "--label", "product", "--focus"),
+            executor.executedCommands.single(),
+        )
+    }
+
+    @Test
+    fun `workspaces are listed with their worktree when they have one`() = runTest {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("workspace-list.json")) }
+
+        val workspaces = client(executor).listWorkspaces()
+
+        assertEquals(
+            listOf(
+                HerdrWorkspace("w5", "product", null),
+                HerdrWorkspace("wQ", "TASK-1", "/home/dev/projects/product-worktrees/app/TASK-1"),
+            ),
+            workspaces,
+        )
+        assertEquals(listOf("herdr", "workspace", "list"), executor.executedCommands.single())
+    }
+
+    @Test
+    fun `panes are listed with their workspace and directory, and a workspace is focused by id`() = runTest {
+        val executor = FakeShellCommandExecutor { command ->
+            FakeShellCommandExecutor.success(command, if (command.contains("pane")) fixture("pane-list.json") else """{"id":"x","result":{"type":"ok"}}""")
+        }
+
+        val panes = client(executor).listPanes()
+        client(executor).focusWorkspace("w5")
+
+        assertEquals(
+            listOf(
+                HerdrPane("w5:p1", "w5", "/home/dev/projects/product"),
+                HerdrPane("wQ:p1", "wQ", "/home/dev/projects/product-worktrees/app/TASK-1"),
+            ),
+            panes,
+        )
+        assertEquals(listOf("herdr", "workspace", "focus", "w5"), executor.executedCommands.last())
     }
 }

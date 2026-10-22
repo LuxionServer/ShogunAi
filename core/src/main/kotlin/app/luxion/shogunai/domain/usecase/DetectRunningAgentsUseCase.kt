@@ -25,6 +25,7 @@ class DetectRunningAgentsUseCase(
     private val sessionStore: AgentSessionStore? = null,
     private val transcriptModifiedAt: (String) -> Long? = { path -> File(path).lastModified().takeIf { it > 0 } },
     private val now: () -> Long = System::currentTimeMillis,
+    private val hasGitEntry: (String) -> Boolean = { directory -> File(directory, ".git").exists() },
 ) {
     @Volatile
     private var herdrRetryAt = 0L
@@ -48,7 +49,7 @@ class DetectRunningAgentsUseCase(
     private suspend fun scanProcesses(searches: List<AgentSearch>, worktrees: List<Worktree>): ProcessScan {
         val processes = run("lsof", "-d", "cwd", "-F", "pcn").let(::parseLsofWorkingDirectories)
         val worktreeByPid = processes.mapNotNull { (pid, cwd) ->
-            owningWorktree(cwd, worktrees)?.let { pid to it.path }
+            attributedWorktree(cwd, worktrees)?.let { pid to it.path }
         }.toMap()
         if (worktreeByPid.isEmpty()) return ProcessScan()
 
@@ -127,7 +128,7 @@ class DetectRunningAgentsUseCase(
     ): Map<String, List<RunningAgent>> {
         if (herdrAgents.isEmpty()) return processAgents
         val herdrByPath = herdrAgents
-            .mapNotNull { agent -> owningWorktree(agent.directory, worktrees)?.let { it.path to agent } }
+            .mapNotNull { agent -> attributedWorktree(agent.directory, worktrees)?.let { it.path to agent } }
             .groupBy({ it.first }, { it.second })
         return (processAgents.keys + herdrByPath.keys).associateWith { path ->
             val herdrByName = herdrByPath[path].orEmpty().groupBy { it.name }.mapValues { (_, agents) -> mostUrgent(agents) }
@@ -135,6 +136,17 @@ class DetectRunningAgentsUseCase(
             processAgents[path].orEmpty().map { agent -> herdrByName[agent.name]?.let { runningAgent(it, agent) } ?: agent } +
                 herdrByName.filterKeys { it !in processNames }.values.map(::runningAgent)
         }
+    }
+
+    private fun attributedWorktree(cwd: String, worktrees: List<Worktree>): Worktree? {
+        val worktree = owningWorktree(cwd, worktrees) ?: return null
+        val root = normalizePath(worktree.path)
+        var directory = normalizePath(cwd)
+        while (directory.length > root.length) {
+            if (hasGitEntry(directory)) return null
+            directory = directory.substringBeforeLast('/')
+        }
+        return worktree
     }
 
     private fun mostUrgent(agents: List<HerdrAgent>): HerdrAgent = agents.maxBy { urgency(it.state) }

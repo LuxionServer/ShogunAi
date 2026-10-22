@@ -64,6 +64,11 @@ import app.luxion.shogunai.ui.worktree.WorktreeBoard
 import app.luxion.shogunai.ui.worktree.WorktreeRef
 import app.luxion.shogunai.ui.worktree.WorktreeScreen
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
+import app.luxion.shogunai.ui.multirepo.AddMultirepoDialog
+import app.luxion.shogunai.ui.multirepo.AddMultirepoState
+import app.luxion.shogunai.ui.multirepo.MultirepoSettingsState
+import app.luxion.shogunai.ui.multirepo.MultirepoSettingsView
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 
@@ -89,8 +94,10 @@ fun AppShell(
             rememberFetchBeforeCreate = viewModel::rememberFetchBeforeCreate,
             onWorktreeUsed = { ref -> viewModel.recordWorktree(ref.projectId, ref.path) },
             inactivity = inactivity,
+            multirepoActions = appContainer.multirepoActions,
         )
     }
+    LaunchedEffect(viewModel.memberships) { board.syncMultirepos(viewModel.memberships) }
     SideEffect { onBoardReady(board) }
     SideEffect {
         appContainer.loadedBranches = { board.machineProjects.flatMap { it.worktrees.orEmpty() }.mapNotNull { it.branch } }
@@ -134,10 +141,15 @@ fun AppShell(
     }
 
     val folderDrop = rememberFolderDropState()
+    val dropScope = rememberCoroutineScope()
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .folderDropTarget(folderDrop) { folder -> viewModel.addProject(folder) }
+            .folderDropTarget(folderDrop) { folder ->
+                dropScope.launch {
+                    if (appContainer.multirepoSetup.belongsToRepository(folder)) viewModel.addProject(folder) else viewModel.addMultirepo(folder)
+                }
+            }
             .then(
                 if (folderDrop.hovering) {
                     Modifier.border(FocusRingWidth, MaterialTheme.colorScheme.primary)
@@ -170,6 +182,23 @@ fun AppShell(
                 onAddProject = viewModel::addProject,
                 onSelectMachine = viewModel::selectMachine,
                 onToggle = viewModel::toggleSidebar,
+                multirepos = viewModel.memberships.map { membership ->
+                    val members = viewModel.projects.filter { it.id in membership.aliases }
+                    SidebarMultirepo(
+                        folder = membership.folder,
+                        name = membership.name,
+                        projects = members,
+                        activity = members.fold(ProjectActivity.NONE) { total, project ->
+                            total + ProjectActivity(board.activeCountOf(project.id), board.agentNamesOf(project.id))
+                        },
+                        collapsed = membership.folder in viewModel.collapsedMultirepos,
+                    )
+                },
+                selectedMultirepo = viewModel.destination?.referencedMultirepo,
+                onSelectMultirepo = { viewModel.selectMultirepo(it) },
+                onToggleMultirepo = viewModel::toggleMultirepoCollapsed,
+                onEditMultirepo = viewModel::editMultirepo,
+                onAddMultirepo = { viewModel.addMultirepo() },
             )
             VerticalDivider(modifier = Modifier.fillMaxHeight())
             Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
@@ -210,6 +239,14 @@ fun AppShell(
 
     if (viewModel.isLeaveConfirmationPending) {
         DiscardChangesDialog(onConfirm = viewModel::confirmLeave, onDismiss = viewModel::keepEditing)
+    }
+
+    viewModel.addMultirepoRequest?.let { request ->
+        val scope = rememberCoroutineScope()
+        val state = remember(request) {
+            AddMultirepoState(appContainer.multirepoSetup, scope).also { state -> request.folder?.let(state::choose) }
+        }
+        AddMultirepoDialog(state, onDismiss = viewModel::dismissAddMultirepo, onAdded = viewModel::onMultirepoAdded)
     }
 
     projectPendingRemoval?.let { project ->
@@ -302,6 +339,8 @@ private fun ShellContent(appContainer: AppContainer, viewModel: ShellViewModel, 
             ProjectForm(appContainer, viewModel, existingProject = null, initialFolder = destination.folder, onRepositoryConfigWritten = refreshBoard)
         }
         is ShellDestination.Machine -> MachineDestination(destination.resource, viewModel, board, machine)
+        is ShellDestination.MultirepoView -> WorktreeView(destination, viewModel, board)
+        is ShellDestination.MultirepoSettings -> key(destination) { MultirepoSettingsDestination(appContainer, viewModel, destination.folder) }
     }
 }
 
@@ -328,7 +367,13 @@ private fun MachineDestination(
 
 @Composable
 private fun WorktreeView(destination: ShellDestination, shellViewModel: ShellViewModel, board: WorktreeBoard) {
+    LaunchedEffect(destination) {
+        val multirepo = destination as? ShellDestination.MultirepoView ?: return@LaunchedEffect
+        board.showMultirepo(multirepo.folder)
+        multirepo.group?.let(board::revealGroup)
+    }
     LaunchedEffect(destination, board.projects) {
+        if (destination is ShellDestination.MultirepoView) return@LaunchedEffect
         val all = destination as? ShellDestination.All
         board.show(all?.projectFilter, if (all == null) GroupedView.ACTIVE else GroupedView.ALL)
         val projectId = all?.projectFilter
@@ -362,6 +407,19 @@ private fun WorktreeView(destination: ShellDestination, shellViewModel: ShellVie
         onOpenProjectSettings = shellViewModel::editProject,
         onSeeAll = shellViewModel::selectAll,
         onOpenMachine = shellViewModel::selectMachine,
+        onOpenMultirepoSettings = { (destination as? ShellDestination.MultirepoView)?.let { shellViewModel.editMultirepo(it.folder) } },
+        onOpenGroup = { tag -> shellViewModel.selectMultirepo(tag.multirepoFolder, tag.branch) },
+    )
+}
+
+@Composable
+private fun MultirepoSettingsDestination(appContainer: AppContainer, shellViewModel: ShellViewModel, folder: String) {
+    val scope = rememberCoroutineScope()
+    val state = remember(folder) { MultirepoSettingsState(folder, appContainer.multirepoSetup, scope, onChanged = shellViewModel::onMultirepoChanged) }
+    MultirepoSettingsView(
+        state = state,
+        onClose = shellViewModel::cancelForm,
+        onDeleted = { shellViewModel.onMultirepoDeleted(folder) },
     )
 }
 

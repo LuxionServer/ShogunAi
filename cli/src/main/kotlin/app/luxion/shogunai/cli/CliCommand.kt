@@ -17,7 +17,10 @@ sealed interface CliCommand {
         val from: String? = null,
         val fetch: Boolean = false,
         val json: Boolean = false,
+        val repos: List<String>? = null,
     ) : CliCommand
+
+    data class Multirepo(val action: MultirepoAction, val json: Boolean = false) : CliCommand
 
     data class Provision(val path: String? = null, val check: Boolean = false, val json: Boolean = false) : CliCommand
     data class Trust(
@@ -34,7 +37,7 @@ sealed interface CliCommand {
         val json: Boolean = false,
     ) : CliCommand
     data class Repair(val json: Boolean = false) : CliCommand
-    data class Open(val target: String, val herdr: Boolean = false, val agent: String? = null, val json: Boolean = false) : CliCommand
+    data class Open(val target: String?, val herdr: Boolean = false, val agent: String? = null, val json: Boolean = false) : CliCommand
     data class Status(val json: Boolean = false) : CliCommand
     data class Clean(
         val confirmed: Boolean = false,
@@ -122,6 +125,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "help", "-h", "--help" -> noArguments(name, rest, CliCommand.Help)
                 "version", "-v", "--version" -> noArguments(name, rest, CliCommand.Version)
                 "new" -> parseNew(arguments)
+                "multirepo" -> parseMultirepo(arguments)
                 "provision" -> parseProvision(arguments)
                 "trust" -> parseTrust(arguments)
                 "remove" -> parseRemove(arguments)
@@ -153,7 +157,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
 
 private const val JSON_FLAG = "--json"
 
-private val JSON_COMMANDS = setOf("new", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "stacks", "maven", "compose", "pool", "project", "xcode", "emulator", "simulator", "hooks", "guide")
+private val JSON_COMMANDS = setOf("new", "multirepo", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "stacks", "maven", "compose", "pool", "project", "xcode", "emulator", "simulator", "hooks", "guide")
 
 private fun isSimulatorGradleInit(name: String, rest: List<String>) = name == "simulator" && rest.firstOrNull() == "gradle-init"
 
@@ -161,6 +165,7 @@ private fun isGuideReading(name: String, rest: List<String>) = name == "guide" &
 
 private fun CliCommand.withJson(json: Boolean): CliCommand = if (!json) this else when (this) {
     is CliCommand.New -> copy(json = true)
+    is CliCommand.Multirepo -> copy(json = true)
     is CliCommand.Provision -> copy(json = true)
     is CliCommand.Trust -> copy(json = true)
     is CliCommand.Remove -> copy(json = true)
@@ -202,9 +207,12 @@ private fun parseNew(rest: List<String>): CliCommand.New {
     var worktreesRoot: String? = null
     var from: String? = null
     var fetch = false
+    var repos: List<String>? = null
     val remaining = ArrayDeque(rest)
     while (remaining.isNotEmpty()) {
         when (val argument = remaining.removeFirst()) {
+            "--repos" -> repos = remaining.valueOf(argument).split(',').map { it.trim() }.filter { it.isNotEmpty() }
+                .ifEmpty { throw UsageException("--repos needs at least one repository alias") }
             "--fix" -> fix = true
             "--fetch" -> fetch = true
             "--from" -> from = remaining.valueOf(argument)
@@ -221,6 +229,10 @@ private fun parseNew(rest: List<String>): CliCommand.New {
     if (taskId != null && branch != null) throw UsageException("'new' takes either a task id or --branch, not both")
     if (fix && branch != null) throw UsageException("--fix only applies to a new branch, not to --branch")
     if (from != null && branch != null) throw UsageException("--from only applies to a new branch, not to --branch")
+    if (repos != null) {
+        listOfNotNull("--branch".takeIf { branch != null }, "--from".takeIf { from != null }, "--worktrees-root".takeIf { worktreesRoot != null })
+            .firstOrNull()?.let { throw UsageException("$it doesn't apply to a group created with --repos") }
+    }
     return CliCommand.New(
         taskId = taskId,
         branch = branch,
@@ -228,6 +240,7 @@ private fun parseNew(rest: List<String>): CliCommand.New {
         worktreesRoot = worktreesRoot,
         from = from,
         fetch = fetch,
+        repos = repos,
     )
 }
 
@@ -265,7 +278,6 @@ private fun parseOpen(rest: List<String>): CliCommand.Open {
             }
         }
     }
-    if (target == null) throw UsageException("'open' needs a task id, path or branch")
     if (!herdr) throw UsageException("'open' needs where to open the worktree: --herdr")
     return CliCommand.Open(target, herdr, agent)
 }
@@ -603,4 +615,71 @@ private fun ArrayDeque<String>.valueOf(option: String): String {
     val value = removeFirstOrNull()
     if (value == null || value.startsWith("-")) throw UsageException("$option needs a value")
     return value
+}
+
+sealed interface MultirepoAction {
+    data class Init(val worktreesRoot: String? = null) : MultirepoAction
+    data object Show : MultirepoAction
+    data class AddRepo(val alias: String, val path: String, val useWorktreesRoot: Boolean? = null) : MultirepoAction
+    data class RemoveRepo(val alias: String) : MultirepoAction
+    data class Defaults(val aliases: List<String>) : MultirepoAction
+    data class Agent(val command: String, val name: String? = null, val useHeadroom: Boolean = true) : MultirepoAction
+    data class WorktreesRoot(val folder: String) : MultirepoAction
+    data object Delete : MultirepoAction
+}
+
+private fun parseMultirepo(rest: List<String>): CliCommand.Multirepo {
+    val action = rest.firstOrNull() ?: throw UsageException("'multirepo' needs an action: init, show, add-repo, remove-repo, defaults, agent, worktrees-root or delete")
+    val remaining = ArrayDeque(rest.drop(1))
+    val positional = mutableListOf<String>()
+    val options = mutableMapOf<String, String?>()
+    while (remaining.isNotEmpty()) {
+        val argument = remaining.removeFirst()
+        when (argument) {
+            "--worktrees-root", "--name" -> options[argument] = remaining.valueOf(argument)
+            "--use-worktrees-root", "--keep-worktrees-folder", "--no-headroom", "--clear" -> options[argument] = null
+            else -> {
+                if (argument.startsWith("-")) throw UsageException("unknown option '$argument' for 'multirepo $action'")
+                positional += argument
+            }
+        }
+    }
+    fun allow(vararg names: String) {
+        options.keys.firstOrNull { it !in names }?.let { throw UsageException("unknown option '$it' for 'multirepo $action'") }
+    }
+    fun arguments(count: Int, usage: String): List<String> {
+        if (positional.size != count) throw UsageException("usage: shogun multirepo $usage")
+        return positional
+    }
+    return CliCommand.Multirepo(
+        when (action) {
+            "init" -> { allow("--worktrees-root"); arguments(0, "init [--worktrees-root <dir>]"); MultirepoAction.Init(options["--worktrees-root"]) }
+            "show" -> { allow(); arguments(0, "show"); MultirepoAction.Show }
+            "add-repo" -> {
+                allow("--use-worktrees-root", "--keep-worktrees-folder")
+                val (alias, path) = arguments(2, "add-repo <alias> <path> [--use-worktrees-root | --keep-worktrees-folder]")
+                val use = "--use-worktrees-root" in options
+                val keep = "--keep-worktrees-folder" in options
+                if (use && keep) throw UsageException("--use-worktrees-root and --keep-worktrees-folder can't be combined")
+                MultirepoAction.AddRepo(alias, path, if (use) true else if (keep) false else null)
+            }
+            "remove-repo" -> { allow(); MultirepoAction.RemoveRepo(arguments(1, "remove-repo <alias>").single()) }
+            "defaults" -> {
+                allow("--clear")
+                if ("--clear" in options) {
+                    arguments(0, "defaults --clear")
+                    MultirepoAction.Defaults(emptyList())
+                } else {
+                    MultirepoAction.Defaults(arguments(1, "defaults <alias>[,<alias>...] | --clear").single().split(',').map { it.trim() }.filter { it.isNotEmpty() })
+                }
+            }
+            "agent" -> {
+                allow("--name", "--no-headroom")
+                MultirepoAction.Agent(arguments(1, "agent <command> [--name <name>] [--no-headroom]").single(), options["--name"], "--no-headroom" !in options)
+            }
+            "worktrees-root" -> { allow(); MultirepoAction.WorktreesRoot(arguments(1, "worktrees-root <dir>").single()) }
+            "delete" -> { allow(); arguments(0, "delete"); MultirepoAction.Delete }
+            else -> throw UsageException("unknown multirepo action '$action'")
+        },
+    )
 }

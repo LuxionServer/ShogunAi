@@ -10,3 +10,7 @@ data class HerdrAgent(
 )
 
 enum class HerdrOpening { OPENED, FOCUSED }
+
+data class HerdrWorkspace(val workspaceId: String, val label: String, val worktreePath: String?)
+
+data class HerdrPane(val paneId: String, val workspaceId: String, val directory: String?)

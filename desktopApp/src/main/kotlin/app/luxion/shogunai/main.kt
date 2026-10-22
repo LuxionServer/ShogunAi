@@ -1,5 +1,6 @@
 package app.luxion.shogunai
 
+import app.luxion.shogunai.ui.multirepo.MultirepoCatalog
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -264,6 +265,7 @@ private fun openWindow() = application {
                 appContainer.shellPreferenceRepository,
                 appContainer::settingsProblem,
                 appContainer::acknowledgeSettingsProblem,
+                MultirepoCatalog(appContainer::knownMultirepos),
             )
         }
         SideEffect { shellViewModelHolder.value = shellViewModel }

@@ -37,6 +37,12 @@ class JsonShellPreferenceRepository(
         settingsFile.update { it.copy(collapsedProjects = projectIds.sorted()) }
     }
 
+    override fun loadCollapsedMultirepos(): Set<String> = settingsFile.read().collapsedMultirepos.toSet()
+
+    override fun saveCollapsedMultirepos(folders: Set<String>) {
+        settingsFile.update { it.copy(collapsedMultirepos = folders.sorted()) }
+    }
+
     override fun loadLastCreateProject(): String? = settingsFile.read().lastCreateProject
 
     override fun saveLastCreateProject(projectId: String) {
@@ -94,11 +100,13 @@ class JsonShellPreferenceRepository(
     private fun JsonSettingsFile.GroupingSettings.of(view: GroupedView): Grouping = when (view) {
         GroupedView.ACTIVE -> active
         GroupedView.ALL -> all
+        GroupedView.MULTIREPO -> multirepo
     }
 
     private fun JsonSettingsFile.GroupingSettings.with(view: GroupedView, grouping: Grouping) = when (view) {
         GroupedView.ACTIVE -> copy(active = grouping)
         GroupedView.ALL -> copy(all = grouping)
+        GroupedView.MULTIREPO -> copy(multirepo = grouping)
     }
 
     private fun JsonSettingsFile.SortingSettings.of(view: SortedView): WorktreeSort = when (view) {

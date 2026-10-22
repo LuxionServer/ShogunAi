@@ -48,7 +48,7 @@ private fun worktreeJson(entry: WorktreeEntry): JsonObject = buildJsonObject {
     entry.statusProblem?.let { put("statusProblem", it) }
 }
 
-private fun agentJson(agent: RunningAgent): JsonObject = buildJsonObject {
+internal fun agentJson(agent: RunningAgent): JsonObject = buildJsonObject {
     put("name", agent.name)
     put("state", agent.state?.name?.lowercase())
     put("stateSource", agent.stateSource?.let(::sourceLabel))

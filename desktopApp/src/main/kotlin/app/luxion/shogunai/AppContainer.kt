@@ -1,5 +1,21 @@
 package app.luxion.shogunai
 
+import app.luxion.shogunai.domain.model.Project
+import app.luxion.shogunai.domain.model.Multirepo
+import app.luxion.shogunai.domain.usecase.AddedRepository
+import app.luxion.shogunai.domain.usecase.ConfigureMultirepoUseCase
+import app.luxion.shogunai.domain.usecase.CreateGroupUseCase
+import app.luxion.shogunai.domain.usecase.DetectGroupsUseCase
+import app.luxion.shogunai.domain.usecase.MultirepoMember
+import app.luxion.shogunai.domain.usecase.OpenMultirepoAgentInHerdrUseCase
+import app.luxion.shogunai.domain.usecase.ResolveMultirepoUseCase
+import app.luxion.shogunai.domain.usecase.WorktreeGroup
+import app.luxion.shogunai.infrastructure.JsonMultirepoSource
+import app.luxion.shogunai.ui.multirepo.FolderInspection
+import app.luxion.shogunai.ui.multirepo.MultirepoActions
+import app.luxion.shogunai.ui.multirepo.MultirepoSetup
+import app.luxion.shogunai.ui.multirepo.sameFolder
+import java.io.File
 import app.luxion.shogunai.BuildInfo
 import app.luxion.shogunai.domain.executor.ClipboardWriter
 import app.luxion.shogunai.domain.io.ResourceLimitsRepository
@@ -398,6 +414,75 @@ class AppContainer {
     val repositoryTrust: RepositoryTrust = JsonRepositoryTrust()
 
     val postCreateApproval = DialogPostCreateApproval()
+
+    private val multirepoSource = JsonMultirepoSource()
+    private val resolveMultirepo = ResolveMultirepoUseCase(multirepoSource, shellCommandExecutor, fileManager)
+    private val configureMultirepo = ConfigureMultirepoUseCase(multirepoSource, resolveMultirepo, projectRepository, shellCommandExecutor)
+
+    fun knownMultirepos(): List<Multirepo> = resolveMultirepo.known()
+
+    val multirepoActions = MultirepoActions(
+        createGroup = { members, taskId, branchType, fetch, onRepository ->
+            CreateGroupUseCase(
+                shellCommandExecutor,
+                fileManager,
+                repositoryProvisioningSource,
+                prepareEnvironment,
+                repositoryTrust,
+                postCreateApproval,
+            )(members, taskId, branchType, fetch, onRepository)
+        },
+        openAgent = { multirepo -> OpenMultirepoAgentInHerdrUseCase(herdrClient)(multirepo) },
+    )
+
+    val multirepoSetup: MultirepoSetup = object : MultirepoSetup {
+        override suspend fun inspect(folder: String): FolderInspection = withContext(Dispatchers.IO) {
+            val enclosing = ResolveRepositoryUseCase(shellCommandExecutor)(folder).getOrNull()
+            if (enclosing != null && !sameFolder(enclosing, folder)) return@withContext FolderInspection(enclosing, emptyList())
+            val subfolders = File(folder).listFiles().orEmpty()
+                .filter { it.isDirectory && !it.name.startsWith(".") }
+                .sortedBy { it.name.lowercase() }
+                .map { it.absolutePath }
+            FolderInspection(null, subfolders.filter { isRepository(it) })
+        }
+
+        override suspend fun isRepository(path: String): Boolean = withContext(Dispatchers.IO) {
+            ResolveRepositoryUseCase(shellCommandExecutor)(path).getOrNull()?.let { sameFolder(it, path) } == true
+        }
+
+        override suspend fun belongsToRepository(path: String): Boolean = withContext(Dispatchers.IO) {
+            ResolveRepositoryUseCase(shellCommandExecutor)(path).isSuccess
+        }
+
+        override suspend fun detectGroups(members: List<MultirepoMember>): List<WorktreeGroup> = withContext(Dispatchers.IO) {
+            DetectGroupsUseCase(shellCommandExecutor)(members).groups
+        }
+
+        override fun projects(): List<Project> = projectRepository.list()
+
+        override fun read(folder: String): Multirepo? =
+            runCatching { multirepoSource.read(folder) }.getOrNull()?.let { Multirepo(folder, it) }
+
+        override suspend fun init(folder: String): Result<Multirepo> = withContext(Dispatchers.IO) { configureMultirepo.init(folder, null) }
+
+        override suspend fun addRepository(multirepo: Multirepo, alias: String, path: String, useProposedFolder: Boolean): Result<AddedRepository> =
+            withContext(Dispatchers.IO) {
+                configureMultirepo.addRepository(multirepo, alias, path) { _, _, _ -> useProposedFolder }
+            }
+
+        override fun removeRepository(multirepo: Multirepo, alias: String) = configureMultirepo.removeRepository(multirepo, alias)
+
+        override fun renameRepository(multirepo: Multirepo, alias: String, newAlias: String) =
+            configureMultirepo.renameRepository(multirepo, alias, newAlias)
+
+        override fun setDefaults(multirepo: Multirepo, aliases: List<String>) = configureMultirepo.setDefaults(multirepo, aliases)
+
+        override fun setAgent(multirepo: Multirepo, agent: AgentLaunchConfig) = configureMultirepo.setAgent(multirepo, agent)
+
+        override fun setWorktreesRoot(multirepo: Multirepo, folder: String) = configureMultirepo.setWorktreesRoot(multirepo, folder)
+
+        override fun delete(multirepo: Multirepo) = configureMultirepo.delete(multirepo)
+    }
 
     fun worktreeUseCases(config: ProjectConfig): WorktreeUseCases = WorktreeUseCases(
         list = ListWorktreesUseCase(config, shellCommandExecutor, fileManager),

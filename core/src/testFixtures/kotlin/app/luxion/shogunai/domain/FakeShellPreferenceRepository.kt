@@ -14,6 +14,7 @@ class FakeShellPreferenceRepository(
     var windowBounds: WindowBounds? = null,
     var sidebarCollapsed: Boolean = false,
     var collapsedProjects: Set<String> = emptySet(),
+    var collapsedMultirepos: Set<String> = emptySet(),
     var lastCreateProject: String? = null,
     var recentPaletteItems: List<String> = emptyList(),
     val groupings: MutableMap<GroupedView, Grouping> = mutableMapOf(),
@@ -47,6 +48,12 @@ class FakeShellPreferenceRepository(
 
     override fun saveCollapsedProjects(projectIds: Set<String>) {
         collapsedProjects = projectIds
+    }
+
+    override fun loadCollapsedMultirepos(): Set<String> = collapsedMultirepos
+
+    override fun saveCollapsedMultirepos(folders: Set<String>) {
+        collapsedMultirepos = folders
     }
 
     override fun loadLastCreateProject(): String? = lastCreateProject

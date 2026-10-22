@@ -1059,7 +1059,7 @@ class ProjectWorktreesTest {
         assertEquals(2, forEachRefCallCount)
     }
 
-    private val addPrefix = listOf("git", "worktree", "add", "/home/dev/projects/TASK-456", "-b", "feature/TASK-456")
+    private val addPrefix = listOf("git", "worktree", "add", "--no-track", "/home/dev/projects/TASK-456", "-b", "feature/TASK-456")
 
     private fun startPointScenario(
         remoteBranches: String = "",
@@ -1123,7 +1123,7 @@ class ProjectWorktreesTest {
         board.confirmCreate()
         advanceUntilIdle()
 
-        assertTrue(executor.executed(*addPrefix.toTypedArray()), executor.executedCommands.toString())
+        assertTrue(executor.executed("git", "worktree", "add", "/home/dev/projects/TASK-456", "-b", "feature/TASK-456"), executor.executedCommands.toString())
     }
 
     @Test

@@ -538,6 +538,58 @@ interface Strings {
     val showIconInMenuBar: String
     val showIconInTray: String
     val keepRunningWhenClosed: String
+    val groupByChange: String
+    val ungrouped: String
+    val newChange: String
+    val newChangeRepositories: String
+    val createChange: String
+    val openAllInHerdr: String
+    val addRepositoryToGroup: String
+    val cleanUpGroup: String
+    val cleanUpGroupTitle: String
+    val openMultirepoAgent: String
+    val multirepoAgentOpened: String
+    val multirepoAgentFocused: String
+    val groupRepositoryCreated: String
+    val groupRepositoryExisting: String
+    val addMultirepo: String
+    val addMultirepoExplanation: String
+    val multirepoFolderPlaceholder: String
+    val chooseFolder: String
+    val multirepoRepositoriesTitle: String
+    val noRepositoriesFound: String
+    val multirepoAliasLabel: String
+    val multirepoAliasInvalid: String
+    val multirepoAliasDuplicated: String
+    val alreadyAProject: String
+    val addRepositoryFromElsewhere: String
+    val detectedGroupsTitle: String
+    val noGroupsDetected: String
+    val multirepoSettingsTitle: String
+    val multirepoNotFound: String
+    val defaultRepositoriesTitle: String
+    val defaultRepositoriesHint: String
+    val multirepoWorktreesRootTitle: String
+    val multirepoWorktreesRootHint: String
+    val multirepoAgentTitle: String
+    val multirepoAgentHint: String
+    val deleteMultirepo: String
+    val deleteMultirepoHint: String
+    val deleteMultirepoMessage: String
+    val rename: String
+    val addRepository: String
+    val repositoryPathLabel: String
+    fun groupKeptNotMerged(alias: String): String
+    fun groupKeptUncommitted(alias: String): String
+    fun groupKeptStatusUnavailable(alias: String): String
+    fun groupKeptAgentRunning(alias: String, agents: List<String>): String
+    fun groupRepositoryFailed(reason: String): String
+    fun repositoryAddedToGroup(alias: String, title: String): String
+    fun changeCreated(title: String, aliases: List<String>): String
+    fun multirepoInsideRepository(repository: String): String
+    fun useWorktreesFolder(folder: String): String
+    fun notARepository(path: String): String
+    fun deleteMultirepoTitle(name: String): String
 }
 
 val LocalStrings = staticCompositionLocalOf<Strings> { EnglishStrings }

@@ -27,6 +27,7 @@ data class WorktreeRowModel(
     val git: GitCell,
     val time: TimeCell,
     val isFolderMissing: Boolean,
+    val alias: String? = null,
 )
 
 enum class StateBadgeKind(val status: Status?) {
@@ -55,7 +56,7 @@ data class DeviceLine(val label: String, val status: Status, val isSimulator: Bo
 
 data class ExecutionCell(val agent: AgentLine?, val device: DeviceLine?)
 
-data class NameCell(val branch: String, val folder: String?, val origin: String?, val project: String?)
+data class NameCell(val branch: String, val folder: String?, val origin: String?, val project: String?, val groupTag: String? = null)
 
 enum class GitCellState { LOADING, UNAVAILABLE, READY }
 
@@ -116,6 +117,8 @@ fun worktreeRowModel(
     inactiveAfter: Duration,
     now: Instant,
     strings: Strings,
+    alias: String? = null,
+    groupTag: String? = null,
 ): WorktreeRowModel {
     val loaded = (status as? WorktreeStatusState.Loaded)?.status
     val kind = worktreeActivity(worktree, loaded, agents, now, inactiveAfter).badgeKind()
@@ -125,7 +128,7 @@ fun worktreeRowModel(
             agent = agentLine(agents, strings),
             device = deviceLine(emulator, simulator, strings),
         ),
-        name = nameCell(worktree, origin, projectName, strings),
+        name = nameCell(worktree, origin, projectName, strings).copy(groupTag = groupTag),
         git = gitCell(status, loaded, mainBranchName, strings),
         time = TimeCell(
             activity = activityDate(worktree, loaded)?.let { activityLabel(it, now, strings) },
@@ -135,6 +138,7 @@ fun worktreeRowModel(
             ),
         ),
         isFolderMissing = worktree.isPrunable,
+        alias = alias,
     )
 }
 
