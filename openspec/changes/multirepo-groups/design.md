@@ -1,0 +1,71 @@
+# Design
+
+## Context
+
+Every command today starts from `configFor(directory)`: it resolves the Git repository that contains the directory (`ResolveRepositoryUseCase`) and looks up its ShogunAi project in `~/.shogunai/projects.json`, so a folder that isn't a repository fails before anything else. The building blocks a group needs already exist per repository: `CreateWorktreeUseCase`/`CreateWorktreeFromBranchUseCase` (worktree in the project's worktrees folder, provisioning, environment, trust and post-creation approval, rollback), `ResolveMainBranchUseCase`, `ListWorktreesUseCase`, `ReadWorktreeStatusUseCase`, `DetectRunningAgentsUseCase`, `CleanUpWorktreesUseCase` with the provider cleanups wired in `ShogunCli.clean`, `OpenWorktreeInHerdrUseCase` and the `SessionStart` context built from `WorkflowRules`. In the desktop app, the sidebar, the views, grouping (`WorktreeGrouping`), rows (`WorktreeRowModel`), the "New worktree" dialog and the project settings with their agent editor already exist per project. See proposal.md for motivation and the specs for the behavior.
+
+A strength of ShogunAi is that it works the same with worktrees created outside it (Herdr, Claude Code, plain `git worktree add`). The model is hierarchical: a multirepo agent in the multirepo folder and one agent per worktree under its repository's Herdr space; agents read their context from `shogun`, never from messages between them.
+
+## Goals / Non-Goals
+
+**Goals:**
+- Groups are computed only from Git and the multirepo declaration, so a worktree created by any tool is grouped the same way, and nothing ShogunAi writes is needed to recognise one.
+- Each group worktree stays an ordinary worktree of its repository: created, named, provisioned, listed, opened and cleaned exactly as any other.
+- Additive and reversible: without a multirepo nothing changes; deleting a multirepo returns every repository to how it behaved before.
+- The core and the CLI land first and can be validated alone; the desktop app builds on them.
+
+**Non-Goals:**
+- Associating worktrees whose branches don't match (e.g. `shogun group add <id> <worktree>`) — follow-up, roadmap.
+- A single session for the whole group, with a combined environment — possibly a later option.
+- Variables shared between the repositories of a group and pull request state per repository — roadmap.
+- Opening the app and registering projects from the command line (`shogun app`, `shogun project add`): the separate change `cli-app-projects`; pointing `shogun app` at a multirepo folder is a follow-up of that change.
+- `--from`, `--branch` and `--worktrees-root` for groups; groups across several multirepos.
+
+## Decisions
+
+**A group is an exact branch name in two or more repositories.** `DetectGroupsUseCase(declaration)` lists each repository's worktrees (`ListWorktreesUseCase`), keys them by their full branch name and keeps the names present in two or more repositories; detached worktrees and branches in a single repository are "ungrouped". Prefixes aren't interpreted (`feature/X` and `fix/X` differ). Location is irrelevant, which is what adopts existing worktrees in place. The UI title strips the branch up to its last `/` (`TASK-12`) and shows the full branch as detail; the CLI shows full branches and, as a convenience, `shogun open <id>` resolves `<id>` to `feature/<id>` or `fix/<id>` when exactly one of them is a group. Alternatives rejected after review: a per-change folder `<worktreesRoot>/<id>/<alias>` that defined membership by location and allowed one-repository groups, and a worktree name recorded by ShogunAi in the Git admin folder to keep Compose and `${worktree}` names distinct in that layout. Both were conventions only ShogunAi understands; the per-change folder may come back later as an option.
+
+**Creation is today's `new` in each repository.** `CreateGroupUseCase` resolves the aliases (`--repos` or `defaultRepos`) and, for each, skips the repository when it already has a worktree on the branch (reported as `existing`), otherwise calls the existing `CreateWorktreeUseCase` with that project's config and start point `MainBranch.ref` (e.g. `origin/develop`), or `CreateWorktreeFromBranchUseCase` when the local branch already exists. Folder, name, provisioning, environment, trust, approval and rollback are untouched, so `${worktree}`, Compose project names, ports and Herdr labels stay as for any worktree; distinct names across groups follow from distinct ids. Repositories are processed sequentially to keep post-creation prompts readable; `--fetch` reuses `FetchRemoteUseCase`. The only difference with a single `shogun new` is the start point: a group starts at each repository's base because the current directory's HEAD belongs to one repository only.
+
+**Worktrees folders organised like Herdr, by proposal.** The multirepo's `worktreesRoot` is a common folder (default `../<folder>-worktrees`). Adding a repository proposes `<worktreesRoot>/<alias>` as its project's existing `worktreesRoot` setting, so the disk mirrors Herdr's spaces (`product-worktrees/app/TASK-12`, `product-worktrees/api/TASK-12`). It's a proposal: the CLI asks in a terminal or takes `--use-worktrees-root`/`--keep-worktrees-folder`, and keeps the folder in `--json` mode; the app shows a checkbox per repository. Changing it only affects new worktrees, as editing the setting does today. Alternative: forcing the folder — rejected because existing projects may have their own layout.
+
+**Where the declaration lives.** Always in a `.shogunai-multirepo.json` in a folder the user chooses, never inside a Git repository (checked on init and on every read), which keeps it out of repositories that may belong to an employer. When the repositories share a parent, that parent is the natural folder; otherwise any folder works and `repos` holds absolute paths. The folder is also the multirepo agent's working folder. Alternative: `~/.shogunai/multirepos/<name>.json` when there is no common folder — rejected because the multirepo agent needs a working folder anyway, and two locations would double discovery.
+
+**Known multirepos.** `~/.shogunai/multirepos.json` holds only `{ "multirepos": ["<declaration path>", …] }`, written by `init`, by adding a multirepo in the app and by `delete`. It's a new file: earlier versions never read it, and `projects.json` and `settings.json` keep their format, which is what makes the update additive. Membership lives in the declaration, not in the project. A stale path is skipped. Reads and writes reuse the locking and atomic replace of the existing JSON files. Together with the declaration, this is the only state ShogunAi adds.
+
+**Model and port.** `MultirepoDeclaration(folder, repos: Map<alias, path>, worktreesRoot, defaultRepos, agent: AgentLaunchConfig?)` and `MultirepoRegistry` behind a `MultirepoSource` port in `infrastructure` (kotlinx.serialization with `ignoreUnknownKeys`). `agent` reuses `AgentLaunchConfig`'s serialized shape so the multirepo agent launches like a project agent. Validation returns typed `WorktreeError`s.
+
+**Discovery.** `ResolveMultirepoUseCase(directory)` walks up from the directory looking for `.shogunai-multirepo.json`, and otherwise resolves the directory's repository main worktree and finds the known multirepo that declares it by canonical path. `add-repo` rejects a repository already in another multirepo, so the lookup is unambiguous.
+
+**`shogun multirepo` subcommands.** `init [--worktrees-root <dir>]`, `show`, `add-repo <alias> <path> [--use-worktrees-root | --keep-worktrees-folder]`, `remove-repo <alias>`, `defaults <alias>,… | --clear`, `agent <command> [--name] [--no-headroom]`, `worktrees-root <dir>` and `delete`, all with `--json`: flat verbs under one noun, like `shogun pool` and `shogun compose`. `add-repo`/`remove-repo` say "repo" so they can't be confused with `shogun remove`.
+
+**Reusing projects.** `add-repo` (and the app's add dialog) looks up the project whose `baseRepositoryPath` is the same directory canonically and uses it untouched, except for the worktrees folder when the user accepts the proposal. If there is none, it registers one with the defaults the desktop app proposes (name from the folder, worktrees folder `<parent>/<repo>-worktrees`, or the proposed one when accepted). `remove-repo` and `delete` never touch projects. Coordination with `cli-app-projects`: neither change adds fields to `Project`/`ProjectConfig`. If that change lands first, this one reuses its default-values function and `RegisterProjectUseCase`, which skips a repository already registered (canonical path) and never touches its settings; otherwise it implements the same check before `ProjectRepository.save` and the second change to land switches to the shared one.
+
+**Opening.** `shogun open <id-or-branch> --herdr` calls `OpenWorktreeInHerdrUseCase` once per group worktree with that repository's config and default agent, collecting failures per repository; `--agent` is rejected for groups. The multirepo agent gets a plain Herdr workspace: Herdr groups a workspace under a repository only through its Git worktree information (`worktree.open` needs a worktree of the repository given by `cwd`; `WorkspaceInfo.worktree` is derived from Git) and `workspace.create` takes only `cwd`, `label`, `env` and `focus`. `shogun open --herdr` in the multirepo folder runs `herdr workspace create --cwd <folder> --label <folder name> --focus` and `pane run` with the agent's command; an open one is recognised by having no worktree information and a pane whose `cwd` is the folder. `HerdrClient` gains `createWorkspace(cwd, label)` and `listPanes()`.
+
+**Context through SessionStart.** In a worktree the hook already resolves the worktree; it now also resolves the multirepo and the group of the worktree's branch, and appends a block from `GroupContext.lines(...)`: the branch and own alias, the other repositories' worktree paths on that branch, the multirepo's other aliases with the `shogun new <id> --repos <alias>` line, and the `AGENTS.md` paths of the repositories with an `openspec` folder (their worktree in the group first, else the main checkout). OpenSpec is detected, not declared. In the multirepo folder, where the hook exits early today, it prints the multirepo block. Running sessions get the context at their next `SessionStart` (resume, clear, compact) with no restart. The ten-line limit on the workflow rules is unchanged; the group block is separate and bounded by the number of repositories.
+
+**Status and cleanup compose the per-repository use cases.** `ReadGroupsUseCase` reads each group worktree's status against its repository's main branch, and the agents with one `DetectRunningAgentsUseCase` call (one `AgentSearch` per repository), so the process listing and `herdr agent list` run once. `SelectGroupCleanupUseCase` returns candidates and kept groups with reasons. Removal runs, per repository, the existing `CleanUpWorktreesUseCase` with the same options `clean` has (`--delete-branches`, provider flags and their pre/post steps), so a group cleanup removes exactly what `shogun clean` would remove in each repository for those worktrees.
+
+**Desktop app.** A `MultirepoCatalog` holder, loaded from the same port and refreshed with the project list, feeds:
+- the sidebar, which nests a multirepo's projects in a collapsible folder whose counts are the sum of its projects' and whose collapsed state is stored like the project groups';
+- the multirepo view, a new grouping mode `BY_CHANGE` in `WorktreeGrouping` over the union of the multirepo's project worktrees, with the alias as the first column, an "Ungrouped" block, and the combined state computed from the existing per-worktree state (`Merged` only when all are, otherwise the earliest state in the existing order);
+- the group tag in `WorktreeRowModel`, navigating to the multirepo view with the group selected, and the `product / app` header in project grouping;
+- the add dialog (drop target and folder picker, direct subfolders that are repositories, aliases proposed from the folder name, existing projects marked, proposed worktrees folder per repository, groups detected by branch previewed with `DetectGroupsUseCase` before writing), the multirepo settings (repositories, defaults, proposed worktrees folder, agent with the existing agent editor, delete) and "New change", a variant of the "New worktree" dialog with repository checkboxes that calls `CreateGroupUseCase`.
+Header actions call the same use cases as the CLI. The app writes the declaration only through them.
+
+**CLI entry.** `ShogunCli` resolves the multirepo context first for `new`, `status`, `open`, `clean`, `multirepo` and `hook session-start`, and dispatches to the group path only when the rules apply; otherwise it calls the existing code unchanged.
+
+## Risks / Trade-offs
+
+- [Branch-based grouping catches unrelated worktrees that share a branch name] → They're only shown together; nothing changes on disk, and cleanup still requires every worktree to be merged with no agent.
+- [Groups only form with two repositories] → A change started in one repository becomes a group when the second repository gets the branch; until then it's ungrouped, which is accurate.
+- [Same id with different prefixes in different repositories] → They're different branches and don't group; manual association is the follow-up.
+- [Discovery cost on every command] → One missing-file check per ancestor plus reading a small index; the declaration is read once per command.
+- [Herdr matching by pane cwd misses the multirepo workspace if its panes all changed directory] → A second workspace would open in the folder; visible and harmless.
+- [Partial creation] → Reported per repository with exit code 1; re-running the same command completes it.
+- [Size of the change] → Tasks are split in a core and CLI block, validated on its own, and a desktop block on top of it.
+
+## Migration Plan
+
+Nothing is migrated. Existing projects and worktrees keep working as before; a user adopts them by creating a multirepo (`shogun multirepo init` and `add-repo`, or dropping the folder on the app), after which matching branches appear as groups in place. Rolling back is `shogun multirepo delete` or deleting the multirepo in the app.
