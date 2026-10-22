@@ -51,9 +51,9 @@ class AddMultirepoState(private val setup: MultirepoSetup, private val scope: Co
         get() = folder?.let { Multirepo(it, MultirepoDeclaration()).name }.orEmpty()
 
     val worktreesRoot: String
-        get() = folder?.let { File(File(it).parent ?: "/", "$name-worktrees").path }.orEmpty()
+        get() = folder?.let { multirepoPath(File(File(it).parent ?: "/", "$name-worktrees").path) }.orEmpty()
 
-    fun proposedFolder(candidate: RepositoryCandidate): String = File(worktreesRoot, candidate.alias).path
+    fun proposedFolder(candidate: RepositoryCandidate): String = multirepoPath(File(worktreesRoot, candidate.alias).path)
 
     val included: List<RepositoryCandidate>
         get() = candidates.filter { it.included }
@@ -172,6 +172,8 @@ fun proposedAlias(repositoryName: String, multirepoName: String): String {
     val stripped = lower.removePrefix("${multirepoName.lowercase()}-").ifEmpty { lower }
     return stripped.replace(Regex("[^a-z0-9]+"), "-").trim('-').ifEmpty { "repo" }
 }
+
+private fun multirepoPath(path: String): String = path.replace('\\', '/').trimEnd('/')
 
 private fun uniqueAlias(alias: String, taken: Set<String>): String {
     if (alias !in taken) return alias
