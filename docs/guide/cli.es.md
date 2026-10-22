@@ -13,6 +13,9 @@ shogun repair                      # re-enlaza los worktrees tras mover el repos
 shogun open TASK-123 --herdr       # abre un worktree en Herdr con su entorno y el agente del proyecto
 shogun clean --yes                 # elimina los worktrees mergeados o sin carpeta (sin --yes solo los lista)
 shogun stacks                      # los stacks detectados en el repositorio y los providers que sugieren
+shogun multirepo show              # en un multirepo: sus repositorios, los de por defecto y su agente
+shogun project add                 # registra este repositorio como proyecto de la app de escritorio
+shogun app --settings              # abre la app de escritorio en los ajustes del proyecto de este repositorio
 eval "$(shogun env)"               # carga las variables de este worktree desde "env" en .shogunai.json
 ```
 
@@ -40,6 +43,7 @@ Crea un worktree, copia en él los archivos declarados, prepara su [entorno](../
 
 - Con un id de tarea, el worktree recibe una rama nueva `feature/<task-id>`, o `fix/<task-id>` con `--fix`. La rama parte del HEAD del worktree donde ejecutas el comando, o de `--from <ref>` (una rama, tag o commit; una referencia desconocida falla antes de crear nada).
 - Con `--branch`, el worktree hace checkout de una rama existente. `--fix` y `--from` no se aceptan con ella. Una rama que existe solo en `origin`, indicada como `<nombre>` u `origin/<nombre>`, recibe una rama local con ese nombre que la sigue; una rama local con ese nombre tiene prioridad.
+- Una rama nueva nunca sigue a su punto de partida, así que al hacer push nunca apunta a la rama de la que partió.
 - `--fetch` ejecuta antes `git fetch --prune origin`, para que `--from origin/develop` o una rama remota estén al día. Nunca espera credenciales: si el fetch falla, se imprime el error de Git, no se crea nada y el código de salida es 1.
 - `--worktrees-root <dir>` indica dónde va el worktree. Es obligatorio cuando el repositorio no tiene proyecto en la app de escritorio; las rutas relativas se resuelven desde el directorio actual.
 - Un id de tarea con `/` (`team/TASK-1`) conserva la `/` en la rama (`feature/team/TASK-1`) y se convierte en una sola carpeta, `team-TASK-1`.
@@ -229,6 +233,59 @@ Un worktree donde se ejecuta un agente se lista como `kept <ruta> (claude is run
 
 También se cierran los espacios de trabajo de Herdr de los worktrees eliminados (`would close Herdr workspace of …` en el listado). Un daemon, emulador o espacio de Herdr que no se puede parar o cerrar se indica en la salida de error sin cambiar el código de salida.
 
+## Multirepos
+
+En la carpeta de un multirepo (ver [Multirepos y grupos](multirepo.md)), `new`, `status`, `open` y `clean` actúan sobre sus grupos, y `shogun multirepo` lo configura.
+
+```text
+shogun multirepo init [--worktrees-root <dir>]
+shogun multirepo show
+shogun multirepo add-repo <alias> <ruta> [--use-worktrees-root | --keep-worktrees-folder]
+shogun multirepo remove-repo <alias>
+shogun multirepo defaults <alias>[,<alias>...] | --clear
+shogun multirepo agent <comando> [--name <nombre>] [--no-headroom]
+shogun multirepo worktrees-root <dir>
+shogun multirepo delete
+shogun new <task-id> [--repos <alias>[,<alias>...]] [--fix] [--fetch]
+shogun open <task id | rama> --herdr
+shogun open --herdr
+```
+
+- Los subcomandos de `multirepo` funcionan en la carpeta del multirepo o en cualquier parte de sus repositorios y worktrees, y aceptan `--json`; fuera de un multirepo salen con `1`. Un alias incorrecto sale con `2`.
+- `new <id>` en la carpeta del multirepo cubre los repositorios por defecto, o `--repos` desde cualquier parte del multirepo; imprime la ruta de cada worktree que crea en la salida estándar y una línea por repositorio en la salida de error, y sale con `1` si algún repositorio falló. `--branch`, `--from` y `--worktrees-root` no se aplican a un grupo y salen con `2`. Su objeto `--json` tiene la `branch` y una lista `repos` con `alias`, `path`, `result` (`created`, `existing` o `failed`), los comandos de post-creación omitidos y `error`.
+- `status` en la carpeta del multirepo imprime la rama de cada grupo seguida de una línea por repositorio, y después `ungrouped`; `--json` imprime `groups` (cada uno con `branch`, `title` y `repos` con `alias`, `path`, `branch`, `base`, `folderMissing`, `uncommittedChanges`, `ahead`, `behind`, `merged`, `agents`), `ungrouped` y `failures`.
+- `open <id> --herdr` abre cada worktree del grupo con el agente de su proyecto (`--agent` sale con `2`); un id que encaja con `feature/<id>` y `fix/<id>` a la vez sale con `2`, y sin coincidencias con `1`. `open --herdr` sin destino abre el agente del multirepo.
+- `clean` lista los grupos candidatos (`would remove the group …`) y los que se conservan con su motivo (`kept feature/TASK-2 (api isn't merged)`), y acepta todas las opciones de `clean`.
+
+## Proyectos y la app
+
+### `project`
+
+```text
+shogun project add [<ruta>] [--json]
+shogun project list [--json]
+shogun project remove [<ruta>] [--json]
+```
+
+`add` registra el repositorio que contiene la ruta (el directorio actual por defecto, o su checkout principal si se ejecuta desde un worktree) como proyecto de la app de escritorio, con los valores que propone el formulario "Añadir proyecto": el nombre de la carpeta como nombre del proyecto, `<padre>/<nombre>-worktrees` como carpeta de worktrees, sin archivos locales y con la rama principal detectada. No escribe nada dentro del repositorio. Un repositorio que ya está registrado se deja exactamente como estaba (no se tocan sus ajustes) y el comando lo dice, con código de salida `0`.
+
+`list` imprime una línea por proyecto (`nombre  ruta del repositorio`) y funciona fuera de un repositorio. `remove` da de baja el proyecto del repositorio y deja el repositorio y sus worktrees en disco; encuentra un proyecto cuya carpeta ya no existe por la ruta con la que se registró, y sale con `1` cuando el repositorio no tiene proyecto.
+
+Una app abierta recoge el cambio cuando su ventana recupera el foco o con **Ver > Recargar**.
+
+### `app`
+
+```text
+shogun app [<ruta>] [--settings]
+```
+
+Abre la app de escritorio en el proyecto del repositorio que contiene la ruta (el directorio actual por defecto), registrándolo antes si no tiene proyecto. Con `--settings` abre los ajustes del proyecto en lugar de sus worktrees, lo que exige un repositorio (código de salida `2` sin él). Fuera de un repositorio y sin ruta, solo abre la app o la trae al frente. Con una ruta que no es un repositorio sale con `1` y no pide nada.
+
+El comando vuelve en cuanto se ha avisado a la app, sin esperarla:
+
+- **La app está abierta**: atiende la orden en un segundo más o menos, con la misma navegación que la barra lateral. Se conservan su ventana, tamaño y posición, y un formulario con cambios sin guardar pregunta si descartarlos en lugar de ser sustituido. Si los ajustes del proyecto ya están abiertos, no cambia nada.
+- **La app está cerrada**: `shogun` la lanza y la app se abre en el proyecto cuando ha arrancado. Funciona donde el lanzador de la propia app es el comando `shogun` (macOS con Homebrew, `.deb` de Linux, `.msi` de Windows). Desde el zip independiente, sin la app instalada, el comando dice que la app de escritorio no está disponible en esa instalación y sale con `1`.
+
 ## Entorno
 
 ### `env`
@@ -323,7 +380,7 @@ shogun xcode trim [--dry-run]
 
 ## Salida JSON
 
-Además de `status --json`, todos los comandos que informan de un resultado aceptan `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `compose`, `compose down`, `pool status`, `pool trim`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks` y `guide install|uninstall|status` (no `simulator gradle-init`, `env`, `hook`, `help` ni `--version`; en ellos es una opción desconocida y sale con `2`). La opción puede ir en cualquier posición tras el comando.
+Además de `status --json`, todos los comandos que informan de un resultado aceptan `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `compose`, `compose down`, `pool status`, `pool trim`, `project add`, `project list`, `project remove`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks` y `guide install|uninstall|status` (no `simulator gradle-init`, `env`, `hook`, `help` ni `--version`; en ellos es una opción desconocida y sale con `2`). La opción puede ir en cualquier posición tras el comando.
 
 Las reglas son las mismas para todos:
 
@@ -344,6 +401,8 @@ Las reglas son las mismas para todos:
 | `guide install`, `guide uninstall` | `path`, `applied` (escrito en esta ejecución), `state` (`installed`, `outdated`, `missing`) y `warnings` (mensajes). |
 | `guide status` | `targets`: `{ target, path, state, duplicates }` con `target` `codex`, `gemini`, `project` o `file` y `duplicates` `true` cuando el fichero menciona `shogun new`, `open` o `clean` fuera del bloque; y `warnings`. |
 | `repair` | `repaired`: las rutas de los worktrees re-enlazados. |
+| `project add`, `project remove` | `action` (`added`, `alreadyRegistered` o `removed`), y el `id`, `name` y `repository` del proyecto. |
+| `project list` | `projects`: `{ id, name, repository }`, vacío sin proyectos. |
 | `open` | `path`, `branch` (o `null` si está desacoplado), `herdr` (`opened` o `focused`) y `agent` (el nombre del agente arrancado, o `null` cuando solo se enfocó el espacio de trabajo). |
 | `clean` | `dryRun`; `candidates`: `{ path, branch, reason }` con `reason` `merged` o `folder-missing`; `keptForAgents`: `{ path, agents }`; `skipped`: `{ path, reason }` (estado no disponible); `removed`; `deletedBranches`; `failures`: `{ path, message }`; y `providers`: `gradleDaemonsStopped`, `emulatorsStopped`, `simulatorsDeleted`, `derivedDataDeleted` y, con `--down-compose-projects`, `composeProjectsDown`. Sin `--yes` (`dryRun: true`) `removed`, `deletedBranches` y las listas de `providers` van vacías. |
 | `gradle` | `daemons`: `{ pid, kind, version, memoryBytes, state, idleSince, worktree }` con `kind` `gradle` o `kotlin`, `state` `busy`, `idle`, `unknown` o `untracked`, `idleSince` en ISO-8601 UTC (solo si está inactivo) y `worktree` una ruta, `removed`, `other-project` o `null` fuera de un repositorio; y `totalMemoryBytes`. |

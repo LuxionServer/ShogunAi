@@ -75,7 +75,7 @@ class CreateWorktreeUseCaseTest {
         useCase("TASK-123", BranchType.FEATURE, startPoint = "abc123").getOrThrow()
 
         assertTrue(
-            executor.executed("git", "worktree", "add", worktreePath, "-b", "feature/TASK-123", "abc123"),
+            executor.executed("git", "worktree", "add", "--no-track", worktreePath, "-b", "feature/TASK-123", "abc123"),
         )
     }
 

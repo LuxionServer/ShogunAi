@@ -9,6 +9,16 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import app.luxion.shogunai.domain.usecase.GroupKept
+import app.luxion.shogunai.domain.usecase.GroupKeptReason
+import app.luxion.shogunai.ui.components.NeutralTextButton
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -64,12 +74,16 @@ fun WorktreeListPane(
     onOpenProjectSettings: (Project) -> Unit,
     onOpenMachine: (MachineResource) -> Unit,
     modifier: Modifier = Modifier,
+    onOpenGroup: (GroupTag) -> Unit = {},
 ) {
     val listState = rememberLazyListState()
     val items = listItems(board)
     LaunchedEffect(board.selected) {
         val selected = board.selected ?: return@LaunchedEffect
-        val index = items.indexOfFirst { (it is ListItem.WorktreeItem && it.ref == selected) || (it is ListItem.StateRow && it.ref == selected) }
+        val index = items.indexOfFirst {
+            (it is ListItem.WorktreeItem && it.ref == selected) || (it is ListItem.StateRow && it.ref == selected) ||
+                (it is ListItem.ChangeRow && it.ref == selected)
+        }
         if (index >= 0) listState.bringIntoViewBelowHeader(index)
     }
     BoxWithConstraints(
@@ -114,14 +128,31 @@ fun WorktreeListPane(
                     }
                     is ListItem.StateRow -> item(key = item.key) {
                         val entry = item.entry
-                        WorktreeRowFor(board, entry.project, entry.holder, entry.worktree, projectName = entry.project.name.takeIf { board.shownProjects.size > 1 }, compact = compact)
+                        WorktreeRowFor(
+                            board, entry.project, entry.holder, entry.worktree,
+                            projectName = entry.project.name.takeIf { board.shownProjects.size > 1 && !board.isMultirepoView },
+                            compact = compact,
+                            alias = board.aliasOf(entry.project.id),
+                            onOpenGroup = onOpenGroup,
+                        )
+                        HorizontalDivider()
+                    }
+                    is ListItem.ChangeHeader -> stickyHeader(key = item.key) {
+                        ChangeGroupHeader(item.group, board)
+                    }
+                    is ListItem.UngroupedHeader -> stickyHeader(key = item.key) {
+                        UngroupedHeader(item.count)
+                    }
+                    is ListItem.ChangeRow -> item(key = item.key) {
+                        val entry = item.aliased.entry
+                        WorktreeRowFor(board, entry.project, entry.holder, entry.worktree, projectName = null, compact = compact, alias = item.aliased.alias)
                         HorizontalDivider()
                     }
                     is ListItem.GroupState -> item(key = item.key) {
                         GroupState(item.group.holder, item.group.project.id, projectName = item.group.project.name.takeIf { item.showsProjectName })
                     }
                     is ListItem.WorktreeItem -> item(key = item.key) {
-                        WorktreeRowFor(board, item.group.project, item.group.holder, item.worktree, projectName = null, compact = compact)
+                        WorktreeRowFor(board, item.group.project, item.group.holder, item.worktree, projectName = null, compact = compact, onOpenGroup = onOpenGroup)
                         HorizontalDivider()
                     }
                 }
@@ -154,7 +185,10 @@ internal fun scrollDeltaToReveal(itemOffset: Int, itemSize: Int, headerHeight: I
     else -> 0
 }
 
-private fun Any.isHeaderKey(): Boolean = this is String && (startsWith("header:") || startsWith("state-header:"))
+private fun Any.isHeaderKey(): Boolean =
+    this is String && (startsWith("header:") || startsWith("state-header:") || startsWith("change-header:") || this == UNGROUPED_HEADER_KEY)
+
+private const val UNGROUPED_HEADER_KEY = "ungrouped-header"
 
 internal sealed interface ListItem {
     val key: String
@@ -180,10 +214,43 @@ internal sealed interface ListItem {
         val ref = WorktreeRef(group.project.id, worktree.path)
         override val key = "worktree:${group.project.id}:${worktree.path}"
     }
+
+    data class ChangeHeader(val group: ChangeGroup) : ListItem {
+        override val key = "change-header:${group.branch}"
+    }
+
+    data class UngroupedHeader(val count: Int) : ListItem {
+        override val key = UNGROUPED_HEADER_KEY
+    }
+
+    data class ChangeRow(val aliased: AliasedEntry) : ListItem {
+        val ref = aliased.ref
+        override val key = "change-row:${aliased.entry.project.id}:${aliased.entry.worktree.path}"
+    }
 }
 
-internal fun listItems(board: WorktreeBoard): List<ListItem> =
-    if (board.isGroupedByState) stateListItems(board) else projectListItems(board)
+internal fun listItems(board: WorktreeBoard): List<ListItem> = when {
+    board.isGroupedByChange -> changeListItems(board)
+    board.isGroupedByState -> stateListItems(board)
+    else -> projectListItems(board)
+}
+
+private fun changeListItems(board: WorktreeBoard): List<ListItem> {
+    val notices = board.shownProjects.mapNotNull { project ->
+        val holder = board.holder(project.id)?.takeIf { it.hasNotice || it.loadState !is ProjectLoadState.Loaded } ?: return@mapNotNull null
+        ListItem.GroupState(WorktreeGroup(project, holder, emptyList(), collapsed = false), showsProjectName = true)
+    }
+    val view = board.changeView
+    val groups = view.groups.flatMap { group ->
+        listOf<ListItem>(ListItem.ChangeHeader(group)) + if (group.collapsed) emptyList() else group.entries.map(ListItem::ChangeRow)
+    }
+    val ungrouped = if (view.ungrouped.isEmpty()) {
+        emptyList()
+    } else {
+        listOf<ListItem>(ListItem.UngroupedHeader(view.ungrouped.size)) + view.ungrouped.map(ListItem::ChangeRow)
+    }
+    return notices + groups + ungrouped
+}
 
 private fun stateListItems(board: WorktreeBoard): List<ListItem> {
     val notices = board.shownProjects.mapNotNull { project ->
@@ -241,29 +308,35 @@ private fun ProjectGroupHeader(
             onClick = { board.toggleCollapsed(projectId) },
             tint = colors.onSurfaceVariant,
         )
-        Text(
-            group.project.name,
-            style = MaterialTheme.typography.titleSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false),
-        )
-        Text(
-            strings.worktreeCount(if (board.isActiveView) group.worktrees.size else holder.worktrees.size),
-            style = ShogunTheme.typography.dataSmall,
-            color = colors.onSurfaceVariant,
-        )
-        if (holder.isLoading) InlineProgress()
-        if (holder.isGradleRepository) {
-            WithTooltip(label = strings.openGradleDaemons(group.project.name)) {
-                StatusChip(
-                    Status.NEUTRAL,
-                    strings.gradleChipLabel,
-                    modifier = Modifier.interactive(shape = MaterialTheme.shapes.extraSmall, onClick = onOpenGradle),
-                )
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+        ) {
+            Text(
+                board.multirepoNameOf(projectId)?.let { "$it / ${group.project.name}" } ?: group.project.name,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            Text(
+                strings.worktreeCount(if (board.isActiveView) group.worktrees.size else holder.worktrees.size),
+                style = ShogunTheme.typography.dataSmall,
+                color = colors.onSurfaceVariant,
+                maxLines = 1,
+            )
+            if (holder.isLoading) InlineProgress()
+            if (holder.isGradleRepository) {
+                WithTooltip(label = strings.openGradleDaemons(group.project.name)) {
+                    StatusChip(
+                        Status.NEUTRAL,
+                        strings.gradleChipLabel,
+                        modifier = Modifier.interactive(shape = MaterialTheme.shapes.extraSmall, onClick = onOpenGradle),
+                    )
+                }
             }
         }
-        Box(Modifier.weight(1f))
         DangerTextButton(
             onClick = { board.openCleanup(projectId) },
             enabled = board.canCleanUp(projectId),
@@ -419,11 +492,14 @@ private fun WorktreeRowFor(
     worktree: Worktree,
     projectName: String?,
     compact: Boolean,
+    alias: String? = null,
+    onOpenGroup: (GroupTag) -> Unit = {},
 ) {
     val strings = LocalStrings.current
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val ref = WorktreeRef(project.id, worktree.path)
+    val groupTag = board.groupTagOf(ref)
     WorktreeRow(
         model = worktreeRowModel(
             worktree = worktree,
@@ -437,6 +513,8 @@ private fun WorktreeRowFor(
             inactiveAfter = board.inactivity.threshold,
             now = Instant.now(),
             strings = strings,
+            alias = alias,
+            groupTag = groupTag?.label,
         ),
         selected = board.selected == ref,
         isCopied = holder.copiedWorktreePath == worktree.path,
@@ -450,6 +528,123 @@ private fun WorktreeRowFor(
         agentName = holder.agentFor(worktree).displayName.takeIf { holder.hasAgentChoice },
         launchChoices = holder.launchChoices(worktree, strings),
         onLaunch = { holder.launch(worktree, it.kind, it.agent) },
+        onOpenGroupTag = { groupTag?.let(onOpenGroup) },
         onRemove = { holder.requestRemoval(worktree) },
     )
+}
+
+@Composable
+private fun ChangeGroupHeader(group: ChangeGroup, board: WorktreeBoard) {
+    val strings = LocalStrings.current
+    ChangeGroupHeaderView(
+        group = group,
+        cleanUpBlocker = board.groupCleanupBlocker(group)?.describe(strings),
+        canCleanUp = board.canCleanUpGroup(group),
+        addableAliases = if (board.canAddRepositories(group)) board.missingAliases(group) else emptyList(),
+        isAdding = board.addingToGroup.any { it.startsWith("${group.branch}:") },
+        onToggle = { board.toggleChangeCollapsed(group.branch) },
+        onOpenAll = { board.openAllInHerdr(group) },
+        onAddRepository = { board.addRepositoryToGroup(group, it) },
+        onCleanUp = { board.openGroupCleanup(group) },
+    )
+}
+
+@Composable
+internal fun ChangeGroupHeaderView(
+    group: ChangeGroup,
+    cleanUpBlocker: String?,
+    canCleanUp: Boolean,
+    addableAliases: List<String>,
+    isAdding: Boolean,
+    onToggle: () -> Unit,
+    onOpenAll: () -> Unit,
+    onAddRepository: (String) -> Unit,
+    onCleanUp: () -> Unit,
+) {
+    val strings = LocalStrings.current
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.surfaceContainer)
+            .interactive(onClick = onToggle)
+            .padding(horizontal = Spacing.sm, vertical = Spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+    ) {
+        IconAction(
+            icon = if (group.collapsed) Icons.Default.ChevronRight else Icons.Default.ExpandMore,
+            label = if (group.collapsed) strings.expand else strings.collapse,
+            onClick = onToggle,
+            tint = colors.onSurfaceVariant,
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(group.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                listOf(group.branch, group.aliases.joinToString(", ")).joinToString(" · "),
+                style = ShogunTheme.typography.dataSmall,
+                color = colors.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        StatusChip(group.state.status ?: Status.INFO, group.state.label(strings))
+        if (isAdding) InlineProgress()
+        NeutralTextButton(onClick = onOpenAll) {
+            Text(strings.openAllInHerdr, style = MaterialTheme.typography.bodySmall)
+        }
+        if (addableAliases.isNotEmpty()) AddRepositoryMenu(addableAliases, onAddRepository)
+        val cleanUp: @Composable () -> Unit = {
+            DangerTextButton(onClick = onCleanUp, enabled = canCleanUp) {
+                Text(strings.cleanUpGroup, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        cleanUpBlocker?.let { WithTooltip(label = it, content = cleanUp) } ?: cleanUp()
+    }
+}
+
+@Composable
+private fun AddRepositoryMenu(aliases: List<String>, onPick: (String) -> Unit) {
+    val strings = LocalStrings.current
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        NeutralTextButton(onClick = { expanded = true }) {
+            Text(strings.addRepositoryToGroup, style = MaterialTheme.typography.bodySmall)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            aliases.forEach { alias ->
+                DropdownMenuItem(
+                    text = { Text(alias) },
+                    onClick = {
+                        expanded = false
+                        onPick(alias)
+                    },
+                )
+            }
+        }
+    }
+}
+
+internal fun GroupKept.describe(strings: Strings): String = when (reason) {
+    GroupKeptReason.NOT_MERGED -> strings.groupKeptNotMerged(alias)
+    GroupKeptReason.UNCOMMITTED_CHANGES -> strings.groupKeptUncommitted(alias)
+    GroupKeptReason.STATUS_UNAVAILABLE -> strings.groupKeptStatusUnavailable(alias)
+    GroupKeptReason.AGENT_RUNNING -> strings.groupKeptAgentRunning(alias, agents.map { it.name }.distinct())
+}
+
+@Composable
+private fun UngroupedHeader(count: Int) {
+    val strings = LocalStrings.current
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.surfaceContainer)
+            .padding(horizontal = Spacing.md, vertical = Spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+    ) {
+        Text(strings.ungrouped, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+        Text(strings.worktreeCount(count), style = ShogunTheme.typography.dataSmall, color = colors.onSurfaceVariant)
+    }
 }

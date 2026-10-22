@@ -204,12 +204,35 @@ class ParseArgumentsTest {
     }
 
     @Test
-    fun `open needs a target and a destination and knows its options`() {
-        assertEquals("'open' needs a task id, path or branch", usageError("open", "--herdr"))
+    fun `open needs a destination and knows its options`() {
+        assertEquals(CliCommand.Open(null, herdr = true), command("open", "--herdr"))
         assertEquals("'open' needs where to open the worktree: --herdr", usageError("open", "TASK-123"))
         assertEquals("unknown option '--terminal' for 'open'", usageError("open", "TASK-123", "--terminal"))
         assertEquals("--agent needs a value", usageError("open", "TASK-123", "--herdr", "--agent"))
         assertEquals("'open' takes a single target, got 'TASK-1' and 'TASK-2'", usageError("open", "TASK-1", "TASK-2", "--herdr"))
+    }
+
+    @Test
+    fun `new takes the repositories of a group`() {
+        assertEquals(CliCommand.New("TASK-1", repos = listOf("app", "api")), command("new", "TASK-1", "--repos", "app,api"))
+        assertEquals("--repos needs at least one repository alias", usageError("new", "TASK-1", "--repos", ","))
+        assertEquals("--from doesn't apply to a group created with --repos", usageError("new", "TASK-1", "--repos", "app", "--from", "develop"))
+        assertEquals("--worktrees-root doesn't apply to a group created with --repos", usageError("new", "TASK-1", "--repos", "app", "--worktrees-root", "/tmp/x"))
+    }
+
+    @Test
+    fun `multirepo parses its actions`() {
+        assertEquals(CliCommand.Multirepo(MultirepoAction.Init("../w")), command("multirepo", "init", "--worktrees-root", "../w"))
+        assertEquals(CliCommand.Multirepo(MultirepoAction.Show, json = true), command("multirepo", "show", "--json"))
+        assertEquals(CliCommand.Multirepo(MultirepoAction.AddRepo("app", "product-app", true)), command("multirepo", "add-repo", "app", "product-app", "--use-worktrees-root"))
+        assertEquals(CliCommand.Multirepo(MultirepoAction.AddRepo("app", "product-app", false)), command("multirepo", "add-repo", "app", "product-app", "--keep-worktrees-folder"))
+        assertEquals(CliCommand.Multirepo(MultirepoAction.Defaults(listOf("app", "api"))), command("multirepo", "defaults", "app,api"))
+        assertEquals(CliCommand.Multirepo(MultirepoAction.Defaults(emptyList())), command("multirepo", "defaults", "--clear"))
+        assertEquals(CliCommand.Multirepo(MultirepoAction.Agent("codex --full-auto", "Codex", useHeadroom = false)), command("multirepo", "agent", "codex --full-auto", "--name", "Codex", "--no-headroom"))
+        assertEquals(CliCommand.Multirepo(MultirepoAction.Delete), command("multirepo", "delete"))
+        assertEquals("usage: shogun multirepo remove-repo <alias>", usageError("multirepo", "remove-repo"))
+        assertEquals("unknown multirepo action 'rename'", usageError("multirepo", "rename"))
+        assertEquals("--use-worktrees-root and --keep-worktrees-folder can't be combined", usageError("multirepo", "add-repo", "a", "b", "--use-worktrees-root", "--keep-worktrees-folder"))
     }
 
     @Test

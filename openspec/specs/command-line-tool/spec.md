@@ -6,7 +6,7 @@ Defines the `shogun` command, which runs ShogunAi's worktree operations from a t
 ## Requirements
 
 ### Requirement: Find the repository and its project
-Every command SHALL work on the Git repository that contains the current directory, or the path it's given, resolved to its main worktree even when run from a linked worktree. When the desktop app has a project for that repository, the command SHALL use its worktrees folder, local files and main branch.
+Every command SHALL work on the Git repository that contains the current directory, or the path it's given, resolved to its main worktree even when run from a linked worktree. When the desktop app has a project for that repository, the command SHALL use its worktrees folder, local files and main branch. `shogun new`, `shogun status`, `shogun open`, `shogun clean` and `shogun multirepo` SHALL also work in a multirepo folder, which isn't a Git repository, acting on the multirepo and its groups. `project list` and `app` without a path are the exceptions: they work outside a Git repository.
 
 #### Scenario: Run from a linked worktree
 - **WHEN** the user runs `shogun status` inside a linked worktree of `~/projects/main-repo`
@@ -16,9 +16,17 @@ Every command SHALL work on the Git repository that contains the current directo
 - **WHEN** the repository has a project in the desktop app with worktrees folder `~/projects/worktrees` and main branch `develop`
 - **THEN** `shogun new` creates worktrees under `~/projects/worktrees` and `shogun status` compares against `develop`
 
+#### Scenario: Multirepo folder
+- **WHEN** the user runs `shogun status` in a multirepo folder, which isn't a Git repository
+- **THEN** the command shows the multirepo's groups instead of failing
+
 #### Scenario: Outside a Git repository
-- **WHEN** the user runs a command outside any Git repository
+- **WHEN** the user runs a command other than `project list` or `app` outside any Git repository and multirepo folder
 - **THEN** it prints an error saying no repository was found and exits with code 1
+
+#### Scenario: Project commands outside a repository
+- **WHEN** the user runs `shogun project list` or `shogun app` without a path outside any Git repository
+- **THEN** the command runs and does not fail for lack of a repository
 
 ### Requirement: Create a worktree from the command line
 `shogun new <task-id> [--fix] [--from <ref>]` SHALL create a worktree on a new `feature/` (or `fix/`) branch, and `shogun new --branch <branch>` one from an existing local branch, with the same folder, provisioning, validation and rollback as the desktop app. The new branch SHALL start at `<ref>` when `--from` is given, and otherwise at the HEAD of the worktree containing the current directory. On success it SHALL print the worktree's absolute path alone on standard output.
@@ -261,7 +269,7 @@ With `--yes`, `shogun clean --stop-gradle-daemons` SHALL also stop the idle Grad
 - **THEN** an error is printed on standard error and the command exits with code 1
 
 ### Requirement: Deliver the environment through Claude Code's SessionStart hook
-`shogun hook session-start` SHALL read the hook's JSON from standard input and, inside a Git repository, resolve the environment of the worktree containing its `cwd` field, append one `export` line per variable to the file named by `CLAUDE_ENV_FILE`, and print the context: a line naming the variables and their values when there are any, followed by the short workflow rules of `shogun guide` that apply to that location. Outside a Git repository it SHALL write and print nothing and exit with code 0.
+`shogun hook session-start` SHALL read the hook's JSON from standard input and, inside a Git repository, resolve the environment of the worktree containing its `cwd` field, append one `export` line per variable to the file named by `CLAUDE_ENV_FILE`, and print the context: a line naming the variables and their values when there are any, followed by the short workflow rules of `shogun guide` that apply to that location. In a group worktree it SHALL also add the group's context, and in a multirepo folder it SHALL print the multirepo's context. Anywhere else outside a Git repository it SHALL write and print nothing and exit with code 0.
 
 #### Scenario: Session in a worktree
 - **WHEN** Claude Code starts a session in a worktree whose `PORT` resolves to 20001
@@ -287,8 +295,16 @@ With `--yes`, `shogun clean --stop-gradle-daemons` SHALL also stop the idle Grad
 - **WHEN** a session starts in a worktree of a repository with every provider declared
 - **THEN** the workflow rules in the context take at most ten lines and end with how to read the rest with `shogun guide`
 
+#### Scenario: Group worktree
+- **WHEN** the `cwd` is inside a worktree of a group
+- **THEN** the worktree's environment is delivered as for any worktree and the context also describes the group
+
+#### Scenario: Multirepo folder
+- **WHEN** the `cwd` is a multirepo folder
+- **THEN** the multirepo's context is printed, nothing is written to `$CLAUDE_ENV_FILE`, and the command exits with code 0
+
 #### Scenario: Not a repository
-- **WHEN** the `cwd` isn't inside a Git repository
+- **WHEN** the `cwd` isn't inside a Git repository and isn't a multirepo folder
 - **THEN** nothing is written or printed and the command exits with code 0
 
 #### Scenario: Invalid declaration

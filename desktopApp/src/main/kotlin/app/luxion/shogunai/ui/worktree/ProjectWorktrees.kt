@@ -913,19 +913,19 @@ class ProjectWorktrees(
         removeError = null
     }
 
-    suspend fun cleanUp(options: CleanupOptions): WorktreeSuccess.CleanedUp? {
+    suspend fun cleanUp(options: CleanupOptions, only: Set<String>? = null): WorktreeSuccess.CleanedUp? {
         useCases.detectAgents(worktrees).getOrNull()?.let(::applyAgents)
-        val candidates = cleanupCandidates
+        val candidates = cleanupCandidates.filter { only == null || it.path in only }
         val listed = worktrees
         val stopDaemons = isGradleRepository && options.stopGradleDaemons
         val deleteSimulators = isSimulatorRepository && options.deleteSimulators
-        val deleteDerivedData = isXcodeRepository && options.deleteDerivedData
+        val deleteDerivedData = isXcodeRepository && options.deleteDerivedData && only == null
         val simulatorsToDelete = if (deleteSimulators) {
             simulators.filterKeys { path -> candidates.any { it.path == path } }.mapValues { it.value.udid }
         } else {
             emptyMap()
         }
-        val knownOrphans = orphanedSimulators
+        val knownOrphans = if (only == null) orphanedSimulators else emptyList()
         val emulatorsBefore = if (isEmulatorRepository && options.stopEmulators) {
             emulators.filter { (path, emulator) -> emulator.state != EmulatorState.STOPPED && candidates.any { it.path == path } }
         } else {

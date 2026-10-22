@@ -70,6 +70,7 @@ fun WorktreeRow(
     launchChoices: List<LaunchChoice> = emptyList(),
     onLaunch: (LaunchChoice) -> Unit = {},
     openActions: List<OpenAction> = emptyList(),
+    onOpenGroupTag: () -> Unit = {},
     onRemove: () -> Unit,
 ) {
     val strings = LocalStrings.current
@@ -105,9 +106,10 @@ fun WorktreeRow(
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            model.alias?.let { AliasCellView(it, compact) }
             StateBadgeCell(model.badge)
             ExecutionCellView(model.execution, compact)
-            NameCellView(model.name, modifier = Modifier.weight(1f))
+            NameCellView(model.name, onOpenGroupTag, modifier = Modifier.weight(1f))
             GitCellView(model.git, compact)
             TimeCellView(model.time, compact)
             Box(modifier = Modifier.size(RowActionSlotSize), contentAlignment = Alignment.Center) {
@@ -146,6 +148,24 @@ internal const val BranchTag = "row-branch"
 internal const val GitTag = "row-git"
 internal const val TimeTag = "row-time"
 internal const val ExecutionTag = "row-execution"
+internal const val AliasTag = "row-alias"
+internal const val GroupTagTag = "row-group-tag"
+private val AliasWidth = 72.dp
+private val CompactAliasWidth = 48.dp
+
+@Composable
+private fun AliasCellView(alias: String, compact: Boolean) {
+    WithTooltip(label = alias) {
+        Text(
+            alias,
+            style = ShogunTheme.typography.data,
+            color = MaterialTheme.colorScheme.primary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.width(if (compact) CompactAliasWidth else AliasWidth).testTag(AliasTag),
+        )
+    }
+}
 
 @Composable
 internal fun StateBadgeKind.color(): Color =
@@ -252,7 +272,7 @@ private fun DeviceLineView(device: DeviceLine, compact: Boolean) {
 }
 
 @Composable
-private fun NameCellView(name: NameCell, modifier: Modifier) {
+private fun NameCellView(name: NameCell, onOpenGroupTag: () -> Unit, modifier: Modifier) {
     val secondary = MaterialTheme.colorScheme.onSurfaceVariant
     Column(modifier = modifier) {
         WithTooltip(label = name.branch) {
@@ -267,6 +287,18 @@ private fun NameCellView(name: NameCell, modifier: Modifier) {
             }
         }
         CellLine {
+            name.groupTag?.let { tag ->
+                Text(
+                    tag,
+                    style = ShogunTheme.typography.dataSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .testTag(GroupTagTag)
+                        .interactive(shape = MaterialTheme.shapes.extraSmall, onClick = onOpenGroupTag)
+                        .padding(horizontal = Spacing.xxs),
+                )
+            }
             val context = listOfNotNull(name.folder, name.origin).joinToString(" · ")
             if (context.isNotEmpty()) {
                 Text(

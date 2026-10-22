@@ -11,7 +11,7 @@ Esa dirección se construye en tres capas:
 | Capa | Papel | Qué aporta |
 |---|---|---|
 | **Motor y CLI** | La base | Provisionado de worktrees definido en el repositorio (`.shogunai.json`) y un comando `shogun` que usan la app de escritorio, los agentes y sus hooks, con un entorno por worktree (puertos reservados y variables) que llega a la shell de cada agente, y salida JSON en todos los comandos para scripts. **Disponible.** |
-| **Torre de control** | La vista | La app de escritorio muestra el estado de todos los worktrees, incluidos los creados por otras herramientas, los mantiene limpios y sigue los cambios según ocurren. Abre cada uno en el terminal, el IDE o Herdr con los agentes del proyecto, y queda a un clic en la barra de menús. **Disponible.** |
+| **Torre de control** | La vista | La app de escritorio muestra el estado de todos los worktrees, incluidos los creados por otras herramientas, los mantiene limpios y sigue los cambios según ocurren. Abre cada uno en el terminal, el IDE o Herdr con los agentes del proyecto, y queda a un clic en la barra de menús. Los multirepos agrupan los repositorios de un producto, de modo que un cambio abarca varios con un worktree y un agente por repositorio, coordinados por un agente de todo el multirepo, desde el CLI y la app. **Disponible.** |
 | **Plataformas** | El contenido | Providers para los stacks en los que más cuesta preparar un worktree, empezando por Android, KMP, iOS y JVM: Gradle, secretos locales, emuladores, simuladores e IDEs. **Empezado**: los repositorios Gradle muestran sus daemons, pueden parar los ociosos y acotar la memoria y la vida de los daemons que arrancan los agentes, los repositorios Android pueden dar a cada worktree su propio emulador, los KMP e iOS su propio simulador de iOS, ambos adquiridos bajo demanda dentro de límites que siguen un perfil de capacidad de la máquina, los repositorios Xcode ven y limpian sus DerivedData, los mantienen dentro de una cuota de disco y comparten compilaciones entre worktrees, y los backends JVM obtienen compilaciones de Maven acotadas en memoria y un proyecto de Docker Compose y puertos por worktree. La app y `shogun stacks` también detectan el stack de un repositorio y sugieren los providers que encajan. |
 
 Se conecta con las herramientas que ejecutan agentes en vez de sustituirlas: los hooks de worktree y de sesión de Claude Code, y [Herdr](https://herdr.dev), el multiplexor de terminal para agentes, cuyos worktrees provisiona un plugin de ShogunAi y en el que la app de escritorio abre un worktree con su entorno y su agente y muestra qué está haciendo cada agente. **Disponible.**
@@ -62,6 +62,15 @@ Provisionado para los stacks en los que un worktree recién creado está más le
 - `local.properties`, keystores y `google-services.json`.
 - Seguimientos de las carpetas locales: enlazar una carpeta local en vez de copiarla, patrones glob en la lista local, avisar de los enlaces simbólicos que una carpeta omite y borrar del worktree los archivos eliminados de la carpeta base.
 - Mostrar los emuladores que arranca ShogunAi dentro de la ventana Running Devices de Android Studio, como los que arranca el propio Android Studio, para poder ordenar varios en una sola ventana. Necesita un spike: Android Studio podría incrustar un emulador externo arrancado con las mismas opciones que usa él.
+
+### 7. Pendientes de los multirepos
+
+Los multirepos y los grupos por rama están hechos en el CLI y en la app de escritorio. Quedaron fuera:
+
+- Asociar worktrees cuyas ramas no coinciden, por ejemplo `shogun group add <id> <worktree>`.
+- Variables compartidas entre los repositorios de un grupo (por ejemplo, el puerto del backend con el que habla la app del grupo).
+- El estado del pull request de cada repositorio de un grupo.
+- Una única sesión para todo el grupo, con un entorno combinado, como opción junto a un agente por repositorio.
 
 ## En estudio
 

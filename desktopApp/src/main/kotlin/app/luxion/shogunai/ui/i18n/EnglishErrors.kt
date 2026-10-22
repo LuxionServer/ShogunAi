@@ -48,6 +48,14 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "The project's repository wasn't found at ${error.path}.",
         "Update the repository path in the project's settings.",
     )
+    WorktreeError.AppNotAvailable -> ErrorTexts(
+        "The ShogunAi desktop app isn't available from this install.",
+        "Install the desktop app to use 'shogun app'.",
+    )
+    is WorktreeError.ProjectNotRegistered -> ErrorTexts(
+        "No project is registered for ${error.path}.",
+        "Add the repository as a project first.",
+    )
     is WorktreeError.RepositoryNotFound -> ErrorTexts(
         "No Git repository was found at ${error.path}.",
         "Update the repository path in the project's settings.",
@@ -220,6 +228,18 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     is WorktreeError.AgentRunningInWorktree -> ErrorTexts(
         "${error.agents.joinToString()} is running in ${error.path}.",
         "Stop it first, or remove the worktree forcing it.",
+    )
+    is WorktreeError.InvalidMultirepo -> ErrorTexts(
+        "The multirepo ${error.path} can't be used: ${error.detail}.",
+        "Fix it with the shogun multirepo commands or the multirepo's settings.",
+    )
+    is WorktreeError.MultirepoNotFound -> ErrorTexts(
+        "No multirepo was found at ${error.path}.",
+        "Add the folder as a multirepo first.",
+    )
+    is WorktreeError.BaseBranchNotFound -> ErrorTexts(
+        "The base branch of ${error.repository} couldn't be resolved.",
+        "Set the project's main branch in its settings.",
     )
     is WorktreeError.InvalidRef -> ErrorTexts(
         "\"${error.ref}\" isn't a valid branch or start point.",

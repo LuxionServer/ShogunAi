@@ -134,7 +134,7 @@ class HookCommandsTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals("$worktreesRoot/TASK-123\n", out.toString())
-        assertTrue(executor.ran("git", "worktree", "add", "$worktreesRoot/TASK-123", "-b", "feature/TASK-123", "abc123"))
+        assertTrue(executor.ran("git", "worktree", "add", "--no-track", "$worktreesRoot/TASK-123", "-b", "feature/TASK-123", "abc123"))
         assertTrue(executor.calls.any { it.first.getOrNull(1) == "rev-parse" && it.second == "$base/src" }, "resolves the repository from cwd")
     }
 
@@ -181,7 +181,7 @@ class HookCommandsTest {
         val exitCode = cli(executor, createInput("TASK-123", cwd = linked)).run(listOf("hook", "worktree-create"))
 
         assertEquals(0, exitCode, err.toString())
-        assertTrue(executor.ran("git", "worktree", "add", "$worktreesRoot/TASK-123", "-b", "feature/TASK-123", "epic1234"))
+        assertTrue(executor.ran("git", "worktree", "add", "--no-track", "$worktreesRoot/TASK-123", "-b", "feature/TASK-123", "epic1234"))
         assertTrue(executor.calls.any { it.first.getOrNull(2) == "--verify" && it.second == linked })
     }
 

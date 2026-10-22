@@ -48,6 +48,14 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "No se encontró el repositorio del proyecto en ${error.path}.",
         "Actualiza la ruta del repositorio en los ajustes del proyecto.",
     )
+    WorktreeError.AppNotAvailable -> ErrorTexts(
+        "La app de escritorio de ShogunAi no está disponible en esta instalación.",
+        "Instala la app de escritorio para usar 'shogun app'.",
+    )
+    is WorktreeError.ProjectNotRegistered -> ErrorTexts(
+        "No hay ningún proyecto registrado para ${error.path}.",
+        "Añade antes el repositorio como proyecto.",
+    )
     is WorktreeError.RepositoryNotFound -> ErrorTexts(
         "No se encontró ningún repositorio de Git en ${error.path}.",
         "Actualiza la ruta del repositorio en los ajustes del proyecto.",
@@ -220,6 +228,18 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     is WorktreeError.AgentRunningInWorktree -> ErrorTexts(
         "${error.agents.joinToString()} se está ejecutando en ${error.path}.",
         "Páralo primero, o elimina el worktree forzándolo.",
+    )
+    is WorktreeError.InvalidMultirepo -> ErrorTexts(
+        "No se puede usar el multirepo ${error.path}: ${error.detail}.",
+        "Corrígelo con los comandos shogun multirepo o en los ajustes del multirepo.",
+    )
+    is WorktreeError.MultirepoNotFound -> ErrorTexts(
+        "No se encontró ningún multirepo en ${error.path}.",
+        "Añade antes la carpeta como multirepo.",
+    )
+    is WorktreeError.BaseBranchNotFound -> ErrorTexts(
+        "No se pudo resolver la rama base de ${error.repository}.",
+        "Indica la rama principal del proyecto en sus ajustes.",
     )
     is WorktreeError.InvalidRef -> ErrorTexts(
         "\"${error.ref}\" no es una rama ni un punto de partida válidos.",

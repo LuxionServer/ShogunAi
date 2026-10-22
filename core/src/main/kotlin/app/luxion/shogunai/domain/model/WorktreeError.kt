@@ -35,6 +35,13 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class LocalFileUnreadable(val path: String, val reason: String?) :
         WorktreeError("Can't read $path" + if (reason.isNullOrBlank()) "" else ": $reason")
 
+    class ProjectNotRegistered(val path: String) :
+        WorktreeError("No project is registered for $path")
+
+    object AppNotAvailable : WorktreeError(
+        "The ShogunAi desktop app isn't available from this install; install the app to use 'shogun app'",
+    )
+
     class UpdateCheckFailed(val reason: String?) :
         WorktreeError("Couldn't check for updates" + if (reason.isNullOrBlank()) "" else ": $reason")
 
@@ -197,6 +204,15 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
 
     class AgentRunningInWorktree(val path: String, val agents: List<String>) :
         WorktreeError("${agents.joinToString()} is running in $path")
+
+    class InvalidMultirepo(val path: String, val detail: String) :
+        WorktreeError("$path: $detail")
+
+    class MultirepoNotFound(val path: String) :
+        WorktreeError("No multirepo found at $path")
+
+    class BaseBranchNotFound(val repository: String) :
+        WorktreeError("Couldn't resolve the base branch of $repository; set the project's main branch")
 
 }
 

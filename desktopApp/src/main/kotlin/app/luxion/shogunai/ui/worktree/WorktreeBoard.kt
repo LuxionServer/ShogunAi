@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.worktree
 
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -30,6 +31,21 @@ import app.luxion.shogunai.domain.usecase.isActive
 import app.luxion.shogunai.domain.usecase.worktreeActivity
 import app.luxion.shogunai.domain.usecase.isValidGitRefSegment
 import app.luxion.shogunai.domain.usecase.normalizeTaskId
+import app.luxion.shogunai.domain.model.HerdrOpening
+import app.luxion.shogunai.domain.usecase.GroupKept
+import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
+import app.luxion.shogunai.domain.usecase.GroupWorktree
+import app.luxion.shogunai.domain.usecase.GroupWorktreeState
+import app.luxion.shogunai.domain.usecase.MultirepoMember
+import app.luxion.shogunai.domain.usecase.selectGroupCleanup
+import app.luxion.shogunai.ui.multirepo.MultirepoActions
+import app.luxion.shogunai.ui.multirepo.MultirepoMembership
+import app.luxion.shogunai.ui.multirepo.MultirepoNotice
+import app.luxion.shogunai.ui.multirepo.NewChange
+import app.luxion.shogunai.ui.multirepo.branchTypeOf
+import app.luxion.shogunai.domain.usecase.GroupState as BranchGroupState
+import app.luxion.shogunai.domain.usecase.WorktreeGroup as BranchGroup
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -58,6 +74,7 @@ class WorktreeBoard(
     private val rememberFetchBeforeCreate: (projectId: String, fetch: Boolean) -> Unit = { _, _ -> },
     private val onWorktreeUsed: (WorktreeRef) -> Unit = {},
     val inactivity: InactivityPreferences = InactivityPreferences(preferences),
+    private val multirepoActions: MultirepoActions = MultirepoActions.NONE,
 ) : ViewModel() {
     private val deviceRefreshes = mutableMapOf<String, Instant>()
     private val listPermits = Semaphore(MAX_PARALLEL_LISTS)
@@ -82,6 +99,21 @@ class WorktreeBoard(
     var selected by mutableStateOf<WorktreeRef?>(null)
         private set
     var collapsedProjects by mutableStateOf(preferences.loadCollapsedProjects())
+        private set
+    var memberships by mutableStateOf<List<MultirepoMembership>>(emptyList())
+        private set
+    var multirepoFolder by mutableStateOf<String?>(null)
+        private set
+    private var collapsedChanges by mutableStateOf<Set<String>>(emptySet())
+    var multirepoNotice by mutableStateOf<MultirepoNotice?>(null)
+        private set
+    var addingToGroup by mutableStateOf<Set<String>>(emptySet())
+        private set
+    var isOpeningMultirepoAgent by mutableStateOf(false)
+        private set
+    var newChange by mutableStateOf<NewChange?>(null)
+        private set
+    var cleanupOnly by mutableStateOf<Set<String>?>(null)
         private set
 
     var createProjectId by mutableStateOf<String?>(null)
@@ -119,8 +151,17 @@ class WorktreeBoard(
     private val effectiveProjectFilter: String?
         get() = projectFilter ?: viewProjectFilter
 
+    val isMultirepoView: Boolean
+        get() = mode == GroupedView.MULTIREPO
+
+    val shownMultirepo: MultirepoMembership?
+        get() = multirepoFolder?.takeIf { isMultirepoView }?.let { folder -> memberships.firstOrNull { it.folder == folder } }
+
     val shownProjects: List<Project>
-        get() = effectiveProjectFilter?.let { id -> projects.filter { it.id == id } } ?: projects
+        get() = when {
+            isMultirepoView -> shownMultirepo?.let { membership -> projects.filter { it.id in membership.aliases } }.orEmpty()
+            else -> effectiveProjectFilter?.let { id -> projects.filter { it.id == id } } ?: projects
+        }
 
     val isFiltered: Boolean
         get() = effectiveProjectFilter != null
@@ -131,8 +172,11 @@ class WorktreeBoard(
     val isActiveView: Boolean
         get() = mode == GroupedView.ACTIVE
 
+    val groupingOptions: List<Grouping>
+        get() = if (isMultirepoView) listOf(Grouping.BY_CHANGE, Grouping.BY_STATE) else listOf(Grouping.BY_STATE, Grouping.BY_PROJECT)
+
     val grouping: Grouping
-        get() = if (isProjectView) Grouping.BY_STATE else groupings.getValue(mode)
+        get() = if (isProjectView) Grouping.BY_STATE else groupings.getValue(mode).takeIf { it in groupingOptions } ?: mode.defaultGrouping
 
     val sortedView: SortedView
         get() = when {
@@ -157,7 +201,7 @@ class WorktreeBoard(
             items = sortWorktreeItems(
                 items = shownProjects.flatMap { project ->
                     val holder = holder(project.id) ?: return@flatMap emptyList()
-                    filterWorktrees(holder.worktrees, textFilter).map { worktree ->
+                    filterWorktrees(holder.worktrees, textFilter).filterNot { isMultirepoView && it.isMain }.map { worktree ->
                         ActivityItem(WorktreeEntry(project, holder, worktree), activityOf(holder, worktree))
                     }
                 },
@@ -172,8 +216,62 @@ class WorktreeBoard(
     val isGroupedByState: Boolean
         get() = grouping == Grouping.BY_STATE
 
+    val isGroupedByChange: Boolean
+        get() = isMultirepoView && grouping == Grouping.BY_CHANGE
+
     private val isListEmpty: Boolean
-        get() = if (isGroupedByState) stateGroups.isEmpty() else groups.isEmpty()
+        get() = when {
+            isGroupedByChange -> changeView.isEmpty
+            isGroupedByState -> stateGroups.isEmpty()
+            else -> groups.isEmpty()
+        }
+
+    val changeView: ChangeView
+        get() {
+            val membership = shownMultirepo ?: return ChangeView(emptyList(), emptyList())
+            val all = aliasedEntries(membership)
+            val matching = filterWorktrees(all.map { it.entry.worktree }, textFilter).mapTo(mutableSetOf()) { it.path }
+            val grouped = groupedBranches(all)
+            val groups = grouped.map { (branch, members) ->
+                ChangeGroup(
+                    branch = branch,
+                    entries = members.filter { it.entry.worktree.path in matching }.sortedBy { it.alias },
+                    state = combinedState(members.map { activityOf(it.entry.holder, it.entry.worktree).badgeKind() }),
+                    collapsed = branch in collapsedChanges && !isTextFiltering,
+                    members = members.sortedBy { it.alias },
+                )
+            }.filter { it.entries.isNotEmpty() }.sortedBy { it.branch.lowercase() }
+            val groupedPaths = grouped.values.flatten().mapTo(mutableSetOf()) { it.entry.worktree.path }
+            val ungrouped = sortWorktreeItems(
+                items = all.filter { it.entry.worktree.path !in groupedPaths && it.entry.worktree.path in matching },
+                sort = sort,
+                worktreeOf = { it.entry.worktree },
+                activityDateOf = { activityDateOf(it.entry.holder, it.entry.worktree) },
+            )
+            return ChangeView(groups, ungrouped)
+        }
+
+    private fun aliasedEntries(membership: MultirepoMembership): List<AliasedEntry> =
+        projects.filter { it.id in membership.aliases }.flatMap { project ->
+            val holder = holder(project.id) ?: return@flatMap emptyList()
+            val alias = membership.aliasOf(project.id) ?: return@flatMap emptyList()
+            holder.worktrees.filterNot { it.isMain }.map { AliasedEntry(alias, WorktreeEntry(project, holder, it)) }
+        }
+
+    private val groupTags by derivedStateOf {
+        memberships.flatMap { membership ->
+            groupedBranches(aliasedEntries(membership)).flatMap { (branch, members) ->
+                val aliases = members.map { it.alias }.distinct()
+                members.map { it.ref to GroupTag(membership.folder, branch, aliases - it.alias) }
+            }
+        }.toMap()
+    }
+
+    fun groupTagOf(ref: WorktreeRef): GroupTag? = if (isMultirepoView) null else groupTags[ref]
+
+    fun aliasOf(projectId: String): String? = shownMultirepo?.aliasOf(projectId)
+
+    fun multirepoNameOf(projectId: String): String? = memberships.firstOrNull { projectId in it.aliases }?.name
 
     val isReadingActivity: Boolean
         get() = shownProjects.any { project ->
@@ -250,7 +348,8 @@ class WorktreeBoard(
         get() = cleanupScope.orEmpty().mapNotNull { id ->
             val project = projects.firstOrNull { it.id == id } ?: return@mapNotNull null
             val holder = holder(id) ?: return@mapNotNull null
-            WorktreeGroup(project, holder, holder.cleanupCandidates, collapsed = false)
+            val only = cleanupOnly
+            WorktreeGroup(project, holder, holder.cleanupCandidates.filter { only == null || it.path in only }, collapsed = false)
         }
 
     val pendingSuccess: PendingSuccess?
@@ -377,6 +476,150 @@ class WorktreeBoard(
         )
         holder.refresh()
         return Entry(project, holder, job)
+    }
+
+    fun syncMultirepos(memberships: List<MultirepoMembership>) {
+        this.memberships = memberships
+        sizeQueue.prioritize(shownHolders())
+    }
+
+    fun showMultirepo(folder: String) {
+        mode = GroupedView.MULTIREPO
+        projectFilter = null
+        multirepoFolder = folder
+        sizeQueue.prioritize(shownHolders())
+    }
+
+    fun revealGroup(branch: String) {
+        clearTextFilter()
+        collapsedChanges = collapsedChanges - branch
+        val group = changeView.groups.firstOrNull { it.branch == branch } ?: return
+        if (group.entries.none { it.ref == selected }) group.entries.firstOrNull()?.let { select(it.ref) }
+    }
+
+    fun toggleChangeCollapsed(branch: String) {
+        collapsedChanges = if (branch in collapsedChanges) collapsedChanges - branch else collapsedChanges + branch
+        if (branch in collapsedChanges && changeView.groups.any { group -> group.branch == branch && group.entries.any { it.ref == selected } }) {
+            selected = null
+        }
+    }
+
+    fun openAllInHerdr(group: ChangeGroup) {
+        group.members.forEach { it.entry.holder.openInHerdr(it.entry.worktree) }
+    }
+
+    fun missingAliases(group: ChangeGroup): List<String> =
+        shownMultirepo?.aliases?.values?.filter { it !in group.aliases }?.sorted().orEmpty()
+
+    fun canAddRepositories(group: ChangeGroup): Boolean = branchTypeOf(group.branch) != null && missingAliases(group).isNotEmpty()
+
+    fun addRepositoryToGroup(group: ChangeGroup, alias: String) {
+        val membership = shownMultirepo ?: return
+        val (type, id) = branchTypeOf(group.branch) ?: return
+        val projectId = membership.projectIdOf(alias) ?: return
+        val project = projects.firstOrNull { it.id == projectId } ?: return
+        val key = "${group.branch}:$alias"
+        if (key in addingToGroup) return
+        addingToGroup = addingToGroup + key
+        viewModelScope.launch {
+            try {
+                val result = withContext(ioDispatcher) {
+                    multirepoActions.createGroup(listOf(MultirepoMember(alias, project.config)), id, type, false) {}
+                }
+                val repository = result.getOrNull()?.repositories?.singleOrNull()
+                multirepoNotice = when {
+                    result.isFailure -> MultirepoNotice.Failed(result.exceptionOrNull()!!)
+                    repository?.outcome == GroupRepositoryOutcome.FAILED -> MultirepoNotice.Failed(repository.error ?: IllegalStateException(alias))
+                    else -> MultirepoNotice.AddedToGroup(alias, group.title)
+                }
+                holder(projectId)?.refresh()
+            } finally {
+                addingToGroup = addingToGroup - key
+            }
+        }
+    }
+
+    fun groupCleanupBlocker(group: ChangeGroup): GroupKept? {
+        val branchGroup = BranchGroup(group.branch, group.members.map { GroupWorktree(it.alias, it.entry.project.config, it.entry.worktree) })
+        val states = group.members.zip(branchGroup.worktrees).map { (member, worktree) ->
+            val holder = member.entry.holder
+            val path = member.entry.worktree.path
+            val status = when (val state = holder.statuses[path]) {
+                is WorktreeStatusState.Loaded -> Result.success(state.status)
+                WorktreeStatusState.Unavailable -> Result.failure(IllegalStateException(path))
+                else -> null
+            }
+            GroupWorktreeState(worktree, holder.mainBranch, status, holder.agents.orEmpty()[path].orEmpty())
+        }
+        return selectGroupCleanup(listOf(BranchGroupState(branchGroup, states))).kept.firstOrNull()
+    }
+
+    fun canCleanUpGroup(group: ChangeGroup): Boolean =
+        !isCleaningUp && groupCleanupBlocker(group) == null &&
+            group.members.all { member -> member.entry.holder.cleanupCandidates.any { it.path == member.entry.worktree.path } }
+
+    fun openGroupCleanup(group: ChangeGroup) {
+        if (!canCleanUpGroup(group)) return
+        resetCleanupOptions()
+        cleanupOnly = group.members.mapTo(mutableSetOf()) { it.entry.worktree.path }
+        cleanupScope = group.members.map { it.entry.project.id }.distinct().also { ids ->
+            ids.forEach { holder(it)?.lookUpCleanupCandidatesInHerdr() }
+        }
+    }
+
+    fun openMultirepoAgent() {
+        val multirepo = shownMultirepo?.multirepo ?: return
+        if (isOpeningMultirepoAgent) return
+        isOpeningMultirepoAgent = true
+        viewModelScope.launch {
+            try {
+                withContext(ioDispatcher) { multirepoActions.openAgent(multirepo) }
+                    .onSuccess { multirepoNotice = MultirepoNotice.AgentOpened(it == HerdrOpening.FOCUSED) }
+                    .onFailure { multirepoNotice = MultirepoNotice.Failed(it) }
+            } finally {
+                isOpeningMultirepoAgent = false
+            }
+        }
+    }
+
+    fun dismissMultirepoNotice() {
+        multirepoNotice = null
+    }
+
+    fun openNewChange() {
+        val membership = shownMultirepo ?: return
+        if (newChange == null) newChange = NewChange(membership)
+    }
+
+    fun dismissNewChange() {
+        if (newChange?.isCreating != true) newChange = null
+    }
+
+    fun confirmNewChange() {
+        val change = newChange ?: return
+        if (!change.canConfirm) return
+        val members = change.orderedSelection.mapNotNull { alias ->
+            val project = change.membership.projectIdOf(alias)?.let { id -> projects.firstOrNull { it.id == id } } ?: return@mapNotNull null
+            MultirepoMember(alias, project.config)
+        }
+        change.isCreating = true
+        change.error = null
+        viewModelScope.launch {
+            try {
+                withContext(ioDispatcher) {
+                    multirepoActions.createGroup(members, change.taskId, change.branchType, change.fetchFirst) {}
+                }.onSuccess { creation ->
+                    change.results = creation.repositories
+                    members.forEach { member -> change.membership.projectIdOf(member.alias)?.let(::holder)?.refresh() }
+                    if (!creation.failed) {
+                        multirepoNotice = MultirepoNotice.ChangeCreated(changeTitle(creation.branch), members.map { it.alias })
+                        if (newChange === change) newChange = null
+                    }
+                }.onFailure { change.error = it }
+            } finally {
+                change.isCreating = false
+            }
+        }
     }
 
     fun show(projectFilter: String?, mode: GroupedView = GroupedView.ALL) {
@@ -529,7 +772,9 @@ class WorktreeBoard(
     }
 
     fun visibleRefs(): List<WorktreeRef> =
-        if (isGroupedByState) {
+        if (isGroupedByChange) {
+            changeView.let { view -> view.groups.filterNot { it.collapsed }.flatMap { group -> group.entries.map { it.ref } } + view.ungrouped.map { it.ref } }
+        } else if (isGroupedByState) {
             stateGroups.flatMap { group -> group.items.map { it.ref } }
         } else {
             groups.filterNot { it.collapsed }.flatMap { group -> group.worktrees.map { WorktreeRef(group.project.id, it.path) } }
@@ -635,19 +880,26 @@ class WorktreeBoard(
 
     fun openCleanup(projectId: String? = null) {
         if (!canCleanUp(projectId)) return
+        resetCleanupOptions()
+        cleanupOnly = null
+        cleanupScope = cleanupTargets(projectId).also { targets ->
+            targets.forEach { holder(it)?.lookUpCleanupCandidatesInHerdr() }
+        }
+    }
+
+    private fun resetCleanupOptions() {
         cleanupDeleteBranches = false
         cleanupStopGradleDaemons = true
         cleanupStopEmulators = true
         cleanupDeleteSimulators = true
         cleanupDeleteDerivedData = true
         cleanupDownComposeProjects = true
-        cleanupScope = cleanupTargets(projectId).also { targets ->
-            targets.forEach { holder(it)?.lookUpCleanupCandidatesInHerdr() }
-        }
     }
 
     fun dismissCleanup() {
-        if (!isCleaningUp) cleanupScope = null
+        if (isCleaningUp) return
+        cleanupScope = null
+        cleanupOnly = null
     }
 
     fun confirmCleanup() {
@@ -661,13 +913,15 @@ class WorktreeBoard(
             deleteDerivedData = cleanupDeleteDerivedData,
             downComposeProjects = cleanupDownComposeProjects,
         )
+        val only = cleanupOnly
         isCleaningUp = true
         viewModelScope.launch {
             try {
-                cleanupSuccess = holders.mapNotNull { it.cleanUp(options) }.reduceOrNull { total, next -> total + next }
+                cleanupSuccess = holders.mapNotNull { it.cleanUp(options, only) }.reduceOrNull { total, next -> total + next }
             } finally {
                 isCleaningUp = false
                 cleanupScope = null
+                cleanupOnly = null
             }
         }
     }

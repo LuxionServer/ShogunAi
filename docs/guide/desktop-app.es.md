@@ -17,6 +17,19 @@ El formulario muestra también, en solo lectura, lo que el repositorio declara e
 
 El catálogo se puede buscar por nombre y ordenar; cada proyecto se puede abrir, editar o eliminar. Si mueves un repositorio en disco, edita su ruta en el proyecto: la app mueve con él la carpeta de worktrees cuando estaba junto al repositorio, y vuelve a enlazar los worktrees (`git worktree repair`).
 
+## Multirepos
+
+Un [multirepo](multirepo.md) agrupa los repositorios de un producto. Suelta en la ventana una carpeta que no sea un repositorio Git, o pulsa "Añadir multirepo" en la barra lateral y elige una. Antes de escribir nada, el diálogo lista los repositorios Git que hay directamente dentro de la carpeta con un alias propuesto para cada uno (el nombre de la carpeta sin el prefijo del multirepo, así que `product-app` pasa a ser `app`), marca los que ya son proyectos, propone `<worktreesRoot>/<alias>` como carpeta de worktrees de cada uno (marcado en los proyectos nuevos y desmarcado en los existentes, que se quedan como están salvo que lo marques) y lista los grupos que ya forman las ramas coincidentes. "Añadir un repositorio de otra ubicación…" añade un repositorio de fuera de la carpeta. Una carpeta dentro de un repositorio no puede contener un multirepo, y el diálogo lo dice. Al confirmar se escribe el mismo `.shogunai-multirepo.json` que con `shogun multirepo init` y `add-repo`, con todos los repositorios elegidos como predeterminados.
+
+En la barra lateral, un multirepo es una carpeta con sus proyectos dentro; muestra la suma de sus worktrees activos y el indicador de agente, se pliega con su flecha y lo recuerda. Al seleccionarlo se abre la vista del multirepo:
+
+- **Por cambio** (por defecto): un bloque por grupo, titulado con la rama sin su prefijo (`TASK-12`), con la rama completa, sus repositorios y un estado combinado, "Fusionados" solo cuando lo están todos sus worktrees y, si no, el estado más urgente entre ellos. Su cabecera ofrece "Abrir todo en Herdr", "Añadir repositorio" (un worktree en la rama del grupo en un repositorio que aún no está, para ramas `feature/` y `fix/`) y "Limpiar grupo", activo solo cuando todos los worktrees están limpios y fusionados sin ningún agente en marcha; su tooltip dice qué repositorio lo impide. "Sin grupo" lista el resto de worktrees. Cada fila empieza por el alias de su repositorio.
+- **Por estado**: los worktrees del multirepo agrupados por estado, también con su alias.
+
+La cabecera tiene "Nuevo cambio", que crea el grupo en los repositorios marcados (de entrada, los predeterminados) como `shogun new <id> --repos` e informa del resultado de cada repositorio, "Abrir agente del multirepo en Herdr" y los ajustes del multirepo. En las demás vistas, un worktree de un grupo muestra la etiqueta `TASK-12 · +api` antes de su carpeta; al pulsarla se abre la vista del multirepo en ese grupo. Agrupando por proyecto, la cabecera de un proyecto dice `product / app`.
+
+Los ajustes añaden, renombran y quitan repositorios, eligen los repositorios predeterminados, fijan la carpeta de worktrees que se propone a los repositorios que se añadan después, editan el agente del multirepo con los mismos campos que el agente de un proyecto y eliminan el multirepo, lo que borra solo la declaración. Los cambios hechos con `shogun multirepo` aparecen en el siguiente refresco de la app.
+
 ## Crear un worktree
 
 Abre un proyecto y, en "Nuevo worktree", elige:

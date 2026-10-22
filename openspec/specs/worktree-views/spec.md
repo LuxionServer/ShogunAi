@@ -43,7 +43,7 @@ The view SHALL offer a text filter, focused with Cmd/Ctrl+F, that keeps only the
 - **THEN** the view says that no worktree matches the filter, with an action to clear it
 
 ### Requirement: Project group headers
-Each project group SHALL have a header with the project's name, its number of worktrees, a collapse toggle, and the project's actions: "New worktree", "Clean up" (enabled when the project has candidates) and "Project settings". The collapsed state of each group SHALL be remembered across restarts.
+Each project group SHALL have a header with the project's name, preceded by its multirepo's name when it belongs to one (`product / app`), its number of worktrees, a collapse toggle, and the project's actions: "New worktree", "Clean up" (enabled when the project has candidates) and "Project settings". The collapsed state of each group SHALL be remembered across restarts.
 
 #### Scenario: Collapse a group
 - **WHEN** the user collapses the `api` group and restarts the app
@@ -52,6 +52,10 @@ Each project group SHALL have a header with the project's name, its number of wo
 #### Scenario: New worktree from a group
 - **WHEN** the user activates "New worktree" on the `api` group's header
 - **THEN** the "New worktree" dialog opens for `api`
+
+#### Scenario: Project of a multirepo
+- **WHEN** "All worktrees" is grouped by project and `app` belongs to the multirepo `product`
+- **THEN** its header reads `product / app`
 
 ### Requirement: Projects load independently
 The view SHALL load each project's worktrees independently, showing each group as soon as its list is read. A project whose list can't be read SHALL show its error inside its group, and the other groups SHALL load and work normally.

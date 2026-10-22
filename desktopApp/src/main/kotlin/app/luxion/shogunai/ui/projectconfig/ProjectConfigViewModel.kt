@@ -15,6 +15,7 @@ import app.luxion.shogunai.domain.model.SimulatorRuntime
 import app.luxion.shogunai.domain.model.SimulatorSettings
 import app.luxion.shogunai.domain.model.DetectedStack
 import app.luxion.shogunai.domain.model.Project
+import app.luxion.shogunai.domain.model.projectDefaultsFor
 import app.luxion.shogunai.domain.model.ProviderSuggestion
 import app.luxion.shogunai.domain.model.SuggestedProvider
 import app.luxion.shogunai.domain.model.suggestProviders
@@ -484,13 +485,11 @@ class ProjectConfigViewModel(
 
     suspend fun chooseFolder(folder: String): Result<Unit> =
         inspectRepository(folder).map { inspection ->
-            val topLevel = inspection.topLevel.trimEnd('/', '\\')
-            val repositoryName = topLevel.substringAfterLast('/').substringAfterLast('\\')
-            val repositoryParent = topLevel.dropLast(repositoryName.length).trimEnd('/', '\\')
+            val defaults = projectDefaultsFor(inspection.topLevel)
             baseRepositoryPath = inspection.topLevel
             loadRepository(inspection.topLevel)
-            name = repositoryName
-            worktreesRoot = "$repositoryParent/$repositoryName-worktrees"
+            name = defaults.name
+            worktreesRoot = defaults.worktreesRoot
             detectedMainBranch = inspection.mainBranch
             rejectedFolder = null
             folderChosen = true

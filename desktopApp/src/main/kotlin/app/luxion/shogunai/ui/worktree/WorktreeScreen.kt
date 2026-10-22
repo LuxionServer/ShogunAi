@@ -57,6 +57,9 @@ import app.luxion.shogunai.ui.components.onNewItemShortcut
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.machine.MachineResource
+import app.luxion.shogunai.ui.multirepo.MultirepoNotice
+import app.luxion.shogunai.ui.multirepo.NewChangeDialog
+import app.luxion.shogunai.ui.multirepo.multirepoNoticeMessage
 import app.luxion.shogunai.ui.shell.LocalAppMessages
 import app.luxion.shogunai.ui.shell.MessageAction
 import java.io.File
@@ -68,6 +71,8 @@ fun WorktreeScreen(
     onOpenProjectSettings: (Project) -> Unit,
     onSeeAll: () -> Unit,
     onOpenMachine: (MachineResource) -> Unit,
+    onOpenMultirepoSettings: () -> Unit = {},
+    onOpenGroup: (GroupTag) -> Unit = {},
 ) {
     val strings = LocalStrings.current
     DisposableEffect(board) {
@@ -80,12 +85,21 @@ fun WorktreeScreen(
         messages.show(strings.successMessage(pending.success), pending.action(strings, board))
         board.dismissSuccess(pending)
     }
+    LaunchedEffect(board.multirepoNotice) {
+        val notice = board.multirepoNotice ?: return@LaunchedEffect
+        if (notice is MultirepoNotice.Failed) return@LaunchedEffect
+        messages.show(strings.multirepoNoticeMessage(notice))
+        board.dismissMultirepoNotice()
+    }
     val filteredProject = board.shownProjects.singleOrNull()?.takeIf { board.isProjectView }
+    val multirepo = board.shownMultirepo
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .onNewItemShortcut(enabled = !board.isCreateDialogOpen) { board.openCreateDialog() },
+            .onNewItemShortcut(enabled = !board.isCreateDialogOpen && board.newChange == null) {
+                if (board.isMultirepoView) board.openNewChange() else board.openCreateDialog()
+            },
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md, vertical = Spacing.md),
@@ -93,7 +107,7 @@ fun WorktreeScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                filteredProject?.name ?: if (board.isActiveView) strings.activeWorktrees else strings.allWorktrees,
+                multirepo?.name ?: filteredProject?.name ?: if (board.isActiveView) strings.activeWorktrees else strings.allWorktrees,
                 style = MaterialTheme.typography.headlineSmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -108,11 +122,31 @@ fun WorktreeScreen(
                     onClick = { onOpenProjectSettings(project) },
                 )
             }
-            DangerTextButton(onClick = { board.openCleanup() }, enabled = board.canCleanUp()) { Text(strings.cleanUp) }
-            PrimaryButton(onClick = { board.openCreateDialog() }, enabled = board.projects.isNotEmpty()) {
-                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(ButtonIconSize))
-                Text(strings.newWorktree, modifier = Modifier.padding(start = Spacing.sm))
+            if (multirepo != null) {
+                IconAction(icon = Icons.Default.Settings, label = strings.multirepoSettingsTitle, onClick = onOpenMultirepoSettings)
+                SecondaryButton(onClick = board::openMultirepoAgent, enabled = !board.isOpeningMultirepoAgent) {
+                    Text(strings.openMultirepoAgent)
+                }
             }
+            DangerTextButton(onClick = { board.openCleanup() }, enabled = board.canCleanUp()) { Text(strings.cleanUp) }
+            if (multirepo != null) {
+                PrimaryButton(onClick = board::openNewChange, enabled = multirepo.aliases.isNotEmpty()) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(ButtonIconSize))
+                    Text(strings.newChange, modifier = Modifier.padding(start = Spacing.sm))
+                }
+            } else {
+                PrimaryButton(onClick = { board.openCreateDialog() }, enabled = board.projects.isNotEmpty()) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(ButtonIconSize))
+                    Text(strings.newWorktree, modifier = Modifier.padding(start = Spacing.sm))
+                }
+            }
+        }
+        (board.multirepoNotice as? MultirepoNotice.Failed)?.let { notice ->
+            ErrorNotice(
+                error = notice.error,
+                onDismiss = board::dismissMultirepoNotice,
+                modifier = Modifier.padding(start = Spacing.md, end = Spacing.md, bottom = Spacing.sm),
+            )
         }
 
         FlowRow(
@@ -121,7 +155,7 @@ fun WorktreeScreen(
             verticalArrangement = Arrangement.spacedBy(Spacing.sm),
             itemVerticalAlignment = Alignment.CenterVertically,
         ) {
-            if (!board.isProjectView) {
+            if (!board.isProjectView && !board.isMultirepoView) {
                 ViewProjectFilter(board.projects, board.viewProjectFilter, board::updateViewProjectFilter)
             }
             TextFilterField(board)
@@ -133,12 +167,14 @@ fun WorktreeScreen(
             }
         }
 
-        WorktreeContent(board, onOpenProjectSettings, onSeeAll, onOpenMachine, modifier = Modifier.weight(1f).fillMaxWidth())
+        WorktreeContent(board, onOpenProjectSettings, onSeeAll, onOpenMachine, modifier = Modifier.weight(1f).fillMaxWidth(), onOpenGroup = onOpenGroup)
     }
 
     if (board.isCreateDialogOpen) {
         CreateWorktreeDialog(board)
     }
+
+    board.newChange?.let { NewChangeDialog(it, board.approval, onConfirm = board::confirmNewChange, onDismiss = board::dismissNewChange) }
 
     if (board.isCleanupDialogOpen) {
         CleanupDialog(board)
@@ -153,10 +189,16 @@ fun WorktreeScreen(
 private fun GroupingSelector(board: WorktreeBoard) {
     val strings = LocalStrings.current
     SegmentedSelector(
-        options = Grouping.entries,
+        options = board.groupingOptions,
         selected = board.grouping,
         onSelect = board::updateGrouping,
-        label = { if (it == Grouping.BY_STATE) strings.groupByState else strings.groupByProject },
+        label = {
+            when (it) {
+                Grouping.BY_STATE -> strings.groupByState
+                Grouping.BY_PROJECT -> strings.groupByProject
+                Grouping.BY_CHANGE -> strings.groupByChange
+            }
+        },
     )
 }
 
@@ -336,6 +378,7 @@ private fun WorktreeContent(
     onSeeAll: () -> Unit,
     onOpenMachine: (MachineResource) -> Unit,
     modifier: Modifier = Modifier,
+    onOpenGroup: (GroupTag) -> Unit = {},
 ) {
     BoxWithConstraints(modifier) {
         val narrow = maxWidth < WorktreeDetailOverlayThreshold
@@ -346,7 +389,7 @@ private fun WorktreeContent(
             } else if (board.hasNoMatch) {
                 NoMatch(onClear = board::clearTextFilter, modifier = listModifier)
             } else {
-                WorktreeListPane(board, onOpenProjectSettings, onOpenMachine, listModifier)
+                WorktreeListPane(board, onOpenProjectSettings, onOpenMachine, listModifier, onOpenGroup)
             }
         }
         if (narrow && selected != null) {

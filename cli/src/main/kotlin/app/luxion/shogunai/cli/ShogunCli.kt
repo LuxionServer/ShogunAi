@@ -40,6 +40,7 @@ import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.HerdrOpening
+import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.model.IOS_SIMULATOR_UDID
 import app.luxion.shogunai.domain.model.PoolHolder
@@ -146,8 +147,41 @@ import app.luxion.shogunai.infrastructure.DockerComposeProjectSource
 import app.luxion.shogunai.infrastructure.ProcessMavenDaemonSource
 import app.luxion.shogunai.infrastructure.FileAgentSessionStore
 import app.luxion.shogunai.infrastructure.FileKmpTestWiring
+import app.luxion.shogunai.infrastructure.JsonMultirepoSource
+import app.luxion.shogunai.domain.io.MultirepoSource
+import app.luxion.shogunai.domain.model.AgentLaunchConfig
+import app.luxion.shogunai.domain.usecase.ConfigureMultirepoUseCase
+import app.luxion.shogunai.domain.usecase.CreateGroupUseCase
+import app.luxion.shogunai.domain.usecase.DetectGroupsUseCase
+import app.luxion.shogunai.domain.usecase.GroupContext
+import app.luxion.shogunai.domain.usecase.GroupKeptReason
+import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
+import app.luxion.shogunai.domain.usecase.GroupTarget
+import app.luxion.shogunai.domain.usecase.GroupWorktreeState
+import app.luxion.shogunai.domain.usecase.MultirepoContext
+import app.luxion.shogunai.domain.usecase.MultirepoMember
+import app.luxion.shogunai.domain.usecase.OpenGroupInHerdrUseCase
+import app.luxion.shogunai.domain.usecase.OpenMultirepoAgentInHerdrUseCase
+import app.luxion.shogunai.domain.usecase.ReadGroupsUseCase
+import app.luxion.shogunai.domain.usecase.ResolveMultirepoUseCase
+import app.luxion.shogunai.domain.usecase.UnknownMultirepoAlias
+import app.luxion.shogunai.domain.usecase.WorktreesFolderDecision
+import app.luxion.shogunai.domain.usecase.findGroup
+import app.luxion.shogunai.domain.usecase.multirepoMembers
+import app.luxion.shogunai.domain.usecase.selectGroupCleanup
 import java.io.File
+import app.luxion.shogunai.domain.io.AppInstanceLock
+import app.luxion.shogunai.domain.io.AppLauncher
+import app.luxion.shogunai.domain.io.AppRequestChannel
+import app.luxion.shogunai.domain.model.AppRequest
+import app.luxion.shogunai.domain.usecase.ProjectRegistration
+import app.luxion.shogunai.domain.usecase.RegisterProjectUseCase
+import app.luxion.shogunai.domain.usecase.UnregisterProjectUseCase
+import app.luxion.shogunai.infrastructure.DesktopAppLauncher
+import app.luxion.shogunai.infrastructure.FileAppInstanceLock
+import app.luxion.shogunai.infrastructure.FileAppRequestChannel
 import java.io.FileNotFoundException
+import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
 import java.util.Locale
@@ -193,6 +227,10 @@ class ShogunCli(
     private val agentProcessId: () -> Long? = ::claudeAncestorPid,
     private val mavenDaemonSource: MavenDaemonSource = ProcessMavenDaemonSource(executor),
     private val composeSource: ComposeProjectSource = DockerComposeProjectSource(executor),
+    private val multirepoSource: MultirepoSource = JsonMultirepoSource(Path.of(userHome, ".shogunai", "multirepos.json")),
+    private val appRequests: AppRequestChannel = FileAppRequestChannel(Path.of(userHome, ".shogunai", "app-requests")),
+    private val appLock: AppInstanceLock = FileAppInstanceLock(Path.of(userHome, ".shogunai", "app.lock")),
+    private val appLauncher: AppLauncher = DesktopAppLauncher(),
 ) {
     private val terminalApproval = PostCreateApproval { repository, commands ->
         if (confirm("${commandLines(repository, commands)}Run these commands? [y/N] ")) PostCreateDecision.RUN else PostCreateDecision.SKIP
@@ -286,6 +324,7 @@ class ShogunCli(
             is CliCommand.CommandHelp -> out.append(CliHelp.forCommand(command.name).orEmpty()).let { EXIT_OK }
             CliCommand.Version -> out.line("shogun ${BuildInfo.VERSION}").let { EXIT_OK }
             is CliCommand.New -> new(command)
+            is CliCommand.Multirepo -> multirepo(command)
             is CliCommand.Provision -> provision(command)
             is CliCommand.Trust -> trust(command)
             is CliCommand.Remove -> remove(command)
@@ -312,6 +351,8 @@ class ShogunCli(
             is CliCommand.GuideBlock -> guideBlock(command)
             is CliCommand.GradleStop -> gradleStop(command)
             is CliCommand.Pool -> pool(command)
+            is CliCommand.Project -> project(command)
+            is CliCommand.App -> app(command)
             is CliCommand.Xcode -> xcode(command)
             is CliCommand.XcodeClean -> xcodeClean(command)
             is CliCommand.XcodeTrim -> xcodeTrim(command)
@@ -331,6 +372,14 @@ class ShogunCli(
     }
 
     private suspend fun new(command: CliCommand.New): Int {
+        val context = multirepoContext()
+        if (command.repos != null || context?.atFolder == true) {
+            if (context == null) {
+                err.line("shogun: --repos needs a multirepo; create one with 'shogun multirepo init'")
+                return EXIT_USAGE
+            }
+            return newGroup(context, command)
+        }
         val config = configFor(workingDirectory, worktreesRoot = command.worktreesRoot?.let(::absolute))
         if (config.worktreesRoot.isBlank()) {
             err.line("shogun: this repository has no ShogunAi project, so there's no worktrees folder.")
@@ -369,6 +418,294 @@ class ShogunCli(
         out.line(worktree.path)
         noteSkippedCommands(config.baseRepositoryPath, worktree.skippedPostCreateCommands)
         return EXIT_OK
+    }
+
+    private val resolveMultirepo = ResolveMultirepoUseCase(multirepoSource, executor, fileManager)
+
+    private suspend fun multirepoContext(): MultirepoContext? = resolveMultirepo(workingDirectory).getOrThrow()
+
+    private fun members(context: MultirepoContext): List<MultirepoMember> =
+        multirepoMembers(context.multirepo, projectRepository.list())
+
+    private val readGroups = ReadGroupsUseCase(
+        DetectGroupsUseCase(executor),
+        resolveBase = { member -> ResolveMainBranchUseCase(member.config, executor)().getOrNull() },
+        readStatus = { member, base -> ReadWorktreeStatusUseCase(executor, fileManager)(member.worktree, base) },
+        detectAgents = { searches -> DetectRunningAgentsUseCase(executor, herdr, sessionStore)(searches) },
+    )
+
+    private suspend fun multirepo(command: CliCommand.Multirepo): Int {
+        val configure = ConfigureMultirepoUseCase(multirepoSource, resolveMultirepo, projectRepository, executor)
+        val action = command.action
+        if (action is MultirepoAction.Init) {
+            val multirepo = configure.init(workingDirectory, action.worktreesRoot?.let(::absolute)).getOrThrow()
+            if (command.json) printJson(multirepoJson(multirepo, emptyMap(), emptyMap())) else out.line(multirepo.declarationPath)
+            return EXIT_OK
+        }
+        val context = multirepoContext() ?: throw WorktreeError.MultirepoNotFound(workingDirectory)
+        val multirepo = context.multirepo
+        val updated = try {
+            when (action) {
+                is MultirepoAction.Init, MultirepoAction.Show -> multirepo
+                is MultirepoAction.AddRepo -> {
+                    val decision = WorktreesFolderDecision { project, current, proposed ->
+                        action.useWorktreesRoot ?: (!command.json && confirm(
+                            "Keep the new worktrees of $project in $proposed" + (current?.let { " instead of $it" } ?: "") + "? [y/N] ",
+                        ))
+                    }
+                    val added = configure.addRepository(multirepo, action.alias, absolute(action.path), decision).getOrThrow()
+                    if (command.json) {
+                        printJson(addedRepositoryJson(multirepo, added))
+                    } else {
+                        out.line("added ${added.alias} (${added.path})" + if (added.registered) ", registered as a project" else "")
+                        out.line("worktrees of ${added.alias} go to ${added.project.config.worktreesRoot}")
+                    }
+                    return EXIT_OK
+                }
+                is MultirepoAction.RemoveRepo -> configure.removeRepository(multirepo, action.alias).getOrThrow()
+                is MultirepoAction.Defaults -> configure.setDefaults(multirepo, action.aliases).getOrThrow()
+                is MultirepoAction.Agent -> configure.setAgent(multirepo, AgentLaunchConfig(action.name, action.command, action.useHeadroom)).getOrThrow()
+                is MultirepoAction.WorktreesRoot -> configure.setWorktreesRoot(multirepo, absolute(action.folder)).getOrThrow()
+                MultirepoAction.Delete -> {
+                    configure.delete(multirepo).getOrThrow()
+                    if (command.json) printJson(buildJsonObjectOf("deleted" to multirepo.declarationPath)) else out.line("deleted ${multirepo.declarationPath}")
+                    return EXIT_OK
+                }
+            }
+        } catch (error: UnknownMultirepoAlias) {
+            err.line("shogun: ${error.message}")
+            return EXIT_USAGE
+        }
+        val configs = members(context.copy(multirepo = updated)).associate { member ->
+            member.alias to projectRepository.list().firstOrNull { sameDirectory(it.config.baseRepositoryPath, member.config.baseRepositoryPath) }?.config
+        }
+        val bases = if (action == MultirepoAction.Show) {
+            members(context.copy(multirepo = updated)).associate { it.alias to ResolveMainBranchUseCase(it.config, executor)().getOrNull()?.name }
+        } else {
+            emptyMap()
+        }
+        if (command.json) {
+            printJson(multirepoJson(updated, configs, bases))
+        } else {
+            out.line("${updated.name}  ${updated.folder}")
+            out.line("worktrees-root  ${updated.worktreesRoot}")
+            updated.repositories.forEach { repository ->
+                val config = configs[repository.alias]
+                val details = listOfNotNull(
+                    repository.path,
+                    config?.worktreesRoot?.ifBlank { null }?.let { "worktrees=$it" } ?: "no-project",
+                    bases[repository.alias]?.let { "base=$it" },
+                    "default".takeIf { repository.alias in updated.declaration.defaultRepos },
+                )
+                out.line("  ${repository.alias}  ${details.joinToString("  ")}")
+            }
+            out.line("agent  ${updated.agent.displayName} (${updated.agent.resolvedCommand()})")
+        }
+        return EXIT_OK
+    }
+
+    private fun buildJsonObjectOf(vararg entries: Pair<String, String>): JsonObject =
+        JsonObject(entries.associate { (key, value) -> key to JsonPrimitive(value) })
+
+    private suspend fun newGroup(context: MultirepoContext, command: CliCommand.New): Int {
+        listOfNotNull(
+            "--branch".takeIf { command.branch != null },
+            "--from".takeIf { command.from != null },
+            "--worktrees-root".takeIf { command.worktreesRoot != null },
+        ).firstOrNull()?.let {
+            err.line("shogun: $it doesn't apply to a group")
+            return EXIT_USAGE
+        }
+        val multirepo = context.multirepo
+        val aliases = command.repos ?: multirepo.declaration.defaultRepos
+        if (aliases.isEmpty()) {
+            err.line("shogun: ${multirepo.name} has no default repositories; pass --repos <alias>[,<alias>...]")
+            return EXIT_USAGE
+        }
+        aliases.firstOrNull { it !in multirepo.aliases }?.let {
+            err.line("shogun: ${UnknownMultirepoAlias(it, multirepo.aliases).message}")
+            return EXIT_USAGE
+        }
+        val members = members(context).let { all -> aliases.distinct().mapNotNull { alias -> all.firstOrNull { it.alias == alias } } }
+        val approval = if (command.json) PostCreateApproval.SKIP else terminalApproval
+        val creation = CreateGroupUseCase(executor, fileManager, provisioningSource, prepareEnvironment, trust, approval)(
+            members,
+            command.taskId.orEmpty(),
+            command.branchType,
+            fetch = command.fetch,
+        ).getOrThrow()
+        if (command.json) {
+            printJson(groupCreationJson(creation))
+        } else {
+            creation.repositories.forEach { result ->
+                when (result.outcome) {
+                    GroupRepositoryOutcome.CREATED -> {
+                        out.line(result.path.orEmpty())
+                        err.line("${result.alias}: created ${result.path} on ${creation.branch}")
+                        members.firstOrNull { it.alias == result.alias }?.let { noteSkippedCommands(it.config.baseRepositoryPath, result.skippedPostCreateCommands) }
+                    }
+                    GroupRepositoryOutcome.EXISTING -> err.line("${result.alias}: already in the group at ${result.path}")
+                    GroupRepositoryOutcome.FAILED -> err.line(
+                        "shogun: ${result.alias}: couldn't create its worktree" + (result.path?.let { " ($it kept)" } ?: "") + ": " +
+                            failureReason(result.error ?: IllegalStateException("unknown failure")),
+                    )
+                }
+            }
+        }
+        return if (creation.failed) EXIT_FAILURE else EXIT_OK
+    }
+
+    private suspend fun groupStatus(context: MultirepoContext, json: Boolean): Int {
+        val state = readGroups(members(context))
+        if (json) {
+            printJson(groupStatusJson(context.multirepo, state))
+            return EXIT_OK
+        }
+        state.worktrees.failures.forEach { (alias, error) -> err.line("shogun: couldn't list the worktrees of $alias: ${failureReason(error)}") }
+        if (state.groups.isEmpty()) out.line("No groups.")
+        state.groups.forEach { group ->
+            out.line(group.group.branch)
+            group.worktrees.forEach { out.line("  ${groupWorktreeLine(it, showBranch = false)}") }
+        }
+        if (state.ungrouped.isNotEmpty()) {
+            out.line("ungrouped")
+            state.ungrouped.forEach { out.line("  ${groupWorktreeLine(it, showBranch = true)}") }
+        }
+        return EXIT_OK
+    }
+
+    private fun groupWorktreeLine(state: GroupWorktreeState, showBranch: Boolean): String {
+        val worktree = state.member.worktree
+        val status = state.status?.getOrNull()
+        val details = buildList {
+            add(state.member.alias)
+            add(worktree.path)
+            if (showBranch) add(worktree.branch ?: "(detached)")
+            state.agents.takeIf { it.isNotEmpty() }?.let { agents -> add("agents=${agents.joinToString(",") { agentLabel(it) }}") }
+            when {
+                worktree.isPrunable -> add("folder-missing")
+                status == null -> add(state.status?.exceptionOrNull()?.let { "status-unavailable (${failureReason(it)})" } ?: "status-unavailable")
+                else -> {
+                    add("changes=${status.uncommittedChanges}")
+                    status.mainBranch?.let { add("ahead=${it.ahead} behind=${it.behind}" + (state.base?.let { base -> " of ${base.name}" } ?: "")) }
+                    if (status.isMerged) add("merged")
+                    if (status.isNotStarted) add("not-started")
+                }
+            }
+        }
+        return details.joinToString("  ")
+    }
+
+    private suspend fun openInMultirepo(context: MultirepoContext, command: CliCommand.Open): Int {
+        val multirepo = context.multirepo
+        val target = command.target
+        if (target == null) {
+            val opening = OpenMultirepoAgentInHerdrUseCase(herdr)(multirepo).getOrThrow()
+            when {
+                command.json -> printJson(multirepoAgentOpenJson(multirepo, opening))
+                opening == HerdrOpening.OPENED -> out.line("opened ${multirepo.folder} in Herdr with ${multirepo.agent.displayName}")
+                else -> out.line("focused ${multirepo.folder} in Herdr (already open)")
+            }
+            return EXIT_OK
+        }
+        if (command.agent != null) {
+            err.line("shogun: each worktree of a group opens with its own project's agent, so --agent doesn't apply")
+            return EXIT_USAGE
+        }
+        val worktrees = DetectGroupsUseCase(executor)(members(context))
+        val group = when (val found = findGroup(worktrees, target)) {
+            is GroupTarget.Found -> found.group
+            is GroupTarget.Ambiguous -> {
+                err.line("shogun: '$target' matches more than one group: ${found.branches.joinToString()}")
+                return EXIT_USAGE
+            }
+            GroupTarget.Missing -> {
+                err.line("shogun: no group matches '$target' in ${multirepo.name}")
+                return EXIT_FAILURE
+            }
+        }
+        val openings = OpenGroupInHerdrUseCase(herdr, resolveEnvironment)(group)
+        if (command.json) {
+            printJson(groupOpenJson(group.branch, openings))
+        } else {
+            openings.forEach { opening ->
+                val agent = group.worktrees.first { it.alias == opening.alias }.config.agentLaunchConfig.displayName
+                opening.result
+                    .onSuccess {
+                        out.line(if (it == HerdrOpening.OPENED) "opened ${opening.path} in Herdr with $agent" else "focused ${opening.path} in Herdr (already open)")
+                    }
+                    .onFailure { err.line("shogun: couldn't open ${opening.alias} (${opening.path}) in Herdr: ${failureReason(it)}") }
+            }
+        }
+        return if (openings.all { it.result.isSuccess }) EXIT_OK else EXIT_FAILURE
+    }
+
+    private suspend fun cleanGroups(context: MultirepoContext, command: CliCommand.Clean, say: (String) -> Unit): Int {
+        val state = readGroups(members(context), withUngrouped = false)
+        val selection = selectGroupCleanup(state.groups)
+        selection.kept.forEach { kept ->
+            val reason = when (kept.reason) {
+                GroupKeptReason.NOT_MERGED -> "${kept.alias} isn't merged"
+                GroupKeptReason.UNCOMMITTED_CHANGES -> "${kept.alias} has uncommitted changes"
+                GroupKeptReason.STATUS_UNAVAILABLE -> "the status of ${kept.alias} is unavailable"
+                GroupKeptReason.AGENT_RUNNING -> "${kept.agents.joinToString(", ") { it.name }} is running in ${kept.alias}"
+            }
+            say("kept ${kept.group.branch} ($reason)")
+        }
+        if (selection.candidates.isEmpty()) {
+            if (command.json) printJson(groupCleanJson(selection, dryRun = !command.confirmed)) else out.line("No group to clean up.")
+            return EXIT_OK
+        }
+        if (!command.confirmed) {
+            if (command.json) {
+                printJson(groupCleanJson(selection, dryRun = true))
+                return EXIT_OK
+            }
+            selection.candidates.forEach { group ->
+                out.line("would remove the group ${group.group.branch}")
+                group.worktrees.forEach { out.line("  would remove ${it.member.alias} ${it.member.worktree.path}") }
+            }
+            val flags = listOfNotNull(
+                "--delete-branches".takeIf { command.deleteBranches },
+                "--stop-gradle-daemons".takeIf { command.stopGradleDaemons },
+                "--stop-emulators".takeIf { command.stopEmulators },
+                "--delete-simulators".takeIf { command.deleteSimulators },
+                "--delete-derived-data".takeIf { command.deleteDerivedData },
+                "--down-compose-projects".takeIf { command.downComposeProjects },
+                "--yes",
+            )
+            out.line("Run 'shogun clean ${flags.joinToString(" ")}' to remove the groups.")
+            return EXIT_OK
+        }
+        var exitCode = EXIT_OK
+        val byAlias = selection.candidates.flatMap { it.worktrees }.groupBy { it.member.alias }
+        byAlias.forEach { (_, worktrees) ->
+            val config = worktrees.first().member.config
+            val all = ListWorktreesUseCase(config, executor)().getOrThrow()
+            val paths = worktrees.map { it.member.worktree.path }.toSet()
+            val candidates = all.filter { it.path in paths }
+            val plan = CleanJson(dryRun = false, candidates = candidates.map { CleanCandidateJson(it.path, it.branch, it.isPrunable) })
+            val code = cleanCandidates(config, all, ResolveMainBranchUseCase(config, executor)().getOrNull(), candidates, plan, command.copy(json = false), say)
+            if (code != EXIT_OK) exitCode = code
+        }
+        if (command.json) {
+            val paths = selection.candidates.flatMap { it.worktrees }.map { it.member.worktree.path }
+            printJson(
+                groupCleanJson(
+                    selection,
+                    dryRun = false,
+                    removed = paths.filterNot { fileManager.exists(it) },
+                    failures = paths.filter { fileManager.exists(it) }.map { it to "not removed" },
+                ),
+            )
+        }
+        return exitCode
+    }
+
+    private suspend fun groupContextLines(context: MultirepoContext, worktreePath: String): List<String> {
+        val worktrees = DetectGroupsUseCase(executor)(members(context))
+        val group = worktrees.groupOf(worktreePath) ?: return emptyList()
+        return GroupContext(fileManager).groupLines(context.multirepo, group, worktreePath)
     }
 
     private suspend fun branchOf(config: ProjectConfig, path: String): String? =
@@ -503,6 +840,7 @@ class ShogunCli(
     }
 
     private suspend fun status(command: CliCommand.Status): Int {
+        multirepoContext()?.takeIf { it.atFolder }?.let { return groupStatus(it, command.json) }
         val config = configFor(workingDirectory)
         val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
         val mainBranch = ResolveMainBranchUseCase(config, executor)().getOrNull()
@@ -596,9 +934,14 @@ class ShogunCli(
     }
 
     private suspend fun open(command: CliCommand.Open): Int {
+        multirepoContext()?.takeIf { it.atFolder }?.let { return openInMultirepo(it, command) }
+        val target = command.target ?: run {
+            err.line("shogun: 'open' needs a task id, path or branch")
+            return EXIT_USAGE
+        }
         val config = configFor(workingDirectory)
         val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
-        val worktree = findWorktreeTarget(command.target, worktrees, config, ::canonical)
+        val worktree = findWorktreeTarget(target, worktrees, config, ::canonical)
         val agent = if (command.agent == null) {
             config.agentLaunchConfig
         } else {
@@ -637,6 +980,7 @@ class ShogunCli(
 
     private suspend fun clean(command: CliCommand.Clean): Int {
         val say = saying(command.json)
+        multirepoContext()?.takeIf { it.atFolder }?.let { return cleanGroups(it, command, say) }
         val config = configFor(workingDirectory)
         val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
         val mainBranch = ResolveMainBranchUseCase(config, executor)().getOrNull()
@@ -665,6 +1009,18 @@ class ShogunCli(
             },
             skipped = skipped,
         )
+        return cleanCandidates(config, worktrees, mainBranch, candidates, plan, command, say)
+    }
+
+    private suspend fun cleanCandidates(
+        config: ProjectConfig,
+        worktrees: List<Worktree>,
+        mainBranch: MainBranch?,
+        candidates: List<Worktree>,
+        plan: CleanJson,
+        command: CliCommand.Clean,
+        say: (String) -> Unit,
+    ): Int {
         val simulators = if (command.deleteSimulators) simulatorsBeforeCleanup(config, candidates) else SimulatorCleanup()
         val derivedDataOrphans = if (command.deleteDerivedData && derivedDataSource.isSupported() && xcodeProvider(config.baseRepositoryPath) != null) {
             listDerivedData(worktrees, includeCompilationCache = false, measure = DerivedDataMeasure.ORPHANS)
@@ -1012,6 +1368,11 @@ class ShogunCli(
     private suspend fun hookSessionStart(): Int {
         val input = hookInput("session-start") ?: return EXIT_USAGE
         val directory = input.string("cwd") ?: workingDirectory
+        val multirepo = runCatching { resolveMultirepo(directory).getOrThrow() }.getOrNull()
+        if (multirepo?.atFolder == true) {
+            GroupContext(fileManager).multirepoLines(multirepo.multirepo).forEach { out.line(it) }
+            if (multirepo.repositoryPath == null) return EXIT_OK
+        }
         if (ResolveRepositoryUseCase(executor)(directory).isFailure) return EXIT_OK
         val (repository, worktree) = worktreeContaining(directory)
         val environment = resolveEnvironment(repository, worktree.path).getOrThrow()
@@ -1024,6 +1385,9 @@ class ShogunCli(
             out.line("ShogunAi environment of worktree ${folderName(worktree.path)}: $listed")
         }
         WorkflowRules.sessionStartLines(context).forEach { out.line(it) }
+        multirepo?.takeIf { !it.atFolder && it.alias != null }?.let { found ->
+            runCatching { groupContextLines(found, worktree.path) }.getOrDefault(emptyList()).forEach { out.line(it) }
+        }
         return EXIT_OK
     }
 
@@ -1186,6 +1550,73 @@ class ShogunCli(
         ) {
             out.line(BUILD_CACHE_NOTICE)
         }
+        return EXIT_OK
+    }
+
+    private suspend fun project(command: CliCommand.Project): Int {
+        val resolveRepository = ResolveRepositoryUseCase(executor)
+        val directory = command.path?.let(::absolute) ?: workingDirectory
+        when (command.action) {
+            ProjectAction.ADD -> {
+                val registration = RegisterProjectUseCase(projectRepository, resolveRepository)(directory).getOrThrow()
+                val project = registration.project
+                val added = registration is ProjectRegistration.Added
+                if (command.json) {
+                    printJson(projectJson(if (added) "added" else "alreadyRegistered", project))
+                } else if (added) {
+                    out.line("Added project ${project.name} (${project.config.baseRepositoryPath})")
+                } else {
+                    out.line("Project ${project.name} is already registered (${project.config.baseRepositoryPath})")
+                }
+            }
+            ProjectAction.LIST -> {
+                val projects = projectRepository.list()
+                if (command.json) {
+                    printJson(projectListJson(projects))
+                } else if (projects.isEmpty()) {
+                    out.line("No projects registered.")
+                } else {
+                    projects.forEach { out.line("${it.name}  ${it.config.baseRepositoryPath}") }
+                }
+            }
+            ProjectAction.REMOVE -> {
+                val project = UnregisterProjectUseCase(projectRepository, resolveRepository)(directory).getOrThrow()
+                if (command.json) printJson(projectJson("removed", project)) else out.line("Removed project ${project.name} (${project.config.baseRepositoryPath})")
+            }
+        }
+        return EXIT_OK
+    }
+
+    private suspend fun app(command: CliCommand.App): Int {
+        val resolveRepository = ResolveRepositoryUseCase(executor)
+        val repository = if (command.path != null) {
+            resolveRepository(absolute(command.path)).getOrThrow()
+        } else {
+            resolveRepository(workingDirectory).getOrNull()
+        }
+        if (repository == null && command.settings) {
+            err.line("shogun: --settings needs a repository; run it inside one or pass a path")
+            return EXIT_USAGE
+        }
+        val running = appLock.isHeldByAnyInstance()
+        if (!running && !appLauncher.isAvailable()) throw WorktreeError.AppNotAvailable
+        val createdAt = now().toEpochMilli()
+        val request = if (repository == null) {
+            AppRequest.openApp(createdAt)
+        } else {
+            val registration = RegisterProjectUseCase(projectRepository, resolveRepository)(repository).getOrThrow()
+            if (registration is ProjectRegistration.Added) out.line("Added project ${registration.project.name} (${repository})")
+            AppRequest.openProject(createdAt, registration.project.id, command.settings)
+        }
+        appRequests.send(request)
+        if (!running) appLauncher.launch()
+        out.line(
+            when {
+                repository == null -> "Opening ShogunAi"
+                command.settings -> "Opening the settings of ${repository.substringAfterLast('/')} in ShogunAi"
+                else -> "Opening ${repository.substringAfterLast('/')} in ShogunAi"
+            },
+        )
         return EXIT_OK
     }
 
