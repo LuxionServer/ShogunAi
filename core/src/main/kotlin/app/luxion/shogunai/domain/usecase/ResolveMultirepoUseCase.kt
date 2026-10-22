@@ -48,7 +48,7 @@ class ResolveMultirepoUseCase(
         known().firstOrNull { multirepo -> multirepo.repositories.any { sameDirectory(it.path, repository) } }
 
     private fun declaredAbove(directory: String): Multirepo? {
-        var current: Path? = Path.of(directory).toAbsolutePath().normalize()
+        var current: Path? = Path.of(directory).normalize()
         while (current != null) {
             val folder = normalizePath(current.toString()).ifEmpty { "/" }
             source.read(folder)?.let { return Multirepo(folder, it) }
