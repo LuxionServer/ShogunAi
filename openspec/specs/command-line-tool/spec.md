@@ -6,7 +6,7 @@ Defines the `shogun` command, which runs ShogunAi's worktree operations from a t
 ## Requirements
 
 ### Requirement: Find the repository and its project
-Every command SHALL work on the Git repository that contains the current directory, or the path it's given, resolved to its main worktree even when run from a linked worktree. When the desktop app has a project for that repository, the command SHALL use its worktrees folder, local files and main branch.
+Every command SHALL work on the Git repository that contains the current directory, or the path it's given, resolved to its main worktree even when run from a linked worktree. When the desktop app has a project for that repository, the command SHALL use its worktrees folder, local files and main branch. `project list` and `app` without a path are the exceptions: they work outside a Git repository.
 
 #### Scenario: Run from a linked worktree
 - **WHEN** the user runs `shogun status` inside a linked worktree of `~/projects/main-repo`
@@ -17,8 +17,12 @@ Every command SHALL work on the Git repository that contains the current directo
 - **THEN** `shogun new` creates worktrees under `~/projects/worktrees` and `shogun status` compares against `develop`
 
 #### Scenario: Outside a Git repository
-- **WHEN** the user runs a command outside any Git repository
+- **WHEN** the user runs a command other than `project list` or `app` outside any Git repository
 - **THEN** it prints an error saying no repository was found and exits with code 1
+
+#### Scenario: Project commands outside a repository
+- **WHEN** the user runs `shogun project list` or `shogun app` without a path outside any Git repository
+- **THEN** the command runs and does not fail for lack of a repository
 
 ### Requirement: Create a worktree from the command line
 `shogun new <task-id> [--fix] [--from <ref>]` SHALL create a worktree on a new `feature/` (or `fix/`) branch, and `shogun new --branch <branch>` one from an existing local branch, with the same folder, provisioning, validation and rollback as the desktop app. The new branch SHALL start at `<ref>` when `--from` is given, and otherwise at the HEAD of the worktree containing the current directory. On success it SHALL print the worktree's absolute path alone on standard output.

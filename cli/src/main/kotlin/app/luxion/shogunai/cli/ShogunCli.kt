@@ -147,7 +147,18 @@ import app.luxion.shogunai.infrastructure.ProcessMavenDaemonSource
 import app.luxion.shogunai.infrastructure.FileAgentSessionStore
 import app.luxion.shogunai.infrastructure.FileKmpTestWiring
 import java.io.File
+import app.luxion.shogunai.domain.io.AppInstanceLock
+import app.luxion.shogunai.domain.io.AppLauncher
+import app.luxion.shogunai.domain.io.AppRequestChannel
+import app.luxion.shogunai.domain.model.AppRequest
+import app.luxion.shogunai.domain.usecase.ProjectRegistration
+import app.luxion.shogunai.domain.usecase.RegisterProjectUseCase
+import app.luxion.shogunai.domain.usecase.UnregisterProjectUseCase
+import app.luxion.shogunai.infrastructure.DesktopAppLauncher
+import app.luxion.shogunai.infrastructure.FileAppInstanceLock
+import app.luxion.shogunai.infrastructure.FileAppRequestChannel
 import java.io.FileNotFoundException
+import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
 import java.util.Locale
@@ -193,6 +204,9 @@ class ShogunCli(
     private val agentProcessId: () -> Long? = ::claudeAncestorPid,
     private val mavenDaemonSource: MavenDaemonSource = ProcessMavenDaemonSource(executor),
     private val composeSource: ComposeProjectSource = DockerComposeProjectSource(executor),
+    private val appRequests: AppRequestChannel = FileAppRequestChannel(Path.of(userHome, ".shogunai", "app-requests")),
+    private val appLock: AppInstanceLock = FileAppInstanceLock(Path.of(userHome, ".shogunai", "app.lock")),
+    private val appLauncher: AppLauncher = DesktopAppLauncher(),
 ) {
     private val terminalApproval = PostCreateApproval { repository, commands ->
         if (confirm("${commandLines(repository, commands)}Run these commands? [y/N] ")) PostCreateDecision.RUN else PostCreateDecision.SKIP
@@ -312,6 +326,8 @@ class ShogunCli(
             is CliCommand.GuideBlock -> guideBlock(command)
             is CliCommand.GradleStop -> gradleStop(command)
             is CliCommand.Pool -> pool(command)
+            is CliCommand.Project -> project(command)
+            is CliCommand.App -> app(command)
             is CliCommand.Xcode -> xcode(command)
             is CliCommand.XcodeClean -> xcodeClean(command)
             is CliCommand.XcodeTrim -> xcodeTrim(command)
@@ -1186,6 +1202,73 @@ class ShogunCli(
         ) {
             out.line(BUILD_CACHE_NOTICE)
         }
+        return EXIT_OK
+    }
+
+    private suspend fun project(command: CliCommand.Project): Int {
+        val resolveRepository = ResolveRepositoryUseCase(executor)
+        val directory = command.path?.let(::absolute) ?: workingDirectory
+        when (command.action) {
+            ProjectAction.ADD -> {
+                val registration = RegisterProjectUseCase(projectRepository, resolveRepository)(directory).getOrThrow()
+                val project = registration.project
+                val added = registration is ProjectRegistration.Added
+                if (command.json) {
+                    printJson(projectJson(if (added) "added" else "alreadyRegistered", project))
+                } else if (added) {
+                    out.line("Added project ${project.name} (${project.config.baseRepositoryPath})")
+                } else {
+                    out.line("Project ${project.name} is already registered (${project.config.baseRepositoryPath})")
+                }
+            }
+            ProjectAction.LIST -> {
+                val projects = projectRepository.list()
+                if (command.json) {
+                    printJson(projectListJson(projects))
+                } else if (projects.isEmpty()) {
+                    out.line("No projects registered.")
+                } else {
+                    projects.forEach { out.line("${it.name}  ${it.config.baseRepositoryPath}") }
+                }
+            }
+            ProjectAction.REMOVE -> {
+                val project = UnregisterProjectUseCase(projectRepository, resolveRepository)(directory).getOrThrow()
+                if (command.json) printJson(projectJson("removed", project)) else out.line("Removed project ${project.name} (${project.config.baseRepositoryPath})")
+            }
+        }
+        return EXIT_OK
+    }
+
+    private suspend fun app(command: CliCommand.App): Int {
+        val resolveRepository = ResolveRepositoryUseCase(executor)
+        val repository = if (command.path != null) {
+            resolveRepository(absolute(command.path)).getOrThrow()
+        } else {
+            resolveRepository(workingDirectory).getOrNull()
+        }
+        if (repository == null && command.settings) {
+            err.line("shogun: --settings needs a repository; run it inside one or pass a path")
+            return EXIT_USAGE
+        }
+        val running = appLock.isHeldByAnyInstance()
+        if (!running && !appLauncher.isAvailable()) throw WorktreeError.AppNotAvailable
+        val createdAt = now().toEpochMilli()
+        val request = if (repository == null) {
+            AppRequest.openApp(createdAt)
+        } else {
+            val registration = RegisterProjectUseCase(projectRepository, resolveRepository)(repository).getOrThrow()
+            if (registration is ProjectRegistration.Added) out.line("Added project ${registration.project.name} (${repository})")
+            AppRequest.openProject(createdAt, registration.project.id, command.settings)
+        }
+        appRequests.send(request)
+        if (!running) appLauncher.launch()
+        out.line(
+            when {
+                repository == null -> "Opening ShogunAi"
+                command.settings -> "Opening the settings of ${repository.substringAfterLast('/')} in ShogunAi"
+                else -> "Opening ${repository.substringAfterLast('/')} in ShogunAi"
+            },
+        )
         return EXIT_OK
     }
 

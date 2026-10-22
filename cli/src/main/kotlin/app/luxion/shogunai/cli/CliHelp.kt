@@ -60,6 +60,18 @@ internal object CliHelp {
                               the removed worktrees, keeping their volumes;
                               --json: print one JSON object instead of text)
 """.trimIndent(),
+        "project" to """
+  project add [<path>] [--json]
+                              Register the repository as a project of the desktop app, with the app's
+                              defaults, unless it already is (default: the current directory)
+  project list [--json]       List the registered projects with their repository
+  project remove [<path>] [--json]
+                              Unregister the repository's project; the repository and its worktrees stay
+""".trimIndent(),
+        "app" to """
+  app [<path>] [--settings]   Open the desktop app on the repository's project, registering it first if needed
+                              (--settings: open its settings); outside a repository it just opens the app
+""".trimIndent(),
         "gradle" to """
   gradle [--json]             List the Gradle and Kotlin daemons with their memory, state and worktree
   gradle stop [<pid>...] [--json]

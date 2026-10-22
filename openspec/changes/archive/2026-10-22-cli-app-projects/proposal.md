@@ -29,7 +29,7 @@ To configure a repository in the desktop app, the user has to open the app, find
 
 - `core`: a use case that builds a project's defaults from a repository (extracted from what `ProjectConfigViewModel.chooseFolder` computes today, so the form and the CLI share it), `RegisterProjectUseCase` / `UnregisterProjectUseCase`, the request model and its ports (`AppRequestChannel`, `AppProcessLauncher`), and a file-based adapter in `infrastructure`.
 - `cli`: parsing and execution of `project add|list|remove` and `app` in `CliCommand.kt` / `ShogunCli.kt`; `Main.kt` wires the real adapters.
-- `desktopApp`: holds the app lock, watches the spool folder and routes requests to `ShellViewModel` (`navigate`, `editProject`, `refresh`) and to `showMainWindow`; `ProjectConfigViewModel` uses the shared defaults. No new visible text, so no new translations.
+- `desktopApp`: holds the app lock, watches the spool folder and routes requests to `ShellViewModel` (`navigate`, `editProject`, `refresh`) and to `showMainWindow`; `ProjectConfigViewModel` uses the shared defaults. No new screens or labels; the two new error types (`AppNotAvailable`, `ProjectNotRegistered`) get their English and Spanish error texts.
 - Docs (English and Spanish): `docs/guide/cli`, `docs/architecture/cli`, and the roadmap if it lists this.
 - Files on disk: `~/.shogunai/app.lock` and `~/.shogunai/app-requests/` are new; `projects.json` is unchanged in shape.
 - Relationship with `multirepo-groups`: independent. `shogun app <multirepo folder>` is left as a follow-up; the request has an `action` field so that change can add one without altering this protocol.
