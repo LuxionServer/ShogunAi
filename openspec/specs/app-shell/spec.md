@@ -13,11 +13,15 @@ The main window SHALL show a sidebar and a content area side by side. The sideba
 - **THEN** the content area shows the second project's worktrees, and the sidebar stays in place with the second project marked as selected
 
 ### Requirement: Sidebar lists the projects
-The sidebar SHALL list every saved project by name, alphabetically, with an "Add project" action. The selected entry SHALL be visually marked.
+The sidebar SHALL list every saved project by name, alphabetically, with an "Add project" action. Projects that belong to a multirepo SHALL be listed inside that multirepo's folder instead of at the top level. The selected entry SHALL be visually marked.
 
 #### Scenario: Projects listed
 - **WHEN** the app has the projects `api`, `mobile` and `main-repo` saved
 - **THEN** the sidebar lists `api`, `main-repo` and `mobile`, in that order, followed by "Add project"
+
+#### Scenario: Projects of a multirepo
+- **WHEN** `api` and `mobile` belong to the multirepo `product`
+- **THEN** the sidebar lists `main-repo` and the folder `product` with `api` and `mobile` inside
 
 ### Requirement: First launch without projects
 When no project is saved, the content area SHALL show an empty state that explains what a project is and offers to add one.
@@ -115,11 +119,15 @@ The sidebar's views section SHALL list "Active" first, above "All worktrees", wi
 - **THEN** the sidebar shows "Active" with 4
 
 ### Requirement: Activity in the sidebar's projects
-Each project in the sidebar SHALL show its number of active worktrees, and an indicator in the info color when an agent is running in any of its worktrees. Projects with no active worktree SHALL show no count.
+Each project in the sidebar SHALL show its number of active worktrees, and an indicator in the info color when an agent is running in any of its worktrees. Projects with no active worktree SHALL show no count. A multirepo's folder SHALL show the sum of its projects' counts and the indicator when any of them has it.
 
 #### Scenario: Project with an agent
 - **WHEN** `api` has two active worktrees and an agent running in one of them
 - **THEN** its sidebar entry shows 2 and the agent indicator
+
+#### Scenario: Multirepo folder
+- **WHEN** `api` and `mobile` belong to `product` and have two and one active worktrees, with an agent in `api`
+- **THEN** `product` shows 3 and the agent indicator
 
 ### Requirement: Shortcuts for the views
 Cmd/Ctrl+1 SHALL open "Active" and Cmd/Ctrl+2 SHALL open "All worktrees", from anywhere in the main window, and both SHALL be listed in the View menu.

@@ -129,4 +129,4 @@ The multirepo view SHALL offer "New change", a dialog like "New worktree" with t
 
 #### Scenario: One repository fails
 - **WHEN** `api`'s post-creation command fails
-- **THEN** the dialog reports `api`'s failure, `app` stays created and appears in the group
+- **THEN** the dialog reports `api`'s failure, and `app` and `api`'s kept worktree appear in the group

@@ -11,7 +11,7 @@ That direction is built in three layers:
 | Layer | Role | What it brings |
 |---|---|---|
 | **Engine and CLI** | The foundation | Worktree provisioning defined in the repository (`.shogunai.json`) and a `shogun` command that the desktop app, agents and their hooks all use, including a per-worktree environment (reserved ports and variables) delivered to each agent's shell, and JSON output on every command for scripts. **Available.** |
-| **Control tower** | The view | The desktop app shows the state of every worktree, including the ones created by other tools, keeps them clean and follows changes as they happen. It opens each one in the terminal, the IDE or Herdr with the project's agents, and stays one click away in the menu bar. **Available.** |
+| **Control tower** | The view | The desktop app shows the state of every worktree, including the ones created by other tools, keeps them clean and follows changes as they happen. It opens each one in the terminal, the IDE or Herdr with the project's agents, and stays one click away in the menu bar. Multirepos group the repositories of one product, so a change spans several of them with one worktree and one agent per repository, coordinated by an agent for the whole multirepo, from the CLI and the app. **Available.** |
 | **Platforms** | The content | Providers for the stacks where a worktree is hardest to prepare, starting with Android, KMP, iOS and JVM: Gradle, local secrets, emulators, simulators and IDEs. **Started**: Gradle repositories show their daemons, can stop the idle ones and bound the memory and lifetime of the daemons agents start, Android repositories can give each worktree its own emulator, KMP and iOS repositories its own iOS simulator, both acquired on demand within limits that follow a machine capacity profile, Xcode repositories see and clean up their DerivedData, keep it within a disk quota and share compilations between worktrees, and JVM backends get Maven builds bounded in memory and a Docker Compose project and ports per worktree. The app and `shogun stacks` also detect a repository's stack and suggest the providers that fit. |
 
 It plugs into the tools that run agents rather than replacing them: Claude Code's worktree and session hooks, and [Herdr](https://herdr.dev), the terminal multiplexer for agents, whose worktrees a ShogunAi plugin provisions and where the desktop app opens a worktree with its environment and agent and shows what each agent is doing. **Available.**
@@ -62,6 +62,15 @@ Provisioning for the stacks where a fresh worktree is furthest from building:
 - `local.properties`, keystores and `google-services.json`.
 - Follow-ups of local folders: linking a local folder instead of copying it, glob patterns in the local list, reporting the symbolic links a folder skips, and removing from a worktree the files deleted from the base folder.
 - Showing the emulators ShogunAi starts inside Android Studio's Running Devices window, as the ones Android Studio starts itself, so several of them can be arranged in one window. It needs a spike: Android Studio may embed an external emulator started with the options it uses itself.
+
+### 7. Follow-ups of multirepos
+
+Multirepos and groups by branch are done in the CLI and the desktop app. Left out:
+
+- Associating worktrees whose branches don't match, e.g. `shogun group add <id> <worktree>`.
+- Variables shared between the repositories of a group (for example the port of the backend a group's app talks to).
+- The pull request state of each repository of a group.
+- A single session for the whole group, with a combined environment, as an option next to one agent per repository.
 
 ## Under exploration
 

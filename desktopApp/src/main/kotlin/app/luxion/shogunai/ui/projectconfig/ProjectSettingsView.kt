@@ -589,10 +589,29 @@ private fun AgentEditor(
                 DangerTextButton(onClick = { viewModel.removeAgent(index) }) { Text(strings.removeAgent) }
             }
         }
+        AgentFields(
+            agent = agent,
+            duplicated = duplicated,
+            commandFocus = commandFocus,
+            onChange = { changed -> viewModel.updateAgent(index) { changed } },
+        )
+    }
+}
+
+@Composable
+internal fun AgentFields(
+    agent: AgentDraft,
+    duplicated: Boolean,
+    commandFocus: FocusRequester?,
+    onChange: (AgentDraft) -> Unit,
+) {
+    val strings = LocalStrings.current
+    val config = agent.toConfig()
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         SettingsField(strings.agentNameLabel) {
             OutlinedTextField(
                 value = agent.name,
-                onValueChange = { value -> viewModel.updateAgent(index) { it.copy(name = value) } },
+                onValueChange = { value -> onChange(agent.copy(name = value)) },
                 textStyle = ShogunTheme.typography.data,
                 singleLine = true,
                 placeholder = { Text(AgentLaunchConfig(agentCommand = agent.command).displayName) },
@@ -608,7 +627,7 @@ private fun AgentEditor(
         SettingsField(strings.agentCommandLabel) {
             OutlinedTextField(
                 value = agent.command,
-                onValueChange = { value -> viewModel.updateAgent(index) { it.copy(command = value) } },
+                onValueChange = { value -> onChange(agent.copy(command = value)) },
                 textStyle = ShogunTheme.typography.data,
                 singleLine = true,
                 isError = agent.command.isBlank(),
@@ -623,7 +642,7 @@ private fun AgentEditor(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Switch(
                 checked = agent.useHeadroom,
-                onCheckedChange = { value -> viewModel.updateAgent(index) { it.copy(useHeadroom = value) } },
+                onCheckedChange = { value -> onChange(agent.copy(useHeadroom = value)) },
                 modifier = Modifier.handPointer(),
             )
             Text(strings.useHeadroomLabel, modifier = Modifier.padding(start = Spacing.sm))

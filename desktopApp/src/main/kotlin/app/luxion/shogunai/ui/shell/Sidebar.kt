@@ -21,6 +21,10 @@ import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.automirrored.filled.ViewSidebar
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.CreateNewFolder
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
@@ -74,6 +78,12 @@ fun Sidebar(
     onSelectMachine: (MachineResource) -> Unit,
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
+    multirepos: List<SidebarMultirepo> = emptyList(),
+    selectedMultirepo: String? = null,
+    onSelectMultirepo: (String) -> Unit = {},
+    onToggleMultirepo: (String) -> Unit = {},
+    onEditMultirepo: (String) -> Unit = {},
+    onAddMultirepo: () -> Unit = {},
 ) {
     val strings = LocalStrings.current
     Column(
@@ -109,7 +119,7 @@ fun Sidebar(
                 ViewRow(strings.allWorktrees, Icons.AutoMirrored.Filled.ViewList, totalWorktreeCount, selected = isAllSelected, onClick = onSelectAll)
                 SectionLabel(strings.projectsTitle)
             }
-            projects.forEach { project ->
+            val projectItem: @Composable (Project, Boolean) -> Unit = { project, nested ->
                 ProjectContextMenu(
                     onEdit = { onEditProject(project) },
                     onRemove = { onRemoveProject(project) },
@@ -117,7 +127,28 @@ fun Sidebar(
                     if (rail) {
                         RailProjectItem(project, selected = project.id == selectedProjectId) { onSelectProject(project) }
                     } else {
-                        ProjectRow(project, activityOf(project), selected = project.id == selectedProjectId) { onSelectProject(project) }
+                        ProjectRow(project, activityOf(project), selected = project.id == selectedProjectId, nested = nested) { onSelectProject(project) }
+                    }
+                }
+            }
+            sidebarEntries(projects, multirepos).forEach { entry ->
+                when (entry) {
+                    is SidebarEntry.ProjectEntry -> projectItem(entry.project, false)
+                    is SidebarEntry.FolderEntry -> {
+                        val folder = entry.multirepo
+                        ContextMenuArea(items = { listOf(ContextMenuItem(strings.multirepoSettingsTitle) { onEditMultirepo(folder.folder) }) }) {
+                            if (rail) {
+                                RailViewItem(folder.name, Icons.Default.Folder, selected = folder.folder == selectedMultirepo) { onSelectMultirepo(folder.folder) }
+                            } else {
+                                MultirepoRow(
+                                    folder,
+                                    selected = folder.folder == selectedMultirepo,
+                                    onClick = { onSelectMultirepo(folder.folder) },
+                                    onToggle = { onToggleMultirepo(folder.folder) },
+                                )
+                            }
+                        }
+                        if (!folder.collapsed) folder.projects.forEach { projectItem(it, true) }
                     }
                 }
             }
@@ -130,6 +161,7 @@ fun Sidebar(
                 )
             } else {
                 AddProjectRow(onAddProject)
+                AddRow(strings.addMultirepo, Icons.Default.CreateNewFolder, onAddMultirepo)
             }
             if (machineResources.isNotEmpty() && !rail) SectionLabel(strings.machineTitle)
             machineResources.forEach { resource ->
@@ -270,13 +302,12 @@ private fun ProjectContextMenu(onEdit: () -> Unit, onRemove: () -> Unit, content
 }
 
 @Composable
-private fun ProjectRow(project: Project, activity: ProjectActivity, selected: Boolean, onClick: () -> Unit) {
-    val strings = LocalStrings.current
+private fun ProjectRow(project: Project, activity: ProjectActivity, selected: Boolean, nested: Boolean = false, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = Spacing.sm)
+            .padding(start = if (nested) Spacing.lg else Spacing.sm, end = Spacing.sm)
             .height(SidebarRowHeight)
             .interactive(onClick = onClick)
             .background(if (selected) colors.secondaryContainer else colors.surfaceContainerLow)
@@ -292,26 +323,100 @@ private fun ProjectRow(project: Project, activity: ProjectActivity, selected: Bo
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        if (activity.agentNames.isNotEmpty()) {
-            WithTooltip(label = strings.agentsRunning(activity.agentNames)) {
-                Box(
-                    Modifier
-                        .size(AgentDotSize)
-                        .background(ShogunTheme.status.of(Status.INFO).color, CircleShape),
-                )
-            }
-        }
-        if (activity.activeCount > 0) {
-            Text(
-                activity.activeCount.toString(),
-                style = ShogunTheme.typography.dataSmall,
-                color = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
-            )
-        }
+        ActivityMarks(activity, selected)
     }
 }
 
-data class ProjectActivity(val activeCount: Int, val agentNames: List<String>)
+@Composable
+private fun ActivityMarks(activity: ProjectActivity, selected: Boolean) {
+    val strings = LocalStrings.current
+    val colors = MaterialTheme.colorScheme
+    if (activity.agentNames.isNotEmpty()) {
+        WithTooltip(label = strings.agentsRunning(activity.agentNames)) {
+            Box(
+                Modifier
+                    .size(AgentDotSize)
+                    .background(ShogunTheme.status.of(Status.INFO).color, CircleShape),
+            )
+        }
+    }
+    if (activity.activeCount > 0) {
+        Text(
+            activity.activeCount.toString(),
+            style = ShogunTheme.typography.dataSmall,
+            color = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun MultirepoRow(multirepo: SidebarMultirepo, selected: Boolean, onClick: () -> Unit, onToggle: () -> Unit) {
+    val strings = LocalStrings.current
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.sm)
+            .height(SidebarRowHeight)
+            .interactive(onClick = onClick)
+            .background(if (selected) colors.secondaryContainer else colors.surfaceContainerLow)
+            .padding(end = Spacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+    ) {
+        IconAction(
+            icon = if (multirepo.collapsed) Icons.Default.ChevronRight else Icons.Default.ExpandMore,
+            label = if (multirepo.collapsed) strings.expand else strings.collapse,
+            onClick = onToggle,
+            tint = colors.onSurfaceVariant,
+        )
+        Text(
+            multirepo.name,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (selected) colors.onSecondaryContainer else colors.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        ActivityMarks(multirepo.activity, selected)
+    }
+}
+
+data class ProjectActivity(val activeCount: Int, val agentNames: List<String>) {
+    operator fun plus(other: ProjectActivity) =
+        ProjectActivity(activeCount + other.activeCount, (agentNames + other.agentNames).distinct())
+
+    companion object {
+        val NONE = ProjectActivity(0, emptyList())
+    }
+}
+
+data class SidebarMultirepo(
+    val folder: String,
+    val name: String,
+    val projects: List<Project>,
+    val activity: ProjectActivity,
+    val collapsed: Boolean,
+)
+
+sealed interface SidebarEntry {
+    val name: String
+
+    data class ProjectEntry(val project: Project) : SidebarEntry {
+        override val name: String get() = project.name
+    }
+
+    data class FolderEntry(val multirepo: SidebarMultirepo) : SidebarEntry {
+        override val name: String get() = multirepo.name
+    }
+}
+
+fun sidebarEntries(projects: List<Project>, multirepos: List<SidebarMultirepo>): List<SidebarEntry> {
+    val nested = multirepos.flatMap { it.projects }.mapTo(mutableSetOf()) { it.id }
+    val entries = projects.filter { it.id !in nested }.map(SidebarEntry::ProjectEntry) +
+        multirepos.map { it.copy(projects = it.projects.sortedBy { project -> project.name.lowercase() }) }.map(SidebarEntry::FolderEntry)
+    return entries.sortedBy { it.name.lowercase() }
+}
 
 @Composable
 private fun RailProjectItem(project: Project, selected: Boolean, onClick: () -> Unit) {
@@ -335,7 +440,10 @@ private fun RailProjectItem(project: Project, selected: Boolean, onClick: () -> 
 }
 
 @Composable
-private fun AddProjectRow(onClick: () -> Unit) {
+private fun AddProjectRow(onClick: () -> Unit) = AddRow(LocalStrings.current.addProject, Icons.Default.Add, onClick)
+
+@Composable
+private fun AddRow(label: String, icon: ImageVector, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Row(
         modifier = Modifier
@@ -347,7 +455,7 @@ private fun AddProjectRow(onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
-        Icon(Icons.Default.Add, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(16.dp))
-        Text(LocalStrings.current.addProject, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+        Icon(icon, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(16.dp))
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
     }
 }

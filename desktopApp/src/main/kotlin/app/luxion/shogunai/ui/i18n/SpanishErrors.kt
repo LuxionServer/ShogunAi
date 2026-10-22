@@ -221,6 +221,18 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "${error.agents.joinToString()} se está ejecutando en ${error.path}.",
         "Páralo primero, o elimina el worktree forzándolo.",
     )
+    is WorktreeError.InvalidMultirepo -> ErrorTexts(
+        "No se puede usar el multirepo ${error.path}: ${error.detail}.",
+        "Corrígelo con los comandos shogun multirepo o en los ajustes del multirepo.",
+    )
+    is WorktreeError.MultirepoNotFound -> ErrorTexts(
+        "No se encontró ningún multirepo en ${error.path}.",
+        "Añade antes la carpeta como multirepo.",
+    )
+    is WorktreeError.BaseBranchNotFound -> ErrorTexts(
+        "No se pudo resolver la rama base de ${error.repository}.",
+        "Indica la rama principal del proyecto en sus ajustes.",
+    )
     is WorktreeError.InvalidRef -> ErrorTexts(
         "\"${error.ref}\" no es una rama ni un punto de partida válidos.",
         "Los nombres de rama y los puntos de partida no pueden empezar por \"-\".",

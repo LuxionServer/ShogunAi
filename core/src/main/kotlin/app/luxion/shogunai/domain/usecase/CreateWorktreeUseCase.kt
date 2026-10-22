@@ -45,7 +45,7 @@ class CreateWorktreeUseCase(
                 fileManager = fileManager,
                 worktreePath = worktreePath,
                 branch = branch,
-                addArgs = listOf("git", "worktree", "add", worktreePath, "-b", branch) + listOfNotNull(startPoint),
+                addArgs = listOf("git", "worktree", "add") + listOfNotNull("--no-track".takeIf { startPoint != null }) + listOf(worktreePath, "-b", branch) + listOfNotNull(startPoint),
                 createdBranch = branch,
                 provisioned = provisioned,
                 environment = environment,

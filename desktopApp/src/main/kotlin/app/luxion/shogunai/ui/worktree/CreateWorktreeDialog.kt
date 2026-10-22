@@ -126,7 +126,7 @@ fun CreateWorktreeDialog(board: WorktreeBoard) {
 }
 
 @Composable
-private fun PostCreateApprovalStep(request: DialogPostCreateApproval.Request, approval: DialogPostCreateApproval) {
+internal fun PostCreateApprovalStep(request: DialogPostCreateApproval.Request, approval: DialogPostCreateApproval) {
     val strings = LocalStrings.current
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         Text(strings.postCreateApprovalTitle, style = MaterialTheme.typography.titleMedium)

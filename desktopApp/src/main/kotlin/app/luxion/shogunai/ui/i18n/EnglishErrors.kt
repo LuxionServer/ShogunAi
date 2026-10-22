@@ -221,6 +221,18 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "${error.agents.joinToString()} is running in ${error.path}.",
         "Stop it first, or remove the worktree forcing it.",
     )
+    is WorktreeError.InvalidMultirepo -> ErrorTexts(
+        "The multirepo ${error.path} can't be used: ${error.detail}.",
+        "Fix it with the shogun multirepo commands or the multirepo's settings.",
+    )
+    is WorktreeError.MultirepoNotFound -> ErrorTexts(
+        "No multirepo was found at ${error.path}.",
+        "Add the folder as a multirepo first.",
+    )
+    is WorktreeError.BaseBranchNotFound -> ErrorTexts(
+        "The base branch of ${error.repository} couldn't be resolved.",
+        "Set the project's main branch in its settings.",
+    )
     is WorktreeError.InvalidRef -> ErrorTexts(
         "\"${error.ref}\" isn't a valid branch or start point.",
         "Branch names and start points can't start with \"-\".",

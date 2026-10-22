@@ -13,6 +13,11 @@ internal object CliHelp {
       --fetch                 Fetch from origin first, so the start point or branch is current
       --worktrees-root <dir>  Folder for the worktree when the repository has no ShogunAi project
       --json                  Print one JSON object instead of the path; never asks about post-creation commands
+  new <task-id> [--repos <alias>[,<alias>...]] [--fix] [--fetch] [--json]
+                              In a multirepo: create the group's worktrees, one per repository, each on the
+                              same feature/ (or fix/) branch from its repository's origin/<base> and in its
+                              project's worktrees folder; without --repos, from the multirepo folder, the
+                              default repositories; repositories already on the branch are left as they are
 """.trimIndent(),
         "provision" to """
   provision [<path>] [--json] Copy or link the declared files into an existing worktree and run its
@@ -28,7 +33,8 @@ internal object CliHelp {
                               --json prints one JSON object and approves only with --yes
 """.trimIndent(),
         "status" to """
-  status [--json]             List the repository's worktrees with their state
+  status [--json]             List the repository's worktrees with their state; in a multirepo folder, its
+                              groups (the same branch in several repositories) and the ungrouped worktrees
 """.trimIndent(),
         "remove" to """
   remove <task id | path | branch> [--force] [--delete-branch | --force-delete-branch] [--json]
@@ -44,6 +50,10 @@ internal object CliHelp {
                               (--agent picks another of the project's agents by name), or focus its
                               workspace when Herdr already has it open;
                               --json prints one JSON object instead of text
+  open <task id | branch> --herdr [--json]
+                              In a multirepo folder: open every worktree of the group, each under its
+                              repository's space with its environment and its project's agent
+  open --herdr [--json]       In a multirepo folder: open the multirepo's agent in a workspace of its own
 """.trimIndent(),
         "repair" to """
   repair [--json]             Re-link the worktrees after the repository or the worktrees folder moved
@@ -58,7 +68,28 @@ internal object CliHelp {
                               --delete-derived-data: also delete orphaned Xcode DerivedData;
                               --down-compose-projects: also take down the Docker Compose projects of
                               the removed worktrees, keeping their volumes;
-                              --json: print one JSON object instead of text)
+                              --json: print one JSON object instead of text);
+                              in a multirepo folder, the groups whose worktrees are all merged and have no
+                              agent, with the same options
+""".trimIndent(),
+        "multirepo" to """
+  multirepo init [--worktrees-root <dir>] [--json]
+                              Make the current folder a multirepo (outside any repository or at the top of a
+                              workspace repository); new worktrees folders are proposed under --worktrees-root
+                              (default: ../<folder>-worktrees)
+  multirepo show [--json]     Show the multirepo's repositories, projects, bases, defaults and agent
+  multirepo add-repo <alias> <path> [--use-worktrees-root | --keep-worktrees-folder] [--json]
+                              Add a repository, reusing its project or registering one, and propose
+                              <worktrees-root>/<alias> as its project's worktrees folder (asked unless given)
+  multirepo remove-repo <alias> [--json]
+                              Remove a repository from the multirepo; its project and worktrees stay
+  multirepo defaults <alias>[,<alias>...] | --clear [--json]
+                              Set the repositories 'shogun new <id>' covers in the multirepo folder
+  multirepo agent <command> [--name <name>] [--no-headroom] [--json]
+                              Set the agent 'shogun open --herdr' runs in the multirepo folder
+  multirepo worktrees-root <dir> [--json]
+                              Set the folder under which worktrees folders are proposed
+  multirepo delete [--json]   Remove the declaration; projects, worktrees and branches are left as they are
 """.trimIndent(),
         "gradle" to """
   gradle [--json]             List the Gradle and Kotlin daemons with their memory, state and worktree

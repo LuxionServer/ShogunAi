@@ -552,7 +552,7 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals("$worktreesRoot/TASK-123\n", out.toString())
-        assertTrue(executor.ran("git", "worktree", "add", "$worktreesRoot/TASK-123", "-b", "fix/TASK-123", "abc123"))
+        assertTrue(executor.ran("git", "worktree", "add", "--no-track", "$worktreesRoot/TASK-123", "-b", "fix/TASK-123", "abc123"))
     }
 
     @Test
@@ -568,7 +568,7 @@ class ShogunCliTest {
         val exitCode = cli(executor, workingDirectory = merged).run(listOf("new", "TASK-123"))
 
         assertEquals(0, exitCode, err.toString())
-        assertTrue(executor.ran("git", "worktree", "add", "$worktreesRoot/TASK-123", "-b", "feature/TASK-123", "epic1234"))
+        assertTrue(executor.ran("git", "worktree", "add", "--no-track", "$worktreesRoot/TASK-123", "-b", "feature/TASK-123", "epic1234"))
     }
 
     @Test
@@ -584,7 +584,7 @@ class ShogunCliTest {
         val exitCode = cli(executor).run(listOf("new", "TASK-123", "--from", "epic/redesign"))
 
         assertEquals(0, exitCode, err.toString())
-        assertTrue(executor.ran("git", "worktree", "add", "$worktreesRoot/TASK-123", "-b", "feature/TASK-123", "epic1234"))
+        assertTrue(executor.ran("git", "worktree", "add", "--no-track", "$worktreesRoot/TASK-123", "-b", "feature/TASK-123", "epic1234"))
     }
 
     @Test
@@ -649,7 +649,7 @@ class ShogunCliTest {
         val fetch = commands.indexOf(listOf("git", "fetch", "--prune", "origin"))
         val resolve = commands.indexOf(listOf("git", "rev-parse", "--verify", "--quiet", "origin/develop^{commit}"))
         assertTrue(fetch in 0 until resolve, commands.toString())
-        assertTrue(executor.ran("git", "worktree", "add", "$worktreesRoot/TASK-123", "-b", "feature/TASK-123", "fetched1"))
+        assertTrue(executor.ran("git", "worktree", "add", "--no-track", "$worktreesRoot/TASK-123", "-b", "feature/TASK-123", "fetched1"))
     }
 
     @Test

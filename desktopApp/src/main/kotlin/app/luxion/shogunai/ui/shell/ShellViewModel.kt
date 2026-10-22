@@ -11,6 +11,9 @@ import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.RecentWorktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.ui.machine.MachineResource
+import app.luxion.shogunai.ui.multirepo.MultirepoCatalog
+import app.luxion.shogunai.ui.multirepo.MultirepoMembership
+import app.luxion.shogunai.ui.multirepo.multirepoMemberships
 import app.luxion.shogunai.ui.palette.recordRecent
 
 class ShellViewModel(
@@ -18,12 +21,19 @@ class ShellViewModel(
     private val shellPreferences: ShellPreferenceRepository,
     private val readSettingsProblem: () -> WorktreeError.LocalFileUnreadable? = { null },
     private val acknowledgeSettingsProblem: () -> Unit = {},
+    val multirepoCatalog: MultirepoCatalog = MultirepoCatalog { emptyList() },
 ) : ViewModel() {
     var unreadableFiles by mutableStateOf<List<WorktreeError.LocalFileUnreadable>>(emptyList())
         private set
     var projects by mutableStateOf<List<Project>>(emptyList())
         private set
     var destination by mutableStateOf<ShellDestination?>(null)
+        private set
+    var memberships by mutableStateOf<List<MultirepoMembership>>(emptyList())
+        private set
+    var collapsedMultirepos by mutableStateOf(shellPreferences.loadCollapsedMultirepos())
+        private set
+    var addMultirepoRequest by mutableStateOf<AddMultirepoRequest?>(null)
         private set
     var sidebarCollapsed by mutableStateOf(shellPreferences.loadSidebarCollapsed())
         private set
@@ -55,6 +65,7 @@ class ShellViewModel(
 
     init {
         projects = loadProjects()
+        loadMultirepos()
         noteSettingsProblem()
         pruneRecentProjects()
         destination = ShellDestination.fromStorageKey(shellPreferences.loadLastDestination())
@@ -64,6 +75,7 @@ class ShellViewModel(
 
     fun refresh() {
         projects = loadProjects()
+        loadMultirepos()
         pruneRecentProjects()
         if (destination?.let(::isAvailable) == false) select(fallbackDestination())
         if (destinationBeforeForm?.let(::isAvailable) == false) destinationBeforeForm = null
@@ -155,6 +167,42 @@ class ShellViewModel(
 
     fun selectMachine(resource: MachineResource) = requestLeave { select(ShellDestination.Machine(resource)) }
 
+    fun selectMultirepo(folder: String, group: String? = null) = requestLeave { select(ShellDestination.MultirepoView(folder, group)) }
+
+    fun editMultirepo(folder: String) = requestLeave { openForm(ShellDestination.MultirepoSettings(folder)) }
+
+    fun toggleMultirepoCollapsed(folder: String) {
+        collapsedMultirepos = if (folder in collapsedMultirepos) collapsedMultirepos - folder else collapsedMultirepos + folder
+        shellPreferences.saveCollapsedMultirepos(collapsedMultirepos)
+    }
+
+    fun addMultirepo(folder: String? = null) {
+        addMultirepoRequest = AddMultirepoRequest(folder)
+    }
+
+    fun dismissAddMultirepo() {
+        addMultirepoRequest = null
+    }
+
+    fun onMultirepoAdded(folder: String) {
+        addMultirepoRequest = null
+        refresh()
+        navigate(ShellDestination.MultirepoView(folder))
+    }
+
+    fun onMultirepoChanged() {
+        refresh()
+    }
+
+    fun onMultirepoDeleted(folder: String) {
+        leaveGuard = null
+        if (folder in collapsedMultirepos) toggleMultirepoCollapsed(folder)
+        refresh()
+        select(fallbackDestination())
+    }
+
+    fun multirepoOf(project: Project): MultirepoMembership? = memberships.firstOrNull { project.id in it.aliases }
+
     fun addProject(folder: String? = null) = requestLeave { openForm(ShellDestination.AddProject(folder)) }
 
     fun editProject(project: Project) = requestLeave { openForm(ShellDestination.ProjectSettings(project.id)) }
@@ -171,6 +219,7 @@ class ShellViewModel(
     fun onProjectSaved(saved: Project, previous: Project?) {
         leaveGuard = null
         projects = loadProjects()
+        loadMultirepos()
         val moved = previous != null &&
             (previous.config.baseRepositoryPath != saved.config.baseRepositoryPath ||
                 previous.config.worktreesRoot != saved.config.worktreesRoot)
@@ -239,6 +288,7 @@ class ShellViewModel(
     }
 
     private fun isAvailable(destination: ShellDestination): Boolean = when {
+        destination.referencedMultirepo != null -> multirepoCatalog.find(destination.referencedMultirepo!!) != null
         (destination is ShellDestination.All || destination == ShellDestination.Active || destination is ShellDestination.Machine) &&
             projects.isEmpty() -> false
         else -> destination.referencedProjectId?.let { id -> projects.any { it.id == id } } ?: true
@@ -257,6 +307,11 @@ class ShellViewModel(
         if (unreadableFiles.none { it.path == problem.path }) unreadableFiles += problem
     }
 
+    private fun loadMultirepos() {
+        multirepoCatalog.refresh()
+        memberships = multirepoMemberships(multirepoCatalog.multirepos, projects)
+    }
+
     private fun loadProjects(): List<Project> = try {
         unreadableFiles = unreadableFiles.filterNot { it.path.endsWith(PROJECTS_FILE_NAME) }
         projectRepository.list().sortedBy { it.name.lowercase() }
@@ -265,6 +320,8 @@ class ShellViewModel(
         emptyList()
     }
 }
+
+data class AddMultirepoRequest(val folder: String?)
 
 data class WorktreeActions(
     val onFind: () -> Unit,

@@ -415,4 +415,28 @@ class DetectRunningAgentsUseCaseTest {
 
         assertEquals(null, agents[sibling.path])
     }
+
+    @Test
+    fun `an agent in a repository nested in a worktree's folder isn't attributed to it`() = runTest {
+        val lsof = """
+            p300
+            cclaude
+            fcwd
+            n/home/dev/projects/main-repo/product-docs/src
+            p301
+            cclaude
+            fcwd
+            n/home/dev/projects/main-repo/notes
+        """.trimIndent()
+        val ps = """
+              300 claude
+              301 claude
+        """.trimIndent()
+        val nestedRepository = "/home/dev/projects/main-repo/product-docs"
+        val herdr = FakeHerdrClient(agents = listOf(HerdrAgent("claude", AgentState.WORKING, "$nestedRepository/app", "w1:p1")))
+
+        val agents = DetectRunningAgentsUseCase(executor(lsof, ps), herdr, hasGitEntry = { it == nestedRepository })(config, listOf(main)).getOrThrow()
+
+        assertEquals(mapOf(main.path to listOf(RunningAgent("claude"))), agents)
+    }
 }

@@ -198,6 +198,15 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class AgentRunningInWorktree(val path: String, val agents: List<String>) :
         WorktreeError("${agents.joinToString()} is running in $path")
 
+    class InvalidMultirepo(val path: String, val detail: String) :
+        WorktreeError("$path: $detail")
+
+    class MultirepoNotFound(val path: String) :
+        WorktreeError("No multirepo found at $path")
+
+    class BaseBranchNotFound(val repository: String) :
+        WorktreeError("Couldn't resolve the base branch of $repository; set the project's main branch")
+
 }
 
 private fun PoolHolder.protectionNote(): String = when (protection) {

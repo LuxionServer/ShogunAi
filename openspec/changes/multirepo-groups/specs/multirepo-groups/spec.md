@@ -6,7 +6,7 @@ Lets one change span several repositories: a multirepo declares which repositori
 ## ADDED Requirements
 
 ### Requirement: Declare a multirepo
-A multirepo SHALL be declared by a `.shogunai-multirepo.json` file in a folder that isn't inside any Git repository: a `repos` object mapping each alias to a Git repository's path, relative to that folder or absolute, a `worktreesRoot` folder proposed for its repositories' worktrees, an optional `defaultRepos` list of aliases and an optional `agent`. The repositories SHALL NOT need to share a parent folder. Aliases SHALL use only lowercase letters, digits and hyphens.
+A multirepo SHALL be declared by a `.shogunai-multirepo.json` file in a folder outside every Git repository or at the top level of one, never inside one: `repos` mapping each alias to a repository's path (relative or absolute), `worktreesRoot`, an optional `defaultRepos` and an optional `agent`. The repositories SHALL NOT need to share a parent folder. Aliases SHALL use only lowercase letters, digits and hyphens.
 
 #### Scenario: Repositories side by side
 - **WHEN** `~/projects/product/.shogunai-multirepo.json` declares `docs`, `app` and `api` as `product-docs`, `product-app` and `product-api`, `worktreesRoot` `../product-worktrees` and `defaultRepos` `app` and `api`
@@ -16,12 +16,16 @@ A multirepo SHALL be declared by a `.shogunai-multirepo.json` file in a folder t
 - **WHEN** `~/work/platform/.shogunai-multirepo.json` declares `web` as `/src/web-client` and `backend` as `~/code/backend`
 - **THEN** it's a valid multirepo whose repositories stay where they are
 
+#### Scenario: Folder that is a workspace repository
+- **WHEN** `~/projects/product` is itself a Git repository that versions the shared `AGENTS.md` and ignores the nested repositories, and holds the declaration
+- **THEN** it's a valid multirepo and the declaration can be versioned in it
+
 #### Scenario: No default repositories or agent
 - **WHEN** the declaration has no `defaultRepos` and no `agent`
 - **THEN** it's valid, creating a group from the multirepo folder requires `--repos`, and the multirepo agent is `claude`
 
 ### Requirement: Reject an invalid multirepo declaration
-ShogunAi SHALL reject a `.shogunai-multirepo.json` whose JSON is invalid, whose alias is invalid, whose repository path doesn't exist or isn't a Git repository, whose `worktreesRoot` is missing, whose `defaultRepos` names an unknown alias, or that is inside a Git repository, naming the problem and the file and exiting with code 1.
+ShogunAi SHALL reject a `.shogunai-multirepo.json` whose JSON is invalid, whose alias is invalid, whose repository path doesn't exist or isn't a Git repository, whose `worktreesRoot` is missing, whose `defaultRepos` names an unknown alias, or whose folder is inside a Git repository without being its top level, naming the problem and the file and exiting with code 1.
 
 #### Scenario: Unknown default alias
 - **WHEN** `defaultRepos` contains `web`, which isn't a key of `repos`
@@ -47,15 +51,19 @@ ShogunAi SHALL keep the list of known multirepos in `~/.shogunai/multirepos.json
 - **THEN** the command names the other multirepo, changes nothing and exits with code 1
 
 ### Requirement: Create a multirepo from the command line
-`shogun multirepo init [--worktrees-root <dir>]` SHALL turn the current folder into a multirepo: write a `.shogunai-multirepo.json` with no repositories and `worktreesRoot` set to the given folder or, by default, `../<folder>-worktrees`, and add it to the known multirepos. It SHALL refuse a folder that is already a multirepo or is inside a Git repository.
+`shogun multirepo init [--worktrees-root <dir>]` SHALL turn the current folder into a multirepo: write a `.shogunai-multirepo.json` with no repositories and `worktreesRoot` set to the given folder or, by default, `../<folder>-worktrees`, and add it to the known multirepos. It SHALL refuse a folder that is already a multirepo or is inside a Git repository without being its top level.
 
 #### Scenario: Initialize
 - **WHEN** the user runs `shogun multirepo init` in `~/projects/product`
 - **THEN** `~/projects/product/.shogunai-multirepo.json` is written with `worktreesRoot` `../product-worktrees`, the multirepo is known, and the command prints the file's path
 
 #### Scenario: Inside a repository
-- **WHEN** the folder is inside a Git repository
+- **WHEN** the folder is a subfolder of a Git repository
 - **THEN** the command says a multirepo is never declared inside a repository, writes nothing and exits with code 1
+
+#### Scenario: Top level of a workspace repository
+- **WHEN** the folder is the top level of a Git repository
+- **THEN** the multirepo is created there
 
 #### Scenario: Already a multirepo
 - **WHEN** the folder already has a `.shogunai-multirepo.json`
@@ -136,6 +144,25 @@ Adding a repository to a multirepo SHALL propose `<worktreesRoot>/<alias>` as it
 - **WHEN** the user runs any `shogun multirepo` subcommand other than `init` where no multirepo applies
 - **THEN** the command says no multirepo was found and exits with code 1
 
+### Requirement: A multirepo folder that is a repository
+When the multirepo folder is the top level of a Git repository, `shogun new`, `status`, `open` and `clean` run in its main checkout SHALL act on the multirepo, that repository MAY be declared as one more repository with the path `.`, and `shogun hook session-start` there SHALL print the multirepo's context followed by the usual rules of a main checkout. In that repository's linked worktrees, commands SHALL behave as in any repository.
+
+#### Scenario: New in a workspace repository
+- **WHEN** `~/projects/product` is a Git repository and a multirepo with `defaultRepos` `app` and `api`, and the user runs `shogun new TASK-12` there
+- **THEN** `app` and `api` get their worktrees and the workspace repository gets none
+
+#### Scenario: Workspace repository in a group
+- **WHEN** the workspace repository is declared as `workspace` with path `.` and the user runs `shogun new TASK-12 --repos workspace,app`
+- **THEN** the workspace repository and `app` each get a worktree on `feature/TASK-12`, in their projects' worktrees folders
+
+#### Scenario: Linked worktree of the workspace repository
+- **WHEN** the user runs `shogun new TASK-13` inside a linked worktree of the workspace repository
+- **THEN** a single worktree of the workspace repository is created, as before
+
+#### Scenario: Session in a workspace repository
+- **WHEN** Claude Code starts a session in the main checkout of the workspace repository
+- **THEN** the context describes the multirepo and then gives the main checkout's usual rules
+
 ### Requirement: Each repository keeps its own project and base branch
 Every repository of a multirepo SHALL keep its own `.shogunai.json` and ShogunAi project, which apply to its worktrees exactly as before. The base branch of each repository SHALL be its project's main branch, or the detected main branch when it has none, resolved preferably on `origin`.
 
@@ -157,6 +184,10 @@ A group SHALL be a branch name that has worktrees in two or more repositories of
 #### Scenario: Worktrees created before the multirepo in its worktrees folder
 - **WHEN** `app`'s and `api`'s projects already keep worktrees in `~/projects/product-worktrees/app` and `.../api`, each has `TASK-1` on `feature/TASK-1` created by `shogun new`, and the user then declares the multirepo with `worktreesRoot` `../product-worktrees`
 - **THEN** both worktrees form the group `feature/TASK-1` at the same paths with the same names, the proposed worktrees folders already match so nothing is asked or changed, and `shogun new TASK-2` creates `.../app/TASK-2` and `.../api/TASK-2` next to them
+
+#### Scenario: Main checkouts
+- **WHEN** the main checkouts of `app` and `api` are both on `develop`
+- **THEN** they don't form a group; only linked worktrees are grouped
 
 #### Scenario: Branch in a single repository
 - **WHEN** only `product-app` has a worktree on `feature/TASK-8`
@@ -231,11 +262,15 @@ Running `shogun new <id>` for a branch that some repositories already have SHALL
 - **THEN** that repository fails as `shogun new` does today when the destination exists, and the other repositories are still created
 
 ### Requirement: A failing repository doesn't undo the others
-When creating or provisioning the worktree of one repository fails, ShogunAi SHALL roll back only that repository's worktree and the branch it created, as a single failed creation does today, keep the repositories that succeeded, report the failure naming the repository, and exit with code 1.
+When creating the worktree of one repository fails, ShogunAi SHALL handle that repository as a single `shogun new` does today (rolling back a failed creation, keeping a worktree whose post-creation command failed), keep the other repositories, report the failure naming the repository, and exit with code 1.
 
 #### Scenario: One repository fails
-- **WHEN** `shogun new TASK-123` creates `app` but `api`'s post-creation command fails
+- **WHEN** `shogun new TASK-123` creates `app` but copying `api`'s declared files fails
 - **THEN** `app` stays created, `api`'s worktree and new branch are removed, standard error names `api` and the failure, and the command exits with code 1
+
+#### Scenario: Post-creation command fails
+- **WHEN** `api`'s post-creation command fails
+- **THEN** `api`'s worktree is kept and reported as failed with its path, as `shogun new` does, and the command exits with code 1
 
 #### Scenario: No base branch
 - **WHEN** a repository has no main branch configured and none can be detected

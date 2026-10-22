@@ -74,6 +74,7 @@ plugins:
             Command-line reference: Referencia de la línea de comandos
             Configuration: Configuración
             Providers: Providers
+            Multirepos and groups: Multirepos y grupos
             Release: Proceso de release
 
 nav:
@@ -84,6 +85,7 @@ nav:
       - Command-line reference: guide/cli.md
       - Configuration: guide/configuration.md
       - Providers: guide/providers.md
+      - Multirepos and groups: guide/multirepo.md
   - Using with agents: agents.md
   - Getting started: getting-started.md
   - Architecture:

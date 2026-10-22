@@ -4,6 +4,8 @@ import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.HerdrClient
 import app.luxion.shogunai.domain.model.HerdrAgent
+import app.luxion.shogunai.domain.model.HerdrPane
+import app.luxion.shogunai.domain.model.HerdrWorkspace
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.HerdrWorktreeOpening
 import app.luxion.shogunai.domain.model.WorktreeError
@@ -78,6 +80,38 @@ class CliHerdrClient(
 
     override suspend fun focusAgent(paneId: String) {
         run(listOf("agent", "focus", paneId))
+    }
+
+    override suspend fun createWorkspace(cwd: String, label: String): HerdrWorktreeOpening {
+        val arguments = listOf("workspace", "create", "--cwd", cwd, "--label", label, "--focus")
+        val result = run(arguments)
+        val workspaceId = (result.field("workspace") as? JsonObject)?.string("workspace_id")
+        val rootPaneId = (result.field("root_pane") as? JsonObject)?.string("pane_id")
+        if (workspaceId == null || rootPaneId == null) throw unexpectedResponse(arguments)
+        return HerdrWorktreeOpening(workspaceId = workspaceId, rootPaneId = rootPaneId, alreadyOpen = false)
+    }
+
+    override suspend fun listWorkspaces(): List<HerdrWorkspace> {
+        val arguments = listOf("workspace", "list")
+        val workspaces = run(arguments).field("workspaces") as? JsonArray ?: throw unexpectedResponse(arguments)
+        return workspaces.filterIsInstance<JsonObject>().mapNotNull { workspace ->
+            val id = workspace.string("workspace_id") ?: return@mapNotNull null
+            HerdrWorkspace(id, workspace.string("label").orEmpty(), (workspace["worktree"] as? JsonObject)?.string("checkout_path"))
+        }
+    }
+
+    override suspend fun listPanes(): List<HerdrPane> {
+        val arguments = listOf("pane", "list")
+        val panes = run(arguments).field("panes") as? JsonArray ?: throw unexpectedResponse(arguments)
+        return panes.filterIsInstance<JsonObject>().mapNotNull { pane ->
+            val paneId = pane.string("pane_id") ?: return@mapNotNull null
+            val workspaceId = pane.string("workspace_id") ?: return@mapNotNull null
+            HerdrPane(paneId, workspaceId, pane.string("foreground_cwd") ?: pane.string("cwd"))
+        }
+    }
+
+    override suspend fun focusWorkspace(workspaceId: String) {
+        run(listOf("workspace", "focus", workspaceId))
     }
 
     private fun agentState(status: String?): AgentState? = when (status) {

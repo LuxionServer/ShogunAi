@@ -13,6 +13,7 @@ shogun repair                      # re-link the worktrees after the repository 
 shogun open TASK-123 --herdr       # open a worktree in Herdr with its environment and the project's agent
 shogun clean --yes                 # remove merged or missing worktrees (without --yes it only lists them)
 shogun stacks                      # the stacks detected in the repository and the providers they suggest
+shogun multirepo show              # in a multirepo: its repositories, defaults and agent
 eval "$(shogun env)"               # load this worktree's variables from .shogunai.json "env"
 ```
 
@@ -40,6 +41,7 @@ Creates a worktree, copies the declared files into it, prepares its [environment
 
 - With a task id, the worktree gets a new `feature/<task-id>` branch, or `fix/<task-id>` with `--fix`. The branch starts at the HEAD of the worktree you run the command in, or at `--from <ref>` (a branch, tag or commit; an unknown ref fails before anything is created).
 - With `--branch`, the worktree checks out an existing branch. `--fix` and `--from` aren't accepted with it. A branch that exists only on `origin`, given as `<name>` or `origin/<name>`, gets a local branch of that name tracking it; a local branch with that name takes precedence.
+- A new branch never tracks its start point, so pushing it never targets the branch it started from.
 - `--fetch` runs `git fetch --prune origin` first, so `--from origin/develop` or a remote branch is current. It never waits for credentials: if the fetch fails, Git's error is printed, nothing is created and the exit code is 1.
 - `--worktrees-root <dir>` sets where the worktree goes. It's required when the repository has no project in the desktop app; relative paths are resolved against the current directory.
 - A task id containing `/` (`team/TASK-1`) keeps the `/` in the branch (`feature/team/TASK-1`) and becomes one folder, `team-TASK-1`.
@@ -228,6 +230,30 @@ A worktree where an agent is running is listed as `kept <path> (claude is runnin
 | `--down-compose-projects` | Takes down the Docker Compose projects of the removed worktrees, keeping their volumes (`took down Compose project …`; `would take down Compose project …` without `--yes`). Only for repositories that declare the `docker-compose` provider; a project that can't be taken down, or Docker being unavailable, is reported on standard error without changing the exit code. |
 
 The Herdr workspaces of removed worktrees are closed too (`would close Herdr workspace of …` in the listing). A daemon, emulator or Herdr workspace that can't be stopped or closed is reported on standard error without changing the exit code.
+
+## Multirepos
+
+In a multirepo folder (see [Multirepos and groups](multirepo.md)), `new`, `status`, `open` and `clean` act on its groups, and `shogun multirepo` configures it.
+
+```text
+shogun multirepo init [--worktrees-root <dir>]
+shogun multirepo show
+shogun multirepo add-repo <alias> <path> [--use-worktrees-root | --keep-worktrees-folder]
+shogun multirepo remove-repo <alias>
+shogun multirepo defaults <alias>[,<alias>...] | --clear
+shogun multirepo agent <command> [--name <name>] [--no-headroom]
+shogun multirepo worktrees-root <dir>
+shogun multirepo delete
+shogun new <task-id> [--repos <alias>[,<alias>...]] [--fix] [--fetch]
+shogun open <task id | branch> --herdr
+shogun open --herdr
+```
+
+- `multirepo` subcommands work in the multirepo folder or anywhere in its repositories and worktrees, and accept `--json`; outside a multirepo they exit with `1`. A wrong alias exits with `2`.
+- `new <id>` in the multirepo folder covers the default repositories, or `--repos` from anywhere in the multirepo; it prints the path of each worktree it creates on standard output and one line per repository on standard error, and exits with `1` if any repository failed. `--branch`, `--from` and `--worktrees-root` don't apply to a group and exit with `2`. Its `--json` object has the `branch` and a `repos` list with each `alias`, `path`, `result` (`created`, `existing` or `failed`), skipped post-creation commands and `error`.
+- `status` in the multirepo folder prints each group's branch followed by one line per repository, then `ungrouped`; `--json` prints `groups` (each with `branch`, `title` and `repos` with `alias`, `path`, `branch`, `base`, `folderMissing`, `uncommittedChanges`, `ahead`, `behind`, `merged`, `agents`), `ungrouped` and `failures`.
+- `open <id> --herdr` opens each worktree of the group with its project's agent (`--agent` exits with `2`); an id matching both `feature/<id>` and `fix/<id>` exits with `2`, no match with `1`. `open --herdr` without a target opens the multirepo's agent.
+- `clean` lists the candidate groups (`would remove the group …`) and the kept ones with their reason (`kept feature/TASK-2 (api isn't merged)`), and accepts every option of `clean`.
 
 ## Environment
 
