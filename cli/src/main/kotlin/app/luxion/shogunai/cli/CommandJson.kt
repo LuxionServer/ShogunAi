@@ -17,6 +17,7 @@ import app.luxion.shogunai.domain.model.Stack
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.model.PoolUsage
+import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ReleaseRecord
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.MavenDaemon
@@ -688,4 +689,28 @@ fun guideStatusJson(targets: List<Pair<String, GuideBlockStatus>>, warnings: Lis
         },
     )
     put("warnings", buildJsonArray { warnings.forEach { add(JsonPrimitive(it)) } })
+}
+
+fun projectJson(action: String, project: Project): JsonObject = buildJsonObject {
+    put("action", action)
+    put("id", project.id)
+    put("name", project.name)
+    put("repository", project.config.baseRepositoryPath)
+}
+
+fun projectListJson(projects: List<Project>): JsonObject = buildJsonObject {
+    put(
+        "projects",
+        buildJsonArray {
+            projects.forEach { project ->
+                add(
+                    buildJsonObject {
+                        put("id", project.id)
+                        put("name", project.name)
+                        put("repository", project.config.baseRepositoryPath)
+                    },
+                )
+            }
+        },
+    )
 }
