@@ -64,6 +64,11 @@ jobs:
       REF: ${{ needs.resolve-version.outputs.ref }}
       EVENT_NAME: ${{ github.event_name }}
     steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve-version.outputs.ref }}
+          persist-credentials: false
+
       - name: Tag merge commit
         if: github.event_name == 'pull_request'
         run: |
@@ -71,10 +76,28 @@ jobs:
             -f ref="refs/tags/v${VERSION}" \
             -f sha="$REF"
 
+      - name: Resolve release title
+        id: title
+        run: |
+          TITLE_FILE=".github/release-title"
+          FEATURE_TITLE=""
+          if [ -f "$TITLE_FILE" ]; then
+            FEATURE_TITLE="$(head -n 1 "$TITLE_FILE")"
+          fi
+          if [ -n "$FEATURE_TITLE" ]; then
+            echo "value=v${VERSION} — ${FEATURE_TITLE}" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::${TITLE_FILE} is empty or missing; the release will be titled v${VERSION}."
+            echo "value=v${VERSION}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create draft release
+        env:
+          RELEASE_TITLE: ${{ steps.title.outputs.value }}
         run: |
           gh release create "v${VERSION}" \
             --repo "$GITHUB_REPOSITORY" \
+            --title "$RELEASE_TITLE" \
             --verify-tag \
             --draft \
             --generate-notes

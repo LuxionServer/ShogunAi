@@ -13,13 +13,13 @@ graph LR
     E --> F["Release: tag vX.X.X + build + publish"]
 ```
 
-1. **Crear la rama** `release/X.X.X` (donde `X.X.X` es la versión a publicar) desde `develop`.
+1. **Crear la rama** `release/X.X.X` (donde `X.X.X` es la versión a publicar) desde `develop`, y escribir la feature principal de la release en `.github/release-title` (ver [Título de la release](#título-de-la-release)).
 2. **Validar** — cada push a `release/**` dispara el workflow `Tests` (`.github/workflows/tests.yml`), que corre `./gradlew test`. Sirve para iterar y corregir antes de abrir la PR. El mismo workflow corre también en cada pull request hacia `develop` o una rama `epic/**` y en cada push a ellas, así que las regresiones se detectan antes de llegar a una rama de release.
 3. **Abrir la PR** de `release/X.X.X` a `main` y revisarla como cualquier otra.
 4. **Mergear** — al mergearse una PR cuya rama de origen matchea `release/*`, el workflow `Release` (`.github/workflows/release.yml`):
       1. valida la versión tomada del nombre de la rama (o del tag): debe ser `X.Y.Z` solo con dígitos; si no, el run falla antes de compilar nada,
       2. ejecuta la suite completa de tests sobre el commit de la release en Linux, macOS y Windows (`.github/workflows/test-suite.yml`, el mismo que usa `Tests`). Nada más corre hasta que pasa,
-      3. crea y pushea el tag `vX.X.X` sobre el commit de merge (la versión sale del nombre de la rama, no hay que escribirla dos veces) y crea el GitHub Release en modo **draft** con las notas autogeneradas (una sola vez, antes de compilar),
+      3. crea y pushea el tag `vX.X.X` sobre el commit de merge (la versión sale del nombre de la rama, no hay que escribirla dos veces) y crea el GitHub Release en modo **draft** con las notas autogeneradas y el título `vX.X.X — <feature>` (la feature se lee de `.github/release-title`, ver [Título de la release](#título-de-la-release)); una sola vez, antes de compilar,
       4. compila los instaladores en macOS Apple Silicon, macOS Intel, Windows y Linux (`packageReleaseDmg`/`Msi`/`Deb`) pasando esa versión, con un token de solo lectura. Cada `.dmg` de macOS se renombra `ShogunAi-X.X.X-<arch>.dmg` (`arm64`/`x64`, tomado de la arquitectura del propio runner) justo después del build, y cada instalador se guarda como artefacto del workflow,
       5. en paralelo, compila una vez en Linux la herramienta de línea de comandos independiente (`:cli:distZip`, ver [Línea de comandos](../architecture/cli.md)) y guarda `shogun-X.X.X.zip` como artefacto,
       6. una vez compilados los cuatro instaladores y el zip, el único job con permiso de escritura en el repositorio genera `SHA256SUMS` con el checksum de cada asset, lo sube todo al draft y publica la release (saca el draft),
@@ -30,6 +30,12 @@ graph LR
 Los pasos 7, 8 y 9 se ejecutan en paralelo y son independientes: si uno falla, la release sigue publicada y los demás se ejecutan igualmente.
 
 Todo el flujo desde el paso 4 ocurre en un único run de CI, sin intervención manual. La release se crea en draft y recién se publica al final porque una release ya publicada es inmutable para GitHub (rechaza nuevos assets) y porque generar las notas una sola vez evita que se dupliquen si cada build del matrix las regenerara por su cuenta.
+
+## Título de la release
+
+Cada release lee su título de `.github/release-title`: la primera línea de ese fichero es la feature principal, y el workflow titula la release `vX.X.X — <feature>`. Por ejemplo, si la 0.9.0 trae soporte multirepo, se publica como `v0.9.0 — Multi-repo support`.
+
+Escríbelo al crear la rama de release, en el mismo commit que sube la versión. Si el fichero está vacío o falta, el workflow vuelve al título simple `vX.X.X` y registra un warning, así que un título olvidado nunca bloquea una release — pero siempre merece una entrada en las notas de la release.
 
 ## Gestores de paquetes de Windows
 
