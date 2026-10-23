@@ -471,6 +471,12 @@ fun interface PostCreateApproval {
 
 Keeps the `AgentSessionRecord`s of the sessions of a worktree: `write`, `remove` and `list`, by worktree path. `FileAgentSessionStore` is the implementation (see [infrastructure](infrastructure.md#fileagentsessionstore)); the CLI's `hook agent-state` writes and `DetectRunningAgentsUseCase` reads and deletes dead records.
 
+### Multirepo workspace repository
+
+`MultirepoDeclaration` has an optional `workspace` (`WorkspaceSetting`: `enabled`, `alias`, `default`; in JSON `false` or `{ "alias", "default" }`). `Multirepo` carries `folderIsRepository`, set by `ResolveMultirepoUseCase.build` from the folder's `.git` entry. `workspaceRepository` is the folder as a repository when that is true and the declaration doesn't turn it off (or lists the folder in `repos` with the path `.`), `workspaceDetected` says no declaration states it, and `repositories`, `aliases` and `defaultRepos` are the effective lists with it, so create, status, clean and the desktop catalog treat it as one more repository; `declaredRepositories` is the `repos` map alone. `validate` rejects an invalid alias or one that collides with a `repos` key. `ConfigureMultirepoUseCase.setWorkspace`/`clearWorkspace` write only that field, and `setDefaults` maps the workspace alias to its `default` flag. A workspace repository without a project gets `<worktreesRoot>/<alias>` as worktrees folder in `multirepoMembers`. `RegisterProjectUseCase` takes the multirepo whose workspace is the folder (`withWorkspaceAt`) and registers that project with the proposed folder.
+
+`AgentSearch.multirepoFolder(folder, command)` is an exact search: `DetectRunningAgentsUseCase` attributes to it only a working directory equal to the folder, never a subfolder or a member repository.
+
 ### Repositories
 
 - `ProjectRepository` — `list()`, `save(project)`, `delete(id)` over the project catalog.

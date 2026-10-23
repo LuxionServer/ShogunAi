@@ -99,4 +99,60 @@ class FileAgentSessionStoreTest {
         assertEquals(emptyList(), store.list(root.resolve("elsewhere").toString()))
         store.write(root.resolve("elsewhere").toString(), record("s3"))
     }
+
+    private val folderStore: Path = root.resolve("home/.shogunai/agent-sessions")
+    private val folderStoreFor = FileAgentSessionStore(folderStore)
+
+    private fun multirepoFolder(name: String = "product"): Path =
+        root.resolve(name).also {
+            Files.createDirectories(it)
+            Files.writeString(it.resolve(".shogunai-multirepo.json"), "{}")
+        }
+
+    @Test
+    fun `a multirepo folder that is not a repository keeps its records under the home store`() {
+        val folder = multirepoFolder()
+
+        folderStoreFor.write(folder.toString(), record("s1", AgentState.BLOCKED))
+        folderStoreFor.write(folder.toString(), record("s2"))
+
+        assertEquals(setOf(record("s1", AgentState.BLOCKED), record("s2")), folderStoreFor.list(folder.toString()).toSet())
+        assertTrue(folderStore.isDirectory())
+        assertTrue(!folder.resolve(".git").exists())
+
+        folderStoreFor.remove(folder.toString(), "s1")
+
+        assertEquals(listOf(record("s2")), folderStoreFor.list(folder.toString()))
+    }
+
+    @Test
+    fun `two multirepo folders do not share records`() {
+        val first = multirepoFolder("first")
+        val second = multirepoFolder("second")
+
+        folderStoreFor.write(first.toString(), record("s1"))
+
+        assertEquals(emptyList(), folderStoreFor.list(second.toString()))
+    }
+
+    @Test
+    fun `a directory that is neither a repository nor a multirepo folder writes nothing`() {
+        val plain = root.resolve("plain").also { Files.createDirectories(it) }
+
+        folderStoreFor.write(plain.toString(), record("s1"))
+
+        assertEquals(emptyList(), folderStoreFor.list(plain.toString()))
+        assertTrue(!folderStore.exists())
+    }
+
+    @Test
+    fun `a multirepo folder that is a repository keeps using its git directory`() {
+        val folder = multirepoFolder("versioned")
+        git(folder, "init", "-q", "-b", "main")
+
+        folderStoreFor.write(folder.toString(), record("s1"))
+
+        assertTrue(folder.resolve(".git/shogunai/agent-sessions").isDirectory())
+        assertTrue(!folderStore.exists())
+    }
 }

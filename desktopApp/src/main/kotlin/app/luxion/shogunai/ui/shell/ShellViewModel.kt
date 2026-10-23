@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.io.ShellPreferenceRepository
+import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.RecentWorktree
 import app.luxion.shogunai.domain.model.WorktreeError
@@ -22,6 +23,7 @@ class ShellViewModel(
     private val readSettingsProblem: () -> WorktreeError.LocalFileUnreadable? = { null },
     private val acknowledgeSettingsProblem: () -> Unit = {},
     val multirepoCatalog: MultirepoCatalog = MultirepoCatalog { emptyList() },
+    private val registerWorkspaceProject: (Multirepo) -> Boolean = { false },
 ) : ViewModel() {
     var unreadableFiles by mutableStateOf<List<WorktreeError.LocalFileUnreadable>>(emptyList())
         private set
@@ -309,6 +311,7 @@ class ShellViewModel(
 
     private fun loadMultirepos() {
         multirepoCatalog.refresh()
+        if (multirepoCatalog.multirepos.count { registerWorkspaceProject(it) } > 0) projects = loadProjects()
         memberships = multirepoMemberships(multirepoCatalog.multirepos, projects)
     }
 

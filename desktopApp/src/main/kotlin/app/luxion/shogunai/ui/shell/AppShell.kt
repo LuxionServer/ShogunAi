@@ -188,7 +188,9 @@ fun AppShell(
                         folder = membership.folder,
                         name = membership.name,
                         projects = members,
-                        activity = members.fold(ProjectActivity.NONE) { total, project ->
+                        activity = members.fold(
+                            ProjectActivity(board.multirepoActivityCountOf(membership.folder), board.multirepoAgentsOf(membership.folder).map { it.name }),
+                        ) { total, project ->
                             total + ProjectActivity(board.activeCountOf(project.id), board.agentNamesOf(project.id))
                         },
                         collapsed = membership.folder in viewModel.collapsedMultirepos,
@@ -443,6 +445,7 @@ private fun ProjectForm(
             appContainer.repositoryTrust,
             appContainer.tools,
             appContainer::detectStacks,
+            appContainer::multirepoNameOfWorkspace,
         )
     }
     ProjectSettingsView(
