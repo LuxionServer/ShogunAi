@@ -60,6 +60,26 @@ class NioFileManager : FileManager {
     override fun hasSameContent(first: String, second: String): Boolean =
         runCatching { Files.mismatch(Path.of(first), Path.of(second)) == -1L }.getOrDefault(false)
 
+    override fun deleteRecursively(path: String) {
+        val root = Path.of(path)
+        if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) return
+        Files.walkFileTree(
+            root,
+            object : SimpleFileVisitor<Path>() {
+                override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+                    Files.delete(file)
+                    return FileVisitResult.CONTINUE
+                }
+
+                override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult {
+                    if (exc != null) throw exc
+                    Files.delete(dir)
+                    return FileVisitResult.CONTINUE
+                }
+            },
+        )
+    }
+
     override fun isDirectory(path: String): Boolean = Files.isDirectory(Path.of(path))
 
     override fun listFiles(directory: String): List<String> {
