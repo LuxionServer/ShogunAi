@@ -71,6 +71,7 @@ Los multirepos y los grupos por rama están hechos en el CLI y en la app de escr
 - Variables compartidas entre los repositorios de un grupo (por ejemplo, el puerto del backend con el que habla la app del grupo).
 - El estado del pull request de cada repositorio de un grupo.
 - Una única sesión para todo el grupo, con un entorno combinado, como opción junto a un agente por repositorio.
+- Devolver un repositorio de workspace declarado a la detección (quitando el campo `workspace`), desde el CLI y los ajustes del multirepo; hoy `workspace clear` lo desactiva y para deshacerlo hay que editar el archivo a mano.
 
 ## En estudio
 

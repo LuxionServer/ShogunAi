@@ -20,6 +20,7 @@ import app.luxion.shogunai.domain.model.RecentWorktree
 import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.components.TextInputFocus
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.usecase.Activity
@@ -103,6 +104,8 @@ class WorktreeBoard(
     var memberships by mutableStateOf<List<MultirepoMembership>>(emptyList())
         private set
     var multirepoFolder by mutableStateOf<String?>(null)
+        private set
+    var multirepoAgents by mutableStateOf<Map<String, List<RunningAgent>>>(emptyMap())
         private set
     private var collapsedChanges by mutableStateOf<Set<String>>(emptySet())
     var multirepoNotice by mutableStateOf<MultirepoNotice?>(null)
@@ -294,6 +297,19 @@ class WorktreeBoard(
         get() = entries.values.any { entry ->
             entry.holder.agents.orEmpty().values.flatten().any { it.name == "claude" && it.stateSource == null }
         }
+
+    fun multirepoAgentsOf(folder: String): List<RunningAgent> = multirepoAgents[folder].orEmpty()
+
+    fun multirepoActivityCountOf(folder: String): Int =
+        multirepoAgentsOf(folder).count { it.state == AgentState.WORKING || it.state == AgentState.BLOCKED }
+
+    private fun multirepoSearches(): List<AgentSearch> =
+        memberships.map { AgentSearch.multirepoFolder(it.folder, it.multirepo.agent.agentCommand) }
+
+    private fun applyMultirepoAgents(detected: Map<String, List<RunningAgent>>?) {
+        val folders = memberships.map { it.folder }.toSet()
+        multirepoAgents = detected?.filterKeys { it in folders }.orEmpty()
+    }
 
     fun agentNamesOf(projectId: String): List<String> =
         holder(projectId)?.agents.orEmpty().values.flatten().map { it.name }.distinct()
@@ -488,6 +504,7 @@ class WorktreeBoard(
         projectFilter = null
         multirepoFolder = folder
         sizeQueue.prioritize(shownHolders())
+        viewModelScope.launch { applyMultirepoAgents(detectAgents(multirepoSearches()).getOrNull()) }
     }
 
     fun revealGroup(branch: String) {
@@ -672,8 +689,9 @@ class WorktreeBoard(
         due.forEach { it.holder.refreshStatuses() }
         viewModelScope.launch {
             val searches = due.map { AgentSearch(it.project.config.agents.map { agent -> agent.agentCommand }, it.holder.worktrees) }
-            val detected = detectAgents(searches).getOrNull()
+            val detected = detectAgents(searches + multirepoSearches()).getOrNull()
             due.forEach { it.holder.applyAgents(detected) }
+            applyMultirepoAgents(detected)
         }
     }
 
@@ -716,10 +734,11 @@ class WorktreeBoard(
         val shownIds = shownProjects.map { it.id }.toSet()
         val hidden = entries.values.filter { it.project.id !in shownIds && !it.holder.isBusy && it.holder.hasLoaded }
         val loaded = unchanged + hidden
-        if (loaded.isEmpty()) return
-        val searches = loaded.map { AgentSearch(it.project.config.agents.map { agent -> agent.agentCommand }, it.holder.worktrees) }
+        val searches = loaded.map { AgentSearch(it.project.config.agents.map { agent -> agent.agentCommand }, it.holder.worktrees) } + multirepoSearches()
+        if (searches.isEmpty()) return
         val detected = detectAgents(searches).getOrNull()
         loaded.forEach { it.holder.applyAgents(detected) }
+        applyMultirepoAgents(detected)
         unchanged.forEach { entry ->
             if (isDeviceRefreshDue(entry.project.id)) entry.holder.refreshDevices()
         }

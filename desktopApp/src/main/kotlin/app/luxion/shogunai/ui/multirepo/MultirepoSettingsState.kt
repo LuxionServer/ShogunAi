@@ -3,6 +3,7 @@ package app.luxion.shogunai.ui.multirepo
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import app.luxion.shogunai.domain.model.DEFAULT_WORKSPACE_ALIAS
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.isValidMultirepoAlias
 import app.luxion.shogunai.ui.projectconfig.AgentDraft
@@ -21,6 +22,10 @@ class MultirepoSettingsState(
     var defaults by mutableStateOf<Set<String>>(emptySet())
         private set
     var worktreesRoot by mutableStateOf("")
+    var workspaceDeclared by mutableStateOf(false)
+    var workspaceAlias by mutableStateOf(DEFAULT_WORKSPACE_ALIAS)
+    var workspaceOff by mutableStateOf(false)
+        private set
     var agent by mutableStateOf(AgentDraft())
     var newAlias by mutableStateOf("")
     var newPath by mutableStateOf("")
@@ -39,16 +44,24 @@ class MultirepoSettingsState(
     val aliases: List<String>
         get() = multirepo?.aliases.orEmpty()
 
+    val hasWorkspaceSection: Boolean
+        get() = multirepo?.let { it.folderIsRepository && it.declaredRepositories.none { repository -> sameFolder(repository.path, it.folder) } } == true
+
+    val workspaceDetected: Boolean
+        get() = multirepo?.workspaceDetected == true
+
     val hasChanges: Boolean
         get() {
             val current = multirepo ?: return false
-            return defaults != current.declaration.defaultRepos.toSet() ||
+            return defaults != current.defaultRepos.toSet() ||
                 worktreesRoot.trim() != current.worktreesRoot ||
-                agent.toConfig() != current.agent
+                agent.toConfig() != current.agent ||
+                workspaceChanged(current)
         }
 
     val canSave: Boolean
-        get() = hasChanges && !isBusy && worktreesRoot.isNotBlank() && agent.command.isNotBlank()
+        get() = hasChanges && !isBusy && worktreesRoot.isNotBlank() && agent.command.isNotBlank() &&
+            (!workspaceDeclared || isValidMultirepoAlias(workspaceAlias))
 
     val canAddRepository: Boolean
         get() = !isBusy && isValidMultirepoAlias(newAlias) && newAlias !in aliases && newPath.isNotBlank()
@@ -56,7 +69,10 @@ class MultirepoSettingsState(
     fun reload() {
         val read = setup.read(folder)
         multirepo = read
-        defaults = read?.declaration?.defaultRepos?.toSet().orEmpty()
+        defaults = read?.defaultRepos?.toSet().orEmpty()
+        workspaceDeclared = read?.workspaceDeclared == true
+        workspaceAlias = read?.workspaceRepository?.alias ?: read?.declaration?.workspace?.alias ?: DEFAULT_WORKSPACE_ALIAS
+        workspaceOff = read?.declaration?.workspace?.enabled == false
         worktreesRoot = read?.worktreesRoot.orEmpty()
         agent = read?.agent?.let(AgentDraft::from) ?: AgentDraft()
     }
@@ -65,13 +81,26 @@ class MultirepoSettingsState(
         defaults = if (alias in defaults) defaults - alias else defaults + alias
     }
 
+    fun turnOffWorkspace() = run { multirepo?.let { setup.clearWorkspace(it).getOrThrow() } }
+
+    private fun workspaceChanged(current: Multirepo): Boolean {
+        if (!hasWorkspaceSection) return false
+        return workspaceDeclared != current.workspaceDeclared ||
+            (workspaceDeclared && workspaceAlias != current.workspaceRepository?.alias)
+    }
+
     fun save() {
         val current = multirepo ?: return
         if (!canSave) return
         run {
             var updated = current
-            if (defaults != current.declaration.defaultRepos.toSet()) {
-                updated = setup.setDefaults(updated, aliases.filter { it in defaults }).getOrThrow()
+            val previousWorkspace = current.workspaceRepository?.alias
+            if (workspaceChanged(current) && workspaceDeclared) {
+                updated = setup.setWorkspace(updated, workspaceAlias, workspaceAlias in defaults || previousWorkspace in defaults).getOrThrow()
+                defaults = defaults.map { if (it == previousWorkspace) workspaceAlias else it }.toSet()
+            }
+            if (defaults != updated.defaultRepos.toSet()) {
+                updated = setup.setDefaults(updated, updated.aliases.filter { it in defaults }).getOrThrow()
             }
             if (worktreesRoot.trim() != current.worktreesRoot) updated = setup.setWorktreesRoot(updated, worktreesRoot.trim()).getOrThrow()
             if (agent.toConfig() != current.agent) setup.setAgent(updated, agent.toConfig()).getOrThrow()

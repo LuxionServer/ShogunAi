@@ -14,6 +14,7 @@ import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.WorkspaceSetting
 import app.luxion.shogunai.ui.multirepo.MultirepoCatalog
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -187,5 +188,54 @@ class MultirepoShellTest {
         onNodeWithText("product").assertIsDisplayed()
         onNodeWithText("tools").assertIsDisplayed()
         assertFalse(onAllNodesWithText("api").fetchSemanticsNodes().isNotEmpty())
+    }
+
+    private val workspaceProject = Project("workspace", "product", ProjectConfig(folder, "/home/dev/projects/product-worktrees/workspace", emptyList()))
+
+    private fun workspaceMultirepo(workspace: WorkspaceSetting? = null) = Multirepo(
+        folder,
+        MultirepoDeclaration(repos = mapOf("app" to "app"), worktreesRoot = "../product-worktrees", workspace = workspace),
+        folderIsRepository = true,
+    )
+
+    @Test
+    fun `the project of the multirepo folder is a member and not a loose project`() {
+        repository.save(workspaceProject)
+        known = listOf(workspaceMultirepo())
+
+        val viewModel = viewModel()
+
+        val membership = viewModel.memberships.single()
+        assertEquals("workspace", membership.aliasOf("workspace"))
+        assertEquals(membership, viewModel.multirepoOf(workspaceProject))
+    }
+
+    @Test
+    fun `with the workspace turned off the folder's project stays a loose project`() {
+        repository.save(workspaceProject)
+        known = listOf(workspaceMultirepo(WorkspaceSetting(enabled = false)))
+
+        val viewModel = viewModel()
+
+        assertEquals(null, viewModel.multirepoOf(workspaceProject))
+    }
+
+    @Test
+    fun `the workspace project is registered once when the multirepo loads`() {
+        known = listOf(workspaceMultirepo())
+        val registered = mutableListOf<String>()
+        val viewModel = ShellViewModel(
+            repository,
+            preferences,
+            multirepoCatalog = MultirepoCatalog { known },
+            registerWorkspaceProject = { multirepo ->
+                registered += multirepo.folder
+                repository.save(workspaceProject)
+                true
+            },
+        )
+
+        assertEquals(listOf(folder), registered)
+        assertEquals("workspace", viewModel.memberships.single().aliasOf("workspace"))
     }
 }

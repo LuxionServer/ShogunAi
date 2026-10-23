@@ -8,6 +8,7 @@ import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.WorkspaceSetting
 
 class MultirepoTestWorld {
     val folder = "/home/dev/projects/product"
@@ -32,6 +33,11 @@ class MultirepoTestWorld {
     val projects = FakeProjectRepository(listOf(appProject, apiProject, docsProject))
     val multirepo = Multirepo(folder, declaration)
     val resolver = ResolveMultirepoUseCase(source, git, fileManager)
+
+    fun makeFolderARepository() = git.repository(folder).also { fileManager.writeText("$folder/.git", "") }
+
+    fun resolved(workspace: WorkspaceSetting? = null): Multirepo =
+        resolver.build(folder, declaration.copy(workspace = workspace))
 
     fun members(): List<MultirepoMember> = multirepoMembers(multirepo, projects.list())
 

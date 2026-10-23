@@ -29,10 +29,12 @@ fun multirepoJson(multirepo: Multirepo, configs: Map<String, ProjectConfig?>, ba
                 put("project", configs[repository.alias] != null)
                 put("worktreesFolder", configs[repository.alias]?.worktreesRoot?.ifBlank { null })
                 put("base", bases[repository.alias])
+                put("workspace", repository == multirepo.workspaceRepository)
+                put("detected", repository == multirepo.workspaceRepository && multirepo.workspaceDetected)
             })
         }
     })
-    put("defaultRepos", buildJsonArray { multirepo.declaration.defaultRepos.forEach { add(JsonPrimitive(it)) } })
+    put("defaultRepos", buildJsonArray { multirepo.defaultRepos.forEach { add(JsonPrimitive(it)) } })
     put("agent", buildJsonObject {
         put("name", multirepo.agent.displayName)
         put("command", multirepo.agent.agentCommand)
@@ -119,6 +121,15 @@ fun groupCleanJson(
                         })
                     }
                 })
+            })
+        }
+    })
+    put("loose", buildJsonArray {
+        selection.loose.forEach { worktree ->
+            add(buildJsonObject {
+                put("alias", worktree.member.alias)
+                put("path", worktree.member.worktree.path)
+                put("branch", worktree.member.worktree.branch)
             })
         }
     })

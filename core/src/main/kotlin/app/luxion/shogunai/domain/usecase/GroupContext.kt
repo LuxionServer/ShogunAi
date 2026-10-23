@@ -25,7 +25,7 @@ class GroupContext(private val fileManager: FileManager) {
             multirepo.repositories.joinToString { "${it.alias} (${it.path})" }.ifEmpty { "none yet" } + ".",
         joinPath(multirepo.folder, AGENTS_FILE).takeIf(fileManager::exists)?.let { "Read $it for what all the repositories share." },
         "Run `shogun status` to list the groups, `shogun new <id>` to create one" +
-            (multirepo.declaration.defaultRepos.takeIf { it.isNotEmpty() }?.let { " in ${it.joinToString()}" } ?: " with --repos") +
+            (multirepo.defaultRepos.takeIf { it.isNotEmpty() }?.let { " in ${it.joinToString()}" } ?: " with --repos") +
             " and `shogun open <id> --herdr` to open its worktrees, each with its own agent.",
     )
 

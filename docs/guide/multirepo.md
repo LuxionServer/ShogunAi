@@ -13,7 +13,8 @@ A multirepo is declared by a `.shogunai-multirepo.json` file in a folder you cho
   "repos": { "docs": "product-docs", "app": "product-app", "api": "product-api" },
   "worktreesRoot": "../product-worktrees",
   "defaultRepos": ["app", "api"],
-  "agent": { "agentCommand": "claude" }
+  "agent": { "agentCommand": "claude" },
+  "workspace": { "alias": "workspace", "default": false }
 }
 ```
 
@@ -21,6 +22,7 @@ A multirepo is declared by a `.shogunai-multirepo.json` file in a folder you cho
 - `worktreesRoot` is a common folder under which each repository's worktrees folder is proposed as `<worktreesRoot>/<alias>`.
 - `defaultRepos` are the repositories `shogun new <id>` covers when run in the multirepo folder.
 - `agent` is the command `shogun open --herdr` runs in the multirepo folder; `claude` by default.
+- `workspace` is optional: `false`, or an object with the `alias` of the [workspace repository](#a-workspace-repository) and whether it is a `default` repository. Files without it keep working.
 
 The folder is outside every repository, or the top level of a **workspace repository** that versions what the repositories share (an `AGENTS.md`, the declaration) and ignores the nested repositories. It's never a subfolder of a repository, so the declaration never ends up inside a repository that isn't yours.
 
@@ -57,7 +59,7 @@ shogun clean --yes                  # remove the groups whose worktrees are all 
 - **Creating.** `shogun new <id>` does in each repository what `shogun new <id>` does there today (the project's worktrees folder, the usual folder name, provisioning), except that the branch starts at that repository's `origin/<base>`. Repositories already on the branch are reported and left alone, an existing branch without a worktree is checked out, and a repository that fails doesn't undo the others. It opens nothing. Inside a repository, `shogun new <id>` without `--repos` still creates a single worktree.
 - **Status.** In the multirepo folder, `shogun status` lists each group with, per repository, its path, changes, ahead/behind its own base, merged state and agents, then the ungrouped worktrees.
 - **Opening.** `shogun open <id> --herdr` opens every worktree of the group as a single worktree opens, under its repository's space with its environment and its project's agent; `<id>` is a branch, or a task id when only one of `feature/<id>` and `fix/<id>` is a group.
-- **Cleaning up.** A group is a candidate only when every worktree is clean and merged into its base and no agent runs in any of them. `--yes` removes its worktrees with each repository's usual cleanup and the same options as `shogun clean` (`--delete-branches`, `--stop-emulators`, `--down-compose-projects`…).
+- **Cleaning up.** A group is a candidate only when every worktree is clean and merged into its base and no agent runs in any of them. `--yes` removes its worktrees with each repository's usual cleanup and the same options as `shogun clean` (`--delete-branches`, `--stop-emulators`, `--down-compose-projects`…). After the groups, `shogun clean` also lists the loose worktrees of each repository (including the workspace repository) that belong to no group, when they are clean, merged and have no agent, and removes them under the same confirmation.
 
 ## Context for the agents
 
@@ -72,4 +74,11 @@ The desktop app shows the same multirepos and groups, computed the same way: a f
 
 ## A workspace repository
 
-When the multirepo folder is the top level of a repository, `shogun new`, `status`, `open` and `clean` run in its main checkout act on the multirepo. The workspace repository can join groups like any other once declared with the path `.` (`shogun multirepo add-repo workspace .`, then `--repos workspace,app`); in its linked worktrees, commands behave as in any repository.
+When the multirepo folder is the top level of a Git repository, `shogun new`, `status`, `open` and `clean` run in its main checkout act on the multirepo, and the folder is **detected** as the multirepo's workspace repository with the alias `workspace`, with no declaration needed:
+
+- It joins groups like any other repository: `shogun new TASK-12 --repos workspace,app` creates its worktree in `<worktreesRoot>/workspace/TASK-12`. It is not one of the `defaultRepos` unless you say so.
+- `shogun multirepo show` lists it marked `detected`. `shogun multirepo workspace set [--alias <alias>] [--default]` declares it in the file (`"workspace": { "alias": … }`), and `shogun multirepo workspace clear` turns detection off (`"workspace": false`). A `repos` entry with the path `.` also makes the folder the workspace repository, under that alias.
+- The folder is not a project of its own: the sidebar lists its worktrees under the multirepo, and `shogun project add` and `shogun app` run in the folder register the workspace repository once, as a member of the multirepo, instead of a loose project. With detection off, the folder is an ordinary project again.
+- The multirepo agent (the one running in the folder) is shown in the multirepo view. Its Claude Code session records are kept in the folder's Git directory when it is a repository, and otherwise in a store under `~/.shogunai/agent-sessions/` keyed by the folder, so the `agent-state` hook works in a multirepo folder that isn't a repository too. Only an agent whose working directory is exactly the folder counts as the multirepo agent; one in a member repository belongs to that repository's worktree.
+
+In its linked worktrees, commands behave as in any repository.

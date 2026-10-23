@@ -36,20 +36,21 @@ class DetectRunningAgentsUseCase(
     suspend operator fun invoke(searches: List<AgentSearch>): Result<Map<String, List<RunningAgent>>> = runCatching {
         val worktrees = searches.flatMap { it.worktrees }
         if (worktrees.isEmpty()) return@runCatching emptyMap()
+        val exact = searches.filter { it.exact }.flatMap { it.worktrees }.map { normalizePath(it.path) }.toSet()
         val (processes, herdrAgents) = coroutineScope {
             val herdrAgents = async { readHerdrAgents() }
-            val processes = runCatching { scanProcesses(searches, worktrees) }
+            val processes = runCatching { scanProcesses(searches, worktrees, exact) }
             processes to herdrAgents.await()
         }
         val scan = processes.getOrDefault(ProcessScan())
-        merge(withSessionStates(scan, worktrees), herdrAgents, worktrees)
+        merge(withSessionStates(scan, worktrees), herdrAgents, worktrees, exact)
             .also { merged -> if (merged.isEmpty()) processes.getOrThrow() }
     }
 
-    private suspend fun scanProcesses(searches: List<AgentSearch>, worktrees: List<Worktree>): ProcessScan {
+    private suspend fun scanProcesses(searches: List<AgentSearch>, worktrees: List<Worktree>, exact: Set<String>): ProcessScan {
         val processes = run("lsof", "-d", "cwd", "-F", "pcn").let(::parseLsofWorkingDirectories)
         val worktreeByPid = processes.mapNotNull { (pid, cwd) ->
-            attributedWorktree(cwd, worktrees)?.let { pid to it.path }
+            attributedWorktree(cwd, worktrees, exact)?.let { pid to it.path }
         }.toMap()
         if (worktreeByPid.isEmpty()) return ProcessScan()
 
@@ -125,10 +126,11 @@ class DetectRunningAgentsUseCase(
         processAgents: Map<String, List<RunningAgent>>,
         herdrAgents: List<HerdrAgent>,
         worktrees: List<Worktree>,
+        exact: Set<String>,
     ): Map<String, List<RunningAgent>> {
         if (herdrAgents.isEmpty()) return processAgents
         val herdrByPath = herdrAgents
-            .mapNotNull { agent -> attributedWorktree(agent.directory, worktrees)?.let { it.path to agent } }
+            .mapNotNull { agent -> attributedWorktree(agent.directory, worktrees, exact)?.let { it.path to agent } }
             .groupBy({ it.first }, { it.second })
         return (processAgents.keys + herdrByPath.keys).associateWith { path ->
             val herdrByName = herdrByPath[path].orEmpty().groupBy { it.name }.mapValues { (_, agents) -> mostUrgent(agents) }
@@ -138,9 +140,10 @@ class DetectRunningAgentsUseCase(
         }
     }
 
-    private fun attributedWorktree(cwd: String, worktrees: List<Worktree>): Worktree? {
+    private fun attributedWorktree(cwd: String, worktrees: List<Worktree>, exact: Set<String>): Worktree? {
         val worktree = owningWorktree(cwd, worktrees) ?: return null
         val root = normalizePath(worktree.path)
+        if (root in exact) return worktree.takeIf { normalizePath(cwd) == root }
         var directory = normalizePath(cwd)
         while (directory.length > root.length) {
             if (hasGitEntry(directory)) return null
@@ -190,7 +193,12 @@ private data class ProcessScan(
     val claudePids: Set<Long> = emptySet(),
 )
 
-data class AgentSearch(val agentCommands: List<String>, val worktrees: List<Worktree>)
+data class AgentSearch(val agentCommands: List<String>, val worktrees: List<Worktree>, val exact: Boolean = false) {
+    companion object {
+        fun multirepoFolder(folder: String, agentCommand: String) =
+            AgentSearch(listOf(agentCommand), listOf(Worktree(path = folder, branch = null)), exact = true)
+    }
+}
 
 fun owningWorktree(cwd: String, worktrees: List<Worktree>): Worktree? {
     val path = normalizePath(cwd)

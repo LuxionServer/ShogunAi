@@ -675,6 +675,13 @@ object EnglishStrings : Strings {
     override val noGroupsDetected = "No branch is shared by two repositories yet."
     override val multirepoSettingsTitle = "Multirepo settings"
     override val multirepoNotFound = "This multirepo no longer exists."
+    override val workspaceRepositoryTitle = "Workspace repository"
+    override val workspaceRepositoryHint = "The multirepo folder is a Git repository: its own files are versioned there and its worktrees go in the multirepo's worktrees folder."
+    override val workspaceDetectedMark = "detected"
+    override val declareWorkspace = "Declare it in the multirepo file"
+    override val workspaceAliasLabel = "Alias"
+    override val turnOffWorkspace = "Turn off"
+    override val workspaceTurnedOff = "Turned off: the folder isn't treated as a repository of the multirepo. Declare it to bring it back."
     override val defaultRepositoriesTitle = "Default repositories"
     override val defaultRepositoriesHint = "A new change covers these repositories unless you pick others."
     override val multirepoWorktreesRootTitle = "Worktrees folder"
@@ -697,6 +704,8 @@ object EnglishStrings : Strings {
     override fun multirepoInsideRepository(repository: String) = "This folder is inside the repository $repository. A multirepo can't be declared inside a repository."
     override fun useWorktreesFolder(folder: String) = "Worktrees in $folder"
     override fun notARepository(path: String) = "$path isn't the top level of a Git repository"
+    override fun folderIsMultirepoWorkspace(path: String, multirepo: String) =
+        "$path is the workspace repository of the multirepo $multirepo; it belongs to it and isn't added as a project of its own"
     override fun deleteMultirepoTitle(name: String) = "Delete the multirepo $name?"
 }
 
