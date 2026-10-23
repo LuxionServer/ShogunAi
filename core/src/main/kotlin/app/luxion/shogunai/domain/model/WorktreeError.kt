@@ -211,6 +211,18 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class MultirepoNotFound(val path: String) :
         WorktreeError("No multirepo found at $path")
 
+    class WorktreeFolderInUse(
+        val path: String,
+        val unregistered: Boolean,
+        val command: List<String>,
+        val exitCode: Int,
+        val errorOutput: String,
+    ) : WorktreeError(
+        "A program is using $path, so it can't be deleted" +
+            (if (unregistered) "; Git already unregistered the worktree, so removing it again finishes the job" else "") +
+            if (errorOutput.isNotBlank()) ":\n$errorOutput" else "",
+    )
+
     class BaseBranchNotFound(val repository: String) :
         WorktreeError("Couldn't resolve the base branch of $repository; set the project's main branch")
 

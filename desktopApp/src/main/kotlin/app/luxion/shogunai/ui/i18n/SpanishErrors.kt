@@ -225,6 +225,10 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "${error.path} es el worktree principal.",
         "El worktree principal no se puede eliminar.",
     )
+    is WorktreeError.WorktreeFolderInUse -> ErrorTexts(
+        "Un programa está usando la carpeta de ${error.path}.",
+        "Cierra la terminal, el editor o el cliente de sincronización que la use y vuelve a eliminar el worktree.${if (error.unregistered) " Git ya lo había desregistrado, así que eliminarlo de nuevo termina el trabajo." else ""}",
+    )
     is WorktreeError.AgentRunningInWorktree -> ErrorTexts(
         "${error.agents.joinToString()} se está ejecutando en ${error.path}.",
         "Páralo primero, o elimina el worktree forzándolo.",

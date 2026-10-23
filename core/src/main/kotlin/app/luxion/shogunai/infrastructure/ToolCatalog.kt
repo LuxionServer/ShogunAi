@@ -6,6 +6,13 @@ import app.luxion.shogunai.domain.model.TerminalId
 
 internal data class MacApp(val bundleIds: List<String>, val bundleNames: List<String>)
 
+internal data class WindowsInstall(
+    val parent: String?,
+    val folder: String,
+    val versioned: Boolean,
+    val executables: List<String>,
+)
+
 internal object ToolCatalog {
 
     val terminalApps = mapOf(
@@ -35,6 +42,38 @@ internal object ToolCatalog {
             EditorId.XCODE -> return null
         }
         return if (os == HostOs.WINDOWS) "$name.cmd" else name
+    }
+
+    fun windowsCommandNames(editor: EditorId): List<String> = when (editor) {
+        EditorId.VS_CODE -> listOf("code")
+        EditorId.INTELLIJ_IDEA -> listOf("idea", "idea64")
+        EditorId.ANDROID_STUDIO -> listOf("studio", "studio64")
+        EditorId.XCODE -> emptyList()
+    }
+
+    fun windowsInstalls(editor: EditorId): List<WindowsInstall> = when (editor) {
+        EditorId.VS_CODE -> listOf(WindowsInstall(null, "Microsoft VS Code", false, listOf("bin\\code.cmd", "Code.exe")))
+        EditorId.INTELLIJ_IDEA -> listOf(WindowsInstall("JetBrains", "IntelliJ IDEA", true, listOf("bin\\idea64.exe")))
+        EditorId.ANDROID_STUDIO -> listOf(
+            WindowsInstall("Android", "Android Studio", true, listOf("bin\\studio64.exe")),
+            WindowsInstall(null, "Android Studio", true, listOf("bin\\studio64.exe")),
+        )
+        EditorId.XCODE -> emptyList()
+    }
+
+    fun windowsToolboxProducts(editor: EditorId): List<String> = when (editor) {
+        EditorId.INTELLIJ_IDEA -> listOf("IDEA", "intellij-idea")
+        EditorId.ANDROID_STUDIO -> listOf("AndroidStudio", "android-studio")
+        else -> emptyList()
+    }
+
+    fun windowsToolboxAppsFolder(localAppData: String): String = "$localAppData\\JetBrains\\Toolbox\\apps"
+
+    fun windowsRegistryMarker(editor: EditorId): String? = when (editor) {
+        EditorId.VS_CODE -> "microsoft vs code"
+        EditorId.INTELLIJ_IDEA -> "intellij idea"
+        EditorId.ANDROID_STUDIO -> "android studio"
+        EditorId.XCODE -> null
     }
 
     fun windowsTerminalExecutable(): String = "wt.exe"

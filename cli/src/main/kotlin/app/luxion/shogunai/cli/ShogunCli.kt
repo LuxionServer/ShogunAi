@@ -896,7 +896,7 @@ class ShogunCli(
             }
         }
         val plan = releaseResources.plan(config, worktree, worktrees)
-        val removal = RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr))(
+        val removal = RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr), fileManager)(
             worktree.path,
             branchToDelete = worktree.branch?.takeIf { command.deleteBranch || command.forceDeleteBranch },
             force = command.force,
@@ -1064,7 +1064,7 @@ class ShogunCli(
             out.line(dryRunHint(command, candidates.size, simulators.orphans.isNotEmpty(), derivedDataOrphans.isNotEmpty()))
             return EXIT_OK
         }
-        val report = CleanUpWorktreesUseCase(config, executor, closeHerdrWorkspaces, composeSource)(
+        val report = CleanUpWorktreesUseCase(config, executor, closeHerdrWorkspaces, composeSource, fileManager)(
             candidates,
             mainBranch,
             command.deleteBranches,
@@ -1952,7 +1952,7 @@ class ShogunCli(
         val worktree = ListWorktreesUseCase(config, executor)().getOrThrow()
             .firstOrNull { !it.isMain && sameDirectory(it.path, path) }
             ?: throw WorktreeError.NotAWorktree(path)
-        val removal = RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr))(
+        val removal = RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr), fileManager)(
             worktree.path,
             branchToDelete = worktree.branch,
             force = true,

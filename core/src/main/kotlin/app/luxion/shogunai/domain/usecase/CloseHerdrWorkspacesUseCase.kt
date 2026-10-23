@@ -36,6 +36,36 @@ class CloseHerdrWorkspacesUseCase(
                 CleanupFailure(path, WorktreeError.HerdrCommandFailed(listOf("workspace", "close", workspaceId), error.message.orEmpty()))
             }
         }
+
+    suspend fun closeHolders(path: String, workspaceId: String?): HolderClosing {
+        var failure: WorktreeError? = null
+        var closedWorkspace = false
+        if (workspaceId != null) {
+            failure = close(mapOf(path to workspaceId), listOf(path)).firstOrNull()?.error
+            closedWorkspace = failure == null
+        }
+        val panes = try {
+            herdr.listPanes()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            return HolderClosing(closedWorkspace, failure)
+        }
+        panes.filter { it.workspaceId != workspaceId && it.directory?.let { directory -> isInsideDirectory(directory, path) } == true }
+            .forEach { pane ->
+                try {
+                    herdr.closePane(pane.paneId)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    failure = failure ?: (error as? WorktreeError)
+                        ?: WorktreeError.HerdrCommandFailed(listOf("pane", "close", pane.paneId), error.message.orEmpty())
+                }
+            }
+        return HolderClosing(closedWorkspace, failure)
+    }
 }
 
 fun WorktreeError.herdrDetail(): String = (this as? WorktreeError.HerdrCommandFailed)?.detail ?: message.orEmpty()
+
+data class HolderClosing(val closedWorkspace: Boolean = false, val failure: WorktreeError? = null)

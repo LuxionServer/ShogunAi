@@ -15,14 +15,18 @@ class LocalToolDetector(
     private val os: HostOs = HostOs.current(),
     private val home: String = System.getProperty("user.home"),
     private val locator: ExecutableLocator = ExecutableLocator(os, home),
+    private val editorResolver: EditorExecutableResolver = EditorExecutableResolver(os, locator),
     private val isDirectory: (String) -> Boolean = { File(it).isDirectory },
 ) : ToolDetector {
 
-    override suspend fun detect(): DetectedTools = DetectedTools(
-        terminals = TerminalId.entries.filter { isTerminalAvailable(it) },
-        editors = EditorId.entries.filter { isEditorAvailable(it) },
-        claudeDesktop = os == HostOs.MACOS && isMacAppInstalled(ToolCatalog.claudeDesktopApp),
-    )
+    override suspend fun detect(): DetectedTools {
+        val snapshot = editorResolver.snapshot()
+        return DetectedTools(
+            terminals = TerminalId.entries.filter { isTerminalAvailable(it) },
+            editors = EditorId.entries.filter { isEditorAvailable(it, snapshot) },
+            claudeDesktop = os == HostOs.MACOS && isMacAppInstalled(ToolCatalog.claudeDesktopApp),
+        )
+    }
 
     private suspend fun isTerminalAvailable(terminal: TerminalId): Boolean = when (terminal) {
         TerminalId.TERMINAL, TerminalId.ITERM2 ->
@@ -32,10 +36,9 @@ class LocalToolDetector(
         TerminalId.ZELLIJ -> os != HostOs.WINDOWS && onPath("zellij") && hasSession(listOf("zellij", "list-sessions", "--short"))
     }
 
-    private suspend fun isEditorAvailable(editor: EditorId): Boolean {
+    private suspend fun isEditorAvailable(editor: EditorId, snapshot: UninstallSnapshot): Boolean {
         if (os == HostOs.MACOS && isMacAppInstalled(ToolCatalog.editorApps.getValue(editor))) return true
-        val executable = ToolCatalog.editorExecutable(editor, os) ?: return false
-        return locator.find(executable, includeToolbox = true) != null
+        return editorResolver.find(editor, snapshot) != null
     }
 
     private fun onPath(executable: String): Boolean = locator.find(executable) != null

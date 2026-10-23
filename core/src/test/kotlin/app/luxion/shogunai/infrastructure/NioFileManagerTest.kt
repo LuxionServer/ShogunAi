@@ -33,6 +33,18 @@ class NioFileManagerTest {
     }
 
     @Test
+    fun `deletes a folder with its contents and ignores a missing one`() {
+        val folder = root.resolve("leftover")
+        folder.resolve("a/b").createDirectories()
+        folder.resolve("a/b/file.txt").writeBytes("x".toByteArray())
+
+        fileManager.deleteRecursively(folder.toString())
+        fileManager.deleteRecursively(folder.toString())
+
+        assertFalse(Files.exists(folder))
+    }
+
+    @Test
     fun `reads properties and treats a missing file as empty`() {
         val file = root.resolve("gradle.properties")
         file.writeBytes("org.gradle.caching=true\n# comment\norg.gradle.jvmargs=-Xmx2g\n".toByteArray())

@@ -15,6 +15,7 @@ class CommandEditorLauncher(
     private val os: HostOs = HostOs.current(),
     private val locator: ExecutableLocator = ExecutableLocator(os),
     private val xcodeWorkspaceFinder: XcodeWorkspaceFinder = FileSystemXcodeWorkspaceFinder(),
+    private val editorResolver: EditorExecutableResolver = EditorExecutableResolver(os, locator),
 ) : EditorLauncher {
 
     override suspend fun open(path: String): Result<Unit> = runCatching {
@@ -42,10 +43,11 @@ class CommandEditorLauncher(
     }
 
     private suspend fun openExecutable(path: String) {
-        val name = ToolCatalog.editorExecutable(editor, os)
-            ?: throw ToolCommandFailed(null, "${editor.displayName} can't be opened on this system")
-        val executable = locator.find(name, includeToolbox = true)
-            ?: throw ToolCommandFailed(null, "$name wasn't found")
+        if (ToolCatalog.editorExecutable(editor, os) == null) {
+            throw ToolCommandFailed(null, "${editor.displayName} can't be opened on this system")
+        }
+        val executable = editorResolver.find(editor)
+            ?: throw ToolCommandFailed(null, "${ToolCatalog.editorExecutable(editor, os)} wasn't found")
         val command = if (os == HostOs.LINUX) listOf("sh", "-c", DETACHED, executable, path) else listOf(executable, path)
         executor.runTool(command)
     }

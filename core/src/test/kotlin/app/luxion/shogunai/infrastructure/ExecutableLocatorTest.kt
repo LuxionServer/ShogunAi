@@ -7,31 +7,26 @@ import kotlin.test.assertNull
 
 class ExecutableLocatorTest {
 
-    private fun windows(vararg files: String, extensions: List<String> = ExecutableLocator.executableExtensions(null)) = ExecutableLocator(
-        HostOs.WINDOWS, "C:\\Users\\dev", listOf("C:\\Tools"), null, extensions,
+    private fun windows(vararg files: String, extensions: List<String> = listOf(".COM", ".EXE", ".BAT", ".CMD")) = ExecutableLocator(
+        HostOs.WINDOWS, "C:\\Users\\dev", listOf("C:\\Tools"), null, emptyList(), extensions,
     ) { it in files }
 
     @Test
     fun `finds a Windows command script by its extension`() {
-        assertEquals("C:\\Tools\\shogun.cmd", windows("C:\\Tools\\shogun.cmd").find("shogun"))
+        assertEquals("C:\\Tools\\shogun.CMD", windows("C:\\Tools\\shogun.CMD").find("shogun"))
     }
 
     @Test
     fun `finds a Windows executable and honors the extension order`() {
-        assertEquals("C:\\Tools\\shogun.exe", windows("C:\\Tools\\shogun.cmd", "C:\\Tools\\shogun.exe").find("shogun"))
+        assertEquals("C:\\Tools\\shogun.EXE", windows("C:\\Tools\\shogun.CMD", "C:\\Tools\\shogun.EXE").find("shogun"))
     }
 
     @Test
     fun `uses PATHEXT when the system defines it`() {
-        val extensions = ExecutableLocator.executableExtensions(".COM;.EXE;.PS1")
+        val extensions = listOf(".COM", ".EXE", ".PS1")
 
-        assertEquals("C:\\Tools\\shogun.ps1", windows("C:\\Tools\\shogun.ps1", extensions = extensions).find("shogun"))
-        assertNull(windows("C:\\Tools\\shogun.cmd", extensions = extensions).find("shogun"))
-    }
-
-    @Test
-    fun `falls back to the default extensions when PATHEXT is missing`() {
-        assertEquals(listOf(".com", ".exe", ".bat", ".cmd"), ExecutableLocator.executableExtensions(null))
+        assertEquals("C:\\Tools\\shogun.PS1", windows("C:\\Tools\\shogun.PS1", extensions = extensions).find("shogun"))
+        assertNull(windows("C:\\Tools\\shogun.CMD", extensions = extensions).find("shogun"))
     }
 
     @Test
@@ -41,7 +36,7 @@ class ExecutableLocatorTest {
 
     @Test
     fun `does not try extensions outside Windows`() {
-        val locator = ExecutableLocator(HostOs.MACOS, "/home/dev", listOf("/usr/bin"), null) { it == "/usr/bin/shogun.cmd" }
+        val locator = ExecutableLocator(HostOs.MACOS, "/home/dev", listOf("/usr/bin"), null) { it == "/usr/bin/shogun.CMD" }
 
         assertNull(locator.find("shogun"))
     }

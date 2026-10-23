@@ -69,6 +69,8 @@ import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.TerminalId
 import app.luxion.shogunai.domain.usecase.OpenWorktreeInTerminalUseCase
 import app.luxion.shogunai.infrastructure.CommandEditorLauncher
+import app.luxion.shogunai.infrastructure.EditorExecutableResolver
+import app.luxion.shogunai.infrastructure.RegistryUninstallLocations
 import app.luxion.shogunai.infrastructure.JsonToolPreferenceRepository
 import app.luxion.shogunai.infrastructure.LocalToolDetector
 import app.luxion.shogunai.infrastructure.MacTerminalLauncher
@@ -274,7 +276,15 @@ class AppContainer {
         noticeDismissedStore = { settingsFile.read().claudeHooksNoticeDismissed },
         rememberNoticeDismissed = { settingsFile.update { it.copy(claudeHooksNoticeDismissed = true) } },
     )
-    val tools = ToolsPreferences(JsonToolPreferenceRepository(settingsFile), LocalToolDetector(shellCommandExecutor))
+    private val editorResolver = EditorExecutableResolver(
+        HostOs.current(),
+        ExecutableLocator(),
+        RegistryUninstallLocations(shellCommandExecutor),
+    )
+    val tools = ToolsPreferences(
+        JsonToolPreferenceRepository(settingsFile),
+        LocalToolDetector(shellCommandExecutor, editorResolver = editorResolver),
+    )
     private val terminalLaunchers = listOf(
         MacTerminalLauncher(TerminalId.TERMINAL, shellCommandExecutor),
         MacTerminalLauncher(TerminalId.ITERM2, shellCommandExecutor),
@@ -282,7 +292,7 @@ class AppContainer {
         TmuxTerminalLauncher(shellCommandExecutor),
         ZellijTerminalLauncher(shellCommandExecutor),
     )
-    private val editorLaunchers = EditorId.entries.map { CommandEditorLauncher(it, shellCommandExecutor) }
+    private val editorLaunchers = EditorId.entries.map { CommandEditorLauncher(it, shellCommandExecutor, editorResolver = editorResolver) }
     private val folderLauncher = SystemFolderLauncher(shellCommandExecutor)
     private val claudeDesktopLauncher = MacClaudeDesktopLauncher(shellCommandExecutor)
     private val environmentCache = WorktreeEnvironmentCache()
@@ -540,14 +550,14 @@ class AppContainer {
         listBranches = ListBranchesUseCase(config, shellCommandExecutor),
         fetchRemote = FetchRemoteUseCase(config, shellCommandExecutor),
         resolveStartPoint = { ref -> ResolveStartPointUseCase(shellCommandExecutor)(config.baseRepositoryPath, ref) },
-        remove = RemoveWorktreeUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient)),
+        remove = RemoveWorktreeUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient), fileManager),
         deleteBranch = DeleteBranchUseCase(config, shellCommandExecutor),
         copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboardWriter),
         agents = AgentUseCases(config, agentChoices),
         repair = RepairWorktreesUseCase(config, shellCommandExecutor, fileManager),
         resolveMainBranch = ResolveMainBranchUseCase(config, shellCommandExecutor),
         readStatus = ReadWorktreeStatusUseCase(shellCommandExecutor, fileManager),
-        cleanUp = CleanUpWorktreesUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient), composeProjectSource),
+        cleanUp = CleanUpWorktreesUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient), composeProjectSource, fileManager),
         detectAgents = { worktrees -> detectRunningAgents(config, worktrees) },
         measureSize = MeasureWorktreeSizeUseCase(fileManager),
         readFingerprint = ReadGitMetadataFingerprintUseCase(config, fileManager),
