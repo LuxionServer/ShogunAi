@@ -11,6 +11,10 @@ import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.usecase.HookEntry
 import app.luxion.shogunai.domain.usecase.HookReplacement
 import app.luxion.shogunai.domain.usecase.HooksInstallState
+import app.luxion.shogunai.domain.model.HostOs
+import app.luxion.shogunai.domain.usecase.CommandLineToolInstallation
+import app.luxion.shogunai.domain.usecase.CommandLineToolState
+import app.luxion.shogunai.domain.usecase.CommandLineToolStatus
 import app.luxion.shogunai.ui.shell.HooksAction
 import app.luxion.shogunai.domain.model.RepositoryConfigIssue
 import app.luxion.shogunai.domain.usecase.GitFailureCause
@@ -196,7 +200,17 @@ interface Strings {
     val claudeHooksRemove: String
     val claudeHooksCancel: String
     val claudeHooksConfirm: String
-    val claudeHooksPathWarning: String
+    val claudeHooksNeedsTool: String
+    val commandLineToolLabel: String
+    fun commandLineToolStatus(status: CommandLineToolStatus): String
+    val commandLineToolNeededByHooks: String
+    val commandLineToolInstall: String
+    val commandLineToolRepair: String
+    val commandLineToolRemove: String
+    fun commandLineToolInstalled(installation: CommandLineToolInstallation): String
+    fun commandLineToolPathHint(status: CommandLineToolStatus, os: HostOs): String
+    fun commandLineToolManualSteps(os: HostOs): String
+    val claudeHooksNoticeToolMessage: String
     fun claudeHooksDialogTitle(action: HooksAction): String
     fun claudeHooksChangesIn(path: String): String
     fun claudeHooksAdded(entry: HookEntry): String

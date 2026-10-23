@@ -49,6 +49,9 @@ import app.luxion.shogunai.ui.shell.ClaudeHooksState
 import app.luxion.shogunai.ui.shell.UpdateState
 import app.luxion.shogunai.domain.usecase.ClaudeCodeHooks
 import app.luxion.shogunai.infrastructure.ExecutableLocator
+import app.luxion.shogunai.domain.usecase.CommandLineTool
+import app.luxion.shogunai.infrastructure.NioLauncherFiles
+import app.luxion.shogunai.infrastructure.PowerShellUserPath
 import app.luxion.shogunai.infrastructure.FileAgentSessionStore
 import app.luxion.shogunai.ui.shell.openInBrowser
 import java.nio.file.Files
@@ -252,10 +255,22 @@ class AppContainer {
     val agentChoices = AgentChoices(settingsFile.read().worktreeAgents) { transform ->
         settingsFile.update { it.copy(worktreeAgents = transform(it.worktreeAgents)) }
     }
+    private val commandLineTool = ExecutableLocator().let { locator ->
+        CommandLineTool(
+            os = HostOs.current(),
+            appLauncher = System.getProperty("jpackage.app-path"),
+            home = System.getProperty("user.home"),
+            pathFolders = System.getenv("PATH").orEmpty().split(java.io.File.pathSeparator).filter { it.isNotBlank() },
+            userBinFolders = locator.userBinFolders(),
+            findShogun = { locator.find("shogun") },
+            files = NioLauncherFiles(),
+            userPath = PowerShellUserPath(shellCommandExecutor),
+        )
+    }
     val claudeHooks = ClaudeHooksState(
         hooks = ClaudeCodeHooks(fileManager),
         settingsPath = { ClaudeCodeHooks.userSettingsPath(System.getenv("CLAUDE_CONFIG_DIR"), System.getProperty("user.home")) },
-        isShogunOnPath = { ExecutableLocator().find("shogun") != null },
+        tool = commandLineTool,
         noticeDismissedStore = { settingsFile.read().claudeHooksNoticeDismissed },
         rememberNoticeDismissed = { settingsFile.update { it.copy(claudeHooksNoticeDismissed = true) } },
     )

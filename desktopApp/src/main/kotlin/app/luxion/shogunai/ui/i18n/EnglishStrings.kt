@@ -9,6 +9,10 @@ import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.usecase.HookEntry
 import app.luxion.shogunai.domain.usecase.HookReplacement
 import app.luxion.shogunai.domain.usecase.HooksInstallState
+import app.luxion.shogunai.domain.model.HostOs
+import app.luxion.shogunai.domain.usecase.CommandLineToolInstallation
+import app.luxion.shogunai.domain.usecase.CommandLineToolState
+import app.luxion.shogunai.domain.usecase.CommandLineToolStatus
 import app.luxion.shogunai.ui.shell.HooksAction
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
@@ -204,7 +208,31 @@ object EnglishStrings : Strings {
     override val claudeHooksRemove = "Remove"
     override val claudeHooksCancel = "Cancel"
     override val claudeHooksConfirm = "Apply"
-    override val claudeHooksPathWarning = "shogun isn't on your PATH, so Claude Code won't find the hooks. Install the command line tool first."
+    override val claudeHooksNeedsTool = "Install the command-line tool first"
+    override val commandLineToolLabel = "Command-line tool"
+    override fun commandLineToolStatus(status: CommandLineToolStatus) = when (status.state) {
+        CommandLineToolState.AVAILABLE -> "The shogun command is available"
+        CommandLineToolState.INSTALLED_NOT_ON_PATH ->
+            if (status.restartNeeded) "The shogun command is installed; restart your terminal and Claude Code to use it"
+            else "The shogun command is installed but its folder isn't on your PATH"
+        CommandLineToolState.BROKEN -> "The shogun command points to an app that is no longer there"
+        CommandLineToolState.MISSING -> "The shogun command isn't installed"
+    }
+    override val commandLineToolNeededByHooks = "ShogunAi's Claude Code hooks run the shogun command, so it must be installed first."
+    override val commandLineToolInstall = "Install command-line tool"
+    override val commandLineToolRepair = "Repair command-line tool"
+    override val commandLineToolRemove = "Remove command-line tool"
+    override fun commandLineToolInstalled(installation: CommandLineToolInstallation) =
+        "Installed ${installation.launcher}" + if (installation.restartNeeded) ". Restart your terminal and Claude Code to use it." else "."
+    override fun commandLineToolPathHint(status: CommandLineToolStatus, os: HostOs) = when (os) {
+        HostOs.WINDOWS -> "Add ${status.folder} to your user PATH."
+        else -> "Add this line to your shell profile: export PATH=\"${status.folder}:\$PATH\""
+    }
+    override fun commandLineToolManualSteps(os: HostOs) = when (os) {
+        HostOs.WINDOWS -> "Download shogun-<version>.zip from the latest release, unzip it, add its bin folder to your PATH (it needs Java 21 or later) and restart your terminal."
+        else -> "Download shogun-<version>.zip from the latest release, unzip it, add its bin folder to your PATH (it needs Java 21 or later) and open a new terminal."
+    }
+    override val claudeHooksNoticeToolMessage = "Claude is running without a known state. ShogunAi's Claude Code hooks fix that, but they need the command-line tool first."
     override fun claudeHooksDialogTitle(action: HooksAction) = when (action) {
         HooksAction.INSTALL -> "Install the hooks"
         HooksAction.UPDATE -> "Update the hooks"

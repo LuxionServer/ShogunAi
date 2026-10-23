@@ -73,6 +73,13 @@ Multirepos and groups by branch are done in the CLI and the desktop app. Left ou
 - A single session for the whole group, with a combined environment, as an option next to one agent per repository.
 - Returning a declared workspace repository to detection (removing the `workspace` field), from the CLI and the multirepo settings; today `workspace clear` turns it off and the file has to be edited by hand to undo it.
 
+### 8. Follow-ups of the command-line tool setup
+
+The app installs the `shogun` command from Preferences for any install method. Left out:
+
+- Checking the in-app action on a real installed app on Windows (the `shogun.cmd` and the user `PATH` change are covered by tests with fakes only) and on a machine without `~/.local/bin` on its `PATH`.
+- Offering the same action in the first-run flow, before the user reaches Preferences or the hooks notice.
+
 ## Under exploration
 
 ### Integration with GitHub and task trackers
