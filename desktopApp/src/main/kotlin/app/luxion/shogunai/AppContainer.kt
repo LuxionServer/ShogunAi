@@ -66,6 +66,8 @@ import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.TerminalId
 import app.luxion.shogunai.domain.usecase.OpenWorktreeInTerminalUseCase
 import app.luxion.shogunai.infrastructure.CommandEditorLauncher
+import app.luxion.shogunai.infrastructure.EditorExecutableResolver
+import app.luxion.shogunai.infrastructure.RegistryUninstallLocations
 import app.luxion.shogunai.infrastructure.JsonToolPreferenceRepository
 import app.luxion.shogunai.infrastructure.LocalToolDetector
 import app.luxion.shogunai.infrastructure.MacTerminalLauncher
@@ -259,7 +261,15 @@ class AppContainer {
         noticeDismissedStore = { settingsFile.read().claudeHooksNoticeDismissed },
         rememberNoticeDismissed = { settingsFile.update { it.copy(claudeHooksNoticeDismissed = true) } },
     )
-    val tools = ToolsPreferences(JsonToolPreferenceRepository(settingsFile), LocalToolDetector(shellCommandExecutor))
+    private val editorResolver = EditorExecutableResolver(
+        HostOs.current(),
+        ExecutableLocator(),
+        RegistryUninstallLocations(shellCommandExecutor),
+    )
+    val tools = ToolsPreferences(
+        JsonToolPreferenceRepository(settingsFile),
+        LocalToolDetector(shellCommandExecutor, editorResolver = editorResolver),
+    )
     private val terminalLaunchers = listOf(
         MacTerminalLauncher(TerminalId.TERMINAL, shellCommandExecutor),
         MacTerminalLauncher(TerminalId.ITERM2, shellCommandExecutor),
@@ -267,7 +277,7 @@ class AppContainer {
         TmuxTerminalLauncher(shellCommandExecutor),
         ZellijTerminalLauncher(shellCommandExecutor),
     )
-    private val editorLaunchers = EditorId.entries.map { CommandEditorLauncher(it, shellCommandExecutor) }
+    private val editorLaunchers = EditorId.entries.map { CommandEditorLauncher(it, shellCommandExecutor, editorResolver = editorResolver) }
     private val folderLauncher = SystemFolderLauncher(shellCommandExecutor)
     private val claudeDesktopLauncher = MacClaudeDesktopLauncher(shellCommandExecutor)
     private val environmentCache = WorktreeEnvironmentCache()
