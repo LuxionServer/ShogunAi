@@ -54,6 +54,10 @@ The desktop app tells you when a newer release is out and reminds you how to upd
 
 ## The `shogun` command
 
+The desktop app can install it for you, whichever way you installed ShogunAi: open Preferences, find Claude Code and activate "Install command-line tool". It uses the app's own bundled runtime, so it needs no Java and no download, and the same button appears next to the hooks' "Install" when the command is missing (the hooks can't be installed until it is available). On macOS and Linux it links the app's launcher as `shogun` in a user-writable folder already on your `PATH`, or in `~/.local/bin` (the app shows the line to add to your shell profile if that folder isn't on your `PATH`). On Windows it writes `shogun.cmd` in `%USERPROFILE%\.shogunai\bin` and adds that folder to your user `PATH`, with no administrator rights; restart your terminal and Claude Code afterwards. "Remove command-line tool" undoes only what the app created. A development build (`./gradlew run`) has no launcher to expose and shows the manual steps instead.
+
+By hand:
+
 | How you installed ShogunAi | How to get `shogun` |
 |---|---|
 | Homebrew | Already installed with the Cask; `shogun --version` works in a new terminal. |

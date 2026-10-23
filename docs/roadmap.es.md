@@ -73,6 +73,13 @@ Los multirepos y los grupos por rama están hechos en el CLI y en la app de escr
 - Una única sesión para todo el grupo, con un entorno combinado, como opción junto a un agente por repositorio.
 - Devolver un repositorio de workspace declarado a la detección (quitando el campo `workspace`), desde el CLI y los ajustes del multirepo; hoy `workspace clear` lo desactiva y para deshacerlo hay que editar el archivo a mano.
 
+### 8. Pendientes de la instalación de la herramienta de línea de comandos
+
+La app instala el comando `shogun` desde Preferencias para cualquier forma de instalación. Quedó fuera:
+
+- Comprobar la acción de la app con una app instalada de verdad en Windows (el `shogun.cmd` y el cambio del `PATH` de usuario solo están cubiertos con pruebas con dobles) y en un equipo sin `~/.local/bin` en el `PATH`.
+- Ofrecer la misma acción en el flujo de primer uso, antes de que el usuario llegue a Preferencias o al aviso de hooks.
+
 ## En estudio
 
 ### Integración con GitHub y gestores de tareas

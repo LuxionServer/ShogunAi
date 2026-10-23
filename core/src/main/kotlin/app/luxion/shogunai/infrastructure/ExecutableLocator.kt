@@ -17,8 +17,11 @@ class ExecutableLocator(
         val separator = if (os == HostOs.WINDOWS) "\\" else "/"
         val toolbox = if (includeToolbox) ToolCatalog.toolboxScriptFolders(os, home, localAppData) else emptyList()
         val folders = pathFolders + ToolCatalog.userBinFolders(os, home) + toolbox
-        return folders.map { it.trimEnd('/', '\\') + separator + executable }.firstOrNull(isFile)
+        val names = if (os == HostOs.WINDOWS && '.' !in executable) listOf(executable) + pathExtensions.map { executable + it } else listOf(executable)
+        return folders.flatMap { folder -> names.map { folder.trimEnd('/', '\\') + separator + it } }.firstOrNull(isFile)
     }
+
+    fun userBinFolders(): List<String> = ToolCatalog.userBinFolders(os, home)
 
     private companion object {
         val DEFAULT_PATH_EXTENSIONS = listOf(".COM", ".EXE", ".BAT", ".CMD")

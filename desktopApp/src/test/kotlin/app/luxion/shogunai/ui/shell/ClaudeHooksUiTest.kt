@@ -5,11 +5,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.io.UserPathEntries
+import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.usecase.ClaudeCodeHooks
+import app.luxion.shogunai.domain.usecase.CommandLineTool
 import app.luxion.shogunai.ui.i18n.EnglishStrings
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import kotlinx.coroutines.runBlocking
@@ -26,10 +31,30 @@ class ClaudeHooksUiTest {
     private var dismissed = false
     private var dismissals = 0
 
-    private fun state(shogunOnPath: Boolean = true) = ClaudeHooksState(
+    private val launcherFiles = FakeLauncherFiles()
+
+    private fun tool(
+        found: String? = "/usr/local/bin/shogun",
+        appLauncher: String? = "/Applications/ShogunAi.app/Contents/MacOS/ShogunAi",
+    ) = CommandLineTool(
+        os = HostOs.MACOS,
+        appLauncher = appLauncher,
+        home = "/home/dev",
+        pathFolders = listOf("/usr/bin", "/usr/local/bin"),
+        userBinFolders = listOf("/usr/local/bin", "/home/dev/.local/bin"),
+        findShogun = { found ?: launcherFiles.links.keys.firstOrNull() },
+        files = launcherFiles,
+        userPath = object : UserPathEntries {
+            override suspend fun contains(folder: String) = false
+            override suspend fun add(folder: String) = Unit
+            override suspend fun remove(folder: String) = Unit
+        },
+    )
+
+    private fun state(tool: CommandLineTool = tool()) = ClaudeHooksState(
         hooks = ClaudeCodeHooks(files),
         settingsPath = { path },
-        isShogunOnPath = { shogunOnPath },
+        tool = tool,
         noticeDismissedStore = { dismissed },
         rememberNoticeDismissed = {
             dismissed = true
@@ -108,15 +133,88 @@ class ClaudeHooksUiTest {
     }
 
     @Test
-    fun `warns when shogun is not on the PATH`() = runComposeUiTest {
-        val state = state(shogunOnPath = false)
+    fun `with the tool missing Install is disabled and the tool can be installed first`() = runComposeUiTest {
+        launcherFiles.writable += "/usr/local/bin"
+        launcherFiles.others += "/Applications/ShogunAi.app/Contents/MacOS/ShogunAi"
+        val state = state(tool(found = null))
         setContent {
             CompositionLocalProvider(LocalStrings provides EnglishStrings) {
-                MaterialTheme { Column { ClaudeHooksSection(state) } }
+                MaterialTheme { Column { ClaudeHooksSection(state, HostOs.MACOS) } }
             }
         }
 
-        onNodeWithText(EnglishStrings.claudeHooksPathWarning).assertIsDisplayed()
+        onNodeWithText(EnglishStrings.commandLineToolNeededByHooks).assertIsDisplayed()
+        onNodeWithText(EnglishStrings.claudeHooksNeedsTool).assertIsDisplayed()
+        onNodeWithText("Install").assertIsNotEnabled()
+        onNodeWithText(EnglishStrings.commandLineToolInstall).performClick()
+        waitForIdle()
+
+        onNodeWithText(EnglishStrings.commandLineToolStatus(state.toolStatus!!)).assertIsDisplayed()
+        onNodeWithText("Install").assertIsEnabled()
+        assertEquals(1, launcherFiles.links.size)
+    }
+
+    @Test
+    fun `the tool is available so there is nothing to install`() = runComposeUiTest {
+        val state = state()
+        setContent {
+            CompositionLocalProvider(LocalStrings provides EnglishStrings) {
+                MaterialTheme { Column { ClaudeHooksSection(state, HostOs.MACOS) } }
+            }
+        }
+
+        onNodeWithText("Install").assertIsEnabled()
+        onNodeWithText(EnglishStrings.commandLineToolInstall).assertDoesNotExist()
+        onNodeWithText(EnglishStrings.commandLineToolNeededByHooks).assertDoesNotExist()
+    }
+
+    @Test
+    fun `a tool outside the PATH shows the line to add and keeps Install disabled`() = runComposeUiTest {
+        launcherFiles.others += "/Applications/ShogunAi.app/Contents/MacOS/ShogunAi"
+        launcherFiles.links["/home/dev/.local/bin/shogun"] = "/Applications/ShogunAi.app/Contents/MacOS/ShogunAi"
+        val state = state(tool(found = null))
+        setContent {
+            CompositionLocalProvider(LocalStrings provides EnglishStrings) {
+                MaterialTheme { Column { ClaudeHooksSection(state, HostOs.MACOS) } }
+            }
+        }
+
+        onNodeWithText("export PATH=\"/home/dev/.local/bin:\$PATH\"", substring = true).assertIsDisplayed()
+        onNodeWithText("Install").assertIsNotEnabled()
+    }
+
+    @Test
+    fun `a build that is not an installed app shows the manual steps`() = runComposeUiTest {
+        val state = state(tool(found = null, appLauncher = null))
+        setContent {
+            CompositionLocalProvider(LocalStrings provides EnglishStrings) {
+                MaterialTheme { Column { ClaudeHooksSection(state, HostOs.MACOS) } }
+            }
+        }
+
+        onNodeWithText(EnglishStrings.commandLineToolManualSteps(HostOs.MACOS)).assertIsDisplayed()
+        onNodeWithText(EnglishStrings.commandLineToolInstall).assertDoesNotExist()
+    }
+
+    @Test
+    fun `the notice names the tool as a prerequisite and its action installs the tool`() = runComposeUiTest {
+        launcherFiles.writable += "/usr/local/bin"
+        launcherFiles.others += "/Applications/ShogunAi.app/Contents/MacOS/ShogunAi"
+        val state = state(tool(found = null))
+        setContent {
+            CompositionLocalProvider(LocalStrings provides EnglishStrings) {
+                MaterialTheme { Column { ClaudeHooksNotice(state, claudeWithoutState = true, os = HostOs.MACOS) } }
+            }
+        }
+
+        onNodeWithText(EnglishStrings.claudeHooksNoticeToolMessage).assertIsDisplayed()
+        onNodeWithText("Install").assertIsNotEnabled()
+        onNodeWithText(EnglishStrings.commandLineToolInstall).performClick()
+        waitForIdle()
+
+        onNodeWithText(EnglishStrings.claudeHooksNoticeToolMessage).assertDoesNotExist()
+        onNodeWithText(EnglishStrings.claudeHooksNoticeMessage).assertIsDisplayed()
+        onNodeWithText("Install").assertIsEnabled()
     }
 
     @Test

@@ -54,6 +54,10 @@ La app de escritorio te avisa cuando hay una versión nueva y te recuerda cómo 
 
 ## El comando `shogun`
 
+La app de escritorio puede instalarlo por ti, sea cual sea la forma en que instalaste ShogunAi: abre Preferencias, busca Claude Code y activa "Instalar herramienta de línea de comandos". Usa el runtime que incluye la propia app, así que no necesita Java ni descargas, y el mismo botón aparece junto al "Instalar" de los hooks cuando falta el comando (los hooks no se pueden instalar hasta que esté disponible). En macOS y Linux enlaza el lanzador de la app como `shogun` en una carpeta escribible por tu usuario que ya esté en el `PATH`, o en `~/.local/bin` (la app muestra la línea que añadir al perfil de tu shell si esa carpeta no está en el `PATH`). En Windows escribe `shogun.cmd` en `%USERPROFILE%\.shogunai\bin` y añade esa carpeta al `PATH` de tu usuario, sin permisos de administrador; reinicia el terminal y Claude Code después. "Quitar herramienta de línea de comandos" deshace solo lo que creó la app. Una compilación de desarrollo (`./gradlew run`) no tiene lanzador que exponer y muestra los pasos manuales.
+
+A mano:
+
 | Cómo instalaste ShogunAi | Cómo obtener `shogun` |
 |---|---|
 | Homebrew | Ya se instala con el Cask; `shogun --version` funciona en un terminal nuevo. |

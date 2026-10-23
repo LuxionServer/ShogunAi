@@ -71,6 +71,8 @@ Instálalo como cualquier otra app de escritorio y ábrelo. No necesitas tener J
 
 ### El comando `shogun`
 
+Sea cual sea la forma en que instalaste ShogunAi, la app puede preparar el comando por ti: Preferencias > Claude Code muestra si `shogun` está disponible y ofrece "Instalar herramienta de línea de comandos" cuando no lo está. No necesita Java ni descargas, y es lo que ejecutan los hooks de Claude Code. En Windows añade una carpeta de tu perfil al `PATH` de tu usuario; reinicia el terminal y Claude Code después. Las opciones manuales:
+
 - **Homebrew**: se instala con el Cask; `shogun --version` funciona en un terminal nuevo.
 - **Scoop**: se instala con la app; `shogun --version` funciona en un terminal nuevo, sin necesitar Java.
 - **Linux (`.deb`)**: el lanzador de la app es el comando. Enlázalo una vez: `sudo ln -s /opt/shogunai/bin/ShogunAi /usr/local/bin/shogun`.
