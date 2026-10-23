@@ -23,6 +23,7 @@ import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.ResourceSettings
+import app.luxion.shogunai.domain.model.WorkspaceSetting
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -78,6 +79,7 @@ class MultirepoCommandsTest {
         answer: String? = null,
         herdrClient: FakeHerdrClient = herdr,
         multirepos: FakeMultirepoSource = source,
+        sessionStore: FakeAgentSessionStore = FakeAgentSessionStore(),
     ) = ShogunCli(
         executor = git,
         fileManager = fileManager,
@@ -103,7 +105,7 @@ class MultirepoCommandsTest {
         userHome = "/home/dev",
         herdr = herdrClient,
         readAnswer = { answer },
-        sessionStore = FakeAgentSessionStore(),
+        sessionStore = sessionStore,
         multirepoSource = multirepos,
     )
 
@@ -423,5 +425,181 @@ class MultirepoCommandsTest {
         assertTrue(fileManager.writtenTexts.isEmpty())
         assertEquals(projectsBefore, projects.list())
         assertEquals(mapOf(folder to declaration), source.declarations)
+    }
+
+    private fun folderIsARepository() = git.repository(folder).also { fileManager.writeText("$folder/.git", "") }
+
+    @Test
+    fun `show lists a detected workspace repository with the command to declare it`() {
+        folderIsARepository()
+
+        val exitCode = cli().run(listOf("multirepo", "show"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.lines().any { it.trim().startsWith("workspace  $folder") && it.contains("workspace") && it.contains("detected") })
+        assertTrue(out.contains("shogun multirepo workspace set"))
+    }
+
+    @Test
+    fun `show json marks the workspace repository as detected`() {
+        folderIsARepository()
+
+        cli().run(listOf("multirepo", "show", "--json"))
+
+        val workspace = json()["repos"]!!.jsonArray.map { it.jsonObject }.first { it["alias"]!!.jsonPrimitive.content == "workspace" }
+        assertEquals("true", workspace["workspace"]!!.jsonPrimitive.content)
+        assertEquals("true", workspace["detected"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `workspace set declares it and nothing else changes`() {
+        folderIsARepository()
+
+        val exitCode = cli().run(listOf("multirepo", "workspace", "set", "--default"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(declaration.copy(workspace = WorkspaceSetting(default = true)), source.declarations[folder])
+        assertFalse(out.contains("detected"))
+    }
+
+    @Test
+    fun `workspace clear turns detection off`() {
+        folderIsARepository()
+
+        val exitCode = cli().run(listOf("multirepo", "workspace", "clear"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(declaration.copy(workspace = WorkspaceSetting(enabled = false)), source.declarations[folder])
+        assertFalse(out.lines().any { it.trim().startsWith("workspace ") })
+    }
+
+    @Test
+    fun `workspace set in a folder that is not a repository fails and changes nothing`() {
+        val exitCode = cli().run(listOf("multirepo", "workspace", "set"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("no workspace repository"))
+        assertEquals(declaration, source.declarations[folder])
+    }
+
+    @Test
+    fun `new with the workspace alias creates its worktree in the aliased folder`() {
+        folderIsARepository()
+
+        val exitCode = cli().run(listOf("new", "TASK-12", "--repos", "workspace,app"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(git.ranIn(folder, "git", "worktree", "add", "--no-track", "$worktreesRoot/workspace/TASK-12", "-b", "feature/TASK-12", "origin/develop"))
+        assertTrue(git.ranIn(appBase, "git", "worktree", "add", "--no-track", "$worktreesRoot/app/TASK-12", "-b", "feature/TASK-12", "origin/develop"))
+    }
+
+    @Test
+    fun `new with the workspace alias is rejected when detection is off`() {
+        folderIsARepository()
+        source.declarations[folder] = declaration.copy(workspace = WorkspaceSetting(enabled = false))
+
+        val exitCode = cli().run(listOf("new", "TASK-12", "--repos", "workspace"))
+
+        assertEquals(2, exitCode)
+        assertTrue(err.contains("isn't a repository of the multirepo"))
+    }
+
+    @Test
+    fun `new with an unknown alias lists the workspace among the repositories`() {
+        folderIsARepository()
+
+        cli().run(listOf("new", "TASK-12", "--repos", "web"))
+
+        assertTrue(err.contains("workspace"))
+    }
+
+    @Test
+    fun `clean lists the loose merged worktrees of members and of the workspace after the groups`() {
+        val workspace = folderIsARepository()
+        groupTask1(merged = true)
+        with(git) {
+            api.worktree("$worktreesRoot/api/TASK-3", "feature/TASK-3", merged = true)
+            workspace.worktree("$worktreesRoot/workspace/TASK-4", "feature/TASK-4", merged = true)
+            docs.worktree("$worktreesRoot/docs/TASK-5", "feature/TASK-5")
+        }
+
+        val exitCode = cli().run(listOf("clean"))
+
+        assertEquals(0, exitCode, err.toString())
+        val lines = out.lines()
+        assertEquals(1, lines.count { it.contains("$worktreesRoot/api/TASK-1") })
+        assertTrue(out.contains("would remove api $worktreesRoot/api/TASK-3"))
+        assertTrue(out.contains("would remove workspace $worktreesRoot/workspace/TASK-4"))
+        assertFalse(out.contains("TASK-5"))
+        assertTrue(lines.indexOfFirst { it.contains("feature/TASK-1") } < lines.indexOfFirst { it.contains("TASK-3") })
+        assertTrue(out.contains("Run 'shogun clean --yes' to remove them."))
+    }
+
+    @Test
+    fun `clean yes removes the loose worktrees too`() {
+        val workspace = folderIsARepository()
+        with(git) { workspace.worktree("$worktreesRoot/workspace/TASK-4", "feature/TASK-4", merged = true) }
+
+        val exitCode = cli().run(listOf("clean", "--yes"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(git.ranIn(folder, "git", "worktree", "remove", "$worktreesRoot/workspace/TASK-4"))
+    }
+
+    @Test
+    fun `clean with nothing to clean says so`() {
+        val exitCode = cli().run(listOf("clean"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.contains("Nothing to clean up."))
+    }
+
+    @Test
+    fun `project add in the multirepo folder registers the workspace project once under the multirepo's worktrees folder`() {
+        folderIsARepository()
+
+        assertEquals(0, cli().run(listOf("project", "add")), err.toString())
+        assertEquals(0, cli().run(listOf("project", "add")), err.toString())
+
+        val registered = projects.list().filter { it.config.baseRepositoryPath == folder }
+        assertEquals(1, registered.size)
+        assertEquals("$worktreesRoot/workspace", registered.single().config.worktreesRoot)
+    }
+
+    @Test
+    fun `project add with detection off registers the folder as an ordinary project`() {
+        folderIsARepository()
+        source.declarations[folder] = declaration.copy(workspace = WorkspaceSetting(enabled = false))
+
+        assertEquals(0, cli().run(listOf("project", "add")), err.toString())
+
+        assertEquals("/home/dev/projects/product-worktrees", projects.list().single { it.config.baseRepositoryPath == folder }.config.worktreesRoot)
+    }
+
+    private fun stateInput(event: String, cwd: String) =
+        """{"session_id":"s1","transcript_path":"/home/dev/.claude/projects/p/s1.jsonl","cwd":"$cwd","hook_event_name":"$event"}"""
+
+    @Test
+    fun `agent-state records the session of a multirepo folder that is not a repository`() {
+        val store = FakeAgentSessionStore()
+
+        val exitCode = cli(workingDirectory = "/", input = stateInput("UserPromptSubmit", folder), sessionStore = store).run(listOf("hook", "agent-state"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("s1", store.records[folder]!!.single().sessionId)
+
+        cli(workingDirectory = "/", input = stateInput("SessionEnd", folder), sessionStore = store).run(listOf("hook", "agent-state"))
+
+        assertTrue(store.records[folder].orEmpty().isEmpty())
+    }
+
+    @Test
+    fun `agent-state still writes nothing for an ordinary directory that is not a repository`() {
+        val store = FakeAgentSessionStore()
+
+        cli(workingDirectory = "/", input = stateInput("UserPromptSubmit", "/home/dev/notes"), sessionStore = store).run(listOf("hook", "agent-state"))
+        cli(workingDirectory = "/", input = stateInput("UserPromptSubmit", "$folder/notes"), sessionStore = store).run(listOf("hook", "agent-state"))
+
+        assertTrue(store.records.isEmpty())
     }
 }

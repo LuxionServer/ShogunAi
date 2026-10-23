@@ -13,7 +13,8 @@ Un multirepo se declara con un fichero `.shogunai-multirepo.json` en una carpeta
   "repos": { "docs": "product-docs", "app": "product-app", "api": "product-api" },
   "worktreesRoot": "../product-worktrees",
   "defaultRepos": ["app", "api"],
-  "agent": { "agentCommand": "claude" }
+  "agent": { "agentCommand": "claude" },
+  "workspace": { "alias": "workspace", "default": false }
 }
 ```
 
@@ -21,6 +22,7 @@ Un multirepo se declara con un fichero `.shogunai-multirepo.json` en una carpeta
 - `worktreesRoot` es una carpeta común bajo la que se propone la carpeta de worktrees de cada repositorio como `<worktreesRoot>/<alias>`.
 - `defaultRepos` son los repositorios que cubre `shogun new <id>` en la carpeta del multirepo.
 - `agent` es el comando que lanza `shogun open --herdr` en la carpeta del multirepo; por defecto, `claude`.
+- `workspace` es opcional: `false`, o un objeto con el `alias` del [repositorio de workspace](#un-repositorio-de-workspace) y si es un repositorio por defecto (`default`). Los archivos que no lo tienen siguen funcionando.
 
 La carpeta está fuera de todo repositorio, o es la raíz de un **repositorio de workspace** que versiona lo que comparten los repositorios (un `AGENTS.md`, la declaración) e ignora los repositorios anidados. Nunca es una subcarpeta de un repositorio, así que la declaración nunca acaba dentro de un repositorio que no es tuyo.
 
@@ -57,7 +59,7 @@ shogun clean --yes                  # elimina los grupos cuyos worktrees están 
 - **Crear.** `shogun new <id>` hace en cada repositorio lo que `shogun new <id>` hace hoy en él (la carpeta de worktrees del proyecto, el nombre de carpeta de siempre, el provisionado), salvo que la rama parte del `origin/<base>` de ese repositorio. Los repositorios que ya están en la rama se informan y no se tocan, una rama que existe sin worktree se usa tal cual, y un repositorio que falla no deshace los demás. No abre nada. Dentro de un repositorio, `shogun new <id>` sin `--repos` sigue creando un solo worktree.
 - **Estado.** En la carpeta del multirepo, `shogun status` lista cada grupo con, por repositorio, su ruta, cambios, adelanto y retraso respecto a su propia base, si está fusionado y sus agentes, y después los worktrees sin grupo.
 - **Abrir.** `shogun open <id> --herdr` abre cada worktree del grupo como se abre un worktree suelto, bajo el espacio de su repositorio con su entorno y el agente de su proyecto; `<id>` es una rama, o un id de tarea cuando solo uno de `feature/<id>` y `fix/<id>` es un grupo.
-- **Limpiar.** Un grupo es candidato solo cuando todos sus worktrees están limpios y fusionados en su base y no hay ningún agente en ninguno. `--yes` elimina sus worktrees con la limpieza habitual de cada repositorio y las mismas opciones que `shogun clean` (`--delete-branches`, `--stop-emulators`, `--down-compose-projects`…).
+- **Limpiar.** Un grupo es candidato solo cuando todos sus worktrees están limpios y fusionados en su base y no hay ningún agente en ninguno. `--yes` elimina sus worktrees con la limpieza habitual de cada repositorio y las mismas opciones que `shogun clean` (`--delete-branches`, `--stop-emulators`, `--down-compose-projects`…). Después de los grupos, `shogun clean` también lista los worktrees sueltos de cada repositorio (incluido el de workspace) que no pertenecen a ningún grupo, cuando están limpios, fusionados y sin agente, y los elimina con la misma confirmación.
 
 ## Contexto para los agentes
 
@@ -72,4 +74,11 @@ La app de escritorio muestra los mismos multirepos y grupos, calculados igual: u
 
 ## Un repositorio de workspace
 
-Cuando la carpeta del multirepo es la raíz de un repositorio, `shogun new`, `status`, `open` y `clean` en su checkout principal actúan sobre el multirepo. El repositorio de workspace puede entrar en grupos como cualquier otro una vez declarado con la ruta `.` (`shogun multirepo add-repo workspace .`, y luego `--repos workspace,app`); en sus worktrees enlazados, los comandos se comportan como en cualquier repositorio.
+Cuando la carpeta del multirepo es la raíz de un repositorio Git, `shogun new`, `status`, `open` y `clean` en su checkout principal actúan sobre el multirepo, y la carpeta se **detecta** como el repositorio de workspace del multirepo con el alias `workspace`, sin necesidad de declararlo:
+
+- Entra en grupos como cualquier otro repositorio: `shogun new TASK-12 --repos workspace,app` crea su worktree en `<worktreesRoot>/workspace/TASK-12`. No es uno de los `defaultRepos` salvo que lo indiques.
+- `shogun multirepo show` lo lista marcado como `detected`. `shogun multirepo workspace set [--alias <alias>] [--default]` lo declara en el archivo (`"workspace": { "alias": … }`), y `shogun multirepo workspace clear` desactiva la detección (`"workspace": false`). Una entrada de `repos` con la ruta `.` también convierte la carpeta en el repositorio de workspace, con ese alias.
+- La carpeta no es un proyecto propio: la barra lateral lista sus worktrees bajo el multirepo, y `shogun project add` y `shogun app` ejecutados en la carpeta registran una sola vez el repositorio de workspace, como miembro del multirepo, en vez de un proyecto suelto. Con la detección desactivada, la carpeta vuelve a ser un proyecto normal.
+- El agente del multirepo (el que corre en la carpeta) se muestra en la vista del multirepo. Los registros de sesión de Claude Code se guardan en el directorio Git de la carpeta cuando es un repositorio, y si no en un almacén bajo `~/.shogunai/agent-sessions/` con la carpeta como clave, así que el hook `agent-state` también funciona en una carpeta de multirepo que no es un repositorio. Solo cuenta como agente del multirepo el que tiene como directorio de trabajo exactamente la carpeta; uno en un repositorio miembro pertenece al worktree de ese repositorio.
+
+En sus worktrees enlazados, los comandos se comportan como en cualquier repositorio.

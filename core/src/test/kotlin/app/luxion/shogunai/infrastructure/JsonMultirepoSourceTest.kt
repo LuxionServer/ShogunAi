@@ -2,6 +2,7 @@ package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
+import app.luxion.shogunai.domain.model.WorkspaceSetting
 import app.luxion.shogunai.domain.model.WorktreeError
 import java.nio.file.Files
 import kotlin.io.path.createTempDirectory
@@ -41,6 +42,29 @@ class JsonMultirepoSourceTest {
 
         assertEquals(declaration, source.read(folder.toString()))
         assertTrue(folder.resolve(".shogunai-multirepo.json").readText().contains("\"worktreesRoot\": \"../product-worktrees\""))
+    }
+
+    @Test
+    fun `the workspace field round trips as absent, false or an object and keeps the other fields`() {
+        val base = MultirepoDeclaration(repos = mapOf("app" to "product-app"), worktreesRoot = "../product-worktrees")
+        listOf(null, WorkspaceSetting(enabled = false), WorkspaceSetting(), WorkspaceSetting(alias = "docs-root", default = true)).forEach { setting ->
+            val declaration = base.copy(workspace = setting)
+
+            source.write(folder.toString(), declaration)
+
+            assertEquals(declaration, source.read(folder.toString()))
+        }
+        source.write(folder.toString(), base.copy(workspace = WorkspaceSetting(enabled = false)))
+        assertTrue(folder.resolve(".shogunai-multirepo.json").readText().contains("\"workspace\": false"))
+        source.write(folder.toString(), base.copy(workspace = WorkspaceSetting(default = true)))
+        assertTrue(folder.resolve(".shogunai-multirepo.json").readText().contains("\"default\": true"))
+    }
+
+    @Test
+    fun `an invalid workspace field names the file`() {
+        folder.resolve(".shogunai-multirepo.json").writeText("""{"worktreesRoot": "../w", "workspace": "yes"}""")
+
+        assertFailsWith<WorktreeError.InvalidMultirepo> { source.read(folder.toString()) }
     }
 
     @Test

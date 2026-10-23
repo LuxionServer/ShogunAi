@@ -567,6 +567,13 @@ interface Strings {
     val noGroupsDetected: String
     val multirepoSettingsTitle: String
     val multirepoNotFound: String
+    val workspaceRepositoryTitle: String
+    val workspaceRepositoryHint: String
+    val workspaceDetectedMark: String
+    val declareWorkspace: String
+    val workspaceAliasLabel: String
+    val turnOffWorkspace: String
+    val workspaceTurnedOff: String
     val defaultRepositoriesTitle: String
     val defaultRepositoriesHint: String
     val multirepoWorktreesRootTitle: String
@@ -589,6 +596,7 @@ interface Strings {
     fun multirepoInsideRepository(repository: String): String
     fun useWorktreesFolder(folder: String): String
     fun notARepository(path: String): String
+    fun folderIsMultirepoWorkspace(path: String, multirepo: String): String
     fun deleteMultirepoTitle(name: String): String
 }
 

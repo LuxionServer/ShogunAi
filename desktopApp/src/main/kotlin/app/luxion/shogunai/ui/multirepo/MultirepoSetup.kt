@@ -22,6 +22,8 @@ interface MultirepoSetup {
     fun removeRepository(multirepo: Multirepo, alias: String): Result<Multirepo>
     fun renameRepository(multirepo: Multirepo, alias: String, newAlias: String): Result<Multirepo>
     fun setDefaults(multirepo: Multirepo, aliases: List<String>): Result<Multirepo>
+    fun setWorkspace(multirepo: Multirepo, alias: String, default: Boolean): Result<Multirepo>
+    fun clearWorkspace(multirepo: Multirepo): Result<Multirepo>
     fun setAgent(multirepo: Multirepo, agent: AgentLaunchConfig): Result<Multirepo>
     fun setWorktreesRoot(multirepo: Multirepo, folder: String): Result<Multirepo>
     fun delete(multirepo: Multirepo): Result<Unit>

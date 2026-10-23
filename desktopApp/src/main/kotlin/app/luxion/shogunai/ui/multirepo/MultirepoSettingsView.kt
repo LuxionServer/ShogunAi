@@ -85,9 +85,10 @@ fun MultirepoSettingsView(
             verticalArrangement = Arrangement.spacedBy(Spacing.lg),
         ) {
             SettingsSection(strings.multirepoRepositoriesTitle) {
-                multirepo.repositories.forEach { repository -> RepositoryRow(state, repository) }
+                multirepo.declaredRepositories.forEach { repository -> RepositoryRow(state, repository) }
                 AddRepositoryRow(state, pickFolder)
             }
+            if (state.hasWorkspaceSection) WorkspaceSection(state)
             SettingsSection(strings.defaultRepositoriesTitle) {
                 Text(strings.defaultRepositoriesHint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 state.aliases.forEach { alias ->
@@ -135,6 +136,41 @@ fun MultirepoSettingsView(
             confirmButton = { DangerButton(onClick = { state.confirmDelete(onDeleted) }) { Text(strings.delete) } },
             dismissButton = { NeutralTextButton(onClick = state::cancelDelete) { Text(strings.cancel) } },
         )
+    }
+}
+
+@Composable
+private fun WorkspaceSection(state: MultirepoSettingsState) {
+    val strings = LocalStrings.current
+    SettingsSection(strings.workspaceRepositoryTitle) {
+        Text(strings.workspaceRepositoryHint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (state.workspaceOff) {
+            Text(strings.workspaceTurnedOff, style = MaterialTheme.typography.bodySmall)
+        } else if (state.workspaceDetected) {
+            Text(strings.workspaceDetectedMark, style = ShogunTheme.typography.dataSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(
+                checked = state.workspaceDeclared,
+                onCheckedChange = { state.workspaceDeclared = it },
+                enabled = state.multirepo?.workspaceDeclared != true,
+                modifier = Modifier.handPointer(),
+            )
+            Text(strings.declareWorkspace, style = MaterialTheme.typography.bodyMedium)
+        }
+        if (state.workspaceDeclared) {
+            OutlinedTextField(
+                value = state.workspaceAlias,
+                onValueChange = { state.workspaceAlias = it.trim().lowercase() },
+                textStyle = ShogunTheme.typography.data,
+                singleLine = true,
+                label = { Text(strings.workspaceAliasLabel) },
+                modifier = Modifier.width(AliasFieldWidth).trackTextInputFocus(),
+            )
+        }
+        if (!state.workspaceOff) {
+            DangerTextButton(onClick = state::turnOffWorkspace, enabled = !state.isBusy) { Text(strings.turnOffWorkspace) }
+        }
     }
 }
 

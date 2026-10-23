@@ -1532,5 +1532,31 @@ class WorktreeBoardTest {
         assertEquals(listOf(product.folder), opened)
         assertEquals(MultirepoNotice.AgentOpened(focused = true), board.multirepoNotice)
     }
-}
 
+    @Test
+    fun `the multirepo agent is searched in the multirepo folder with its command and shown with its state`() = runTest(dispatcher) {
+        val board = productBoard()
+        agentResult = Result.success(mapOf(product.folder to listOf(RunningAgent("claude", AgentState.WORKING))))
+
+        board.showMultirepo(product.folder)
+        advanceUntilIdle()
+
+        val search = agentSearches.flatten().last { it.exact }
+        assertEquals(listOf("claude"), search.agentCommands)
+        assertEquals(listOf(product.folder), search.worktrees.map { it.path })
+        assertEquals(listOf(RunningAgent("claude", AgentState.WORKING)), board.multirepoAgentsOf(product.folder))
+        assertEquals(1, board.multirepoActivityCountOf(product.folder))
+    }
+
+    @Test
+    fun `an idle multirepo agent shows but does not count as activity`() = runTest(dispatcher) {
+        val board = productBoard()
+        agentResult = Result.success(mapOf(product.folder to listOf(RunningAgent("claude", AgentState.DONE))))
+
+        board.showMultirepo(product.folder)
+        advanceUntilIdle()
+
+        assertEquals(1, board.multirepoAgentsOf(product.folder).size)
+        assertEquals(0, board.multirepoActivityCountOf(product.folder))
+    }
+}

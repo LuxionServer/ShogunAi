@@ -244,6 +244,7 @@ shogun multirepo add-repo <alias> <ruta> [--use-worktrees-root | --keep-worktree
 shogun multirepo remove-repo <alias>
 shogun multirepo defaults <alias>[,<alias>...] | --clear
 shogun multirepo agent <comando> [--name <nombre>] [--no-headroom]
+shogun multirepo workspace set [--alias <alias>] [--default] | clear
 shogun multirepo worktrees-root <dir>
 shogun multirepo delete
 shogun new <task-id> [--repos <alias>[,<alias>...]] [--fix] [--fetch]
@@ -253,9 +254,11 @@ shogun open --herdr
 
 - Los subcomandos de `multirepo` funcionan en la carpeta del multirepo o en cualquier parte de sus repositorios y worktrees, y aceptan `--json`; fuera de un multirepo salen con `1`. Un alias incorrecto sale con `2`.
 - `new <id>` en la carpeta del multirepo cubre los repositorios por defecto, o `--repos` desde cualquier parte del multirepo; imprime la ruta de cada worktree que crea en la salida estándar y una línea por repositorio en la salida de error, y sale con `1` si algún repositorio falló. `--branch`, `--from` y `--worktrees-root` no se aplican a un grupo y salen con `2`. Su objeto `--json` tiene la `branch` y una lista `repos` con `alias`, `path`, `result` (`created`, `existing` o `failed`), los comandos de post-creación omitidos y `error`.
+- Cuando la carpeta del multirepo es un repositorio Git, es el repositorio de workspace del multirepo (alias `workspace` salvo que se declare otro): `show` lo lista, marcado `detected` hasta que `workspace set` lo declara (`--alias` lo renombra, `--default` lo añade a los repositorios por defecto) y `workspace clear` desactiva la detección; en una carpeta que no es un repositorio `workspace set` sale con `1`. `new <id> --repos workspace,app` lo incluye, con su worktree en `<worktreesRoot>/workspace/<id>`. `project add` y `app` ejecutados en esa carpeta registran el repositorio de workspace como miembro del multirepo y ningún proyecto propio de la carpeta (`app` solo abre la app), salvo que la detección esté desactivada. El `--json` de `show` marca cada repositorio con `workspace` y `detected`.
 - `status` en la carpeta del multirepo imprime la rama de cada grupo seguida de una línea por repositorio, y después `ungrouped`; `--json` imprime `groups` (cada uno con `branch`, `title` y `repos` con `alias`, `path`, `branch`, `base`, `folderMissing`, `uncommittedChanges`, `ahead`, `behind`, `merged`, `agents`), `ungrouped` y `failures`.
 - `open <id> --herdr` abre cada worktree del grupo con el agente de su proyecto (`--agent` sale con `2`); un id que encaja con `feature/<id>` y `fix/<id>` a la vez sale con `2`, y sin coincidencias con `1`. `open --herdr` sin destino abre el agente del multirepo.
-- `clean` lista los grupos candidatos (`would remove the group …`) y los que se conservan con su motivo (`kept feature/TASK-2 (api isn't merged)`), y acepta todas las opciones de `clean`.
+- `clean` lista los grupos candidatos (`would remove the group …`) y los que se conservan con su motivo (`kept feature/TASK-2 (api isn't merged)`), y acepta todas las opciones de `clean`. Después de los grupos lista los worktrees sueltos de cada repositorio (`would remove api <ruta>`) que están limpios, fusionados y sin agente en marcha, y con `--yes` los elimina; si no hay nada que eliminar imprime `Nothing to clean up.`
+- `hook agent-state` guarda las sesiones de una carpeta de multirepo que no es un repositorio Git en un almacén bajo `~/.shogunai/agent-sessions/`; para cualquier otro directorio que no sea un repositorio sigue sin escribir nada.
 
 ## Proyectos y la app
 

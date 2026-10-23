@@ -439,4 +439,44 @@ class DetectRunningAgentsUseCaseTest {
 
         assertEquals(mapOf(main.path to listOf(RunningAgent("claude"))), agents)
     }
+
+    private val multirepoFolder = "/home/dev/projects/product"
+    private val memberMain = Worktree(path = "$multirepoFolder/product-app", branch = "develop", isMain = true)
+
+    private fun multirepoSearches() = listOf(
+        AgentSearch.multirepoFolder(multirepoFolder, "claude"),
+        AgentSearch(listOf("claude"), listOf(memberMain)),
+    )
+
+    @Test
+    fun `an agent whose directory is exactly the multirepo folder is the multirepo agent`() = runTest {
+        val executor = executor(lsof = "p300\nclaude\nfcwd\nn$multirepoFolder", ps = "300 claude")
+
+        val agents = DetectRunningAgentsUseCase(executor)(multirepoSearches()).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("claude")), agents[multirepoFolder])
+        assertEquals(null, agents[memberMain.path])
+    }
+
+    @Test
+    fun `an agent in a member repository or in a subfolder of the folder is not the multirepo agent`() = runTest {
+        val executor = executor(
+            lsof = "p300\nclaude\nfcwd\nn${memberMain.path}\np301\nclaude\nfcwd\nn$multirepoFolder/notes",
+            ps = "300 claude\n301 claude",
+        )
+
+        val agents = DetectRunningAgentsUseCase(executor)(multirepoSearches()).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("claude")), agents[memberMain.path])
+        assertEquals(null, agents[multirepoFolder])
+    }
+
+    @Test
+    fun `a Herdr agent in the multirepo folder reports its state as for a worktree's agent`() = runTest {
+        val herdr = FakeHerdrClient(agents = listOf(herdrAgent(multirepoFolder, AgentState.WORKING)))
+
+        val agents = DetectRunningAgentsUseCase(executor(lsof = "p1\nczsh\nfcwd\nn/elsewhere"), herdr)(multirepoSearches()).getOrThrow()
+
+        assertEquals(AgentState.WORKING, agents[multirepoFolder]?.single()?.state)
+    }
 }

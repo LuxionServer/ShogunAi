@@ -13,6 +13,7 @@ import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.WorkspaceSetting
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.usecase.AddedRepository
 import app.luxion.shogunai.domain.usecase.GroupWorktree
@@ -52,7 +53,7 @@ class FakeMultirepoSetup(
             .map { (branch, owners) -> WorktreeGroup(branch, owners.map { (member, _) -> GroupWorktree(member.alias, member.config, Worktree("/w/${member.alias}", branch)) }) }
 
     override fun projects() = savedProjects.toList()
-    override fun read(folder: String) = declarations[folder]?.let { Multirepo(folder, it) }
+    override fun read(folder: String) = declarations[folder]?.let { Multirepo(folder, it, folderIsRepository = folder in repositories) }
     override suspend fun init(folder: String): Result<Multirepo> {
         declarations[folder] = MultirepoDeclaration(worktreesRoot = "../${Multirepo(folder, MultirepoDeclaration()).name}-worktrees")
         return Result.success(read(folder)!!)
@@ -90,7 +91,20 @@ class FakeMultirepoSetup(
             )
         }
 
-    override fun setDefaults(multirepo: Multirepo, aliases: List<String>) = update(multirepo) { it.copy(defaultRepos = aliases) }
+    override fun setDefaults(multirepo: Multirepo, aliases: List<String>) = update(multirepo) { declaration ->
+        val workspace = multirepo.workspaceRepository?.takeIf { it.alias !in declaration.repos }
+        val setting = when {
+            workspace == null -> declaration.workspace
+            workspace.alias in aliases -> WorkspaceSetting(alias = workspace.alias, default = true)
+            else -> declaration.workspace?.copy(default = false)
+        }
+        declaration.copy(defaultRepos = aliases.filter { it in declaration.repos }, workspace = setting)
+    }
+
+    override fun setWorkspace(multirepo: Multirepo, alias: String, default: Boolean) =
+        update(multirepo) { it.copy(workspace = WorkspaceSetting(alias = alias, default = default)) }
+
+    override fun clearWorkspace(multirepo: Multirepo) = update(multirepo) { it.copy(workspace = WorkspaceSetting(enabled = false)) }
     override fun setAgent(multirepo: Multirepo, agent: AgentLaunchConfig) = update(multirepo) { it.copy(agent = agent) }
     override fun setWorktreesRoot(multirepo: Multirepo, folder: String) = update(multirepo) { it.copy(worktreesRoot = folder) }
     override fun delete(multirepo: Multirepo): Result<Unit> {
@@ -276,5 +290,64 @@ class MultirepoSetupTest {
 
         onNodeWithText("No folder chosen").assertIsDisplayed()
         onAllNodesWithText("Add multirepo")[1].assertIsNotEnabled()
+    }
+
+    @Test
+    fun `a detected workspace is marked and declaring it saves the alias`() = runTest {
+        val setup = FakeMultirepoSetup(repositories = setOf(app, api, product), projects = listOf(appProject)).apply {
+            declarations[product] = MultirepoDeclaration(mapOf("app" to app, "api" to api), "../product-worktrees", listOf("app", "api"))
+        }
+        val state = settings(setup, this)
+
+        assertTrue(state.hasWorkspaceSection)
+        assertTrue(state.workspaceDetected)
+        assertFalse(state.canSave)
+
+        state.workspaceDeclared = true
+        state.workspaceAlias = "docs-root"
+        state.toggleDefault("docs-root")
+        assertTrue(state.canSave)
+        state.save()
+
+        assertEquals(WorkspaceSetting(alias = "docs-root", default = true), setup.declarations.getValue(product).workspace)
+        assertFalse(state.workspaceDetected)
+        assertFalse(state.hasChanges)
+    }
+
+    @Test
+    fun `no workspace section when the folder is not a repository`() = runTest {
+        val state = settings(declaredSetup(), this)
+
+        assertFalse(state.hasWorkspaceSection)
+    }
+
+    @Test
+    fun `turning the workspace off clears detection`() = runTest {
+        val setup = FakeMultirepoSetup(repositories = setOf(app, api, product), projects = listOf(appProject)).apply {
+            declarations[product] = MultirepoDeclaration(mapOf("app" to app, "api" to api), "../product-worktrees", listOf("app", "api"))
+        }
+        val state = settings(setup, this)
+
+        state.turnOffWorkspace()
+
+        assertEquals(WorkspaceSetting(enabled = false), setup.declarations.getValue(product).workspace)
+        assertTrue(state.workspaceOff)
+        assertFalse("workspace" in state.aliases)
+    }
+
+    @Test
+    fun `the new change lists the workspace repository checked when it is a default`() {
+        val multirepo = Multirepo(
+            product,
+            MultirepoDeclaration(mapOf("app" to app), "../product-worktrees", listOf("app"), workspace = WorkspaceSetting(default = true)),
+            folderIsRepository = true,
+        )
+        val workspaceProject = Project("workspace-id", "product", ProjectConfig(product, "/w", emptyList()))
+
+        val membership = multirepoMemberships(listOf(multirepo), listOf(appProject, workspaceProject)).single()
+        val change = NewChange(membership)
+
+        assertEquals(listOf("app", "workspace"), change.aliases)
+        assertEquals(setOf("app", "workspace"), change.selected)
     }
 }

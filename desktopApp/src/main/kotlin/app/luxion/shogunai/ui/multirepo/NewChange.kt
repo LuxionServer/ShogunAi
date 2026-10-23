@@ -16,7 +16,7 @@ class NewChange(val membership: MultirepoMembership) {
     var branchType by mutableStateOf(BranchType.FEATURE)
     var fetchFirst by mutableStateOf(false)
     var selected by mutableStateOf(
-        membership.multirepo.declaration.defaultRepos.filter { it in aliases }.toSet().ifEmpty { aliases.toSet() },
+        membership.multirepo.defaultRepos.filter { it in aliases }.toSet().ifEmpty { aliases.toSet() },
     )
         private set
     var isCreating by mutableStateOf(false)
