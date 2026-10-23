@@ -16,6 +16,7 @@ import kotlin.time.Duration
 
 class ProcessBuilderShellCommandExecutor(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val osName: String = System.getProperty("os.name"),
 ) : ShellCommandExecutor {
 
     override suspend fun execute(
@@ -35,7 +36,7 @@ class ProcessBuilderShellCommandExecutor(
         timeout: Duration?,
     ): CommandResult = withContext(ioDispatcher) {
         val process = try {
-            val builder = ProcessBuilder(command)
+            val builder = ProcessBuilder(WindowsArguments.prepare(command, osName))
                 .redirectInput(ProcessBuilder.Redirect.from(File(NULL_DEVICE)))
                 .apply { workingDirectory?.let { directory(File(it)) } }
             builder.environment()["PATH"] = HomebrewPath.merge(builder.environment()["PATH"])
