@@ -30,6 +30,8 @@ interface FileManager {
 
     fun lastModifiedMillis(path: String): Long?
 
+    fun deleteRecursively(path: String)
+
     fun listNames(path: String): List<String>?
 }
 

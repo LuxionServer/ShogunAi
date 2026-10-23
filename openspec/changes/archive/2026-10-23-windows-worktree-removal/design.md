@@ -20,7 +20,7 @@ Herdr nests a worktree's workspace under the repository's workspace (`worktree o
 
 ## Decisions
 
-**1. Detect the lock from Git's output, as a new `GitFailureCause.FolderInUse`.** The failure is `failed to delete '<path>'` followed by `Permission denied`, `Device or resource busy` or `being used by another process` (`Directory not empty` isn't a lock and isn't matched). It is checked before `PermissionDenied`, which stays for other commands. Alternative: treat every `GitCommandFailed` as a lock and retry — rejected, it would close the user's Herdr session for unrelated failures such as uncommitted changes.
+**1. Detect the lock from Git's output with `isFolderInUseFailure`.** The failure is `failed to delete '<path>'` followed by `Permission denied`, `Device or resource busy` or `being used by another process` (`Directory not empty` isn't a lock and isn't matched). It is a separate predicate rather than a new `GitFailureCause`: the outcome is its own typed error, not a generic Git failure with a hint. Alternative: treat every `GitCommandFailed` as a lock and retry — rejected, it would close the user's Herdr session for unrelated failures such as uncommitted changes.
 
 **2. Close after the failure, then retry once.** On `FolderInUse`, the use case closes the worktree's workspace (id looked up before removing, as today), plus any pane from `listPanes` whose directory is inside the worktree and that isn't in that workspace (for example panes the user opened in the repository's workspace and `cd`ed into the worktree). Then it re-runs the removal. Panes of the worktree's workspace are not closed one by one: `workspace close` already covers them, including split ones. Lookup or close failures from Herdr are swallowed into the existing `herdrFailure` warning and never block the retry. Alternative: close Herdr before the first attempt — rejected by the scope (it would kill sessions of worktrees that can't be removed anyway).
 
@@ -34,7 +34,7 @@ Herdr nests a worktree's workspace under the repository's workspace (`worktree o
 
 ## Risks / Trade-offs
 
-- [Closing a pane the user is working in] The retry closes panes whose directory is inside the worktree; that is exactly what holds the lock, and the confirmation dialog already warns that the worktree's Herdr workspace will close → keep that warning and extend its wording to say the panes in the worktree are closed too.
+- [Closing a pane the user is working in] The retry closes panes whose directory is inside the worktree; that is exactly what holds the lock, and the confirmation dialog already warns that the worktree's Herdr workspace will close → the existing warning (workspace and agent will be closed) already covers it.
 - [The CLI run from a pane inside the worktree closes its own pane] On Windows that pane was the lock anyway → accepted; removal via the CLI from inside the worktree being removed is already unsupported.
 - [Git's message differs by locale or version] → match the stable English `failed to delete` plus the OS error strings; an unmatched lock behaves as today (raw Git error), no regression.
 - [Deleting a folder Git no longer tracks] → guarded as in decision 4, and only for a path the user asked to remove.

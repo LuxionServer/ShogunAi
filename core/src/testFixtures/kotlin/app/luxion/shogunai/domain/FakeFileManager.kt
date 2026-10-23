@@ -41,6 +41,15 @@ class FakeFileManager(
 
     override fun lastModifiedMillis(path: String): Long? = modifiedAt[path]
 
+    val deletedRecursively = mutableListOf<String>()
+    var lockedFolders: Set<String> = emptySet()
+
+    override fun deleteRecursively(path: String) {
+        if (path in lockedFolders) throw java.nio.file.FileSystemException(path, null, "being used by another process")
+        deletedRecursively += path
+        delete(path)
+    }
+
     fun delete(path: String) {
         paths -= path
         writtenTexts.remove(path)

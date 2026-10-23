@@ -58,6 +58,7 @@ private fun technicalDetailsOf(error: Throwable): TechnicalDetails? = when (erro
     is WorktreeError.EmulatorExitedEarly -> TechnicalDetails(emptyList(), null, error.lastLogLines)
     is WorktreeError.AndroidToolFailed -> TechnicalDetails(error.command, error.exitCode, error.output)
     is WorktreeError.ProcessListingFailed -> TechnicalDetails(error.command, error.exitCode, "")
+    is WorktreeError.WorktreeFolderInUse -> TechnicalDetails(error.command, error.exitCode, error.errorOutput)
     is WorktreeError.HerdrCommandFailed -> TechnicalDetails(error.command, null, error.detail)
     is WorktreeError.TerminalLaunchFailed -> TechnicalDetails(null, null, error.detail)
     is WorktreeError.EditorLaunchFailed -> TechnicalDetails(null, null, error.detail)
