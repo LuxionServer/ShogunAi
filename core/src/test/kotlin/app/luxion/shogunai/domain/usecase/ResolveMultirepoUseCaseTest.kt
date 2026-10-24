@@ -208,6 +208,8 @@ class ResolveMultirepoUseCaseTest {
     fun `control characters in a path or alias are rejected without echoing them`() = runTest {
         listOf(
             world.declaration.copy(repos = world.declaration.repos + ("api" to "product-api\u001b[2K\r")),
+            world.declaration.copy(repos = world.declaration.repos + ("api" to "product-api\u0000")),
+            world.declaration.copy(worktreesRoot = "../w\u0000"),
             world.declaration.copy(worktreesRoot = "../w\u202E"),
             world.declaration.copy(repos = mapOf("app\u001b" to "product-app"), defaultRepos = emptyList()),
         ).forEach { declaration ->
@@ -216,7 +218,21 @@ class ResolveMultirepoUseCaseTest {
             val error = assertIs<WorktreeError.InvalidMultirepo>(world.resolver(world.folder).exceptionOrNull())
 
             assertTrue(error.detail.contains("control characters"))
-            assertFalse(error.detail.any { it == '\u001b' || it == '\u202E' })
+            assertFalse(error.detail.any { it == '\u001b' || it == '\u202E' || it == '\u0000' })
+        }
+    }
+
+    @Test
+    fun `a path the file system can't represent fails only as an invalid multirepo`() = runTest {
+        listOf(
+            world.declaration.copy(repos = world.declaration.repos + ("api" to "product-api<>|?*")),
+            world.declaration.copy(worktreesRoot = "../w<>|?*"),
+        ).forEach { declaration ->
+            world.source.declarations[world.folder] = declaration
+
+            val failure = world.resolver(world.folder).exceptionOrNull()
+
+            assertTrue(failure == null || failure is WorktreeError.InvalidMultirepo, failure.toString())
         }
     }
 }

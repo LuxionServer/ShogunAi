@@ -9,6 +9,7 @@ import app.luxion.shogunai.domain.model.joinPath
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.hasUnsafePathCharacters
 import app.luxion.shogunai.domain.model.isValidMultirepoAlias
+import app.luxion.shogunai.domain.model.isValidMultirepoPath
 import java.nio.file.Path
 
 data class MultirepoContext(
@@ -93,6 +94,10 @@ class ResolveMultirepoUseCase(
         }
         declaration.repos.keys.firstOrNull { !isValidMultirepoAlias(it) }?.let {
             invalid("alias '$it' must use only lowercase letters, digits and hyphens")
+        }
+        if (!isValidMultirepoPath(declaration.worktreesRoot)) invalid("worktreesRoot isn't a valid path")
+        declaration.repos.entries.firstOrNull { !isValidMultirepoPath(it.value) }?.let {
+            invalid("the path of '${it.key}' isn't a valid path")
         }
         declaration.defaultRepos.firstOrNull { it !in declaration.repos }?.let {
             invalid("'$it' isn't a declared repository")
