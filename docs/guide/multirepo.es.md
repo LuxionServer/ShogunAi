@@ -10,18 +10,20 @@ Un multirepo se declara con un fichero `.shogunai-multirepo.json` en una carpeta
 
 ```json
 {
+  "version": 2,
   "repos": { "docs": "product-docs", "app": "product-app", "api": "product-api" },
   "worktreesRoot": "../product-worktrees",
   "defaultRepos": ["app", "api"],
-  "agent": { "agentCommand": "claude" },
+  "agent": { "agentCommand": "claude", "useHeadroom": false },
   "workspace": { "alias": "workspace", "default": false }
 }
 ```
 
+- `version` es el formato de la declaración; ShogunAi escribe `2`. Un fichero sin ella viene de una versión anterior, que omitía `useHeadroom` cuando estaba activado, así que su agente conserva Headroom.
 - `repos` asocia un alias (minúsculas, dígitos y guiones) a la ruta de un repositorio, relativa a la carpeta o absoluta. Los repositorios no tienen por qué compartir carpeta padre.
 - `worktreesRoot` es una carpeta común bajo la que se propone la carpeta de worktrees de cada repositorio como `<worktreesRoot>/<alias>`.
 - `defaultRepos` son los repositorios que cubre `shogun new <id>` en la carpeta del multirepo.
-- `agent` es el comando que lanza `shogun open --herdr` en la carpeta del multirepo; por defecto, `claude`.
+- `agent` es el comando que lanza `shogun open --herdr` en la carpeta del multirepo, por defecto `claude`, y si Headroom lo envuelve (`useHeadroom`, desactivado por defecto).
 - `workspace` es opcional: `false`, o un objeto con el `alias` del [repositorio de workspace](#un-repositorio-de-workspace) y si es un repositorio por defecto (`default`). Los archivos que no lo tienen siguen funcionando.
 
 La carpeta está fuera de todo repositorio, o es la raíz de un **repositorio de workspace** que versiona lo que comparten los repositorios (un `AGENTS.md`, la declaración) e ignora los repositorios anidados. Nunca es una subcarpeta de un repositorio, así que la declaración nunca acaba dentro de un repositorio que no es tuyo.

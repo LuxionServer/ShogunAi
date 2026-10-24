@@ -85,8 +85,9 @@ internal object CliHelp {
                               Remove a repository from the multirepo; its project and worktrees stay
   multirepo defaults <alias>[,<alias>...] | --clear [--json]
                               Set the repositories 'shogun new <id>' covers in the multirepo folder
-  multirepo agent <command> [--name <name>] [--no-headroom] [--json]
-                              Set the agent 'shogun open --herdr' runs in the multirepo folder
+  multirepo agent <command> [--name <name>] [--headroom] [--json]
+                              Set the agent 'shogun open --herdr' runs in the multirepo folder,
+                              wrapped with 'headroom wrap' when --headroom is given
   multirepo worktrees-root <dir> [--json]
                               Set the folder under which worktrees folders are proposed
   multirepo delete [--json]   Remove the declaration; projects, worktrees and branches are left as they are

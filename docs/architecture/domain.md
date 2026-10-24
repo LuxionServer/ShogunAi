@@ -36,7 +36,7 @@ Path helpers:
 data class AgentLaunchConfig(
     val name: String? = null,
     val agentCommand: String = "claude",
-    val useHeadroom: Boolean = true,
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val useHeadroom: Boolean = false,
 ) {
     val displayName: String
         get() = name?.takeIf { it.isNotBlank() } ?: executable().replaceFirstChar { it.uppercase() }
@@ -48,6 +48,8 @@ data class AgentLaunchConfig(
 ```
 
 A flat `data class` with default values, so it serializes with `kotlinx.serialization` without a polymorphic `SerializersModule`, and projects saved before a field existed still load. `agentCommand` may carry arguments (`claude --model opus`); `executable()` is its first word without folders. An agent is identified within its project by `displayName`: its `name`, or else its executable capitalized (`codex` → "Codex").
+
+Headroom (`headroom wrap`) is off unless the agent turns it on. `useHeadroom` is always written, and so is `ProjectConfig.agentLaunchConfig`: earlier versions, where Headroom was on by default, left the field (or the whole default agent) out when it was on, so `projects.json` reads an agent stored without `useHeadroom`, or a project without `agentLaunchConfig`, as Headroom-wrapped. A `.shogunai-multirepo.json` tells the two cases apart with its `version`: a declaration without it comes from an earlier version, and its agent (`claude` when it has none) is read with Headroom unless it says `"useHeadroom": false`; every declaration ShogunAi writes has `"version": 2`.
 
 `WorktreeAgents` holds the per-worktree choice: a map from worktree path to agent display name, stored in `settings.json` (never in the repository). `agentFor` returns the worktree's agent, or the default; `choose` records a non-default agent and forgets the entry when the default is chosen; `prune` drops entries of the project whose worktree no longer exists or whose agent was renamed or removed.
 

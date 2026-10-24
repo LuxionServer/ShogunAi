@@ -36,7 +36,7 @@ Helpers de rutas:
 data class AgentLaunchConfig(
     val name: String? = null,
     val agentCommand: String = "claude",
-    val useHeadroom: Boolean = true,
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val useHeadroom: Boolean = false,
 ) {
     val displayName: String
         get() = name?.takeIf { it.isNotBlank() } ?: executable().replaceFirstChar { it.uppercase() }
@@ -48,6 +48,8 @@ data class AgentLaunchConfig(
 ```
 
 Una `data class` plana con valores por defecto, para que se serialice con `kotlinx.serialization` sin un `SerializersModule` polimórfico y los proyectos guardados antes de que existiera un campo se sigan cargando. `agentCommand` puede llevar argumentos (`claude --model opus`); `executable()` es su primera palabra sin carpetas. Dentro de su proyecto, un agente se identifica por `displayName`: su `name` o, si no tiene, su ejecutable con la inicial en mayúscula (`codex` → «Codex»).
+
+Headroom (`headroom wrap`) está desactivado salvo que el agente lo active. `useHeadroom` se escribe siempre, igual que `ProjectConfig.agentLaunchConfig`: las versiones anteriores, en las que Headroom venía activado por defecto, omitían el campo (o el agente por defecto entero) cuando estaba activado, así que `projects.json` lee un agente guardado sin `useHeadroom`, o un proyecto sin `agentLaunchConfig`, como envuelto con Headroom. Un `.shogunai-multirepo.json` distingue los dos casos con su `version`: una declaración sin ella viene de una versión anterior, y su agente (`claude` si no tiene) se lee con Headroom salvo que diga `"useHeadroom": false`; toda declaración que escribe ShogunAi lleva `"version": 2`.
 
 `WorktreeAgents` gestiona la elección por worktree: un mapa de ruta de worktree a nombre de agente, guardado en `settings.json` (nunca en el repositorio). `agentFor` devuelve el agente del worktree o el de por defecto; `choose` guarda un agente que no es el de por defecto y olvida la entrada cuando se elige el de por defecto; `prune` quita las entradas del proyecto cuyo worktree ya no existe o cuyo agente se renombró o eliminó.
 

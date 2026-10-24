@@ -10,18 +10,20 @@ A multirepo is declared by a `.shogunai-multirepo.json` file in a folder you cho
 
 ```json
 {
+  "version": 2,
   "repos": { "docs": "product-docs", "app": "product-app", "api": "product-api" },
   "worktreesRoot": "../product-worktrees",
   "defaultRepos": ["app", "api"],
-  "agent": { "agentCommand": "claude" },
+  "agent": { "agentCommand": "claude", "useHeadroom": false },
   "workspace": { "alias": "workspace", "default": false }
 }
 ```
 
+- `version` is the declaration's format; ShogunAi writes `2`. A file without it comes from an earlier version, which left `useHeadroom` out when it was on, so its agent keeps Headroom.
 - `repos` maps an alias (lowercase letters, digits and hyphens) to a repository's path, relative to the folder or absolute. The repositories don't need to share a parent folder.
 - `worktreesRoot` is a common folder under which each repository's worktrees folder is proposed as `<worktreesRoot>/<alias>`.
 - `defaultRepos` are the repositories `shogun new <id>` covers when run in the multirepo folder.
-- `agent` is the command `shogun open --herdr` runs in the multirepo folder; `claude` by default.
+- `agent` is the command `shogun open --herdr` runs in the multirepo folder, `claude` by default, and whether Headroom wraps it (`useHeadroom`, off by default).
 - `workspace` is optional: `false`, or an object with the `alias` of the [workspace repository](#a-workspace-repository) and whether it is a `default` repository. Files without it keep working.
 
 The folder is outside every repository, or the top level of a **workspace repository** that versions what the repositories share (an `AGENTS.md`, the declaration) and ignores the nested repositories. It's never a subfolder of a repository, so the declaration never ends up inside a repository that isn't yours.

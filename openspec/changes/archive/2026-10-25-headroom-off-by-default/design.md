@@ -34,11 +34,11 @@ Alternatives considered:
 
 ### `.shogunai-multirepo.json`: a `version` field
 
-The declaration gets a top-level `"version": 2`, written by `JsonMultirepoSource.write` on every write; files without it are version 1. A version is needed here, not just explicit encoding, because the file is hand-written too: someone following the docs and writing `"agent": { "agentCommand": "codex" }`, or no agent at all, must get the new default, so absence can't mean "earlier version" in a new file.
+The declaration gets a top-level `"version": 2`, written by `JsonMultirepoSource.write` on every write; files without it are version 1. A version is needed here, not just explicit encoding, because the file is documented and can end up edited by hand or versioned in a workspace repository: someone following the docs and writing `"agent": { "agentCommand": "codex" }`, or no agent at all, must get the new default, so absence can't mean "earlier version" in a new file.
 
 When reading a declaration without `version`, `JsonMultirepoSource` patches the tree before decoding: a present `agent` without `useHeadroom` gets `useHeadroom: true`, and a missing `agent` becomes `{ "agentCommand": "claude", "useHeadroom": true }`. Materializing the missing agent is safe: nothing distinguishes a `null` agent from a declared default one except `Multirepo.agent`'s fallback, and the next write stores it explicitly, so the legacy file keeps Headroom after any `shogun multirepo …` edit or a desktop settings save. `useHeadroom` is always encoded (same `@EncodeDefault` as above), so a version-2 file is unambiguous for earlier versions too: they ignore `version` (`ignoreUnknownKeys`) and read `useHeadroom: false` correctly.
 
-`version` stays an infrastructure concern: `MultirepoDeclaration` doesn't get the field; the source adds it when encoding and strips the version check when decoding. A declaration with a `version` greater than 2 is read as version 2 (nothing to reject yet).
+`version` stays an infrastructure concern: `MultirepoDeclaration` doesn't get the field; the source adds it when encoding and only checks for its presence when decoding (the key itself is ignored by `ignoreUnknownKeys`). A declaration with a `version` greater than 2 is read as version 2 (nothing to reject yet).
 
 ### CLI: `--headroom`, `--no-headroom` kept as a no-op
 
@@ -53,7 +53,7 @@ Alternative: remove `--no-headroom` and fail with "unknown option". Rejected: it
 ## Risks / Trade-offs
 
 - [A legacy `projects.json` edited by hand after this version runs, removing `useHeadroom`] → it reads as `true`; acceptable, the file isn't meant for hand-editing and the docs say ShogunAi always writes the field.
-- [A hand-written multirepo declaration without `version`] → treated as legacy, so its agent gets Headroom. The multirepo guide's example includes `"version": 2` and says what a missing version means.
+- [A hand-written multirepo declaration without `version`] → treated as legacy, so its agent gets Headroom. The multirepo guide says the file is written by ShogunAi, its example includes `"version": 2` and it says what a missing version means.
 - [Downgrading to an earlier version after saving] → earlier versions read the explicit fields correctly; a version-2 multirepo with no agent reads as `headroom wrap claude` there, the old default. Acceptable.
 - [`@EncodeDefault` is experimental API] → it's stable in practice since kotlinx.serialization 1.3 and covered by round-trip tests that would catch a behavior change on upgrade.
 

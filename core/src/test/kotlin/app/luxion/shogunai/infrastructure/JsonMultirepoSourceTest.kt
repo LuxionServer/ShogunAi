@@ -4,6 +4,9 @@ import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.WorkspaceSetting
 import app.luxion.shogunai.domain.model.WorktreeError
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import java.nio.file.Files
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.exists
@@ -66,6 +69,47 @@ class JsonMultirepoSourceTest {
 
         assertFailsWith<WorktreeError.InvalidMultirepo> { source.read(folder.toString()) }
     }
+
+    @Test
+    fun `writes the format version and the agent's headroom option`() {
+        source.write(folder.toString(), MultirepoDeclaration(worktreesRoot = "../w", agent = AgentLaunchConfig(agentCommand = "codex")))
+
+        val written = Json.parseToJsonElement(declarationFile().readText()).jsonObject
+        assertEquals(JsonPrimitive(2), written["version"])
+        assertEquals(JsonPrimitive(false), written["agent"]?.jsonObject?.get("useHeadroom"))
+    }
+
+    @Test
+    fun `a current declaration without an agent or the headroom option runs the agent plain`() {
+        declarationFile().writeText("""{ "version": 2, "worktreesRoot": "../w" }""")
+        assertNull(source.read(folder.toString())?.agent)
+
+        declarationFile().writeText("""{ "version": 2, "worktreesRoot": "../w", "agent": { "agentCommand": "codex" } }""")
+        assertEquals(AgentLaunchConfig(agentCommand = "codex", useHeadroom = false), source.read(folder.toString())?.agent)
+    }
+
+    @Test
+    fun `a declaration without a version keeps the headroom its agent ran with`() {
+        declarationFile().writeText("""{ "worktreesRoot": "../w", "agent": { "agentCommand": "codex" } }""")
+        assertEquals(AgentLaunchConfig(agentCommand = "codex", useHeadroom = true), source.read(folder.toString())?.agent)
+
+        declarationFile().writeText("""{ "worktreesRoot": "../w", "agent": { "agentCommand": "codex", "useHeadroom": false } }""")
+        assertEquals(AgentLaunchConfig(agentCommand = "codex", useHeadroom = false), source.read(folder.toString())?.agent)
+    }
+
+    @Test
+    fun `a declaration without a version or an agent runs claude with headroom, also after it is rewritten`() {
+        declarationFile().writeText("""{ "worktreesRoot": "../w" }""")
+        val legacy = source.read(folder.toString())!!
+        assertEquals(AgentLaunchConfig(agentCommand = "claude", useHeadroom = true), legacy.agent)
+
+        source.write(folder.toString(), legacy.copy(defaultRepos = listOf("app")))
+
+        assertEquals(AgentLaunchConfig(agentCommand = "claude", useHeadroom = true), source.read(folder.toString())?.agent)
+        assertTrue(declarationFile().readText().contains("\"useHeadroom\": true"))
+    }
+
+    private fun declarationFile() = folder.resolve(".shogunai-multirepo.json")
 
     @Test
     fun `a folder without a declaration has none`() {

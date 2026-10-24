@@ -159,7 +159,7 @@ class ConfigureMultirepoUseCaseTest {
         val withAgent = configure.setAgent(Multirepo(world.folder, world.source.declarations.getValue(world.folder)), AgentLaunchConfig("Codex", "codex --full-auto")).getOrThrow()
 
         assertEquals(listOf("docs"), withAgent.declaration.defaultRepos)
-        assertEquals("headroom wrap codex --full-auto", withAgent.agent.resolvedCommand())
+        assertEquals("codex --full-auto", withAgent.agent.resolvedCommand())
         assertEquals("Codex", withAgent.agent.displayName)
     }
 

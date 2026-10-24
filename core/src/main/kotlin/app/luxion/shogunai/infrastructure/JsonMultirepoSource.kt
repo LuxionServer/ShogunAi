@@ -7,6 +7,10 @@ import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -31,7 +35,7 @@ class JsonMultirepoSource(
             throw WorktreeError.InvalidMultirepo(file.toString(), error.message ?: "unreadable")
         }
         return try {
-            json.decodeFromString<MultirepoDeclaration>(text)
+            json.decodeFromJsonElement(MultirepoDeclaration.serializer(), upToDate(json.parseToJsonElement(text)))
         } catch (error: SerializationException) {
             throw WorktreeError.InvalidMultirepo(file.toString(), firstLine(error))
         } catch (error: IllegalArgumentException) {
@@ -40,7 +44,9 @@ class JsonMultirepoSource(
     }
 
     override fun write(folder: String, declaration: MultirepoDeclaration) {
-        replace(declarationFile(folder), json.encodeToString(MultirepoDeclaration.serializer(), declaration) + "\n")
+        val fields = json.encodeToJsonElement(MultirepoDeclaration.serializer(), declaration).jsonObject
+        val versioned = JsonObject(mapOf(VERSION to JsonPrimitive(FORMAT_VERSION)) + fields)
+        replace(declarationFile(folder), json.encodeToString(JsonElement.serializer(), versioned) + "\n")
     }
 
     override fun delete(folder: String) {
@@ -78,9 +84,17 @@ class JsonMultirepoSource(
         Files.move(tempFile, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
     }
 
+    private fun upToDate(element: JsonElement): JsonElement =
+        if (element is JsonObject && VERSION !in element) LegacyAgentJson.legacyMultirepoDeclaration(element) else element
+
     private fun declarationFile(folder: String): Path = Path.of(folder).resolve(MULTIREPO_FILE_NAME).normalize()
 
     private fun firstLine(error: Exception): String = error.message?.lineSequence()?.firstOrNull().orEmpty().ifBlank { "invalid JSON" }
+
+    private companion object {
+        const val VERSION = "version"
+        const val FORMAT_VERSION = 2
+    }
 
     @Serializable
     private data class Registry(val multirepos: List<String> = emptyList())

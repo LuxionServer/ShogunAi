@@ -1841,7 +1841,7 @@ class ShogunCliTest {
         assertEquals("opened $merged in Herdr with Claude\n", out.toString())
         assertEquals(listOf(Triple(base, merged, "TASK-1")), herdr.opened)
         assertEquals(listOf(FakeHerdrClient.Split("w1:p1", merged, listOf("APP" to "app"))), herdr.splits)
-        assertEquals(listOf("w1:p2" to "headroom wrap claude"), herdr.ran)
+        assertEquals(listOf("w1:p2" to "claude"), herdr.ran)
     }
 
     @Test
