@@ -5,6 +5,7 @@ import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeRepositoryApproval
+import app.luxion.shogunai.domain.FakeProvisioningRecordStore
 import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
@@ -477,8 +478,10 @@ class CreateWorktreeUseCaseTest {
     @Test
     fun `a provisioned file resolving outside the worktree fails the creation and rolls back`() = runTest {
         val executor = FakeShellCommandExecutor { success(it) }
-        val fileManager = FakeFileManager(baseWithSecrets).also { it.outsidePaths = setOf("$worktreePath/local.properties") }
-        val useCase = CreateWorktreeUseCase(config, executor, fileManager, FakeRepositoryProvisioningSource())
+        val nested = config.copy(secretFiles = listOf("config/.env"))
+        val fileManager = FakeFileManager(listOf(config.baseRepositoryPath, nested.baseSecretPath("config/.env")))
+            .also { it.outsidePaths = setOf("$worktreePath/config") }
+        val useCase = CreateWorktreeUseCase(nested, executor, fileManager, FakeRepositoryProvisioningSource())
 
         val error = useCase("TASK-123", BranchType.FEATURE).exceptionOrNull()
 
@@ -551,6 +554,76 @@ class CreateWorktreeUseCaseTest {
         assertIs<WorktreeError.SecretCopyFailed>(error)
         assertTrue(executor.executed("git", "worktree", "remove", "--force", worktreePath))
         assertTrue(executor.executed("git", "branch", "-D", "--", "feature/TASK-123"))
+    }
+
+    @Test
+    fun `a local pattern that matches nothing doesn't count as a missing file`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+        val patternConfig = config.copy(secretFiles = listOf("*.p12", "local.properties"))
+        val useCase = CreateWorktreeUseCase(patternConfig, executor, FakeFileManager(existing = listOf(config.baseRepositoryPath)), FakeRepositoryProvisioningSource())
+
+        val error = useCase("TASK-123", BranchType.FEATURE).exceptionOrNull()
+
+        assertIs<WorktreeError.SecretFileNotFound>(error)
+        assertEquals(listOf("local.properties"), error.files)
+        assertTrue(executor.executedCommands.isEmpty())
+    }
+
+    @Test
+    fun `links a linked local folder and records copied folders and skipped links`() = runTest {
+        val certs = config.baseSecretPath("certs")
+        val folders = FakeFileManager(
+            existing = listOf(config.baseRepositoryPath, keysFolder, certs),
+            directories = setOf(keysFolder, certs),
+        ).also {
+            it.directoryFiles[keysFolder] = listOf("a.pem")
+            it.directoryFiles[certs] = listOf("ca.pem")
+            it.directoryLinks[certs] = listOf("shared.pem")
+        }
+        val records = FakeProvisioningRecordStore()
+        val linkedConfig = config.copy(secretFiles = listOf("keys", "certs"), linkedSecretFiles = listOf("keys"))
+        val useCase = CreateWorktreeUseCase(
+            linkedConfig, FakeShellCommandExecutor { success(it) }, folders, FakeRepositoryProvisioningSource(), records = records,
+        )
+
+        val worktree = useCase("TASK-123", BranchType.FEATURE).getOrThrow()
+
+        assertEquals(keysFolder, folders.symbolicLinks["$worktreePath/keys"])
+        assertEquals(listOf("$certs/ca.pem" to "$worktreePath/certs/ca.pem"), folders.copied)
+        assertEquals(mapOf("certs" to listOf("ca.pem")), records.records[worktreePath])
+        assertEquals(listOf("certs/shared.pem"), worktree.skippedLinks)
+    }
+
+    @Test
+    fun `rolls back when a linked folder's destination holds the branch's files`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+        val destination = "$worktreePath/keys"
+        val fileManager = FakeFileManager(
+            existing = listOf(config.baseRepositoryPath, keysFolder),
+            directories = setOf(keysFolder, destination),
+        ).also { it.directoryFiles[destination] = listOf("README.md") }
+        val linkedConfig = folderConfig().copy(linkedSecretFiles = listOf("keys"))
+        val useCase = CreateWorktreeUseCase(linkedConfig, executor, fileManager, FakeRepositoryProvisioningSource())
+
+        val error = useCase("TASK-123", BranchType.FEATURE).exceptionOrNull()
+
+        assertIs<WorktreeError.LinkedFolderOccupied>(error)
+        assertEquals("keys", error.entry)
+        assertTrue(fileManager.deletedRecursively.isEmpty())
+        assertTrue(executor.executed("git", "worktree", "remove", "--force", worktreePath))
+        assertTrue(executor.executed("git", "branch", "-D", "--", "feature/TASK-123"))
+    }
+
+    @Test
+    fun `rolls back when the record can't be written`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+        val records = FakeProvisioningRecordStore().also { it.failWrites = true }
+        val useCase = CreateWorktreeUseCase(folderConfig(), executor, fileManagerWithKeys(), FakeRepositoryProvisioningSource(), records = records)
+
+        val error = useCase("TASK-123", BranchType.FEATURE).exceptionOrNull()
+
+        assertIs<WorktreeError.SecretCopyFailed>(error)
+        assertTrue(executor.executed("git", "worktree", "remove", "--force", worktreePath))
     }
 
     private val environmentProvisioning = FakeRepositoryProvisioningSource(

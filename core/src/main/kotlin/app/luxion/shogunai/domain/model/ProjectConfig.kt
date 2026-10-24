@@ -17,6 +17,7 @@ data class ProjectConfig(
     val simulator: SimulatorSettings = SimulatorSettings(),
     val editorOverride: EditorId? = null,
     val fetchBeforeCreate: Boolean = false,
+    val linkedSecretFiles: List<String> = emptyList(),
 ) {
     val agents: List<AgentLaunchConfig>
         get() = listOf(agentLaunchConfig) + additionalAgents
@@ -33,7 +34,14 @@ data class ProjectConfig(
     }
 
     fun baseSecretPath(fileName: String): String = joinPath(baseRepositoryPath, fileName)
+
+    fun isLinked(entry: String): Boolean =
+        entry.trimEnd('/', '\\') in linkedSecretFiles.map { it.trimEnd('/', '\\') }
 }
+
+fun isLocalPattern(entry: String): Boolean = entry.any { it in LOCAL_PATTERN_CHARACTERS }
+
+private val LOCAL_PATTERN_CHARACTERS = setOf('*', '?', '[')
 
 internal fun joinPath(vararg parts: String): String =
     parts.joinToString("/") { it.trimEnd('/') }

@@ -18,7 +18,11 @@ interface FileManager {
 
     fun isDirectory(path: String): Boolean
 
-    fun listFiles(directory: String): List<String>
+    fun listTree(directory: String): DirectoryListing
+
+    fun isSymbolicLink(path: String): Boolean
+
+    fun deleteFile(path: String)
 
     fun modificationStamps(path: String): List<Pair<String, Long>>
 
@@ -34,5 +38,7 @@ interface FileManager {
 
     fun listNames(path: String): List<String>?
 }
+
+data class DirectoryListing(val files: List<String> = emptyList(), val skippedLinks: List<String> = emptyList())
 
 class SymbolicLinksNotSupported(cause: Throwable? = null) : Exception("Symbolic links aren't supported here", cause)

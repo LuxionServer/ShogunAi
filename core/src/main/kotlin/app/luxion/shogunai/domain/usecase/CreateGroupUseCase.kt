@@ -3,6 +3,7 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.RepositoryApproval
+import app.luxion.shogunai.domain.io.ProvisioningRecordStore
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.model.BranchType
@@ -32,6 +33,7 @@ class CreateGroupUseCase(
     private val environment: WorktreeEnvironmentPreparer = WorktreeEnvironmentPreparer.NONE,
     private val trust: RepositoryTrust = RepositoryTrust.NONE,
     private val approval: RepositoryApproval = RepositoryApproval.SKIP,
+    private val records: ProvisioningRecordStore = ProvisioningRecordStore.NONE,
 ) {
     suspend operator fun invoke(
         members: List<MultirepoMember>,
@@ -64,11 +66,11 @@ class CreateGroupUseCase(
             if (config.worktreesRoot.isBlank()) throw WorktreeError.InvalidRepositoryConfig(config.baseRepositoryPath, "the project has no worktrees folder")
             if (fetch) FetchRemoteUseCase(config, executor)().getOrThrow()
             val created = if (branchExists(config.baseRepositoryPath, branch)) {
-                CreateWorktreeFromBranchUseCase(config, executor, fileManager, provisioningSource, environment, trust, approval)(branch)
+                CreateWorktreeFromBranchUseCase(config, executor, fileManager, provisioningSource, environment, trust, approval, records)(branch)
             } else {
                 val base = ResolveMainBranchUseCase(config, executor)().getOrThrow()
                     ?: throw WorktreeError.BaseBranchNotFound(config.baseRepositoryPath)
-                CreateWorktreeUseCase(config, executor, fileManager, provisioningSource, environment, trust, approval)(id, branchType, base.ref)
+                CreateWorktreeUseCase(config, executor, fileManager, provisioningSource, environment, trust, approval, records)(id, branchType, base.ref)
             }
             val worktree = created.getOrThrow()
             GroupRepositoryResult(member.alias, GroupRepositoryOutcome.CREATED, worktree.path, worktree.skippedPostCreateCommands, worktree.skippedVariables)

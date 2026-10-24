@@ -23,6 +23,7 @@ import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.MavenDaemon
 import app.luxion.shogunai.domain.model.SuggestionReport
 import app.luxion.shogunai.domain.model.WorktreeComposeProject
+import app.luxion.shogunai.domain.model.MobileSecretsReport
 import app.luxion.shogunai.domain.model.ProvisionDrift
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.ProvisionMode
@@ -76,6 +77,7 @@ fun newJson(
     skippedPostCreateCommands: List<List<String>>,
     skippedVariables: List<String>,
     postCreateFailure: WorktreeError.PostCreateCommandFailed?,
+    skippedLinks: List<String> = emptyList(),
 ): JsonObject = buildJsonObject {
     put("path", path)
     put("branch", branch)
@@ -83,6 +85,7 @@ fun newJson(
     put("skippedPostCreateCommands", commands(skippedPostCreateCommands))
     put("skippedVariables", strings(skippedVariables))
     put("postCreateFailure", postCreateFailureJson(postCreateFailure))
+    put("skippedLinks", strings(skippedLinks))
 }
 
 fun provisionJson(
@@ -91,6 +94,8 @@ fun provisionJson(
     skippedPostCreateCommands: List<List<String>>,
     skippedVariables: List<String>,
     postCreateFailure: WorktreeError.PostCreateCommandFailed?,
+    removed: List<String> = emptyList(),
+    skippedLinks: List<String> = emptyList(),
 ): JsonObject = buildJsonObject {
     put("path", path)
     put("copied", strings(files.filter { it.mode == ProvisionMode.COPIED }.map { it.path }))
@@ -99,6 +104,8 @@ fun provisionJson(
     put("skippedPostCreateCommands", commands(skippedPostCreateCommands))
     put("skippedVariables", strings(skippedVariables))
     put("postCreateFailure", postCreateFailureJson(postCreateFailure))
+    put("removed", strings(removed))
+    put("skippedLinks", strings(skippedLinks))
 }
 
 fun provisionCheckJson(path: String, drift: List<ProvisionDrift>): JsonObject = buildJsonObject {
@@ -123,6 +130,7 @@ private val ProvisionDriftState.label: String
         ProvisionDriftState.MISSING -> "missing"
         ProvisionDriftState.DIFFERS -> "differs"
         ProvisionDriftState.NOT_LINKED -> "not-linked"
+        ProvisionDriftState.DELETED_IN_BASE -> "deleted-in-base"
     }
 
 fun trustJson(repository: String, subject: RepositoryApprovalSubject, approved: Boolean, changed: Boolean): JsonObject = buildJsonObject {
@@ -278,7 +286,7 @@ fun mavenJson(daemons: List<MavenDaemon>, attributed: Boolean): JsonObject = bui
     put("totalMemoryBytes", totalMavenResidentMemory(daemons))
 }
 
-fun stacksJson(stacks: List<DetectedStack>, report: SuggestionReport): JsonObject = buildJsonObject {
+fun stacksJson(stacks: List<DetectedStack>, report: SuggestionReport, secrets: MobileSecretsReport = MobileSecretsReport()): JsonObject = buildJsonObject {
     put(
         "stacks",
         buildJsonArray {
@@ -300,6 +308,34 @@ fun stacksJson(stacks: List<DetectedStack>, report: SuggestionReport): JsonObjec
                                 }
                             },
                         )
+                    },
+                )
+            }
+        },
+    )
+    put(
+        "secrets",
+        buildJsonArray {
+            secrets.secrets.forEach {
+                add(
+                    buildJsonObject {
+                        put("path", it.path)
+                        put("kind", it.kind.id)
+                        put("pattern", it.linkPattern)
+                    },
+                )
+            }
+        },
+    )
+    put(
+        "keystoreWarnings",
+        buildJsonArray {
+            secrets.warnings.forEach {
+                add(
+                    buildJsonObject {
+                        put("file", it.file)
+                        put("key", it.key)
+                        put("value", it.value)
                     },
                 )
             }

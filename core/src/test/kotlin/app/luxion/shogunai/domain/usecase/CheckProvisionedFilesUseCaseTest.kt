@@ -1,6 +1,7 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.FakeProvisioningRecordStore
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
@@ -118,5 +119,42 @@ class CheckProvisionedFilesUseCaseTest {
             ),
             drift,
         )
+    }
+
+    private val baseKeys = "$base/keys"
+    private val worktreeKeys = "$linked/keys"
+
+    private fun keysFileManager(vararg existing: String) =
+        FakeFileManager(existing = listOf(base, linked, baseKeys) + existing, directories = setOf(baseKeys)).also {
+            it.directoryFiles[baseKeys] = listOf("a.pem")
+            it.contents["$baseKeys/a.pem"] = "A"
+            it.contents["$worktreeKeys/a.pem"] = "A"
+        }
+
+    @Test
+    fun `reports files deleted from a copied folder without deleting them`() = runTest {
+        val fileManager = keysFileManager("$worktreeKeys/a.pem", "$worktreeKeys/old.pem")
+        val records = FakeProvisioningRecordStore(mapOf(linked to mapOf("keys" to listOf("a.pem", "old.pem", "gone.pem"))))
+        val useCase = CheckProvisionedFilesUseCase(
+            config.copy(secretFiles = listOf("keys")), executor, fileManager, FakeRepositoryProvisioningSource(), records,
+        )
+
+        val drift = useCase(linked).getOrThrow()
+
+        assertEquals(listOf(ProvisionDrift("keys/old.pem", ProvisionDriftState.DELETED_IN_BASE)), drift)
+        assertTrue(fileManager.deletedFiles.isEmpty())
+    }
+
+    @Test
+    fun `reports a linked folder that is missing or not a link`() = runTest {
+        val linkedConfig = config.copy(secretFiles = listOf("keys"), linkedSecretFiles = listOf("keys"))
+        val missing = CheckProvisionedFilesUseCase(linkedConfig, executor, keysFileManager(), FakeRepositoryProvisioningSource())
+        val notLinked = CheckProvisionedFilesUseCase(linkedConfig, executor, keysFileManager(worktreeKeys), FakeRepositoryProvisioningSource())
+        val linkedFileManager = keysFileManager().also { it.createSymbolicLink(target = baseKeys, link = worktreeKeys) }
+        val upToDate = CheckProvisionedFilesUseCase(linkedConfig, executor, linkedFileManager, FakeRepositoryProvisioningSource())
+
+        assertEquals(listOf(ProvisionDrift("keys", ProvisionDriftState.MISSING)), missing(linked).getOrThrow())
+        assertEquals(listOf(ProvisionDrift("keys", ProvisionDriftState.NOT_LINKED)), notLinked(linked).getOrThrow())
+        assertEquals(emptyList(), upToDate(linked).getOrThrow())
     }
 }

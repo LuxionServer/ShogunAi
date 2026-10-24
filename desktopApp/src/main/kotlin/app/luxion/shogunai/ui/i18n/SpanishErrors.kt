@@ -116,6 +116,10 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "No se pudieron copiar los archivos locales al worktree.",
         "Comprueba que la carpeta del worktree admite escritura.",
     )
+    is WorktreeError.LinkedFolderOccupied -> ErrorTexts(
+        "No se pudo enlazar ${error.entry}: el worktree ya tiene una carpeta ${error.entry} con archivos que ShogunAi no copió.",
+        "Cambia ${error.entry} a copiar en los archivos locales del proyecto, o saca esos archivos de la carpeta del worktree.",
+    )
     is WorktreeError.PostCreateCommandFailed -> ErrorTexts(
         "El worktree se creó, pero falló uno de los comandos posteriores a la creación del repositorio.",
         "Lee los detalles técnicos, corrige el comando o su causa y ejecútalo dentro del worktree.",
