@@ -110,7 +110,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.v2.runComposeUiTest
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -1554,7 +1554,7 @@ class ProjectWorktreesTest {
         assertEquals(previous, viewModel.statuses[worktreePath])
         assertEquals(WorktreeStatusState.Loading, viewModel.statuses[otherPath])
 
-        statusGate?.complete(Unit)
+        statusGate.complete(Unit)
         advanceUntilIdle()
 
         assertIs<WorktreeStatusState.Loaded>(viewModel.statuses[otherPath])
@@ -1611,7 +1611,7 @@ class ProjectWorktreesTest {
 
         assertEquals(0, assertIs<WorktreeStatusState.Loaded>(viewModel.statuses[worktreePath]).status.uncommittedChanges)
 
-        statusGate?.complete(Unit)
+        statusGate.complete(Unit)
         advanceUntilIdle()
 
         assertEquals(1, listCalls)
