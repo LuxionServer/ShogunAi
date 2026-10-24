@@ -52,6 +52,12 @@ import app.luxion.shogunai.domain.usecase.DetectInstallChannelUseCase
 import app.luxion.shogunai.infrastructure.GitHubReleaseSource
 import app.luxion.shogunai.infrastructure.JsonUpdatePreferenceRepository
 import app.luxion.shogunai.ui.shell.ClaudeHooksState
+import app.luxion.shogunai.ui.shell.TourActions
+import app.luxion.shogunai.ui.shell.TourState
+import app.luxion.shogunai.domain.usecase.CommandLineToolState
+import app.luxion.shogunai.domain.usecase.CreateTourUseCase
+import app.luxion.shogunai.domain.usecase.EndTourUseCase
+import app.luxion.shogunai.domain.usecase.TourLocation
 import app.luxion.shogunai.ui.shell.UpdateState
 import app.luxion.shogunai.domain.usecase.ClaudeCodeHooks
 import app.luxion.shogunai.infrastructure.ExecutableLocator
@@ -185,11 +191,13 @@ import app.luxion.shogunai.infrastructure.JsonThemePreferenceRepository
 import app.luxion.shogunai.infrastructure.LocalAndroidSdk
 import app.luxion.shogunai.infrastructure.SharedDeviceStatesAndroidSdk
 import app.luxion.shogunai.infrastructure.MacDerivedDataSource
+import app.luxion.shogunai.infrastructure.NioDeviceWaitQueue
 import app.luxion.shogunai.infrastructure.NioEnvironmentStateStore
 import app.luxion.shogunai.infrastructure.NioFileManager
 import app.luxion.shogunai.infrastructure.RotatingFileDiagnosticsLog
 import app.luxion.shogunai.infrastructure.ProcessBuilderShellCommandExecutor
 import app.luxion.shogunai.infrastructure.ProcessGradleDaemonSource
+import app.luxion.shogunai.infrastructure.ProcessHandleLiveness
 import app.luxion.shogunai.infrastructure.RepositoryProvisioningFiles
 import app.luxion.shogunai.infrastructure.SimctlAppleSimulators
 import app.luxion.shogunai.infrastructure.SocketPortProbe
@@ -285,6 +293,21 @@ class AppContainer {
         noticeDismissedStore = { settingsFile.read().claudeHooksNoticeDismissed },
         rememberNoticeDismissed = { settingsFile.update { it.copy(claudeHooksNoticeDismissed = true) } },
     )
+    val tourLocation = TourLocation()
+    val tour = TourState(
+        TourActions(
+            create = { CreateTourUseCase(shellCommandExecutor, fileManager, projectRepository, tourLocation)(languagePreferenceRepository.load()) },
+            end = { EndTourUseCase(fileManager, projectRepository, tourLocation)() },
+            existingProject = { runCatching { projectRepository.list().firstOrNull(tourLocation::isTour) }.getOrNull() },
+            leftoverFolder = { fileManager.exists(tourLocation.root) },
+            toolAvailable = {
+                claudeHooks.refresh()
+                claudeHooks.toolStatus?.state == CommandLineToolState.AVAILABLE
+            },
+            offered = { settingsFile.read().tourOffered },
+            rememberOffered = { settingsFile.update { it.copy(tourOffered = true) } },
+        ),
+    )
     private val editorResolver = EditorExecutableResolver(
         HostOs.current(),
         ExecutableLocator(),
@@ -374,6 +397,8 @@ class AppContainer {
         androidSdk,
         readPool,
         { requested -> contributions.requesting(requested) },
+        NioDeviceWaitQueue(),
+        ProcessHandleLiveness(),
     )
     private val trimGradleDaemons = TrimGradleDaemonsUseCase(listGradleDaemons, stopGradleDaemons, resolveResourceLimits)
     val resources = ResourcePreferences(resourceLimitsRepository, resolveResourceLimits, showsSimulators = appleSimulators.isSupported(), showsDerivedDataQuota = derivedDataSource.isSupported())

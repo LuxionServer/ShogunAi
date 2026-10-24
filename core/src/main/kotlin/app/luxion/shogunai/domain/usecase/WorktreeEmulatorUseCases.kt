@@ -2,6 +2,7 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.io.AndroidSdk
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
+import app.luxion.shogunai.domain.model.DeviceWait
 import app.luxion.shogunai.domain.model.EMULATOR_PORT_KEY
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EmulatorState
@@ -27,10 +28,11 @@ class StartWorktreeEmulatorUseCase(
         worktreePath: String,
         avd: String? = null,
         noWindow: Boolean? = null,
+        wait: DeviceWait? = null,
     ): Result<DeviceStart<WorktreeEmulator>> = runCatching {
         val provider = emulatorProvider(provisioningSource, config)
         val location = sdk.locate(config.baseRepositoryPath)
-        val acquisition = acquire.emulator(config.baseRepositoryPath, worktreePath).getOrThrow()
+        val acquisition = acquire.emulator(config.baseRepositoryPath, worktreePath, wait).getOrThrow()
         val environment = resolveEnvironment(config.baseRepositoryPath, worktreePath, reserve = false).getOrThrow()
         val port = environment.ports.getValue(EMULATOR_PORT_KEY)
         val serial = emulatorSerial(port)

@@ -45,6 +45,19 @@ class NioFileManagerTest {
     }
 
     @Test
+    fun `deletes read-only files like the objects Git writes`() {
+        val folder = root.resolve("repository")
+        val objectFile = folder.resolve(".git/objects/ab/cdef")
+        objectFile.parent.createDirectories()
+        objectFile.writeBytes("x".toByteArray())
+        objectFile.toFile().setReadOnly()
+
+        fileManager.deleteRecursively(folder.toString())
+
+        assertFalse(Files.exists(folder))
+    }
+
+    @Test
     fun `reads properties and treats a missing file as empty`() {
         val file = root.resolve("gradle.properties")
         file.writeBytes("org.gradle.caching=true\n# comment\norg.gradle.jvmargs=-Xmx2g\n".toByteArray())

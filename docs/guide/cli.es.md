@@ -29,6 +29,7 @@ La salida es texto plano en inglés; los scripts deben usar `--json`, que acepta
 | `1` | La operación falló; el motivo va a la salida de error. Los fallos que un comando no trata de forma específica se imprimen en una sola línea que empieza por `shogun:`, nunca como un stack trace. |
 | `2` | Uso incorrecto: comando u opción desconocidos, argumento que falta, o entrada de un hook que no es el JSON esperado. |
 | `3` | `provision --check` encontró diferencias entre el worktree y el repositorio base. |
+| `130` | El comando se interrumpió (Ctrl+C o una señal de terminación) y se detuvo limpiamente, por ejemplo saliendo de la cola de un `start --wait`. |
 
 ## Worktrees
 
@@ -344,19 +345,21 @@ shogun compose down [<worktree>] [--volumes]
 ### `emulator`
 
 ```text
-shogun emulator start|stop|status [<path>] [--avd <name>] [--no-window]
+shogun emulator start|stop|status [<path>] [--avd <name>] [--no-window] [--wait] [--wait-timeout <minutes>]
 ```
 
 Arranca (y espera a), para o muestra el emulador de Android del worktree. `--avd` y `--no-window` solo se aplican a `start` y sustituyen los ajustes del proyecto en ese arranque. `status` imprime `emulator-5556 running|booting|stopped`, o `not acquired` antes del primer arranque. Cada `start` renueva la concesión del worktree e imprime `export ANDROID_SERIAL=…` con el serial que hay que usar. El primer `start` reserva el puerto de consola (liberando un emulador con la concesión caducada si el pool está lleno, lo que se informa por la salida de errores); ejecútalo antes de cada uso del dispositivo, ya que adquiere uno de nuevo si fue liberado. Tras una liberación, `status` imprime `not acquired (released for <worktree> at <hora>)`. Con todos los emuladores protegidos falla con el código de salida `1` nombrando los worktrees que los tienen y cuándo caducan sus concesiones.
 
+Con `--wait`, `start` espera en cola en vez de fallar cuando el pool está lleno y no se puede liberar ninguno, y arranca el emulador en cuanto puede adquirir uno. La espera dura como mucho 30 minutos, o los minutos indicados con `--wait-timeout` (que implica `--wait`); después falla con el código de salida `1`, diciendo cuánto esperó y quién tiene los emuladores, sin haber reservado nada. Quienes esperan un pool se atienden por orden de llegada en todos los repositorios de la máquina, y mientras alguien espera, un `start` sin `--wait` (o desde la app de escritorio) no puede quedarse con el emulador que esperan: su error dice cuántos esperan. Quien espera y se interrumpe, o cuyo proceso termina, sale de la cola. Mientras espera, el comando imprime por la salida de errores su puesto en la cola, quién tiene cada emulador y cuándo caduca la próxima concesión, de nuevo solo cuando eso cambia, y `waited <tiempo>` cuando ya tiene el emulador. Los agentes deben ejecutar un `start` que espera en segundo plano, porque dura más que el límite de tiempo de su shell. `--wait` y `--wait-timeout` solo se aplican a `start`.
+
 ### `simulator`
 
 ```text
-shogun simulator start|stop|status [<path>] [--device <type>] [--runtime <runtime>]
+shogun simulator start|stop|status [<path>] [--device <type>] [--runtime <runtime>] [--wait] [--wait-timeout <minutes>]
 shogun simulator gradle-init install|uninstall [--yes|-y]
 ```
 
-Crea si hace falta, arranca (y espera a) y abre, apaga o muestra el simulador de iOS del worktree (solo macOS). `--device` y `--runtime` solo se aplican cuando `start` crea el simulador. En un repositorio Kotlin Multiplatform, `status` dice además si los tests de KMP usan el simulador.
+Crea si hace falta, arranca (y espera a) y abre, apaga o muestra el simulador de iOS del worktree (solo macOS). `--device` y `--runtime` solo se aplican cuando `start` crea el simulador. `--wait` y `--wait-timeout` esperan a un pool de simuladores lleno igual que en [`emulator`](#emulator). En un repositorio Kotlin Multiplatform, `status` dice además si los tests de KMP usan el simulador.
 
 `gradle-init install` instala un init script de Gradle para toda la máquina que hace que los tests de simulador KMP de todos los proyectos usen el simulador del worktree; muestra el script y pregunta `[y/N]` salvo con `--yes`. `uninstall` lo elimina.
 
@@ -367,7 +370,7 @@ shogun pool status [--json]
 shogun pool trim [--json]
 ```
 
-`status` imprime cada pool (`emulators 1/2`, `simulators 0/1`, `gradle daemons 3/2  over the limit`) con el límite del perfil de capacidad de la máquina y, debajo, el proyecto, el worktree y el estado de cada recurso en uso. `trim` detiene los daemons de Gradle inactivos, primero los que llevan más tiempo inactivos, hasta quedar dentro del límite, e imprime lo que detuvo y conservó.
+`status` imprime cada pool (`emulators 1/2`, `simulators 0/1`, `gradle daemons 3/2  over the limit`) con el límite del perfil de capacidad de la máquina y, debajo, el proyecto, el worktree y el estado de cada recurso en uso, seguidos de los worktrees que esperan un emulador o un simulador (`waiting: main-repo · TASK-2 since 14:10`), en el orden de la cola. `trim` detiene los daemons de Gradle inactivos, primero los que llevan más tiempo inactivos, hasta quedar dentro del límite, e imprime lo que detuvo y conservó.
 
 ### `xcode`
 
@@ -417,8 +420,8 @@ Las reglas son las mismas para todos:
 | `xcode` | `active` (`false` si el provider no está activo, con el resto vacío), `folders`: `{ path, sizeBytes, worktree }`, `orphans`: `{ path, sizeBytes }`, `unavailableVolumeFolders` (un número) y `compilationCacheBytes` (`null` salvo que esté declarada). |
 | `xcode clean` | `active`, `deleted` (rutas), `freedBytes` y `failures`: `{ path, message }`. |
 | `xcode trim` | `active`, `quotaMode` (`automatic`, `fixed` o `none`), `quotaBytes` (`null` sin cuota o cuando la automática no se puede calcular), `dryRun`, `usageBeforeBytes`, `usageAfterBytes`, `exceeded`, `released` (rutas; con `--dry-run`, las que se liberarían), `freedBytes`, `inUse` (rutas de worktrees) y `failures`: `{ path, message }`. |
-| `emulator start\|stop\|status` | `worktree`, `serial` y `state` (`running`, `booting` o `stopped`). `serial` y `state` son `null` si el worktree aún no tiene puerto de emulador reservado. |
-| `simulator start\|stop\|status` | `worktree`, `udid`, `name` y `state` (`shutdown`, `booting` o `booted`), `null` si el worktree aún no tiene simulador. El aviso sobre los tests KMP no forma parte. |
+| `emulator start\|stop\|status` | `worktree`, `serial` y `state` (`running`, `booting` o `stopped`). `serial` y `state` son `null` si el worktree aún no tiene puerto de emulador reservado. `waited` son los segundos enteros que un `start --wait` esperó capacidad (`0` si había sitio), `null` en otro caso. |
+| `simulator start\|stop\|status` | `worktree`, `udid`, `name` y `state` (`shutdown`, `booting` o `booted`), `null` si el worktree aún no tiene simulador, y `waited` como en `emulator`. El aviso sobre los tests KMP no forma parte. |
 
 ```bash
 shogun clean --json | jq -r '.candidates[].path'

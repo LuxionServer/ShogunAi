@@ -105,7 +105,7 @@ data class Multirepo(
         get() {
             val workspace = workspaceRepository
             val joins = declaration.workspace?.default == true && workspace != null
-            return if (joins && workspace!!.alias !in declaration.defaultRepos) declaration.defaultRepos + workspace.alias else declaration.defaultRepos
+            return if (joins && workspace.alias !in declaration.defaultRepos) declaration.defaultRepos + workspace.alias else declaration.defaultRepos
         }
 
     val worktreesRoot: String
