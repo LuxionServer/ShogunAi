@@ -22,7 +22,6 @@ import app.luxion.shogunai.ui.components.PrimaryButton
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.theme.ShogunTheme
-import java.nio.file.Path
 
 private val ReviewMaxWidth = 720.dp
 private val UNPRINTABLE = Regex("[\\p{Cc}\\p{Cf}\\u2028\\u2029]")
@@ -36,7 +35,7 @@ fun multirepoReviewLines(multirepo: Multirepo, workspaceLabel: String, worktrees
     } + MultirepoReviewLine(worktreesRootLabel, printablePath(multirepo.worktreesRoot), multirepo.isOutsideParent(multirepo.worktreesRoot))
 
 fun multirepoParentFolder(multirepo: Multirepo): String =
-    printablePath(Path.of(multirepo.folder).normalize().parent?.toString() ?: "/")
+    printablePath(multirepo.parentFolder)
 
 private fun printablePath(path: String): String =
     path.replace(UNPRINTABLE) { "\\u%04x".format(it.value.single().code) }

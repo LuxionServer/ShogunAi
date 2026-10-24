@@ -134,6 +134,9 @@ data class Multirepo(
             )
         }.joinToString("\n")
 
+    val parentFolder: String
+        get() = Path.of(folder).normalize().parent?.toString()?.replace('\\', '/') ?: "/"
+
     fun isOutsideParent(path: String): Boolean {
         val parent = Path.of(folder).normalize().parent ?: return false
         return !Path.of(path).normalize().startsWith(parent)
