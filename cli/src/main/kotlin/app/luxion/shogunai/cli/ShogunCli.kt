@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.AgentSessionStore
 import app.luxion.shogunai.domain.io.AndroidSdk
 import app.luxion.shogunai.domain.io.AppleSimulators
+import app.luxion.shogunai.domain.io.DerivedDataSizeStore
 import app.luxion.shogunai.domain.io.DerivedDataSource
 import app.luxion.shogunai.domain.io.EnvironmentStateStore
 import app.luxion.shogunai.domain.io.FileManager
@@ -24,6 +25,8 @@ import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.model.ANDROID_SERIAL
 import app.luxion.shogunai.domain.model.AgentSessionRecord
 import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.DerivedDataQuota
+import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.DerivedDataTrim
 import app.luxion.shogunai.domain.model.ResourceSettings
 import app.luxion.shogunai.domain.usecase.AgentSearch
@@ -88,6 +91,7 @@ import app.luxion.shogunai.domain.usecase.DeleteMergedBranchUseCase
 import app.luxion.shogunai.domain.usecase.DetectRunningAgentsUseCase
 import app.luxion.shogunai.domain.usecase.DeleteOrphanedDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.DerivedDataMeasure
+import app.luxion.shogunai.domain.usecase.ResolveDerivedDataQuotaUseCase
 import app.luxion.shogunai.domain.usecase.DeleteSimulatorsUseCase
 import app.luxion.shogunai.domain.usecase.EnvironmentFormat
 import app.luxion.shogunai.domain.usecase.ListDerivedDataUseCase
@@ -176,13 +180,20 @@ import java.io.File
 import app.luxion.shogunai.domain.io.AppInstanceLock
 import app.luxion.shogunai.domain.io.AppLauncher
 import app.luxion.shogunai.domain.io.AppRequestChannel
+import app.luxion.shogunai.domain.io.DeviceWaitQueue
+import app.luxion.shogunai.domain.io.ProcessLiveness
 import app.luxion.shogunai.domain.model.AppRequest
+import app.luxion.shogunai.domain.model.DeviceWait
+import app.luxion.shogunai.domain.model.toLocalClockTime
+import app.luxion.shogunai.domain.model.toWaitText
 import app.luxion.shogunai.domain.usecase.ProjectRegistration
 import app.luxion.shogunai.domain.usecase.RegisterProjectUseCase
 import app.luxion.shogunai.domain.usecase.UnregisterProjectUseCase
 import app.luxion.shogunai.infrastructure.DesktopAppLauncher
 import app.luxion.shogunai.infrastructure.FileAppInstanceLock
 import app.luxion.shogunai.infrastructure.FileAppRequestChannel
+import app.luxion.shogunai.infrastructure.NioDeviceWaitQueue
+import app.luxion.shogunai.infrastructure.ProcessHandleLiveness
 import java.io.FileNotFoundException
 import java.nio.file.Path
 import java.time.Duration
@@ -192,6 +203,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -234,6 +246,11 @@ class ShogunCli(
     private val appRequests: AppRequestChannel = FileAppRequestChannel(Path.of(userHome, ".shogunai", "app-requests")),
     private val appLock: AppInstanceLock = FileAppInstanceLock(Path.of(userHome, ".shogunai", "app.lock")),
     private val appLauncher: AppLauncher = DesktopAppLauncher(),
+    private val derivedDataSizes: DerivedDataSizeStore = DerivedDataSizeStore.NONE,
+    private val deviceWaitQueue: DeviceWaitQueue = NioDeviceWaitQueue(Path.of(userHome, ".shogunai")),
+    private val processLiveness: ProcessLiveness = ProcessHandleLiveness(),
+    private val deviceClock: () -> Instant = Instant::now,
+    private val pauseWhileWaiting: suspend (Duration) -> Unit = { delay(it.toMillis()) },
 ) {
     private val terminalApproval = PostCreateApproval { repository, commands ->
         if (confirm("${commandLines(repository, commands)}Run these commands? [y/N] ")) PostCreateDecision.RUN else PostCreateDecision.SKIP
@@ -247,7 +264,7 @@ class ShogunCli(
         userHome = userHome,
         isMac = derivedDataSource.isSupported(),
     )
-    private val listDerivedData = ListDerivedDataUseCase(derivedDataSource)
+    private val listDerivedData = ListDerivedDataUseCase(derivedDataSource, derivedDataSizes)
     private val deleteOrphanedDerivedData = DeleteOrphanedDerivedDataUseCase(derivedDataSource)
     private val resolveEnvironment = resolverWith(contributions)
     private val resolveLimits = ResolveResourceLimitsUseCase(resourceLimits, machineCapacity)
@@ -260,6 +277,7 @@ class ShogunCli(
         resolveLimits,
         ListGradleDaemonsUseCase(daemonSource, fileManager),
         agentActivity = ReadAgentActivityUseCase(sessionStore)::invoke,
+        clock = deviceClock,
     )
     private val readReleaseRecord = ReadReleaseRecordUseCase(resolveEnvironment, environmentStateStore)
     private val renewLeases = RenewWorktreeLeasesUseCase(resolveEnvironment, environmentStateStore)
@@ -273,6 +291,10 @@ class ShogunCli(
         androidSdk,
         readPool,
         { requested -> contributions.requesting(requested) },
+        deviceWaitQueue,
+        processLiveness,
+        clock = deviceClock,
+        sleep = pauseWhileWaiting,
     )
     private val trimGradleDaemons = TrimGradleDaemonsUseCase(
         ListGradleDaemonsUseCase(daemonSource, fileManager),
@@ -304,7 +326,11 @@ class ShogunCli(
             err.line("Run 'shogun help' for usage.")
             EXIT_USAGE
         }
-        is ParsedArguments.Command -> runBlocking { cancelledOnShutdown { execute(parsed.command) } }
+        is ParsedArguments.Command -> try {
+            runBlocking { cancelledOnShutdown { execute(parsed.command) } }
+        } catch (_: CancellationException) {
+            EXIT_INTERRUPTED
+        }
     }
 
     private suspend fun <T> cancelledOnShutdown(block: suspend () -> T): T {
@@ -1266,7 +1292,12 @@ class ShogunCli(
         var acquisition: ResourceAcquisition? = null
         val simulator = when (command.action) {
             SimulatorAction.START -> {
-                val started = startSimulator(config, worktree.path, SimulatorSettings(command.device, command.runtime)).getOrThrow()
+                val started = startSimulator(
+                    config,
+                    worktree.path,
+                    SimulatorSettings(command.device, command.runtime),
+                    command.wait?.let(::deviceWait),
+                ).getOrThrow()
                 acquisition = started.acquisition
                 started.device
             }
@@ -1280,6 +1311,7 @@ class ShogunCli(
             }
         }
         acquisition?.releases?.forEach { err.line("released the simulator of ${releasedName(it)} to make room") }
+        reportWaited(acquisition)
         val released = if (simulator == null) readReleaseRecord(worktree.path, ResourceKind.IOS_SIMULATOR) else null
         if (command.json) {
             printJson(simulatorJson(worktree.path, simulator, acquisition, released))
@@ -1351,7 +1383,13 @@ class ShogunCli(
         var acquisition: ResourceAcquisition? = null
         val emulator = when (command.action) {
             EmulatorAction.START -> {
-                val started = startEmulator(config, worktree.path, command.avd, command.noWindow.takeIf { it }).getOrThrow()
+                val started = startEmulator(
+                    config,
+                    worktree.path,
+                    command.avd,
+                    command.noWindow.takeIf { it },
+                    command.wait?.let(::deviceWait),
+                ).getOrThrow()
                 acquisition = started.acquisition
                 started.device
             }
@@ -1364,6 +1402,7 @@ class ShogunCli(
             }
         }
         acquisition?.releases?.forEach { err.line("released the emulator of ${releasedName(it)} to make room") }
+        reportWaited(acquisition)
         val released = if (emulator == null) readReleaseRecord(worktree.path, ResourceKind.EMULATOR) else null
         if (command.json) {
             printJson(emulatorJson(worktree.path, emulator, acquisition, released))
@@ -1378,6 +1417,20 @@ class ShogunCli(
         return EXIT_OK
     }
 
+    private fun deviceWait(timeout: Duration): DeviceWait {
+        var lastLine: String? = null
+        return DeviceWait(timeout) { progress ->
+            val line = waitProgressLine(progress)
+            if (line != lastLine) err.line(line)
+            lastLine = line
+        }
+    }
+
+    private fun reportWaited(acquisition: ResourceAcquisition?) {
+        val seconds = acquisition?.waitedSeconds?.takeIf { it > 0 } ?: return
+        err.line("waited ${Duration.ofSeconds(seconds).toWaitText()}")
+    }
+
     private fun releaseExplanation(record: ReleaseRecord?): String =
         record?.let { " (released for ${it.forWorktree} at ${Instant.ofEpochMilli(it.releasedAt)})" }.orEmpty()
 
@@ -1390,14 +1443,20 @@ class ShogunCli(
             readPool.simulators(config.baseRepositoryPath).takeIf { appleSimulators.isSupported() },
             readPool.gradleDaemons(worktrees),
         )
+        val waiting = usages.associate { usage ->
+            usage.kind to if (usage.kind == ResourceKind.GRADLE_DAEMON) emptyList() else acquireResource.waiting(usage.kind)
+        }
         if (command.json) {
-            printJson(poolJson(usages))
+            printJson(poolJson(usages) { waiting[it].orEmpty() })
             return EXIT_OK
         }
         usages.forEach { usage ->
             val limit = usage.effectiveLimit?.toString() ?: "no limit"
             out.line("${usage.kind.poolLabel} ${usage.inUse}/$limit${if (usage.isOverLimit) "  over the limit" else ""}")
             usage.holders.forEach { holder -> out.line("  ${holderLine(holder)}") }
+            waiting[usage.kind].orEmpty().forEach { ticket ->
+                out.line("  waiting: ${ticket.displayName} since ${Instant.ofEpochMilli(ticket.since).toLocalClockTime()}")
+            }
         }
         return EXIT_OK
     }
@@ -1923,21 +1982,20 @@ class ShogunCli(
             if (command.json) printJson(xcodeTrimJson(active = false, trim = null)) else out.line("The Xcode provider isn't active.")
             return EXIT_OK
         }
-        val quotaBytes = runCatching { resourceLimits.load() }.getOrDefault(ResourceSettings()).derivedDataQuotaBytes
-        if (quotaBytes == null) {
-            if (command.json) printJson(xcodeTrimJson(active = true, trim = DerivedDataTrim(null, 0L, 0L, dryRun = command.dryRun)))
-            else out.line("No DerivedData quota is set; set one in Preferences > Resources.")
-            return EXIT_OK
-        }
+        val settings = runCatching { resourceLimits.load() }.getOrDefault(ResourceSettings())
+        if (settings.quotaMode == DerivedDataQuotaMode.NONE) return noDerivedDataQuota(command, DerivedDataQuota(DerivedDataQuotaMode.NONE, null))
         val configs = (listOf(configFor(workingDirectory)) + projectRepository.list().map { it.config })
             .distinctBy { it.baseRepositoryPath.trimEnd('/') }
         val searches = configs.mapNotNull { config ->
             ListWorktreesUseCase(config, executor)().getOrNull()?.filterNot { it.isPrunable }?.let { AgentSearch(config.agents.map { agent -> agent.agentCommand }, it) }
         }
         val worktrees = searches.flatMap { it.worktrees }.distinctBy { it.path.trimEnd('/') }
+        val listing = listDerivedData(worktrees, includeCompilationCache = false, measure = DerivedDataMeasure.ALL).getOrThrow()
+        val quota = ResolveDerivedDataQuotaUseCase(derivedDataSource)(settings, listing.folders.sumOf { it.folder.sizeBytes ?: 0L })
+        val quotaBytes = quota.bytes ?: return noDerivedDataQuota(command, quota)
         val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore)(searches).getOrNull().orEmpty()
         val active = agents.filterValues { running -> running.any { it.state == AgentState.WORKING || it.state == AgentState.BLOCKED } }.keys
-        val trim = TrimDerivedDataUseCase(derivedDataSource, listDerivedData, now)(quotaBytes, worktrees, active, command.dryRun).getOrThrow()
+        val trim = TrimDerivedDataUseCase(derivedDataSource, listDerivedData, now)(quotaBytes, worktrees, active, command.dryRun, listing, quota.mode).getOrThrow()
         if (command.json) {
             printJson(xcodeTrimJson(active = true, trim = trim))
             trim.failures.forEach { err.line("shogun: couldn't delete ${it.path}: ${it.detail}") }
@@ -1948,13 +2006,24 @@ class ShogunCli(
         if (trim.released.isNotEmpty()) {
             out.line("${if (trim.dryRun) "would free" else "freed"} ${formatMemory(trim.bytesFreed)}")
         }
-        out.line("usage ${formatMemory(trim.usageAfter)} of ${formatMemory(quotaBytes)}")
+        out.line("usage ${formatMemory(trim.usageAfter)} of ${formatMemory(quotaBytes)}" + if (quota.mode == DerivedDataQuotaMode.AUTOMATIC) " (automatic)" else "")
         if (trim.isExceeded) {
             val inUse = trim.inUse.joinToString(", ") { (it.owner as DerivedDataOwner.Worktree).path }
             out.line("quota still exceeded" + if (inUse.isNotEmpty()) "; worktrees in use: $inUse" else "")
         }
         trim.failures.forEach { err.line("shogun: couldn't delete ${it.path}: ${it.detail}") }
         return if (trim.failures.isEmpty()) EXIT_OK else EXIT_FAILURE
+    }
+
+    private fun noDerivedDataQuota(command: CliCommand.XcodeTrim, quota: DerivedDataQuota): Int {
+        if (command.json) {
+            printJson(xcodeTrimJson(active = true, trim = DerivedDataTrim(null, 0L, 0L, dryRun = command.dryRun, quotaMode = quota.mode)))
+        } else if (quota.isUnknown) {
+            out.line("The automatic DerivedData quota couldn't be computed: the free disk space is unknown.")
+        } else {
+            out.line("No DerivedData quota is set; set one in Preferences > Resources.")
+        }
+        return EXIT_OK
     }
 
     private fun xcodeProvider(repository: String): XcodeProvider? =
@@ -2288,6 +2357,7 @@ class ShogunCli(
         const val EXIT_FAILURE = 1
         const val EXIT_USAGE = 2
         const val EXIT_DRIFT = 3
+        const val EXIT_INTERRUPTED = 130
         private const val CLAUDE_CODE_WORKTREES = ".claude/worktrees"
         private const val CLAUDE_ENV_FILE = "CLAUDE_ENV_FILE"
         private const val CLAUDE_CONFIG_DIR = "CLAUDE_CONFIG_DIR"

@@ -1,10 +1,13 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeDerivedDataSizeStore
 import app.luxion.shogunai.domain.FakeDerivedDataSource
 import app.luxion.shogunai.domain.FakeDerivedDataSource.Companion.derivedData
 import app.luxion.shogunai.domain.model.DerivedDataOwner
+import app.luxion.shogunai.domain.model.RememberedSize
 import app.luxion.shogunai.domain.model.Worktree
 import kotlinx.coroutines.test.runTest
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -25,6 +28,19 @@ class ListDerivedDataUseCaseTest {
     private val volumeProject = "/Volumes/Work/app/App.xcodeproj"
 
     private fun useCase(source: FakeDerivedDataSource) = ListDerivedDataUseCase(source)
+
+    @Test
+    fun `a folder with a valid remembered size isn't measured again`() = runTest {
+        val accessed = Instant.parse("2026-10-20T09:00:00Z")
+        val folder = derivedData("MainRepo", mainProject, sizeBytes = null).copy(lastAccessed = accessed)
+        val source = FakeDerivedDataSource(existing = listOf(folder), existingProjects = setOf(mainProject))
+        val store = FakeDerivedDataSizeStore(mapOf(folder.path to RememberedSize(7L, accessed)))
+
+        val listing = ListDerivedDataUseCase(source, store)(worktrees, includeCompilationCache = false, measure = DerivedDataMeasure.ALL).getOrThrow()
+
+        assertEquals(7L, listing.folders.single().folder.sizeBytes)
+        assertEquals(emptyList(), source.measured)
+    }
 
     @Test
     fun `attributes a folder to the worktree that contains its workspace path`() = runTest {

@@ -56,6 +56,23 @@ class JsonSettingsFileTest {
     }
 
     @Test
+    fun `the tour hasn't been offered when the file was written before the tour existed`() {
+        Files.writeString(storagePath, """{ "claudeHooksNoticeDismissed": true }""")
+
+        assertFalse(settingsFile.read().tourOffered)
+    }
+
+    @Test
+    fun `remembering the tour offer keeps the other keys`() {
+        Files.writeString(storagePath, """{ "claudeHooksNoticeDismissed": true }""")
+
+        settingsFile.update { it.copy(tourOffered = true) }
+
+        assertTrue(settingsFile.read().tourOffered)
+        assertTrue(settingsFile.read().claudeHooksNoticeDismissed)
+    }
+
+    @Test
     fun `falls back to defaults when the file can't be parsed`() {
         Files.writeString(storagePath, "{ not json")
 

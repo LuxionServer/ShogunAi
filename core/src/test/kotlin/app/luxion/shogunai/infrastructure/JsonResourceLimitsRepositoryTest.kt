@@ -1,6 +1,7 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.model.CapacityProfile
+import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.ResourceLimits
 import app.luxion.shogunai.domain.model.ResourceSettings
 import kotlin.io.path.createTempDirectory
@@ -57,17 +58,33 @@ class JsonResourceLimitsRepositoryTest {
     }
 
     @Test
-    fun `no quota is the default`() {
-        assertEquals(null, repository.load().derivedDataQuotaGigabytes)
+    fun `the automatic quota is the default`() {
+        assertEquals(DerivedDataQuotaMode.AUTOMATIC, repository.load().quotaMode)
         storagePath.writeText("""{"resources":{"profile":"LIGHT"}}""")
-        assertEquals(null, repository.load().derivedDataQuotaGigabytes)
+        assertEquals(DerivedDataQuotaMode.AUTOMATIC, repository.load().quotaMode)
     }
 
     @Test
-    fun `a saved quota is read back`() {
-        repository.save(ResourceSettings(derivedDataQuotaGigabytes = 40))
-        val loaded = JsonResourceLimitsRepository(JsonSettingsFile(storagePath)).load()
-        assertEquals(40, loaded.derivedDataQuotaGigabytes)
-        assertEquals(40L * 1024 * 1024 * 1024, loaded.derivedDataQuotaBytes)
+    fun `settings from before the quota mode with a quota keep it fixed`() {
+        storagePath.writeText("""{"resources":{"profile":"LIGHT","derivedDataQuotaGigabytes":50}}""")
+        val loaded = repository.load()
+        assertEquals(DerivedDataQuotaMode.FIXED, loaded.quotaMode)
+        assertEquals(50L * 1024 * 1024 * 1024, loaded.fixedDerivedDataQuotaBytes)
+    }
+
+    @Test
+    fun `settings from before the quota mode without a quota become automatic`() {
+        storagePath.writeText("""{"resources":{"profile":"LIGHT","derivedDataQuotaGigabytes":null}}""")
+        assertEquals(DerivedDataQuotaMode.AUTOMATIC, repository.load().quotaMode)
+    }
+
+    @Test
+    fun `every quota mode is read back`() {
+        DerivedDataQuotaMode.entries.forEach { mode ->
+            repository.save(ResourceSettings(derivedDataQuotaGigabytes = 40, derivedDataQuotaMode = mode))
+            val loaded = JsonResourceLimitsRepository(JsonSettingsFile(storagePath)).load()
+            assertEquals(mode, loaded.quotaMode)
+            assertEquals(40, loaded.derivedDataQuotaGigabytes)
+        }
     }
 }

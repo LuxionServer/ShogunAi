@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.model.DerivedDataDeletionFailure
 import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.domain.model.DerivedDataListing
 import app.luxion.shogunai.domain.model.DerivedDataOwner
+import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.DerivedDataTrim
 import app.luxion.shogunai.domain.model.Worktree
 import java.time.Duration
@@ -22,8 +23,9 @@ class TrimDerivedDataUseCase(
         activeWorktreePaths: Set<String>,
         dryRun: Boolean = false,
         measured: DerivedDataListing? = null,
+        quotaMode: DerivedDataQuotaMode = DerivedDataQuotaMode.FIXED,
     ): Result<DerivedDataTrim> = runCatching {
-        if (quotaBytes == null) return@runCatching DerivedDataTrim(null, 0L, 0L, dryRun = dryRun)
+        if (quotaBytes == null) return@runCatching DerivedDataTrim(null, 0L, 0L, dryRun = dryRun, quotaMode = quotaMode)
         val active = activeWorktreePaths.map(::normalizePath).toSet()
         val listing = measured
             ?: list(worktrees, includeCompilationCache = false, measure = DerivedDataMeasure.ALL).getOrThrow()
@@ -45,7 +47,7 @@ class TrimDerivedDataUseCase(
                 failures += DerivedDataDeletionFailure(candidate.folder.path, error.message ?: "delete failed")
             }
         }
-        DerivedDataTrim(quotaBytes, usageBefore, usage, released, inUse, failures, dryRun)
+        DerivedDataTrim(quotaBytes, usageBefore, usage, released, inUse, failures, dryRun, quotaMode)
     }
 
     private fun candidatesOf(folders: List<AttributedDerivedData>, inUse: List<AttributedDerivedData>): List<AttributedDerivedData> {

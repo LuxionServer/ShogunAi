@@ -158,8 +158,14 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     )
     is WorktreeError.ResourcePoolFull -> ErrorTexts(
         "The limit of ${error.limit} ${englishKindName(error.kind)} is reached and none is free to release: " +
-            error.holders.joinToString("; ") { "${it.displayName} (${englishHolderState(it.state)}${englishProtection(it)})" } + ".",
+            error.holders.joinToString("; ") { "${it.displayName} (${englishHolderState(it.state)}${englishProtection(it)})" } +
+            englishWaiting(error.waiting) + ".",
         "Wait for a lease to expire, stop one of them, or raise the limit in Preferences.",
+    )
+    is WorktreeError.DeviceWaitTimedOut -> ErrorTexts(
+        "No ${englishKindName(error.kind).removeSuffix("s")} was freed within ${error.waited.toMinutes()} min: " +
+            error.holders.joinToString("; ") { "${it.displayName} (${englishHolderState(it.state)}${englishProtection(it)})" } + ".",
+        "Stop one of them, or raise the limit of ${error.limit} in Preferences.",
     )
     is WorktreeError.AndroidSdkNotFound -> ErrorTexts(
         "The Android SDK wasn't found.",
@@ -249,6 +255,14 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "The base branch of ${error.repository} couldn't be resolved.",
         "Set the project's main branch in its settings.",
     )
+    is WorktreeError.TourCreationFailed -> ErrorTexts(
+        "Couldn't create the tour's sample repository: ${error.command.joinToString(" ")} failed${error.detail.asSuffix()}.",
+        "Check that Git is installed and works in a terminal, then start the tour again. Nothing was left behind.",
+    )
+    is WorktreeError.TourAlreadyExists -> ErrorTexts(
+        "The tour's folder ${error.path} already exists.",
+        "Restart the tour to replace it, or delete the folder.",
+    )
     is WorktreeError.InvalidRef -> ErrorTexts(
         "\"${error.ref}\" isn't a valid branch or start point.",
         "Branch names and start points can't start with \"-\".",
@@ -299,6 +313,12 @@ private fun englishKindName(kind: ResourceKind): String = when (kind) {
 }
 
 private fun englishHolderState(state: PoolHolderState): String = state.name.lowercase()
+
+private fun englishWaiting(waiting: Int): String = when (waiting) {
+    0 -> ""
+    1 -> "; 1 worktree is waiting for one"
+    else -> "; $waiting worktrees are waiting for one"
+}
 
 private fun englishProtection(holder: PoolHolder): String = when (holder.protection) {
     HolderProtection.AGENT_WORKING -> ", agent working"

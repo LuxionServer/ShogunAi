@@ -88,6 +88,7 @@ El `.worktreeinclude` de Claude Code se lee como `copy`: un patrón al estilo gi
 | `settings.json` | Las preferencias de la app: tema (`LIGHT`, `DARK` o `SYSTEM`, el valor por defecto), idioma (`ENGLISH`, por defecto, o `SPANISH`), posición y tamaño de la ventana, si la barra lateral está plegada, los proyectos plegados, el último destino, el último proyecto con el que se creó un worktree, los elementos recientes de la paleta de comandos y la agrupación de la lista de worktrees en cada vista, y el terminal elegido (`TERMINAL`, `ITERM2`, `WINDOWS_TERMINAL`, `TMUX` o `ZELLIJ`) y el IDE predeterminado (`VS_CODE`, `INTELLIJ_IDEA` o `ANDROID_STUDIO`), sin valor hasta que se elijan, y el último agente elegido para cada worktree. |
 | `multirepos.json`, `multirepos.json.lock` | Los multirepos conocidos en este equipo (las rutas de sus `.shogunai-multirepo.json`), la aprobación de cada declaración y el agente del multirepo fijado aquí. Legible solo por ti. |
 | `reservations.json`, `reservations.lock` | Un índice de los worktrees, de cualquier repositorio, que tienen puertos reservados, y el bloqueo que se toma al reservar, para que dos worktrees nunca reciban el mismo puerto. |
+| `device-queue.json` | Los worktrees que esperan un emulador o un simulador con `--wait`, en orden. Desaparece cuando nadie espera. |
 | `logs/emulator-<puerto>.log` | La salida de cada emulador que arrancó ShogunAi. |
 | `xcode/compilation-cache.xcconfig` | Los ajustes compartidos de Xcode que escribe la opción `compilationCache` del provider de Xcode. |
 

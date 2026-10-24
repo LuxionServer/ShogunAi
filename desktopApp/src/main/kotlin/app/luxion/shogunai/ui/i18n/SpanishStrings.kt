@@ -3,6 +3,7 @@ package app.luxion.shogunai.ui.i18n
 import app.luxion.shogunai.domain.model.ResourceLimits
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.CapacityProfile
+import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.AgentState
@@ -430,7 +431,9 @@ object SpanishStrings : Strings {
         if (count == 1) "1 carpeta está en un volumen no montado y se conserva"
         else "$count carpetas están en volúmenes no montados y se conservan"
     override fun derivedDataCompilationCache(size: String) = "Caché de compilación · $size"
-    override fun derivedDataQuotaUsage(usage: String, quota: String) = "$usage de $quota de cuota"
+    override fun derivedDataQuotaUsage(usage: String, quota: String, automatic: Boolean) =
+        "$usage de $quota de cuota" + if (automatic) " (automática)" else ""
+    override val derivedDataQuotaUnknown = "Cuota automática desconocida: no se pudo leer el espacio libre en disco"
     override fun derivedDataQuotaExceeded(inUse: List<String>) =
         "Por encima de la cuota" + if (inUse.isEmpty()) "" else "; se conservan por estar en uso: ${inUse.joinToString(", ")}"
     override fun derivedDataReleased(count: Int, freed: String) =
@@ -461,6 +464,12 @@ object SpanishStrings : Strings {
     override val invalidLimit = "Debe ser un número positivo, o sin límite"
     override val derivedDataQuotaLabel = "Cuota de DerivedData"
     override val noQuota = "Sin cuota"
+    override fun quotaModeName(mode: DerivedDataQuotaMode) = when (mode) {
+        DerivedDataQuotaMode.AUTOMATIC -> "Automática"
+        DerivedDataQuotaMode.FIXED -> "Tamaño fijo"
+        DerivedDataQuotaMode.NONE -> noQuota
+    }
+    override val automaticQuotaHint = "Una cuarta parte del espacio libre en disco más lo que ocupa DerivedData, entre 20 y 200 GB"
     override val gigabytesUnit = "GB"
     override val invalidQuota = "Debe ser un número entero positivo, o sin cuota"
     override val leaseDurationLabel = "Concesión de dispositivos"
@@ -742,4 +751,31 @@ object SpanishStrings : Strings {
     override fun folderIsMultirepoWorkspace(path: String, multirepo: String) =
         "$path es el repositorio workspace del multirepo $multirepo; pertenece a él y no se añade como proyecto propio"
     override fun deleteMultirepoTitle(name: String) = "¿Eliminar el multirepo $name?"
+    override val tourMenuItem = "Recorrido de ShogunAi"
+    override val tourTakeTour = "Hacer el recorrido"
+    override val tourDialogTitle = "Recorrido de ShogunAi"
+    override fun tourWelcomeMessage(folder: String) =
+        "El recorrido crea un repositorio de ejemplo desechable en $folder, con worktrees en cada estado que muestra ShogunAi, y lo registra como el proyecto \"ShogunAi tour\". Después, un agente te enseña cada función, paso a paso. No se toca nada fuera de esa carpeta, y \"Terminar recorrido\" lo elimina todo."
+    override val tourStart = "Empezar"
+    override val tourToolMessage = "Los agentes, los scripts y los hooks de Claude Code usan el comando shogun. Instálalo ahora para que funcionen todos los pasos del recorrido."
+    override val tourSkip = "Saltar"
+    override val tourContinue = "Continuar"
+    override val tourCreating = "Creando el repositorio de ejemplo…"
+    override val tourRetry = "Reintentar"
+    override val tourOpenAgentMessage = "El ejemplo está listo. Abre el agente del recorrido en su worktree principal; empieza el recorrido por sí solo."
+    override val tourClaudeDesktopHint = "En Claude Desktop, escribe \"Start the ShogunAi tour\" para empezar."
+    override val tourTrustHint = "El agente pregunta primero si confías en la carpeta del ejemplo. Es el repositorio desechable que acaba de crear el recorrido: elige \"Yes, I trust this folder\" en Claude Code, o permítelo en Codex, y empieza el recorrido."
+    override val tourAgentsNeeded = "El agente del recorrido es Claude Code, o Codex desde el menú de agentes; uno de los dos debe estar instalado."
+    override val tourLoadingWorktrees = "Cargando los worktrees del ejemplo…"
+    override val tourLater = "Más tarde"
+    override val tourExistingMessage = "El ejemplo del recorrido ya existe. Ábrelo donde lo dejaste, o reinicia el recorrido para crearlo de nuevo desde cero."
+    override val tourRestart = "Reiniciar"
+    override val tourOpenExisting = "Abrir"
+    override val tourNoticeMessage = "Novedad: un recorrido guiado por ShogunAi con un repositorio de ejemplo desechable y un agente que te enseña cada función."
+    override val tourBannerMessage = "Este es el ejemplo desechable del recorrido. Su agente te enseña ShogunAi en el worktree principal."
+    override val tourOpenAgent = "Abrir el agente del recorrido"
+    override val tourEnd = "Terminar recorrido"
+    override val tourEndTitle = "¿Terminar el recorrido?"
+    override fun tourEndMessage(folder: String) =
+        "Se eliminan el proyecto \"ShogunAi tour\", sus worktrees y $folder. Cierra antes el agente del recorrido. No se toca ningún otro proyecto."
 }
