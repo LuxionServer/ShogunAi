@@ -3,6 +3,7 @@ package app.luxion.shogunai.infrastructure
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.SymbolicLinksNotSupported
 import java.io.IOException
+import java.nio.file.AccessDeniedException
 import java.nio.file.FileSystemException
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
@@ -67,17 +68,26 @@ class NioFileManager : FileManager {
             root,
             object : SimpleFileVisitor<Path>() {
                 override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
-                    Files.delete(file)
+                    deleteEvenIfReadOnly(file)
                     return FileVisitResult.CONTINUE
                 }
 
                 override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult {
                     if (exc != null) throw exc
-                    Files.delete(dir)
+                    deleteEvenIfReadOnly(dir)
                     return FileVisitResult.CONTINUE
                 }
             },
         )
+    }
+
+    private fun deleteEvenIfReadOnly(path: Path) {
+        try {
+            Files.delete(path)
+        } catch (error: AccessDeniedException) {
+            if (!path.toFile().setWritable(true)) throw error
+            Files.delete(path)
+        }
     }
 
     override fun isDirectory(path: String): Boolean = Files.isDirectory(Path.of(path))
