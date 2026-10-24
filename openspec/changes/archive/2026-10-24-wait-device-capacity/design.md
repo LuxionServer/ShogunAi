@@ -57,6 +57,9 @@ On success after a real wait the CLI prints `waited 3m 12s` on standard error. S
 ### CLI options
 `--wait` and `--wait-timeout <minutes>` are parsed for `emulator` and `simulator`; they're usage errors with any action other than `start`. `--wait-timeout` implies `--wait`. The default bound is a constant `DEFAULT_DEVICE_WAIT_MINUTES = 30`, chosen above the 20-minute default lease so one full lease can expire within a wait. `waited` in JSON is `null` without `--wait`, else whole seconds.
 
+### Interruption
+The shutdown hook already cancels the command's coroutine on Ctrl+C or a termination signal, which runs the `finally` that removes the ticket. `ShogunCli.run` now turns that cancellation into exit code `130` instead of letting it escape `main` as a stack trace, which matters now that interrupting a long wait is a normal way to stop it.
+
 ### Pool status
 `ReadResourcePoolUseCase` doesn't change; `shogun pool status` reads the queue (pruned, under the lock) and prints `waiting: <project> · <worktree> since 14:10` lines under each device pool, and `waiting: [{ worktree, since }]` in JSON (`since` as an ISO instant, as `releasedFor.at` is).
 

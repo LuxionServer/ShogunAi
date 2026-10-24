@@ -159,9 +159,10 @@ Emulators, iOS simulators and Gradle daemons are limited per machine, shared by 
 
 - Every worktree that holds a device has a **lease** on it. Starting the device and every moment its agent is working renew the lease, and it expires after the lease duration without activity (20 minutes by default, set in Preferences > Resources, never in the repository). Only devices whose lease has expired can be released.
 - When you start a device and its pool is full, ShogunAi releases one device with an expired lease, in this order (the least recently used first within each step): a stopped device whose worktree has no agent session, a stopped device whose agent is done or idle, a running device (stopped first) and, last, a device whose agent is blocked. A device whose agent is working, or whose lease is still valid, is never released; if none can be released the start fails and names the worktrees that hold them, with when each lease expires.
+- `shogun emulator start --wait` and `shogun simulator start --wait` wait in line for a full pool instead of failing, for 30 minutes at most (`--wait-timeout <minutes>` changes it). Waiters are served first in, first out across the machine, and while anyone waits, other starts can't take the device they wait for. Agents should run a waiting start in the background; the session hint says so.
 - A released emulator loses its port and a released simulator is deleted. The released worktree remembers why (`shogun emulator status` says "released for …"), its port isn't handed to another worktree while another one is free, and it gets the same port back when it starts again. Agents should run `shogun emulator start` before every use of the device: it is idempotent, re-acquires one if it was released and prints the serial to use. The session hint says so.
 - Gradle daemons are started by your builds, so they can't be refused: the app (every 30 seconds) and `shogun pool trim` stop the idle ones, longest idle first, until they are within the limit.
-- `shogun pool status` shows each pool with its limit and holders, and the machine views of the app show the same with a notice for what was released.
+- `shogun pool status` shows each pool with its limit, holders and waiters, and the machine views of the app show the same with a notice for what was released.
 
 ## Xcode
 

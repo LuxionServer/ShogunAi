@@ -158,8 +158,14 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     )
     is WorktreeError.ResourcePoolFull -> ErrorTexts(
         "Se alcanzó el límite de ${error.limit} ${spanishKindName(error.kind)} y ninguno se puede liberar: " +
-            error.holders.joinToString("; ") { "${it.displayName} (${spanishHolderState(it.state)}${spanishProtection(it)})" } + ".",
+            error.holders.joinToString("; ") { "${it.displayName} (${spanishHolderState(it.state)}${spanishProtection(it)})" } +
+            spanishWaiting(error.waiting) + ".",
         "Espera a que expire una concesión, detén uno de ellos, o sube el límite en Preferencias.",
+    )
+    is WorktreeError.DeviceWaitTimedOut -> ErrorTexts(
+        "No se liberó ningún ${spanishKindSingular(error.kind)} en ${error.waited.toMinutes()} min: " +
+            error.holders.joinToString("; ") { "${it.displayName} (${spanishHolderState(it.state)}${spanishProtection(it)})" } + ".",
+        "Detén uno de ellos, o sube el límite de ${error.limit} en Preferencias.",
     )
     is WorktreeError.AndroidSdkNotFound -> ErrorTexts(
         "No se encontró el SDK de Android.",
@@ -303,6 +309,18 @@ private fun spanishHolderState(state: PoolHolderState): String = when (state) {
     PoolHolderState.BUSY -> "ocupado"
     PoolHolderState.IDLE -> "inactivo"
     PoolHolderState.UNKNOWN -> "desconocido"
+}
+
+private fun spanishWaiting(waiting: Int): String = when (waiting) {
+    0 -> ""
+    1 -> "; 1 worktree espera uno"
+    else -> "; $waiting worktrees esperan uno"
+}
+
+private fun spanishKindSingular(kind: ResourceKind): String = when (kind) {
+    ResourceKind.EMULATOR -> "emulador"
+    ResourceKind.IOS_SIMULATOR -> "simulador"
+    ResourceKind.GRADLE_DAEMON -> "daemon de Gradle"
 }
 
 private fun spanishProtection(holder: PoolHolder): String = when (holder.protection) {

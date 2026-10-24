@@ -2,9 +2,13 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.io.AndroidSdk
 import app.luxion.shogunai.domain.io.AppleSimulators
+import app.luxion.shogunai.domain.io.DeviceWaitQueue
 import app.luxion.shogunai.domain.io.EnvironmentStateStore
 import app.luxion.shogunai.domain.io.PortProbe
+import app.luxion.shogunai.domain.io.ProcessLiveness
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
+import app.luxion.shogunai.domain.model.DeviceWait
+import app.luxion.shogunai.domain.model.DeviceWaitProgress
 import app.luxion.shogunai.domain.model.EMULATOR_PORT_KEY
 import app.luxion.shogunai.domain.model.FIRST_EMULATOR_PORT
 import app.luxion.shogunai.domain.model.IOS_SIMULATOR_KEY
@@ -16,13 +20,22 @@ import app.luxion.shogunai.domain.model.PoolReleaseReason
 import app.luxion.shogunai.domain.model.ReleaseRecord
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.SimulatorSettings
+import app.luxion.shogunai.domain.model.WaitTicket
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import java.time.Duration
 import java.time.Instant
+import java.util.UUID
 
-data class ResourceAcquisition(val acquiredNow: Boolean, val releases: List<PoolRelease>)
+data class ResourceAcquisition(
+    val acquiredNow: Boolean,
+    val releases: List<PoolRelease>,
+    val waitedSeconds: Long? = null,
+)
 
 data class DeviceStart<T>(val device: T, val acquisition: ResourceAcquisition)
 
@@ -36,28 +49,111 @@ class AcquireWorktreeResourceUseCase(
     private val sdk: AndroidSdk,
     private val readPool: ReadResourcePoolUseCase,
     private val contributions: (SimulatorSettings) -> ProviderContributions,
+    private val waitQueue: DeviceWaitQueue,
+    private val liveness: ProcessLiveness,
     private val clock: () -> Instant = Instant::now,
+    private val sleep: suspend (Duration) -> Unit = { delay(it.toMillis()) },
 ) {
-    suspend fun emulator(repositoryPath: String, worktreePath: String): Result<ResourceAcquisition> =
-        acquire(ResourceKind.EMULATOR, repositoryPath, worktreePath, SimulatorSettings())
+    suspend fun emulator(repositoryPath: String, worktreePath: String, wait: DeviceWait? = null): Result<ResourceAcquisition> =
+        acquire(ResourceKind.EMULATOR, repositoryPath, worktreePath, SimulatorSettings(), wait)
 
     suspend fun simulator(
         repositoryPath: String,
         worktreePath: String,
         requested: SimulatorSettings = SimulatorSettings(),
-    ): Result<ResourceAcquisition> = acquire(ResourceKind.IOS_SIMULATOR, repositoryPath, worktreePath, requested)
+        wait: DeviceWait? = null,
+    ): Result<ResourceAcquisition> = acquire(ResourceKind.IOS_SIMULATOR, repositoryPath, worktreePath, requested, wait)
+
+    suspend fun waiting(kind: ResourceKind): List<WaitTicket> = withContext(Dispatchers.IO) {
+        stateStore.withLock { liveQueue(kind) }
+    }
 
     private suspend fun acquire(
         kind: ResourceKind,
         repositoryPath: String,
         worktreePath: String,
         requested: SimulatorSettings,
+        wait: DeviceWait?,
+    ): Result<ResourceAcquisition> {
+        if (wait == null) return attempt(kind, repositoryPath, worktreePath, requested, ticketId = null)
+        return runCatching { acquireWaiting(kind, repositoryPath, worktreePath, requested, wait) }
+    }
+
+    private suspend fun acquireWaiting(
+        kind: ResourceKind,
+        repositoryPath: String,
+        worktreePath: String,
+        requested: SimulatorSettings,
+        wait: DeviceWait,
+    ): ResourceAcquisition {
+        val started = clock()
+        val first = attempt(kind, repositoryPath, worktreePath, requested, ticketId = null)
+        if (first.exceptionOrNull() !is WorktreeError.ResourcePoolFull) return first.getOrThrow().copy(waitedSeconds = 0)
+        val ticket = WaitTicket(
+            UUID.randomUUID().toString(),
+            normalizePath(resolveEnvironment.directoriesOf(worktreePath).admin),
+            normalizePath(worktreePath),
+            liveness.current(),
+            started.toEpochMilli(),
+        )
+        locked { waitQueue.write(kind, liveQueue(kind) + ticket) }
+        try {
+            val deadline = started + wait.timeout
+            while (true) {
+                val result = attempt(kind, repositoryPath, worktreePath, requested, ticket.id)
+                val full = result.exceptionOrNull() as? WorktreeError.ResourcePoolFull
+                    ?: return result.getOrThrow().copy(waitedSeconds = Duration.between(started, clock()).seconds)
+                val now = clock()
+                if (!now.isBefore(deadline)) {
+                    throw WorktreeError.DeviceWaitTimedOut(kind, Duration.between(started, now), full.limit, full.holders)
+                }
+                val queue = locked { liveQueue(kind) }
+                val nextExpiry = full.holders.mapNotNull { it.leaseExpiresAt }.filter { it.isAfter(now) }.minOrNull()
+                wait.onProgress(
+                    DeviceWaitProgress(
+                        kind,
+                        position = queue.indexOfFirst { it.id == ticket.id } + 1,
+                        waiting = queue.size,
+                        limit = full.limit,
+                        holders = full.holders,
+                        nextLeaseExpiry = nextExpiry,
+                    ),
+                )
+                sleep(nextPause(now, deadline, nextExpiry))
+            }
+        } finally {
+            withContext(NonCancellable) {
+                locked { waitQueue.write(kind, waitQueue.read(kind).filterNot { it.id == ticket.id }) }
+            }
+        }
+    }
+
+    private fun nextPause(now: Instant, deadline: Instant, nextExpiry: Instant?): Duration =
+        listOfNotNull(WAIT_POLL_INTERVAL, nextExpiry?.let { Duration.between(now, it) + LEASE_EXPIRY_MARGIN }, Duration.between(now, deadline))
+            .min()
+            .coerceAtLeast(MINIMUM_WAIT_PAUSE)
+
+    private suspend fun <T> locked(block: () -> T): T = withContext(Dispatchers.IO) { stateStore.withLock(block) }
+
+    private fun liveQueue(kind: ResourceKind): List<WaitTicket> {
+        val queue = waitQueue.read(kind)
+        val live = queue.filter { liveness.isAlive(it.process) }
+        if (live.size != queue.size) waitQueue.write(kind, live)
+        return live
+    }
+
+    private suspend fun attempt(
+        kind: ResourceKind,
+        repositoryPath: String,
+        worktreePath: String,
+        requested: SimulatorSettings,
+        ticketId: String?,
     ): Result<ResourceAcquisition> = runCatching {
         val directories = resolveEnvironment.directoriesOf(worktreePath)
         val key = keyOf(kind)
         val outcome = withContext(Dispatchers.IO) {
             stateStore.withLock {
-                runBlocking { acquireLocked(kind, key, repositoryPath, worktreePath, directories, requested) }
+                runBlocking { acquireLocked(kind, key, repositoryPath, worktreePath, directories, requested, ticketId) }
             }
         }
         val victims = outcome.released.mapNotNull { it.worktreePath }
@@ -73,6 +169,7 @@ class AcquireWorktreeResourceUseCase(
         worktreePath: String,
         directories: WorktreeGitDirectories,
         requested: SimulatorSettings,
+        ticketId: String?,
     ): LockedOutcome {
         var usage = readPool.of(kind, repositoryPath)
         val own = usage.holders.firstOrNull { it.adminDirectory?.let(::normalizePath) == normalizePath(directories.admin) }
@@ -85,11 +182,16 @@ class AcquireWorktreeResourceUseCase(
             stateStore.release(directories.admin, key)
             usage = usage.copy(holders = usage.holders - own)
         }
+        val queue = liveQueue(kind)
+        val others = queue.filter { normalizePath(it.adminDirectory) != normalizePath(directories.admin) }
+        if (queue.takeWhile { it.id != ticketId }.any { it in others }) {
+            throw WorktreeError.ResourcePoolFull(kind, usage.effectiveLimit ?: usage.holders.size, usage.holders, others.size)
+        }
         val released = mutableListOf<PoolRelease>()
         val limit = usage.effectiveLimit
         var remaining = usage.holders
         while (limit != null && remaining.size >= limit) {
-            val victim = nextVictim(remaining) ?: throw WorktreeError.ResourcePoolFull(kind, limit, remaining)
+            val victim = nextVictim(remaining) ?: throw WorktreeError.ResourcePoolFull(kind, limit, remaining, others.size)
             release(victim, key, repositoryPath, beneficiary)
             released += PoolRelease(kind, victim.worktreePath, PoolReleaseReason.MAKE_ROOM, victim.displayName)
             remaining = remaining - victim
@@ -199,4 +301,10 @@ class AcquireWorktreeResourceUseCase(
     private fun folderName(path: String): String = normalizePath(path).substringAfterLast('/')
 
     private class LockedOutcome(val acquiredNow: Boolean, val released: List<PoolRelease>)
+
+    companion object {
+        val WAIT_POLL_INTERVAL: Duration = Duration.ofSeconds(10)
+        private val LEASE_EXPIRY_MARGIN: Duration = Duration.ofSeconds(1)
+        private val MINIMUM_WAIT_PAUSE: Duration = Duration.ofSeconds(1)
+    }
 }
