@@ -161,8 +161,12 @@ private val UNSAFE_PATH_CHARACTER = Regex("[\\p{Cc}\\p{Cf}\\u2028\\u2029]")
 
 fun hasUnsafePathCharacters(path: String): Boolean = UNSAFE_PATH_CHARACTER.containsMatchIn(path)
 
+private fun parsedPath(path: String): Path? = runCatching { Path.of(path) }.getOrNull()
+
+fun isValidMultirepoPath(path: String): Boolean = !hasUnsafePathCharacters(path) && parsedPath(path) != null
+
 fun resolveMultirepoPath(folder: String, path: String): String {
-    val candidate = Path.of(path)
+    val candidate = parsedPath(path) ?: return joinPath(folder, path)
     val resolved = if (candidate.isAbsolute) candidate else Path.of(folder).resolve(candidate)
     return resolved.normalize().toString().replace('\\', '/').trimEnd('/').ifEmpty { "/" }
 }

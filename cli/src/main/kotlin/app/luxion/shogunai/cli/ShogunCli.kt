@@ -605,7 +605,7 @@ class ShogunCli(
     }
 
     private fun multirepoReview(multirepo: Multirepo): List<String> {
-        val parent = Path.of(multirepo.folder).normalize().parent?.toString() ?: "/"
+        val parent = Path.of(multirepo.folder).normalize().parent?.toString()?.replace('\\', '/') ?: "/"
         fun located(path: String) = printable(path) + if (multirepo.isOutsideParent(path)) "  (outside ${printable(parent)})" else ""
         return buildList {
             add("Multirepo declared by ${printable(multirepo.declarationPath)}:")

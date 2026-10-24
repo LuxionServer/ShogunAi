@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.model.WorkspaceSetting
 import app.luxion.shogunai.domain.model.WorktreeError
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermissions
+import kotlinx.serialization.json.JsonPrimitive
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.exists
 import kotlin.io.path.readText
@@ -159,7 +160,7 @@ class JsonMultirepoSourceTest {
     @Test
     fun `a registry from an earlier version keeps its folders and has nothing approved`() {
         Files.createDirectories(registry.parent)
-        registry.writeText("""{"multirepos": ["${folder.resolve(".shogunai-multirepo.json")}"]}""")
+        registry.writeText("""{"multirepos": [${jsonString(folder.resolve(".shogunai-multirepo.json").toString())}]}""")
 
         assertEquals(listOf(folder.toString()), source.knownFolders())
         assertFalse(source.isApproved(folder.toString(), "subject"))
@@ -173,8 +174,8 @@ class JsonMultirepoSourceTest {
     @Test
     fun `a malformed local entry doesn't hide the known folders`() {
         Files.createDirectories(registry.parent)
-        val key = folder.resolve(".shogunai-multirepo.json").toString()
-        registry.writeText("""{"multirepos": ["$key"], "local": {"$key": "garbage"}}""")
+        val key = jsonString(folder.resolve(".shogunai-multirepo.json").toString())
+        registry.writeText("""{"multirepos": [$key], "local": {$key: "garbage"}}""")
 
         assertEquals(listOf(folder.toString()), source.knownFolders())
         assertNull(source.agent(folder.toString()))
@@ -187,4 +188,6 @@ class JsonMultirepoSourceTest {
         val permissions = runCatching { Files.getPosixFilePermissions(registry) }.getOrNull() ?: return
         assertEquals(PosixFilePermissions.fromString("rw-------"), permissions)
     }
+
+    private fun jsonString(value: String) = JsonPrimitive(value).toString()
 }
