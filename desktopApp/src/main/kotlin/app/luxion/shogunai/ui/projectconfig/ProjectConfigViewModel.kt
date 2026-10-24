@@ -13,7 +13,12 @@ import app.luxion.shogunai.SimulatorSetup
 import app.luxion.shogunai.domain.model.EmulatorSettings
 import app.luxion.shogunai.domain.model.SimulatorRuntime
 import app.luxion.shogunai.domain.model.SimulatorSettings
+import app.luxion.shogunai.domain.io.DirectoryListing
+import app.luxion.shogunai.ui.isAbsolutePath
 import app.luxion.shogunai.domain.model.DetectedStack
+import app.luxion.shogunai.domain.model.MobileSecret
+import app.luxion.shogunai.domain.model.MobileSecretsReport
+import app.luxion.shogunai.domain.model.isLocalPattern
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.projectDefaultsFor
 import app.luxion.shogunai.domain.model.ProviderSuggestion
@@ -87,6 +92,8 @@ class ProjectConfigViewModel(
     val tools: ToolsPreferences = ToolsPreferences.NONE,
     private val detectStacks: (repositoryPath: String) -> List<DetectedStack> = { emptyList() },
     private val multirepoOfWorkspace: (topLevel: String) -> String? = { null },
+    private val detectMobileSecrets: (suspend (ProjectConfig) -> MobileSecretsReport)? = null,
+    private val listLocalFolder: (path: String) -> DirectoryListing? = { null },
 ) : ViewModel(), LeaveGuard {
     private val existingId = existingProject?.id
     val isNewProject: Boolean = existingProject == null
@@ -137,10 +144,29 @@ class ProjectConfigViewModel(
     )
         private set
 
+    var linkedSecretFiles by mutableStateOf(
+        existingProject?.config?.linkedSecretFiles.orEmpty().map { normalizeSecretFile(_baseRepositoryPath, it) }.toSet(),
+    )
+        private set
+
+    var rejectedLocalPattern by mutableStateOf<String?>(null)
+        private set
+
+    var skippedLinksByFolder by mutableStateOf(emptyMap<String, Int>())
+        private set
+
+    var mobileSecrets by mutableStateOf(MobileSecretsReport())
+        private set
+
+    private var mobileSecretsLoad: Job? = null
+
     var repositoryProvisioning by mutableStateOf(provisioningSource.stateFor(_baseRepositoryPath))
         private set
 
     var pendingRepositoryPatterns by mutableStateOf(emptyList<String>())
+        private set
+
+    var pendingLinkPatterns by mutableStateOf(emptyList<String>())
         private set
 
     var repositoryDraft by mutableStateOf(RepositoryConfigDraft())
@@ -215,6 +241,7 @@ class ProjectConfigViewModel(
     private var initialBaseRepositoryPath = baseRepositoryPath
     private var initialWorktreesRoot = worktreesRoot
     private var initialSecretFiles = secretFiles
+    private var initialLinkedSecretFiles = linkedSecretFiles
     private var initialAgents = agents
     private var initialMainBranch = mainBranch
     private var initialEditorOverride = editorOverride
@@ -271,6 +298,7 @@ class ProjectConfigViewModel(
         loadedRepositoryPath = path
         pendingRepositoryChange = null
         pendingRepositoryPatterns = emptyList()
+        pendingLinkPatterns = emptyList()
         repositoryProvisioning = provisioningSource.stateFor(path)
         loadRepositoryConfig()
         refreshEmulatorSection()
@@ -288,6 +316,7 @@ class ProjectConfigViewModel(
         repositoryDraft = RepositoryConfigDraft.of(provisioning)
         postCreateCommands = provisioning?.postCreateCommands.orEmpty()
         detectedStacks = if (path.isBlank()) emptyList() else runCatching { detectStacks(path) }.getOrDefault(emptyList())
+        refreshLocalEntries()
         initialRepositoryDraft = repositoryDraft
         nextEnvironmentRowId = repositoryDraft.environment.size
         repositoryChangedOnDisk = false
@@ -526,6 +555,7 @@ class ProjectConfigViewModel(
         initialBaseRepositoryPath = baseRepositoryPath
         initialWorktreesRoot = worktreesRoot
         initialSecretFiles = secretFiles
+        initialLinkedSecretFiles = linkedSecretFiles
     }
 
     fun submit(previewConfirmed: Boolean = false): SaveOutcome {
@@ -551,16 +581,19 @@ class ProjectConfigViewModel(
     }
 
     private val needsRepositoryWrite: Boolean
-        get() = repositoryDraftChanged || pendingRepositoryPatterns.isNotEmpty()
+        get() = repositoryDraftChanged || pendingRepositoryPatterns.isNotEmpty() || pendingLinkPatterns.isNotEmpty()
 
-    private fun pendingRepositoryEdit() = repositoryDraft.toEdit(addCopyPatterns = pendingRepositoryPatterns)
+    private fun pendingRepositoryEdit() =
+        repositoryDraft.toEdit(addCopyPatterns = pendingRepositoryPatterns, addLinkPatterns = pendingLinkPatterns)
 
     override val hasUnsavedChanges: Boolean
         get() = name != initialName ||
             baseRepositoryPath != initialBaseRepositoryPath ||
             worktreesRoot != initialWorktreesRoot ||
             secretFiles != initialSecretFiles ||
+            linkedSecretFiles != initialLinkedSecretFiles ||
             pendingRepositoryPatterns.isNotEmpty() ||
+            pendingLinkPatterns.isNotEmpty() ||
             repositoryDraftChanged ||
             agents != initialAgents ||
             mainBranch != initialMainBranch ||
@@ -577,19 +610,91 @@ class ProjectConfigViewModel(
 
     fun addSecretFile(fileName: String) {
         val normalized = normalizeSecretFile(baseRepositoryPath, fileName.trim())
-        if (normalized.isNotBlank() && normalized !in secretFiles) secretFiles = secretFiles + normalized
+        if (isLocalPattern(normalized) && !isInsideRepository(normalized)) {
+            rejectedLocalPattern = normalized
+            return
+        }
+        rejectedLocalPattern = null
+        if (normalized.isNotBlank() && normalized !in secretFiles) {
+            secretFiles = secretFiles + normalized
+            refreshLocalEntries()
+        }
     }
 
     fun removeSecretFile(fileName: String) {
         secretFiles = secretFiles - fileName
+        linkedSecretFiles = linkedSecretFiles - fileName
+        refreshLocalEntries()
+    }
+
+    fun isPatternEntry(entry: String): Boolean = isLocalPattern(entry)
+
+    fun isLinkedEntry(entry: String): Boolean = entry in linkedSecretFiles
+
+    fun setEntryLinked(entry: String, linked: Boolean) {
+        if (entry !in secretFiles) return
+        linkedSecretFiles = if (linked) linkedSecretFiles + entry else linkedSecretFiles - entry
+        refreshLocalEntries()
     }
 
     fun moveLocalFilesToRepository() {
         if (!canMoveLocalFilesToRepository) return
         val movable = secretFiles.filter(::isInsideRepository)
-        pendingRepositoryPatterns = (pendingRepositoryPatterns + movable.map(::anchoredPattern)).distinct()
+        val (linked, copied) = movable.partition(::isLinkedEntry)
+        pendingRepositoryPatterns = (pendingRepositoryPatterns + copied.map(::repositoryPatternOf)).distinct()
+        pendingLinkPatterns = (pendingLinkPatterns + linked.map(::repositoryPatternOf)).distinct()
         secretFiles = secretFiles - movable.toSet()
+        linkedSecretFiles = linkedSecretFiles - movable.toSet()
+        refreshLocalEntries()
     }
+
+    private fun repositoryPatternOf(entry: String): String = if (isLocalPattern(entry)) entry else anchoredPattern(entry)
+
+    val mobileSecretSuggestions: List<MobileSecret>
+        get() = mobileSecrets.secrets.filterNot { it.linkPattern in pendingLinkPatterns }
+
+    val canLinkMobileSecrets: Boolean
+        get() = repositoryConfigEditable
+
+    fun linkMobileSecret(secret: MobileSecret) {
+        if (!canLinkMobileSecrets) return
+        pendingLinkPatterns = (pendingLinkPatterns + secret.linkPattern).distinct()
+    }
+
+    private fun refreshLocalEntries() {
+        val base = loadedRepositoryPath
+        skippedLinksByFolder = if (base.isBlank()) {
+            emptyMap()
+        } else {
+            secretFiles.filterNot { isLocalPattern(it) || it in linkedSecretFiles }
+                .mapNotNull { entry -> listLocalFolder(joinedPath(base, entry))?.let { entry to it.skippedLinks.size } }
+                .filter { it.second > 0 }
+                .toMap()
+        }
+        refreshMobileSecrets()
+    }
+
+    private fun refreshMobileSecrets() {
+        val detect = detectMobileSecrets ?: return
+        mobileSecretsLoad?.cancel()
+        val base = loadedRepositoryPath
+        if (base.isBlank()) {
+            mobileSecrets = MobileSecretsReport()
+            return
+        }
+        val config = ProjectConfig(
+            baseRepositoryPath = base,
+            worktreesRoot = worktreesRoot,
+            secretFiles = secretFiles,
+            linkedSecretFiles = linkedSecretFiles.toList(),
+        )
+        mobileSecretsLoad = viewModelScope.launch {
+            mobileSecrets = runCatching { detect(config) }.getOrDefault(MobileSecretsReport())
+        }
+    }
+
+    private fun joinedPath(base: String, entry: String): String =
+        if (isAbsolutePath(entry)) entry else "${base.trimEnd('/', '\\')}/$entry"
 
     private fun String.isSameDirectoryAs(other: String): Boolean =
         trimEnd('/', '\\') == other.trimEnd('/', '\\')
@@ -597,12 +702,13 @@ class ProjectConfigViewModel(
     private fun writeRepositoryConfig() {
         when {
             repositoryDraftChanged -> provisioningSource.write(baseRepositoryPath, pendingRepositoryEdit(), repositoryFingerprint)
-            pendingRepositoryPatterns.isNotEmpty() ->
-                provisioningSource.addCopyPatterns(baseRepositoryPath, pendingRepositoryPatterns, repositoryFingerprint)
+            pendingRepositoryPatterns.isNotEmpty() || pendingLinkPatterns.isNotEmpty() ->
+                provisioningSource.addPatterns(baseRepositoryPath, pendingRepositoryPatterns, pendingLinkPatterns, repositoryFingerprint)
             else -> return
         }
         lastSaveWroteRepository = true
         pendingRepositoryPatterns = emptyList()
+        pendingLinkPatterns = emptyList()
         repositoryProvisioning = provisioningSource.stateFor(baseRepositoryPath)
         loadRepositoryConfig()
         repositoryPreviewConfirmed = true
@@ -619,6 +725,7 @@ class ProjectConfigViewModel(
                 baseRepositoryPath = baseRepositoryPath,
                 worktreesRoot = worktreesRoot,
                 secretFiles = secretFiles,
+                linkedSecretFiles = secretFiles.filter(::isLinkedEntry),
                 agentLaunchConfig = agents.first().toConfig(),
                 additionalAgents = agents.drop(1).map(AgentDraft::toConfig),
                 mainBranch = mainBranch.trim().ifEmpty { null },

@@ -61,4 +61,5 @@ data class RepositoryConfigEdit(
     val environment: List<EnvironmentEntry> = emptyList(),
     val envFile: String? = null,
     val addCopyPatterns: List<String> = emptyList(),
+    val addLinkPatterns: List<String> = emptyList(),
 )

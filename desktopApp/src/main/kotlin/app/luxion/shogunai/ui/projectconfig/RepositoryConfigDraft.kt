@@ -99,7 +99,7 @@ data class RepositoryConfigDraft(
 
     fun issueFor(field: RepositoryConfigField): RepositoryConfigIssue? = problems.firstOrNull { it.field == field }?.issue
 
-    fun toEdit(addCopyPatterns: List<String> = emptyList()) =
+    fun toEdit(addCopyPatterns: List<String> = emptyList(), addLinkPatterns: List<String> = emptyList()) =
         RepositoryConfigEdit(
             providers = RepositoryProviders(
                 gradle = gradle?.toProvider(),
@@ -112,6 +112,7 @@ data class RepositoryConfigDraft(
             environment = environment.map { EnvironmentEntry(it.name.trim(), it.template) },
             envFile = envFile.trimmedOrNull(),
             addCopyPatterns = addCopyPatterns,
+            addLinkPatterns = addLinkPatterns,
         )
 
     companion object {

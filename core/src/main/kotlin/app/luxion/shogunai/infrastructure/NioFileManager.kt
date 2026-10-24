@@ -1,5 +1,6 @@
 package app.luxion.shogunai.infrastructure
 
+import app.luxion.shogunai.domain.io.DirectoryListing
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.SymbolicLinksNotSupported
 import java.io.IOException
@@ -82,22 +83,33 @@ class NioFileManager : FileManager {
 
     override fun isDirectory(path: String): Boolean = Files.isDirectory(Path.of(path))
 
-    override fun listFiles(directory: String): List<String> {
+    override fun listTree(directory: String): DirectoryListing {
         val root = Path.of(directory)
-        if (!Files.isDirectory(root)) return emptyList()
+        if (!Files.isDirectory(root)) return DirectoryListing()
         val files = mutableListOf<String>()
+        val skippedLinks = mutableListOf<String>()
         Files.walkFileTree(
             root,
             object : SimpleFileVisitor<Path>() {
                 override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
-                    if (attrs.isRegularFile) files += root.relativize(file).joinToString("/")
+                    val relative = root.relativize(file).joinToString("/")
+                    when {
+                        attrs.isSymbolicLink -> skippedLinks += relative
+                        attrs.isRegularFile -> files += relative
+                    }
                     return FileVisitResult.CONTINUE
                 }
 
                 override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult = FileVisitResult.CONTINUE
             },
         )
-        return files
+        return DirectoryListing(files, skippedLinks)
+    }
+
+    override fun isSymbolicLink(path: String): Boolean = Files.isSymbolicLink(Path.of(path))
+
+    override fun deleteFile(path: String) {
+        Files.deleteIfExists(Path.of(path))
     }
 
     override fun writeText(path: String, text: String) {

@@ -57,6 +57,9 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class SecretCopyFailed(cause: Throwable) :
         WorktreeError("Failed to copy secret files: ${cause.message}", cause)
 
+    class LinkedFolderOccupied(val entry: String, val worktreePath: String) :
+        WorktreeError("Can't link $entry: the worktree's $entry folder holds files ShogunAi didn't copy")
+
     class PostCreateCommandFailed(
         val worktreePath: String,
         val command: List<String>,

@@ -13,6 +13,7 @@ class FakeRepositoryProvisioningSource(
 ) : RepositoryProvisioningSource {
 
     val addedPatterns = mutableListOf<Pair<String, List<String>>>()
+    val addedLinkPatterns = mutableListOf<Pair<String, List<String>>>()
     val writtenEdits = mutableListOf<Pair<String, RepositoryConfigEdit>>()
     var currentFingerprint = "fingerprint-1"
 
@@ -25,10 +26,16 @@ class FakeRepositoryProvisioningSource(
 
     override fun fingerprint(repositoryPath: String): String = currentFingerprint
 
-    override fun addCopyPatterns(repositoryPath: String, patterns: List<String>, expectedFingerprint: String?) {
+    override fun addPatterns(
+        repositoryPath: String,
+        copyPatterns: List<String>,
+        linkPatterns: List<String>,
+        expectedFingerprint: String?,
+    ) {
         if (repositoryPath in failWritesFor) throw IOException("read-only file system")
         requireUnchanged(repositoryPath, expectedFingerprint)
-        addedPatterns += repositoryPath to patterns
+        if (copyPatterns.isNotEmpty()) addedPatterns += repositoryPath to copyPatterns
+        if (linkPatterns.isNotEmpty()) addedLinkPatterns += repositoryPath to linkPatterns
     }
 
     override fun preview(repositoryPath: String, edit: RepositoryConfigEdit): String = "preview of $edit"

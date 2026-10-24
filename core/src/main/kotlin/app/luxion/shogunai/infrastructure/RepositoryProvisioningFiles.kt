@@ -81,14 +81,23 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         return MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(path)).joinToString("") { "%02x".format(it) }
     }
 
-    override fun addCopyPatterns(repositoryPath: String, patterns: List<String>, expectedFingerprint: String?) {
+    override fun addPatterns(
+        repositoryPath: String,
+        copyPatterns: List<String>,
+        linkPatterns: List<String>,
+        expectedFingerprint: String?,
+    ) {
         val configPath = configPathOf(repositoryPath)
         expectedFingerprint?.let { requireUnchanged(repositoryPath, configPath, it) }
         val config = readConfig(configPath) ?: JsonObject(emptyMap())
-        val existing = copyPatternsOf(config, configPath)
-        val merged = (existing + patterns).distinct()
-        val updated = JsonObject(config + (COPY_FIELD to JsonArray(merged.map(::JsonPrimitive))))
-        writeAtomically(configPath, render(updated))
+        val updated = LinkedHashMap(config)
+        if (copyPatterns.isNotEmpty()) {
+            updated[COPY_FIELD] = JsonArray((copyPatternsOf(config, configPath) + copyPatterns).distinct().map(::JsonPrimitive))
+        }
+        if (linkPatterns.isNotEmpty()) {
+            updated[LINK_FIELD] = JsonArray((linkPatternsOf(config, configPath) + linkPatterns).distinct().map(::JsonPrimitive))
+        }
+        writeAtomically(configPath, render(JsonObject(updated)))
     }
 
     override fun preview(repositoryPath: String, edit: RepositoryConfigEdit): String {
@@ -118,6 +127,10 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         if (edit.addCopyPatterns.isNotEmpty()) {
             val merged = (copyPatternsOf(config, path) + edit.addCopyPatterns).distinct()
             result[COPY_FIELD] = JsonArray(merged.map(::JsonPrimitive))
+        }
+        if (edit.addLinkPatterns.isNotEmpty()) {
+            val merged = (linkPatternsOf(config, path) + edit.addLinkPatterns).distinct()
+            result[LINK_FIELD] = JsonArray(merged.map(::JsonPrimitive))
         }
         val providers = providersObjectOf(config, path)
         val updatedProviders = LinkedHashMap(providers)

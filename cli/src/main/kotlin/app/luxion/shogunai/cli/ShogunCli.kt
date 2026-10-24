@@ -18,6 +18,7 @@ import app.luxion.shogunai.domain.io.PortProbe
 import app.luxion.shogunai.domain.io.PostCreateApproval
 import app.luxion.shogunai.domain.io.PostCreateDecision
 import app.luxion.shogunai.domain.io.ProjectRepository
+import app.luxion.shogunai.domain.io.ProvisioningRecordStore
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.io.ResourceLimitsRepository
 import app.luxion.shogunai.domain.io.RepositoryTrust
@@ -75,6 +76,7 @@ import app.luxion.shogunai.domain.usecase.HooksPreview
 import app.luxion.shogunai.domain.usecase.CheckGradleBuildCacheUseCase
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.CloseHerdrWorkspacesUseCase
+import app.luxion.shogunai.domain.usecase.DetectMobileSecretsUseCase
 import app.luxion.shogunai.domain.usecase.DetectRepositoryStacksUseCase
 import app.luxion.shogunai.domain.usecase.ListComposeProjectsUseCase
 import app.luxion.shogunai.domain.usecase.ListMavenDaemonsUseCase
@@ -233,6 +235,7 @@ class ShogunCli(
     private val appRequests: AppRequestChannel = FileAppRequestChannel(Path.of(userHome, ".shogunai", "app-requests")),
     private val appLock: AppInstanceLock = FileAppInstanceLock(Path.of(userHome, ".shogunai", "app.lock")),
     private val appLauncher: AppLauncher = DesktopAppLauncher(),
+    private val provisioningRecords: ProvisioningRecordStore = ProvisioningRecordStore.NONE,
 ) {
     private val terminalApproval = PostCreateApproval { repository, commands ->
         if (confirm("${commandLines(repository, commands)}Run these commands? [y/N] ")) PostCreateDecision.RUN else PostCreateDecision.SKIP
@@ -392,11 +395,11 @@ class ShogunCli(
         val approval = if (command.json) PostCreateApproval.SKIP else terminalApproval
         val created = if (command.branch != null) {
             CreateWorktreeFromBranchUseCase(
-                config, executor, fileManager, provisioningSource, prepareEnvironment, trust, approval,
+                config, executor, fileManager, provisioningSource, prepareEnvironment, trust, approval, provisioningRecords,
             )(command.branch)
         } else {
             val startPoint = resolveStartPoint(workingDirectory, command.from)
-            CreateWorktreeUseCase(config, executor, fileManager, provisioningSource, prepareEnvironment, trust, approval)(
+            CreateWorktreeUseCase(config, executor, fileManager, provisioningSource, prepareEnvironment, trust, approval, provisioningRecords)(
                 command.taskId.orEmpty(),
                 command.branchType,
                 startPoint,
@@ -414,10 +417,11 @@ class ShogunCli(
         }
         val worktree = created.getOrThrow()
         if (command.json) {
-            printJson(newJson(worktree.path, worktree.branch, worktree.skippedPostCreateCommands, null))
+            printJson(newJson(worktree.path, worktree.branch, worktree.skippedPostCreateCommands, null, worktree.skippedLinks))
             return EXIT_OK
         }
         out.line(worktree.path)
+        noteSkippedLinks(worktree.skippedLinks)
         noteSkippedCommands(config.baseRepositoryPath, worktree.skippedPostCreateCommands)
         return EXIT_OK
     }
@@ -535,7 +539,7 @@ class ShogunCli(
         }
         val members = members(context).let { all -> aliases.distinct().mapNotNull { alias -> all.firstOrNull { it.alias == alias } } }
         val approval = if (command.json) PostCreateApproval.SKIP else terminalApproval
-        val creation = CreateGroupUseCase(executor, fileManager, provisioningSource, prepareEnvironment, trust, approval)(
+        val creation = CreateGroupUseCase(executor, fileManager, provisioningSource, prepareEnvironment, trust, approval, provisioningRecords)(
             members,
             command.taskId.orEmpty(),
             command.branchType,
@@ -722,6 +726,10 @@ class ShogunCli(
 
     private fun saying(json: Boolean): (String) -> Unit = if (json) { _ -> } else { text -> out.line(text) }
 
+    private fun noteSkippedLinks(skipped: List<String>, prefix: String = "shogun") {
+        skipped.forEach { err.line("$prefix: skipped the symbolic link $it in a local folder") }
+    }
+
     private fun noteSkippedCommands(repository: String, skipped: List<List<String>>, prefix: String = "shogun") {
         if (skipped.isEmpty()) return
         val count = if (skipped.size == 1) "1 post-creation command" else "${skipped.size} post-creation commands"
@@ -801,7 +809,7 @@ class ShogunCli(
         val worktree = ListWorktreesUseCase(config, executor)().getOrThrow()
             .firstOrNull { sameDirectory(it.path, target) }
             ?: throw WorktreeError.NotAWorktree(target)
-        val drift = CheckProvisionedFilesUseCase(config, executor, fileManager, provisioningSource)(worktree.path).getOrThrow()
+        val drift = CheckProvisionedFilesUseCase(config, executor, fileManager, provisioningSource, provisioningRecords)(worktree.path).getOrThrow()
         if (json) printJson(provisionCheckJson(worktree.path, drift)) else drift.forEach { out.line("${it.path}: ${driftLabel(it.state)}") }
         return if (drift.isEmpty()) EXIT_OK else EXIT_DRIFT
     }
@@ -810,6 +818,7 @@ class ShogunCli(
         ProvisionDriftState.MISSING -> "missing"
         ProvisionDriftState.DIFFERS -> "differs"
         ProvisionDriftState.NOT_LINKED -> "not linked"
+        ProvisionDriftState.DELETED_IN_BASE -> "deleted in base"
     }
 
     private fun provisionedLabel(file: ProvisionedFile): String = when (file.mode) {
@@ -828,7 +837,7 @@ class ShogunCli(
         val worktree = ListWorktreesUseCase(config, executor)().getOrThrow()
             .firstOrNull { sameDirectory(it.path, target) }
             ?: throw WorktreeError.NotAWorktree(target)
-        val provisioned = ProvisionWorktreeUseCase(config, executor, fileManager, provisioningSource, prepareEnvironment, trust, approval)(worktree.path)
+        val provisioned = ProvisionWorktreeUseCase(config, executor, fileManager, provisioningSource, prepareEnvironment, trust, approval, provisioningRecords)(worktree.path)
         val failure = provisioned.exceptionOrNull()
         if (json && failure is WorktreeError.PostCreateCommandFailed) {
             printJson(provisionJson(worktree.path, emptyList(), emptyList(), failure))
@@ -837,10 +846,12 @@ class ShogunCli(
         }
         val result = provisioned.getOrThrow()
         if (json) {
-            printJson(provisionJson(worktree.path, result.files, result.skippedPostCreateCommands, null))
+            printJson(provisionJson(worktree.path, result.files, result.skippedPostCreateCommands, null, result.removed, result.skippedLinks))
             return EXIT_OK
         }
         result.files.forEach { out.line(provisionedLabel(it)) }
+        result.removed.forEach { out.line("$it (removed: deleted from the base folder)") }
+        result.skippedLinks.forEach { out.line("$it (skipped: symbolic link)") }
         noteSkippedCommands(config.baseRepositoryPath, result.skippedPostCreateCommands)
         onProvisioned(worktree, config)
         return EXIT_OK
@@ -1630,15 +1641,17 @@ class ShogunCli(
     }
 
     private suspend fun stacks(command: CliCommand.Stacks): Int {
-        val repository = ResolveRepositoryUseCase(executor)(workingDirectory).getOrThrow()
+        val config = configFor(workingDirectory)
+        val repository = config.baseRepositoryPath
         val detected = DetectRepositoryStacksUseCase(fileManager)(repository)
         val declared = provisioningSource.read(repository).providers
         val report = suggestProviders(detected, declared, isMac = derivedDataSource.isSupported())
+        val secrets = DetectMobileSecretsUseCase(executor, fileManager, provisioningSource)(config)
         if (command.json) {
-            printJson(stacksJson(detected, report))
+            printJson(stacksJson(detected, report, secrets))
             return EXIT_OK
         }
-        if (detected.isEmpty()) {
+        if (detected.isEmpty() && secrets.isEmpty) {
             out.line("No known stack detected.")
             return EXIT_OK
         }
@@ -1647,6 +1660,10 @@ class ShogunCli(
                 "${it.provider.id}=${if (it in report.declared) "declared" else "suggested"}"
             }
             out.line(listOf(stackLabel(stack.stack), "evidence=${stack.evidence.joinToString(",")}", providers).filter { it.isNotEmpty() }.joinToString("  "))
+        }
+        secrets.secrets.forEach { out.line("Secret  ${it.path}  kind=${it.kind.id}  link=${it.linkPattern}") }
+        secrets.warnings.forEach {
+            out.line("Warning  ${it.file}: ${it.key}=${it.value} points outside the repository and won't resolve from a worktree")
         }
         return EXIT_OK
     }
@@ -1923,13 +1940,14 @@ class ShogunCli(
         val existing = ListWorktreesUseCase(config, executor)().getOrThrow()
             .firstOrNull { !it.isMain && sameDirectory(it.path, target) }
         val path = existing?.path ?: run {
-            val created = CreateWorktreeUseCase(config, executor, fileManager, provisioningSource, prepareEnvironment, trust)(
+            val created = CreateWorktreeUseCase(config, executor, fileManager, provisioningSource, prepareEnvironment, trust, records = provisioningRecords)(
                 name,
                 BranchType.FEATURE,
                 resolveStartPoint(directory, null),
             )
             when (val failure = created.exceptionOrNull()) {
                 null -> created.getOrThrow().also {
+                    noteSkippedLinks(it.skippedLinks, "shogun: hook worktree-create")
                     noteSkippedCommands(config.baseRepositoryPath, it.skippedPostCreateCommands, "shogun: hook worktree-create")
                 }.path
                 is WorktreeError.PostCreateCommandFailed -> {

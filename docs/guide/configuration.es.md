@@ -43,7 +43,9 @@ Los valores de `env` pueden usar estas plantillas:
 
 Los puertos no se repiten entre los worktrees del repositorio, están libres al reservarse y no cambian después. [Uso con agentes](../agents.md#entorno-por-worktree) explica cómo reciben estas variables los agentes y las shells.
 
-Enlazar comparte el archivo: una herramienta de un worktree que sobrescriba un secreto enlazado sobrescribe también el del repositorio base. Deja `copy` para los archivos que un worktree pueda modificar. Los archivos locales del proyecto siempre se copian.
+Enlazar comparte el archivo: una herramienta de un worktree que sobrescriba un secreto enlazado sobrescribe también el del repositorio base. Deja `copy` para los archivos que un worktree pueda modificar. Los archivos locales del proyecto se copian salvo que actives Enlazar en una entrada desde la app de escritorio; una carpeta local enlazada es un único enlace simbólico a la carpeta base, así que los archivos que se añaden o se borran en ella aparecen al momento en todos los worktrees.
+
+Los archivos que una carpeta local copiada ya no tiene se borran del worktree la siguiente vez que se provisiona: ShogunAi recuerda, en la carpeta de administración de Git del worktree, qué archivos copió de cada carpeta local, borra solo esos y nunca toca los que creó el propio worktree. `shogun provision --check` los informa antes como `deleted in base`. Los enlaces simbólicos dentro de una carpeta local copiada se omiten, y el provisionado dice cuáles.
 
 Los comandos posteriores a la creación se ejecutan en orden y se detienen en el primero que falla. Un fallo hace fallar la creación o el provisionado con un error que nombra el comando, su código de salida y su salida de error, pero el worktree se conserva, porque su checkout y sus archivos están bien. Los comandos se ejecutan al crear y en cada `shogun provision`, así que hazlos seguros de repetir, y declara solo comandos que ejecutarías desde un repositorio de confianza. No reciben las variables de entorno del worktree; un comando que las necesite puede ejecutar `shogun env`.
 

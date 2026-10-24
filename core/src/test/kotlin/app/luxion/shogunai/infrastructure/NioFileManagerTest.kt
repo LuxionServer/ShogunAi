@@ -1,9 +1,12 @@
 package app.luxion.shogunai.infrastructure
 
+import app.luxion.shogunai.domain.io.DirectoryListing
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import kotlin.io.path.createSymbolicLinkPointingTo
 import kotlin.io.path.createDirectories
 import kotlin.io.path.createTempDirectory
+import kotlin.io.path.exists
 import kotlin.io.path.writeBytes
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -174,12 +177,12 @@ class NioFileManagerTest {
 
         assertEquals(
             listOf(".hidden", "a.pem", "ci/deep/b.pem"),
-            fileManager.listFiles(keys.toString()).sorted(),
+            fileManager.listTree(keys.toString()).files.sorted(),
         )
     }
 
     @Test
-    fun `listing skips symbolic links to files and folders`() {
+    fun `listing skips symbolic links to files and folders and reports them`() {
         val outside = root.resolve("outside").createDirectories()
         outside.resolve("secret.txt").writeBytes(ByteArray(1))
         val keys = root.resolve("repo/keys").createDirectories()
@@ -187,14 +190,35 @@ class NioFileManagerTest {
         keys.resolve("link.txt").createSymbolicLinkPointingTo(outside.resolve("secret.txt"))
         keys.resolve("linked-dir").createSymbolicLinkPointingTo(outside)
 
-        assertEquals(listOf("a.pem"), fileManager.listFiles(keys.toString()))
+        val listing = fileManager.listTree(keys.toString())
+
+        assertEquals(listOf("a.pem"), listing.files)
+        assertEquals(listOf("link.txt", "linked-dir"), listing.skippedLinks.sorted())
     }
 
     @Test
     fun `listing an empty or missing folder yields nothing`() {
         val empty = root.resolve("repo/empty").createDirectories()
 
-        assertEquals(emptyList(), fileManager.listFiles(empty.toString()))
-        assertEquals(emptyList(), fileManager.listFiles(root.resolve("missing").toString()))
+        assertEquals(DirectoryListing(), fileManager.listTree(empty.toString()))
+        assertEquals(DirectoryListing(), fileManager.listTree(root.resolve("missing").toString()))
+    }
+
+    @Test
+    fun `tells a symbolic link apart and deletes a single file`() {
+        val target = root.resolve("repo/keys").createDirectories()
+        val link = root.resolve("worktree").createDirectories().resolve("keys")
+        link.createSymbolicLinkPointingTo(target)
+        val file = root.resolve("worktree/notes.txt").also { it.writeBytes(ByteArray(1)) }
+
+        assertTrue(fileManager.isSymbolicLink(link.toString()))
+        assertFalse(fileManager.isSymbolicLink(file.toString()))
+        fileManager.deleteFile(link.toString())
+        fileManager.deleteFile(file.toString())
+        fileManager.deleteFile(root.resolve("worktree/missing").toString())
+
+        assertFalse(link.exists(LinkOption.NOFOLLOW_LINKS))
+        assertFalse(file.exists())
+        assertTrue(target.exists())
     }
 }

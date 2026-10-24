@@ -3,6 +3,7 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakePostCreateApproval
+import app.luxion.shogunai.domain.FakeProvisioningRecordStore
 import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
@@ -11,6 +12,7 @@ import app.luxion.shogunai.domain.io.PostCreateDecision
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.ProvisionMode
+import app.luxion.shogunai.domain.model.ProvisionedFile
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
@@ -316,5 +318,161 @@ class ProvisionWorktreeUseCaseTest {
 
         assertIs<WorktreeError.SecretCopyFailed>(error)
         assertFalse(exec.executedCommands.any { it.take(3) == listOf("git", "worktree", "remove") })
+    }
+
+    private val baseKeys = "$base/keys"
+    private val worktreeKeys = "$linked/keys"
+    private val keysConfig = config.copy(secretFiles = listOf("keys"))
+    private val linkedKeysConfig = keysConfig.copy(linkedSecretFiles = listOf("keys"))
+
+    private fun keysFileManager(
+        baseFiles: List<String>,
+        worktreeFiles: List<String>? = null,
+        baseExists: Boolean = true,
+    ) = FakeFileManager(
+        existing = listOf(base, linked) + listOfNotNull(baseKeys.takeIf { baseExists }) + worktreeFiles.orEmpty().map { "$worktreeKeys/$it" },
+        directories = setOfNotNull(baseKeys.takeIf { baseExists }, worktreeKeys.takeIf { worktreeFiles != null }),
+    ).also {
+        it.directoryFiles[baseKeys] = baseFiles
+        if (worktreeFiles != null) it.directoryFiles[worktreeKeys] = worktreeFiles
+    }
+
+    private fun provision(
+        projectConfig: ProjectConfig,
+        fileManager: FakeFileManager,
+        records: FakeProvisioningRecordStore = FakeProvisioningRecordStore(),
+    ) = ProvisionWorktreeUseCase(
+        projectConfig, executor(), fileManager, FakeRepositoryProvisioningSource(), records = records,
+    )
+
+    @Test
+    fun `links a linked local folder as one symbolic link, replacing an existing link`() = runTest {
+        val fileManager = keysFileManager(baseFiles = listOf("a.pem"))
+        fileManager.symbolicLinks[worktreeKeys] = "/home/dev/elsewhere"
+
+        val result = provision(linkedKeysConfig, fileManager)(linked).getOrThrow()
+
+        assertEquals(baseKeys, fileManager.symbolicLinks[worktreeKeys])
+        assertEquals(listOf(ProvisionedFile("keys", ProvisionMode.LINKED)), result.files)
+        assertTrue(fileManager.copied.isEmpty())
+    }
+
+    @Test
+    fun `copies a linked folder's files where links aren't available and records them`() = runTest {
+        val fileManager = keysFileManager(baseFiles = listOf("a.pem")).also { it.symbolicLinksSupported = false }
+        val records = FakeProvisioningRecordStore()
+
+        val result = provision(linkedKeysConfig, fileManager, records)(linked).getOrThrow()
+
+        assertEquals(listOf(ProvisionedFile("keys/a.pem", ProvisionMode.COPIED_INSTEAD_OF_LINKING)), result.files)
+        assertEquals(listOf("$baseKeys/a.pem" to "$worktreeKeys/a.pem"), fileManager.copied)
+        assertEquals(mapOf("keys" to listOf("a.pem")), records.records[linked])
+    }
+
+    @Test
+    fun `switching a copied folder to link replaces the recorded copies`() = runTest {
+        val fileManager = keysFileManager(baseFiles = listOf("a.pem"), worktreeFiles = listOf("a.pem"))
+        val records = FakeProvisioningRecordStore(mapOf(linked to mapOf("keys" to listOf("a.pem"))))
+
+        provision(linkedKeysConfig, fileManager, records)(linked).getOrThrow()
+
+        assertEquals(listOf(worktreeKeys), fileManager.deletedRecursively)
+        assertEquals(baseKeys, fileManager.symbolicLinks[worktreeKeys])
+        assertEquals(emptyMap(), records.records[linked])
+    }
+
+    @Test
+    fun `a linked folder over the worktree's own files fails and keeps them`() = runTest {
+        val fileManager = keysFileManager(baseFiles = listOf("a.pem"), worktreeFiles = listOf("a.pem", "notes.txt"))
+        val records = FakeProvisioningRecordStore(mapOf(linked to mapOf("keys" to listOf("a.pem"))))
+
+        val error = provision(linkedKeysConfig, fileManager, records)(linked).exceptionOrNull()
+
+        assertIs<WorktreeError.LinkedFolderOccupied>(error)
+        assertTrue(fileManager.deletedRecursively.isEmpty())
+        assertTrue(fileManager.exists("$worktreeKeys/notes.txt"))
+        assertFalse(worktreeKeys in fileManager.symbolicLinks)
+    }
+
+    @Test
+    fun `switching a linked folder to copy removes the link before copying`() = runTest {
+        val fileManager = keysFileManager(baseFiles = listOf("a.pem"))
+        fileManager.createSymbolicLink(target = baseKeys, link = worktreeKeys)
+
+        provision(keysConfig, fileManager)(linked).getOrThrow()
+
+        assertEquals(listOf(worktreeKeys), fileManager.deletedFiles)
+        assertEquals(listOf("$baseKeys/a.pem" to "$worktreeKeys/a.pem"), fileManager.copied)
+    }
+
+    @Test
+    fun `removes recorded files deleted from the base folder and keeps the worktree's own`() = runTest {
+        val fileManager = keysFileManager(baseFiles = listOf("a.pem"), worktreeFiles = listOf("a.pem", "old.pem", "notes.txt"))
+        val records = FakeProvisioningRecordStore(mapOf(linked to mapOf("keys" to listOf("a.pem", "old.pem"))))
+
+        val result = provision(keysConfig, fileManager, records)(linked).getOrThrow()
+
+        assertEquals(listOf("keys/old.pem"), result.removed)
+        assertEquals(listOf("$worktreeKeys/old.pem"), fileManager.deletedFiles)
+        assertTrue(fileManager.exists("$worktreeKeys/notes.txt"))
+        assertEquals(mapOf("keys" to listOf("a.pem")), records.records[linked])
+    }
+
+    @Test
+    fun `a missing base folder fails before deleting anything`() = runTest {
+        val fileManager = keysFileManager(baseFiles = emptyList(), worktreeFiles = listOf("a.pem"), baseExists = false)
+        val records = FakeProvisioningRecordStore(mapOf(linked to mapOf("keys" to listOf("a.pem"))))
+
+        val error = provision(keysConfig, fileManager, records)(linked).exceptionOrNull()
+
+        assertIs<WorktreeError.SecretFileNotFound>(error)
+        assertTrue(fileManager.deletedFiles.isEmpty())
+    }
+
+    @Test
+    fun `without a record nothing is deleted and the record is written`() = runTest {
+        val fileManager = keysFileManager(baseFiles = listOf("a.pem"), worktreeFiles = listOf("a.pem", "old.pem"))
+        val records = FakeProvisioningRecordStore()
+
+        val result = provision(keysConfig, fileManager, records)(linked).getOrThrow()
+
+        assertEquals(emptyList(), result.removed)
+        assertTrue(fileManager.deletedFiles.isEmpty())
+        assertEquals(mapOf("keys" to listOf("a.pem")), records.records[linked])
+    }
+
+    @Test
+    fun `drops the record of folders no longer listed without touching their files`() = runTest {
+        val fileManager = FakeFileManager(existing = listOf(base, linked, "$base/local.properties", "$worktreeKeys/a.pem"))
+        val records = FakeProvisioningRecordStore(mapOf(linked to mapOf("keys" to listOf("a.pem"))))
+
+        provision(config, fileManager, records)(linked).getOrThrow()
+
+        assertEquals(emptyMap(), records.records[linked])
+        assertTrue(fileManager.exists("$worktreeKeys/a.pem"))
+    }
+
+    @Test
+    fun `reports the symbolic links skipped in a copied folder`() = runTest {
+        val fileManager = keysFileManager(baseFiles = listOf("a.pem")).also { it.directoryLinks[baseKeys] = listOf("shared.pem") }
+
+        val result = provision(keysConfig, fileManager)(linked).getOrThrow()
+
+        assertEquals(listOf("keys/shared.pem"), result.skippedLinks)
+        assertEquals(listOf("$baseKeys/a.pem" to "$worktreeKeys/a.pem"), fileManager.copied)
+    }
+
+    @Test
+    fun `provisioning again keeps an existing link instead of following it out of the worktree`() = runTest {
+        val linkedConfig = config.copy(linkedSecretFiles = listOf("local.properties"))
+        val fileManager = FakeFileManager(existing = listOf(base, linked, "$base/local.properties"))
+        fileManager.outsidePaths = setOf("$linked/local.properties")
+        val useCase = ProvisionWorktreeUseCase(linkedConfig, executor(), fileManager, FakeRepositoryProvisioningSource())
+
+        useCase(linked).getOrThrow()
+        val second = useCase(linked).getOrThrow()
+
+        assertEquals(listOf(ProvisionedFile("local.properties", ProvisionMode.LINKED)), second.files)
+        assertEquals("$base/local.properties", fileManager.symbolicLinks["$linked/local.properties"])
     }
 }

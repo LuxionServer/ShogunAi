@@ -43,7 +43,9 @@ Values in `env` can use these templates:
 
 Ports are unique among the repository's worktrees, free when reserved, and never change afterwards. [Using with agents](../agents.md#per-worktree-environment) explains how agents and shells get these variables.
 
-Linking shares the file: a tool in one worktree that overwrites a linked secret overwrites the base repository's too. Keep `copy` for files a worktree may change. The project's local files are always copied.
+Linking shares the file: a tool in one worktree that overwrites a linked secret overwrites the base repository's too. Keep `copy` for files a worktree may change. The project's local files are copied unless you turn on Link for an entry in the desktop app; a linked local folder is one symbolic link to the base folder, so files added to it or deleted from it show up in every worktree at once.
+
+Files a copied local folder no longer has are removed from the worktree the next time it's provisioned: ShogunAi remembers, in the worktree's Git admin folder, which files it copied from each local folder, deletes only those, and never touches files the worktree created itself. `shogun provision --check` reports them as `deleted in base` first. Symbolic links inside a copied local folder are skipped, and provisioning says which ones.
 
 Post-creation commands run in order and stop at the first one that fails. A failure fails creation or provisioning with an error naming the command, its exit code and its error output, but the worktree is kept, since its checkout and files are fine. The commands run on creation and on every `shogun provision`, so make them safe to repeat, and only declare commands you would run from a repository you trust. They don't receive the worktree's environment variables; a command that needs them can run `shogun env`.
 

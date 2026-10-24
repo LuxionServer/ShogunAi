@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.model.ResourceLimits
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.InstallChannel
+import app.luxion.shogunai.domain.model.MobileSecretKind
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.usecase.HookEntry
@@ -84,7 +85,7 @@ object SpanishStrings : Strings {
     override val removeLocalFile = "Eliminar archivo o carpeta local"
     override val newLocalFileLabel = "Nuevo archivo o carpeta local"
     override val localFilesDescription =
-        "Rutas exactas de archivos o carpetas que se copian a cada nuevo worktree; una carpeta incluye todos los archivos que contiene. Solo se guardan en esta máquina."
+        "Rutas de archivos o carpetas, o patrones como *.jks, que se copian a cada nuevo worktree, o se enlazan si activas Enlazar (una carpeta enlazada muestra al momento los cambios de la carpeta base, y un secreto enlazado lo comparten todos los worktrees). Solo se guardan en esta máquina."
     override val repositoryProvisioningSection = "Del repositorio"
     override val repositoryProvisioningDescription =
         "Patrones versionados en .shogunai.json y .worktreeinclude. Cada archivo no versionado que coincida se copia a cada nuevo worktree."
@@ -314,6 +315,7 @@ object SpanishStrings : Strings {
         ProvisionDriftState.MISSING -> "$path · falta"
         ProvisionDriftState.DIFFERS -> "$path · difiere"
         ProvisionDriftState.NOT_LINKED -> "$path · sin enlazar"
+        ProvisionDriftState.DELETED_IN_BASE -> "$path · borrado en la base"
     }
     override val environmentTitle = "Entorno"
     override val devicesTitle = "Dispositivos"
@@ -584,6 +586,21 @@ object SpanishStrings : Strings {
     override val stackSuggestionsTitle = "Detectado en este repositorio"
     override fun stackSuggestion(provider: String, evidence: String) = "$provider · $evidence"
     override val turnOnProvider = "Activar"
+    override val linkLocalEntry = "Enlazar"
+    override val localPatternLabel = "patrón"
+    override fun skippedSymbolicLinks(count: Int) =
+        if (count == 1) "Omite 1 enlace simbólico de la carpeta" else "Omite $count enlaces simbólicos de la carpeta"
+    override val localPatternMustBeRelative = "Los patrones son relativos al repositorio; usa una ruta dentro de él."
+    override val mobileSecretsTitle = "Secretos encontrados en este repositorio"
+    override fun mobileSecretKind(kind: MobileSecretKind) = when (kind) {
+        MobileSecretKind.LOCAL_PROPERTIES -> "propiedades locales"
+        MobileSecretKind.SIGNING_PROPERTIES -> "propiedades de firma"
+        MobileSecretKind.KEYSTORE -> "keystore"
+        MobileSecretKind.FIREBASE_CONFIG -> "configuración de Firebase"
+    }
+    override val linkFromRepositoryConfig = "Enlazar desde .shogunai.json"
+    override fun keystoreOutsideRepository(file: String, key: String, value: String) =
+        "$key en $file apunta fuera del repositorio ($value) y no se resolverá desde un worktree. Usa una ruta absoluta, o mueve el keystore al repositorio y enlázalo."
     override val mavenDaemonsTitle = "Daemons de Maven"
     override fun mavenDaemonsSummary(count: Int, totalMemory: String) =
         (if (count == 1) "1 daemon" else "$count daemons") + " · $totalMemory"

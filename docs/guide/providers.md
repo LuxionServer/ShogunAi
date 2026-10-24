@@ -29,6 +29,8 @@ You don't have to know which providers exist. ShogunAi looks at the files of the
 
 In the project settings, "Repository configuration" lists the providers the repository could use and doesn't declare yet, with the files that revealed them, and "Turn on" switches the provider on as an unsaved change: nothing is written until you save and confirm the preview. `shogun stacks` prints the same from a terminal and changes nothing. A suggestion is only a hint (a `pom.xml` in a fixture folder also counts), so the evidence is always shown.
 
+ShogunAi also looks, at any depth outside build and tool folders (`build`, `.gradle`, `node_modules`, `Pods`, `DerivedData`), for the untracked files a fresh mobile worktree can't build without: `local.properties`, `keystore.properties`, `key.properties`, `*.jks`, `*.keystore`, `google-services.json` and `GoogleService-Info.plist`. Each one nothing provisions yet (local files, `copy`, `link` or `.worktreeinclude`) is suggested as an anchored `link` pattern, such as `/app/google-services.json`, so rotating it in the base repository updates every worktree. It also reads the `storeFile` keys of those properties files (any key ending in `storeFile`, such as `RELEASE_STORE_FILE`): a keystore they name inside the repository is suggested too, and a relative path that leaves the repository is reported, because it won't resolve from a worktree that lives in another folder. The project settings list them under "Worktree files" and `shogun stacks` prints them; nothing is written until you accept and save.
+
 ## Gradle
 
 ```json

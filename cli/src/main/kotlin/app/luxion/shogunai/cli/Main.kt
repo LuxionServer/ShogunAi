@@ -12,6 +12,7 @@ import app.luxion.shogunai.infrastructure.NioEnvironmentStateStore
 import app.luxion.shogunai.infrastructure.NioFileManager
 import app.luxion.shogunai.infrastructure.ProcessBuilderShellCommandExecutor
 import app.luxion.shogunai.infrastructure.ProcessGradleDaemonSource
+import app.luxion.shogunai.infrastructure.NioProvisioningRecordStore
 import app.luxion.shogunai.infrastructure.RepositoryProvisioningFiles
 import app.luxion.shogunai.infrastructure.SimctlAppleSimulators
 import app.luxion.shogunai.infrastructure.SocketPortProbe
@@ -50,6 +51,7 @@ fun runShogun(args: Array<String>): Int {
         readInput = { System.`in`.bufferedReader().readText() },
         trust = JsonRepositoryTrust(),
         readAnswer = { System.console()?.readLine() },
+        provisioningRecords = NioProvisioningRecordStore(),
     ).run(args.toList())
     System.out.flush()
     System.err.flush()

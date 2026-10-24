@@ -3,6 +3,7 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.PostCreateApproval
+import app.luxion.shogunai.domain.io.ProvisioningRecordStore
 import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.model.BranchType
@@ -18,6 +19,7 @@ class CreateWorktreeUseCase(
     private val environment: WorktreeEnvironmentPreparer = WorktreeEnvironmentPreparer.NONE,
     private val trust: RepositoryTrust = RepositoryTrust.NONE,
     private val approval: PostCreateApproval = PostCreateApproval.SKIP,
+    private val records: ProvisioningRecordStore = ProvisioningRecordStore.NONE,
 ) {
     suspend operator fun invoke(taskId: String, branchType: BranchType, startPoint: String? = null): Result<Worktree> =
         runCatching {
@@ -51,6 +53,7 @@ class CreateWorktreeUseCase(
                 environment = environment,
                 trust = trust,
                 approval = approval,
+                records = records,
             )
         }
 }
