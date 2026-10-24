@@ -185,11 +185,13 @@ import app.luxion.shogunai.infrastructure.JsonThemePreferenceRepository
 import app.luxion.shogunai.infrastructure.LocalAndroidSdk
 import app.luxion.shogunai.infrastructure.SharedDeviceStatesAndroidSdk
 import app.luxion.shogunai.infrastructure.MacDerivedDataSource
+import app.luxion.shogunai.infrastructure.NioDeviceWaitQueue
 import app.luxion.shogunai.infrastructure.NioEnvironmentStateStore
 import app.luxion.shogunai.infrastructure.NioFileManager
 import app.luxion.shogunai.infrastructure.RotatingFileDiagnosticsLog
 import app.luxion.shogunai.infrastructure.ProcessBuilderShellCommandExecutor
 import app.luxion.shogunai.infrastructure.ProcessGradleDaemonSource
+import app.luxion.shogunai.infrastructure.ProcessHandleLiveness
 import app.luxion.shogunai.infrastructure.RepositoryProvisioningFiles
 import app.luxion.shogunai.infrastructure.SimctlAppleSimulators
 import app.luxion.shogunai.infrastructure.SocketPortProbe
@@ -386,6 +388,8 @@ class AppContainer {
         androidSdk,
         readPool,
         { requested -> contributions.requesting(requested) },
+        NioDeviceWaitQueue(),
+        ProcessHandleLiveness(),
     )
     private val trimGradleDaemons = TrimGradleDaemonsUseCase(listGradleDaemons, stopGradleDaemons, resolveResourceLimits)
     val resources = ResourcePreferences(resourceLimitsRepository, resolveResourceLimits, showsSimulators = appleSimulators.isSupported(), showsDerivedDataQuota = derivedDataSource.isSupported())

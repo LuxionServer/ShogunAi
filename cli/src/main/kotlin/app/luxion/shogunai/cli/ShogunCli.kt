@@ -175,13 +175,20 @@ import java.io.File
 import app.luxion.shogunai.domain.io.AppInstanceLock
 import app.luxion.shogunai.domain.io.AppLauncher
 import app.luxion.shogunai.domain.io.AppRequestChannel
+import app.luxion.shogunai.domain.io.DeviceWaitQueue
+import app.luxion.shogunai.domain.io.ProcessLiveness
 import app.luxion.shogunai.domain.model.AppRequest
+import app.luxion.shogunai.domain.model.DeviceWait
+import app.luxion.shogunai.domain.model.toLocalClockTime
+import app.luxion.shogunai.domain.model.toWaitText
 import app.luxion.shogunai.domain.usecase.ProjectRegistration
 import app.luxion.shogunai.domain.usecase.RegisterProjectUseCase
 import app.luxion.shogunai.domain.usecase.UnregisterProjectUseCase
 import app.luxion.shogunai.infrastructure.DesktopAppLauncher
 import app.luxion.shogunai.infrastructure.FileAppInstanceLock
 import app.luxion.shogunai.infrastructure.FileAppRequestChannel
+import app.luxion.shogunai.infrastructure.NioDeviceWaitQueue
+import app.luxion.shogunai.infrastructure.ProcessHandleLiveness
 import java.io.FileNotFoundException
 import java.nio.file.Path
 import java.time.Duration
@@ -191,6 +198,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -233,6 +241,10 @@ class ShogunCli(
     private val appRequests: AppRequestChannel = FileAppRequestChannel(Path.of(userHome, ".shogunai", "app-requests")),
     private val appLock: AppInstanceLock = FileAppInstanceLock(Path.of(userHome, ".shogunai", "app.lock")),
     private val appLauncher: AppLauncher = DesktopAppLauncher(),
+    private val deviceWaitQueue: DeviceWaitQueue = NioDeviceWaitQueue(Path.of(userHome, ".shogunai")),
+    private val processLiveness: ProcessLiveness = ProcessHandleLiveness(),
+    private val deviceClock: () -> Instant = Instant::now,
+    private val pauseWhileWaiting: suspend (Duration) -> Unit = { delay(it.toMillis()) },
 ) {
     private val terminalApproval = PostCreateApproval { repository, commands ->
         if (confirm("${commandLines(repository, commands)}Run these commands? [y/N] ")) PostCreateDecision.RUN else PostCreateDecision.SKIP
@@ -259,6 +271,7 @@ class ShogunCli(
         resolveLimits,
         ListGradleDaemonsUseCase(daemonSource, fileManager),
         agentActivity = ReadAgentActivityUseCase(sessionStore)::invoke,
+        clock = deviceClock,
     )
     private val readReleaseRecord = ReadReleaseRecordUseCase(resolveEnvironment, environmentStateStore)
     private val renewLeases = RenewWorktreeLeasesUseCase(resolveEnvironment, environmentStateStore)
@@ -272,6 +285,10 @@ class ShogunCli(
         androidSdk,
         readPool,
         { requested -> contributions.requesting(requested) },
+        deviceWaitQueue,
+        processLiveness,
+        clock = deviceClock,
+        sleep = pauseWhileWaiting,
     )
     private val trimGradleDaemons = TrimGradleDaemonsUseCase(
         ListGradleDaemonsUseCase(daemonSource, fileManager),
@@ -303,7 +320,11 @@ class ShogunCli(
             err.line("Run 'shogun help' for usage.")
             EXIT_USAGE
         }
-        is ParsedArguments.Command -> runBlocking { cancelledOnShutdown { execute(parsed.command) } }
+        is ParsedArguments.Command -> try {
+            runBlocking { cancelledOnShutdown { execute(parsed.command) } }
+        } catch (_: CancellationException) {
+            EXIT_INTERRUPTED
+        }
     }
 
     private suspend fun <T> cancelledOnShutdown(block: suspend () -> T): T {
@@ -1186,7 +1207,12 @@ class ShogunCli(
         var acquisition: ResourceAcquisition? = null
         val simulator = when (command.action) {
             SimulatorAction.START -> {
-                val started = startSimulator(config, worktree.path, SimulatorSettings(command.device, command.runtime)).getOrThrow()
+                val started = startSimulator(
+                    config,
+                    worktree.path,
+                    SimulatorSettings(command.device, command.runtime),
+                    command.wait?.let(::deviceWait),
+                ).getOrThrow()
                 acquisition = started.acquisition
                 started.device
             }
@@ -1200,6 +1226,7 @@ class ShogunCli(
             }
         }
         acquisition?.releases?.forEach { err.line("released the simulator of ${releasedName(it)} to make room") }
+        reportWaited(acquisition)
         val released = if (simulator == null) readReleaseRecord(worktree.path, ResourceKind.IOS_SIMULATOR) else null
         if (command.json) {
             printJson(simulatorJson(worktree.path, simulator, acquisition, released))
@@ -1271,7 +1298,13 @@ class ShogunCli(
         var acquisition: ResourceAcquisition? = null
         val emulator = when (command.action) {
             EmulatorAction.START -> {
-                val started = startEmulator(config, worktree.path, command.avd, command.noWindow.takeIf { it }).getOrThrow()
+                val started = startEmulator(
+                    config,
+                    worktree.path,
+                    command.avd,
+                    command.noWindow.takeIf { it },
+                    command.wait?.let(::deviceWait),
+                ).getOrThrow()
                 acquisition = started.acquisition
                 started.device
             }
@@ -1284,6 +1317,7 @@ class ShogunCli(
             }
         }
         acquisition?.releases?.forEach { err.line("released the emulator of ${releasedName(it)} to make room") }
+        reportWaited(acquisition)
         val released = if (emulator == null) readReleaseRecord(worktree.path, ResourceKind.EMULATOR) else null
         if (command.json) {
             printJson(emulatorJson(worktree.path, emulator, acquisition, released))
@@ -1298,6 +1332,20 @@ class ShogunCli(
         return EXIT_OK
     }
 
+    private fun deviceWait(timeout: Duration): DeviceWait {
+        var lastLine: String? = null
+        return DeviceWait(timeout) { progress ->
+            val line = waitProgressLine(progress)
+            if (line != lastLine) err.line(line)
+            lastLine = line
+        }
+    }
+
+    private fun reportWaited(acquisition: ResourceAcquisition?) {
+        val seconds = acquisition?.waitedSeconds?.takeIf { it > 0 } ?: return
+        err.line("waited ${Duration.ofSeconds(seconds).toWaitText()}")
+    }
+
     private fun releaseExplanation(record: ReleaseRecord?): String =
         record?.let { " (released for ${it.forWorktree} at ${Instant.ofEpochMilli(it.releasedAt)})" }.orEmpty()
 
@@ -1310,14 +1358,20 @@ class ShogunCli(
             readPool.simulators(config.baseRepositoryPath).takeIf { appleSimulators.isSupported() },
             readPool.gradleDaemons(worktrees),
         )
+        val waiting = usages.associate { usage ->
+            usage.kind to if (usage.kind == ResourceKind.GRADLE_DAEMON) emptyList() else acquireResource.waiting(usage.kind)
+        }
         if (command.json) {
-            printJson(poolJson(usages))
+            printJson(poolJson(usages) { waiting[it].orEmpty() })
             return EXIT_OK
         }
         usages.forEach { usage ->
             val limit = usage.effectiveLimit?.toString() ?: "no limit"
             out.line("${usage.kind.poolLabel} ${usage.inUse}/$limit${if (usage.isOverLimit) "  over the limit" else ""}")
             usage.holders.forEach { holder -> out.line("  ${holderLine(holder)}") }
+            waiting[usage.kind].orEmpty().forEach { ticket ->
+                out.line("  waiting: ${ticket.displayName} since ${Instant.ofEpochMilli(ticket.since).toLocalClockTime()}")
+            }
         }
         return EXIT_OK
     }
@@ -2208,6 +2262,7 @@ class ShogunCli(
         const val EXIT_FAILURE = 1
         const val EXIT_USAGE = 2
         const val EXIT_DRIFT = 3
+        const val EXIT_INTERRUPTED = 130
         private const val CLAUDE_CODE_WORKTREES = ".claude/worktrees"
         private const val CLAUDE_ENV_FILE = "CLAUDE_ENV_FILE"
         private const val CLAUDE_CONFIG_DIR = "CLAUDE_CONFIG_DIR"

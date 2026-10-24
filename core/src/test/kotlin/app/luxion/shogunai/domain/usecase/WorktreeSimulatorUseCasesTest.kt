@@ -7,6 +7,7 @@ import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.model.DeviceWait
 import app.luxion.shogunai.domain.model.IosSimulatorProvider
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RepositoryProviders
@@ -278,5 +279,19 @@ class WorktreeSimulatorUseCasesTest {
         assertIs<WorktreeError.ResourcePoolFull>(error)
         assertEquals(1, simulators.created.size)
         assertTrue(simulators.deleted.isEmpty())
+    }
+
+    @Test
+    fun `a start that waits gets a simulator once the holder's lease expires`() = runTest {
+        val source = provisioning()
+        val pool = harness(source).also { it.limit(simulators = 1) }
+        val useCase = StartWorktreeSimulatorUseCase(source, simulators, pool.acquire, pool.resolve, pause = {})
+        useCase(config, task).getOrThrow()
+
+        val started = useCase(config, other, wait = DeviceWait()).getOrThrow()
+
+        assertEquals(listOf(task), started.acquisition.releases.map { it.worktreePath })
+        assertEquals(1200, started.acquisition.waitedSeconds)
+        assertEquals(listOf("UDID-1"), simulators.deleted)
     }
 }

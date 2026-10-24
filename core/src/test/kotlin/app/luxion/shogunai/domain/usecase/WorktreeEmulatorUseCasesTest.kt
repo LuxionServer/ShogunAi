@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.model.DeviceWait
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EmulatorSettings
 import app.luxion.shogunai.domain.model.EmulatorState
@@ -219,5 +220,20 @@ class WorktreeEmulatorUseCasesTest {
         assertNull(store.portsByAdminDirectory["$common/worktrees/TASK-123"])
         assertEquals(mapOf("emulator" to 5556), store.portsByAdminDirectory["$common/worktrees/TASK-456"])
         assertTrue(harness.resolve(repository, task).getOrThrow().variables.isEmpty())
+    }
+
+    @Test
+    fun `a start that waits gets the emulator once the holder's lease expires`() = runTest {
+        val source = provisioning()
+        val sdk = FakeAndroidSdk()
+        val harness = harness(sdk, source).also { it.limit(emulators = 1) }
+        val useCase = StartWorktreeEmulatorUseCase(source, harness.resolve, harness.acquire, sdk, pause = {})
+        useCase(config, task).getOrThrow()
+
+        val started = useCase(config, other, wait = DeviceWait()).getOrThrow()
+
+        assertEquals(listOf(task), started.acquisition.releases.map { it.worktreePath })
+        assertEquals(1200, started.acquisition.waitedSeconds)
+        assertEquals("emulator-5556", started.device.serial)
     }
 }
