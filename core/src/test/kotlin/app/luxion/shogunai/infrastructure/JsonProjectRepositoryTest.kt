@@ -100,6 +100,48 @@ class JsonProjectRepositoryTest {
     }
 
     @Test
+    fun `a project stored without linked entries copies every local file`() {
+        Files.writeString(
+            storagePath,
+            """
+            [
+                {
+                    "id": "project-1",
+                    "name": "Main",
+                    "config": {
+                        "baseRepositoryPath": "/home/dev/projects/main-repo",
+                        "worktreesRoot": "/home/dev/projects",
+                        "secretFiles": ["local.properties", "keys"]
+                    }
+                }
+            ]
+            """.trimIndent(),
+        )
+
+        val config = repository.list().single().config
+
+        assertEquals(emptyList(), config.linkedSecretFiles)
+        assertFalse(config.isLinked("local.properties"))
+        assertFalse(config.isLinked("keys"))
+    }
+
+    @Test
+    fun `keeps the link mode of local entries`() {
+        val config = ProjectConfig(
+            baseRepositoryPath = "/home/dev/projects/main-repo",
+            worktreesRoot = "/home/dev/projects",
+            secretFiles = listOf("local.properties", "keys"),
+            linkedSecretFiles = listOf("keys"),
+        )
+        repository.save(Project(id = "project-1", name = "Main", config = config))
+
+        val loaded = repository.list().single().config
+
+        assertTrue(loaded.isLinked("keys/"))
+        assertFalse(loaded.isLinked("local.properties"))
+    }
+
+    @Test
     fun `keeps the emulator settings of a project`() {
         val project = Project(
             id = "project-1",

@@ -10,4 +10,5 @@ data class Worktree(
     val isPrunable: Boolean = false,
     val skippedPostCreateCommands: List<List<String>> = emptyList(),
     val skippedVariables: List<String> = emptyList(),
+    val skippedLinks: List<String> = emptyList(),
 )

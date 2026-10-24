@@ -12,7 +12,8 @@ Configuration of a repository that worktrees are created against. It's what make
 |---|---|
 | `baseRepositoryPath` | Absolute path of the main repository, from which Git is run. |
 | `worktreesRoot` | Parent folder where worktrees are created. |
-| `secretFiles` | "Local files": exact paths of files or folders, relative to the base repository or absolute, copied into each new worktree on this machine only (e.g. `local.properties`). What the repository itself declares lives in `.shogunai.json` (see `RepositoryProvisioning`). |
+| `secretFiles` | "Local files": paths of files or folders, relative to the base repository or absolute, or patterns (an entry with `*`, `?` or `[`, see `isLocalPattern`), provisioned into each new worktree on this machine only (e.g. `local.properties`). What the repository itself declares lives in `.shogunai.json` (see `RepositoryProvisioning`). |
+| `linkedSecretFiles` | The entries of `secretFiles` that are linked instead of copied; `isLinked(entry)` ignores a trailing separator. Empty in projects saved before it existed, so their entries keep being copied. |
 | `agentLaunchConfig` | The project's default agent (`AgentLaunchConfig`, see below), used by every launch unless the user picks another one. |
 | `additionalAgents` | The project's other agents, in order. `agents` is the default followed by these, and `agentNamed(displayName)` finds one by name, falling back to the default. Keeping the default in its own field means an older version, which ignores unknown keys, still launches it. |
 | `simulator` | `SimulatorSettings` for this machine: the iOS simulator's device type and runtime (`null` means automatic). Only used when the repository declares the iOS simulator provider; never stored in the repository. |
@@ -89,7 +90,7 @@ What the repository declares that each new worktree needs, read from files at th
 
 Unknown fields of `.shogunai.json` are ignored, so later versions can add fields without breaking older ones.
 
-What provisioning did to each file is a `ProvisionedFile` (`path` and `ProvisionMode`: `COPIED`, `LINKED`, `COPIED_INSTEAD_OF_LINKING`). `ProvisionDrift` (`path` and `ProvisionDriftState`: `MISSING`, `DIFFERS`, `NOT_LINKED`) is a provisioned file that is no longer as provisioning left it, as `CheckProvisionedFilesUseCase` reports it.
+What provisioning did to each file is a `ProvisionedFile` (`path` and `ProvisionMode`: `COPIED`, `LINKED`, `COPIED_INSTEAD_OF_LINKING`). `ProvisionDrift` (`path` and `ProvisionDriftState`: `MISSING`, `DIFFERS`, `NOT_LINKED`, `DELETED_IN_BASE`) is a provisioned file that is no longer as provisioning left it, as `CheckProvisionedFilesUseCase` reports it.
 
 ### Worktree environment
 
@@ -217,7 +218,8 @@ User preferences: `LIGHT` / `DARK` / `SYSTEM` and `ENGLISH` / `SPANISH`. They're
 - `EnvironmentFileOutsideWorktree` — the declared `envFile` resolves, after following symlinks, outside the worktree.
 - `InvalidRef` — a branch name or start point starts with `-`, so Git could read it as an option.
 - `GitCommandFailed` — a Git command returned a non-zero exit code; keeps the command, exit code and Git's error output.
-- `SecretCopyFailed` — copying or linking local or repository files failed after the worktree had already been created, including a file that would land outside the worktree.
+- `SecretCopyFailed` — copying or linking local or repository files failed after the worktree had already been created, including a file that would land outside the worktree and a failure to write the provisioning record.
+- `LinkedFolderOccupied` — a local folder in link mode can't be linked because the worktree already has a real folder there holding files ShogunAi didn't copy; nothing in it is deleted.
 - `PostCreateCommandFailed` — a post-creation command couldn't start or exited with an error; keeps the worktree, the command, its exit code and its error output. The worktree is kept.
 - `ClipboardWriteFailed` — the launch command couldn't be copied to the clipboard.
 - `GitLfsNotFound` — the repository uses Git LFS but `git-lfs` isn't installed.
@@ -261,7 +263,9 @@ interface FileManager {
     fun hasSameContent(first: String, second: String): Boolean
     fun directorySize(path: String, excluding: Set<String> = emptySet()): Long
     fun isDirectory(path: String): Boolean
-    fun listFiles(directory: String): List<String>
+    fun listTree(directory: String): DirectoryListing
+    fun isSymbolicLink(path: String): Boolean
+    fun deleteFile(path: String)
     fun modificationStamps(path: String): List<Pair<String, Long>>
     fun readProperties(path: String): Map<String, String>
     fun writeText(path: String, text: String)
@@ -270,7 +274,7 @@ interface FileManager {
 }
 ```
 
-Abstracts the filesystem so that copying secrets and measuring worktrees is unit-testable without touching disk. `isInside` tells whether `path`, once its nearest existing ancestor is resolved through symlinks, is inside `root`; provisioning checks it before every copy, link and environment file write, so a hostile symlink in a branch can't make ShogunAi write outside the worktree. `copy` creates the destination's missing parent folders. `createSymbolicLink` replaces whatever is at `link` with a symlink, or throws `SymbolicLinksNotSupported` where links can't be created (e.g. Windows without the privilege); `isSymbolicLinkTo` and `hasSameContent` are what the provisioning check compares. `listFiles` returns the regular files under a folder as relative, `/`-separated paths, hidden files included, without following or listing symbolic links, and nothing if the folder is missing. `directorySize` adds up the regular files under `path`, skipping the folders in `excluding`. `modificationStamps` returns every file and folder under `path` (or `path` itself if it's a file) with its last-modified time, and nothing if it doesn't exist. `readProperties` reads a Java properties file (such as `gradle.properties`), empty if it's missing or unreadable. `writeText` replaces a file atomically, creating its folders; `readText` returns its content, or `null` if it's missing or unreadable. `lastModifiedMillis` returns a file's last-modified time, or `null` if it's missing or unreadable.
+Abstracts the filesystem so that copying secrets and measuring worktrees is unit-testable without touching disk. `isInside` tells whether `path`, once its nearest existing ancestor is resolved through symlinks, is inside `root`; provisioning checks it before every copy, link and environment file write, so a hostile symlink in a branch can't make ShogunAi write outside the worktree. `copy` creates the destination's missing parent folders. `createSymbolicLink` replaces whatever is at `link` with a symlink, or throws `SymbolicLinksNotSupported` where links can't be created (e.g. Windows without the privilege); `isSymbolicLinkTo` and `hasSameContent` are what the provisioning check compares. `listTree` returns a `DirectoryListing` of a folder: its regular `files` and the symbolic links it skips (`skippedLinks`), both as relative, `/`-separated paths, hidden files included, without following links, and nothing if the folder is missing. `isSymbolicLink` tells a link apart without following it, and `deleteFile` removes one file or link, doing nothing if it's missing. `directorySize` adds up the regular files under `path`, skipping the folders in `excluding`. `modificationStamps` returns every file and folder under `path` (or `path` itself if it's a file) with its last-modified time, and nothing if it doesn't exist. `readProperties` reads a Java properties file (such as `gradle.properties`), empty if it's missing or unreadable. `writeText` replaces a file atomically, creating its folders; `readText` returns its content, or `null` if it's missing or unreadable. `lastModifiedMillis` returns a file's last-modified time, or `null` if it's missing or unreadable.
 
 ### `ClipboardWriter`
 
@@ -288,13 +292,29 @@ Writes the launch command of a worktree to the system clipboard.
 interface RepositoryProvisioningSource {
     fun read(repositoryPath: String): RepositoryProvisioning
     fun fingerprint(repositoryPath: String): String
-    fun addCopyPatterns(repositoryPath: String, patterns: List<String>, expectedFingerprint: String? = null)
+    fun addPatterns(
+        repositoryPath: String,
+        copyPatterns: List<String>,
+        linkPatterns: List<String> = emptyList(),
+        expectedFingerprint: String? = null,
+    )
     fun preview(repositoryPath: String, edit: RepositoryConfigEdit): String
     fun write(repositoryPath: String, edit: RepositoryConfigEdit, expectedFingerprint: String)
 }
 ```
 
-Reads the repository's provisioning (throwing `InvalidRepositoryConfig` for an unreadable `.shogunai.json`), appends patterns to `copy` (how the configuration screen moves local files into the repository), and previews and writes the providers and environment edited in the settings form (`RepositoryConfigEdit`). `fingerprint` is a hash of the file's content; a write given the fingerprint read earlier fails with `RepositoryConfigChanged` when the file changed meanwhile.
+Reads the repository's provisioning (throwing `InvalidRepositoryConfig` for an unreadable `.shogunai.json`), appends patterns to `copy` and `link` in one write (how the configuration screen moves local files into the repository and links the mobile secrets it suggests), and previews and writes the providers, the environment and the pending patterns edited in the settings form (`RepositoryConfigEdit`, whose `addCopyPatterns` and `addLinkPatterns` are appended without duplicates).
+
+### `ProvisioningRecordStore`
+
+```kotlin
+interface ProvisioningRecordStore {
+    fun read(worktreePath: String): Map<String, List<String>>
+    fun write(worktreePath: String, localFolders: Map<String, List<String>>)
+}
+```
+
+Remembers, per worktree, the files provisioning copied from each local folder (folder entry → files relative to it). `NioProvisioningRecordStore` keeps it in `shogunai-provisioning.json` inside the worktree's Git admin folder (found through the worktree's `.git` file), so it's never in the working tree and goes away with the worktree. A missing or unreadable record reads as empty; an empty record removes the file. `ProvisioningRecordStore.NONE` keeps nothing, for callers that don't need it. `fingerprint` is a hash of the file's content; a write given the fingerprint read earlier fails with `RepositoryConfigChanged` when the file changed meanwhile.
 
 ### `EnvironmentStateStore` / `PortProbe`
 
@@ -512,7 +532,9 @@ Creates a worktree on a **new** branch `<type>/<taskId>`. The task id is normali
 5. Preparing its environment through the `WorktreeEnvironmentPreparer` it receives: `PrepareWorktreeEnvironmentUseCase` resolves it with reservation (`ResolveWorktreeEnvironmentUseCase`) and, when `envFile` is declared and the declaration is approved, `WriteEnvironmentFileUseCase` writes it in dotenv format, refusing a file Git tracks (`git ls-files --error-unmatch`, `EnvironmentFileTracked`) and reporting write errors as `EnvironmentFileWriteFailed`. The preparer defaults to `WorktreeEnvironmentPreparer.NONE`, which tests that don't exercise the environment rely on; the app and the CLI always pass the real one.
 6. Running the repository's post-creation commands in the worktree, only when approved. When the repository isn't approved and the user doesn't approve it now, its commands and the names of its declared variables are returned in the worktree's `skippedPostCreateCommands` and `skippedVariables`. A failing command is `PostCreateCommandFailed`, and the worktree is kept, since everything before it succeeded.
 
-Resolving the repository's files reads `RepositoryProvisioning` and, if it declares any pattern, runs `git ls-files --others --ignored -z -x <pattern>…`: every file not tracked by Git that matches a pattern (tracked files already come with the checkout). Without patterns no Git command runs. An unreadable `.shogunai.json` (`InvalidRepositoryConfig`) or a failing `git ls-files` (`GitCommandFailed`) stops creation before anything is created. Local files are checked strictly (`SecretFileNotFound`), patterns leniently: a pattern with no match copies nothing. A local entry that is a folder is expanded with `FileManager.listFiles` into the files under it each time the files are resolved, so creation, provisioning and the drift check see plain files and a file added to the folder later is picked up. Folders are copied, never linked; a folder that already exists in the worktree is merged (same-path files overwritten, the rest kept); a missing folder is `SecretFileNotFound` like a missing file.
+Resolving the repository's files reads `RepositoryProvisioning` and, if it declares any pattern, runs `git ls-files --others --ignored -z -x <pattern>…`: every file not tracked by Git that matches a pattern (tracked files already come with the checkout). Without patterns no Git command runs. An unreadable `.shogunai.json` (`InvalidRepositoryConfig`) or a failing `git ls-files` (`GitCommandFailed`) stops creation before anything is created. Local files are checked strictly (`SecretFileNotFound`), patterns leniently: a pattern with no match copies nothing. A local entry that is a folder in copy mode is expanded with `FileManager.listTree` into the files under it each time the files are resolved, so creation, provisioning and the drift check see plain files and a file added to the folder later is picked up; the symbolic links it skips are carried as `skippedLinks`. A folder that already exists in the worktree is merged (same-path files overwritten, the rest kept); a missing folder is `SecretFileNotFound` like a missing file. A local entry in link mode is linked, whatever the repository declares for it, and one in copy mode is copied; a linked folder becomes one symbolic link to the base folder, which replaces a real folder only when every file in it is recorded as copied from that folder (otherwise `LinkedFolderOccupied`), and a copied folder whose destination is a link to the base folder has that link removed first. A local pattern is expanded with the same `git ls-files` call as `copy`, so it only selects untracked files, and isn't checked for existence.
+
+After copying, the `ProvisioningRecordStore` record of each copied folder is replaced by the files just copied. Before copying, a recorded file that no longer exists in its base folder is deleted from the worktree when it's a regular file there, and returned as removed; files the record doesn't list are never touched. The drift check reports such files as `DELETED_IN_BASE` instead.
 
 If copying or preparing the environment fails **after** the worktree was created, it's rolled back with `git worktree remove --force` and the branch the creation made is deleted with `git branch -D -- <branch>` (both best-effort) before propagating the error, so a retry finds nothing in its way. If `git worktree add` fails because `git-lfs` is missing, the half-created worktree and its new branch are removed the same way and `GitLfsNotFound` is returned.
 

@@ -9,7 +9,12 @@ interface RepositoryProvisioningSource {
 
     fun fingerprint(repositoryPath: String): String
 
-    fun addCopyPatterns(repositoryPath: String, patterns: List<String>, expectedFingerprint: String? = null)
+    fun addPatterns(
+        repositoryPath: String,
+        copyPatterns: List<String>,
+        linkPatterns: List<String> = emptyList(),
+        expectedFingerprint: String? = null,
+    )
 
     fun preview(repositoryPath: String, edit: RepositoryConfigEdit): String
 

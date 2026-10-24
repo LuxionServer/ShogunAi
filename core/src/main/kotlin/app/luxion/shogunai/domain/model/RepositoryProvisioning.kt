@@ -49,6 +49,6 @@ enum class ProvisionMode { COPIED, LINKED, COPIED_INSTEAD_OF_LINKING }
 
 data class ProvisionedFile(val path: String, val mode: ProvisionMode)
 
-enum class ProvisionDriftState { MISSING, DIFFERS, NOT_LINKED }
+enum class ProvisionDriftState { MISSING, DIFFERS, NOT_LINKED, DELETED_IN_BASE }
 
 data class ProvisionDrift(val path: String, val state: ProvisionDriftState)

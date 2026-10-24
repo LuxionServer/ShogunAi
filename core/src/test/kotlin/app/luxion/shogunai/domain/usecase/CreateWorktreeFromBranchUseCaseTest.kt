@@ -383,4 +383,22 @@ class CreateWorktreeFromBranchUseCaseTest {
         assertIs<WorktreeError.SecretCopyFailed>(error)
         assertTrue(exec.executed("git", "worktree", "remove", "--force", worktreePath))
     }
+
+    @Test
+    fun `removes the worktree but keeps the branch when a linked folder's destination is occupied`() = runTest {
+        val exec = executor()
+        val keys = config.baseSecretPath("keys")
+        val destination = "$worktreePath/keys"
+        val fileManager = FakeFileManager(
+            existing = listOf(config.baseRepositoryPath, keys),
+            directories = setOf(keys, destination),
+        ).also { it.directoryFiles[destination] = listOf("README.md") }
+        val linkedConfig = config.copy(secretFiles = listOf("keys"), linkedSecretFiles = listOf("keys"))
+
+        val error = CreateWorktreeFromBranchUseCase(linkedConfig, exec, fileManager, FakeRepositoryProvisioningSource())(branch).exceptionOrNull()
+
+        assertIs<WorktreeError.LinkedFolderOccupied>(error)
+        assertTrue(exec.executed("git", "worktree", "remove", "--force", worktreePath))
+        assertFalse(exec.executedCommands.any { it.getOrNull(1) == "branch" && "-D" in it })
+    }
 }

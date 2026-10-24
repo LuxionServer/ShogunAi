@@ -10,10 +10,12 @@ internal fun provisioningRows(
     declared: RepositoryProvisioning?,
     pendingPatterns: List<String>,
     strings: Strings,
+    pendingLinkPatterns: List<String> = emptyList(),
 ): List<Pair<String, String>> {
     val config = RepositoryProvisioning.CONFIG_FILE_NAME
     return declared?.copyPatterns.orEmpty().map { it to config } +
         declared?.linkPatterns.orEmpty().map { it to "$config · ${strings.linkedPattern}" } +
         declared?.worktreeIncludePatterns.orEmpty().map { it to RepositoryProvisioning.WORKTREE_INCLUDE_FILE_NAME } +
-        pendingPatterns.map { it to "$config · ${strings.pendingSave}" }
+        pendingPatterns.map { it to "$config · ${strings.pendingSave}" } +
+        pendingLinkPatterns.map { it to "$config · ${strings.linkedPattern} · ${strings.pendingSave}" }
 }

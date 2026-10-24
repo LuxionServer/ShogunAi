@@ -470,6 +470,8 @@ private fun ProjectForm(
             appContainer.tools,
             appContainer::detectStacks,
             appContainer::multirepoNameOfWorkspace,
+            appContainer::detectMobileSecrets,
+            appContainer::listLocalFolder,
         )
     }
     ProjectSettingsView(

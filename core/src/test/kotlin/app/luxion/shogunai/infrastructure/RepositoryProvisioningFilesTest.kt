@@ -114,7 +114,7 @@ class RepositoryProvisioningFilesTest {
     fun `keeps hooks and link when adding patterns`() {
         configFile.writeText("""{ "hooks": { "postCreate": [["npm", "install"]] }, "link": ["keys/"] }""")
 
-        files.addCopyPatterns(repository.toString(), listOf(".env"))
+        files.addPatterns(repository.toString(), listOf(".env"))
 
         val written = Json.parseToJsonElement(configFile.readText()).jsonObject
         assertEquals("keys/", written.getValue("link").jsonArray.single().jsonPrimitive.content)
@@ -427,7 +427,7 @@ class RepositoryProvisioningFilesTest {
     fun `keeps the environment when adding patterns`() {
         configFile.writeText("""{ "env": { "PORT": "${'$'}{port}" }, "envFile": ".env.shogunai" }""")
 
-        files.addCopyPatterns(repository.toString(), listOf("/local.properties"))
+        files.addPatterns(repository.toString(), listOf("/local.properties"))
 
         val environment = files.read(repository.toString()).environment
         assertEquals(listOf("PORT"), environment.variables.map { it.name })
@@ -438,7 +438,7 @@ class RepositoryProvisioningFilesTest {
     fun `keeps providers when adding patterns`() {
         configFile.writeText("""{ "providers": { "gradle": {} } }""")
 
-        files.addCopyPatterns(repository.toString(), listOf("/local.properties"))
+        files.addPatterns(repository.toString(), listOf("/local.properties"))
 
         val provisioning = files.read(repository.toString())
         assertEquals(RepositoryProviders(gradle = GradleProvider()), provisioning.providers)
@@ -447,7 +447,7 @@ class RepositoryProvisioningFilesTest {
 
     @Test
     fun `creates the file when adding patterns to a repository without one`() {
-        files.addCopyPatterns(repository.toString(), listOf("/local.properties"))
+        files.addPatterns(repository.toString(), listOf("/local.properties"))
 
         assertEquals(listOf("/local.properties"), files.read(repository.toString()).copyPatterns)
         assertTrue(configFile.readText().endsWith("\n"))
@@ -457,7 +457,7 @@ class RepositoryProvisioningFilesTest {
     fun `appends patterns without duplicates and keeps other fields`() {
         configFile.writeText("""{ "copy": [".env"], "hooks": { "postCreate": ["npm", "install"] } }""")
 
-        files.addCopyPatterns(repository.toString(), listOf(".env", "/local.properties"))
+        files.addPatterns(repository.toString(), listOf(".env", "/local.properties"))
 
         val written = Json.parseToJsonElement(configFile.readText()).jsonObject
         assertEquals(listOf(".env", "/local.properties"), written.getValue("copy").jsonArray.map { it.jsonPrimitive.content })
@@ -473,7 +473,7 @@ class RepositoryProvisioningFilesTest {
         configFile.writeText(malformed)
 
         assertFailsWith<WorktreeError.InvalidRepositoryConfig> {
-            files.addCopyPatterns(repository.toString(), listOf("/local.properties"))
+            files.addPatterns(repository.toString(), listOf("/local.properties"))
         }
 
         assertEquals(malformed, configFile.readText())
@@ -481,7 +481,7 @@ class RepositoryProvisioningFilesTest {
 
     @Test
     fun `leaves no temporary files behind`() {
-        files.addCopyPatterns(repository.toString(), listOf("/local.properties"))
+        files.addPatterns(repository.toString(), listOf("/local.properties"))
 
         assertTrue(configFile.exists())
         assertFalse(Files.list(repository).use { stream -> stream.anyMatch { it.fileName.toString().endsWith(".tmp") } })
@@ -627,6 +627,30 @@ class RepositoryProvisioningFilesTest {
     }
 
     @Test
+    fun `adds copy and link patterns in one write`() {
+        configFile.writeText("""{ "link": ["/local.properties"] }""")
+
+        files.addPatterns(repository.toString(), listOf("*.jks"), listOf("/keys", "/local.properties"))
+
+        assertEquals(listOf("*.jks"), written().getValue("copy").jsonArray.map { it.jsonPrimitive.content })
+        assertEquals(listOf("/local.properties", "/keys"), written().getValue("link").jsonArray.map { it.jsonPrimitive.content })
+    }
+
+    @Test
+    fun `adds link patterns without duplicates and keeps the other fields`() {
+        configFile.writeText("""{ "team": "mobile", "copy": [".env"], "link": ["/local.properties"] }""")
+
+        write(RepositoryConfigEdit(addLinkPatterns = listOf("/app/google-services.json", "/local.properties")))
+
+        assertEquals(
+            listOf("/local.properties", "/app/google-services.json"),
+            written().getValue("link").jsonArray.map { it.jsonPrimitive.content },
+        )
+        assertEquals(listOf(".env"), written().getValue("copy").jsonArray.map { it.jsonPrimitive.content })
+        assertEquals("mobile", written().getValue("team").jsonPrimitive.content)
+    }
+
+    @Test
     fun `preview shows the resulting file without writing it`() {
         configFile.writeText("""{ "team": "mobile" }""")
 
@@ -682,7 +706,7 @@ class RepositoryProvisioningFilesTest {
         configFile.writeText("""{ "copy": [] }""")
 
         assertFailsWith<WorktreeError.RepositoryConfigChanged> {
-            files.addCopyPatterns(repository.toString(), listOf("/local.properties"), fingerprint)
+            files.addPatterns(repository.toString(), listOf("/local.properties"), expectedFingerprint = fingerprint)
         }
     }
 

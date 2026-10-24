@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import androidx.compose.runtime.staticCompositionLocalOf
 import app.luxion.shogunai.domain.model.InstallChannel
+import app.luxion.shogunai.domain.model.MobileSecretKind
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.model.AgentState
@@ -500,6 +501,14 @@ interface Strings {
     val stackSuggestionsTitle: String
     fun stackSuggestion(provider: String, evidence: String): String
     val turnOnProvider: String
+    val linkLocalEntry: String
+    val localPatternLabel: String
+    fun skippedSymbolicLinks(count: Int): String
+    val localPatternMustBeRelative: String
+    val mobileSecretsTitle: String
+    fun mobileSecretKind(kind: MobileSecretKind): String
+    val linkFromRepositoryConfig: String
+    fun keystoreOutsideRepository(file: String, key: String, value: String): String
     val mavenDaemonsTitle: String
     fun mavenDaemonsSummary(count: Int, totalMemory: String): String
     val noMavenDaemons: String
