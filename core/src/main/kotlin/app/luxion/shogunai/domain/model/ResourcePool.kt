@@ -10,6 +10,8 @@ enum class ResourceKind { EMULATOR, IOS_SIMULATOR, GRADLE_DAEMON }
 
 enum class CapacityProfile { AUTOMATIC, LIGHT, BALANCED, PER_WORKTREE, CUSTOM }
 
+enum class DerivedDataQuotaMode { AUTOMATIC, FIXED, NONE }
+
 @Serializable
 data class ResourceLimits(
     val emulators: Int? = null,
@@ -35,12 +37,16 @@ data class ResourceSettings(
     val custom: ResourceLimits = ResourceLimits.LIGHT,
     val derivedDataQuotaGigabytes: Int? = null,
     val leaseMinutes: Int = DEFAULT_LEASE_MINUTES,
+    val derivedDataQuotaMode: DerivedDataQuotaMode? = null,
 ) {
     val leaseDuration: Duration
         get() = Duration.ofMinutes(leaseMinutes.takeIf { it > 0 }?.toLong() ?: DEFAULT_LEASE_MINUTES.toLong())
 
+    val quotaMode: DerivedDataQuotaMode
+        get() = derivedDataQuotaMode
+            ?: if (derivedDataQuotaGigabytes != null) DerivedDataQuotaMode.FIXED else DerivedDataQuotaMode.AUTOMATIC
 
-    val derivedDataQuotaBytes: Long?
+    val fixedDerivedDataQuotaBytes: Long?
         get() = derivedDataQuotaGigabytes?.takeIf { it > 0 }?.let { it * BYTES_PER_GIGABYTE }
 }
 
@@ -76,11 +82,7 @@ data class PoolHolder(
         }
 
     val displayName: String
-        get() {
-            val repository = adminDirectory?.substringBefore("/.git")?.substringAfterLast('/').orEmpty()
-            val worktree = (worktreePath ?: adminDirectory)?.trimEnd('/')?.substringAfterLast('/').orEmpty()
-            return if (repository.isEmpty()) worktree else "$repository · $worktree"
-        }
+        get() = poolDisplayName(adminDirectory, worktreePath)
 }
 
 data class PoolUsage(

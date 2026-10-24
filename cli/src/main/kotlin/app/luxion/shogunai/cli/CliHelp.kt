@@ -131,7 +131,7 @@ internal object CliHelp {
   xcode [--json]              List Xcode DerivedData folders of the worktrees, orphans and compilation cache
   xcode clean [--json]        Delete orphaned Xcode DerivedData folders on the machine
   xcode trim [--dry-run] [--json]
-                              Release DerivedData folders until it is within the quota in Preferences
+                              Release DerivedData folders until it is within the quota in Preferences (automatic by default)
 """.trimIndent(),
         "hook" to """
   hook worktree-create        Claude Code WorktreeCreate hook: create and provision the worktree, print its path
@@ -167,6 +167,9 @@ internal object CliHelp {
   simulator start|stop|status [<path>] [--device <type>] [--runtime <runtime>] [--json]
                               Boot (and wait for), shut down or show the worktree's iOS simulator; the first
                               start creates it, releasing the least recently used idle one if the pool is full
+  simulator start [--wait] [--wait-timeout <minutes>]
+                              When the pool is full and none can be released, wait in line for one
+                              (30 minutes at most by default) instead of failing
                               (repositories with "providers": { "ios-simulator": {} } in .shogunai.json)
   simulator gradle-init install|uninstall [--yes]
                               Make every project's KMP iOS simulator tests use IOS_SIMULATOR_UDID
@@ -176,6 +179,9 @@ internal object CliHelp {
                               Start (and wait for), stop or show the worktree's Android emulator; the first
                               start reserves its console port, releasing the least recently used idle one if
                               the pool is full
+  emulator start [--wait] [--wait-timeout <minutes>]
+                              When the pool is full and none can be released, wait in line for one
+                              (30 minutes at most by default) instead of failing
                               (repositories with "providers": { "emulator": {} } in .shogunai.json)
 """.trimIndent(),
         "env" to """
