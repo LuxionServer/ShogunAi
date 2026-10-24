@@ -36,6 +36,7 @@ class WriteEnvironmentFileUseCase(
         worktreePath: String,
         environment: WorktreeEnvironment,
     ): Result<String?> = runCatching {
+        if (!environment.declarationApproved) return@runCatching null
         val envFile = provisioningSource.read(repositoryPath).environment.envFile ?: return@runCatching null
         val tracked = executor.execute(
             command = listOf("git", "ls-files", "--error-unmatch", "--", envFile),

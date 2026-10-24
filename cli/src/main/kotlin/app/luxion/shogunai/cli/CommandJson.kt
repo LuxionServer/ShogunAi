@@ -28,6 +28,7 @@ import app.luxion.shogunai.domain.model.ProvisionDrift
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.ProvisionMode
 import app.luxion.shogunai.domain.model.ProvisionedFile
+import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.WorktreeEmulator
@@ -74,6 +75,7 @@ fun newJson(
     path: String,
     branch: String?,
     skippedPostCreateCommands: List<List<String>>,
+    skippedVariables: List<String>,
     postCreateFailure: WorktreeError.PostCreateCommandFailed?,
     skippedLinks: List<String> = emptyList(),
 ): JsonObject = buildJsonObject {
@@ -81,6 +83,7 @@ fun newJson(
     put("branch", branch)
     put("created", true)
     put("skippedPostCreateCommands", commands(skippedPostCreateCommands))
+    put("skippedVariables", strings(skippedVariables))
     put("postCreateFailure", postCreateFailureJson(postCreateFailure))
     put("skippedLinks", strings(skippedLinks))
 }
@@ -89,6 +92,7 @@ fun provisionJson(
     path: String,
     files: List<ProvisionedFile>,
     skippedPostCreateCommands: List<List<String>>,
+    skippedVariables: List<String>,
     postCreateFailure: WorktreeError.PostCreateCommandFailed?,
     removed: List<String> = emptyList(),
     skippedLinks: List<String> = emptyList(),
@@ -98,6 +102,7 @@ fun provisionJson(
     put("linked", strings(files.filter { it.mode == ProvisionMode.LINKED }.map { it.path }))
     put("copiedInsteadOfLinking", strings(files.filter { it.mode == ProvisionMode.COPIED_INSTEAD_OF_LINKING }.map { it.path }))
     put("skippedPostCreateCommands", commands(skippedPostCreateCommands))
+    put("skippedVariables", strings(skippedVariables))
     put("postCreateFailure", postCreateFailureJson(postCreateFailure))
     put("removed", strings(removed))
     put("skippedLinks", strings(skippedLinks))
@@ -128,9 +133,23 @@ private val ProvisionDriftState.label: String
         ProvisionDriftState.DELETED_IN_BASE -> "deleted-in-base"
     }
 
-fun trustJson(repository: String, commands: List<List<String>>, approved: Boolean, changed: Boolean): JsonObject = buildJsonObject {
+fun trustJson(repository: String, subject: RepositoryApprovalSubject, approved: Boolean, changed: Boolean): JsonObject = buildJsonObject {
     put("repository", repository)
-    put("commands", commands(commands))
+    put("commands", commands(subject.commands))
+    put(
+        "env",
+        buildJsonArray {
+            subject.variables.forEach { (name, template) ->
+                add(
+                    buildJsonObject {
+                        put("name", name)
+                        put("template", template)
+                    },
+                )
+            }
+        },
+    )
+    put("envFile", subject.envFile)
     put("approved", approved)
     put("changed", changed)
 }

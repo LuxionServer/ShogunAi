@@ -1,16 +1,20 @@
 package app.luxion.shogunai.domain
 
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
+import app.luxion.shogunai.domain.model.EnvironmentDeclaration
 import app.luxion.shogunai.domain.model.RepositoryConfigEdit
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import java.io.IOException
 
 class FakeRepositoryProvisioningSource(
-    private val byRepository: Map<String, RepositoryProvisioning> = emptyMap(),
+    byRepository: Map<String, RepositoryProvisioning> = emptyMap(),
     private val unreadable: Set<String> = emptySet(),
     private val failWritesFor: Set<String> = emptySet(),
 ) : RepositoryProvisioningSource {
+
+    private val byRepository = byRepository.toMutableMap()
 
     val addedPatterns = mutableListOf<Pair<String, List<String>>>()
     val addedLinkPatterns = mutableListOf<Pair<String, List<String>>>()
@@ -44,6 +48,10 @@ class FakeRepositoryProvisioningSource(
         if (repositoryPath in failWritesFor) throw IOException("read-only file system")
         requireUnchanged(repositoryPath, expectedFingerprint)
         writtenEdits += repositoryPath to edit
+        byRepository[repositoryPath] = read(repositoryPath).copy(
+            providers = edit.providers,
+            environment = EnvironmentDeclaration(edit.environment.map { parseEnvironmentVariable(it.name, it.template) }, edit.envFile),
+        )
     }
 
     private fun requireUnchanged(repositoryPath: String, expected: String?) {

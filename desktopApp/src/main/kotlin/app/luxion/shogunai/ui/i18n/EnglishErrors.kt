@@ -251,6 +251,10 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "No multirepo was found at ${error.path}.",
         "Add the folder as a multirepo first.",
     )
+    is WorktreeError.MultirepoNeedsReview -> ErrorTexts(
+        "The multirepo ${error.path} isn't approved on this machine.",
+        "Review its repositories and paths and trust it from the multirepo's view, or with shogun multirepo trust.",
+    )
     is WorktreeError.BaseBranchNotFound -> ErrorTexts(
         "The base branch of ${error.repository} couldn't be resolved.",
         "Set the project's main branch in its settings.",

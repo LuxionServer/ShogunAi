@@ -70,7 +70,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
-import app.luxion.shogunai.ui.worktree.DialogPostCreateApproval
+import app.luxion.shogunai.ui.worktree.DialogRepositoryApproval
 import app.luxion.shogunai.domain.io.LanguagePreferenceRepository
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.io.DirectoryListing
@@ -333,6 +333,7 @@ class AppContainer {
     private val folderLauncher = SystemFolderLauncher(shellCommandExecutor)
     private val claudeDesktopLauncher = MacClaudeDesktopLauncher(shellCommandExecutor)
     private val environmentCache = WorktreeEnvironmentCache()
+    val repositoryTrust: RepositoryTrust = JsonRepositoryTrust()
     private val resolveEnvironment = resolverWith(contributions)
     private val stopSimulator = StopWorktreeSimulatorUseCase(repositoryProvisioningSource, appleSimulators, resolveEnvironment)
     private val readSimulatorStates = ReadSimulatorStatesUseCase(repositoryProvisioningSource, appleSimulators, resolveEnvironment)
@@ -345,6 +346,7 @@ class AppContainer {
         portProbe,
         factory,
         environmentCache,
+        repositoryTrust,
     )
 
     private fun simulatorSettingsFor(repositoryPath: String): SimulatorSettings =
@@ -485,9 +487,7 @@ class AppContainer {
 
     val pathExists: (String) -> Boolean = fileManager::exists
 
-    val repositoryTrust: RepositoryTrust = JsonRepositoryTrust()
-
-    val postCreateApproval = DialogPostCreateApproval()
+    val repositoryApproval = DialogRepositoryApproval()
 
     private val multirepoSource = JsonMultirepoSource()
     private val resolveMultirepo = ResolveMultirepoUseCase(multirepoSource, shellCommandExecutor, fileManager)
@@ -503,7 +503,7 @@ class AppContainer {
         return registration.getOrNull() is ProjectRegistration.Added
     }
 
-    fun multirepoNameOfWorkspace(topLevel: String): String? = knownMultirepos().withWorkspaceAt(topLevel)?.name
+    fun multirepoNameOfWorkspace(topLevel: String): String? = resolveMultirepo.approved().withWorkspaceAt(topLevel)?.name
 
     val multirepoActions = MultirepoActions(
         createGroup = { members, taskId, branchType, fetch, onRepository ->
@@ -513,11 +513,12 @@ class AppContainer {
                 repositoryProvisioningSource,
                 prepareEnvironment,
                 repositoryTrust,
-                postCreateApproval,
+                repositoryApproval,
                 provisioningRecords,
             )(members, taskId, branchType, fetch, onRepository)
         },
         openAgent = { multirepo -> OpenMultirepoAgentInHerdrUseCase(herdrClient)(multirepo) },
+        trust = { multirepo -> configureMultirepo.trust(multirepo) },
     )
 
     val multirepoSetup: MultirepoSetup = object : MultirepoSetup {
@@ -549,6 +550,8 @@ class AppContainer {
             runCatching { multirepoSource.read(folder) }.getOrNull()?.let { resolveMultirepo.build(folder, it) }
 
         override suspend fun init(folder: String): Result<Multirepo> = withContext(Dispatchers.IO) { configureMultirepo.init(folder, null) }
+
+        override suspend fun trust(multirepo: Multirepo): Result<Multirepo> = withContext(Dispatchers.IO) { configureMultirepo.trust(multirepo) }
 
         override suspend fun addRepository(multirepo: Multirepo, alias: String, path: String, useProposedFolder: Boolean): Result<AddedRepository> =
             withContext(Dispatchers.IO) {
@@ -582,7 +585,7 @@ class AppContainer {
             repositoryProvisioningSource,
             prepareEnvironment,
             repositoryTrust,
-            postCreateApproval,
+            repositoryApproval,
             provisioningRecords,
         ),
         createFromBranch = CreateWorktreeFromBranchUseCase(
@@ -592,7 +595,7 @@ class AppContainer {
             repositoryProvisioningSource,
             prepareEnvironment,
             repositoryTrust,
-            postCreateApproval,
+            repositoryApproval,
             provisioningRecords,
         ),
         listBranches = ListBranchesUseCase(config, shellCommandExecutor),
@@ -654,7 +657,7 @@ class AppContainer {
                 repositoryProvisioningSource,
                 prepareEnvironment,
                 repositoryTrust,
-                postCreateApproval,
+                repositoryApproval,
                 provisioningRecords,
             )::invoke,
         ),

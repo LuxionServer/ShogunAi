@@ -604,7 +604,10 @@ class ProjectWorktrees(
                     .onSuccess { worktree ->
                         worktrees = worktrees.filterNot { it.path == worktree.path } + worktree
                         lastCreatedWorktree = worktree
-                        success = WorktreeSuccess.Created(worktree.path, worktree.skippedPostCreateCommands.isNotEmpty())
+                        success = WorktreeSuccess.Created(
+                            worktree.path,
+                            worktree.skippedPostCreateCommands.isNotEmpty() || worktree.skippedVariables.isNotEmpty(),
+                        )
                         loadStatusOf(worktree)
                         onUsed(worktree.path)
                         onCreated(worktree)

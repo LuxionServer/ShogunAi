@@ -122,14 +122,14 @@ The system SHALL treat `.shogunai.json` as invalid, with the same error and effe
 - **THEN** the file is reported as invalid with the same error
 
 ### Requirement: Prepare the environment when provisioning
-Creating a worktree (on a new or an existing branch) and provisioning an existing worktree SHALL resolve the worktree's environment, reserving its ports, and write the environment file when one is declared. During creation, a failure to reserve ports or to write the file SHALL remove the new worktree, as a failed copy does; when provisioning, the worktree SHALL be left in place.
+Creating a worktree (on a new or an existing branch) and provisioning an existing worktree SHALL, once the repository's approval has been settled under the asking rules of the entry point, resolve the worktree's environment, reserving its ports, and write the environment file when one is declared and the repository is approved. While the repository isn't approved, the declared variables and the environment file SHALL be left out (see `worktree-environment`). During creation, a failure to reserve ports or to write the file SHALL remove the new worktree, as a failed copy does; when provisioning, the worktree SHALL be left in place.
 
 #### Scenario: Creation reserves ports
-- **WHEN** the repository declares `{ "env": { "PORT": "${port}" } }` and a worktree is created
+- **WHEN** the repository declares `{ "env": { "PORT": "${port}" } }`, is approved, and a worktree is created
 - **THEN** the new worktree has a reserved port before creation finishes
 
 #### Scenario: Environment file on creation
-- **WHEN** the repository declares `envFile` and a worktree is created
+- **WHEN** the repository declares `envFile`, is approved, and a worktree is created
 - **THEN** the new worktree contains the environment file
 
 #### Scenario: Writing fails during creation
@@ -137,8 +137,16 @@ Creating a worktree (on a new or an existing branch) and provisioning an existin
 - **THEN** the worktree is removed, best-effort, and creation fails with the error
 
 #### Scenario: Provisioning an existing worktree
-- **WHEN** a worktree created by another tool is provisioned in a repository that declares `env` and `envFile`
+- **WHEN** a worktree created by another tool is provisioned in an approved repository that declares `env` and `envFile`
 - **THEN** its ports are reserved and the environment file is written
+
+#### Scenario: Approved during creation
+- **WHEN** the repository declares `PORT` and `envFile`, isn't approved, and the user approves it when asked during creation
+- **THEN** the new worktree has a reserved port for `PORT` and the environment file
+
+#### Scenario: Skipped during creation
+- **WHEN** the repository declares `PORT` and `envFile`, isn't approved, and the user skips it
+- **THEN** the worktree is created without a port for `PORT` nor an environment file, and the result names `PORT` as skipped
 
 ### Requirement: Declare the emulator provider
 The system SHALL read `providers.emulator` in `.shogunai.json` as an object with an optional string `avd`, the AVD the repository prefers. A non-object value or a non-string `avd` SHALL make the file invalid.
@@ -253,7 +261,7 @@ The system SHALL treat `.shogunai.json` as invalid, with the same error and effe
 - **THEN** the file is reported as invalid with the same error
 
 ### Requirement: Run post-creation commands
-After a worktree's files are in place and its environment prepared, the system SHALL run the post-creation commands in order, each as argv with the worktree as working directory, stopping at the first that fails, only when they are approved for the repository on this machine (see `repository-trust`); unapproved commands follow the asking rules of the entry point. A failure SHALL report the command, its exit code and its error output, and SHALL NOT remove the worktree.
+After a worktree's files are in place and its environment prepared, the system SHALL run the post-creation commands in order, each as argv with the worktree as working directory, stopping at the first that fails, only when the repository is approved on this machine (see `repository-trust`); an unapproved repository follows the asking rules of the entry point, asked once for its commands and its declared variables before the environment is prepared. A failure SHALL report the command, its exit code and its error output, and SHALL NOT remove the worktree.
 
 #### Scenario: Commands succeed
 - **WHEN** the repository declares `[["npm", "install"]]`, the commands are approved and a worktree is created
@@ -261,7 +269,7 @@ After a worktree's files are in place and its environment prepared, the system S
 
 #### Scenario: Commands not approved
 - **WHEN** the repository declares `[["npm", "install"]]`, the commands aren't approved and the user doesn't approve them
-- **THEN** the worktree is created with its files and environment, `npm install` doesn't run, and the result says the commands were skipped
+- **THEN** the worktree is created with its files and the environment of its providers, `npm install` doesn't run, and the result says the commands were skipped
 
 #### Scenario: Command fails during creation
 - **WHEN** the first of two approved post-creation commands exits with code 1 while creating a worktree
@@ -274,6 +282,10 @@ After a worktree's files are in place and its environment prepared, the system S
 #### Scenario: Provisioning an existing worktree
 - **WHEN** a worktree created by another tool is provisioned in a repository that declares approved post-creation commands
 - **THEN** the commands run inside that worktree after its files are copied, and a failure fails provisioning
+
+#### Scenario: One question for commands and variables
+- **WHEN** the repository declares commands and `env`, isn't approved, and a worktree is created on a terminal
+- **THEN** the user is asked once, and the answer applies to both the commands and the variables
 
 ### Requirement: Declare linked files
 The system SHALL read the optional `link` field of `.shogunai.json` as a list of patterns with the same syntax and file selection as `copy`. A `link` value that isn't a list of strings SHALL make the file invalid, with the same error and effects as an invalid `copy` field.

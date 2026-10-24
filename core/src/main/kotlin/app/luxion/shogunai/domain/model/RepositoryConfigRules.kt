@@ -7,10 +7,12 @@ sealed interface RepositoryConfigIssue {
     data object InvalidMinutes : RepositoryConfigIssue
     data object InvalidVariableName : RepositoryConfigIssue
     data object ReservedVariableName : RepositoryConfigIssue
+    data object InvalidVariableValue : RepositoryConfigIssue
     data object DuplicateVariableName : RepositoryConfigIssue
     data object UnclosedPlaceholder : RepositoryConfigIssue
     data class UnknownPlaceholder(val placeholder: String) : RepositoryConfigIssue
     data object EnvFileOutsideWorktree : RepositoryConfigIssue
+    data object EnvFileInvalidCharacters : RepositoryConfigIssue
 }
 
 object RepositoryConfigRules {
@@ -42,8 +44,11 @@ object RepositoryConfigRules {
             error.issue
         }
 
-    fun envFileIssue(value: String): RepositoryConfigIssue? =
-        if (isInsideWorktree(value)) null else RepositoryConfigIssue.EnvFileOutsideWorktree
+    fun envFileIssue(value: String): RepositoryConfigIssue? = when {
+        hasHiddenCharacters(value) -> RepositoryConfigIssue.EnvFileInvalidCharacters
+        !isInsideWorktree(value) -> RepositoryConfigIssue.EnvFileOutsideWorktree
+        else -> null
+    }
 
     fun isInsideWorktree(relative: String): Boolean {
         if (relative.isBlank()) return false

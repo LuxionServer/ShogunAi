@@ -2,19 +2,23 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
-import app.luxion.shogunai.domain.FakePostCreateApproval
+import app.luxion.shogunai.domain.FakeRepositoryApproval
 import app.luxion.shogunai.domain.FakeProvisioningRecordStore
 import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
-import app.luxion.shogunai.domain.io.PostCreateDecision
+import app.luxion.shogunai.domain.io.ApprovalDecision
+import app.luxion.shogunai.domain.io.RepositoryApproval
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.executor.CommandExecutionException
+import app.luxion.shogunai.domain.model.EnvironmentDeclaration
 import app.luxion.shogunai.domain.model.ProvisionMode
+import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.ProvisionedFile
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -138,7 +142,7 @@ class ProvisionWorktreeUseCaseTest {
 
     private val linkingCommands = listOf(listOf("npm", "install"), listOf("direnv", "allow"))
 
-    private val approvedTrust = FakeRepositoryTrust(mapOf(base to linkingCommands))
+    private val approvedTrust = FakeRepositoryTrust(mapOf(base to RepositoryApprovalSubject(linkingCommands)))
 
     private fun linkingExecutor(hook: (List<String>) -> app.luxion.shogunai.domain.executor.CommandResult = { success(it) }) =
         FakeShellCommandExecutor {
@@ -247,12 +251,12 @@ class ProvisionWorktreeUseCaseTest {
     fun `skips unapproved post-creation commands when the decision is to skip`() = runTest {
         val exec = linkingExecutor()
         val fileManager = FakeFileManager(existing = listOf("$base/local.properties"))
-        val approval = FakePostCreateApproval(PostCreateDecision.SKIP)
+        val approval = FakeRepositoryApproval(ApprovalDecision.SKIP)
 
         val result = ProvisionWorktreeUseCase(config, exec, fileManager, linkingProvisioning, approval = approval)(linked).getOrThrow()
 
         assertEquals(linkingCommands, result.skippedPostCreateCommands)
-        assertEquals(listOf(base to linkingCommands), approval.asked)
+        assertEquals(listOf(base to RepositoryApprovalSubject(linkingCommands)), approval.asked)
         assertFalse(exec.executed("npm", "install"))
     }
 
@@ -265,17 +269,17 @@ class ProvisionWorktreeUseCaseTest {
         val result = ProvisionWorktreeUseCase(
             config, exec, fileManager, linkingProvisioning,
             trust = trust,
-            approval = FakePostCreateApproval(PostCreateDecision.RUN),
+            approval = FakeRepositoryApproval(ApprovalDecision.APPROVE),
         )(linked).getOrThrow()
 
         assertEquals(emptyList(), result.skippedPostCreateCommands)
         assertTrue(exec.executed("npm", "install"))
-        assertTrue(trust.isApproved(base, linkingCommands))
+        assertTrue(trust.isApproved(base, RepositoryApprovalSubject(linkingCommands)))
     }
 
     @Test
     fun `approved commands run without asking`() = runTest {
-        val approval = FakePostCreateApproval(PostCreateDecision.SKIP)
+        val approval = FakeRepositoryApproval(ApprovalDecision.SKIP)
         val fileManager = FakeFileManager(existing = listOf("$base/local.properties"))
 
         ProvisionWorktreeUseCase(
@@ -474,5 +478,27 @@ class ProvisionWorktreeUseCaseTest {
 
         assertEquals(listOf(ProvisionedFile("local.properties", ProvisionMode.LINKED)), second.files)
         assertEquals("$base/local.properties", fileManager.symbolicLinks["$linked/local.properties"])
+    }
+
+    @Test
+    fun `asks before preparing the environment and skips declared variables when skipped`() = runTest {
+        val events = mutableListOf<String>()
+        val approval = RepositoryApproval { _, _ -> ApprovalDecision.SKIP.also { events += "asked" } }
+        val source = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(
+                base to RepositoryProvisioning(
+                    environment = EnvironmentDeclaration(listOf(parseEnvironmentVariable("PORT", "\${port}")), ".env.shogunai"),
+                ),
+            ),
+        )
+
+        val result = ProvisionWorktreeUseCase(
+            config, executor(), FakeFileManager(existing = listOf("$base/local.properties")), source,
+            environment = { _, _ -> events += "prepared" },
+            approval = approval,
+        )(linked).getOrThrow()
+
+        assertEquals(listOf("asked", "prepared"), events)
+        assertEquals(listOf("PORT"), result.skippedVariables)
     }
 }

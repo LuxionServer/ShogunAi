@@ -51,7 +51,7 @@ class ConfigureMultirepoUseCase(
         val declaration = MultirepoDeclaration(worktreesRoot = root)
         source.write(normalized, declaration)
         source.remember(normalized)
-        Multirepo(normalized, declaration)
+        approveWritten(normalized, declaration)
     }
 
     suspend fun addRepository(
@@ -61,6 +61,7 @@ class ConfigureMultirepoUseCase(
         decision: WorktreesFolderDecision,
     ): Result<AddedRepository> = runCatching {
         fun reject(detail: String): Nothing = throw WorktreeError.InvalidMultirepo(multirepo.declarationPath, detail)
+        requireApproved(multirepo)
         if (!isValidMultirepoAlias(alias)) reject("alias '$alias' must use only lowercase letters, digits and hyphens")
         if (alias in multirepo.declaration.repos) reject("alias '$alias' is already taken")
         val repository = normalizePath(path)
@@ -98,8 +99,10 @@ class ConfigureMultirepoUseCase(
         }
         val declaration = multirepo.declaration.copy(
             repos = multirepo.declaration.repos + (alias to relativeMultirepoPath(multirepo.folder, repository)),
+            agent = null,
         )
         source.write(multirepo.folder, declaration)
+        approveWritten(multirepo.folder, declaration)
         AddedRepository(alias, repository, project, registered = existing == null, worktreesFolder = proposal)
     }
 
@@ -139,9 +142,11 @@ class ConfigureMultirepoUseCase(
         declaration.copy(defaultRepos = ordinary, workspace = workspaceSetting)
     }
 
-    fun setAgent(multirepo: Multirepo, agent: AgentLaunchConfig): Result<Multirepo> = update(multirepo) { declaration ->
+    fun setAgent(multirepo: Multirepo, agent: AgentLaunchConfig): Result<Multirepo> = runCatching {
         require(agent.agentCommand.isNotBlank()) { "the agent command must not be blank" }
-        declaration.copy(agent = agent)
+        requireApproved(multirepo)
+        source.setAgent(multirepo.folder, agent)
+        multirepo.copy(localAgent = agent)
     }
 
     fun setWorktreesRoot(multirepo: Multirepo, folder: String): Result<Multirepo> = update(multirepo) { declaration ->
@@ -168,10 +173,33 @@ class ConfigureMultirepoUseCase(
         source.forget(multirepo.folder)
     }
 
+    fun trust(multirepo: Multirepo): Result<Multirepo> = runCatching {
+        val current = source.read(multirepo.folder) ?: throw WorktreeError.MultirepoNotFound(multirepo.folder)
+        if (current != multirepo.declaration) throw WorktreeError.MultirepoNeedsReview(multirepo.declarationPath)
+        source.remember(multirepo.folder)
+        source.approve(multirepo.folder, resolver.build(multirepo.folder, current).approvalSubject)
+        resolver.build(multirepo.folder, current)
+    }
+
+    fun revoke(multirepo: Multirepo): Result<Unit> = runCatching {
+        source.forget(multirepo.folder)
+    }
+
     private fun update(multirepo: Multirepo, change: (MultirepoDeclaration) -> MultirepoDeclaration): Result<Multirepo> = runCatching {
-        val declaration = change(multirepo.declaration)
+        requireApproved(multirepo)
+        val declaration = change(multirepo.declaration).copy(agent = null)
         source.write(multirepo.folder, declaration)
-        resolver.build(multirepo.folder, declaration)
+        approveWritten(multirepo.folder, declaration)
+    }
+
+    private fun requireApproved(multirepo: Multirepo) {
+        val current = source.read(multirepo.folder) ?: throw WorktreeError.MultirepoNotFound(multirepo.folder)
+        if (!resolver.build(multirepo.folder, current).approved) throw WorktreeError.MultirepoNeedsReview(multirepo.declarationPath)
+    }
+
+    private fun approveWritten(folder: String, declaration: MultirepoDeclaration): Multirepo {
+        source.approve(folder, resolver.build(folder, declaration).approvalSubject)
+        return resolver.build(folder, declaration)
     }
 
     private fun unknownAlias(multirepo: Multirepo, alias: String) =

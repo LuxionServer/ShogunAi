@@ -280,6 +280,8 @@ class RepositoryProvisioningFilesTest {
             """{ "providers": { "docker-compose": { "portVariables": [1] } } }""" to "portVariables",
             """{ "providers": { "docker-compose": { "portVariables": ["1DB"] } } }""" to "1DB",
             """{ "providers": { "docker-compose": { "portVariables": ["PATH"] } } }""" to "PATH",
+            """{ "providers": { "docker-compose": { "portVariables": ["https_proxy"] } } }""" to "https_proxy",
+            """{ "providers": { "docker-compose": { "portVariables": ["DOCKER_HOST"] } } }""" to "DOCKER_HOST",
             """{ "providers": { "docker-compose": { "portVariables": ["DB_PORT", "DB_PORT"] } } }""" to "DB_PORT",
         ).forEach { (content, mention) ->
             configFile.writeText(content)
@@ -380,7 +382,17 @@ class RepositoryProvisioningFilesTest {
         val environment = files.read(repository.toString()).environment
 
         assertEquals(listOf("PORT", "APP_SUFFIX"), environment.variables.map { it.name })
+        assertEquals(listOf("${'$'}{port}", "-${'$'}{worktree}"), environment.variables.map { it.source })
         assertEquals(".env.shogunai", environment.envFile)
+    }
+
+    @Test
+    fun `names the variable whose value has a line break`() {
+        configFile.writeText("""{ "env": { "APP_NAME": "demo\nexport OTHER=1" } }""")
+
+        val error = assertFailsWith<WorktreeError.InvalidRepositoryConfig> { files.read(repository.toString()) }
+
+        assertTrue(error.message.orEmpty().contains("APP_NAME"))
     }
 
     @Test
@@ -400,6 +412,11 @@ class RepositoryProvisioningFilesTest {
             """{ "envFile": "/tmp/shared.env" }""",
             """{ "envFile": "../shared.env" }""",
             """{ "envFile": 3 }""",
+            """{ "env": { "XDG_CONFIG_HOME": "x" } }""",
+            """{ "env": { "APP_NAME": "demo\nexport OTHER=1" } }""",
+            """{ "env": { "APP_NAME": "a\u202Eb" } }""",
+            """{ "envFile": ".env\nshogunai" }""",
+            """{ "envFile": ".env\u200Bshogunai" }""",
         ).forEach { content ->
             configFile.writeText(content)
             assertFailsWith<WorktreeError.InvalidRepositoryConfig>(content) { files.read(repository.toString()) }

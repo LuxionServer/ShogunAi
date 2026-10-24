@@ -78,6 +78,9 @@ internal object CliHelp {
                               workspace repository); new worktrees folders are proposed under --worktrees-root
                               (default: ../<folder>-worktrees)
   multirepo show [--json]     Show the multirepo's repositories, projects, bases, defaults and agent
+  multirepo trust [<folder>] [--yes | --revoke] [--json]
+                              Review a declaration's repositories, paths and worktrees root and approve it
+                              on this machine; only approved multirepos apply. --revoke forgets it
   multirepo add-repo <alias> <path> [--use-worktrees-root | --keep-worktrees-folder] [--json]
                               Add a repository, reusing its project or registering one, and propose
                               <worktrees-root>/<alias> as its project's worktrees folder (asked unless given)
@@ -86,7 +89,8 @@ internal object CliHelp {
   multirepo defaults <alias>[,<alias>...] | --clear [--json]
                               Set the repositories 'shogun new <id>' covers in the multirepo folder
   multirepo agent <command> [--name <name>] [--no-headroom] [--json]
-                              Set the agent 'shogun open --herdr' runs in the multirepo folder
+                              Set the agent 'shogun open --herdr' runs in the multirepo folder, kept on
+                              this machine and never in the declaration
   multirepo worktrees-root <dir> [--json]
                               Set the folder under which worktrees folders are proposed
   multirepo delete [--json]   Remove the declaration; projects, worktrees and branches are left as they are
