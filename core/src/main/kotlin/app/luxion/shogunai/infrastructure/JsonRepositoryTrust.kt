@@ -1,10 +1,16 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.io.RepositoryTrust
+import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -23,13 +29,14 @@ class JsonRepositoryTrust(
     }
 
     @Synchronized
-    override fun isApproved(repository: String, commands: List<List<String>>): Boolean =
-        read().approvals[keyOf(repository)]?.sha256 == digestOf(commands)
+    override fun isApproved(repository: String, subject: RepositoryApprovalSubject): Boolean =
+        subject.isEmpty || read().approvals[keyOf(repository)]?.sha256 == digestOf(subject)
 
     @Synchronized
-    override fun approve(repository: String, commands: List<List<String>>) {
+    override fun approve(repository: String, subject: RepositoryApprovalSubject) {
         val current = read()
-        write(current.copy(approvals = current.approvals + (keyOf(repository) to Approval(digestOf(commands), commands))))
+        val approval = Approval(digestOf(subject), subject.commands, subject.variables.toMap(), subject.envFile)
+        write(current.copy(approvals = current.approvals + (keyOf(repository) to approval)))
     }
 
     @Synchronized
@@ -64,14 +71,29 @@ class JsonRepositoryTrust(
         return runCatching { path.toRealPath() }.getOrDefault(path.toAbsolutePath().normalize()).toString()
     }
 
-    private fun digestOf(commands: List<List<String>>): String {
-        val canonical = Json.encodeToString(commands)
+    private fun digestOf(subject: RepositoryApprovalSubject): String {
+        val canonical = if (subject.declaresEnvironment) canonicalOf(subject) else Json.encodeToString(subject.commands)
         return MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray()).joinToString("") { "%02x".format(it) }
+    }
+
+    private fun canonicalOf(subject: RepositoryApprovalSubject): String {
+        val commands = JsonArray(subject.commands.map { command -> JsonArray(command.map(::JsonPrimitive)) })
+        val variables = JsonArray(
+            subject.variables.sortedBy { it.first }.map { (name, template) -> JsonArray(listOf(JsonPrimitive(name), JsonPrimitive(template))) },
+        )
+        val envFile: JsonElement = subject.envFile?.let(::JsonPrimitive) ?: JsonNull
+        val canonical = JsonObject(linkedMapOf("commands" to commands, "env" to variables, "envFile" to envFile))
+        return Json.encodeToString(JsonElement.serializer(), canonical)
     }
 
     @Serializable
     private data class Store(val approvals: Map<String, Approval> = emptyMap())
 
     @Serializable
-    private data class Approval(val sha256: String, val commands: List<List<String>>)
+    private data class Approval(
+        val sha256: String,
+        val commands: List<List<String>>,
+        val env: Map<String, String> = emptyMap(),
+        val envFile: String? = null,
+    )
 }

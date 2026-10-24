@@ -70,8 +70,16 @@ class RepositoryConfigRulesTest {
     }
 
     @Test
+    fun `rejects env files and templates with hidden characters`() {
+        listOf(".env\nother", ".env\u202E").forEach {
+            assertEquals(RepositoryConfigIssue.EnvFileInvalidCharacters, RepositoryConfigRules.envFileIssue(it), it)
+        }
+        assertEquals(RepositoryConfigIssue.InvalidVariableValue, RepositoryConfigRules.templateIssue("VAR", "a\nb"))
+    }
+
+    @Test
     fun `rejects reserved variable names`() {
-        listOf("PATH", "BASH_ENV", "NODE_OPTIONS", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "GIT_SSH_COMMAND").forEach {
+        listOf("PATH", "BASH_ENV", "NODE_OPTIONS", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "GIT_SSH_COMMAND", "XDG_CONFIG_HOME", "https_proxy").forEach {
             assertEquals(RepositoryConfigIssue.ReservedVariableName, RepositoryConfigRules.variableNameIssue(it), it)
         }
     }

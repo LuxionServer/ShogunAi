@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeDeviceWaitQueue
@@ -46,7 +47,7 @@ class PoolHarness(
 
     val contributions = MachineProviderContributions(simulators, { simulatorSettings })
 
-    val resolve get() = ResolveWorktreeEnvironmentUseCase(git, source, store, portProbe, contributions)
+    val resolve get() = ResolveWorktreeEnvironmentUseCase(git, source, store, portProbe, contributions, trust = FakeRepositoryTrust(approvesEverything = true))
 
     var agentStates: Map<String, AgentState> = emptyMap()
 

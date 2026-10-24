@@ -30,16 +30,16 @@ En repositorios Xcode, `"providers": { "xcode": { "compilationCache": true } }` 
 
 Las recetas de abajo muestran cómo recibe cada agente estas variables.
 
-## Aprobar los comandos posteriores a la creación
+## Aprobar un repositorio
 
-Los hooks de agentes y el plugin de Herdr no pueden preguntarte nada, así que nunca ejecutan los comandos `hooks.postCreate` de un repositorio hasta que los hayas aprobado en este equipo: provisionan el worktree, omiten los comandos e imprimen una nota por la salida de error que nombra `shogun trust`. Ejecútalo una vez en cada repositorio de confianza:
+Los hooks de agentes y el plugin de Herdr no pueden preguntarte nada, así que nunca ejecutan los comandos `hooks.postCreate` de un repositorio, ni entregan las variables que declara en `env` ni escriben su `envFile`, hasta que los hayas aprobado en este equipo: provisionan el worktree, los omiten e imprimen una nota por la salida de error que nombra `shogun trust`. Ejecútalo una vez en cada repositorio de confianza:
 
 ```bash
-shogun trust        # muestra los comandos y pregunta
+shogun trust        # muestra los comandos, las variables y el archivo de entorno, y pregunta
 shogun trust --yes  # aprueba sin preguntar
 ```
 
-Después los hooks los ejecutan, hasta que cambien los comandos del repositorio; entonces vuelves a aprobar. Detalles: [Aprobar los comandos posteriores a la creación](guide/configuration.md#aprobar-los-comandos-posteriores-a-la-creacion).
+Después los hooks los ejecutan y entregan, hasta que cambien los comandos o las variables del repositorio; entonces vuelves a aprobar. Detalles: [Aprobar un repositorio](guide/configuration.md#aprobar-un-repositorio).
 
 ## Claude Code
 
@@ -68,7 +68,7 @@ Qué pasa entonces:
 - Ejecutar otra vez `claude -w TASK-123` reutiliza ese worktree.
 - Cuando Claude Code elimina el worktree (eliges eliminarlo al salir, o no tenía cambios), `shogun` lo elimina y borra su rama solo si está mergeada; una rama con trabajo se conserva.
 - Con este hook Claude Code deja de procesar `.worktreeinclude` por su cuenta; lo lee ShogunAi, así que sus archivos se siguen copiando.
-- `SessionStart` añade las variables `env` del worktree al `CLAUDE_ENV_FILE` de la sesión, así que todos los comandos Bash que ejecuta Claude las ven (`$PORT`), y le dice a Claude qué valores usa este worktree. También le da a la sesión las [reglas de flujo de ShogunAi](#reglas-de-flujo-de-shogunai): una lista corta adaptada a donde se ejecuta, que incluye cómo arrancar el emulador o el simulador de iOS cuando el repositorio usa esos providers. Funciona en cualquier sesión que arranque dentro de un worktree o del checkout principal de un repositorio Git, también sin `--worktree` y también cuando el repositorio no declara `env` (entonces no hay línea de variables y no se escribe nada en `CLAUDE_ENV_FILE`).
+- `SessionStart` añade las variables `env` del worktree al `CLAUDE_ENV_FILE` de la sesión, así que todos los comandos Bash que ejecuta Claude las ven (`$PORT`), y le dice a Claude qué variables tiene este worktree, sin sus valores. Solo lo hace en un repositorio registrado como proyecto, y solo entrega las variables declaradas cuando el repositorio está aprobado; mientras están pendientes de aprobación, las nombra y le dice a Claude que te pida revisarlas con `shogun trust` en vez de aprobarlas él. También le da a la sesión las [reglas de flujo de ShogunAi](#reglas-de-flujo-de-shogunai): una lista corta adaptada a donde se ejecuta, que incluye cómo arrancar el emulador o el simulador de iOS cuando el repositorio usa esos providers. Sus reglas de flujo llegan a cualquier sesión que arranque dentro de un worktree o del checkout principal de un repositorio Git, también sin `--worktree` y también cuando el repositorio no declara `env` (entonces no hay línea de variables y no se escribe nada en `CLAUDE_ENV_FILE`).
 
 Claude Code solo ejecuta los hooks de proyecto de un repositorio cuando has aceptado confiar en su carpeta. Si los hooks están en el `.claude/settings.json` del repositorio y nunca has ejecutado `claude` ahí, `claude -w` se detiene con "Workspace trust not yet accepted": ejecuta `claude` una vez en el repositorio, acepta el diálogo de confianza y vuelve a intentarlo. Los hooks de `~/.claude/settings.json` no lo necesitan en los repositorios en los que ya confías.
 

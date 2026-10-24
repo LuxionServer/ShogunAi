@@ -45,6 +45,7 @@ import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
@@ -52,8 +53,8 @@ import app.luxion.shogunai.domain.FakeGradleDaemonSource
 import app.luxion.shogunai.domain.FakeGradleDaemonSource.Companion.gradleDaemon
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeRepositoryTrust
-import app.luxion.shogunai.domain.io.PostCreateApproval
-import app.luxion.shogunai.domain.io.PostCreateDecision
+import app.luxion.shogunai.domain.io.RepositoryApproval
+import app.luxion.shogunai.domain.io.ApprovalDecision
 import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
@@ -208,7 +209,7 @@ class ProjectWorktreesTest {
         provisioning: FakeRepositoryProvisioningSource = FakeRepositoryProvisioningSource(),
         createFiles: FakeFileManager = FakeFileManager(),
         trust: RepositoryTrust = RepositoryTrust.NONE,
-        approval: PostCreateApproval = PostCreateApproval.SKIP,
+        approval: RepositoryApproval = RepositoryApproval.SKIP,
     ): WorktreeUseCases {
         return WorktreeUseCases(
             list = ListWorktreesUseCase(config, executor),
@@ -410,7 +411,7 @@ class ProjectWorktreesTest {
             }
         }
         val baseFiles = FakeFileManager(existing = listOf(config.baseRepositoryPath) + config.secretFiles.map { config.baseSecretPath(it) })
-        val trust = FakeRepositoryTrust(mapOf(config.baseRepositoryPath to listOf(listOf("npm", "install"))))
+        val trust = FakeRepositoryTrust(mapOf(config.baseRepositoryPath to RepositoryApprovalSubject(listOf(listOf("npm", "install")))))
         val board = board(useCasesWith(executor, provisioning = provisioning, createFiles = baseFiles, trust = trust))
         advanceUntilIdle()
         board.openCreateDialog()
@@ -425,12 +426,12 @@ class ProjectWorktreesTest {
         assertFalse(board.canCreate)
     }
 
-    private fun approvalScenario(approval: DialogPostCreateApproval, trust: FakeRepositoryTrust): Pair<WorktreeBoard, FakeShellCommandExecutor> {
-        val provisioning = FakeRepositoryProvisioningSource(
-            byRepository = mapOf(
-                config.baseRepositoryPath to RepositoryProvisioning(postCreateCommands = listOf(listOf("npm", "install"))),
-            ),
-        )
+    private fun approvalScenario(
+        approval: DialogRepositoryApproval,
+        trust: FakeRepositoryTrust,
+        declared: RepositoryProvisioning = RepositoryProvisioning(postCreateCommands = listOf(listOf("npm", "install"))),
+    ): Pair<WorktreeBoard, FakeShellCommandExecutor> {
+        val provisioning = FakeRepositoryProvisioningSource(byRepository = mapOf(config.baseRepositoryPath to declared))
         val executor = FakeShellCommandExecutor { command ->
             if (command == listCommand) success(command, porcelainOutput) else success(command)
         }
@@ -451,7 +452,7 @@ class ProjectWorktreesTest {
 
     @Test
     fun `creation waits for the approval of unapproved commands and runs and remembers them on run`() = runTest(dispatcher) {
-        val approval = DialogPostCreateApproval()
+        val approval = DialogRepositoryApproval()
         val trust = FakeRepositoryTrust()
         val (board, executor) = approvalScenario(approval, trust)
         advanceUntilIdle()
@@ -461,22 +462,22 @@ class ProjectWorktreesTest {
         board.confirmCreate()
         advanceUntilIdle()
 
-        assertEquals(listOf(listOf("npm", "install")), board.approval.pending?.commands)
+        assertEquals(listOf(listOf("npm", "install")), board.approval.pending?.subject?.commands)
         assertTrue(board.project.isCreating)
         assertFalse(executor.executedCommands.any { it.first() == "npm" })
 
-        board.approval.resolve(PostCreateDecision.RUN)
+        board.approval.resolve(ApprovalDecision.APPROVE)
         advanceUntilIdle()
 
         assertNull(board.approval.pending)
         assertTrue(executor.executedCommands.any { it == listOf("npm", "install") })
-        assertTrue(trust.isApproved(config.baseRepositoryPath, listOf(listOf("npm", "install"))))
+        assertTrue(trust.isApproved(config.baseRepositoryPath, RepositoryApprovalSubject(listOf(listOf("npm", "install")))))
         assertEquals(WorktreeSuccess.Created("${config.worktreesRoot}/TASK-456", commandsSkipped = false), board.project.success)
     }
 
     @Test
     fun `skipping the approval creates the worktree without running the commands and says so`() = runTest(dispatcher) {
-        val approval = DialogPostCreateApproval()
+        val approval = DialogRepositoryApproval()
         val trust = FakeRepositoryTrust()
         val (board, executor) = approvalScenario(approval, trust)
         advanceUntilIdle()
@@ -485,18 +486,41 @@ class ProjectWorktreesTest {
         board.confirmCreate()
         advanceUntilIdle()
 
-        board.approval.resolve(PostCreateDecision.SKIP)
+        board.approval.resolve(ApprovalDecision.SKIP)
         advanceUntilIdle()
 
         assertFalse(executor.executedCommands.any { it.first() == "npm" })
-        assertFalse(trust.isApproved(config.baseRepositoryPath, listOf(listOf("npm", "install"))))
+        assertFalse(trust.isApproved(config.baseRepositoryPath, RepositoryApprovalSubject(listOf(listOf("npm", "install")))))
+        assertEquals(WorktreeSuccess.Created("${config.worktreesRoot}/TASK-456", commandsSkipped = true), board.project.success)
+    }
+
+    @Test
+    fun `the approval shows declared variables and the environment file and skipping them says so`() = runTest(dispatcher) {
+        val approval = DialogRepositoryApproval()
+        val declared = RepositoryProvisioning(
+            environment = EnvironmentDeclaration(listOf(parseEnvironmentVariable("PORT", "\${port}")), ".env.shogunai"),
+        )
+        val (board, _) = approvalScenario(approval, FakeRepositoryTrust(), declared)
+        advanceUntilIdle()
+        board.openCreateDialog()
+        board.updateTaskId("TASK-456")
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        val subject = board.approval.pending?.subject
+        assertEquals(listOf("PORT" to "\${port}"), subject?.variables)
+        assertEquals(".env.shogunai", subject?.envFile)
+
+        board.approval.resolve(ApprovalDecision.SKIP)
+        advanceUntilIdle()
+
         assertEquals(WorktreeSuccess.Created("${config.worktreesRoot}/TASK-456", commandsSkipped = true), board.project.success)
     }
 
     @Test
     fun `approved commands are not asked again`() = runTest(dispatcher) {
-        val approval = DialogPostCreateApproval()
-        val trust = FakeRepositoryTrust(mapOf(config.baseRepositoryPath to listOf(listOf("npm", "install"))))
+        val approval = DialogRepositoryApproval()
+        val trust = FakeRepositoryTrust(mapOf(config.baseRepositoryPath to RepositoryApprovalSubject(listOf(listOf("npm", "install")))))
         val (board, executor) = approvalScenario(approval, trust)
         advanceUntilIdle()
         board.openCreateDialog()
@@ -3452,6 +3476,27 @@ class ProjectWorktreesTest {
 
         assertEquals(environment, viewModel.environments[worktreePath])
         assertEquals("PORT=20001\nAPP_SUFFIX=-TASK-123\n", environmentAsDotenv(environment))
+    }
+
+    @Test
+    fun `the detail names variables awaiting approval without values and leaves them out of the copy`() = runTest(dispatcher) {
+        val environment = WorktreeEnvironment(
+            variables = listOf("ANDROID_SERIAL" to "emulator-5554"),
+            awaitingApproval = listOf("PORT", "APP_SUFFIX"),
+            declarationApproved = false,
+        )
+        val viewModel = provisioningCase(mutableListOf(), environment = environment)
+        advanceUntilIdle()
+
+        viewModel.loadDetail(viewModel.linked())
+        advanceUntilIdle()
+
+        assertEquals(listOf("PORT", "APP_SUFFIX"), viewModel.environments[worktreePath]?.awaitingApproval)
+        assertEquals("ANDROID_SERIAL=emulator-5554\n", environmentAsDotenv(environment))
+        assertEquals(
+            "Awaiting approval: PORT, APP_SUFFIX. Approve them in project settings or with shogun trust.",
+            EnglishStrings.variablesAwaitingApproval(environment.awaitingApproval),
+        )
     }
 
     @Test

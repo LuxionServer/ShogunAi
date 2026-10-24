@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
@@ -7,9 +8,12 @@ import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.io.FileManager
+import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
 import app.luxion.shogunai.domain.model.GradleProvider
+import app.luxion.shogunai.domain.model.InvalidEnvironmentTemplate
+import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.SimulatorSettings
 import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
@@ -20,6 +24,7 @@ import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
@@ -57,7 +62,7 @@ class ResolveWorktreeEnvironmentUseCaseTest {
         source: FakeRepositoryProvisioningSource,
         store: FakeEnvironmentStateStore = FakeEnvironmentStateStore(),
         probe: FakePortProbe = FakePortProbe(),
-    ) = ResolveWorktreeEnvironmentUseCase(gitExecutor(), source, store, probe)
+    ) = ResolveWorktreeEnvironmentUseCase(gitExecutor(), source, store, probe, trust = FakeRepositoryTrust(approvesEverything = true))
 
     @Test
     fun `a cache reads the git directories of a worktree once until it is invalidated`() = runTest {
@@ -75,6 +80,7 @@ class ResolveWorktreeEnvironmentUseCaseTest {
             FakeEnvironmentStateStore(),
             FakePortProbe(),
             cache = cache,
+            trust = FakeRepositoryTrust(approvesEverything = true),
         )
 
         resolve(repository, task, reserve = false).getOrThrow()
@@ -156,7 +162,7 @@ class ResolveWorktreeEnvironmentUseCaseTest {
     fun `an empty declaration reserves and writes nothing`() = runTest {
         val store = FakeEnvironmentStateStore()
 
-        val environment = ResolveWorktreeEnvironmentUseCase(executor, declaring(), store, FakePortProbe())(repository, task).getOrThrow()
+        val environment = ResolveWorktreeEnvironmentUseCase(executor, declaring(), store, FakePortProbe(), trust = FakeRepositoryTrust(approvesEverything = true))(repository, task).getOrThrow()
 
         assertEquals(WorktreeEnvironment(), environment)
         assertEquals(0, store.locks)
@@ -244,6 +250,56 @@ class ResolveWorktreeEnvironmentUseCaseTest {
         assertEquals(listOf("ANDROID_SERIAL" to "emulator-5600"), environment.variables)
     }
 
+    private fun withTrust(source: FakeRepositoryProvisioningSource, trust: RepositoryTrust, store: FakeEnvironmentStateStore = FakeEnvironmentStateStore()) =
+        ResolveWorktreeEnvironmentUseCase(gitExecutor(), source, store, FakePortProbe(), trust = trust)
+
+    @Test
+    fun `declared variables apply once the repository is approved`() = runTest {
+        val source = declaring("PORT" to "\${port}")
+        val subject = RepositoryApprovalSubject(variables = listOf("PORT" to "\${port}"))
+
+        val environment = withTrust(source, FakeRepositoryTrust(mapOf(repository to subject)))(repository, task).getOrThrow()
+
+        assertEquals(listOf("PORT" to "20000"), environment.variables)
+        assertTrue(environment.awaitingApproval.isEmpty())
+        assertTrue(environment.declarationApproved)
+    }
+
+    @Test
+    fun `declared variables of an unapproved repository await approval without reserving ports`() = runTest {
+        val store = FakeEnvironmentStateStore()
+
+        val environment = withTrust(declaring("PORT" to "\${port}", envFile = ".env.shogunai"), FakeRepositoryTrust(), store)(repository, task)
+            .getOrThrow()
+
+        assertTrue(environment.variables.isEmpty())
+        assertTrue(environment.ports.isEmpty())
+        assertTrue(store.portsByAdminDirectory.isEmpty())
+        assertEquals(listOf("PORT"), environment.awaitingApproval)
+        assertFalse(environment.declarationApproved)
+    }
+
+    @Test
+    fun `without a trust store nothing declared is delivered`() = runTest {
+        val environment = ResolveWorktreeEnvironmentUseCase(gitExecutor(), declaring("PORT" to "\${port}"), FakeEnvironmentStateStore(), FakePortProbe())(
+            repository,
+            task,
+        ).getOrThrow()
+
+        assertTrue(environment.variables.isEmpty())
+        assertEquals(listOf("PORT"), environment.awaitingApproval)
+    }
+
+    @Test
+    fun `provider variables are delivered without approval and a declared override is ignored`() = runTest {
+        val resolve = withTrust(withEmulator("APP_SUFFIX" to "-\${worktree}", "ANDROID_SERIAL" to "emulator-5600"), FakeRepositoryTrust(), FakeEnvironmentStateStore(acquiredEmulator))
+
+        val environment = resolve(repository, task).getOrThrow()
+
+        assertEquals(listOf("ANDROID_SERIAL" to "emulator-5554"), environment.variables)
+        assertEquals(listOf("APP_SUFFIX", "ANDROID_SERIAL"), environment.awaitingApproval)
+    }
+
     private fun withGradle(settings: GradleProvider, vararg variables: Pair<String, String>) = FakeRepositoryProvisioningSource(
         byRepository = mapOf(
             repository to RepositoryProvisioning(
@@ -260,7 +316,7 @@ class ResolveWorktreeEnvironmentUseCaseTest {
     )
 
     private fun withGradleContributions(source: FakeRepositoryProvisioningSource) =
-        ResolveWorktreeEnvironmentUseCase(gitExecutor(), source, FakeEnvironmentStateStore(), FakePortProbe(), gradleContributions)
+        ResolveWorktreeEnvironmentUseCase(gitExecutor(), source, FakeEnvironmentStateStore(), FakePortProbe(), gradleContributions, trust = FakeRepositoryTrust(approvesEverything = true))
 
     @Test
     fun `the gradle provider adds the same GRADLE_OPTS to every worktree`() = runTest {
@@ -280,10 +336,8 @@ class ResolveWorktreeEnvironmentUseCaseTest {
     }
 
     @Test
-    fun `a declared GRADLE_OPTS wins over the gradle provider`() = runTest {
-        val source = withGradle(GradleProvider(idleTimeoutMinutes = 30), "GRADLE_OPTS" to "-Dmine=1")
-
-        assertEquals(listOf("GRADLE_OPTS" to "-Dmine=1"), withGradleContributions(source)(repository, task).getOrThrow().variables)
+    fun `GRADLE_OPTS can't be declared to replace the gradle provider`() {
+        assertFailsWith<InvalidEnvironmentTemplate> { withGradle(GradleProvider(idleTimeoutMinutes = 30), "GRADLE_OPTS" to "-Dmine=1") }
     }
 
     private fun withXcode(compilationCache: Boolean = true, vararg variables: Pair<String, String>) =
@@ -320,6 +374,7 @@ class ResolveWorktreeEnvironmentUseCaseTest {
         store,
         FakePortProbe(),
         xcodeContributions(fileManager, userHome, isMac),
+        trust = FakeRepositoryTrust(approvesEverything = true),
     )
 
     @Test
@@ -427,7 +482,7 @@ class ResolveWorktreeEnvironmentUseCaseTest {
     }
 
     private fun withSimulators(simulators: RecordingSimulators, store: FakeEnvironmentStateStore, source: FakeRepositoryProvisioningSource = declaring()) =
-        ResolveWorktreeEnvironmentUseCase(gitExecutor(), source, store, FakePortProbe(), simulators.contributions)
+        ResolveWorktreeEnvironmentUseCase(gitExecutor(), source, store, FakePortProbe(), simulators.contributions, trust = FakeRepositoryTrust(approvesEverything = true))
 
     @Test
     fun `a provider resource is created once with the repository and worktree names`() = runTest {

@@ -4,9 +4,12 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.EnvironmentStateStore
 import app.luxion.shogunai.domain.io.PortProbe
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
+import app.luxion.shogunai.domain.io.RepositoryTrust
+import app.luxion.shogunai.domain.model.EnvironmentDeclaration
 import app.luxion.shogunai.domain.model.ShellQuoting
 import app.luxion.shogunai.domain.model.WorktreeEnvironment
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.approvalSubject
 import app.luxion.shogunai.domain.model.render
 
 class ResolveWorktreeEnvironmentUseCase(
@@ -16,6 +19,7 @@ class ResolveWorktreeEnvironmentUseCase(
     private val portProbe: PortProbe,
     private val contributions: ProviderContributions = ProviderContributions.DEFAULT,
     private val cache: WorktreeEnvironmentCache? = null,
+    private val trust: RepositoryTrust = RepositoryTrust.NONE,
 ) {
     suspend operator fun invoke(
         repositoryPath: String,
@@ -23,13 +27,18 @@ class ResolveWorktreeEnvironmentUseCase(
         reserve: Boolean = true,
     ): Result<WorktreeEnvironment> = runCatching {
         val provisioning = provisioningSource.read(repositoryPath)
-        val declaration = provisioning.environment
+        val approved = trust.isApproved(repositoryPath, provisioning.approvalSubject)
+        val awaitingApproval = if (approved) emptyList() else provisioning.environment.variables.map { it.name }
+        val declaration = if (approved) provisioning.environment else EnvironmentDeclaration()
+        val gated = { environment: WorktreeEnvironment ->
+            environment.copy(awaitingApproval = awaitingApproval, declarationApproved = approved)
+        }
         val declaredNames = declaration.variables.map { it.name }.toSet()
         val contributed = contributions.forRepository(repositoryPath, provisioning.providers)
             .filterNot { it.names.isNotEmpty() && it.names.all { name -> name in declaredNames } }
         val requests = declaredPortRequests(declaration) + contributed.flatMap { it.ports }
         val resourceRequests = contributed.flatMap { it.resources }
-        if (declaration.isEmpty && contributed.isEmpty()) return@runCatching WorktreeEnvironment()
+        if (declaration.isEmpty && contributed.isEmpty()) return@runCatching gated(WorktreeEnvironment())
         val directories = gitDirectories(worktreePath)
         val portKeys = requests.map { it.key }.toSet()
         val resourceKeys = resourceRequests.map { it.key }.toSet()
@@ -46,7 +55,7 @@ class ResolveWorktreeEnvironmentUseCase(
             stateStore.readResources(directories.admin).filterKeys { it in resourceKeys }
         }
         if (!requiredPortKeys.all { it in ports } || !requiredResourceKeys.all { it in resources }) {
-            return@runCatching WorktreeEnvironment(ports = ports, resources = resources)
+            return@runCatching gated(WorktreeEnvironment(ports = ports, resources = resources))
         }
         val declared = declaration.variables.map { it.name to it.render(folderName(worktreePath), ports) }
         val reservations = EnvironmentReservations(ports, resources)
@@ -54,7 +63,7 @@ class ResolveWorktreeEnvironmentUseCase(
         val fromProviders = contributed.filter { it.isAcquiredIn(reservations) }
             .flatMap { it.variables(reservations) + it.contextual(context) }
             .filterNot { it.first in declaredNames }
-        WorktreeEnvironment(variables = fromProviders + declared, ports = ports, resources = resources)
+        gated(WorktreeEnvironment(variables = fromProviders + declared, ports = ports, resources = resources))
     }
 
     suspend fun recordedOnMachine(repositoryPath: String, key: String): Result<Set<String>> = runCatching {

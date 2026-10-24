@@ -61,7 +61,7 @@ object TourScript {
         |
         |### 4. ${steps[3]}
         |
-        |Show `.shogunai.json` and explain each key: `copy` brings `.env.local` (which Git ignores) into every new worktree, `env` declares variables with a reserved port, `envFile` writes them to `.env.shogunai`, and `hooks.postCreate` runs a command after creation. Ask the user to create a worktree in this project from the app ("New worktree"): the app asks once to approve the repository's post-creation command, because commands from a repository only run after the user approves them. Then check together that `.env.local` and `.env.shogunai` are in the new worktree.
+        |Show `.shogunai.json` and explain each key: `copy` brings `.env.local` (which Git ignores) into every new worktree, `env` declares variables with a reserved port, `envFile` writes them to `.env.shogunai`, and `hooks.postCreate` runs a command after creation. Ask the user to create a worktree in this project from the app ("New worktree"): the app asks once to approve the repository's post-creation command and environment variables, because what a repository asks to run or apply only takes effect after the user approves it. Then check together that `.env.local` and `.env.shogunai` are in the new worktree.
         |
         |### 5. ${steps[4]}
         |

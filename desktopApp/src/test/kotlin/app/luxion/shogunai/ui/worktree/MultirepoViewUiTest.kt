@@ -169,7 +169,7 @@ class MultirepoViewUiTest {
             )
         }
         setContent {
-            MaterialTheme { NewChangeDialog(change, DialogPostCreateApproval(), onConfirm = {}, onDismiss = {}) }
+            MaterialTheme { NewChangeDialog(change, DialogRepositoryApproval(), onConfirm = {}, onDismiss = {}) }
         }
 
         onNodeWithText("created").assertIsDisplayed()

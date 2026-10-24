@@ -8,6 +8,8 @@ import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.io.RepositoryTrust
 import androidx.lifecycle.viewModelScope
+import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
+import app.luxion.shogunai.domain.model.approvalSubject
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.SimulatorSetup
 import app.luxion.shogunai.domain.model.EmulatorSettings
@@ -149,10 +151,10 @@ class ProjectConfigViewModel(
     var repositoryChangedOnDisk by mutableStateOf(false)
         private set
 
-    var postCreateApproved by mutableStateOf(false)
+    var repositoryApproved by mutableStateOf(false)
         private set
 
-    var postCreateCommands by mutableStateOf(emptyList<List<String>>())
+    var approvalSubject by mutableStateOf(RepositoryApprovalSubject())
         private set
 
     private var detectedStacks by mutableStateOf(emptyList<DetectedStack>())
@@ -286,32 +288,32 @@ class ProjectConfigViewModel(
         }
         repositoryFingerprint = if (path.isBlank()) ABSENT_FINGERPRINT else runCatching { provisioningSource.fingerprint(path) }.getOrDefault(ABSENT_FINGERPRINT)
         repositoryDraft = RepositoryConfigDraft.of(provisioning)
-        postCreateCommands = provisioning?.postCreateCommands.orEmpty()
+        approvalSubject = provisioning?.approvalSubject ?: RepositoryApprovalSubject()
         detectedStacks = if (path.isBlank()) emptyList() else runCatching { detectStacks(path) }.getOrDefault(emptyList())
         initialRepositoryDraft = repositoryDraft
         nextEnvironmentRowId = repositoryDraft.environment.size
         repositoryChangedOnDisk = false
         repositoryPreviewConfirmed = false
-        refreshPostCreateApproval()
+        refreshRepositoryApproval()
     }
 
-    private fun refreshPostCreateApproval() {
-        val commands = postCreateCommands
-        postCreateApproved = commands.isNotEmpty() && loadedRepositoryPath.isNotBlank() &&
-            runCatching { trust.isApproved(loadedRepositoryPath, commands) }.getOrDefault(false)
+    private fun refreshRepositoryApproval() {
+        val subject = approvalSubject
+        repositoryApproved = !subject.isEmpty && loadedRepositoryPath.isNotBlank() &&
+            runCatching { trust.isApproved(loadedRepositoryPath, subject) }.getOrDefault(false)
     }
 
-    fun approvePostCreateCommands() {
-        val commands = postCreateCommands
-        if (commands.isEmpty() || loadedRepositoryPath.isBlank()) return
-        trust.approve(loadedRepositoryPath, commands)
-        refreshPostCreateApproval()
+    fun approveRepository() {
+        val subject = approvalSubject
+        if (subject.isEmpty || loadedRepositoryPath.isBlank()) return
+        trust.approve(loadedRepositoryPath, subject)
+        refreshRepositoryApproval()
     }
 
-    fun revokePostCreateApproval() {
+    fun revokeRepositoryApproval() {
         if (loadedRepositoryPath.isBlank()) return
         trust.revoke(loadedRepositoryPath)
-        refreshPostCreateApproval()
+        refreshRepositoryApproval()
     }
 
     fun reloadRepositoryConfig() {
@@ -596,7 +598,7 @@ class ProjectConfigViewModel(
 
     private fun writeRepositoryConfig() {
         when {
-            repositoryDraftChanged -> provisioningSource.write(baseRepositoryPath, pendingRepositoryEdit(), repositoryFingerprint)
+            repositoryDraftChanged -> writeAndApproveEnvironment()
             pendingRepositoryPatterns.isNotEmpty() ->
                 provisioningSource.addCopyPatterns(baseRepositoryPath, pendingRepositoryPatterns, repositoryFingerprint)
             else -> return
@@ -607,6 +609,16 @@ class ProjectConfigViewModel(
         loadRepositoryConfig()
         repositoryPreviewConfirmed = true
         refreshEmulatorSection()
+    }
+
+    private fun writeAndApproveEnvironment() {
+        val before = runCatching { provisioningSource.read(baseRepositoryPath).approvalSubject }.getOrNull()
+        val approveSaved = before != null && (before.commands.isEmpty() || trust.isApproved(baseRepositoryPath, before))
+        provisioningSource.write(baseRepositoryPath, pendingRepositoryEdit(), repositoryFingerprint)
+        if (!approveSaved) return
+        runCatching { provisioningSource.read(baseRepositoryPath).approvalSubject }.getOrNull()
+            ?.takeIf { !it.isEmpty }
+            ?.let { trust.approve(baseRepositoryPath, it) }
     }
 
     fun save(): Result<Project> = runCatching {

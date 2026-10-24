@@ -334,7 +334,7 @@ When a provider is on, the section SHALL show its options: Gradle's daemon heap,
 - **THEN** the field explains the expected format (for example `2g` or `1024m`) and saving is blocked until it's fixed
 
 ### Requirement: Edit the worktree environment
-The section SHALL list the variables of `env` with their name and template, let the user add, edit and remove them, and edit the environment file path. Names SHALL follow the variable name rule, and the environment file SHALL be a relative path inside the worktree. The section SHALL explain the `${port}`, `${port:key}` and `${worktree}` templates.
+The section SHALL list the variables of `env` with their name and template, let the user add, edit and remove them, and edit the environment file path. Names SHALL follow the variable name rule and SHALL NOT be reserved names, templates SHALL NOT contain line breaks, other control characters or invisible format characters, and the environment file SHALL be a relative path inside the worktree. The section SHALL explain the `${port}`, `${port:key}` and `${worktree}` templates.
 
 #### Scenario: Add a port variable
 - **WHEN** the user adds `PORT` with the template `${port}`, sets the environment file to `.env.shogunai` and saves
@@ -347,6 +347,14 @@ The section SHALL list the variables of `env` with their name and template, let 
 #### Scenario: Environment file outside the worktree
 - **WHEN** the user enters `../shared.env` as the environment file
 - **THEN** the field explains it must be a path inside the worktree, and saving is blocked
+
+#### Scenario: Reserved name
+- **WHEN** the user enters `XDG_CONFIG_HOME` or `https_proxy` as a name
+- **THEN** the field explains that the name is reserved because it changes how other tools behave, and saving is blocked
+
+#### Scenario: Line break in a template
+- **WHEN** the user pastes a template that contains a line break
+- **THEN** the field explains that templates can't contain line breaks or control characters, and saving is blocked
 
 ### Requirement: Preview the repository file before its first write
 Before the first save that writes `.shogunai.json` in a repository during this settings visit, the app SHALL show the resulting file and explain that it belongs to the repository and should be committed, and SHALL write it only if the user confirms.

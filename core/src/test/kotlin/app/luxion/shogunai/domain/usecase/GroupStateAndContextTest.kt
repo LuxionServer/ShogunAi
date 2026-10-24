@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
@@ -115,7 +116,7 @@ class GroupStateAndContextTest {
     @Test
     fun `opening a group opens each worktree under its repository and keeps going after a failure`() = runTest {
         val herdr = FakeHerdrClient(openFailures = mapOf(appTask to WorktreeError.HerdrNotInstalled))
-        val resolveEnvironment = ResolveWorktreeEnvironmentUseCase(world.git, FakeRepositoryProvisioningSource(), FakeEnvironmentStateStore(), FakePortProbe())
+        val resolveEnvironment = ResolveWorktreeEnvironmentUseCase(world.git, FakeRepositoryProvisioningSource(), FakeEnvironmentStateStore(), FakePortProbe(), trust = FakeRepositoryTrust(approvesEverything = true))
         val group = DetectGroupsUseCase(world.git)(world.members()).groups.single()
 
         val openings = OpenGroupInHerdrUseCase(herdr, resolveEnvironment)(group)

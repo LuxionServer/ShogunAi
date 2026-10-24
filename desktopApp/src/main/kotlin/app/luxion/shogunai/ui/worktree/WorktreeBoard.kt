@@ -70,7 +70,7 @@ class WorktreeBoard(
     private val autoRefreshInterval: Duration = AUTO_REFRESH_INTERVAL,
     private val clock: () -> Instant = Instant::now,
     private val deviceRefreshInterval: Duration = DEVICE_REFRESH_INTERVAL,
-    val approval: DialogPostCreateApproval = DialogPostCreateApproval(),
+    val approval: DialogRepositoryApproval = DialogRepositoryApproval(),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val rememberFetchBeforeCreate: (projectId: String, fetch: Boolean) -> Unit = { _, _ -> },
     private val onWorktreeUsed: (WorktreeRef) -> Unit = {},

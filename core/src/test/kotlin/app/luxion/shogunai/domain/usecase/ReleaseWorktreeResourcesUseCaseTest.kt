@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
@@ -41,7 +42,7 @@ class ReleaseWorktreeResourcesUseCaseTest {
             byRepository = mapOf(repository to RepositoryProvisioning(providers = RepositoryProviders(emulator = emulator))),
         )
         val acquired = FakeEnvironmentStateStore(mapOf("$common/worktrees/TASK-123" to mapOf("emulator" to 5554)))
-        val resolve = ResolveWorktreeEnvironmentUseCase(git, source, acquired, FakePortProbe())
+        val resolve = ResolveWorktreeEnvironmentUseCase(git, source, acquired, FakePortProbe(), trust = FakeRepositoryTrust(approvesEverything = true))
         val simulators = FakeAppleSimulators()
         val daemons = FakeGradleDaemonSource()
         return ReleaseWorktreeResourcesUseCase(
