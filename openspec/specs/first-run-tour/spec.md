@@ -104,6 +104,10 @@ The last step of the dialog SHALL offer the ways to open the sample's main workt
 - **WHEN** the user chooses "Open in terminal" at the last step
 - **THEN** a terminal opens in the sample's main worktree running the tour's agent, and the app shows the tour project's view
 
+#### Scenario: Folder trust
+- **WHEN** the last step or the banner offers the ways to open the agent
+- **THEN** it explains that the agent first asks whether the user trusts the sample's folder and that accepting it starts the tour, and the app doesn't change the agent's own trust settings
+
 #### Scenario: Launch fails
 - **WHEN** opening the agent fails
 - **THEN** the tour project's view shows the launcher's error as it does for any worktree, and the tour banner still offers the ways to open the agent

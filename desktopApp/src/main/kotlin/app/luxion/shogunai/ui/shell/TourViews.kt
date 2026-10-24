@@ -63,6 +63,7 @@ fun TourDialog(
                     TourStep.OPEN_AGENT -> state.project?.let { project ->
                         LaunchedEffect(project.id) { onShowProject(project) }
                         Text(strings.tourOpenAgentMessage, style = MaterialTheme.typography.bodyMedium)
+                        Text(strings.tourTrustHint, style = MaterialTheme.typography.bodyMedium)
                         agentChoices(project, state::close)
                     }
                 }
@@ -181,6 +182,7 @@ fun TourBanner(
         details = {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                 if (choosing) {
+                    Text(strings.tourTrustHint, style = MaterialTheme.typography.bodySmall)
                     agentChoices(project) { choosing = false }
                 } else {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {

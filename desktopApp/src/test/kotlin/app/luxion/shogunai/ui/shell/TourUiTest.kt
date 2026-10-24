@@ -235,6 +235,7 @@ class TourUiTest {
         waitUntil { state.step == TourStep.OPEN_AGENT }
 
         onNodeWithText("Agent choices for ShogunAi tour").assertIsDisplayed()
+        onNodeWithText(EnglishStrings.tourTrustHint).assertIsDisplayed()
         assertEquals(tourProject, shown)
         assertEquals(1, tour.created)
     }
@@ -307,6 +308,7 @@ class TourUiTest {
         onNodeWithText(EnglishStrings.tourOpenAgent).performClick()
 
         onNodeWithText("Agent choices").assertIsDisplayed()
+        onNodeWithText(EnglishStrings.tourTrustHint).assertIsDisplayed()
     }
 
     @Test

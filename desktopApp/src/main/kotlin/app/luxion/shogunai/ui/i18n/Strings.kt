@@ -624,6 +624,7 @@ interface Strings {
     val tourRetry: String
     val tourOpenAgentMessage: String
     val tourClaudeDesktopHint: String
+    val tourTrustHint: String
     val tourAgentsNeeded: String
     val tourLoadingWorktrees: String
     val tourLater: String

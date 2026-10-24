@@ -748,6 +748,7 @@ object EnglishStrings : Strings {
     override val tourRetry = "Try again"
     override val tourOpenAgentMessage = "The sample is ready. Open the tour's agent in its main worktree; it starts the tour on its own."
     override val tourClaudeDesktopHint = "In Claude Desktop, write \"Start the ShogunAi tour\" to begin."
+    override val tourTrustHint = "The agent first asks whether you trust the sample's folder. It's the throwaway repository the tour just created: choose \"Yes, I trust this folder\" in Claude Code, or allow it in Codex, and the tour starts."
     override val tourAgentsNeeded = "The tour's agent is Claude Code, or Codex from the agent menu; one of them must be installed."
     override val tourLoadingWorktrees = "Loading the sample's worktrees…"
     override val tourLater = "Later"
