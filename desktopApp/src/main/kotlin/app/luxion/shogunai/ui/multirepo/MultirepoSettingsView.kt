@@ -23,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.MultirepoRepository
@@ -32,6 +33,8 @@ import app.luxion.shogunai.ui.components.DangerTextButton
 import app.luxion.shogunai.ui.components.ErrorNotice
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.NeutralTextButton
+import app.luxion.shogunai.ui.components.Notice
+import app.luxion.shogunai.ui.components.NoticeKind
 import app.luxion.shogunai.ui.components.PrimaryButton
 import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.Spacing
@@ -75,6 +78,14 @@ fun MultirepoSettingsView(
         if (multirepo == null) {
             Text(strings.multirepoNotFound, modifier = Modifier.padding(Spacing.md))
             return@Column
+        }
+        if (state.needsReview) {
+            Notice(
+                kind = NoticeKind.WARNING,
+                message = strings.multirepoNeedsReviewExplanation,
+                onDismiss = null,
+                modifier = Modifier.padding(horizontal = Spacing.md).testTag("multirepo-settings-needs-review"),
+            )
         }
         Column(
             modifier = Modifier
@@ -120,6 +131,9 @@ fun MultirepoSettingsView(
             SettingsSection(strings.multirepoAgentTitle) {
                 Text(strings.multirepoAgentHint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 AgentFields(agent = state.agent, duplicated = false, commandFocus = null, onChange = { state.agent = it })
+                if (multirepo.ignoresDeclaredAgent) {
+                    Text(strings.declaredAgentIgnored, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             HorizontalDivider()
             SettingsSection(strings.deleteMultirepo) {

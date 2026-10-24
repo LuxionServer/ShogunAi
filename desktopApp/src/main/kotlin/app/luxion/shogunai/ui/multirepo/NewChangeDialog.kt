@@ -22,7 +22,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
-import app.luxion.shogunai.domain.io.PostCreateDecision
+import app.luxion.shogunai.domain.io.ApprovalDecision
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
 import app.luxion.shogunai.domain.usecase.GroupRepositoryResult
@@ -39,8 +39,8 @@ import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.i18n.describe
 import app.luxion.shogunai.ui.theme.ShogunTheme
-import app.luxion.shogunai.ui.worktree.DialogPostCreateApproval
-import app.luxion.shogunai.ui.worktree.PostCreateApprovalStep
+import app.luxion.shogunai.ui.worktree.DialogRepositoryApproval
+import app.luxion.shogunai.ui.worktree.RepositoryApprovalStep
 
 private val DialogWidth = 480.dp
 
@@ -48,7 +48,7 @@ private val DialogWidth = 480.dp
 @Composable
 fun NewChangeDialog(
     change: NewChange,
-    approval: DialogPostCreateApproval,
+    approval: DialogRepositoryApproval,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -120,7 +120,7 @@ fun NewChangeDialog(
                     Text(strings.fetchFirstLabel)
                 }
                 val approvalRequest = approval.pending
-                if (approvalRequest != null) PostCreateApprovalStep(approvalRequest, approval)
+                if (approvalRequest != null) RepositoryApprovalStep(approvalRequest, approval)
                 change.error?.let { ErrorNotice(error = it, onDismiss = null) }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -129,8 +129,8 @@ fun NewChangeDialog(
                 ) {
                     if (busy) InlineProgress()
                     if (approvalRequest != null) {
-                        NeutralTextButton(onClick = { approval.resolve(PostCreateDecision.SKIP) }) { Text(strings.skipCommands) }
-                        PrimaryButton(onClick = { approval.resolve(PostCreateDecision.RUN) }) { Text(strings.runAndRemember) }
+                        NeutralTextButton(onClick = { approval.resolve(ApprovalDecision.SKIP) }) { Text(strings.skipCommands) }
+                        PrimaryButton(onClick = { approval.resolve(ApprovalDecision.APPROVE) }) { Text(strings.runAndRemember) }
                         return@Row
                     }
                     NeutralTextButton(onClick = onDismiss, enabled = !busy) { Text(if (done) strings.close else strings.cancel) }

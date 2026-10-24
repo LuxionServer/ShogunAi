@@ -8,9 +8,9 @@
 
 - [x] 2.1 `JsonProjectRepository` fills `useHeadroom: true` into stored agents (default and additional) that lack it, and a missing `agentLaunchConfig` as Headroom-wrapped `claude`, before decoding. Verify: `JsonProjectRepositoryTest` cases for an agent without the field, a project without `agentLaunchConfig`, `useHeadroom: false` kept, a new project's round trip writing `"useHeadroom": false`, and a legacy project re-saved with `"useHeadroom": true`.
 
-## 3. `.shogunai-multirepo.json`
+## 3. Multirepo agent
 
-- [x] 3.1 `JsonMultirepoSource.write` adds `"version": 2`; reading a declaration without `version` fills `useHeadroom: true` into its agent and materializes a missing agent as Headroom-wrapped `claude`. Verify: `JsonMultirepoSourceTest` cases for the legacy agent, legacy without agent, legacy `useHeadroom: false`, a version-2 file without agent or without `useHeadroom` (no Headroom), and a rewritten legacy declaration keeping Headroom.
+- [x] 3.1 The multirepo agent kept in `~/.shogunai/multirepos.json` is written with its `useHeadroom`, and a multirepo whose agent was never set runs plain `claude`. Verify: `JsonMultirepoSourceTest` checks a default local agent is written with `"useHeadroom": false` and reads back the same.
 
 ## 4. CLI
 
@@ -26,7 +26,7 @@
 
 ## 7. Documentation
 
-- [x] 7.1 Update `docs/architecture/domain`, `docs/architecture/ui`, `docs/guide/cli`, `docs/guide/desktop-app` and `docs/guide/multirepo` in English and Spanish: Headroom off by default, `--headroom`, the multirepo `version` field and what earlier files mean. Verify: `grep -rn -i headroom docs` shows no remaining "on by default" wording and `mkdocs build --strict` passes if available.
+- [x] 7.1 Update `docs/architecture/domain`, `docs/architecture/ui`, `docs/guide/cli`, `docs/guide/desktop-app` and `docs/guide/multirepo` in English and Spanish: Headroom off by default, `--headroom`, and what files from earlier versions mean. Verify: `grep -rn -i headroom docs` shows no remaining "on by default" wording and `mkdocs build --strict` passes if available.
 
 ## Workflow follow-up
 

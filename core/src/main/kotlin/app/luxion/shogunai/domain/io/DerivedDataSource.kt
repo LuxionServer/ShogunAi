@@ -12,6 +12,8 @@ interface DerivedDataSource {
 
     suspend fun compilationCacheBytes(): Long?
 
+    suspend fun freeBytes(): Long?
+
     fun projectExists(workspacePath: String): Boolean
 
     fun isOnUnavailableVolume(workspacePath: String): Boolean

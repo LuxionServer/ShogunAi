@@ -3,6 +3,7 @@ package app.luxion.shogunai.ui.i18n
 import app.luxion.shogunai.domain.model.ResourceLimits
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.CapacityProfile
+import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.AgentState
@@ -430,7 +431,9 @@ object EnglishStrings : Strings {
         if (count == 1) "1 folder is on an unavailable volume and is kept"
         else "$count folders are on unavailable volumes and are kept"
     override fun derivedDataCompilationCache(size: String) = "Compilation cache · $size"
-    override fun derivedDataQuotaUsage(usage: String, quota: String) = "$usage of $quota quota"
+    override fun derivedDataQuotaUsage(usage: String, quota: String, automatic: Boolean) =
+        "$usage of $quota quota" + if (automatic) " (automatic)" else ""
+    override val derivedDataQuotaUnknown = "Automatic quota unknown: the free disk space couldn't be read"
     override fun derivedDataQuotaExceeded(inUse: List<String>) =
         "Over the quota" + if (inUse.isEmpty()) "" else "; kept because they are in use: ${inUse.joinToString(", ")}"
     override fun derivedDataReleased(count: Int, freed: String) =
@@ -461,6 +464,12 @@ object EnglishStrings : Strings {
     override val invalidLimit = "Must be a positive number, or no limit"
     override val derivedDataQuotaLabel = "DerivedData quota"
     override val noQuota = "No quota"
+    override fun quotaModeName(mode: DerivedDataQuotaMode) = when (mode) {
+        DerivedDataQuotaMode.AUTOMATIC -> "Automatic"
+        DerivedDataQuotaMode.FIXED -> "Fixed size"
+        DerivedDataQuotaMode.NONE -> noQuota
+    }
+    override val automaticQuotaHint = "A quarter of the free disk space plus what DerivedData takes, between 20 and 200 GB"
     override val gigabytesUnit = "GB"
     override val invalidQuota = "Must be a positive whole number, or no quota"
     override val leaseDurationLabel = "Device lease"
@@ -527,18 +536,25 @@ object EnglishStrings : Strings {
     override val worktreeCreatedWithError = "The worktree was created, but its post-creation command failed."
     override val copyLaunchCommand = "Copy launch command"
     override fun worktreeCreated(folder: String) = "Worktree created: $folder"
-    override fun worktreeCreatedCommandsSkipped(folder: String) = "Worktree created: $folder. Its post-creation commands were skipped."
-    override val postCreateApprovalTitle = "These commands will run"
+    override fun worktreeCreatedCommandsSkipped(folder: String) =
+        "Worktree created: $folder. The repository's configuration wasn't approved, so its post-creation commands and environment variables were skipped."
+    override val postCreateApprovalTitle = "Approve this repository's configuration"
     override val postCreateApprovalExplanation =
-        "This repository asks ShogunAi to run these commands in the new worktree. Run them only if you trust the repository."
-    override val runAndRemember = "Run and remember"
+        "This repository asks ShogunAi to run these commands in the new worktree and to give these environment variables to its agent, terminals and environment file. Approve them only if you trust the repository."
+    override val runAndRemember = "Approve and remember"
     override val skipCommands = "Skip"
-    override val postCreateCommandsTitle = "Post-creation commands"
+    override val postCreateCommandsTitle = "Commands and variables to approve"
     override val postCreateApproved = "Approved on this machine"
     override val postCreateNotApproved = "Not approved"
     override val approveCommands = "Approve"
     override val revokeApproval = "Revoke"
-    override val variableNameReserved = "This name changes how shells, runtimes or Git behave, so it can't be declared."
+    override val variableNameReserved = "This name is reserved because it changes how other tools behave, so it can't be declared."
+    override val approvalVariablesTitle = "Environment variables"
+    override fun approvalEnvFile(path: String) = "Environment file: $path"
+    override fun variablesAwaitingApproval(names: List<String>) =
+        "Awaiting approval: ${names.joinToString(", ")}. Approve them in project settings or with shogun trust."
+    override val templateInvalidCharacters = "Templates can't contain line breaks or control characters."
+    override val envFileInvalidCharacters = "The path can't contain line breaks or control characters."
     override val worktreesRepairedAfterMove = "Worktrees repaired after moving the repository"
     override val openInHerdr = "Open in Herdr"
     override fun openedInHerdr(name: String) = "Opened \"$name\" in Herdr with its agent"
@@ -729,12 +745,46 @@ object EnglishStrings : Strings {
     override fun groupRepositoryFailed(reason: String) = "failed: $reason"
     override fun repositoryAddedToGroup(alias: String, title: String) = "$alias added to $title"
     override fun changeCreated(title: String, aliases: List<String>) = "$title created in ${aliases.joinToString()}"
+    override val multirepoNeedsReview = "Needs review"
+    override val multirepoNeedsReviewExplanation =
+        "This multirepo isn't approved on this machine: its declaration is new here or changed outside ShogunAi, for example with a pull. ShogunAi creates branches and worktrees in the repositories it lists and runs their approved post-creation commands, so check them before trusting it."
+    override val trustMultirepo = "Trust"
+    override val declaredAgentIgnored = "The declaration's agent is ignored; the multirepo agent is set on this machine, in the multirepo's settings."
+    override val existingDeclarationTitle = "This folder already declares a multirepo"
+    override fun outsideMultirepoParent(parent: String) = "outside $parent"
     override fun multirepoInsideRepository(repository: String) = "This folder is inside the repository $repository. A multirepo can't be declared inside a repository."
     override fun useWorktreesFolder(folder: String) = "Worktrees in $folder"
     override fun notARepository(path: String) = "$path isn't the top level of a Git repository"
     override fun folderIsMultirepoWorkspace(path: String, multirepo: String) =
         "$path is the workspace repository of the multirepo $multirepo; it belongs to it and isn't added as a project of its own"
     override fun deleteMultirepoTitle(name: String) = "Delete the multirepo $name?"
+    override val tourMenuItem = "ShogunAi Tour"
+    override val tourTakeTour = "Take the tour"
+    override val tourDialogTitle = "ShogunAi tour"
+    override fun tourWelcomeMessage(folder: String) =
+        "The tour creates a throwaway sample repository in $folder, with worktrees in every state ShogunAi shows, and registers it as the project \"ShogunAi tour\". Then an agent walks you through each feature, one step at a time. Nothing outside that folder is touched, and \"End tour\" removes it all."
+    override val tourStart = "Start"
+    override val tourToolMessage = "Agents, scripts and Claude Code's hooks use the shogun command. Install it now so every step of the tour works."
+    override val tourSkip = "Skip"
+    override val tourContinue = "Continue"
+    override val tourCreating = "Creating the sample repository…"
+    override val tourRetry = "Try again"
+    override val tourOpenAgentMessage = "The sample is ready. Open the tour's agent in its main worktree; it starts the tour on its own."
+    override val tourClaudeDesktopHint = "In Claude Desktop, write \"Start the ShogunAi tour\" to begin."
+    override val tourTrustHint = "The agent first asks whether you trust the sample's folder. It's the throwaway repository the tour just created: choose \"Yes, I trust this folder\" in Claude Code, or allow it in Codex, and the tour starts."
+    override val tourAgentsNeeded = "The tour's agent is Claude Code, or Codex from the agent menu; one of them must be installed."
+    override val tourLoadingWorktrees = "Loading the sample's worktrees…"
+    override val tourLater = "Later"
+    override val tourExistingMessage = "The tour's sample already exists. Open it where you left it, or restart the tour to create it again from scratch."
+    override val tourRestart = "Restart"
+    override val tourOpenExisting = "Open"
+    override val tourNoticeMessage = "New: a guided tour of ShogunAi with a throwaway sample repository and an agent that walks you through every feature."
+    override val tourBannerMessage = "This is the tour's throwaway sample. Its agent walks you through ShogunAi in the main worktree."
+    override val tourOpenAgent = "Open the tour's agent"
+    override val tourEnd = "End tour"
+    override val tourEndTitle = "End the tour?"
+    override fun tourEndMessage(folder: String) =
+        "The project \"ShogunAi tour\", its worktrees and $folder are deleted. Close the tour's agent first. No other project is touched."
 }
 
 internal fun String?.asSuffix(): String = if (isNullOrBlank()) "" else ": $this"

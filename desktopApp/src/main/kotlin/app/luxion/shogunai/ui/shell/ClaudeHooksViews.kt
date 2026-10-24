@@ -58,7 +58,7 @@ private fun HooksActionButton(state: ClaudeHooksState, action: HooksAction, stri
 }
 
 @Composable
-private fun CommandLineToolPrerequisite(state: ClaudeHooksState, os: HostOs, showWhenReady: Boolean) {
+internal fun CommandLineToolPrerequisite(state: ClaudeHooksState, os: HostOs, showWhenReady: Boolean) {
     val status = state.toolStatus ?: return
     val strings = LocalStrings.current
     val scope = rememberCoroutineScope()

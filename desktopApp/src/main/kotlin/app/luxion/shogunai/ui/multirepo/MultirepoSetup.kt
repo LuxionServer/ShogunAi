@@ -18,6 +18,7 @@ interface MultirepoSetup {
     fun projects(): List<Project>
     fun read(folder: String): Multirepo?
     suspend fun init(folder: String): Result<Multirepo>
+    suspend fun trust(multirepo: Multirepo): Result<Multirepo>
     suspend fun addRepository(multirepo: Multirepo, alias: String, path: String, useProposedFolder: Boolean): Result<AddedRepository>
     fun removeRepository(multirepo: Multirepo, alias: String): Result<Multirepo>
     fun renameRepository(multirepo: Multirepo, alias: String, newAlias: String): Result<Multirepo>

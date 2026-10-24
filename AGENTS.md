@@ -10,6 +10,7 @@ Don't load all of `docs/` into context by default: search for the specific page 
 - Use cases return `Result<T>` with typed errors (`sealed class WorktreeError`), never untyped exceptions surfaced to the caller.
 - Shell commands are run as **argv** (`listOf("git", ...)`), never as a string for a shell to parse.
 - The domain depends on ports (`ShellCommandExecutor`, `FileManager`), never directly on concrete implementations.
+- Code compiles without warnings: every compiler warning is an error in every module. Tests may use `ExperimentalCoroutinesApi` APIs without `@OptIn`; production code may not.
 - **Never use company identifiers** (internal repo names, task prefixes, etc.) in code, tests, or examples. Use generic placeholders (`~/projects/main-repo`, `TASK-123`).
 
 ## How to document

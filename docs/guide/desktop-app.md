@@ -2,6 +2,18 @@
 
 The desktop app manages a catalog of projects and, for each one, its worktrees. Everything it does is also available from the [`shogun` command](cli.md).
 
+## Guided tour
+
+The first launch, with no projects yet, offers **Take the tour** next to "Add project", and Help > **ShogunAi Tour** starts it at any time. If you already had projects when you upgraded, a notice offers it once.
+
+The tour:
+
+1. Offers to install the [`shogun` command](installation.md#the-shogun-command) when it isn't on your `PATH` yet, since agents and Claude Code's hooks use it. You can skip it.
+2. Creates a throwaway sample repository in `~/.shogunai/tour`, with a local remote, a [`.shogunai.json`](configuration.md#repository-configuration-shogunaijson) and worktrees in every state the list shows ("Needs you", "New", "Stopped", "Merged", "Inactive", one locked and "Folder missing"), and registers it as the project "ShogunAi tour".
+3. Opens the tour's agent in the sample's main worktree, in the terminal, Herdr or Claude Desktop, or copies its launch command. The agent is Claude Code (Codex from the agent menu), started with "Start the ShogunAi tour"; the script it follows is the sample's `AGENTS.md`, and it speaks the app's language. It goes through status, cleanup, provisioning, the command line, hooks, environment and providers one step at a time, waiting for you between steps, and changes nothing outside `~/.shogunai/tour`. Before starting, the agent asks whether you trust the sample's folder: accept it ("Yes, I trust this folder" in Claude Code).
+
+While the sample exists, its project shows a banner to open the agent again or **End tour**, which deletes the project, its worktrees and `~/.shogunai/tour` after asking. Starting the tour again offers to open the existing sample or restart it from scratch.
+
 ## Projects
 
 The first time you open the app you'll see an empty project catalog. Click "New project" (Cmd+N on macOS, Ctrl+N elsewhere) and fill in:
@@ -31,6 +43,8 @@ The header has "New change", which creates the group in the checked repositories
 When the multirepo folder is a Git repository it is the multirepo's workspace repository: its worktrees are listed under the multirepo (not as a loose project, and ShogunAi registers its project once for you), "New change" lists it as `workspace` and "Add project" or dropping the folder explains that it already belongs to the multirepo instead of adding it. The multirepo view shows the multirepo agent, the one running in the folder, with its state next to "Open multirepo agent in Herdr", and the multirepo's sidebar row reflects its activity; an agent running in a member repository shows under that repository's worktree instead.
 
 The settings have a "Workspace repository" section when the folder is a Git repository: it is marked as detected until you declare it, with a checkbox to declare it, a field for its alias, a "Turn off" button to stop treating the folder as a repository of the multirepo, and it appears among the default repositories. They also add, rename and remove repositories, choose the default repositories, set the worktrees folder proposed to the repositories added later, edit the multirepo agent with the same fields as a project's agent, and delete the multirepo, which removes only the declaration. Changes made with `shogun multirepo` show up at the app's next refresh.
+
+ShogunAi only uses a multirepo approved on this machine (see [Approving a multirepo](multirepo.md#approving-a-multirepo)). When the folder you add already has a declaration, for example a cloned workspace repository, the dialog also lists its repositories with the path each one resolves to, its worktrees folder and its workspace repository, marking any path outside the folder's parent; confirming approves it. A multirepo whose declaration changed outside ShogunAi, or that was registered by an earlier version, stays in the sidebar with a warning mark and its repositories show as loose projects. Its view shows the same review with "Trust" instead of its groups, and "New change", "Open multirepo agent in Herdr", "Clean up" and saving its settings are disabled until you trust it. The multirepo agent you edit in the settings is kept on this machine, never in the declaration; an `agent` left in the declaration by an earlier version is ignored, and the settings say so.
 
 ## Creating a worktree
 
@@ -105,7 +119,7 @@ Removing a worktree that's open in Herdr also closes its Herdr workspace; the di
 
 ## Provider sections
 
-For repositories that declare them in `.shogunai.json`, the worktree screen adds a "Gradle daemons" section and an "Xcode DerivedData" section. The DerivedData folders are listed right away and show "Calculating…" for their sizes until they are measured in the background. With a DerivedData quota set in Preferences > Resources, the view also shows the usage against the quota and releases the least recently used folders of worktrees that are not in use when it is exceeded. See [Providers](providers.md).
+For repositories that declare them in `.shogunai.json`, the worktree screen adds a "Gradle daemons" section and an "Xcode DerivedData" section. The DerivedData folders are listed right away and show "Calculating…" for their sizes until they are measured in the background, except those whose size is remembered from a previous run. Unless "No quota" is chosen for DerivedData in Preferences > Resources (the default is an automatic quota computed from the free disk space), the view also shows the usage against the quota and releases the least recently used folders of worktrees that are not in use when it is exceeded. See [Providers](providers.md).
 
 ## Preferences
 

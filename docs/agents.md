@@ -30,16 +30,16 @@ For Xcode repositories, `"providers": { "xcode": { "compilationCache": true } }`
 
 The recipes below show how each agent gets these variables.
 
-## Approving post-creation commands
+## Approving a repository
 
-Agent hooks and the Herdr plugin can't ask you anything, so they never run a repository's `hooks.postCreate` commands until you have approved them on this machine: they provision the worktree, skip the commands and print a note on standard error that names `shogun trust`. Run it once in each repository you trust:
+Agent hooks and the Herdr plugin can't ask you anything, so they never run a repository's `hooks.postCreate` commands, nor deliver the variables it declares in `env` or write its `envFile`, until you have approved them on this machine: they provision the worktree, skip them and print a note on standard error that names `shogun trust`. Run it once in each repository you trust:
 
 ```bash
-shogun trust        # show the commands and ask
+shogun trust        # show the commands, variables and environment file, and ask
 shogun trust --yes  # approve without asking
 ```
 
-After that the hooks run them, until the repository's commands change; then you approve again. Details: [Approving post-creation commands](guide/configuration.md#approving-post-creation-commands).
+After that the hooks run and deliver them, until the repository's commands or variables change; then you approve again. Details: [Approving a repository](guide/configuration.md#approving-a-repository).
 
 ## Claude Code
 
@@ -68,7 +68,7 @@ What happens then:
 - Running `claude -w TASK-123` again reuses that worktree.
 - When Claude Code removes the worktree (you choose to remove it when exiting, or it had no changes), `shogun` removes it and deletes its branch only if it's merged; a branch with work is kept.
 - With this hook Claude Code no longer processes `.worktreeinclude` itself; ShogunAi reads it instead, so its files are still copied.
-- `SessionStart` appends the worktree's `env` variables to the session's `CLAUDE_ENV_FILE`, so every Bash command Claude runs sees them (`$PORT`), and tells Claude which values this worktree uses. It also gives the session [ShogunAi's workflow rules](#shogunais-workflow-rules): a short list adapted to where it runs, including how to start the emulator or the iOS simulator when the repository uses those providers. It works for any session started inside a worktree or the main checkout of a Git repository, also without `--worktree` and also when the repository declares no `env` (then there is no variables line and nothing is written to `CLAUDE_ENV_FILE`).
+- `SessionStart` appends the worktree's `env` variables to the session's `CLAUDE_ENV_FILE`, so every Bash command Claude runs sees them (`$PORT`), and tells Claude which variables this worktree has, without their values. It only does so in a repository registered as a project, and only delivers the declared variables once the repository is approved; while they await approval, it names them and tells Claude to ask you to review them with `shogun trust` instead of approving them itself. It also gives the session [ShogunAi's workflow rules](#shogunais-workflow-rules): a short list adapted to where it runs, including how to start the emulator or the iOS simulator when the repository uses those providers. Its workflow rules reach any session started inside a worktree or the main checkout of a Git repository, also without `--worktree` and also when the repository declares no `env` (then there is no variables line and nothing is written to `CLAUDE_ENV_FILE`).
 
 Claude Code only runs a repository's project hooks once you've trusted its folder. If the hooks live in the repository's `.claude/settings.json` and you've never run `claude` there, `claude -w` stops with "Workspace trust not yet accepted": run `claude` once in the repository, accept the trust dialog, and retry. Hooks in `~/.claude/settings.json` don't need this for repositories you already trust.
 

@@ -78,6 +78,9 @@ internal object CliHelp {
                               workspace repository); new worktrees folders are proposed under --worktrees-root
                               (default: ../<folder>-worktrees)
   multirepo show [--json]     Show the multirepo's repositories, projects, bases, defaults and agent
+  multirepo trust [<folder>] [--yes | --revoke] [--json]
+                              Review a declaration's repositories, paths and worktrees root and approve it
+                              on this machine; only approved multirepos apply. --revoke forgets it
   multirepo add-repo <alias> <path> [--use-worktrees-root | --keep-worktrees-folder] [--json]
                               Add a repository, reusing its project or registering one, and propose
                               <worktrees-root>/<alias> as its project's worktrees folder (asked unless given)
@@ -86,8 +89,9 @@ internal object CliHelp {
   multirepo defaults <alias>[,<alias>...] | --clear [--json]
                               Set the repositories 'shogun new <id>' covers in the multirepo folder
   multirepo agent <command> [--name <name>] [--headroom] [--json]
-                              Set the agent 'shogun open --herdr' runs in the multirepo folder,
-                              wrapped with 'headroom wrap' when --headroom is given
+                              Set the agent 'shogun open --herdr' runs in the multirepo folder, kept on
+                              this machine and never in the declaration; --headroom wraps it with
+                              'headroom wrap'
   multirepo worktrees-root <dir> [--json]
                               Set the folder under which worktrees folders are proposed
   multirepo delete [--json]   Remove the declaration; projects, worktrees and branches are left as they are
@@ -132,7 +136,7 @@ internal object CliHelp {
   xcode [--json]              List Xcode DerivedData folders of the worktrees, orphans and compilation cache
   xcode clean [--json]        Delete orphaned Xcode DerivedData folders on the machine
   xcode trim [--dry-run] [--json]
-                              Release DerivedData folders until it is within the quota in Preferences
+                              Release DerivedData folders until it is within the quota in Preferences (automatic by default)
 """.trimIndent(),
         "hook" to """
   hook worktree-create        Claude Code WorktreeCreate hook: create and provision the worktree, print its path
@@ -168,6 +172,9 @@ internal object CliHelp {
   simulator start|stop|status [<path>] [--device <type>] [--runtime <runtime>] [--json]
                               Boot (and wait for), shut down or show the worktree's iOS simulator; the first
                               start creates it, releasing the least recently used idle one if the pool is full
+  simulator start [--wait] [--wait-timeout <minutes>]
+                              When the pool is full and none can be released, wait in line for one
+                              (30 minutes at most by default) instead of failing
                               (repositories with "providers": { "ios-simulator": {} } in .shogunai.json)
   simulator gradle-init install|uninstall [--yes]
                               Make every project's KMP iOS simulator tests use IOS_SIMULATOR_UDID
@@ -177,6 +184,9 @@ internal object CliHelp {
                               Start (and wait for), stop or show the worktree's Android emulator; the first
                               start reserves its console port, releasing the least recently used idle one if
                               the pool is full
+  emulator start [--wait] [--wait-timeout <minutes>]
+                              When the pool is full and none can be released, wait in line for one
+                              (30 minutes at most by default) instead of failing
                               (repositories with "providers": { "emulator": {} } in .shogunai.json)
 """.trimIndent(),
         "env" to """

@@ -12,6 +12,8 @@ import app.luxion.shogunai.domain.model.DerivedDataDeletion
 import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.domain.model.DerivedDataListing
 import app.luxion.shogunai.domain.model.DerivedDataOwner
+import app.luxion.shogunai.domain.model.DerivedDataQuota
+import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.DerivedDataTrim
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.ComposeDownReport
@@ -35,6 +37,8 @@ import app.luxion.shogunai.domain.usecase.ProjectWorktreeSet
 import app.luxion.shogunai.domain.usecase.attributeToProjects
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -60,6 +64,7 @@ data class MachineSummary(
     val poolLimit: Int? = null,
     val calculating: Boolean = false,
     val quotaBytes: Long? = null,
+    val quotaAutomatic: Boolean = false,
 )
 
 sealed interface PoolNoticeContent {
@@ -132,6 +137,7 @@ class MachineResources(
     private var derivedDataSizes by mutableStateOf<Map<String, Long>>(emptyMap())
     private var compilationCacheSize by mutableStateOf<Long?>(null)
     private var compilationCacheMeasured by mutableStateOf(false)
+    private var resolvedDerivedDataQuota by mutableStateOf<DerivedDataQuota?>(null)
     private var sizeJob: Job? = null
     private var ownedEmulators by mutableStateOf<MachineLoad<Map<String, Map<String, WorktreeEmulator>>>>(MachineLoad.Loading)
     private var runningEmulators by mutableStateOf<Map<String, EmulatorState>>(emptyMap())
@@ -248,7 +254,20 @@ class MachineResources(
         }
 
     val derivedDataQuotaBytes: Long?
-        get() = useCases.resourceSettings().derivedDataQuotaBytes
+        get() {
+            val settings = useCases.resourceSettings()
+            return when (settings.quotaMode) {
+                DerivedDataQuotaMode.NONE -> null
+                DerivedDataQuotaMode.FIXED -> settings.fixedDerivedDataQuotaBytes
+                DerivedDataQuotaMode.AUTOMATIC -> resolvedDerivedDataQuota?.takeIf { it.mode == DerivedDataQuotaMode.AUTOMATIC }?.bytes
+            }
+        }
+
+    val isDerivedDataQuotaAutomatic: Boolean
+        get() = useCases.resourceSettings().quotaMode == DerivedDataQuotaMode.AUTOMATIC
+
+    val isDerivedDataQuotaUnknown: Boolean
+        get() = isDerivedDataQuotaAutomatic && resolvedDerivedDataQuota?.isUnknown == true
 
     val derivedDataUsageBytes: Long?
         get() {
@@ -313,7 +332,7 @@ class MachineResources(
 
     fun reload() {
         val resource = shown ?: return
-        scope.launch { load(resource) }
+        scope.launch { load(resource, remeasure = true) }
     }
 
     suspend fun runSummaryTicks() {
@@ -374,6 +393,7 @@ class MachineResources(
                     bytes = if (calculating) null else sizes.values.sum(),
                     calculating = calculating,
                     quotaBytes = derivedDataQuotaBytes,
+                    quotaAutomatic = isDerivedDataQuotaAutomatic && derivedDataQuotaBytes != null,
                 )
             }
         } else {
@@ -398,12 +418,12 @@ class MachineResources(
         }
     }
 
-    private suspend fun load(resource: MachineResource) {
+    private suspend fun load(resource: MachineResource, remeasure: Boolean = false) {
         when (resource) {
             MachineResource.GRADLE_DAEMONS -> loadDaemons()
             MachineResource.ANDROID_EMULATORS -> loadEmulators()
             MachineResource.IOS_SIMULATORS -> loadSimulators()
-            MachineResource.XCODE_DERIVED_DATA -> loadDerivedData()
+            MachineResource.XCODE_DERIVED_DATA -> loadDerivedData(remeasure)
             MachineResource.MAVEN_DAEMONS -> loadMavenDaemons()
             MachineResource.COMPOSE_PROJECTS -> loadComposeProjects()
         }
@@ -496,34 +516,33 @@ class MachineResources(
         return states.mapValues { (_, byPath) -> byPath.orEmpty() }.filterValues { it.isNotEmpty() }
     }
 
-    private suspend fun loadDerivedData() {
+    private suspend fun loadDerivedData(remeasure: Boolean = false) {
         sizeJob?.cancel()
         val listing = useCases.listDerivedData()
         derivedDataSizes = emptyMap()
         compilationCacheSize = null
         compilationCacheMeasured = false
         derivedDataListing = listing.fold({ MachineLoad.Loaded(it) }, { MachineLoad.Unavailable })
-        listing.getOrNull()?.let { sizeJob = scope.launch { measureDerivedData(it.folders.map { entry -> entry.folder }) } }
+        listing.getOrNull()?.let { sizeJob = scope.launch { measureDerivedData(it.folders.map { entry -> entry.folder }, remeasure) } }
     }
 
-    private suspend fun measureDerivedData(folders: List<DerivedDataFolder>) {
-        folders.forEach { folder ->
-            val size = useCases.measureDerivedData(folder)
-            currentCoroutineContext().ensureActive()
-            derivedDataSizes = derivedDataSizes + (folder.path to size.getOrDefault(0L))
+    private suspend fun measureDerivedData(folders: List<DerivedDataFolder>, remeasure: Boolean) {
+        coroutineScope {
+            val compilationCache = async { if (projects().any { it.compilationCache }) useCases.measureCompilationCache().getOrNull() else null }
+            useCases.measureDerivedData(folders, remeasure).collect { measured ->
+                derivedDataSizes = derivedDataSizes + (measured.path to (measured.sizeBytes ?: 0L))
+            }
+            compilationCacheSize = compilationCache.await()
         }
-        if (projects().any { it.compilationCache }) {
-            val size = useCases.measureCompilationCache()
-            currentCoroutineContext().ensureActive()
-            compilationCacheSize = size.getOrNull()
-        }
+        currentCoroutineContext().ensureActive()
         compilationCacheMeasured = true
         applyDerivedDataQuota()
     }
 
     private suspend fun applyDerivedDataQuota() {
-        val quota = derivedDataQuotaBytes
-        if (quota == null) {
+        val settings = useCases.resourceSettings()
+        if (settings.quotaMode == DerivedDataQuotaMode.NONE) {
+            resolvedDerivedDataQuota = null
             derivedDataTrim = null
             return
         }
@@ -533,6 +552,13 @@ class MachineResources(
         try {
             val sizes = derivedDataSizes
             val measured = listing.copy(folders = listing.folders.map { it.copy(folder = it.folder.copy(sizeBytes = sizes[it.folder.path])) })
+            val resolved = useCases.resolveDerivedDataQuota(settings, measured.folders.sumOf { it.folder.sizeBytes ?: 0L })
+            resolvedDerivedDataQuota = resolved
+            val quota = resolved.bytes
+            if (quota == null) {
+                derivedDataTrim = null
+                return
+            }
             val declaring = projects().filter { MachineResource.XCODE_DERIVED_DATA in it.declares }
             useCases.trimDerivedData(quota, declaring, measured)
                 .onSuccess { trim ->

@@ -69,7 +69,6 @@ class SystemFolderLauncher(
             val explorerReportsStatusOne = os == HostOs.WINDOWS && failure.result?.exitCode == 1
             if (!explorerReportsStatusOne) throw WorktreeError.FolderOpenFailed(path, failure.detail)
         }
-        Unit
     }
 
     private fun command(path: String): List<String> = when (os) {
@@ -91,7 +90,6 @@ class MacClaudeDesktopLauncher(
         } catch (failure: ToolCommandFailed) {
             throw WorktreeError.ClaudeDesktopLaunchFailed(failure.detail)
         }
-        Unit
     }
 
     companion object {

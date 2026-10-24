@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.luxion.shogunai.domain.io.ResourceLimitsRepository
 import app.luxion.shogunai.domain.model.CapacityProfile
+import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.ResourceLimits
 import app.luxion.shogunai.domain.model.ResourceSettings
@@ -26,8 +27,10 @@ class ResourcePreferences(
     var drafts by mutableStateOf(draftsOf(settings.custom))
         private set
 
-    var quotaDraft by mutableStateOf(quotaDraftOf(settings.derivedDataQuotaGigabytes))
+    var quotaDraft by mutableStateOf(quotaDraftOf(settings))
         private set
+
+    val quotaMode: DerivedDataQuotaMode get() = settings.quotaMode
 
     var leaseDraft by mutableStateOf(CustomLimitDraft(settings.leaseMinutes.toString(), unlimited = false))
         private set
@@ -79,7 +82,7 @@ class ResourcePreferences(
             return
         }
         quotaDraft = CustomLimitDraft(number.toString(), unlimited = false)
-        save(settings.copy(derivedDataQuotaGigabytes = number))
+        save(settings.copy(derivedDataQuotaGigabytes = number, derivedDataQuotaMode = DerivedDataQuotaMode.FIXED))
     }
 
     fun editLease(text: String) {
@@ -92,14 +95,16 @@ class ResourcePreferences(
         save(settings.copy(leaseMinutes = number))
     }
 
-    fun setNoQuota(none: Boolean) {
-        if (none) {
-            quotaDraft = CustomLimitDraft("", unlimited = true)
-            save(settings.copy(derivedDataQuotaGigabytes = null))
+    fun chooseQuotaMode(mode: DerivedDataQuotaMode) {
+        if (mode == quotaMode) return
+        val gigabytes = settings.derivedDataQuotaGigabytes ?: DEFAULT_QUOTA_GIGABYTES
+        val updated = if (mode == DerivedDataQuotaMode.FIXED) {
+            settings.copy(derivedDataQuotaGigabytes = gigabytes, derivedDataQuotaMode = mode)
         } else {
-            quotaDraft = CustomLimitDraft(DEFAULT_QUOTA_GIGABYTES.toString(), unlimited = false)
-            save(settings.copy(derivedDataQuotaGigabytes = DEFAULT_QUOTA_GIGABYTES))
+            settings.copy(derivedDataQuotaMode = mode)
         }
+        save(updated)
+        quotaDraft = quotaDraftOf(updated)
     }
 
     private fun saveCustom(kind: ResourceKind, limit: Int?) {
@@ -120,7 +125,10 @@ class ResourcePreferences(
     companion object {
         const val DEFAULT_CUSTOM_LIMIT = 2
 
-        private fun quotaDraftOf(quota: Int?) = CustomLimitDraft(quota?.toString().orEmpty(), unlimited = quota == null)
+        private fun quotaDraftOf(settings: ResourceSettings) = CustomLimitDraft(
+            (settings.derivedDataQuotaGigabytes ?: DEFAULT_QUOTA_GIGABYTES).toString(),
+            unlimited = settings.quotaMode != DerivedDataQuotaMode.FIXED,
+        )
 
         private fun draftsOf(custom: ResourceLimits): Map<ResourceKind, CustomLimitDraft> =
             ResourceKind.entries.associateWith { kind ->

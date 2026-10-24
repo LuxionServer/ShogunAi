@@ -16,6 +16,7 @@ class MultirepoActions(
         onRepository: (GroupRepositoryResult) -> Unit,
     ) -> Result<GroupCreation>,
     val openAgent: suspend (Multirepo) -> Result<HerdrOpening>,
+    val trust: suspend (Multirepo) -> Result<Multirepo> = { Result.failure(UnsupportedOperationException("no multirepo support")) },
 ) {
     companion object {
         val NONE = MultirepoActions(
