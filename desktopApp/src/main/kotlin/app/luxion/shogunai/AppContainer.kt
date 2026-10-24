@@ -58,7 +58,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
-import app.luxion.shogunai.ui.worktree.DialogPostCreateApproval
+import app.luxion.shogunai.ui.worktree.DialogRepositoryApproval
 import app.luxion.shogunai.domain.io.LanguagePreferenceRepository
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
@@ -296,6 +296,7 @@ class AppContainer {
     private val folderLauncher = SystemFolderLauncher(shellCommandExecutor)
     private val claudeDesktopLauncher = MacClaudeDesktopLauncher(shellCommandExecutor)
     private val environmentCache = WorktreeEnvironmentCache()
+    val repositoryTrust: RepositoryTrust = JsonRepositoryTrust()
     private val resolveEnvironment = resolverWith(contributions)
     private val stopSimulator = StopWorktreeSimulatorUseCase(repositoryProvisioningSource, appleSimulators, resolveEnvironment)
     private val readSimulatorStates = ReadSimulatorStatesUseCase(repositoryProvisioningSource, appleSimulators, resolveEnvironment)
@@ -308,6 +309,7 @@ class AppContainer {
         portProbe,
         factory,
         environmentCache,
+        repositoryTrust,
     )
 
     private fun simulatorSettingsFor(repositoryPath: String): SimulatorSettings =
@@ -440,9 +442,7 @@ class AppContainer {
 
     val pathExists: (String) -> Boolean = fileManager::exists
 
-    val repositoryTrust: RepositoryTrust = JsonRepositoryTrust()
-
-    val postCreateApproval = DialogPostCreateApproval()
+    val repositoryApproval = DialogRepositoryApproval()
 
     private val multirepoSource = JsonMultirepoSource()
     private val resolveMultirepo = ResolveMultirepoUseCase(multirepoSource, shellCommandExecutor, fileManager)
@@ -468,7 +468,7 @@ class AppContainer {
                 repositoryProvisioningSource,
                 prepareEnvironment,
                 repositoryTrust,
-                postCreateApproval,
+                repositoryApproval,
             )(members, taskId, branchType, fetch, onRepository)
         },
         openAgent = { multirepo -> OpenMultirepoAgentInHerdrUseCase(herdrClient)(multirepo) },
@@ -536,7 +536,7 @@ class AppContainer {
             repositoryProvisioningSource,
             prepareEnvironment,
             repositoryTrust,
-            postCreateApproval,
+            repositoryApproval,
         ),
         createFromBranch = CreateWorktreeFromBranchUseCase(
             config,
@@ -545,7 +545,7 @@ class AppContainer {
             repositoryProvisioningSource,
             prepareEnvironment,
             repositoryTrust,
-            postCreateApproval,
+            repositoryApproval,
         ),
         listBranches = ListBranchesUseCase(config, shellCommandExecutor),
         fetchRemote = FetchRemoteUseCase(config, shellCommandExecutor),
@@ -604,7 +604,7 @@ class AppContainer {
                 repositoryProvisioningSource,
                 prepareEnvironment,
                 repositoryTrust,
-                postCreateApproval,
+                repositoryApproval,
             )::invoke,
         ),
         readEnvironment = { worktree -> resolveEnvironment(config.baseRepositoryPath, worktree.path, reserve = false) },

@@ -27,6 +27,11 @@ import app.luxion.shogunai.domain.model.EnvironmentDeclaration
 import app.luxion.shogunai.domain.model.IosSimulatorProvider
 import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.domain.model.Project
+import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.FakeRepositoryTrust
+import app.luxion.shogunai.domain.io.RepositoryTrust
+import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import java.nio.file.Files
 import kotlin.io.path.readText
@@ -94,15 +99,19 @@ class EnvironmentCommandsTest {
         ),
     )
 
+    private val project = Project("main-repo", "main-repo", ProjectConfig(base, "/home/dev/projects/worktrees", emptyList()))
+
     private fun cli(
         provisioning: FakeRepositoryProvisioningSource,
         workingDirectory: String = linked,
         input: String = "",
         environment: Map<String, String> = mapOf("CLAUDE_ENV_FILE" to envFile.toString()),
+        registered: Boolean = true,
+        trust: RepositoryTrust = FakeRepositoryTrust(approvesEverything = true),
     ) = ShogunCli(
         executor = executor,
         fileManager = FakeFileManager(existing = listOf(base, linked)),
-        projectRepository = FakeProjectRepository(emptyList()),
+        projectRepository = FakeProjectRepository(if (registered) listOf(project) else emptyList()),
         provisioningSource = provisioning,
         daemonSource = daemons,
         gradleUserHome = "/home/dev/.gradle",
@@ -121,6 +130,7 @@ class EnvironmentCommandsTest {
         readInput = { input },
         canonicalPath = { it.trimEnd('/') },
         environmentVariable = { environment[it] },
+        trust = trust,
     )
 
     private fun withEmulator() = FakeRepositoryProvisioningSource(
@@ -204,7 +214,7 @@ class EnvironmentCommandsTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals("export IOS_SIMULATOR_UDID='UDID-1'\n", envFile.readText())
-        assertTrue(out.contains("IOS_SIMULATOR_UDID=UDID-1"), out.toString())
+        assertEquals("ShogunAi environment of worktree TASK-123: IOS_SIMULATOR_UDID", out.lines().first())
         assertTrue(out.contains("`shogun simulator start`"), out.toString())
         assertTrue(out.contains("xcodebuild -destination \"id=\$IOS_SIMULATOR_UDID\""), out.toString())
     }
@@ -285,7 +295,8 @@ class EnvironmentCommandsTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals("export ANDROID_SERIAL='emulator-5554'\n", envFile.readText())
-        assertTrue(out.contains("ANDROID_SERIAL=emulator-5554"), out.toString())
+        assertEquals("ShogunAi environment of worktree TASK-123: ANDROID_SERIAL", out.lines().first())
+        assertFalse(out.contains("emulator-5554"), out.toString())
         assertTrue(out.contains("`shogun emulator start`"), out.toString())
         assertTrue(out.contains("may have been released to another worktree"), out.toString())
         assertTrue(out.contains("never run 'adb kill-server' or 'adb start-server'"), out.toString())
@@ -332,7 +343,8 @@ class EnvironmentCommandsTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals("export OTHER='1'\nexport PORT='20000'\n", envFile.readText())
-        assertEquals("ShogunAi environment of worktree TASK-123: PORT=20000", out.lines().first())
+        assertEquals("ShogunAi environment of worktree TASK-123: PORT", out.lines().first())
+        assertFalse(out.contains("20000"), out.toString())
         assertTrue(out.contains("change the branch of the worktree a session starts in"), out.toString())
     }
 
@@ -398,6 +410,50 @@ class EnvironmentCommandsTest {
 
         assertFalse(out.contains("--herdr"), out.toString())
         assertFalse(out.contains("messages"), out.toString())
+    }
+
+    @Test
+    fun `session-start in a repository that isn't registered delivers no environment`() {
+        val exitCode = cli(declaring("PORT" to "\${port}"), input = """{"cwd": "$linked"}""", registered = false)
+            .run(listOf("hook", "session-start"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("", envFile.readText())
+        assertFalse(out.contains("PORT"), out.toString())
+        assertTrue(out.contains("change the branch of the worktree a session starts in"), out.toString())
+        assertTrue(store.portsByAdminDirectory.isEmpty())
+        assertEquals(0, store.writes)
+    }
+
+    @Test
+    fun `session-start names variables awaiting approval without delivering them`() {
+        val exitCode = cli(declaring("PORT" to "\${port}"), input = """{"cwd": "$linked"}""", trust = FakeRepositoryTrust())
+            .run(listOf("hook", "session-start"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("", envFile.readText())
+        assertFalse(out.contains("ShogunAi environment of worktree"), out.toString())
+        val awaiting = out.lines().single { it.contains("awaiting the user's approval") }
+        assertTrue(awaiting.contains("PORT") && awaiting.contains("shogun trust"), out.toString())
+    }
+
+    @Test
+    fun `session-start delivers declared variables once approved`() {
+        val trust = FakeRepositoryTrust(mapOf(base to RepositoryApprovalSubject(variables = listOf("PORT" to "\${port}"))))
+
+        cli(declaring("PORT" to "\${port}"), input = """{"cwd": "$linked"}""", trust = trust).run(listOf("hook", "session-start"))
+
+        assertEquals("export PORT='20000'\n", envFile.readText())
+        assertFalse(out.contains("awaiting"), out.toString())
+    }
+
+    @Test
+    fun `env leaves out variables awaiting approval and names them on standard error`() {
+        val exitCode = cli(declaring("PORT" to "\${port}"), trust = FakeRepositoryTrust()).run(listOf("env"))
+
+        assertEquals(0, exitCode)
+        assertEquals("", out.toString())
+        assertTrue(err.contains("PORT") && err.contains("shogun trust"), err.toString())
     }
 
     @Test

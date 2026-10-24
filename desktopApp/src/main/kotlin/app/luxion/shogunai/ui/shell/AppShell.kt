@@ -90,7 +90,7 @@ fun AppShell(
             useCasesFor = appContainer::worktreeUseCases,
             detectAgents = appContainer.detectRunningAgents::invoke,
             preferences = appContainer.shellPreferenceRepository,
-            approval = appContainer.postCreateApproval,
+            approval = appContainer.repositoryApproval,
             rememberFetchBeforeCreate = viewModel::rememberFetchBeforeCreate,
             onWorktreeUsed = { ref -> viewModel.recordWorktree(ref.projectId, ref.path) },
             inactivity = inactivity,

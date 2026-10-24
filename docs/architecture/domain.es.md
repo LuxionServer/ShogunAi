@@ -60,7 +60,7 @@ Enum `FEATURE` / `FIX`, cada uno con un `prefix` (`"feature"` / `"fix"`) que se 
 - `Worktree` — un worktree activo tal como lo reporta `git worktree list`: `path`, `branch` (`null` si está en `detached`), `head`, `isMain`, `isBare`, `isLocked` (una línea `locked`, p. ej. un worktree que está usando una sesión de un agente) e `isPrunable` (una línea `prunable`: su carpeta ya no existe).
 - `BranchOption` — una rama ofrecida al crear un worktree: `name`, `isCheckedOut` (ya en uso en el repositorio base o en otro worktree) e `isRemote` (una rama de `origin/`, nombrada con ese prefijo). `withoutLocalTwins()` quita las ramas remotas que tienen una rama local con el mismo nombre corto.
 
-Un `Worktree` devuelto por la creación también lleva `skippedPostCreateCommands`, los comandos post-creación del repositorio que no se ejecutaron porque no están aprobados (ver [Confianza en el repositorio](#confianza-en-el-repositorio)).
+Un `Worktree` devuelto por la creación también lleva `skippedPostCreateCommands` y `skippedVariables`, los comandos post-creación del repositorio que no se ejecutaron y los nombres de las variables declaradas que no se aplicaron porque el repositorio no está aprobado (ver [Confianza en el repositorio](#confianza-en-el-repositorio)).
 
 ### `WorktreeStatus` / `MainBranch` / `Divergence`
 
@@ -103,10 +103,10 @@ Variables que recibe cada worktree, declaradas en `.shogunai.json` (`WorktreeEnv
 ```
 
 - `EnvironmentDeclaration` — las `variables` en el orden del fichero y el `envFile` opcional, una ruta relativa a la raíz del worktree que no puede salir de él. `portKeys` lista los puertos que necesita la declaración.
-- `EnvironmentVariable` — un nombre de variable válido (letras, dígitos y `_`, sin empezar por dígito y no reservado) y su plantilla, convertida al leer el fichero en `TemplatePart`s: `Literal`, `WorktreeName` (`${worktree}`, el nombre de la carpeta del worktree) y `Port(key)`. `${port}` usa como clave el nombre de la propia variable, así que cada variable tiene su puerto; `${port:<clave>}` usa la clave `port:<clave>`, compartida por todas las variables que la usan (`:` no puede aparecer en un nombre de variable, así que las claves nunca chocan). `$$` es un `$` literal; cualquier otro `${…}` lanza `InvalidEnvironmentTemplate`, que la lectura convierte en `InvalidRepositoryConfig`.
-- `WorktreeEnvironment` — un entorno resuelto: las `variables` ya renderizadas y los `ports` reservados para el worktree.
+- `EnvironmentVariable` — un nombre de variable válido (letras, dígitos y `_`, sin empezar por dígito y no reservado), el texto declarado de su plantilla (`source`) y esa plantilla, convertida al leer el fichero en `TemplatePart`s: `Literal`, `WorktreeName` (`${worktree}`, el nombre de la carpeta del worktree) y `Port(key)`. `${port}` usa como clave el nombre de la propia variable, así que cada variable tiene su puerto; `${port:<clave>}` usa la clave `port:<clave>`, compartida por todas las variables que la usan (`:` no puede aparecer en un nombre de variable, así que las claves nunca chocan). `$$` es un `$` literal; cualquier otro `${…}` lanza `InvalidEnvironmentTemplate`, que la lectura convierte en `InvalidRepositoryConfig`.
+- `WorktreeEnvironment` — un entorno resuelto: las `variables` ya renderizadas, los `ports` reservados para el worktree, los nombres de las variables declaradas pendientes de aprobación (`awaitingApproval`) y si la declaración está aprobada (`declarationApproved`).
 
-No se pueden declarar nombres de variable que cambian cómo se comportan las shells, los runtimes o Git: `PATH`, `HOME`, `SHELL`, `IFS`, `ENV`, `BASH_ENV`, `ZDOTDIR`, `PROMPT_COMMAND`, `NODE_OPTIONS`, `NODE_PATH`, `PYTHONPATH`, `PYTHONSTARTUP`, `PYTHONHOME`, `RUBYOPT`, `RUBYLIB`, `PERL5OPT`, `PERL5LIB`, `JAVA_TOOL_OPTIONS`, `_JAVA_OPTIONS`, `JDK_JAVA_OPTIONS`, `CLASSPATH` y cualquier nombre que empiece por `LD_`, `DYLD_` o `GIT_`. Un nombre así hace inválido `.shogunai.json` (`RepositoryConfigIssue.ReservedVariableName` en el formulario de ajustes). Las variables que añaden los providers, como `GRADLE_OPTS`, no se declaran y no les afecta.
+No se pueden declarar nombres de variable que cambian cómo se comportan las shells, los runtimes, el cargador dinámico, Git, los gestores de paquetes, los compiladores, las herramientas de build, los clientes de red o los agentes de programación (`isReservedVariableName`, que compara en mayúsculas con nombres exactos, prefijos como `XDG_`, `SSH_`, `NODE_` salvo `NODE_ENV`, `ANTHROPIC_` o `CLAUDE_`, y los sufijos `_PROXY`, `_OPTS` y `_HOME`; la lista completa está en [Configuración › Nombres de variable reservados](../guide/configuration.md#nombres-de-variable-reservados)). Un nombre así, en `env` o en los `portVariables` del provider `docker-compose`, hace inválido `.shogunai.json` (`RepositoryConfigIssue.ReservedVariableName` en el formulario de ajustes), esté o no aprobado el repositorio. Una plantilla o un `envFile` con un carácter Unicode de control (Cc) o de formato (Cf), o un separador de línea o párrafo (`hasHiddenCharacters`), también es inválido (`InvalidVariableValue`, `EnvFileInvalidCharacters`), así que cada pregunta que los muestra enseña exactamente lo que se aplica. Las variables que añaden los providers, como `GRADLE_OPTS`, no se declaran y no se comprueban; como sus nombres están reservados, `env` ya no puede sustituirlas.
 
 ### Emulador de Android
 
@@ -451,21 +451,27 @@ interface ReleaseSource {
 
 La última release publicada de ShogunAi, o `UpdateCheckFailed`.
 
-### `RepositoryTrust` / `PostCreateApproval`
+### `RepositoryTrust` / `RepositoryApproval`
 
 ```kotlin
+data class RepositoryApprovalSubject(
+    val commands: List<List<String>>,
+    val variables: List<Pair<String, String>>,
+    val envFile: String?,
+)
+
 interface RepositoryTrust {
-    fun isApproved(repository: String, commands: List<List<String>>): Boolean
-    fun approve(repository: String, commands: List<List<String>>)
+    fun isApproved(repository: String, subject: RepositoryApprovalSubject): Boolean
+    fun approve(repository: String, subject: RepositoryApprovalSubject)
     fun revoke(repository: String)
 }
 
-fun interface PostCreateApproval {
-    suspend fun decide(repository: String, commands: List<List<String>>): PostCreateDecision
+fun interface RepositoryApproval {
+    suspend fun decide(repository: String, subject: RepositoryApprovalSubject): ApprovalDecision
 }
 ```
 
-`RepositoryTrust` recuerda, por repositorio y en esta máquina, los comandos post-creación exactos que aprobó el usuario; una lista distinta no está aprobada. `PostCreateApproval` pregunta al usuario cuando no lo están y responde `RUN` o `SKIP`: la app de escritorio muestra los comandos en el diálogo que inició la creación, el CLI pregunta en un terminal, y los hooks y `--json` usan `PostCreateApproval.SKIP`. `RepositoryTrust.NONE` no aprueba nada, y es lo que usan por defecto los casos de uso construidos sin almacén de confianza.
+El sujeto es lo que `.shogunai.json` pide a ShogunAi ejecutar o aplicar: los comandos post-creación, cada variable declarada con el texto de su plantilla y `envFile` (`RepositoryProvisioning.approvalSubject`). `RepositoryTrust` recuerda, por repositorio y en esta máquina, el sujeto exacto que aprobó el usuario; cualquier diferencia no está aprobada, y un sujeto vacío siempre lo está. `RepositoryApproval` pregunta al usuario cuando no lo está y responde `APPROVE` o `SKIP`: la app de escritorio muestra el sujeto en el diálogo que inició la creación, el CLI pregunta en un terminal, y los hooks y `--json` usan `RepositoryApproval.SKIP`. `RepositoryTrust.NONE` solo aprueba sujetos vacíos, y es lo que usan por defecto los casos de uso construidos sin almacén de confianza, así que olvidarse de pasarlo falla de forma segura.
 
 ### `AgentSessionStore`
 
@@ -496,8 +502,9 @@ Crea un worktree en una rama **nueva** `<tipo>/<taskId>`. Primero normaliza el i
 1. **Validaciones previas** (repo base existe, destino libre, archivos locales presentes) y **resolución de los archivos del repositorio** — se hacen *antes* de tocar Git para no dejar un worktree a medias.
 2. `git worktree add <path> -b <branch> [<startPoint>]`. Quien llama resuelve el punto de partida opcional a un id de commit con `ResolveStartPointUseCase` (`git rev-parse --verify --quiet <ref>^{commit}` en su propia carpeta, con fallo `StartPointNotFound`), de modo que `HEAD` es el del worktree donde se ejecuta el comando aunque Git corra en el repositorio base. La app de escritorio pasa la referencia elegida en su selector «Partir de», resuelta del mismo modo; sin ninguna, la rama parte del HEAD del repositorio base.
 3. Copia de los archivos locales y de los de `copy` del repositorio al nuevo directorio, en las mismas rutas relativas, y enlace con symlink de los de `link` a las copias del repositorio base (copiándolos donde no se admiten enlaces). Cada destino tiene que quedar dentro del worktree una vez resueltos los symlinks (`FileManager.isInside`).
-4. Preparación de su entorno con el `WorktreeEnvironmentPreparer` que recibe: `PrepareWorktreeEnvironmentUseCase` lo resuelve reservando puertos (`ResolveWorktreeEnvironmentUseCase`) y, si se declara `envFile`, `WriteEnvironmentFileUseCase` lo escribe en formato dotenv, negándose a sobrescribir un fichero que Git versiona (`git ls-files --error-unmatch`, `EnvironmentFileTracked`) e informando de los fallos de escritura como `EnvironmentFileWriteFailed`. El preparador es `WorktreeEnvironmentPreparer.NONE` por defecto, en lo que se apoyan los tests que no tratan del entorno; la app y el CLI siempre pasan el real.
-5. Ejecución de los comandos post-creación del repositorio en el worktree, solo si están aprobados (ver [Confianza en el repositorio](#confianza-en-el-repositorio)). Los que no están aprobados y el usuario no aprueba en ese momento se devuelven en `skippedPostCreateCommands` del worktree. Un comando que falla es `PostCreateCommandFailed`, y el worktree se conserva, porque todo lo anterior salió bien.
+4. Resolución de la aprobación del repositorio (ver [Confianza en el repositorio](#confianza-en-el-repositorio)): ya aprobado, o preguntado con `RepositoryApproval`, guardando un `APPROVE` antes de seguir.
+5. Preparación de su entorno con el `WorktreeEnvironmentPreparer` que recibe: `PrepareWorktreeEnvironmentUseCase` lo resuelve reservando puertos (`ResolveWorktreeEnvironmentUseCase`) y, si se declara `envFile` y la declaración está aprobada, `WriteEnvironmentFileUseCase` lo escribe en formato dotenv, negándose a sobrescribir un fichero que Git versiona (`git ls-files --error-unmatch`, `EnvironmentFileTracked`) e informando de los fallos de escritura como `EnvironmentFileWriteFailed`. El preparador es `WorktreeEnvironmentPreparer.NONE` por defecto, en lo que se apoyan los tests que no tratan del entorno; la app y el CLI siempre pasan el real.
+6. Ejecución de los comandos post-creación del repositorio en el worktree, solo si está aprobado. Cuando el repositorio no está aprobado y el usuario no lo aprueba en ese momento, sus comandos y los nombres de sus variables declaradas se devuelven en `skippedPostCreateCommands` y `skippedVariables` del worktree. Un comando que falla es `PostCreateCommandFailed`, y el worktree se conserva, porque todo lo anterior salió bien.
 
 Para resolver los archivos del repositorio se lee `RepositoryProvisioning` y, si declara algún patrón, se ejecuta `git ls-files --others --ignored -z -x <patrón>…`: todos los archivos que Git no versiona y coinciden con un patrón (los versionados ya llegan con el checkout). Sin patrones no se ejecuta ningún comando de Git. Un `.shogunai.json` ilegible (`InvalidRepositoryConfig`) o un `git ls-files` que falla (`GitCommandFailed`) detienen la creación antes de crear nada. Los archivos locales se comprueban de forma estricta (`SecretFileNotFound`) y los patrones de forma laxa: un patrón sin coincidencias no copia nada. Una entrada local que es una carpeta se expande con `FileManager.listFiles` en los archivos que contiene cada vez que se resuelven los archivos, así que la creación, el provisionado y la comprobación de deriva ven archivos sueltos y un archivo añadido después a la carpeta se incorpora. Las carpetas se copian, nunca se enlazan; si la carpeta ya existe en el worktree se fusiona (los archivos con la misma ruta se sobrescriben, el resto se conserva); una carpeta inexistente es `SecretFileNotFound`, como un archivo inexistente.
 
@@ -609,7 +616,7 @@ Borra una rama local solo cuando está contenida en la rama principal del proyec
 
 ### `ProvisionWorktreeUseCase`
 
-Aplica los mismos archivos que la creación (archivos locales y provisionado del repositorio, ver `CreateWorktreeUseCase`) a un worktree enlazado **ya existente**, p. ej. uno creado por otra herramienta. La ruta tiene que ser uno de los worktrees del repositorio (según `ListWorktreesUseCase`) y no el principal (`NotAWorktree`). Los archivos se copian (o enlazan) encima de los que haya, el entorno se prepara igual (reservando puertos para un worktree creado por otra herramienta), se ejecutan los comandos post-creación aprobados y devuelve un `ProvisionResult`: cada `ProvisionedFile` y los comandos saltados. A diferencia de la creación, una copia o un entorno fallidos no eliminan nada: el worktree no es de ShogunAi como para borrarlo. Creación y provisionado comparten las mismas funciones de copia y de comandos.
+Aplica los mismos archivos que la creación (archivos locales y provisionado del repositorio, ver `CreateWorktreeUseCase`) a un worktree enlazado **ya existente**, p. ej. uno creado por otra herramienta. La ruta tiene que ser uno de los worktrees del repositorio (según `ListWorktreesUseCase`) y no el principal (`NotAWorktree`). Los archivos se copian (o enlazan) encima de los que haya, la aprobación se resuelve y el entorno se prepara igual (reservando puertos para un worktree creado por otra herramienta), se ejecutan los comandos post-creación aprobados y devuelve un `ProvisionResult`: cada `ProvisionedFile`, los comandos saltados y las variables saltadas. A diferencia de la creación, una copia o un entorno fallidos no eliminan nada: el worktree no es de ShogunAi como para borrarlo. Creación y provisionado comparten las mismas funciones de copia y de comandos.
 
 ### `CheckProvisionedFilesUseCase`
 
@@ -617,7 +624,9 @@ Compara un worktree enlazado con lo que le daría ahora el provisionado, sin cam
 
 ### Confianza en el repositorio
 
-`.shogunai.json` está versionado, así que quien controla una rama controla lo que declara. Sus comandos post-creación solo se ejecutan cuando el usuario aprobó esa lista exacta en esta máquina (`RepositoryTrust`, con la ruta real del repositorio como clave). La creación y el provisionado consultan primero el almacén y solo preguntan a `PostCreateApproval` cuando la lista no está aprobada; `RUN` guarda la aprobación antes de ejecutar y `SKIP` devuelve los comandos como saltados. Una lista que cambia (por ejemplo tras un pull) vuelve a preguntar. Guardar `hooks.postCreate` desde los ajustes de la app de escritorio aprueba la lista guardada, porque la escribió el usuario, y los ajustes permiten aprobarla o revocarla explícitamente.
+`.shogunai.json` está versionado, así que quien controla una rama controla lo que declara. Sus comandos post-creación solo se ejecutan, y sus variables declaradas y su archivo de entorno solo se aplican, cuando el usuario aprobó ese sujeto exacto en esta máquina (`RepositoryTrust`, con la ruta real del repositorio como clave). La creación y el provisionado consultan primero el almacén y solo preguntan a `RepositoryApproval` cuando el sujeto no está aprobado, una sola vez para comandos y variables, antes de preparar el entorno; `APPROVE` guarda la aprobación y `SKIP` devuelve los comandos y los nombres de las variables como saltados. Un sujeto que cambia (por ejemplo tras un pull) vuelve a preguntar.
+
+Las variables declaradas se controlan en un solo sitio, `ResolveWorktreeEnvironmentUseCase`, que recibe el almacén de confianza: mientras el sujeto no está aprobado resuelve como si no hubiera nada declarado (sin puertos declarados, variables ni precedencia sobre los providers) e informa de los nombres declarados en `awaitingApproval`, con `declarationApproved = false`, que `WriteEnvironmentFileUseCase` respeta sin escribir nada. Todos los consumidores (el hook `SessionStart` del agente, `shogun env`, los lanzamientos de terminal y de Herdr, el detalle de escritorio, los casos de uso de dispositivos) pasan por él, así que ninguno puede entregarlas sin aprobar. Guardar el entorno desde los ajustes de la app de escritorio aprueba el sujeto guardado cuando el repositorio estaba aprobado antes de guardar o no declara comandos post-creación, y los ajustes permiten aprobarlo o revocarlo explícitamente.
 
 ### `RepairWorktreesUseCase`
 
@@ -625,7 +634,7 @@ Vuelve a enlazar el repositorio base y sus worktrees después de moverlos en dis
 
 ### `ResolveWorktreeEnvironmentUseCase`
 
-Resuelve el entorno de un worktree a partir de la declaración del repositorio base y de los providers que declara. Cada puerto necesario es un `PortRequest` (una clave, los puertos candidatos, los que también tienen que estar libres y el error cuando no queda ninguno): las claves `${port}` declaradas piden 20000–29999 (`declaredPortRequests`); los providers añaden las suyas con `EnvironmentContribution`s, que da la fábrica inyectada `ProviderContributions` (`DEFAULT` conoce el emulador; la app y el CLI pasan una que también construye la del simulador de iOS, que necesita el puerto `AppleSimulators` y los ajustes de máquina del proyecto), junto con las variables que derivan de sus puertos. Sin nada declarado y sin providers que aporten, devuelve un `WorktreeEnvironment` vacío sin ejecutar ningún comando. Si no, busca los directorios de Git de administración y común del worktree (`git rev-parse --path-format=absolute --git-dir --git-common-dir` dentro del worktree) y, con el lock de la máquina:
+Resuelve el entorno de un worktree a partir de la declaración del repositorio base, si está aprobada (ver [Confianza en el repositorio](#confianza-en-el-repositorio)), y de los providers que declara. Cada puerto necesario es un `PortRequest` (una clave, los puertos candidatos, los que también tienen que estar libres y el error cuando no queda ninguno): las claves `${port}` declaradas piden 20000–29999 (`declaredPortRequests`); los providers añaden las suyas con `EnvironmentContribution`s, que da la fábrica inyectada `ProviderContributions` (`DEFAULT` conoce el emulador; la app y el CLI pasan una que también construye la del simulador de iOS, que necesita el puerto `AppleSimulators` y los ajustes de máquina del proyecto), junto con las variables que derivan de sus puertos. Sin nada declarado y sin providers que aporten, devuelve un `WorktreeEnvironment` vacío sin ejecutar ningún comando. Si no, busca los directorios de Git de administración y común del worktree (`git rev-parse --path-format=absolute --git-dir --git-common-dir` dentro del worktree) y, con el lock de la máquina:
 
 1. conserva los puertos guardados del worktree cuyas claves se siguen pidiendo y libera el resto;
 2. reserva cada clave que falte en el primer candidato que, junto con sus puertos adicionales, ningún worktree de la máquina tenga reservado y `PortProbe` dé por libre (si no, el error de la petición, p. ej. `NoFreePort`);

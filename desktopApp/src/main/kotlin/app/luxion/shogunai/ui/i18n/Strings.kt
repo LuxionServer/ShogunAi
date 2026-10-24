@@ -448,6 +448,11 @@ interface Strings {
     val approveCommands: String
     val revokeApproval: String
     val variableNameReserved: String
+    val approvalVariablesTitle: String
+    fun approvalEnvFile(path: String): String
+    fun variablesAwaitingApproval(names: List<String>): String
+    val templateInvalidCharacters: String
+    val envFileInvalidCharacters: String
     val worktreesRepairedAfterMove: String
     val openInHerdr: String
     fun openedInHerdr(name: String): String
@@ -623,10 +628,12 @@ fun Strings.repositoryConfigIssue(issue: RepositoryConfigIssue): String = when (
     RepositoryConfigIssue.InvalidMinutes -> minutesInvalid
     RepositoryConfigIssue.InvalidVariableName -> variableNameInvalid
     RepositoryConfigIssue.ReservedVariableName -> variableNameReserved
+    RepositoryConfigIssue.InvalidVariableValue -> templateInvalidCharacters
     RepositoryConfigIssue.DuplicateVariableName -> variableNameDuplicate
     RepositoryConfigIssue.UnclosedPlaceholder -> templateUnclosed
     is RepositoryConfigIssue.UnknownPlaceholder -> templateUnknown(issue.placeholder)
     RepositoryConfigIssue.EnvFileOutsideWorktree -> envFileOutsideWorktree
+    RepositoryConfigIssue.EnvFileInvalidCharacters -> envFileInvalidCharacters
 }
 
 fun AppLanguage.strings(): Strings = when (this) {

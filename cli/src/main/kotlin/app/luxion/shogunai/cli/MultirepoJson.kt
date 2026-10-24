@@ -62,6 +62,7 @@ fun groupCreationJson(creation: GroupCreation): JsonObject = buildJsonObject {
                 put("skippedPostCreateCommands", buildJsonArray {
                     result.skippedPostCreateCommands.forEach { command -> add(buildJsonArray { command.forEach { add(JsonPrimitive(it)) } }) }
                 })
+                put("skippedVariables", buildJsonArray { result.skippedVariables.forEach { add(JsonPrimitive(it)) } })
                 put("error", result.error?.message?.let(::JsonPrimitive) ?: JsonNull)
             })
         }
