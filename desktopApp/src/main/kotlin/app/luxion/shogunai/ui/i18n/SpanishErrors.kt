@@ -251,6 +251,14 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "No se pudo resolver la rama base de ${error.repository}.",
         "Indica la rama principal del proyecto en sus ajustes.",
     )
+    is WorktreeError.TourCreationFailed -> ErrorTexts(
+        "No se pudo crear el repositorio de ejemplo del recorrido: falló ${error.command.joinToString(" ")}${error.detail.asSuffix()}.",
+        "Comprueba que Git está instalado y funciona en una terminal, y vuelve a empezar el recorrido. No ha quedado nada a medias.",
+    )
+    is WorktreeError.TourAlreadyExists -> ErrorTexts(
+        "La carpeta del recorrido ${error.path} ya existe.",
+        "Reinicia el recorrido para sustituirla, o borra la carpeta.",
+    )
     is WorktreeError.InvalidRef -> ErrorTexts(
         "\"${error.ref}\" no es una rama ni un punto de partida válidos.",
         "Los nombres de rama y los puntos de partida no pueden empezar por \"-\".",

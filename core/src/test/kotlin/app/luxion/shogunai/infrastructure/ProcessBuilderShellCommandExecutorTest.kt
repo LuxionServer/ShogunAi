@@ -90,6 +90,20 @@ class ProcessBuilderShellCommandExecutorTest {
     }
 
     @Test
+    fun `pasa al proceso las variables de entorno indicadas`() = runTest {
+        val result = executor.executeWithEnvironment(listOf("sh", "-c", "printf %s \"\$TOUR_VALUE\""), mapOf("TOUR_VALUE" to "a b"))
+
+        assertEquals("a b", result.stdout)
+    }
+
+    @Test
+    fun `sin entorno indicado no añade variables`() = runTest {
+        val result = executor.execute(listOf("sh", "-c", "printf %s \"\${TOUR_VALUE:-unset}\""))
+
+        assertEquals("unset", result.stdout)
+    }
+
+    @Test
     fun `refleja un código de salida distinto de cero sin lanzar`() = runTest {
         val result = executor.execute(listOf("sh", "-c", "exit 3"))
 

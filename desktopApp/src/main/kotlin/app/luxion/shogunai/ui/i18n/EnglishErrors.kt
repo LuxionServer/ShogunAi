@@ -251,6 +251,14 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "The base branch of ${error.repository} couldn't be resolved.",
         "Set the project's main branch in its settings.",
     )
+    is WorktreeError.TourCreationFailed -> ErrorTexts(
+        "Couldn't create the tour's sample repository: ${error.command.joinToString(" ")} failed${error.detail.asSuffix()}.",
+        "Check that Git is installed and works in a terminal, then start the tour again. Nothing was left behind.",
+    )
+    is WorktreeError.TourAlreadyExists -> ErrorTexts(
+        "The tour's folder ${error.path} already exists.",
+        "Restart the tour to replace it, or delete the folder.",
+    )
     is WorktreeError.InvalidRef -> ErrorTexts(
         "\"${error.ref}\" isn't a valid branch or start point.",
         "Branch names and start points can't start with \"-\".",

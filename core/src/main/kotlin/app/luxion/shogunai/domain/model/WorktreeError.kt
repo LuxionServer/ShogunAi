@@ -242,6 +242,12 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class BaseBranchNotFound(val repository: String) :
         WorktreeError("Couldn't resolve the base branch of $repository; set the project's main branch")
 
+    class TourCreationFailed(val command: List<String>, val detail: String) :
+        WorktreeError("Couldn't create the tour's sample repository: ${command.joinToString(" ")}" + if (detail.isNotBlank()) "\n$detail" else "")
+
+    class TourAlreadyExists(val path: String) :
+        WorktreeError("The tour's folder already exists: $path")
+
 }
 
 private fun List<PoolHolder>.holderList(): String =
