@@ -139,7 +139,14 @@ class WorktreeBoard(
     var cleanupStopEmulators by mutableStateOf(true)
     var cleanupDeleteSimulators by mutableStateOf(true)
     var cleanupDeleteDerivedData by mutableStateOf(true)
-    var cleanupDownComposeProjects by mutableStateOf(true)
+    private var downComposeProjects by mutableStateOf(true)
+    var cleanupDownComposeProjects: Boolean
+        get() = downComposeProjects
+        set(value) {
+            downComposeProjects = value
+            if (!value) cleanupRemoveComposeVolumes = false
+        }
+    var cleanupRemoveComposeVolumes by mutableStateOf(false)
     var isCleaningUp by mutableStateOf(false)
         private set
     var cleanupSuccess by mutableStateOf<WorktreeSuccess.CleanedUp?>(null)
@@ -913,6 +920,7 @@ class WorktreeBoard(
         cleanupDeleteSimulators = true
         cleanupDeleteDerivedData = true
         cleanupDownComposeProjects = true
+        cleanupRemoveComposeVolumes = false
     }
 
     fun dismissCleanup() {
@@ -931,6 +939,7 @@ class WorktreeBoard(
             deleteSimulators = cleanupDeleteSimulators,
             deleteDerivedData = cleanupDeleteDerivedData,
             downComposeProjects = cleanupDownComposeProjects,
+            removeComposeVolumes = cleanupDownComposeProjects && cleanupRemoveComposeVolumes,
         )
         val only = cleanupOnly
         isCleaningUp = true

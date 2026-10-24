@@ -2,9 +2,11 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.io.ComposeProjectRegistry
 import app.luxion.shogunai.domain.io.ComposeProjectSource
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.model.ComposeDownReport
+import app.luxion.shogunai.domain.model.ComposeLeftoversReport
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
@@ -20,6 +22,7 @@ data class CleanupReport(
     val herdrFailures: List<CleanupFailure> = emptyList(),
     val composeDown: ComposeDownReport? = null,
     val composeUnavailable: String? = null,
+    val composeResources: ComposeLeftoversReport? = null,
 )
 
 data class CleanupFailure(val path: String, val error: WorktreeError)
@@ -56,6 +59,7 @@ class CleanUpWorktreesUseCase(
     private val closeHerdrWorkspaces: CloseHerdrWorkspacesUseCase? = null,
     private val composeProjects: ComposeProjectSource? = null,
     fileManager: FileManager? = null,
+    private val composeRegistry: ComposeProjectRegistry? = null,
 ) {
     private val folderRemoval = WorktreeFolderRemoval(config, executor, fileManager, closeHerdrWorkspaces)
 
@@ -64,6 +68,7 @@ class CleanUpWorktreesUseCase(
         mainBranch: MainBranch?,
         deleteBranches: Boolean,
         downComposeProjects: Boolean = false,
+        removeComposeVolumes: Boolean = false,
     ): Result<CleanupReport> = runCatching {
         val workspaces = closeHerdrWorkspaces?.openWorkspaces(candidates.map { it.path }).orEmpty()
         val keptBranches = mutableListOf<String>()
@@ -104,26 +109,40 @@ class CleanUpWorktreesUseCase(
             }
         }
 
-        val compose = if (downComposeProjects) takeDownComposeProjects(removedWorktrees) else null
+        val compose = if (downComposeProjects) takeDownComposeProjects(removedWorktrees, removeComposeVolumes) else null
 
         CleanupReport(
             removed = removedWorktrees.map { it.path },
             keptBranches = keptBranches,
             failures = failures,
             herdrFailures = herdrFailures,
-            composeDown = compose?.getOrNull(),
+            composeDown = compose?.getOrNull()?.first,
             composeUnavailable = compose?.exceptionOrNull()?.let { (it as? WorktreeError.DockerUnavailable)?.reason ?: it.message.orEmpty() },
+            composeResources = compose?.getOrNull()?.second,
         )
     }
 
-    private suspend fun takeDownComposeProjects(removed: List<Worktree>): Result<ComposeDownReport>? {
+    private suspend fun takeDownComposeProjects(
+        removed: List<Worktree>,
+        removeVolumes: Boolean,
+    ): Result<Pair<ComposeDownReport, ComposeLeftoversReport>>? {
         val source = composeProjects ?: return null
         if (removed.isEmpty()) return null
         return runCatching {
-            val names = removed.map { worktreeComposeProjectName(config.baseRepositoryPath, it.path) }.toSet()
+            val names = composeProjectNamesOf(removed)
             val existing = source.list().map { it.name }.filter { it in names }
-            TakeDownComposeProjectsUseCase(source)(existing)
+            val down = TakeDownComposeProjectsUseCase(source)(existing)
+            val resources = source.listResources().filter { it.project in names }
+            down to RemoveComposeLeftoversUseCase(source, composeRegistry)(resources, removeVolumes, config.baseRepositoryPath)
         }
+    }
+
+    private fun composeProjectNamesOf(removed: List<Worktree>): Set<String> {
+        val paths = removed.map { normalizePath(it.path) }.toSet()
+        val recorded = composeRegistry?.let { runCatching { it.entries(config.baseRepositoryPath) }.getOrDefault(emptyList()) }.orEmpty()
+            .filter { normalizePath(it.worktreePath) in paths }
+            .map { it.project }
+        return removed.map { worktreeComposeProjectName(config.baseRepositoryPath, it.path) }.toSet() + recorded
     }
 
     private suspend fun git(vararg args: String) =

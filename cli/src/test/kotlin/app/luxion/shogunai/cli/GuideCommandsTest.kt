@@ -17,6 +17,7 @@ import app.luxion.shogunai.domain.FakeResourceLimitsRepository
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.CapacityProfile
+import app.luxion.shogunai.domain.model.DockerComposeProvider
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.IosSimulatorProvider
 import app.luxion.shogunai.domain.model.RepositoryProviders
@@ -106,7 +107,9 @@ class GuideCommandsTest {
         readAnswer = { answer },
     )
 
-    private fun everything() = declaring(RepositoryProviders(emulator = EmulatorProvider(), iosSimulator = IosSimulatorProvider()))
+    private fun everything() = declaring(
+        RepositoryProviders(emulator = EmulatorProvider(), iosSimulator = IosSimulatorProvider(), dockerCompose = DockerComposeProvider()),
+    )
 
     private fun fakeHerdr() = FakeHerdrClient()
 
@@ -204,11 +207,22 @@ class GuideCommandsTest {
 
         assertEquals(0, exitCode, err.toString())
         val lines = out.lines().filter { it.isNotBlank() }
-        assertTrue(lines.size <= 10, out.toString())
+        val rules = lines.filterNot { it.startsWith("ShogunAi environment of worktree") }
+        assertTrue(rules.size <= 10, out.toString())
         assertTrue(lines.any { it.contains("shogun open <id> --herdr") }, out.toString())
         assertTrue(lines.any { it.contains("shogun emulator start") }, out.toString())
         assertTrue(lines.any { it.contains("shogun simulator start") }, out.toString())
+        assertTrue(lines.any { it.contains("shogun compose up") }, out.toString())
         assertTrue(lines.last().contains("shogun guide"), out.toString())
+    }
+
+    @Test
+    fun `guide resources tells agents to run compose through shogun when the provider is declared`() {
+        assertEquals(0, cli(declaring(RepositoryProviders(dockerCompose = DockerComposeProvider()))).run(listOf("guide", "resources")), err.toString())
+
+        val applicable = out.lines().takeWhile { !it.startsWith("Not applicable") }.joinToString("\n")
+        assertTrue(applicable.contains("`shogun compose up`"), out.toString())
+        assertTrue(applicable.contains("`shogun compose down <worktree>`"), out.toString())
     }
 
     @Test

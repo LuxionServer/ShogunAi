@@ -4,6 +4,10 @@ import app.luxion.shogunai.domain.usecase.worktreeComposeProjectName
 import app.luxion.shogunai.domain.model.ComposeProject
 import app.luxion.shogunai.domain.model.DockerComposeProvider
 import app.luxion.shogunai.ComposeUseCases
+import app.luxion.shogunai.domain.model.ComposeResourceKind
+import app.luxion.shogunai.domain.model.ComposeResource
+import app.luxion.shogunai.domain.model.WorktreeComposeState
+import app.luxion.shogunai.domain.model.ComposeAction
 import app.luxion.shogunai.domain.FakeComposeProjectSource
 import app.luxion.shogunai.domain.model.PoolRelease
 import app.luxion.shogunai.domain.model.PoolReleaseReason
@@ -107,6 +111,7 @@ import app.luxion.shogunai.domain.model.Project
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
@@ -169,6 +174,10 @@ class ProjectWorktreesTest {
     fun tearDown() {
         Dispatchers.resetMain()
     }
+
+    private fun loadedProjectWorktrees(useCases: WorktreeUseCases): ProjectWorktrees =
+        ProjectWorktrees(useCases, CoroutineScope(SupervisorJob() + Dispatchers.Unconfined), ioDispatcher = Dispatchers.Unconfined)
+            .also { it.refresh() }
 
     private fun projectWorktrees(useCases: WorktreeUseCases, onUsed: (String) -> Unit = {}): ProjectWorktrees =
         ProjectWorktrees(useCases, CoroutineScope(SupervisorJob() + dispatcher), ioDispatcher = dispatcher, onUsed = onUsed)
@@ -2090,6 +2099,105 @@ class ProjectWorktreesTest {
 
     private val worktreeComposeName get() = worktreeComposeProjectName(config.baseRepositoryPath, worktreePath)
 
+    private fun composeSection(
+        status: () -> String? = { null },
+        run: suspend (String, ComposeAction) -> Result<String> = { _, _ -> Result.success(worktreeComposeName) },
+        unavailable: Boolean = false,
+        declared: Boolean = true,
+    ) = ComposeUseCases(
+        provider = { DockerComposeProvider().takeIf { declared } },
+        readStates = { worktrees ->
+            if (unavailable) {
+                Result.failure(WorktreeError.DockerUnavailable("daemon down"))
+            } else {
+                Result.success(worktrees.associate { it.path to WorktreeComposeState(worktreeComposeProjectName(config.baseRepositoryPath, it.path), status()) })
+            }
+        },
+        run = run,
+    )
+
+    @Test
+    fun `the compose section shows the project not started before any start`() = runTest(dispatcher) {
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(compose = composeSection()))
+        advanceUntilIdle()
+
+        assertEquals(WorktreeComposeState(worktreeComposeName, null), viewModel.composeStates[worktreePath])
+        assertFalse(viewModel.isComposeUnavailable)
+    }
+
+    @Test
+    fun `starting the services shows progress and then the new state`() = runTest(dispatcher) {
+        var status: String? = null
+        val actions = mutableListOf<Pair<String, ComposeAction>>()
+        val gate = CompletableDeferred<Unit>()
+        val compose = composeSection(status = { status }, run = { path, action ->
+            actions += path to action
+            gate.await()
+            status = "running(2)"
+            Result.success(worktreeComposeName)
+        })
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(compose = compose))
+        advanceUntilIdle()
+
+        viewModel.startComposeServices(worktree)
+        viewModel.startComposeServices(worktree)
+        advanceUntilIdle()
+        assertEquals(ProjectWorktrees.ComposeActivity.STARTING, viewModel.composeActivities[worktreePath])
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(listOf<Pair<String, ComposeAction>>(worktreePath to ComposeAction.Up()), actions)
+        assertTrue(viewModel.composeActivities.isEmpty())
+        assertEquals("running(2)", viewModel.composeStates[worktreePath]?.status)
+    }
+
+    @Test
+    fun `building the services runs a build`() = runTest(dispatcher) {
+        val actions = mutableListOf<ComposeAction>()
+        val compose = composeSection(run = { _, action -> actions += action; Result.success(worktreeComposeName) })
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(compose = compose))
+        advanceUntilIdle()
+
+        viewModel.buildComposeServices(worktree)
+        advanceUntilIdle()
+
+        assertEquals(listOf<ComposeAction>(ComposeAction.Build()), actions)
+    }
+
+    @Test
+    fun `a failed start is shown as an action error with its reason`() = runTest(dispatcher) {
+        val compose = composeSection(run = { _, _ -> Result.failure(WorktreeError.ComposeCommandFailed(worktreeComposeName, "port is already allocated")) })
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(compose = compose))
+        advanceUntilIdle()
+
+        viewModel.startComposeServices(worktree)
+        advanceUntilIdle()
+
+        assertEquals("port is already allocated", (viewModel.actionErrors[worktreePath] as WorktreeError.ComposeCommandFailed).detail)
+        assertTrue(viewModel.composeActivities.isEmpty())
+    }
+
+    @Test
+    fun `without docker the compose section is unavailable`() = runTest(dispatcher) {
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(compose = composeSection(unavailable = true)))
+        advanceUntilIdle()
+
+        assertTrue(viewModel.isComposeUnavailable)
+        assertTrue(viewModel.composeStates.isEmpty())
+    }
+
+    @Test
+    fun `a repository without the compose provider reads no compose state`() = runTest(dispatcher) {
+        var reads = 0
+        val compose = composeSection(declared = false).copy(readStates = { reads++; Result.success(emptyMap()) })
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(compose = compose))
+        advanceUntilIdle()
+
+        assertFalse(viewModel.isComposeRepository)
+        assertEquals(0, reads)
+    }
+
     @Test
     fun `cleanup takes down the compose projects of the removed worktrees`() = runTest(dispatcher) {
         val source = FakeComposeProjectSource(listOf(ComposeProject(worktreeComposeName, "running(1)", emptyList())))
@@ -2104,6 +2212,63 @@ class ProjectWorktreesTest {
 
         assertEquals(listOf(worktreeComposeName to false), source.downs)
         assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1, takenDownComposeProjects = 1), board.cleanupSuccess)
+    }
+
+    private val composeImage get() = ComposeResource(ComposeResourceKind.IMAGE, "sha256:aa", "$worktreeComposeName-api", worktreeComposeName)
+    private val composeVolume get() = ComposeResource(ComposeResourceKind.VOLUME, "${worktreeComposeName}_db", "${worktreeComposeName}_db", worktreeComposeName)
+
+    @Test
+    fun `cleanup removes built images and keeps volumes by default`() = runTest(dispatcher) {
+        val source = FakeComposeProjectSource(resources = listOf(composeImage, composeVolume))
+        val board = board(composeRepository(mergedResponder(), source))
+        advanceUntilIdle()
+
+        board.openCleanup()
+        assertFalse(board.cleanupRemoveComposeVolumes)
+        board.confirmCleanup()
+        advanceUntilIdle()
+
+        assertEquals(listOf(composeImage), source.removals)
+        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1, removedComposeResources = 1), board.cleanupSuccess)
+    }
+
+    @Test
+    fun `cleanup removes volumes when that option is checked`() = runTest(dispatcher) {
+        val source = FakeComposeProjectSource(resources = listOf(composeImage, composeVolume))
+        val board = board(composeRepository(mergedResponder(), source))
+        advanceUntilIdle()
+
+        board.openCleanup()
+        board.cleanupRemoveComposeVolumes = true
+        board.confirmCleanup()
+        advanceUntilIdle()
+
+        assertEquals(listOf(composeImage, composeVolume), source.removals)
+    }
+
+    @Test
+    fun `unchecking the compose option unchecks the volumes option`() = runTest(dispatcher) {
+        val board = board(composeRepository(mergedResponder(), FakeComposeProjectSource()))
+        advanceUntilIdle()
+
+        board.openCleanup()
+        board.cleanupRemoveComposeVolumes = true
+        board.cleanupDownComposeProjects = false
+
+        assertFalse(board.cleanupRemoveComposeVolumes)
+    }
+
+    @Test
+    fun `an image in use is reported in the cleanup issues`() = runTest(dispatcher) {
+        val source = FakeComposeProjectSource(resources = listOf(composeImage), failingRemovals = mapOf("sha256:aa" to "in use"))
+        val board = board(composeRepository(mergedResponder(), source))
+        advanceUntilIdle()
+
+        board.openCleanup()
+        board.confirmCleanup()
+        advanceUntilIdle()
+
+        assertEquals("in use", board.project.cleanupIssues?.composeResources?.failures?.single()?.detail)
     }
 
     @Test
@@ -2326,6 +2491,35 @@ class ProjectWorktreesTest {
 
         assertEquals(listOf(worktreePath), simulators.stopped)
         assertTrue(viewModel.stoppingSimulators.isEmpty())
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the detail shows the compose section and starts the services from it`() = runComposeUiTest {
+        val actions = mutableListOf<ComposeAction>()
+        val compose = composeSection(run = { _, action -> actions += action; Result.success(worktreeComposeName) })
+        val holder = loadedProjectWorktrees(useCases(listingResponder()).copy(compose = compose))
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder) } }
+
+        waitUntil { onAllNodesWithText("Not started").fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText(worktreeComposeName).assertIsDisplayed()
+        onNodeWithText("Not started").assertIsDisplayed()
+        onNodeWithText("Build").assertIsDisplayed()
+        onNodeWithText("Take down").assertDoesNotExist()
+        onNodeWithText("Start").performClick()
+        waitUntil { actions.isNotEmpty() }
+
+        assertEquals(listOf<ComposeAction>(ComposeAction.Up()), actions)
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the compose section says when docker is unavailable and offers no action`() = runComposeUiTest {
+        val holder = loadedProjectWorktrees(useCases(listingResponder()).copy(compose = composeSection(unavailable = true)))
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder) } }
+
+        waitUntil { onAllNodesWithText("Docker isn't available").fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("Build").assertDoesNotExist()
     }
 
     @OptIn(ExperimentalTestApi::class)

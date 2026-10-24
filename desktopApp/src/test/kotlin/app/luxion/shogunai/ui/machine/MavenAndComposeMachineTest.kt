@@ -2,6 +2,9 @@ package app.luxion.shogunai.ui.machine
 
 import app.luxion.shogunai.MachineUseCases
 import app.luxion.shogunai.domain.model.ComposeDownReport
+import app.luxion.shogunai.domain.model.ComposeLeftoversReport
+import app.luxion.shogunai.domain.model.ComposeResource
+import app.luxion.shogunai.domain.model.ComposeResourceKind
 import app.luxion.shogunai.domain.model.ComposeOwner
 import app.luxion.shogunai.domain.model.ComposeProject
 import app.luxion.shogunai.domain.model.DerivedDataDeletion
@@ -60,6 +63,8 @@ class MavenAndComposeMachineTest {
         var mavenListings = 0
         var composeProjects: Result<List<WorktreeComposeProject>> = Result.success(emptyList())
         val takenDown = mutableListOf<List<String>>()
+        var leftovers = emptyList<ComposeResource>()
+        val removals = mutableListOf<Pair<List<ComposeResource>, Boolean>>()
     }
 
     private fun useCases(calls: Calls) = MachineUseCases(
@@ -85,6 +90,14 @@ class MavenAndComposeMachineTest {
         listMavenDaemons = { calls.mavenListings++; Result.success(calls.mavenDaemons) },
         listComposeProjects = { _, _, _ -> calls.composeProjects },
         takeDownComposeProjects = { names -> calls.takenDown += names; ComposeDownReport(takenDown = names) },
+        listComposeLeftovers = { _, _ -> Result.success(calls.leftovers) },
+        removeComposeLeftovers = { _, resources, removeVolumes ->
+            calls.removals += resources to removeVolumes
+            val (volumes, others) = resources.partition { it.kind == ComposeResourceKind.VOLUME }
+            val removed = others + if (removeVolumes) volumes else emptyList()
+            calls.leftovers = calls.leftovers - removed.toSet()
+            ComposeLeftoversReport(removed = removed, kept = if (removeVolumes) emptyList() else volumes)
+        },
     )
 
     private fun machine(calls: Calls, vararg resources: MachineResource, existing: Set<String> = emptySet()) = MachineResources(
@@ -189,5 +202,63 @@ class MavenAndComposeMachineTest {
         runCurrent()
         assertTrue(calls.takenDown.isEmpty())
         assertNull(machine.composeDownReport)
+    }
+
+    private val leftoverNetwork = ComposeResource(ComposeResourceKind.NETWORK, "n1", "main-repo-task-9_default", "main-repo-task-9")
+    private val leftoverVolume = ComposeResource(ComposeResourceKind.VOLUME, "main-repo-task-9_db", "main-repo-task-9_db", "main-repo-task-9")
+
+    @Test
+    fun `leftovers of removed worktrees are listed after the projects`() = machineTest {
+        val calls = Calls().apply { leftovers = listOf(leftoverNetwork, leftoverVolume) }
+        val machine = machine(calls, MachineResource.COMPOSE_PROJECTS)
+
+        machine.show(MachineResource.COMPOSE_PROJECTS)
+        runCurrent()
+
+        assertEquals(listOf(MachineComposeLeftover("main-repo", leftoverNetwork), MachineComposeLeftover("main-repo", leftoverVolume)), machine.composeLeftovers)
+    }
+
+    @Test
+    fun `removing leftovers keeps volumes and reloads`() = machineTest {
+        val calls = Calls().apply { leftovers = listOf(leftoverNetwork, leftoverVolume) }
+        val machine = machine(calls, MachineResource.COMPOSE_PROJECTS)
+        machine.show(MachineResource.COMPOSE_PROJECTS)
+        runCurrent()
+
+        machine.removeComposeLeftovers(removeVolumes = false)
+        runCurrent()
+
+        assertEquals(false, calls.removals.single().second)
+        assertEquals(listOf(leftoverNetwork), machine.composeLeftoversReport?.removed)
+        assertEquals(listOf(MachineComposeLeftover("main-repo", leftoverVolume)), machine.composeLeftovers)
+        assertFalse(machine.isRemovingComposeLeftovers)
+    }
+
+    @Test
+    fun `removing leftovers with volumes removes them too`() = machineTest {
+        val calls = Calls().apply { leftovers = listOf(leftoverNetwork, leftoverVolume) }
+        val machine = machine(calls, MachineResource.COMPOSE_PROJECTS)
+        machine.show(MachineResource.COMPOSE_PROJECTS)
+        runCurrent()
+
+        machine.removeComposeLeftovers(removeVolumes = true)
+        runCurrent()
+
+        assertEquals(true, calls.removals.single().second)
+        assertTrue(machine.composeLeftovers.isEmpty())
+    }
+
+    @Test
+    fun `nothing left means no leftovers and no removal`() = machineTest {
+        val calls = Calls()
+        val machine = machine(calls, MachineResource.COMPOSE_PROJECTS)
+        machine.show(MachineResource.COMPOSE_PROJECTS)
+        runCurrent()
+
+        machine.removeComposeLeftovers(removeVolumes = false)
+        runCurrent()
+
+        assertTrue(machine.composeLeftovers.isEmpty())
+        assertTrue(calls.removals.isEmpty())
     }
 }

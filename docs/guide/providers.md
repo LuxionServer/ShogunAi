@@ -86,17 +86,33 @@ Daemon inspection needs `ps` and `lsof` (macOS and Linux).
 
 Two worktrees running `docker compose up` share container, network and volume names, and publish the same host ports. The provider gives each worktree its own:
 
-- `COMPOSE_PROJECT_NAME` is `<repository folder>-<worktree folder>`, lowercased, with every character other than letters, digits, `-` and `_` replaced by `-` (`main-repo` and `TASK-123` give `main-repo-task-123`). A folder name that normalising would make ambiguous (`fix login (2)`, or mixed case) gets a short stable hash, and a name over 50 characters is shortened keeping it, so different worktrees get different names. The name is derived, not stored, so nothing is left behind when a worktree is removed. A `COMPOSE_PROJECT_NAME` declared in `env` takes precedence.
+- `COMPOSE_PROJECT_NAME` is `<repository folder>-<worktree folder>`, lowercased, with every character other than letters, digits, `-` and `_` replaced by `-` (`main-repo` and `TASK-123` give `main-repo-task-123`). A folder name that normalising would make ambiguous (`fix login (2)`, or mixed case) gets a short stable hash, and a name over 50 characters is shortened keeping it, so different worktrees get different names. A `COMPOSE_PROJECT_NAME` declared in `env` takes precedence.
 - `portVariables` is optional: each name becomes a variable with a free port in 20000-29999 reserved for that worktree (the same rules as `${port}`), so the Compose file can publish `${DB_PORT}:5432` without colliding. Names follow the variable name rule and can't be reserved names; a name also declared in `env` gets the declared value and no port.
 
-The app shows a "Compose projects" section with the projects `docker compose ls` reports for the repository's worktrees (status and worktree) and the projects of removed worktrees: those whose name starts with the repository folder's name, whose compose files lived in the repository or its worktrees folder, and that match no existing worktree. Projects of other repositories, even with a similar prefix, are never touched. "Take down the projects of removed worktrees" runs `docker compose -p <name> down`, which removes containers and networks and keeps volumes (volumes are only removed with `--volumes` from the command line). "Clean up" has a checked option to take down the projects of the worktrees it removes; if Docker isn't available the worktrees are still removed and the report says the projects were kept.
+### Starting and building the services
+
+`shogun compose up` starts the services of the worktree you're in, detached, with its `COMPOSE_PROJECT_NAME` and port variables, so you never pass `-p` or ports by hand; `--build` builds first, and everything after `--` goes to `docker compose` as is (service names, `--wait`). `shogun compose build` only builds. Docker Compose's output is shown as it runs. The worktree's detail in the app has a Compose section with the project's name and state (`Not started` when Docker knows no such project) and Start, Build and Take down actions. The SessionStart context tells Claude to use `shogun compose up`.
+
+### What removed worktrees leave behind
+
+Taking a project down keeps its volumes, and Compose never removes the images it built, so removed worktrees leave volumes, networks and images behind. ShogunAi records in `~/.shogunai/compose-projects.json` the project name it gives each worktree (when its environment is resolved and on every `up` or `build`); a volume, network or image whose `com.docker.compose.project` label is a recorded name whose worktree no longer exists is a leftover of that worktree. A name that no other worktree uses now and that no other repository has recorded is the only thing that counts, so projects of other repositories, even with a similar prefix, are never touched. Images pulled from a registry (such as `postgres`) carry no Compose label and are never removed.
+
+The Machine section's "Compose projects" view lists the projects `docker compose ls` reports for the repository's worktrees (status and worktree), the projects of removed worktrees (recorded ones, and those whose compose files lived in the repository or its worktrees folder), and, after them, the leftovers of removed worktrees. "Take down the projects of removed worktrees" runs `docker compose -p <name> down`, which removes containers and networks and keeps volumes. "Remove networks and images" removes the leftovers except volumes; "Remove volumes too" asks first, because their data is lost. Nothing is ever forced: an image or network still used by a container is kept and reported.
+
+"Clean up" has a checked option to take down the projects of the worktrees it removes and remove their networks and built images, and an unchecked one to remove their volumes too; if Docker isn't available the worktrees are still removed and the report says the projects were kept.
+
+Worktrees removed before this registry existed weren't recorded: their projects with containers are still found by their compose files, and the rest can be removed with `docker volume rm` and `docker image rm`.
 
 ```bash
-shogun compose                     # the Compose projects of the worktrees and their status
+shogun compose up                  # start this worktree's services (detached) with its project name and ports
+shogun compose up --build -- api   # build first, and only the api service
+shogun compose build               # build this worktree's services
+shogun compose                     # the Compose projects of the worktrees and what removed worktrees left
 shogun compose down                # take down the projects of removed worktrees (volumes kept)
 shogun compose down TASK-123       # take down one worktree's project
-shogun compose down --volumes      # also remove their volumes
-shogun clean --yes --down-compose-projects  # also take down the projects of the removed worktrees
+shogun compose prune               # list the networks and images left by removed worktrees
+shogun compose prune --yes         # remove them (add --volumes to remove their volumes too)
+shogun clean --yes --down-compose-projects  # also take down the removed worktrees' projects and remove their images
 ```
 
 Docker is only run for repositories that declare the provider, and only the Docker CLI is used.

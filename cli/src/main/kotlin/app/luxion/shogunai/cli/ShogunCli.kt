@@ -76,6 +76,15 @@ import app.luxion.shogunai.domain.usecase.CheckGradleBuildCacheUseCase
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.CloseHerdrWorkspacesUseCase
 import app.luxion.shogunai.domain.usecase.DetectRepositoryStacksUseCase
+import app.luxion.shogunai.domain.usecase.ListComposeLeftoversUseCase
+import app.luxion.shogunai.domain.usecase.RemoveComposeLeftoversUseCase
+import app.luxion.shogunai.domain.usecase.RunComposeProjectUseCase
+import app.luxion.shogunai.domain.executor.OutputChannel
+import app.luxion.shogunai.domain.io.ComposeProjectRegistry
+import app.luxion.shogunai.domain.model.ComposeAction
+import app.luxion.shogunai.domain.model.ComposeLeftoversReport
+import app.luxion.shogunai.domain.model.ComposeResourceKind
+import app.luxion.shogunai.infrastructure.JsonComposeProjectRegistry
 import app.luxion.shogunai.domain.usecase.ListComposeProjectsUseCase
 import app.luxion.shogunai.domain.usecase.ListMavenDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.TakeDownComposeProjectsUseCase
@@ -229,6 +238,7 @@ class ShogunCli(
     private val agentProcessId: () -> Long? = ::claudeAncestorPid,
     private val mavenDaemonSource: MavenDaemonSource = ProcessMavenDaemonSource(executor),
     private val composeSource: ComposeProjectSource = DockerComposeProjectSource(executor),
+    private val composeRegistry: ComposeProjectRegistry = JsonComposeProjectRegistry(Path.of(userHome, ".shogunai", "compose-projects.json")),
     private val multirepoSource: MultirepoSource = JsonMultirepoSource(Path.of(userHome, ".shogunai", "multirepos.json")),
     private val appRequests: AppRequestChannel = FileAppRequestChannel(Path.of(userHome, ".shogunai", "app-requests")),
     private val appLock: AppInstanceLock = FileAppInstanceLock(Path.of(userHome, ".shogunai", "app.lock")),
@@ -284,7 +294,7 @@ class ShogunCli(
     private val deleteSimulators = DeleteSimulatorsUseCase(provisioningSource, appleSimulators, resolveEnvironment)
 
     private fun resolverWith(factory: ProviderContributions) =
-        ResolveWorktreeEnvironmentUseCase(executor, provisioningSource, environmentStateStore, portProbe, factory)
+        ResolveWorktreeEnvironmentUseCase(executor, provisioningSource, environmentStateStore, portProbe, factory, composeRegistry = composeRegistry)
 
     private fun simulatorSettingsFor(repositoryPath: String): SimulatorSettings =
         projectRepository.list().firstOrNull { sameDirectory(it.config.baseRepositoryPath, repositoryPath) }
@@ -341,6 +351,8 @@ class ShogunCli(
             is CliCommand.Maven -> maven(command)
             is CliCommand.Compose -> compose(command)
             is CliCommand.ComposeDown -> composeDown(command)
+            is CliCommand.ComposeRun -> composeRun(command)
+            is CliCommand.ComposePrune -> composePrune(command)
             is CliCommand.Env -> env(command)
             is CliCommand.Emulator -> emulator(command)
             is CliCommand.Simulator -> simulator(command)
@@ -1064,11 +1076,12 @@ class ShogunCli(
             out.line(dryRunHint(command, candidates.size, simulators.orphans.isNotEmpty(), derivedDataOrphans.isNotEmpty()))
             return EXIT_OK
         }
-        val report = CleanUpWorktreesUseCase(config, executor, closeHerdrWorkspaces, composeSource, fileManager)(
+        val report = CleanUpWorktreesUseCase(config, executor, closeHerdrWorkspaces, composeSource, fileManager, composeRegistry)(
             candidates,
             mainBranch,
             command.deleteBranches,
             downComposeProjects = downCompose,
+            removeComposeVolumes = downCompose && command.removeComposeVolumes,
         ).getOrThrow()
         report.removed.forEach { say("removed $it") }
         report.keptBranches.forEach { say("kept branch $it (not merged)") }
@@ -1077,6 +1090,7 @@ class ShogunCli(
         report.composeDown?.takenDown?.forEach { say("took down Compose project $it") }
         report.composeDown?.failures?.forEach { err.line("shogun: couldn't take down Compose project ${it.name}: ${it.detail}") }
         report.composeUnavailable?.let { err.line("shogun: Docker isn't available ($it), so the Compose projects were kept") }
+        report.composeResources?.let { printLeftoversReport(it, say) }
         val deletedBranches = if (command.deleteBranches) {
             candidates.filter { it.path in report.removed }.mapNotNull { it.branch }.filterNot { it in report.keptBranches }
         } else {
@@ -1125,6 +1139,7 @@ class ShogunCli(
                         simulatorsDeleted = deletedSimulators,
                         derivedDataDeleted = derivedDataDeleted,
                         composeProjectsDown = report.composeDown?.takenDown,
+                        composeResources = report.composeResources,
                     ),
                 ),
             )
@@ -1140,6 +1155,7 @@ class ShogunCli(
             "--delete-simulators".takeIf { command.deleteSimulators },
             "--delete-derived-data".takeIf { command.deleteDerivedData },
             "--down-compose-projects".takeIf { command.downComposeProjects },
+            "--compose-volumes".takeIf { command.removeComposeVolumes },
             "--yes",
         )
         val what = listOfNotNull(
@@ -1389,7 +1405,8 @@ class ShogunCli(
                 appendToEnvironmentFile(path, formatEnvironment(environment, EnvironmentFormat.SH))
             }
             val listed = environment.variables.joinToString(", ") { (name, value) -> "$name=$value" }
-            out.line("ShogunAi environment of worktree ${folderName(worktree.path)}: $listed")
+            val compose = if (context.composeProvider) ". $COMPOSE_SESSION_HINT" else ""
+            out.line("ShogunAi environment of worktree ${folderName(worktree.path)}: $listed$compose")
         }
         WorkflowRules.sessionStartLines(context).forEach { out.line(it) }
         multirepo?.takeIf { !it.atFolder && it.alias != null }?.let { found ->
@@ -1405,6 +1422,7 @@ class ShogunCli(
             herdrAvailable = herdrAvailable(),
             emulatorProvider = providers.emulator != null,
             simulatorProvider = providers.iosSimulator != null && appleSimulators.isSupported(),
+            composeProvider = providers.dockerCompose != null,
         )
     }
 
@@ -1714,15 +1732,13 @@ class ShogunCli(
     private suspend fun compose(command: CliCommand.Compose): Int {
         val config = requireComposeProvider() ?: return EXIT_FAILURE
         val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
-        val projects = ListComposeProjectsUseCase(composeSource)(config.baseRepositoryPath, worktrees, worktreesRootOf(config, worktrees)).getOrThrow()
+        val projects = ListComposeProjectsUseCase(composeSource, composeRegistry)(config.baseRepositoryPath, worktrees, worktreesRootOf(config, worktrees)).getOrThrow()
+        val leftovers = ListComposeLeftoversUseCase(composeSource, composeRegistry)(config.baseRepositoryPath, worktrees).getOrThrow()
         if (command.json) {
-            printJson(composeJson(projects))
+            printJson(composeJson(projects, leftovers))
             return EXIT_OK
         }
-        if (projects.isEmpty()) {
-            out.line("No Compose projects for the worktrees.")
-            return EXIT_OK
-        }
+        if (projects.isEmpty()) out.line("No Compose projects for the worktrees.")
         projects.forEach {
             val worktree = when (val owner = it.owner) {
                 is ComposeOwner.Worktree -> owner.path
@@ -1730,7 +1746,76 @@ class ShogunCli(
             }
             out.line("${it.project.name}  status=${it.project.status.ifEmpty { "unknown" }}  worktree=$worktree")
         }
+        leftovers.forEach { out.line("leftover ${it.kind.id} ${it.name}  project=${it.project}") }
+        if (leftovers.isNotEmpty()) {
+            val prune = if (leftovers.any { it.kind == ComposeResourceKind.VOLUME }) "shogun compose prune --volumes" else "shogun compose prune"
+            out.line("Run '$prune' to see what it removes, and add --yes to remove it.")
+        }
         return EXIT_OK
+    }
+
+    private suspend fun composeRun(command: CliCommand.ComposeRun): Int {
+        val config = requireComposeProvider() ?: return EXIT_FAILURE
+        val worktree = if (command.target != null) {
+            findWorktreeTarget(command.target, ListWorktreesUseCase(config, executor)().getOrThrow(), config, ::canonical)
+        } else {
+            configAndWorktreeContaining(workingDirectory).second
+        }
+        val action = if (command.onlyBuild) ComposeAction.Build(command.extraArguments) else ComposeAction.Up(command.build, command.extraArguments)
+        val verb = if (command.onlyBuild) "built" else "started"
+        val result = RunComposeProjectUseCase(composeSource, resolveEnvironment, composeRegistry)(config.baseRepositoryPath, worktree.path, action) { line ->
+            if (command.json || line.channel == OutputChannel.ERROR) err.line(line.text) else out.line(line.text)
+        }
+        val project = result.getOrNull()
+        val error = result.exceptionOrNull()
+        if (command.json) printJson(composeRunJson(worktree.path, project, error?.message))
+        if (error != null) {
+            err.line("shogun: ${error.message}")
+            return EXIT_FAILURE
+        }
+        if (!command.json) out.line("$verb Compose project $project for ${worktree.path}")
+        return EXIT_OK
+    }
+
+    private suspend fun composePrune(command: CliCommand.ComposePrune): Int {
+        val config = requireComposeProvider() ?: return EXIT_FAILURE
+        val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
+        val leftovers = ListComposeLeftoversUseCase(composeSource, composeRegistry)(config.baseRepositoryPath, worktrees).getOrThrow()
+        if (!command.confirmed) {
+            val (volumes, others) = leftovers.partition { it.kind == ComposeResourceKind.VOLUME }
+            val plan = ComposeLeftoversReport(
+                removed = others + if (command.volumes) volumes else emptyList(),
+                kept = if (command.volumes) emptyList() else volumes,
+            )
+            if (command.json) {
+                printJson(composeLeftoversJson(plan, dryRun = true))
+                return EXIT_OK
+            }
+            if (leftovers.isEmpty()) {
+                out.line("Nothing to remove.")
+                return EXIT_OK
+            }
+            plan.removed.forEach { out.line("would remove ${it.kind.id} ${it.name}  project=${it.project}") }
+            plan.kept.forEach { out.line("would keep ${it.kind.id} ${it.name}  project=${it.project} (add --volumes to remove it)") }
+            out.line(if (plan.removed.isEmpty()) "Run 'shogun compose prune --volumes --yes' to remove the volumes." else "Run again with --yes to remove them.")
+            return EXIT_OK
+        }
+        val report = RemoveComposeLeftoversUseCase(composeSource, composeRegistry)(leftovers, command.volumes, config.baseRepositoryPath)
+        if (command.json) {
+            printJson(composeLeftoversJson(report, dryRun = false))
+        } else if (leftovers.isEmpty()) {
+            out.line("Nothing to remove.")
+        } else {
+            printLeftoversReport(report, saying(false))
+        }
+        report.failures.takeIf { command.json }?.forEach { err.line("shogun: couldn't remove ${it.resource.kind.id} ${it.resource.name}: ${it.detail}") }
+        return if (report.failures.isEmpty()) EXIT_OK else EXIT_FAILURE
+    }
+
+    private fun printLeftoversReport(report: ComposeLeftoversReport, say: (String) -> Unit) {
+        report.removed.forEach { say("removed ${it.kind.id} ${it.name}") }
+        report.kept.forEach { say("kept ${it.kind.id} ${it.name}") }
+        report.failures.forEach { err.line("shogun: couldn't remove ${it.resource.kind.id} ${it.resource.name}: ${it.detail}") }
     }
 
     private suspend fun composeDown(command: CliCommand.ComposeDown): Int {
@@ -1740,7 +1825,7 @@ class ShogunCli(
             val worktree = findWorktreeTarget(command.target, worktrees, config, ::canonical)
             listOf(worktreeComposeProjectName(config.baseRepositoryPath, worktree.path))
         } else {
-            ListComposeProjectsUseCase(composeSource)(config.baseRepositoryPath, worktrees, worktreesRootOf(config, worktrees))
+            ListComposeProjectsUseCase(composeSource, composeRegistry)(config.baseRepositoryPath, worktrees, worktreesRootOf(config, worktrees))
                 .getOrThrow()
                 .filter { it.owner == ComposeOwner.RemovedWorktree }
                 .map { it.project.name }
@@ -2210,6 +2295,7 @@ class ShogunCli(
         const val EXIT_DRIFT = 3
         private const val CLAUDE_CODE_WORKTREES = ".claude/worktrees"
         private const val CLAUDE_ENV_FILE = "CLAUDE_ENV_FILE"
+        private const val COMPOSE_SESSION_HINT = "Start its Docker Compose services with `shogun compose up` (`--build` to rebuild)."
         private const val CLAUDE_CONFIG_DIR = "CLAUDE_CONFIG_DIR"
         private const val CODEX_HOME = "CODEX_HOME"
         private const val HERDR_PROBE_MILLIS = 2_000L

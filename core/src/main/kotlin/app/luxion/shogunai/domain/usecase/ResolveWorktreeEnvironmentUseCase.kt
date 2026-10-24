@@ -1,6 +1,8 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.io.ComposeProjectRegistry
+import app.luxion.shogunai.domain.io.ComposeRegistryEntry
 import app.luxion.shogunai.domain.io.EnvironmentStateStore
 import app.luxion.shogunai.domain.io.PortProbe
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
@@ -16,6 +18,7 @@ class ResolveWorktreeEnvironmentUseCase(
     private val portProbe: PortProbe,
     private val contributions: ProviderContributions = ProviderContributions.DEFAULT,
     private val cache: WorktreeEnvironmentCache? = null,
+    private val composeRegistry: ComposeProjectRegistry? = null,
 ) {
     suspend operator fun invoke(
         repositoryPath: String,
@@ -54,7 +57,15 @@ class ResolveWorktreeEnvironmentUseCase(
         val fromProviders = contributed.filter { it.isAcquiredIn(reservations) }
             .flatMap { it.variables(reservations) + it.contextual(context) }
             .filterNot { it.first in declaredNames }
-        WorktreeEnvironment(variables = fromProviders + declared, ports = ports, resources = resources)
+        val environment = WorktreeEnvironment(variables = fromProviders + declared, ports = ports, resources = resources)
+        if (reserve && provisioning.providers.dockerCompose != null) recordComposeProject(repositoryPath, worktreePath, environment)
+        environment
+    }
+
+    private fun recordComposeProject(repositoryPath: String, worktreePath: String, environment: WorktreeEnvironment) {
+        val registry = composeRegistry ?: return
+        val project = environment.variables.lastOrNull { it.first == COMPOSE_PROJECT_NAME }?.second ?: return
+        runCatching { registry.record(repositoryPath, ComposeRegistryEntry(project, normalizePath(worktreePath))) }
     }
 
     suspend fun recordedOnMachine(repositoryPath: String, key: String): Result<Set<String>> = runCatching {

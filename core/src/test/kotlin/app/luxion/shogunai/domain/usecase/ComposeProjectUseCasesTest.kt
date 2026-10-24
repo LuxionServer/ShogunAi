@@ -1,6 +1,20 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeAppleSimulators
+import app.luxion.shogunai.domain.FakeComposeProjectRegistry
 import app.luxion.shogunai.domain.FakeComposeProjectSource
+import app.luxion.shogunai.domain.FakeEnvironmentStateStore
+import app.luxion.shogunai.domain.FakePortProbe
+import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
+import app.luxion.shogunai.domain.io.ComposeRegistryEntry
+import app.luxion.shogunai.domain.model.ComposeAction
+import app.luxion.shogunai.domain.model.ComposeResource
+import app.luxion.shogunai.domain.model.ComposeResourceKind
+import app.luxion.shogunai.domain.model.DockerComposeProvider
+import app.luxion.shogunai.domain.model.RepositoryProviders
+import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.domain.model.SimulatorSettings
+import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.model.ComposeOwner
 import app.luxion.shogunai.domain.model.ComposeProject
@@ -141,5 +155,261 @@ class ComposeProjectUseCasesTest {
         assertEquals(listOf(removed.path), report.removed)
         assertEquals("daemon not reachable", report.composeUnavailable)
         assertNull(report.composeDown)
+    }
+
+    private val task9 = "$worktreesRoot/TASK-9"
+    private fun resource(kind: ComposeResourceKind, name: String, project: String = "main-repo-task-9") = ComposeResource(kind, name, name, project)
+    private val volume = resource(ComposeResourceKind.VOLUME, "main-repo-task-9_db-data")
+    private val network = resource(ComposeResourceKind.NETWORK, "main-repo-task-9_default")
+    private val image = resource(ComposeResourceKind.IMAGE, "main-repo-task-9-api")
+
+    private fun registryWith(vararg entries: ComposeRegistryEntry) = FakeComposeProjectRegistry(mapOf(repository to entries.toList()))
+
+    @Test
+    fun `leftovers are the resources of recorded projects whose worktree is gone`() = runTest {
+        val registry = registryWith(ComposeRegistryEntry("main-repo-task-9", task9), ComposeRegistryEntry("main-repo-task-123", "$worktreesRoot/TASK-123"))
+        val source = FakeComposeProjectSource(
+            resources = listOf(volume, network, image, resource(ComposeResourceKind.VOLUME, "main-repo-task-123_db", "main-repo-task-123")),
+        )
+
+        val leftovers = ListComposeLeftoversUseCase(source, registry)(repository, worktrees).getOrThrow()
+
+        assertEquals(listOf(volume, network, image), leftovers)
+    }
+
+    @Test
+    fun `a project that was never recorded has no leftovers even with the repository's prefix`() = runTest {
+        val source = FakeComposeProjectSource(resources = listOf(volume))
+
+        assertEquals(emptyList(), ListComposeLeftoversUseCase(source, FakeComposeProjectRegistry())(repository, worktrees).getOrThrow())
+    }
+
+    @Test
+    fun `a recorded name used again by an existing worktree is not a leftover`() = runTest {
+        val registry = registryWith(ComposeRegistryEntry("main-repo-task-123", "/old/place/TASK-123"))
+        val source = FakeComposeProjectSource(resources = listOf(resource(ComposeResourceKind.VOLUME, "v", "main-repo-task-123")))
+
+        assertEquals(emptyList(), ListComposeLeftoversUseCase(source, registry)(repository, worktrees).getOrThrow())
+    }
+
+    @Test
+    fun `a name recorded by another repository too is never a leftover`() = runTest {
+        val registry = FakeComposeProjectRegistry(
+            mapOf(
+                repository to listOf(ComposeRegistryEntry("main-repo-task-9", task9)),
+                "/home/dev/other/main-repo" to listOf(ComposeRegistryEntry("main-repo-task-9", "/home/dev/other/worktrees/TASK-9")),
+            ),
+        )
+
+        assertEquals(emptyList(), ListComposeLeftoversUseCase(FakeComposeProjectSource(resources = listOf(volume)), registry)(repository, worktrees).getOrThrow())
+    }
+
+    @Test
+    fun `a recorded project with nothing left is dropped from the registry`() = runTest {
+        val registry = registryWith(ComposeRegistryEntry("main-repo-task-9", task9))
+
+        ListComposeLeftoversUseCase(FakeComposeProjectSource(), registry)(repository, worktrees).getOrThrow()
+
+        assertEquals(emptyList(), registry.entries(repository))
+    }
+
+    @Test
+    fun `a recorded project that still has containers is kept in the registry`() = runTest {
+        val registry = registryWith(ComposeRegistryEntry("main-repo-task-9", task9))
+        val source = FakeComposeProjectSource(projects = listOf(project("main-repo-task-9", "/elsewhere/compose.yaml")))
+
+        ListComposeLeftoversUseCase(source, registry)(repository, worktrees).getOrThrow()
+
+        assertEquals(1, registry.entries(repository).size)
+    }
+
+    @Test
+    fun `listing leftovers without docker fails as unavailable`() = runTest {
+        val registry = registryWith(ComposeRegistryEntry("main-repo-task-9", task9))
+
+        val error = ListComposeLeftoversUseCase(FakeComposeProjectSource(unavailable = "daemon down"), registry)(repository, worktrees).exceptionOrNull()
+
+        assertTrue(error is WorktreeError.DockerUnavailable)
+    }
+
+    @Test
+    fun `a recorded project of a removed worktree is listed as removed even with files elsewhere`() = runTest {
+        val registry = registryWith(ComposeRegistryEntry("main-repo-task-9", task9))
+        val source = FakeComposeProjectSource(listOf(project("main-repo-task-9", "/elsewhere/compose.yaml")))
+
+        val listed = ListComposeProjectsUseCase(source, registry)(repository, worktrees, worktreesRoot).getOrThrow().single()
+
+        assertEquals(ComposeOwner.RemovedWorktree, listed.owner)
+    }
+
+    @Test
+    fun `removing leftovers keeps volumes by default, networks first`() = runTest {
+        val source = FakeComposeProjectSource(resources = listOf(volume, image, network))
+
+        val report = RemoveComposeLeftoversUseCase(source)(listOf(volume, image, network), removeVolumes = false)
+
+        assertEquals(listOf(network, image), source.removals)
+        assertEquals(listOf(network, image), report.removed)
+        assertEquals(listOf(volume), report.kept)
+    }
+
+    @Test
+    fun `removing leftovers with volumes removes them last`() = runTest {
+        val source = FakeComposeProjectSource(resources = listOf(volume, image, network))
+
+        val report = RemoveComposeLeftoversUseCase(source)(listOf(volume, image, network), removeVolumes = true)
+
+        assertEquals(listOf(network, image, volume), report.removed)
+        assertEquals(emptyList(), report.kept)
+    }
+
+    @Test
+    fun `an image in use is reported and the rest is still removed`() = runTest {
+        val source = FakeComposeProjectSource(resources = listOf(image, network), failingRemovals = mapOf(image.id to "image is being used by running container"))
+
+        val report = RemoveComposeLeftoversUseCase(source)(listOf(image, network), removeVolumes = false)
+
+        assertEquals(listOf(network), report.removed)
+        assertEquals("image is being used by running container", report.failures.single().detail)
+    }
+
+    @Test
+    fun `a project whose resources were all removed is dropped from the registry`() = runTest {
+        val registry = registryWith(ComposeRegistryEntry("main-repo-task-9", task9))
+
+        RemoveComposeLeftoversUseCase(FakeComposeProjectSource(), registry)(listOf(network, image, volume), removeVolumes = true, repositoryPath = repository)
+
+        assertEquals(emptyList(), registry.entries(repository))
+    }
+
+    @Test
+    fun `a project whose volume was kept stays in the registry`() = runTest {
+        val registry = registryWith(ComposeRegistryEntry("main-repo-task-9", task9))
+
+        RemoveComposeLeftoversUseCase(FakeComposeProjectSource(), registry)(listOf(network, volume), removeVolumes = false, repositoryPath = repository)
+
+        assertEquals(1, registry.entries(repository).size)
+    }
+
+    private val composeRepository = "/home/dev/projects/main-repo"
+    private val taskPath = "$worktreesRoot/TASK-123"
+
+    private fun runUseCase(source: FakeComposeProjectSource, registry: FakeComposeProjectRegistry = FakeComposeProjectRegistry()): RunComposeProjectUseCase {
+        val executor = FakeShellCommandExecutor { command ->
+            FakeShellCommandExecutor.success(command, "$composeRepository/.git/worktrees/TASK-123\n$composeRepository/.git\n")
+        }
+        val resolve = ResolveWorktreeEnvironmentUseCase(
+            executor,
+            FakeRepositoryProvisioningSource(
+                byRepository = mapOf(
+                    composeRepository to RepositoryProvisioning(providers = RepositoryProviders(dockerCompose = DockerComposeProvider(listOf("DB_PORT")))),
+                ),
+            ),
+            FakeEnvironmentStateStore(),
+            FakePortProbe(),
+            MachineProviderContributions(FakeAppleSimulators(), { SimulatorSettings() }),
+        )
+        return RunComposeProjectUseCase(source, resolve, registry)
+    }
+
+    @Test
+    fun `up runs in the worktree with its project name and ports`() = runTest {
+        val source = FakeComposeProjectSource()
+        val registry = FakeComposeProjectRegistry()
+
+        val project = runUseCase(source, registry)(composeRepository, taskPath, ComposeAction.Up(build = true, extraArguments = listOf("api", "--wait"))).getOrThrow()
+
+        val run = source.runs.single()
+        assertEquals("main-repo-task-123", project)
+        assertEquals(taskPath, run.workingDirectory)
+        assertEquals("main-repo-task-123", run.environment["COMPOSE_PROJECT_NAME"])
+        assertTrue(run.environment.getValue("DB_PORT").toInt() in 20000..29999)
+        assertEquals(ComposeAction.Up(true, listOf("api", "--wait")), run.action)
+        assertEquals(listOf(ComposeRegistryEntry("main-repo-task-123", taskPath)), registry.entries(composeRepository))
+    }
+
+    @Test
+    fun `build runs with the worktree's environment`() = runTest {
+        val source = FakeComposeProjectSource()
+
+        runUseCase(source)(composeRepository, taskPath, ComposeAction.Build()).getOrThrow()
+
+        assertEquals(ComposeAction.Build(), source.runs.single().action)
+        assertEquals("main-repo-task-123", source.runs.single().environment["COMPOSE_PROJECT_NAME"])
+    }
+
+    @Test
+    fun `a failing compose command is returned as a typed error`() = runTest {
+        val error = runUseCase(FakeComposeProjectSource(failingRun = "port is already allocated"))(composeRepository, taskPath, ComposeAction.Up()).exceptionOrNull()
+
+        assertEquals("port is already allocated", (error as WorktreeError.ComposeCommandFailed).detail)
+    }
+
+    @Test
+    fun `a failing registry doesn't stop the services from starting`() = runTest {
+        val source = FakeComposeProjectSource()
+
+        runUseCase(source, FakeComposeProjectRegistry(failing = true))(composeRepository, taskPath, ComposeAction.Up()).getOrThrow()
+
+        assertEquals(1, source.runs.size)
+    }
+
+    private suspend fun cleanUp(source: FakeComposeProjectSource, removeVolumes: Boolean, registry: FakeComposeProjectRegistry? = null) =
+        CleanUpWorktreesUseCase(config, FakeShellCommandExecutor(), composeProjects = source, composeRegistry = registry)(
+            listOf(removed),
+            mainBranch,
+            deleteBranches = false,
+            downComposeProjects = true,
+            removeComposeVolumes = removeVolumes,
+        ).getOrThrow()
+
+    @Test
+    fun `cleanup removes the networks and built images of removed worktrees and keeps their volumes`() = runTest {
+        val other = resource(ComposeResourceKind.IMAGE, "main-repo-task-123-api", "main-repo-task-123")
+        val source = FakeComposeProjectSource(resources = listOf(volume, network, image, other))
+
+        val report = cleanUp(source, removeVolumes = false)
+
+        assertEquals(listOf(network, image), report.composeResources?.removed)
+        assertEquals(listOf(volume), report.composeResources?.kept)
+        assertTrue(other !in source.removals)
+    }
+
+    @Test
+    fun `cleanup removes volumes when asked`() = runTest {
+        val source = FakeComposeProjectSource(resources = listOf(volume, network, image))
+
+        val report = cleanUp(source, removeVolumes = true)
+
+        assertEquals(listOf(network, image, volume), report.composeResources?.removed)
+    }
+
+    @Test
+    fun `cleanup reports an image in use without failing`() = runTest {
+        val source = FakeComposeProjectSource(resources = listOf(image), failingRemovals = mapOf(image.id to "in use"))
+
+        val report = cleanUp(source, removeVolumes = false)
+
+        assertEquals(listOf(removed.path), report.removed)
+        assertEquals("in use", report.composeResources?.failures?.single()?.detail)
+    }
+
+    @Test
+    fun `cleanup also removes the resources of a declared project name recorded for the worktree`() = runTest {
+        val custom = resource(ComposeResourceKind.NETWORK, "custom_default", "custom")
+        val registry = registryWith(ComposeRegistryEntry("custom", removed.path))
+
+        val report = cleanUp(FakeComposeProjectSource(resources = listOf(custom)), removeVolumes = false, registry = registry)
+
+        assertEquals(listOf(custom), report.composeResources?.removed)
+        assertEquals(emptyList(), registry.entries(repository))
+    }
+
+    @Test
+    fun `cleanup without docker reports the resources as kept`() = runTest {
+        val report = cleanUp(FakeComposeProjectSource(unavailable = "daemon not reachable"), removeVolumes = true)
+
+        assertNull(report.composeResources)
+        assertEquals("daemon not reachable", report.composeUnavailable)
     }
 }

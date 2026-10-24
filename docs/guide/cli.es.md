@@ -215,7 +215,7 @@ El destino se busca como en `remove`, salvo que se admite el worktree principal.
 
 ```text
 shogun clean [--yes|-y] [--delete-branches] [--stop-gradle-daemons] [--stop-emulators]
-             [--delete-simulators] [--delete-derived-data] [--down-compose-projects]
+             [--delete-simulators] [--delete-derived-data] [--down-compose-projects [--compose-volumes]]
 ```
 
 Selecciona los mismos worktrees que "Limpiar" en la app de escritorio: ni el principal, ni los bloqueados, ni uno donde se ejecute un agente, y o bien mergeados sin cambios sin commitear o bien sin carpeta. Sin `--yes` solo lista lo que haría (`would remove …`) y termina con el comando que hay que ejecutar, repitiendo las opciones que diste y nombrando solo lo que se eliminaría; con `--yes` lo hace (`removed …`). Si no hay nada que hacer imprime `Nothing to clean up.`
@@ -229,7 +229,8 @@ Un worktree donde se ejecuta un agente se lista como `kept <ruta> (claude is run
 | `--stop-emulators` | Para los emuladores de Android de los worktrees eliminados. |
 | `--delete-simulators` | Borra los simuladores de iOS de los worktrees eliminados y los simuladores de ShogunAi huérfanos. |
 | `--delete-derived-data` | Borra los DerivedData de Xcode huérfanos, incluidas las carpetas de los worktrees eliminados. |
-| `--down-compose-projects` | Baja los proyectos de Docker Compose de los worktrees eliminados, conservando sus volúmenes (`took down Compose project …`; `would take down Compose project …` sin `--yes`). Solo en repositorios que declaran el provider `docker-compose`; un proyecto que no se puede bajar, o que Docker no esté disponible, se informa en la salida de error sin cambiar el código de salida. |
+| `--down-compose-projects` | Baja los proyectos de Docker Compose de los worktrees eliminados y elimina las redes e imágenes construidas que dejan, conservando sus volúmenes (`took down Compose project …`, `removed image …`, `kept volume …`; `would take down Compose project …` sin `--yes`). Solo en repositorios que declaran el provider `docker-compose`; un proyecto que no se puede bajar, o que Docker no esté disponible, se informa en la salida de error sin cambiar el código de salida. |
+| `--compose-volumes` | Con `--down-compose-projects`, elimina también los volúmenes de los proyectos de los worktrees eliminados. Sin `--down-compose-projects` es un error de uso. |
 
 También se cierran los espacios de trabajo de Herdr de los worktrees eliminados (`would close Herdr workspace of …` en el listado). Un daemon, emulador o espacio de Herdr que no se puede parar o cerrar se indica en la salida de error sin cambiar el código de salida.
 
@@ -336,10 +337,17 @@ shogun maven
 
 ```text
 shogun compose
+shogun compose up [<worktree>] [--build] [-- <args>...]
+shogun compose build [<worktree>] [-- <args>...]
 shogun compose down [<worktree>] [--volumes]
+shogun compose prune [--volumes] [--yes]
 ```
 
-`compose` lista los proyectos de Docker Compose de los worktrees del repositorio: nombre, `status=` y `worktree=<ruta>|removed`. `compose down` baja los proyectos de worktrees eliminados, o el proyecto del worktree indicado (que se busca como en `remove`, admitiendo el principal), con `docker compose -p <nombre> down`: los volúmenes se conservan salvo que se pase `--volumes`. Imprime `took down <nombre> (volumes kept)`, informa de un fallo en la salida de error y sale con `1` por él. Si el repositorio no declara el provider `docker-compose`, o el worktree indicado no existe, sale con `1` y no ejecuta ningún comando de Docker.
+`compose` lista los proyectos de Docker Compose de los worktrees del repositorio: nombre, `status=` y `worktree=<ruta>|removed`, y después una línea `leftover <tipo> <nombre>  project=<proyecto>` por cada volumen, red o imagen que dejó un worktree eliminado, con el comando `compose prune` que los elimina.
+
+`compose up` arranca los servicios del worktree indicado, o del que contiene el directorio actual, con `docker compose up --detach` ejecutado en ese worktree con su entorno (su `COMPOSE_PROJECT_NAME` y sus variables de puerto); `--build` añade `--build`, y los argumentos tras `--` llegan tal cual a Docker Compose. `compose build` ejecuta `docker compose build` del mismo modo. La salida de Docker Compose se muestra mientras se ejecuta, y después `started Compose project <nombre> for <ruta>` (o `built …`); un fallo se imprime en la salida de error con código de salida `1`.
+
+`compose prune` lista las redes e imágenes construidas que dejaron los worktrees eliminados (`would remove …`) y los volúmenes que conservaría (`would keep …`); con `--yes` las elimina (`removed …`, `kept …`), y también sus volúmenes con `--volumes`. Nunca se fuerza nada, así que un recurso que aún usa un contenedor se informa en la salida de error y el código de salida es `1`. Si no queda nada imprime `Nothing to remove.` `compose down` baja los proyectos de worktrees eliminados, o el proyecto del worktree indicado (que se busca como en `remove`, admitiendo el principal), con `docker compose -p <nombre> down`: los volúmenes se conservan salvo que se pase `--volumes`. Imprime `took down <nombre> (volumes kept)`, informa de un fallo en la salida de error y sale con `1` por él. Si el repositorio no declara el provider `docker-compose`, o el worktree indicado no existe, sale con `1` y no ejecuta ningún comando de Docker.
 
 ### `emulator`
 
@@ -383,7 +391,7 @@ shogun xcode trim [--dry-run]
 
 ## Salida JSON
 
-Además de `status --json`, todos los comandos que informan de un resultado aceptan `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `compose`, `compose down`, `pool status`, `pool trim`, `project add`, `project list`, `project remove`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks` y `guide install|uninstall|status` (no `simulator gradle-init`, `env`, `hook`, `help` ni `--version`; en ellos es una opción desconocida y sale con `2`). La opción puede ir en cualquier posición tras el comando.
+Además de `status --json`, todos los comandos que informan de un resultado aceptan `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `compose`, `compose up`, `compose build`, `compose down`, `compose prune`, `pool status`, `pool trim`, `project add`, `project list`, `project remove`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks` y `guide install|uninstall|status` (no `simulator gradle-init`, `env`, `hook`, `help` ni `--version`; en ellos es una opción desconocida y sale con `2`). La opción puede ir en cualquier posición tras el comando.
 
 Las reglas son las mismas para todos:
 
@@ -407,12 +415,14 @@ Las reglas son las mismas para todos:
 | `project add`, `project remove` | `action` (`added`, `alreadyRegistered` o `removed`), y el `id`, `name` y `repository` del proyecto. |
 | `project list` | `projects`: `{ id, name, repository }`, vacío sin proyectos. |
 | `open` | `path`, `branch` (o `null` si está desacoplado), `herdr` (`opened` o `focused`) y `agent` (el nombre del agente arrancado, o `null` cuando solo se enfocó el espacio de trabajo). |
-| `clean` | `dryRun`; `candidates`: `{ path, branch, reason }` con `reason` `merged` o `folder-missing`; `keptForAgents`: `{ path, agents }`; `skipped`: `{ path, reason }` (estado no disponible); `removed`; `deletedBranches`; `failures`: `{ path, message }`; y `providers`: `gradleDaemonsStopped`, `emulatorsStopped`, `simulatorsDeleted`, `derivedDataDeleted` y, con `--down-compose-projects`, `composeProjectsDown`. Sin `--yes` (`dryRun: true`) `removed`, `deletedBranches` y las listas de `providers` van vacías. |
+| `clean` | `dryRun`; `candidates`: `{ path, branch, reason }` con `reason` `merged` o `folder-missing`; `keptForAgents`: `{ path, agents }`; `skipped`: `{ path, reason }` (estado no disponible); `removed`; `deletedBranches`; `failures`: `{ path, message }`; y `providers`: `gradleDaemonsStopped`, `emulatorsStopped`, `simulatorsDeleted`, `derivedDataDeleted` y, con `--down-compose-projects`, `composeProjectsDown` y `composeResources` (`removed`, `kept`, `failures`, como en `compose prune`). Sin `--yes` (`dryRun: true`) `removed`, `deletedBranches` y las listas de `providers` van vacías. |
 | `gradle` | `daemons`: `{ pid, kind, version, memoryBytes, state, idleSince, worktree }` con `kind` `gradle` o `kotlin`, `state` `busy`, `idle`, `unknown` o `untracked`, `idleSince` en ISO-8601 UTC (solo si está inactivo) y `worktree` una ruta, `removed`, `other-project` o `null` fuera de un repositorio; y `totalMemoryBytes`. |
 | `gradle stop` | `stopped` (pids), `kept`: `{ pid, kind, reason }` con `reason` `busy`, `state-unknown` o `build-running`, `notDaemons` (pids) y `failures`: `{ pid, message }`. El código de salida es `1` si alguna de las dos últimas no está vacía. |
 | `stacks` | `stacks`: `{ stack, evidence, providers }` con `stack` `gradle`, `android`, `xcode`, `maven` o `docker-compose`, `evidence` los archivos que lo delataron y `providers`: `{ id, declared }` por cada provider que sugiere. |
 | `maven` | `daemons`: `{ pid, memoryBytes, worktree }` con `worktree` una ruta, `removed`, `other-project` o `null` (desconocido, o fuera de un repositorio); y `totalMemoryBytes`. |
-| `compose` | `projects`: `{ name, status, worktree }` con `worktree` una ruta o `removed`. |
+| `compose` | `projects`: `{ name, status, worktree }` con `worktree` una ruta o `removed`; `leftovers`: `{ kind, name, project }` con `kind` `network`, `image` o `volume`. |
+| `compose up`, `compose build` | `worktree`, `project`, `succeeded` y, si falla, `message`. La salida de Docker Compose va a la salida de error. |
+| `compose prune` | `dryRun`; `removed` y `kept`: `{ kind, name, project }`; `failures`: `{ resource, message }`. Sin `--yes`, `removed` es lo que eliminaría. |
 | `compose down` | `takenDown` (nombres de proyecto) y `failures`: `{ name, message }`. El código de salida es `1` si `failures` no está vacío. |
 | `xcode` | `active` (`false` si el provider no está activo, con el resto vacío), `folders`: `{ path, sizeBytes, worktree }`, `orphans`: `{ path, sizeBytes }`, `unavailableVolumeFolders` (un número) y `compilationCacheBytes` (`null` salvo que esté declarada). |
 | `xcode clean` | `active`, `deleted` (rutas), `freedBytes` y `failures`: `{ path, message }`. |

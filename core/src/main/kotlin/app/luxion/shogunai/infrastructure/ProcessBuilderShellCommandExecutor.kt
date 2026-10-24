@@ -2,6 +2,8 @@ package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.CommandResult
+import app.luxion.shogunai.domain.executor.OutputChannel
+import app.luxion.shogunai.domain.executor.OutputLine
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -12,6 +14,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
 import kotlin.time.Duration
 
 class ProcessBuilderShellCommandExecutor(
@@ -30,10 +33,22 @@ class ProcessBuilderShellCommandExecutor(
         workingDirectory: String?,
     ): CommandResult = run(command, workingDirectory, timeout)
 
+    override suspend fun executeStreaming(
+        command: List<String>,
+        workingDirectory: String?,
+        environment: Map<String, String>,
+        onOutput: (OutputLine) -> Unit,
+    ): CommandResult {
+        val lock = Any()
+        return run(command, workingDirectory, null, environment) { line -> synchronized(lock) { onOutput(line) } }
+    }
+
     private suspend fun run(
         command: List<String>,
         workingDirectory: String?,
         timeout: Duration?,
+        environment: Map<String, String> = emptyMap(),
+        onOutput: ((OutputLine) -> Unit)? = null,
     ): CommandResult = withContext(ioDispatcher) {
         val process = try {
             val builder = ProcessBuilder(WindowsArguments.prepare(command, osName))
@@ -41,14 +56,15 @@ class ProcessBuilderShellCommandExecutor(
                 .apply { workingDirectory?.let { directory(File(it)) } }
             builder.environment()["PATH"] = HomebrewPath.merge(builder.environment()["PATH"])
             GitLocale.applyTo(command, builder.environment())
+            builder.environment().putAll(environment)
             builder.start()
         } catch (error: IOException) {
             throw CommandExecutionException(command, error)
         }
 
         val readers = CoroutineScope(ioDispatcher)
-        val stdout = readers.async { process.inputStream.bufferedReader().use { it.readText() } }
-        val stderr = readers.async { process.errorStream.bufferedReader().use { it.readText() } }
+        val stdout = readers.async { readStream(process.inputStream, OutputChannel.STANDARD, onOutput) }
+        val stderr = readers.async { readStream(process.errorStream, OutputChannel.ERROR, onOutput) }
         val exitCode = try {
             if (timeout == null) waitFor(process) else withTimeoutOrNull(timeout) { waitFor(process) }
         } finally {
@@ -61,6 +77,13 @@ class ProcessBuilderShellCommandExecutor(
             stdout = stdout.await().trimEnd(),
             stderr = stderr.await().trimEnd(),
         )
+    }
+
+    private fun readStream(stream: InputStream, channel: OutputChannel, onOutput: ((OutputLine) -> Unit)?): String {
+        if (onOutput == null) return stream.bufferedReader().use { it.readText() }
+        return stream.bufferedReader().useLines { lines ->
+            lines.onEach { onOutput(OutputLine(channel, it)) }.joinToString("\n")
+        }
     }
 
     private suspend fun waitFor(process: Process): Int = runInterruptible { process.waitFor() }

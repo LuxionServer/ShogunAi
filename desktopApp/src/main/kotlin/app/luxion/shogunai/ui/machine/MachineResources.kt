@@ -15,6 +15,8 @@ import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.DerivedDataTrim
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.ComposeDownReport
+import app.luxion.shogunai.domain.model.ComposeLeftoversReport
+import app.luxion.shogunai.domain.model.ComposeResource
 import app.luxion.shogunai.domain.model.ComposeOwner
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.MavenDaemonProcess
@@ -81,6 +83,8 @@ data class MachineMavenDaemon(val process: MavenDaemonProcess, val owner: Projec
 
 data class MachineComposeProject(val projectId: String, val entry: WorktreeComposeProject)
 
+data class MachineComposeLeftover(val projectId: String, val resource: ComposeResource)
+
 data class MachineDerivedData(val folder: DerivedDataFolder, val owner: MachineDerivedDataOwner)
 
 sealed interface MachineDerivedDataOwner {
@@ -127,6 +131,12 @@ class MachineResources(
     var isTakingDownCompose by mutableStateOf(false)
         private set
     var composeDownReport by mutableStateOf<ComposeDownReport?>(null)
+        private set
+    var composeLeftovers by mutableStateOf<List<MachineComposeLeftover>>(emptyList())
+        private set
+    var isRemovingComposeLeftovers by mutableStateOf(false)
+        private set
+    var composeLeftoversReport by mutableStateOf<ComposeLeftoversReport?>(null)
         private set
     private var derivedDataListing by mutableStateOf<MachineLoad<DerivedDataListing>>(MachineLoad.Loading)
     private var derivedDataSizes by mutableStateOf<Map<String, Long>>(emptyMap())
@@ -416,11 +426,45 @@ class MachineResources(
     private suspend fun loadComposeProjects() {
         val projects = readComposeProjects()
         composeProjects = if (projects == null) MachineLoad.Unavailable else MachineLoad.Loaded(projects)
+        composeLeftovers = if (projects == null) emptyList() else readComposeLeftovers()
+    }
+
+    private suspend fun readComposeLeftovers(): List<MachineComposeLeftover> =
+        composeDeclaring().flatMap { machineProject ->
+            useCases.listComposeLeftovers(machineProject.project.config, machineProject.worktrees.orEmpty()).getOrNull().orEmpty()
+                .map { MachineComposeLeftover(machineProject.project.id, it) }
+        }
+
+    private fun composeDeclaring(): List<MachineProject> =
+        projects().filter { MachineResource.COMPOSE_PROJECTS in it.declares && it.worktrees != null }
+
+    fun removeComposeLeftovers(removeVolumes: Boolean) {
+        val leftovers = composeLeftovers
+        if (isRemovingComposeLeftovers || leftovers.isEmpty()) return
+        isRemovingComposeLeftovers = true
+        scope.launch {
+            try {
+                val configs = composeDeclaring().associate { it.project.id to it.project.config }
+                composeLeftoversReport = leftovers.groupBy { it.projectId }
+                    .mapNotNull { (projectId, entries) ->
+                        configs[projectId]?.let { useCases.removeComposeLeftovers(it, entries.map { entry -> entry.resource }, removeVolumes) }
+                    }
+                    .fold(ComposeLeftoversReport()) { total, next ->
+                        ComposeLeftoversReport(total.removed + next.removed, total.kept + next.kept, total.failures + next.failures)
+                    }
+                loadComposeProjects()
+            } finally {
+                isRemovingComposeLeftovers = false
+            }
+        }
+    }
+
+    fun dismissComposeLeftoversReport() {
+        composeLeftoversReport = null
     }
 
     private suspend fun readComposeProjects(): List<MachineComposeProject>? {
-        val declaring = projects().filter { MachineResource.COMPOSE_PROJECTS in it.declares && it.worktrees != null }
-        val listed = declaring.map { machineProject ->
+        val listed = composeDeclaring().map { machineProject ->
             val config = machineProject.project.config
             val root = config.worktreesRoot.takeIf { it.isNotBlank() }
             machineProject.project.id to useCases.listComposeProjects(config, machineProject.worktrees.orEmpty(), root)

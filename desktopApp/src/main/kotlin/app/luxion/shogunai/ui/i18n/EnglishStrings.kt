@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.ComposeResourceKind
 import app.luxion.shogunai.domain.model.ResourceLimits
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.CapacityProfile
@@ -600,9 +601,30 @@ object EnglishStrings : Strings {
     override val composeVolumesKept = "Containers and networks are removed; volumes are kept."
     override fun composeProjectsTakenDown(count: Int) = if (count == 1) "1 project taken down" else "$count projects taken down"
     override fun composeProjectDownFailed(name: String, detail: String) = "Couldn't take down $name: $detail"
-    override val alsoTakeDownComposeProjects = "Also take down the Compose projects of the worktrees being removed (volumes are kept)"
+    override val alsoTakeDownComposeProjects = "Also take down the Compose projects of the worktrees being removed and remove their networks and built images"
     override fun cleanupComposeKept(reason: String?) =
         "The Compose projects were kept because Docker isn't available" + if (reason.isNullOrBlank()) "" else " ($reason)"
+    override val composeSectionTitle = "Compose"
+    override val composeNotStarted = "Not started"
+    override val startComposeServices = "Start"
+    override val buildComposeServices = "Build"
+    override val takeDownComposeServices = "Take down"
+    override val composeDockerUnavailable = "Docker isn't available"
+    override val composeLeftoversTitle = "Left by removed worktrees"
+    override fun composeResourceKind(kind: ComposeResourceKind) = when (kind) {
+        ComposeResourceKind.NETWORK -> "Network"
+        ComposeResourceKind.IMAGE -> "Image"
+        ComposeResourceKind.VOLUME -> "Volume"
+    }
+    override val removeComposeLeftovers = "Remove networks and images"
+    override val removeComposeLeftoversWithVolumes = "Remove volumes too"
+    override val confirmRemoveComposeVolumesTitle = "Remove the volumes?"
+    override fun confirmRemoveComposeVolumes(count: Int) =
+        (if (count == 1) "1 volume" else "$count volumes") + " of removed worktrees will be removed with their data, together with their networks and images."
+    override val removeVolumes = "Remove volumes"
+    override fun composeResourcesRemoved(count: Int) = if (count == 1) "1 Docker resource removed" else "$count Docker resources removed"
+    override fun composeResourceRemoveFailed(name: String, detail: String) = "Couldn't remove $name: $detail"
+    override val alsoRemoveComposeVolumes = "Also remove their volumes (their data is lost)"
     override val environmentVariableNameLabel = "Name"
     override val environmentVariableTemplateLabel = "Template"
     override val addVariable = "Add variable"

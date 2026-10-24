@@ -116,6 +116,16 @@ import app.luxion.shogunai.domain.model.MavenDaemonProcess
 import app.luxion.shogunai.domain.model.MavenProvider
 import app.luxion.shogunai.domain.model.WorktreeComposeProject
 import app.luxion.shogunai.infrastructure.DockerComposeProjectSource
+import app.luxion.shogunai.infrastructure.JsonComposeProjectRegistry
+import app.luxion.shogunai.domain.model.ComposeAction
+import app.luxion.shogunai.domain.model.ComposeLeftoversReport
+import app.luxion.shogunai.domain.model.ComposeResource
+import app.luxion.shogunai.domain.model.WorktreeComposeState
+import app.luxion.shogunai.domain.usecase.COMPOSE_PROJECT_NAME
+import app.luxion.shogunai.domain.usecase.ListComposeLeftoversUseCase
+import app.luxion.shogunai.domain.usecase.RemoveComposeLeftoversUseCase
+import app.luxion.shogunai.domain.usecase.RunComposeProjectUseCase
+import app.luxion.shogunai.domain.usecase.worktreeComposeProjectName
 import app.luxion.shogunai.infrastructure.ProcessMavenDaemonSource
 import app.luxion.shogunai.domain.usecase.CloseHerdrWorkspacesUseCase
 import app.luxion.shogunai.domain.usecase.CopyWorktreeLaunchCommandUseCase
@@ -237,6 +247,23 @@ class AppContainer {
     private val gradleDaemonSource = ProcessGradleDaemonSource(shellCommandExecutor, gradleUserHome)
     private val mavenDaemonSource = ProcessMavenDaemonSource(shellCommandExecutor)
     private val composeProjectSource = DockerComposeProjectSource(shellCommandExecutor)
+    private val composeProjectRegistry = JsonComposeProjectRegistry()
+
+    private suspend fun composeProjectNameOf(config: ProjectConfig, worktreePath: String): String =
+        resolveEnvironment(config.baseRepositoryPath, worktreePath, reserve = false).getOrNull()
+            ?.variables?.lastOrNull { it.first == COMPOSE_PROJECT_NAME }?.second
+            ?: worktreeComposeProjectName(config.baseRepositoryPath, worktreePath)
+
+    private suspend fun readComposeStates(config: ProjectConfig, worktrees: List<Worktree>): Result<Map<String, WorktreeComposeState>> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val statuses = composeProjectSource.list().associate { it.name to it.status }
+                worktrees.associate { worktree ->
+                    val project = composeProjectNameOf(config, worktree.path)
+                    worktree.path to WorktreeComposeState(project, statuses[project])
+                }
+            }
+        }
     private val derivedDataSource = MacDerivedDataSource(
         shellCommandExecutor,
         fileManager,
@@ -308,6 +335,7 @@ class AppContainer {
         portProbe,
         factory,
         environmentCache,
+        composeProjectRegistry,
     )
 
     private fun simulatorSettingsFor(repositoryPath: String): SimulatorSettings =
@@ -397,7 +425,13 @@ class AppContainer {
         listDaemons = { runCatching { gradleDaemonSource.list() } },
         listMavenDaemons = { runCatching { mavenDaemonSource.list() } },
         listComposeProjects = { config, worktrees, root ->
-            ListComposeProjectsUseCase(composeProjectSource)(config.baseRepositoryPath, worktrees, root)
+            ListComposeProjectsUseCase(composeProjectSource, composeProjectRegistry)(config.baseRepositoryPath, worktrees, root)
+        },
+        listComposeLeftovers = { config, worktrees ->
+            ListComposeLeftoversUseCase(composeProjectSource, composeProjectRegistry)(config.baseRepositoryPath, worktrees)
+        },
+        removeComposeLeftovers = { config, resources, removeVolumes ->
+            RemoveComposeLeftoversUseCase(composeProjectSource, composeProjectRegistry)(resources, removeVolumes, config.baseRepositoryPath)
         },
         takeDownComposeProjects = { names -> TakeDownComposeProjectsUseCase(composeProjectSource)(names) },
         stopDaemons = { pids -> StopGradleDaemonsUseCase(gradleDaemonSource, shellCommandExecutor)(pids) },
@@ -557,7 +591,14 @@ class AppContainer {
         repair = RepairWorktreesUseCase(config, shellCommandExecutor, fileManager),
         resolveMainBranch = ResolveMainBranchUseCase(config, shellCommandExecutor),
         readStatus = ReadWorktreeStatusUseCase(shellCommandExecutor, fileManager),
-        cleanUp = CleanUpWorktreesUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient), composeProjectSource, fileManager),
+        cleanUp = CleanUpWorktreesUseCase(
+            config,
+            shellCommandExecutor,
+            CloseHerdrWorkspacesUseCase(config, herdrClient),
+            composeProjectSource,
+            fileManager,
+            composeProjectRegistry,
+        ),
         detectAgents = { worktrees -> detectRunningAgents(config, worktrees) },
         measureSize = MeasureWorktreeSizeUseCase(fileManager),
         readFingerprint = ReadGitMetadataFingerprintUseCase(config, fileManager),
@@ -654,6 +695,11 @@ class AppContainer {
                     runCatching { repositoryProvisioningSource.read(config.baseRepositoryPath).providers.dockerCompose }.getOrNull()
                 }
             },
+            readStates = { worktrees -> readComposeStates(config, worktrees) },
+            run = { worktreePath, action ->
+                RunComposeProjectUseCase(composeProjectSource, resolveEnvironment, composeProjectRegistry)(config.baseRepositoryPath, worktreePath, action)
+            },
+            down = { worktreePath -> composeProjectSource.down(composeProjectNameOf(config, worktreePath), removeVolumes = false) },
         ),
         xcode = XcodeUseCases(
             provider = {
@@ -775,6 +821,9 @@ class MachineUseCases(
     val listComposeProjects: suspend (ProjectConfig, List<Worktree>, String?) -> Result<List<WorktreeComposeProject>> =
         { _, _, _ -> Result.success(emptyList()) },
     val takeDownComposeProjects: suspend (List<String>) -> ComposeDownReport = { ComposeDownReport() },
+    val listComposeLeftovers: suspend (ProjectConfig, List<Worktree>) -> Result<List<ComposeResource>> = { _, _ -> Result.success(emptyList()) },
+    val removeComposeLeftovers: suspend (ProjectConfig, List<ComposeResource>, Boolean) -> ComposeLeftoversReport =
+        { _, _, _ -> ComposeLeftoversReport() },
 )
 
 data class SimulatorUseCases(
@@ -890,7 +939,12 @@ data class MavenUseCases(val provider: suspend () -> MavenProvider?) {
     }
 }
 
-data class ComposeUseCases(val provider: suspend () -> DockerComposeProvider?) {
+data class ComposeUseCases(
+    val provider: suspend () -> DockerComposeProvider?,
+    val readStates: suspend (List<Worktree>) -> Result<Map<String, WorktreeComposeState>> = { Result.success(emptyMap()) },
+    val run: suspend (String, ComposeAction) -> Result<String> = { _, _ -> Result.failure(WorktreeError.DockerUnavailable(null)) },
+    val down: suspend (String) -> Result<Unit> = { Result.success(Unit) },
+) {
     companion object {
         val NONE = ComposeUseCases(provider = { null })
     }
