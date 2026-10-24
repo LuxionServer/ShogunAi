@@ -14,6 +14,8 @@ Hay tres módulos de Gradle:
 
 `core` existe para que un segundo frontal —la herramienta de línea de comandos `shogun`— pueda ejecutar los mismos casos de uso sin arrastrar la UI de escritorio. Los paquetes no cambiaron al extraerlo (`app.luxion.shogunai.domain…`, `app.luxion.shogunai.infrastructure…`); lo que mantiene la UI fuera de `core` es el límite del módulo. Los dobles de prueba viven en los test fixtures de `core`, compartidos por los tests de todos los módulos.
 
+El `build.gradle.kts` raíz fija la política del compilador para todos los módulos Kotlin, incluidos los que se añadan más adelante: cualquier aviso del compilador hace fallar la build, tanto en el código de producción como en los tests y los test fixtures, así que un aviso se arregla en el cambio que lo introduce. Los tests y los test fixtures hacen opt-in de `kotlinx.coroutines.ExperimentalCoroutinesApi`, porque usan a propósito las APIs de tiempo virtual; el código de producción sigue necesitando un opt-in explícito.
+
 !!! note "Por qué ahora un módulo `core`"
     El módulo `shared` vacío de la plantilla se eliminó en la primera iteración porque solo la app de escritorio lo iba a usar (ver [decisiones de diseño](../decisions/index.md)). Eso cambió con el CLI `shogun`, un segundo target real, y `core` se extrajo en el cambio `extract-core-module` (`openspec/changes/archive/`).
 

@@ -23,7 +23,6 @@ class MacTerminalLauncher(
             if (failure.detail.contains(AUTOMATION_REFUSED)) throw WorktreeError.TerminalAutomationRefused(terminal)
             throw WorktreeError.TerminalLaunchFailed(terminal, failure.detail)
         }
-        Unit
     }
 
     companion object {

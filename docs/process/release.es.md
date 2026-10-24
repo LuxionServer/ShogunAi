@@ -22,12 +22,13 @@ graph LR
       3. crea y pushea el tag `vX.X.X` sobre el commit de merge (la versión sale del nombre de la rama, no hay que escribirla dos veces) y crea el GitHub Release en modo **draft** con las notas autogeneradas y el título `vX.X.X — <feature>` (la feature se lee de `.github/release-title`, ver [Título de la release](#título-de-la-release)); una sola vez, antes de compilar,
       4. compila los instaladores en macOS Apple Silicon, macOS Intel, Windows y Linux (`packageReleaseDmg`/`Msi`/`Deb`) pasando esa versión, con un token de solo lectura. Cada `.dmg` de macOS se renombra `ShogunAi-X.X.X-<arch>.dmg` (`arm64`/`x64`, tomado de la arquitectura del propio runner) justo después del build, y cada instalador se guarda como artefacto del workflow,
       5. en paralelo, compila una vez en Linux la herramienta de línea de comandos independiente (`:cli:distZip`, ver [Línea de comandos](../architecture/cli.md)) y guarda `shogun-X.X.X.zip` como artefacto,
-      6. una vez compilados los cuatro instaladores y el zip, el único job con permiso de escritura en el repositorio genera `SHA256SUMS` con el checksum de cada asset, lo sube todo al draft y publica la release (saca el draft),
-      7. regenera el Cask de Homebrew a partir de `.github/homebrew/shogunai.rb` con la nueva versión y los checksums de los `.dmg` leídos de `SHA256SUMS`, y lo pushea al tap `LuxionServer/homebrew-shogunai`. El Cask instala la app y enlaza su lanzador como el comando `shogun`,
-      8. regenera `bucket/shogunai.json` en el bucket `LuxionServer/scoop-shogunai` a partir de `.github/scoop/shogunai.json` con la nueva versión y el checksum del `.msi` leído de `SHA256SUMS`, y lo pushea,
-      9. abre un pull request a `microsoft/winget-pkgs` que actualiza `LuxionServer.ShogunAi` al nuevo `.msi` (acción `winget-releaser`).
+      6. una vez compilados los cuatro instaladores y el zip, un job que solo tiene los permisos para firmar atestaciones (no hace checkout del repositorio ni ejecuta la build) genera una atestación de procedencia de build firmada para cada uno (`actions/attest`). La release no se publica hasta que existen todas,
+      7. con todas las atestaciones creadas, el único job con permiso de escritura en el repositorio genera `SHA256SUMS` con el checksum de cada asset, lo sube todo al draft y publica la release (saca el draft),
+      8. regenera el Cask de Homebrew a partir de `.github/homebrew/shogunai.rb` con la nueva versión y los checksums de los `.dmg` leídos de `SHA256SUMS`, y lo pushea al tap `LuxionServer/homebrew-shogunai`. El Cask instala la app y enlaza su lanzador como el comando `shogun`,
+      9. regenera `bucket/shogunai.json` en el bucket `LuxionServer/scoop-shogunai` a partir de `.github/scoop/shogunai.json` con la nueva versión y el checksum del `.msi` leído de `SHA256SUMS`, y lo pushea,
+      10. abre un pull request a `microsoft/winget-pkgs` que actualiza `LuxionServer.ShogunAi` al nuevo `.msi` (acción `winget-releaser`).
 
-Los pasos 7, 8 y 9 se ejecutan en paralelo y son independientes: si uno falla, la release sigue publicada y los demás se ejecutan igualmente.
+Los pasos 8, 9 y 10 se ejecutan en paralelo y son independientes: si uno falla, la release sigue publicada y los demás se ejecutan igualmente.
 
 Todo el flujo desde el paso 4 ocurre en un único run de CI, sin intervención manual. La release se crea en draft y recién se publica al final porque una release ya publicada es inmutable para GitHub (rechaza nuevos assets) y porque generar las notas una sola vez evita que se dupliquen si cada build del matrix las regenerara por su cuenta.
 
@@ -53,6 +54,10 @@ Tras actualizar Compose Desktop o jpackage, comprueba en Windows que la estructu
 ## Checksums de la release
 
 Cada release incluye un archivo `SHA256SUMS`. Para verificar una descarga: `shasum -a 256 -c SHA256SUMS --ignore-missing`.
+
+## Procedencia de la build
+
+Cada instalador y el zip del CLI tienen una atestación de procedencia de build firmada que los vincula al run del workflow de release y al commit desde el que se compilaron. Para verificar una descarga: `gh attestation verify ShogunAi-X.X.X-arm64.dmg --repo LuxionServer/ShogunAi`. Las releases publicadas antes del cambio `release-provenance-strict-warnings` no tienen atestación.
 
 ## Acciones fijadas
 

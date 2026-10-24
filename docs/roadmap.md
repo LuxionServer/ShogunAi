@@ -81,7 +81,6 @@ Multirepos and groups by branch are done in the CLI and the desktop app, and the
 - Filesystem watchers instead of polling for Git metadata changes.
 - Support for bare repositories with worktrees (the "bare clone" layout), which changes what the base repository and copying from it mean. Today ShogunAi rejects them with a specific error.
 - Splitting `ProjectWorktrees.kt` and `ProjectSettingsView.kt` into smaller holders and sections.
-- Build provenance attestations for release assets, and treating compiler warnings as errors now that the build is clean.
 
 ## Later
 

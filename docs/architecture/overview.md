@@ -14,6 +14,8 @@ There are three Gradle modules:
 
 `core` exists so that a second front end — the `shogun` command-line tool — can run the same use cases without pulling in the desktop UI. Packages didn't change when it was extracted (`app.luxion.shogunai.domain…`, `app.luxion.shogunai.infrastructure…`); the module boundary is what keeps the UI out of `core`. The test doubles live in `core`'s test fixtures, shared by every module's tests.
 
+The root `build.gradle.kts` sets the compiler policy for every Kotlin module, including modules added later: any compiler warning fails the build, in production, test and test fixture sources alike, so a warning is fixed in the change that introduces it. Test and test fixture sources opt in to `kotlinx.coroutines.ExperimentalCoroutinesApi`, because they use virtual-time APIs on purpose; production code still needs an explicit opt-in.
+
 !!! note "Why a `core` module now"
     The project template's empty `shared` module was removed in the first iteration because nothing but the desktop app would use it (see [design decisions](../decisions/index.md)). That changed with the `shogun` CLI, a second real target, and `core` was extracted in the `extract-core-module` change (`openspec/changes/archive/`).
 

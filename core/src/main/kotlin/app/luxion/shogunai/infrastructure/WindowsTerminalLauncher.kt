@@ -20,7 +20,6 @@ class WindowsTerminalLauncher(private val executor: ShellCommandExecutor) : Term
         } catch (failure: ToolCommandFailed) {
             throw WorktreeError.TerminalLaunchFailed(terminal, failure.detail)
         }
-        Unit
     }
 
     private fun escape(value: String): String = value.replace(";", "\\;")
