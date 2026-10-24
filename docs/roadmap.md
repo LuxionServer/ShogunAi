@@ -24,7 +24,15 @@ Agent tools are learning to create worktrees, copy local files into them and sho
 
 Numbered in the order they will be picked up: the number is the priority.
 
-### 1. The environment of backends and services
+### 1. A turn for the desktop
+
+Some things can only be checked by an agent driving the real app with computer use, and the desktop (screen, mouse, keyboard and the focused app) is one resource for the whole machine: two agents using it at once step on each other and on the person working there. A desktop turn, on the same model as the device leases and their `--wait` queue:
+
+- `shogun desktop acquire --wait` and `shogun desktop release`, so only one agent drives the desktop at a time and the others wait in line instead of failing or colliding.
+- A turn that expires on its own, so an agent that stops or crashes doesn't keep the desktop.
+- Who holds the turn and who is waiting, in the control tower and in `shogun status`.
+
+### 2. The environment of backends and services
 
 Every worktree of a backend needs its own running services, not only its own code. Stack detection, the Maven and Docker Compose providers and the per-worktree ports are done; what remains:
 
@@ -32,7 +40,7 @@ Every worktree of a backend needs its own running services, not only its own cod
 - Stopping Maven daemons once their state can be read reliably.
 - Variables shared between the repositories of a multirepo group, for example the port of the backend the group's app talks to.
 
-### 2. Provisioning and resources of mobile stacks
+### 3. Provisioning and resources of mobile stacks
 
 Provisioning and bounded resources for the stacks where a fresh worktree is furthest from building:
 
@@ -44,7 +52,7 @@ Provisioning and bounded resources for the stacks where a fresh worktree is furt
 - Finding out what a Flutter repository needs in a worktree and which of the Android and iOS providers it can reuse.
 - Waiting for a device from the desktop app, and showing the worktrees waiting for each pool in its machine views; today only `shogun emulator start --wait` and `shogun simulator start --wait` wait, and the app fails a start while others wait.
 
-### 3. Every agent, not only Claude Code
+### 4. Every agent, not only Claude Code
 
 ShogunAi's view is only neutral if it sees every agent:
 
@@ -53,7 +61,7 @@ ShogunAi's view is only neutral if it sees every agent:
 - Other agents' user-level files for the workflow guide, as their documentation confirms them (Cursor keeps user rules in its settings today), and a Settings section in the desktop app to install, update and remove the `AGENTS.md` block, as it already does for Claude Code's hooks.
 - Recording the origin ref of each worktree, so the rule for choosing a pull request's base could be answered by `shogun` instead of staying a team policy.
 
-### 4. Multirepos for the whole team
+### 5. Multirepos for the whole team
 
 Multirepos and groups by branch are done in the CLI and the desktop app, and they're also how people who don't write the code follow a change across repositories. Left out:
 
@@ -64,7 +72,7 @@ Multirepos and groups by branch are done in the CLI and the desktop app, and the
 - Returning a declared workspace repository to detection (removing the `workspace` field), from the CLI and the multirepo settings; today `workspace clear` turns it off and the file has to be edited by hand to undo it.
 - The pull request state of each repository of a group, which depends on the GitHub integration under exploration.
 
-### 5. Robustness and maintenance
+### 6. Robustness and maintenance
 
 - Finding the root cause of the errors that closed the Preferences window, from the entries the isolation now leaves in the diagnostics log, and of the native crash seen on another machine that left an empty diagnostic report.
 - Checking the in-app installation of the `shogun` command on a real installed app on Windows (the `shogun.cmd` and the user `PATH` change are covered by tests with fakes only) and on a machine without `~/.local/bin` on its `PATH`.
@@ -83,6 +91,10 @@ Accepted, but left until someone needs them, because they widen what ShogunAi op
 - Showing the emulators ShogunAi starts inside Android Studio's Running Devices window, as the ones Android Studio starts itself. It needs a spike: Android Studio may embed an external emulator started with the options it uses itself.
 
 ## Under exploration
+
+### Checking a running app without taking over the desktop
+
+The desktop turn stops agents from colliding, but it doesn't make them parallel, and it still takes the screen away from the person. What can only be checked with computer use today needs another way to see and drive a running app: candidates are driving it through the operating system's accessibility API (pressing and reading its controls without moving the real cursor or stealing focus) together with capturing only its window, even in the background, or a test bridge inside the app that a provider talks to. It needs a spike on macOS to see how much of an app those reach, and how each one would fit other platforms.
 
 ### A follow-up view for people who don't run agents
 

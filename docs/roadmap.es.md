@@ -24,7 +24,15 @@ Las herramientas de agentes están aprendiendo a crear worktrees, copiar en ello
 
 Numerados en el orden en que se abordarán: el número es la prioridad.
 
-### 1. El entorno de backends y servicios
+### 1. Un turno para el escritorio
+
+Hay cosas que solo se pueden comprobar con un agente manejando la app real con computer use, y el escritorio (la pantalla, el ratón, el teclado y la app con el foco) es un único recurso de toda la máquina: dos agentes usándolo a la vez se pisan entre ellos y a la persona que trabaja en él. Un turno de escritorio, con el mismo modelo que las reservas de dispositivos y su cola `--wait`:
+
+- `shogun desktop acquire --wait` y `shogun desktop release`, para que solo un agente maneje el escritorio a la vez y los demás esperen en cola en lugar de fallar o chocar.
+- Un turno que caduca solo, para que un agente que se para o falla no se quede con el escritorio.
+- Quién tiene el turno y quién espera, en la torre de control y en `shogun status`.
+
+### 2. El entorno de backends y servicios
 
 Cada worktree de un backend necesita sus propios servicios en marcha, no solo su propio código. La detección de stacks, los providers de Maven y Docker Compose y los puertos por worktree están hechos; queda:
 
@@ -32,7 +40,7 @@ Cada worktree de un backend necesita sus propios servicios en marcha, no solo su
 - Parar los daemons de Maven cuando su estado se pueda leer con fiabilidad.
 - Variables compartidas entre los repositorios de un grupo de un multirepo, por ejemplo el puerto del backend con el que habla la app del grupo.
 
-### 2. Provisionado y recursos de los stacks móviles
+### 3. Provisionado y recursos de los stacks móviles
 
 Provisionado y recursos acotados para los stacks en los que un worktree recién creado está más lejos de compilar:
 
@@ -44,7 +52,7 @@ Provisionado y recursos acotados para los stacks en los que un worktree recién 
 - Averiguar qué necesita un repositorio Flutter en un worktree y cuáles de los providers de Android e iOS puede reutilizar.
 - Esperar un dispositivo desde la app de escritorio y mostrar en sus vistas de máquina los worktrees que esperan cada pool; hoy solo esperan `shogun emulator start --wait` y `shogun simulator start --wait`, y la app hace fallar un arranque mientras otros esperan.
 
-### 3. Todos los agentes, no solo Claude Code
+### 4. Todos los agentes, no solo Claude Code
 
 La vista de ShogunAi solo es neutral si ve a todos los agentes:
 
@@ -53,7 +61,7 @@ La vista de ShogunAi solo es neutral si ve a todos los agentes:
 - Los ficheros de usuario de otros agentes para la guía de flujo, a medida que su documentación los confirme (Cursor guarda hoy las reglas de usuario en sus ajustes), y una sección en Ajustes de la app de escritorio para instalar, actualizar y quitar el bloque de `AGENTS.md`, como ya hace con los hooks de Claude Code.
 - Registrar la ref de origen de cada worktree, para que la regla de elegir la base de una pull request pudiera responderla `shogun` en lugar de seguir siendo una política del equipo.
 
-### 4. Multirepos para todo el equipo
+### 5. Multirepos para todo el equipo
 
 Los multirepos y los grupos por rama están hechos en el CLI y en la app de escritorio, y son también la forma en que quienes no escriben el código siguen un cambio a través de los repositorios. Quedaron fuera:
 
@@ -64,7 +72,7 @@ Los multirepos y los grupos por rama están hechos en el CLI y en la app de escr
 - Devolver un repositorio de workspace declarado a la detección (quitando el campo `workspace`), desde el CLI y los ajustes del multirepo; hoy `workspace clear` lo desactiva y para deshacerlo hay que editar el archivo a mano.
 - El estado del pull request de cada repositorio de un grupo, que depende de la integración con GitHub en estudio.
 
-### 5. Robustez y mantenimiento
+### 6. Robustez y mantenimiento
 
 - Encontrar la causa raíz de los errores que cerraban la ventana de Preferencias, a partir de las entradas que el aislamiento deja ahora en el registro de diagnóstico, y del crash nativo visto en otra máquina que dejó un informe de diagnóstico vacío.
 - Comprobar la instalación del comando `shogun` desde la app con una app instalada de verdad en Windows (el `shogun.cmd` y el cambio del `PATH` de usuario solo están cubiertos con pruebas con dobles) y en un equipo sin `~/.local/bin` en el `PATH`.
@@ -83,6 +91,10 @@ Aceptados, pero aplazados hasta que alguien los necesite, porque amplían dónde
 - Mostrar los emuladores que arranca ShogunAi dentro de la ventana Running Devices de Android Studio, como los que arranca el propio Android Studio. Necesita un spike: Android Studio podría incrustar un emulador externo arrancado con las mismas opciones que usa él.
 
 ## En estudio
+
+### Comprobar una app en marcha sin tomar el escritorio
+
+El turno de escritorio evita que los agentes choquen, pero no los hace paralelos y sigue quitándole la pantalla a la persona. Lo que hoy solo se puede comprobar con computer use necesita otra forma de ver y manejar una app en marcha: las candidatas son manejarla a través de la API de accesibilidad del sistema operativo (pulsar y leer sus controles sin mover el cursor real ni robar el foco) junto con capturar solo su ventana, incluso en segundo plano, o un puente de pruebas dentro de la app con el que hable un provider. Hace falta un spike en macOS para ver hasta dónde llegan en una app y cómo encajaría cada una en otras plataformas.
 
 ### Una vista de seguimiento para quien no ejecuta agentes
 
