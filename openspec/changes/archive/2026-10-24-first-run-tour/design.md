@@ -45,13 +45,13 @@ The order matters for "behind": the extra `main` commit is made after `pushed-wo
 Alternatives: creating worktrees with `CreateWorktreeUseCase` would provision them and run the post-creation command, which needs trust approval and is slower; the tour needs raw Git states, so plain `git worktree add` is closer. Shipping a prebuilt repository as a zip would avoid Git calls but hide machine-specific paths in Git's administrative files and break the relative dates.
 
 ### Committer dates through an optional environment on the executor
-"Inactive" needs a committer date in the past, which only `GIT_COMMITTER_DATE` sets. `ShellCommandExecutor.execute` gains an optional `environment: Map<String, String> = emptyMap()` applied by `ProcessBuilderShellCommandExecutor` on top of its existing variables. Existing calls and fakes keep compiling. Alternative: `env VAR=… git` isn't available on Windows; `git fast-import` needs stdin, which the port doesn't offer.
+"Inactive" needs a committer date in the past, which only `GIT_COMMITTER_DATE` sets. `ShellCommandExecutor` gains `executeWithEnvironment(command, environment, workingDirectory)`, whose default delegates to `execute`, and which `ProcessBuilderShellCommandExecutor` implements by adding the variables on top of its own. Changing `execute`'s signature would have touched every fake (over sixty); a new method with a default keeps them compiling. Alternative: `env VAR=… git` isn't available on Windows; `git fast-import` needs stdin, which the port doesn't offer.
 
 ### Failure leaves nothing behind
 If any step fails, the use case deletes `~/.shogunai/tour` and returns a typed `WorktreeError.TourCreationFailed(command, stderr)`; the project is registered only at the very end. If the folder already exists when creating (a previous tour, or a leftover), the use case refuses unless asked to replace it, which the restart path does after ending the old tour.
 
-### The script is a resource, rendered with the language
-`AGENTS.md` comes from a core resource (`tour/AGENTS.md`), in English, with one line naming the language to speak (from `AppLanguage`). `CLAUDE.md` is `@AGENTS.md`. The script's steps, in order: the overview and states (each sample worktree, and the agent's own main worktree turning "Agent working"); a worktree's details; cleanup (the app's Clean up on the merged and missing worktrees); provisioning (`.shogunai.json`, creating a worktree from the app, which meets the post-creation approval, and checking `.env.local` was copied); the command line (`shogun status`, `shogun list --json`, `shogun guide`, after checking `shogun --version` works); hooks (`shogun hooks status`, installing from the app); environment (`shogun env`, the reserved port, `.env.shogunai`); providers (`shogun stacks`, the providers guide); and the end (adding their own project, "End tour"). It says to wait for the user after each step and to change nothing outside `~/.shogunai/tour`.
+### The script is Kotlin text, rendered with the language
+`AGENTS.md` comes from `TourScript` (core has no resources folder, and other generated texts such as the workflow guide are Kotlin strings too), in English, with one line naming the language to speak (from `AppLanguage`). `CLAUDE.md` is `@AGENTS.md`. The script's steps, in order: the overview and states (each sample worktree, and the agent's own main worktree turning "Agent working"); a worktree's details; cleanup (the app's Clean up on the merged and missing worktrees); provisioning (`.shogunai.json`, creating a worktree from the app, which meets the post-creation approval, and checking `.env.local` was copied); the command line (`shogun status`, `shogun status --json`, `shogun guide`, after checking `shogun --version` works); hooks (`shogun hooks status`, installing from the app); environment (`shogun env`, the reserved port, `.env.shogunai`); providers (`shogun stacks`, the providers guide); and the end (adding their own project, "End tour"). It says to wait for the user after each step and to change nothing outside `~/.shogunai/tour`.
 
 The post-creation command in the sample is `["git", "status", "--short"]`: harmless, cross-platform, and it is not pre-approved, so creating a worktree shows the trust prompt that the script explains.
 
@@ -61,13 +61,15 @@ The tour project gets `AgentLaunchConfig(name = "Claude Code", agentCommand = "c
 ### The tour is identified by its folder
 No flag is added to `Project`: the tour project is the one whose `baseRepositoryPath` is `~/.shogunai/tour/sample-repo`. A small `TourLocation` (core) resolves the paths from the user's home and answers `isTour(project)`. The banner and "End tour" use it.
 
+The tool step reuses the shared `ClaudeHooksState` and its `CommandLineToolPrerequisite` view, so installing the tool from the tour also updates Settings and the hooks notice.
+
 ### Ending the tour
-`EndTourUseCase` lists the tour project's worktrees, removes each non-main one with `RemoveWorktreeUseCase` (releasing environment reservations; folder-missing ones are pruned), deletes the project, then deletes `~/.shogunai/tour`. Every step tolerates what's already gone. Agents still running in the sample aren't stopped: the confirmation says to close them first, and a folder in use is reported as cleanup already does.
+`EndTourUseCase` deletes every project whose repository is the tour's, then deletes `~/.shogunai/tour`. Port reservations live in each worktree's Git administrative folder, inside the sample's `.git`, and the machine index drops entries whose folder is gone, so deleting the folder frees them without removing worktrees one by one. Every step tolerates what's already gone. Agents still running in the sample aren't stopped: the confirmation says to close them first, and a folder in use is reported as cleanup already does.
 
 ### Desktop app pieces
 - `TourState` (shell) holds the dialog's step, the creation progress and errors, using `CommandLineTool` for the tool step like `ClaudeHooksState` does (sharing the instance, so installing in the tour updates the hooks section and notice too).
-- `TourDialog` shows welcome → tool (skipped when `CommandLineToolState.AVAILABLE`) → creating → open agent, the last one listing the launch options the worktree's `OpenActions` already compute.
-- `EmptyState` gains "Take the tour"; `AppMenuBar` Help gains "ShogunAi tour"; a `TourNotice` above the content follows the hooks notice pattern, with `tourOffered: Boolean` in `Settings` set when the tour starts or the notice is dismissed. New users never see it because starting from the empty state sets it.
+- `TourDialog` shows welcome → tool (skipped when `CommandLineToolState.AVAILABLE`) → creating → open agent. The last step shows the tour project behind the dialog and `TourAgentChoices` lists, for its main worktree, the terminal and Claude Desktop actions the holder's `openActions` already compute, Herdr and copying the launch command. The choices are a composable slot of the dialog and the banner, so both are tested without a `WorktreeBoard`. A launch closes the dialog; a launch error appears in the project view like for any worktree.
+- `EmptyState` gains "Take the tour"; `AppMenuBar` Help gains "ShogunAi Tour"; a `TourNotice` above the content follows the hooks notice pattern, with `tourOffered: Boolean` in `Settings` set when the tour starts or the notice is dismissed. New users never see it because starting from the empty state sets it.
 - The tour banner sits at the top of the project view (and the "All worktrees" view filtered to it) when `isTour(project)`.
 - Strings in `AppStrings` for English and Spanish.
 
@@ -75,7 +77,7 @@ No flag is added to `Project`: the tour project is the one whose `baseRepository
 
 - [Git missing or too old for `git init -b`] → `TourCreationFailed` shows the command and its output; `git init` followed by `git symbolic-ref HEAD refs/heads/main` avoids needing Git 2.28.
 - [Claude Code or Codex not installed] → the terminal shows "command not found"; the dialog's last step names both agents and says the tour needs one of them, and the copy option lets the user run another agent by hand.
-- [Ports reserved by the tour's worktrees] → `EndTourUseCase` releases them through `RemoveWorktreeUseCase`; deleting the folder by hand leaves reservations behind until `RepairWorktreesUseCase` runs, the same as any other repository.
+- [Ports reserved by the tour's worktrees] → they're stored in the sample's `.git`, so deleting the folder, by "End tour" or by hand, frees them.
 - [The tour's agent edits outside the sample] → the script forbids it and every command it suggests runs inside `~/.shogunai/tour`; it can't be enforced beyond the agent's own permission prompts.
 - [Inactivity bound changes] → 120 days stays above the 90-day maximum; if the range grows, the date comes from the range's upper bound plus 30 days, not a constant.
 

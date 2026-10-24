@@ -6,7 +6,7 @@ New users usually meet ShogunAi on a colleague's machine and install it with no 
 
 ## What Changes
 
-- A guided tour, offered by the first-launch empty state, by Help > "ShogunAi tour" at any time, and once by a dismissible notice to people who already had projects when they upgrade.
+- A guided tour, offered by the first-launch empty state, by Help > "ShogunAi Tour" at any time, and once by a dismissible notice to people who already had projects when they upgrade.
 - The tour starts with a step dialog in the app: a welcome that says what will be created, then the command-line tool step (its state, "Install command-line tool" or the manual steps, or "Skip"; omitted when the tool is already available), then the creation of the sample repository, then the choice of how to open the tour's agent.
 - A throwaway sample repository under `~/.shogunai/tour/`, with a local bare remote, a `.shogunai.json` that declares copied files, environment variables with ports, an environment file and a post-creation command, and worktrees in every state the app shows: new, needs you (uncommitted changes), stopped (pushed work, behind main), merged, inactive, locked and folder missing. It's registered as the project "ShogunAi tour".
 - The sample repository carries the tour's script in its `AGENTS.md` (and a `CLAUDE.md` pointing to it), so any agent can lead it; it tells the agent to speak the app's language, to go one step at a time and to touch nothing outside the tour folder. The tour project's agents start with a short prompt ("Start the ShogunAi tour"), and the agent is opened with the launchers that already exist (Herdr, terminal, Claude Desktop, or copying the launch command).

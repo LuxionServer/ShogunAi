@@ -735,6 +735,32 @@ object EnglishStrings : Strings {
     override fun folderIsMultirepoWorkspace(path: String, multirepo: String) =
         "$path is the workspace repository of the multirepo $multirepo; it belongs to it and isn't added as a project of its own"
     override fun deleteMultirepoTitle(name: String) = "Delete the multirepo $name?"
+    override val tourMenuItem = "ShogunAi Tour"
+    override val tourTakeTour = "Take the tour"
+    override val tourDialogTitle = "ShogunAi tour"
+    override fun tourWelcomeMessage(folder: String) =
+        "The tour creates a throwaway sample repository in $folder, with worktrees in every state ShogunAi shows, and registers it as the project \"ShogunAi tour\". Then an agent walks you through each feature, one step at a time. Nothing outside that folder is touched, and \"End tour\" removes it all."
+    override val tourStart = "Start"
+    override val tourToolMessage = "Agents, scripts and Claude Code's hooks use the shogun command. Install it now so every step of the tour works."
+    override val tourSkip = "Skip"
+    override val tourContinue = "Continue"
+    override val tourCreating = "Creating the sample repository…"
+    override val tourRetry = "Try again"
+    override val tourOpenAgentMessage = "The sample is ready. Open the tour's agent in its main worktree; it starts the tour on its own."
+    override val tourClaudeDesktopHint = "In Claude Desktop, write \"Start the ShogunAi tour\" to begin."
+    override val tourAgentsNeeded = "The tour's agent is Claude Code, or Codex from the agent menu; one of them must be installed."
+    override val tourLoadingWorktrees = "Loading the sample's worktrees…"
+    override val tourLater = "Later"
+    override val tourExistingMessage = "The tour's sample already exists. Open it where you left it, or restart the tour to create it again from scratch."
+    override val tourRestart = "Restart"
+    override val tourOpenExisting = "Open"
+    override val tourNoticeMessage = "New: a guided tour of ShogunAi with a throwaway sample repository and an agent that walks you through every feature."
+    override val tourBannerMessage = "This is the tour's throwaway sample. Its agent walks you through ShogunAi in the main worktree."
+    override val tourOpenAgent = "Open the tour's agent"
+    override val tourEnd = "End tour"
+    override val tourEndTitle = "End the tour?"
+    override fun tourEndMessage(folder: String) =
+        "The project \"ShogunAi tour\", its worktrees and $folder are deleted. Close the tour's agent first. No other project is touched."
 }
 
 internal fun String?.asSuffix(): String = if (isNullOrBlank()) "" else ": $this"

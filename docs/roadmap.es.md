@@ -24,14 +24,7 @@ Las herramientas de agentes están aprendiendo a crear worktrees, copiar en ello
 
 Numerados en el orden en que se abordarán: el número es la prioridad.
 
-### 1. Experiencia de primer uso
-
-Los usuarios nuevos llegan al ver ShogunAi funcionando en el equipo de un compañero, así que los primeros minutos deciden si se lo quedan:
-
-- Un recorrido guiado de primer uso: la app crea un repositorio de ejemplo desechable con worktrees en todos los estados y abre un agente con un prompt preparado que guía al usuario por cada funcionalidad (estado, limpieza, provisionado, el CLI, los hooks, el entorno y los providers), paso a paso.
-- Ofrecer en ese flujo la instalación del comando `shogun`, antes de que el usuario llegue a Preferencias o al aviso de hooks.
-
-### 2. El entorno de backends y servicios
+### 1. El entorno de backends y servicios
 
 Cada worktree de un backend necesita sus propios servicios en marcha, no solo su propio código. La detección de stacks, los providers de Maven y Docker Compose y los puertos por worktree están hechos; queda:
 
@@ -39,11 +32,11 @@ Cada worktree de un backend necesita sus propios servicios en marcha, no solo su
 - Parar los daemons de Maven cuando su estado se pueda leer con fiabilidad.
 - Variables compartidas entre los repositorios de un grupo de un multirepo, por ejemplo el puerto del backend con el que habla la app del grupo.
 
-### 3. Esperar capacidad de dispositivos
+### 2. Esperar capacidad de dispositivos
 
 `shogun emulator start --wait` (y su equivalente para simuladores): en vez de fallar cuando todos los emuladores están protegidos por una concesión, esperar en cola hasta que se libere capacidad. Se apoya en las concesiones de dispositivos, que ya indican cuándo caduca cada una.
 
-### 4. Provisionado y recursos de los stacks móviles
+### 3. Provisionado y recursos de los stacks móviles
 
 Provisionado y recursos acotados para los stacks en los que un worktree recién creado está más lejos de compilar:
 
@@ -54,7 +47,7 @@ Provisionado y recursos acotados para los stacks en los que un worktree recién 
 - Tamaños de DerivedData más rápidos: medir varias carpetas en paralelo y recordar los tamaños entre ejecuciones de la app.
 - Averiguar qué necesita un repositorio Flutter en un worktree y cuáles de los providers de Android e iOS puede reutilizar.
 
-### 5. Todos los agentes, no solo Claude Code
+### 4. Todos los agentes, no solo Claude Code
 
 La vista de ShogunAi solo es neutral si ve a todos los agentes:
 
@@ -63,7 +56,7 @@ La vista de ShogunAi solo es neutral si ve a todos los agentes:
 - Los ficheros de usuario de otros agentes para la guía de flujo, a medida que su documentación los confirme (Cursor guarda hoy las reglas de usuario en sus ajustes), y una sección en Ajustes de la app de escritorio para instalar, actualizar y quitar el bloque de `AGENTS.md`, como ya hace con los hooks de Claude Code.
 - Registrar la ref de origen de cada worktree, para que la regla de elegir la base de una pull request pudiera responderla `shogun` en lugar de seguir siendo una política del equipo.
 
-### 6. Multirepos para todo el equipo
+### 5. Multirepos para todo el equipo
 
 Los multirepos y los grupos por rama están hechos en el CLI y en la app de escritorio, y son también la forma en que quienes no escriben el código siguen un cambio a través de los repositorios. Quedaron fuera:
 
@@ -74,7 +67,7 @@ Los multirepos y los grupos por rama están hechos en el CLI y en la app de escr
 - Devolver un repositorio de workspace declarado a la detección (quitando el campo `workspace`), desde el CLI y los ajustes del multirepo; hoy `workspace clear` lo desactiva y para deshacerlo hay que editar el archivo a mano.
 - El estado del pull request de cada repositorio de un grupo, que depende de la integración con GitHub en estudio.
 
-### 7. Robustez y mantenimiento
+### 6. Robustez y mantenimiento
 
 - Encontrar la causa raíz de los errores que cerraban la ventana de Preferencias, a partir de las entradas que el aislamiento deja ahora en el registro de diagnóstico, y del crash nativo visto en otra máquina que dejó un informe de diagnóstico vacío.
 - Comprobar la instalación del comando `shogun` desde la app con una app instalada de verdad en Windows (el `shogun.cmd` y el cambio del `PATH` de usuario solo están cubiertos con pruebas con dobles) y en un equipo sin `~/.local/bin` en el `PATH`.
@@ -82,6 +75,7 @@ Los multirepos y los grupos por rama están hechos en el CLI y en la app de escr
 - Soporte de repositorios bare con worktrees (el esquema «bare clone»), que cambia lo que significan el repositorio base y copiar desde él. Hoy ShogunAi los rechaza con un error específico.
 - Dividir `ProjectWorktrees.kt` y `ProjectSettingsView.kt` en holders y secciones más pequeños.
 - Atestaciones de procedencia de build para los assets de las releases, y tratar los avisos del compilador como errores ahora que la build está limpia.
+- Comprobar el recorrido guiado en Windows y Linux con una app instalada real: la creación del ejemplo con el Git del sistema, y el comando del agente del recorrido, cuyo prompt se entrecomilla para la shell que ejecuta cada terminal.
 
 ## Más adelante
 

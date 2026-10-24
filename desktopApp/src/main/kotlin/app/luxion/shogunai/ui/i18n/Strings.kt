@@ -612,6 +612,30 @@ interface Strings {
     fun notARepository(path: String): String
     fun folderIsMultirepoWorkspace(path: String, multirepo: String): String
     fun deleteMultirepoTitle(name: String): String
+    val tourMenuItem: String
+    val tourTakeTour: String
+    val tourDialogTitle: String
+    fun tourWelcomeMessage(folder: String): String
+    val tourStart: String
+    val tourToolMessage: String
+    val tourSkip: String
+    val tourContinue: String
+    val tourCreating: String
+    val tourRetry: String
+    val tourOpenAgentMessage: String
+    val tourClaudeDesktopHint: String
+    val tourAgentsNeeded: String
+    val tourLoadingWorktrees: String
+    val tourLater: String
+    val tourExistingMessage: String
+    val tourRestart: String
+    val tourOpenExisting: String
+    val tourNoticeMessage: String
+    val tourBannerMessage: String
+    val tourOpenAgent: String
+    val tourEnd: String
+    val tourEndTitle: String
+    fun tourEndMessage(folder: String): String
 }
 
 val LocalStrings = staticCompositionLocalOf<Strings> { EnglishStrings }

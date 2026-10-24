@@ -15,6 +15,12 @@ interface ShellCommandExecutor {
         timeout: Duration,
         workingDirectory: String? = null,
     ): CommandResult = execute(command, workingDirectory)
+
+    suspend fun executeWithEnvironment(
+        command: List<String>,
+        environment: Map<String, String>,
+        workingDirectory: String? = null,
+    ): CommandResult = execute(command, workingDirectory)
 }
 
 object CommandTimeouts {

@@ -24,14 +24,7 @@ Agent tools are learning to create worktrees, copy local files into them and sho
 
 Numbered in the order they will be picked up: the number is the priority.
 
-### 1. First-run experience
-
-New users arrive by seeing ShogunAi working on a colleague's machine, so the first minutes decide whether they keep it:
-
-- A guided first-run walkthrough: the app creates a throwaway sample repository with worktrees in every state, and opens an agent with a prepared prompt that walks the user through each feature (status, cleanup, provisioning, the CLI, hooks, environment and providers), one step at a time.
-- Offering the installation of the `shogun` command in that flow, before the user reaches Preferences or the hooks notice.
-
-### 2. The environment of backends and services
+### 1. The environment of backends and services
 
 Every worktree of a backend needs its own running services, not only its own code. Stack detection, the Maven and Docker Compose providers and the per-worktree ports are done; what remains:
 
@@ -39,11 +32,11 @@ Every worktree of a backend needs its own running services, not only its own cod
 - Stopping Maven daemons once their state can be read reliably.
 - Variables shared between the repositories of a multirepo group, for example the port of the backend the group's app talks to.
 
-### 3. Wait for device capacity
+### 2. Wait for device capacity
 
 `shogun emulator start --wait` (and the simulator equivalent): instead of failing when every emulator is protected by a lease, queue until capacity frees up. It builds on the device leases, which already say when each lease expires.
 
-### 4. Provisioning and resources of mobile stacks
+### 3. Provisioning and resources of mobile stacks
 
 Provisioning and bounded resources for the stacks where a fresh worktree is furthest from building:
 
@@ -54,7 +47,7 @@ Provisioning and bounded resources for the stacks where a fresh worktree is furt
 - Faster DerivedData sizes: measuring several folders in parallel and remembering sizes between app runs.
 - Finding out what a Flutter repository needs in a worktree and which of the Android and iOS providers it can reuse.
 
-### 5. Every agent, not only Claude Code
+### 4. Every agent, not only Claude Code
 
 ShogunAi's view is only neutral if it sees every agent:
 
@@ -63,7 +56,7 @@ ShogunAi's view is only neutral if it sees every agent:
 - Other agents' user-level files for the workflow guide, as their documentation confirms them (Cursor keeps user rules in its settings today), and a Settings section in the desktop app to install, update and remove the `AGENTS.md` block, as it already does for Claude Code's hooks.
 - Recording the origin ref of each worktree, so the rule for choosing a pull request's base could be answered by `shogun` instead of staying a team policy.
 
-### 6. Multirepos for the whole team
+### 5. Multirepos for the whole team
 
 Multirepos and groups by branch are done in the CLI and the desktop app, and they're also how people who don't write the code follow a change across repositories. Left out:
 
@@ -74,7 +67,7 @@ Multirepos and groups by branch are done in the CLI and the desktop app, and the
 - Returning a declared workspace repository to detection (removing the `workspace` field), from the CLI and the multirepo settings; today `workspace clear` turns it off and the file has to be edited by hand to undo it.
 - The pull request state of each repository of a group, which depends on the GitHub integration under exploration.
 
-### 7. Robustness and maintenance
+### 6. Robustness and maintenance
 
 - Finding the root cause of the errors that closed the Preferences window, from the entries the isolation now leaves in the diagnostics log, and of the native crash seen on another machine that left an empty diagnostic report.
 - Checking the in-app installation of the `shogun` command on a real installed app on Windows (the `shogun.cmd` and the user `PATH` change are covered by tests with fakes only) and on a machine without `~/.local/bin` on its `PATH`.
@@ -82,6 +75,7 @@ Multirepos and groups by branch are done in the CLI and the desktop app, and the
 - Support for bare repositories with worktrees (the "bare clone" layout), which changes what the base repository and copying from it mean. Today ShogunAi rejects them with a specific error.
 - Splitting `ProjectWorktrees.kt` and `ProjectSettingsView.kt` into smaller holders and sections.
 - Build provenance attestations for release assets, and treating compiler warnings as errors now that the build is clean.
+- Checking the guided tour on Windows and Linux with a real installed app: creating the sample with the system's Git, and the tour's agent command, whose prompt is quoted for the shell each terminal runs.
 
 ## Later
 

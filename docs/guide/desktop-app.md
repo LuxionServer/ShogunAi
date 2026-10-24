@@ -2,6 +2,18 @@
 
 The desktop app manages a catalog of projects and, for each one, its worktrees. Everything it does is also available from the [`shogun` command](cli.md).
 
+## Guided tour
+
+The first launch, with no projects yet, offers **Take the tour** next to "Add project", and Help > **ShogunAi Tour** starts it at any time. If you already had projects when you upgraded, a notice offers it once.
+
+The tour:
+
+1. Offers to install the [`shogun` command](installation.md#the-shogun-command) when it isn't on your `PATH` yet, since agents and Claude Code's hooks use it. You can skip it.
+2. Creates a throwaway sample repository in `~/.shogunai/tour`, with a local remote, a [`.shogunai.json`](configuration.md#repository-configuration-shogunaijson) and worktrees in every state the list shows ("Needs you", "New", "Stopped", "Merged", "Inactive", one locked and "Folder missing"), and registers it as the project "ShogunAi tour".
+3. Opens the tour's agent in the sample's main worktree, in the terminal, Herdr or Claude Desktop, or copies its launch command. The agent is Claude Code (Codex from the agent menu), started with "Start the ShogunAi tour"; the script it follows is the sample's `AGENTS.md`, and it speaks the app's language. It goes through status, cleanup, provisioning, the command line, hooks, environment and providers one step at a time, waiting for you between steps, and changes nothing outside `~/.shogunai/tour`.
+
+While the sample exists, its project shows a banner to open the agent again or **End tour**, which deletes the project, its worktrees and `~/.shogunai/tour` after asking. Starting the tour again offers to open the existing sample or restart it from scratch.
+
 ## Projects
 
 The first time you open the app you'll see an empty project catalog. Click "New project" (Cmd+N on macOS, Ctrl+N elsewhere) and fill in:

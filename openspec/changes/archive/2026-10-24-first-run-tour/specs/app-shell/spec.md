@@ -10,7 +10,7 @@ When no project is saved, the content area SHALL show an empty state that explai
 - **THEN** the content area shows the empty state with an action that opens the add-project form and an action that starts the tour
 
 ### Requirement: Application menu
-The app SHALL provide an application menu with File (Add project, and on Windows and Linux Preferences and Quit), View (Reload, Toggle sidebar) and Help (ShogunAi tour, Check for updates, Copy diagnostic report, and on Windows and Linux About) entries, each with its keyboard shortcut when it has one. On macOS, Preferences and About SHALL be in the application menu named after the app.
+The app SHALL provide an application menu with File (Add project, and on Windows and Linux Preferences and Quit), View (Reload, Toggle sidebar) and Help (ShogunAi Tour, Check for updates, Copy diagnostic report, and on Windows and Linux About) entries, each with its keyboard shortcut when it has one. On macOS, Preferences and About SHALL be in the application menu named after the app.
 
 #### Scenario: Reload from the menu
 - **WHEN** the user chooses View > Reload or presses Cmd/Ctrl+R
@@ -21,5 +21,5 @@ The app SHALL provide an application menu with File (Add project, and on Windows
 - **THEN** "About ShogunAi" and "Settings…" (Cmd+,) are in the ShogunAi menu
 
 #### Scenario: Tour from the Help menu
-- **WHEN** the user has projects and chooses Help > "ShogunAi tour"
+- **WHEN** the user has projects and chooses Help > "ShogunAi Tour"
 - **THEN** the tour starts

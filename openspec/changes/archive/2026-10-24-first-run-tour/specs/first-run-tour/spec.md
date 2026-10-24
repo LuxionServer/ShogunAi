@@ -7,14 +7,14 @@ Teaches a new user what ShogunAi does on their own machine: a throwaway sample r
 ## ADDED Requirements
 
 ### Requirement: Where the tour is offered
-The app SHALL offer to start the tour from the first-launch empty state and from Help > "ShogunAi tour" at any time.
+The app SHALL offer to start the tour from the first-launch empty state and from Help > "ShogunAi Tour" at any time.
 
 #### Scenario: First launch
 - **WHEN** the app starts with no saved projects
 - **THEN** the empty state offers "Take the tour" next to "Add project"
 
 #### Scenario: Help menu
-- **WHEN** the user has projects and chooses Help > "ShogunAi tour"
+- **WHEN** the user has projects and chooses Help > "ShogunAi Tour"
 - **THEN** the tour's dialog opens
 
 ### Requirement: Offer the tour once to existing users
@@ -26,7 +26,7 @@ When the app starts with saved projects, the tour has never been started and its
 
 #### Scenario: Dismissed
 - **WHEN** the user dismisses the notice and restarts the app
-- **THEN** the notice isn't shown, and Help > "ShogunAi tour" still starts the tour
+- **THEN** the notice isn't shown, and Help > "ShogunAi Tour" still starts the tour
 
 #### Scenario: Started from the empty state
 - **WHEN** a new user started the tour from the empty state and later has projects
@@ -107,7 +107,7 @@ The last step of the dialog SHALL offer the ways to open the sample's main workt
 
 #### Scenario: Launch fails
 - **WHEN** opening the agent fails
-- **THEN** the dialog shows the launcher's error and keeps the other ways to open it
+- **THEN** the tour project's view shows the launcher's error as it does for any worktree, and the tour banner still offers the ways to open the agent
 
 ### Requirement: Tour banner
 While the tour project exists, its view SHALL show a banner saying it's the tour's sample, with "Open the tour's agent" and "End tour".
@@ -131,5 +131,5 @@ While the tour project exists, its view SHALL show a banner saying it's the tour
 Starting the tour while the tour project exists SHALL offer to restart it, which ends the existing tour and creates it again from scratch, or to open the existing tour project.
 
 #### Scenario: Restart
-- **WHEN** the tour project exists and the user chooses Help > "ShogunAi tour" and then "Restart"
+- **WHEN** the tour project exists and the user chooses Help > "ShogunAi Tour" and then "Restart"
 - **THEN** the sample is recreated with every worktree in its initial state
