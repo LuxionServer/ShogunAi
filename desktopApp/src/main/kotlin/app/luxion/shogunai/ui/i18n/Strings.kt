@@ -11,6 +11,10 @@ import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.usecase.HookEntry
 import app.luxion.shogunai.domain.usecase.HookReplacement
 import app.luxion.shogunai.domain.usecase.HooksInstallState
+import app.luxion.shogunai.domain.model.HostOs
+import app.luxion.shogunai.domain.usecase.CommandLineToolInstallation
+import app.luxion.shogunai.domain.usecase.CommandLineToolState
+import app.luxion.shogunai.domain.usecase.CommandLineToolStatus
 import app.luxion.shogunai.ui.shell.HooksAction
 import app.luxion.shogunai.domain.model.RepositoryConfigIssue
 import app.luxion.shogunai.domain.usecase.GitFailureCause
@@ -196,7 +200,17 @@ interface Strings {
     val claudeHooksRemove: String
     val claudeHooksCancel: String
     val claudeHooksConfirm: String
-    val claudeHooksPathWarning: String
+    val claudeHooksNeedsTool: String
+    val commandLineToolLabel: String
+    fun commandLineToolStatus(status: CommandLineToolStatus): String
+    val commandLineToolNeededByHooks: String
+    val commandLineToolInstall: String
+    val commandLineToolRepair: String
+    val commandLineToolRemove: String
+    fun commandLineToolInstalled(installation: CommandLineToolInstallation): String
+    fun commandLineToolPathHint(status: CommandLineToolStatus, os: HostOs): String
+    fun commandLineToolManualSteps(os: HostOs): String
+    val claudeHooksNoticeToolMessage: String
     fun claudeHooksDialogTitle(action: HooksAction): String
     fun claudeHooksChangesIn(path: String): String
     fun claudeHooksAdded(entry: HookEntry): String
@@ -567,6 +581,13 @@ interface Strings {
     val noGroupsDetected: String
     val multirepoSettingsTitle: String
     val multirepoNotFound: String
+    val workspaceRepositoryTitle: String
+    val workspaceRepositoryHint: String
+    val workspaceDetectedMark: String
+    val declareWorkspace: String
+    val workspaceAliasLabel: String
+    val turnOffWorkspace: String
+    val workspaceTurnedOff: String
     val defaultRepositoriesTitle: String
     val defaultRepositoriesHint: String
     val multirepoWorktreesRootTitle: String
@@ -589,6 +610,7 @@ interface Strings {
     fun multirepoInsideRepository(repository: String): String
     fun useWorktreesFolder(folder: String): String
     fun notARepository(path: String): String
+    fun folderIsMultirepoWorkspace(path: String, multirepo: String): String
     fun deleteMultirepoTitle(name: String): String
 }
 

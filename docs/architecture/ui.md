@@ -176,6 +176,10 @@ Where `SystemTray.isSupported()`, `main.kt` adds a Compose `Tray` (`ShogunTray`)
 - **Actions** (`TrayAction`) go through the same view model and board as the window: "Show in ShogunAi" reveals the worktree in "All worktrees", "New worktree…" opens the window and the create dialog for the last project used, and launches use the worktree's agent. A launch that fails (`TrayLaunchWatch` compares the worktree's action error before and after) opens the window with the worktree selected, so its error is visible; so does a launch that needs the terminal to be chosen.
 - **Keep running**: `keepRunningInTray` (off by default, available only with the icon shown) makes closing the main window hide it instead of quitting (see `main.kt`).
 
+### Claude Code hooks and the command-line tool
+
+`ClaudeHooksState` backs both the hooks section in Preferences (`ClaudeHooksSection`) and the notice above the worktree board (`ClaudeHooksNotice`). It also holds the status of the `shogun` command, computed by the `CommandLineTool` use case (`AVAILABLE`, `INSTALLED_NOT_ON_PATH`, `BROKEN` or `MISSING`; see [Infrastructure](infrastructure.md)). The hooks' "Install" and "Update" are disabled until the command is usable, with the reason under them, and both places show the prerequisite with its action ("Install command-line tool", "Repair" when the launcher points at an app that is gone) or, for a build that isn't an installed app, the manual steps for the operating system. "Remove" for the hooks is never gated. The notice and the Preferences button use the primary button style, and the notice keeps its "Dismiss".
+
 ### Update check
 
 `UpdateState` (built in `AppContainer` over `CheckForUpdateUseCase`, `GitHubReleaseSource` and `JsonUpdatePreferenceRepository`) is the shell's update state. `checkInBackground()` runs the automatic check and, when a newer version is available, sets `notice`; failures are ignored. The `UpdateNotice` banner at the top of the main content says which version is out and which is running, with "What's new" (opens the release page), the channel's reminder (the command with "Copy", or the installer with "Download" and, for a `.deb`, the `apt` command), "Skip this version" (`skipVersion()`, saved as `skippedVersion`) and close (hides it until the next start). It never takes focus.
@@ -272,6 +276,12 @@ The app bundles Geist for UI text and Geist Mono for data, in weights 400, 500 a
 - **`DangerButton`, `DangerTextButton`**: destructive actions, where they're offered and in the confirmation that follows. **`NeutralTextButton`** is the text button for neutral actions such as "Cancel", so the brand color stays reserved for main actions.
 - **`IconAction`**: an icon-only action whose label is both its tooltip and its accessible description.
 - **`Modifier.interactive`**: makes a custom row or header clickable, with a hover state, the hand pointer and a focus ring (`Modifier.focusRing`).
+
+## Multirepo and its workspace repository
+
+`multirepoMemberships` maps projects to aliases through `Multirepo.repositories`, so the project of a multirepo folder that is a Git repository is a member with the workspace alias and drops out of the loose projects; with `"workspace": false` it doesn't match and stays loose. `ShellViewModel` takes `registerWorkspaceProject` (`AppContainer.registerWorkspaceProject`) and calls it for every loaded multirepo, registering the workspace project once. `ProjectConfigViewModel` takes `multirepoOfWorkspace` and `chooseFolder` rejects such a folder with `rejectedMultirepo`, shown as a notice instead of adding the project (the drop of the folder opens the same form).
+
+`WorktreeBoard` adds `AgentSearch.multirepoFolder` for each multirepo to the searches it already makes on focus, on the periodic check and when a multirepo view opens, and keeps the result in `multirepoAgents`; `multirepoAgentsOf(folder)` feeds the multirepo view's header and `multirepoActivityCountOf(folder)` (working or blocked) adds to the multirepo's sidebar activity. `MultirepoSettingsState` has the workspace draft (`workspaceDeclared`, `workspaceAlias`, `workspaceOff`) and saves it through `MultirepoSetup.setWorkspace`/`clearWorkspace` before the default repositories.
 
 ## `AppContainer`
 

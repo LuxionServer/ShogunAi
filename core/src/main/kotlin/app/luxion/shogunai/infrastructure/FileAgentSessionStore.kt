@@ -3,6 +3,7 @@ package app.luxion.shogunai.infrastructure
 import app.luxion.shogunai.domain.io.AgentSessionStore
 import app.luxion.shogunai.domain.model.AgentSessionRecord
 import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.MULTIREPO_FILE_NAME
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -12,6 +13,7 @@ import kotlinx.serialization.json.put
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
 import kotlin.io.path.exists
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
@@ -19,7 +21,11 @@ import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.name
 import kotlin.io.path.readText
 
-class FileAgentSessionStore : AgentSessionStore {
+private const val FOLDER_STORE = "agent-sessions"
+
+class FileAgentSessionStore(
+    private val folderStore: Path = Path.of(System.getProperty("user.home"), ".shogunai", FOLDER_STORE),
+) : AgentSessionStore {
 
     override fun write(worktreePath: String, record: AgentSessionRecord) {
         val directory = sessionsDirectory(worktreePath) ?: return
@@ -39,8 +45,17 @@ class FileAgentSessionStore : AgentSessionStore {
         return directory.listDirectoryEntries("*$EXTENSION").mapNotNull { file -> runCatching { decode(file.readText()) }.getOrNull() }
     }
 
-    private fun sessionsDirectory(worktreePath: String): Path? =
-        gitDirectory(Path.of(worktreePath))?.resolve(FOLDER)?.resolve(SESSIONS)
+    private fun sessionsDirectory(worktreePath: String): Path? {
+        val worktree = Path.of(worktreePath)
+        gitDirectory(worktree)?.let { return it.resolve(FOLDER).resolve(SESSIONS) }
+        if (!worktree.resolve(MULTIREPO_FILE_NAME).isRegularFile()) return null
+        return folderStore.resolve(folderKey(worktree))
+    }
+
+    private fun folderKey(folder: Path): String {
+        val canonical = runCatching { folder.toRealPath() }.getOrDefault(folder.toAbsolutePath().normalize()).toString()
+        return MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray()).joinToString("") { "%02x".format(it) }.take(KEY_LENGTH)
+    }
 
     private fun gitDirectory(worktree: Path): Path? {
         val dotGit = worktree.resolve(".git")
@@ -82,6 +97,7 @@ class FileAgentSessionStore : AgentSessionStore {
     private fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
 
     private companion object {
+        const val KEY_LENGTH = 24
         const val FOLDER = "shogunai"
         const val SESSIONS = "agent-sessions"
         const val EXTENSION = ".json"

@@ -1,6 +1,7 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorktreeError
 
@@ -13,7 +14,10 @@ class RemoveWorktreeUseCase(
     private val config: ProjectConfig,
     private val executor: ShellCommandExecutor,
     private val closeHerdrWorkspaces: CloseHerdrWorkspacesUseCase? = null,
+    private val fileManager: FileManager? = null,
 ) {
+    private val folderRemoval = WorktreeFolderRemoval(config, executor, fileManager, closeHerdrWorkspaces)
+
     suspend operator fun invoke(
         worktreePath: String,
         branchToDelete: String? = null,
@@ -21,17 +25,10 @@ class RemoveWorktreeUseCase(
         forceBranchDeletion: Boolean = false,
     ): Result<WorktreeRemoval> = runCatching {
         val workspaces = closeHerdrWorkspaces?.openWorkspaces(listOf(worktreePath)).orEmpty()
-        val removeCommand = buildList {
-            addAll(listOf("git", "worktree", "remove"))
-            if (force) add("--force")
-            add(worktreePath)
-        }
-        val remove = executor.execute(removeCommand, workingDirectory = config.baseRepositoryPath)
-        if (!remove.isSuccess) {
-            throw WorktreeError.GitCommandFailed(remove.command, remove.exitCode, remove.stderr)
-        }
-
-        val herdrFailure = closeHerdrWorkspaces?.close(workspaces, listOf(worktreePath))?.firstOrNull()?.error
+        val closing = folderRemoval.remove(worktreePath, force, workspaces[worktreePath])
+        val remaining = if (closing.closedWorkspace) emptyMap() else workspaces
+        val herdrFailure = closeHerdrWorkspaces?.close(remaining, listOf(worktreePath))?.firstOrNull()?.error
+            ?: closing.failure
 
         val branch = branchToDelete?.let { deleteBranch(it, forceBranchDeletion) }
         WorktreeRemoval(herdrFailure, branch)

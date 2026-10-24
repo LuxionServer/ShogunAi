@@ -6,8 +6,10 @@ import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
+import app.luxion.shogunai.domain.model.DEFAULT_WORKSPACE_ALIAS
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.WorkspaceSetting
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.isValidMultirepoAlias
 import app.luxion.shogunai.domain.model.joinPath
@@ -120,8 +122,21 @@ class ConfigureMultirepoUseCase(
     }
 
     fun setDefaults(multirepo: Multirepo, aliases: List<String>): Result<Multirepo> = update(multirepo) { declaration ->
-        aliases.firstOrNull { it !in declaration.repos }?.let { throw unknownAlias(multirepo, it) }
-        declaration.copy(defaultRepos = aliases.distinct())
+        aliases.firstOrNull { it !in multirepo.aliases }?.let { throw unknownAlias(multirepo, it) }
+        val workspace = multirepo.workspaceRepository?.takeIf { it.alias !in declaration.repos }
+        val ordinary = aliases.filter { it in declaration.repos }.distinct()
+        val workspaceSetting = if (workspace == null) {
+            declaration.workspace
+        } else {
+            val joins = workspace.alias in aliases
+            val current = declaration.workspace
+            when {
+                joins -> WorkspaceSetting(alias = workspace.alias, default = true)
+                current != null -> current.copy(default = false)
+                else -> null
+            }
+        }
+        declaration.copy(defaultRepos = ordinary, workspace = workspaceSetting)
     }
 
     fun setAgent(multirepo: Multirepo, agent: AgentLaunchConfig): Result<Multirepo> = update(multirepo) { declaration ->
@@ -133,6 +148,21 @@ class ConfigureMultirepoUseCase(
         declaration.copy(worktreesRoot = relativeMultirepoPath(multirepo.folder, normalizePath(folder)))
     }
 
+    fun setWorkspace(multirepo: Multirepo, alias: String?, default: Boolean): Result<Multirepo> = update(multirepo) { declaration ->
+        fun reject(detail: String): Nothing = throw WorktreeError.InvalidMultirepo(multirepo.declarationPath, detail)
+        if (!multirepo.folderIsRepository) reject("there is no workspace repository: ${multirepo.folder} isn't a Git repository")
+        val chosen = alias ?: multirepo.workspaceRepository?.alias ?: DEFAULT_WORKSPACE_ALIAS
+        if (!isValidMultirepoAlias(chosen)) reject("alias '$chosen' must use only lowercase letters, digits and hyphens")
+        if (chosen in declaration.repos && multirepo.declaredRepositories.none { it.alias == chosen && sameDirectory(it.path, multirepo.folder) }) {
+            reject("alias '$chosen' is already taken")
+        }
+        declaration.copy(workspace = WorkspaceSetting(alias = chosen, default = default))
+    }
+
+    fun clearWorkspace(multirepo: Multirepo): Result<Multirepo> = update(multirepo) { declaration ->
+        declaration.copy(workspace = WorkspaceSetting(enabled = false))
+    }
+
     fun delete(multirepo: Multirepo): Result<Unit> = runCatching {
         source.delete(multirepo.folder)
         source.forget(multirepo.folder)
@@ -141,7 +171,7 @@ class ConfigureMultirepoUseCase(
     private fun update(multirepo: Multirepo, change: (MultirepoDeclaration) -> MultirepoDeclaration): Result<Multirepo> = runCatching {
         val declaration = change(multirepo.declaration)
         source.write(multirepo.folder, declaration)
-        Multirepo(multirepo.folder, declaration)
+        resolver.build(multirepo.folder, declaration)
     }
 
     private fun unknownAlias(multirepo: Multirepo, alias: String) =

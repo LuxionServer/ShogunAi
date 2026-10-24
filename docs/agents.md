@@ -60,7 +60,7 @@ The hooks it installs, each one a `command` hook:
 | `SessionStart` | `shogun hook session-start` |
 | `UserPromptSubmit`, `Notification`, `Stop`, `SessionEnd` | `shogun hook agent-state` |
 
-The hooks run `shogun`, so it must be on the `PATH` of the shell you run Claude Code from.
+The hooks run `shogun`, so it must be on the `PATH` of the shell you run Claude Code from. In the desktop app, Preferences and the board's hooks notice show this prerequisite next to "Install", keep it disabled until the command is available and offer "Install command-line tool" (see [The `shogun` command](guide/installation.md#the-shogun-command)).
 
 What happens then:
 

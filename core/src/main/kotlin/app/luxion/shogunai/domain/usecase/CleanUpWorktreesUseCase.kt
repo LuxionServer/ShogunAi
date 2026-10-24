@@ -3,6 +3,7 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.ComposeProjectSource
+import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.model.ComposeDownReport
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -10,6 +11,7 @@ import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeStatus
+import kotlin.coroutines.cancellation.CancellationException
 
 data class CleanupReport(
     val removed: List<String>,
@@ -53,7 +55,10 @@ class CleanUpWorktreesUseCase(
     private val executor: ShellCommandExecutor,
     private val closeHerdrWorkspaces: CloseHerdrWorkspacesUseCase? = null,
     private val composeProjects: ComposeProjectSource? = null,
+    fileManager: FileManager? = null,
 ) {
+    private val folderRemoval = WorktreeFolderRemoval(config, executor, fileManager, closeHerdrWorkspaces)
+
     suspend operator fun invoke(
         candidates: List<Worktree>,
         mainBranch: MainBranch?,
@@ -65,13 +70,19 @@ class CleanUpWorktreesUseCase(
         val failures = mutableListOf<CleanupFailure>()
 
         val removedWorktrees = mutableListOf<Worktree>()
+        val closedWorkspacePaths = mutableSetOf<String>()
+        val herdrFailures = mutableListOf<CleanupFailure>()
 
         candidates.filterNot { it.isPrunable }.forEach { worktree ->
-            val removal = git("worktree", "remove", worktree.path)
-            if (removal.isSuccess) {
+            try {
+                val closing = folderRemoval.remove(worktree.path, force = false, workspaceId = workspaces[worktree.path])
+                if (closing.closedWorkspace) closedWorkspacePaths += worktree.path
+                closing.failure?.let { herdrFailures += CleanupFailure(worktree.path, it) }
                 removedWorktrees += worktree
-            } else {
-                failures += CleanupFailure(worktree.path, removal.toError())
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: WorktreeError) {
+                failures += CleanupFailure(worktree.path, error)
             }
         }
 
@@ -85,7 +96,7 @@ class CleanUpWorktreesUseCase(
             }
         }
 
-        val herdrFailures = closeHerdrWorkspaces?.close(workspaces, removedWorktrees.map { it.path }).orEmpty()
+        herdrFailures += closeHerdrWorkspaces?.close(workspaces, removedWorktrees.map { it.path }.filter { it !in closedWorkspacePaths }).orEmpty()
 
         if (deleteBranches) {
             removedWorktrees.mapNotNull { it.branch }.forEach { branch ->

@@ -123,6 +123,9 @@ fun WorktreeScreen(
                 )
             }
             if (multirepo != null) {
+                board.multirepoAgentsOf(multirepo.folder).forEach { agent ->
+                    Text(strings.agentLabel(agent.name, agent.state), style = MaterialTheme.typography.bodySmall)
+                }
                 IconAction(icon = Icons.Default.Settings, label = strings.multirepoSettingsTitle, onClick = onOpenMultirepoSettings)
                 SecondaryButton(onClick = board::openMultirepoAgent, enabled = !board.isOpeningMultirepoAgent) {
                     Text(strings.openMultirepoAgent)

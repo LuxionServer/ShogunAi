@@ -176,6 +176,10 @@ Donde `SystemTray.isSupported()`, `main.kt` añade un `Tray` de Compose (`Shogun
 - **Acciones** (`TrayAction`): pasan por el mismo view model y tablero que la ventana: "Mostrar en ShogunAi" muestra el worktree en "Todos los worktrees", "Nuevo worktree…" abre la ventana y el diálogo de crear en el último proyecto usado, y los lanzamientos usan el agente del worktree. Un lanzamiento que falla (`TrayLaunchWatch` compara el error de acción del worktree antes y después) abre la ventana con el worktree seleccionado, para que se vea su error; lo mismo hace un lanzamiento que necesita elegir terminal.
 - **Seguir ejecutándose**: `keepRunningInTray` (desactivado por defecto, disponible solo con el icono visible) hace que cerrar la ventana principal la oculte en vez de cerrar la app (ver `main.kt`).
 
+### Hooks de Claude Code y la herramienta de línea de comandos
+
+`ClaudeHooksState` respalda tanto la sección de hooks de Preferencias (`ClaudeHooksSection`) como el aviso sobre el tablero de worktrees (`ClaudeHooksNotice`). También guarda el estado del comando `shogun`, que calcula el caso de uso `CommandLineTool` (`AVAILABLE`, `INSTALLED_NOT_ON_PATH`, `BROKEN` o `MISSING`; consulta [Infraestructura](infrastructure.es.md)). "Instalar" y "Actualizar" de los hooks están desactivados hasta que el comando sea utilizable, con el motivo debajo, y los dos sitios muestran el requisito con su acción ("Instalar herramienta de línea de comandos", "Reparar" cuando el lanzador apunta a una app que ya no está) o, en una compilación que no es una app instalada, los pasos manuales del sistema operativo. "Quitar" de los hooks nunca se bloquea. El aviso y el botón de Preferencias usan el estilo de botón primario, y el aviso conserva su "Descartar".
+
 ### Búsqueda de actualizaciones
 
 `UpdateState` (construido en `AppContainer` sobre `CheckForUpdateUseCase`, `GitHubReleaseSource` y `JsonUpdatePreferenceRepository`) es el estado de actualizaciones del shell. `checkInBackground()` hace la comprobación automática y, cuando hay una versión más nueva, fija `notice`; los fallos se ignoran. El aviso `UpdateNotice`, arriba del contenido principal, dice qué versión ha salido y cuál se está ejecutando, con "Novedades" (abre la página de la release), el recordatorio del canal (el comando con "Copiar", o el instalador con "Descargar" y, para un `.deb`, el comando de `apt`), "Omitir esta versión" (`skipVersion()`, guardada como `skippedVersion`) y cerrar (lo oculta hasta el siguiente arranque). Nunca toma el foco.
@@ -272,6 +276,12 @@ La app incluye Geist para el texto de la interfaz y Geist Mono para los datos, e
 - **`DangerButton`, `DangerTextButton`**: acciones destructivas, tanto donde se ofrecen como en la confirmación que les sigue. **`NeutralTextButton`** es el botón de texto para acciones neutras como "Cancelar", para reservar el color de marca a las acciones principales.
 - **`IconAction`**: una acción solo con icono cuya etiqueta es a la vez su tooltip y su descripción accesible.
 - **`Modifier.interactive`**: hace clicable una fila o cabecera propia, con estado hover, el puntero de mano y un anillo de foco (`Modifier.focusRing`).
+
+## Multirepo y su repositorio workspace
+
+`multirepoMemberships` asocia proyectos con alias a través de `Multirepo.repositories`, así que el proyecto de una carpeta de multirepo que es un repositorio Git es un miembro con el alias del workspace y sale de los proyectos sueltos; con `"workspace": false` no coincide y sigue suelto. `ShellViewModel` recibe `registerWorkspaceProject` (`AppContainer.registerWorkspaceProject`) y lo llama con cada multirepo cargado, registrando una sola vez el proyecto del workspace. `ProjectConfigViewModel` recibe `multirepoOfWorkspace` y `chooseFolder` rechaza esa carpeta con `rejectedMultirepo`, que se muestra como aviso en vez de añadir el proyecto (soltar la carpeta abre el mismo formulario).
+
+`WorktreeBoard` añade `AgentSearch.multirepoFolder` de cada multirepo a las búsquedas que ya hace al recuperar el foco, en la comprobación periódica y al abrir una vista de multirepo, y guarda el resultado en `multirepoAgents`; `multirepoAgentsOf(carpeta)` alimenta la cabecera de la vista del multirepo y `multirepoActivityCountOf(carpeta)` (trabajando o bloqueado) suma a la actividad del multirepo en la barra lateral. `MultirepoSettingsState` tiene el borrador del workspace (`workspaceDeclared`, `workspaceAlias`, `workspaceOff`) y lo guarda con `MultirepoSetup.setWorkspace`/`clearWorkspace` antes de los repositorios por defecto.
 
 ## `AppContainer`
 

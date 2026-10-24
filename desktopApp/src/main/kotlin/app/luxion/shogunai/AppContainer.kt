@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.usecase.AddedRepository
 import app.luxion.shogunai.domain.usecase.ConfigureMultirepoUseCase
+import app.luxion.shogunai.domain.usecase.withWorkspaceAt
 import app.luxion.shogunai.domain.usecase.CreateGroupUseCase
 import app.luxion.shogunai.domain.usecase.DetectGroupsUseCase
 import app.luxion.shogunai.domain.usecase.MultirepoMember
@@ -48,6 +49,9 @@ import app.luxion.shogunai.ui.shell.ClaudeHooksState
 import app.luxion.shogunai.ui.shell.UpdateState
 import app.luxion.shogunai.domain.usecase.ClaudeCodeHooks
 import app.luxion.shogunai.infrastructure.ExecutableLocator
+import app.luxion.shogunai.domain.usecase.CommandLineTool
+import app.luxion.shogunai.infrastructure.NioLauncherFiles
+import app.luxion.shogunai.infrastructure.PowerShellUserPath
 import app.luxion.shogunai.infrastructure.FileAgentSessionStore
 import app.luxion.shogunai.ui.shell.openInBrowser
 import java.nio.file.Files
@@ -65,6 +69,8 @@ import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.TerminalId
 import app.luxion.shogunai.domain.usecase.OpenWorktreeInTerminalUseCase
 import app.luxion.shogunai.infrastructure.CommandEditorLauncher
+import app.luxion.shogunai.infrastructure.EditorExecutableResolver
+import app.luxion.shogunai.infrastructure.RegistryUninstallLocations
 import app.luxion.shogunai.infrastructure.JsonToolPreferenceRepository
 import app.luxion.shogunai.infrastructure.LocalToolDetector
 import app.luxion.shogunai.infrastructure.MacTerminalLauncher
@@ -147,6 +153,8 @@ import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.WorktreeResourcePlan
 import app.luxion.shogunai.domain.usecase.RepairWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
+import app.luxion.shogunai.domain.usecase.ProjectRegistration
+import app.luxion.shogunai.domain.usecase.RegisterProjectUseCase
 import app.luxion.shogunai.domain.usecase.ResolveRepositoryUseCase
 import app.luxion.shogunai.domain.usecase.ResolveStartPointUseCase
 import app.luxion.shogunai.ui.projectconfig.RepositoryInspection
@@ -181,6 +189,7 @@ import app.luxion.shogunai.infrastructure.SimctlAppleSimulators
 import app.luxion.shogunai.infrastructure.SocketPortProbe
 import app.luxion.shogunai.infrastructure.defaultGradleUserHome
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
 class AppContainer {
@@ -248,14 +257,34 @@ class AppContainer {
     val agentChoices = AgentChoices(settingsFile.read().worktreeAgents) { transform ->
         settingsFile.update { it.copy(worktreeAgents = transform(it.worktreeAgents)) }
     }
+    private val commandLineTool = ExecutableLocator().let { locator ->
+        CommandLineTool(
+            os = HostOs.current(),
+            appLauncher = System.getProperty("jpackage.app-path"),
+            home = System.getProperty("user.home"),
+            pathFolders = System.getenv("PATH").orEmpty().split(java.io.File.pathSeparator).filter { it.isNotBlank() },
+            userBinFolders = locator.userBinFolders(),
+            findShogun = { locator.find("shogun") },
+            files = NioLauncherFiles(),
+            userPath = PowerShellUserPath(shellCommandExecutor),
+        )
+    }
     val claudeHooks = ClaudeHooksState(
         hooks = ClaudeCodeHooks(fileManager),
         settingsPath = { ClaudeCodeHooks.userSettingsPath(System.getenv("CLAUDE_CONFIG_DIR"), System.getProperty("user.home")) },
-        isShogunOnPath = { ExecutableLocator().find("shogun") != null },
+        tool = commandLineTool,
         noticeDismissedStore = { settingsFile.read().claudeHooksNoticeDismissed },
         rememberNoticeDismissed = { settingsFile.update { it.copy(claudeHooksNoticeDismissed = true) } },
     )
-    val tools = ToolsPreferences(JsonToolPreferenceRepository(settingsFile), LocalToolDetector(shellCommandExecutor))
+    private val editorResolver = EditorExecutableResolver(
+        HostOs.current(),
+        ExecutableLocator(),
+        RegistryUninstallLocations(shellCommandExecutor),
+    )
+    val tools = ToolsPreferences(
+        JsonToolPreferenceRepository(settingsFile),
+        LocalToolDetector(shellCommandExecutor, editorResolver = editorResolver),
+    )
     private val terminalLaunchers = listOf(
         MacTerminalLauncher(TerminalId.TERMINAL, shellCommandExecutor),
         MacTerminalLauncher(TerminalId.ITERM2, shellCommandExecutor),
@@ -263,7 +292,7 @@ class AppContainer {
         TmuxTerminalLauncher(shellCommandExecutor),
         ZellijTerminalLauncher(shellCommandExecutor),
     )
-    private val editorLaunchers = EditorId.entries.map { CommandEditorLauncher(it, shellCommandExecutor) }
+    private val editorLaunchers = EditorId.entries.map { CommandEditorLauncher(it, shellCommandExecutor, editorResolver = editorResolver) }
     private val folderLauncher = SystemFolderLauncher(shellCommandExecutor)
     private val claudeDesktopLauncher = MacClaudeDesktopLauncher(shellCommandExecutor)
     private val environmentCache = WorktreeEnvironmentCache()
@@ -421,6 +450,16 @@ class AppContainer {
 
     fun knownMultirepos(): List<Multirepo> = resolveMultirepo.known()
 
+    fun registerWorkspaceProject(multirepo: Multirepo): Boolean {
+        val workspace = multirepo.workspaceRepository ?: return false
+        val registration = runBlocking {
+            RegisterProjectUseCase(projectRepository, ResolveRepositoryUseCase(shellCommandExecutor), workspaceOf = listOf(multirepo)::withWorkspaceAt)(workspace.path)
+        }
+        return registration.getOrNull() is ProjectRegistration.Added
+    }
+
+    fun multirepoNameOfWorkspace(topLevel: String): String? = knownMultirepos().withWorkspaceAt(topLevel)?.name
+
     val multirepoActions = MultirepoActions(
         createGroup = { members, taskId, branchType, fetch, onRepository ->
             CreateGroupUseCase(
@@ -461,7 +500,7 @@ class AppContainer {
         override fun projects(): List<Project> = projectRepository.list()
 
         override fun read(folder: String): Multirepo? =
-            runCatching { multirepoSource.read(folder) }.getOrNull()?.let { Multirepo(folder, it) }
+            runCatching { multirepoSource.read(folder) }.getOrNull()?.let { resolveMultirepo.build(folder, it) }
 
         override suspend fun init(folder: String): Result<Multirepo> = withContext(Dispatchers.IO) { configureMultirepo.init(folder, null) }
 
@@ -476,6 +515,10 @@ class AppContainer {
             configureMultirepo.renameRepository(multirepo, alias, newAlias)
 
         override fun setDefaults(multirepo: Multirepo, aliases: List<String>) = configureMultirepo.setDefaults(multirepo, aliases)
+
+        override fun setWorkspace(multirepo: Multirepo, alias: String, default: Boolean) = configureMultirepo.setWorkspace(multirepo, alias, default)
+
+        override fun clearWorkspace(multirepo: Multirepo) = configureMultirepo.clearWorkspace(multirepo)
 
         override fun setAgent(multirepo: Multirepo, agent: AgentLaunchConfig) = configureMultirepo.setAgent(multirepo, agent)
 
@@ -507,14 +550,14 @@ class AppContainer {
         listBranches = ListBranchesUseCase(config, shellCommandExecutor),
         fetchRemote = FetchRemoteUseCase(config, shellCommandExecutor),
         resolveStartPoint = { ref -> ResolveStartPointUseCase(shellCommandExecutor)(config.baseRepositoryPath, ref) },
-        remove = RemoveWorktreeUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient)),
+        remove = RemoveWorktreeUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient), fileManager),
         deleteBranch = DeleteBranchUseCase(config, shellCommandExecutor),
         copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboardWriter),
         agents = AgentUseCases(config, agentChoices),
         repair = RepairWorktreesUseCase(config, shellCommandExecutor, fileManager),
         resolveMainBranch = ResolveMainBranchUseCase(config, shellCommandExecutor),
         readStatus = ReadWorktreeStatusUseCase(shellCommandExecutor, fileManager),
-        cleanUp = CleanUpWorktreesUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient), composeProjectSource),
+        cleanUp = CleanUpWorktreesUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient), composeProjectSource, fileManager),
         detectAgents = { worktrees -> detectRunningAgents(config, worktrees) },
         measureSize = MeasureWorktreeSizeUseCase(fileManager),
         readFingerprint = ReadGitMetadataFingerprintUseCase(config, fileManager),

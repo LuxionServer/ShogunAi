@@ -8,6 +8,13 @@ internal fun sameDirectory(first: String, second: String): Boolean {
     return if (CASE_INSENSITIVE_FILE_SYSTEM) left.equals(right, ignoreCase = true) else left == right
 }
 
+internal fun isInsideDirectory(directory: String, root: String): Boolean {
+    val inner = normalizePath(directory)
+    val outer = normalizePath(root)
+    return inner.equals(outer, ignoreCase = CASE_INSENSITIVE_FILE_SYSTEM) ||
+        inner.startsWith("$outer/", ignoreCase = CASE_INSENSITIVE_FILE_SYSTEM)
+}
+
 private fun resolvedPath(path: String): String =
     normalizePath(runCatching { Path.of(path).toRealPath().toString() }.getOrDefault(path))
 

@@ -191,7 +191,7 @@ Removes one linked worktree, the way the desktop app's remove does. The target i
 
 Without `--force` it refuses a worktree with uncommitted or untracked changes, or one where an agent is running (`shogun: claude is running in <path>; use --force to remove it anyway`), and exits with `1`. With `--force` it removes it anyway. The branch is kept unless you pass `--delete-branch`, which deletes it only when it's merged into the project's main branch (`deleted branch …`, or `kept branch … (not merged into the main branch)`; a kept branch doesn't make the command fail). `--force-delete-branch` deletes it even if it isn't merged.
 
-After removing it, the command stops what the repository's providers keep for that worktree: its Android emulator (`stopped emulator …`), its iOS simulator (`stopped simulator …`) and the idle Gradle daemons whose last build was in it (`stopped Gradle daemon …`). A resource that can't be stopped is reported on standard error and the exit code is `1`; the worktree is already removed by then. Its Herdr workspace is closed too.
+After removing it, the command stops what the repository's providers keep for that worktree: its Android emulator (`stopped emulator …`), its iOS simulator (`stopped simulator …`) and the idle Gradle daemons whose last build was in it (`stopped Gradle daemon …`). A resource that can't be stopped is reported on standard error and the exit code is `1`; the worktree is already removed by then. Its Herdr workspace is closed too. If Git can't delete the folder because a program is using it (typically a Herdr shell on Windows), the workspace and the Herdr panes inside the worktree are closed and the removal is retried once; a worktree Git had already unregistered but whose folder is left is finished by deleting that folder, and a folder still in use fails with a message saying so.
 
 ### `repair`
 
@@ -244,6 +244,7 @@ shogun multirepo add-repo <alias> <path> [--use-worktrees-root | --keep-worktree
 shogun multirepo remove-repo <alias>
 shogun multirepo defaults <alias>[,<alias>...] | --clear
 shogun multirepo agent <command> [--name <name>] [--no-headroom]
+shogun multirepo workspace set [--alias <alias>] [--default] | clear
 shogun multirepo worktrees-root <dir>
 shogun multirepo delete
 shogun new <task-id> [--repos <alias>[,<alias>...]] [--fix] [--fetch]
@@ -253,9 +254,11 @@ shogun open --herdr
 
 - `multirepo` subcommands work in the multirepo folder or anywhere in its repositories and worktrees, and accept `--json`; outside a multirepo they exit with `1`. A wrong alias exits with `2`.
 - `new <id>` in the multirepo folder covers the default repositories, or `--repos` from anywhere in the multirepo; it prints the path of each worktree it creates on standard output and one line per repository on standard error, and exits with `1` if any repository failed. `--branch`, `--from` and `--worktrees-root` don't apply to a group and exit with `2`. Its `--json` object has the `branch` and a `repos` list with each `alias`, `path`, `result` (`created`, `existing` or `failed`), skipped post-creation commands and `error`.
+- When the multirepo folder is a Git repository it is the multirepo's workspace repository (alias `workspace` unless declared otherwise): `show` lists it, marked `detected` until `workspace set` declares it (`--alias` renames it, `--default` adds it to the default repositories) and `workspace clear` turns detection off; in a folder that isn't a repository `workspace set` exits with `1`. `new <id> --repos workspace,app` includes it, with its worktree in `<worktreesRoot>/workspace/<id>`. `project add` and `app` run in that folder register the workspace repository as a member of the multirepo and no project of the folder's own (`app` just opens the app), unless detection is off. `--json` of `show` marks each repository with `workspace` and `detected`.
 - `status` in the multirepo folder prints each group's branch followed by one line per repository, then `ungrouped`; `--json` prints `groups` (each with `branch`, `title` and `repos` with `alias`, `path`, `branch`, `base`, `folderMissing`, `uncommittedChanges`, `ahead`, `behind`, `merged`, `agents`), `ungrouped` and `failures`.
 - `open <id> --herdr` opens each worktree of the group with its project's agent (`--agent` exits with `2`); an id matching both `feature/<id>` and `fix/<id>` exits with `2`, no match with `1`. `open --herdr` without a target opens the multirepo's agent.
-- `clean` lists the candidate groups (`would remove the group …`) and the kept ones with their reason (`kept feature/TASK-2 (api isn't merged)`), and accepts every option of `clean`.
+- `clean` lists the candidate groups (`would remove the group …`) and the kept ones with their reason (`kept feature/TASK-2 (api isn't merged)`), and accepts every option of `clean`. After the groups it lists the loose worktrees of each repository (`would remove api <path>`) that are clean, merged and without a running agent, and removes them with `--yes`; with nothing to remove it prints `Nothing to clean up.`
+- `hook agent-state` records the sessions of a multirepo folder that isn't a Git repository in a store under `~/.shogunai/agent-sessions/`; for any other directory that isn't a repository it still writes nothing.
 
 ## Projects and the app
 

@@ -86,6 +86,7 @@ class ProjectConfigViewModel(
     private val trust: RepositoryTrust = RepositoryTrust.NONE,
     val tools: ToolsPreferences = ToolsPreferences.NONE,
     private val detectStacks: (repositoryPath: String) -> List<DetectedStack> = { emptyList() },
+    private val multirepoOfWorkspace: (topLevel: String) -> String? = { null },
 ) : ViewModel(), LeaveGuard {
     private val existingId = existingProject?.id
     val isNewProject: Boolean = existingProject == null
@@ -100,6 +101,9 @@ class ProjectConfigViewModel(
         private set
 
     var rejectedFolder by mutableStateOf<String?>(null)
+        private set
+
+    var rejectedMultirepo by mutableStateOf<Pair<String, String>?>(null)
         private set
 
     var detectedMainBranch by mutableStateOf<String?>(null)
@@ -483,7 +487,19 @@ class ProjectConfigViewModel(
         touchedFields = touchedFields + field
     }
 
-    suspend fun chooseFolder(folder: String): Result<Unit> =
+    suspend fun chooseFolder(folder: String): Result<Unit> {
+        val inspected = inspectRepository(folder).getOrNull()
+        val multirepo = inspected?.let { multirepoOfWorkspace(it.topLevel) }
+        if (inspected != null && multirepo != null) {
+            rejectedFolder = null
+            rejectedMultirepo = inspected.topLevel to multirepo
+            return Result.failure(IllegalStateException("$folder belongs to the multirepo $multirepo"))
+        }
+        rejectedMultirepo = null
+        return chooseInspected(folder)
+    }
+
+    private suspend fun chooseInspected(folder: String): Result<Unit> =
         inspectRepository(folder).map { inspection ->
             val defaults = projectDefaultsFor(inspection.topLevel)
             baseRepositoryPath = inspection.topLevel
@@ -499,6 +515,10 @@ class ProjectConfigViewModel(
 
     fun dismissRejectedFolder() {
         rejectedFolder = null
+    }
+
+    fun dismissRejectedMultirepo() {
+        rejectedMultirepo = null
     }
 
     private fun markPristine() {

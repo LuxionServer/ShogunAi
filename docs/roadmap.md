@@ -16,63 +16,87 @@ That direction is built in three layers:
 
 It plugs into the tools that run agents rather than replacing them: Claude Code's worktree and session hooks, and [Herdr](https://herdr.dev), the terminal multiplexer for agents, whose worktrees a ShogunAi plugin provisions and where the desktop app opens a worktree with its environment and agent and shows what each agent is doing. **Available.**
 
+## How priorities are set
+
+Agent tools are learning to create worktrees, copy local files into them and show which session works where, so ShogunAi keeps that part small and reaches it through their hooks. Priority goes to what none of them can do for the others: the environment and the machine's resources of every stack, shared fairly between agents from any vendor, declared once in the repository (`.shogunai.json`), and one view of all those agents. Within that, what the people using ShogunAi run into comes first.
+
 ## Planned
 
 Numbered in the order they will be picked up: the number is the priority.
 
-### 1. Platforms and IDEs beyond Android
+### 1. First-run experience
 
-The project grew around Android. Stack detection and the Maven and Docker Compose providers are done; what remains is the coverage of the IDEs a worktree can be opened in, which starts with an exploration to decide what's missing before it's split into changes. It also covers "Open in Claude Desktop" beyond macOS (whether its `claude://code/new?folder=` link accepts a folder on Windows is unverified), the caches of iOS packages, and the follow-ups the JVM backends left out: stopping Maven daemons once their state can be read reliably, and managing the Compose lifecycle (`up`, `build`) and Docker resources beyond projects.
+New users arrive by seeing ShogunAi working on a colleague's machine, so the first minutes decide whether they keep it:
 
-### 2. Wait for device capacity
+- A guided first-run walkthrough: the app creates a throwaway sample repository with worktrees in every state, and opens an agent with a prepared prompt that walks the user through each feature (status, cleanup, provisioning, the CLI, hooks, environment and providers), one step at a time.
+- Offering the installation of the `shogun` command in that flow, before the user reaches Preferences or the hooks notice.
+
+### 2. The environment of backends and services
+
+Every worktree of a backend needs its own running services, not only its own code. Stack detection, the Maven and Docker Compose providers and the per-worktree ports are done; what remains:
+
+- Managing the Compose lifecycle (`up`, `build`) and Docker resources beyond projects (volumes, networks, images left behind by removed worktrees).
+- Stopping Maven daemons once their state can be read reliably.
+- Variables shared between the repositories of a multirepo group, for example the port of the backend the group's app talks to.
+
+### 3. Wait for device capacity
 
 `shogun emulator start --wait` (and the simulator equivalent): instead of failing when every emulator is protected by a lease, queue until capacity frees up. It builds on the device leases, which already say when each lease expires.
 
-### 3. Follow-ups of the 2026-10-19 changes
+### 4. Provisioning and resources of mobile stacks
 
-The review of the whole project on 2026-10-19 and the changes built after it are archived. These follow-ups were left out of them:
-
-- Support for bare repositories with worktrees (the "bare clone" layout), which changes what the base repository and copying from it mean. Today ShogunAi rejects them with a specific error.
-- Filesystem watchers instead of polling for Git metadata changes.
-- Splitting `ProjectWorktrees.kt` and `ProjectSettingsView.kt` into smaller holders and sections.
-- Build provenance attestations for release assets, and treating compiler warnings as errors now that the build is clean.
-- More terminals for "Open in terminal" (Ghostty, Warp, Alacritty, Kitty, GNOME Terminal), each as one more adapter.
-- Faster DerivedData sizes: measuring several folders in parallel and remembering sizes between app runs.
-- An automatic DerivedData quota derived from the free space on the disk, as the Automatic capacity profile does with memory, instead of no quota by default.
-- A notification when an agent (reported by Herdr or by Claude Code's hooks) becomes blocked or done; today the worktree's row and the menu bar icon's menu are the signal.
-- Agent states for agents other than Claude Code (Codex, Gemini…), which have no equivalent hooks today.
-- Finding the root cause of the errors that closed the Preferences window, from the entries the isolation now leaves in the diagnostics log, and of the native crash seen on another machine that left an empty diagnostic report.
-
-### 4. Follow-ups of the agent workflow guide
-
-The workflow rules reach agents through `shogun guide`, the `SessionStart` hook and a block in `AGENTS.md`. Left out:
-
-- A Settings section in the desktop app to install, update and remove the block, as it already does for Claude Code's hooks.
-- Recording the origin ref of each worktree, so the rule for choosing a pull request's base could be answered by `shogun` instead of staying a team policy.
-- Other agents' user-level files, as their documentation confirms them (Cursor keeps user rules in its settings today).
-
-### 5. Guided onboarding demo
-
-A first-run walkthrough built on the review done before merging the worktree layer: the app creates a throwaway sample repository with worktrees in every state, and opens an agent with a prepared prompt that walks the user through each feature (status, cleanup, provisioning, the CLI, hooks, environment and providers), one step at a time.
-
-### 6. Android, KMP and JVM provisioning
-
-Provisioning for the stacks where a fresh worktree is furthest from building:
+Provisioning and bounded resources for the stacks where a fresh worktree is furthest from building:
 
 - `local.properties`, keystores and `google-services.json`.
 - Follow-ups of local folders: linking a local folder instead of copying it, glob patterns in the local list, reporting the symbolic links a folder skips, and removing from a worktree the files deleted from the base folder.
-- Showing the emulators ShogunAi starts inside Android Studio's Running Devices window, as the ones Android Studio starts itself, so several of them can be arranged in one window. It needs a spike: Android Studio may embed an external emulator started with the options it uses itself.
+- The caches of iOS packages.
+- An automatic DerivedData quota derived from the free space on the disk, as the Automatic capacity profile does with memory, instead of no quota by default.
+- Faster DerivedData sizes: measuring several folders in parallel and remembering sizes between app runs.
+- Finding out what a Flutter repository needs in a worktree and which of the Android and iOS providers it can reuse.
 
-### 7. Follow-ups of multirepos
+### 5. Every agent, not only Claude Code
 
-Multirepos and groups by branch are done in the CLI and the desktop app. Left out:
+ShogunAi's view is only neutral if it sees every agent:
 
+- Agent states for agents other than Claude Code (Codex, Gemini…), which have no equivalent hooks today.
+- A notification when an agent (reported by Herdr or by Claude Code's hooks) becomes blocked or done; today the worktree's row and the menu bar icon's menu are the signal.
+- Other agents' user-level files for the workflow guide, as their documentation confirms them (Cursor keeps user rules in its settings today), and a Settings section in the desktop app to install, update and remove the `AGENTS.md` block, as it already does for Claude Code's hooks.
+- Recording the origin ref of each worktree, so the rule for choosing a pull request's base could be answered by `shogun` instead of staying a team policy.
+
+### 6. Multirepos for the whole team
+
+Multirepos and groups by branch are done in the CLI and the desktop app, and they're also how people who don't write the code follow a change across repositories. Left out:
+
+- A display name for a multirepo, declared in `.shogunai-multirepo.json`; today the sidebar and `shogun multirepo show` name it after its folder, so a workspace repository whose folder isn't named after the product shows up with the wrong name.
+- Following a multirepo whose folder moved: today it stays registered at the old path in `~/.shogunai/multirepos.json`, `shogun multirepo init` in the new folder refuses because the declaration already exists, and the registry has to be edited by hand. `shogun multirepo init` (and the app) could register an existing declaration and drop the entries whose folder no longer exists.
 - Associating worktrees whose branches don't match, e.g. `shogun group add <id> <worktree>`.
-- Variables shared between the repositories of a group (for example the port of the backend a group's app talks to).
-- The pull request state of each repository of a group.
 - A single session for the whole group, with a combined environment, as an option next to one agent per repository.
+- Returning a declared workspace repository to detection (removing the `workspace` field), from the CLI and the multirepo settings; today `workspace clear` turns it off and the file has to be edited by hand to undo it.
+- The pull request state of each repository of a group, which depends on the GitHub integration under exploration.
+
+### 7. Robustness and maintenance
+
+- Finding the root cause of the errors that closed the Preferences window, from the entries the isolation now leaves in the diagnostics log, and of the native crash seen on another machine that left an empty diagnostic report.
+- Checking the in-app installation of the `shogun` command on a real installed app on Windows (the `shogun.cmd` and the user `PATH` change are covered by tests with fakes only) and on a machine without `~/.local/bin` on its `PATH`.
+- Filesystem watchers instead of polling for Git metadata changes.
+- Support for bare repositories with worktrees (the "bare clone" layout), which changes what the base repository and copying from it mean. Today ShogunAi rejects them with a specific error.
+- Splitting `ProjectWorktrees.kt` and `ProjectSettingsView.kt` into smaller holders and sections.
+- Build provenance attestations for release assets, and treating compiler warnings as errors now that the build is clean.
+
+## Later
+
+Accepted, but left until someone needs them, because they widen what ShogunAi opens rather than the environment it prepares, and the tools agents run in are likely to cover them:
+
+- The coverage of the IDEs a worktree can be opened in, starting with an exploration to decide what's missing.
+- More terminals for "Open in terminal" (Ghostty, Warp, Alacritty, Kitty, GNOME Terminal), each as one more adapter.
+- "Open in Claude Desktop" beyond macOS (whether its `claude://code/new?folder=` link accepts a folder on Windows is unverified).
+- Showing the emulators ShogunAi starts inside Android Studio's Running Devices window, as the ones Android Studio starts itself. It needs a spike: Android Studio may embed an external emulator started with the options it uses itself.
 
 ## Under exploration
+
+### A follow-up view for people who don't run agents
+
+People who don't write the code, such as a product owner or a manager, already follow changes through multirepo groups: which branches exist in each repository, how far each one is from its base and whether it's merged. A mode of the control tower for them would show that view, without the actions and agent states that only make sense on the machine where the agents run. It needs deciding what it reads (local clones, or only the remote branches) and how it relates to the pull request state of the GitHub integration below.
 
 ### Integration with GitHub and task trackers
 

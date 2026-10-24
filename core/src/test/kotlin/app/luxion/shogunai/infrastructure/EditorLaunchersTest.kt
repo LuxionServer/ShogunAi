@@ -80,6 +80,20 @@ class EditorLaunchersTest {
     }
 
     @Test
+    fun `Windows opens with the executable found in the IDE's installer folder`() = runTest {
+        val executor = FakeShellCommandExecutor()
+        val studio = "C:\\Program Files\\Android\\Android Studio\\bin\\studio64.exe"
+        val locator = ExecutableLocator(
+            HostOs.WINDOWS, "/home/dev", emptyList(), null,
+            listOf("C:\\Program Files"), listOf(".EXE"), { emptyList() }, { it == studio },
+        )
+
+        CommandEditorLauncher(EditorId.ANDROID_STUDIO, executor, HostOs.WINDOWS, locator).open("C:\\work\\TASK-8").getOrThrow()
+
+        assertEquals(listOf(listOf(studio, "C:\\work\\TASK-8")), executor.executedCommands)
+    }
+
+    @Test
     fun `Linux starts the launcher detached with the folder as an argument`() = runTest {
         val executor = FakeShellCommandExecutor()
 

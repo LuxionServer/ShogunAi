@@ -81,6 +81,15 @@ class ProcessBuilderShellCommandExecutorTest {
     }
 
     @Test
+    fun `fuera de Windows entrega los argumentos con espacios y comillas sin alterarlos`() = runTest {
+        val argument = "A=-Dx=\"a b\" -Dy=1\\"
+
+        val result = executor.execute(listOf("printf", "%s", argument))
+
+        assertEquals(argument, result.stdout)
+    }
+
+    @Test
     fun `refleja un código de salida distinto de cero sin lanzar`() = runTest {
         val result = executor.execute(listOf("sh", "-c", "exit 3"))
 

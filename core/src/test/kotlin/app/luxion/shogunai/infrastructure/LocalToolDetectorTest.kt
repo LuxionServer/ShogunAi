@@ -19,6 +19,8 @@ class LocalToolDetectorTest {
         directories: Set<String> = emptySet(),
         bundles: Set<String> = emptySet(),
         sessions: Set<String> = emptySet(),
+        programFolders: List<String> = emptyList(),
+        registry: List<String> = emptyList(),
     ): LocalToolDetector {
         val executor = FakeShellCommandExecutor { command ->
             when {
@@ -28,11 +30,16 @@ class LocalToolDetectorTest {
                 else -> FakeShellCommandExecutor.failure(command)
             }
         }
+        val locator = ExecutableLocator(
+            os, "/home/dev", listOf("/usr/bin"), "C:\\Users\\dev\\AppData\\Local",
+            programFolders, listOf(".EXE", ".CMD"), { emptyList() }, { it in files },
+        )
         return LocalToolDetector(
             executor = executor,
             os = os,
             home = "/home/dev",
-            locator = ExecutableLocator(os, "/home/dev", listOf("/usr/bin"), "C:\\Users\\dev\\AppData\\Local") { it in files },
+            locator = locator,
+            editorResolver = EditorExecutableResolver(os, locator) { registry },
             isDirectory = { it in directories },
         )
     }
@@ -173,5 +180,27 @@ class LocalToolDetectorTest {
 
         assertEquals(false, detector(HostOs.WINDOWS, directories = folders, bundles = bundles).detect().claudeDesktop)
         assertEquals(false, detector(HostOs.LINUX, directories = folders, bundles = bundles).detect().claudeDesktop)
+    }
+
+    @Test
+    fun `finds an IDE installed by its official installer on Windows`() = runTest {
+        val tools = detector(
+            HostOs.WINDOWS,
+            files = setOf("C:\\Program Files\\Android\\Android Studio\\bin\\studio64.exe"),
+            programFolders = listOf("C:\\Program Files"),
+        ).detect()
+
+        assertEquals(listOf(EditorId.ANDROID_STUDIO), tools.editors)
+    }
+
+    @Test
+    fun `finds an IDE through the registry on Windows`() = runTest {
+        val tools = detector(
+            HostOs.WINDOWS,
+            files = setOf("D:\\Dev\\Android Studio\\bin\\studio64.exe"),
+            registry = listOf("D:\\Dev\\Android Studio"),
+        ).detect()
+
+        assertEquals(listOf(EditorId.ANDROID_STUDIO), tools.editors)
     }
 }

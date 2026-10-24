@@ -1,6 +1,7 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.io.ProjectRepository
+import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.newProject
@@ -17,12 +18,17 @@ class RegisterProjectUseCase(
     private val projects: ProjectRepository,
     private val resolveRepository: ResolveRepositoryUseCase,
     private val newId: () -> String = { UUID.randomUUID().toString() },
+    private val workspaceOf: (String) -> Multirepo? = { null },
 ) {
     suspend operator fun invoke(directory: String): Result<ProjectRegistration> = runCatching {
         val repository = resolveRepository(directory).getOrThrow()
         val existing = projects.list().firstOrNull { sameDirectory(it.config.baseRepositoryPath, repository) }
         if (existing != null) return@runCatching ProjectRegistration.AlreadyRegistered(existing)
-        val project = newProject(newId(), repository)
+        val workspace = workspaceOf(repository)
+        val created = newProject(newId(), repository)
+        val project = workspace?.workspaceRepository
+            ?.let { created.copy(config = created.config.copy(worktreesRoot = workspace.proposedWorktreesFolder(it.alias))) }
+            ?: created
         projects.save(project)
         ProjectRegistration.Added(project)
     }
@@ -40,3 +46,6 @@ class UnregisterProjectUseCase(
         project
     }
 }
+
+fun List<Multirepo>.withWorkspaceAt(directory: String): Multirepo? =
+    firstOrNull { it.workspaceRepository != null && sameDirectory(it.folder, directory) }

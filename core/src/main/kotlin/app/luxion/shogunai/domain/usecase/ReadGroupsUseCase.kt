@@ -53,7 +53,23 @@ enum class GroupKeptReason { NOT_MERGED, UNCOMMITTED_CHANGES, STATUS_UNAVAILABLE
 
 data class GroupKept(val group: WorktreeGroup, val alias: String, val reason: GroupKeptReason, val agents: List<RunningAgent> = emptyList())
 
-data class GroupCleanupSelection(val candidates: List<GroupState>, val kept: List<GroupKept>)
+data class GroupCleanupSelection(
+    val candidates: List<GroupState>,
+    val kept: List<GroupKept>,
+    val loose: List<GroupWorktreeState> = emptyList(),
+) {
+    val isEmpty: Boolean
+        get() = candidates.isEmpty() && loose.isEmpty()
+
+    val removablePaths: List<String>
+        get() = candidates.flatMap { it.worktrees }.map { it.member.worktree.path } + loose.map { it.member.worktree.path }
+
+    val removableByAlias: Map<String, List<GroupWorktreeState>>
+        get() = (candidates.flatMap { it.worktrees } + loose).groupBy { it.member.alias }
+}
+
+fun selectLooseCleanup(ungrouped: List<GroupWorktreeState>): List<GroupWorktreeState> =
+    ungrouped.filter { it.agents.isEmpty() && !it.member.worktree.isLocked && it.isCleanAndMerged }
 
 fun selectGroupCleanup(groups: List<GroupState>): GroupCleanupSelection {
     val kept = mutableListOf<GroupKept>()

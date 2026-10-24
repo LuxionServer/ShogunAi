@@ -4,6 +4,8 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.MultirepoSource
 import app.luxion.shogunai.domain.model.Multirepo
+import app.luxion.shogunai.domain.model.MultirepoDeclaration
+import app.luxion.shogunai.domain.model.joinPath
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.isValidMultirepoAlias
 import java.nio.file.Path
@@ -37,21 +39,24 @@ class ResolveMultirepoUseCase(
 
     suspend fun at(folder: String): Result<Multirepo> = runCatching {
         val declaration = source.read(folder) ?: throw WorktreeError.MultirepoNotFound(folder)
-        Multirepo(normalizePath(folder), declaration).also { validate(it) }
+        build(normalizePath(folder), declaration).also { validate(it) }
     }
 
     fun known(): List<Multirepo> = source.knownFolders().mapNotNull { folder ->
-        runCatching { source.read(folder) }.getOrNull()?.let { Multirepo(normalizePath(folder), it) }
+        runCatching { source.read(folder) }.getOrNull()?.let { build(normalizePath(folder), it) }
     }
 
     fun declaring(repository: String): Multirepo? =
         known().firstOrNull { multirepo -> multirepo.repositories.any { sameDirectory(it.path, repository) } }
 
+    fun build(folder: String, declaration: MultirepoDeclaration): Multirepo =
+        Multirepo(folder, declaration, fileManager.exists(joinPath(folder, ".git")))
+
     private fun declaredAbove(directory: String): Multirepo? {
         var current: Path? = Path.of(directory).normalize()
         while (current != null) {
             val folder = normalizePath(current.toString()).ifEmpty { "/" }
-            source.read(folder)?.let { return Multirepo(folder, it) }
+            source.read(folder)?.let { return build(folder, it) }
             current = current.parent
         }
         return null
@@ -66,6 +71,14 @@ class ResolveMultirepoUseCase(
         }
         declaration.defaultRepos.firstOrNull { it !in declaration.repos }?.let {
             invalid("'$it' isn't a declared repository")
+        }
+        declaration.workspace?.takeIf { it.enabled }?.let { workspace ->
+            if (!isValidMultirepoAlias(workspace.alias)) {
+                invalid("workspace alias '${workspace.alias}' must use only lowercase letters, digits and hyphens")
+            }
+            if (workspace.alias in declaration.repos && multirepo.declaredRepositories.none { it.alias == workspace.alias && sameDirectory(it.path, multirepo.folder) }) {
+                invalid("workspace alias '${workspace.alias}' is already a repository")
+            }
         }
         val enclosing = ResolveRepositoryUseCase(executor)(multirepo.folder).getOrNull()
         if (enclosing != null && !sameDirectory(enclosing, multirepo.folder)) {

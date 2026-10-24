@@ -177,6 +177,7 @@ class StringsTest {
         WorktreeError.EmulatorProviderNotDeclared,
         WorktreeError.EnvironmentFileTracked(".env"),
         WorktreeError.EnvironmentFileWriteFailed(".env", IOException("read-only")),
+        WorktreeError.WorktreeFolderInUse("~/projects/TASK-123", true, listOf("git", "worktree", "remove", "~/projects/TASK-123"), 255, "error: failed to delete: Permission denied"),
         WorktreeError.HerdrNotInstalled,
         WorktreeError.HerdrCommandFailed(listOf("herdr", "pane", "list"), "no herdr server is running"),
         WorktreeError.GitCommandFailed(listOf("git", "worktree", "remove", "TASK-123"), 128, gitOutput),

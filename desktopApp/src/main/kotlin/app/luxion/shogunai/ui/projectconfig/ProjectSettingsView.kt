@@ -709,6 +709,13 @@ private fun AddProjectFolderStep(viewModel: ProjectConfigViewModel, initialFolde
                     onDismiss = viewModel::dismissRejectedFolder,
                 )
             }
+            viewModel.rejectedMultirepo?.let { (folder, multirepo) ->
+                Notice(
+                    kind = NoticeKind.ERROR,
+                    message = strings.folderIsMultirepoWorkspace(folder, multirepo),
+                    onDismiss = viewModel::dismissRejectedMultirepo,
+                )
+            }
             PrimaryButton(onClick = {
                 FilePicker.pickDirectory("", strings.selectFolderDialogTitle)?.let { folder ->
                     scope.launch { viewModel.chooseFolder(folder) }
