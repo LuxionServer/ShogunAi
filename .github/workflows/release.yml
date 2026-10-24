@@ -194,8 +194,25 @@ jobs:
           path: cli/build/distributions/shogun-${{ needs.resolve-version.outputs.version }}.zip
           if-no-files-found: error
 
+  attest-assets:
+    needs: [build, build-cli]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: actions/attest@v4
+        with:
+          subject-path: dist/*
+
   publish-release:
-    needs: [resolve-version, build, build-cli]
+    needs: [resolve-version, build, build-cli, attest-assets]
     runs-on: ubuntu-latest
     permissions:
       contents: write

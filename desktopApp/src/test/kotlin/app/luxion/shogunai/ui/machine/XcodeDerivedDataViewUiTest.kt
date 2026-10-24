@@ -1,5 +1,8 @@
 package app.luxion.shogunai.ui.machine
 
+import app.luxion.shogunai.domain.model.DerivedDataQuota
+import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
+import app.luxion.shogunai.domain.model.MeasuredSize
 import app.luxion.shogunai.domain.model.ResourceSettings
 import app.luxion.shogunai.domain.usecase.GradleTrim
 import androidx.compose.material3.MaterialTheme
@@ -8,7 +11,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.v2.runComposeUiTest
 import app.luxion.shogunai.MachineUseCases
 import app.luxion.shogunai.domain.model.AttributedDerivedData
 import app.luxion.shogunai.domain.model.DerivedDataDeletion
@@ -27,6 +30,7 @@ import kotlinx.coroutines.Job
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlinx.coroutines.flow.flow
 
 @OptIn(ExperimentalTestApi::class)
 class XcodeDerivedDataViewUiTest {
@@ -40,11 +44,12 @@ class XcodeDerivedDataViewUiTest {
         measuring: CompletableDeferred<Long>,
         settings: ResourceSettings = ResourceSettings(),
         trim: DerivedDataTrim? = null,
+        automaticQuota: Long? = null,
     ) = MachineUseCases(
         listDaemons = { Result.success(emptyList()) },
         stopDaemons = { Result.failure(IllegalStateException()) },
         listDerivedData = { Result.success(DerivedDataListing(folders, null)) },
-        measureDerivedData = { Result.success(measuring.await()) },
+        measureDerivedData = { list, _ -> flow { list.forEach { emit(MeasuredSize(it.path, measuring.await())) } } },
         measureCompilationCache = { Result.success(null) },
         deleteOrphanedDerivedData = { Result.success(DerivedDataDeletion()) },
         readEmulatorStates = { _, _ -> Result.success(emptyMap()) },
@@ -61,6 +66,13 @@ class XcodeDerivedDataViewUiTest {
         trimGradleDaemons = { Result.success(GradleTrim(limit = null)) },
         resourceSettings = { settings },
         trimDerivedData = { quota, _, _ -> Result.success(trim ?: DerivedDataTrim(quota, 0L, 0L)) },
+        resolveDerivedDataQuota = { current, _ ->
+            when (current.quotaMode) {
+                DerivedDataQuotaMode.AUTOMATIC -> DerivedDataQuota(DerivedDataQuotaMode.AUTOMATIC, automaticQuota)
+                DerivedDataQuotaMode.FIXED -> DerivedDataQuota(DerivedDataQuotaMode.FIXED, current.fixedDerivedDataQuotaBytes)
+                DerivedDataQuotaMode.NONE -> DerivedDataQuota(DerivedDataQuotaMode.NONE, null)
+            }
+        },
     )
 
     @Test
@@ -95,11 +107,17 @@ class XcodeDerivedDataViewUiTest {
         }
     }
 
-    private fun quotaMachine(job: Job, trim: DerivedDataTrim?, quotaGigabytes: Int?): MachineResources {
+    private fun quotaMachine(
+        job: Job,
+        trim: DerivedDataTrim?,
+        quotaGigabytes: Int?,
+        mode: DerivedDataQuotaMode? = null,
+        automaticQuota: Long? = null,
+    ): MachineResources {
         val project = Project("p", "Main repo", ProjectConfig("/home/dev/projects/main-repo", "/home/dev/projects", emptyList()))
         val machine = MachineResources(
             scope = CoroutineScope(Dispatchers.Unconfined + job),
-            useCases = useCases(CompletableDeferred<Long>().also { it.complete(20 * gigabyte) }, ResourceSettings(derivedDataQuotaGigabytes = quotaGigabytes), trim),
+            useCases = useCases(CompletableDeferred<Long>().also { it.complete(20 * gigabyte) }, ResourceSettings(derivedDataQuotaGigabytes = quotaGigabytes, derivedDataQuotaMode = mode), trim, automaticQuota),
             projects = { listOf(MachineProject(project, emptyList(), setOf(MachineResource.XCODE_DERIVED_DATA))) },
             pathExists = { true },
         )
@@ -142,9 +160,27 @@ class XcodeDerivedDataViewUiTest {
     @Test
     fun `without a quota the view shows no quota line`() = runComposeUiTest {
         val job = Job()
-        showView(quotaMachine(job, null, quotaGigabytes = null))
+        showView(quotaMachine(job, null, quotaGigabytes = 50, mode = DerivedDataQuotaMode.NONE))
 
         assertTrue(onAllNodesWithText("quota", substring = true).fetchSemanticsNodes().isEmpty())
+        job.cancel()
+    }
+
+    @Test
+    fun `an automatic quota is shown as automatic`() = runComposeUiTest {
+        val job = Job()
+        showView(quotaMachine(job, null, quotaGigabytes = null, automaticQuota = 45 * gigabyte))
+
+        onNodeWithText("40.0 GB of 45.0 GB quota (automatic)").assertIsDisplayed()
+        job.cancel()
+    }
+
+    @Test
+    fun `an automatic quota that can't be computed is shown as unknown`() = runComposeUiTest {
+        val job = Job()
+        showView(quotaMachine(job, null, quotaGigabytes = null))
+
+        onNodeWithText("Automatic quota unknown: the free disk space couldn't be read").assertIsDisplayed()
         job.cancel()
     }
 

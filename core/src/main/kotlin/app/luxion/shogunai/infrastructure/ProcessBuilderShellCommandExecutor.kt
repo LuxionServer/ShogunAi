@@ -22,18 +22,25 @@ class ProcessBuilderShellCommandExecutor(
     override suspend fun execute(
         command: List<String>,
         workingDirectory: String?,
-    ): CommandResult = run(command, workingDirectory, null)
+    ): CommandResult = run(command, workingDirectory, null, emptyMap())
 
     override suspend fun executeWithin(
         command: List<String>,
         timeout: Duration,
         workingDirectory: String?,
-    ): CommandResult = run(command, workingDirectory, timeout)
+    ): CommandResult = run(command, workingDirectory, timeout, emptyMap())
+
+    override suspend fun executeWithEnvironment(
+        command: List<String>,
+        environment: Map<String, String>,
+        workingDirectory: String?,
+    ): CommandResult = run(command, workingDirectory, null, environment)
 
     private suspend fun run(
         command: List<String>,
         workingDirectory: String?,
         timeout: Duration?,
+        environment: Map<String, String>,
     ): CommandResult = withContext(ioDispatcher) {
         val process = try {
             val builder = ProcessBuilder(WindowsArguments.prepare(command, osName))
@@ -41,6 +48,7 @@ class ProcessBuilderShellCommandExecutor(
                 .apply { workingDirectory?.let { directory(File(it)) } }
             builder.environment()["PATH"] = HomebrewPath.merge(builder.environment()["PATH"])
             GitLocale.applyTo(command, builder.environment())
+            builder.environment().putAll(environment)
             builder.start()
         } catch (error: IOException) {
             throw CommandExecutionException(command, error)

@@ -27,9 +27,11 @@ import app.luxion.shogunai.domain.model.ProvisionDrift
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.ProvisionMode
 import app.luxion.shogunai.domain.model.ProvisionedFile
+import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.WorktreeEmulator
+import app.luxion.shogunai.domain.model.WaitTicket
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.usecase.GradleTrim
@@ -72,12 +74,14 @@ fun newJson(
     path: String,
     branch: String?,
     skippedPostCreateCommands: List<List<String>>,
+    skippedVariables: List<String>,
     postCreateFailure: WorktreeError.PostCreateCommandFailed?,
 ): JsonObject = buildJsonObject {
     put("path", path)
     put("branch", branch)
     put("created", true)
     put("skippedPostCreateCommands", commands(skippedPostCreateCommands))
+    put("skippedVariables", strings(skippedVariables))
     put("postCreateFailure", postCreateFailureJson(postCreateFailure))
 }
 
@@ -85,6 +89,7 @@ fun provisionJson(
     path: String,
     files: List<ProvisionedFile>,
     skippedPostCreateCommands: List<List<String>>,
+    skippedVariables: List<String>,
     postCreateFailure: WorktreeError.PostCreateCommandFailed?,
 ): JsonObject = buildJsonObject {
     put("path", path)
@@ -92,6 +97,7 @@ fun provisionJson(
     put("linked", strings(files.filter { it.mode == ProvisionMode.LINKED }.map { it.path }))
     put("copiedInsteadOfLinking", strings(files.filter { it.mode == ProvisionMode.COPIED_INSTEAD_OF_LINKING }.map { it.path }))
     put("skippedPostCreateCommands", commands(skippedPostCreateCommands))
+    put("skippedVariables", strings(skippedVariables))
     put("postCreateFailure", postCreateFailureJson(postCreateFailure))
 }
 
@@ -119,9 +125,23 @@ private val ProvisionDriftState.label: String
         ProvisionDriftState.NOT_LINKED -> "not-linked"
     }
 
-fun trustJson(repository: String, commands: List<List<String>>, approved: Boolean, changed: Boolean): JsonObject = buildJsonObject {
+fun trustJson(repository: String, subject: RepositoryApprovalSubject, approved: Boolean, changed: Boolean): JsonObject = buildJsonObject {
     put("repository", repository)
-    put("commands", commands(commands))
+    put("commands", commands(subject.commands))
+    put(
+        "env",
+        buildJsonArray {
+            subject.variables.forEach { (name, template) ->
+                add(
+                    buildJsonObject {
+                        put("name", name)
+                        put("template", template)
+                    },
+                )
+            }
+        },
+    )
+    put("envFile", subject.envFile)
     put("approved", approved)
     put("changed", changed)
 }
@@ -450,6 +470,7 @@ fun xcodeCleanJson(active: Boolean, deletion: DerivedDataDeletion?): JsonObject 
 
 fun xcodeTrimJson(active: Boolean, trim: DerivedDataTrim?): JsonObject = buildJsonObject {
     put("active", active)
+    put("quotaMode", trim?.quotaMode?.name?.lowercase())
     put("quotaBytes", trim?.quotaBytes)
     put("dryRun", trim?.dryRun ?: false)
     put("usageBeforeBytes", trim?.usageBefore ?: 0L)
@@ -485,6 +506,7 @@ fun emulatorJson(
     put("acquired", emulator != null)
     acquisition?.let { put("acquiredNow", it.acquiredNow) }
     acquisition?.let { put("released", strings(it.releases.mapNotNull { release -> release.worktreePath })) }
+    put("waited", acquisition?.waitedSeconds)
     releaseRecord?.let {
         put(
             "releasedFor",
@@ -512,6 +534,7 @@ fun simulatorJson(
     put("acquired", simulator != null)
     acquisition?.let { put("acquiredNow", it.acquiredNow) }
     acquisition?.let { put("released", strings(it.releases.mapNotNull { release -> release.worktreePath })) }
+    put("waited", acquisition?.waitedSeconds)
     releaseRecord?.let {
         put(
             "releasedFor",
@@ -523,7 +546,7 @@ fun simulatorJson(
     }
 }
 
-fun poolJson(usages: List<PoolUsage>): JsonObject = buildJsonObject {
+fun poolJson(usages: List<PoolUsage>, waiting: (ResourceKind) -> List<WaitTicket> = { emptyList() }): JsonObject = buildJsonObject {
     put(
         "pools",
         buildJsonArray {
@@ -535,6 +558,19 @@ fun poolJson(usages: List<PoolUsage>): JsonObject = buildJsonObject {
                         put("effectiveLimit", usage.effectiveLimit)
                         put("inUse", usage.inUse)
                         put("overLimit", usage.isOverLimit)
+                        put(
+                            "waiting",
+                            buildJsonArray {
+                                waiting(usage.kind).forEach { ticket ->
+                                    add(
+                                        buildJsonObject {
+                                            put("worktree", ticket.worktreePath)
+                                            put("since", Instant.ofEpochMilli(ticket.since).toString())
+                                        },
+                                    )
+                                }
+                            },
+                        )
                         put(
                             "holders",
                             buildJsonArray {

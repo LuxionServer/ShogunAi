@@ -2,7 +2,7 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
-import app.luxion.shogunai.domain.io.PostCreateApproval
+import app.luxion.shogunai.domain.io.RepositoryApproval
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.model.BranchType
@@ -16,6 +16,7 @@ data class GroupRepositoryResult(
     val outcome: GroupRepositoryOutcome,
     val path: String? = null,
     val skippedPostCreateCommands: List<List<String>> = emptyList(),
+    val skippedVariables: List<String> = emptyList(),
     val error: Throwable? = null,
 )
 
@@ -30,7 +31,7 @@ class CreateGroupUseCase(
     private val provisioningSource: RepositoryProvisioningSource,
     private val environment: WorktreeEnvironmentPreparer = WorktreeEnvironmentPreparer.NONE,
     private val trust: RepositoryTrust = RepositoryTrust.NONE,
-    private val approval: PostCreateApproval = PostCreateApproval.SKIP,
+    private val approval: RepositoryApproval = RepositoryApproval.SKIP,
 ) {
     suspend operator fun invoke(
         members: List<MultirepoMember>,
@@ -70,7 +71,7 @@ class CreateGroupUseCase(
                 CreateWorktreeUseCase(config, executor, fileManager, provisioningSource, environment, trust, approval)(id, branchType, base.ref)
             }
             val worktree = created.getOrThrow()
-            GroupRepositoryResult(member.alias, GroupRepositoryOutcome.CREATED, worktree.path, worktree.skippedPostCreateCommands)
+            GroupRepositoryResult(member.alias, GroupRepositoryOutcome.CREATED, worktree.path, worktree.skippedPostCreateCommands, worktree.skippedVariables)
         } catch (error: WorktreeError.PostCreateCommandFailed) {
             GroupRepositoryResult(member.alias, GroupRepositoryOutcome.FAILED, error.worktreePath, error = error)
         } catch (error: kotlinx.coroutines.CancellationException) {

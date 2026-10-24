@@ -5,6 +5,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelectable
@@ -14,16 +15,18 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
-import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.v2.runComposeUiTest
 import app.luxion.shogunai.domain.FakeMachineCapacity
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
 import app.luxion.shogunai.domain.model.CapacityProfile
+import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.ResourceLimits
 import app.luxion.shogunai.domain.usecase.ResolveResourceLimitsUseCase
 import app.luxion.shogunai.ui.i18n.EnglishStrings
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
 class ResourcesSectionUiTest {
@@ -47,9 +50,9 @@ class ResourcesSectionUiTest {
     fun `Automatic is selected and shows its limits on this machine`() = runComposeUiTest {
         show(preferences())
 
-        onNodeWithText("Automatic").assertIsDisplayed()
+        onAllNodesWithText("Automatic")[0].assertIsDisplayed()
         onAllNodesWithText("1 emulator · 1 iOS simulator · 2 Gradle daemons", substring = true)[0].assertIsDisplayed()
-        onNode(isSelectable() and isSelected() and hasText("Automatic")).assertIsDisplayed()
+        onNode(isSelectable() and isSelected() and hasText("Automatic") and hasText("Gradle daemons", substring = true)).assertIsDisplayed()
     }
 
     @Test
@@ -104,14 +107,26 @@ class ResourcesSectionUiTest {
         assertEquals(null, repository.settings.custom.emulators)
     }
 
+    private val automaticQuotaHint = "A quarter of the free disk space plus what DerivedData takes, between 20 and 200 GB"
+
     @Test
-    fun `turning off no quota and typing a size stores the quota`() = runComposeUiTest {
+    fun `the automatic quota is chosen by default and explained`() = runComposeUiTest {
         show(preferences())
 
-        onNodeWithText("No quota").performClick()
+        onNodeWithText(automaticQuotaHint, substring = true).assertIsSelected()
+        assertEquals(DerivedDataQuotaMode.AUTOMATIC, repository.settings.quotaMode)
+        assertTrue(onAllNodesWithText("GB").fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun `choosing a fixed size and typing it stores the quota`() = runComposeUiTest {
+        show(preferences())
+
+        onNodeWithText("Fixed size").performClick()
         onAllNodes(hasSetTextAction())[0].performTextClearance()
         onAllNodes(hasSetTextAction())[0].performTextInput("40")
 
+        assertEquals(DerivedDataQuotaMode.FIXED, repository.settings.quotaMode)
         assertEquals(40, repository.settings.derivedDataQuotaGigabytes)
     }
 
@@ -128,13 +143,26 @@ class ResourcesSectionUiTest {
     }
 
     @Test
-    fun `no quota clears the stored quota`() = runComposeUiTest {
+    fun `going back to automatic keeps the fixed size for later`() = runComposeUiTest {
+        repository.settings = repository.settings.copy(derivedDataQuotaGigabytes = 40)
+        show(preferences())
+
+        onNodeWithText(automaticQuotaHint, substring = true).performClick()
+        assertEquals(DerivedDataQuotaMode.AUTOMATIC, repository.settings.quotaMode)
+        onNodeWithText("Fixed size").performClick()
+
+        assertEquals(DerivedDataQuotaMode.FIXED, repository.settings.quotaMode)
+        onNodeWithText("40").assertIsDisplayed()
+    }
+
+    @Test
+    fun `no quota stores the no quota mode`() = runComposeUiTest {
         repository.settings = repository.settings.copy(derivedDataQuotaGigabytes = 30)
         show(preferences())
 
         onNodeWithText("No quota").performClick()
 
-        assertEquals(null, repository.settings.derivedDataQuotaGigabytes)
+        assertEquals(DerivedDataQuotaMode.NONE, repository.settings.quotaMode)
     }
 
     @Test

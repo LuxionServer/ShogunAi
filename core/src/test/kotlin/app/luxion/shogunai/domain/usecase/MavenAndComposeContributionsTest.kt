@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakePortProbe
@@ -8,6 +9,7 @@ import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.DockerComposeProvider
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
+import app.luxion.shogunai.domain.model.InvalidEnvironmentTemplate
 import app.luxion.shogunai.domain.model.MavenProvider
 import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
@@ -16,6 +18,7 @@ import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
@@ -50,6 +53,7 @@ class MavenAndComposeContributionsTest {
             store,
             FakePortProbe(),
             MachineProviderContributions(FakeAppleSimulators(), { SimulatorSettings() }),
+            trust = FakeRepositoryTrust(approvesEverything = true),
         )
 
     @Test
@@ -67,10 +71,8 @@ class MavenAndComposeContributionsTest {
     }
 
     @Test
-    fun `a declared MAVEN_OPTS wins over the maven provider`() = runTest {
-        val resolve = resolver(RepositoryProviders(maven = MavenProvider("1g")), "MAVEN_OPTS" to "-Xmx9g")
-
-        assertEquals(listOf("MAVEN_OPTS" to "-Xmx9g"), resolve(repository, task).getOrThrow().variables)
+    fun `MAVEN_OPTS can't be declared to replace the maven provider`() {
+        assertFailsWith<InvalidEnvironmentTemplate> { parseEnvironmentVariable("MAVEN_OPTS", "-Xmx9g") }
     }
 
     @Test

@@ -28,8 +28,8 @@ A `.shogunai.json` at the repository's root declares what every worktree needs. 
 | `copy` | list of strings | Gitignore-style patterns. Every file Git doesn't track that matches one is copied into each new worktree, at the same path. |
 | `link` | list of strings | The same patterns as `copy`, but each matching file is linked with a symbolic link to the base repository's file instead of copied, so rotating it there updates every worktree. A file matching both lists is linked. Where symbolic links can't be created (Windows without the privilege), the file is copied instead. |
 | `hooks.postCreate` | list of commands | Commands run inside each worktree after it is created or provisioned, once its files are in place and its environment prepared. Each command is a list of strings given as argv, not a shell string; a single list of strings is read as one command. |
-| `env` | object of strings | Per-worktree environment variables. Names use letters, digits and `_`, and don't start with a digit. Names that change how shells, runtimes, the dynamic loader or Git behave are reserved and make the file invalid: `PATH`, `HOME`, `SHELL`, `IFS`, `ENV`, `BASH_ENV`, `ZDOTDIR`, `PROMPT_COMMAND`, `NODE_OPTIONS`, `NODE_PATH`, `PYTHONPATH`, `PYTHONSTARTUP`, `PYTHONHOME`, `RUBYOPT`, `RUBYLIB`, `PERL5OPT`, `PERL5LIB`, `JAVA_TOOL_OPTIONS`, `_JAVA_OPTIONS`, `JDK_JAVA_OPTIONS`, `CLASSPATH` and any name starting with `LD_`, `DYLD_` or `GIT_`. A project script can set those itself. |
-| `envFile` | string | A path inside the worktree where its environment is written in dotenv format. Never written over a file Git tracks, so add it to `.gitignore`. |
+| `env` | object of strings | Per-worktree environment variables. Names use letters, digits and `_`, and don't start with a digit. Names that change how shells, runtimes, the dynamic loader, Git, package managers, compilers, build tools, network clients or coding agents behave are reserved, compared without regard to case, and make the file invalid even if approved: see [reserved names](#reserved-variable-names). Templates can't contain line breaks, other control characters or invisible Unicode format characters. The variables only apply once the repository is [approved](#approving-a-repository). |
+| `envFile` | string | A path inside the worktree where its environment is written in dotenv format, without control or invisible format characters. Never written over a file Git tracks, so add it to `.gitignore`. Only written once the repository is [approved](#approving-a-repository). |
 | `providers` | object | The [providers](providers.md) the repository uses, each with its own options. |
 
 Values in `env` can use these templates:
@@ -47,13 +47,31 @@ Linking shares the file: a tool in one worktree that overwrites a linked secret 
 
 Post-creation commands run in order and stop at the first one that fails. A failure fails creation or provisioning with an error naming the command, its exit code and its error output, but the worktree is kept, since its checkout and files are fine. The commands run on creation and on every `shogun provision`, so make them safe to repeat, and only declare commands you would run from a repository you trust. They don't receive the worktree's environment variables; a command that needs them can run `shogun env`.
 
-### Approving post-creation commands
+### Approving a repository
 
-Because `.shogunai.json` is committed, whoever controls a branch controls its commands. They therefore run only after you have approved them on this machine, for that repository. The approval covers exactly the list you saw: if a pull changes a command, adds one or reorders them, the list counts as not approved and ShogunAi asks again. Approvals are stored in `~/.shogunai/trust.json`, readable only by you.
+Because `.shogunai.json` is committed, whoever controls a branch controls its post-creation commands and the variables it declares in `env`, which reach your agent's session, your terminals and the environment file. They therefore apply only after you have approved them on this machine, for that repository, in one approval that covers the commands, every declared variable with its template, and `envFile`. The approval covers exactly what you saw: if a pull changes, adds or reorders a command, adds, removes or changes a variable, or changes `envFile`, the repository counts as not approved and ShogunAi asks again. Reordering the keys of `env` doesn't. A repository that declares no `env` nor `envFile` keeps the approval its commands had in earlier versions. Approvals are stored in `~/.shogunai/trust.json`, readable only by you.
 
-- The desktop app shows the commands in the create dialog and offers "Run and remember" or "Skip". Skipping creates the worktree without running them. Project settings lists the repository's commands, whether they are approved on this machine, and lets you approve or revoke them.
-- `shogun new` and `shogun provision` print the commands and ask on a terminal. Where they can't ask, and always in the agent hooks, they skip the commands and print a note on standard error that names `shogun trust`.
-- `shogun trust` shows the commands and approves them (`--yes` skips the question) or revokes the approval (`--revoke`); see [the CLI reference](cli.md#trust).
+While a repository isn't approved its commands don't run and its declared variables aren't delivered anywhere: not to the agent's session, `shogun env`, terminals, Herdr panes, the environment file nor the desktop app's environment view, which lists them as awaiting approval. Variables added by [providers](providers.md) are still delivered, since ShogunAi computes their values.
+
+- The desktop app shows the commands, the variables with their templates and the environment file in the create dialog, before preparing the worktree's environment, and offers "Approve and remember" or "Skip". Skipping creates the worktree without running the commands, without the declared variables and without the environment file. Project settings lists what the repository declares, whether it is approved on this machine, and lets you approve or revoke it. Saving the environment from project settings approves what you saved, unless the repository has commands you hadn't approved.
+- `shogun new` and `shogun provision` print the same and ask on a terminal. Where they can't ask, and always in the agent hooks, they skip them and print a note on standard error that names `shogun trust`.
+- `shogun trust` shows the commands, variables and environment file and approves them (`--yes` skips the question) or revokes the approval (`--revoke`); see [the CLI reference](cli.md#trust).
+
+### Reserved variable names
+
+These names can't be declared in `env` nor in the `docker-compose` provider's `portVariables`, in any case (`https_proxy` is as reserved as `HTTPS_PROXY`). A project script can set them itself.
+
+- Shell and session: `PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`, `IFS`, `ENV`, `BASH_ENV`, `ZDOTDIR`, `PROMPT_COMMAND`, `PS1`, `PS2`, `PS4`, `PROMPT`, `RPROMPT`, `SHELLOPTS`, `BASHOPTS`, `CDPATH`, `FPATH`, `HISTFILE`, `INPUTRC`, `TMPDIR`, `TMP`, `TEMP`, `DBUS_SESSION_BUS_ADDRESS`, and names starting with `XDG_`.
+- Pagers, editors and helpers: `PAGER`, `MANPAGER`, `EDITOR`, `VISUAL`, `BROWSER`, `SUDO_ASKPASS`, and names starting with `LESS` or `SSH_`.
+- Network and TLS: names ending in `_PROXY`, `SSL_CERT_FILE`, `SSL_CERT_DIR`, `CURL_CA_BUNDLE`, `REQUESTS_CA_BUNDLE`.
+- Dynamic loader and Git: names starting with `LD_`, `DYLD_` or `GIT_`.
+- Language runtimes and package managers: `NODE_OPTIONS`, `NODE_PATH` and names starting with `NODE_` (except `NODE_ENV`), `NPM_CONFIG_`, `YARN_`, `PNPM_`, `BUN_`, `PIP_`, `PYTHON`, `UV_`, `POETRY_`, `CONDA`, `GEM_`, `BUNDLE_`, `RUBY`, `PERL`, `CARGO_`, `RUSTC` or `RUSTUP_`; `RUSTFLAGS`, `RUSTDOCFLAGS`; the Go variables `GOFLAGS`, `GOPROXY`, `GOPATH`, `GOROOT`, `GOBIN`, `GOENV`, `GOTOOLCHAIN`, `GOSUMDB`, `GONOSUMDB`, `GOPRIVATE`, `GONOPROXY`, `GOINSECURE`, `GOWORK`, `GOCACHE`, `GOMODCACHE`; and the JVM's `JAVA_TOOL_OPTIONS`, `_JAVA_OPTIONS`, `JDK_JAVA_OPTIONS`, `CLASSPATH`, `MAVEN_ARGS`.
+- Compilers and build tools: `CC`, `CXX`, `CPP`, `LD`, `AR`, `AS`, `CFLAGS`, `CXXFLAGS`, `CPPFLAGS`, `LDFLAGS`, `MAKEFLAGS`, `MAKE`, `PKG_CONFIG_PATH`, and names starting with `CMAKE_` or `CCACHE_`.
+- Any name ending in `_OPTS` (such as `JAVA_OPTS` or `GRADLE_OPTS`) or `_HOME` (such as `JAVA_HOME`).
+- Containers and clouds: names starting with `DOCKER_`, `KUBECONFIG`, `AWS_CONFIG_FILE`, `AWS_SHARED_CREDENTIALS_FILE`, `CLOUDSDK_CONFIG`, `AZURE_CONFIG_DIR`.
+- Coding agents and tools: names starting with `ANTHROPIC_`, `CLAUDE_`, `CODEX_`, `GH_`, `HERDR_` or `SHOGUNAI_`, and `OPENAI_BASE_URL`.
+
+Ordinary application names such as `PORT`, `DATABASE_URL`, `NODE_ENV`, `API_URL`, `VITE_*`, `NEXT_PUBLIC_*` or `ANDROID_SERIAL` are allowed.
 
 `copy` and `link` files need no approval: they are only read from the base repository and, after following symbolic links, only written inside the worktree. A file whose destination resolves outside the worktree, through a symlinked folder from the branch, fails the operation.
 
@@ -86,7 +104,9 @@ Claude Code's `.worktreeinclude` is read like `copy`: one gitignore-style patter
 |---|---|
 | `projects.json` | The desktop app's project catalog: each project's name, base repository, worktrees folder, main branch, local files, agent commands, the IDE chosen for the project on this machine, and emulator and simulator settings. The `shogun` command reads it to find a repository's project. |
 | `settings.json` | The app's preferences: theme (`LIGHT`, `DARK` or `SYSTEM`, the default), language (`ENGLISH`, the default, or `SPANISH`), window bounds, whether the sidebar is collapsed, the collapsed projects, the last destination, the last project used to create a worktree, the recent command palette items, and the grouping of the worktree list per view, and the chosen terminal (`TERMINAL`, `ITERM2`, `WINDOWS_TERMINAL`, `TMUX` or `ZELLIJ`) and default IDE (`VS_CODE`, `INTELLIJ_IDEA` or `ANDROID_STUDIO`), unset until chosen, and the agent last chosen for each worktree. |
+| `multirepos.json`, `multirepos.json.lock` | The multirepos known on this machine (the paths of their `.shogunai-multirepo.json`), the approval of each declaration and the multirepo agent set here. Readable only by you. |
 | `reservations.json`, `reservations.lock` | An index of the worktrees, in any repository, that have reserved ports, and the lock taken while reserving, so two worktrees never get the same port. |
+| `device-queue.json` | The worktrees waiting for an emulator or simulator with `--wait`, in order. It disappears when nobody waits. |
 | `logs/emulator-<port>.log` | The output of each emulator ShogunAi started. |
 | `xcode/compilation-cache.xcconfig` | The shared Xcode settings written by the Xcode provider's `compilationCache`. |
 

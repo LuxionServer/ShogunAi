@@ -3,6 +3,7 @@ package app.luxion.shogunai.cli
 import app.luxion.shogunai.domain.FakeAgentSessionStore
 import app.luxion.shogunai.domain.FakeMachineCapacity
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
+import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.ResourceSettings
 import app.luxion.shogunai.domain.FakeAndroidSdk
@@ -26,6 +27,8 @@ import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.domain.model.parseEnvironmentVariable
+import app.luxion.shogunai.domain.model.EnvironmentDeclaration
 import app.luxion.shogunai.domain.model.WorktreeError
 import java.io.IOException
 import kotlin.test.Test
@@ -145,7 +148,7 @@ class HookCommandsTest {
         }
         val provisioning = RepositoryProvisioning(postCreateCommands = listOf(listOf("npm", "install")))
 
-        val trust = FakeRepositoryTrust(mapOf(base to listOf(listOf("npm", "install"))))
+        val trust = FakeRepositoryTrust(mapOf(base to RepositoryApprovalSubject(listOf(listOf("npm", "install")))))
 
         val exitCode = cli(executor, createInput("TASK-123"), provisioning = provisioning, trust = trust).run(listOf("hook", "worktree-create"))
 
@@ -165,6 +168,21 @@ class HookCommandsTest {
         assertEquals("$worktreesRoot/TASK-123\n", out.toString())
         assertFalse(executor.calls.any { it.first.first() == "npm" })
         assertTrue(err.contains("shogun trust"), err.toString())
+    }
+
+    @Test
+    fun `worktree-create leaves out unapproved variables and the environment file and says how to approve them`() {
+        val executor = Executor(porcelain())
+        val provisioning = RepositoryProvisioning(
+            environment = EnvironmentDeclaration(listOf(parseEnvironmentVariable("PORT", "\${port}")), ".env.shogunai"),
+        )
+
+        val exitCode = cli(executor, createInput("TASK-123"), provisioning = provisioning).run(listOf("hook", "worktree-create"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("$worktreesRoot/TASK-123\n", out.toString())
+        assertFalse(executor.calls.any { "--error-unmatch" in it.first }, "doesn't look at the environment file")
+        assertTrue(err.contains("(PORT)") && err.contains("shogun trust"), err.toString())
     }
 
     @Test
@@ -370,7 +388,7 @@ class HookCommandsTest {
             worktreeIncludePatterns = listOf(".env"),
             postCreateCommands = listOf(listOf("npm", "install")),
         )
-        val trust = FakeRepositoryTrust(mapOf(base to listOf(listOf("npm", "install"))))
+        val trust = FakeRepositoryTrust(mapOf(base to RepositoryApprovalSubject(listOf(listOf("npm", "install")))))
 
         val exitCode = cli(executor, "", environment = herdrEnvironment(), provisioning = provisioning, trust = trust)
             .run(listOf("hook", "herdr"))

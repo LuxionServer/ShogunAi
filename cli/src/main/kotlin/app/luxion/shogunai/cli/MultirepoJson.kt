@@ -20,6 +20,7 @@ import kotlinx.serialization.json.put
 
 fun multirepoJson(multirepo: Multirepo, configs: Map<String, ProjectConfig?>, bases: Map<String, String?>): JsonObject = buildJsonObject {
     put("path", multirepo.folder)
+    put("approved", multirepo.approved)
     put("worktreesRoot", multirepo.worktreesRoot)
     put("repos", buildJsonArray {
         multirepo.repositories.forEach { repository ->
@@ -40,6 +41,27 @@ fun multirepoJson(multirepo: Multirepo, configs: Map<String, ProjectConfig?>, ba
         put("command", multirepo.agent.agentCommand)
         put("useHeadroom", multirepo.agent.useHeadroom)
     })
+    put("ignoredDeclaredAgent", multirepo.ignoresDeclaredAgent)
+}
+
+fun multirepoTrustJson(multirepo: Multirepo, approved: Boolean, changed: Boolean): JsonObject = buildJsonObject {
+    put("path", multirepo.folder)
+    put("declaration", multirepo.declarationPath)
+    put("approved", approved)
+    put("changed", changed)
+    put("repos", buildJsonArray {
+        multirepo.repositories.forEach { repository ->
+            add(buildJsonObject {
+                put("alias", repository.alias)
+                put("path", repository.path)
+                put("outsideParent", multirepo.isOutsideParent(repository.path))
+            })
+        }
+    })
+    put("worktreesRoot", multirepo.worktreesRoot)
+    put("worktreesRootOutsideParent", multirepo.isOutsideParent(multirepo.worktreesRoot))
+    put("workspace", multirepo.workspaceRepository?.alias)
+    put("ignoredDeclaredAgent", multirepo.ignoresDeclaredAgent)
 }
 
 fun addedRepositoryJson(multirepo: Multirepo, added: AddedRepository): JsonObject = buildJsonObject {
@@ -62,6 +84,7 @@ fun groupCreationJson(creation: GroupCreation): JsonObject = buildJsonObject {
                 put("skippedPostCreateCommands", buildJsonArray {
                     result.skippedPostCreateCommands.forEach { command -> add(buildJsonArray { command.forEach { add(JsonPrimitive(it)) } }) }
                 })
+                put("skippedVariables", buildJsonArray { result.skippedVariables.forEach { add(JsonPrimitive(it)) } })
                 put("error", result.error?.message?.let(::JsonPrimitive) ?: JsonNull)
             })
         }

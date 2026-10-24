@@ -2,6 +2,7 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.io.AppleSimulators
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
+import app.luxion.shogunai.domain.model.DeviceWait
 import app.luxion.shogunai.domain.model.IOS_SIMULATOR_KEY
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.SIMULATOR_NAME_PREFIX
@@ -26,9 +27,10 @@ class StartWorktreeSimulatorUseCase(
         config: ProjectConfig,
         worktreePath: String,
         requested: SimulatorSettings = SimulatorSettings(),
+        wait: DeviceWait? = null,
     ): Result<DeviceStart<WorktreeSimulator>> = runCatching {
         requireIosSimulatorProvider(provisioningSource, simulators, config)
-        val acquisition = acquire.simulator(config.baseRepositoryPath, worktreePath, requested).getOrThrow()
+        val acquisition = acquire.simulator(config.baseRepositoryPath, worktreePath, requested, wait).getOrThrow()
         val udid = resolveEnvironment(config.baseRepositoryPath, worktreePath, reserve = false).getOrThrow()
             .resources.getValue(IOS_SIMULATOR_KEY)
         val device = simulators.devices().first { it.udid == udid }

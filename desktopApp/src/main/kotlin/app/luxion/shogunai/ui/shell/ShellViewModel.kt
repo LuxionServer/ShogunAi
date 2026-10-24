@@ -311,7 +311,7 @@ class ShellViewModel(
 
     private fun loadMultirepos() {
         multirepoCatalog.refresh()
-        if (multirepoCatalog.multirepos.count { registerWorkspaceProject(it) } > 0) projects = loadProjects()
+        if (multirepoCatalog.multirepos.filter { it.approved }.count { registerWorkspaceProject(it) } > 0) projects = loadProjects()
         memberships = multirepoMemberships(multirepoCatalog.multirepos, projects)
     }
 

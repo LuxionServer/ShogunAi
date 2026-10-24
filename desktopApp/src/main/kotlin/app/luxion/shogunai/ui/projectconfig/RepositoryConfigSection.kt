@@ -21,7 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.SuggestedProvider
-import app.luxion.shogunai.domain.model.ShellQuoting
+import app.luxion.shogunai.ui.worktree.ApprovalSubjectLines
 import app.luxion.shogunai.ui.components.IconAction
 import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.SecondaryButton
@@ -61,7 +61,7 @@ fun RepositoryConfigSection(viewModel: ProjectConfigViewModel, modifier: Modifie
                 }
                 ProvidersEditor(viewModel, strings)
                 EnvironmentEditor(viewModel, strings)
-                if (viewModel.postCreateCommands.isNotEmpty()) PostCreateCommandsView(viewModel, strings)
+                if (!viewModel.approvalSubject.isEmpty) RepositoryApprovalView(viewModel, strings)
             }
         }
     }
@@ -308,22 +308,20 @@ private fun EnvironmentEditor(viewModel: ProjectConfigViewModel, strings: String
 }
 
 @Composable
-private fun PostCreateCommandsView(viewModel: ProjectConfigViewModel, strings: Strings) {
+private fun RepositoryApprovalView(viewModel: ProjectConfigViewModel, strings: Strings) {
     SettingsField(strings.postCreateCommandsTitle) {
-        viewModel.postCreateCommands.forEach { command ->
-            Text(ShellQuoting.posixCommand(command), style = ShogunTheme.typography.data)
-        }
+        ApprovalSubjectLines(viewModel.approvalSubject, strings)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             Text(
-                if (viewModel.postCreateApproved) strings.postCreateApproved else strings.postCreateNotApproved,
+                if (viewModel.repositoryApproved) strings.postCreateApproved else strings.postCreateNotApproved,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
             )
-            if (viewModel.postCreateApproved) {
-                SecondaryButton(onClick = viewModel::revokePostCreateApproval) { Text(strings.revokeApproval) }
+            if (viewModel.repositoryApproved) {
+                SecondaryButton(onClick = viewModel::revokeRepositoryApproval) { Text(strings.revokeApproval) }
             } else {
-                SecondaryButton(onClick = viewModel::approvePostCreateCommands) { Text(strings.approveCommands) }
+                SecondaryButton(onClick = viewModel::approveRepository) { Text(strings.approveCommands) }
             }
         }
     }

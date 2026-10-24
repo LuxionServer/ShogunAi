@@ -29,6 +29,7 @@ Output is plain English text; scripts should use `--json`, which every command t
 | `1` | The operation failed; the reason is on standard error. Failures a command doesn't handle specifically are printed as one line starting with `shogun:`, never as a stack trace. |
 | `2` | Wrong usage: unknown command or option, missing argument, or hook input that isn't the expected JSON. |
 | `3` | `provision --check` found differences between the worktree and the base repository. |
+| `130` | The command was interrupted (Ctrl+C or a termination signal) and stopped cleanly, e.g. leaving the line of a `start --wait`. |
 
 ## Worktrees
 
@@ -62,7 +63,7 @@ Copies the project's local files and the repository's declared `copy` files into
 
 With `--check` nothing is changed: it compares the files provisioning would give the worktree with the base repository's and prints one line per difference, `<path>: missing`, `<path>: differs` (a copy whose content changed in the base repository) or `<path>: not linked` (a `link` file that isn't a symbolic link to the base repository's file). It exits with 0 when everything matches, 3 when there is any difference, and 1 on an error.
 
-Post-creation commands run only when approved on this machine (see [Approving post-creation commands](configuration.md#approving-post-creation-commands)). On a terminal `shogun new` and `shogun provision` print the commands and ask `Run these commands? [y/N]` on standard error; only an explicit yes runs and approves them. Without a terminal they skip the commands, print `shogun: skipped N post-creation commands not approved on this machine; run 'shogun trust' in <repo> to review them` on standard error and succeed.
+Post-creation commands run, and the variables the repository declares in `env` and its `envFile` apply, only when the repository is approved on this machine (see [Approving a repository](configuration.md#approving-a-repository)). On a terminal `shogun new` and `shogun provision` print the commands, the declared variables (`NAME = template`) and the environment file before preparing the worktree's environment, and ask `Approve them on this machine? [y/N]` on standard error; only an explicit yes approves and applies them. Without a terminal they skip them, print `shogun: skipped N post-creation commands not approved on this machine; run 'shogun trust' in <repo> to review them` and `shogun: skipped environment variables not approved on this machine (PORT, …); run 'shogun trust' in <repo> to review them` on standard error and succeed.
 
 #### When a post-creation command fails
 
@@ -74,7 +75,7 @@ The worktree is kept. `shogun new` prints its path on standard output, the failu
 shogun trust [<path>] [--yes] [--revoke]
 ```
 
-Prints the post-creation commands the repository declares, one per line, and whether they are approved on this machine. On a terminal it asks to approve them; `--yes` approves without asking, so scripts and CI can do it, and `--revoke` removes the repository's approval. It says so when the repository declares no commands. Exit code 0 unless something fails.
+Prints what the repository asks ShogunAi to run or apply, and whether it is approved on this machine: its post-creation commands, one per line, then `Environment variables declared by <repo>:` with one `NAME = template` line per variable, and `Environment file: <path>`. On a terminal it asks to approve them; `--yes` approves without asking, so scripts and CI can do it, and `--revoke` removes the repository's approval. It says so when the repository declares no commands, variables nor environment file. An agent reading a note about variables awaiting approval should ask you to run it rather than run it itself. Exit code 0 unless something fails.
 
 ### `status`
 
@@ -240,6 +241,7 @@ In a multirepo folder (see [Multirepos and groups](multirepo.md)), `new`, `statu
 ```text
 shogun multirepo init [--worktrees-root <dir>]
 shogun multirepo show
+shogun multirepo trust [<folder>] [--yes | --revoke]
 shogun multirepo add-repo <alias> <path> [--use-worktrees-root | --keep-worktrees-folder]
 shogun multirepo remove-repo <alias>
 shogun multirepo defaults <alias>[,<alias>...] | --clear
@@ -253,6 +255,9 @@ shogun open --herdr
 ```
 
 - `multirepo` subcommands work in the multirepo folder or anywhere in its repositories and worktrees, and accept `--json`; outside a multirepo they exit with `1`. A wrong alias exits with `2`.
+- Only multirepos approved on this machine apply ([Approving a multirepo](multirepo.md#approving-a-multirepo)). Under a declaration that isn't approved, `new`, `status`, `open` and `clean` behave as outside a multirepo and print a note on standard error naming the file and `shogun multirepo trust`; hooks print nothing. `multirepo show` still shows it, with `not approved on this machine` (`"approved": false` in `--json`); the subcommands that write exit with `1`.
+- `multirepo trust` shows the nearest declaration (or the one in `<folder>`): each repository with its resolved path, the worktrees root and the workspace repository, marking paths outside the folder's parent. On a terminal it asks (`[y/N]`) and approves on yes; `--yes` approves without asking; without a terminal and without `--yes` it exits with `1`. `--revoke` forgets the multirepo and keeps the file. Its `--json` object has `path`, `declaration`, `approved`, `changed`, `repos` (with `outsideParent`), `worktreesRoot`, `worktreesRootOutsideParent`, `workspace` and `ignoredDeclaredAgent`; without `--yes` it only reports.
+- `multirepo agent` keeps the multirepo agent on this machine, never in the declaration; an `agent` left in the declaration by an earlier version is ignored, and `show` says so (`ignoredDeclaredAgent` in `--json`).
 - `new <id>` in the multirepo folder covers the default repositories, or `--repos` from anywhere in the multirepo; it prints the path of each worktree it creates on standard output and one line per repository on standard error, and exits with `1` if any repository failed. `--branch`, `--from` and `--worktrees-root` don't apply to a group and exit with `2`. Its `--json` object has the `branch` and a `repos` list with each `alias`, `path`, `result` (`created`, `existing` or `failed`), skipped post-creation commands and `error`.
 - When the multirepo folder is a Git repository it is the multirepo's workspace repository (alias `workspace` unless declared otherwise): `show` lists it, marked `detected` until `workspace set` declares it (`--alias` renames it, `--default` adds it to the default repositories) and `workspace clear` turns detection off; in a folder that isn't a repository `workspace set` exits with `1`. `new <id> --repos workspace,app` includes it, with its worktree in `<worktreesRoot>/workspace/<id>`. `project add` and `app` run in that folder register the workspace repository as a member of the multirepo and no project of the folder's own (`app` just opens the app), unless detection is off. `--json` of `show` marks each repository with `workspace` and `detected`.
 - `status` in the multirepo folder prints each group's branch followed by one line per repository, then `ungrouped`; `--json` prints `groups` (each with `branch`, `title` and `repos` with `alias`, `path`, `branch`, `base`, `folderMissing`, `uncommittedChanges`, `ahead`, `behind`, `merged`, `agents`), `ungrouped` and `failures`.
@@ -297,7 +302,7 @@ The command returns as soon as the app has been asked, without waiting for it:
 shogun env [<path>] [--format sh|dotenv|json]
 ```
 
-Prints the environment of the worktree containing the path (or the current directory), from `.shogunai.json` `env` and the providers, reserving its ports the first time. `sh` (the default) prints `export NAME='value'` lines for `eval "$(shogun env)"`; `dotenv` and `json` suit other tools. An empty environment prints nothing.
+Prints the environment of the worktree containing the path (or the current directory), from `.shogunai.json` `env` (once the repository is approved) and the providers, reserving its ports the first time. Declared variables awaiting approval aren't printed; a note on standard error names them and `shogun trust`. `sh` (the default) prints `export NAME='value'` lines for `eval "$(shogun env)"`; `dotenv` and `json` suit other tools. An empty environment prints nothing.
 
 ## Stacks
 
@@ -344,19 +349,21 @@ shogun compose down [<worktree>] [--volumes]
 ### `emulator`
 
 ```text
-shogun emulator start|stop|status [<path>] [--avd <name>] [--no-window]
+shogun emulator start|stop|status [<path>] [--avd <name>] [--no-window] [--wait] [--wait-timeout <minutes>]
 ```
 
 Starts (and waits for), stops or shows the Android emulator of the worktree. `--avd` and `--no-window` only apply to `start` and override the project's settings for that start. `status` prints `emulator-5556 running|booting|stopped`, or `not acquired` before the first start. Every `start` renews the worktree's lease, and prints `export ANDROID_SERIAL=…` with the serial to use. The first `start` reserves the console port (releasing an emulator whose lease expired if the pool is full, reported on standard error); run it before every use of the device, since it re-acquires one if it was released. After a release, `status` prints `not acquired (released for <worktree> at <time>)`. With every emulator protected it fails with exit code `1` naming the worktrees that hold them and when their leases expire.
 
+With `--wait`, `start` waits in line instead of failing when the pool is full and none can be released, and starts the emulator as soon as it can acquire one. The wait lasts 30 minutes at most, or the minutes given with `--wait-timeout` (which implies `--wait`); then it fails with exit code `1`, saying how long it waited and who holds the emulators, having reserved nothing. Waiters of a pool are served first in, first out across every repository on the machine, and while anyone waits, a `start` without `--wait` (or from the desktop app) can't take the emulator they're waiting for: its error says how many are waiting. A waiter that is interrupted or whose process ends leaves the line. While it waits, the command prints on standard error its place in the line, who holds each emulator and when the next lease expires, again only when that changes, and `waited <time>` once it has the emulator. Agents should run a waiting `start` in the background, since it outlasts their shell's time limit. `--wait` and `--wait-timeout` only apply to `start`.
+
 ### `simulator`
 
 ```text
-shogun simulator start|stop|status [<path>] [--device <type>] [--runtime <runtime>]
+shogun simulator start|stop|status [<path>] [--device <type>] [--runtime <runtime>] [--wait] [--wait-timeout <minutes>]
 shogun simulator gradle-init install|uninstall [--yes|-y]
 ```
 
-Creates if needed, boots (and waits for) and opens, shuts down or shows the iOS simulator of the worktree (macOS only). `--device` and `--runtime` only apply when `start` creates the simulator. In a Kotlin Multiplatform repository, `status` also says whether the KMP tests use the simulator.
+Creates if needed, boots (and waits for) and opens, shuts down or shows the iOS simulator of the worktree (macOS only). `--device` and `--runtime` only apply when `start` creates the simulator. `--wait` and `--wait-timeout` wait for a full simulator pool as they do for [`emulator`](#emulator). In a Kotlin Multiplatform repository, `status` also says whether the KMP tests use the simulator.
 
 `gradle-init install` installs a machine-wide Gradle init script that makes every project's KMP simulator tests use the worktree's simulator; it shows the script and asks `[y/N]` unless `--yes` is given. `uninstall` removes it.
 
@@ -367,7 +374,7 @@ shogun pool status [--json]
 shogun pool trim [--json]
 ```
 
-`status` prints each pool (`emulators 1/2`, `simulators 0/1`, `gradle daemons 3/2  over the limit`) with the limit of the machine's capacity profile and, under it, the project, worktree and state of every resource in use. `trim` stops idle Gradle daemons, longest idle first, until they are within the limit, and prints what it stopped and kept.
+`status` prints each pool (`emulators 1/2`, `simulators 0/1`, `gradle daemons 3/2  over the limit`) with the limit of the machine's capacity profile and, under it, the project, worktree and state of every resource in use, followed by the worktrees waiting for an emulator or simulator (`waiting: main-repo · TASK-2 since 14:10`), in queue order. `trim` stops idle Gradle daemons, longest idle first, until they are within the limit, and prints what it stopped and kept.
 
 ### `xcode`
 
@@ -377,7 +384,7 @@ shogun xcode clean
 shogun xcode trim [--dry-run]
 ```
 
-`xcode` lists the DerivedData folders of the repository's worktrees with their size, the orphaned folders on the machine (`orphans: N (size)`) and, when compilation caching is declared, the cache size. `xcode clean` deletes the orphaned folders (`deleted <path>`, `freed <size>`, or `Nothing to delete.`). `xcode trim` applies the DerivedData quota set in Preferences > Resources: when the folders add up to more than the quota it releases orphaned folders first and then the least recently accessed folders of worktrees of your saved projects that are not in use, and stops as soon as the total fits (`released <path>  <size>`, `freed <size>`, `usage <size> of <quota>`). A worktree is in use while its agent is working or blocked or its folder was accessed within the last hour, and folders of other projects, on unavailable volumes and the compilation cache are never released; if only those remain it prints `quota still exceeded` and the worktrees in use. `--dry-run` prints `would release` and `would free` without deleting. Without a quota it says so and deletes nothing. Without the Xcode provider, or off macOS, `xcode` says the provider isn't active and exits with `0`.
+`xcode` lists the DerivedData folders of the repository's worktrees with their size, the orphaned folders on the machine (`orphans: N (size)`) and, when compilation caching is declared, the cache size. `xcode clean` deletes the orphaned folders (`deleted <path>`, `freed <size>`, or `Nothing to delete.`). `xcode trim` applies the DerivedData quota set in Preferences > Resources, automatic by default (a quarter of the free disk space plus what DerivedData takes, between 20 and 200 GB): when the folders add up to more than the quota it releases orphaned folders first and then the least recently accessed folders of worktrees of your saved projects that are not in use, and stops as soon as the total fits (`released <path>  <size>`, `freed <size>`, `usage <size> of <quota>`, followed by `(automatic)` for the automatic quota). A worktree is in use while its agent is working or blocked or its folder was accessed within the last hour, and folders of other projects, on unavailable volumes and the compilation cache are never released; if only those remain it prints `quota still exceeded` and the worktrees in use. `--dry-run` prints `would release` and `would free` without deleting. With "No quota" it says so and deletes nothing, and when the automatic quota can't be computed because the free disk space is unknown it says that instead. The `xcode` commands remember each folder's size between runs, shared with the app, and only measure again the folders Xcode has used since, several at a time. Without the Xcode provider, or off macOS, `xcode` says the provider isn't active and exits with `0`.
 
 ## JSON output
 
@@ -387,15 +394,15 @@ The rules are the same for all of them:
 
 - One compact JSON object on a single line on standard output, instead of the text, with the same exit code as the text output.
 - An error before the result exists is printed as text on standard error, with nothing on standard output.
-- It never asks a question. Post-creation commands that aren't approved on this machine are skipped and listed (`shogun trust` approves them), and `trust` only reports unless `--yes` is given.
+- It never asks a question. Post-creation commands and declared variables that aren't approved on this machine are skipped and listed (`shogun trust` approves them), and `trust` only reports unless `--yes` is given.
 - Every documented field is always present, `null` when it doesn't apply, lists empty rather than missing, and enumerations in lowercase. Paths are absolute. Later versions only add fields, never rename, remove or change the type of one.
 
 | Command | Object |
 |---|---|
-| `new` | `path`, `branch`, `created` (always `true`), `skippedPostCreateCommands` (a list of argv lists) and `postCreateFailure`: `null`, or `{ command, exitCode, stderr }` when a post-creation command failed. In that case the object is still printed, since the worktree exists, and the exit code is `1`. |
-| `provision` | `path`, `copied`, `linked` and `copiedInsteadOfLinking` (file paths), `skippedPostCreateCommands` and `postCreateFailure`, as in `new`. When a command failed, the three file lists are empty. |
+| `new` | `path`, `branch`, `created` (always `true`), `skippedPostCreateCommands` (a list of argv lists), `skippedVariables` (the names of the declared variables left out) and `postCreateFailure`: `null`, or `{ command, exitCode, stderr }` when a post-creation command failed. In that case the object is still printed, since the worktree exists, and the exit code is `1`. |
+| `provision` | `path`, `copied`, `linked` and `copiedInsteadOfLinking` (file paths), `skippedPostCreateCommands`, `skippedVariables` and `postCreateFailure`, as in `new`. When a command failed, the three file lists are empty. |
 | `provision --check` | `path` and `drift`: a list of `{ path, state }` with `state` `missing`, `differs` or `not-linked`. The exit code is `3` when `drift` isn't empty. |
-| `trust` | `repository`, `commands` (argv lists), `approved` and `changed` (this run approved or revoked it). A repository without post-creation commands is `approved: true` with no commands. `--revoke` reports `approved: false` when there were commands. |
+| `trust` | `repository`, `commands` (argv lists), `env` (a list of `{ name, template }`), `envFile` (or `null`), `approved` and `changed` (this run approved or revoked it). A repository that declares nothing is `approved: true` with empty lists. `--revoke` reports `approved: false` when there was something to approve. |
 | `remove` | `path`, `branch` (the worktree's, or `null` if detached), `branchDeleted` (the name, or `null` when it was kept or no branch deletion was requested), `branchKeptReason` (why a requested deletion didn't happen, or `null`), `providers` (`emulatorsStopped` serials, `simulatorsStopped` udids and `gradleDaemonsStopped` pids) and `failures` (messages of what couldn't be stopped, exit code `1`). |
 | `hooks install`, `hooks uninstall` | `path`, `applied` (written this run) and the `added` and `removed` hooks as `{ event, command }` plus `replaced` as `{ event, from, to }`. |
 | `hooks status` | `user` and `project` (`null` outside a repository): `path`, `state` (`installed`, `outdated`, `missing`) and `events`. |
@@ -414,9 +421,9 @@ The rules are the same for all of them:
 | `compose down` | `takenDown` (project names) and `failures`: `{ name, message }`. The exit code is `1` when `failures` isn't empty. |
 | `xcode` | `active` (`false` when the provider isn't active, with the rest empty), `folders`: `{ path, sizeBytes, worktree }`, `orphans`: `{ path, sizeBytes }`, `unavailableVolumeFolders` (a count) and `compilationCacheBytes` (`null` unless declared). |
 | `xcode clean` | `active`, `deleted` (paths), `freedBytes` and `failures`: `{ path, message }`. |
-| `xcode trim` | `active`, `quotaBytes` (`null` without a quota), `dryRun`, `usageBeforeBytes`, `usageAfterBytes`, `exceeded`, `released` (paths, those that would be released with `--dry-run`), `freedBytes`, `inUse` (worktree paths) and `failures`: `{ path, message }`. |
-| `emulator start\|stop\|status` | `worktree`, `serial` and `state` (`running`, `booting` or `stopped`). `serial` and `state` are `null` when the worktree has no emulator port reserved yet. |
-| `simulator start\|stop\|status` | `worktree`, `udid`, `name` and `state` (`shutdown`, `booting` or `booted`), `null` when the worktree has no simulator yet. The KMP wiring hint isn't part of it. |
+| `xcode trim` | `active`, `quotaMode` (`automatic`, `fixed` or `none`), `quotaBytes` (`null` without a quota or when the automatic one can't be computed), `dryRun`, `usageBeforeBytes`, `usageAfterBytes`, `exceeded`, `released` (paths, those that would be released with `--dry-run`), `freedBytes`, `inUse` (worktree paths) and `failures`: `{ path, message }`. |
+| `emulator start\|stop\|status` | `worktree`, `serial` and `state` (`running`, `booting` or `stopped`). `serial` and `state` are `null` when the worktree has no emulator port reserved yet. `waited` is the whole seconds a `start --wait` waited for capacity (`0` if there was room), `null` otherwise. |
+| `simulator start\|stop\|status` | `worktree`, `udid`, `name` and `state` (`shutdown`, `booting` or `booted`), `null` when the worktree has no simulator yet, and `waited` as for `emulator`. The KMP wiring hint isn't part of it. |
 
 ```bash
 shogun clean --json | jq -r '.candidates[].path'
@@ -430,9 +437,9 @@ These commands are meant to be called by agents and tools, not typed. How to con
 
 | Command | Called by |
 |---|---|
-| `shogun hook worktree-create` | Claude Code's `WorktreeCreate` hook. Reads `name` and `cwd` from standard input, creates (or reuses) a provisioned worktree on `feature/<name>` starting at the HEAD of the worktree in `cwd`, and prints its path. If a post-creation command fails it still prints the path as the last line and exits with 0, with the failure on standard error, so Claude Code uses the worktree. Unapproved post-creation commands are skipped with a note on standard error; it never asks. |
+| `shogun hook worktree-create` | Claude Code's `WorktreeCreate` hook. Reads `name` and `cwd` from standard input, creates (or reuses) a provisioned worktree on `feature/<name>` starting at the HEAD of the worktree in `cwd`, and prints its path. If a post-creation command fails it still prints the path as the last line and exits with 0, with the failure on standard error, so Claude Code uses the worktree. Unapproved post-creation commands and declared variables are skipped with a note on standard error; it never asks. |
 | `shogun hook worktree-remove` | Claude Code's `WorktreeRemove` hook. Removes the worktree in `worktree_path`, deletes its branch only if it's merged into the project's main branch (a branch merged only into its own upstream is kept, with a note on standard error) and closes its Herdr workspace. |
-| `shogun hook session-start` | Claude Code's `SessionStart` hook. Inside a Git repository, appends the worktree's environment to `CLAUDE_ENV_FILE` (nothing when the repository declares no `env`) and prints the context: a line with the variables and their values when there are any, then the short [workflow rules](#guide) that apply to that location, at most ten lines, starting with the precedence line and ending with a pointer to `shogun guide`. Without Herdr it leaves out the rules about `shogun open --herdr` and messaging sessions; the emulator and simulator rules appear only when the repository declares those providers. Outside a Git repository it prints nothing and exits with `0`. |
+| `shogun hook session-start` | Claude Code's `SessionStart` hook. Inside a Git repository, prints the context. Only when the repository is registered as a project does it append the worktree's environment to `CLAUDE_ENV_FILE` (nothing when the repository declares no `env`) and print a line naming the variables, without their values; declared variables awaiting approval are named on a line of their own, telling the agent to ask you to review them with `shogun trust`, and aren't delivered. Then come the short [workflow rules](#guide) that apply to that location, at most ten lines, starting with the precedence line and ending with a pointer to `shogun guide`. Without Herdr it leaves out the rules about `shogun open --herdr` and messaging sessions; the emulator and simulator rules appear only when the repository declares those providers. Outside a Git repository it prints nothing and exits with `0`. |
 | `shogun hook agent-state` | Claude Code's `UserPromptSubmit`, `Notification`, `Stop` and `SessionEnd` hooks. Reads the hook's JSON from standard input and records the session's state (working, blocked, done) for the worktree containing `cwd`, or removes the record on `SessionEnd`; a `Notification` of type `idle_prompt` means done and `auth_success` is ignored. When the state is working it also renews the leases of the emulator and simulator the worktree holds. It prints nothing, never blocks the session and exits with 0 also outside a repository; input that isn't JSON exits with 2. See [Agent states outside Herdr](agents.md#agent-states-outside-herdr). |
 | `shogun hook herdr` | The ShogunAi plugin for Herdr, on `worktree.created` (provisions the worktree, skipping unapproved post-creation commands with a note) and `worktree.removed` (deletes its branch if merged into the project's main branch). Reads `HERDR_PLUGIN_EVENT`, `HERDR_PLUGIN_EVENT_JSON` and `HERDR_BIN_PATH`. |
 

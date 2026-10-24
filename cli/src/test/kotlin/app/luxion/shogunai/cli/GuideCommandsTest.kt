@@ -21,6 +21,8 @@ import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.IosSimulatorProvider
 import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.domain.model.Project
+import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.ResourceSettings
 import app.luxion.shogunai.domain.model.WorkflowRules
 import app.luxion.shogunai.domain.usecase.AgentInstructionsBlock
@@ -72,6 +74,8 @@ class GuideCommandsTest {
         byRepository = mapOf(base to RepositoryProvisioning(providers = providers)),
     )
 
+    private val project = Project("main-repo", "main-repo", ProjectConfig(base, "/home/dev/projects/worktrees", emptyList()))
+
     private fun cli(
         provisioning: FakeRepositoryProvisioningSource = declaring(),
         workingDirectory: String = linked,
@@ -79,10 +83,11 @@ class GuideCommandsTest {
         answer: String? = null,
         herdr: FakeHerdrClient = FakeHerdrClient(agentsFailure = IllegalStateException("herdr isn't running")),
         environment: Map<String, String> = emptyMap(),
+        registered: Boolean = true,
     ) = ShogunCli(
         executor = executor,
         fileManager = files,
-        projectRepository = FakeProjectRepository(emptyList()),
+        projectRepository = FakeProjectRepository(if (registered) listOf(project) else emptyList()),
         provisioningSource = provisioning,
         daemonSource = FakeGradleDaemonSource(),
         gradleUserHome = "$home/.gradle",
@@ -134,6 +139,14 @@ class GuideCommandsTest {
 
         assertTrue(out.contains("shogun new <id> --from <ref>"), out.toString())
         assertTrue(out.contains("epic's branch"), out.toString())
+    }
+
+    @Test
+    fun `guide resources tells agents to wait for a full pool in the background`() {
+        assertEquals(0, cli(everything()).run(listOf("guide", "resources")))
+
+        assertTrue(out.contains("`shogun emulator start --wait` run in the background"), out.toString())
+        assertTrue(out.contains("`shogun simulator start --wait` run in the background"), out.toString())
     }
 
     @Test

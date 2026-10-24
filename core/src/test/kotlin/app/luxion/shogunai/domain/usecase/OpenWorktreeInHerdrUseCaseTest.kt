@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakePortProbe
@@ -55,7 +56,7 @@ class OpenWorktreeInHerdrUseCaseTest {
     ) = OpenWorktreeInHerdrUseCase(
         config,
         herdr,
-        ResolveWorktreeEnvironmentUseCase(gitExecutor, source, store, FakePortProbe()),
+        ResolveWorktreeEnvironmentUseCase(gitExecutor, source, store, FakePortProbe(), trust = FakeRepositoryTrust(approvesEverything = true)),
     )
 
     @Test
