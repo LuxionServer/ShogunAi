@@ -6,7 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.v2.runComposeUiTest
 import app.luxion.shogunai.diagnostics.FakeDiagnosticsLog
 import app.luxion.shogunai.domain.model.DiagnosticKind
 import app.luxion.shogunai.ui.i18n.EnglishStrings

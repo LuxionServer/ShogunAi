@@ -213,7 +213,7 @@ private fun gitCell(
         changesTooltip = changes?.let(strings::uncommittedChanges),
         secondLine = secondLine,
         secondLineTooltip = when {
-            merged -> strings.mergedInto(mainBranchName!!)
+            merged -> strings.mergedInto(mainBranchName)
             secondLine != null -> listOfNotNull(secondLine, mainBranchName).joinToString(" ")
             else -> null
         },
