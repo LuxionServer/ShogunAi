@@ -3,6 +3,7 @@ package app.luxion.shogunai.ui.i18n
 import app.luxion.shogunai.domain.model.ResourceLimits
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.CapacityProfile
+import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.AgentState
@@ -430,7 +431,9 @@ object EnglishStrings : Strings {
         if (count == 1) "1 folder is on an unavailable volume and is kept"
         else "$count folders are on unavailable volumes and are kept"
     override fun derivedDataCompilationCache(size: String) = "Compilation cache · $size"
-    override fun derivedDataQuotaUsage(usage: String, quota: String) = "$usage of $quota quota"
+    override fun derivedDataQuotaUsage(usage: String, quota: String, automatic: Boolean) =
+        "$usage of $quota quota" + if (automatic) " (automatic)" else ""
+    override val derivedDataQuotaUnknown = "Automatic quota unknown: the free disk space couldn't be read"
     override fun derivedDataQuotaExceeded(inUse: List<String>) =
         "Over the quota" + if (inUse.isEmpty()) "" else "; kept because they are in use: ${inUse.joinToString(", ")}"
     override fun derivedDataReleased(count: Int, freed: String) =
@@ -461,6 +464,12 @@ object EnglishStrings : Strings {
     override val invalidLimit = "Must be a positive number, or no limit"
     override val derivedDataQuotaLabel = "DerivedData quota"
     override val noQuota = "No quota"
+    override fun quotaModeName(mode: DerivedDataQuotaMode) = when (mode) {
+        DerivedDataQuotaMode.AUTOMATIC -> "Automatic"
+        DerivedDataQuotaMode.FIXED -> "Fixed size"
+        DerivedDataQuotaMode.NONE -> noQuota
+    }
+    override val automaticQuotaHint = "A quarter of the free disk space plus what DerivedData takes, between 20 and 200 GB"
     override val gigabytesUnit = "GB"
     override val invalidQuota = "Must be a positive whole number, or no quota"
     override val leaseDurationLabel = "Device lease"

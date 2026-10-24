@@ -51,7 +51,7 @@ fun MachineSummary.text(resource: MachineResource, strings: Strings): String {
         MachineResource.COMPOSE_PROJECTS -> strings.composeProjectsSummary(count)
         MachineResource.XCODE_DERIVED_DATA -> when {
             calculating -> "$count · ${strings.calculating}"
-            quotaBytes != null -> strings.derivedDataQuotaUsage(formatSize(bytes ?: 0), formatSize(quotaBytes))
+            quotaBytes != null -> strings.derivedDataQuotaUsage(formatSize(bytes ?: 0), formatSize(quotaBytes), quotaAutomatic)
             else -> formatSize(bytes ?: 0)
         }
     }

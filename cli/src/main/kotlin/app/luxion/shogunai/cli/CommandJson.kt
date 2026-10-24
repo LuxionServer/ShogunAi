@@ -450,6 +450,7 @@ fun xcodeCleanJson(active: Boolean, deletion: DerivedDataDeletion?): JsonObject 
 
 fun xcodeTrimJson(active: Boolean, trim: DerivedDataTrim?): JsonObject = buildJsonObject {
     put("active", active)
+    put("quotaMode", trim?.quotaMode?.name?.lowercase())
     put("quotaBytes", trim?.quotaBytes)
     put("dryRun", trim?.dryRun ?: false)
     put("usageBeforeBytes", trim?.usageBefore ?: 0L)

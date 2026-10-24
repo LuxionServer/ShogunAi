@@ -60,6 +60,18 @@ class MacDerivedDataSource(
         return if (fileManager.exists(cache)) measure(cache) else null
     }
 
+    override suspend fun freeBytes(): Long? {
+        val location = Path.of(location()).toAbsolutePath()
+        return withContext(Dispatchers.IO) {
+            val existing = generateSequence(location) { it.parent }.firstOrNull { Files.exists(it) } ?: return@withContext null
+            try {
+                Files.getFileStore(existing).usableSpace.takeIf { it >= 0 }
+            } catch (error: IOException) {
+                null
+            }
+        }
+    }
+
     private suspend fun measure(path: String): Long = withContext(Dispatchers.IO) {
         val job = coroutineContext.job
         var total = 0L

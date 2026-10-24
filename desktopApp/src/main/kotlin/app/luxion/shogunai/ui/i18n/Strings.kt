@@ -3,6 +3,7 @@ package app.luxion.shogunai.ui.i18n
 import app.luxion.shogunai.domain.model.ResourceLimits
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.CapacityProfile
+import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import androidx.compose.runtime.staticCompositionLocalOf
 import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.ProvisionDriftState
@@ -357,7 +358,8 @@ interface Strings {
     fun derivedDataOnUnavailableVolumes(count: Int): String
     fun derivedDataCompilationCache(size: String): String
     fun derivedDataDeleted(count: Int, freed: String): String
-    fun derivedDataQuotaUsage(usage: String, quota: String): String
+    fun derivedDataQuotaUsage(usage: String, quota: String, automatic: Boolean): String
+    val derivedDataQuotaUnknown: String
     fun derivedDataQuotaExceeded(inUse: List<String>): String
     fun derivedDataReleased(count: Int, freed: String): String
     val machineTitle: String
@@ -369,6 +371,8 @@ interface Strings {
     val invalidLimit: String
     val derivedDataQuotaLabel: String
     val noQuota: String
+    fun quotaModeName(mode: DerivedDataQuotaMode): String
+    val automaticQuotaHint: String
     val gigabytesUnit: String
     val invalidQuota: String
     val leaseDurationLabel: String

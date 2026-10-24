@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.AgentSessionStore
 import app.luxion.shogunai.domain.io.AndroidSdk
 import app.luxion.shogunai.domain.io.AppleSimulators
+import app.luxion.shogunai.domain.io.DerivedDataSizeStore
 import app.luxion.shogunai.domain.io.DerivedDataSource
 import app.luxion.shogunai.domain.io.EnvironmentStateStore
 import app.luxion.shogunai.domain.io.FileManager
@@ -24,6 +25,8 @@ import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.model.ANDROID_SERIAL
 import app.luxion.shogunai.domain.model.AgentSessionRecord
 import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.DerivedDataQuota
+import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.DerivedDataTrim
 import app.luxion.shogunai.domain.model.ResourceSettings
 import app.luxion.shogunai.domain.usecase.AgentSearch
@@ -87,6 +90,7 @@ import app.luxion.shogunai.domain.usecase.DeleteMergedBranchUseCase
 import app.luxion.shogunai.domain.usecase.DetectRunningAgentsUseCase
 import app.luxion.shogunai.domain.usecase.DeleteOrphanedDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.DerivedDataMeasure
+import app.luxion.shogunai.domain.usecase.ResolveDerivedDataQuotaUseCase
 import app.luxion.shogunai.domain.usecase.DeleteSimulatorsUseCase
 import app.luxion.shogunai.domain.usecase.EnvironmentFormat
 import app.luxion.shogunai.domain.usecase.ListDerivedDataUseCase
@@ -233,6 +237,7 @@ class ShogunCli(
     private val appRequests: AppRequestChannel = FileAppRequestChannel(Path.of(userHome, ".shogunai", "app-requests")),
     private val appLock: AppInstanceLock = FileAppInstanceLock(Path.of(userHome, ".shogunai", "app.lock")),
     private val appLauncher: AppLauncher = DesktopAppLauncher(),
+    private val derivedDataSizes: DerivedDataSizeStore = DerivedDataSizeStore.NONE,
 ) {
     private val terminalApproval = PostCreateApproval { repository, commands ->
         if (confirm("${commandLines(repository, commands)}Run these commands? [y/N] ")) PostCreateDecision.RUN else PostCreateDecision.SKIP
@@ -246,7 +251,7 @@ class ShogunCli(
         userHome = userHome,
         isMac = derivedDataSource.isSupported(),
     )
-    private val listDerivedData = ListDerivedDataUseCase(derivedDataSource)
+    private val listDerivedData = ListDerivedDataUseCase(derivedDataSource, derivedDataSizes)
     private val deleteOrphanedDerivedData = DeleteOrphanedDerivedDataUseCase(derivedDataSource)
     private val resolveEnvironment = resolverWith(contributions)
     private val resolveLimits = ResolveResourceLimitsUseCase(resourceLimits, machineCapacity)
@@ -1843,21 +1848,20 @@ class ShogunCli(
             if (command.json) printJson(xcodeTrimJson(active = false, trim = null)) else out.line("The Xcode provider isn't active.")
             return EXIT_OK
         }
-        val quotaBytes = runCatching { resourceLimits.load() }.getOrDefault(ResourceSettings()).derivedDataQuotaBytes
-        if (quotaBytes == null) {
-            if (command.json) printJson(xcodeTrimJson(active = true, trim = DerivedDataTrim(null, 0L, 0L, dryRun = command.dryRun)))
-            else out.line("No DerivedData quota is set; set one in Preferences > Resources.")
-            return EXIT_OK
-        }
+        val settings = runCatching { resourceLimits.load() }.getOrDefault(ResourceSettings())
+        if (settings.quotaMode == DerivedDataQuotaMode.NONE) return noDerivedDataQuota(command, DerivedDataQuota(DerivedDataQuotaMode.NONE, null))
         val configs = (listOf(configFor(workingDirectory)) + projectRepository.list().map { it.config })
             .distinctBy { it.baseRepositoryPath.trimEnd('/') }
         val searches = configs.mapNotNull { config ->
             ListWorktreesUseCase(config, executor)().getOrNull()?.filterNot { it.isPrunable }?.let { AgentSearch(config.agents.map { agent -> agent.agentCommand }, it) }
         }
         val worktrees = searches.flatMap { it.worktrees }.distinctBy { it.path.trimEnd('/') }
+        val listing = listDerivedData(worktrees, includeCompilationCache = false, measure = DerivedDataMeasure.ALL).getOrThrow()
+        val quota = ResolveDerivedDataQuotaUseCase(derivedDataSource)(settings, listing.folders.sumOf { it.folder.sizeBytes ?: 0L })
+        val quotaBytes = quota.bytes ?: return noDerivedDataQuota(command, quota)
         val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore)(searches).getOrNull().orEmpty()
         val active = agents.filterValues { running -> running.any { it.state == AgentState.WORKING || it.state == AgentState.BLOCKED } }.keys
-        val trim = TrimDerivedDataUseCase(derivedDataSource, listDerivedData, now)(quotaBytes, worktrees, active, command.dryRun).getOrThrow()
+        val trim = TrimDerivedDataUseCase(derivedDataSource, listDerivedData, now)(quotaBytes, worktrees, active, command.dryRun, listing, quota.mode).getOrThrow()
         if (command.json) {
             printJson(xcodeTrimJson(active = true, trim = trim))
             trim.failures.forEach { err.line("shogun: couldn't delete ${it.path}: ${it.detail}") }
@@ -1868,13 +1872,24 @@ class ShogunCli(
         if (trim.released.isNotEmpty()) {
             out.line("${if (trim.dryRun) "would free" else "freed"} ${formatMemory(trim.bytesFreed)}")
         }
-        out.line("usage ${formatMemory(trim.usageAfter)} of ${formatMemory(quotaBytes)}")
+        out.line("usage ${formatMemory(trim.usageAfter)} of ${formatMemory(quotaBytes)}" + if (quota.mode == DerivedDataQuotaMode.AUTOMATIC) " (automatic)" else "")
         if (trim.isExceeded) {
             val inUse = trim.inUse.joinToString(", ") { (it.owner as DerivedDataOwner.Worktree).path }
             out.line("quota still exceeded" + if (inUse.isNotEmpty()) "; worktrees in use: $inUse" else "")
         }
         trim.failures.forEach { err.line("shogun: couldn't delete ${it.path}: ${it.detail}") }
         return if (trim.failures.isEmpty()) EXIT_OK else EXIT_FAILURE
+    }
+
+    private fun noDerivedDataQuota(command: CliCommand.XcodeTrim, quota: DerivedDataQuota): Int {
+        if (command.json) {
+            printJson(xcodeTrimJson(active = true, trim = DerivedDataTrim(null, 0L, 0L, dryRun = command.dryRun, quotaMode = quota.mode)))
+        } else if (quota.isUnknown) {
+            out.line("The automatic DerivedData quota couldn't be computed: the free disk space is unknown.")
+        } else {
+            out.line("No DerivedData quota is set; set one in Preferences > Resources.")
+        }
+        return EXIT_OK
     }
 
     private fun xcodeProvider(repository: String): XcodeProvider? =

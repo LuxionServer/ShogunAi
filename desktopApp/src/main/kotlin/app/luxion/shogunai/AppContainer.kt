@@ -1,9 +1,14 @@
 package app.luxion.shogunai
 
+import app.luxion.shogunai.domain.model.DerivedDataQuota
+import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
+import app.luxion.shogunai.domain.model.MeasuredSize
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.usecase.AddedRepository
 import app.luxion.shogunai.domain.usecase.ConfigureMultirepoUseCase
+import app.luxion.shogunai.domain.usecase.MeasureDerivedDataUseCase
+import app.luxion.shogunai.domain.usecase.ResolveDerivedDataQuotaUseCase
 import app.luxion.shogunai.domain.usecase.withWorkspaceAt
 import app.luxion.shogunai.domain.usecase.CreateGroupUseCase
 import app.luxion.shogunai.domain.usecase.DetectGroupsUseCase
@@ -11,6 +16,7 @@ import app.luxion.shogunai.domain.usecase.MultirepoMember
 import app.luxion.shogunai.domain.usecase.OpenMultirepoAgentInHerdrUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMultirepoUseCase
 import app.luxion.shogunai.domain.usecase.WorktreeGroup
+import app.luxion.shogunai.infrastructure.JsonDerivedDataSizeStore
 import app.luxion.shogunai.infrastructure.JsonMultirepoSource
 import app.luxion.shogunai.ui.multirepo.FolderInspection
 import app.luxion.shogunai.ui.multirepo.MultirepoActions
@@ -189,6 +195,7 @@ import app.luxion.shogunai.infrastructure.SimctlAppleSimulators
 import app.luxion.shogunai.infrastructure.SocketPortProbe
 import app.luxion.shogunai.infrastructure.defaultGradleUserHome
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
@@ -242,6 +249,8 @@ class AppContainer {
         fileManager,
         home = System.getProperty("user.home"),
     )
+    private val derivedDataSizes = JsonDerivedDataSizeStore()
+    private val measureDerivedDataSizes = MeasureDerivedDataUseCase(derivedDataSource, derivedDataSizes)
     private val environmentStateStore = NioEnvironmentStateStore()
     private val portProbe = SocketPortProbe()
     private val appleSimulators = SimctlAppleSimulators(shellCommandExecutor)
@@ -402,7 +411,7 @@ class AppContainer {
         takeDownComposeProjects = { names -> TakeDownComposeProjectsUseCase(composeProjectSource)(names) },
         stopDaemons = { pids -> StopGradleDaemonsUseCase(gradleDaemonSource, shellCommandExecutor)(pids) },
         listDerivedData = { ListDerivedDataUseCase(derivedDataSource)(emptyList(), includeCompilationCache = false, measure = DerivedDataMeasure.NONE) },
-        measureDerivedData = { folder -> runCatching { derivedDataSource.size(folder) } },
+        measureDerivedData = { folders, remeasure -> measureDerivedDataSizes(folders, remeasure) },
         measureCompilationCache = { runCatching { derivedDataSource.compilationCacheBytes() } },
         deleteOrphanedDerivedData = { DeleteOrphanedDerivedDataUseCase(derivedDataSource)() },
         readEmulatorStates = { config, worktrees -> readEmulatorStates(config, worktrees) },
@@ -436,6 +445,7 @@ class AppContainer {
                 TrimDerivedDataUseCase(derivedDataSource, ListDerivedDataUseCase(derivedDataSource))(quotaBytes, worktrees, active, measured = listing).getOrThrow()
             }
         },
+        resolveDerivedDataQuota = { settings, usage -> ResolveDerivedDataQuotaUseCase(derivedDataSource)(settings, usage) },
     )
 
     val pathExists: (String) -> Boolean = fileManager::exists
@@ -662,7 +672,7 @@ class AppContainer {
                 }
             },
             supported = derivedDataSource::isSupported,
-            list = ListDerivedDataUseCase(derivedDataSource),
+            list = ListDerivedDataUseCase(derivedDataSource, derivedDataSizes),
             deleteOrphans = DeleteOrphanedDerivedDataUseCase(derivedDataSource),
         ),
     )
@@ -753,7 +763,7 @@ class MachineUseCases(
     val listDaemons: suspend () -> Result<List<DaemonProcess>>,
     val stopDaemons: suspend (List<Long>?) -> Result<DaemonStopReport>,
     val listDerivedData: suspend () -> Result<DerivedDataListing>,
-    val measureDerivedData: suspend (DerivedDataFolder) -> Result<Long>,
+    val measureDerivedData: (List<DerivedDataFolder>, Boolean) -> Flow<MeasuredSize>,
     val measureCompilationCache: suspend () -> Result<Long?>,
     val deleteOrphanedDerivedData: suspend () -> Result<DerivedDataDeletion>,
     val readEmulatorStates: suspend (ProjectConfig, List<Worktree>) -> Result<Map<String, WorktreeEmulator>>,
@@ -771,6 +781,8 @@ class MachineUseCases(
     val deleteSimulators: suspend (List<String>) -> Result<List<String>>,
     val trimDerivedData: suspend (Long, List<MachineProject>, DerivedDataListing) -> Result<DerivedDataTrim> =
         { quotaBytes, _, _ -> Result.success(DerivedDataTrim(quotaBytes, 0L, 0L)) },
+    val resolveDerivedDataQuota: suspend (ResourceSettings, Long) -> DerivedDataQuota =
+        { settings, _ -> DerivedDataQuota(settings.quotaMode, settings.fixedDerivedDataQuotaBytes.takeIf { settings.quotaMode == DerivedDataQuotaMode.FIXED }) },
     val listMavenDaemons: suspend () -> Result<List<MavenDaemonProcess>> = { Result.success(emptyList()) },
     val listComposeProjects: suspend (ProjectConfig, List<Worktree>, String?) -> Result<List<WorktreeComposeProject>> =
         { _, _, _ -> Result.success(emptyList()) },
