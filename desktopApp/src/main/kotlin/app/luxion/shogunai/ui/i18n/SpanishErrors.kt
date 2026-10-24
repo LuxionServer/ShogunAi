@@ -247,6 +247,10 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "No se encontró ningún multirepo en ${error.path}.",
         "Añade antes la carpeta como multirepo.",
     )
+    is WorktreeError.MultirepoNeedsReview -> ErrorTexts(
+        "El multirepo ${error.path} no está aprobado en este equipo.",
+        "Revisa sus repositorios y rutas y apruébalo desde la vista del multirepo o con shogun multirepo trust.",
+    )
     is WorktreeError.BaseBranchNotFound -> ErrorTexts(
         "No se pudo resolver la rama base de ${error.repository}.",
         "Indica la rama principal del proyecto en sus ajustes.",

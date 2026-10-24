@@ -738,6 +738,13 @@ object EnglishStrings : Strings {
     override fun groupRepositoryFailed(reason: String) = "failed: $reason"
     override fun repositoryAddedToGroup(alias: String, title: String) = "$alias added to $title"
     override fun changeCreated(title: String, aliases: List<String>) = "$title created in ${aliases.joinToString()}"
+    override val multirepoNeedsReview = "Needs review"
+    override val multirepoNeedsReviewExplanation =
+        "This multirepo isn't approved on this machine: its declaration is new here or changed outside ShogunAi, for example with a pull. ShogunAi creates branches and worktrees in the repositories it lists and runs their approved post-creation commands, so check them before trusting it."
+    override val trustMultirepo = "Trust"
+    override val declaredAgentIgnored = "The declaration's agent is ignored; the multirepo agent is set on this machine, in the multirepo's settings."
+    override val existingDeclarationTitle = "This folder already declares a multirepo"
+    override fun outsideMultirepoParent(parent: String) = "outside $parent"
     override fun multirepoInsideRepository(repository: String) = "This folder is inside the repository $repository. A multirepo can't be declared inside a repository."
     override fun useWorktreesFolder(folder: String) = "Worktrees in $folder"
     override fun notARepository(path: String) = "$path isn't the top level of a Git repository"

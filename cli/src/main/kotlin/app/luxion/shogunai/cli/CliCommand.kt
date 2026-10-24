@@ -658,10 +658,11 @@ sealed interface MultirepoAction {
     data class WorkspaceSet(val alias: String? = null, val default: Boolean = false) : MultirepoAction
     data object WorkspaceClear : MultirepoAction
     data object Delete : MultirepoAction
+    data class Trust(val folder: String? = null, val yes: Boolean = false, val revoke: Boolean = false) : MultirepoAction
 }
 
 private fun parseMultirepo(rest: List<String>): CliCommand.Multirepo {
-    val action = rest.firstOrNull() ?: throw UsageException("'multirepo' needs an action: init, show, add-repo, remove-repo, defaults, agent, workspace, worktrees-root or delete")
+    val action = rest.firstOrNull() ?: throw UsageException("'multirepo' needs an action: init, show, trust, add-repo, remove-repo, defaults, agent, workspace, worktrees-root or delete")
     val remaining = ArrayDeque(rest.drop(1))
     val positional = mutableListOf<String>()
     val options = mutableMapOf<String, String?>()
@@ -669,7 +670,7 @@ private fun parseMultirepo(rest: List<String>): CliCommand.Multirepo {
         val argument = remaining.removeFirst()
         when (argument) {
             "--worktrees-root", "--name", "--alias" -> options[argument] = remaining.valueOf(argument)
-            "--use-worktrees-root", "--keep-worktrees-folder", "--no-headroom", "--clear", "--default" -> options[argument] = null
+            "--use-worktrees-root", "--keep-worktrees-folder", "--no-headroom", "--clear", "--default", "--yes", "--revoke" -> options[argument] = null
             else -> {
                 if (argument.startsWith("-")) throw UsageException("unknown option '$argument' for 'multirepo $action'")
                 positional += argument
@@ -719,6 +720,12 @@ private fun parseMultirepo(rest: List<String>): CliCommand.Multirepo {
             }
             "worktrees-root" -> { allow(); MultirepoAction.WorktreesRoot(arguments(1, "worktrees-root <dir>").single()) }
             "delete" -> { allow(); arguments(0, "delete"); MultirepoAction.Delete }
+            "trust" -> {
+                allow("--yes", "--revoke")
+                if ("--yes" in options && "--revoke" in options) throw UsageException("--yes and --revoke can't be combined")
+                if (positional.size > 1) throw UsageException("usage: shogun multirepo trust [<folder>] [--yes | --revoke]")
+                MultirepoAction.Trust(positional.firstOrNull(), yes = "--yes" in options, revoke = "--revoke" in options)
+            }
             else -> throw UsageException("unknown multirepo action '$action'")
         },
     )

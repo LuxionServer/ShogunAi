@@ -114,6 +114,8 @@ class WorktreeBoard(
         private set
     var isOpeningMultirepoAgent by mutableStateOf(false)
         private set
+    var isTrustingMultirepo by mutableStateOf(false)
+        private set
     var newChange by mutableStateOf<NewChange?>(null)
         private set
     var cleanupOnly by mutableStateOf<Set<String>?>(null)
@@ -304,7 +306,7 @@ class WorktreeBoard(
         multirepoAgentsOf(folder).count { it.state == AgentState.WORKING || it.state == AgentState.BLOCKED }
 
     private fun multirepoSearches(): List<AgentSearch> =
-        memberships.map { AgentSearch.multirepoFolder(it.folder, it.multirepo.agent.agentCommand) }
+        memberships.filter { it.multirepo.approved }.map { AgentSearch.multirepoFolder(it.folder, it.multirepo.agent.agentCommand) }
 
     private fun applyMultirepoAgents(detected: Map<String, List<RunningAgent>>?) {
         val folders = memberships.map { it.folder }.toSet()
@@ -585,7 +587,7 @@ class WorktreeBoard(
     }
 
     fun openMultirepoAgent() {
-        val multirepo = shownMultirepo?.multirepo ?: return
+        val multirepo = shownMultirepo?.multirepo?.takeIf { it.approved } ?: return
         if (isOpeningMultirepoAgent) return
         isOpeningMultirepoAgent = true
         viewModelScope.launch {
@@ -604,8 +606,23 @@ class WorktreeBoard(
     }
 
     fun openNewChange() {
-        val membership = shownMultirepo ?: return
+        val membership = shownMultirepo?.takeIf { it.multirepo.approved } ?: return
         if (newChange == null) newChange = NewChange(membership)
+    }
+
+    fun trustShownMultirepo(onTrusted: () -> Unit) {
+        val multirepo = shownMultirepo?.multirepo?.takeIf { !it.approved } ?: return
+        if (isTrustingMultirepo) return
+        isTrustingMultirepo = true
+        viewModelScope.launch {
+            try {
+                withContext(ioDispatcher) { multirepoActions.trust(multirepo) }
+                    .onSuccess { onTrusted() }
+                    .onFailure { multirepoNotice = MultirepoNotice.Failed(it) }
+            } finally {
+                isTrustingMultirepo = false
+            }
+        }
     }
 
     fun dismissNewChange() {

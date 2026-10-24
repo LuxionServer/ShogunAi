@@ -477,6 +477,12 @@ Keeps the `AgentSessionRecord`s of the sessions of a worktree: `write`, `remove`
 
 `AgentSearch.multirepoFolder(folder, command)` is an exact search: `DetectRunningAgentsUseCase` attributes to it only a working directory equal to the folder, never a subfolder or a member repository.
 
+### Multirepo approval and local agent
+
+A declaration can come from a cloned repository, so `ResolveMultirepoUseCase` only applies a multirepo that is registered in `MultirepoSource.knownFolders()` and whose `approvalSubject` is approved there (`Multirepo.approved`). The subject is a text with the normalized folder, each declared alias with its resolved path (sorted by alias), the resolved worktrees root and the declared workspace setting: what decides where ShogunAi creates branches and worktrees. `defaultRepos` and the declaration's `agent` aren't part of it. The upward walk of `invoke` only matches registered folders, `declaring` and `approved()` skip unapproved multirepos, and `known()` returns every registered one with its state for the desktop app. `nearestDeclaration` finds the nearest declaration registered or not, for `shogun multirepo trust`/`show` and the CLI's note about an ignored declaration. `validate` rejects aliases, repository paths and `worktreesRoot` with control or Unicode formatting characters, so the review can't be spoofed with escape sequences.
+
+The multirepo agent is a local setting (`MultirepoSource.agent`/`setAgent`, `Multirepo.localAgent`); `Multirepo.agent` falls back to `claude` with headroom and never reads `MultirepoDeclaration.agent`, which only survives so older files parse and `ignoresDeclaredAgent` can report it. `ConfigureMultirepoUseCase` refuses to write an unapproved multirepo (`WorktreeError.MultirepoNeedsReview`), writes the declaration without `agent`, and approves the subject it wrote, so ShogunAi's own edits keep it approved while an edit made elsewhere doesn't. `trust` registers and approves exactly the declaration that was reviewed (it refuses if the file changed in between) and `revoke` forgets it.
+
 ### Repositories
 
 - `ProjectRepository` — `list()`, `save(project)`, `delete(id)` over the project catalog.

@@ -1309,6 +1309,7 @@ class WorktreeBoardTest {
             worktreesRoot = "../product-worktrees",
             defaultRepos = listOf("app", "api"),
         ),
+        approved = true,
     )
 
     private fun TestScope.productBoard(multirepoActions: MultirepoActions = MultirepoActions.NONE): WorktreeBoard {
@@ -1534,6 +1535,54 @@ class WorktreeBoardTest {
     }
 
     @Test
+    fun `a multirepo that needs review groups nothing and can't open its agent or a new change`() = runTest(dispatcher) {
+        val opened = mutableListOf<String>()
+        repositories = listOf(productApp, productApi, productDocs, tools)
+        val board = board(
+            multirepoActions = MultirepoActions(
+                createGroup = { _, _, _, _, _ -> Result.failure(UnsupportedOperationException()) },
+                openAgent = { multirepo -> opened += multirepo.folder; Result.success(HerdrOpening.OPENED) },
+            ),
+        )
+        board.syncMultirepos(multirepoMemberships(listOf(product.copy(approved = false)), board.projects))
+        advanceUntilIdle()
+        board.showMultirepo(product.folder)
+        advanceUntilIdle()
+
+        board.openMultirepoAgent()
+        board.openNewChange()
+        advanceUntilIdle()
+
+        assertTrue(board.shownProjects.isEmpty())
+        assertTrue(opened.isEmpty())
+        assertEquals(null, board.newChange)
+        assertTrue(agentSearches.flatten().none { it.exact })
+    }
+
+    @Test
+    fun `trusting the shown multirepo approves it and reports back`() = runTest(dispatcher) {
+        val trusted = mutableListOf<String>()
+        var reported = 0
+        repositories = listOf(productApp, productApi, productDocs, tools)
+        val board = board(
+            multirepoActions = MultirepoActions(
+                createGroup = { _, _, _, _, _ -> Result.failure(UnsupportedOperationException()) },
+                openAgent = { Result.failure(UnsupportedOperationException()) },
+                trust = { multirepo -> trusted += multirepo.folder; Result.success(multirepo.copy(approved = true)) },
+            ),
+        )
+        board.syncMultirepos(multirepoMemberships(listOf(product.copy(approved = false)), board.projects))
+        board.showMultirepo(product.folder)
+
+        board.trustShownMultirepo { reported++ }
+        advanceUntilIdle()
+
+        assertEquals(listOf(product.folder), trusted)
+        assertEquals(1, reported)
+        assertFalse(board.isTrustingMultirepo)
+    }
+
+    @Test
     fun `the multirepo agent is searched in the multirepo folder with its command and shown with its state`() = runTest(dispatcher) {
         val board = productBoard()
         agentResult = Result.success(mapOf(product.folder to listOf(RunningAgent("claude", AgentState.WORKING))))
@@ -1546,6 +1595,21 @@ class WorktreeBoardTest {
         assertEquals(listOf(product.folder), search.worktrees.map { it.path })
         assertEquals(listOf(RunningAgent("claude", AgentState.WORKING)), board.multirepoAgentsOf(product.folder))
         assertEquals(1, board.multirepoActivityCountOf(product.folder))
+    }
+
+    @Test
+    fun `the multirepo agent is searched by the command set on this machine`() = runTest(dispatcher) {
+        repositories = listOf(productApp, productApi, productDocs, tools)
+        val board = board()
+        val local = product.copy(
+            declaration = product.declaration.copy(agent = AgentLaunchConfig(agentCommand = "touch /tmp/marker; claude")),
+            localAgent = AgentLaunchConfig(agentCommand = "codex --full-auto"),
+        )
+        board.syncMultirepos(multirepoMemberships(listOf(local), board.projects))
+        board.showMultirepo(product.folder)
+        advanceUntilIdle()
+
+        assertEquals(listOf("codex --full-auto"), agentSearches.flatten().last { it.exact }.agentCommands)
     }
 
     @Test

@@ -196,6 +196,7 @@ fun AppShell(
                             total + ProjectActivity(board.activeCountOf(project.id), board.agentNamesOf(project.id))
                         },
                         collapsed = membership.folder in viewModel.collapsedMultirepos,
+                        needsReview = !membership.multirepo.approved,
                     )
                 },
                 selectedMultirepo = viewModel.destination?.referencedMultirepo,
@@ -433,6 +434,7 @@ private fun WorktreeView(destination: ShellDestination, shellViewModel: ShellVie
         onOpenMachine = shellViewModel::selectMachine,
         onOpenMultirepoSettings = { (destination as? ShellDestination.MultirepoView)?.let { shellViewModel.editMultirepo(it.folder) } },
         onOpenGroup = { tag -> shellViewModel.selectMultirepo(tag.multirepoFolder, tag.branch) },
+        onMultirepoTrusted = shellViewModel::onMultirepoChanged,
     )
 }
 
