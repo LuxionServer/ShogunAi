@@ -117,7 +117,7 @@ Eliminar un worktree abierto en Herdr cierra también su espacio de trabajo de H
 
 ## Secciones de los providers
 
-En repositorios que los declaran en `.shogunai.json`, la pantalla de worktrees añade una sección "Daemons de Gradle" y otra "DerivedData de Xcode". Las carpetas de DerivedData se listan enseguida y muestran "Calculando…" en sus tamaños hasta que se miden en segundo plano. Con una cuota de DerivedData fijada en Preferencias > Recursos, la vista muestra también el uso frente a la cuota y, si se supera, libera las carpetas menos usadas recientemente de los worktrees que no están en uso. Consulta [Providers](providers.md).
+En repositorios que los declaran en `.shogunai.json`, la pantalla de worktrees añade una sección "Daemons de Gradle" y otra "DerivedData de Xcode". Las carpetas de DerivedData se listan enseguida y muestran "Calculando…" en sus tamaños hasta que se miden en segundo plano, salvo las que recuerdan su tamaño de una ejecución anterior. Salvo que elijas "Sin cuota" para DerivedData en Preferencias > Recursos (por defecto, una cuota automática calculada a partir del espacio libre en disco), la vista muestra también el uso frente a la cuota y, si se supera, libera las carpetas menos usadas recientemente de los worktrees que no están en uso. Consulta [Providers](providers.md).
 
 ## Preferencias
 

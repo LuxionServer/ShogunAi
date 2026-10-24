@@ -85,8 +85,9 @@ private fun LoadedDerivedData(
         MachineDataText(strings.derivedDataSummary(folders.size, sizeText(totalSize(folders.map { it.folder.sizeBytes }))))
     }
     val quota = machine.derivedDataQuotaBytes
+    if (machine.isDerivedDataQuotaUnknown) MachineDataText(strings.derivedDataQuotaUnknown)
     if (quota != null) {
-        MachineDataText(strings.derivedDataQuotaUsage(sizeText(machine.derivedDataUsageBytes), formatSize(quota)))
+        MachineDataText(strings.derivedDataQuotaUsage(sizeText(machine.derivedDataUsageBytes), formatSize(quota), machine.isDerivedDataQuotaAutomatic))
         if (machine.derivedDataQuotaExceeded) {
             MachineDataText(strings.derivedDataQuotaExceeded(machine.derivedDataInUse))
         }

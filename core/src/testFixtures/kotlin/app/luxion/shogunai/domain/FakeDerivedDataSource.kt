@@ -11,6 +11,7 @@ class FakeDerivedDataSource(
     var unavailableVolumes: Set<String> = emptySet(),
     var cacheBytes: Long? = null,
     var failDeletionFor: Set<String> = emptySet(),
+    var free: Long? = null,
 ) : DerivedDataSource {
 
     val sizes = mutableMapOf<String, Long>()
@@ -18,6 +19,8 @@ class FakeDerivedDataSource(
     val measured = mutableListOf<String>()
     var beforeDelete: () -> Unit = {}
     var onFolders: (Int) -> Unit = {}
+    var onSize: suspend (DerivedDataFolder) -> Unit = {}
+    var failSizeFor: Set<String> = emptySet()
     private var folderCalls = 0
 
     override fun isSupported(): Boolean = supported
@@ -29,10 +32,14 @@ class FakeDerivedDataSource(
 
     override suspend fun size(folder: DerivedDataFolder): Long {
         measured += folder.path
+        onSize(folder)
+        if (folder.path in failSizeFor) throw IOException("can't read ${folder.path}")
         return folder.sizeBytes ?: sizes[folder.path] ?: 0L
     }
 
     override suspend fun compilationCacheBytes(): Long? = cacheBytes
+
+    override suspend fun freeBytes(): Long? = free
 
     override fun projectExists(workspacePath: String): Boolean = workspacePath in existingProjects
 

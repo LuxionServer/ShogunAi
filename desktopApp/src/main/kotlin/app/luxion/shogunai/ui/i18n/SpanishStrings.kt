@@ -3,6 +3,7 @@ package app.luxion.shogunai.ui.i18n
 import app.luxion.shogunai.domain.model.ResourceLimits
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.CapacityProfile
+import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.AgentState
@@ -430,7 +431,9 @@ object SpanishStrings : Strings {
         if (count == 1) "1 carpeta está en un volumen no montado y se conserva"
         else "$count carpetas están en volúmenes no montados y se conservan"
     override fun derivedDataCompilationCache(size: String) = "Caché de compilación · $size"
-    override fun derivedDataQuotaUsage(usage: String, quota: String) = "$usage de $quota de cuota"
+    override fun derivedDataQuotaUsage(usage: String, quota: String, automatic: Boolean) =
+        "$usage de $quota de cuota" + if (automatic) " (automática)" else ""
+    override val derivedDataQuotaUnknown = "Cuota automática desconocida: no se pudo leer el espacio libre en disco"
     override fun derivedDataQuotaExceeded(inUse: List<String>) =
         "Por encima de la cuota" + if (inUse.isEmpty()) "" else "; se conservan por estar en uso: ${inUse.joinToString(", ")}"
     override fun derivedDataReleased(count: Int, freed: String) =
@@ -461,6 +464,12 @@ object SpanishStrings : Strings {
     override val invalidLimit = "Debe ser un número positivo, o sin límite"
     override val derivedDataQuotaLabel = "Cuota de DerivedData"
     override val noQuota = "Sin cuota"
+    override fun quotaModeName(mode: DerivedDataQuotaMode) = when (mode) {
+        DerivedDataQuotaMode.AUTOMATIC -> "Automática"
+        DerivedDataQuotaMode.FIXED -> "Tamaño fijo"
+        DerivedDataQuotaMode.NONE -> noQuota
+    }
+    override val automaticQuotaHint = "Una cuarta parte del espacio libre en disco más lo que ocupa DerivedData, entre 20 y 200 GB"
     override val gigabytesUnit = "GB"
     override val invalidQuota = "Debe ser un número entero positivo, o sin cuota"
     override val leaseDurationLabel = "Concesión de dispositivos"
