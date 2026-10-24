@@ -16,71 +16,85 @@ Esa dirección se construye en tres capas:
 
 Se conecta con las herramientas que ejecutan agentes en vez de sustituirlas: los hooks de worktree y de sesión de Claude Code, y [Herdr](https://herdr.dev), el multiplexor de terminal para agentes, cuyos worktrees provisiona un plugin de ShogunAi y en el que la app de escritorio abre un worktree con su entorno y su agente y muestra qué está haciendo cada agente. **Disponible.**
 
+## Cómo se fijan las prioridades
+
+Las herramientas de agentes están aprendiendo a crear worktrees, copiar en ellos los archivos locales y mostrar qué sesión trabaja dónde, así que ShogunAi mantiene esa parte pequeña y llega a ella a través de sus hooks. La prioridad es lo que ninguna puede hacer por las demás: el entorno y los recursos de la máquina de cada stack, repartidos con justicia entre agentes de cualquier proveedor, declarados una vez en el repositorio (`.shogunai.json`), y una sola vista de todos esos agentes. Dentro de eso, va primero lo que encuentran las personas que usan ShogunAi.
+
 ## Planificado
 
 Numerados en el orden en que se abordarán: el número es la prioridad.
 
-### 1. Plataformas e IDEs más allá de Android
+### 1. Experiencia de primer uso
 
-El proyecto creció alrededor de Android. La detección de stacks y los providers de Maven y Docker Compose están hechos; queda la cobertura de los IDEs en los que se puede abrir un worktree, que empieza con una exploración para decidir qué falta antes de dividirla en cambios. También cubre "Abrir en Claude Desktop" fuera de macOS (no está verificado que su enlace `claude://code/new?folder=` admita una carpeta en Windows), las cachés de paquetes de iOS y lo que los backends JVM dejaron fuera: parar los daemons de Maven cuando su estado se pueda leer con fiabilidad, y gestionar el ciclo de vida de Compose (`up`, `build`) y los recursos de Docker más allá de los proyectos.
+Los usuarios nuevos llegan al ver ShogunAi funcionando en el equipo de un compañero, así que los primeros minutos deciden si se lo quedan:
 
-### 2. Esperar capacidad de dispositivos
+- Un recorrido guiado de primer uso: la app crea un repositorio de ejemplo desechable con worktrees en todos los estados y abre un agente con un prompt preparado que guía al usuario por cada funcionalidad (estado, limpieza, provisionado, el CLI, los hooks, el entorno y los providers), paso a paso.
+- Ofrecer en ese flujo la instalación del comando `shogun`, antes de que el usuario llegue a Preferencias o al aviso de hooks.
+
+### 2. El entorno de backends y servicios
+
+Cada worktree de un backend necesita sus propios servicios en marcha, no solo su propio código. La detección de stacks, los providers de Maven y Docker Compose y los puertos por worktree están hechos; queda:
+
+- Gestionar el ciclo de vida de Compose (`up`, `build`) y los recursos de Docker más allá de los proyectos (volúmenes, redes e imágenes que dejan los worktrees eliminados).
+- Parar los daemons de Maven cuando su estado se pueda leer con fiabilidad.
+- Variables compartidas entre los repositorios de un grupo de un multirepo, por ejemplo el puerto del backend con el que habla la app del grupo.
+
+### 3. Esperar capacidad de dispositivos
 
 `shogun emulator start --wait` (y su equivalente para simuladores): en vez de fallar cuando todos los emuladores están protegidos por una concesión, esperar en cola hasta que se libere capacidad. Se apoya en las concesiones de dispositivos, que ya indican cuándo caduca cada una.
 
-### 3. Pendientes de los cambios del 2026-10-19
+### 4. Provisionado y recursos de los stacks móviles
 
-La revisión de todo el proyecto del 2026-10-19 y los cambios hechos a partir de ella están archivados. Estos pendientes quedaron fuera de ellos:
-
-- Soporte de repositorios bare con worktrees (el esquema «bare clone»), que cambia lo que significan el repositorio base y copiar desde él. Hoy ShogunAi los rechaza con un error específico.
-- Watchers del sistema de ficheros en vez de polling para los cambios de metadatos de Git.
-- Dividir `ProjectWorktrees.kt` y `ProjectSettingsView.kt` en holders y secciones más pequeños.
-- Atestaciones de procedencia de build para los assets de las releases, y tratar los avisos del compilador como errores ahora que la build está limpia.
-- Más terminales para «Abrir en terminal» (Ghostty, Warp, Alacritty, Kitty, GNOME Terminal), cada uno como un adaptador más.
-- Tamaños de DerivedData más rápidos: medir varias carpetas en paralelo y recordar los tamaños entre ejecuciones de la app.
-- Una cuota de DerivedData automática derivada del espacio libre en disco, como hace con la memoria el perfil de capacidad Automático, en lugar de no tener cuota por defecto.
-- Una notificación cuando un agente (informado por Herdr o por los hooks de Claude Code) pasa a bloqueado o terminado; hoy la señal es la fila del worktree y el menú del icono de la barra de menús.
-- Estados de agente para agentes distintos de Claude Code (Codex, Gemini…), que hoy no tienen hooks equivalentes.
-- Encontrar la causa raíz de los errores que cerraban la ventana de Preferencias, a partir de las entradas que el aislamiento deja ahora en el registro de diagnóstico, y del crash nativo visto en otra máquina que dejó un informe de diagnóstico vacío.
-
-### 4. Pendientes de la guía de flujo para agentes
-
-Las reglas de flujo llegan a los agentes mediante `shogun guide`, el hook `SessionStart` y un bloque en `AGENTS.md`. Quedó fuera:
-
-- Una sección en Ajustes de la app de escritorio para instalar, actualizar y quitar el bloque, como ya hace con los hooks de Claude Code.
-- Registrar la ref de origen de cada worktree, para que la regla de elegir la base de una pull request pudiera responderla `shogun` en lugar de seguir siendo una política del equipo.
-- Los ficheros de usuario de otros agentes, a medida que su documentación los confirme (Cursor guarda hoy las reglas de usuario en sus ajustes).
-
-### 5. Demo guiada de bienvenida
-
-Un recorrido de primer uso basado en la revisión hecha antes de mergear la capa de worktrees: la app crea un repositorio de ejemplo desechable con worktrees en todos los estados y abre un agente con un prompt preparado que guía al usuario por cada funcionalidad (estado, limpieza, provisionado, el CLI, los hooks, el entorno y los providers), paso a paso.
-
-### 6. Provisionado Android, KMP y JVM
-
-Provisionado para los stacks en los que un worktree recién creado está más lejos de compilar:
+Provisionado y recursos acotados para los stacks en los que un worktree recién creado está más lejos de compilar:
 
 - `local.properties`, keystores y `google-services.json`.
 - Seguimientos de las carpetas locales: enlazar una carpeta local en vez de copiarla, patrones glob en la lista local, avisar de los enlaces simbólicos que una carpeta omite y borrar del worktree los archivos eliminados de la carpeta base.
-- Mostrar los emuladores que arranca ShogunAi dentro de la ventana Running Devices de Android Studio, como los que arranca el propio Android Studio, para poder ordenar varios en una sola ventana. Necesita un spike: Android Studio podría incrustar un emulador externo arrancado con las mismas opciones que usa él.
+- Las cachés de paquetes de iOS.
+- Una cuota de DerivedData automática derivada del espacio libre en disco, como hace con la memoria el perfil de capacidad Automático, en lugar de no tener cuota por defecto.
+- Tamaños de DerivedData más rápidos: medir varias carpetas en paralelo y recordar los tamaños entre ejecuciones de la app.
+- Averiguar qué necesita un repositorio Flutter en un worktree y cuáles de los providers de Android e iOS puede reutilizar.
 
-### 7. Pendientes de los multirepos
+### 5. Todos los agentes, no solo Claude Code
 
-Los multirepos y los grupos por rama están hechos en el CLI y en la app de escritorio. Quedaron fuera:
+La vista de ShogunAi solo es neutral si ve a todos los agentes:
+
+- Estados de agente para agentes distintos de Claude Code (Codex, Gemini…), que hoy no tienen hooks equivalentes.
+- Una notificación cuando un agente (informado por Herdr o por los hooks de Claude Code) pasa a bloqueado o terminado; hoy la señal es la fila del worktree y el menú del icono de la barra de menús.
+- Los ficheros de usuario de otros agentes para la guía de flujo, a medida que su documentación los confirme (Cursor guarda hoy las reglas de usuario en sus ajustes), y una sección en Ajustes de la app de escritorio para instalar, actualizar y quitar el bloque de `AGENTS.md`, como ya hace con los hooks de Claude Code.
+- Registrar la ref de origen de cada worktree, para que la regla de elegir la base de una pull request pudiera responderla `shogun` en lugar de seguir siendo una política del equipo.
+
+### 6. Multirepos para todo el equipo
+
+Los multirepos y los grupos por rama están hechos en el CLI y en la app de escritorio, y son también la forma en que quienes no escriben el código siguen un cambio a través de los repositorios. Quedaron fuera:
 
 - Asociar worktrees cuyas ramas no coinciden, por ejemplo `shogun group add <id> <worktree>`.
-- Variables compartidas entre los repositorios de un grupo (por ejemplo, el puerto del backend con el que habla la app del grupo).
-- El estado del pull request de cada repositorio de un grupo.
 - Una única sesión para todo el grupo, con un entorno combinado, como opción junto a un agente por repositorio.
 - Devolver un repositorio de workspace declarado a la detección (quitando el campo `workspace`), desde el CLI y los ajustes del multirepo; hoy `workspace clear` lo desactiva y para deshacerlo hay que editar el archivo a mano.
+- El estado del pull request de cada repositorio de un grupo, que depende de la integración con GitHub en estudio.
 
-### 8. Pendientes de la instalación de la herramienta de línea de comandos
+### 7. Robustez y mantenimiento
 
-La app instala el comando `shogun` desde Preferencias para cualquier forma de instalación. Quedó fuera:
+- Encontrar la causa raíz de los errores que cerraban la ventana de Preferencias, a partir de las entradas que el aislamiento deja ahora en el registro de diagnóstico, y del crash nativo visto en otra máquina que dejó un informe de diagnóstico vacío.
+- Comprobar la instalación del comando `shogun` desde la app con una app instalada de verdad en Windows (el `shogun.cmd` y el cambio del `PATH` de usuario solo están cubiertos con pruebas con dobles) y en un equipo sin `~/.local/bin` en el `PATH`.
+- Watchers del sistema de ficheros en vez de polling para los cambios de metadatos de Git.
+- Soporte de repositorios bare con worktrees (el esquema «bare clone»), que cambia lo que significan el repositorio base y copiar desde él. Hoy ShogunAi los rechaza con un error específico.
+- Dividir `ProjectWorktrees.kt` y `ProjectSettingsView.kt` en holders y secciones más pequeños.
+- Atestaciones de procedencia de build para los assets de las releases, y tratar los avisos del compilador como errores ahora que la build está limpia.
 
-- Comprobar la acción de la app con una app instalada de verdad en Windows (el `shogun.cmd` y el cambio del `PATH` de usuario solo están cubiertos con pruebas con dobles) y en un equipo sin `~/.local/bin` en el `PATH`.
-- Ofrecer la misma acción en el flujo de primer uso, antes de que el usuario llegue a Preferencias o al aviso de hooks.
+## Más adelante
+
+Aceptados, pero aplazados hasta que alguien los necesite, porque amplían dónde abre ShogunAi un worktree y no el entorno que prepara, y es probable que los cubran las herramientas en las que se ejecutan los agentes:
+
+- La cobertura de los IDEs en los que se puede abrir un worktree, empezando por una exploración para decidir qué falta.
+- Más terminales para «Abrir en terminal» (Ghostty, Warp, Alacritty, Kitty, GNOME Terminal), cada uno como un adaptador más.
+- «Abrir en Claude Desktop» fuera de macOS (no está verificado que su enlace `claude://code/new?folder=` admita una carpeta en Windows).
+- Mostrar los emuladores que arranca ShogunAi dentro de la ventana Running Devices de Android Studio, como los que arranca el propio Android Studio. Necesita un spike: Android Studio podría incrustar un emulador externo arrancado con las mismas opciones que usa él.
 
 ## En estudio
+
+### Una vista de seguimiento para quien no ejecuta agentes
+
+Quienes no escriben el código, como un product owner o un manager, ya siguen los cambios a través de los grupos de los multirepos: qué ramas existen en cada repositorio, a qué distancia está cada una de su base y si está mergeada. Un modo de la torre de control para ellos mostraría esa vista, sin las acciones ni los estados de agente que solo tienen sentido en el equipo donde se ejecutan los agentes. Hay que decidir qué lee (clones locales, o solo las ramas remotas) y cómo se relaciona con el estado de los pull requests de la integración con GitHub de más abajo.
 
 ### Integración con GitHub y gestores de tareas
 
