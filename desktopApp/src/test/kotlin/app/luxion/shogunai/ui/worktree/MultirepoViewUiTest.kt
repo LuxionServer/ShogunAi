@@ -9,16 +9,18 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.v2.runComposeUiTest
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeStatus
 import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
 import app.luxion.shogunai.domain.usecase.GroupRepositoryResult
+import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.ui.i18n.EnglishStrings
 import app.luxion.shogunai.ui.multirepo.MultirepoMembership
+import app.luxion.shogunai.ui.multirepo.MultirepoReviewPane
 import app.luxion.shogunai.ui.multirepo.NewChange
 import app.luxion.shogunai.ui.multirepo.NewChangeDialog
 import java.time.Duration
@@ -156,7 +158,7 @@ class MultirepoViewUiTest {
     @Test
     fun `the new change dialog reports each repository's result`() = runComposeUiTest {
         val membership = MultirepoMembership(
-            Multirepo("/home/dev/projects/product", MultirepoDeclaration(mapOf("app" to "app", "api" to "api"), "../w", listOf("app", "api"))),
+            Multirepo("/home/dev/projects/product", MultirepoDeclaration(mapOf("app" to "app", "api" to "api"), "../w", listOf("app", "api")), approved = true),
             mapOf("app" to "app", "api" to "api"),
         )
         val change = NewChange(membership).apply {
@@ -167,11 +169,36 @@ class MultirepoViewUiTest {
             )
         }
         setContent {
-            MaterialTheme { NewChangeDialog(change, DialogPostCreateApproval(), onConfirm = {}, onDismiss = {}) }
+            MaterialTheme { NewChangeDialog(change, DialogRepositoryApproval(), onConfirm = {}, onDismiss = {}) }
         }
 
         onNodeWithText("created").assertIsDisplayed()
         onNode(hasText("failed:", substring = true)).assertIsDisplayed()
         onNodeWithText("Close").assertIsDisplayed()
+    }
+
+    @Test
+    fun `the review of a multirepo lists where it acts, marks paths outside its parent and trusts it`() = runComposeUiTest {
+        var trusted = 0
+        val multirepo = Multirepo(
+            "/home/dev/projects/product",
+            MultirepoDeclaration(
+                mapOf("app" to "product-app", "api" to "/srv/other/api"),
+                "../product-worktrees",
+                agent = AgentLaunchConfig(agentCommand = "touch /tmp/marker; claude"),
+            ),
+        )
+        setContent {
+            MaterialTheme { MultirepoReviewPane(multirepo, isTrusting = false, onTrust = { trusted++ }) }
+        }
+
+        onNodeWithText("/home/dev/projects/product/product-app").assertIsDisplayed()
+        onNodeWithText("/srv/other/api").assertIsDisplayed()
+        onNodeWithText("outside /home/dev/projects").assertIsDisplayed()
+        onNodeWithText("/home/dev/projects/product-worktrees").assertIsDisplayed()
+        onNode(hasText("agent is ignored", substring = true)).assertIsDisplayed()
+        onNode(hasText("touch /tmp/marker", substring = true)).assertDoesNotExist()
+        onNodeWithText("Trust").performClick()
+        assertEquals(1, trusted)
     }
 }

@@ -28,6 +28,7 @@ fun FrameWindowScope.AppMenuBar(
     onToggleSidebar: () -> Unit,
     onPreferences: () -> Unit,
     onCheckForUpdates: () -> Unit,
+    onTour: () -> Unit,
     onCopyDiagnosticReport: () -> Unit,
     onAbout: () -> Unit,
     onQuit: () -> Unit,
@@ -74,6 +75,7 @@ fun FrameWindowScope.AppMenuBar(
             Item(strings.menuToggleSidebar, shortcut = shortcut(Key.Backslash), onClick = onToggleSidebar)
         }
         Menu(strings.menuHelp) {
+            Item(strings.tourMenuItem, onClick = onTour)
             Item(strings.menuCheckForUpdates, onClick = onCheckForUpdates)
             Item(strings.menuCopyDiagnosticReport, onClick = onCopyDiagnosticReport)
             if (!isMacOs) Item(strings.menuAbout, onClick = onAbout)

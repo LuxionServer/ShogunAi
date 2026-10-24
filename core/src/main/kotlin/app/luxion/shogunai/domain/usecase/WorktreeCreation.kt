@@ -3,12 +3,14 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.io.FileManager
-import app.luxion.shogunai.domain.io.PostCreateApproval
-import app.luxion.shogunai.domain.io.PostCreateDecision
+import app.luxion.shogunai.domain.io.RepositoryApproval
+import app.luxion.shogunai.domain.io.ApprovalDecision
 import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.io.SymbolicLinksNotSupported
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
+import app.luxion.shogunai.domain.model.approvalSubject
 import app.luxion.shogunai.domain.model.ProvisionMode
 import app.luxion.shogunai.domain.model.ProvisionedFile
 import app.luxion.shogunai.domain.model.Worktree
@@ -19,7 +21,7 @@ import java.io.IOException
 internal data class ProvisionedFiles(
     val copied: List<String> = emptyList(),
     val linked: List<String> = emptyList(),
-    val postCreateCommands: List<List<String>> = emptyList(),
+    val approvalSubject: RepositoryApprovalSubject = RepositoryApprovalSubject(),
 )
 
 internal suspend fun checkProvisioningAndResolveFiles(
@@ -47,7 +49,7 @@ internal suspend fun resolveProvisionedFiles(
     val copied = (localFiles + listUntrackedFiles(config, executor, provisioning.allPatterns))
         .distinct()
         .filterNot { it in linked }
-    return ProvisionedFiles(copied, linked, provisioning.postCreateCommands)
+    return ProvisionedFiles(copied, linked, provisioning.approvalSubject)
 }
 
 private fun expandLocalEntry(config: ProjectConfig, fileManager: FileManager, entry: String): List<String> {
@@ -80,7 +82,7 @@ internal suspend fun addWorktreeAndCopySecrets(
     provisioned: ProvisionedFiles,
     environment: WorktreeEnvironmentPreparer,
     trust: RepositoryTrust,
-    approval: PostCreateApproval,
+    approval: RepositoryApproval,
 ): Worktree {
     val add = executor.execute(command = addArgs, workingDirectory = config.baseRepositoryPath)
     if (!add.isSuccess) {
@@ -97,12 +99,16 @@ internal suspend fun addWorktreeAndCopySecrets(
     }
 
     copySecretsOrRollback(config, executor, fileManager, worktreePath, provisioned, createdBranch)
+    val approved = settleApproval(config, trust, approval, provisioned.approvalSubject)
     prepareEnvironmentOrRollback(config, executor, environment, worktreePath, createdBranch)
-    val skipped = runApprovedPostCreateCommands(
-        config, executor, trust, approval, worktreePath, provisioned.postCreateCommands,
-    )
+    val skipped = runPostCreateCommandsIfApproved(executor, approved, worktreePath, provisioned.approvalSubject)
 
-    return Worktree(path = worktreePath, branch = branch, skippedPostCreateCommands = skipped)
+    return Worktree(
+        path = worktreePath,
+        branch = branch,
+        skippedPostCreateCommands = skipped.commands,
+        skippedVariables = skipped.variables,
+    )
 }
 
 private suspend fun prepareEnvironmentOrRollback(
@@ -177,22 +183,33 @@ private fun copyFromBase(config: ProjectConfig, fileManager: FileManager, worktr
     fileManager.copy(source = config.baseSecretPath(fileName), destination = joinPath(worktreePath, fileName))
 }
 
-internal suspend fun runApprovedPostCreateCommands(
+internal data class SkippedConfiguration(
+    val commands: List<List<String>> = emptyList(),
+    val variables: List<String> = emptyList(),
+)
+
+internal suspend fun settleApproval(
     config: ProjectConfig,
-    executor: ShellCommandExecutor,
     trust: RepositoryTrust,
-    approval: PostCreateApproval,
-    worktreePath: String,
-    commands: List<List<String>>,
-): List<List<String>> {
-    if (commands.isEmpty()) return emptyList()
+    approval: RepositoryApproval,
+    subject: RepositoryApprovalSubject,
+): Boolean {
     val repository = config.baseRepositoryPath
-    if (!trust.isApproved(repository, commands)) {
-        if (approval.decide(repository, commands) != PostCreateDecision.RUN) return commands
-        trust.approve(repository, commands)
-    }
-    runPostCreateCommands(executor, worktreePath, commands)
-    return emptyList()
+    if (trust.isApproved(repository, subject)) return true
+    if (approval.decide(repository, subject) != ApprovalDecision.APPROVE) return false
+    trust.approve(repository, subject)
+    return true
+}
+
+internal suspend fun runPostCreateCommandsIfApproved(
+    executor: ShellCommandExecutor,
+    approved: Boolean,
+    worktreePath: String,
+    subject: RepositoryApprovalSubject,
+): SkippedConfiguration {
+    if (!approved) return SkippedConfiguration(subject.commands, subject.variableNames)
+    runPostCreateCommands(executor, worktreePath, subject.commands)
+    return SkippedConfiguration()
 }
 
 private suspend fun runPostCreateCommands(

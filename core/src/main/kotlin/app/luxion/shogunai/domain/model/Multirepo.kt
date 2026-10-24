@@ -71,6 +71,8 @@ data class Multirepo(
     val folder: String,
     val declaration: MultirepoDeclaration,
     val folderIsRepository: Boolean = false,
+    val approved: Boolean = false,
+    val localAgent: AgentLaunchConfig? = null,
 ) {
     val name: String
         get() = folder.trimEnd('/', '\\').substringAfterLast('/').substringAfterLast('\\')
@@ -105,14 +107,40 @@ data class Multirepo(
         get() {
             val workspace = workspaceRepository
             val joins = declaration.workspace?.default == true && workspace != null
-            return if (joins && workspace!!.alias !in declaration.defaultRepos) declaration.defaultRepos + workspace.alias else declaration.defaultRepos
+            return if (joins && workspace.alias !in declaration.defaultRepos) declaration.defaultRepos + workspace.alias else declaration.defaultRepos
         }
 
     val worktreesRoot: String
         get() = resolveMultirepoPath(folder, declaration.worktreesRoot)
 
     val agent: AgentLaunchConfig
-        get() = declaration.agent ?: AgentLaunchConfig()
+        get() = localAgent ?: AgentLaunchConfig()
+
+    val ignoresDeclaredAgent: Boolean
+        get() = declaration.agent != null
+
+    val approvalSubject: String
+        get() = buildList {
+            add("folder\t${normalizeMultirepoFolder(folder)}")
+            declaredRepositories.sortedBy { it.alias }.forEach { add("repo\t${it.alias}\t${it.path}") }
+            add("worktreesRoot\t$worktreesRoot")
+            val workspace = declaration.workspace
+            add(
+                when {
+                    workspace == null -> "workspace\tdetected"
+                    !workspace.enabled -> "workspace\toff"
+                    else -> "workspace\t${workspace.alias}"
+                },
+            )
+        }.joinToString("\n")
+
+    val parentFolder: String
+        get() = Path.of(folder).normalize().parent?.toString()?.replace('\\', '/') ?: "/"
+
+    fun isOutsideParent(path: String): Boolean {
+        val parent = Path.of(folder).normalize().parent ?: return false
+        return !Path.of(path).normalize().startsWith(parent)
+    }
 
     val aliases: List<String>
         get() = repositories.map { it.alias }
@@ -129,8 +157,19 @@ private val MULTIREPO_ALIAS = Regex("[a-z0-9]+(-[a-z0-9]+)*")
 
 fun isValidMultirepoAlias(alias: String): Boolean = MULTIREPO_ALIAS.matches(alias)
 
+private fun normalizeMultirepoFolder(folder: String): String =
+    Path.of(folder).normalize().toString().replace('\\', '/').trimEnd('/').ifEmpty { "/" }
+
+private val UNSAFE_PATH_CHARACTER = Regex("[\\p{Cc}\\p{Cf}\\u2028\\u2029]")
+
+fun hasUnsafePathCharacters(path: String): Boolean = UNSAFE_PATH_CHARACTER.containsMatchIn(path)
+
+private fun parsedPath(path: String): Path? = runCatching { Path.of(path) }.getOrNull()
+
+fun isValidMultirepoPath(path: String): Boolean = !hasUnsafePathCharacters(path) && parsedPath(path) != null
+
 fun resolveMultirepoPath(folder: String, path: String): String {
-    val candidate = Path.of(path)
+    val candidate = parsedPath(path) ?: return joinPath(folder, path)
     val resolved = if (candidate.isAbsolute) candidate else Path.of(folder).resolve(candidate)
     return resolved.normalize().toString().replace('\\', '/').trimEnd('/').ifEmpty { "/" }
 }

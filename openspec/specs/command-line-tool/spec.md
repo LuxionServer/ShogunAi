@@ -250,10 +250,10 @@ With `--yes`, `shogun clean --stop-gradle-daemons` SHALL also stop the idle Grad
 - **THEN** nothing is removed or stopped, and the output also lists the daemons that would be stopped
 
 ### Requirement: Print a worktree's environment from the command line
-`shogun env [<path>] [--format sh|dotenv|json]` SHALL resolve the environment of the worktree containing the path, or the current directory, and print it: `sh` (the default) as `export NAME='value'` lines safe for `eval`, `dotenv` as `NAME=value` lines, `json` as an object. An empty environment SHALL print nothing and exit with code 0.
+`shogun env [<path>] [--format sh|dotenv|json]` SHALL resolve the environment of the worktree containing the path, or the current directory, and print it: `sh` (the default) as `export NAME='value'` lines safe for `eval`, `dotenv` as `NAME=value` lines, `json` as an object. Declared variables SHALL only be printed while the repository is approved (see `worktree-environment`); when some await approval, a note naming them and `shogun trust` SHALL go to standard error. An empty environment SHALL print nothing on standard output and exit with code 0.
 
 #### Scenario: Shell format
-- **WHEN** the user runs `eval "$(shogun env)"` inside a worktree whose `PORT` resolves to 20001
+- **WHEN** the user runs `eval "$(shogun env)"` inside a worktree of an approved repository whose `PORT` resolves to 20001
 - **THEN** `PORT` is 20001 in that shell
 
 #### Scenario: Values with special characters
@@ -268,12 +268,16 @@ With `--yes`, `shogun clean --stop-gradle-daemons` SHALL also stop the idle Grad
 - **WHEN** the path isn't inside a Git repository
 - **THEN** an error is printed on standard error and the command exits with code 1
 
+#### Scenario: Variables awaiting approval
+- **WHEN** the user runs `shogun env` in a worktree of a repository that declares `PORT` and isn't approved
+- **THEN** `PORT` isn't printed, standard error names `PORT` and `shogun trust`, and the command exits with code 0
+
 ### Requirement: Deliver the environment through Claude Code's SessionStart hook
-`shogun hook session-start` SHALL read the hook's JSON from standard input and, inside a Git repository, resolve the environment of the worktree containing its `cwd` field, append one `export` line per variable to the file named by `CLAUDE_ENV_FILE`, and print the context: a line naming the variables and their values when there are any, followed by the short workflow rules of `shogun guide` that apply to that location. In a group worktree it SHALL also add the group's context, and in a multirepo folder it SHALL print the multirepo's context. Anywhere else outside a Git repository it SHALL write and print nothing and exit with code 0.
+`shogun hook session-start` SHALL read the hook's JSON from standard input and, inside a Git repository, print the short workflow rules of `shogun guide` that apply to that location. Only when the repository is registered as a project SHALL it also resolve the environment of the worktree containing its `cwd` field, append one `export` line per variable to the file named by `CLAUDE_ENV_FILE`, and print a context line naming the variables without their values; declared variables awaiting approval SHALL be named in the context as awaiting the user's approval with `shogun trust`, and not delivered. In a group worktree it SHALL also add the group's context, and in a multirepo folder it SHALL print the multirepo's context. Anywhere else outside a Git repository it SHALL write and print nothing and exit with code 0.
 
 #### Scenario: Session in a worktree
-- **WHEN** Claude Code starts a session in a worktree whose `PORT` resolves to 20001
-- **THEN** `export PORT='20001'` is appended to `$CLAUDE_ENV_FILE`, the context says this worktree uses `PORT=20001` and includes the rule not to change the worktree's branch
+- **WHEN** Claude Code starts a session in a worktree of a registered, approved project whose `PORT` resolves to 20001
+- **THEN** `export PORT='20001'` is appended to `$CLAUDE_ENV_FILE`, the context says this worktree's environment has `PORT` without showing `20001`, and it includes the rule not to change the worktree's branch
 
 #### Scenario: No environment file variable
 - **WHEN** `CLAUDE_ENV_FILE` isn't set
@@ -308,8 +312,16 @@ With `--yes`, `shogun clean --stop-gradle-daemons` SHALL also stop the idle Grad
 - **THEN** nothing is written or printed and the command exits with code 0
 
 #### Scenario: Invalid declaration
-- **WHEN** `.shogunai.json` can't be read
+- **WHEN** `.shogunai.json` of a registered project can't be read
 - **THEN** the error is printed on standard error and the command exits with code 1, without writing to `$CLAUDE_ENV_FILE`
+
+#### Scenario: Repository not registered
+- **WHEN** Claude Code starts a session in a cloned repository that isn't registered as a project and whose `.shogunai.json` declares `env`
+- **THEN** nothing is written to `$CLAUDE_ENV_FILE`, no environment is resolved nor reserved, the context has only the workflow rules, and the command exits with code 0
+
+#### Scenario: Variables awaiting approval
+- **WHEN** a session starts in a worktree of a registered project that declares `PORT` and isn't approved
+- **THEN** nothing about `PORT` is written to `$CLAUDE_ENV_FILE`, and the context names `PORT` as awaiting the user's approval with `shogun trust`
 
 ### Requirement: Manage a worktree's emulator from the command line
 `shogun emulator start [<path>] [--avd <name>] [--no-window]`, `shogun emulator stop [<path>]` and `shogun emulator status [<path>]` SHALL act on the emulator of the worktree containing the path or the current directory, printing its serial and state, or `not acquired` when the worktree holds no emulator. `start` SHALL acquire the emulator from the pool when needed, print on standard error any emulator released to make room, and print the `export ANDROID_SERIAL=…` line to run when the emulator was just acquired. In a repository that doesn't declare the emulator provider they SHALL fail with exit code 1 and say how to declare it.
@@ -623,7 +635,7 @@ When a command run with `--json` fails before producing its result, it SHALL pri
 - **THEN** standard output is empty, the error is on standard error and the exit code is 1
 
 ### Requirement: No questions in JSON mode
-A command run with `--json` SHALL never ask a question. Post-creation commands that aren't approved SHALL be skipped and listed in the result, and `trust --json` without `--yes` SHALL only report.
+A command run with `--json` SHALL never ask a question. When the repository isn't approved, its post-creation commands and declared variables SHALL be skipped and listed in the result, and `trust --json` without `--yes` SHALL only report.
 
 #### Scenario: Unapproved post-creation commands
 - **WHEN** the user runs `shogun new TASK-123 --json` in a repository whose post-creation commands aren't approved
@@ -633,8 +645,12 @@ A command run with `--json` SHALL never ask a question. Post-creation commands t
 - **WHEN** the user runs `shogun trust --json` in a repository with unapproved commands
 - **THEN** the object lists the commands with `approved: false`, nothing is approved and nothing is asked
 
+#### Scenario: Unapproved variables
+- **WHEN** the user runs `shogun new TASK-123 --json` in a repository that declares `PORT` and isn't approved
+- **THEN** the worktree is created without `PORT`, and the object lists `PORT` in `skippedVariables`
+
 ### Requirement: JSON result of worktree creation and provisioning
-`shogun new --json` SHALL report the worktree's path and branch, the skipped post-creation commands and any post-creation failure. A post-creation failure SHALL still print the object, since the worktree exists, and exit with code 1. `shogun provision --check --json` SHALL list each reported file with its path and state, and exit with code 3 when there is any.
+`shogun new --json` SHALL report the worktree's path and branch, the skipped post-creation commands, the names of the skipped declared variables and any post-creation failure. A post-creation failure SHALL still print the object, since the worktree exists, and exit with code 1. `shogun provision --check --json` SHALL list each reported file with its path and state, and exit with code 3 when there is any.
 
 #### Scenario: Post-creation command fails
 - **WHEN** `shogun new TASK-123 --json` creates the worktree and a post-creation command exits with code 2
@@ -643,6 +659,10 @@ A command run with `--json` SHALL never ask a question. Post-creation commands t
 #### Scenario: Stale file
 - **WHEN** the user runs `shogun provision --check --json` and `local.properties` differs from the base repository's
 - **THEN** the object's `drift` lists `local.properties` with state `differs`, and the exit code is 3
+
+#### Scenario: Nothing skipped
+- **WHEN** `shogun new TASK-123 --json` creates a worktree in an approved repository
+- **THEN** the object has empty `skippedPostCreateCommands` and `skippedVariables`
 
 ### Requirement: JSON result of cleanup
 `shogun clean --json` SHALL report whether it was a dry run, the candidates with why each qualifies, the worktrees kept because an agent runs in them, the ones skipped because their status couldn't be read, and, with `--yes`, what was removed, which branches were deleted and what failed.
@@ -756,6 +776,10 @@ Session records SHALL be stored in the worktree's Git administrative folder, so 
 - **WHEN** the quota is 50 GB, usage is 62 GB and an unused worktree folder of 15 GB is the oldest
 - **THEN** `shogun xcode trim` prints `released <path>`, `freed 15 GB` and the usage against the quota
 
+#### Scenario: Automatic quota
+- **WHEN** the quota is Automatic and resolves to 40 GB
+- **THEN** it prints the usage against 40 GB, says the quota is automatic, and `--json` reports the quota mode `automatic` with its size
+
 #### Scenario: Dry run
 - **WHEN** the user runs `shogun xcode trim --dry-run` over the quota
 - **THEN** it prints `would release <path>` for each candidate and deletes nothing
@@ -765,11 +789,15 @@ Session records SHALL be stored in the worktree's Git administrative folder, so 
 - **THEN** it prints that the quota is still exceeded and names those worktrees
 
 ### Requirement: Trim without quota or provider
-`shogun xcode trim` SHALL say so and delete nothing when no quota is set, and SHALL say the provider isn't active when the repository doesn't declare Xcode or the OS isn't macOS. In every case it SHALL exit with `0`.
+`shogun xcode trim` SHALL say so and delete nothing when the user chose "No quota" or when the Automatic quota can't be computed, and SHALL say the provider isn't active when the repository doesn't declare Xcode or the OS isn't macOS. In every case it SHALL exit with `0`.
 
 #### Scenario: No quota
-- **WHEN** no quota is set
+- **WHEN** the user chose "No quota"
 - **THEN** it says that no DerivedData quota is set, deletes nothing and exits with `0`
+
+#### Scenario: Automatic quota unknown
+- **WHEN** the quota is Automatic and the free space of the DerivedData volume can't be read
+- **THEN** it says the automatic quota couldn't be computed, deletes nothing and exits with `0`
 
 #### Scenario: Provider not active
 - **WHEN** the repository doesn't declare the Xcode provider

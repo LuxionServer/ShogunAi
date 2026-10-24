@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.model.ComposeResourceKind
 import app.luxion.shogunai.domain.model.ResourceLimits
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.CapacityProfile
+import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import androidx.compose.runtime.staticCompositionLocalOf
 import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.ProvisionDriftState
@@ -358,7 +359,8 @@ interface Strings {
     fun derivedDataOnUnavailableVolumes(count: Int): String
     fun derivedDataCompilationCache(size: String): String
     fun derivedDataDeleted(count: Int, freed: String): String
-    fun derivedDataQuotaUsage(usage: String, quota: String): String
+    fun derivedDataQuotaUsage(usage: String, quota: String, automatic: Boolean): String
+    val derivedDataQuotaUnknown: String
     fun derivedDataQuotaExceeded(inUse: List<String>): String
     fun derivedDataReleased(count: Int, freed: String): String
     val machineTitle: String
@@ -370,6 +372,8 @@ interface Strings {
     val invalidLimit: String
     val derivedDataQuotaLabel: String
     val noQuota: String
+    fun quotaModeName(mode: DerivedDataQuotaMode): String
+    val automaticQuotaHint: String
     val gigabytesUnit: String
     val invalidQuota: String
     val leaseDurationLabel: String
@@ -449,6 +453,11 @@ interface Strings {
     val approveCommands: String
     val revokeApproval: String
     val variableNameReserved: String
+    val approvalVariablesTitle: String
+    fun approvalEnvFile(path: String): String
+    fun variablesAwaitingApproval(names: List<String>): String
+    val templateInvalidCharacters: String
+    val envFileInvalidCharacters: String
     val worktreesRepairedAfterMove: String
     val openInHerdr: String
     fun openedInHerdr(name: String): String
@@ -617,6 +626,11 @@ interface Strings {
     val rename: String
     val addRepository: String
     val repositoryPathLabel: String
+    val multirepoNeedsReview: String
+    val multirepoNeedsReviewExplanation: String
+    val trustMultirepo: String
+    val declaredAgentIgnored: String
+    val existingDeclarationTitle: String
     fun groupKeptNotMerged(alias: String): String
     fun groupKeptUncommitted(alias: String): String
     fun groupKeptStatusUnavailable(alias: String): String
@@ -629,6 +643,32 @@ interface Strings {
     fun notARepository(path: String): String
     fun folderIsMultirepoWorkspace(path: String, multirepo: String): String
     fun deleteMultirepoTitle(name: String): String
+    fun outsideMultirepoParent(parent: String): String
+    val tourMenuItem: String
+    val tourTakeTour: String
+    val tourDialogTitle: String
+    fun tourWelcomeMessage(folder: String): String
+    val tourStart: String
+    val tourToolMessage: String
+    val tourSkip: String
+    val tourContinue: String
+    val tourCreating: String
+    val tourRetry: String
+    val tourOpenAgentMessage: String
+    val tourClaudeDesktopHint: String
+    val tourTrustHint: String
+    val tourAgentsNeeded: String
+    val tourLoadingWorktrees: String
+    val tourLater: String
+    val tourExistingMessage: String
+    val tourRestart: String
+    val tourOpenExisting: String
+    val tourNoticeMessage: String
+    val tourBannerMessage: String
+    val tourOpenAgent: String
+    val tourEnd: String
+    val tourEndTitle: String
+    fun tourEndMessage(folder: String): String
 }
 
 val LocalStrings = staticCompositionLocalOf<Strings> { EnglishStrings }
@@ -640,10 +680,12 @@ fun Strings.repositoryConfigIssue(issue: RepositoryConfigIssue): String = when (
     RepositoryConfigIssue.InvalidMinutes -> minutesInvalid
     RepositoryConfigIssue.InvalidVariableName -> variableNameInvalid
     RepositoryConfigIssue.ReservedVariableName -> variableNameReserved
+    RepositoryConfigIssue.InvalidVariableValue -> templateInvalidCharacters
     RepositoryConfigIssue.DuplicateVariableName -> variableNameDuplicate
     RepositoryConfigIssue.UnclosedPlaceholder -> templateUnclosed
     is RepositoryConfigIssue.UnknownPlaceholder -> templateUnknown(issue.placeholder)
     RepositoryConfigIssue.EnvFileOutsideWorktree -> envFileOutsideWorktree
+    RepositoryConfigIssue.EnvFileInvalidCharacters -> envFileInvalidCharacters
 }
 
 fun AppLanguage.strings(): Strings = when (this) {

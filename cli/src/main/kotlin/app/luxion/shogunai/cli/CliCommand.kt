@@ -1,8 +1,10 @@
 package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.domain.model.BranchType
+import app.luxion.shogunai.domain.model.DEFAULT_DEVICE_WAIT_MINUTES
 import app.luxion.shogunai.domain.model.WorkflowTopic
 import app.luxion.shogunai.domain.usecase.EnvironmentFormat
+import java.time.Duration
 
 sealed interface CliCommand {
     data object Help : CliCommand
@@ -103,6 +105,7 @@ sealed interface CliCommand {
         val avd: String? = null,
         val noWindow: Boolean = false,
         val json: Boolean = false,
+        val wait: Duration? = null,
     ) : CliCommand
     data class Simulator(
         val action: SimulatorAction,
@@ -110,6 +113,7 @@ sealed interface CliCommand {
         val device: String? = null,
         val runtime: String? = null,
         val json: Boolean = false,
+        val wait: Duration? = null,
     ) : CliCommand
     data class SimulatorGradleInit(val install: Boolean, val confirmed: Boolean = false) : CliCommand
     data class Env(val path: String? = null, val format: EnvironmentFormat = EnvironmentFormat.SH) : CliCommand
@@ -590,11 +594,14 @@ private fun parseSimulator(rest: List<String>): CliCommand {
     var path: String? = null
     var device: String? = null
     var runtime: String? = null
+    val wait = DeviceWaitOptions()
     val remaining = ArrayDeque(rest.drop(1))
     while (remaining.isNotEmpty()) {
         when (val argument = remaining.removeFirst()) {
             "--device" -> device = remaining.valueOf(argument)
             "--runtime" -> runtime = remaining.valueOf(argument)
+            "--wait" -> wait.requested = true
+            "--wait-timeout" -> wait.timeout(remaining.valueOf(argument))
             else -> {
                 if (argument.startsWith("-")) throw UsageException("unknown option '$argument' for 'simulator'")
                 if (path != null) throw UsageException("'simulator $name' takes at most one path")
@@ -605,7 +612,10 @@ private fun parseSimulator(rest: List<String>): CliCommand {
     if (action != SimulatorAction.START && (device != null || runtime != null)) {
         throw UsageException("--device and --runtime only apply to 'simulator start'")
     }
-    return CliCommand.Simulator(action, path, device, runtime)
+    if (action != SimulatorAction.START && wait.requested) {
+        throw UsageException("--wait and --wait-timeout only apply to 'simulator start'")
+    }
+    return CliCommand.Simulator(action, path, device, runtime, wait = wait.duration)
 }
 
 private fun parseSimulatorGradleInit(rest: List<String>): CliCommand.SimulatorGradleInit {
@@ -632,11 +642,14 @@ private fun parseEmulator(rest: List<String>): CliCommand.Emulator {
     var path: String? = null
     var avd: String? = null
     var noWindow = false
+    val wait = DeviceWaitOptions()
     val remaining = ArrayDeque(rest.drop(1))
     while (remaining.isNotEmpty()) {
         when (val argument = remaining.removeFirst()) {
             "--avd" -> avd = remaining.valueOf(argument)
             "--no-window" -> noWindow = true
+            "--wait" -> wait.requested = true
+            "--wait-timeout" -> wait.timeout(remaining.valueOf(argument))
             else -> {
                 if (argument.startsWith("-")) throw UsageException("unknown option '$argument' for 'emulator'")
                 if (path != null) throw UsageException("'emulator $name' takes at most one path")
@@ -647,7 +660,24 @@ private fun parseEmulator(rest: List<String>): CliCommand.Emulator {
     if (action != EmulatorAction.START && (avd != null || noWindow)) {
         throw UsageException("--avd and --no-window only apply to 'emulator start'")
     }
-    return CliCommand.Emulator(action, path, avd, noWindow)
+    if (action != EmulatorAction.START && wait.requested) {
+        throw UsageException("--wait and --wait-timeout only apply to 'emulator start'")
+    }
+    return CliCommand.Emulator(action, path, avd, noWindow, wait = wait.duration)
+}
+
+private class DeviceWaitOptions {
+    var requested = false
+    private var minutes = DEFAULT_DEVICE_WAIT_MINUTES
+
+    fun timeout(value: String) {
+        minutes = value.toLongOrNull()?.takeIf { it > 0 }
+            ?: throw UsageException("--wait-timeout needs a positive whole number of minutes, got '$value'")
+        requested = true
+    }
+
+    val duration: Duration?
+        get() = Duration.ofMinutes(minutes).takeIf { requested }
 }
 
 private fun parseEnv(rest: List<String>): CliCommand.Env {
@@ -688,10 +718,11 @@ sealed interface MultirepoAction {
     data class WorkspaceSet(val alias: String? = null, val default: Boolean = false) : MultirepoAction
     data object WorkspaceClear : MultirepoAction
     data object Delete : MultirepoAction
+    data class Trust(val folder: String? = null, val yes: Boolean = false, val revoke: Boolean = false) : MultirepoAction
 }
 
 private fun parseMultirepo(rest: List<String>): CliCommand.Multirepo {
-    val action = rest.firstOrNull() ?: throw UsageException("'multirepo' needs an action: init, show, add-repo, remove-repo, defaults, agent, workspace, worktrees-root or delete")
+    val action = rest.firstOrNull() ?: throw UsageException("'multirepo' needs an action: init, show, trust, add-repo, remove-repo, defaults, agent, workspace, worktrees-root or delete")
     val remaining = ArrayDeque(rest.drop(1))
     val positional = mutableListOf<String>()
     val options = mutableMapOf<String, String?>()
@@ -699,7 +730,7 @@ private fun parseMultirepo(rest: List<String>): CliCommand.Multirepo {
         val argument = remaining.removeFirst()
         when (argument) {
             "--worktrees-root", "--name", "--alias" -> options[argument] = remaining.valueOf(argument)
-            "--use-worktrees-root", "--keep-worktrees-folder", "--no-headroom", "--clear", "--default" -> options[argument] = null
+            "--use-worktrees-root", "--keep-worktrees-folder", "--no-headroom", "--clear", "--default", "--yes", "--revoke" -> options[argument] = null
             else -> {
                 if (argument.startsWith("-")) throw UsageException("unknown option '$argument' for 'multirepo $action'")
                 positional += argument
@@ -749,6 +780,12 @@ private fun parseMultirepo(rest: List<String>): CliCommand.Multirepo {
             }
             "worktrees-root" -> { allow(); MultirepoAction.WorktreesRoot(arguments(1, "worktrees-root <dir>").single()) }
             "delete" -> { allow(); arguments(0, "delete"); MultirepoAction.Delete }
+            "trust" -> {
+                allow("--yes", "--revoke")
+                if ("--yes" in options && "--revoke" in options) throw UsageException("--yes and --revoke can't be combined")
+                if (positional.size > 1) throw UsageException("usage: shogun multirepo trust [<folder>] [--yes | --revoke]")
+                MultirepoAction.Trust(positional.firstOrNull(), yes = "--yes" in options, revoke = "--revoke" in options)
+            }
             else -> throw UsageException("unknown multirepo action '$action'")
         },
     )

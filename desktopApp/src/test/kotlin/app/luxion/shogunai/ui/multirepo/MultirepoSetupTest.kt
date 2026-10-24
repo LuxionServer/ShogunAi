@@ -7,7 +7,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.v2.runComposeUiTest
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
@@ -42,6 +42,8 @@ class FakeMultirepoSetup(
     val declarations = mutableMapOf<String, MultirepoDeclaration>()
     val savedProjects = projects.toMutableList()
     val deleted = mutableListOf<String>()
+    val approved = mutableSetOf<String>()
+    val agents = mutableMapOf<String, AgentLaunchConfig>()
 
     override suspend fun inspect(folder: String) = FolderInspection(enclosing[folder], folders[folder].orEmpty().filter { it in repositories })
     override suspend fun isRepository(path: String) = path in repositories
@@ -53,10 +55,19 @@ class FakeMultirepoSetup(
             .map { (branch, owners) -> WorktreeGroup(branch, owners.map { (member, _) -> GroupWorktree(member.alias, member.config, Worktree("/w/${member.alias}", branch)) }) }
 
     override fun projects() = savedProjects.toList()
-    override fun read(folder: String) = declarations[folder]?.let { Multirepo(folder, it, folderIsRepository = folder in repositories) }
+    override fun read(folder: String) = declarations[folder]?.let {
+        Multirepo(folder, it, folderIsRepository = folder in repositories, approved = folder in approved, localAgent = agents[folder])
+    }
+
     override suspend fun init(folder: String): Result<Multirepo> {
         declarations[folder] = MultirepoDeclaration(worktreesRoot = "../${Multirepo(folder, MultirepoDeclaration()).name}-worktrees")
+        approved += folder
         return Result.success(read(folder)!!)
+    }
+
+    override suspend fun trust(multirepo: Multirepo): Result<Multirepo> {
+        approved += multirepo.folder
+        return Result.success(read(multirepo.folder)!!)
     }
 
     override suspend fun addRepository(multirepo: Multirepo, alias: String, path: String, useProposedFolder: Boolean): Result<AddedRepository> {
@@ -105,7 +116,10 @@ class FakeMultirepoSetup(
         update(multirepo) { it.copy(workspace = WorkspaceSetting(alias = alias, default = default)) }
 
     override fun clearWorkspace(multirepo: Multirepo) = update(multirepo) { it.copy(workspace = WorkspaceSetting(enabled = false)) }
-    override fun setAgent(multirepo: Multirepo, agent: AgentLaunchConfig) = update(multirepo) { it.copy(agent = agent) }
+    override fun setAgent(multirepo: Multirepo, agent: AgentLaunchConfig): Result<Multirepo> {
+        agents[multirepo.folder] = agent
+        return Result.success(read(multirepo.folder)!!)
+    }
     override fun setWorktreesRoot(multirepo: Multirepo, folder: String) = update(multirepo) { it.copy(worktreesRoot = folder) }
     override fun delete(multirepo: Multirepo): Result<Unit> {
         declarations.remove(multirepo.folder)
@@ -168,6 +182,43 @@ class MultirepoSetupTest {
     }
 
     @Test
+    fun `a folder with an existing declaration shows it and only confirming approves it`() = runTest {
+        val setup = productSetup().apply {
+            declarations[product] = MultirepoDeclaration(mapOf("app" to app, "tools" to "/home/dev/elsewhere/tools"), "../product-worktrees", listOf("app"))
+        }
+        val state = chosen(setup)
+
+        val existing = state.existing!!
+        assertFalse(existing.approved)
+        assertTrue(existing.isOutsideParent("/home/dev/elsewhere/tools"))
+        assertEquals(listOf("api", "docs"), state.candidates.map { it.alias })
+        assertTrue(setup.approved.isEmpty())
+
+        state.setIncluded(api, false)
+        state.setIncluded(docs, false)
+        assertTrue(state.canConfirm)
+        state.confirm {}
+        advanceUntilIdle()
+
+        assertEquals(setOf(product), setup.approved)
+        assertEquals(listOf("app"), setup.declarations.getValue(product).defaultRepos)
+    }
+
+    @Test
+    fun `the add dialog shows the paths of an existing declaration`() = runComposeUiTest {
+        val setup = productSetup().apply {
+            declarations[product] = MultirepoDeclaration(mapOf("tools" to "/home/dev/elsewhere/tools"), "../product-worktrees")
+        }
+        val state = AddMultirepoState(setup, CoroutineScope(Dispatchers.Unconfined))
+        state.choose(product)
+        setContent { MaterialTheme { AddMultirepoDialog(state, onDismiss = {}, onAdded = {}, pickFolder = { _, _ -> null }) } }
+
+        onNodeWithText("This folder already declares a multirepo").assertIsDisplayed()
+        onNodeWithText("/home/dev/elsewhere/tools").assertIsDisplayed()
+        onNodeWithText("outside /home/dev/projects").assertIsDisplayed()
+    }
+
+    @Test
     fun `a folder inside a repository offers no confirmation`() = runTest {
         val state = chosen(FakeMultirepoSetup(enclosing = mapOf(product to "/home/dev/projects")))
 
@@ -213,6 +264,7 @@ class MultirepoSetupTest {
 
     private fun declaredSetup() = productSetup().apply {
         declarations[product] = MultirepoDeclaration(mapOf("app" to app, "api" to api), "../product-worktrees", listOf("app", "api"))
+        approved += product
     }
 
     @Test
@@ -238,7 +290,23 @@ class MultirepoSetupTest {
         state.agent = AgentDraft(name = "Codex", command = "codex --full-auto", useHeadroom = false)
         state.save()
 
-        assertEquals(AgentLaunchConfig("Codex", "codex --full-auto", false), setup.declarations.getValue(product).agent)
+        assertEquals(AgentLaunchConfig("Codex", "codex --full-auto", false), setup.agents[product])
+        assertNull(setup.declarations.getValue(product).agent)
+    }
+
+    @Test
+    fun `the settings save nothing while the multirepo needs review`() = runTest {
+        val setup = declaredSetup().apply { approved.clear() }
+        val state = settings(setup, this)
+
+        state.toggleDefault("api")
+        state.chooseNewPath(docs)
+
+        assertTrue(state.needsReview)
+        assertFalse(state.canSave)
+        assertFalse(state.canAddRepository)
+        state.save()
+        assertEquals(listOf("app", "api"), setup.declarations.getValue(product).defaultRepos)
     }
 
     @Test
@@ -296,6 +364,7 @@ class MultirepoSetupTest {
     fun `a detected workspace is marked and declaring it saves the alias`() = runTest {
         val setup = FakeMultirepoSetup(repositories = setOf(app, api, product), projects = listOf(appProject)).apply {
             declarations[product] = MultirepoDeclaration(mapOf("app" to app, "api" to api), "../product-worktrees", listOf("app", "api"))
+            approved += product
         }
         val state = settings(setup, this)
 
@@ -325,6 +394,7 @@ class MultirepoSetupTest {
     fun `turning the workspace off clears detection`() = runTest {
         val setup = FakeMultirepoSetup(repositories = setOf(app, api, product), projects = listOf(appProject)).apply {
             declarations[product] = MultirepoDeclaration(mapOf("app" to app, "api" to api), "../product-worktrees", listOf("app", "api"))
+            approved += product
         }
         val state = settings(setup, this)
 
@@ -341,6 +411,7 @@ class MultirepoSetupTest {
             product,
             MultirepoDeclaration(mapOf("app" to app), "../product-worktrees", listOf("app"), workspace = WorkspaceSetting(default = true)),
             folderIsRepository = true,
+            approved = true,
         )
         val workspaceProject = Project("workspace-id", "product", ProjectConfig(product, "/w", emptyList()))
 

@@ -376,7 +376,8 @@ private fun ColumnScope.ProvisioningSection(
 private fun ColumnScope.EnvironmentSection(environment: WorktreeEnvironment?, ports: Map<String, Int>) {
     val strings = LocalStrings.current
     val variables = environment?.variables.orEmpty()
-    if (variables.isEmpty() && ports.isEmpty()) return
+    val awaiting = environment?.awaitingApproval.orEmpty()
+    if (variables.isEmpty() && ports.isEmpty() && awaiting.isEmpty()) return
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
@@ -392,6 +393,7 @@ private fun ColumnScope.EnvironmentSection(environment: WorktreeEnvironment?, po
                 Text(strings.copyAsEnv, style = MaterialTheme.typography.bodySmall)
             }
         }
+        if (awaiting.isNotEmpty()) MutedText(strings.variablesAwaitingApproval(awaiting))
     }
 }
 

@@ -9,6 +9,10 @@ data class DerivedDataFolder(
     val lastAccessed: Instant?,
 )
 
+data class RememberedSize(val sizeBytes: Long, val lastAccessed: Instant)
+
+data class MeasuredSize(val path: String, val sizeBytes: Long?, val provisional: Boolean = false)
+
 sealed interface DerivedDataOwner {
     data class Worktree(val path: String) : DerivedDataOwner
     data object OtherProject : DerivedDataOwner
@@ -36,6 +40,10 @@ data class DerivedDataDeletion(
     val bytesFreed: Long get() = deleted.sumOf { it.sizeBytes ?: 0L }
 }
 
+data class DerivedDataQuota(val mode: DerivedDataQuotaMode, val bytes: Long?) {
+    val isUnknown: Boolean get() = mode == DerivedDataQuotaMode.AUTOMATIC && bytes == null
+}
+
 data class DerivedDataTrim(
     val quotaBytes: Long?,
     val usageBefore: Long,
@@ -44,6 +52,7 @@ data class DerivedDataTrim(
     val inUse: List<AttributedDerivedData> = emptyList(),
     val failures: List<DerivedDataDeletionFailure> = emptyList(),
     val dryRun: Boolean = false,
+    val quotaMode: DerivedDataQuotaMode = DerivedDataQuotaMode.FIXED,
 ) {
     val bytesFreed: Long get() = released.sumOf { it.folder.sizeBytes ?: 0L }
     val isExceeded: Boolean get() = quotaBytes != null && usageAfter > quotaBytes

@@ -20,7 +20,6 @@ class TmuxTerminalLauncher(private val executor: ShellCommandExecutor) : Termina
         } catch (failure: ToolCommandFailed) {
             throw WorktreeError.TerminalLaunchFailed(terminal, failure.detail)
         }
-        Unit
     }
 
     private fun newWindow(session: String, launch: TerminalLaunch): List<String> =
@@ -67,6 +66,5 @@ class ZellijTerminalLauncher(private val executor: ShellCommandExecutor) : Termi
         } catch (failure: ToolCommandFailed) {
             throw WorktreeError.TerminalLaunchFailed(terminal, failure.detail)
         }
-        Unit
     }
 }

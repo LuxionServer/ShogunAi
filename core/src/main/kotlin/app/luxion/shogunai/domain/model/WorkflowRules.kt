@@ -120,7 +120,8 @@ object WorkflowRules {
             WorkflowTopic.RESOURCES,
             "Run `shogun emulator start` before every use of the worktree's Android emulator (installing the app, running instrumented tests): " +
                 "it may have been released to another worktree since the session began, and the command re-acquires one and prints the ANDROID_SERIAL to use. " +
-                "`shogun emulator status` shows it.",
+                "If it fails because the emulator pool is full, retry with `shogun emulator start --wait` run in the background, " +
+                "since it can wait up to 30 minutes for one. `shogun emulator status` shows it.",
             WorkflowCondition.EMULATOR_PROVIDER,
             inSessionStart = true,
         ),
@@ -136,7 +137,9 @@ object WorkflowRules {
             "resources.simulator",
             WorkflowTopic.RESOURCES,
             "Boot the worktree's iOS simulator with `shogun simulator start` and build with " +
-                "xcodebuild -destination \"id=\$IOS_SIMULATOR_UDID\"; `shogun simulator status` shows it.",
+                "xcodebuild -destination \"id=\$IOS_SIMULATOR_UDID\"; `shogun simulator status` shows it. " +
+                "If it fails because the simulator pool is full, retry with `shogun simulator start --wait` run in the background, " +
+                "since it can wait up to 30 minutes for one.",
             WorkflowCondition.SIMULATOR_PROVIDER,
             inSessionStart = true,
         ),

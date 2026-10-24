@@ -1,12 +1,15 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeAppleSimulators
+import app.luxion.shogunai.domain.FakeDeviceWaitQueue
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
 import app.luxion.shogunai.domain.FakeMachineCapacity
 import app.luxion.shogunai.domain.FakePortProbe
+import app.luxion.shogunai.domain.FakeProcessLiveness
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
@@ -15,6 +18,7 @@ import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.ResourceLimits
 import app.luxion.shogunai.domain.model.ResourceSettings
 import app.luxion.shogunai.domain.model.SimulatorSettings
+import java.time.Duration
 import java.time.Instant
 
 class PoolHarness(
@@ -27,6 +31,8 @@ class PoolHarness(
     val portProbe: FakePortProbe = FakePortProbe(),
     val simulatorSettings: SimulatorSettings = SimulatorSettings(),
     val daemons: FakeGradleDaemonSource = FakeGradleDaemonSource(),
+    val waitQueue: FakeDeviceWaitQueue = FakeDeviceWaitQueue(),
+    val liveness: FakeProcessLiveness = FakeProcessLiveness(),
 ) {
     val settings = FakeResourceLimitsRepository(ResourceSettings(CapacityProfile.PER_WORKTREE))
     var now: Instant = Instant.parse("2026-01-01T10:00:00Z")
@@ -41,7 +47,7 @@ class PoolHarness(
 
     val contributions = MachineProviderContributions(simulators, { simulatorSettings })
 
-    val resolve get() = ResolveWorktreeEnvironmentUseCase(git, source, store, portProbe, contributions)
+    val resolve get() = ResolveWorktreeEnvironmentUseCase(git, source, store, portProbe, contributions, trust = FakeRepositoryTrust(approvesEverything = true))
 
     var agentStates: Map<String, AgentState> = emptyMap()
 
@@ -67,6 +73,17 @@ class PoolHarness(
         sdk,
         readPool,
         { requested -> contributions.requesting(requested) },
+        waitQueue,
+        liveness,
         clock = { now },
+        sleep = { pause ->
+            pauses += pause
+            onPause(pause)
+            now = now.plus(pause)
+        },
     )
+
+    val pauses = mutableListOf<Duration>()
+
+    var onPause: (Duration) -> Unit = {}
 }

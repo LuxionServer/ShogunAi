@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.CapacityProfile
+import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.trackTextInputFocus
@@ -103,30 +104,39 @@ private fun DerivedDataQuotaRow(resources: ResourcePreferences) {
     val draft = resources.quotaDraft
     Column(modifier = Modifier.padding(top = Spacing.md)) {
         Text(strings.derivedDataQuotaLabel, style = MaterialTheme.typography.labelLarge)
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-            modifier = Modifier.padding(start = Spacing.lg),
-        ) {
-            OutlinedTextField(
-                value = draft.text,
-                onValueChange = { resources.editQuota(it) },
-                enabled = !draft.unlimited,
-                singleLine = true,
-                isError = draft.invalid,
-                modifier = Modifier.width(88.dp).trackTextInputFocus(),
-            )
-            Text(strings.gigabytesUnit, style = MaterialTheme.typography.bodySmall)
+        DerivedDataQuotaMode.entries.forEach { mode ->
+            val selected = resources.quotaMode == mode
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.toggleable(
-                    value = draft.unlimited,
-                    onValueChange = { resources.setNoQuota(it) },
-                    role = Role.Checkbox,
-                ),
+                verticalAlignment = Alignment.Top,
+                modifier = Modifier.fillMaxWidth().selectable(selected = selected, onClick = { resources.chooseQuotaMode(mode) }, role = Role.RadioButton),
             ) {
-                Checkbox(checked = draft.unlimited, onCheckedChange = null)
-                Text(strings.noQuota, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = Spacing.xs))
+                RadioButton(selected = selected, onClick = null, modifier = Modifier.padding(Spacing.sm))
+                Column(modifier = Modifier.padding(top = Spacing.sm)) {
+                    Text(strings.quotaModeName(mode), style = MaterialTheme.typography.bodyMedium)
+                    if (mode == DerivedDataQuotaMode.AUTOMATIC) {
+                        Text(
+                            strings.automaticQuotaHint,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+            if (mode == DerivedDataQuotaMode.FIXED && selected) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    modifier = Modifier.padding(start = Spacing.lg),
+                ) {
+                    OutlinedTextField(
+                        value = draft.text,
+                        onValueChange = { resources.editQuota(it) },
+                        singleLine = true,
+                        isError = draft.invalid,
+                        modifier = Modifier.width(88.dp).trackTextInputFocus(),
+                    )
+                    Text(strings.gigabytesUnit, style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
         if (draft.invalid) {

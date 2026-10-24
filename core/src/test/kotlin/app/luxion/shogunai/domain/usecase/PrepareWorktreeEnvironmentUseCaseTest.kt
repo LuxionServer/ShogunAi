@@ -1,11 +1,15 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
+import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
+import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.WorktreeEnvironment
 import app.luxion.shogunai.domain.model.WorktreeError
@@ -82,5 +86,47 @@ class PrepareWorktreeEnvironmentUseCaseTest {
 
         assertIs<WorktreeError.EnvironmentFileOutsideWorktree>(error)
         assertTrue(fileManager.writtenTexts.isEmpty())
+    }
+
+    @Test
+    fun `writes nothing while the declaration isn't approved`() = runTest {
+        val fileManager = FakeFileManager()
+        val awaiting = WorktreeEnvironment(awaitingApproval = listOf("PORT"), declarationApproved = false)
+
+        val path = WriteEnvironmentFileUseCase(untracked, fileManager, provisioning(".env.shogunai"))(repository, worktree, awaiting).getOrThrow()
+
+        assertNull(path)
+        assertTrue(fileManager.writtenTexts.isEmpty())
+    }
+
+    private val git = FakeShellCommandExecutor {
+        when (it.getOrNull(1)) {
+            "rev-parse" -> success(it, stdout = "$repository/.git/worktrees/TASK-123\n$repository/.git\n")
+            "ls-files" -> failure(it)
+            else -> success(it)
+        }
+    }
+
+    @Test
+    fun `preparing an unapproved repository writes no environment file even without variables`() = runTest {
+        val fileManager = FakeFileManager()
+        val source = provisioning(".env.shogunai")
+        val resolve = ResolveWorktreeEnvironmentUseCase(git, source, FakeEnvironmentStateStore(), FakePortProbe(), trust = FakeRepositoryTrust())
+
+        PrepareWorktreeEnvironmentUseCase(resolve, WriteEnvironmentFileUseCase(git, fileManager, source)).prepare(repository, worktree)
+
+        assertTrue(fileManager.writtenTexts.isEmpty())
+    }
+
+    @Test
+    fun `preparing an approved repository writes its environment file`() = runTest {
+        val fileManager = FakeFileManager()
+        val source = provisioning(".env.shogunai")
+        val trust = FakeRepositoryTrust(mapOf(repository to RepositoryApprovalSubject(envFile = ".env.shogunai")))
+        val resolve = ResolveWorktreeEnvironmentUseCase(git, source, FakeEnvironmentStateStore(), FakePortProbe(), trust = trust)
+
+        PrepareWorktreeEnvironmentUseCase(resolve, WriteEnvironmentFileUseCase(git, fileManager, source)).prepare(repository, worktree)
+
+        assertEquals(setOf("$worktree/.env.shogunai"), fileManager.writtenTexts.keys)
     }
 }

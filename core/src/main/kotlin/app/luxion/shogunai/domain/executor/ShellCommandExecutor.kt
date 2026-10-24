@@ -27,6 +27,12 @@ interface ShellCommandExecutor {
         result.stderr.lineSequence().filter { it.isNotEmpty() }.forEach { onOutput(OutputLine(OutputChannel.ERROR, it)) }
         return result
     }
+
+    suspend fun executeWithEnvironment(
+        command: List<String>,
+        environment: Map<String, String>,
+        workingDirectory: String? = null,
+    ): CommandResult = execute(command, workingDirectory)
 }
 
 enum class OutputChannel { STANDARD, ERROR }

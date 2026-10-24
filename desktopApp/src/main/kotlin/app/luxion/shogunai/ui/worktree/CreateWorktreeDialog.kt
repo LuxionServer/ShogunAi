@@ -23,7 +23,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
-import app.luxion.shogunai.domain.io.PostCreateDecision
+import app.luxion.shogunai.domain.io.ApprovalDecision
+import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.ShellQuoting
 import app.luxion.shogunai.domain.model.withoutLocalTwins
@@ -91,7 +92,7 @@ fun CreateWorktreeDialog(board: WorktreeBoard) {
                     }
                 }
                 val approvalRequest = board.approval.pending
-                if (approvalRequest != null) PostCreateApprovalStep(approvalRequest, board.approval)
+                if (approvalRequest != null) RepositoryApprovalStep(approvalRequest, board.approval)
                 if (holder.createdWithErrorPath != null) {
                     Text(strings.worktreeCreatedWithError, style = MaterialTheme.typography.bodyMedium)
                 }
@@ -105,8 +106,8 @@ fun CreateWorktreeDialog(board: WorktreeBoard) {
                 ) {
                     if (isCreating) InlineProgress()
                     if (approvalRequest != null) {
-                        NeutralTextButton(onClick = { board.approval.resolve(PostCreateDecision.SKIP) }) { Text(strings.skipCommands) }
-                        PrimaryButton(onClick = { board.approval.resolve(PostCreateDecision.RUN) }) { Text(strings.runAndRemember) }
+                        NeutralTextButton(onClick = { board.approval.resolve(ApprovalDecision.SKIP) }) { Text(strings.skipCommands) }
+                        PrimaryButton(onClick = { board.approval.resolve(ApprovalDecision.APPROVE) }) { Text(strings.runAndRemember) }
                         return@Row
                     }
                     NeutralTextButton(onClick = { board.dismissCreateDialog() }, enabled = !isCreating) {
@@ -126,7 +127,7 @@ fun CreateWorktreeDialog(board: WorktreeBoard) {
 }
 
 @Composable
-internal fun PostCreateApprovalStep(request: DialogPostCreateApproval.Request, approval: DialogPostCreateApproval) {
+internal fun RepositoryApprovalStep(request: DialogRepositoryApproval.Request, approval: DialogRepositoryApproval) {
     val strings = LocalStrings.current
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         Text(strings.postCreateApprovalTitle, style = MaterialTheme.typography.titleMedium)
@@ -137,11 +138,25 @@ internal fun PostCreateApprovalStep(request: DialogPostCreateApproval.Request, a
         )
         Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.surfaceContainerHighest) {
             Column(modifier = Modifier.fillMaxWidth().padding(Spacing.sm)) {
-                request.commands.forEach { command ->
-                    Text(ShellQuoting.posixCommand(command), style = ShogunTheme.typography.data)
-                }
+                ApprovalSubjectLines(request.subject, strings)
             }
         }
+    }
+}
+
+@Composable
+fun ApprovalSubjectLines(subject: RepositoryApprovalSubject, strings: Strings) {
+    subject.commands.forEach { command ->
+        Text(ShellQuoting.posixCommand(command), style = ShogunTheme.typography.data)
+    }
+    if (subject.variables.isNotEmpty()) {
+        Text(strings.approvalVariablesTitle, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = Spacing.xs))
+        subject.variables.forEach { (name, template) ->
+            Text("$name = $template", style = ShogunTheme.typography.data)
+        }
+    }
+    subject.envFile?.let { envFile ->
+        Text(strings.approvalEnvFile(envFile), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = Spacing.xs))
     }
 }
 

@@ -208,6 +208,22 @@ class MacDerivedDataSourceTest {
     }
 
     @Test
+    fun `reads the free space of the volume holding the location`() = runTest {
+        defaultLocation.createDirectories()
+
+        val free = dataSource().freeBytes()
+
+        assertEquals(Files.getFileStore(defaultLocation).usableSpace, free)
+    }
+
+    @Test
+    fun `reads the free space of the nearest existing parent when the location is missing`() = runTest {
+        val free = dataSource().freeBytes()
+
+        assertEquals(Files.getFileStore(home).usableSpace, free)
+    }
+
+    @Test
     fun `detects unavailable volumes under the volumes root`() {
         val source = dataSource()
         volumes.resolve("Mounted").createDirectories()

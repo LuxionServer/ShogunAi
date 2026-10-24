@@ -25,13 +25,19 @@ class ProcessBuilderShellCommandExecutor(
     override suspend fun execute(
         command: List<String>,
         workingDirectory: String?,
-    ): CommandResult = run(command, workingDirectory, null)
+    ): CommandResult = run(command, workingDirectory, null, emptyMap())
 
     override suspend fun executeWithin(
         command: List<String>,
         timeout: Duration,
         workingDirectory: String?,
-    ): CommandResult = run(command, workingDirectory, timeout)
+    ): CommandResult = run(command, workingDirectory, timeout, emptyMap())
+
+    override suspend fun executeWithEnvironment(
+        command: List<String>,
+        environment: Map<String, String>,
+        workingDirectory: String?,
+    ): CommandResult = run(command, workingDirectory, null, environment)
 
     override suspend fun executeStreaming(
         command: List<String>,
@@ -47,7 +53,7 @@ class ProcessBuilderShellCommandExecutor(
         command: List<String>,
         workingDirectory: String?,
         timeout: Duration?,
-        environment: Map<String, String> = emptyMap(),
+        environment: Map<String, String>,
         onOutput: ((OutputLine) -> Unit)? = null,
     ): CommandResult = withContext(ioDispatcher) {
         val process = try {

@@ -5,6 +5,8 @@ import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.WorkspaceSetting
 import app.luxion.shogunai.domain.model.WorktreeError
 import java.nio.file.Files
+import java.nio.file.attribute.PosixFilePermissions
+import kotlinx.serialization.json.JsonPrimitive
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.exists
 import kotlin.io.path.readText
@@ -118,4 +120,74 @@ class JsonMultirepoSourceTest {
 
         assertEquals(emptyList(), source.knownFolders())
     }
+
+    @Test
+    fun `approves a subject for one folder only`() {
+        val other = home.resolve("other").also { Files.createDirectories(it) }
+        source.remember(folder.toString())
+
+        source.approve(folder.toString(), "subject-a")
+
+        assertTrue(source.isApproved(folder.toString(), "subject-a"))
+        assertFalse(source.isApproved(folder.toString(), "subject-b"))
+        assertFalse(source.isApproved(other.toString(), "subject-a"))
+        assertFalse(registry.readText().contains("subject-a"))
+    }
+
+    @Test
+    fun `keeps the multirepo agent locally`() {
+        val agent = AgentLaunchConfig(name = "Codex", agentCommand = "codex --full-auto", useHeadroom = false)
+
+        source.setAgent(folder.toString(), agent)
+
+        assertEquals(agent, source.agent(folder.toString()))
+        assertNull(source.read(folder.toString()))
+    }
+
+    @Test
+    fun `forgetting drops the approval and the agent`() {
+        source.remember(folder.toString())
+        source.approve(folder.toString(), "subject")
+        source.setAgent(folder.toString(), AgentLaunchConfig(agentCommand = "codex"))
+
+        source.forget(folder.toString())
+        source.remember(folder.toString())
+
+        assertFalse(source.isApproved(folder.toString(), "subject"))
+        assertNull(source.agent(folder.toString()))
+    }
+
+    @Test
+    fun `a registry from an earlier version keeps its folders and has nothing approved`() {
+        Files.createDirectories(registry.parent)
+        registry.writeText("""{"multirepos": [${jsonString(folder.resolve(".shogunai-multirepo.json").toString())}]}""")
+
+        assertEquals(listOf(folder.toString()), source.knownFolders())
+        assertFalse(source.isApproved(folder.toString(), "subject"))
+
+        source.approve(folder.toString(), "subject")
+
+        assertEquals(listOf(folder.toString()), source.knownFolders())
+        assertTrue(source.isApproved(folder.toString(), "subject"))
+    }
+
+    @Test
+    fun `a malformed local entry doesn't hide the known folders`() {
+        Files.createDirectories(registry.parent)
+        val key = jsonString(folder.resolve(".shogunai-multirepo.json").toString())
+        registry.writeText("""{"multirepos": [$key], "local": {$key: "garbage"}}""")
+
+        assertEquals(listOf(folder.toString()), source.knownFolders())
+        assertNull(source.agent(folder.toString()))
+    }
+
+    @Test
+    fun `the registry is readable only by the user`() {
+        source.remember(folder.toString())
+
+        val permissions = runCatching { Files.getPosixFilePermissions(registry) }.getOrNull() ?: return
+        assertEquals(PosixFilePermissions.fromString("rw-------"), permissions)
+    }
+
+    private fun jsonString(value: String) = JsonPrimitive(value).toString()
 }
