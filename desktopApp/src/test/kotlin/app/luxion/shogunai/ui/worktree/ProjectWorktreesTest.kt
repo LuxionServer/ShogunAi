@@ -274,6 +274,7 @@ class ProjectWorktreesTest {
         override fun isSupported(): Boolean = true
         override suspend fun folders(): List<DerivedDataFolder> = throw error
         override suspend fun compilationCacheBytes(): Long? = null
+        override suspend fun freeBytes(): Long? = null
         override fun projectExists(workspacePath: String): Boolean = false
         override fun isOnUnavailableVolume(workspacePath: String): Boolean = false
         override suspend fun size(folder: DerivedDataFolder): Long = 0L

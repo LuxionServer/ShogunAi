@@ -1,9 +1,14 @@
 package app.luxion.shogunai
 
+import app.luxion.shogunai.domain.model.DerivedDataQuota
+import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
+import app.luxion.shogunai.domain.model.MeasuredSize
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.usecase.AddedRepository
 import app.luxion.shogunai.domain.usecase.ConfigureMultirepoUseCase
+import app.luxion.shogunai.domain.usecase.MeasureDerivedDataUseCase
+import app.luxion.shogunai.domain.usecase.ResolveDerivedDataQuotaUseCase
 import app.luxion.shogunai.domain.usecase.withWorkspaceAt
 import app.luxion.shogunai.domain.usecase.CreateGroupUseCase
 import app.luxion.shogunai.domain.usecase.DetectGroupsUseCase
@@ -11,6 +16,7 @@ import app.luxion.shogunai.domain.usecase.MultirepoMember
 import app.luxion.shogunai.domain.usecase.OpenMultirepoAgentInHerdrUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMultirepoUseCase
 import app.luxion.shogunai.domain.usecase.WorktreeGroup
+import app.luxion.shogunai.infrastructure.JsonDerivedDataSizeStore
 import app.luxion.shogunai.infrastructure.JsonMultirepoSource
 import app.luxion.shogunai.ui.multirepo.FolderInspection
 import app.luxion.shogunai.ui.multirepo.MultirepoActions
@@ -46,6 +52,12 @@ import app.luxion.shogunai.domain.usecase.DetectInstallChannelUseCase
 import app.luxion.shogunai.infrastructure.GitHubReleaseSource
 import app.luxion.shogunai.infrastructure.JsonUpdatePreferenceRepository
 import app.luxion.shogunai.ui.shell.ClaudeHooksState
+import app.luxion.shogunai.ui.shell.TourActions
+import app.luxion.shogunai.ui.shell.TourState
+import app.luxion.shogunai.domain.usecase.CommandLineToolState
+import app.luxion.shogunai.domain.usecase.CreateTourUseCase
+import app.luxion.shogunai.domain.usecase.EndTourUseCase
+import app.luxion.shogunai.domain.usecase.TourLocation
 import app.luxion.shogunai.ui.shell.UpdateState
 import app.luxion.shogunai.domain.usecase.ClaudeCodeHooks
 import app.luxion.shogunai.infrastructure.ExecutableLocator
@@ -179,16 +191,19 @@ import app.luxion.shogunai.infrastructure.JsonThemePreferenceRepository
 import app.luxion.shogunai.infrastructure.LocalAndroidSdk
 import app.luxion.shogunai.infrastructure.SharedDeviceStatesAndroidSdk
 import app.luxion.shogunai.infrastructure.MacDerivedDataSource
+import app.luxion.shogunai.infrastructure.NioDeviceWaitQueue
 import app.luxion.shogunai.infrastructure.NioEnvironmentStateStore
 import app.luxion.shogunai.infrastructure.NioFileManager
 import app.luxion.shogunai.infrastructure.RotatingFileDiagnosticsLog
 import app.luxion.shogunai.infrastructure.ProcessBuilderShellCommandExecutor
 import app.luxion.shogunai.infrastructure.ProcessGradleDaemonSource
+import app.luxion.shogunai.infrastructure.ProcessHandleLiveness
 import app.luxion.shogunai.infrastructure.RepositoryProvisioningFiles
 import app.luxion.shogunai.infrastructure.SimctlAppleSimulators
 import app.luxion.shogunai.infrastructure.SocketPortProbe
 import app.luxion.shogunai.infrastructure.defaultGradleUserHome
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
@@ -242,6 +257,8 @@ class AppContainer {
         fileManager,
         home = System.getProperty("user.home"),
     )
+    private val derivedDataSizes = JsonDerivedDataSizeStore()
+    private val measureDerivedDataSizes = MeasureDerivedDataUseCase(derivedDataSource, derivedDataSizes)
     private val environmentStateStore = NioEnvironmentStateStore()
     private val portProbe = SocketPortProbe()
     private val appleSimulators = SimctlAppleSimulators(shellCommandExecutor)
@@ -275,6 +292,21 @@ class AppContainer {
         tool = commandLineTool,
         noticeDismissedStore = { settingsFile.read().claudeHooksNoticeDismissed },
         rememberNoticeDismissed = { settingsFile.update { it.copy(claudeHooksNoticeDismissed = true) } },
+    )
+    val tourLocation = TourLocation()
+    val tour = TourState(
+        TourActions(
+            create = { CreateTourUseCase(shellCommandExecutor, fileManager, projectRepository, tourLocation)(languagePreferenceRepository.load()) },
+            end = { EndTourUseCase(fileManager, projectRepository, tourLocation)() },
+            existingProject = { runCatching { projectRepository.list().firstOrNull(tourLocation::isTour) }.getOrNull() },
+            leftoverFolder = { fileManager.exists(tourLocation.root) },
+            toolAvailable = {
+                claudeHooks.refresh()
+                claudeHooks.toolStatus?.state == CommandLineToolState.AVAILABLE
+            },
+            offered = { settingsFile.read().tourOffered },
+            rememberOffered = { settingsFile.update { it.copy(tourOffered = true) } },
+        ),
     )
     private val editorResolver = EditorExecutableResolver(
         HostOs.current(),
@@ -367,6 +399,8 @@ class AppContainer {
         androidSdk,
         readPool,
         { requested -> contributions.requesting(requested) },
+        NioDeviceWaitQueue(),
+        ProcessHandleLiveness(),
     )
     private val trimGradleDaemons = TrimGradleDaemonsUseCase(listGradleDaemons, stopGradleDaemons, resolveResourceLimits)
     val resources = ResourcePreferences(resourceLimitsRepository, resolveResourceLimits, showsSimulators = appleSimulators.isSupported(), showsDerivedDataQuota = derivedDataSource.isSupported())
@@ -404,7 +438,7 @@ class AppContainer {
         takeDownComposeProjects = { names -> TakeDownComposeProjectsUseCase(composeProjectSource)(names) },
         stopDaemons = { pids -> StopGradleDaemonsUseCase(gradleDaemonSource, shellCommandExecutor)(pids) },
         listDerivedData = { ListDerivedDataUseCase(derivedDataSource)(emptyList(), includeCompilationCache = false, measure = DerivedDataMeasure.NONE) },
-        measureDerivedData = { folder -> runCatching { derivedDataSource.size(folder) } },
+        measureDerivedData = { folders, remeasure -> measureDerivedDataSizes(folders, remeasure) },
         measureCompilationCache = { runCatching { derivedDataSource.compilationCacheBytes() } },
         deleteOrphanedDerivedData = { DeleteOrphanedDerivedDataUseCase(derivedDataSource)() },
         readEmulatorStates = { config, worktrees -> readEmulatorStates(config, worktrees) },
@@ -438,6 +472,7 @@ class AppContainer {
                 TrimDerivedDataUseCase(derivedDataSource, ListDerivedDataUseCase(derivedDataSource))(quotaBytes, worktrees, active, measured = listing).getOrThrow()
             }
         },
+        resolveDerivedDataQuota = { settings, usage -> ResolveDerivedDataQuotaUseCase(derivedDataSource)(settings, usage) },
     )
 
     val pathExists: (String) -> Boolean = fileManager::exists
@@ -458,7 +493,7 @@ class AppContainer {
         return registration.getOrNull() is ProjectRegistration.Added
     }
 
-    fun multirepoNameOfWorkspace(topLevel: String): String? = knownMultirepos().withWorkspaceAt(topLevel)?.name
+    fun multirepoNameOfWorkspace(topLevel: String): String? = resolveMultirepo.approved().withWorkspaceAt(topLevel)?.name
 
     val multirepoActions = MultirepoActions(
         createGroup = { members, taskId, branchType, fetch, onRepository ->
@@ -472,6 +507,7 @@ class AppContainer {
             )(members, taskId, branchType, fetch, onRepository)
         },
         openAgent = { multirepo -> OpenMultirepoAgentInHerdrUseCase(herdrClient)(multirepo) },
+        trust = { multirepo -> configureMultirepo.trust(multirepo) },
     )
 
     val multirepoSetup: MultirepoSetup = object : MultirepoSetup {
@@ -503,6 +539,8 @@ class AppContainer {
             runCatching { multirepoSource.read(folder) }.getOrNull()?.let { resolveMultirepo.build(folder, it) }
 
         override suspend fun init(folder: String): Result<Multirepo> = withContext(Dispatchers.IO) { configureMultirepo.init(folder, null) }
+
+        override suspend fun trust(multirepo: Multirepo): Result<Multirepo> = withContext(Dispatchers.IO) { configureMultirepo.trust(multirepo) }
 
         override suspend fun addRepository(multirepo: Multirepo, alias: String, path: String, useProposedFolder: Boolean): Result<AddedRepository> =
             withContext(Dispatchers.IO) {
@@ -662,7 +700,7 @@ class AppContainer {
                 }
             },
             supported = derivedDataSource::isSupported,
-            list = ListDerivedDataUseCase(derivedDataSource),
+            list = ListDerivedDataUseCase(derivedDataSource, derivedDataSizes),
             deleteOrphans = DeleteOrphanedDerivedDataUseCase(derivedDataSource),
         ),
     )
@@ -753,7 +791,7 @@ class MachineUseCases(
     val listDaemons: suspend () -> Result<List<DaemonProcess>>,
     val stopDaemons: suspend (List<Long>?) -> Result<DaemonStopReport>,
     val listDerivedData: suspend () -> Result<DerivedDataListing>,
-    val measureDerivedData: suspend (DerivedDataFolder) -> Result<Long>,
+    val measureDerivedData: (List<DerivedDataFolder>, Boolean) -> Flow<MeasuredSize>,
     val measureCompilationCache: suspend () -> Result<Long?>,
     val deleteOrphanedDerivedData: suspend () -> Result<DerivedDataDeletion>,
     val readEmulatorStates: suspend (ProjectConfig, List<Worktree>) -> Result<Map<String, WorktreeEmulator>>,
@@ -771,6 +809,8 @@ class MachineUseCases(
     val deleteSimulators: suspend (List<String>) -> Result<List<String>>,
     val trimDerivedData: suspend (Long, List<MachineProject>, DerivedDataListing) -> Result<DerivedDataTrim> =
         { quotaBytes, _, _ -> Result.success(DerivedDataTrim(quotaBytes, 0L, 0L)) },
+    val resolveDerivedDataQuota: suspend (ResourceSettings, Long) -> DerivedDataQuota =
+        { settings, _ -> DerivedDataQuota(settings.quotaMode, settings.fixedDerivedDataQuotaBytes.takeIf { settings.quotaMode == DerivedDataQuotaMode.FIXED }) },
     val listMavenDaemons: suspend () -> Result<List<MavenDaemonProcess>> = { Result.success(emptyList()) },
     val listComposeProjects: suspend (ProjectConfig, List<Worktree>, String?) -> Result<List<WorktreeComposeProject>> =
         { _, _, _ -> Result.success(emptyList()) },

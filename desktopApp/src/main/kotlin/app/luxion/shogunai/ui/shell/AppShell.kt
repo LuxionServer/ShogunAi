@@ -42,6 +42,7 @@ import app.luxion.shogunai.ui.isMacOs
 import app.luxion.shogunai.ui.components.FocusRingWidth
 import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.PrimaryButton
+import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.ErrorFixActions
 import app.luxion.shogunai.ui.components.ErrorNotice
@@ -85,6 +86,7 @@ fun AppShell(
     messages: AppMessages = rememberAppMessages(),
 ) {
     var projectPendingRemoval by remember { mutableStateOf<Project?>(null) }
+    val copiedMessage = LocalStrings.current.copied
     val board = viewModel {
         WorktreeBoard(
             useCasesFor = appContainer::worktreeUseCases,
@@ -194,6 +196,7 @@ fun AppShell(
                             total + ProjectActivity(board.activeCountOf(project.id), board.agentNamesOf(project.id))
                         },
                         collapsed = membership.folder in viewModel.collapsedMultirepos,
+                        needsReview = !membership.multirepo.approved,
                     )
                 },
                 selectedMultirepo = viewModel.destination?.referencedMultirepo,
@@ -206,7 +209,17 @@ fun AppShell(
             Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
                 appContainer.updates.notice?.let { UpdateNotice(appContainer.updates, Modifier.padding(Spacing.md)) }
                 LaunchedEffect(Unit) { appContainer.claudeHooks.refresh() }
+                TourNotice(appContainer.tour, viewModel.projects.isNotEmpty(), Modifier.padding(Spacing.md))
                 ClaudeHooksNotice(appContainer.claudeHooks, board.hasClaudeWithoutState, Modifier.padding(Spacing.md))
+                tourProjectShown(appContainer, viewModel)?.let { project ->
+                    TourBanner(
+                        state = appContainer.tour,
+                        project = project,
+                        onEnded = viewModel::refresh,
+                        agentChoices = { shown, onLaunched -> TourAgentChoices(board, shown, onLaunched) { messages.show(copiedMessage) } },
+                        modifier = Modifier.padding(Spacing.md),
+                    )
+                }
                 Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     val fixActions = remember(viewModel, onOpenPreferences) {
                         ErrorFixActions(
@@ -234,6 +247,16 @@ fun AppShell(
     }
 
     UpdateCheckDialog(appContainer.updates)
+
+    TourDialog(
+        state = appContainer.tour,
+        hooks = appContainer.claudeHooks,
+        onShowProject = { project ->
+            viewModel.refresh()
+            viewModel.selectProject(project)
+        },
+        agentChoices = { project, onLaunched -> TourAgentChoices(board, project, onLaunched) { messages.show(copiedMessage) } },
+    )
 
     if (viewModel.isPaletteOpen) {
         PaletteHost(viewModel, board, machine, messages, onOpenPreferences)
@@ -331,7 +354,7 @@ private fun runPaletteAction(
 private fun ShellContent(appContainer: AppContainer, viewModel: ShellViewModel, board: WorktreeBoard, machine: MachineResources) {
     val refreshBoard: (String) -> Unit = { projectId -> board.holder(projectId)?.refresh() }
     when (val destination = viewModel.destination) {
-        null -> EmptyState(onAddProject = viewModel::addProject)
+        null -> EmptyState(onAddProject = viewModel::addProject, onTakeTour = appContainer.tour::start)
         ShellDestination.Active -> WorktreeView(destination, viewModel, board)
         is ShellDestination.All -> WorktreeView(destination, viewModel, board)
         is ShellDestination.ProjectSettings -> viewModel.projectFor(destination)?.let { project ->
@@ -411,6 +434,7 @@ private fun WorktreeView(destination: ShellDestination, shellViewModel: ShellVie
         onOpenMachine = shellViewModel::selectMachine,
         onOpenMultirepoSettings = { (destination as? ShellDestination.MultirepoView)?.let { shellViewModel.editMultirepo(it.folder) } },
         onOpenGroup = { tag -> shellViewModel.selectMultirepo(tag.multirepoFolder, tag.branch) },
+        onMultirepoTrusted = shellViewModel::onMultirepoChanged,
     )
 }
 
@@ -465,7 +489,7 @@ private fun ProjectForm(
 }
 
 @Composable
-private fun EmptyState(onAddProject: () -> Unit) {
+internal fun EmptyState(onAddProject: () -> Unit, onTakeTour: () -> Unit) {
     val strings = LocalStrings.current
     Box(modifier = Modifier.fillMaxSize().padding(Spacing.xl), contentAlignment = Alignment.Center) {
         Column(
@@ -480,7 +504,10 @@ private fun EmptyState(onAddProject: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
-            PrimaryButton(onClick = onAddProject) { Text(strings.addProject) }
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                PrimaryButton(onClick = onAddProject) { Text(strings.addProject) }
+                SecondaryButton(onClick = onTakeTour) { Text(strings.tourTakeTour) }
+            }
         }
     }
 }
@@ -507,4 +534,9 @@ private fun RemoveProjectDialog(project: Project, onConfirm: () -> Unit, onDismi
         confirmButton = { DangerButton(onClick = onConfirm) { Text(strings.remove) } },
         dismissButton = { NeutralTextButton(onClick = onDismiss) { Text(strings.cancel) } },
     )
+}
+
+private fun tourProjectShown(appContainer: AppContainer, viewModel: ShellViewModel): Project? {
+    val projectId = (viewModel.destination as? ShellDestination.All)?.projectFilter ?: return null
+    return viewModel.projects.firstOrNull { it.id == projectId }?.takeIf(appContainer.tourLocation::isTour)
 }

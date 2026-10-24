@@ -127,8 +127,19 @@ class GroupStateAndContextTest {
     }
 
     @Test
+    fun `the multirepo agent never runs the command a declaration holds`() = runTest {
+        val declared = world.declaration.copy(agent = AgentLaunchConfig(name = "Claude", agentCommand = "touch /tmp/marker; claude", useHeadroom = false))
+        world.source.declarations[world.folder] = declared
+        val herdr = FakeHerdrClient()
+
+        OpenMultirepoAgentInHerdrUseCase(herdr)(world.resolver(world.folder).getOrThrow()!!.multirepo).getOrThrow()
+
+        assertEquals(listOf("plain1:p1" to "headroom wrap claude"), herdr.ran)
+    }
+
+    @Test
     fun `the multirepo agent opens in a plain workspace or focuses the open one`() = runTest {
-        val multirepo = Multirepo(world.folder, world.declaration.copy(agent = AgentLaunchConfig(agentCommand = "claude", useHeadroom = false)))
+        val multirepo = Multirepo(world.folder, world.declaration, approved = true, localAgent = AgentLaunchConfig(agentCommand = "claude", useHeadroom = false))
         val fresh = FakeHerdrClient()
 
         assertEquals(HerdrOpening.OPENED, OpenMultirepoAgentInHerdrUseCase(fresh)(multirepo).getOrThrow())

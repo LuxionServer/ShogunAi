@@ -2,6 +2,18 @@
 
 La app de escritorio gestiona un catálogo de proyectos y, para cada uno, sus worktrees. Todo lo que hace está disponible también desde el [comando `shogun`](cli.md).
 
+## Recorrido guiado
+
+El primer arranque, sin proyectos todavía, ofrece **Hacer el recorrido** junto a "Añadir proyecto", y Ayuda > **Recorrido de ShogunAi** lo inicia en cualquier momento. Si ya tenías proyectos al actualizar, un aviso lo ofrece una vez.
+
+El recorrido:
+
+1. Ofrece instalar el [comando `shogun`](installation.md#el-comando-shogun) si aún no está en tu `PATH`, porque lo usan los agentes y los hooks de Claude Code. Puedes saltarlo.
+2. Crea un repositorio de ejemplo desechable en `~/.shogunai/tour`, con un remoto local, un [`.shogunai.json`](configuration.md#configuracion-del-repositorio-shogunaijson) y worktrees en cada estado que muestra la lista ("Te necesitan", "Nuevos", "Parados", "Fusionados", "Inactivos", uno bloqueado y "Carpeta no encontrada"), y lo registra como el proyecto "ShogunAi tour".
+3. Abre el agente del recorrido en el worktree principal del ejemplo, en la terminal, Herdr o Claude Desktop, o copia su comando de arranque. El agente es Claude Code (Codex desde el menú de agentes), arrancado con "Start the ShogunAi tour"; el guion que sigue es el `AGENTS.md` del ejemplo, y habla el idioma de la app. Recorre estado, limpieza, aprovisionamiento, la línea de comandos, hooks, entorno y providers paso a paso, esperándote entre pasos, y no cambia nada fuera de `~/.shogunai/tour`. Antes de empezar, el agente pregunta si confías en la carpeta del ejemplo: acéptalo («Yes, I trust this folder» en Claude Code).
+
+Mientras exista el ejemplo, su proyecto muestra un banner para volver a abrir el agente o **Terminar recorrido**, que elimina el proyecto, sus worktrees y `~/.shogunai/tour` tras preguntar. Volver a iniciar el recorrido ofrece abrir el ejemplo existente o reiniciarlo desde cero.
+
 ## Proyectos
 
 La primera vez que abres la app verás el catálogo de proyectos vacío. Pulsa "Nuevo proyecto" (Cmd+N en macOS, Ctrl+N en los demás) y rellena:
@@ -31,6 +43,8 @@ La cabecera tiene "Nuevo cambio", que crea el grupo en los repositorios marcados
 Cuando la carpeta del multirepo es un repositorio Git, es el repositorio de workspace del multirepo: sus worktrees se listan bajo el multirepo (no como un proyecto suelto, y ShogunAi registra su proyecto una sola vez por ti), "Nuevo cambio" lo lista como `workspace` y "Añadir proyecto" o soltar la carpeta explica que ya pertenece al multirepo en vez de añadirla. La vista del multirepo muestra el agente del multirepo, el que corre en la carpeta, con su estado junto a "Abrir agente del multirepo en Herdr", y la fila del multirepo en la barra lateral refleja su actividad; un agente que corre en un repositorio miembro aparece, en cambio, en el worktree de ese repositorio.
 
 Los ajustes tienen una sección "Repositorio workspace" cuando la carpeta es un repositorio Git: aparece marcado como detectado hasta que lo declaras, con una casilla para declararlo, un campo para su alias, un botón "Desactivar" para dejar de tratar la carpeta como repositorio del multirepo, y figura entre los repositorios predeterminados. También añaden, renombran y quitan repositorios, eligen los repositorios predeterminados, fijan la carpeta de worktrees que se propone a los repositorios que se añadan después, editan el agente del multirepo con los mismos campos que el agente de un proyecto y eliminan el multirepo, lo que borra solo la declaración. Los cambios hechos con `shogun multirepo` aparecen en el siguiente refresco de la app.
+
+ShogunAi solo usa un multirepo aprobado en este equipo (ver [Aprobar un multirepo](multirepo.md#aprobar-un-multirepo)). Cuando la carpeta que añades ya tiene una declaración, por ejemplo un repositorio de workspace clonado, el diálogo también lista sus repositorios con la ruta a la que apunta cada uno, su carpeta de worktrees y su repositorio de workspace, marcando cualquier ruta fuera de la carpeta padre; al confirmar se aprueba. Un multirepo cuya declaración ha cambiado fuera de ShogunAi, o que registró una versión anterior, sigue en la barra lateral con una marca de aviso y sus repositorios aparecen como proyectos sueltos. Su vista muestra la misma revisión con "Confiar" en lugar de sus grupos, y "Nuevo cambio", "Abrir agente del multirepo en Herdr", "Limpiar" y guardar sus ajustes quedan desactivados hasta que confíes en él. El agente del multirepo que editas en los ajustes se guarda en este equipo, nunca en la declaración; un `agent` que haya dejado en la declaración una versión anterior se ignora, y los ajustes lo indican.
 
 ## Crear un worktree
 
@@ -105,7 +119,7 @@ Eliminar un worktree abierto en Herdr cierra también su espacio de trabajo de H
 
 ## Secciones de los providers
 
-En repositorios que los declaran en `.shogunai.json`, la pantalla de worktrees añade una sección "Daemons de Gradle" y otra "DerivedData de Xcode". Las carpetas de DerivedData se listan enseguida y muestran "Calculando…" en sus tamaños hasta que se miden en segundo plano. Con una cuota de DerivedData fijada en Preferencias > Recursos, la vista muestra también el uso frente a la cuota y, si se supera, libera las carpetas menos usadas recientemente de los worktrees que no están en uso. Consulta [Providers](providers.md).
+En repositorios que los declaran en `.shogunai.json`, la pantalla de worktrees añade una sección "Daemons de Gradle" y otra "DerivedData de Xcode". Las carpetas de DerivedData se listan enseguida y muestran "Calculando…" en sus tamaños hasta que se miden en segundo plano, salvo las que recuerdan su tamaño de una ejecución anterior. Salvo que elijas "Sin cuota" para DerivedData en Preferencias > Recursos (por defecto, una cuota automática calculada a partir del espacio libre en disco), la vista muestra también el uso frente a la cuota y, si se supera, libera las carpetas menos usadas recientemente de los worktrees que no están en uso. Consulta [Providers](providers.md).
 
 ## Preferencias
 

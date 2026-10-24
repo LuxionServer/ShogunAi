@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.FakeMachineCapacity
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
 import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.CapacityProfile
+import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.ResourceSettings
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.BuildInfo
@@ -1559,9 +1560,14 @@ class ShogunCliTest {
         assertEquals("shogun: couldn't delete ${orphan.path}: can't delete ${orphan.path}\n", err.toString())
     }
 
-    private fun trimSetup(quotaGigabytes: Int?, vararg folders: app.luxion.shogunai.domain.model.DerivedDataFolder): Pair<FakeDerivedDataSource, FakeRepositoryProvisioningSource> {
-        resourceLimits.settings = ResourceSettings(derivedDataQuotaGigabytes = quotaGigabytes)
-        val derivedData = FakeDerivedDataSource(existing = folders.toList(), existingProjects = setOf("$base/App.xcodeproj"))
+    private fun trimSetup(
+        quotaGigabytes: Int?,
+        vararg folders: app.luxion.shogunai.domain.model.DerivedDataFolder,
+        mode: DerivedDataQuotaMode? = null,
+        freeBytes: Long? = null,
+    ): Pair<FakeDerivedDataSource, FakeRepositoryProvisioningSource> {
+        resourceLimits.settings = ResourceSettings(derivedDataQuotaGigabytes = quotaGigabytes, derivedDataQuotaMode = mode)
+        val derivedData = FakeDerivedDataSource(existing = folders.toList(), existingProjects = setOf("$base/App.xcodeproj"), free = freeBytes)
         val provisioning = FakeRepositoryProvisioningSource(
             byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(xcode = XcodeProvider()))),
         )
@@ -1605,9 +1611,52 @@ class ShogunCliTest {
     }
 
     @Test
-    fun `xcode trim says no quota is set and deletes nothing`() {
+    fun `xcode trim applies the automatic quota computed from the free disk space`() {
+        val gigabyte = 1_073_741_824L
+        val orphan = FakeDerivedDataSource.derivedData("Gone-hash", "/home/dev/projects/gone/App.xcodeproj", 30 * gigabyte)
+        val live = FakeDerivedDataSource.derivedData("Live-hash", "$base/App.xcodeproj", 30 * gigabyte)
+        val (derivedData, provisioning) = trimSetup(null, orphan, live, freeBytes = 100 * gigabyte)
+
+        val exitCode = cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData)
+            .run(listOf("xcode", "trim"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf(orphan.path), derivedData.deleted)
+        assertTrue(out.toString().endsWith("usage 30.0 GB of 40.0 GB (automatic)\n"), out.toString())
+    }
+
+    @Test
+    fun `xcode trim json reports the automatic quota mode and size`() {
+        val gigabyte = 1_073_741_824L
+        val live = FakeDerivedDataSource.derivedData("Live-hash", "$base/App.xcodeproj", 30 * gigabyte)
+        val (derivedData, provisioning) = trimSetup(null, live, freeBytes = 100 * gigabyte)
+
+        val exitCode = cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData)
+            .run(listOf("xcode", "trim", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = Json.parseToJsonElement(out.toString()).jsonObject
+        assertEquals("automatic", json.getValue("quotaMode").jsonPrimitive.content)
+        assertEquals((130 * gigabyte / 4).toString(), json.getValue("quotaBytes").jsonPrimitive.content)
+    }
+
+    @Test
+    fun `xcode trim says the automatic quota is unknown when the free space can't be read`() {
         val orphan = FakeDerivedDataSource.derivedData("Gone-hash", "/home/dev/projects/gone/App.xcodeproj")
         val (derivedData, provisioning) = trimSetup(null, orphan)
+
+        val exitCode = cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData)
+            .run(listOf("xcode", "trim"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(derivedData.deleted.isEmpty())
+        assertEquals("The automatic DerivedData quota couldn't be computed: the free disk space is unknown.\n", out.toString())
+    }
+
+    @Test
+    fun `xcode trim says no quota is set and deletes nothing`() {
+        val orphan = FakeDerivedDataSource.derivedData("Gone-hash", "/home/dev/projects/gone/App.xcodeproj")
+        val (derivedData, provisioning) = trimSetup(50, orphan, mode = DerivedDataQuotaMode.NONE)
 
         val exitCode = cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData)
             .run(listOf("xcode", "trim"))

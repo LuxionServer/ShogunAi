@@ -142,6 +142,14 @@ class GuideCommandsTest {
     }
 
     @Test
+    fun `guide resources tells agents to wait for a full pool in the background`() {
+        assertEquals(0, cli(everything()).run(listOf("guide", "resources")))
+
+        assertTrue(out.contains("`shogun emulator start --wait` run in the background"), out.toString())
+        assertTrue(out.contains("`shogun simulator start --wait` run in the background"), out.toString())
+    }
+
+    @Test
     fun `guide marks the rules of an undeclared provider after the others`() {
         assertEquals(0, cli().run(listOf("guide", "resources")))
 

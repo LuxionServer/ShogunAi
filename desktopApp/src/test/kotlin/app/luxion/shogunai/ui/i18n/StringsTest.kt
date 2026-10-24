@@ -14,6 +14,7 @@ import app.luxion.shogunai.ui.worktree.StateGroupKind
 import app.luxion.shogunai.ui.worktree.criterion
 import app.luxion.shogunai.ui.worktree.hint
 import java.io.IOException
+import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -55,6 +56,19 @@ class StringsTest {
         val spanish = SpanishStrings.describe(error)
         assertTrue(spanish.summary.contains("api · TASK-1 (en ejecución)"))
         assertTrue(spanish.nextStep.contains("Preferencias"))
+    }
+
+    @Test
+    fun `a full pool says how many worktrees wait and a timed-out wait names the holders`() {
+        val full = WorktreeError.ResourcePoolFull(ResourceKind.EMULATOR, 2, poolHolders, waiting = 2)
+
+        assertTrue(EnglishStrings.describe(full).summary.contains("2 worktrees are waiting for one"))
+        assertTrue(SpanishStrings.describe(full).summary.contains("2 worktrees esperan uno"))
+
+        val timedOut = WorktreeError.DeviceWaitTimedOut(ResourceKind.EMULATOR, Duration.ofMinutes(30), 2, poolHolders)
+
+        assertTrue(EnglishStrings.describe(timedOut).summary.startsWith("No emulator was freed within 30 min: api · TASK-1"))
+        assertTrue(SpanishStrings.describe(timedOut).summary.startsWith("No se liberó ningún emulador en 30 min"))
     }
 
     private val allStrings = AppLanguage.entries.map { it.strings() }
@@ -164,6 +178,7 @@ class StringsTest {
         WorktreeError.NoFreePort(20000, 29999),
         WorktreeError.NoEmulatorPort(5554, 5584),
         WorktreeError.ResourcePoolFull(ResourceKind.EMULATOR, 2, poolHolders),
+        WorktreeError.DeviceWaitTimedOut(ResourceKind.EMULATOR, Duration.ofMinutes(30), 2, poolHolders),
         WorktreeError.AndroidSdkNotFound(listOf("ANDROID_HOME (/opt/sdk)")),
         WorktreeError.NoAvdAvailable,
         WorktreeError.EmulatorBootTimeout("emulator-5556", 180),

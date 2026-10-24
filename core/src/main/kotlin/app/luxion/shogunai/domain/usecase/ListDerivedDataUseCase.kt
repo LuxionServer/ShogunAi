@@ -1,34 +1,46 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.io.DerivedDataSizeStore
 import app.luxion.shogunai.domain.io.DerivedDataSource
 import app.luxion.shogunai.domain.model.AttributedDerivedData
 import app.luxion.shogunai.domain.model.DerivedDataListing
 import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.Worktree
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.toList
 
 enum class DerivedDataMeasure { NONE, ORPHANS, ALL }
 
 class ListDerivedDataUseCase(
     private val source: DerivedDataSource,
+    sizes: DerivedDataSizeStore = DerivedDataSizeStore.NONE,
 ) {
+    private val measureSizes = MeasureDerivedDataUseCase(source, sizes)
+
     suspend operator fun invoke(
         worktrees: List<Worktree>,
         includeCompilationCache: Boolean,
         measure: DerivedDataMeasure,
     ): Result<DerivedDataListing> = runCatching {
-        DerivedDataListing(
-            folders = source.folders().map { folder ->
-                val owner = ownerOf(folder.workspacePath, worktrees)
-                val shouldMeasure = when (measure) {
+        coroutineScope {
+            val compilationCache = async { if (includeCompilationCache) source.compilationCacheBytes() else null }
+            val attributed = source.folders().map { folder -> AttributedDerivedData(folder, ownerOf(folder.workspacePath, worktrees)) }
+            val toMeasure = attributed.filter { entry ->
+                when (measure) {
                     DerivedDataMeasure.NONE -> false
-                    DerivedDataMeasure.ORPHANS -> owner == DerivedDataOwner.Orphaned
+                    DerivedDataMeasure.ORPHANS -> entry.owner == DerivedDataOwner.Orphaned
                     DerivedDataMeasure.ALL -> true
                 }
-                val measured = if (shouldMeasure) folder.copy(sizeBytes = source.size(folder)) else folder
-                AttributedDerivedData(measured, owner)
-            },
-            compilationCacheBytes = if (includeCompilationCache) source.compilationCacheBytes() else null,
-        )
+            }.map { it.folder }
+            val measured = measureSizes(toMeasure).toList().associate { it.path to (it.sizeBytes ?: 0L) }
+            DerivedDataListing(
+                folders = attributed.map { entry ->
+                    measured[entry.folder.path]?.let { entry.copy(folder = entry.folder.copy(sizeBytes = it)) } ?: entry
+                },
+                compilationCacheBytes = compilationCache.await(),
+            )
+        }
     }
 
     private fun ownerOf(workspacePath: String, worktrees: List<Worktree>): DerivedDataOwner =

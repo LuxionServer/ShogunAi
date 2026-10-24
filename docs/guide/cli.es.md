@@ -29,6 +29,7 @@ La salida es texto plano en inglés; los scripts deben usar `--json`, que acepta
 | `1` | La operación falló; el motivo va a la salida de error. Los fallos que un comando no trata de forma específica se imprimen en una sola línea que empieza por `shogun:`, nunca como un stack trace. |
 | `2` | Uso incorrecto: comando u opción desconocidos, argumento que falta, o entrada de un hook que no es el JSON esperado. |
 | `3` | `provision --check` encontró diferencias entre el worktree y el repositorio base. |
+| `130` | El comando se interrumpió (Ctrl+C o una señal de terminación) y se detuvo limpiamente, por ejemplo saliendo de la cola de un `start --wait`. |
 
 ## Worktrees
 
@@ -240,6 +241,7 @@ En la carpeta de un multirepo (ver [Multirepos y grupos](multirepo.md)), `new`, 
 ```text
 shogun multirepo init [--worktrees-root <dir>]
 shogun multirepo show
+shogun multirepo trust [<carpeta>] [--yes | --revoke]
 shogun multirepo add-repo <alias> <ruta> [--use-worktrees-root | --keep-worktrees-folder]
 shogun multirepo remove-repo <alias>
 shogun multirepo defaults <alias>[,<alias>...] | --clear
@@ -253,6 +255,9 @@ shogun open --herdr
 ```
 
 - Los subcomandos de `multirepo` funcionan en la carpeta del multirepo o en cualquier parte de sus repositorios y worktrees, y aceptan `--json`; fuera de un multirepo salen con `1`. Un alias incorrecto sale con `2`.
+- Solo se aplican los multirepos aprobados en este equipo ([Aprobar un multirepo](multirepo.md#aprobar-un-multirepo)). Bajo una declaración sin aprobar, `new`, `status`, `open` y `clean` se comportan como fuera de un multirepo e imprimen en la salida de error un aviso con el archivo y `shogun multirepo trust`; los hooks no imprimen nada. `multirepo show` lo sigue mostrando, con `not approved on this machine` (`"approved": false` en `--json`); los subcomandos que escriben salen con `1`.
+- `multirepo trust` muestra la declaración más cercana (o la de `<carpeta>`): cada repositorio con su ruta resuelta, la carpeta de worktrees y el repositorio de workspace, marcando las rutas fuera de la carpeta padre. En un terminal pregunta (`[y/N]`) y aprueba si respondes que sí; `--yes` aprueba sin preguntar; sin terminal y sin `--yes` sale con `1`. `--revoke` olvida el multirepo y conserva el archivo. Su objeto `--json` tiene `path`, `declaration`, `approved`, `changed`, `repos` (con `outsideParent`), `worktreesRoot`, `worktreesRootOutsideParent`, `workspace` e `ignoredDeclaredAgent`; sin `--yes` solo informa.
+- `multirepo agent` guarda el agente del multirepo en este equipo, nunca en la declaración; un `agent` que haya dejado en la declaración una versión anterior se ignora, y `show` lo indica (`ignoredDeclaredAgent` en `--json`).
 - `new <id>` en la carpeta del multirepo cubre los repositorios por defecto, o `--repos` desde cualquier parte del multirepo; imprime la ruta de cada worktree que crea en la salida estándar y una línea por repositorio en la salida de error, y sale con `1` si algún repositorio falló. `--branch`, `--from` y `--worktrees-root` no se aplican a un grupo y salen con `2`. Su objeto `--json` tiene la `branch` y una lista `repos` con `alias`, `path`, `result` (`created`, `existing` o `failed`), los comandos de post-creación omitidos y `error`.
 - Cuando la carpeta del multirepo es un repositorio Git, es el repositorio de workspace del multirepo (alias `workspace` salvo que se declare otro): `show` lo lista, marcado `detected` hasta que `workspace set` lo declara (`--alias` lo renombra, `--default` lo añade a los repositorios por defecto) y `workspace clear` desactiva la detección; en una carpeta que no es un repositorio `workspace set` sale con `1`. `new <id> --repos workspace,app` lo incluye, con su worktree en `<worktreesRoot>/workspace/<id>`. `project add` y `app` ejecutados en esa carpeta registran el repositorio de workspace como miembro del multirepo y ningún proyecto propio de la carpeta (`app` solo abre la app), salvo que la detección esté desactivada. El `--json` de `show` marca cada repositorio con `workspace` y `detected`.
 - `status` en la carpeta del multirepo imprime la rama de cada grupo seguida de una línea por repositorio, y después `ungrouped`; `--json` imprime `groups` (cada uno con `branch`, `title` y `repos` con `alias`, `path`, `branch`, `base`, `folderMissing`, `uncommittedChanges`, `ahead`, `behind`, `merged`, `agents`), `ungrouped` y `failures`.
@@ -344,19 +349,21 @@ shogun compose down [<worktree>] [--volumes]
 ### `emulator`
 
 ```text
-shogun emulator start|stop|status [<path>] [--avd <name>] [--no-window]
+shogun emulator start|stop|status [<path>] [--avd <name>] [--no-window] [--wait] [--wait-timeout <minutes>]
 ```
 
 Arranca (y espera a), para o muestra el emulador de Android del worktree. `--avd` y `--no-window` solo se aplican a `start` y sustituyen los ajustes del proyecto en ese arranque. `status` imprime `emulator-5556 running|booting|stopped`, o `not acquired` antes del primer arranque. Cada `start` renueva la concesión del worktree e imprime `export ANDROID_SERIAL=…` con el serial que hay que usar. El primer `start` reserva el puerto de consola (liberando un emulador con la concesión caducada si el pool está lleno, lo que se informa por la salida de errores); ejecútalo antes de cada uso del dispositivo, ya que adquiere uno de nuevo si fue liberado. Tras una liberación, `status` imprime `not acquired (released for <worktree> at <hora>)`. Con todos los emuladores protegidos falla con el código de salida `1` nombrando los worktrees que los tienen y cuándo caducan sus concesiones.
 
+Con `--wait`, `start` espera en cola en vez de fallar cuando el pool está lleno y no se puede liberar ninguno, y arranca el emulador en cuanto puede adquirir uno. La espera dura como mucho 30 minutos, o los minutos indicados con `--wait-timeout` (que implica `--wait`); después falla con el código de salida `1`, diciendo cuánto esperó y quién tiene los emuladores, sin haber reservado nada. Quienes esperan un pool se atienden por orden de llegada en todos los repositorios de la máquina, y mientras alguien espera, un `start` sin `--wait` (o desde la app de escritorio) no puede quedarse con el emulador que esperan: su error dice cuántos esperan. Quien espera y se interrumpe, o cuyo proceso termina, sale de la cola. Mientras espera, el comando imprime por la salida de errores su puesto en la cola, quién tiene cada emulador y cuándo caduca la próxima concesión, de nuevo solo cuando eso cambia, y `waited <tiempo>` cuando ya tiene el emulador. Los agentes deben ejecutar un `start` que espera en segundo plano, porque dura más que el límite de tiempo de su shell. `--wait` y `--wait-timeout` solo se aplican a `start`.
+
 ### `simulator`
 
 ```text
-shogun simulator start|stop|status [<path>] [--device <type>] [--runtime <runtime>]
+shogun simulator start|stop|status [<path>] [--device <type>] [--runtime <runtime>] [--wait] [--wait-timeout <minutes>]
 shogun simulator gradle-init install|uninstall [--yes|-y]
 ```
 
-Crea si hace falta, arranca (y espera a) y abre, apaga o muestra el simulador de iOS del worktree (solo macOS). `--device` y `--runtime` solo se aplican cuando `start` crea el simulador. En un repositorio Kotlin Multiplatform, `status` dice además si los tests de KMP usan el simulador.
+Crea si hace falta, arranca (y espera a) y abre, apaga o muestra el simulador de iOS del worktree (solo macOS). `--device` y `--runtime` solo se aplican cuando `start` crea el simulador. `--wait` y `--wait-timeout` esperan a un pool de simuladores lleno igual que en [`emulator`](#emulator). En un repositorio Kotlin Multiplatform, `status` dice además si los tests de KMP usan el simulador.
 
 `gradle-init install` instala un init script de Gradle para toda la máquina que hace que los tests de simulador KMP de todos los proyectos usen el simulador del worktree; muestra el script y pregunta `[y/N]` salvo con `--yes`. `uninstall` lo elimina.
 
@@ -367,7 +374,7 @@ shogun pool status [--json]
 shogun pool trim [--json]
 ```
 
-`status` imprime cada pool (`emulators 1/2`, `simulators 0/1`, `gradle daemons 3/2  over the limit`) con el límite del perfil de capacidad de la máquina y, debajo, el proyecto, el worktree y el estado de cada recurso en uso. `trim` detiene los daemons de Gradle inactivos, primero los que llevan más tiempo inactivos, hasta quedar dentro del límite, e imprime lo que detuvo y conservó.
+`status` imprime cada pool (`emulators 1/2`, `simulators 0/1`, `gradle daemons 3/2  over the limit`) con el límite del perfil de capacidad de la máquina y, debajo, el proyecto, el worktree y el estado de cada recurso en uso, seguidos de los worktrees que esperan un emulador o un simulador (`waiting: main-repo · TASK-2 since 14:10`), en el orden de la cola. `trim` detiene los daemons de Gradle inactivos, primero los que llevan más tiempo inactivos, hasta quedar dentro del límite, e imprime lo que detuvo y conservó.
 
 ### `xcode`
 
@@ -379,7 +386,7 @@ shogun xcode trim [--dry-run]
 
 `xcode` lista las carpetas de DerivedData de los worktrees del repositorio con su tamaño, las carpetas huérfanas de la máquina (`orphans: N (tamaño)`) y, cuando se declara la caché de compilación, su tamaño. `xcode clean` borra las carpetas huérfanas (`deleted <path>`, `freed <tamaño>`, o `Nothing to delete.`). Sin el provider de Xcode, o fuera de macOS, dice que el provider no está activo y sale con `0`.
 
-`xcode trim` aplica la cuota de DerivedData fijada en Preferencias > Recursos: cuando las carpetas suman más que la cuota, libera primero las carpetas huérfanas y después las de los worktrees de tus proyectos guardados que no están en uso, de la menos a la más recientemente accedida, y se detiene en cuanto el total cabe (`released <path>  <tamaño>`, `freed <tamaño>`, `usage <tamaño> of <cuota>`). Un worktree está en uso mientras su agente trabaja o está bloqueado, o su carpeta se accedió hace menos de una hora, y nunca se liberan las carpetas de otros proyectos, de volúmenes no disponibles ni la caché de compilación; si solo quedan esas, imprime `quota still exceeded` y los worktrees en uso. `--dry-run` imprime `would release` y `would free` sin borrar. Sin cuota lo dice y no borra nada.
+`xcode trim` aplica la cuota de DerivedData fijada en Preferencias > Recursos, automática por defecto (una cuarta parte del espacio libre en disco más lo que ocupa DerivedData, entre 20 y 200 GB): cuando las carpetas suman más que la cuota, libera primero las carpetas huérfanas y después las de los worktrees de tus proyectos guardados que no están en uso, de la menos a la más recientemente accedida, y se detiene en cuanto el total cabe (`released <path>  <tamaño>`, `freed <tamaño>`, `usage <tamaño> of <cuota>`, seguido de `(automatic)` con la cuota automática). Un worktree está en uso mientras su agente trabaja o está bloqueado, o su carpeta se accedió hace menos de una hora, y nunca se liberan las carpetas de otros proyectos, de volúmenes no disponibles ni la caché de compilación; si solo quedan esas, imprime `quota still exceeded` y los worktrees en uso. `--dry-run` imprime `would release` y `would free` sin borrar. Con «Sin cuota» lo dice y no borra nada, y cuando la cuota automática no se puede calcular porque no se conoce el espacio libre en disco, lo dice en su lugar. Los comandos `xcode` recuerdan el tamaño de cada carpeta entre ejecuciones, compartido con la app, y solo vuelven a medir, varias a la vez, las carpetas que Xcode ha usado desde entonces.
 
 ## Salida JSON
 
@@ -416,9 +423,9 @@ Las reglas son las mismas para todos:
 | `compose down` | `takenDown` (nombres de proyecto) y `failures`: `{ name, message }`. El código de salida es `1` si `failures` no está vacío. |
 | `xcode` | `active` (`false` si el provider no está activo, con el resto vacío), `folders`: `{ path, sizeBytes, worktree }`, `orphans`: `{ path, sizeBytes }`, `unavailableVolumeFolders` (un número) y `compilationCacheBytes` (`null` salvo que esté declarada). |
 | `xcode clean` | `active`, `deleted` (rutas), `freedBytes` y `failures`: `{ path, message }`. |
-| `xcode trim` | `active`, `quotaBytes` (`null` sin cuota), `dryRun`, `usageBeforeBytes`, `usageAfterBytes`, `exceeded`, `released` (rutas; con `--dry-run`, las que se liberarían), `freedBytes`, `inUse` (rutas de worktrees) y `failures`: `{ path, message }`. |
-| `emulator start\|stop\|status` | `worktree`, `serial` y `state` (`running`, `booting` o `stopped`). `serial` y `state` son `null` si el worktree aún no tiene puerto de emulador reservado. |
-| `simulator start\|stop\|status` | `worktree`, `udid`, `name` y `state` (`shutdown`, `booting` o `booted`), `null` si el worktree aún no tiene simulador. El aviso sobre los tests KMP no forma parte. |
+| `xcode trim` | `active`, `quotaMode` (`automatic`, `fixed` o `none`), `quotaBytes` (`null` sin cuota o cuando la automática no se puede calcular), `dryRun`, `usageBeforeBytes`, `usageAfterBytes`, `exceeded`, `released` (rutas; con `--dry-run`, las que se liberarían), `freedBytes`, `inUse` (rutas de worktrees) y `failures`: `{ path, message }`. |
+| `emulator start\|stop\|status` | `worktree`, `serial` y `state` (`running`, `booting` o `stopped`). `serial` y `state` son `null` si el worktree aún no tiene puerto de emulador reservado. `waited` son los segundos enteros que un `start --wait` esperó capacidad (`0` si había sitio), `null` en otro caso. |
+| `simulator start\|stop\|status` | `worktree`, `udid`, `name` y `state` (`shutdown`, `booting` o `booted`), `null` si el worktree aún no tiene simulador, y `waited` como en `emulator`. El aviso sobre los tests KMP no forma parte. |
 
 ```bash
 shogun clean --json | jq -r '.candidates[].path'

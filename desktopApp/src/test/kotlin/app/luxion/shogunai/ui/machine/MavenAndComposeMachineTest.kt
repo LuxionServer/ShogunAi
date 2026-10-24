@@ -20,6 +20,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
@@ -66,7 +67,7 @@ class MavenAndComposeMachineTest {
         listDaemons = { Result.success(emptyList()) },
         stopDaemons = { Result.success(app.luxion.shogunai.domain.model.DaemonStopReport()) },
         listDerivedData = { Result.success(DerivedDataListing(emptyList(), null)) },
-        measureDerivedData = { Result.success(0L) },
+        measureDerivedData = { _, _ -> emptyFlow() },
         measureCompilationCache = { Result.success(null) },
         deleteOrphanedDerivedData = { Result.success(DerivedDataDeletion()) },
         readEmulatorStates = { _, _ -> Result.success(emptyMap()) },

@@ -58,6 +58,7 @@ import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.machine.MachineResource
 import app.luxion.shogunai.ui.multirepo.MultirepoNotice
+import app.luxion.shogunai.ui.multirepo.MultirepoReviewPane
 import app.luxion.shogunai.ui.multirepo.NewChangeDialog
 import app.luxion.shogunai.ui.multirepo.multirepoNoticeMessage
 import app.luxion.shogunai.ui.shell.LocalAppMessages
@@ -73,6 +74,7 @@ fun WorktreeScreen(
     onOpenMachine: (MachineResource) -> Unit,
     onOpenMultirepoSettings: () -> Unit = {},
     onOpenGroup: (GroupTag) -> Unit = {},
+    onMultirepoTrusted: () -> Unit = {},
 ) {
     val strings = LocalStrings.current
     DisposableEffect(board) {
@@ -93,6 +95,7 @@ fun WorktreeScreen(
     }
     val filteredProject = board.shownProjects.singleOrNull()?.takeIf { board.isProjectView }
     val multirepo = board.shownMultirepo
+    val needsReview = multirepo?.multirepo?.approved == false
 
     Column(
         modifier = Modifier
@@ -127,13 +130,13 @@ fun WorktreeScreen(
                     Text(strings.agentLabel(agent.name, agent.state), style = MaterialTheme.typography.bodySmall)
                 }
                 IconAction(icon = Icons.Default.Settings, label = strings.multirepoSettingsTitle, onClick = onOpenMultirepoSettings)
-                SecondaryButton(onClick = board::openMultirepoAgent, enabled = !board.isOpeningMultirepoAgent) {
+                SecondaryButton(onClick = board::openMultirepoAgent, enabled = !needsReview && !board.isOpeningMultirepoAgent) {
                     Text(strings.openMultirepoAgent)
                 }
             }
-            DangerTextButton(onClick = { board.openCleanup() }, enabled = board.canCleanUp()) { Text(strings.cleanUp) }
+            DangerTextButton(onClick = { board.openCleanup() }, enabled = !needsReview && board.canCleanUp()) { Text(strings.cleanUp) }
             if (multirepo != null) {
-                PrimaryButton(onClick = board::openNewChange, enabled = multirepo.aliases.isNotEmpty()) {
+                PrimaryButton(onClick = board::openNewChange, enabled = !needsReview && multirepo.aliases.isNotEmpty()) {
                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(ButtonIconSize))
                     Text(strings.newChange, modifier = Modifier.padding(start = Spacing.sm))
                 }
@@ -170,7 +173,16 @@ fun WorktreeScreen(
             }
         }
 
-        WorktreeContent(board, onOpenProjectSettings, onSeeAll, onOpenMachine, modifier = Modifier.weight(1f).fillMaxWidth(), onOpenGroup = onOpenGroup)
+        if (needsReview) {
+            MultirepoReviewPane(
+                multirepo.multirepo,
+                isTrusting = board.isTrustingMultirepo,
+                onTrust = { board.trustShownMultirepo(onMultirepoTrusted) },
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            )
+        } else {
+            WorktreeContent(board, onOpenProjectSettings, onSeeAll, onOpenMachine, modifier = Modifier.weight(1f).fillMaxWidth(), onOpenGroup = onOpenGroup)
+        }
     }
 
     if (board.isCreateDialogOpen) {

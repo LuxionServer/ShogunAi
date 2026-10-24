@@ -31,6 +31,7 @@ import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.WorktreeEmulator
+import app.luxion.shogunai.domain.model.WaitTicket
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.usecase.GradleTrim
@@ -469,6 +470,7 @@ fun xcodeCleanJson(active: Boolean, deletion: DerivedDataDeletion?): JsonObject 
 
 fun xcodeTrimJson(active: Boolean, trim: DerivedDataTrim?): JsonObject = buildJsonObject {
     put("active", active)
+    put("quotaMode", trim?.quotaMode?.name?.lowercase())
     put("quotaBytes", trim?.quotaBytes)
     put("dryRun", trim?.dryRun ?: false)
     put("usageBeforeBytes", trim?.usageBefore ?: 0L)
@@ -504,6 +506,7 @@ fun emulatorJson(
     put("acquired", emulator != null)
     acquisition?.let { put("acquiredNow", it.acquiredNow) }
     acquisition?.let { put("released", strings(it.releases.mapNotNull { release -> release.worktreePath })) }
+    put("waited", acquisition?.waitedSeconds)
     releaseRecord?.let {
         put(
             "releasedFor",
@@ -531,6 +534,7 @@ fun simulatorJson(
     put("acquired", simulator != null)
     acquisition?.let { put("acquiredNow", it.acquiredNow) }
     acquisition?.let { put("released", strings(it.releases.mapNotNull { release -> release.worktreePath })) }
+    put("waited", acquisition?.waitedSeconds)
     releaseRecord?.let {
         put(
             "releasedFor",
@@ -542,7 +546,7 @@ fun simulatorJson(
     }
 }
 
-fun poolJson(usages: List<PoolUsage>): JsonObject = buildJsonObject {
+fun poolJson(usages: List<PoolUsage>, waiting: (ResourceKind) -> List<WaitTicket> = { emptyList() }): JsonObject = buildJsonObject {
     put(
         "pools",
         buildJsonArray {
@@ -554,6 +558,19 @@ fun poolJson(usages: List<PoolUsage>): JsonObject = buildJsonObject {
                         put("effectiveLimit", usage.effectiveLimit)
                         put("inUse", usage.inUse)
                         put("overLimit", usage.isOverLimit)
+                        put(
+                            "waiting",
+                            buildJsonArray {
+                                waiting(usage.kind).forEach { ticket ->
+                                    add(
+                                        buildJsonObject {
+                                            put("worktree", ticket.worktreePath)
+                                            put("since", Instant.ofEpochMilli(ticket.since).toString())
+                                        },
+                                    )
+                                }
+                            },
+                        )
                         put(
                             "holders",
                             buildJsonArray {
