@@ -33,6 +33,8 @@ class AddMultirepoState(private val setup: MultirepoSetup, private val scope: Co
         private set
     var enclosingRepository by mutableStateOf<String?>(null)
         private set
+    var existing by mutableStateOf<Multirepo?>(null)
+        private set
     var candidates by mutableStateOf<List<RepositoryCandidate>>(emptyList())
         private set
     var groups by mutableStateOf<List<DetectedGroup>>(emptyList())
@@ -72,11 +74,12 @@ class AddMultirepoState(private val setup: MultirepoSetup, private val scope: Co
 
     val canConfirm: Boolean
         get() = folder != null && enclosingRepository == null && !isInspecting && !isSaving &&
-            included.isNotEmpty() && aliasProblems.isEmpty()
+            (included.isNotEmpty() || existing != null) && aliasProblems.isEmpty()
 
     fun choose(folder: String) {
         this.folder = folder
         enclosingRepository = null
+        existing = null
         candidates = emptyList()
         groups = emptyList()
         error = null
@@ -86,7 +89,11 @@ class AddMultirepoState(private val setup: MultirepoSetup, private val scope: Co
             try {
                 val inspection = setup.inspect(folder)
                 enclosingRepository = inspection.enclosingRepository
-                if (inspection.enclosingRepository == null) inspection.repositories.forEach(::addCandidate)
+                if (inspection.enclosingRepository == null) {
+                    existing = setup.read(folder)
+                    val declared = existing?.repositories.orEmpty()
+                    inspection.repositories.filter { path -> declared.none { sameFolder(it.path, path) } }.forEach(::addCandidate)
+                }
             } catch (failure: Exception) {
                 error = failure
             } finally {
@@ -123,12 +130,17 @@ class AddMultirepoState(private val setup: MultirepoSetup, private val scope: Co
         error = null
         scope.launch {
             try {
-                var multirepo = setup.read(folder) ?: setup.init(folder).getOrThrow()
+                val reviewed = existing
+                var multirepo = when {
+                    reviewed == null -> setup.init(folder).getOrThrow()
+                    reviewed.approved -> reviewed
+                    else -> setup.trust(reviewed).getOrThrow()
+                }
                 chosen.filter { it.alias !in multirepo.declaration.repos }.forEach { candidate ->
                     setup.addRepository(multirepo, candidate.alias, candidate.path, candidate.useProposedFolder).getOrThrow()
                     multirepo = setup.read(folder) ?: multirepo
                 }
-                if (multirepo.declaration.defaultRepos.isEmpty()) setup.setDefaults(multirepo, chosen.map { it.alias }).getOrThrow()
+                if (multirepo.declaration.defaultRepos.isEmpty() && chosen.isNotEmpty()) setup.setDefaults(multirepo, chosen.map { it.alias }).getOrThrow()
                 onAdded(multirepo.folder)
             } catch (failure: Exception) {
                 error = failure

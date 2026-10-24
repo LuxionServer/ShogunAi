@@ -41,6 +41,7 @@ import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.MainBranch
+import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.model.IOS_SIMULATOR_UDID
 import app.luxion.shogunai.domain.model.PoolHolder
@@ -377,7 +378,13 @@ class ShogunCli(
         val context = multirepoContext()
         if (command.repos != null || context?.atFolder == true) {
             if (context == null) {
-                err.line("shogun: --repos needs a multirepo; create one with 'shogun multirepo init'")
+                err.line(
+                    if (ignoredDeclarationNoted) {
+                        "shogun: --repos needs a multirepo approved on this machine"
+                    } else {
+                        "shogun: --repos needs a multirepo; create one with 'shogun multirepo init'"
+                    },
+                )
                 return EXIT_USAGE
             }
             return newGroup(context, command)
@@ -424,7 +431,21 @@ class ShogunCli(
 
     private val resolveMultirepo = ResolveMultirepoUseCase(multirepoSource, executor, fileManager)
 
-    private suspend fun multirepoContext(): MultirepoContext? = resolveMultirepo(workingDirectory).getOrThrow()
+    private var ignoredDeclarationNoted = false
+
+    private suspend fun multirepoContext(): MultirepoContext? {
+        val context = resolveMultirepo(workingDirectory).getOrThrow()
+        if (context == null && !ignoredDeclarationNoted) {
+            runCatching { resolveMultirepo.nearestDeclaration(workingDirectory) }.getOrNull()?.takeIf { !it.approved }?.let { ignored ->
+                ignoredDeclarationNoted = true
+                err.line("shogun: ignoring ${printable(ignored.declarationPath)}: it isn't approved on this machine; review it with 'shogun multirepo trust'")
+            }
+        }
+        return context
+    }
+
+    private fun printable(text: String): String =
+        text.replace(Regex("[\\p{Cc}\\p{Cf}\\u2028\\u2029]")) { "\\u%04x".format(it.value.single().code) }
 
     private fun members(context: MultirepoContext): List<MultirepoMember> =
         multirepoMembers(context.multirepo, projectRepository.list())
@@ -444,11 +465,17 @@ class ShogunCli(
             if (command.json) printJson(multirepoJson(multirepo, emptyMap(), emptyMap())) else out.line(multirepo.declarationPath)
             return EXIT_OK
         }
-        val context = multirepoContext() ?: throw WorktreeError.MultirepoNotFound(workingDirectory)
+        if (action is MultirepoAction.Trust) return trustMultirepo(configure, action, command.json)
+        val context = resolveMultirepo(workingDirectory).getOrThrow() ?: run {
+            val nearest = resolveMultirepo.nearestDeclaration(workingDirectory) ?: throw WorktreeError.MultirepoNotFound(workingDirectory)
+            if (action != MultirepoAction.Show) throw WorktreeError.MultirepoNeedsReview(nearest.declarationPath)
+            resolveMultirepo.validate(nearest)
+            MultirepoContext(nearest, workingDirectory, null)
+        }
         val multirepo = context.multirepo
         val updated = try {
             when (action) {
-                is MultirepoAction.Init, MultirepoAction.Show -> multirepo
+                is MultirepoAction.Init, MultirepoAction.Show, is MultirepoAction.Trust -> multirepo
                 is MultirepoAction.AddRepo -> {
                     val decision = WorktreesFolderDecision { project, current, proposed ->
                         action.useWorktreesRoot ?: (!command.json && confirm(
@@ -492,6 +519,7 @@ class ShogunCli(
             printJson(multirepoJson(updated, configs, bases))
         } else {
             out.line("${updated.name}  ${updated.folder}")
+            out.line(if (updated.approved) "approved on this machine" else "not approved on this machine; review it with 'shogun multirepo trust'")
             out.line("worktrees-root  ${updated.worktreesRoot}")
             updated.repositories.forEach { repository ->
                 val config = configs[repository.alias]
@@ -506,9 +534,61 @@ class ShogunCli(
                 out.line("  ${repository.alias}  ${details.joinToString("  ")}")
             }
             out.line("agent  ${updated.agent.displayName} (${updated.agent.resolvedCommand()})")
+            if (updated.ignoresDeclaredAgent) out.line(IGNORED_DECLARED_AGENT)
             if (updated.workspaceDetected) out.line("The folder is a Git repository, detected as the workspace repository; declare it with `shogun multirepo workspace set` or turn it off with `shogun multirepo workspace clear`.")
         }
         return EXIT_OK
+    }
+
+    private suspend fun trustMultirepo(configure: ConfigureMultirepoUseCase, action: MultirepoAction.Trust, json: Boolean): Int {
+        val directory = action.folder?.let(::absolute) ?: workingDirectory
+        val multirepo = resolveMultirepo.nearestDeclaration(directory) ?: throw WorktreeError.MultirepoNotFound(directory)
+        if (action.revoke) {
+            configure.revoke(multirepo).getOrThrow()
+            if (json) {
+                printJson(multirepoTrustJson(multirepo, approved = false, changed = multirepo.approved))
+            } else {
+                out.line("forgot ${printable(multirepo.declarationPath)}; the declaration file is kept")
+            }
+            return EXIT_OK
+        }
+        resolveMultirepo.validate(multirepo)
+        if (json) {
+            val changed = action.yes && !multirepo.approved
+            if (changed) configure.trust(multirepo).getOrThrow()
+            printJson(multirepoTrustJson(multirepo, approved = multirepo.approved || changed, changed = changed))
+            return EXIT_OK
+        }
+        multirepoReview(multirepo).forEach { out.line(it) }
+        out.line(if (multirepo.approved) "approved on this machine" else "not approved on this machine")
+        if (multirepo.approved) return EXIT_OK
+        if (!action.yes) {
+            err.append("Approve this multirepo? ShogunAi will create branches and worktrees in these repositories and run their approved post-creation commands. [y/N] ")
+            val answer = readAnswer() ?: run {
+                err.line("")
+                err.line("shogun: can't ask without a terminal; pass --yes to approve this multirepo")
+                return EXIT_FAILURE
+            }
+            if (answer.trim().lowercase() !in setOf("y", "yes")) return EXIT_OK
+        }
+        configure.trust(multirepo).getOrThrow()
+        out.line("approved")
+        return EXIT_OK
+    }
+
+    private fun multirepoReview(multirepo: Multirepo): List<String> {
+        val parent = Path.of(multirepo.folder).normalize().parent?.toString() ?: "/"
+        fun located(path: String) = printable(path) + if (multirepo.isOutsideParent(path)) "  (outside ${printable(parent)})" else ""
+        return buildList {
+            add("Multirepo declared by ${printable(multirepo.declarationPath)}:")
+            multirepo.repositories.forEach { repository ->
+                val workspace = if (repository == multirepo.workspaceRepository) "  (workspace repository)" else ""
+                add("  ${repository.alias}  ${located(repository.path)}$workspace")
+            }
+            if (multirepo.repositories.isEmpty()) add("  no repositories")
+            add("worktrees-root  ${located(multirepo.worktreesRoot)}")
+            if (multirepo.ignoresDeclaredAgent) add(IGNORED_DECLARED_AGENT)
+        }
     }
 
     private fun buildJsonObjectOf(vararg entries: Pair<String, String>): JsonObject =
@@ -2213,6 +2293,8 @@ class ShogunCli(
         private const val CLAUDE_CONFIG_DIR = "CLAUDE_CONFIG_DIR"
         private const val CODEX_HOME = "CODEX_HOME"
         private const val HERDR_PROBE_MILLIS = 2_000L
+        private const val IGNORED_DECLARED_AGENT =
+            "The declaration's agent is ignored; set the multirepo agent on this machine with 'shogun multirepo agent'."
         private const val SESSION_END = "SessionEnd"
         private const val HERDR_PLUGIN_EVENT = "HERDR_PLUGIN_EVENT"
         private const val HERDR_PLUGIN_EVENT_JSON = "HERDR_PLUGIN_EVENT_JSON"

@@ -31,6 +31,10 @@ fun multirepoMemberships(multirepos: List<Multirepo>, projects: List<Project>): 
     multirepos.map { multirepo ->
         MultirepoMembership(
             multirepo,
-            projects.mapNotNull { project -> multirepo.aliasOf(project.config.baseRepositoryPath)?.let { project.id to it } }.toMap(),
+            if (!multirepo.approved) {
+                emptyMap()
+            } else {
+                projects.mapNotNull { project -> multirepo.aliasOf(project.config.baseRepositoryPath)?.let { project.id to it } }.toMap()
+            },
         )
     }

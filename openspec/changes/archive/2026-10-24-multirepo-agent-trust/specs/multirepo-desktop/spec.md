@@ -3,7 +3,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Add a multirepo from the app
-The user SHALL be able to add a multirepo by dropping a folder on the sidebar or choosing it with "Add multirepo". Before confirming, the app SHALL list the Git repositories directly inside the folder, and any added from elsewhere, with their aliases, which already are projects, the proposed worktrees folder of each (optional) and the groups detected by branch. When the folder already has a declaration, the dialog SHALL also list its declared repositories with their resolved paths, its worktrees root and its workspace repository, marking paths outside the folder's parent. Confirming SHALL write the declaration as `shogun multirepo init` and `add-repo` do, and register and approve it.
+The user SHALL be able to add a multirepo by dropping a folder on the sidebar or choosing it with "Add multirepo". Before confirming, the app SHALL list the Git repositories directly inside the folder, and any added from elsewhere, with their aliases, which already are projects, the proposed worktrees folder of each (optional) and the groups detected by branch. A folder's existing declaration SHALL be shown as `shogun multirepo trust` shows it. Confirming SHALL write the declaration as `shogun multirepo init` and `add-repo` do, and approve it.
 
 #### Scenario: Detected repositories
 - **WHEN** the user drops `~/projects/product`, which contains `product-app`, `product-api`, `product-docs` and a folder `notes`

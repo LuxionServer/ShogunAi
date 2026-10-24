@@ -33,7 +33,7 @@ class MultirepoShellTest {
     private val tools = Project(id = "tools", name = "tools", config = ProjectConfig("/home/dev/projects/tools", "/home/dev/projects/worktrees", emptyList()))
     private val folder = "/home/dev/projects/product"
     private var known = listOf(
-        Multirepo(folder, MultirepoDeclaration(repos = mapOf("app" to "app", "api" to "api", "docs" to "docs"), worktreesRoot = "../product-worktrees")),
+        Multirepo(folder, MultirepoDeclaration(repos = mapOf("app" to "app", "api" to "api", "docs" to "docs"), worktreesRoot = "../product-worktrees"), approved = true),
     )
     private val repository = FakeProjectRepository(initialProjects = listOf(tools, docs, app, api))
     private val preferences = FakeShellPreferenceRepository()
@@ -49,6 +49,16 @@ class MultirepoShellTest {
         assertEquals(mapOf("app" to "app", "api" to "api", "docs" to "docs"), membership.aliases)
         assertEquals(membership, viewModel.multirepoOf(app))
         assertEquals(null, viewModel.multirepoOf(tools))
+    }
+
+    @Test
+    fun `a multirepo that needs review keeps its repositories as loose projects`() {
+        known = known.map { it.copy(approved = false) }
+        val viewModel = viewModel()
+
+        val membership = viewModel.memberships.single()
+        assertEquals(emptyMap(), membership.aliases)
+        assertEquals(null, viewModel.multirepoOf(app))
     }
 
     @Test
@@ -83,11 +93,11 @@ class MultirepoShellTest {
 
     @Test
     fun `a repository added from the command line shows after the next refresh`() {
-        known = listOf(Multirepo(folder, MultirepoDeclaration(repos = mapOf("app" to "app"), worktreesRoot = "../w")))
+        known = listOf(Multirepo(folder, MultirepoDeclaration(repos = mapOf("app" to "app"), worktreesRoot = "../w"), approved = true))
         val viewModel = viewModel()
         assertEquals(setOf("app"), viewModel.memberships.single().aliases.values.toSet())
 
-        known = listOf(Multirepo(folder, MultirepoDeclaration(repos = mapOf("app" to "app", "docs" to "docs"), worktreesRoot = "../w")))
+        known = listOf(Multirepo(folder, MultirepoDeclaration(repos = mapOf("app" to "app", "docs" to "docs"), worktreesRoot = "../w"), approved = true))
         viewModel.refresh()
 
         assertEquals(setOf("app", "docs"), viewModel.memberships.single().aliases.values.toSet())
@@ -196,6 +206,7 @@ class MultirepoShellTest {
         folder,
         MultirepoDeclaration(repos = mapOf("app" to "app"), worktreesRoot = "../product-worktrees", workspace = workspace),
         folderIsRepository = true,
+        approved = true,
     )
 
     @Test
@@ -237,5 +248,20 @@ class MultirepoShellTest {
 
         assertEquals(listOf(folder), registered)
         assertEquals("workspace", viewModel.memberships.single().aliasOf("workspace"))
+    }
+
+    @Test
+    fun `the workspace project of a multirepo that needs review isn't registered`() {
+        known = listOf(workspaceMultirepo().copy(approved = false))
+        val registered = mutableListOf<String>()
+
+        ShellViewModel(
+            repository,
+            preferences,
+            multirepoCatalog = MultirepoCatalog { known },
+            registerWorkspaceProject = { multirepo -> registered += multirepo.folder; true },
+        )
+
+        assertTrue(registered.isEmpty())
     }
 }

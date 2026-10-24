@@ -111,6 +111,11 @@ private fun AddMultirepoContent(state: AddMultirepoState, pickFolder: (String, S
         InlineProgress()
         return
     }
+    state.existing?.let { existing ->
+        Text(strings.existingDeclarationTitle, style = MaterialTheme.typography.titleMedium)
+        if (!existing.approved) Notice(kind = NoticeKind.WARNING, message = strings.multirepoNeedsReviewExplanation, onDismiss = null)
+        MultirepoReviewDetails(existing)
+    }
     Text(strings.multirepoRepositoriesTitle, style = MaterialTheme.typography.titleMedium)
     if (state.candidates.isEmpty()) Text(strings.noRepositoriesFound, style = MaterialTheme.typography.bodyMedium, color = secondary)
     val problems = state.aliasProblems

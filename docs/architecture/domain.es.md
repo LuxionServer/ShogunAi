@@ -477,6 +477,12 @@ Guarda los `AgentSessionRecord` de las sesiones de un worktree: `write`, `remove
 
 `AgentSearch.multirepoFolder(carpeta, comando)` es una búsqueda exacta: `DetectRunningAgentsUseCase` solo le atribuye un directorio de trabajo igual a la carpeta, nunca una subcarpeta ni un repositorio miembro.
 
+### Aprobación del multirepo y agente local
+
+Una declaración puede venir de un repositorio clonado, así que `ResolveMultirepoUseCase` solo aplica un multirepo registrado en `MultirepoSource.knownFolders()` y cuyo `approvalSubject` está aprobado allí (`Multirepo.approved`). El sujeto es un texto con la carpeta normalizada, cada alias declarado con su ruta resuelta (ordenados por alias), la carpeta de worktrees resuelta y el ajuste de workspace declarado: lo que decide dónde crea ShogunAi ramas y worktrees. `defaultRepos` y el `agent` de la declaración no forman parte de él. La búsqueda hacia arriba de `invoke` solo encaja con carpetas registradas, `declaring` y `approved()` se saltan los multirepos sin aprobar, y `known()` devuelve todos los registrados con su estado para la app de escritorio. `nearestDeclaration` encuentra la declaración más cercana, registrada o no, para `shogun multirepo trust`/`show` y para el aviso del CLI sobre una declaración ignorada. `validate` rechaza alias, rutas de repositorio y `worktreesRoot` con caracteres de control o de formato Unicode, para que la revisión no se pueda falsear con secuencias de escape.
+
+El agente del multirepo es un ajuste local (`MultirepoSource.agent`/`setAgent`, `Multirepo.localAgent`); `Multirepo.agent` usa `claude` con headroom por defecto y nunca lee `MultirepoDeclaration.agent`, que solo se conserva para que los archivos antiguos se sigan leyendo y `ignoresDeclaredAgent` pueda avisar. `ConfigureMultirepoUseCase` se niega a escribir un multirepo sin aprobar (`WorktreeError.MultirepoNeedsReview`), escribe la declaración sin `agent` y aprueba el sujeto que ha escrito, así que las ediciones del propio ShogunAi lo mantienen aprobado y una hecha en otro sitio no. `trust` registra y aprueba exactamente la declaración revisada (se niega si el archivo ha cambiado entretanto) y `revoke` la olvida.
+
 ### Repositorios
 
 - `ProjectRepository` — `list()`, `save(project)`, `delete(id)` sobre el catálogo de proyectos.

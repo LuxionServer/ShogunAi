@@ -71,6 +71,8 @@ data class Multirepo(
     val folder: String,
     val declaration: MultirepoDeclaration,
     val folderIsRepository: Boolean = false,
+    val approved: Boolean = false,
+    val localAgent: AgentLaunchConfig? = null,
 ) {
     val name: String
         get() = folder.trimEnd('/', '\\').substringAfterLast('/').substringAfterLast('\\')
@@ -112,7 +114,30 @@ data class Multirepo(
         get() = resolveMultirepoPath(folder, declaration.worktreesRoot)
 
     val agent: AgentLaunchConfig
-        get() = declaration.agent ?: AgentLaunchConfig()
+        get() = localAgent ?: AgentLaunchConfig()
+
+    val ignoresDeclaredAgent: Boolean
+        get() = declaration.agent != null
+
+    val approvalSubject: String
+        get() = buildList {
+            add("folder\t${normalizeMultirepoFolder(folder)}")
+            declaredRepositories.sortedBy { it.alias }.forEach { add("repo\t${it.alias}\t${it.path}") }
+            add("worktreesRoot\t$worktreesRoot")
+            val workspace = declaration.workspace
+            add(
+                when {
+                    workspace == null -> "workspace\tdetected"
+                    !workspace.enabled -> "workspace\toff"
+                    else -> "workspace\t${workspace.alias}"
+                },
+            )
+        }.joinToString("\n")
+
+    fun isOutsideParent(path: String): Boolean {
+        val parent = Path.of(folder).normalize().parent ?: return false
+        return !Path.of(path).normalize().startsWith(parent)
+    }
 
     val aliases: List<String>
         get() = repositories.map { it.alias }
@@ -128,6 +153,13 @@ data class Multirepo(
 private val MULTIREPO_ALIAS = Regex("[a-z0-9]+(-[a-z0-9]+)*")
 
 fun isValidMultirepoAlias(alias: String): Boolean = MULTIREPO_ALIAS.matches(alias)
+
+private fun normalizeMultirepoFolder(folder: String): String =
+    Path.of(folder).normalize().toString().replace('\\', '/').trimEnd('/').ifEmpty { "/" }
+
+private val UNSAFE_PATH_CHARACTER = Regex("[\\p{Cc}\\p{Cf}\\u2028\\u2029]")
+
+fun hasUnsafePathCharacters(path: String): Boolean = UNSAFE_PATH_CHARACTER.containsMatchIn(path)
 
 fun resolveMultirepoPath(folder: String, path: String): String {
     val candidate = Path.of(path)

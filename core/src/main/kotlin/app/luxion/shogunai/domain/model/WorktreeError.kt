@@ -211,6 +211,9 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class MultirepoNotFound(val path: String) :
         WorktreeError("No multirepo found at $path")
 
+    class MultirepoNeedsReview(val path: String) :
+        WorktreeError("$path isn't approved on this machine; review it with 'shogun multirepo trust'")
+
     class WorktreeFolderInUse(
         val path: String,
         val unregistered: Boolean,
