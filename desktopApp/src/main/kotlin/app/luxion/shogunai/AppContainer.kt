@@ -46,6 +46,12 @@ import app.luxion.shogunai.domain.usecase.DetectInstallChannelUseCase
 import app.luxion.shogunai.infrastructure.GitHubReleaseSource
 import app.luxion.shogunai.infrastructure.JsonUpdatePreferenceRepository
 import app.luxion.shogunai.ui.shell.ClaudeHooksState
+import app.luxion.shogunai.ui.shell.TourActions
+import app.luxion.shogunai.ui.shell.TourState
+import app.luxion.shogunai.domain.usecase.CommandLineToolState
+import app.luxion.shogunai.domain.usecase.CreateTourUseCase
+import app.luxion.shogunai.domain.usecase.EndTourUseCase
+import app.luxion.shogunai.domain.usecase.TourLocation
 import app.luxion.shogunai.ui.shell.UpdateState
 import app.luxion.shogunai.domain.usecase.ClaudeCodeHooks
 import app.luxion.shogunai.infrastructure.ExecutableLocator
@@ -275,6 +281,21 @@ class AppContainer {
         tool = commandLineTool,
         noticeDismissedStore = { settingsFile.read().claudeHooksNoticeDismissed },
         rememberNoticeDismissed = { settingsFile.update { it.copy(claudeHooksNoticeDismissed = true) } },
+    )
+    val tourLocation = TourLocation()
+    val tour = TourState(
+        TourActions(
+            create = { CreateTourUseCase(shellCommandExecutor, fileManager, projectRepository, tourLocation)(languagePreferenceRepository.load()) },
+            end = { EndTourUseCase(fileManager, projectRepository, tourLocation)() },
+            existingProject = { runCatching { projectRepository.list().firstOrNull(tourLocation::isTour) }.getOrNull() },
+            leftoverFolder = { fileManager.exists(tourLocation.root) },
+            toolAvailable = {
+                claudeHooks.refresh()
+                claudeHooks.toolStatus?.state == CommandLineToolState.AVAILABLE
+            },
+            offered = { settingsFile.read().tourOffered },
+            rememberOffered = { settingsFile.update { it.copy(tourOffered = true) } },
+        ),
     )
     private val editorResolver = EditorExecutableResolver(
         HostOs.current(),

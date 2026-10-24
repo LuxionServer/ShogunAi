@@ -2,6 +2,18 @@
 
 La app de escritorio gestiona un catálogo de proyectos y, para cada uno, sus worktrees. Todo lo que hace está disponible también desde el [comando `shogun`](cli.md).
 
+## Recorrido guiado
+
+El primer arranque, sin proyectos todavía, ofrece **Hacer el recorrido** junto a "Añadir proyecto", y Ayuda > **Recorrido de ShogunAi** lo inicia en cualquier momento. Si ya tenías proyectos al actualizar, un aviso lo ofrece una vez.
+
+El recorrido:
+
+1. Ofrece instalar el [comando `shogun`](installation.md#el-comando-shogun) si aún no está en tu `PATH`, porque lo usan los agentes y los hooks de Claude Code. Puedes saltarlo.
+2. Crea un repositorio de ejemplo desechable en `~/.shogunai/tour`, con un remoto local, un [`.shogunai.json`](configuration.md#configuracion-del-repositorio-shogunaijson) y worktrees en cada estado que muestra la lista ("Te necesitan", "Nuevos", "Parados", "Fusionados", "Inactivos", uno bloqueado y "Carpeta no encontrada"), y lo registra como el proyecto "ShogunAi tour".
+3. Abre el agente del recorrido en el worktree principal del ejemplo, en la terminal, Herdr o Claude Desktop, o copia su comando de arranque. El agente es Claude Code (Codex desde el menú de agentes), arrancado con "Start the ShogunAi tour"; el guion que sigue es el `AGENTS.md` del ejemplo, y habla el idioma de la app. Recorre estado, limpieza, aprovisionamiento, la línea de comandos, hooks, entorno y providers paso a paso, esperándote entre pasos, y no cambia nada fuera de `~/.shogunai/tour`. Antes de empezar, el agente pregunta si confías en la carpeta del ejemplo: acéptalo («Yes, I trust this folder» en Claude Code).
+
+Mientras exista el ejemplo, su proyecto muestra un banner para volver a abrir el agente o **Terminar recorrido**, que elimina el proyecto, sus worktrees y `~/.shogunai/tour` tras preguntar. Volver a iniciar el recorrido ofrece abrir el ejemplo existente o reiniciarlo desde cero.
+
 ## Proyectos
 
 La primera vez que abres la app verás el catálogo de proyectos vacío. Pulsa "Nuevo proyecto" (Cmd+N en macOS, Ctrl+N en los demás) y rellena:
