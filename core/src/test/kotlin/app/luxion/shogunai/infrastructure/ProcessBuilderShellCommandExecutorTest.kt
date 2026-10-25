@@ -214,9 +214,10 @@ class ProcessBuilderShellCommandExecutorTest {
 
     @Test
     fun `la ejecución con salida en vivo conserva el PATH ampliado`() = runTest {
+        if (System.getProperty("os.name").startsWith("Windows")) return@runTest
         val result = executor.executeStreaming(listOf("sh", "-c", "echo ${'$'}PATH"), null, mapOf("OTHER" to "1")) {}
 
-        assertTrue(result.stdout.split(File.pathSeparator).contains("/opt/homebrew/bin"))
+        assertTrue(result.stdout.split(":").contains("/opt/homebrew/bin"))
     }
 
     private fun isRunning(marker: String): Boolean = ProcessHandle.allProcesses().anyMatch { handle ->
