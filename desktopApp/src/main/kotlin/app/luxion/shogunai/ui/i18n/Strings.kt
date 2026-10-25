@@ -635,6 +635,11 @@ interface Strings {
     val rename: String
     val addRepository: String
     val repositoryPathLabel: String
+    val multirepoNameTitle: String
+    val multirepoNameHint: String
+    val moveUp: String
+    val moveDown: String
+    val sortAlphabetically: String
     val multirepoNeedsReview: String
     val multirepoNeedsReviewExplanation: String
     val trustMultirepo: String

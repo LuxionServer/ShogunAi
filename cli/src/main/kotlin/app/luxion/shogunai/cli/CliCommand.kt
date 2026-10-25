@@ -708,7 +708,13 @@ private fun ArrayDeque<String>.valueOf(option: String): String {
 }
 
 sealed interface MultirepoAction {
-    data class Init(val worktreesRoot: String? = null) : MultirepoAction
+    data class Init(
+        val worktreesRoot: String? = null,
+        val name: String? = null,
+        val useWorktreesRoot: Boolean? = null,
+        val yes: Boolean = false,
+    ) : MultirepoAction
+    data class Name(val name: String?) : MultirepoAction
     data object Show : MultirepoAction
     data class AddRepo(val alias: String, val path: String, val useWorktreesRoot: Boolean? = null) : MultirepoAction
     data class RemoveRepo(val alias: String) : MultirepoAction
@@ -721,8 +727,11 @@ sealed interface MultirepoAction {
     data class Trust(val folder: String? = null, val yes: Boolean = false, val revoke: Boolean = false) : MultirepoAction
 }
 
+private fun multirepoName(name: String): String =
+    name.trim().ifEmpty { throw UsageException("the multirepo name can't be blank") }
+
 private fun parseMultirepo(rest: List<String>): CliCommand.Multirepo {
-    val action = rest.firstOrNull() ?: throw UsageException("'multirepo' needs an action: init, show, trust, add-repo, remove-repo, defaults, agent, workspace, worktrees-root or delete")
+    val action = rest.firstOrNull() ?: throw UsageException("'multirepo' needs an action: init, show, trust, name, add-repo, remove-repo, defaults, agent, workspace, worktrees-root or delete")
     val remaining = ArrayDeque(rest.drop(1))
     val positional = mutableListOf<String>()
     val options = mutableMapOf<String, String?>()
@@ -744,17 +753,33 @@ private fun parseMultirepo(rest: List<String>): CliCommand.Multirepo {
         if (positional.size != count) throw UsageException("usage: shogun multirepo $usage")
         return positional
     }
+    fun worktreesFolderChoice(): Boolean? {
+        val use = "--use-worktrees-root" in options
+        val keep = "--keep-worktrees-folder" in options
+        if (use && keep) throw UsageException("--use-worktrees-root and --keep-worktrees-folder can't be combined")
+        return if (use) true else if (keep) false else null
+    }
     return CliCommand.Multirepo(
         when (action) {
-            "init" -> { allow("--worktrees-root"); arguments(0, "init [--worktrees-root <dir>]"); MultirepoAction.Init(options["--worktrees-root"]) }
+            "init" -> {
+                allow("--worktrees-root", "--name", "--use-worktrees-root", "--keep-worktrees-folder", "--yes")
+                arguments(0, "init [--worktrees-root <dir>] [--name <name>] [--use-worktrees-root | --keep-worktrees-folder] [--yes]")
+                MultirepoAction.Init(options["--worktrees-root"], options["--name"]?.let(::multirepoName), worktreesFolderChoice(), yes = "--yes" in options)
+            }
             "show" -> { allow(); arguments(0, "show"); MultirepoAction.Show }
+            "name" -> {
+                allow("--clear")
+                if ("--clear" in options) {
+                    arguments(0, "name <name> | --clear")
+                    MultirepoAction.Name(null)
+                } else {
+                    MultirepoAction.Name(multirepoName(arguments(1, "name <name> | --clear").single()))
+                }
+            }
             "add-repo" -> {
                 allow("--use-worktrees-root", "--keep-worktrees-folder")
                 val (alias, path) = arguments(2, "add-repo <alias> <path> [--use-worktrees-root | --keep-worktrees-folder]")
-                val use = "--use-worktrees-root" in options
-                val keep = "--keep-worktrees-folder" in options
-                if (use && keep) throw UsageException("--use-worktrees-root and --keep-worktrees-folder can't be combined")
-                MultirepoAction.AddRepo(alias, path, if (use) true else if (keep) false else null)
+                MultirepoAction.AddRepo(alias, path, worktreesFolderChoice())
             }
             "remove-repo" -> { allow(); MultirepoAction.RemoveRepo(arguments(1, "remove-repo <alias>").single()) }
             "defaults" -> {

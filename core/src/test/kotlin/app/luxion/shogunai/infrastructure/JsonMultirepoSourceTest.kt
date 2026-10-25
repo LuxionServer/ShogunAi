@@ -124,6 +124,32 @@ class JsonMultirepoSourceTest {
     }
 
     @Test
+    fun `a declared name round trips and an absent one isn't written`() {
+        val declaration = MultirepoDeclaration(repos = mapOf("app" to "product-app"), worktreesRoot = "../product-worktrees", name = "Product")
+
+        source.write(folder.toString(), declaration)
+        assertEquals(declaration, source.read(folder.toString()))
+        assertTrue(folder.resolve(".shogunai-multirepo.json").readText().contains("\"name\": \"Product\""))
+
+        source.write(folder.toString(), declaration.copy(name = null))
+        assertFalse(folder.resolve(".shogunai-multirepo.json").readText().contains("\"name\""))
+    }
+
+    @Test
+    fun `forgetMissing drops entries whose folder is gone and keeps folders without a declaration`() {
+        val moved = home.resolve("moved")
+        val withoutDeclaration = home.resolve("empty").also { Files.createDirectories(it) }
+        listOf(folder, moved, withoutDeclaration).forEach { source.remember(it.toString()) }
+        source.approve(moved.toString(), "subject")
+
+        val forgotten = source.forgetMissing()
+
+        assertEquals(listOf(moved.toString()), forgotten)
+        assertEquals(listOf(folder.toString(), withoutDeclaration.toString()), source.knownFolders())
+        assertFalse(registry.readText().contains(moved.toString()))
+    }
+
+    @Test
     fun `approves a subject for one folder only`() {
         val other = home.resolve("other").also { Files.createDirectories(it) }
         source.remember(folder.toString())

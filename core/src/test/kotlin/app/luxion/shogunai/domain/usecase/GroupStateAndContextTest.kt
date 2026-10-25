@@ -101,6 +101,16 @@ class GroupStateAndContextTest {
     }
 
     @Test
+    fun `the multirepo context uses the declared name`() {
+        val named = world.multirepo.copy(declaration = world.declaration.copy(name = "Product Suite"))
+
+        val lines = GroupContext(FakeFileManager()).multirepoLines(named)
+
+        assertTrue(lines[0].startsWith("ShogunAi multirepo Product Suite at ${world.folder},"))
+        assertTrue(GroupContext(FakeFileManager()).multirepoLines(world.multirepo)[0].startsWith("ShogunAi multirepo product at"))
+    }
+
+    @Test
     fun `a group is found by branch or by id when only one prefix matches`() = runTest {
         with(world.git) {
             world.app.worktree("/w/app-fix-1", "fix/TASK-1")

@@ -60,8 +60,7 @@ La vista de ShogunAi solo es neutral si ve a todos los agentes:
 
 Los multirepos y los grupos por rama están hechos en el CLI y en la app de escritorio, y son también la forma en que quienes no escriben el código siguen un cambio a través de los repositorios. Quedaron fuera:
 
-- Un nombre visible para un multirepo, declarado en `.shogunai-multirepo.json`; hoy la barra lateral y `shogun multirepo show` lo llaman como su carpeta, así que un repositorio de workspace cuya carpeta no se llama como el producto aparece con el nombre equivocado.
-- Seguir a un multirepo cuya carpeta se ha movido: `shogun multirepo trust` en la carpeta nueva (o "Añadir multirepo" en la app) registra la declaración existente tras revisarla, pero la entrada antigua sigue en `~/.shogunai/multirepos.json`, y el agente del multirepo fijado en este equipo se queda con ella. ShogunAi podría quitar las entradas cuya carpeta ya no existe y ofrecer llevarse el agente local.
+- Llevarse el agente del multirepo fijado en este equipo cuando su carpeta se mueve: `shogun multirepo init` (o "Añadir multirepo") en la carpeta nueva la registra tras revisarla y olvida la entrada antigua, pero el agente local se queda con ella y hay que volver a fijarlo.
 - Asociar worktrees cuyas ramas no coinciden, por ejemplo `shogun group add <id> <worktree>`.
 - Una única sesión para todo el grupo, con un entorno combinado, como opción junto a un agente por repositorio.
 - Devolver un repositorio de workspace declarado a la detección (quitando el campo `workspace`), desde el CLI y los ajustes del multirepo; hoy `workspace clear` lo desactiva y para deshacerlo hay que editar el archivo a mano.

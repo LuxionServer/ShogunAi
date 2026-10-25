@@ -204,6 +204,9 @@ fun AppShell(
                 onToggleMultirepo = viewModel::toggleMultirepoCollapsed,
                 onEditMultirepo = viewModel::editMultirepo,
                 onAddMultirepo = { viewModel.addMultirepo() },
+                order = viewModel.sidebarOrder,
+                onMoveEntry = viewModel::moveSidebarEntry,
+                onSortLevel = viewModel::sortSidebarAlphabetically,
             )
             VerticalDivider(modifier = Modifier.fillMaxHeight())
             Column(modifier = Modifier.weight(1f).fillMaxHeight()) {

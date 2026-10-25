@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.io.ShellPreferenceRepository
 import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.RecentWorktree
+import app.luxion.shogunai.domain.model.SidebarOrder
 import app.luxion.shogunai.domain.model.INACTIVE_AFTER_DAYS_RANGE
 import app.luxion.shogunai.domain.model.SortedView
 import app.luxion.shogunai.domain.model.WindowBounds
@@ -41,6 +42,12 @@ class JsonShellPreferenceRepository(
 
     override fun saveCollapsedMultirepos(folders: Set<String>) {
         settingsFile.update { it.copy(collapsedMultirepos = folders.sorted()) }
+    }
+
+    override fun loadSidebarOrder(): SidebarOrder = settingsFile.read().sidebarOrder
+
+    override fun saveSidebarOrder(order: SidebarOrder) {
+        settingsFile.update { it.copy(sidebarOrder = order) }
     }
 
     override fun loadLastCreateProject(): String? = settingsFile.read().lastCreateProject

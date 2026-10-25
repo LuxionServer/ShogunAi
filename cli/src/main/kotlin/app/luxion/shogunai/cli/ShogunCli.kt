@@ -512,11 +512,7 @@ class ShogunCli(
     private suspend fun multirepo(command: CliCommand.Multirepo): Int {
         val configure = ConfigureMultirepoUseCase(multirepoSource, resolveMultirepo, projectRepository, executor)
         val action = command.action
-        if (action is MultirepoAction.Init) {
-            val multirepo = configure.init(workingDirectory, action.worktreesRoot?.let(::absolute)).getOrThrow()
-            if (command.json) printJson(multirepoJson(multirepo, emptyMap(), emptyMap())) else out.line(multirepo.declarationPath)
-            return EXIT_OK
-        }
+        if (action is MultirepoAction.Init) return initMultirepo(configure, action, command.json)
         if (action is MultirepoAction.Trust) return trustMultirepo(configure, action, command.json)
         val context = resolveMultirepo(workingDirectory).getOrThrow() ?: run {
             val nearest = resolveMultirepo.nearestDeclaration(workingDirectory) ?: throw WorktreeError.MultirepoNotFound(workingDirectory)
@@ -528,12 +524,9 @@ class ShogunCli(
         val updated = try {
             when (action) {
                 is MultirepoAction.Init, MultirepoAction.Show, is MultirepoAction.Trust -> multirepo
+                is MultirepoAction.Name -> configure.setName(multirepo, action.name).getOrThrow()
                 is MultirepoAction.AddRepo -> {
-                    val decision = WorktreesFolderDecision { project, current, proposed ->
-                        action.useWorktreesRoot ?: (!command.json && confirm(
-                            "Keep the new worktrees of $project in $proposed" + (current?.let { " instead of $it" } ?: "") + "? [y/N] ",
-                        ))
-                    }
+                    val decision = worktreesFolderDecision(action.useWorktreesRoot, command.json)
                     val added = configure.addRepository(multirepo, action.alias, absolute(action.path), decision).getOrThrow()
                     if (command.json) {
                         printJson(addedRepositoryJson(multirepo, added))
@@ -592,6 +585,56 @@ class ShogunCli(
         return EXIT_OK
     }
 
+    private suspend fun initMultirepo(configure: ConfigureMultirepoUseCase, action: MultirepoAction.Init, json: Boolean): Int {
+        multirepoSource.forgetMissing()
+        if (multirepoSource.read(workingDirectory) == null) {
+            val multirepo = configure.init(workingDirectory, action.worktreesRoot?.let(::absolute), action.name).getOrThrow()
+            if (json) printJson(multirepoJson(multirepo, emptyMap(), emptyMap())) else out.line(multirepo.declarationPath)
+            return EXIT_OK
+        }
+        listOfNotNull("--worktrees-root".takeIf { action.worktreesRoot != null }, "--name".takeIf { action.name != null }).firstOrNull()?.let {
+            err.line("shogun: $it only applies to a new multirepo; this folder already has one, use 'shogun multirepo worktrees-root' or 'shogun multirepo name'")
+            return EXIT_USAGE
+        }
+        val reviewed = resolveMultirepo.build(workingDirectory, multirepoSource.read(workingDirectory) ?: throw WorktreeError.MultirepoNotFound(workingDirectory))
+        resolveMultirepo.validate(reviewed)
+        if (!reviewed.approved) approvalRefusal(reviewed, action.yes, json)?.let { return it }
+        val registered = configure.register(reviewed, worktreesFolderDecision(action.useWorktreesRoot, json)).getOrThrow()
+        val multirepo = registered.multirepo
+        if (json) {
+            printJson(registeredMultirepoJson(registered))
+        } else {
+            out.line(
+                if (registered.trustedNow) "approved and registered the existing multirepo ${printable(multirepo.name)} (${printable(multirepo.declarationPath)})"
+                else "the multirepo ${printable(multirepo.name)} is already registered (${printable(multirepo.declarationPath)})",
+            )
+            registered.registeredProjects.forEach { out.line("registered ${it.name} as a project; its worktrees go to ${it.config.worktreesRoot}") }
+        }
+        return EXIT_OK
+    }
+
+    private fun worktreesFolderDecision(useWorktreesRoot: Boolean?, json: Boolean) = WorktreesFolderDecision { project, current, proposed ->
+        useWorktreesRoot ?: (!json && confirm(
+            "Keep the new worktrees of $project in $proposed" + (current?.let { " instead of $it" } ?: "") + "? [y/N] ",
+        ))
+    }
+
+    private fun approvalRefusal(multirepo: Multirepo, yes: Boolean, json: Boolean): Int? {
+        if (yes) return null
+        if (json) {
+            err.line("shogun: ${printable(multirepo.declarationPath)} isn't approved on this machine; pass --yes to approve it")
+            return EXIT_FAILURE
+        }
+        multirepoReview(multirepo).forEach { out.line(it) }
+        err.append("Approve this multirepo? ShogunAi will create branches and worktrees in these repositories and run their approved post-creation commands. [y/N] ")
+        val answer = readAnswer() ?: run {
+            err.line("")
+            err.line("shogun: can't ask without a terminal; pass --yes to approve this multirepo")
+            return EXIT_FAILURE
+        }
+        return if (answer.trim().lowercase() in setOf("y", "yes")) null else EXIT_OK
+    }
+
     private suspend fun trustMultirepo(configure: ConfigureMultirepoUseCase, action: MultirepoAction.Trust, json: Boolean): Int {
         val directory = action.folder?.let(::absolute) ?: workingDirectory
         val multirepo = resolveMultirepo.nearestDeclaration(directory) ?: throw WorktreeError.MultirepoNotFound(directory)
@@ -632,6 +675,7 @@ class ShogunCli(
         fun located(path: String) = printable(path) + if (multirepo.isOutsideParent(path)) "  (outside ${printable(multirepo.parentFolder)})" else ""
         return buildList {
             add("Multirepo declared by ${printable(multirepo.declarationPath)}:")
+            multirepo.declaredName?.let { add("  name  ${printable(it)}") }
             multirepo.repositories.forEach { repository ->
                 val workspace = if (repository == multirepo.workspaceRepository) "  (workspace repository)" else ""
                 add("  ${repository.alias}  ${located(repository.path)}$workspace")

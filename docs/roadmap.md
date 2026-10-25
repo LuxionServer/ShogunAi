@@ -60,8 +60,7 @@ ShogunAi's view is only neutral if it sees every agent:
 
 Multirepos and groups by branch are done in the CLI and the desktop app, and they're also how people who don't write the code follow a change across repositories. Left out:
 
-- A display name for a multirepo, declared in `.shogunai-multirepo.json`; today the sidebar and `shogun multirepo show` name it after its folder, so a workspace repository whose folder isn't named after the product shows up with the wrong name.
-- Following a multirepo whose folder moved: `shogun multirepo trust` in the new folder (or "Add multirepo" in the app) registers the existing declaration after reviewing it, but the old entry stays in `~/.shogunai/multirepos.json`, and the multirepo agent set on this machine stays with it. ShogunAi could drop the entries whose folder no longer exists and offer to carry the local agent over.
+- Carrying the multirepo agent set on this machine over when its folder moves: `shogun multirepo init` (or "Add multirepo") in the new folder registers it after reviewing it and forgets the old entry, but the local agent goes with that entry and has to be set again.
 - Associating worktrees whose branches don't match, e.g. `shogun group add <id> <worktree>`.
 - A single session for the whole group, with a combined environment, as an option next to one agent per repository.
 - Returning a declared workspace repository to detection (removing the `workspace` field), from the CLI and the multirepo settings; today `workspace clear` turns it off and the file has to be edited by hand to undo it.

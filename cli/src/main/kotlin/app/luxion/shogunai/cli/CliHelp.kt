@@ -74,14 +74,19 @@ internal object CliHelp {
                               agent, with the same options
 """.trimIndent(),
         "multirepo" to """
-  multirepo init [--worktrees-root <dir>] [--json]
+  multirepo init [--worktrees-root <dir>] [--name <name>] [--use-worktrees-root | --keep-worktrees-folder] [--yes] [--json]
                               Make the current folder a multirepo (outside any repository or at the top of a
                               workspace repository); new worktrees folders are proposed under --worktrees-root
-                              (default: ../<folder>-worktrees)
-  multirepo show [--json]     Show the multirepo's repositories, projects, bases, defaults and agent
+                              (default: ../<folder>-worktrees). In a folder that already has a declaration
+                              (e.g. one that moved), review and approve it as 'trust' does (--yes skips the
+                              question) and register its repositories' projects instead. Either way, forget
+                              the known multirepos whose folder no longer exists
+  multirepo show [--json]     Show the multirepo's name, repositories, projects, bases, defaults and agent
   multirepo trust [<folder>] [--yes | --revoke] [--json]
-                              Review a declaration's repositories, paths and worktrees root and approve it
-                              on this machine; only approved multirepos apply. --revoke forgets it
+                              Review a declaration's name, repositories, paths and worktrees root and approve
+                              it on this machine; only approved multirepos apply. --revoke forgets it
+  multirepo name <name> | --clear [--json]
+                              Set the name the multirepo is shown with (default: its folder's name)
   multirepo add-repo <alias> <path> [--use-worktrees-root | --keep-worktrees-folder] [--json]
                               Add a repository, reusing its project or registering one, and propose
                               <worktrees-root>/<alias> as its project's worktrees folder (asked unless given)

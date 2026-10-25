@@ -45,6 +45,12 @@ fun MultirepoReviewDetails(multirepo: Multirepo, modifier: Modifier = Modifier) 
     val strings = LocalStrings.current
     val parent = multirepoParentFolder(multirepo)
     Column(modifier = modifier.testTag("multirepo-review"), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+        multirepo.declaredName?.let { name ->
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                Text(strings.multirepoNameTitle, style = MaterialTheme.typography.bodyMedium)
+                Text(printablePath(name), style = MaterialTheme.typography.bodyMedium)
+            }
+        }
         multirepoReviewLines(multirepo, strings.workspaceRepositoryTitle, strings.multirepoWorktreesRootTitle).forEach { line ->
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Text(line.label, style = MaterialTheme.typography.bodyMedium)

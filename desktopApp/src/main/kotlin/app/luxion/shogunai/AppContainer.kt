@@ -14,6 +14,7 @@ import app.luxion.shogunai.domain.usecase.CreateGroupUseCase
 import app.luxion.shogunai.domain.usecase.DetectGroupsUseCase
 import app.luxion.shogunai.domain.usecase.MultirepoMember
 import app.luxion.shogunai.domain.usecase.OpenMultirepoAgentInHerdrUseCase
+import app.luxion.shogunai.domain.usecase.RegisteredMultirepo
 import app.luxion.shogunai.domain.usecase.ResolveMultirepoUseCase
 import app.luxion.shogunai.domain.usecase.WorktreeGroup
 import app.luxion.shogunai.infrastructure.JsonDerivedDataSizeStore
@@ -555,6 +556,10 @@ class AppContainer {
         trust = { multirepo -> configureMultirepo.trust(multirepo) },
     )
 
+    fun forgetMissingMultirepos() {
+        runCatching { multirepoSource.forgetMissing() }
+    }
+
     val multirepoSetup: MultirepoSetup = object : MultirepoSetup {
         override suspend fun inspect(folder: String): FolderInspection = withContext(Dispatchers.IO) {
             val enclosing = ResolveRepositoryUseCase(shellCommandExecutor)(folder).getOrNull()
@@ -586,6 +591,12 @@ class AppContainer {
         override suspend fun init(folder: String): Result<Multirepo> = withContext(Dispatchers.IO) { configureMultirepo.init(folder, null) }
 
         override suspend fun trust(multirepo: Multirepo): Result<Multirepo> = withContext(Dispatchers.IO) { configureMultirepo.trust(multirepo) }
+
+        override suspend fun register(reviewed: Multirepo): Result<RegisteredMultirepo> = withContext(Dispatchers.IO) {
+            configureMultirepo.register(reviewed) { _, _, _ -> true }
+        }
+
+        override fun setName(multirepo: Multirepo, name: String?) = configureMultirepo.setName(multirepo, name)
 
         override suspend fun addRepository(multirepo: Multirepo, alias: String, path: String, useProposedFolder: Boolean): Result<AddedRepository> =
             withContext(Dispatchers.IO) {
