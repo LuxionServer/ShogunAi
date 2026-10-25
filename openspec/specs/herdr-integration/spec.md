@@ -17,7 +17,7 @@ The worktree's detail and its row's context menu SHALL offer an "Open in Herdr" 
 - **THEN** the workspace opens in the worktree under the repository's space and runs the agent command, with no extra variables
 
 #### Scenario: Agent command
-- **WHEN** the project's agent launch configuration resolves to `headroom wrap claude`
+- **WHEN** the project's agent launch configuration resolves to `claude`, or to `headroom wrap claude` with Headroom turned on
 - **THEN** that is the command run in the workspace, the same one the copied launch command uses
 
 ### Requirement: Reuse the worktree's Herdr workspace

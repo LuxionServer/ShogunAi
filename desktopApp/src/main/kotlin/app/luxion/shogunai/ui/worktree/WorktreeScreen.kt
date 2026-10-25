@@ -523,6 +523,7 @@ private fun Strings.successMessage(success: WorktreeSuccess): String = when (suc
             derivedDataDeleted(it, formatSize(success.derivedDataBytesFreed))
         },
         success.takenDownComposeProjects.takeIf { it > 0 }?.let(::composeProjectsTakenDown),
+        success.removedComposeResources.takeIf { it > 0 }?.let(::composeResourcesRemoved),
     ).joinToString(" · ")
 }
 

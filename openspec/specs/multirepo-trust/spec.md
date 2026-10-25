@@ -32,7 +32,7 @@ When a command other than a hook ignores a declaration in the current folder or 
 - **THEN** its output doesn't mention the declaration nor `shogun multirepo trust`
 
 ### Requirement: What the approval of a multirepo covers
-The approval SHALL cover each alias with the repository path it resolves to, the resolved worktrees root and the workspace repository setting. A change in any of them made outside ShogunAi SHALL make the multirepo unapproved; a change only to `defaultRepos`, or to the ignored `agent`, SHALL NOT. Approvals SHALL be stored per machine under the user's ShogunAi folder, readable and writable only by the user.
+The approval SHALL cover each alias with the repository path it resolves to, the resolved worktrees root, the workspace repository setting and the declared `name`, when there is one. A change in any of them made outside ShogunAi SHALL make the multirepo unapproved; a change only to `defaultRepos`, or to the ignored `agent`, SHALL NOT. Approvals SHALL be stored per machine under the user's ShogunAi folder, readable and writable only by the user.
 
 #### Scenario: Repository redirected by a pull
 - **WHEN** after the approval a pull changes `repos.api` from `product-api` to `/home/user/other-repo`
@@ -41,6 +41,10 @@ The approval SHALL cover each alias with the repository path it resolves to, the
 #### Scenario: Worktrees root moved
 - **WHEN** the declaration's `worktreesRoot` changes outside ShogunAi
 - **THEN** the multirepo stops applying until the user approves it again
+
+#### Scenario: Name changed by a pull
+- **WHEN** after the approval a pull changes the declaration's `name`
+- **THEN** the multirepo stops applying until the user approves it again, while multirepos approved without a `name` stay approved
 
 #### Scenario: Default repositories changed
 - **WHEN** a pull only changes `defaultRepos` to another set of declared aliases
@@ -62,7 +66,7 @@ Creating a multirepo and changing its declaration through ShogunAi (`shogun mult
 - **THEN** the command says the multirepo needs review with `shogun multirepo trust`, changes nothing and exits with code 1
 
 ### Requirement: Review and approve a multirepo from the command line
-`shogun multirepo trust [folder]` SHALL print the declaration's path, each alias with its resolved repository path, the resolved worktrees root and the workspace repository, marking every path outside the multirepo folder's parent, and say whether it's approved. On a terminal it SHALL ask and, on an explicit yes, register and approve it; `--yes` SHALL do so without asking. The folder SHALL default to the nearest declaration in the current folder or a parent.
+`shogun multirepo trust [folder]` SHALL print the declaration's path, its declared `name`, each alias with its resolved repository path, the resolved worktrees root and the workspace repository, marking every path outside the multirepo folder's parent, and say whether it's approved. On a terminal it SHALL ask and, on an explicit yes, register and approve it; `--yes` SHALL do so without asking. The folder SHALL default to the nearest declaration in the current folder or a parent.
 
 #### Scenario: Approve a cloned workspace repository
 - **WHEN** the user runs `shogun multirepo trust` in a cloned `~/projects/product` whose declaration lists `app` as `product-app` and answers yes

@@ -13,7 +13,7 @@ shogun repair                      # re-link the worktrees after the repository 
 shogun open TASK-123 --herdr       # open a worktree in Herdr with its environment and the project's agent
 shogun clean --yes                 # remove merged or missing worktrees (without --yes it only lists them)
 shogun stacks                      # the stacks detected in the repository and the providers they suggest
-shogun multirepo show              # in a multirepo: its repositories, defaults and agent
+shogun multirepo show              # in a multirepo: its name, repositories, defaults and agent
 shogun project add                 # register this repository as a project of the desktop app
 shogun app --settings              # open the desktop app on this repository's project settings
 eval "$(shogun env)"               # load this worktree's variables from .shogunai.json "env"
@@ -216,7 +216,7 @@ The target is found as in `remove`, except that the main worktree is allowed. `-
 
 ```text
 shogun clean [--yes|-y] [--delete-branches] [--stop-gradle-daemons] [--stop-emulators]
-             [--delete-simulators] [--delete-derived-data] [--down-compose-projects]
+             [--delete-simulators] [--delete-derived-data] [--down-compose-projects [--compose-volumes]]
 ```
 
 Selects the same worktrees as the desktop app's "Clean up": not the main one, not locked, not one where an agent is running, and either merged with no uncommitted changes or with their folder gone. Without `--yes` it only lists what it would do (`would remove …`) and ends with the command to run, repeating the options you gave and naming only what would be removed; with `--yes` it does it (`removed …`). With nothing to do it prints `Nothing to clean up.`
@@ -230,7 +230,8 @@ A worktree where an agent is running is listed as `kept <path> (claude is runnin
 | `--stop-emulators` | Stops the removed worktrees' Android emulators. |
 | `--delete-simulators` | Deletes the removed worktrees' iOS simulators and orphaned ShogunAi simulators. |
 | `--delete-derived-data` | Deletes orphaned Xcode DerivedData, the removed worktrees' folders included. |
-| `--down-compose-projects` | Takes down the Docker Compose projects of the removed worktrees, keeping their volumes (`took down Compose project …`; `would take down Compose project …` without `--yes`). Only for repositories that declare the `docker-compose` provider; a project that can't be taken down, or Docker being unavailable, is reported on standard error without changing the exit code. |
+| `--down-compose-projects` | Takes down the Docker Compose projects of the removed worktrees and removes the networks and built images they leave, keeping their volumes (`took down Compose project …`, `removed image …`, `kept volume …`; `would take down Compose project …` without `--yes`). Only for repositories that declare the `docker-compose` provider; a project that can't be taken down, or Docker being unavailable, is reported on standard error without changing the exit code. |
+| `--compose-volumes` | With `--down-compose-projects`, also removes the volumes of the removed worktrees' projects. Without `--down-compose-projects` it is a usage error. |
 
 The Herdr workspaces of removed worktrees are closed too (`would close Herdr workspace of …` in the listing). A daemon, emulator or Herdr workspace that can't be stopped or closed is reported on standard error without changing the exit code.
 
@@ -239,13 +240,14 @@ The Herdr workspaces of removed worktrees are closed too (`would close Herdr wor
 In a multirepo folder (see [Multirepos and groups](multirepo.md)), `new`, `status`, `open` and `clean` act on its groups, and `shogun multirepo` configures it.
 
 ```text
-shogun multirepo init [--worktrees-root <dir>]
+shogun multirepo init [--worktrees-root <dir>] [--name <name>] [--use-worktrees-root | --keep-worktrees-folder] [--yes]
 shogun multirepo show
 shogun multirepo trust [<folder>] [--yes | --revoke]
+shogun multirepo name <name> | --clear
 shogun multirepo add-repo <alias> <path> [--use-worktrees-root | --keep-worktrees-folder]
 shogun multirepo remove-repo <alias>
 shogun multirepo defaults <alias>[,<alias>...] | --clear
-shogun multirepo agent <command> [--name <name>] [--no-headroom]
+shogun multirepo agent <command> [--name <name>] [--headroom]
 shogun multirepo workspace set [--alias <alias>] [--default] | clear
 shogun multirepo worktrees-root <dir>
 shogun multirepo delete
@@ -254,10 +256,12 @@ shogun open <task id | branch> --herdr
 shogun open --herdr
 ```
 
+- `multirepo init` in a folder that already has a declaration (for example one that moved) shows the same review as `multirepo trust` and asks before approving it (`--yes` approves without asking; without a terminal, or with `--json`, and without `--yes` it exits with `1`; answering no changes nothing). Once approved it registers the multirepo and a project for each declared repository without one (asking about `<worktreesRoot>/<alias>` as `add-repo` does); `--worktrees-root` and `--name` exit with `2` there. Either way it first forgets the known multirepos whose folder no longer exists. Its `--json` for an existing declaration has `name`, `path`, `declaration`, `registered` (false when it was already approved and known) and the registered `projects`.
+- `multirepo name` sets the name the multirepo is shown with; a blank name exits with `2`. `show` prints the name first, and its `--json` has `name`.
 - `multirepo` subcommands work in the multirepo folder or anywhere in its repositories and worktrees, and accept `--json`; outside a multirepo they exit with `1`. A wrong alias exits with `2`.
 - Only multirepos approved on this machine apply ([Approving a multirepo](multirepo.md#approving-a-multirepo)). Under a declaration that isn't approved, `new`, `status`, `open` and `clean` behave as outside a multirepo and print a note on standard error naming the file and `shogun multirepo trust`; hooks print nothing. `multirepo show` still shows it, with `not approved on this machine` (`"approved": false` in `--json`); the subcommands that write exit with `1`.
-- `multirepo trust` shows the nearest declaration (or the one in `<folder>`): each repository with its resolved path, the worktrees root and the workspace repository, marking paths outside the folder's parent. On a terminal it asks (`[y/N]`) and approves on yes; `--yes` approves without asking; without a terminal and without `--yes` it exits with `1`. `--revoke` forgets the multirepo and keeps the file. Its `--json` object has `path`, `declaration`, `approved`, `changed`, `repos` (with `outsideParent`), `worktreesRoot`, `worktreesRootOutsideParent`, `workspace` and `ignoredDeclaredAgent`; without `--yes` it only reports.
-- `multirepo agent` keeps the multirepo agent on this machine, never in the declaration; an `agent` left in the declaration by an earlier version is ignored, and `show` says so (`ignoredDeclaredAgent` in `--json`).
+- `multirepo trust` shows the nearest declaration (or the one in `<folder>`): its declared name, each repository with its resolved path, the worktrees root and the workspace repository, marking paths outside the folder's parent. On a terminal it asks (`[y/N]`) and approves on yes; `--yes` approves without asking; without a terminal and without `--yes` it exits with `1`. `--revoke` forgets the multirepo and keeps the file. Its `--json` object has `path`, `declaration`, `name` (when declared), `approved`, `changed`, `repos` (with `outsideParent`), `worktreesRoot`, `worktreesRootOutsideParent`, `workspace` and `ignoredDeclaredAgent`; without `--yes` it only reports.
+- `multirepo agent` keeps the multirepo agent on this machine, never in the declaration; an `agent` left in the declaration by an earlier version is ignored, and `show` says so (`ignoredDeclaredAgent` in `--json`). The agent runs its command as is; `--headroom` wraps it with `headroom wrap`. `--no-headroom`, from earlier versions where Headroom was on by default, is still accepted and changes nothing; combined with `--headroom` it exits with `2`.
 - `new <id>` in the multirepo folder covers the default repositories, or `--repos` from anywhere in the multirepo; it prints the path of each worktree it creates on standard output and one line per repository on standard error, and exits with `1` if any repository failed. `--branch`, `--from` and `--worktrees-root` don't apply to a group and exit with `2`. Its `--json` object has the `branch` and a `repos` list with each `alias`, `path`, `result` (`created`, `existing` or `failed`), skipped post-creation commands and `error`.
 - When the multirepo folder is a Git repository it is the multirepo's workspace repository (alias `workspace` unless declared otherwise): `show` lists it, marked `detected` until `workspace set` declares it (`--alias` renames it, `--default` adds it to the default repositories) and `workspace clear` turns detection off; in a folder that isn't a repository `workspace set` exits with `1`. `new <id> --repos workspace,app` includes it, with its worktree in `<worktreesRoot>/workspace/<id>`. `project add` and `app` run in that folder register the workspace repository as a member of the multirepo and no project of the folder's own (`app` just opens the app), unless detection is off. `--json` of `show` marks each repository with `workspace` and `detected`.
 - `status` in the multirepo folder prints each group's branch followed by one line per repository, then `ungrouped`; `--json` prints `groups` (each with `branch`, `title` and `repos` with `alias`, `path`, `branch`, `base`, `folderMissing`, `uncommittedChanges`, `ahead`, `behind`, `merged`, `agents`), `ungrouped` and `failures`.
@@ -341,10 +345,17 @@ shogun maven
 
 ```text
 shogun compose
+shogun compose up [<worktree>] [--build] [-- <args>...]
+shogun compose build [<worktree>] [-- <args>...]
 shogun compose down [<worktree>] [--volumes]
+shogun compose prune [--volumes] [--yes]
 ```
 
-`compose` lists the Docker Compose projects of the repository's worktrees: name, `status=` and `worktree=<path>|removed`. `compose down` takes down the projects of removed worktrees, or the project of the given worktree (found as in `remove`, the main one allowed), with `docker compose -p <name> down`: volumes are kept unless `--volumes` is given. It prints `took down <name> (volumes kept)`, reports a failure on standard error and exits with `1` for it. If the repository doesn't declare the `docker-compose` provider, or the given worktree doesn't exist, it exits with `1` and runs no Docker command.
+`compose` lists the Docker Compose projects of the repository's worktrees: name, `status=` and `worktree=<path>|removed`, then one `leftover <kind> <name>  project=<project>` line per volume, network or image left by a removed worktree, with the `compose prune` command that removes them.
+
+`compose up` starts the services of the given worktree, or of the one containing the current directory, with `docker compose up --detach` run in that worktree with its environment (its `COMPOSE_PROJECT_NAME` and port variables); `--build` adds `--build`, and the arguments after `--` are passed to Docker Compose as they are. `compose build` runs `docker compose build` the same way. Docker Compose's output is shown as it runs, then `started Compose project <name> for <path>` (or `built …`); a failure is printed on standard error with exit code `1`.
+
+`compose prune` lists the networks and built images left by removed worktrees (`would remove …`) and the volumes it would keep (`would keep …`); with `--yes` it removes them (`removed …`, `kept …`), and their volumes too with `--volumes`. Nothing is forced, so a resource still used by a container is reported on standard error and the exit code is `1`. With nothing left it prints `Nothing to remove.` `compose down` takes down the projects of removed worktrees, or the project of the given worktree (found as in `remove`, the main one allowed), with `docker compose -p <name> down`: volumes are kept unless `--volumes` is given. It prints `took down <name> (volumes kept)`, reports a failure on standard error and exits with `1` for it. If the repository doesn't declare the `docker-compose` provider, or the given worktree doesn't exist, it exits with `1` and runs no Docker command.
 
 ### `emulator`
 
@@ -388,7 +399,7 @@ shogun xcode trim [--dry-run]
 
 ## JSON output
 
-Besides `status --json` above, every command that reports a result accepts `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `compose`, `compose down`, `pool status`, `pool trim`, `project add`, `project list`, `project remove`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks` and `guide install|uninstall|status` (not `simulator gradle-init`, `env`, `hook`, `help` or `--version`; on those it is an unknown option and exits with `2`). The option can go anywhere after the command.
+Besides `status --json` above, every command that reports a result accepts `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `compose`, `compose up`, `compose build`, `compose down`, `compose prune`, `pool status`, `pool trim`, `project add`, `project list`, `project remove`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks` and `guide install|uninstall|status` (not `simulator gradle-init`, `env`, `hook`, `help` or `--version`; on those it is an unknown option and exits with `2`). The option can go anywhere after the command.
 
 The rules are the same for all of them:
 
@@ -412,12 +423,14 @@ The rules are the same for all of them:
 | `project add`, `project remove` | `action` (`added`, `alreadyRegistered` or `removed`), and the project's `id`, `name` and `repository`. |
 | `project list` | `projects`: `{ id, name, repository }`, empty without projects. |
 | `open` | `path`, `branch` (or `null` if detached), `herdr` (`opened` or `focused`) and `agent` (the started agent's name, or `null` when the workspace was only focused). |
-| `clean` | `dryRun`; `candidates`: `{ path, branch, reason }` with `reason` `merged` or `folder-missing`; `keptForAgents`: `{ path, agents }`; `skipped`: `{ path, reason }` (status unavailable); `removed`; `deletedBranches`; `failures`: `{ path, message }`; and `providers`: `gradleDaemonsStopped`, `emulatorsStopped`, `simulatorsDeleted`, `derivedDataDeleted` and, with `--down-compose-projects`, `composeProjectsDown`. Without `--yes` (`dryRun: true`) `removed`, `deletedBranches` and the `providers` lists are empty. |
+| `clean` | `dryRun`; `candidates`: `{ path, branch, reason }` with `reason` `merged` or `folder-missing`; `keptForAgents`: `{ path, agents }`; `skipped`: `{ path, reason }` (status unavailable); `removed`; `deletedBranches`; `failures`: `{ path, message }`; and `providers`: `gradleDaemonsStopped`, `emulatorsStopped`, `simulatorsDeleted`, `derivedDataDeleted` and, with `--down-compose-projects`, `composeProjectsDown` and `composeResources` (`removed`, `kept`, `failures`, as in `compose prune`). Without `--yes` (`dryRun: true`) `removed`, `deletedBranches` and the `providers` lists are empty. |
 | `gradle` | `daemons`: `{ pid, kind, version, memoryBytes, state, idleSince, worktree }` with `kind` `gradle` or `kotlin`, `state` `busy`, `idle`, `unknown` or `untracked`, `idleSince` in ISO-8601 UTC (only when idle) and `worktree` a path, `removed`, `other-project` or `null` outside a repository; and `totalMemoryBytes`. |
 | `gradle stop` | `stopped` (pids), `kept`: `{ pid, kind, reason }` with `reason` `busy`, `state-unknown` or `build-running`, `notDaemons` (pids) and `failures`: `{ pid, message }`. The exit code is `1` when either of the last two isn't empty. |
 | `stacks` | `stacks`: `{ stack, evidence, providers }` with `stack` `gradle`, `android`, `xcode`, `maven` or `docker-compose`, `evidence` the files that revealed it and `providers`: `{ id, declared }` for each provider it suggests; `secrets`: `{ path, kind, pattern }` with `kind` `local-properties`, `signing-properties`, `keystore` or `firebase-config`; and `keystoreWarnings`: `{ file, key, value }`. |
 | `maven` | `daemons`: `{ pid, memoryBytes, worktree }` with `worktree` a path, `removed`, `other-project` or `null` (unknown, or outside a repository); and `totalMemoryBytes`. |
-| `compose` | `projects`: `{ name, status, worktree }` with `worktree` a path or `removed`. |
+| `compose` | `projects`: `{ name, status, worktree }` with `worktree` a path or `removed`; `leftovers`: `{ kind, name, project }` with `kind` `network`, `image` or `volume`. |
+| `compose up`, `compose build` | `worktree`, `project`, `succeeded` and, on failure, `message`. Docker Compose's output goes to standard error. |
+| `compose prune` | `dryRun`; `removed` and `kept`: `{ kind, name, project }`; `failures`: `{ resource, message }`. Without `--yes` `removed` is what it would remove. |
 | `compose down` | `takenDown` (project names) and `failures`: `{ name, message }`. The exit code is `1` when `failures` isn't empty. |
 | `xcode` | `active` (`false` when the provider isn't active, with the rest empty), `folders`: `{ path, sizeBytes, worktree }`, `orphans`: `{ path, sizeBytes }`, `unavailableVolumeFolders` (a count) and `compilationCacheBytes` (`null` unless declared). |
 | `xcode clean` | `active`, `deleted` (paths), `freedBytes` and `failures`: `{ path, message }`. |

@@ -37,7 +37,7 @@ Helpers de rutas:
 data class AgentLaunchConfig(
     val name: String? = null,
     val agentCommand: String = "claude",
-    val useHeadroom: Boolean = true,
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val useHeadroom: Boolean = false,
 ) {
     val displayName: String
         get() = name?.takeIf { it.isNotBlank() } ?: executable().replaceFirstChar { it.uppercase() }
@@ -49,6 +49,8 @@ data class AgentLaunchConfig(
 ```
 
 Una `data class` plana con valores por defecto, para que se serialice con `kotlinx.serialization` sin un `SerializersModule` polimórfico y los proyectos guardados antes de que existiera un campo se sigan cargando. `agentCommand` puede llevar argumentos (`claude --model opus`); `executable()` es su primera palabra sin carpetas. Dentro de su proyecto, un agente se identifica por `displayName`: su `name` o, si no tiene, su ejecutable con la inicial en mayúscula (`codex` → «Codex»).
+
+Headroom (`headroom wrap`) está desactivado salvo que el agente lo active. `useHeadroom` se escribe siempre, igual que `ProjectConfig.agentLaunchConfig`: las versiones anteriores, en las que Headroom venía activado por defecto, omitían el campo (o el agente por defecto entero) cuando estaba activado, así que `projects.json` lee un agente guardado sin `useHeadroom`, o un proyecto sin `agentLaunchConfig`, como envuelto con Headroom. El agente del multirepo en `~/.shogunai/multirepos.json` se escribe igual, siempre con su `useHeadroom`.
 
 `WorktreeAgents` gestiona la elección por worktree: un mapa de ruta de worktree a nombre de agente, guardado en `settings.json` (nunca en el repositorio). `agentFor` devuelve el agente del worktree o el de por defecto; `choose` guarda un agente que no es el de por defecto y olvida la entrada cuando se elige el de por defecto; `prune` quita las entradas del proyecto cuyo worktree ya no existe o cuyo agente se renombró o eliminó.
 
@@ -507,7 +509,7 @@ Guarda los `AgentSessionRecord` de las sesiones de un worktree: `write`, `remove
 
 Una declaración puede venir de un repositorio clonado, así que `ResolveMultirepoUseCase` solo aplica un multirepo registrado en `MultirepoSource.knownFolders()` y cuyo `approvalSubject` está aprobado allí (`Multirepo.approved`). El sujeto es un texto con la carpeta normalizada, cada alias declarado con su ruta resuelta (ordenados por alias), la carpeta de worktrees resuelta y el ajuste de workspace declarado: lo que decide dónde crea ShogunAi ramas y worktrees. `defaultRepos` y el `agent` de la declaración no forman parte de él. La búsqueda hacia arriba de `invoke` solo encaja con carpetas registradas, `declaring` y `approved()` se saltan los multirepos sin aprobar, y `known()` devuelve todos los registrados con su estado para la app de escritorio. `nearestDeclaration` encuentra la declaración más cercana, registrada o no, para `shogun multirepo trust`/`show` y para el aviso del CLI sobre una declaración ignorada. `validate` rechaza alias, rutas de repositorio y `worktreesRoot` con caracteres de control o de formato Unicode, para que la revisión no se pueda falsear con secuencias de escape.
 
-El agente del multirepo es un ajuste local (`MultirepoSource.agent`/`setAgent`, `Multirepo.localAgent`); `Multirepo.agent` usa `claude` con headroom por defecto y nunca lee `MultirepoDeclaration.agent`, que solo se conserva para que los archivos antiguos se sigan leyendo y `ignoresDeclaredAgent` pueda avisar. `ConfigureMultirepoUseCase` se niega a escribir un multirepo sin aprobar (`WorktreeError.MultirepoNeedsReview`), escribe la declaración sin `agent` y aprueba el sujeto que ha escrito, así que las ediciones del propio ShogunAi lo mantienen aprobado y una hecha en otro sitio no. `trust` registra y aprueba exactamente la declaración revisada (se niega si el archivo ha cambiado entretanto) y `revoke` la olvida.
+El agente del multirepo es un ajuste local (`MultirepoSource.agent`/`setAgent`, `Multirepo.localAgent`); `Multirepo.agent` usa `claude` sin Headroom por defecto y nunca lee `MultirepoDeclaration.agent`, que solo se conserva para que los archivos antiguos se sigan leyendo y `ignoresDeclaredAgent` pueda avisar. `ConfigureMultirepoUseCase` se niega a escribir un multirepo sin aprobar (`WorktreeError.MultirepoNeedsReview`), escribe la declaración sin `agent` y aprueba el sujeto que ha escrito, así que las ediciones del propio ShogunAi lo mantienen aprobado y una hecha en otro sitio no. `trust` registra y aprueba exactamente la declaración revisada (se niega si el archivo ha cambiado entretanto) y `revoke` la olvida.
 
 ### Repositorios
 

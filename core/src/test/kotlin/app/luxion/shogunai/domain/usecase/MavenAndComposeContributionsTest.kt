@@ -2,11 +2,13 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeAppleSimulators
+import app.luxion.shogunai.domain.FakeComposeProjectRegistry
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.io.ComposeRegistryEntry
 import app.luxion.shogunai.domain.model.DockerComposeProvider
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
 import app.luxion.shogunai.domain.model.InvalidEnvironmentTemplate
@@ -39,6 +41,8 @@ class MavenAndComposeContributionsTest {
             FakeShellCommandExecutor.success(command, "${admin.getValue(workingDirectory!!)}\n$common\n")
     }
 
+    private val registry = FakeComposeProjectRegistry()
+
     private fun resolver(providers: RepositoryProviders, vararg env: Pair<String, String>, store: FakeEnvironmentStateStore = FakeEnvironmentStateStore()) =
         ResolveWorktreeEnvironmentUseCase(
             executor,
@@ -54,6 +58,7 @@ class MavenAndComposeContributionsTest {
             FakePortProbe(),
             MachineProviderContributions(FakeAppleSimulators(), { SimulatorSettings() }),
             trust = FakeRepositoryTrust(approvesEverything = true),
+            composeRegistry = registry,
         )
 
     @Test
@@ -145,5 +150,42 @@ class MavenAndComposeContributionsTest {
 
         assertEquals("5432", environment.variables.toMap().getValue("DB_PORT"))
         assertTrue(environment.ports.isEmpty())
+    }
+
+    @Test
+    fun `resolving with reservation records the worktree's project name`() = runTest {
+        resolver(RepositoryProviders(dockerCompose = DockerComposeProvider()))(repository, task).getOrThrow()
+
+        assertEquals(listOf(ComposeRegistryEntry("main-repo-task-123", task)), registry.entries(repository))
+    }
+
+    @Test
+    fun `resolving without reservation records nothing`() = runTest {
+        resolver(RepositoryProviders(dockerCompose = DockerComposeProvider()))(repository, task, reserve = false).getOrThrow()
+
+        assertEquals(emptyList(), registry.entries(repository))
+    }
+
+    @Test
+    fun `a declared project name is the one recorded`() = runTest {
+        resolver(RepositoryProviders(dockerCompose = DockerComposeProvider()), "COMPOSE_PROJECT_NAME" to "custom")(repository, task).getOrThrow()
+
+        assertEquals(listOf("custom"), registry.entries(repository).map { it.project })
+    }
+
+    @Test
+    fun `a repository without the compose provider records nothing`() = runTest {
+        resolver(RepositoryProviders(maven = MavenProvider("1g")))(repository, task).getOrThrow()
+
+        assertEquals(emptyMap(), registry.recorded.filterValues { it.isNotEmpty() })
+    }
+
+    @Test
+    fun `a failing registry doesn't fail the resolution`() = runTest {
+        registry.failing = true
+
+        val environment = resolver(RepositoryProviders(dockerCompose = DockerComposeProvider()))(repository, task).getOrThrow()
+
+        assertTrue(environment.variables.contains(COMPOSE_PROJECT_NAME to "main-repo-task-123"))
     }
 }

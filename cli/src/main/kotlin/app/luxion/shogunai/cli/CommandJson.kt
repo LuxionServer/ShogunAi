@@ -1,6 +1,8 @@
 package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.domain.model.ComposeDownReport
+import app.luxion.shogunai.domain.model.ComposeLeftoversReport
+import app.luxion.shogunai.domain.model.ComposeResource
 import app.luxion.shogunai.domain.model.ComposeOwner
 import app.luxion.shogunai.domain.model.DaemonKeptReason
 import app.luxion.shogunai.domain.model.DaemonKind
@@ -175,6 +177,7 @@ data class CleanJson(
     val simulatorsDeleted: List<String> = emptyList(),
     val derivedDataDeleted: List<String> = emptyList(),
     val composeProjectsDown: List<String>? = null,
+    val composeResources: ComposeLeftoversReport? = null,
 )
 
 fun cleanJson(clean: CleanJson): JsonObject = buildJsonObject {
@@ -230,6 +233,7 @@ fun cleanJson(clean: CleanJson): JsonObject = buildJsonObject {
             put("simulatorsDeleted", strings(clean.simulatorsDeleted))
             put("derivedDataDeleted", strings(clean.derivedDataDeleted))
             clean.composeProjectsDown?.let { put("composeProjectsDown", strings(it)) }
+            clean.composeResources?.let { put("composeResources", composeLeftoversJson(it)) }
         },
     )
 }
@@ -352,7 +356,8 @@ val Stack.jsonLabel: String
         Stack.DOCKER_COMPOSE -> "docker-compose"
     }
 
-fun composeJson(projects: List<WorktreeComposeProject>): JsonObject = buildJsonObject {
+fun composeJson(projects: List<WorktreeComposeProject>, leftovers: List<ComposeResource> = emptyList()): JsonObject = buildJsonObject {
+    put("leftovers", composeResourcesJson(leftovers))
     put(
         "projects",
         buildJsonArray {
@@ -373,6 +378,42 @@ fun composeJson(projects: List<WorktreeComposeProject>): JsonObject = buildJsonO
             }
         },
     )
+}
+
+fun composeRunJson(worktree: String, project: String?, error: String?): JsonObject = buildJsonObject {
+    put("worktree", worktree)
+    project?.let { put("project", it) }
+    put("succeeded", error == null)
+    error?.let { put("message", it) }
+}
+
+fun composeLeftoversJson(report: ComposeLeftoversReport, dryRun: Boolean? = null): JsonObject = buildJsonObject {
+    dryRun?.let { put("dryRun", it) }
+    put("removed", composeResourcesJson(report.removed))
+    put("kept", composeResourcesJson(report.kept))
+    put(
+        "failures",
+        buildJsonArray {
+            report.failures.forEach {
+                add(
+                    buildJsonObject {
+                        put("resource", composeResourceJson(it.resource))
+                        put("message", it.detail)
+                    },
+                )
+            }
+        },
+    )
+}
+
+private fun composeResourcesJson(resources: List<ComposeResource>): JsonArray = buildJsonArray {
+    resources.forEach { add(composeResourceJson(it)) }
+}
+
+private fun composeResourceJson(resource: ComposeResource): JsonObject = buildJsonObject {
+    put("kind", resource.kind.id)
+    put("name", resource.name)
+    put("project", resource.project)
 }
 
 fun composeDownJson(report: ComposeDownReport): JsonObject = buildJsonObject {

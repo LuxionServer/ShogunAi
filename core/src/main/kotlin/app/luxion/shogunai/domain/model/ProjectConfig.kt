@@ -1,13 +1,16 @@
 package app.luxion.shogunai.domain.model
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class ProjectConfig(
     val baseRepositoryPath: String,
     val worktreesRoot: String,
     val secretFiles: List<String>,
-    val agentLaunchConfig: AgentLaunchConfig = AgentLaunchConfig(),
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val agentLaunchConfig: AgentLaunchConfig = AgentLaunchConfig(),
     val additionalAgents: List<AgentLaunchConfig> = emptyList(),
     val mainBranch: String? = null,
     val emulator: EmulatorSettings = EmulatorSettings(),

@@ -37,7 +37,7 @@ Path helpers:
 data class AgentLaunchConfig(
     val name: String? = null,
     val agentCommand: String = "claude",
-    val useHeadroom: Boolean = true,
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val useHeadroom: Boolean = false,
 ) {
     val displayName: String
         get() = name?.takeIf { it.isNotBlank() } ?: executable().replaceFirstChar { it.uppercase() }
@@ -49,6 +49,8 @@ data class AgentLaunchConfig(
 ```
 
 A flat `data class` with default values, so it serializes with `kotlinx.serialization` without a polymorphic `SerializersModule`, and projects saved before a field existed still load. `agentCommand` may carry arguments (`claude --model opus`); `executable()` is its first word without folders. An agent is identified within its project by `displayName`: its `name`, or else its executable capitalized (`codex` → "Codex").
+
+Headroom (`headroom wrap`) is off unless the agent turns it on. `useHeadroom` is always written, and so is `ProjectConfig.agentLaunchConfig`: earlier versions, where Headroom was on by default, left the field (or the whole default agent) out when it was on, so `projects.json` reads an agent stored without `useHeadroom`, or a project without `agentLaunchConfig`, as Headroom-wrapped. The multirepo agent in `~/.shogunai/multirepos.json` is written the same way, with its `useHeadroom` always present.
 
 `WorktreeAgents` holds the per-worktree choice: a map from worktree path to agent display name, stored in `settings.json` (never in the repository). `agentFor` returns the worktree's agent, or the default; `choose` records a non-default agent and forgets the entry when the default is chosen; `prune` drops entries of the project whose worktree no longer exists or whose agent was renamed or removed.
 
@@ -507,7 +509,7 @@ Keeps the `AgentSessionRecord`s of the sessions of a worktree: `write`, `remove`
 
 A declaration can come from a cloned repository, so `ResolveMultirepoUseCase` only applies a multirepo that is registered in `MultirepoSource.knownFolders()` and whose `approvalSubject` is approved there (`Multirepo.approved`). The subject is a text with the normalized folder, each declared alias with its resolved path (sorted by alias), the resolved worktrees root and the declared workspace setting: what decides where ShogunAi creates branches and worktrees. `defaultRepos` and the declaration's `agent` aren't part of it. The upward walk of `invoke` only matches registered folders, `declaring` and `approved()` skip unapproved multirepos, and `known()` returns every registered one with its state for the desktop app. `nearestDeclaration` finds the nearest declaration registered or not, for `shogun multirepo trust`/`show` and the CLI's note about an ignored declaration. `validate` rejects aliases, repository paths and `worktreesRoot` with control or Unicode formatting characters, so the review can't be spoofed with escape sequences.
 
-The multirepo agent is a local setting (`MultirepoSource.agent`/`setAgent`, `Multirepo.localAgent`); `Multirepo.agent` falls back to `claude` with headroom and never reads `MultirepoDeclaration.agent`, which only survives so older files parse and `ignoresDeclaredAgent` can report it. `ConfigureMultirepoUseCase` refuses to write an unapproved multirepo (`WorktreeError.MultirepoNeedsReview`), writes the declaration without `agent`, and approves the subject it wrote, so ShogunAi's own edits keep it approved while an edit made elsewhere doesn't. `trust` registers and approves exactly the declaration that was reviewed (it refuses if the file changed in between) and `revoke` forgets it.
+The multirepo agent is a local setting (`MultirepoSource.agent`/`setAgent`, `Multirepo.localAgent`); `Multirepo.agent` falls back to `claude` without Headroom and never reads `MultirepoDeclaration.agent`, which only survives so older files parse and `ignoresDeclaredAgent` can report it. `ConfigureMultirepoUseCase` refuses to write an unapproved multirepo (`WorktreeError.MultirepoNeedsReview`), writes the declaration without `agent`, and approves the subject it wrote, so ShogunAi's own edits keep it approved while an edit made elsewhere doesn't. `trust` registers and approves exactly the declaration that was reviewed (it refuses if the file changed in between) and `revoke` forgets it.
 
 ### Repositories
 

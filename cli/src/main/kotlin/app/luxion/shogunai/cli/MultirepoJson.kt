@@ -11,6 +11,7 @@ import app.luxion.shogunai.domain.usecase.GroupOpening
 import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
 import app.luxion.shogunai.domain.usecase.GroupWorktreeState
 import app.luxion.shogunai.domain.usecase.MultirepoState
+import app.luxion.shogunai.domain.usecase.RegisteredMultirepo
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -19,6 +20,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 fun multirepoJson(multirepo: Multirepo, configs: Map<String, ProjectConfig?>, bases: Map<String, String?>): JsonObject = buildJsonObject {
+    put("name", multirepo.name)
     put("path", multirepo.folder)
     put("approved", multirepo.approved)
     put("worktreesRoot", multirepo.worktreesRoot)
@@ -47,6 +49,7 @@ fun multirepoJson(multirepo: Multirepo, configs: Map<String, ProjectConfig?>, ba
 fun multirepoTrustJson(multirepo: Multirepo, approved: Boolean, changed: Boolean): JsonObject = buildJsonObject {
     put("path", multirepo.folder)
     put("declaration", multirepo.declarationPath)
+    multirepo.declaredName?.let { put("name", it) }
     put("approved", approved)
     put("changed", changed)
     put("repos", buildJsonArray {
@@ -62,6 +65,22 @@ fun multirepoTrustJson(multirepo: Multirepo, approved: Boolean, changed: Boolean
     put("worktreesRootOutsideParent", multirepo.isOutsideParent(multirepo.worktreesRoot))
     put("workspace", multirepo.workspaceRepository?.alias)
     put("ignoredDeclaredAgent", multirepo.ignoresDeclaredAgent)
+}
+
+fun registeredMultirepoJson(registered: RegisteredMultirepo): JsonObject = buildJsonObject {
+    put("name", registered.multirepo.name)
+    put("path", registered.multirepo.folder)
+    put("declaration", registered.multirepo.declarationPath)
+    put("registered", registered.trustedNow)
+    put("projects", buildJsonArray {
+        registered.registeredProjects.forEach { project ->
+            add(buildJsonObject {
+                put("name", project.name)
+                put("path", project.config.baseRepositoryPath)
+                put("worktreesFolder", project.config.worktreesRoot)
+            })
+        }
+    })
 }
 
 fun addedRepositoryJson(multirepo: Multirepo, added: AddedRepository): JsonObject = buildJsonObject {

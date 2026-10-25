@@ -134,7 +134,7 @@ class AddMultirepoState(private val setup: MultirepoSetup, private val scope: Co
                 var multirepo = when {
                     reviewed == null -> setup.init(folder).getOrThrow()
                     reviewed.approved -> reviewed
-                    else -> setup.trust(reviewed).getOrThrow()
+                    else -> setup.register(reviewed).getOrThrow().multirepo
                 }
                 chosen.filter { it.alias !in multirepo.declaration.repos }.forEach { candidate ->
                     setup.addRepository(multirepo, candidate.alias, candidate.path, candidate.useProposedFolder).getOrThrow()
