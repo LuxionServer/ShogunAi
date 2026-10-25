@@ -3,6 +3,7 @@ package app.luxion.shogunai.domain.io
 import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.RecentWorktree
+import app.luxion.shogunai.domain.model.SidebarOrder
 import app.luxion.shogunai.domain.model.SortedView
 import app.luxion.shogunai.domain.model.WindowBounds
 import app.luxion.shogunai.domain.model.WorktreeSort
@@ -18,6 +19,8 @@ interface ShellPreferenceRepository {
     fun saveCollapsedProjects(projectIds: Set<String>)
     fun loadCollapsedMultirepos(): Set<String>
     fun saveCollapsedMultirepos(folders: Set<String>)
+    fun loadSidebarOrder(): SidebarOrder
+    fun saveSidebarOrder(order: SidebarOrder)
     fun loadLastCreateProject(): String?
     fun saveLastCreateProject(projectId: String)
     fun loadRecentPaletteItems(): List<String>

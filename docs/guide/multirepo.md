@@ -10,6 +10,7 @@ A multirepo is declared by a `.shogunai-multirepo.json` file in a folder you cho
 
 ```json
 {
+  "name": "Product",
   "repos": { "docs": "product-docs", "app": "product-app", "api": "product-api" },
   "worktreesRoot": "../product-worktrees",
   "defaultRepos": ["app", "api"],
@@ -18,6 +19,7 @@ A multirepo is declared by a `.shogunai-multirepo.json` file in a folder you cho
 }
 ```
 
+- `name` is optional: the name the multirepo is shown with in the sidebar, `shogun multirepo show`, the agents' context and Herdr. Without it, the multirepo is named after its folder, which is handy when a workspace repository's folder isn't named after the product. Paths and aliases never depend on it.
 - `repos` maps an alias (lowercase letters, digits and hyphens) to a repository's path, relative to the folder or absolute. The repositories don't need to share a parent folder.
 - `worktreesRoot` is a common folder under which each repository's worktrees folder is proposed as `<worktreesRoot>/<alias>`.
 - `defaultRepos` are the repositories `shogun new <id>` covers when run in the multirepo folder.
@@ -28,9 +30,12 @@ The folder is outside every repository, or the top level of a **workspace reposi
 
 ShogunAi remembers the multirepos it knows in `~/.shogunai/multirepos.json`, a file of its own; `projects.json` and `settings.json` keep their format, so an earlier version keeps working with them.
 
+If a multirepo's folder moves, run `shogun multirepo init` in its new place (or add the folder from the desktop app): instead of refusing, it registers the existing declaration as it is and registers a project for each declared repository that has none, proposing `<worktreesRoot>/<alias>` as `add-repo` does. Both `init` and the desktop app also forget the entries of `~/.shogunai/multirepos.json` whose folder no longer exists; an entry whose folder exists but has no declaration is kept and ignored. A multirepo on a volume that isn't mounted is therefore forgotten too, and `shogun multirepo init` there brings it back.
+
 ```bash
 cd ~/projects/product
 shogun multirepo init                       # writes .shogunai-multirepo.json, worktreesRoot ../product-worktrees
+shogun multirepo name "Product"             # optional; --clear goes back to the folder's name
 shogun multirepo add-repo app product-app   # reuses product-app's project, or registers one
 shogun multirepo add-repo api product-api
 shogun multirepo defaults app,api

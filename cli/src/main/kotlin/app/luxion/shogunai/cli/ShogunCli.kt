@@ -439,22 +439,15 @@ class ShogunCli(
     private suspend fun multirepo(command: CliCommand.Multirepo): Int {
         val configure = ConfigureMultirepoUseCase(multirepoSource, resolveMultirepo, projectRepository, executor)
         val action = command.action
-        if (action is MultirepoAction.Init) {
-            val multirepo = configure.init(workingDirectory, action.worktreesRoot?.let(::absolute)).getOrThrow()
-            if (command.json) printJson(multirepoJson(multirepo, emptyMap(), emptyMap())) else out.line(multirepo.declarationPath)
-            return EXIT_OK
-        }
+        if (action is MultirepoAction.Init) return initMultirepo(configure, action, command.json)
         val context = multirepoContext() ?: throw WorktreeError.MultirepoNotFound(workingDirectory)
         val multirepo = context.multirepo
         val updated = try {
             when (action) {
                 is MultirepoAction.Init, MultirepoAction.Show -> multirepo
+                is MultirepoAction.Name -> configure.setName(multirepo, action.name).getOrThrow()
                 is MultirepoAction.AddRepo -> {
-                    val decision = WorktreesFolderDecision { project, current, proposed ->
-                        action.useWorktreesRoot ?: (!command.json && confirm(
-                            "Keep the new worktrees of $project in $proposed" + (current?.let { " instead of $it" } ?: "") + "? [y/N] ",
-                        ))
-                    }
+                    val decision = worktreesFolderDecision(action.useWorktreesRoot, command.json)
                     val added = configure.addRepository(multirepo, action.alias, absolute(action.path), decision).getOrThrow()
                     if (command.json) {
                         printJson(addedRepositoryJson(multirepo, added))
@@ -509,6 +502,37 @@ class ShogunCli(
             if (updated.workspaceDetected) out.line("The folder is a Git repository, detected as the workspace repository; declare it with `shogun multirepo workspace set` or turn it off with `shogun multirepo workspace clear`.")
         }
         return EXIT_OK
+    }
+
+    private suspend fun initMultirepo(configure: ConfigureMultirepoUseCase, action: MultirepoAction.Init, json: Boolean): Int {
+        multirepoSource.forgetMissing()
+        if (multirepoSource.read(workingDirectory) == null) {
+            val multirepo = configure.init(workingDirectory, action.worktreesRoot?.let(::absolute), action.name).getOrThrow()
+            if (json) printJson(multirepoJson(multirepo, emptyMap(), emptyMap())) else out.line(multirepo.declarationPath)
+            return EXIT_OK
+        }
+        listOfNotNull("--worktrees-root".takeIf { action.worktreesRoot != null }, "--name".takeIf { action.name != null }).firstOrNull()?.let {
+            err.line("shogun: $it only applies to a new multirepo; this folder already has one, use 'shogun multirepo worktrees-root' or 'shogun multirepo name'")
+            return EXIT_USAGE
+        }
+        val registered = configure.register(workingDirectory, worktreesFolderDecision(action.useWorktreesRoot, json)).getOrThrow()
+        val multirepo = registered.multirepo
+        if (json) {
+            printJson(registeredMultirepoJson(registered))
+        } else {
+            out.line(
+                if (registered.remembered) "registered the existing multirepo ${multirepo.name} (${multirepo.declarationPath})"
+                else "the multirepo ${multirepo.name} is already registered (${multirepo.declarationPath})",
+            )
+            registered.registeredProjects.forEach { out.line("registered ${it.name} as a project; its worktrees go to ${it.config.worktreesRoot}") }
+        }
+        return EXIT_OK
+    }
+
+    private fun worktreesFolderDecision(useWorktreesRoot: Boolean?, json: Boolean) = WorktreesFolderDecision { project, current, proposed ->
+        useWorktreesRoot ?: (!json && confirm(
+            "Keep the new worktrees of $project in $proposed" + (current?.let { " instead of $it" } ?: "") + "? [y/N] ",
+        ))
     }
 
     private fun buildJsonObjectOf(vararg entries: Pair<String, String>): JsonObject =

@@ -13,7 +13,7 @@ shogun repair                      # re-enlaza los worktrees tras mover el repos
 shogun open TASK-123 --herdr       # abre un worktree en Herdr con su entorno y el agente del proyecto
 shogun clean --yes                 # elimina los worktrees mergeados o sin carpeta (sin --yes solo los lista)
 shogun stacks                      # los stacks detectados en el repositorio y los providers que sugieren
-shogun multirepo show              # en un multirepo: sus repositorios, los de por defecto y su agente
+shogun multirepo show              # en un multirepo: su nombre, sus repositorios, los de por defecto y su agente
 shogun project add                 # registra este repositorio como proyecto de la app de escritorio
 shogun app --settings              # abre la app de escritorio en los ajustes del proyecto de este repositorio
 eval "$(shogun env)"               # carga las variables de este worktree desde "env" en .shogunai.json
@@ -238,8 +238,9 @@ También se cierran los espacios de trabajo de Herdr de los worktrees eliminados
 En la carpeta de un multirepo (ver [Multirepos y grupos](multirepo.md)), `new`, `status`, `open` y `clean` actúan sobre sus grupos, y `shogun multirepo` lo configura.
 
 ```text
-shogun multirepo init [--worktrees-root <dir>]
+shogun multirepo init [--worktrees-root <dir>] [--name <name>] [--use-worktrees-root | --keep-worktrees-folder]
 shogun multirepo show
+shogun multirepo name <name> | --clear
 shogun multirepo add-repo <alias> <ruta> [--use-worktrees-root | --keep-worktrees-folder]
 shogun multirepo remove-repo <alias>
 shogun multirepo defaults <alias>[,<alias>...] | --clear
@@ -252,6 +253,8 @@ shogun open <task id | rama> --herdr
 shogun open --herdr
 ```
 
+- `multirepo init` en una carpeta que ya tiene declaración la registra y registra un proyecto para cada repositorio declarado que no lo tenga (preguntando por `<worktreesRoot>/<alias>` como hace `add-repo`); ahí `--worktrees-root` y `--name` salen con `2`. En ambos casos olvida antes los multirepos conocidos cuya carpeta ya no existe. Su `--json` para una declaración existente tiene `name`, `path`, `declaration`, `registered` (false si ya era conocido) y los `projects` registrados.
+- `multirepo name` fija el nombre con el que se muestra el multirepo; un nombre en blanco sale con `2`. `show` imprime primero el nombre, y su `--json` tiene `name`.
 - Los subcomandos de `multirepo` funcionan en la carpeta del multirepo o en cualquier parte de sus repositorios y worktrees, y aceptan `--json`; fuera de un multirepo salen con `1`. Un alias incorrecto sale con `2`.
 - `new <id>` en la carpeta del multirepo cubre los repositorios por defecto, o `--repos` desde cualquier parte del multirepo; imprime la ruta de cada worktree que crea en la salida estándar y una línea por repositorio en la salida de error, y sale con `1` si algún repositorio falló. `--branch`, `--from` y `--worktrees-root` no se aplican a un grupo y salen con `2`. Su objeto `--json` tiene la `branch` y una lista `repos` con `alias`, `path`, `result` (`created`, `existing` o `failed`), los comandos de post-creación omitidos y `error`.
 - Cuando la carpeta del multirepo es un repositorio Git, es el repositorio de workspace del multirepo (alias `workspace` salvo que se declare otro): `show` lo lista, marcado `detected` hasta que `workspace set` lo declara (`--alias` lo renombra, `--default` lo añade a los repositorios por defecto) y `workspace clear` desactiva la detección; en una carpeta que no es un repositorio `workspace set` sale con `1`. `new <id> --repos workspace,app` lo incluye, con su worktree en `<worktreesRoot>/workspace/<id>`. `project add` y `app` ejecutados en esa carpeta registran el repositorio de workspace como miembro del multirepo y ningún proyecto propio de la carpeta (`app` solo abre la app), salvo que la detección esté desactivada. El `--json` de `show` marca cada repositorio con `workspace` y `detected`.

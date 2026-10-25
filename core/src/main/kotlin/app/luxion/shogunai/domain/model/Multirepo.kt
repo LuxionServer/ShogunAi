@@ -63,6 +63,7 @@ data class MultirepoDeclaration(
     val defaultRepos: List<String> = emptyList(),
     val agent: AgentLaunchConfig? = null,
     val workspace: WorkspaceSetting? = null,
+    val name: String? = null,
 )
 
 data class MultirepoRepository(val alias: String, val path: String)
@@ -72,8 +73,11 @@ data class Multirepo(
     val declaration: MultirepoDeclaration,
     val folderIsRepository: Boolean = false,
 ) {
-    val name: String
+    val folderName: String
         get() = folder.trimEnd('/', '\\').substringAfterLast('/').substringAfterLast('\\')
+
+    val name: String
+        get() = declaration.name?.trim()?.ifEmpty { null } ?: folderName
 
     val declarationPath: String
         get() = joinPath(folder, MULTIREPO_FILE_NAME)

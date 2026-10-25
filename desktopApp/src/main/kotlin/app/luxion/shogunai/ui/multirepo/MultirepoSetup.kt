@@ -5,10 +5,17 @@ import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.usecase.AddedRepository
 import app.luxion.shogunai.domain.usecase.MultirepoMember
+import app.luxion.shogunai.domain.usecase.RegisteredMultirepo
 import app.luxion.shogunai.domain.usecase.WorktreeGroup
 import java.nio.file.Path
 
-data class FolderInspection(val enclosingRepository: String?, val repositories: List<String>)
+data class ExistingMultirepo(val multirepo: Multirepo?, val problem: Throwable?, val known: Boolean)
+
+data class FolderInspection(
+    val enclosingRepository: String?,
+    val repositories: List<String>,
+    val existing: ExistingMultirepo? = null,
+)
 
 interface MultirepoSetup {
     suspend fun inspect(folder: String): FolderInspection
@@ -18,6 +25,8 @@ interface MultirepoSetup {
     fun projects(): List<Project>
     fun read(folder: String): Multirepo?
     suspend fun init(folder: String): Result<Multirepo>
+    suspend fun register(folder: String, acceptedFolders: Set<String>): Result<RegisteredMultirepo>
+    fun setName(multirepo: Multirepo, name: String?): Result<Multirepo>
     suspend fun addRepository(multirepo: Multirepo, alias: String, path: String, useProposedFolder: Boolean): Result<AddedRepository>
     fun removeRepository(multirepo: Multirepo, alias: String): Result<Multirepo>
     fun renameRepository(multirepo: Multirepo, alias: String, newAlias: String): Result<Multirepo>

@@ -11,6 +11,7 @@ class FakeMultirepoSource(
     val declarations = declarations.toMutableMap()
     val known = known.toMutableList()
     val unreadable = mutableMapOf<String, Exception>()
+    val missingFolders = mutableSetOf<String>()
 
     override fun read(folder: String): MultirepoDeclaration? {
         unreadable[folder]?.let { throw it }
@@ -33,5 +34,11 @@ class FakeMultirepoSource(
 
     override fun forget(folder: String) {
         known.remove(folder)
+    }
+
+    override fun forgetMissing(): List<String> {
+        val missing = known.filter { it in missingFolders }
+        known.removeAll(missing)
+        return missing
     }
 }

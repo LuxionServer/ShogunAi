@@ -267,6 +267,7 @@ private fun openWindow() = application {
                 appContainer::acknowledgeSettingsProblem,
                 MultirepoCatalog(appContainer::knownMultirepos),
                 appContainer::registerWorkspaceProject,
+                appContainer::forgetMissingMultirepos,
             )
         }
         SideEffect { shellViewModelHolder.value = shellViewModel }

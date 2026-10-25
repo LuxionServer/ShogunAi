@@ -10,6 +10,7 @@ Un multirepo se declara con un fichero `.shogunai-multirepo.json` en una carpeta
 
 ```json
 {
+  "name": "Product",
   "repos": { "docs": "product-docs", "app": "product-app", "api": "product-api" },
   "worktreesRoot": "../product-worktrees",
   "defaultRepos": ["app", "api"],
@@ -18,6 +19,7 @@ Un multirepo se declara con un fichero `.shogunai-multirepo.json` en una carpeta
 }
 ```
 
+- `name` es opcional: el nombre con el que se muestra el multirepo en la barra lateral, en `shogun multirepo show`, en el contexto de los agentes y en Herdr. Sin él, el multirepo se llama como su carpeta, lo que viene bien cuando la carpeta de un repositorio de workspace no se llama como el producto. Las rutas y los alias nunca dependen de él.
 - `repos` asocia un alias (minúsculas, dígitos y guiones) a la ruta de un repositorio, relativa a la carpeta o absoluta. Los repositorios no tienen por qué compartir carpeta padre.
 - `worktreesRoot` es una carpeta común bajo la que se propone la carpeta de worktrees de cada repositorio como `<worktreesRoot>/<alias>`.
 - `defaultRepos` son los repositorios que cubre `shogun new <id>` en la carpeta del multirepo.
@@ -28,9 +30,12 @@ La carpeta está fuera de todo repositorio, o es la raíz de un **repositorio de
 
 ShogunAi recuerda los multirepos que conoce en `~/.shogunai/multirepos.json`, un fichero propio; `projects.json` y `settings.json` mantienen su formato, así que una versión anterior sigue funcionando con ellos.
 
+Si la carpeta de un multirepo se mueve, ejecuta `shogun multirepo init` en su nuevo sitio (o añade la carpeta desde la app de escritorio): en vez de negarse, registra la declaración que ya existe tal como está y registra un proyecto para cada repositorio declarado que no lo tenga, proponiendo `<worktreesRoot>/<alias>` como hace `add-repo`. Tanto `init` como la app de escritorio olvidan además las entradas de `~/.shogunai/multirepos.json` cuya carpeta ya no existe; una entrada cuya carpeta existe pero no tiene declaración se conserva y se ignora. Un multirepo en un volumen que no está montado también se olvida, y `shogun multirepo init` en él lo recupera.
+
 ```bash
 cd ~/projects/product
 shogun multirepo init                       # escribe .shogunai-multirepo.json, worktreesRoot ../product-worktrees
+shogun multirepo name "Product"             # opcional; --clear vuelve al nombre de la carpeta
 shogun multirepo add-repo app product-app   # reutiliza el proyecto de product-app, o registra uno
 shogun multirepo add-repo api product-api
 shogun multirepo defaults app,api

@@ -73,11 +73,15 @@ internal object CliHelp {
                               agent, with the same options
 """.trimIndent(),
         "multirepo" to """
-  multirepo init [--worktrees-root <dir>] [--json]
+  multirepo init [--worktrees-root <dir>] [--name <name>] [--use-worktrees-root | --keep-worktrees-folder] [--json]
                               Make the current folder a multirepo (outside any repository or at the top of a
                               workspace repository); new worktrees folders are proposed under --worktrees-root
-                              (default: ../<folder>-worktrees)
-  multirepo show [--json]     Show the multirepo's repositories, projects, bases, defaults and agent
+                              (default: ../<folder>-worktrees). In a folder that already has a declaration
+                              (e.g. one that moved), register it and its repositories' projects instead.
+                              Either way, forget the known multirepos whose folder no longer exists
+  multirepo show [--json]     Show the multirepo's name, repositories, projects, bases, defaults and agent
+  multirepo name <name> | --clear [--json]
+                              Set the name the multirepo is shown with (default: its folder's name)
   multirepo add-repo <alias> <path> [--use-worktrees-root | --keep-worktrees-folder] [--json]
                               Add a repository, reusing its project or registering one, and propose
                               <worktrees-root>/<alias> as its project's worktrees folder (asked unless given)

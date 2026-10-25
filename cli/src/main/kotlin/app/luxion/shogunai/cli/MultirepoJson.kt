@@ -11,6 +11,7 @@ import app.luxion.shogunai.domain.usecase.GroupOpening
 import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
 import app.luxion.shogunai.domain.usecase.GroupWorktreeState
 import app.luxion.shogunai.domain.usecase.MultirepoState
+import app.luxion.shogunai.domain.usecase.RegisteredMultirepo
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -19,6 +20,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 fun multirepoJson(multirepo: Multirepo, configs: Map<String, ProjectConfig?>, bases: Map<String, String?>): JsonObject = buildJsonObject {
+    put("name", multirepo.name)
     put("path", multirepo.folder)
     put("worktreesRoot", multirepo.worktreesRoot)
     put("repos", buildJsonArray {
@@ -39,6 +41,22 @@ fun multirepoJson(multirepo: Multirepo, configs: Map<String, ProjectConfig?>, ba
         put("name", multirepo.agent.displayName)
         put("command", multirepo.agent.agentCommand)
         put("useHeadroom", multirepo.agent.useHeadroom)
+    })
+}
+
+fun registeredMultirepoJson(registered: RegisteredMultirepo): JsonObject = buildJsonObject {
+    put("name", registered.multirepo.name)
+    put("path", registered.multirepo.folder)
+    put("declaration", registered.multirepo.declarationPath)
+    put("registered", registered.remembered)
+    put("projects", buildJsonArray {
+        registered.registeredProjects.forEach { project ->
+            add(buildJsonObject {
+                put("name", project.name)
+                put("path", project.config.baseRepositoryPath)
+                put("worktreesFolder", project.config.worktreesRoot)
+            })
+        }
     })
 }
 

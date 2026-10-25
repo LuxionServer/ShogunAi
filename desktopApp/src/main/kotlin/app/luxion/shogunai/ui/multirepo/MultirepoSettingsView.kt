@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -84,6 +85,16 @@ fun MultirepoSettingsView(
                 .widthIn(max = ContentMaxWidth),
             verticalArrangement = Arrangement.spacedBy(Spacing.lg),
         ) {
+            SettingsSection(strings.multirepoNameTitle) {
+                Text(strings.multirepoNameHint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedTextField(
+                    value = state.name,
+                    onValueChange = { state.name = it },
+                    placeholder = { Text(multirepo.folderName) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("multirepo-name").trackTextInputFocus(),
+                )
+            }
             SettingsSection(strings.multirepoRepositoriesTitle) {
                 multirepo.declaredRepositories.forEach { repository -> RepositoryRow(state, repository) }
                 AddRepositoryRow(state, pickFolder)

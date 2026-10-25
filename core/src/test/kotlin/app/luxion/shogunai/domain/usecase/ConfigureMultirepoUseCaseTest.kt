@@ -171,4 +171,69 @@ class ConfigureMultirepoUseCaseTest {
         assertTrue(world.source.known.isEmpty())
         assertEquals(3, world.projects.list().size)
     }
+
+    @Test
+    fun `init stores a trimmed name and keeps the worktrees root after the folder`() = runTest {
+        world.source.declarations.clear()
+
+        val multirepo = configure.init(world.folder, null, "  Product  ").getOrThrow()
+
+        assertEquals(MultirepoDeclaration(worktreesRoot = "../product-worktrees", name = "Product"), world.source.declarations[world.folder])
+        assertEquals("Product", multirepo.name)
+    }
+
+    @Test
+    fun `setName sets, trims and clears the display name`() = runTest {
+        val named = configure.setName(world.multirepo, " Product Suite ").getOrThrow()
+        assertEquals("Product Suite", named.declaration.name)
+        assertEquals("Product Suite", named.name)
+
+        val cleared = configure.setName(named, "   ").getOrThrow()
+        assertNull(cleared.declaration.name)
+        assertEquals("product", cleared.name)
+        assertNull(world.source.declarations.getValue(world.folder).name)
+    }
+
+    @Test
+    fun `register remembers an existing declaration and registers the repositories without a project`() = runTest {
+        world.source.known.clear()
+        world.projects.delete("api")
+
+        val registered = configure.register(world.folder, answering(true)).getOrThrow()
+
+        assertTrue(registered.remembered)
+        assertEquals(listOf(world.folder), world.source.known)
+        assertEquals(listOf("product-api"), registered.registeredProjects.map { it.name })
+        assertEquals("${world.worktreesRoot}/api", world.projects.list().first { it.config.baseRepositoryPath == world.apiBase }.config.worktreesRoot)
+        assertEquals(world.declaration, world.source.declarations[world.folder])
+        assertEquals(listOf(Triple<String, String?, String>("product-api", null, "${world.worktreesRoot}/api")), asked.toList())
+    }
+
+    @Test
+    fun `register of a known multirepo with every project changes nothing`() = runTest {
+        val before = world.projects.list()
+
+        val registered = configure.register(world.folder, answering(true)).getOrThrow()
+
+        assertFalse(registered.remembered)
+        assertTrue(registered.registeredProjects.isEmpty())
+        assertEquals(before, world.projects.list())
+        assertTrue(asked.isEmpty())
+    }
+
+    @Test
+    fun `register refuses an invalid declaration and a repository of another multirepo`() = runTest {
+        world.source.known.clear()
+        world.source.declarations["/home/dev/other"] = MultirepoDeclaration(mapOf("app" to world.appBase), "../w")
+        world.source.known += "/home/dev/other"
+
+        val claimed = assertIs<WorktreeError.InvalidMultirepo>(configure.register(world.folder, answering(true)).exceptionOrNull())
+        assertTrue(claimed.detail.contains("/home/dev/other"))
+        assertEquals(listOf("/home/dev/other"), world.source.known)
+
+        world.source.known.remove("/home/dev/other")
+        world.source.declarations[world.folder] = world.declaration.copy(defaultRepos = listOf("web"))
+        assertIs<WorktreeError.InvalidMultirepo>(configure.register(world.folder, answering(true)).exceptionOrNull())
+        assertTrue(world.source.known.isEmpty())
+    }
 }

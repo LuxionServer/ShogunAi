@@ -9,9 +9,11 @@ import app.luxion.shogunai.domain.usecase.CreateGroupUseCase
 import app.luxion.shogunai.domain.usecase.DetectGroupsUseCase
 import app.luxion.shogunai.domain.usecase.MultirepoMember
 import app.luxion.shogunai.domain.usecase.OpenMultirepoAgentInHerdrUseCase
+import app.luxion.shogunai.domain.usecase.RegisteredMultirepo
 import app.luxion.shogunai.domain.usecase.ResolveMultirepoUseCase
 import app.luxion.shogunai.domain.usecase.WorktreeGroup
 import app.luxion.shogunai.infrastructure.JsonMultirepoSource
+import app.luxion.shogunai.ui.multirepo.ExistingMultirepo
 import app.luxion.shogunai.ui.multirepo.FolderInspection
 import app.luxion.shogunai.ui.multirepo.MultirepoActions
 import app.luxion.shogunai.ui.multirepo.MultirepoSetup
@@ -474,10 +476,31 @@ class AppContainer {
         openAgent = { multirepo -> OpenMultirepoAgentInHerdrUseCase(herdrClient)(multirepo) },
     )
 
+    private suspend fun existingMultirepo(folder: String): ExistingMultirepo? {
+        val declaration = try {
+            multirepoSource.read(folder) ?: return null
+        } catch (problem: WorktreeError) {
+            return ExistingMultirepo(null, problem, known = false)
+        }
+        val multirepo = resolveMultirepo.build(folder, declaration)
+        val known = multirepoSource.knownFolders().any { sameFolder(it, folder) }
+        return try {
+            resolveMultirepo.validate(multirepo)
+            ExistingMultirepo(multirepo, null, known)
+        } catch (problem: WorktreeError) {
+            ExistingMultirepo(multirepo, problem, known)
+        }
+    }
+
+    fun forgetMissingMultirepos() {
+        runCatching { multirepoSource.forgetMissing() }
+    }
+
     val multirepoSetup: MultirepoSetup = object : MultirepoSetup {
         override suspend fun inspect(folder: String): FolderInspection = withContext(Dispatchers.IO) {
             val enclosing = ResolveRepositoryUseCase(shellCommandExecutor)(folder).getOrNull()
             if (enclosing != null && !sameFolder(enclosing, folder)) return@withContext FolderInspection(enclosing, emptyList())
+            existingMultirepo(folder)?.let { return@withContext FolderInspection(null, emptyList(), it) }
             val subfolders = File(folder).listFiles().orEmpty()
                 .filter { it.isDirectory && !it.name.startsWith(".") }
                 .sortedBy { it.name.lowercase() }
@@ -503,6 +526,12 @@ class AppContainer {
             runCatching { multirepoSource.read(folder) }.getOrNull()?.let { resolveMultirepo.build(folder, it) }
 
         override suspend fun init(folder: String): Result<Multirepo> = withContext(Dispatchers.IO) { configureMultirepo.init(folder, null) }
+
+        override suspend fun register(folder: String, acceptedFolders: Set<String>): Result<RegisteredMultirepo> = withContext(Dispatchers.IO) {
+            configureMultirepo.register(folder) { _, _, proposed -> acceptedFolders.any { sameFolder(it, proposed) } }
+        }
+
+        override fun setName(multirepo: Multirepo, name: String?) = configureMultirepo.setName(multirepo, name)
 
         override suspend fun addRepository(multirepo: Multirepo, alias: String, path: String, useProposedFolder: Boolean): Result<AddedRepository> =
             withContext(Dispatchers.IO) {

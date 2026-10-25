@@ -31,12 +31,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.Project
+import app.luxion.shogunai.domain.model.SidebarOrder
 import app.luxion.shogunai.ui.components.IconAction
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.WithTooltip
@@ -84,6 +87,9 @@ fun Sidebar(
     onToggleMultirepo: (String) -> Unit = {},
     onEditMultirepo: (String) -> Unit = {},
     onAddMultirepo: () -> Unit = {},
+    order: SidebarOrder = SidebarOrder(),
+    onMoveEntry: (SidebarLevel, String, Int) -> Unit = { _, _, _ -> },
+    onSortLevel: (SidebarLevel) -> Unit = {},
 ) {
     val strings = LocalStrings.current
     Column(
@@ -119,36 +125,72 @@ fun Sidebar(
                 ViewRow(strings.allWorktrees, Icons.AutoMirrored.Filled.ViewList, totalWorktreeCount, selected = isAllSelected, onClick = onSelectAll)
                 SectionLabel(strings.projectsTitle)
             }
-            val projectItem: @Composable (Project, Boolean) -> Unit = { project, nested ->
-                ProjectContextMenu(
-                    onEdit = { onEditProject(project) },
-                    onRemove = { onRemoveProject(project) },
-                ) {
-                    if (rail) {
-                        RailProjectItem(project, selected = project.id == selectedProjectId) { onSelectProject(project) }
-                    } else {
-                        ProjectRow(project, activityOf(project), selected = project.id == selectedProjectId, nested = nested) { onSelectProject(project) }
+            val itemWidth = if (rail) Modifier else Modifier.fillMaxWidth()
+            val spacing = with(LocalDensity.current) { Spacing.xxs.toPx() }
+            val topLevelDrag = remember { SidebarDragState() }
+            val folderDrags = remember { mutableMapOf<String, SidebarDragState>() }
+            val entries = sidebarEntries(projects, multirepos, order)
+            topLevelDrag.keys = entries.map { it.key }
+            topLevelDrag.spacing = spacing
+            val reorderItems: (SidebarLevel, String, Int, Int) -> List<ContextMenuItem> = { level, key, index, size ->
+                listOfNotNull(
+                    ContextMenuItem(strings.moveUp) { onMoveEntry(level, key, index - 1) }.takeIf { index > 0 },
+                    ContextMenuItem(strings.moveDown) { onMoveEntry(level, key, index + 1) }.takeIf { index < size - 1 },
+                    ContextMenuItem(strings.sortAlphabetically) { onSortLevel(level) },
+                )
+            }
+            val projectItem: @Composable (Project, SidebarLevel, String, Int, Int, SidebarDragState) -> Unit = { project, level, key, index, size, drag ->
+                Box(itemWidth.reorderable(drag, key) { moved, target -> onMoveEntry(level, moved, target) }) {
+                    ProjectContextMenu(
+                        onEdit = { onEditProject(project) },
+                        onRemove = { onRemoveProject(project) },
+                        reorderItems = reorderItems(level, key, index, size),
+                    ) {
+                        if (rail) {
+                            RailProjectItem(project, selected = project.id == selectedProjectId) { onSelectProject(project) }
+                        } else {
+                            ProjectRow(project, activityOf(project), selected = project.id == selectedProjectId, nested = level is SidebarLevel.Folder) { onSelectProject(project) }
+                        }
                     }
                 }
             }
-            sidebarEntries(projects, multirepos).forEach { entry ->
+            entries.forEachIndexed { index, entry ->
                 when (entry) {
-                    is SidebarEntry.ProjectEntry -> projectItem(entry.project, false)
+                    is SidebarEntry.ProjectEntry -> projectItem(entry.project, SidebarLevel.TopLevel, entry.key, index, entries.size, topLevelDrag)
                     is SidebarEntry.FolderEntry -> {
                         val folder = entry.multirepo
-                        ContextMenuArea(items = { listOf(ContextMenuItem(strings.multirepoSettingsTitle) { onEditMultirepo(folder.folder) }) }) {
-                            if (rail) {
-                                RailViewItem(folder.name, Icons.Default.Folder, selected = folder.folder == selectedMultirepo) { onSelectMultirepo(folder.folder) }
-                            } else {
-                                MultirepoRow(
-                                    folder,
-                                    selected = folder.folder == selectedMultirepo,
-                                    onClick = { onSelectMultirepo(folder.folder) },
-                                    onToggle = { onToggleMultirepo(folder.folder) },
-                                )
+                        val folderLevel = SidebarLevel.Folder(folder.folder)
+                        val folderDrag = folderDrags.getOrPut(folder.folder) { SidebarDragState() }
+                        folderDrag.keys = folder.projects.map { it.id }
+                        folderDrag.spacing = spacing
+                        Column(
+                            modifier = itemWidth.reorderable(topLevelDrag, entry.key) { moved, target -> onMoveEntry(SidebarLevel.TopLevel, moved, target) },
+                            horizontalAlignment = if (rail) Alignment.CenterHorizontally else Alignment.Start,
+                            verticalArrangement = Arrangement.spacedBy(Spacing.xxs),
+                        ) {
+                            ContextMenuArea(
+                                items = {
+                                    listOf(ContextMenuItem(strings.multirepoSettingsTitle) { onEditMultirepo(folder.folder) }) +
+                                        reorderItems(SidebarLevel.TopLevel, entry.key, index, entries.size)
+                                },
+                            ) {
+                                if (rail) {
+                                    RailViewItem(folder.name, Icons.Default.Folder, selected = folder.folder == selectedMultirepo) { onSelectMultirepo(folder.folder) }
+                                } else {
+                                    MultirepoRow(
+                                        folder,
+                                        selected = folder.folder == selectedMultirepo,
+                                        onClick = { onSelectMultirepo(folder.folder) },
+                                        onToggle = { onToggleMultirepo(folder.folder) },
+                                    )
+                                }
+                            }
+                            if (!folder.collapsed) {
+                                folder.projects.forEachIndexed { position, project ->
+                                    projectItem(project, folderLevel, project.id, position, folder.projects.size, folderDrag)
+                                }
                             }
                         }
-                        if (!folder.collapsed) folder.projects.forEach { projectItem(it, true) }
                     }
                 }
             }
@@ -288,14 +330,19 @@ private fun RailViewItem(label: String, icon: ImageVector, selected: Boolean, on
 }
 
 @Composable
-private fun ProjectContextMenu(onEdit: () -> Unit, onRemove: () -> Unit, content: @Composable () -> Unit) {
+private fun ProjectContextMenu(
+    onEdit: () -> Unit,
+    onRemove: () -> Unit,
+    reorderItems: List<ContextMenuItem>,
+    content: @Composable () -> Unit,
+) {
     val strings = LocalStrings.current
     ContextMenuArea(
         items = {
             listOf(
                 ContextMenuItem(strings.editProject, onEdit),
                 ContextMenuItem(strings.removeProject, onRemove),
-            )
+            ) + reorderItems
         },
         content = content,
     )
@@ -401,21 +448,27 @@ data class SidebarMultirepo(
 
 sealed interface SidebarEntry {
     val name: String
+    val key: String
 
     data class ProjectEntry(val project: Project) : SidebarEntry {
         override val name: String get() = project.name
+        override val key: String get() = projectSidebarKey(project.id)
     }
 
     data class FolderEntry(val multirepo: SidebarMultirepo) : SidebarEntry {
         override val name: String get() = multirepo.name
+        override val key: String get() = multirepoSidebarKey(multirepo.folder)
     }
 }
 
-fun sidebarEntries(projects: List<Project>, multirepos: List<SidebarMultirepo>): List<SidebarEntry> {
+fun sidebarEntries(projects: List<Project>, multirepos: List<SidebarMultirepo>, order: SidebarOrder = SidebarOrder()): List<SidebarEntry> {
     val nested = multirepos.flatMap { it.projects }.mapTo(mutableSetOf()) { it.id }
-    val entries = projects.filter { it.id !in nested }.map(SidebarEntry::ProjectEntry) +
-        multirepos.map { it.copy(projects = it.projects.sortedBy { project -> project.name.lowercase() }) }.map(SidebarEntry::FolderEntry)
-    return entries.sortedBy { it.name.lowercase() }
+    val folders = multirepos.map { folder ->
+        val saved = order.savedFor(SidebarLevel.Folder(folder.folder))
+        folder.copy(projects = folder.projects.orderedBy(saved, Project::id, Project::name))
+    }
+    val entries = projects.filter { it.id !in nested }.map(SidebarEntry::ProjectEntry) + folders.map(SidebarEntry::FolderEntry)
+    return entries.orderedBy(order.topLevel, SidebarEntry::key, SidebarEntry::name)
 }
 
 @Composable

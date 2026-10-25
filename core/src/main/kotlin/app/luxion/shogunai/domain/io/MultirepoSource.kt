@@ -9,4 +9,5 @@ interface MultirepoSource {
     fun knownFolders(): List<String>
     fun remember(folder: String)
     fun forget(folder: String)
+    fun forgetMissing(): List<String>
 }

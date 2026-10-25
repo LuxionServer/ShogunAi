@@ -600,6 +600,11 @@ interface Strings {
     val rename: String
     val addRepository: String
     val repositoryPathLabel: String
+    val multirepoNameTitle: String
+    val multirepoNameHint: String
+    val moveUp: String
+    val moveDown: String
+    val sortAlphabetically: String
     fun groupKeptNotMerged(alias: String): String
     fun groupKeptUncommitted(alias: String): String
     fun groupKeptStatusUnavailable(alias: String): String
@@ -612,6 +617,8 @@ interface Strings {
     fun notARepository(path: String): String
     fun folderIsMultirepoWorkspace(path: String, multirepo: String): String
     fun deleteMultirepoTitle(name: String): String
+    fun existingMultirepo(name: String): String
+    fun knownMultirepo(name: String): String
 }
 
 val LocalStrings = staticCompositionLocalOf<Strings> { EnglishStrings }

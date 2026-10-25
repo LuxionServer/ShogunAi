@@ -62,6 +62,13 @@ class JsonMultirepoSource(
         if (path in known) writeRegistry(known - path)
     }
 
+    override fun forgetMissing(): List<String> = LocalFileLock.withLock(registryPath) {
+        val known = readRegistry()
+        val missing = known.filter { path -> Path.of(path).parent?.exists() != true }
+        if (missing.isNotEmpty()) writeRegistry(known - missing.toSet())
+        missing.map { Path.of(it).parent?.toString() ?: it }
+    }
+
     private fun readRegistry(): List<String> {
         if (!registryPath.exists()) return emptyList()
         val text = runCatching { registryPath.readText() }.getOrNull()?.takeIf { it.isNotBlank() } ?: return emptyList()

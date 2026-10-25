@@ -10,6 +10,7 @@ import app.luxion.shogunai.domain.io.ShellPreferenceRepository
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.RecentWorktree
+import app.luxion.shogunai.domain.model.SidebarOrder
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.ui.machine.MachineResource
 import app.luxion.shogunai.ui.multirepo.MultirepoCatalog
@@ -24,6 +25,7 @@ class ShellViewModel(
     private val acknowledgeSettingsProblem: () -> Unit = {},
     val multirepoCatalog: MultirepoCatalog = MultirepoCatalog { emptyList() },
     private val registerWorkspaceProject: (Multirepo) -> Boolean = { false },
+    private val forgetMissingMultirepos: () -> Unit = {},
 ) : ViewModel() {
     var unreadableFiles by mutableStateOf<List<WorktreeError.LocalFileUnreadable>>(emptyList())
         private set
@@ -34,6 +36,8 @@ class ShellViewModel(
     var memberships by mutableStateOf<List<MultirepoMembership>>(emptyList())
         private set
     var collapsedMultirepos by mutableStateOf(shellPreferences.loadCollapsedMultirepos())
+        private set
+    var sidebarOrder by mutableStateOf(shellPreferences.loadSidebarOrder())
         private set
     var addMultirepoRequest by mutableStateOf<AddMultirepoRequest?>(null)
         private set
@@ -178,6 +182,36 @@ class ShellViewModel(
         shellPreferences.saveCollapsedMultirepos(collapsedMultirepos)
     }
 
+    fun sidebarKeys(level: SidebarLevel): List<String> {
+        val entries = sidebarEntries(projects, sidebarFolders(), sidebarOrder)
+        return when (level) {
+            SidebarLevel.TopLevel -> entries.map { it.key }
+            is SidebarLevel.Folder -> entries.filterIsInstance<SidebarEntry.FolderEntry>()
+                .firstOrNull { it.multirepo.folder == level.folder }
+                ?.multirepo?.projects?.map { it.id }.orEmpty()
+        }
+    }
+
+    fun moveSidebarEntry(level: SidebarLevel, key: String, toIndex: Int) {
+        val keys = sidebarKeys(level)
+        val moved = keys.moving(key, toIndex)
+        if (moved == keys && sidebarOrder.savedFor(level) == keys) return
+        saveSidebarOrder(sidebarOrder.with(level, moved))
+    }
+
+    fun sortSidebarAlphabetically(level: SidebarLevel) {
+        saveSidebarOrder(sidebarOrder.with(level, null))
+    }
+
+    private fun saveSidebarOrder(order: SidebarOrder) {
+        sidebarOrder = order
+        shellPreferences.saveSidebarOrder(order)
+    }
+
+    private fun sidebarFolders(): List<SidebarMultirepo> = memberships.map { membership ->
+        SidebarMultirepo(membership.folder, membership.name, projects.filter { it.id in membership.aliases }, ProjectActivity.NONE, collapsed = false)
+    }
+
     fun addMultirepo(folder: String? = null) {
         addMultirepoRequest = AddMultirepoRequest(folder)
     }
@@ -310,6 +344,7 @@ class ShellViewModel(
     }
 
     private fun loadMultirepos() {
+        forgetMissingMultirepos()
         multirepoCatalog.refresh()
         if (multirepoCatalog.multirepos.count { registerWorkspaceProject(it) } > 0) projects = loadProjects()
         memberships = multirepoMemberships(multirepoCatalog.multirepos, projects)

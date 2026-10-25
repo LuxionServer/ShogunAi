@@ -13,7 +13,7 @@ shogun repair                      # re-link the worktrees after the repository 
 shogun open TASK-123 --herdr       # open a worktree in Herdr with its environment and the project's agent
 shogun clean --yes                 # remove merged or missing worktrees (without --yes it only lists them)
 shogun stacks                      # the stacks detected in the repository and the providers they suggest
-shogun multirepo show              # in a multirepo: its repositories, defaults and agent
+shogun multirepo show              # in a multirepo: its name, repositories, defaults and agent
 shogun project add                 # register this repository as a project of the desktop app
 shogun app --settings              # open the desktop app on this repository's project settings
 eval "$(shogun env)"               # load this worktree's variables from .shogunai.json "env"
@@ -238,8 +238,9 @@ The Herdr workspaces of removed worktrees are closed too (`would close Herdr wor
 In a multirepo folder (see [Multirepos and groups](multirepo.md)), `new`, `status`, `open` and `clean` act on its groups, and `shogun multirepo` configures it.
 
 ```text
-shogun multirepo init [--worktrees-root <dir>]
+shogun multirepo init [--worktrees-root <dir>] [--name <name>] [--use-worktrees-root | --keep-worktrees-folder]
 shogun multirepo show
+shogun multirepo name <name> | --clear
 shogun multirepo add-repo <alias> <path> [--use-worktrees-root | --keep-worktrees-folder]
 shogun multirepo remove-repo <alias>
 shogun multirepo defaults <alias>[,<alias>...] | --clear
@@ -252,6 +253,8 @@ shogun open <task id | branch> --herdr
 shogun open --herdr
 ```
 
+- `multirepo init` in a folder that already has a declaration registers it and registers a project for each declared repository without one (asking about `<worktreesRoot>/<alias>` as `add-repo` does); `--worktrees-root` and `--name` exit with `2` there. Either way it first forgets the known multirepos whose folder no longer exists. Its `--json` for an existing declaration has `name`, `path`, `declaration`, `registered` (false when it was already known) and the registered `projects`.
+- `multirepo name` sets the name the multirepo is shown with; a blank name exits with `2`. `show` prints the name first, and its `--json` has `name`.
 - `multirepo` subcommands work in the multirepo folder or anywhere in its repositories and worktrees, and accept `--json`; outside a multirepo they exit with `1`. A wrong alias exits with `2`.
 - `new <id>` in the multirepo folder covers the default repositories, or `--repos` from anywhere in the multirepo; it prints the path of each worktree it creates on standard output and one line per repository on standard error, and exits with `1` if any repository failed. `--branch`, `--from` and `--worktrees-root` don't apply to a group and exit with `2`. Its `--json` object has the `branch` and a `repos` list with each `alias`, `path`, `result` (`created`, `existing` or `failed`), skipped post-creation commands and `error`.
 - When the multirepo folder is a Git repository it is the multirepo's workspace repository (alias `workspace` unless declared otherwise): `show` lists it, marked `detected` until `workspace set` declares it (`--alias` renames it, `--default` adds it to the default repositories) and `workspace clear` turns detection off; in a folder that isn't a repository `workspace set` exits with `1`. `new <id> --repos workspace,app` includes it, with its worktree in `<worktreesRoot>/workspace/<id>`. `project add` and `app` run in that folder register the workspace repository as a member of the multirepo and no project of the folder's own (`app` just opens the app), unless detection is off. `--json` of `show` marks each repository with `workspace` and `detected`.

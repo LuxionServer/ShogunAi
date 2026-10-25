@@ -21,6 +21,7 @@ class MultirepoSettingsState(
         private set
     var defaults by mutableStateOf<Set<String>>(emptySet())
         private set
+    var name by mutableStateOf("")
     var worktreesRoot by mutableStateOf("")
     var workspaceDeclared by mutableStateOf(false)
     var workspaceAlias by mutableStateOf(DEFAULT_WORKSPACE_ALIAS)
@@ -53,7 +54,8 @@ class MultirepoSettingsState(
     val hasChanges: Boolean
         get() {
             val current = multirepo ?: return false
-            return defaults != current.defaultRepos.toSet() ||
+            return name.trim() != current.declaration.name?.trim().orEmpty() ||
+                defaults != current.defaultRepos.toSet() ||
                 worktreesRoot.trim() != current.worktreesRoot ||
                 agent.toConfig() != current.agent ||
                 workspaceChanged(current)
@@ -73,6 +75,7 @@ class MultirepoSettingsState(
         workspaceDeclared = read?.workspaceDeclared == true
         workspaceAlias = read?.workspaceRepository?.alias ?: read?.declaration?.workspace?.alias ?: DEFAULT_WORKSPACE_ALIAS
         workspaceOff = read?.declaration?.workspace?.enabled == false
+        name = read?.declaration?.name.orEmpty()
         worktreesRoot = read?.worktreesRoot.orEmpty()
         agent = read?.agent?.let(AgentDraft::from) ?: AgentDraft()
     }
@@ -94,6 +97,7 @@ class MultirepoSettingsState(
         if (!canSave) return
         run {
             var updated = current
+            if (name.trim() != current.declaration.name?.trim().orEmpty()) updated = setup.setName(updated, name.trim().ifEmpty { null }).getOrThrow()
             val previousWorkspace = current.workspaceRepository?.alias
             if (workspaceChanged(current) && workspaceDeclared) {
                 updated = setup.setWorkspace(updated, workspaceAlias, workspaceAlias in defaults || previousWorkspace in defaults).getOrThrow()
@@ -130,7 +134,7 @@ class MultirepoSettingsState(
 
     fun chooseNewPath(path: String) {
         newPath = path
-        if (newAlias.isBlank()) newAlias = proposedAlias(File(path).name, multirepo?.name.orEmpty())
+        if (newAlias.isBlank()) newAlias = proposedAlias(File(path).name, multirepo?.folderName.orEmpty())
     }
 
     fun removeRepository(alias: String) = run { multirepo?.let { setup.removeRepository(it, alias).getOrThrow() } }
