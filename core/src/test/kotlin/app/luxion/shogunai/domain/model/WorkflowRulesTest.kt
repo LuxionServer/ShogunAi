@@ -7,7 +7,7 @@ import kotlin.test.assertTrue
 
 class WorkflowRulesTest {
 
-    private val worktree = WorkflowContext(inMainCheckout = false, herdrAvailable = true, emulatorProvider = true, simulatorProvider = true)
+    private val worktree = WorkflowContext(inMainCheckout = false, herdrAvailable = true, emulatorProvider = true, simulatorProvider = true, composeProvider = true)
     private val bare = WorkflowContext(inMainCheckout = true, herdrAvailable = false, emulatorProvider = false, simulatorProvider = false)
 
     private fun ids(rules: List<WorkflowRule>) = rules.map { it.id }
@@ -42,7 +42,7 @@ class WorkflowRulesTest {
         val selection = WorkflowRules.rulesFor(bare, WorkflowTopic.RESOURCES)
 
         assertEquals(
-            listOf("resources.emulator", "resources.adb", "resources.simulator"),
+            listOf("resources.emulator", "resources.adb", "resources.simulator", "resources.compose"),
             ids(selection.inapplicable),
         )
     }
@@ -54,6 +54,12 @@ class WorkflowRulesTest {
         assertTrue(lines.size <= 10, lines.joinToString("\n"))
         assertEquals(WorkflowRules.PRECEDENCE, lines.first())
         assertEquals(WorkflowRules.GUIDE_POINTER, lines.last())
+    }
+
+    @Test
+    fun `the compose rule applies only with the provider`() {
+        assertTrue("resources.compose" in ids(WorkflowRules.rulesFor(worktree, WorkflowTopic.RESOURCES).applicable))
+        assertTrue("resources.compose" in ids(WorkflowRules.rulesFor(worktree.copy(composeProvider = false)).inapplicable))
     }
 
     @Test

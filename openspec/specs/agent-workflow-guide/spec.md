@@ -64,11 +64,19 @@ The `parallel` topic SHALL tell agents to open another session with `shogun open
 - **THEN** the output says to open the session with `shogun open <id> --herdr` and to talk to it with messages, not by typing into its terminal
 
 ### Requirement: Rules for shared resources and cleanup
-The `resources` and `cleanup` topics SHALL tell agents that each worktree uses its own emulator and simulator and stops them when done, that `shogun gradle stop` and `shogun xcode clean` are run showing what they free and asking first, and that `shogun clean --yes` is run only after asking.
+The `resources` and `cleanup` topics SHALL tell agents that each worktree uses its own emulator and simulator and stops them when done, that a worktree's Compose services are started and built with `shogun compose up` and `shogun compose build` and taken down with `shogun compose down <worktree>`, that `shogun gradle stop` and `shogun xcode clean` are run showing what they free and asking first, and that `shogun clean --yes` is run only after asking.
 
 #### Scenario: Cleaning
 - **WHEN** the user runs `shogun guide cleanup`
 - **THEN** the output says to ask before running `shogun clean --yes` and names the options that also stop emulators and Gradle daemons and delete simulators, DerivedData and branches
+
+#### Scenario: Compose services
+- **WHEN** the repository declares the docker-compose provider and the user runs `shogun guide resources`
+- **THEN** the output says to start and build the worktree's services with `shogun compose up` and `shogun compose build`, not with a hand-written project name, and to take them down with `shogun compose down <worktree>`
+
+#### Scenario: Compose rule in the session context
+- **WHEN** a Claude Code session starts in a worktree of a repository that declares the docker-compose provider
+- **THEN** the context says to start the worktree's services with `shogun compose up`
 
 ### Requirement: Install the guide for agents without hooks
 `shogun guide install` SHALL write into an instructions file a block delimited by markers that says to run `shogun guide` for ShogunAi's workflow rules and nothing else of the catalog. The file is chosen with `--agent <codex|cursor|gemini>` for that agent's user-level file, `--project` for the repository's `AGENTS.md`, or `--file <path>`. It SHALL create the file when missing, keep every line outside the markers, show what it will write and ask first unless `--yes` is given.

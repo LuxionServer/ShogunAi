@@ -25,6 +25,8 @@ import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.SimulatorDevice
 import app.luxion.shogunai.domain.model.WorktreeEmulator
+import app.luxion.shogunai.domain.model.ComposeAction
+import app.luxion.shogunai.domain.model.WorktreeComposeState
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeStatus
@@ -188,6 +190,12 @@ class ProjectWorktrees(
     var isMavenRepository by mutableStateOf(false)
         private set
     var isComposeRepository by mutableStateOf(false)
+        private set
+    var composeStates by mutableStateOf<Map<String, WorktreeComposeState>>(emptyMap())
+        private set
+    var isComposeUnavailable by mutableStateOf(false)
+        private set
+    var composeActivities by mutableStateOf<Map<String, ComposeActivity>>(emptyMap())
         private set
 
     var isXcodeRepository by mutableStateOf(false)
@@ -368,7 +376,7 @@ class ProjectWorktrees(
             if (generation == listGeneration) agents = detected
         }
         loadGradleSection()
-        loadMavenAndComposeSections()
+        loadMavenAndComposeSections(generation, listed)
         loadPorts(generation, listed)
         loadEmulatorSection(generation, listed)
         loadSimulatorSection(generation, listed)
@@ -526,10 +534,46 @@ class ProjectWorktrees(
         }
     }
 
-    private fun loadMavenAndComposeSections() {
+    private fun loadMavenAndComposeSections(generation: Int, listed: List<Worktree>) {
         scope.launch {
             isMavenRepository = useCases.maven.provider() != null
             isComposeRepository = useCases.compose.provider() != null
+            if (isComposeRepository) {
+                loadComposeStates(generation, listed)
+            } else {
+                composeStates = emptyMap()
+            }
+        }
+    }
+
+    private suspend fun loadComposeStates(generation: Int, listed: List<Worktree>) {
+        val loaded = useCases.compose.readStates(listed.filterNot { it.isPrunable })
+        if (generation != listGeneration) return
+        isComposeUnavailable = loaded.isFailure
+        composeStates = loaded.getOrDefault(emptyMap())
+    }
+
+    fun startComposeServices(worktree: Worktree) =
+        runComposeActivity(worktree, ComposeActivity.STARTING) { useCases.compose.run(worktree.path, ComposeAction.Up()).map { } }
+
+    fun buildComposeServices(worktree: Worktree) =
+        runComposeActivity(worktree, ComposeActivity.BUILDING) { useCases.compose.run(worktree.path, ComposeAction.Build()).map { } }
+
+    fun takeDownComposeServices(worktree: Worktree) =
+        runComposeActivity(worktree, ComposeActivity.TAKING_DOWN) { useCases.compose.down(worktree.path) }
+
+    private fun runComposeActivity(worktree: Worktree, activity: ComposeActivity, action: suspend () -> Result<Unit>) {
+        if (worktree.path in composeActivities) return
+        composeActivities = composeActivities + (worktree.path to activity)
+        scope.launch {
+            try {
+                action()
+                    .onSuccess { clearActionError(worktree.path) }
+                    .onFailure { recordActionError(worktree.path, it) { runComposeActivity(worktree, activity, action) } }
+                loadComposeStates(listGeneration, worktrees)
+            } finally {
+                composeActivities = composeActivities - worktree.path
+            }
         }
     }
 
@@ -938,7 +982,14 @@ class ProjectWorktrees(
         var cleanedUp: WorktreeSuccess.CleanedUp? = null
         try {
             val daemonsBefore = if (stopDaemons) useCases.gradle.listDaemons(listed).getOrNull().orEmpty() else emptyList()
-            useCases.cleanUp(candidates, mainBranch, options.deleteBranches, downComposeProjects = isComposeRepository && options.downComposeProjects)
+            val downCompose = isComposeRepository && options.downComposeProjects
+            useCases.cleanUp(
+                candidates,
+                mainBranch,
+                options.deleteBranches,
+                downComposeProjects = downCompose,
+                removeComposeVolumes = downCompose && options.removeComposeVolumes,
+            )
                 .onSuccess { report ->
                     dismissError()
                     val daemonReport = stopDaemonsOfRemovedWorktrees(daemonsBefore, listed, report.removed)
@@ -967,11 +1018,13 @@ class ProjectWorktrees(
                         deletedDerivedDataFolders = deletedDerivedData?.deleted?.size ?: 0,
                         derivedDataBytesFreed = deletedDerivedData?.bytesFreed ?: 0,
                         takenDownComposeProjects = report.composeDown?.takenDown?.size ?: 0,
+                        removedComposeResources = report.composeResources?.removed?.size ?: 0,
                     )
                     herdrCloseFailures = report.herdrFailures
                     cleanupIssues = report.takeIf {
                         it.failures.isNotEmpty() || it.keptBranches.isNotEmpty() ||
-                            it.composeUnavailable != null || it.composeDown?.failures?.isNotEmpty() == true
+                            it.composeUnavailable != null || it.composeDown?.failures?.isNotEmpty() == true ||
+                            it.composeResources?.failures?.isNotEmpty() == true
                     }
                 }
                 .onFailure { fail(it) }
@@ -1055,6 +1108,8 @@ class ProjectWorktrees(
         actionRetries = if (retry != null) actionRetries + (path to retry) else actionRetries - path
     }
 
+    enum class ComposeActivity { STARTING, BUILDING, TAKING_DOWN }
+
     data class KeptBranchNotice(val branch: String, val failureReason: String? = null)
 
     private data class PendingRemoval(
@@ -1093,6 +1148,7 @@ data class CleanupOptions(
     val deleteSimulators: Boolean = true,
     val deleteDerivedData: Boolean = true,
     val downComposeProjects: Boolean = true,
+    val removeComposeVolumes: Boolean = false,
 )
 
 sealed interface WorktreeStatusState {
@@ -1115,6 +1171,7 @@ sealed interface WorktreeSuccess {
         val deletedDerivedDataFolders: Int = 0,
         val derivedDataBytesFreed: Long = 0,
         val takenDownComposeProjects: Int = 0,
+        val removedComposeResources: Int = 0,
     ) : WorktreeSuccess {
         operator fun plus(other: CleanedUp) = CleanedUp(
             removedCount = removedCount + other.removedCount,
@@ -1125,6 +1182,7 @@ sealed interface WorktreeSuccess {
             deletedDerivedDataFolders = deletedDerivedDataFolders + other.deletedDerivedDataFolders,
             derivedDataBytesFreed = derivedDataBytesFreed + other.derivedDataBytesFreed,
             takenDownComposeProjects = takenDownComposeProjects + other.takenDownComposeProjects,
+            removedComposeResources = removedComposeResources + other.removedComposeResources,
         )
     }
 }

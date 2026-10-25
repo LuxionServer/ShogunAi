@@ -152,6 +152,10 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "Docker no está disponible" + if (error.reason.isNullOrBlank()) "." else ": ${error.reason}",
         "Arranca Docker e inténtalo de nuevo.",
     )
+    is WorktreeError.ComposeCommandFailed -> ErrorTexts(
+        "Docker Compose falló para ${error.project}: ${error.detail}",
+        "Revisa el fichero de Compose y la salida de docker compose en el worktree.",
+    )
     is WorktreeError.NoFreePort -> ErrorTexts(
         "No queda ningún puerto libre entre ${error.from} y ${error.to}.",
         "Libera puertos de ese rango, o elimina worktrees que no uses.",

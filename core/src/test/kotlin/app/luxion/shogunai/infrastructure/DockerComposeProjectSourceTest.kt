@@ -2,6 +2,9 @@ package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandExecutionException
+import app.luxion.shogunai.domain.model.ComposeAction
+import app.luxion.shogunai.domain.model.ComposeResource
+import app.luxion.shogunai.domain.model.ComposeResourceKind
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -64,5 +67,98 @@ class DockerComposeProjectSourceTest {
         val result = DockerComposeProjectSource(executor).down("x", removeVolumes = false)
 
         assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("network has active endpoints"))
+    }
+
+    @Test
+    fun `starts a project detached in the worktree with its environment and extra arguments`() = runTest {
+        val executor = FakeShellCommandExecutor()
+        val environment = mapOf("COMPOSE_PROJECT_NAME" to "main-repo-task-123", "DB_PORT" to "20004")
+
+        DockerComposeProjectSource(executor)
+            .run("main-repo-task-123", ComposeAction.Up(build = true, extraArguments = listOf("api", "--wait")), "/w/TASK-123", environment)
+            .getOrThrow()
+
+        val command = listOf("docker", "compose", "up", "--detach", "--build", "api", "--wait")
+        assertEquals(command, executor.executedCommands.single())
+        assertEquals("/w/TASK-123", executor.workingDirectories.single())
+        assertEquals(environment, executor.environments[command])
+    }
+
+    @Test
+    fun `builds a project with its extra arguments`() = runTest {
+        val executor = FakeShellCommandExecutor()
+
+        DockerComposeProjectSource(executor).run("p", ComposeAction.Build(listOf("api")), "/w", emptyMap()).getOrThrow()
+
+        assertEquals(listOf("docker", "compose", "build", "api"), executor.executedCommands.single())
+    }
+
+    @Test
+    fun `a failing up carries the last error line`() = runTest {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.failure(it, stderr = "pulling\nport is already allocated\n") }
+
+        val error = DockerComposeProjectSource(executor).run("p", ComposeAction.Up(), "/w", emptyMap()).exceptionOrNull()
+
+        assertEquals("port is already allocated", (error as WorktreeError.ComposeCommandFailed).detail)
+    }
+
+    @Test
+    fun `lists volumes, networks and built images by their project label`() = runTest {
+        val executor = FakeShellCommandExecutor { command ->
+            when {
+                command.take(3) == listOf("docker", "volume", "ls") -> FakeShellCommandExecutor.success(command, "main-repo-task-9_db-data|main-repo-task-9\n")
+                command.take(3) == listOf("docker", "network", "ls") -> FakeShellCommandExecutor.success(command, "ab12|main-repo-task-9_default|main-repo-task-9")
+                command.take(3) == listOf("docker", "image", "ls") -> FakeShellCommandExecutor.success(command, "sha256:aa\nsha256:bb\nsha256:aa")
+                command.take(3) == listOf("docker", "image", "inspect") ->
+                    FakeShellCommandExecutor.success(command, "sha256:aa|main-repo-task-9-api:latest|main-repo-task-9\nsha256:bbbbbbbbbbbbbbbb||main-repo-task-9")
+                else -> FakeShellCommandExecutor.failure(command)
+            }
+        }
+
+        val resources = DockerComposeProjectSource(executor).listResources()
+
+        assertEquals(
+            listOf(
+                ComposeResource(ComposeResourceKind.VOLUME, "main-repo-task-9_db-data", "main-repo-task-9_db-data", "main-repo-task-9"),
+                ComposeResource(ComposeResourceKind.NETWORK, "ab12", "main-repo-task-9_default", "main-repo-task-9"),
+                ComposeResource(ComposeResourceKind.IMAGE, "sha256:aa", "main-repo-task-9-api:latest", "main-repo-task-9"),
+                ComposeResource(ComposeResourceKind.IMAGE, "sha256:bbbbbbbbbbbbbbbb", "bbbbbbbbbbbb", "main-repo-task-9"),
+            ),
+            resources,
+        )
+        assertEquals(listOf("sha256:aa", "sha256:bb"), executor.executedCommands.last().takeLast(2))
+        assertTrue(executor.executedCommands.first().containsAll(listOf("--filter", "label=com.docker.compose.project")))
+    }
+
+    @Test
+    fun `no labelled image means no inspect`() = runTest {
+        val executor = FakeShellCommandExecutor()
+
+        assertEquals(emptyList(), DockerComposeProjectSource(executor).listResources())
+        assertTrue(executor.executedCommands.none { it.take(3) == listOf("docker", "image", "inspect") })
+    }
+
+    @Test
+    fun `listing resources without docker is reported as unavailable`() = runTest {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.failure(it, stderr = "Cannot connect to the Docker daemon") }
+
+        assertFailsWith<WorktreeError.DockerUnavailable> { DockerComposeProjectSource(executor).listResources() }
+    }
+
+    @Test
+    fun `removes each kind without forcing and reports the reason of a failure`() = runTest {
+        val executor = FakeShellCommandExecutor { command ->
+            if (command[1] == "image") FakeShellCommandExecutor.failure(command, stderr = "image is being used by running container") else FakeShellCommandExecutor.success(command)
+        }
+        val source = DockerComposeProjectSource(executor)
+
+        source.remove(ComposeResource(ComposeResourceKind.NETWORK, "ab12", "n", "p")).getOrThrow()
+        source.remove(ComposeResource(ComposeResourceKind.VOLUME, "v", "v", "p")).getOrThrow()
+        val image = source.remove(ComposeResource(ComposeResourceKind.IMAGE, "sha256:aa", "i", "p"))
+
+        assertEquals(listOf("docker", "network", "rm", "ab12"), executor.executedCommands[0])
+        assertEquals(listOf("docker", "volume", "rm", "v"), executor.executedCommands[1])
+        assertEquals(listOf("docker", "image", "rm", "sha256:aa"), executor.executedCommands[2])
+        assertEquals("image is being used by running container", image.exceptionOrNull()?.message)
     }
 }

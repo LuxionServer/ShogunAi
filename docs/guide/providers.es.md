@@ -88,17 +88,33 @@ La inspección de daemons necesita `ps` y `lsof` (macOS y Linux).
 
 Dos worktrees que ejecutan `docker compose up` comparten nombres de contenedores, redes y volúmenes, y publican los mismos puertos del host. El provider da a cada worktree los suyos:
 
-- `COMPOSE_PROJECT_NAME` es `<carpeta del repositorio>-<carpeta del worktree>`, en minúsculas y con cada carácter que no sea letra, dígito, `-` o `_` sustituido por `-` (`main-repo` y `TASK-123` dan `main-repo-task-123`). Un nombre de carpeta que normalizar volvería ambiguo (`fix login (2)`, o mayúsculas y minúsculas mezcladas) recibe un hash corto y estable, y un nombre de más de 50 caracteres se acorta conservándolo, de modo que worktrees distintos obtienen nombres distintos. El nombre se deriva, no se guarda, así que no queda nada al eliminar un worktree. Un `COMPOSE_PROJECT_NAME` declarado en `env` tiene prioridad.
+- `COMPOSE_PROJECT_NAME` es `<carpeta del repositorio>-<carpeta del worktree>`, en minúsculas y con cada carácter que no sea letra, dígito, `-` o `_` sustituido por `-` (`main-repo` y `TASK-123` dan `main-repo-task-123`). Un nombre de carpeta que normalizar volvería ambiguo (`fix login (2)`, o mayúsculas y minúsculas mezcladas) recibe un hash corto y estable, y un nombre de más de 50 caracteres se acorta conservándolo, de modo que worktrees distintos obtienen nombres distintos. Un `COMPOSE_PROJECT_NAME` declarado en `env` tiene prioridad.
 - `portVariables` es opcional: cada nombre se convierte en una variable con un puerto libre entre 20000 y 29999 reservado para ese worktree (las mismas reglas que `${port}`), de modo que el archivo de Compose puede publicar `${DB_PORT}:5432` sin colisiones. Los nombres siguen la regla de nombres de variable y no pueden ser nombres reservados; un nombre también declarado en `env` recibe el valor declarado y ningún puerto.
 
-La app muestra una sección "Proyectos de Compose" con los proyectos que `docker compose ls` informa para los worktrees del repositorio (estado y worktree) y los proyectos de worktrees eliminados: aquellos cuyo nombre empieza por el de la carpeta del repositorio, cuyos archivos de Compose estaban en el repositorio o en su carpeta de worktrees, y que no coinciden con ningún worktree existente. Los proyectos de otros repositorios, aunque tengan un prefijo parecido, nunca se tocan. "Bajar los proyectos de los worktrees eliminados" ejecuta `docker compose -p <nombre> down`, que elimina contenedores y redes y conserva los volúmenes (solo se eliminan con `--volumes` desde la línea de comandos). "Limpiar" tiene una opción marcada para bajar los proyectos de los worktrees que elimina; si Docker no está disponible, los worktrees se eliminan igualmente y el informe dice que los proyectos se conservaron.
+### Arrancar y construir los servicios
+
+`shogun compose up` arranca en segundo plano los servicios del worktree en el que estás, con su `COMPOSE_PROJECT_NAME` y sus variables de puerto, así que nunca pasas `-p` ni puertos a mano; `--build` construye antes, y todo lo que va tras `--` llega tal cual a `docker compose` (nombres de servicio, `--wait`). `shogun compose build` solo construye. La salida de Docker Compose se muestra mientras se ejecuta. El detalle del worktree en la app tiene una sección Compose con el nombre y el estado del proyecto (`Sin arrancar` cuando Docker no conoce ese proyecto) y las acciones Arrancar, Construir y Bajar. El contexto de SessionStart le dice a Claude que use `shogun compose up`.
+
+### Lo que dejan los worktrees eliminados
+
+Bajar un proyecto conserva sus volúmenes, y Compose nunca elimina las imágenes que construyó, así que los worktrees eliminados dejan volúmenes, redes e imágenes. ShogunAi apunta en `~/.shogunai/compose-projects.json` el nombre de proyecto que da a cada worktree (cuando se resuelve su entorno y en cada `up` o `build`); un volumen, una red o una imagen cuya etiqueta `com.docker.compose.project` es un nombre apuntado cuyo worktree ya no existe es un resto de ese worktree. Solo cuenta un nombre que ahora no usa ningún otro worktree y que ningún otro repositorio ha apuntado, así que los proyectos de otros repositorios, aunque tengan un prefijo parecido, nunca se tocan. Las imágenes descargadas de un registro (como `postgres`) no llevan etiqueta de Compose y nunca se eliminan.
+
+La vista "Proyectos de Compose" de la sección Máquina lista los proyectos que `docker compose ls` informa para los worktrees del repositorio (estado y worktree), los proyectos de worktrees eliminados (los apuntados, y aquellos cuyos archivos de Compose estaban en el repositorio o en su carpeta de worktrees) y, tras ellos, los restos de los worktrees eliminados. "Bajar los proyectos de los worktrees eliminados" ejecuta `docker compose -p <nombre> down`, que elimina contenedores y redes y conserva los volúmenes. "Eliminar redes e imágenes" elimina los restos salvo los volúmenes; "Eliminar también los volúmenes" pregunta antes, porque sus datos se pierden. Nunca se fuerza nada: una imagen o una red que aún usa un contenedor se conserva y se informa.
+
+"Limpiar" tiene una opción marcada para bajar los proyectos de los worktrees que elimina y eliminar sus redes e imágenes construidas, y otra sin marcar para eliminar también sus volúmenes; si Docker no está disponible, los worktrees se eliminan igualmente y el informe dice que los proyectos se conservaron.
+
+Los worktrees eliminados antes de que existiera este registro no están apuntados: sus proyectos con contenedores se siguen encontrando por sus archivos de Compose, y el resto se puede eliminar con `docker volume rm` y `docker image rm`.
 
 ```bash
-shogun compose                     # los proyectos de Compose de los worktrees y su estado
+shogun compose up                  # arranca en segundo plano los servicios de este worktree con su nombre de proyecto y puertos
+shogun compose up --build -- api   # construye antes, y solo el servicio api
+shogun compose build               # construye los servicios de este worktree
+shogun compose                     # los proyectos de Compose de los worktrees y lo que dejaron los eliminados
 shogun compose down                # baja los proyectos de worktrees eliminados (conserva volúmenes)
 shogun compose down TASK-123       # baja el proyecto de un worktree
-shogun compose down --volumes      # elimina también sus volúmenes
-shogun clean --yes --down-compose-projects  # baja además los proyectos de los worktrees eliminados
+shogun compose prune               # lista las redes e imágenes que dejaron los worktrees eliminados
+shogun compose prune --yes         # las elimina (añade --volumes para eliminar también sus volúmenes)
+shogun clean --yes --down-compose-projects  # baja además los proyectos de los eliminados y elimina sus imágenes
 ```
 
 Docker solo se ejecuta en repositorios que declaran el provider, y solo se usa la CLI de Docker.

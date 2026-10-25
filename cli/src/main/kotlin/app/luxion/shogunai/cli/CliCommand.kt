@@ -49,6 +49,7 @@ sealed interface CliCommand {
         val deleteSimulators: Boolean = false,
         val deleteDerivedData: Boolean = false,
         val downComposeProjects: Boolean = false,
+        val removeComposeVolumes: Boolean = false,
         val json: Boolean = false,
     ) : CliCommand
 
@@ -61,6 +62,14 @@ sealed interface CliCommand {
     data class Maven(val json: Boolean = false) : CliCommand
     data class Compose(val json: Boolean = false) : CliCommand
     data class ComposeDown(val target: String? = null, val volumes: Boolean = false, val json: Boolean = false) : CliCommand
+    data class ComposeRun(
+        val target: String? = null,
+        val build: Boolean = false,
+        val onlyBuild: Boolean = false,
+        val extraArguments: List<String> = emptyList(),
+        val json: Boolean = false,
+    ) : CliCommand
+    data class ComposePrune(val volumes: Boolean = false, val confirmed: Boolean = false, val json: Boolean = false) : CliCommand
     data class Pool(val action: PoolAction, val json: Boolean = false) : CliCommand
     data class Project(val action: ProjectAction, val path: String? = null, val json: Boolean = false) : CliCommand
     data class App(val path: String? = null, val settings: Boolean = false) : CliCommand
@@ -118,11 +127,13 @@ sealed interface ParsedArguments {
 fun parseArguments(args: List<String>): ParsedArguments {
     val name = args.firstOrNull() ?: return ParsedArguments.Command(CliCommand.Help)
     val rest = args.drop(1)
-    if (name in CliHelp.commandNames && rest.any { it == "--help" || it == "-h" }) {
+    val options = rest.takeWhile { it != ARGUMENTS_SEPARATOR }
+    val passedThrough = rest.drop(options.size)
+    if (name in CliHelp.commandNames && options.any { it == "--help" || it == "-h" }) {
         return ParsedArguments.Command(CliCommand.CommandHelp(name))
     }
-    val json = name in JSON_COMMANDS && !isSimulatorGradleInit(name, rest) && !isGuideReading(name, rest) && JSON_FLAG in rest
-    val arguments = if (json) rest.filter { it != JSON_FLAG } else rest
+    val json = name in JSON_COMMANDS && !isSimulatorGradleInit(name, rest) && !isGuideReading(name, rest) && JSON_FLAG in options
+    val arguments = if (json) options.filter { it != JSON_FLAG } + passedThrough else rest
     return try {
         ParsedArguments.Command(
             when (name) {
@@ -161,6 +172,8 @@ fun parseArguments(args: List<String>): ParsedArguments {
 
 private const val JSON_FLAG = "--json"
 
+private const val ARGUMENTS_SEPARATOR = "--"
+
 private val JSON_COMMANDS = setOf("new", "multirepo", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "stacks", "maven", "compose", "pool", "project", "xcode", "emulator", "simulator", "hooks", "guide")
 
 private fun isSimulatorGradleInit(name: String, rest: List<String>) = name == "simulator" && rest.firstOrNull() == "gradle-init"
@@ -184,6 +197,8 @@ private fun CliCommand.withJson(json: Boolean): CliCommand = if (!json) this els
     is CliCommand.Maven -> copy(json = true)
     is CliCommand.Compose -> copy(json = true)
     is CliCommand.ComposeDown -> copy(json = true)
+    is CliCommand.ComposeRun -> copy(json = true)
+    is CliCommand.ComposePrune -> copy(json = true)
     is CliCommand.GradleStop -> copy(json = true)
     is CliCommand.Pool -> copy(json = true)
     is CliCommand.Project -> copy(json = true)
@@ -324,6 +339,7 @@ private fun parseClean(rest: List<String>): CliCommand.Clean {
     var deleteSimulators = false
     var deleteDerivedData = false
     var downComposeProjects = false
+    var removeComposeVolumes = false
     rest.forEach { argument ->
         when (argument) {
             "--yes", "-y" -> confirmed = true
@@ -333,9 +349,11 @@ private fun parseClean(rest: List<String>): CliCommand.Clean {
             "--delete-simulators" -> deleteSimulators = true
             "--delete-derived-data" -> deleteDerivedData = true
             "--down-compose-projects" -> downComposeProjects = true
+            "--compose-volumes" -> removeComposeVolumes = true
             else -> throw UsageException("unknown argument '$argument' for 'clean'")
         }
     }
+    if (removeComposeVolumes && !downComposeProjects) throw UsageException("--compose-volumes needs --down-compose-projects")
     return CliCommand.Clean(
         confirmed = confirmed,
         deleteBranches = deleteBranches,
@@ -344,15 +362,57 @@ private fun parseClean(rest: List<String>): CliCommand.Clean {
         deleteSimulators = deleteSimulators,
         deleteDerivedData = deleteDerivedData,
         downComposeProjects = downComposeProjects,
+        removeComposeVolumes = removeComposeVolumes,
     )
 }
 
 private fun parseCompose(rest: List<String>): CliCommand {
     val subcommand = rest.firstOrNull() ?: return CliCommand.Compose()
-    if (subcommand != "down") throw UsageException("unknown subcommand '$subcommand' for 'compose', expected down")
+    return when (subcommand) {
+        "down" -> parseComposeDown(rest.drop(1))
+        "up", "build" -> parseComposeRun(subcommand, rest.drop(1))
+        "prune" -> parseComposePrune(rest.drop(1))
+        else -> throw UsageException("unknown subcommand '$subcommand' for 'compose', expected up, build, down or prune")
+    }
+}
+
+private fun parseComposeRun(subcommand: String, rest: List<String>): CliCommand {
+    val options = rest.takeWhile { it != ARGUMENTS_SEPARATOR }
+    var build = false
+    val targets = mutableListOf<String>()
+    options.forEach { argument ->
+        when {
+            argument == "--build" && subcommand == "up" -> build = true
+            argument.startsWith("-") -> throw UsageException("unknown option '$argument' for 'compose $subcommand'")
+            else -> targets += argument
+        }
+    }
+    if (targets.size > 1) throw UsageException("'compose $subcommand' takes at most one worktree; pass Compose arguments after --")
+    return CliCommand.ComposeRun(
+        target = targets.firstOrNull(),
+        build = build,
+        onlyBuild = subcommand == "build",
+        extraArguments = rest.drop(options.size + 1),
+    )
+}
+
+private fun parseComposePrune(rest: List<String>): CliCommand {
+    var volumes = false
+    var confirmed = false
+    rest.forEach { argument ->
+        when (argument) {
+            "--volumes" -> volumes = true
+            "--yes", "-y" -> confirmed = true
+            else -> throw UsageException("unknown argument '$argument' for 'compose prune'")
+        }
+    }
+    return CliCommand.ComposePrune(volumes, confirmed)
+}
+
+private fun parseComposeDown(arguments: List<String>): CliCommand {
     var volumes = false
     val targets = mutableListOf<String>()
-    rest.drop(1).forEach { argument ->
+    arguments.forEach { argument ->
         when {
             argument == "--volumes" -> volumes = true
             argument.startsWith("-") -> throw UsageException("unknown option '$argument' for 'compose down'")

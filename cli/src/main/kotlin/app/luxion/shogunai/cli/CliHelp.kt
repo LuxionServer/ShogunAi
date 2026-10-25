@@ -60,14 +60,15 @@ internal object CliHelp {
 """.trimIndent(),
         "clean" to """
   clean [--yes] [--delete-branches] [--stop-gradle-daemons] [--stop-emulators] [--delete-simulators]
-        [--delete-derived-data] [--down-compose-projects] [--json]
+        [--delete-derived-data] [--down-compose-projects [--compose-volumes]] [--json]
                               List merged or missing worktrees; remove them with --yes
                               (--stop-gradle-daemons / --stop-emulators: also stop their idle
                               Gradle daemons / their emulators; --delete-simulators: also delete
                               their iOS simulators and orphaned ShogunAi simulators;
                               --delete-derived-data: also delete orphaned Xcode DerivedData;
                               --down-compose-projects: also take down the Docker Compose projects of
-                              the removed worktrees, keeping their volumes;
+                              the removed worktrees and remove their networks and built images,
+                              keeping their volumes unless --compose-volumes is given;
                               --json: print one JSON object instead of text);
                               in a multirepo folder, the groups whose worktrees are all merged and have no
                               agent, with the same options
@@ -121,10 +122,19 @@ internal object CliHelp {
   maven [--json]              List the Maven daemons (mvnd) with their memory and worktree
 """.trimIndent(),
         "compose" to """
-  compose [--json]            List the Docker Compose projects of the worktrees with their status
+  compose [--json]            List the Docker Compose projects of the worktrees with their status, and
+                              the volumes, networks and images left by removed worktrees
+  compose up [<worktree>] [--build] [--json] [-- <args>...]
+                              Start the services of the worktree (or the current one) detached, with its
+                              COMPOSE_PROJECT_NAME and ports; arguments after -- go to docker compose
+  compose build [<worktree>] [--json] [-- <args>...]
+                              Build the services of the worktree with its environment
   compose down [<worktree>] [--volumes] [--json]
                               Take down the projects of removed worktrees (or of the given worktree);
                               volumes are kept unless --volumes is given
+  compose prune [--volumes] [--yes] [--json]
+                              List the networks and built images left by removed worktrees; remove them
+                              with --yes (volumes too with --volumes; pulled images are never removed)
                               (repositories with "providers": { "docker-compose": {} } in .shogunai.json)
 """.trimIndent(),
         "pool" to """
