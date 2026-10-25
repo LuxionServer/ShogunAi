@@ -33,3 +33,9 @@ enum class CloseAction { QUIT, HIDE }
 
 fun closeActionFor(isIconShown: Boolean, keepRunning: Boolean): CloseAction =
     if (isIconShown && keepRunning) CloseAction.HIDE else CloseAction.QUIT
+
+fun isTrayIconSupported(systemTraySupported: Boolean, runsHeadless: Boolean): Boolean = systemTraySupported && !runsHeadless
+
+fun runsHeadless(property: (String) -> String? = System::getProperty): Boolean = property(HEADLESS_PROPERTY) == "true"
+
+const val HEADLESS_PROPERTY = "shogunai.headless"

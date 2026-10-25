@@ -6,7 +6,7 @@ Agents can only check a Compose Desktop app today by driving the real desktop wi
 
 ## What Changes
 
-- A new opt-in `desktopApp` provider in `.shogunai.json` declares a repository's Compose Desktop app by its Gradle module, so `shogun` can launch it generically, not only for ShogunAi.
+- A new opt-in `desktop-app` provider in `.shogunai.json` declares a repository's Compose Desktop app by its Gradle module, so `shogun` can launch it generically, not only for ShogunAi.
 - New `shogun headless start|stop|status|capture` commands act on the app of the current worktree:
   - `start` launches the app through Compose Hot Reload's run task, detached, as a UI element (no Dock icon, no menu bar, never activated), with an isolated user home per worktree, waits for its window and hides it, so the person never sees it nor loses focus. Several worktrees run their apps at once.
   - `capture` writes a PNG of the app's window, captured by its window id, which shows the app's current content even while it is hidden or covered. It replaces the Hot Reload MCP's `take_screenshot`, which copies the screen region instead of the window and can leak whatever is on top.
@@ -22,7 +22,7 @@ Prerequisite, as a separate change merged before this one's implementation: upgr
 ## Capabilities
 
 ### New Capabilities
-- `headless-desktop-app`: the `desktopApp` provider and running a worktree's Compose Desktop app in the background on macOS: launch without activation, isolated home, hiding, window capture, stop, status, permissions, and stopping it with its worktree.
+- `headless-desktop-app`: the `desktop-app` provider and running a worktree's Compose Desktop app in the background on macOS: launch without activation, isolated home, hiding, window capture, stop, status, permissions, and stopping it with its worktree.
 
 ### Modified Capabilities
 - `command-line-tool`: the `shogun headless` commands, stopping a worktree's headless app when the worktree is removed or cleaned up, and the `SessionStart` context for repositories with the provider.

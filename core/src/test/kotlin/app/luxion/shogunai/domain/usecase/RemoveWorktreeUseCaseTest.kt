@@ -1,15 +1,23 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeAppWindowService
+import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.FakeHeadlessAppLauncher
 import app.luxion.shogunai.domain.FakeHerdrClient
+import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
+import app.luxion.shogunai.domain.model.DesktopAppProvider
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.RepositoryProviders
+import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RemoveWorktreeUseCaseTest {
@@ -30,6 +38,50 @@ class RemoveWorktreeUseCaseTest {
 
         assertTrue(result.isSuccess)
         assertEquals(listOf(listOf("git", "worktree", "remove", worktreePath)), executor.executedCommands)
+    }
+
+    private fun headlessApp(launcher: FakeHeadlessAppLauncher, files: FakeFileManager): StopHeadlessAppUseCase {
+        val provisioning = FakeRepositoryProvisioningSource(
+            mapOf(worktreePath to RepositoryProvisioning(providers = RepositoryProviders(desktopApp = DesktopAppProvider(":desktopApp")))),
+        )
+        val worktrees = HeadlessAppWorktrees(provisioning, { "/home/dev/projects/main-repo/.git/worktrees/TASK-123" }, launcher, FakeAppWindowService(), files)
+        return StopHeadlessAppUseCase(worktrees, launcher)
+    }
+
+    private fun runningApp(): Pair<FakeHeadlessAppLauncher, FakeFileManager> {
+        val files = FakeFileManager()
+        val pidFile = "$worktreePath/desktopApp/build/run/main/main.pid"
+        files.writtenProperties[pidFile] = mapOf("pid" to "4242")
+        val launcher = FakeHeadlessAppLauncher(files, pidFile)
+        launcher.alive += 4242L
+        return launcher to files
+    }
+
+    @Test
+    fun `stops the worktree's headless app before removing its folder`() = runTest {
+        val (launcher, files) = runningApp()
+        var stoppedBeforeRemoval = false
+        val executor = FakeShellCommandExecutor { command ->
+            if (command.take(3) == listOf("git", "worktree", "remove")) stoppedBeforeRemoval = 4242L in launcher.stopped
+            success(command)
+        }
+
+        val removal = RemoveWorktreeUseCase(config, executor, stopHeadlessApp = headlessApp(launcher, files))(worktreePath).getOrThrow()
+
+        assertTrue(stoppedBeforeRemoval)
+        assertNull(removal.headlessAppFailure)
+    }
+
+    @Test
+    fun `a failed headless app stop is reported and the worktree is still removed`() = runTest {
+        val (launcher, files) = runningApp()
+        launcher.failStop = IllegalStateException("operation not permitted")
+        val executor = FakeShellCommandExecutor { success(it) }
+
+        val removal = RemoveWorktreeUseCase(config, executor, stopHeadlessApp = headlessApp(launcher, files))(worktreePath).getOrThrow()
+
+        assertIs<WorktreeError.HeadlessAppStopFailed>(removal.headlessAppFailure)
+        assertTrue(executor.executed("git", "worktree", "remove", worktreePath))
     }
 
     private fun branchExecutor(contained: Boolean = true, deleteStderr: String? = null) = FakeShellCommandExecutor { command ->

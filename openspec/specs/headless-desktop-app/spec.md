@@ -1,16 +1,15 @@
-# Spec Delta
+# headless-desktop-app Specification
 
 ## Purpose
-
 Lets an agent run its worktree's Compose Desktop app in the background on macOS, without taking focus or showing it to the person, and see its window, so several worktrees can check their apps at once while the person keeps working.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Opt-in desktop app provider
-Everything this capability does SHALL apply only to repositories whose `.shogunai.json` declares `"providers": { "desktopApp": { "module": "<gradle path>" } }`, naming the Gradle module of the app, such as `:desktopApp`. An optional `isolatedHome` boolean SHALL default to `true`. A missing or empty `module`, a `module` that isn't a Gradle project path, or a non-boolean `isolatedHome` SHALL make the file invalid.
+Everything this capability does SHALL apply only to repositories whose `.shogunai.json` declares `"providers": { "desktop-app": { "module": "<gradle path>" } }`, naming the Gradle module of the app, such as `:desktopApp`. An optional `isolatedHome` boolean SHALL default to `true`. A missing or empty `module`, a `module` that isn't a Gradle project path, or a non-boolean `isolatedHome` SHALL make the file invalid.
 
 #### Scenario: Provider declared
-- **WHEN** `.shogunai.json` contains `{ "providers": { "desktopApp": { "module": ":desktopApp" } } }`
+- **WHEN** `.shogunai.json` contains `{ "providers": { "desktop-app": { "module": ":desktopApp" } } }`
 - **THEN** the repository's desktop app is the module `:desktopApp` with an isolated home
 
 #### Scenario: Repository without the provider
@@ -19,7 +18,7 @@ Everything this capability does SHALL apply only to repositories whose `.shoguna
 
 #### Scenario: Invalid module
 - **WHEN** the provider declares `"module": "desktopApp/build.gradle.kts"` or `"module": ""`
-- **THEN** the file is reported as invalid with an error that names `providers.desktopApp.module`
+- **THEN** the file is reported as invalid with an error that names `providers.desktop-app.module`
 
 ### Requirement: macOS only
 Starting, capturing, stopping and reporting a headless app SHALL be supported on macOS. On any other platform they SHALL fail with an error saying that running a desktop app in the background is only supported on macOS, without launching anything.
@@ -39,6 +38,21 @@ Starting SHALL launch the declared module's app through Compose Hot Reload's run
 - **WHEN** the headless app is running
 - **THEN** it shows no Dock icon and doesn't replace the menu bar
 
+### Requirement: Tell the app it runs headless
+The app SHALL be launched with the JVM system property `shogunai.headless=true`, so it can leave out what it would show outside its window, such as a menu bar status item, which hiding the app doesn't reach. Hot Reload's own tools SHALL run without windows.
+
+#### Scenario: Property set
+- **WHEN** the headless app is running
+- **THEN** `System.getProperty("shogunai.headless")` in the app returns `true`
+
+#### Scenario: ShogunAi without its status item
+- **WHEN** ShogunAi runs as a headless app next to the person's own ShogunAi
+- **THEN** the menu bar shows only the person's ShogunAi icon
+
+#### Scenario: No Hot Reload tool window
+- **WHEN** the headless app is running and hidden
+- **THEN** no window of Hot Reload's tools is visible
+
 ### Requirement: Wait for the window and hide it
 Starting SHALL wait until the app's process is running and its main window exists, then hide the application, and SHALL return once it is hidden, naming the process id. With `--visible` it SHALL leave the window visible, still without activating it. Not seeing a window within a timeout SHALL fail the start and leave the app running.
 
@@ -55,7 +69,7 @@ Starting SHALL wait until the app's process is running and its main window exist
 - **THEN** the start fails with an error saying no window appeared, and the app keeps running so it can be stopped or inspected
 
 ### Requirement: Fail early when the app exits
-While starting, the system SHALL notice when the launch exits before the window appears and fail at once with the last lines of the launch's log, instead of waiting for the timeout. The full log SHALL be kept and its path reported.
+While starting, the system SHALL notice when the launch fails or the app's process exits before its window appears, and fail at once with the last lines of the log, instead of waiting for the timeout. The full log SHALL be kept and its path reported.
 
 #### Scenario: Build error
 - **WHEN** the app's module doesn't compile and the launch exits after a few seconds
@@ -107,11 +121,11 @@ Capturing SHALL write a PNG of the app's main window, taken from the window itse
 - **THEN** the capture fails saying the app isn't running and no file is written
 
 ### Requirement: Stop the app
-Stopping SHALL end the worktree's headless app and the launch that started it, leaving the isolated home in place. Stopping when the app isn't running SHALL succeed and change nothing. Other worktrees' apps and any instance the person runs SHALL keep running.
+Stopping SHALL end the worktree's headless app and the helper processes it started, leaving the isolated home in place. Stopping when the app isn't running SHALL succeed and change nothing. Other worktrees' apps and any instance the person runs SHALL keep running.
 
 #### Scenario: Stop
 - **WHEN** the agent stops its worktree's running headless app
-- **THEN** the app's process and its launch end, and the next start finds the app's saved data
+- **THEN** the app's process and its helper processes end, and the next start finds the app's saved data
 
 #### Scenario: Stop when stopped
 - **WHEN** the worktree's headless app isn't running
@@ -129,7 +143,7 @@ Reporting SHALL say whether the worktree's headless app is running, with its pro
 - **THEN** the report says stopped
 
 ### Requirement: Say which permission is missing
-When capturing or hiding fails because macOS hasn't granted a permission (Screen Recording for capture, and any permission hiding needs), the error SHALL name the permission, say that it must be granted to the application that runs `shogun` (such as the terminal), and where to grant it in System Settings. A start whose hiding is denied SHALL leave the app running visible and in the background, and report it as a warning.
+When capturing or hiding fails because macOS hasn't granted a permission (Screen Recording for capture, Accessibility for hiding), the error SHALL name the permission, say that it must be granted to the application that runs `shogun` (such as the terminal), and where to grant it in System Settings. A start whose hiding is denied SHALL leave the app running visible and in the background, and report it as a warning.
 
 #### Scenario: Screen Recording not granted
 - **WHEN** the terminal running the agent has no Screen Recording permission and the agent captures
@@ -137,11 +151,15 @@ When capturing or hiding fails because macOS hasn't granted a permission (Screen
 
 #### Scenario: Hiding denied
 - **WHEN** hiding the app is denied by macOS during a start
-- **THEN** the start succeeds with a warning that the window is visible and which permission would hide it
+- **THEN** the start succeeds with a warning that the window is visible and that the Accessibility permission would hide it
 
 ### Requirement: Stop the app with its worktree
-Removing a worktree, from the command line, the desktop app or Claude Code's `WorktreeRemove` hook, and cleaning it up SHALL first stop its headless app if it is running. A failure to stop it SHALL be reported without blocking the removal.
+Removing a worktree, from the command line, the desktop app or Claude Code's `WorktreeRemove` hook, and cleaning it up SHALL first stop its headless app if it is running. A failure to stop it SHALL NOT block the removal, and the command line SHALL report it on standard error.
 
 #### Scenario: Removed while running
 - **WHEN** a worktree whose headless app is running is removed
 - **THEN** the app is stopped before the worktree's folder is deleted, and its isolated home is gone with the worktree
+
+#### Scenario: Stop fails on the command line
+- **WHEN** `shogun remove` removes a worktree whose headless app can't be stopped
+- **THEN** the worktree is removed and standard error says the desktop app couldn't be stopped

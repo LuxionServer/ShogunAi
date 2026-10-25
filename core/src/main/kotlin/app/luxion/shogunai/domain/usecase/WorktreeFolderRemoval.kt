@@ -12,8 +12,14 @@ internal class WorktreeFolderRemoval(
     private val executor: ShellCommandExecutor,
     private val fileManager: FileManager?,
     private val closeHerdrWorkspaces: CloseHerdrWorkspacesUseCase?,
+    private val stopHeadlessApp: StopHeadlessAppUseCase? = null,
 ) {
     suspend fun remove(path: String, force: Boolean, workspaceId: String?): HolderClosing {
+        val headlessAppFailure = stopHeadlessApp?.beforeRemoving(path)
+        return removeFolder(path, force, workspaceId).copy(headlessAppFailure = headlessAppFailure)
+    }
+
+    private suspend fun removeFolder(path: String, force: Boolean, workspaceId: String?): HolderClosing {
         val removeCommand = buildList {
             addAll(listOf("git", "worktree", "remove"))
             if (force) add("--force")

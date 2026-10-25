@@ -3,7 +3,7 @@
 Un provider añade soporte para un tipo de herramienta a los worktrees de un repositorio. Un repositorio activa providers en su [`.shogunai.json`](configuration.md#configuracion-del-repositorio-shogunaijson), bajo `providers`; los repositorios sin un provider nunca ven sus secciones, botones ni comandos, y ninguna de sus herramientas se ejecuta.
 
 ```json
-{ "providers": { "gradle": {}, "emulator": {}, "ios-simulator": {}, "xcode": {}, "maven": {}, "docker-compose": {} } }
+{ "providers": { "gradle": {}, "emulator": {}, "ios-simulator": {}, "xcode": {}, "maven": {}, "docker-compose": {}, "desktop-app": { "module": ":desktopApp" } } }
 ```
 
 | Provider | Para | Plataformas |
@@ -14,6 +14,7 @@ Un provider añade soporte para un tipo de herramienta a los worktrees de un rep
 | [`xcode`](#xcode) | Los DerivedData de Xcode y la caché de compilación compartida. | macOS |
 | [`maven`](#maven) | Compilaciones de Maven: un límite de memoria y los daemons de Maven. | Todas; la lista de daemons necesita `ps` (macOS, Linux) |
 | [`docker-compose`](#docker-compose) | Un proyecto de Docker Compose y puertos por worktree. | Todas, con la CLI de Docker |
+| [`desktop-app`](#app-de-compose-desktop) | Una app de Compose Desktop por worktree, ejecutada en segundo plano sin ocupar el escritorio. | macOS |
 
 ## Detección de stacks
 
@@ -139,6 +140,25 @@ shogun emulator stop
 - La lista de worktrees muestra cada emulador con Arrancar y Parar, y "Limpiar" (o `shogun clean --stop-emulators`) para los emuladores de los worktrees que elimina.
 - El SDK se busca en `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `sdk.dir` de `local.properties` o la ubicación por defecto de Android Studio.
 - Todos los worktrees comparten el servidor de adb: los agentes nunca deben reiniciarlo (`adb kill-server`) ni forzar un dispositivo con `-s`, `-e` o `-d`. El hook `SessionStart` se lo dice a Claude.
+
+## App de Compose Desktop
+
+Un agente que comprueba una app de Compose Desktop con computer use te quita la pantalla, el ratón y el teclado, y solo un agente puede hacerlo a la vez. Activa el provider de app de escritorio para que el agente de cada worktree ejecute su app en segundo plano:
+
+```json
+{ "providers": { "desktop-app": { "module": ":desktopApp" } } }
+```
+
+`module` es la ruta Gradle del módulo de la app, que debe usar Compose Hot Reload (Compose Multiplatform 1.12 o posterior). `isolatedHome` (por defecto `true`) da a la app su propio home de usuario por worktree, para que nunca toque tus datos; ponlo a `false` para una app que deba leer el home real.
+
+```bash
+shogun headless start      # lanza la app oculta, sin quitar el foco
+shogun headless capture    # PNG de su ventana, aunque esté oculta
+shogun headless status
+shogun headless stop
+```
+
+El agente maneja la app con el servidor MCP de Compose Hot Reload. Consulta [Comprobar una app de escritorio en segundo plano](headless-app.md) para el flujo completo, los permisos de macOS que necesita y lo que todavía necesita el escritorio.
 
 ## Simulador de iOS
 

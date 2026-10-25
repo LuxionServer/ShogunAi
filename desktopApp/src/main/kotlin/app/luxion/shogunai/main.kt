@@ -56,7 +56,9 @@ import app.luxion.shogunai.ui.tray.TrayLaunchWatch
 import app.luxion.shogunai.ui.tray.TrayPreferences
 import app.luxion.shogunai.ui.worktree.InactivityPreferences
 import app.luxion.shogunai.ui.tray.buildTrayMenu
+import app.luxion.shogunai.ui.tray.isTrayIconSupported
 import app.luxion.shogunai.ui.tray.rememberTrayIconPainter
+import app.luxion.shogunai.ui.tray.runsHeadless
 import app.luxion.shogunai.ui.worktree.WorktreeBoard
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -122,7 +124,10 @@ private fun openWindow() = application {
     val shellViewModelHolder = remember { mutableStateOf<ShellViewModel?>(null) }
     val boardHolder = remember { mutableStateOf<WorktreeBoard?>(null) }
     val trayPreferences = remember {
-        TrayPreferences(appContainer.shellPreferenceRepository, isSupported = SystemTray.isSupported())
+        TrayPreferences(
+            appContainer.shellPreferenceRepository,
+            isSupported = isTrayIconSupported(SystemTray.isSupported(), runsHeadless()),
+        )
     }
     val inactivityPreferences = remember { InactivityPreferences(appContainer.shellPreferenceRepository) }
     var windowVisible by remember { mutableStateOf(true) }

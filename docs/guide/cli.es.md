@@ -86,7 +86,7 @@ Lista todos los worktrees del repositorio, uno por línea: ruta, rama (o `(detac
 | `main` | El checkout principal. |
 | `origin=shogunai\|claude-code\|herdr\|other` | Dónde se creó el worktree. |
 | `locked` | Lo retiene una sesión de agente. |
-| `agents=claude(blocked),codex` | Agentes en ejecución en él, con su estado (`working`, `blocked`, `done`, `idle`) cuando lo informa Herdr o, para Claude, sus [hooks](agents.md#estados-de-los-agentes-fuera-de-herdr). |
+| `agents=claude(blocked),codex` | Agentes en ejecución en él, con su estado (`working`, `blocked`, `done`, `idle`) cuando lo informa Herdr o, para Claude, sus [hooks](../agents.md#estados-de-los-agentes-fuera-de-herdr). |
 | `changes=N` | Cambios sin commitear. |
 | `ahead=N behind=N` | Divergencia respecto a su upstream. |
 | `merged` | Mergeado en la rama principal. |
@@ -192,7 +192,7 @@ Elimina un worktree enlazado, igual que "Eliminar" en la app de escritorio. El o
 
 Sin `--force` rechaza un worktree con cambios sin commitear o sin seguimiento, o donde se ejecuta un agente (`shogun: claude is running in <ruta>; use --force to remove it anyway`), y termina con `1`. Con `--force` lo elimina igualmente. La rama se conserva salvo que pases `--delete-branch`, que la borra solo si está mergeada en la rama principal del proyecto (`deleted branch …`, o `kept branch … (not merged into the main branch)`; una rama conservada no hace fallar el comando). `--force-delete-branch` la borra aunque no esté mergeada.
 
-Tras eliminarlo, el comando para lo que los providers del repositorio mantienen para ese worktree: su emulador de Android (`stopped emulator …`), su simulador de iOS (`stopped simulator …`) y los daemons de Gradle ociosos cuya última build fue en él (`stopped Gradle daemon …`). Un recurso que no se puede parar se indica en la salida de error y el código de salida es `1`; para entonces el worktree ya está eliminado. También se cierra su espacio de trabajo de Herdr. Si Git no puede borrar la carpeta porque un programa la está usando (típicamente una shell de Herdr en Windows), se cierran el espacio de trabajo y los paneles de Herdr dentro del worktree y se reintenta la eliminación una vez; un worktree que Git ya había desregistrado pero cuya carpeta queda se termina de eliminar borrando esa carpeta, y una carpeta que sigue en uso falla con un mensaje que lo explica.
+Tras eliminarlo, el comando para lo que los providers del repositorio mantienen para ese worktree: su emulador de Android (`stopped emulator …`), su simulador de iOS (`stopped simulator …`) y los daemons de Gradle ociosos cuya última build fue en él (`stopped Gradle daemon …`). Un recurso que no se puede parar se indica en la salida de error y el código de salida es `1`; para entonces el worktree ya está eliminado. También se cierra su espacio de trabajo de Herdr. Su app de escritorio en segundo plano, si está en marcha, se para antes de borrar la carpeta. Si Git no puede borrar la carpeta porque un programa la está usando (típicamente una shell de Herdr en Windows), se cierran el espacio de trabajo y los paneles de Herdr dentro del worktree y se reintenta la eliminación una vez; un worktree que Git ya había desregistrado pero cuya carpeta queda se termina de eliminar borrando esa carpeta, y una carpeta que sigue en uso falla con un mensaje que lo explica.
 
 ### `repair`
 
@@ -378,6 +378,18 @@ Crea si hace falta, arranca (y espera a) y abre, apaga o muestra el simulador de
 
 `gradle-init install` instala un init script de Gradle para toda la máquina que hace que los tests de simulador KMP de todos los proyectos usen el simulador del worktree; muestra el script y pregunta `[y/N]` salvo con `--yes`. `uninstall` lo elimina.
 
+### `headless`
+
+```bash
+shogun headless start [<ruta>] [--visible] [--fresh] [--json]
+shogun headless capture [<ruta>] [--output <archivo>] [--json]
+shogun headless stop|status [<ruta>] [--json]
+```
+
+Ejecuta la app de Compose Desktop del worktree en segundo plano (solo macOS, repositorios con el [provider `desktop-app`](providers.md#app-de-compose-desktop)). `start` la lanza con Compose Hot Reload sin quitar el foco, espera a su ventana, la oculta e imprime `<pid> running hidden`; con la app ya en marcha no lanza nada y la vuelve a ocultar. `--visible` deja la ventana a la vista, detrás de la app que estés usando. `--fresh` vacía antes el home aislado de la app. Una compilación fallida sale con `1` y el final del log del lanzamiento; una app que termina antes de mostrar su ventana, con el final de su propio log. Si macOS no deja ocultarla, la app sigue en marcha visible y la salida de errores nombra el permiso de Accesibilidad.
+
+`capture` guarda un PNG de la ventana de la app, tomado de la propia ventana, así que la muestra aunque esté oculta o tapada; sin `--output` va a un archivo nuevo en la carpeta de Git del worktree, y el comando imprime su ruta. Necesita el permiso de Grabación de pantalla para la aplicación que ejecuta `shogun`, como tu terminal. `stop` termina la app (`stopped <pid>`, o `stopped` si no estaba en marcha); `status` imprime su estado, el home aislado, el log del lanzamiento y los permisos que falten. Consulta [Comprobar una app de escritorio en segundo plano](headless-app.md).
+
 ### `pool`
 
 ```text
@@ -455,7 +467,7 @@ Estos comandos están pensados para que los llamen agentes y herramientas, no pa
 | `shogun hook worktree-create` | El hook `WorktreeCreate` de Claude Code. Lee `name` y `cwd` de la entrada estándar, crea (o reutiliza) un worktree provisionado en `feature/<name>` que parte del HEAD del worktree de `cwd`, e imprime su ruta. Si falla un comando posterior a la creación, imprime igualmente la ruta como última línea y sale con 0, con el fallo en la salida de error, para que Claude Code use el worktree. Los comandos posteriores a la creación y las variables declaradas sin aprobar se omiten con una nota por la salida de error; nunca pregunta. |
 | `shogun hook worktree-remove` | El hook `WorktreeRemove` de Claude Code. Elimina el worktree de `worktree_path`, borra su rama solo si está mergeada en la rama principal del proyecto (una rama mergeada solo en su propio upstream se conserva, con una nota en la salida de error) y cierra su espacio de Herdr. |
 | `shogun hook session-start` | El hook `SessionStart` de Claude Code. Dentro de un repositorio Git, imprime el contexto. Solo cuando el repositorio está registrado como proyecto añade el entorno del worktree a `CLAUDE_ENV_FILE` (nada cuando el repositorio no declara `env`) e imprime una línea que nombra las variables, sin sus valores; las variables declaradas pendientes de aprobación se nombran en una línea aparte, que pide al agente que te pida revisarlas con `shogun trust`, y no se entregan. Después vienen las [reglas de flujo](#guide) cortas que aplican a esa ubicación, como máximo diez líneas, que empiezan con la línea de prioridad y terminan con un puntero a `shogun guide`. Sin Herdr omite las reglas sobre `shogun open --herdr` y sobre escribir a otras sesiones; las reglas del emulador y del simulador aparecen solo cuando el repositorio declara esos providers. Fuera de un repositorio Git no imprime nada y sale con `0`. |
-| `shogun hook agent-state` | Los hooks `UserPromptSubmit`, `Notification`, `Stop` y `SessionEnd` de Claude Code. Lee el JSON del hook por la entrada estándar y registra el estado de la sesión (trabajando, bloqueada, terminada) para el worktree que contiene `cwd`, o borra el registro en `SessionEnd`; una `Notification` de tipo `idle_prompt` significa terminada y `auth_success` se ignora. Cuando el estado es trabajando, renueva además las concesiones del emulador y del simulador que tiene el worktree. No imprime nada, nunca bloquea la sesión y sale con 0 también fuera de un repositorio; una entrada que no es JSON sale con 2. Ver [Estados de los agentes fuera de Herdr](agents.md#estados-de-los-agentes-fuera-de-herdr). |
+| `shogun hook agent-state` | Los hooks `UserPromptSubmit`, `Notification`, `Stop` y `SessionEnd` de Claude Code. Lee el JSON del hook por la entrada estándar y registra el estado de la sesión (trabajando, bloqueada, terminada) para el worktree que contiene `cwd`, o borra el registro en `SessionEnd`; una `Notification` de tipo `idle_prompt` significa terminada y `auth_success` se ignora. Cuando el estado es trabajando, renueva además las concesiones del emulador y del simulador que tiene el worktree. No imprime nada, nunca bloquea la sesión y sale con 0 también fuera de un repositorio; una entrada que no es JSON sale con 2. Ver [Estados de los agentes fuera de Herdr](../agents.md#estados-de-los-agentes-fuera-de-herdr). |
 | `shogun hook herdr` | El plugin de ShogunAi para Herdr, en `worktree.created` (provisiona el worktree, omitiendo con una nota los comandos posteriores a la creación sin aprobar) y `worktree.removed` (borra su rama si está mergeada en la rama principal del proyecto). Lee `HERDR_PLUGIN_EVENT`, `HERDR_PLUGIN_EVENT_JSON` y `HERDR_BIN_PATH`. |
 
 ## Ayuda y versión

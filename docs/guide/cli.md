@@ -86,7 +86,7 @@ Lists every worktree of the repository, one per line: path, branch (or `(detache
 | `main` | The main checkout. |
 | `origin=shogunai\|claude-code\|herdr\|other` | Where the worktree was created. |
 | `locked` | Held by an agent session. |
-| `agents=claude(blocked),codex` | Agents running in it, with their state (`working`, `blocked`, `done`, `idle`) when Herdr reports it or, for Claude, when its [hooks](agents.md#agent-states-outside-herdr) do. |
+| `agents=claude(blocked),codex` | Agents running in it, with their state (`working`, `blocked`, `done`, `idle`) when Herdr reports it or, for Claude, when its [hooks](../agents.md#agent-states-outside-herdr) do. |
 | `changes=N` | Uncommitted changes. |
 | `ahead=N behind=N` | Divergence from its upstream. |
 | `merged` | Merged into the main branch. |
@@ -192,7 +192,7 @@ Removes one linked worktree, the way the desktop app's remove does. The target i
 
 Without `--force` it refuses a worktree with uncommitted or untracked changes, or one where an agent is running (`shogun: claude is running in <path>; use --force to remove it anyway`), and exits with `1`. With `--force` it removes it anyway. The branch is kept unless you pass `--delete-branch`, which deletes it only when it's merged into the project's main branch (`deleted branch …`, or `kept branch … (not merged into the main branch)`; a kept branch doesn't make the command fail). `--force-delete-branch` deletes it even if it isn't merged.
 
-After removing it, the command stops what the repository's providers keep for that worktree: its Android emulator (`stopped emulator …`), its iOS simulator (`stopped simulator …`) and the idle Gradle daemons whose last build was in it (`stopped Gradle daemon …`). A resource that can't be stopped is reported on standard error and the exit code is `1`; the worktree is already removed by then. Its Herdr workspace is closed too. If Git can't delete the folder because a program is using it (typically a Herdr shell on Windows), the workspace and the Herdr panes inside the worktree are closed and the removal is retried once; a worktree Git had already unregistered but whose folder is left is finished by deleting that folder, and a folder still in use fails with a message saying so.
+After removing it, the command stops what the repository's providers keep for that worktree: its Android emulator (`stopped emulator …`), its iOS simulator (`stopped simulator …`) and the idle Gradle daemons whose last build was in it (`stopped Gradle daemon …`). A resource that can't be stopped is reported on standard error and the exit code is `1`; the worktree is already removed by then. Its Herdr workspace is closed too. Its headless desktop app, if running, is stopped before the folder is removed. If Git can't delete the folder because a program is using it (typically a Herdr shell on Windows), the workspace and the Herdr panes inside the worktree are closed and the removal is retried once; a worktree Git had already unregistered but whose folder is left is finished by deleting that folder, and a folder still in use fails with a message saying so.
 
 ### `repair`
 
@@ -378,6 +378,18 @@ Creates if needed, boots (and waits for) and opens, shuts down or shows the iOS 
 
 `gradle-init install` installs a machine-wide Gradle init script that makes every project's KMP simulator tests use the worktree's simulator; it shows the script and asks `[y/N]` unless `--yes` is given. `uninstall` removes it.
 
+### `headless`
+
+```bash
+shogun headless start [<path>] [--visible] [--fresh] [--json]
+shogun headless capture [<path>] [--output <file>] [--json]
+shogun headless stop|status [<path>] [--json]
+```
+
+Runs the worktree's Compose Desktop app in the background (macOS only, repositories with the [`desktop-app` provider](providers.md#compose-desktop-app)). `start` launches it through Compose Hot Reload without taking focus, waits for its window, hides it and prints `<pid> running hidden`; on an app already running it launches nothing and hides it again. `--visible` leaves the window shown, behind the app you're using. `--fresh` empties the app's isolated home first. A failed build exits with `1` and the end of the launch log; an app that exits before showing its window, with the end of its own log. If macOS denies hiding it, the app keeps running visible and standard error names the Accessibility permission.
+
+`capture` saves a PNG of the app's window, taken from the window itself, so it shows the app even while hidden or covered; without `--output` it goes to a new file in the worktree's Git folder, and the command prints its path. It needs the Screen Recording permission for the application that runs `shogun`, such as your terminal. `stop` ends the app (`stopped <pid>`, or `stopped` when it wasn't running); `status` prints its state, the isolated home, the launch log and any missing permission. See [Checking a desktop app in the background](headless-app.md).
+
 ### `pool`
 
 ```text
@@ -453,7 +465,7 @@ These commands are meant to be called by agents and tools, not typed. How to con
 | `shogun hook worktree-create` | Claude Code's `WorktreeCreate` hook. Reads `name` and `cwd` from standard input, creates (or reuses) a provisioned worktree on `feature/<name>` starting at the HEAD of the worktree in `cwd`, and prints its path. If a post-creation command fails it still prints the path as the last line and exits with 0, with the failure on standard error, so Claude Code uses the worktree. Unapproved post-creation commands and declared variables are skipped with a note on standard error; it never asks. |
 | `shogun hook worktree-remove` | Claude Code's `WorktreeRemove` hook. Removes the worktree in `worktree_path`, deletes its branch only if it's merged into the project's main branch (a branch merged only into its own upstream is kept, with a note on standard error) and closes its Herdr workspace. |
 | `shogun hook session-start` | Claude Code's `SessionStart` hook. Inside a Git repository, prints the context. Only when the repository is registered as a project does it append the worktree's environment to `CLAUDE_ENV_FILE` (nothing when the repository declares no `env`) and print a line naming the variables, without their values; declared variables awaiting approval are named on a line of their own, telling the agent to ask you to review them with `shogun trust`, and aren't delivered. Then come the short [workflow rules](#guide) that apply to that location, at most ten lines, starting with the precedence line and ending with a pointer to `shogun guide`. Without Herdr it leaves out the rules about `shogun open --herdr` and messaging sessions; the emulator and simulator rules appear only when the repository declares those providers. Outside a Git repository it prints nothing and exits with `0`. |
-| `shogun hook agent-state` | Claude Code's `UserPromptSubmit`, `Notification`, `Stop` and `SessionEnd` hooks. Reads the hook's JSON from standard input and records the session's state (working, blocked, done) for the worktree containing `cwd`, or removes the record on `SessionEnd`; a `Notification` of type `idle_prompt` means done and `auth_success` is ignored. When the state is working it also renews the leases of the emulator and simulator the worktree holds. It prints nothing, never blocks the session and exits with 0 also outside a repository; input that isn't JSON exits with 2. See [Agent states outside Herdr](agents.md#agent-states-outside-herdr). |
+| `shogun hook agent-state` | Claude Code's `UserPromptSubmit`, `Notification`, `Stop` and `SessionEnd` hooks. Reads the hook's JSON from standard input and records the session's state (working, blocked, done) for the worktree containing `cwd`, or removes the record on `SessionEnd`; a `Notification` of type `idle_prompt` means done and `auth_success` is ignored. When the state is working it also renews the leases of the emulator and simulator the worktree holds. It prints nothing, never blocks the session and exits with 0 also outside a repository; input that isn't JSON exits with 2. See [Agent states outside Herdr](../agents.md#agent-states-outside-herdr). |
 | `shogun hook herdr` | The ShogunAi plugin for Herdr, on `worktree.created` (provisions the worktree, skipping unapproved post-creation commands with a note) and `worktree.removed` (deletes its branch if merged into the project's main branch). Reads `HERDR_PLUGIN_EVENT`, `HERDR_PLUGIN_EVENT_JSON` and `HERDR_BIN_PATH`. |
 
 ## Help and version

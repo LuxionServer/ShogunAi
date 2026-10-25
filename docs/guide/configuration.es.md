@@ -87,6 +87,7 @@ Opciones de los providers:
 | `xcode` | `compilationCache`: `true` o `false`. |
 | `maven` | `mavenMaxHeap`: un tamaño como `512m` o `1g`. |
 | `docker-compose` | `portVariables`: una lista de nombres de variable únicos que siguen las reglas de nombres de `env` y no son reservados. |
+| `desktop-app` | `module` (obligatorio): la ruta Gradle del módulo de la app, como `:desktopApp`. `isolatedHome`: `true` (por defecto) o `false`. |
 
 Las claves y los providers desconocidos se ignoran. Un fichero que no es JSON válido, o una clave conocida con el tipo equivocado, hace que crear y provisionar worktrees falle con un mensaje que indica el fichero y el problema, sin crear nada.
 
@@ -118,7 +119,7 @@ Estos archivos contienen rutas de tu máquina; no los subas a ningún repositori
 
 ## Estado por worktree
 
-Los puertos y recursos reservados de cada worktree (su simulador de iOS, por ejemplo) se guardan en `shogunai-env.json` dentro de la carpeta que Git tiene para ese worktree (`.git/worktrees/<nombre>/`), no en el propio worktree. Al eliminar el worktree se eliminan con él.
+Los puertos y recursos reservados de cada worktree (su simulador de iOS, por ejemplo) se guardan en `shogunai-env.json` dentro de la carpeta que Git tiene para ese worktree (`.git/worktrees/<nombre>/`), no en el propio worktree. Una app de escritorio en segundo plano guarda su home aislado, el log de su lanzamiento y sus capturas en `shogunai/headless/` dentro de esa misma carpeta. Al eliminar el worktree se eliminan con él.
 
 ## Otras ubicaciones
 

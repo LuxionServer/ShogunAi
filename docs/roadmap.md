@@ -12,7 +12,7 @@ That direction is built in three layers:
 |---|---|---|
 | **Engine and CLI** | The foundation | Worktree provisioning defined in the repository (`.shogunai.json`) and a `shogun` command that the desktop app, agents and their hooks all use, including a per-worktree environment (reserved ports and variables) delivered to each agent's shell, and JSON output on every command for scripts. **Available.** |
 | **Control tower** | The view | The desktop app shows the state of every worktree, including the ones created by other tools, keeps them clean and follows changes as they happen. It opens each one in the terminal, the IDE or Herdr with the project's agents, and stays one click away in the menu bar. Multirepos group the repositories of one product, so a change spans several of them with one worktree and one agent per repository, coordinated by an agent for the whole multirepo, from the CLI and the app. **Available.** |
-| **Platforms** | The content | Providers for the stacks where a worktree is hardest to prepare, starting with Android, KMP, iOS and JVM: Gradle, local secrets, emulators, simulators and IDEs. **Started**: Gradle repositories show their daemons, can stop the idle ones and bound the memory and lifetime of the daemons agents start, Android repositories can give each worktree its own emulator, KMP and iOS repositories its own iOS simulator, both acquired on demand within limits that follow a machine capacity profile, with `--wait` to queue for a full pool, Xcode repositories see and clean up their DerivedData, keep it within a disk quota, automatic by default, and share compilations between worktrees, and JVM backends get Maven builds bounded in memory and a Docker Compose project and ports per worktree, started and built with `shogun compose up` and cleaned up with the volumes, networks and images removed worktrees leave behind. The app and `shogun stacks` also detect a repository's stack and suggest the providers that fit, and the `local.properties`, keystores and Firebase files to link into every worktree; local files can be linked, matched by patterns and kept in sync when the base folder loses files. |
+| **Platforms** | The content | Providers for the stacks where a worktree is hardest to prepare, starting with Android, KMP, iOS and JVM: Gradle, local secrets, emulators, simulators and IDEs. **Started**: Gradle repositories show their daemons, can stop the idle ones and bound the memory and lifetime of the daemons agents start, Android repositories can give each worktree its own emulator, KMP and iOS repositories its own iOS simulator, both acquired on demand within limits that follow a machine capacity profile, with `--wait` to queue for a full pool, Xcode repositories see and clean up their DerivedData, keep it within a disk quota, automatic by default, and share compilations between worktrees, Compose Desktop apps run hidden in the background for agents to check on macOS, and JVM backends get Maven builds bounded in memory and a Docker Compose project and ports per worktree, started and built with `shogun compose up` and cleaned up with the volumes, networks and images removed worktrees leave behind. The app and `shogun stacks` also detect a repository's stack and suggest the providers that fit, and the `local.properties`, keystores and Firebase files to link into every worktree; local files can be linked, matched by patterns and kept in sync when the base folder loses files. |
 
 It plugs into the tools that run agents rather than replacing them: Claude Code's worktree and session hooks, and [Herdr](https://herdr.dev), the terminal multiplexer for agents, whose worktrees a ShogunAi plugin provisions and where the desktop app opens a worktree with its environment and agent and shows what each agent is doing. **Available.**
 
@@ -26,11 +26,12 @@ Numbered in the order they will be picked up: the number is the priority.
 
 ### 1. A turn for the desktop
 
-Some things can only be checked by an agent driving the real app with computer use, and the desktop (screen, mouse, keyboard and the focused app) is one resource for the whole machine: two agents using it at once step on each other and on the person working there. A desktop turn, on the same model as the device leases and their `--wait` queue:
+Some things can only be checked by an agent driving the real app with computer use (on macOS, Compose Desktop apps already run in the background for agents with `shogun headless`; what that doesn't reach is real keyboard input, keyboard shortcuts, native menus, the menu bar, system dialogs, hover and hit-testing, and apps of other toolkits), and the desktop (screen, mouse, keyboard and the focused app) is one resource for the whole machine: two agents using it at once step on each other and on the person working there. A desktop turn, on the same model as the device leases and their `--wait` queue:
 
 - `shogun desktop acquire --wait` and `shogun desktop release`, so only one agent drives the desktop at a time and the others wait in line instead of failing or colliding.
 - A turn that expires on its own, so an agent that stops or crashes doesn't keep the desktop.
 - Who holds the turn and who is waiting, in the control tower and in `shogun status`.
+- The background apps of `shogun headless` in the control tower's worktree views, with a notice when stopping one on a removal fails (today only the command line reports it).
 
 ### 2. The environment of backends and services
 
@@ -86,9 +87,9 @@ Accepted, but left until someone needs them, because they widen what ShogunAi op
 
 ## Under exploration
 
-### Checking a running app without taking over the desktop
+### Background desktop apps beyond macOS and the keyboard
 
-The desktop turn stops agents from colliding, but it doesn't make them parallel, and it still takes the screen away from the person. What can only be checked with computer use today needs another way to see and drive a running app: candidates are driving it through the operating system's accessibility API (pressing and reading its controls without moving the real cursor or stealing focus) together with capturing only its window, even in the background, or a test bridge inside the app that a provider talks to. It needs a spike on macOS to see how much of an app those reach, and how each one would fit other platforms.
+Compose Desktop apps can be checked in the background on macOS (`shogun headless` and the `desktop-app` provider), but two gaps remain. Real keyboard input doesn't reach an app whose window isn't active: a bridge that posts events to the app's own queue, or a key tool in Compose Hot Reload's MCP server (a feature request to JetBrains), could close it. And hiding and capturing a window are macOS-only: Windows and Linux need their own way to keep the app out of sight and capture its window, or a virtual display. Each needs a spike before becoming a change.
 
 ### A follow-up view for people who don't run agents
 

@@ -13,6 +13,24 @@ class TrayPreferencesTest {
     private fun preferences(isSupported: Boolean = true) = TrayPreferences(repository, isSupported)
 
     @Test
+    fun `a headless app shows no tray icon even when the preference shows it`() {
+        val headless = runsHeadless { if (it == HEADLESS_PROPERTY) "true" else null }
+
+        val preferences = preferences(isSupported = isTrayIconSupported(systemTraySupported = true, runsHeadless = headless))
+
+        assertTrue(headless)
+        assertTrue(preferences.showIcon)
+        assertFalse(preferences.isIconShown)
+        assertEquals(CloseAction.QUIT, preferences.closeAction)
+    }
+
+    @Test
+    fun `an app run normally keeps its tray icon`() {
+        assertFalse(runsHeadless { null })
+        assertTrue(isTrayIconSupported(systemTraySupported = true, runsHeadless = false))
+    }
+
+    @Test
     fun `by default the icon is shown and closing the window quits`() {
         val preferences = preferences()
 

@@ -11,6 +11,8 @@ import app.luxion.shogunai.domain.io.DerivedDataSource
 import app.luxion.shogunai.domain.io.EnvironmentStateStore
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.GradleDaemonSource
+import app.luxion.shogunai.domain.io.AppWindowService
+import app.luxion.shogunai.domain.io.HeadlessAppLauncher
 import app.luxion.shogunai.domain.io.HerdrClient
 import app.luxion.shogunai.domain.io.HerdrConfigSource
 import app.luxion.shogunai.domain.io.KmpTestWiring
@@ -142,6 +144,11 @@ import app.luxion.shogunai.domain.usecase.StartWorktreeEmulatorUseCase
 import app.luxion.shogunai.domain.usecase.StartWorktreeSimulatorUseCase
 import app.luxion.shogunai.domain.usecase.StopGradleDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.StopWorktreeEmulatorUseCase
+import app.luxion.shogunai.domain.usecase.CaptureHeadlessAppUseCase
+import app.luxion.shogunai.domain.usecase.HeadlessAppWorktrees
+import app.luxion.shogunai.domain.usecase.ReadHeadlessAppUseCase
+import app.luxion.shogunai.domain.usecase.StartHeadlessAppUseCase
+import app.luxion.shogunai.domain.usecase.StopHeadlessAppUseCase
 import app.luxion.shogunai.domain.usecase.StopWorktreeSimulatorUseCase
 import app.luxion.shogunai.domain.usecase.TrimGradleDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.WriteEnvironmentFileUseCase
@@ -203,6 +210,8 @@ import app.luxion.shogunai.domain.usecase.ProjectRegistration
 import app.luxion.shogunai.domain.usecase.RegisterProjectUseCase
 import app.luxion.shogunai.domain.usecase.UnregisterProjectUseCase
 import app.luxion.shogunai.infrastructure.DesktopAppLauncher
+import app.luxion.shogunai.infrastructure.GradleHeadlessAppLauncher
+import app.luxion.shogunai.infrastructure.MacAppWindowService
 import app.luxion.shogunai.infrastructure.FileAppInstanceLock
 import app.luxion.shogunai.infrastructure.FileAppRequestChannel
 import app.luxion.shogunai.infrastructure.NioDeviceWaitQueue
@@ -266,6 +275,9 @@ class ShogunCli(
     private val processLiveness: ProcessLiveness = ProcessHandleLiveness(),
     private val deviceClock: () -> Instant = Instant::now,
     private val pauseWhileWaiting: suspend (Duration) -> Unit = { delay(it.toMillis()) },
+    private val headlessLauncher: HeadlessAppLauncher = GradleHeadlessAppLauncher(executor, Path.of(userHome, ".shogunai", "headless").toString()),
+    private val appWindows: AppWindowService = MacAppWindowService(executor, Path.of(userHome, ".shogunai", "headless").toString()),
+    private val pauseWhileStartingApp: suspend (Long) -> Unit = { delay(it) },
 ) {
     private val terminalApproval = RepositoryApproval { repository, subject ->
         if (confirm("${subjectLines(repository, subject)}$APPROVAL_QUESTION")) ApprovalDecision.APPROVE else ApprovalDecision.SKIP
@@ -342,6 +354,17 @@ class ShogunCli(
     private val startEmulator = StartWorktreeEmulatorUseCase(provisioningSource, resolveEnvironment, acquireResource, androidSdk)
     private val stopEmulator = StopWorktreeEmulatorUseCase(provisioningSource, resolveEnvironment, androidSdk)
     private val readEmulatorStates = ReadEmulatorStatesUseCase(provisioningSource, resolveEnvironment, androidSdk)
+    private val headlessWorktrees = HeadlessAppWorktrees(
+        provisioningSource,
+        { resolveEnvironment.directoriesOf(it).admin },
+        headlessLauncher,
+        appWindows,
+        fileManager,
+    )
+    private val startHeadlessApp = StartHeadlessAppUseCase(headlessWorktrees, headlessLauncher, appWindows, fileManager, pauseWhileStartingApp)
+    private val stopHeadlessApp = StopHeadlessAppUseCase(headlessWorktrees, headlessLauncher)
+    private val readHeadlessApp = ReadHeadlessAppUseCase(headlessWorktrees, appWindows)
+    private val captureHeadlessApp = CaptureHeadlessAppUseCase(headlessWorktrees, appWindows)
 
     fun run(args: List<String>): Int = when (val parsed = parseArguments(args)) {
         is ParsedArguments.UsageError -> {
@@ -396,6 +419,7 @@ class ShogunCli(
             is CliCommand.Env -> env(command)
             is CliCommand.Emulator -> emulator(command)
             is CliCommand.Simulator -> simulator(command)
+            is CliCommand.Headless -> headless(command)
             is CliCommand.SimulatorGradleInit -> simulatorGradleInit(command)
             CliCommand.HookSessionStart -> hookSessionStart()
             CliCommand.HookHerdr -> hookHerdr()
@@ -1105,7 +1129,7 @@ class ShogunCli(
             }
         }
         val plan = releaseResources.plan(config, worktree, worktrees)
-        val removal = RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr), fileManager)(
+        val removal = RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr), fileManager, stopHeadlessApp)(
             worktree.path,
             branchToDelete = worktree.branch?.takeIf { command.deleteBranch || command.forceDeleteBranch },
             force = command.force,
@@ -1121,6 +1145,7 @@ class ShogunCli(
         val say = saying(command.json)
         say("removed ${worktree.path}")
         removal.herdrFailure?.let { err.line(herdrCloseFailure(worktree.path, it)) }
+        removal.headlessAppFailure?.let { err.line(headlessStopFailure(worktree.path, it)) }
         val released = releaseResources.release(config, plan)
         released.stoppedEmulators.forEach { say("stopped emulator $it") }
         released.stoppedSimulators.forEach { say("stopped simulator $it") }
@@ -1273,7 +1298,7 @@ class ShogunCli(
             out.line(dryRunHint(command, candidates.size, simulators.orphans.isNotEmpty(), derivedDataOrphans.isNotEmpty()))
             return EXIT_OK
         }
-        val report = CleanUpWorktreesUseCase(config, executor, closeHerdrWorkspaces, composeSource, fileManager, composeRegistry)(
+        val report = CleanUpWorktreesUseCase(config, executor, closeHerdrWorkspaces, composeSource, fileManager, composeRegistry, stopHeadlessApp)(
             candidates,
             mainBranch,
             command.deleteBranches,
@@ -1284,6 +1309,7 @@ class ShogunCli(
         report.keptBranches.forEach { say("kept branch $it (not merged)") }
         report.failures.forEach { err.line("shogun: couldn't remove ${it.path}: ${it.error.message}") }
         report.herdrFailures.forEach { err.line(herdrCloseFailure(it.path, it.error)) }
+        report.headlessAppFailures.forEach { err.line(headlessStopFailure(it.path, it.error)) }
         report.composeDown?.takenDown?.forEach { say("took down Compose project $it") }
         report.composeDown?.failures?.forEach { err.line("shogun: couldn't take down Compose project ${it.name}: ${it.detail}") }
         report.composeUnavailable?.let { err.line("shogun: Docker isn't available ($it), so the Compose projects were kept") }
@@ -1670,6 +1696,7 @@ class ShogunCli(
             herdrAvailable = herdrAvailable(),
             emulatorProvider = false,
             simulatorProvider = false,
+            desktopAppProvider = declaresHeadlessApp(worktree.path),
         )
 
     private suspend fun workflowContext(repository: String, worktree: Worktree): WorkflowContext {
@@ -1680,8 +1707,12 @@ class ShogunCli(
             emulatorProvider = providers.emulator != null,
             simulatorProvider = providers.iosSimulator != null && appleSimulators.isSupported(),
             composeProvider = providers.dockerCompose != null,
+            desktopAppProvider = declaresHeadlessApp(worktree.path),
         )
     }
+
+    private fun declaresHeadlessApp(worktreePath: String): Boolean =
+        appWindows.isSupported && runCatching { provisioningSource.read(worktreePath).providers.desktopApp }.getOrNull() != null
 
     private suspend fun herdrAvailable(): Boolean = try {
         withTimeout(HERDR_PROBE_MILLIS) { herdr.listAgents() }
@@ -2311,14 +2342,51 @@ class ShogunCli(
         val worktree = ListWorktreesUseCase(config, executor)().getOrThrow()
             .firstOrNull { !it.isMain && sameDirectory(it.path, path) }
             ?: throw WorktreeError.NotAWorktree(path)
-        val removal = RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr), fileManager)(
+        val removal = RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr), fileManager, stopHeadlessApp)(
             worktree.path,
             branchToDelete = worktree.branch,
             force = true,
         ).getOrThrow()
         removal.herdrFailure?.let { err.line(herdrCloseFailure(worktree.path, it)) }
+        removal.headlessAppFailure?.let { err.line(headlessStopFailure(worktree.path, it)) }
         reportKeptBranch(worktree.branch, removal.branch)
         return EXIT_OK
+    }
+
+    private fun headlessStopFailure(path: String, error: WorktreeError) =
+        "shogun: couldn't stop the desktop app of $path: ${error.message}"
+
+    private suspend fun headless(command: CliCommand.Headless): Int {
+        val worktree = worktreeTopLevel(absolute(command.path ?: workingDirectory))
+        when (command.action) {
+            HeadlessAction.START -> {
+                val started = startHeadlessApp(worktree, command.visible, command.fresh).getOrThrow()
+                started.missingPermission?.let {
+                    err.line("shogun: the app's window is visible because macOS hasn't granted ${it.displayName} to the application that runs shogun; grant it in System Settings › ${it.settingsPane} to hide it")
+                }
+                if (command.json) printJson(headlessStartJson(worktree, started)) else out.line(headlessStartLine(started))
+            }
+            HeadlessAction.STOP -> {
+                val stopped = stopHeadlessApp(worktree).getOrThrow()
+                if (command.json) printJson(headlessStopJson(worktree, stopped)) else out.line(if (stopped.wasRunning) "stopped ${stopped.pid}" else "stopped")
+            }
+            HeadlessAction.STATUS -> {
+                val status = readHeadlessApp(worktree).getOrThrow()
+                if (command.json) printJson(headlessStatusJson(worktree, status)) else headlessStatusLines(status).forEach { out.line(it) }
+            }
+            HeadlessAction.CAPTURE -> {
+                val path = captureHeadlessApp(worktree, command.output?.let(::absolute)).getOrThrow()
+                if (command.json) printJson(headlessCaptureJson(worktree, path)) else out.line(path)
+            }
+        }
+        return EXIT_OK
+    }
+
+    private suspend fun worktreeTopLevel(directory: String): String {
+        val result = executor.execute(listOf("git", "rev-parse", "--show-toplevel"), directory)
+        val topLevel = result.stdout.trim()
+        if (!result.isSuccess || topLevel.isEmpty()) throw WorktreeError.RepositoryNotFound(directory)
+        return topLevel
     }
 
     private fun herdrCloseFailure(path: String, error: WorktreeError) =

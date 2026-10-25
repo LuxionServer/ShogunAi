@@ -23,18 +23,18 @@
 
 #### Scenario: Repository without the provider
 - **WHEN** the user runs `shogun headless start` in a repository without the provider
-- **THEN** an error on standard error explains how to declare `"providers": { "desktopApp": { "module": ":desktopApp" } }` and the command exits with code 1
+- **THEN** an error on standard error explains how to declare `"providers": { "desktop-app": { "module": ":desktopApp" } }` and the command exits with code 1
 
 #### Scenario: Outside a worktree
 - **WHEN** the user runs `shogun headless start` outside a Git repository
 - **THEN** the command says it needs a worktree and exits with code 1
 
 ### Requirement: Tell the agent how to check its desktop app
-When the repository declares the desktop app provider on macOS, the context line printed by `shogun hook session-start` SHALL say to check the app with `shogun headless start` and the Compose Hot Reload MCP server instead of computer use, to capture its window with `shogun headless capture` instead of the MCP's screenshot, to read the semantic tree again after every change of view, and that keyboard shortcuts, native menus, the menu bar and system dialogs still need the desktop.
+When the repository declares the desktop app provider on macOS, the context printed by `shogun hook session-start` SHALL say to check the app with `shogun headless start` and the Hot Reload MCP instead of computer use, to capture it with `shogun headless capture` instead of the MCP's screenshot, to re-read the tree after each view change, to hide it again with `shogun headless start` after `restart`, and what still needs the desktop.
 
 #### Scenario: Context with the provider
 - **WHEN** a Claude Code session starts on macOS in a worktree of a repository that declares the provider
-- **THEN** the context mentions `shogun headless start`, `shogun headless capture`, not to use the MCP's `take_screenshot`, and what still needs the desktop
+- **THEN** the context mentions `shogun headless start`, `shogun headless capture`, not to use the MCP's `take_screenshot`, hiding again after `restart`, and what still needs the desktop
 
 #### Scenario: Context on another platform
 - **WHEN** a session starts on Linux in a worktree of a repository that declares the provider
