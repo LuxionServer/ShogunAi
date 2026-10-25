@@ -112,47 +112,31 @@ private fun AddMultirepoContent(state: AddMultirepoState, pickFolder: (String, S
         return
     }
     state.existing?.let { existing ->
-        existing.problem?.let {
-            ErrorNotice(error = it, onDismiss = null)
-            return
-        }
-        Notice(
-            kind = NoticeKind.INFO,
-            message = if (existing.known) strings.knownMultirepo(state.name) else strings.existingMultirepo(state.name),
-            onDismiss = null,
-        )
+        Text(strings.existingDeclarationTitle, style = MaterialTheme.typography.titleMedium)
+        if (!existing.approved) Notice(kind = NoticeKind.WARNING, message = strings.multirepoNeedsReviewExplanation, onDismiss = null)
+        MultirepoReviewDetails(existing)
     }
     Text(strings.multirepoRepositoriesTitle, style = MaterialTheme.typography.titleMedium)
     if (state.candidates.isEmpty()) Text(strings.noRepositoriesFound, style = MaterialTheme.typography.bodyMedium, color = secondary)
     val problems = state.aliasProblems
     state.candidates.forEach { candidate ->
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            if (state.isExisting) {
-                Text(
-                    candidate.alias,
-                    style = ShogunTheme.typography.data,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.width(AliasFieldWidth),
-                )
-            } else {
-                Checkbox(
-                    checked = candidate.included,
-                    onCheckedChange = { state.setIncluded(candidate.path, it) },
-                    enabled = !state.isSaving,
-                    modifier = Modifier.handPointer(!state.isSaving).testTag("include-${candidate.name}"),
-                )
-                OutlinedTextField(
-                    value = candidate.alias,
-                    onValueChange = { state.setAlias(candidate.path, it) },
-                    textStyle = ShogunTheme.typography.data,
-                    singleLine = true,
-                    enabled = candidate.included && !state.isSaving,
-                    isError = candidate.path in problems,
-                    label = { Text(strings.multirepoAliasLabel) },
-                    modifier = Modifier.width(AliasFieldWidth).trackTextInputFocus(),
-                )
-            }
+            Checkbox(
+                checked = candidate.included,
+                onCheckedChange = { state.setIncluded(candidate.path, it) },
+                enabled = !state.isSaving,
+                modifier = Modifier.handPointer(!state.isSaving).testTag("include-${candidate.name}"),
+            )
+            OutlinedTextField(
+                value = candidate.alias,
+                onValueChange = { state.setAlias(candidate.path, it) },
+                textStyle = ShogunTheme.typography.data,
+                singleLine = true,
+                enabled = candidate.included && !state.isSaving,
+                isError = candidate.path in problems,
+                label = { Text(strings.multirepoAliasLabel) },
+                modifier = Modifier.width(AliasFieldWidth).trackTextInputFocus(),
+            )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     listOfNotNull(candidate.name, strings.alreadyAProject.takeIf { candidate.project != null }).joinToString(" · "),
@@ -160,7 +144,7 @@ private fun AddMultirepoContent(state: AddMultirepoState, pickFolder: (String, S
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (!state.isExisting || (candidate.project == null && state.existing?.known == false)) Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(
                         checked = candidate.useProposedFolder,
                         onCheckedChange = { state.setUseProposedFolder(candidate.path, it) },
@@ -185,10 +169,8 @@ private fun AddMultirepoContent(state: AddMultirepoState, pickFolder: (String, S
             }
         }
     }
-    if (!state.isExisting) {
-        NeutralTextButton(onClick = { pickFolder(state.folder.orEmpty(), strings.addRepositoryFromElsewhere)?.let(state::addFromElsewhere) }) {
-            Text(strings.addRepositoryFromElsewhere)
-        }
+    NeutralTextButton(onClick = { pickFolder(state.folder.orEmpty(), strings.addRepositoryFromElsewhere)?.let(state::addFromElsewhere) }) {
+        Text(strings.addRepositoryFromElsewhere)
     }
     state.notRepository?.let { Text(strings.notARepository(it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
     Text(strings.detectedGroupsTitle, style = MaterialTheme.typography.titleMedium)

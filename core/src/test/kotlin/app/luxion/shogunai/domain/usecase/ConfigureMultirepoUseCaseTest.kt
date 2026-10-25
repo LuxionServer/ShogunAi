@@ -23,6 +23,8 @@ class ConfigureMultirepoUseCaseTest {
         answer
     }
 
+    private fun reviewed() = world.resolver.build(world.folder, world.source.declarations.getValue(world.folder))
+
     @Test
     fun `init writes an empty declaration with the default worktrees root and remembers it`() = runTest {
         world.source.declarations.clear()
@@ -159,8 +161,10 @@ class ConfigureMultirepoUseCaseTest {
         val withAgent = configure.setAgent(Multirepo(world.folder, world.source.declarations.getValue(world.folder)), AgentLaunchConfig("Codex", "codex --full-auto")).getOrThrow()
 
         assertEquals(listOf("docs"), withAgent.declaration.defaultRepos)
-        assertEquals("headroom wrap codex --full-auto", withAgent.agent.resolvedCommand())
+        assertEquals("codex --full-auto", withAgent.agent.resolvedCommand())
         assertEquals("Codex", withAgent.agent.displayName)
+        assertNull(world.source.declarations.getValue(world.folder).agent)
+        assertEquals(AgentLaunchConfig("Codex", "codex --full-auto"), world.source.agents[world.folder])
     }
 
     @Test
@@ -199,9 +203,9 @@ class ConfigureMultirepoUseCaseTest {
         world.source.known.clear()
         world.projects.delete("api")
 
-        val registered = configure.register(world.folder, answering(true)).getOrThrow()
+        val registered = configure.register(reviewed(), answering(true)).getOrThrow()
 
-        assertTrue(registered.remembered)
+        assertTrue(registered.trustedNow)
         assertEquals(listOf(world.folder), world.source.known)
         assertEquals(listOf("product-api"), registered.registeredProjects.map { it.name })
         assertEquals("${world.worktreesRoot}/api", world.projects.list().first { it.config.baseRepositoryPath == world.apiBase }.config.worktreesRoot)
@@ -213,9 +217,9 @@ class ConfigureMultirepoUseCaseTest {
     fun `register of a known multirepo with every project changes nothing`() = runTest {
         val before = world.projects.list()
 
-        val registered = configure.register(world.folder, answering(true)).getOrThrow()
+        val registered = configure.register(reviewed(), answering(true)).getOrThrow()
 
-        assertFalse(registered.remembered)
+        assertFalse(registered.trustedNow)
         assertTrue(registered.registeredProjects.isEmpty())
         assertEquals(before, world.projects.list())
         assertTrue(asked.isEmpty())
@@ -227,13 +231,121 @@ class ConfigureMultirepoUseCaseTest {
         world.source.declarations["/home/dev/other"] = MultirepoDeclaration(mapOf("app" to world.appBase), "../w")
         world.source.known += "/home/dev/other"
 
-        val claimed = assertIs<WorktreeError.InvalidMultirepo>(configure.register(world.folder, answering(true)).exceptionOrNull())
+        val claimed = assertIs<WorktreeError.InvalidMultirepo>(configure.register(reviewed(), answering(true)).exceptionOrNull())
         assertTrue(claimed.detail.contains("/home/dev/other"))
         assertEquals(listOf("/home/dev/other"), world.source.known)
 
         world.source.known.remove("/home/dev/other")
         world.source.declarations[world.folder] = world.declaration.copy(defaultRepos = listOf("web"))
-        assertIs<WorktreeError.InvalidMultirepo>(configure.register(world.folder, answering(true)).exceptionOrNull())
+        assertIs<WorktreeError.InvalidMultirepo>(configure.register(reviewed(), answering(true)).exceptionOrNull())
         assertTrue(world.source.known.isEmpty())
+    }
+
+    @Test
+    fun `register approves the reviewed declaration and refuses one changed since the review`() = runTest {
+        world.source.approveAll = false
+        world.source.known.clear()
+        val review = reviewed()
+        assertFalse(review.approved)
+
+        val registered = configure.register(review, answering(true)).getOrThrow()
+
+        assertTrue(registered.trustedNow)
+        assertTrue(registered.multirepo.approved)
+        assertTrue(reviewed().approved)
+
+        world.source.declarations[world.folder] = world.declaration.copy(worktreesRoot = "../elsewhere")
+        assertIs<WorktreeError.MultirepoNeedsReview>(configure.register(registered.multirepo, answering(true)).exceptionOrNull())
+    }
+
+    @Test
+    fun `the declared name is part of the approval and an unsafe name is rejected`() = runTest {
+        world.source.approveAll = false
+        val trusted = configure.trust(reviewed()).getOrThrow()
+
+        val named = configure.setName(trusted, "Product").getOrThrow()
+        assertTrue(named.approved)
+
+        world.source.declarations[world.folder] = world.source.declarations.getValue(world.folder).copy(name = "Other")
+        assertFalse(reviewed().approved)
+
+        world.source.declarations[world.folder] = named.declaration
+        assertIs<WorktreeError.InvalidMultirepo>(configure.setName(named, "Product‮evil").exceptionOrNull())
+        assertIs<WorktreeError.InvalidMultirepo>(configure.setName(named, "x".repeat(81)).exceptionOrNull())
+        assertEquals("Product", world.source.declarations.getValue(world.folder).name)
+    }
+
+    @Test
+    fun `writes keep the multirepo approved and drop a declared agent`() = runTest {
+        world.source.approveAll = false
+        val declared = world.declaration.copy(agent = AgentLaunchConfig(agentCommand = "touch /tmp/marker; claude"))
+        world.source.declarations[world.folder] = declared
+        val trusted = configure.trust(world.resolver.build(world.folder, declared)).getOrThrow()
+        assertTrue(trusted.approved)
+
+        val updated = configure.setDefaults(trusted, listOf("docs")).getOrThrow()
+
+        assertTrue(updated.approved)
+        assertNull(world.source.declarations.getValue(world.folder).agent)
+        assertTrue(world.resolver.build(world.folder, world.source.declarations.getValue(world.folder)).approved)
+    }
+
+    @Test
+    fun `init approves the new multirepo`() = runTest {
+        world.source.approveAll = false
+        world.source.declarations.clear()
+        world.source.known.clear()
+
+        val multirepo = configure.init(world.folder, null).getOrThrow()
+
+        assertTrue(multirepo.approved)
+        assertTrue(world.resolver.build(world.folder, world.source.declarations.getValue(world.folder)).approved)
+    }
+
+    @Test
+    fun `a declaration changed outside ShogunAi refuses writes and changes nothing`() = runTest {
+        world.source.approveAll = false
+        world.source.approve(world.folder, world.resolver.build(world.folder, world.declaration).approvalSubject)
+        val tampered = world.declaration.copy(worktreesRoot = "/tmp/elsewhere")
+        world.source.declarations[world.folder] = tampered
+        val stale = world.resolver.build(world.folder, world.declaration)
+
+        listOf(
+            configure.setDefaults(stale, listOf("docs")).exceptionOrNull(),
+            configure.removeRepository(stale, "docs").exceptionOrNull(),
+            configure.setWorktreesRoot(stale, "/tmp/w").exceptionOrNull(),
+            configure.setAgent(stale, AgentLaunchConfig(agentCommand = "codex")).exceptionOrNull(),
+            configure.addRepository(stale, "web", world.docsBase, answering(true)).exceptionOrNull(),
+        ).forEach { assertIs<WorktreeError.MultirepoNeedsReview>(it) }
+        assertEquals(tampered, world.source.declarations.getValue(world.folder))
+        assertTrue(world.source.agents.isEmpty())
+    }
+
+    @Test
+    fun `trusting approves only the declaration that was reviewed`() = runTest {
+        world.source.approveAll = false
+        val reviewed = world.resolver.build(world.folder, world.declaration)
+        world.source.declarations[world.folder] = world.declaration.copy(worktreesRoot = "/tmp/elsewhere")
+
+        assertIs<WorktreeError.MultirepoNeedsReview>(configure.trust(reviewed).exceptionOrNull())
+        assertFalse(world.resolver.build(world.folder, world.source.declarations.getValue(world.folder)).approved)
+    }
+
+    @Test
+    fun `trusting registers an unknown declaration and revoking forgets it but keeps the file`() = runTest {
+        world.source.approveAll = false
+        world.source.known.clear()
+
+        val trusted = configure.trust(world.resolver.build(world.folder, world.declaration)).getOrThrow()
+
+        assertTrue(trusted.approved)
+        assertEquals(listOf(world.folder), world.source.known)
+        assertEquals(world.folder, world.resolver(world.folder).getOrThrow()!!.multirepo.folder)
+
+        configure.revoke(trusted).getOrThrow()
+
+        assertTrue(world.source.known.isEmpty())
+        assertEquals(world.declaration, world.source.declarations[world.folder])
+        assertNull(world.resolver(world.folder).getOrThrow())
     }
 }

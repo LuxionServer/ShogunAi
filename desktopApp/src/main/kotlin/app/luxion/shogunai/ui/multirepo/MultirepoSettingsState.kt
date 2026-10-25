@@ -51,6 +51,9 @@ class MultirepoSettingsState(
     val workspaceDetected: Boolean
         get() = multirepo?.workspaceDetected == true
 
+    val needsReview: Boolean
+        get() = multirepo?.approved == false
+
     val hasChanges: Boolean
         get() {
             val current = multirepo ?: return false
@@ -62,11 +65,11 @@ class MultirepoSettingsState(
         }
 
     val canSave: Boolean
-        get() = hasChanges && !isBusy && worktreesRoot.isNotBlank() && agent.command.isNotBlank() &&
+        get() = hasChanges && !isBusy && !needsReview && worktreesRoot.isNotBlank() && agent.command.isNotBlank() &&
             (!workspaceDeclared || isValidMultirepoAlias(workspaceAlias))
 
     val canAddRepository: Boolean
-        get() = !isBusy && isValidMultirepoAlias(newAlias) && newAlias !in aliases && newPath.isNotBlank()
+        get() = !isBusy && !needsReview && isValidMultirepoAlias(newAlias) && newAlias !in aliases && newPath.isNotBlank()
 
     fun reload() {
         val read = setup.read(folder)

@@ -68,3 +68,12 @@
 - [A display name that collides with another multirepo's or project's name] → allowed; entries are identified by folder and id, not by name.
 - [Forgetting a multirepo on an unmounted volume] → limited to `init` and app reloads, recoverable with `init` (documented in the multirepo page).
 - [Registering projects for a moved multirepo leaves the old projects with dead paths] → out of scope; they're visible in the sidebar and removable as today.
+
+## Merged with multirepo approvals
+
+The multirepo approvals change (`2026-10-24-multirepo-agent-trust`) reached `develop` while this one was being validated, and its `shogun multirepo trust` and "Add multirepo" already registered an existing declaration after a review. Registering without that review would bypass it, so, by the user's choice:
+
+- `register` takes the reviewed multirepo, refuses a declaration that changed since the review (`MultirepoNeedsReview`), approves it and then registers the missing projects. `shogun multirepo init` over an existing declaration prints the same review as `trust` and asks, or approves with `--yes`; without a terminal, or with `--json`, and without `--yes` it exits with 1, and answering no changes nothing.
+- The app keeps the approvals change's add dialog, which already shows the review; confirming calls `register` instead of `trust`, accepting the proposed worktrees folders of the new projects. The dialog states of this change (`ExistingMultirepo`, the "already the multirepo X" notices) were dropped.
+- The declared `name` reaches the agents' context and the Herdr label, so it's validated (at most 80 characters, no control or formatting characters) and, when set, is part of the approval subject: a name changed outside ShogunAi needs a new review, while approvals of multirepos without a name stay valid. An invalid name is shown as the folder's name. Both reviews print it.
+- `forgetMissing` also drops the approval and local agent of a forgotten entry. Carrying the local agent over to the moved folder is left in the roadmap.

@@ -7,7 +7,11 @@ import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.joinPath
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.MAX_MULTIREPO_NAME_LENGTH
+import app.luxion.shogunai.domain.model.hasUnsafePathCharacters
 import app.luxion.shogunai.domain.model.isValidMultirepoAlias
+import app.luxion.shogunai.domain.model.isValidMultirepoName
+import app.luxion.shogunai.domain.model.isValidMultirepoPath
 import java.nio.file.Path
 
 data class MultirepoContext(
@@ -29,8 +33,9 @@ class ResolveMultirepoUseCase(
     private val fileManager: FileManager,
 ) {
     suspend operator fun invoke(directory: String): Result<MultirepoContext?> = runCatching {
-        val above = declaredAbove(directory)
-        if (above == null && source.knownFolders().isEmpty()) return@runCatching null
+        val known = source.knownFolders().map(::normalizePath)
+        if (known.isEmpty()) return@runCatching null
+        val above = approvedAbove(directory, known)
         val repository = ResolveRepositoryUseCase(executor)(directory).getOrNull()
         val multirepo = above ?: repository?.let(::declaring) ?: return@runCatching null
         validate(multirepo)
@@ -42,17 +47,7 @@ class ResolveMultirepoUseCase(
         build(normalizePath(folder), declaration).also { validate(it) }
     }
 
-    fun known(): List<Multirepo> = source.knownFolders().mapNotNull { folder ->
-        runCatching { source.read(folder) }.getOrNull()?.let { build(normalizePath(folder), it) }
-    }
-
-    fun declaring(repository: String): Multirepo? =
-        known().firstOrNull { multirepo -> multirepo.repositories.any { sameDirectory(it.path, repository) } }
-
-    fun build(folder: String, declaration: MultirepoDeclaration): Multirepo =
-        Multirepo(folder, declaration, fileManager.exists(joinPath(folder, ".git")))
-
-    private fun declaredAbove(directory: String): Multirepo? {
+    fun nearestDeclaration(directory: String): Multirepo? {
         var current: Path? = Path.of(directory).normalize()
         while (current != null) {
             val folder = normalizePath(current.toString()).ifEmpty { "/" }
@@ -62,12 +57,52 @@ class ResolveMultirepoUseCase(
         return null
     }
 
+    fun known(): List<Multirepo> = source.knownFolders().mapNotNull { folder ->
+        runCatching { source.read(folder) }.getOrNull()?.let { build(normalizePath(folder), it) }
+    }
+
+    fun approved(): List<Multirepo> = known().filter { it.approved }
+
+    fun declaring(repository: String): Multirepo? =
+        approved().firstOrNull { multirepo -> multirepo.repositories.any { sameDirectory(it.path, repository) } }
+
+    fun build(folder: String, declaration: MultirepoDeclaration): Multirepo {
+        val multirepo = Multirepo(folder, declaration, fileManager.exists(joinPath(folder, ".git")), localAgent = source.agent(folder))
+        val registered = source.knownFolders().any { sameDirectory(it, folder) }
+        return multirepo.copy(approved = registered && source.isApproved(folder, multirepo.approvalSubject))
+    }
+
+    private fun approvedAbove(directory: String, known: List<String>): Multirepo? {
+        var current: Path? = Path.of(directory).normalize()
+        while (current != null) {
+            val folder = normalizePath(current.toString()).ifEmpty { "/" }
+            if (known.any { sameDirectory(it, folder) }) {
+                source.read(folder)?.let { build(folder, it) }?.takeIf { it.approved }?.let { return it }
+            }
+            current = current.parent
+        }
+        return null
+    }
+
     suspend fun validate(multirepo: Multirepo) {
         fun invalid(detail: String): Nothing = throw WorktreeError.InvalidMultirepo(multirepo.declarationPath, detail)
         val declaration = multirepo.declaration
         if (declaration.worktreesRoot.isBlank()) invalid("worktreesRoot is missing")
+        if (hasUnsafePathCharacters(declaration.worktreesRoot)) invalid("worktreesRoot contains control characters")
+        if ((declaration.repos.keys + declaration.defaultRepos).any(::hasUnsafePathCharacters)) invalid("an alias contains control characters")
+        declaration.workspace?.alias?.takeIf(::hasUnsafePathCharacters)?.let { invalid("the workspace alias contains control characters") }
+        declaration.repos.entries.firstOrNull { hasUnsafePathCharacters(it.value) }?.let {
+            invalid("the path of '${it.key}' contains control characters")
+        }
+        multirepo.declaredName?.takeUnless(::isValidMultirepoName)?.let {
+            invalid("the name must have at most $MAX_MULTIREPO_NAME_LENGTH characters and no control characters")
+        }
         declaration.repos.keys.firstOrNull { !isValidMultirepoAlias(it) }?.let {
             invalid("alias '$it' must use only lowercase letters, digits and hyphens")
+        }
+        if (!isValidMultirepoPath(declaration.worktreesRoot)) invalid("worktreesRoot isn't a valid path")
+        declaration.repos.entries.firstOrNull { !isValidMultirepoPath(it.value) }?.let {
+            invalid("the path of '${it.key}' isn't a valid path")
         }
         declaration.defaultRepos.firstOrNull { it !in declaration.repos }?.let {
             invalid("'$it' isn't a declared repository")

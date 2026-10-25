@@ -2,14 +2,21 @@ package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.domain.FakeMachineCapacity
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
+import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.CapacityProfile
+import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.ResourceSettings
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.BuildInfo
 import app.luxion.shogunai.domain.FakeAgentSessionStore
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeAppleSimulators
+import app.luxion.shogunai.domain.FakeComposeProjectRegistry
 import app.luxion.shogunai.domain.FakeComposeProjectSource
+import app.luxion.shogunai.domain.io.ComposeRegistryEntry
+import app.luxion.shogunai.domain.model.ComposeAction
+import app.luxion.shogunai.domain.model.ComposeResource
+import app.luxion.shogunai.domain.model.ComposeResourceKind
 import app.luxion.shogunai.domain.FakeMavenDaemonSource
 import app.luxion.shogunai.domain.model.ComposeProject
 import app.luxion.shogunai.domain.model.DockerComposeProvider
@@ -27,6 +34,7 @@ import app.luxion.shogunai.domain.FakeGradleDaemonSource.Companion.gradleDaemon
 import app.luxion.shogunai.domain.FakeGradleDaemonSource.Companion.kotlinDaemon
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeRepositoryTrust
+import app.luxion.shogunai.domain.FakeProvisioningRecordStore
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
@@ -149,6 +157,8 @@ class ShogunCliTest {
         environment: Map<String, String> = emptyMap(),
         mavenDaemons: FakeMavenDaemonSource = FakeMavenDaemonSource(),
         composeProjects: FakeComposeProjectSource = FakeComposeProjectSource(),
+        composeRegistry: FakeComposeProjectRegistry = FakeComposeProjectRegistry(),
+        records: FakeProvisioningRecordStore = FakeProvisioningRecordStore(),
     ) = ShogunCli(
         executor = executor,
         fileManager = fileManager,
@@ -178,6 +188,8 @@ class ShogunCliTest {
         sessionStore = sessionStore,
         mavenDaemonSource = mavenDaemons,
         composeSource = composeProjects,
+        composeRegistry = composeRegistry,
+        provisioningRecords = records,
     )
 
     private val gradleUserHome = "/home/dev/.gradle"
@@ -236,6 +248,57 @@ class ShogunCliTest {
         val stack = Json.parseToJsonElement(out.toString()).jsonObject.getValue("stacks").jsonArray.single().jsonObject
         assertEquals("maven", stack.getValue("stack").jsonPrimitive.content)
         assertEquals(false, stack.getValue("providers").jsonArray.single().jsonObject.getValue("declared").jsonPrimitive.content.toBoolean())
+    }
+
+    private fun secretsExecutor() = repositoryExecutor { command, _ ->
+        if ("ls-files" in command && "*.jks" in command) Executor.ok(command, "local.properties\u0000keystore.properties\u0000") else null
+    }
+
+    private val secretsFileManager = FakeFileManager(
+        existing = listOf(base),
+        properties = mapOf("$base/keystore.properties" to mapOf("storeFile" to "../signing/release.jks")),
+    )
+
+    private val noLocalFiles = listOf(project.copy(config = project.config.copy(secretFiles = emptyList())))
+
+    @Test
+    fun `stacks lists the suggested mobile secrets and keystore warnings`() {
+        val exitCode = cli(secretsExecutor(), projects = noLocalFiles, fileManager = secretsFileManager).run(listOf("stacks"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            """
+            Secret  local.properties  kind=local-properties  link=/local.properties
+            Secret  keystore.properties  kind=signing-properties  link=/keystore.properties
+            Warning  keystore.properties: storeFile=../signing/release.jks points outside the repository and won't resolve from a worktree
+
+            """.trimIndent(),
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `stacks doesn't suggest a secret the project already copies`() {
+        cli(secretsExecutor(), fileManager = secretsFileManager).run(listOf("stacks"))
+
+        assertFalse("link=/local.properties" in out.toString())
+        assertTrue("link=/keystore.properties" in out.toString())
+    }
+
+    @Test
+    fun `stacks json lists the secrets and keystore warnings`() {
+        cli(secretsExecutor(), projects = noLocalFiles, fileManager = secretsFileManager).run(listOf("stacks", "--json"))
+
+        val json = Json.parseToJsonElement(out.toString()).jsonObject
+        val secret = json.getValue("secrets").jsonArray.first().jsonObject
+        assertEquals("local.properties", secret.getValue("path").jsonPrimitive.content)
+        assertEquals("local-properties", secret.getValue("kind").jsonPrimitive.content)
+        assertEquals("/local.properties", secret.getValue("pattern").jsonPrimitive.content)
+        val warning = json.getValue("keystoreWarnings").jsonArray.single().jsonObject
+        assertEquals(
+            mapOf("file" to "keystore.properties", "key" to "storeFile", "value" to "../signing/release.jks"),
+            warning.mapValues { it.value.jsonPrimitive.content },
+        )
     }
 
     @Test
@@ -356,6 +419,194 @@ class ShogunCliTest {
     }
 
     private fun cleanableExecutor() = repositoryExecutor()
+
+    private fun environmentExecutor() = repositoryExecutor { command, directory ->
+        if (command.contains("--path-format=absolute") && directory != null) {
+            val admin = if (directory == base) "$base/.git" else "$base/.git/worktrees/${directory.substringAfterLast('/')}"
+            Executor.ok(command, "$admin\n$base/.git\n")
+        } else {
+            null
+        }
+    }
+
+    private val removedRegistry = FakeComposeProjectRegistry(mapOf(base to listOf(ComposeRegistryEntry("main-repo-task-9", "$worktreesRoot/TASK-9"))))
+
+    private fun leftover(kind: ComposeResourceKind, name: String) = ComposeResource(kind, name, name, "main-repo-task-9")
+
+    @Test
+    fun `compose up starts the current worktree's services with its environment`() {
+        val projects = FakeComposeProjectSource()
+
+        val exitCode = cli(environmentExecutor(), provisioning = composeDeclared, composeProjects = projects, workingDirectory = merged)
+            .run(listOf("compose", "up"))
+
+        assertEquals(0, exitCode, err.toString())
+        val run = projects.runs.single()
+        assertEquals(merged, run.workingDirectory)
+        assertEquals("main-repo-task-1", run.environment["COMPOSE_PROJECT_NAME"])
+        assertEquals(ComposeAction.Up(), run.action)
+        assertTrue(out.contains("started Compose project main-repo-task-1 for $merged"), out.toString())
+        assertTrue(err.contains("Container main-repo-task-1-api Started"), err.toString())
+    }
+
+    @Test
+    fun `compose up of a given worktree passes --build and the arguments after --`() {
+        val projects = FakeComposeProjectSource()
+
+        val exitCode = cli(environmentExecutor(), provisioning = composeDeclared, composeProjects = projects)
+            .run(listOf("compose", "up", "TASK-1", "--build", "--", "api", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(ComposeAction.Up(build = true, extraArguments = listOf("api", "--json")), projects.runs.single().action)
+    }
+
+    @Test
+    fun `compose build builds with the worktree's environment`() {
+        val projects = FakeComposeProjectSource()
+
+        val exitCode = cli(environmentExecutor(), provisioning = composeDeclared, composeProjects = projects, workingDirectory = merged)
+            .run(listOf("compose", "build"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(ComposeAction.Build(), projects.runs.single().action)
+        assertTrue(out.contains("built Compose project main-repo-task-1"), out.toString())
+    }
+
+    @Test
+    fun `compose up of an unknown worktree fails with 1 without running docker`() {
+        val projects = FakeComposeProjectSource()
+
+        val exitCode = cli(environmentExecutor(), provisioning = composeDeclared, composeProjects = projects).run(listOf("compose", "up", "TASK-404"))
+
+        assertEquals(1, exitCode)
+        assertTrue(projects.runs.isEmpty())
+    }
+
+    @Test
+    fun `a failing compose up prints the reason and exits with 1`() {
+        val projects = FakeComposeProjectSource(failingRun = "port is already allocated")
+
+        val exitCode = cli(environmentExecutor(), provisioning = composeDeclared, composeProjects = projects, workingDirectory = merged)
+            .run(listOf("compose", "up"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("port is already allocated"), err.toString())
+    }
+
+    @Test
+    fun `compose up --json prints one object and sends compose output to standard error`() {
+        val projects = FakeComposeProjectSource()
+
+        val exitCode = cli(environmentExecutor(), provisioning = composeDeclared, composeProjects = projects, workingDirectory = merged)
+            .run(listOf("compose", "up", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("{\"worktree\":\"$merged\",\"project\":\"main-repo-task-1\",\"succeeded\":true}\n", out.toString())
+        assertTrue(err.contains("Started"), err.toString())
+    }
+
+    @Test
+    fun `compose lists the leftovers of removed worktrees`() {
+        val projects = FakeComposeProjectSource(resources = listOf(leftover(ComposeResourceKind.VOLUME, "main-repo-task-9_db-data")))
+
+        val exitCode = cli(repositoryExecutor(), provisioning = composeDeclared, composeProjects = projects, composeRegistry = removedRegistry)
+            .run(listOf("compose"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.contains("leftover volume main-repo-task-9_db-data  project=main-repo-task-9"), out.toString())
+        assertTrue(out.contains("shogun compose prune --volumes"), out.toString())
+    }
+
+    @Test
+    fun `compose prune without --yes lists what it would remove and removes nothing`() {
+        val volume = leftover(ComposeResourceKind.VOLUME, "main-repo-task-9_db-data")
+        val image = leftover(ComposeResourceKind.IMAGE, "main-repo-task-9-api")
+        val projects = FakeComposeProjectSource(resources = listOf(volume, image))
+
+        val exitCode = cli(repositoryExecutor(), provisioning = composeDeclared, composeProjects = projects, composeRegistry = removedRegistry)
+            .run(listOf("compose", "prune"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(projects.removals.isEmpty())
+        assertTrue(out.contains("would remove image main-repo-task-9-api"), out.toString())
+        assertTrue(out.contains("would keep volume main-repo-task-9_db-data"), out.toString())
+    }
+
+    @Test
+    fun `compose prune --yes removes networks and images and keeps volumes`() {
+        val volume = leftover(ComposeResourceKind.VOLUME, "main-repo-task-9_db-data")
+        val network = leftover(ComposeResourceKind.NETWORK, "main-repo-task-9_default")
+        val projects = FakeComposeProjectSource(resources = listOf(volume, network))
+
+        val exitCode = cli(repositoryExecutor(), provisioning = composeDeclared, composeProjects = projects, composeRegistry = removedRegistry)
+            .run(listOf("compose", "prune", "--yes"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf(network), projects.removals)
+        assertEquals("removed network main-repo-task-9_default\nkept volume main-repo-task-9_db-data\n", out.toString())
+    }
+
+    @Test
+    fun `compose prune --yes --volumes removes the volumes too`() {
+        val volume = leftover(ComposeResourceKind.VOLUME, "main-repo-task-9_db-data")
+        val projects = FakeComposeProjectSource(resources = listOf(volume))
+
+        cli(repositoryExecutor(), provisioning = composeDeclared, composeProjects = projects, composeRegistry = removedRegistry)
+            .run(listOf("compose", "prune", "--yes", "--volumes"))
+
+        assertEquals(listOf(volume), projects.removals)
+    }
+
+    @Test
+    fun `compose prune with nothing left says so`() {
+        val exitCode = cli(repositoryExecutor(), provisioning = composeDeclared).run(listOf("compose", "prune", "--yes"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("Nothing to remove.\n", out.toString())
+    }
+
+    @Test
+    fun `compose prune --yes --json lists removed resources and failures`() {
+        val image = leftover(ComposeResourceKind.IMAGE, "main-repo-task-9-api")
+        val network = leftover(ComposeResourceKind.NETWORK, "main-repo-task-9_default")
+        val projects = FakeComposeProjectSource(resources = listOf(image, network), failingRemovals = mapOf(image.id to "in use"))
+
+        val exitCode = cli(repositoryExecutor(), provisioning = composeDeclared, composeProjects = projects, composeRegistry = removedRegistry)
+            .run(listOf("compose", "prune", "--yes", "--json"))
+
+        assertEquals(1, exitCode)
+        val json = out.toString()
+        assertTrue(json.contains("\"removed\":[{\"kind\":\"network\",\"name\":\"main-repo-task-9_default\",\"project\":\"main-repo-task-9\"}]"), json)
+        assertTrue(json.contains("\"message\":\"in use\""), json)
+    }
+
+    @Test
+    fun `clean --yes --down-compose-projects removes built images and keeps volumes unless asked`() {
+        val image = ComposeResource(ComposeResourceKind.IMAGE, "sha256:aa", "main-repo-task-1-api", "main-repo-task-1")
+        val volume = ComposeResource(ComposeResourceKind.VOLUME, "main-repo-task-1_db", "main-repo-task-1_db", "main-repo-task-1")
+        val kept = FakeComposeProjectSource(resources = listOf(image, volume))
+        val removed = FakeComposeProjectSource(resources = listOf(image, volume))
+
+        cli(cleanableExecutor(), provisioning = composeDeclared, composeProjects = kept).run(listOf("clean", "--yes", "--down-compose-projects"))
+        cli(cleanableExecutor(), provisioning = composeDeclared, composeProjects = removed)
+            .run(listOf("clean", "--yes", "--down-compose-projects", "--compose-volumes"))
+
+        assertEquals(listOf(image), kept.removals)
+        assertEquals(listOf(image, volume), removed.removals)
+        assertTrue(out.contains("removed image main-repo-task-1-api"), out.toString())
+        assertTrue(out.contains("kept volume main-repo-task-1_db"), out.toString())
+    }
+
+    @Test
+    fun `clean --compose-volumes without --down-compose-projects is a usage error`() {
+        val projects = FakeComposeProjectSource()
+
+        val exitCode = cli(cleanableExecutor(), provisioning = composeDeclared, composeProjects = projects).run(listOf("clean", "--yes", "--compose-volumes"))
+
+        assertEquals(2, exitCode)
+        assertTrue(err.contains("--compose-volumes needs --down-compose-projects"), err.toString())
+        assertTrue(projects.removals.isEmpty())
+    }
 
     @Test
     fun `clean --yes --down-compose-projects takes down the projects of the removed worktrees`() {
@@ -828,7 +1079,7 @@ class ShogunCliTest {
 
     private val installCommands = listOf(listOf("npm", "install"))
 
-    private val approvedInstall get() = FakeRepositoryTrust(mapOf(base to installCommands))
+    private val approvedInstall get() = FakeRepositoryTrust(mapOf(base to RepositoryApprovalSubject(installCommands)))
 
     private fun linkingExecutor(hook: (List<String>) -> CommandResult? = { null }) = repositoryExecutor { command, _ ->
         when {
@@ -1558,9 +1809,14 @@ class ShogunCliTest {
         assertEquals("shogun: couldn't delete ${orphan.path}: can't delete ${orphan.path}\n", err.toString())
     }
 
-    private fun trimSetup(quotaGigabytes: Int?, vararg folders: app.luxion.shogunai.domain.model.DerivedDataFolder): Pair<FakeDerivedDataSource, FakeRepositoryProvisioningSource> {
-        resourceLimits.settings = ResourceSettings(derivedDataQuotaGigabytes = quotaGigabytes)
-        val derivedData = FakeDerivedDataSource(existing = folders.toList(), existingProjects = setOf("$base/App.xcodeproj"))
+    private fun trimSetup(
+        quotaGigabytes: Int?,
+        vararg folders: app.luxion.shogunai.domain.model.DerivedDataFolder,
+        mode: DerivedDataQuotaMode? = null,
+        freeBytes: Long? = null,
+    ): Pair<FakeDerivedDataSource, FakeRepositoryProvisioningSource> {
+        resourceLimits.settings = ResourceSettings(derivedDataQuotaGigabytes = quotaGigabytes, derivedDataQuotaMode = mode)
+        val derivedData = FakeDerivedDataSource(existing = folders.toList(), existingProjects = setOf("$base/App.xcodeproj"), free = freeBytes)
         val provisioning = FakeRepositoryProvisioningSource(
             byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(xcode = XcodeProvider()))),
         )
@@ -1604,9 +1860,52 @@ class ShogunCliTest {
     }
 
     @Test
-    fun `xcode trim says no quota is set and deletes nothing`() {
+    fun `xcode trim applies the automatic quota computed from the free disk space`() {
+        val gigabyte = 1_073_741_824L
+        val orphan = FakeDerivedDataSource.derivedData("Gone-hash", "/home/dev/projects/gone/App.xcodeproj", 30 * gigabyte)
+        val live = FakeDerivedDataSource.derivedData("Live-hash", "$base/App.xcodeproj", 30 * gigabyte)
+        val (derivedData, provisioning) = trimSetup(null, orphan, live, freeBytes = 100 * gigabyte)
+
+        val exitCode = cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData)
+            .run(listOf("xcode", "trim"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf(orphan.path), derivedData.deleted)
+        assertTrue(out.toString().endsWith("usage 30.0 GB of 40.0 GB (automatic)\n"), out.toString())
+    }
+
+    @Test
+    fun `xcode trim json reports the automatic quota mode and size`() {
+        val gigabyte = 1_073_741_824L
+        val live = FakeDerivedDataSource.derivedData("Live-hash", "$base/App.xcodeproj", 30 * gigabyte)
+        val (derivedData, provisioning) = trimSetup(null, live, freeBytes = 100 * gigabyte)
+
+        val exitCode = cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData)
+            .run(listOf("xcode", "trim", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = Json.parseToJsonElement(out.toString()).jsonObject
+        assertEquals("automatic", json.getValue("quotaMode").jsonPrimitive.content)
+        assertEquals((130 * gigabyte / 4).toString(), json.getValue("quotaBytes").jsonPrimitive.content)
+    }
+
+    @Test
+    fun `xcode trim says the automatic quota is unknown when the free space can't be read`() {
         val orphan = FakeDerivedDataSource.derivedData("Gone-hash", "/home/dev/projects/gone/App.xcodeproj")
         val (derivedData, provisioning) = trimSetup(null, orphan)
+
+        val exitCode = cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData)
+            .run(listOf("xcode", "trim"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(derivedData.deleted.isEmpty())
+        assertEquals("The automatic DerivedData quota couldn't be computed: the free disk space is unknown.\n", out.toString())
+    }
+
+    @Test
+    fun `xcode trim says no quota is set and deletes nothing`() {
+        val orphan = FakeDerivedDataSource.derivedData("Gone-hash", "/home/dev/projects/gone/App.xcodeproj")
+        val (derivedData, provisioning) = trimSetup(50, orphan, mode = DerivedDataQuotaMode.NONE)
 
         val exitCode = cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData)
             .run(listOf("xcode", "trim"))
@@ -1710,7 +2009,7 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertTrue(executor.calls.any { it.first == listOf("npm", "install") })
-        assertTrue(trust.isApproved(base, installCommands))
+        assertTrue(trust.isApproved(base, RepositoryApprovalSubject(installCommands)))
         assertEquals("$worktreesRoot/TASK-123\n", out.toString())
         assertTrue(err.contains("npm install"), err.toString())
     }
@@ -1727,7 +2026,7 @@ class ShogunCliTest {
 
             assertEquals(0, exitCode, err.toString())
             assertFalse(executor.calls.any { it.first == listOf("npm", "install") })
-            assertFalse(trust.isApproved(base, installCommands))
+            assertFalse(trust.isApproved(base, RepositoryApprovalSubject(installCommands)))
             assertTrue(err.contains("shogun trust"), err.toString())
         }
     }
@@ -1754,7 +2053,7 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertTrue(executor.calls.any { it.first == listOf("npm", "install") })
-        assertTrue(trust.isApproved(base, installCommands))
+        assertTrue(trust.isApproved(base, RepositoryApprovalSubject(installCommands)))
     }
 
     @Test
@@ -1766,18 +2065,18 @@ class ShogunCliTest {
         assertEquals(0, exitCode, err.toString())
         assertTrue(out.contains("npm install"), out.toString())
         assertTrue(out.contains("not approved on this machine"), out.toString())
-        assertTrue(trust.isApproved(base, installCommands))
+        assertTrue(trust.isApproved(base, RepositoryApprovalSubject(installCommands)))
     }
 
     @Test
     fun `trust asks on a console and approves only on yes`() {
         val declined = FakeRepositoryTrust()
         cli(linkingExecutor(), provisioning = linkingProvisioning, trust = declined, answer = "n").run(listOf("trust"))
-        assertFalse(declined.isApproved(base, installCommands))
+        assertFalse(declined.isApproved(base, RepositoryApprovalSubject(installCommands)))
 
         val accepted = FakeRepositoryTrust()
         cli(linkingExecutor(), provisioning = linkingProvisioning, trust = accepted, answer = "y").run(listOf("trust"))
-        assertTrue(accepted.isApproved(base, installCommands))
+        assertTrue(accepted.isApproved(base, RepositoryApprovalSubject(installCommands)))
     }
 
     @Test
@@ -1795,7 +2094,88 @@ class ShogunCliTest {
         val exitCode = cli(linkingExecutor(), provisioning = linkingProvisioning, trust = trust).run(listOf("trust", "--revoke"))
 
         assertEquals(0, exitCode, err.toString())
-        assertFalse(trust.isApproved(base, installCommands))
+        assertFalse(trust.isApproved(base, RepositoryApprovalSubject(installCommands)))
+    }
+
+    private val portProvisioning = FakeRepositoryProvisioningSource(
+        byRepository = mapOf(
+            base to RepositoryProvisioning(environment = EnvironmentDeclaration(listOf(parseEnvironmentVariable("PORT", "\${port}")))),
+        ),
+    )
+
+    private val portSubject = RepositoryApprovalSubject(variables = listOf("PORT" to "\${port}"))
+
+    private fun newWorktreeExecutor() = repositoryExecutor { command, _ ->
+        if ("--git-dir" in command) Executor.ok(command, "$base/.git/worktrees/TASK-123\n$base/.git\n") else null
+    }
+
+    @Test
+    fun `trust shows declared variables with their templates and asks to approve them`() {
+        val trust = FakeRepositoryTrust()
+
+        val exitCode = cli(linkingExecutor(), provisioning = portProvisioning, trust = trust, answer = "y").run(listOf("trust"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.contains("Environment variables declared by $base:\n  PORT = \${port}\n"), out.toString())
+        assertTrue(out.contains("not approved on this machine"), out.toString())
+        assertTrue(err.contains("Approve them on this machine? [y/N]"), err.toString())
+        assertTrue(trust.isApproved(base, portSubject))
+    }
+
+    @Test
+    fun `trust json lists declared variables and the environment file`() {
+        val exitCode = cli(linkingExecutor(), provisioning = portProvisioning).run(listOf("trust", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = jsonOut()
+        val variable = json.getValue("env").jsonArray.single().jsonObject
+        assertEquals("PORT", (variable.getValue("name") as JsonPrimitive).content)
+        assertEquals("\${port}", (variable.getValue("template") as JsonPrimitive).content)
+        assertEquals(JsonNull, json.getValue("envFile"))
+        assertEquals(JsonPrimitive(false), json.getValue("approved"))
+    }
+
+    @Test
+    fun `trust --yes approves the declared variables`() {
+        val trust = FakeRepositoryTrust()
+
+        cli(linkingExecutor(), provisioning = portProvisioning, trust = trust).run(listOf("trust", "--yes"))
+
+        assertTrue(trust.isApproved(base, portSubject))
+    }
+
+    @Test
+    fun `new prints declared variables before asking and answering no reserves no port`() {
+        val exitCode = cli(newWorktreeExecutor(), provisioning = portProvisioning, answer = "n").run(listOf("new", "TASK-123"))
+
+        assertEquals(0, exitCode, err.toString())
+        val printed = err.indexOf("  PORT = \${port}")
+        assertTrue(printed >= 0 && printed < err.indexOf("Approve them on this machine? [y/N]"), err.toString())
+        assertTrue(environmentStore.portsByAdminDirectory.values.none { it.containsKey("PORT") })
+        assertTrue(err.contains("skipped environment variables not approved on this machine (PORT)"), err.toString())
+    }
+
+    @Test
+    fun `new reserves the declared port once approved on the terminal`() {
+        val trust = FakeRepositoryTrust()
+
+        val exitCode = cli(newWorktreeExecutor(), provisioning = portProvisioning, trust = trust, answer = "y").run(listOf("new", "TASK-123"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(trust.isApproved(base, portSubject))
+        assertTrue(environmentStore.readPorts("$base/.git/worktrees/TASK-123").containsKey("PORT"))
+    }
+
+    @Test
+    fun `new json lists skipped variables and nothing when approved`() {
+        cli(newWorktreeExecutor(), provisioning = portProvisioning, answer = "y").run(listOf("new", "TASK-123", "--json"))
+        assertEquals(listOf("PORT"), jsonOut().strings("skippedVariables"))
+        out.clear()
+
+        cli(newWorktreeExecutor(), provisioning = portProvisioning, trust = FakeRepositoryTrust(mapOf(base to portSubject)))
+            .run(listOf("new", "TASK-456", "--json"))
+        assertEquals(emptyList(), jsonOut().strings("skippedPostCreateCommands"))
+        assertEquals(emptyList(), jsonOut().strings("skippedVariables"))
     }
 
     @Test
@@ -1835,13 +2215,16 @@ class ShogunCliTest {
             ),
         )
 
-        val exitCode = cli(executorWithAdminDirectories(), provisioning = provisioning, herdr = herdr).run(listOf("open", "TASK-1", "--herdr"))
+        val trust = FakeRepositoryTrust(mapOf(base to RepositoryApprovalSubject(variables = listOf("APP" to "app"))))
+
+        val exitCode = cli(executorWithAdminDirectories(), provisioning = provisioning, herdr = herdr, trust = trust)
+            .run(listOf("open", "TASK-1", "--herdr"))
 
         assertEquals(0, exitCode, err.toString())
         assertEquals("opened $merged in Herdr with Claude\n", out.toString())
         assertEquals(listOf(Triple(base, merged, "TASK-1")), herdr.opened)
         assertEquals(listOf(FakeHerdrClient.Split("w1:p1", merged, listOf("APP" to "app"))), herdr.splits)
-        assertEquals(listOf("w1:p2" to "headroom wrap claude"), herdr.ran)
+        assertEquals(listOf("w1:p2" to "claude"), herdr.ran)
     }
 
     @Test
@@ -2127,14 +2510,14 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         val json = jsonOut()
-        assertEquals(setOf("path", "branch", "created", "skippedPostCreateCommands", "postCreateFailure"), json.keys)
+        assertEquals(setOf("path", "branch", "created", "skippedPostCreateCommands", "skippedVariables", "postCreateFailure", "skippedLinks"), json.keys)
         assertEquals("$worktreesRoot/TASK-123", (json.getValue("path") as JsonPrimitive).content)
         assertEquals("feature/TASK-123", (json.getValue("branch") as JsonPrimitive).content)
         assertEquals(JsonPrimitive(true), json.getValue("created"))
         assertEquals(listOf("npm", "install"), json.getValue("skippedPostCreateCommands").jsonArray.single().jsonArray.map { (it as JsonPrimitive).content })
         assertEquals(JsonNull, json.getValue("postCreateFailure"))
         assertFalse(executor.calls.any { it.first.first() == "npm" })
-        assertFalse(err.contains("Run these commands"), err.toString())
+        assertFalse(err.contains("Approve them"), err.toString())
     }
 
     @Test
@@ -2172,7 +2555,10 @@ class ShogunCliTest {
         assertEquals(0, exitCode, err.toString())
         val json = jsonOut()
         assertEquals(
-            setOf("path", "copied", "linked", "copiedInsteadOfLinking", "skippedPostCreateCommands", "postCreateFailure"),
+            setOf(
+                "path", "copied", "linked", "copiedInsteadOfLinking", "skippedPostCreateCommands", "skippedVariables",
+                "postCreateFailure", "removed", "skippedLinks",
+            ),
             json.keys,
         )
         assertEquals(merged, (json.getValue("path") as JsonPrimitive).content)
@@ -2180,6 +2566,75 @@ class ShogunCliTest {
         assertEquals(listOf("token.txt"), json.strings("linked"))
         assertEquals(emptyList(), json.strings("copiedInsteadOfLinking"))
         assertTrue(executor.ran("npm", "install"))
+    }
+
+    private val keysProject = listOf(project.copy(config = project.config.copy(secretFiles = listOf("keys"))))
+
+    private fun keysFileManager() = FakeFileManager(
+        existing = listOf(base, "$base/keys", "$merged/keys/old.pem"),
+        directories = setOf("$base/keys"),
+    ).also {
+        it.directoryFiles["$base/keys"] = listOf("a.pem")
+        it.directoryLinks["$base/keys"] = listOf("shared.pem")
+    }
+
+    private fun keysRecords() = FakeProvisioningRecordStore(mapOf(merged to mapOf("keys" to listOf("a.pem", "old.pem"))))
+
+    @Test
+    fun `provision lists the files it removed and the links it skipped`() {
+        val exitCode = cli(repositoryExecutor(), projects = keysProject, fileManager = keysFileManager(), workingDirectory = merged, records = keysRecords())
+            .run(listOf("provision"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            "keys/a.pem\nkeys/old.pem (removed: deleted from the base folder)\nkeys/shared.pem (skipped: symbolic link)\n",
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `provision json lists the removed files and skipped links`() {
+        cli(repositoryExecutor(), projects = keysProject, fileManager = keysFileManager(), workingDirectory = merged, records = keysRecords())
+            .run(listOf("provision", "--json"))
+
+        val json = jsonOut()
+        assertEquals(listOf("keys/old.pem"), json.strings("removed"))
+        assertEquals(listOf("keys/shared.pem"), json.strings("skippedLinks"))
+    }
+
+    @Test
+    fun `provision check reports files deleted from the base folder`() {
+        val fileManager = keysFileManager()
+
+        val exitCode = cli(repositoryExecutor(), projects = keysProject, fileManager = fileManager, workingDirectory = merged, records = keysRecords())
+            .run(listOf("provision", "--check"))
+
+        assertEquals(3, exitCode)
+        assertTrue("keys/old.pem: deleted in base\n" in out.toString(), out.toString())
+        assertTrue(fileManager.deletedFiles.isEmpty())
+    }
+
+    @Test
+    fun `provision check json reports deleted-in-base`() {
+        val exitCode = cli(repositoryExecutor(), projects = keysProject, fileManager = keysFileManager(), workingDirectory = merged, records = keysRecords())
+            .run(listOf("provision", "--check", "--json"))
+
+        assertEquals(3, exitCode)
+        val states = jsonOut().getValue("drift").jsonArray.associate {
+            it.jsonObject.getValue("path").jsonPrimitive.content to it.jsonObject.getValue("state").jsonPrimitive.content
+        }
+        assertEquals("deleted-in-base", states["keys/old.pem"])
+    }
+
+    @Test
+    fun `new notes the skipped links on standard error only`() {
+        val fileManager = keysFileManager()
+
+        val exitCode = cli(repositoryExecutor(), projects = keysProject, fileManager = fileManager).run(listOf("new", "TASK-123"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("$worktreesRoot/TASK-123\n", out.toString())
+        assertTrue("skipped the symbolic link keys/shared.pem" in err.toString(), err.toString())
     }
 
     @Test
@@ -2192,7 +2647,7 @@ class ShogunCliTest {
         assertEquals(0, exitCode, err.toString())
         assertEquals(1, jsonOut().getValue("skippedPostCreateCommands").jsonArray.size)
         assertFalse(executor.calls.any { it.first.first() == "npm" })
-        assertFalse(err.contains("Run these commands"), err.toString())
+        assertFalse(err.contains("Approve them"), err.toString())
     }
 
     @Test
@@ -2251,13 +2706,13 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         val json = jsonOut()
-        assertEquals(setOf("repository", "commands", "approved", "changed"), json.keys)
+        assertEquals(setOf("repository", "commands", "env", "envFile", "approved", "changed"), json.keys)
         assertEquals(base, (json.getValue("repository") as JsonPrimitive).content)
         assertEquals(JsonPrimitive(false), json.getValue("approved"))
         assertEquals(JsonPrimitive(false), json.getValue("changed"))
         assertEquals(listOf("npm", "install"), json.getValue("commands").jsonArray.single().jsonArray.map { (it as JsonPrimitive).content })
-        assertFalse(trust.isApproved(base, installCommands))
-        assertFalse(err.contains("Approve these commands"), err.toString())
+        assertFalse(trust.isApproved(base, RepositoryApprovalSubject(installCommands)))
+        assertFalse(err.contains("Approve them"), err.toString())
     }
 
     @Test
@@ -2269,7 +2724,7 @@ class ShogunCliTest {
         assertEquals(0, exitCode, err.toString())
         assertEquals(JsonPrimitive(true), jsonOut().getValue("approved"))
         assertEquals(JsonPrimitive(true), jsonOut().getValue("changed"))
-        assertTrue(trust.isApproved(base, installCommands))
+        assertTrue(trust.isApproved(base, RepositoryApprovalSubject(installCommands)))
     }
 
     @Test
@@ -2284,7 +2739,7 @@ class ShogunCliTest {
         cli(linkingExecutor(), provisioning = linkingProvisioning, trust = trust).run(listOf("trust", "--revoke", "--json"))
         assertEquals(JsonPrimitive(false), jsonOut().getValue("approved"))
         assertEquals(JsonPrimitive(true), jsonOut().getValue("changed"))
-        assertFalse(trust.isApproved(base, installCommands))
+        assertFalse(trust.isApproved(base, RepositoryApprovalSubject(installCommands)))
     }
 
     @Test

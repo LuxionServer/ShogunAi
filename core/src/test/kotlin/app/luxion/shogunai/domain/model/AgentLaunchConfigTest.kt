@@ -6,22 +6,22 @@ import kotlin.test.assertEquals
 class AgentLaunchConfigTest {
 
     @Test
-    fun `default config wraps claude with headroom`() {
-        assertEquals("headroom wrap claude", AgentLaunchConfig().resolvedCommand())
+    fun `default config runs claude without headroom`() {
+        assertEquals("claude", AgentLaunchConfig().resolvedCommand())
     }
 
     @Test
-    fun `disabling headroom returns the plain agent command`() {
-        val config = AgentLaunchConfig(agentCommand = "claude", useHeadroom = false)
+    fun `enabling headroom wraps the agent command`() {
+        val config = AgentLaunchConfig(agentCommand = "claude", useHeadroom = true)
 
-        assertEquals("claude", config.resolvedCommand())
+        assertEquals("headroom wrap claude", config.resolvedCommand())
     }
 
     @Test
-    fun `custom agent command is wrapped with headroom by default`() {
+    fun `custom agent command runs plain by default`() {
         val config = AgentLaunchConfig(agentCommand = "my-agent-cli")
 
-        assertEquals("headroom wrap my-agent-cli", config.resolvedCommand())
+        assertEquals("my-agent-cli", config.resolvedCommand())
     }
 
     @Test

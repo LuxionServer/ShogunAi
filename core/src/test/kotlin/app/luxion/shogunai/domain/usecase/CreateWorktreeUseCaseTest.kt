@@ -1,17 +1,24 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
-import app.luxion.shogunai.domain.FakePostCreateApproval
+import app.luxion.shogunai.domain.FakeRepositoryApproval
+import app.luxion.shogunai.domain.FakeProvisioningRecordStore
 import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
-import app.luxion.shogunai.domain.io.PostCreateDecision
+import app.luxion.shogunai.domain.io.ApprovalDecision
 import app.luxion.shogunai.domain.model.BranchType
+import app.luxion.shogunai.domain.model.EnvironmentDeclaration
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -396,7 +403,7 @@ class CreateWorktreeUseCaseTest {
         val fileManager = FakeFileManager(existing = baseWithSecrets)
 
         val trust = FakeRepositoryTrust(
-            mapOf(config.baseRepositoryPath to listOf(listOf("npm", "install"), listOf("direnv", "allow"))),
+            mapOf(config.baseRepositoryPath to RepositoryApprovalSubject(listOf(listOf("npm", "install"), listOf("direnv", "allow")))),
         )
         val error = CreateWorktreeUseCase(config, executor, fileManager, provisioning, trust = trust)("TASK-123", BranchType.FEATURE)
             .exceptionOrNull()
@@ -418,7 +425,7 @@ class CreateWorktreeUseCaseTest {
     @Test
     fun `skips unapproved post-creation commands and reports them`() = runTest {
         val executor = FakeShellCommandExecutor { success(it) }
-        val approval = FakePostCreateApproval(PostCreateDecision.SKIP)
+        val approval = FakeRepositoryApproval(ApprovalDecision.SKIP)
 
         val created = CreateWorktreeUseCase(
             config, executor, FakeFileManager(baseWithSecrets), installProvisioning, approval = approval,
@@ -436,21 +443,21 @@ class CreateWorktreeUseCaseTest {
         val created = CreateWorktreeUseCase(
             config, executor, FakeFileManager(baseWithSecrets), installProvisioning,
             trust = trust,
-            approval = FakePostCreateApproval(PostCreateDecision.RUN),
+            approval = FakeRepositoryApproval(ApprovalDecision.APPROVE),
         )("TASK-123", BranchType.FEATURE).getOrThrow()
 
         assertEquals(emptyList(), created.skippedPostCreateCommands)
         assertTrue(executor.executed("npm", "install"))
-        assertTrue(trust.isApproved(config.baseRepositoryPath, installCommands))
+        assertTrue(trust.isApproved(config.baseRepositoryPath, RepositoryApprovalSubject(installCommands)))
     }
 
     @Test
     fun `approved commands run without asking`() = runTest {
-        val approval = FakePostCreateApproval(PostCreateDecision.SKIP)
+        val approval = FakeRepositoryApproval(ApprovalDecision.SKIP)
 
         CreateWorktreeUseCase(
             config, FakeShellCommandExecutor { success(it) }, FakeFileManager(baseWithSecrets), installProvisioning,
-            trust = FakeRepositoryTrust(mapOf(config.baseRepositoryPath to installCommands)),
+            trust = FakeRepositoryTrust(mapOf(config.baseRepositoryPath to RepositoryApprovalSubject(installCommands))),
             approval = approval,
         )("TASK-123", BranchType.FEATURE).getOrThrow()
 
@@ -471,8 +478,10 @@ class CreateWorktreeUseCaseTest {
     @Test
     fun `a provisioned file resolving outside the worktree fails the creation and rolls back`() = runTest {
         val executor = FakeShellCommandExecutor { success(it) }
-        val fileManager = FakeFileManager(baseWithSecrets).also { it.outsidePaths = setOf("$worktreePath/local.properties") }
-        val useCase = CreateWorktreeUseCase(config, executor, fileManager, FakeRepositoryProvisioningSource())
+        val nested = config.copy(secretFiles = listOf("config/.env"))
+        val fileManager = FakeFileManager(listOf(config.baseRepositoryPath, nested.baseSecretPath("config/.env")))
+            .also { it.outsidePaths = setOf("$worktreePath/config") }
+        val useCase = CreateWorktreeUseCase(nested, executor, fileManager, FakeRepositoryProvisioningSource())
 
         val error = useCase("TASK-123", BranchType.FEATURE).exceptionOrNull()
 
@@ -545,5 +554,140 @@ class CreateWorktreeUseCaseTest {
         assertIs<WorktreeError.SecretCopyFailed>(error)
         assertTrue(executor.executed("git", "worktree", "remove", "--force", worktreePath))
         assertTrue(executor.executed("git", "branch", "-D", "--", "feature/TASK-123"))
+    }
+
+    @Test
+    fun `a local pattern that matches nothing doesn't count as a missing file`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+        val patternConfig = config.copy(secretFiles = listOf("*.p12", "local.properties"))
+        val useCase = CreateWorktreeUseCase(patternConfig, executor, FakeFileManager(existing = listOf(config.baseRepositoryPath)), FakeRepositoryProvisioningSource())
+
+        val error = useCase("TASK-123", BranchType.FEATURE).exceptionOrNull()
+
+        assertIs<WorktreeError.SecretFileNotFound>(error)
+        assertEquals(listOf("local.properties"), error.files)
+        assertTrue(executor.executedCommands.isEmpty())
+    }
+
+    @Test
+    fun `links a linked local folder and records copied folders and skipped links`() = runTest {
+        val certs = config.baseSecretPath("certs")
+        val folders = FakeFileManager(
+            existing = listOf(config.baseRepositoryPath, keysFolder, certs),
+            directories = setOf(keysFolder, certs),
+        ).also {
+            it.directoryFiles[keysFolder] = listOf("a.pem")
+            it.directoryFiles[certs] = listOf("ca.pem")
+            it.directoryLinks[certs] = listOf("shared.pem")
+        }
+        val records = FakeProvisioningRecordStore()
+        val linkedConfig = config.copy(secretFiles = listOf("keys", "certs"), linkedSecretFiles = listOf("keys"))
+        val useCase = CreateWorktreeUseCase(
+            linkedConfig, FakeShellCommandExecutor { success(it) }, folders, FakeRepositoryProvisioningSource(), records = records,
+        )
+
+        val worktree = useCase("TASK-123", BranchType.FEATURE).getOrThrow()
+
+        assertEquals(keysFolder, folders.symbolicLinks["$worktreePath/keys"])
+        assertEquals(listOf("$certs/ca.pem" to "$worktreePath/certs/ca.pem"), folders.copied)
+        assertEquals(mapOf("certs" to listOf("ca.pem")), records.records[worktreePath])
+        assertEquals(listOf("certs/shared.pem"), worktree.skippedLinks)
+    }
+
+    @Test
+    fun `rolls back when a linked folder's destination holds the branch's files`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+        val destination = "$worktreePath/keys"
+        val fileManager = FakeFileManager(
+            existing = listOf(config.baseRepositoryPath, keysFolder),
+            directories = setOf(keysFolder, destination),
+        ).also { it.directoryFiles[destination] = listOf("README.md") }
+        val linkedConfig = folderConfig().copy(linkedSecretFiles = listOf("keys"))
+        val useCase = CreateWorktreeUseCase(linkedConfig, executor, fileManager, FakeRepositoryProvisioningSource())
+
+        val error = useCase("TASK-123", BranchType.FEATURE).exceptionOrNull()
+
+        assertIs<WorktreeError.LinkedFolderOccupied>(error)
+        assertEquals("keys", error.entry)
+        assertTrue(fileManager.deletedRecursively.isEmpty())
+        assertTrue(executor.executed("git", "worktree", "remove", "--force", worktreePath))
+        assertTrue(executor.executed("git", "branch", "-D", "--", "feature/TASK-123"))
+    }
+
+    @Test
+    fun `rolls back when the record can't be written`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+        val records = FakeProvisioningRecordStore().also { it.failWrites = true }
+        val useCase = CreateWorktreeUseCase(folderConfig(), executor, fileManagerWithKeys(), FakeRepositoryProvisioningSource(), records = records)
+
+        val error = useCase("TASK-123", BranchType.FEATURE).exceptionOrNull()
+
+        assertIs<WorktreeError.SecretCopyFailed>(error)
+        assertTrue(executor.executed("git", "worktree", "remove", "--force", worktreePath))
+    }
+
+    private val environmentProvisioning = FakeRepositoryProvisioningSource(
+        byRepository = mapOf(
+            config.baseRepositoryPath to RepositoryProvisioning(
+                postCreateCommands = installCommands,
+                environment = EnvironmentDeclaration(listOf(parseEnvironmentVariable("PORT", "\${port}")), ".env.shogunai"),
+            ),
+        ),
+    )
+
+    private val gitWithDirectories = FakeShellCommandExecutor {
+        when {
+            it.getOrNull(1) == "rev-parse" -> success(it, stdout = "${config.baseRepositoryPath}/.git/worktrees/TASK-123\n${config.baseRepositoryPath}/.git\n")
+            it.getOrNull(1) == "ls-files" && "--error-unmatch" in it -> failure(it)
+            else -> success(it)
+        }
+    }
+
+    private suspend fun createWithEnvironment(
+        trust: FakeRepositoryTrust,
+        approval: FakeRepositoryApproval,
+        store: FakeEnvironmentStateStore,
+        fileManager: FakeFileManager,
+    ): Worktree {
+        val resolve = ResolveWorktreeEnvironmentUseCase(gitWithDirectories, environmentProvisioning, store, FakePortProbe(), trust = trust)
+        val prepare = PrepareWorktreeEnvironmentUseCase(resolve, WriteEnvironmentFileUseCase(gitWithDirectories, fileManager, environmentProvisioning))
+        return CreateWorktreeUseCase(config, gitWithDirectories, fileManager, environmentProvisioning, prepare, trust, approval)(
+            "TASK-123",
+            BranchType.FEATURE,
+        ).getOrThrow()
+    }
+
+    @Test
+    fun `approving during creation reserves the declared port and writes the environment file`() = runTest {
+        val store = FakeEnvironmentStateStore()
+        val fileManager = FakeFileManager(baseWithSecrets)
+        val approval = FakeRepositoryApproval(ApprovalDecision.APPROVE)
+
+        val created = createWithEnvironment(FakeRepositoryTrust(), approval, store, fileManager)
+
+        assertEquals(1, approval.asked.size)
+        assertEquals(listOf("PORT" to "\${port}"), approval.asked.single().second.variables)
+        assertEquals(".env.shogunai", approval.asked.single().second.envFile)
+        assertTrue(store.readPorts("${config.baseRepositoryPath}/.git/worktrees/TASK-123").containsKey("PORT"))
+        assertTrue(fileManager.writtenTexts.keys.contains("$worktreePath/.env.shogunai"))
+        assertTrue(gitWithDirectories.executed("npm", "install"))
+        assertEquals(emptyList(), created.skippedVariables)
+        assertEquals(emptyList(), created.skippedPostCreateCommands)
+    }
+
+    @Test
+    fun `skipping during creation leaves out the declared port, the environment file and the commands`() = runTest {
+        val store = FakeEnvironmentStateStore()
+        val fileManager = FakeFileManager(baseWithSecrets)
+        val approval = FakeRepositoryApproval(ApprovalDecision.SKIP)
+
+        val created = createWithEnvironment(FakeRepositoryTrust(), approval, store, fileManager)
+
+        assertEquals(1, approval.asked.size)
+        assertTrue(store.readPorts("${config.baseRepositoryPath}/.git/worktrees/TASK-123").isEmpty())
+        assertFalse(fileManager.writtenTexts.keys.contains("$worktreePath/.env.shogunai"))
+        assertFalse(gitWithDirectories.executed("npm", "install"))
+        assertEquals(listOf("PORT"), created.skippedVariables)
+        assertEquals(installCommands, created.skippedPostCreateCommands)
     }
 }

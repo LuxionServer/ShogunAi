@@ -43,6 +43,7 @@ import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.ReleaseRecord
 import app.luxion.shogunai.domain.model.toLocalClockTime
 import app.luxion.shogunai.domain.model.WorktreeEmulator
+import app.luxion.shogunai.domain.model.WorktreeComposeState
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.model.WorktreeStatus
 import app.luxion.shogunai.domain.model.portKeyLabel
@@ -240,8 +241,67 @@ fun WorktreeDetailPane(
             onStartEmulator = { viewModel.startEmulator(worktree) },
             onStopEmulator = { viewModel.stopEmulator(worktree) },
         )
+        if (viewModel.isComposeRepository && !worktree.isPrunable) {
+            ComposeSection(
+                state = viewModel.composeStates[worktree.path],
+                unavailable = viewModel.isComposeUnavailable,
+                activity = viewModel.composeActivities[worktree.path],
+                onStart = { viewModel.startComposeServices(worktree) },
+                onBuild = { viewModel.buildComposeServices(worktree) },
+                onTakeDown = { viewModel.takeDownComposeServices(worktree) },
+            )
+        }
         DiskSection(viewModel.sizes[worktree.path])
     }
+}
+
+@Composable
+private fun ColumnScope.ComposeSection(
+    state: WorktreeComposeState?,
+    unavailable: Boolean,
+    activity: ProjectWorktrees.ComposeActivity?,
+    onStart: () -> Unit,
+    onBuild: () -> Unit,
+    onTakeDown: () -> Unit,
+) {
+    val strings = LocalStrings.current
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+        SectionTitle(strings.composeSectionTitle)
+        if (unavailable) {
+            MutedText(strings.composeDockerUnavailable)
+            return@Column
+        }
+        if (state == null) {
+            InlineProgress(size = ProgressSize.Small)
+            return@Column
+        }
+        val status = state.status
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+            Text(state.project, style = ShogunTheme.typography.dataSmall)
+            if (status == null) {
+                StatusChip(Status.NEUTRAL, strings.composeNotStarted)
+            } else {
+                StatusChip(composeStatus(status), status)
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+            if (activity != null) {
+                InlineProgress(size = ProgressSize.Small)
+            } else {
+                NeutralTextButton(onClick = onStart) { Text(strings.startComposeServices, style = MaterialTheme.typography.bodySmall) }
+                NeutralTextButton(onClick = onBuild) { Text(strings.buildComposeServices, style = MaterialTheme.typography.bodySmall) }
+                if (status != null) {
+                    NeutralTextButton(onClick = onTakeDown) { Text(strings.takeDownComposeServices, style = MaterialTheme.typography.bodySmall) }
+                }
+            }
+        }
+    }
+}
+
+fun composeStatus(status: String): Status = when {
+    status.startsWith("running") && !status.contains("exited") -> Status.SUCCESS
+    status.startsWith("running") -> Status.WARNING
+    else -> Status.NEUTRAL
 }
 
 @Composable
@@ -316,7 +376,8 @@ private fun ColumnScope.ProvisioningSection(
 private fun ColumnScope.EnvironmentSection(environment: WorktreeEnvironment?, ports: Map<String, Int>) {
     val strings = LocalStrings.current
     val variables = environment?.variables.orEmpty()
-    if (variables.isEmpty() && ports.isEmpty()) return
+    val awaiting = environment?.awaitingApproval.orEmpty()
+    if (variables.isEmpty() && ports.isEmpty() && awaiting.isEmpty()) return
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
@@ -332,6 +393,7 @@ private fun ColumnScope.EnvironmentSection(environment: WorktreeEnvironment?, po
                 Text(strings.copyAsEnv, style = MaterialTheme.typography.bodySmall)
             }
         }
+        if (awaiting.isNotEmpty()) MutedText(strings.variablesAwaitingApproval(awaiting))
     }
 }
 

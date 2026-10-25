@@ -19,6 +19,7 @@ enum class WorkflowCondition(val label: String) {
     HERDR("when Herdr is available"),
     EMULATOR_PROVIDER("when the repository declares the emulator provider"),
     SIMULATOR_PROVIDER("when the repository declares the ios-simulator provider"),
+    COMPOSE_PROVIDER("when the repository declares the docker-compose provider"),
 }
 
 data class WorkflowRule(
@@ -34,6 +35,7 @@ data class WorkflowContext(
     val herdrAvailable: Boolean,
     val emulatorProvider: Boolean,
     val simulatorProvider: Boolean,
+    val composeProvider: Boolean = false,
 ) {
     fun holds(condition: WorkflowCondition): Boolean = when (condition) {
         WorkflowCondition.ALWAYS -> true
@@ -42,6 +44,7 @@ data class WorkflowContext(
         WorkflowCondition.HERDR -> herdrAvailable
         WorkflowCondition.EMULATOR_PROVIDER -> emulatorProvider
         WorkflowCondition.SIMULATOR_PROVIDER -> simulatorProvider
+        WorkflowCondition.COMPOSE_PROVIDER -> composeProvider
     }
 }
 
@@ -117,7 +120,8 @@ object WorkflowRules {
             WorkflowTopic.RESOURCES,
             "Run `shogun emulator start` before every use of the worktree's Android emulator (installing the app, running instrumented tests): " +
                 "it may have been released to another worktree since the session began, and the command re-acquires one and prints the ANDROID_SERIAL to use. " +
-                "`shogun emulator status` shows it.",
+                "If it fails because the emulator pool is full, retry with `shogun emulator start --wait` run in the background, " +
+                "since it can wait up to 30 minutes for one. `shogun emulator status` shows it.",
             WorkflowCondition.EMULATOR_PROVIDER,
             inSessionStart = true,
         ),
@@ -133,9 +137,19 @@ object WorkflowRules {
             "resources.simulator",
             WorkflowTopic.RESOURCES,
             "Boot the worktree's iOS simulator with `shogun simulator start` and build with " +
-                "xcodebuild -destination \"id=\$IOS_SIMULATOR_UDID\"; `shogun simulator status` shows it.",
+                "xcodebuild -destination \"id=\$IOS_SIMULATOR_UDID\"; `shogun simulator status` shows it. " +
+                "If it fails because the simulator pool is full, retry with `shogun simulator start --wait` run in the background, " +
+                "since it can wait up to 30 minutes for one.",
             WorkflowCondition.SIMULATOR_PROVIDER,
             inSessionStart = true,
+        ),
+        WorkflowRule(
+            "resources.compose",
+            WorkflowTopic.RESOURCES,
+            "Start and build the worktree's Docker Compose services with `shogun compose up` (`--build` to rebuild) and `shogun compose build`, " +
+                "never with a hand-written project name, so they use its COMPOSE_PROJECT_NAME and ports; " +
+                "take them down with `shogun compose down <worktree>`.",
+            WorkflowCondition.COMPOSE_PROVIDER,
         ),
         WorkflowRule(
             "resources.caches",

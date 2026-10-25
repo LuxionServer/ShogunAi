@@ -95,7 +95,7 @@ In every view other than the multirepo view, the row of a worktree that belongs 
 - **THEN** the multirepo view opens with that group expanded and scrolled into view
 
 ### Requirement: Add a multirepo from the app
-The user SHALL be able to add a multirepo by dropping a folder on the sidebar or choosing it with "Add multirepo". Before confirming, the app SHALL list the Git repositories directly inside the folder, and any added from elsewhere, with their aliases, which already are projects, the proposed worktrees folder of each (optional) and the groups detected by branch. Confirming SHALL write the declaration as `shogun multirepo init` and `add-repo` do.
+The user SHALL be able to add a multirepo by dropping a folder on the sidebar or choosing it with "Add multirepo". Before confirming, the app SHALL list the Git repositories directly inside the folder, and any added from elsewhere, with their aliases, which already are projects, the proposed worktrees folder of each (optional) and the groups detected by branch. A folder's existing declaration SHALL be shown as `shogun multirepo trust` shows it. Confirming SHALL write the declaration as `shogun multirepo init` and `add-repo` do, and approve it.
 
 #### Scenario: Detected repositories
 - **WHEN** the user drops `~/projects/product`, which contains `product-app`, `product-api`, `product-docs` and a folder `notes`
@@ -103,14 +103,18 @@ The user SHALL be able to add a multirepo by dropping a folder on the sidebar or
 
 #### Scenario: Confirm
 - **WHEN** the user keeps `app` and `api`, accepts the proposed folder only for `api` and confirms
-- **THEN** `~/projects/product/.shogunai-multirepo.json` declares them, `product-api` is registered with worktrees in `~/projects/product-worktrees/api`, `product-app`'s project is unchanged, and the sidebar shows the folder
+- **THEN** `~/projects/product/.shogunai-multirepo.json` declares them, `product-api` is registered with worktrees in `~/projects/product-worktrees/api`, `product-app`'s project is unchanged, the multirepo is approved, and the sidebar shows the folder
+
+#### Scenario: Folder with an existing declaration
+- **WHEN** the user drops a cloned `~/projects/product` whose declaration lists `api` as `/srv/other/api`
+- **THEN** the dialog lists `api` with `/srv/other/api` marked as outside `~/projects`, and only confirming registers and approves it
 
 #### Scenario: Folder inside a repository
 - **WHEN** the dropped folder is inside a Git repository
 - **THEN** the dialog says a multirepo can't be declared inside a repository and offers no confirmation
 
 ### Requirement: Multirepo settings
-The multirepo SHALL have a settings screen to set its display name, add, remove and rename repositories, choose the default repositories, set the proposed worktrees folder and edit the multirepo agent with the same agent editor projects use, and to delete the multirepo, saving to the declaration as the `shogun multirepo` subcommands do.
+The multirepo SHALL have a settings screen to set its name, add, remove and rename repositories, choose the defaults, set the proposed worktrees folder, edit the multirepo agent with the projects' agent editor and delete the multirepo, saving as the `shogun multirepo` subcommands do, with the agent in the user's ShogunAi folder. The screen SHALL say when the declaration holds an ignored `agent`, and SHALL NOT save while the multirepo needs review.
 
 #### Scenario: Set the name
 - **WHEN** the user types `Product` in the name field and saves
@@ -120,6 +124,10 @@ The multirepo SHALL have a settings screen to set its display name, add, remove 
 - **WHEN** the user unchecks `api` in the default repositories and saves
 - **THEN** `defaultRepos` is `["app"]` and `shogun multirepo show` reports it
 
+#### Scenario: Change the agent
+- **WHEN** the user sets the multirepo agent to `codex` and saves
+- **THEN** `.shogunai-multirepo.json` is unchanged and `shogun open --herdr` in the multirepo folder runs `codex`, without Headroom unless the user turned it on
+
 #### Scenario: Delete the multirepo
 - **WHEN** the user deletes the multirepo and confirms
 - **THEN** the declaration is removed, its projects go back to the top level of the sidebar unchanged, and no worktree is touched
@@ -127,6 +135,10 @@ The multirepo SHALL have a settings screen to set its display name, add, remove 
 #### Scenario: Changed from the command line
 - **WHEN** `shogun multirepo add-repo docs product-docs` runs while the app is open
 - **THEN** the app shows `docs` in the multirepo after its next refresh
+
+#### Scenario: Needs review
+- **WHEN** the multirepo's declaration changed outside ShogunAi
+- **THEN** the settings screen points to the review and saves nothing
 
 ### Requirement: New change from the app
 The multirepo view SHALL offer "New change", a dialog like "New worktree" with the change id, feature or fix, fetching first, and one checkbox per repository with the default repositories checked, that creates the group as `shogun new <id> --repos` does and reports each repository's result.
@@ -181,19 +193,11 @@ The multirepo settings SHALL show the workspace repository, marked as detected w
 - **THEN** "New change" lists it with its checkbox checked
 
 ### Requirement: Register an existing multirepo from the app
-Adding a multirepo from the app with a folder that already has a valid declaration SHALL show its declared repositories instead of the detected ones and, on confirmation, register it as `shogun multirepo init` does there, leaving the declaration unchanged. An invalid declaration SHALL be reported with its problem and offer no confirmation.
+Adding a multirepo from the app with a folder that already has a declaration SHALL show its review (each declared repository with its resolved path, the worktrees root and the workspace repository) and, on confirmation, approve it and register a project for each declared repository without one, as `shogun multirepo init` does there, leaving the declaration's repositories unchanged.
 
 #### Scenario: Moved multirepo dropped on the sidebar
 - **WHEN** the user drops `~/work/product`, whose declaration lists `app` and `api`, and the multirepo isn't known
-- **THEN** the dialog says the folder is already a multirepo, lists `app` and `api` with their paths and whether each already is a project, and confirming makes the sidebar show the folder with both projects
-
-#### Scenario: Already known
-- **WHEN** the dropped folder is a multirepo the app already shows
-- **THEN** the dialog says so and confirming only selects it in the sidebar
-
-#### Scenario: Invalid declaration
-- **WHEN** the dropped folder's declaration names a repository that doesn't exist
-- **THEN** the dialog shows the problem and the file and offers no confirmation
+- **THEN** the dialog says the folder already declares a multirepo and lists `app` and `api` with their paths, and confirming approves it and makes the sidebar show the folder with both projects
 
 ### Requirement: The app forgets multirepos whose folder is gone
 When the app reloads the known multirepos it SHALL remove from `~/.shogunai/multirepos.json` every entry whose folder no longer exists, as `shogun multirepo init` does.

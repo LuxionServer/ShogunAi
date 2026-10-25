@@ -3,23 +3,35 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.io.FileManager
-import app.luxion.shogunai.domain.io.PostCreateApproval
-import app.luxion.shogunai.domain.io.PostCreateDecision
+import app.luxion.shogunai.domain.io.RepositoryApproval
+import app.luxion.shogunai.domain.io.ApprovalDecision
+import app.luxion.shogunai.domain.io.ProvisioningRecordStore
 import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.io.SymbolicLinksNotSupported
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
+import app.luxion.shogunai.domain.model.approvalSubject
 import app.luxion.shogunai.domain.model.ProvisionMode
 import app.luxion.shogunai.domain.model.ProvisionedFile
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.isLocalPattern
 import app.luxion.shogunai.domain.model.joinPath
 import java.io.IOException
 
 internal data class ProvisionedFiles(
     val copied: List<String> = emptyList(),
     val linked: List<String> = emptyList(),
-    val postCreateCommands: List<List<String>> = emptyList(),
+    val approvalSubject: RepositoryApprovalSubject = RepositoryApprovalSubject(),
+    val linkedFolders: Map<String, List<String>> = emptyMap(),
+    val copiedFolders: Map<String, List<String>> = emptyMap(),
+    val skippedLinks: List<String> = emptyList(),
+)
+
+internal data class AppliedProvisioning(
+    val files: List<ProvisionedFile>,
+    val removed: List<String>,
 )
 
 internal suspend fun checkProvisioningAndResolveFiles(
@@ -28,12 +40,17 @@ internal suspend fun checkProvisioningAndResolveFiles(
     fileManager: FileManager,
     provisioningSource: RepositoryProvisioningSource,
 ): ProvisionedFiles {
-    val missingSecrets = config.secretFiles.filterNot { fileManager.exists(config.baseSecretPath(it)) }
+    val missingSecrets = config.secretFiles
+        .filterNot(::isLocalPattern)
+        .filterNot { fileManager.exists(config.baseSecretPath(it)) }
     if (missingSecrets.isNotEmpty()) {
         throw WorktreeError.SecretFileNotFound(missingSecrets, config.baseRepositoryPath)
     }
     return resolveProvisionedFiles(config, executor, fileManager, provisioningSource)
 }
+
+
+private fun localFolderName(entry: String): String = entry.trimEnd('/', '\\')
 
 internal suspend fun resolveProvisionedFiles(
     config: ProjectConfig,
@@ -42,19 +59,34 @@ internal suspend fun resolveProvisionedFiles(
     provisioningSource: RepositoryProvisioningSource,
 ): ProvisionedFiles {
     val provisioning = provisioningSource.read(config.baseRepositoryPath)
-    val localFiles = config.secretFiles.flatMap { expandLocalEntry(config, fileManager, it) }
-    val linked = listUntrackedFiles(config, executor, provisioning.linkPatterns).filterNot { it in localFiles }
-    val copied = (localFiles + listUntrackedFiles(config, executor, provisioning.allPatterns))
+    val (patternEntries, pathEntries) = config.secretFiles.partition(::isLocalPattern)
+    val (linkedPatterns, copiedPatterns) = patternEntries.partition(config::isLinked)
+    val folders = pathEntries.map(::localFolderName)
+        .filter { fileManager.isDirectory(config.baseSecretPath(it)) }
+        .associateWith { fileManager.listTree(config.baseSecretPath(it)) }
+    val (linkedFolders, copiedFolders) = folders.entries.partition { config.isLinked(it.key) }
+    val localCopied = pathEntries.filterNot(config::isLinked).flatMap { entry ->
+        val folder = localFolderName(entry)
+        folders[folder]?.files?.map { "$folder/$it" } ?: listOf(entry)
+    } + listUntrackedFiles(config, executor, copiedPatterns)
+    val localLinked = pathEntries.filter { config.isLinked(it) && localFolderName(it) !in folders } +
+        listUntrackedFiles(config, executor, linkedPatterns)
+    val insideLinkedFolder = { file: String -> linkedFolders.any { file.startsWith("${it.key}/") } }
+    val local = (localCopied + localLinked).toSet()
+    val repositoryLinked = listUntrackedFiles(config, executor, provisioning.linkPatterns)
+        .filterNot { it in local || insideLinkedFolder(it) }
+    val linked = (localLinked + repositoryLinked).distinct()
+    val copied = (localCopied + listUntrackedFiles(config, executor, provisioning.allPatterns))
         .distinct()
-        .filterNot { it in linked }
-    return ProvisionedFiles(copied, linked, provisioning.postCreateCommands)
-}
-
-private fun expandLocalEntry(config: ProjectConfig, fileManager: FileManager, entry: String): List<String> {
-    val path = config.baseSecretPath(entry)
-    if (!fileManager.isDirectory(path)) return listOf(entry)
-    val folder = entry.trimEnd('/', '\\')
-    return fileManager.listFiles(path).map { "$folder/$it" }
+        .filterNot { it in linked || insideLinkedFolder(it) }
+    return ProvisionedFiles(
+        copied = copied,
+        linked = linked,
+        approvalSubject = provisioning.approvalSubject,
+        linkedFolders = linkedFolders.associate { it.key to it.value.files },
+        copiedFolders = copiedFolders.associate { it.key to it.value.files },
+        skippedLinks = copiedFolders.flatMap { (folder, listing) -> listing.skippedLinks.map { "$folder/$it" } },
+    )
 }
 
 private suspend fun listUntrackedFiles(
@@ -80,7 +112,8 @@ internal suspend fun addWorktreeAndCopySecrets(
     provisioned: ProvisionedFiles,
     environment: WorktreeEnvironmentPreparer,
     trust: RepositoryTrust,
-    approval: PostCreateApproval,
+    approval: RepositoryApproval,
+    records: ProvisioningRecordStore,
 ): Worktree {
     val add = executor.execute(command = addArgs, workingDirectory = config.baseRepositoryPath)
     if (!add.isSuccess) {
@@ -96,13 +129,18 @@ internal suspend fun addWorktreeAndCopySecrets(
         throw WorktreeError.GitCommandFailed(add.command, add.exitCode, add.stderr)
     }
 
-    copySecretsOrRollback(config, executor, fileManager, worktreePath, provisioned, createdBranch)
+    copySecretsOrRollback(config, executor, fileManager, records, worktreePath, provisioned, createdBranch)
+    val approved = settleApproval(config, trust, approval, provisioned.approvalSubject)
     prepareEnvironmentOrRollback(config, executor, environment, worktreePath, createdBranch)
-    val skipped = runApprovedPostCreateCommands(
-        config, executor, trust, approval, worktreePath, provisioned.postCreateCommands,
-    )
+    val skipped = runPostCreateCommandsIfApproved(executor, approved, worktreePath, provisioned.approvalSubject)
 
-    return Worktree(path = worktreePath, branch = branch, skippedPostCreateCommands = skipped)
+    return Worktree(
+        path = worktreePath,
+        branch = branch,
+        skippedPostCreateCommands = skipped.commands,
+        skippedVariables = skipped.variables,
+        skippedLinks = provisioned.skippedLinks,
+    )
 }
 
 private suspend fun prepareEnvironmentOrRollback(
@@ -124,13 +162,15 @@ private suspend fun copySecretsOrRollback(
     config: ProjectConfig,
     executor: ShellCommandExecutor,
     fileManager: FileManager,
+    records: ProvisioningRecordStore,
     worktreePath: String,
     provisioned: ProvisionedFiles,
     createdBranch: String?,
 ) {
     try {
-        applyProvisionedFiles(config, fileManager, worktreePath, provisioned)
-    } catch (copyError: WorktreeError.SecretCopyFailed) {
+        applyProvisionedFiles(config, fileManager, records, worktreePath, provisioned)
+    } catch (copyError: WorktreeError) {
+        if (copyError !is WorktreeError.SecretCopyFailed && copyError !is WorktreeError.LinkedFolderOccupied) throw copyError
         rollBack(config, executor, worktreePath, createdBranch)
         throw copyError
     }
@@ -139,10 +179,14 @@ private suspend fun copySecretsOrRollback(
 internal fun applyProvisionedFiles(
     config: ProjectConfig,
     fileManager: FileManager,
+    records: ProvisioningRecordStore,
     worktreePath: String,
     provisioned: ProvisionedFiles,
-): List<ProvisionedFile> {
+): AppliedProvisioning {
     try {
+        val previous = records.read(worktreePath)
+        unlinkCopiedFolders(config, fileManager, worktreePath, provisioned)
+        val removed = removeDeletedFolderFiles(fileManager, worktreePath, provisioned, previous)
         val copied = provisioned.copied.map { fileName ->
             copyFromBase(config, fileManager, worktreePath, fileName)
             ProvisionedFile(fileName, ProvisionMode.COPIED)
@@ -160,14 +204,85 @@ internal fun applyProvisionedFiles(
                 ProvisionedFile(fileName, ProvisionMode.COPIED_INSTEAD_OF_LINKING)
             }
         }
-        return copied + linked
+        val fallbackFolders = mutableMapOf<String, List<String>>()
+        val linkedFolders = provisioned.linkedFolders.flatMap { (folder, files) ->
+            if (linkFolder(config, fileManager, worktreePath, folder, previous[folder].orEmpty())) {
+                listOf(ProvisionedFile(folder, ProvisionMode.LINKED))
+            } else {
+                fallbackFolders[folder] = files
+                files.map { file ->
+                    copyFromBase(config, fileManager, worktreePath, "$folder/$file")
+                    ProvisionedFile("$folder/$file", ProvisionMode.COPIED_INSTEAD_OF_LINKING)
+                }
+            }
+        }
+        records.write(worktreePath, provisioned.copiedFolders + fallbackFolders)
+        return AppliedProvisioning(copied + linked + linkedFolders, removed)
+    } catch (occupied: WorktreeError.LinkedFolderOccupied) {
+        throw occupied
     } catch (copyError: Exception) {
         throw WorktreeError.SecretCopyFailed(copyError)
     }
 }
 
+private fun unlinkCopiedFolders(
+    config: ProjectConfig,
+    fileManager: FileManager,
+    worktreePath: String,
+    provisioned: ProvisionedFiles,
+) {
+    provisioned.copiedFolders.keys.forEach { folder ->
+        val destination = joinPath(worktreePath, folder)
+        if (fileManager.isSymbolicLinkTo(destination, config.baseSecretPath(folder))) fileManager.deleteFile(destination)
+    }
+}
+
+private fun removeDeletedFolderFiles(
+    fileManager: FileManager,
+    worktreePath: String,
+    provisioned: ProvisionedFiles,
+    previous: Map<String, List<String>>,
+): List<String> = provisioned.copiedFolders.flatMap { (folder, files) ->
+    deletedFromBase(folder, files, previous).filter { fileName ->
+        requireInsideWorktree(fileManager, worktreePath, fileName)
+        val destination = joinPath(worktreePath, fileName)
+        val isRegularFile = fileManager.exists(destination) &&
+            !fileManager.isDirectory(destination) &&
+            !fileManager.isSymbolicLink(destination)
+        if (isRegularFile) fileManager.deleteFile(destination)
+        isRegularFile
+    }
+}
+
+internal fun deletedFromBase(folder: String, files: List<String>, previous: Map<String, List<String>>): List<String> =
+    previous[folder].orEmpty().filterNot { it in files }.map { "$folder/$it" }
+
+private fun linkFolder(
+    config: ProjectConfig,
+    fileManager: FileManager,
+    worktreePath: String,
+    folder: String,
+    recorded: List<String>,
+): Boolean {
+    requireInsideWorktree(fileManager, worktreePath, folder)
+    val destination = joinPath(worktreePath, folder)
+    if (fileManager.isDirectory(destination) && !fileManager.isSymbolicLink(destination)) {
+        val existing = fileManager.listTree(destination)
+        if (existing.skippedLinks.isNotEmpty() || !recorded.containsAll(existing.files)) {
+            throw WorktreeError.LinkedFolderOccupied(folder, worktreePath)
+        }
+        fileManager.deleteRecursively(destination)
+    }
+    return try {
+        fileManager.createSymbolicLink(target = config.baseSecretPath(folder), link = destination)
+        true
+    } catch (unsupported: SymbolicLinksNotSupported) {
+        false
+    }
+}
+
 private fun requireInsideWorktree(fileManager: FileManager, worktreePath: String, fileName: String) {
-    if (!fileManager.isInside(worktreePath, joinPath(worktreePath, fileName))) {
+    if (!fileManager.isInside(worktreePath, joinPath(worktreePath, fileName).substringBeforeLast('/'))) {
         throw IOException("$fileName resolves outside the worktree")
     }
 }
@@ -177,22 +292,33 @@ private fun copyFromBase(config: ProjectConfig, fileManager: FileManager, worktr
     fileManager.copy(source = config.baseSecretPath(fileName), destination = joinPath(worktreePath, fileName))
 }
 
-internal suspend fun runApprovedPostCreateCommands(
+internal data class SkippedConfiguration(
+    val commands: List<List<String>> = emptyList(),
+    val variables: List<String> = emptyList(),
+)
+
+internal suspend fun settleApproval(
     config: ProjectConfig,
-    executor: ShellCommandExecutor,
     trust: RepositoryTrust,
-    approval: PostCreateApproval,
-    worktreePath: String,
-    commands: List<List<String>>,
-): List<List<String>> {
-    if (commands.isEmpty()) return emptyList()
+    approval: RepositoryApproval,
+    subject: RepositoryApprovalSubject,
+): Boolean {
     val repository = config.baseRepositoryPath
-    if (!trust.isApproved(repository, commands)) {
-        if (approval.decide(repository, commands) != PostCreateDecision.RUN) return commands
-        trust.approve(repository, commands)
-    }
-    runPostCreateCommands(executor, worktreePath, commands)
-    return emptyList()
+    if (trust.isApproved(repository, subject)) return true
+    if (approval.decide(repository, subject) != ApprovalDecision.APPROVE) return false
+    trust.approve(repository, subject)
+    return true
+}
+
+internal suspend fun runPostCreateCommandsIfApproved(
+    executor: ShellCommandExecutor,
+    approved: Boolean,
+    worktreePath: String,
+    subject: RepositoryApprovalSubject,
+): SkippedConfiguration {
+    if (!approved) return SkippedConfiguration(subject.commands, subject.variableNames)
+    runPostCreateCommands(executor, worktreePath, subject.commands)
+    return SkippedConfiguration()
 }
 
 private suspend fun runPostCreateCommands(

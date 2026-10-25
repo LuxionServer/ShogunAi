@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
@@ -52,6 +53,7 @@ class OpenWorktreeInTerminalUseCaseTest {
             ),
             FakeEnvironmentStateStore(),
             FakePortProbe(),
+            trust = FakeRepositoryTrust(approvesEverything = true),
         ),
     )
 

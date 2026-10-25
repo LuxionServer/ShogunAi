@@ -60,26 +60,31 @@ internal object CliHelp {
 """.trimIndent(),
         "clean" to """
   clean [--yes] [--delete-branches] [--stop-gradle-daemons] [--stop-emulators] [--delete-simulators]
-        [--delete-derived-data] [--down-compose-projects] [--json]
+        [--delete-derived-data] [--down-compose-projects [--compose-volumes]] [--json]
                               List merged or missing worktrees; remove them with --yes
                               (--stop-gradle-daemons / --stop-emulators: also stop their idle
                               Gradle daemons / their emulators; --delete-simulators: also delete
                               their iOS simulators and orphaned ShogunAi simulators;
                               --delete-derived-data: also delete orphaned Xcode DerivedData;
                               --down-compose-projects: also take down the Docker Compose projects of
-                              the removed worktrees, keeping their volumes;
+                              the removed worktrees and remove their networks and built images,
+                              keeping their volumes unless --compose-volumes is given;
                               --json: print one JSON object instead of text);
                               in a multirepo folder, the groups whose worktrees are all merged and have no
                               agent, with the same options
 """.trimIndent(),
         "multirepo" to """
-  multirepo init [--worktrees-root <dir>] [--name <name>] [--use-worktrees-root | --keep-worktrees-folder] [--json]
+  multirepo init [--worktrees-root <dir>] [--name <name>] [--use-worktrees-root | --keep-worktrees-folder] [--yes] [--json]
                               Make the current folder a multirepo (outside any repository or at the top of a
                               workspace repository); new worktrees folders are proposed under --worktrees-root
                               (default: ../<folder>-worktrees). In a folder that already has a declaration
-                              (e.g. one that moved), register it and its repositories' projects instead.
-                              Either way, forget the known multirepos whose folder no longer exists
+                              (e.g. one that moved), review and approve it as 'trust' does (--yes skips the
+                              question) and register its repositories' projects instead. Either way, forget
+                              the known multirepos whose folder no longer exists
   multirepo show [--json]     Show the multirepo's name, repositories, projects, bases, defaults and agent
+  multirepo trust [<folder>] [--yes | --revoke] [--json]
+                              Review a declaration's name, repositories, paths and worktrees root and approve
+                              it on this machine; only approved multirepos apply. --revoke forgets it
   multirepo name <name> | --clear [--json]
                               Set the name the multirepo is shown with (default: its folder's name)
   multirepo add-repo <alias> <path> [--use-worktrees-root | --keep-worktrees-folder] [--json]
@@ -89,8 +94,10 @@ internal object CliHelp {
                               Remove a repository from the multirepo; its project and worktrees stay
   multirepo defaults <alias>[,<alias>...] | --clear [--json]
                               Set the repositories 'shogun new <id>' covers in the multirepo folder
-  multirepo agent <command> [--name <name>] [--no-headroom] [--json]
-                              Set the agent 'shogun open --herdr' runs in the multirepo folder
+  multirepo agent <command> [--name <name>] [--headroom] [--json]
+                              Set the agent 'shogun open --herdr' runs in the multirepo folder, kept on
+                              this machine and never in the declaration; --headroom wraps it with
+                              'headroom wrap'
   multirepo worktrees-root <dir> [--json]
                               Set the folder under which worktrees folders are proposed
   multirepo delete [--json]   Remove the declaration; projects, worktrees and branches are left as they are
@@ -120,10 +127,19 @@ internal object CliHelp {
   maven [--json]              List the Maven daemons (mvnd) with their memory and worktree
 """.trimIndent(),
         "compose" to """
-  compose [--json]            List the Docker Compose projects of the worktrees with their status
+  compose [--json]            List the Docker Compose projects of the worktrees with their status, and
+                              the volumes, networks and images left by removed worktrees
+  compose up [<worktree>] [--build] [--json] [-- <args>...]
+                              Start the services of the worktree (or the current one) detached, with its
+                              COMPOSE_PROJECT_NAME and ports; arguments after -- go to docker compose
+  compose build [<worktree>] [--json] [-- <args>...]
+                              Build the services of the worktree with its environment
   compose down [<worktree>] [--volumes] [--json]
                               Take down the projects of removed worktrees (or of the given worktree);
                               volumes are kept unless --volumes is given
+  compose prune [--volumes] [--yes] [--json]
+                              List the networks and built images left by removed worktrees; remove them
+                              with --yes (volumes too with --volumes; pulled images are never removed)
                               (repositories with "providers": { "docker-compose": {} } in .shogunai.json)
 """.trimIndent(),
         "pool" to """
@@ -135,7 +151,7 @@ internal object CliHelp {
   xcode [--json]              List Xcode DerivedData folders of the worktrees, orphans and compilation cache
   xcode clean [--json]        Delete orphaned Xcode DerivedData folders on the machine
   xcode trim [--dry-run] [--json]
-                              Release DerivedData folders until it is within the quota in Preferences
+                              Release DerivedData folders until it is within the quota in Preferences (automatic by default)
 """.trimIndent(),
         "hook" to """
   hook worktree-create        Claude Code WorktreeCreate hook: create and provision the worktree, print its path
@@ -171,6 +187,9 @@ internal object CliHelp {
   simulator start|stop|status [<path>] [--device <type>] [--runtime <runtime>] [--json]
                               Boot (and wait for), shut down or show the worktree's iOS simulator; the first
                               start creates it, releasing the least recently used idle one if the pool is full
+  simulator start [--wait] [--wait-timeout <minutes>]
+                              When the pool is full and none can be released, wait in line for one
+                              (30 minutes at most by default) instead of failing
                               (repositories with "providers": { "ios-simulator": {} } in .shogunai.json)
   simulator gradle-init install|uninstall [--yes]
                               Make every project's KMP iOS simulator tests use IOS_SIMULATOR_UDID
@@ -180,6 +199,9 @@ internal object CliHelp {
                               Start (and wait for), stop or show the worktree's Android emulator; the first
                               start reserves its console port, releasing the least recently used idle one if
                               the pool is full
+  emulator start [--wait] [--wait-timeout <minutes>]
+                              When the pool is full and none can be released, wait in line for one
+                              (30 minutes at most by default) instead of failing
                               (repositories with "providers": { "emulator": {} } in .shogunai.json)
 """.trimIndent(),
         "env" to """

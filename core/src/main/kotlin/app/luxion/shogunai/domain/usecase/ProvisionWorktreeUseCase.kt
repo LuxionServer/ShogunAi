@@ -2,7 +2,8 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
-import app.luxion.shogunai.domain.io.PostCreateApproval
+import app.luxion.shogunai.domain.io.ProvisioningRecordStore
+import app.luxion.shogunai.domain.io.RepositoryApproval
 import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -17,23 +18,32 @@ class ProvisionWorktreeUseCase(
     private val provisioningSource: RepositoryProvisioningSource,
     private val environment: WorktreeEnvironmentPreparer = WorktreeEnvironmentPreparer.NONE,
     private val trust: RepositoryTrust = RepositoryTrust.NONE,
-    private val approval: PostCreateApproval = PostCreateApproval.SKIP,
+    private val approval: RepositoryApproval = RepositoryApproval.SKIP,
+    private val records: ProvisioningRecordStore = ProvisioningRecordStore.NONE,
 ) {
     suspend operator fun invoke(worktreePath: String): Result<ProvisionResult> = runCatching {
         val worktree = findLinkedWorktree(config, executor, worktreePath)
         val provisioned = checkProvisioningAndResolveFiles(config, executor, fileManager, provisioningSource)
-        val files = applyProvisionedFiles(config, fileManager, worktree.path, provisioned)
+        val applied = applyProvisionedFiles(config, fileManager, records, worktree.path, provisioned)
+        val approved = settleApproval(config, trust, approval, provisioned.approvalSubject)
         environment.prepare(config.baseRepositoryPath, worktree.path)
-        val skipped = runApprovedPostCreateCommands(
-            config, executor, trust, approval, worktree.path, provisioned.postCreateCommands,
+        val skipped = runPostCreateCommandsIfApproved(executor, approved, worktree.path, provisioned.approvalSubject)
+        ProvisionResult(
+            files = applied.files,
+            skippedPostCreateCommands = skipped.commands,
+            skippedVariables = skipped.variables,
+            removed = applied.removed,
+            skippedLinks = provisioned.skippedLinks,
         )
-        ProvisionResult(files, skipped)
     }
 }
 
 data class ProvisionResult(
     val files: List<ProvisionedFile>,
     val skippedPostCreateCommands: List<List<String>> = emptyList(),
+    val skippedVariables: List<String> = emptyList(),
+    val removed: List<String> = emptyList(),
+    val skippedLinks: List<String> = emptyList(),
 )
 
 internal suspend fun findLinkedWorktree(

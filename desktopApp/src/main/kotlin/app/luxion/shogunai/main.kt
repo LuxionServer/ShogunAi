@@ -304,6 +304,7 @@ private fun openWindow() = application {
             onToggleSidebar = shellViewModel::toggleSidebar,
             onPreferences = openPreferences,
             onCheckForUpdates = checkForUpdates,
+            onTour = appContainer.tour::start,
             onCopyDiagnosticReport = copyDiagnosticReport,
             onAbout = { aboutOpen = true },
             onQuit = requestQuit,

@@ -11,6 +11,8 @@ import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.ResourceSettings
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeAppleSimulators
+import app.luxion.shogunai.domain.FakeDeviceWaitQueue
+import app.luxion.shogunai.domain.FakeProcessLiveness
 import app.luxion.shogunai.domain.FakeDerivedDataSource
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
@@ -27,7 +29,16 @@ import app.luxion.shogunai.domain.model.EnvironmentDeclaration
 import app.luxion.shogunai.domain.model.IosSimulatorProvider
 import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.domain.model.Project
+import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.FakeRepositoryTrust
+import app.luxion.shogunai.domain.io.RepositoryTrust
+import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
+import app.luxion.shogunai.domain.model.ProcessIdentity
+import app.luxion.shogunai.domain.model.ResourceKind
+import app.luxion.shogunai.domain.model.WaitTicket
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
+import app.luxion.shogunai.domain.model.toLocalClockTime
 import java.nio.file.Files
 import kotlin.io.path.readText
 import kotlin.test.AfterTest
@@ -61,6 +72,9 @@ class EnvironmentCommandsTest {
     private val out = StringBuilder()
     private val err = StringBuilder()
     private val store = FakeEnvironmentStateStore()
+    private val waitQueue = FakeDeviceWaitQueue()
+    private var clock: Instant = Instant.now()
+    private var onPause: () -> Unit = {}
 
     @AfterTest
     fun cleanUp() {
@@ -94,15 +108,19 @@ class EnvironmentCommandsTest {
         ),
     )
 
+    private val project = Project("main-repo", "main-repo", ProjectConfig(base, "/home/dev/projects/worktrees", emptyList()))
+
     private fun cli(
         provisioning: FakeRepositoryProvisioningSource,
         workingDirectory: String = linked,
         input: String = "",
         environment: Map<String, String> = mapOf("CLAUDE_ENV_FILE" to envFile.toString()),
+        registered: Boolean = true,
+        trust: RepositoryTrust = FakeRepositoryTrust(approvesEverything = true),
     ) = ShogunCli(
         executor = executor,
         fileManager = FakeFileManager(existing = listOf(base, linked)),
-        projectRepository = FakeProjectRepository(emptyList()),
+        projectRepository = FakeProjectRepository(if (registered) listOf(project) else emptyList()),
         provisioningSource = provisioning,
         daemonSource = daemons,
         gradleUserHome = "/home/dev/.gradle",
@@ -121,6 +139,14 @@ class EnvironmentCommandsTest {
         readInput = { input },
         canonicalPath = { it.trimEnd('/') },
         environmentVariable = { environment[it] },
+        trust = trust,
+        deviceWaitQueue = waitQueue,
+        processLiveness = FakeProcessLiveness(),
+        deviceClock = { clock },
+        pauseWhileWaiting = { pause ->
+            clock = clock.plus(pause)
+            onPause()
+        },
     )
 
     private fun withEmulator() = FakeRepositoryProvisioningSource(
@@ -204,8 +230,9 @@ class EnvironmentCommandsTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals("export IOS_SIMULATOR_UDID='UDID-1'\n", envFile.readText())
-        assertTrue(out.contains("IOS_SIMULATOR_UDID=UDID-1"), out.toString())
+        assertEquals("ShogunAi environment of worktree TASK-123: IOS_SIMULATOR_UDID", out.lines().first())
         assertTrue(out.contains("`shogun simulator start`"), out.toString())
+        assertTrue(out.contains("`shogun simulator start --wait` run in the background"), out.toString())
         assertTrue(out.contains("xcodebuild -destination \"id=\$IOS_SIMULATOR_UDID\""), out.toString())
     }
 
@@ -285,8 +312,10 @@ class EnvironmentCommandsTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals("export ANDROID_SERIAL='emulator-5554'\n", envFile.readText())
-        assertTrue(out.contains("ANDROID_SERIAL=emulator-5554"), out.toString())
+        assertEquals("ShogunAi environment of worktree TASK-123: ANDROID_SERIAL", out.lines().first())
+        assertFalse(out.contains("emulator-5554"), out.toString())
         assertTrue(out.contains("`shogun emulator start`"), out.toString())
+        assertTrue(out.contains("`shogun emulator start --wait` run in the background"), out.toString())
         assertTrue(out.contains("may have been released to another worktree"), out.toString())
         assertTrue(out.contains("never run 'adb kill-server' or 'adb start-server'"), out.toString())
         assertEquals(0, androidSdk.locates)
@@ -332,7 +361,8 @@ class EnvironmentCommandsTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals("export OTHER='1'\nexport PORT='20000'\n", envFile.readText())
-        assertEquals("ShogunAi environment of worktree TASK-123: PORT=20000", out.lines().first())
+        assertEquals("ShogunAi environment of worktree TASK-123: PORT", out.lines().first())
+        assertFalse(out.contains("20000"), out.toString())
         assertTrue(out.contains("change the branch of the worktree a session starts in"), out.toString())
     }
 
@@ -401,6 +431,50 @@ class EnvironmentCommandsTest {
     }
 
     @Test
+    fun `session-start in a repository that isn't registered delivers no environment`() {
+        val exitCode = cli(declaring("PORT" to "\${port}"), input = """{"cwd": "$linked"}""", registered = false)
+            .run(listOf("hook", "session-start"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("", envFile.readText())
+        assertFalse(out.contains("PORT"), out.toString())
+        assertTrue(out.contains("change the branch of the worktree a session starts in"), out.toString())
+        assertTrue(store.portsByAdminDirectory.isEmpty())
+        assertEquals(0, store.writes)
+    }
+
+    @Test
+    fun `session-start names variables awaiting approval without delivering them`() {
+        val exitCode = cli(declaring("PORT" to "\${port}"), input = """{"cwd": "$linked"}""", trust = FakeRepositoryTrust())
+            .run(listOf("hook", "session-start"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("", envFile.readText())
+        assertFalse(out.contains("ShogunAi environment of worktree"), out.toString())
+        val awaiting = out.lines().single { it.contains("awaiting the user's approval") }
+        assertTrue(awaiting.contains("PORT") && awaiting.contains("shogun trust"), out.toString())
+    }
+
+    @Test
+    fun `session-start delivers declared variables once approved`() {
+        val trust = FakeRepositoryTrust(mapOf(base to RepositoryApprovalSubject(variables = listOf("PORT" to "\${port}"))))
+
+        cli(declaring("PORT" to "\${port}"), input = """{"cwd": "$linked"}""", trust = trust).run(listOf("hook", "session-start"))
+
+        assertEquals("export PORT='20000'\n", envFile.readText())
+        assertFalse(out.contains("awaiting"), out.toString())
+    }
+
+    @Test
+    fun `env leaves out variables awaiting approval and names them on standard error`() {
+        val exitCode = cli(declaring("PORT" to "\${port}"), trust = FakeRepositoryTrust()).run(listOf("env"))
+
+        assertEquals(0, exitCode)
+        assertEquals("", out.toString())
+        assertTrue(err.contains("PORT") && err.contains("shogun trust"), err.toString())
+    }
+
+    @Test
     fun `session-start with an unreadable declaration exits 1 without writing`() {
         val provisioning = FakeRepositoryProvisioningSource(unreadable = setOf(base))
 
@@ -424,7 +498,7 @@ class EnvironmentCommandsTest {
     fun `emulator json reports the serial and state`() {
         assertEquals(0, cli(withEmulator()).run(listOf("emulator", "start", "--no-window", "--json")))
         val started = jsonOut()
-        assertEquals(setOf("worktree", "serial", "state", "acquired", "acquiredNow", "released"), started.keys)
+        assertEquals(setOf("worktree", "serial", "state", "acquired", "acquiredNow", "released", "waited"), started.keys)
         assertEquals(linked, started.text("worktree"))
         assertEquals("emulator-5554", started.text("serial"))
         assertEquals("running", started.text("state"))
@@ -460,7 +534,7 @@ class EnvironmentCommandsTest {
     fun `simulator json reports the udid, name and state`() {
         assertEquals(0, cli(withSimulator()).run(listOf("simulator", "start", "--json")))
         val started = jsonOut()
-        assertEquals(setOf("worktree", "udid", "name", "state", "acquired", "acquiredNow", "released"), started.keys)
+        assertEquals(setOf("worktree", "udid", "name", "state", "acquired", "acquiredNow", "released", "waited"), started.keys)
         assertEquals("UDID-1", started.text("udid"))
         assertEquals("ShogunAi · main-repo · TASK-123", started.text("name"))
         assertEquals("booted", started.text("state"))
@@ -588,5 +662,88 @@ class EnvironmentCommandsTest {
     fun `pool needs an action and accepts only status or trim`() {
         assertEquals(2, cli(withEmulator()).run(listOf("pool")))
         assertEquals(2, cli(withEmulator()).run(listOf("pool", "grow")))
+    }
+
+    private fun runningEmulatorOfTask9() {
+        resourceLimits.settings = ResourceSettings(CapacityProfile.CUSTOM, ResourceLimits(emulators = 1, simulators = null, gradleDaemons = null))
+        store.writePorts("$common/worktrees/TASK-9", mapOf("emulator" to 5556))
+        store.writeLeases("$common/worktrees/TASK-9", mapOf("emulator" to clock.toEpochMilli()))
+        androidSdk.states["emulator-5556"] = EmulatorState.RUNNING
+    }
+
+    @Test
+    fun `wait options only apply to start and need positive minutes`() {
+        assertEquals(2, cli(withEmulator()).run(listOf("emulator", "status", "--wait")))
+        assertTrue(err.contains("--wait and --wait-timeout only apply to 'emulator start'"), err.toString())
+        assertEquals(2, cli(withSimulator()).run(listOf("simulator", "stop", "--wait-timeout", "5")))
+        assertEquals(2, cli(withSimulator()).run(listOf("simulator", "start", "--wait-timeout", "0")))
+        assertEquals(2, cli(withEmulator()).run(listOf("emulator", "start", "--wait-timeout", "soon")))
+    }
+
+    @Test
+    fun `emulator start with wait queues until the lease expires, showing its place once`() {
+        runningEmulatorOfTask9()
+        val leaseEnd = clock.plusSeconds(20 * 60).toLocalClockTime()
+
+        val exitCode = cli(withEmulator()).run(listOf("emulator", "start", "--wait"))
+
+        assertEquals(0, exitCode, err.toString())
+        val waiting = err.lines().filter { it.startsWith("waiting for") }
+        assertEquals(
+            listOf(
+                "waiting for an emulator: 1st of 1 in the queue, limit 1: main-repo · TASK-9 running, lease until $leaseEnd; " +
+                    "next lease expires at $leaseEnd",
+            ),
+            waiting,
+        )
+        assertTrue(err.contains("released the emulator of main-repo · TASK-9 to make room"), err.toString())
+        assertTrue(err.contains("waited 20 min"), err.toString())
+        assertTrue(out.contains("export ANDROID_SERIAL=emulator-5554"), out.toString())
+        assertTrue(waitQueue.tickets.isEmpty())
+    }
+
+    @Test
+    fun `emulator start json reports the seconds waited, and null without wait`() {
+        runningEmulatorOfTask9()
+
+        assertEquals(0, cli(withEmulator()).run(listOf("emulator", "start", "--wait", "--json")), err.toString())
+        assertEquals("1200", jsonOut().getValue("waited").toString())
+
+        out.clear()
+        assertEquals(0, cli(withEmulator()).run(listOf("emulator", "start", "--json")), err.toString())
+        assertEquals("null", jsonOut().getValue("waited").toString())
+    }
+
+    @Test
+    fun `a wait that times out fails with nothing on standard output`() {
+        runningEmulatorOfTask9()
+        onPause = { store.writeLeases("$common/worktrees/TASK-9", mapOf("emulator" to clock.toEpochMilli())) }
+
+        val exitCode = cli(withEmulator()).run(listOf("emulator", "start", "--wait-timeout", "1", "--json"))
+
+        assertEquals(1, exitCode)
+        assertEquals("", out.toString())
+        assertTrue(err.contains("Waited 1 min for an emulator and none could be released: main-repo · TASK-9 (running"), err.toString())
+        assertTrue(androidSdk.started.isEmpty())
+        assertTrue(waitQueue.tickets.isEmpty())
+    }
+
+    @Test
+    fun `pool status lists the worktrees waiting for each device pool`() {
+        resourceLimits.settings = ResourceSettings(CapacityProfile.CUSTOM, ResourceLimits(emulators = 1, simulators = 1, gradleDaemons = 4))
+        val since = clock.minusSeconds(120)
+        waitQueue.write(
+            ResourceKind.EMULATOR,
+            listOf(WaitTicket("ticket", "$common/worktrees/TASK-9", "/home/dev/projects/worktrees/TASK-9", ProcessIdentity(1, 1), since.toEpochMilli())),
+        )
+
+        assertEquals(0, cli(withEmulator()).run(listOf("pool", "status")), err.toString())
+        assertTrue(out.contains("emulators 0/1\n  waiting: main-repo · TASK-9 since ${since.toLocalClockTime()}\nsimulators 0/1\n"), out.toString())
+
+        out.clear()
+        assertEquals(0, cli(withEmulator()).run(listOf("pool", "status", "--json")))
+        val pools = jsonOut().getValue("pools") as kotlinx.serialization.json.JsonArray
+        val waiting = pools.map { ((it as kotlinx.serialization.json.JsonObject).getValue("waiting") as kotlinx.serialization.json.JsonArray).size }
+        assertEquals(listOf(1, 0, 0), waiting)
     }
 }

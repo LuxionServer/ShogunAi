@@ -24,11 +24,11 @@ The sidebar SHALL list every saved project by name, alphabetically unless the us
 - **THEN** the sidebar lists `main-repo` and the folder `product` with `api` and `mobile` inside
 
 ### Requirement: First launch without projects
-When no project is saved, the content area SHALL show an empty state that explains what a project is and offers to add one.
+When no project is saved, the content area SHALL show an empty state that explains what a project is and offers to add one, and SHALL offer to take the ShogunAi tour next to it.
 
 #### Scenario: No projects
 - **WHEN** the app starts with no saved projects
-- **THEN** the content area shows the empty state with an action that opens the add-project form
+- **THEN** the content area shows the empty state with an action that opens the add-project form and an action that starts the tour
 
 ### Requirement: Reopen the last view
 The app SHALL reopen on the view that was selected when it was last closed. If that view no longer exists (for example, a deleted project), it SHALL open on "Active", or on the empty state when there are none.
@@ -64,7 +64,7 @@ The sidebar SHALL collapse to a compact rail of icons when the window is narrowe
 - **THEN** the sidebar collapses to the rail, and stays collapsed after a restart
 
 ### Requirement: Application menu
-The app SHALL provide an application menu with File (Add project, and on Windows and Linux Preferences and Quit), View (Reload, Toggle sidebar) and Help (About) entries, each with its keyboard shortcut. On macOS, Preferences and About SHALL be in the application menu named after the app.
+The app SHALL provide an application menu with File (Add project, and on Windows and Linux Preferences and Quit), View (Reload, Toggle sidebar) and Help (ShogunAi Tour, Check for updates, Copy diagnostic report, and on Windows and Linux About) entries, each with its keyboard shortcut when it has one. On macOS, Preferences and About SHALL be in the application menu named after the app.
 
 #### Scenario: Reload from the menu
 - **WHEN** the user chooses View > Reload or presses Cmd/Ctrl+R
@@ -73,6 +73,10 @@ The app SHALL provide an application menu with File (Add project, and on Windows
 #### Scenario: macOS conventions
 - **WHEN** the app runs on macOS
 - **THEN** "About ShogunAi" and "Settings…" (Cmd+,) are in the ShogunAi menu
+
+#### Scenario: Tour from the Help menu
+- **WHEN** the user has projects and chooses Help > "ShogunAi Tour"
+- **THEN** the tour starts
 
 ### Requirement: Preferences window
 The app SHALL provide a Preferences window, opened from the menu or with Cmd/Ctrl+Comma, holding the theme mode, the language, a "Tools" section with the terminal and the default IDE, each chosen among the ones detected on the machine, and a "Resources" section with the capacity profile. Changes SHALL apply immediately to the main window.

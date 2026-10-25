@@ -4,6 +4,10 @@ import app.luxion.shogunai.domain.usecase.worktreeComposeProjectName
 import app.luxion.shogunai.domain.model.ComposeProject
 import app.luxion.shogunai.domain.model.DockerComposeProvider
 import app.luxion.shogunai.ComposeUseCases
+import app.luxion.shogunai.domain.model.ComposeResourceKind
+import app.luxion.shogunai.domain.model.ComposeResource
+import app.luxion.shogunai.domain.model.WorktreeComposeState
+import app.luxion.shogunai.domain.model.ComposeAction
 import app.luxion.shogunai.domain.FakeComposeProjectSource
 import app.luxion.shogunai.domain.model.PoolRelease
 import app.luxion.shogunai.domain.model.PoolReleaseReason
@@ -45,6 +49,7 @@ import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
@@ -52,8 +57,8 @@ import app.luxion.shogunai.domain.FakeGradleDaemonSource
 import app.luxion.shogunai.domain.FakeGradleDaemonSource.Companion.gradleDaemon
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeRepositoryTrust
-import app.luxion.shogunai.domain.io.PostCreateApproval
-import app.luxion.shogunai.domain.io.PostCreateDecision
+import app.luxion.shogunai.domain.io.RepositoryApproval
+import app.luxion.shogunai.domain.io.ApprovalDecision
 import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
@@ -107,10 +112,11 @@ import app.luxion.shogunai.domain.model.Project
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.v2.runComposeUiTest
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -170,6 +176,10 @@ class ProjectWorktreesTest {
         Dispatchers.resetMain()
     }
 
+    private fun loadedProjectWorktrees(useCases: WorktreeUseCases): ProjectWorktrees =
+        ProjectWorktrees(useCases, CoroutineScope(SupervisorJob() + Dispatchers.Unconfined), ioDispatcher = Dispatchers.Unconfined)
+            .also { it.refresh() }
+
     private fun projectWorktrees(useCases: WorktreeUseCases, onUsed: (String) -> Unit = {}): ProjectWorktrees =
         ProjectWorktrees(useCases, CoroutineScope(SupervisorJob() + dispatcher), ioDispatcher = dispatcher, onUsed = onUsed)
             .also { it.refresh() }
@@ -208,7 +218,7 @@ class ProjectWorktreesTest {
         provisioning: FakeRepositoryProvisioningSource = FakeRepositoryProvisioningSource(),
         createFiles: FakeFileManager = FakeFileManager(),
         trust: RepositoryTrust = RepositoryTrust.NONE,
-        approval: PostCreateApproval = PostCreateApproval.SKIP,
+        approval: RepositoryApproval = RepositoryApproval.SKIP,
     ): WorktreeUseCases {
         return WorktreeUseCases(
             list = ListWorktreesUseCase(config, executor),
@@ -273,6 +283,7 @@ class ProjectWorktreesTest {
         override fun isSupported(): Boolean = true
         override suspend fun folders(): List<DerivedDataFolder> = throw error
         override suspend fun compilationCacheBytes(): Long? = null
+        override suspend fun freeBytes(): Long? = null
         override fun projectExists(workspacePath: String): Boolean = false
         override fun isOnUnavailableVolume(workspacePath: String): Boolean = false
         override suspend fun size(folder: DerivedDataFolder): Long = 0L
@@ -409,7 +420,7 @@ class ProjectWorktreesTest {
             }
         }
         val baseFiles = FakeFileManager(existing = listOf(config.baseRepositoryPath) + config.secretFiles.map { config.baseSecretPath(it) })
-        val trust = FakeRepositoryTrust(mapOf(config.baseRepositoryPath to listOf(listOf("npm", "install"))))
+        val trust = FakeRepositoryTrust(mapOf(config.baseRepositoryPath to RepositoryApprovalSubject(listOf(listOf("npm", "install")))))
         val board = board(useCasesWith(executor, provisioning = provisioning, createFiles = baseFiles, trust = trust))
         advanceUntilIdle()
         board.openCreateDialog()
@@ -424,12 +435,12 @@ class ProjectWorktreesTest {
         assertFalse(board.canCreate)
     }
 
-    private fun approvalScenario(approval: DialogPostCreateApproval, trust: FakeRepositoryTrust): Pair<WorktreeBoard, FakeShellCommandExecutor> {
-        val provisioning = FakeRepositoryProvisioningSource(
-            byRepository = mapOf(
-                config.baseRepositoryPath to RepositoryProvisioning(postCreateCommands = listOf(listOf("npm", "install"))),
-            ),
-        )
+    private fun approvalScenario(
+        approval: DialogRepositoryApproval,
+        trust: FakeRepositoryTrust,
+        declared: RepositoryProvisioning = RepositoryProvisioning(postCreateCommands = listOf(listOf("npm", "install"))),
+    ): Pair<WorktreeBoard, FakeShellCommandExecutor> {
+        val provisioning = FakeRepositoryProvisioningSource(byRepository = mapOf(config.baseRepositoryPath to declared))
         val executor = FakeShellCommandExecutor { command ->
             if (command == listCommand) success(command, porcelainOutput) else success(command)
         }
@@ -450,7 +461,7 @@ class ProjectWorktreesTest {
 
     @Test
     fun `creation waits for the approval of unapproved commands and runs and remembers them on run`() = runTest(dispatcher) {
-        val approval = DialogPostCreateApproval()
+        val approval = DialogRepositoryApproval()
         val trust = FakeRepositoryTrust()
         val (board, executor) = approvalScenario(approval, trust)
         advanceUntilIdle()
@@ -460,22 +471,22 @@ class ProjectWorktreesTest {
         board.confirmCreate()
         advanceUntilIdle()
 
-        assertEquals(listOf(listOf("npm", "install")), board.approval.pending?.commands)
+        assertEquals(listOf(listOf("npm", "install")), board.approval.pending?.subject?.commands)
         assertTrue(board.project.isCreating)
         assertFalse(executor.executedCommands.any { it.first() == "npm" })
 
-        board.approval.resolve(PostCreateDecision.RUN)
+        board.approval.resolve(ApprovalDecision.APPROVE)
         advanceUntilIdle()
 
         assertNull(board.approval.pending)
         assertTrue(executor.executedCommands.any { it == listOf("npm", "install") })
-        assertTrue(trust.isApproved(config.baseRepositoryPath, listOf(listOf("npm", "install"))))
+        assertTrue(trust.isApproved(config.baseRepositoryPath, RepositoryApprovalSubject(listOf(listOf("npm", "install")))))
         assertEquals(WorktreeSuccess.Created("${config.worktreesRoot}/TASK-456", commandsSkipped = false), board.project.success)
     }
 
     @Test
     fun `skipping the approval creates the worktree without running the commands and says so`() = runTest(dispatcher) {
-        val approval = DialogPostCreateApproval()
+        val approval = DialogRepositoryApproval()
         val trust = FakeRepositoryTrust()
         val (board, executor) = approvalScenario(approval, trust)
         advanceUntilIdle()
@@ -484,18 +495,41 @@ class ProjectWorktreesTest {
         board.confirmCreate()
         advanceUntilIdle()
 
-        board.approval.resolve(PostCreateDecision.SKIP)
+        board.approval.resolve(ApprovalDecision.SKIP)
         advanceUntilIdle()
 
         assertFalse(executor.executedCommands.any { it.first() == "npm" })
-        assertFalse(trust.isApproved(config.baseRepositoryPath, listOf(listOf("npm", "install"))))
+        assertFalse(trust.isApproved(config.baseRepositoryPath, RepositoryApprovalSubject(listOf(listOf("npm", "install")))))
+        assertEquals(WorktreeSuccess.Created("${config.worktreesRoot}/TASK-456", commandsSkipped = true), board.project.success)
+    }
+
+    @Test
+    fun `the approval shows declared variables and the environment file and skipping them says so`() = runTest(dispatcher) {
+        val approval = DialogRepositoryApproval()
+        val declared = RepositoryProvisioning(
+            environment = EnvironmentDeclaration(listOf(parseEnvironmentVariable("PORT", "\${port}")), ".env.shogunai"),
+        )
+        val (board, _) = approvalScenario(approval, FakeRepositoryTrust(), declared)
+        advanceUntilIdle()
+        board.openCreateDialog()
+        board.updateTaskId("TASK-456")
+        board.confirmCreate()
+        advanceUntilIdle()
+
+        val subject = board.approval.pending?.subject
+        assertEquals(listOf("PORT" to "\${port}"), subject?.variables)
+        assertEquals(".env.shogunai", subject?.envFile)
+
+        board.approval.resolve(ApprovalDecision.SKIP)
+        advanceUntilIdle()
+
         assertEquals(WorktreeSuccess.Created("${config.worktreesRoot}/TASK-456", commandsSkipped = true), board.project.success)
     }
 
     @Test
     fun `approved commands are not asked again`() = runTest(dispatcher) {
-        val approval = DialogPostCreateApproval()
-        val trust = FakeRepositoryTrust(mapOf(config.baseRepositoryPath to listOf(listOf("npm", "install"))))
+        val approval = DialogRepositoryApproval()
+        val trust = FakeRepositoryTrust(mapOf(config.baseRepositoryPath to RepositoryApprovalSubject(listOf(listOf("npm", "install")))))
         val (board, executor) = approvalScenario(approval, trust)
         advanceUntilIdle()
         board.openCreateDialog()
@@ -1554,7 +1588,7 @@ class ProjectWorktreesTest {
         assertEquals(previous, viewModel.statuses[worktreePath])
         assertEquals(WorktreeStatusState.Loading, viewModel.statuses[otherPath])
 
-        statusGate?.complete(Unit)
+        statusGate.complete(Unit)
         advanceUntilIdle()
 
         assertIs<WorktreeStatusState.Loaded>(viewModel.statuses[otherPath])
@@ -1611,7 +1645,7 @@ class ProjectWorktreesTest {
 
         assertEquals(0, assertIs<WorktreeStatusState.Loaded>(viewModel.statuses[worktreePath]).status.uncommittedChanges)
 
-        statusGate?.complete(Unit)
+        statusGate.complete(Unit)
         advanceUntilIdle()
 
         assertEquals(1, listCalls)
@@ -2090,6 +2124,105 @@ class ProjectWorktreesTest {
 
     private val worktreeComposeName get() = worktreeComposeProjectName(config.baseRepositoryPath, worktreePath)
 
+    private fun composeSection(
+        status: () -> String? = { null },
+        run: suspend (String, ComposeAction) -> Result<String> = { _, _ -> Result.success(worktreeComposeName) },
+        unavailable: Boolean = false,
+        declared: Boolean = true,
+    ) = ComposeUseCases(
+        provider = { DockerComposeProvider().takeIf { declared } },
+        readStates = { worktrees ->
+            if (unavailable) {
+                Result.failure(WorktreeError.DockerUnavailable("daemon down"))
+            } else {
+                Result.success(worktrees.associate { it.path to WorktreeComposeState(worktreeComposeProjectName(config.baseRepositoryPath, it.path), status()) })
+            }
+        },
+        run = run,
+    )
+
+    @Test
+    fun `the compose section shows the project not started before any start`() = runTest(dispatcher) {
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(compose = composeSection()))
+        advanceUntilIdle()
+
+        assertEquals(WorktreeComposeState(worktreeComposeName, null), viewModel.composeStates[worktreePath])
+        assertFalse(viewModel.isComposeUnavailable)
+    }
+
+    @Test
+    fun `starting the services shows progress and then the new state`() = runTest(dispatcher) {
+        var status: String? = null
+        val actions = mutableListOf<Pair<String, ComposeAction>>()
+        val gate = CompletableDeferred<Unit>()
+        val compose = composeSection(status = { status }, run = { path, action ->
+            actions += path to action
+            gate.await()
+            status = "running(2)"
+            Result.success(worktreeComposeName)
+        })
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(compose = compose))
+        advanceUntilIdle()
+
+        viewModel.startComposeServices(worktree)
+        viewModel.startComposeServices(worktree)
+        advanceUntilIdle()
+        assertEquals(ProjectWorktrees.ComposeActivity.STARTING, viewModel.composeActivities[worktreePath])
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(listOf<Pair<String, ComposeAction>>(worktreePath to ComposeAction.Up()), actions)
+        assertTrue(viewModel.composeActivities.isEmpty())
+        assertEquals("running(2)", viewModel.composeStates[worktreePath]?.status)
+    }
+
+    @Test
+    fun `building the services runs a build`() = runTest(dispatcher) {
+        val actions = mutableListOf<ComposeAction>()
+        val compose = composeSection(run = { _, action -> actions += action; Result.success(worktreeComposeName) })
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(compose = compose))
+        advanceUntilIdle()
+
+        viewModel.buildComposeServices(worktree)
+        advanceUntilIdle()
+
+        assertEquals(listOf<ComposeAction>(ComposeAction.Build()), actions)
+    }
+
+    @Test
+    fun `a failed start is shown as an action error with its reason`() = runTest(dispatcher) {
+        val compose = composeSection(run = { _, _ -> Result.failure(WorktreeError.ComposeCommandFailed(worktreeComposeName, "port is already allocated")) })
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(compose = compose))
+        advanceUntilIdle()
+
+        viewModel.startComposeServices(worktree)
+        advanceUntilIdle()
+
+        assertEquals("port is already allocated", (viewModel.actionErrors[worktreePath] as WorktreeError.ComposeCommandFailed).detail)
+        assertTrue(viewModel.composeActivities.isEmpty())
+    }
+
+    @Test
+    fun `without docker the compose section is unavailable`() = runTest(dispatcher) {
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(compose = composeSection(unavailable = true)))
+        advanceUntilIdle()
+
+        assertTrue(viewModel.isComposeUnavailable)
+        assertTrue(viewModel.composeStates.isEmpty())
+    }
+
+    @Test
+    fun `a repository without the compose provider reads no compose state`() = runTest(dispatcher) {
+        var reads = 0
+        val compose = composeSection(declared = false).copy(readStates = { reads++; Result.success(emptyMap()) })
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(compose = compose))
+        advanceUntilIdle()
+
+        assertFalse(viewModel.isComposeRepository)
+        assertEquals(0, reads)
+    }
+
     @Test
     fun `cleanup takes down the compose projects of the removed worktrees`() = runTest(dispatcher) {
         val source = FakeComposeProjectSource(listOf(ComposeProject(worktreeComposeName, "running(1)", emptyList())))
@@ -2104,6 +2237,63 @@ class ProjectWorktreesTest {
 
         assertEquals(listOf(worktreeComposeName to false), source.downs)
         assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1, takenDownComposeProjects = 1), board.cleanupSuccess)
+    }
+
+    private val composeImage get() = ComposeResource(ComposeResourceKind.IMAGE, "sha256:aa", "$worktreeComposeName-api", worktreeComposeName)
+    private val composeVolume get() = ComposeResource(ComposeResourceKind.VOLUME, "${worktreeComposeName}_db", "${worktreeComposeName}_db", worktreeComposeName)
+
+    @Test
+    fun `cleanup removes built images and keeps volumes by default`() = runTest(dispatcher) {
+        val source = FakeComposeProjectSource(resources = listOf(composeImage, composeVolume))
+        val board = board(composeRepository(mergedResponder(), source))
+        advanceUntilIdle()
+
+        board.openCleanup()
+        assertFalse(board.cleanupRemoveComposeVolumes)
+        board.confirmCleanup()
+        advanceUntilIdle()
+
+        assertEquals(listOf(composeImage), source.removals)
+        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1, removedComposeResources = 1), board.cleanupSuccess)
+    }
+
+    @Test
+    fun `cleanup removes volumes when that option is checked`() = runTest(dispatcher) {
+        val source = FakeComposeProjectSource(resources = listOf(composeImage, composeVolume))
+        val board = board(composeRepository(mergedResponder(), source))
+        advanceUntilIdle()
+
+        board.openCleanup()
+        board.cleanupRemoveComposeVolumes = true
+        board.confirmCleanup()
+        advanceUntilIdle()
+
+        assertEquals(listOf(composeImage, composeVolume), source.removals)
+    }
+
+    @Test
+    fun `unchecking the compose option unchecks the volumes option`() = runTest(dispatcher) {
+        val board = board(composeRepository(mergedResponder(), FakeComposeProjectSource()))
+        advanceUntilIdle()
+
+        board.openCleanup()
+        board.cleanupRemoveComposeVolumes = true
+        board.cleanupDownComposeProjects = false
+
+        assertFalse(board.cleanupRemoveComposeVolumes)
+    }
+
+    @Test
+    fun `an image in use is reported in the cleanup issues`() = runTest(dispatcher) {
+        val source = FakeComposeProjectSource(resources = listOf(composeImage), failingRemovals = mapOf("sha256:aa" to "in use"))
+        val board = board(composeRepository(mergedResponder(), source))
+        advanceUntilIdle()
+
+        board.openCleanup()
+        board.confirmCleanup()
+        advanceUntilIdle()
+
+        assertEquals("in use", board.project.cleanupIssues?.composeResources?.failures?.single()?.detail)
     }
 
     @Test
@@ -2326,6 +2516,35 @@ class ProjectWorktreesTest {
 
         assertEquals(listOf(worktreePath), simulators.stopped)
         assertTrue(viewModel.stoppingSimulators.isEmpty())
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the detail shows the compose section and starts the services from it`() = runComposeUiTest {
+        val actions = mutableListOf<ComposeAction>()
+        val compose = composeSection(run = { _, action -> actions += action; Result.success(worktreeComposeName) })
+        val holder = loadedProjectWorktrees(useCases(listingResponder()).copy(compose = compose))
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder) } }
+
+        waitUntil { onAllNodesWithText("Not started").fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText(worktreeComposeName).assertIsDisplayed()
+        onNodeWithText("Not started").assertIsDisplayed()
+        onNodeWithText("Build").assertIsDisplayed()
+        onNodeWithText("Take down").assertDoesNotExist()
+        onNodeWithText("Start").performClick()
+        waitUntil { actions.isNotEmpty() }
+
+        assertEquals(listOf<ComposeAction>(ComposeAction.Up()), actions)
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the compose section says when docker is unavailable and offers no action`() = runComposeUiTest {
+        val holder = loadedProjectWorktrees(useCases(listingResponder()).copy(compose = composeSection(unavailable = true)))
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder) } }
+
+        waitUntil { onAllNodesWithText("Docker isn't available").fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("Build").assertDoesNotExist()
     }
 
     @OptIn(ExperimentalTestApi::class)
@@ -3454,6 +3673,27 @@ class ProjectWorktreesTest {
     }
 
     @Test
+    fun `the detail names variables awaiting approval without values and leaves them out of the copy`() = runTest(dispatcher) {
+        val environment = WorktreeEnvironment(
+            variables = listOf("ANDROID_SERIAL" to "emulator-5554"),
+            awaitingApproval = listOf("PORT", "APP_SUFFIX"),
+            declarationApproved = false,
+        )
+        val viewModel = provisioningCase(mutableListOf(), environment = environment)
+        advanceUntilIdle()
+
+        viewModel.loadDetail(viewModel.linked())
+        advanceUntilIdle()
+
+        assertEquals(listOf("PORT", "APP_SUFFIX"), viewModel.environments[worktreePath]?.awaitingApproval)
+        assertEquals("ANDROID_SERIAL=emulator-5554\n", environmentAsDotenv(environment))
+        assertEquals(
+            "Awaiting approval: PORT, APP_SUFFIX. Approve them in project settings or with shogun trust.",
+            EnglishStrings.variablesAwaitingApproval(environment.awaitingApproval),
+        )
+    }
+
+    @Test
     fun `removing a worktree releases the resources planned before the removal`() = runTest(dispatcher) {
         val steps = mutableListOf<String>()
         val base = useCases { command ->
@@ -3545,7 +3785,7 @@ class ProjectWorktreesTest {
         holder.copyLaunchCommand(target)
         advanceUntilIdle()
 
-        assertEquals(listOf("cd '$worktreePath' && headroom wrap claude"), clipboard.writtenText)
+        assertEquals(listOf("cd '$worktreePath' && claude"), clipboard.writtenText)
         assertEquals(emptyMap(), choices.chosen)
     }
 

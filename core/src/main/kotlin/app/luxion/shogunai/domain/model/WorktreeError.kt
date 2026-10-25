@@ -1,5 +1,7 @@
 package app.luxion.shogunai.domain.model
 
+import java.time.Duration
+
 sealed class WorktreeError(message: String, cause: Throwable? = null) : Exception(message, cause) {
 
     class BaseRepositoryNotFound(val path: String) :
@@ -57,6 +59,9 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class SecretCopyFailed(cause: Throwable) :
         WorktreeError("Failed to copy secret files: ${cause.message}", cause)
 
+    class LinkedFolderOccupied(val entry: String, val worktreePath: String) :
+        WorktreeError("Can't link $entry: the worktree's $entry folder holds files ShogunAi didn't copy")
+
     class PostCreateCommandFailed(
         val worktreePath: String,
         val command: List<String>,
@@ -87,18 +92,35 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class DockerUnavailable(val reason: String?) :
         WorktreeError("Docker isn't available" + if (reason.isNullOrBlank()) "" else ": $reason")
 
+    class ComposeCommandFailed(val project: String, val detail: String) :
+        WorktreeError("Docker Compose failed for $project: $detail")
+
     class NoFreePort(val from: Int, val to: Int) :
         WorktreeError("No free port left between $from and $to for this worktree")
 
     class NoEmulatorPort(val from: Int, val to: Int) :
         WorktreeError("No emulator port left between $from and $to; stop or remove other worktrees' emulators")
 
-    class ResourcePoolFull(val kind: ResourceKind, val limit: Int, val holders: List<PoolHolder>) :
-        WorktreeError(
-            "The limit of $limit ${kind.name.lowercase().replace('_', ' ')}${if (limit == 1) "" else "s"} is reached and none can be released: " +
-                holders.joinToString("; ") { "${it.displayName} (${it.state.name.lowercase()}${it.protectionNote()})" } +
-                ". Wait for a lease to expire, stop one, or raise the limit in Preferences",
-        )
+    class ResourcePoolFull(
+        val kind: ResourceKind,
+        val limit: Int,
+        val holders: List<PoolHolder>,
+        val waiting: Int = 0,
+    ) : WorktreeError(
+        "The limit of $limit ${kind.pluralName(limit)} is reached and none can be released: " +
+            holders.holderList() + waitingNote(waiting) +
+            ". Wait for one with --wait, stop one, or raise the limit in Preferences",
+    )
+
+    class DeviceWaitTimedOut(
+        val kind: ResourceKind,
+        val waited: Duration,
+        val limit: Int,
+        val holders: List<PoolHolder>,
+    ) : WorktreeError(
+        "Waited ${waited.toWaitText()} for ${kind.article()} ${kind.singularName()} and none could be released: " +
+            holders.holderList() + ". Stop one, or raise the limit of $limit in Preferences",
+    )
 
     class AndroidSdkNotFound(val checked: List<String>) :
         WorktreeError("Android SDK not found. Checked: ${checked.joinToString()}")
@@ -211,6 +233,9 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class MultirepoNotFound(val path: String) :
         WorktreeError("No multirepo found at $path")
 
+    class MultirepoNeedsReview(val path: String) :
+        WorktreeError("$path isn't approved on this machine; review it with 'shogun multirepo trust'")
+
     class WorktreeFolderInUse(
         val path: String,
         val unregistered: Boolean,
@@ -226,6 +251,33 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class BaseBranchNotFound(val repository: String) :
         WorktreeError("Couldn't resolve the base branch of $repository; set the project's main branch")
 
+    class TourCreationFailed(val command: List<String>, val detail: String) :
+        WorktreeError("Couldn't create the tour's sample repository: ${command.joinToString(" ")}" + if (detail.isNotBlank()) "\n$detail" else "")
+
+    class TourAlreadyExists(val path: String) :
+        WorktreeError("The tour's folder already exists: $path")
+
+}
+
+private fun List<PoolHolder>.holderList(): String =
+    joinToString("; ") { "${it.displayName} (${it.state.name.lowercase()}${it.protectionNote()})" }
+
+private fun ResourceKind.singularName(): String = name.lowercase().replace('_', ' ')
+
+private fun ResourceKind.pluralName(count: Int): String = singularName() + if (count == 1) "" else "s"
+
+private fun ResourceKind.article(): String = if (this == ResourceKind.EMULATOR) "an" else "a"
+
+private fun waitingNote(waiting: Int): String = when (waiting) {
+    0 -> ""
+    1 -> "; 1 worktree is waiting for one"
+    else -> "; $waiting worktrees are waiting for one"
+}
+
+fun Duration.toWaitText(): String = when {
+    toMinutes() >= 1 && toSecondsPart() == 0 -> "${toMinutes()} min"
+    toMinutes() >= 1 -> "${toMinutes()} min ${toSecondsPart()} s"
+    else -> "$seconds s"
 }
 
 private fun PoolHolder.protectionNote(): String = when (protection) {

@@ -1,6 +1,8 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.executor.CommandExecutionException
+import app.luxion.shogunai.domain.executor.OutputChannel
+import app.luxion.shogunai.domain.executor.OutputLine
 import java.io.File
 import java.nio.file.Files
 import kotlinx.coroutines.Dispatchers
@@ -90,6 +92,20 @@ class ProcessBuilderShellCommandExecutorTest {
     }
 
     @Test
+    fun `pasa al proceso las variables de entorno indicadas`() = runTest {
+        val result = executor.executeWithEnvironment(listOf("sh", "-c", "printf %s \"\$TOUR_VALUE\""), mapOf("TOUR_VALUE" to "a b"))
+
+        assertEquals("a b", result.stdout)
+    }
+
+    @Test
+    fun `sin entorno indicado no añade variables`() = runTest {
+        val result = executor.execute(listOf("sh", "-c", "printf %s \"\${TOUR_VALUE:-unset}\""))
+
+        assertEquals("unset", result.stdout)
+    }
+
+    @Test
     fun `refleja un código de salida distinto de cero sin lanzar`() = runTest {
         val result = executor.execute(listOf("sh", "-c", "exit 3"))
 
@@ -174,6 +190,34 @@ class ProcessBuilderShellCommandExecutorTest {
         val result = executor.executeWithin(listOf("echo", "ok"), 10.seconds)
 
         assertEquals("ok", result.stdout)
+    }
+
+    @Test
+    fun `la ejecución con salida en vivo añade el entorno y entrega cada línea con su canal`() = runTest {
+        val lines = mutableListOf<OutputLine>()
+
+        val result = executor.executeStreaming(
+            listOf("sh", "-c", "echo \"port=${'$'}DB_PORT\"; echo second; echo warn 1>&2"),
+            workingDirectory = null,
+            environment = mapOf("DB_PORT" to "20004"),
+        ) { lines += it }
+
+        assertTrue(result.isSuccess)
+        assertEquals("port=20004\nsecond", result.stdout)
+        assertEquals("warn", result.stderr)
+        assertEquals(
+            listOf(OutputLine(OutputChannel.STANDARD, "port=20004"), OutputLine(OutputChannel.STANDARD, "second")),
+            lines.filter { it.channel == OutputChannel.STANDARD },
+        )
+        assertEquals(listOf(OutputLine(OutputChannel.ERROR, "warn")), lines.filter { it.channel == OutputChannel.ERROR })
+    }
+
+    @Test
+    fun `la ejecución con salida en vivo conserva el PATH ampliado`() = runTest {
+        if (System.getProperty("os.name").startsWith("Windows")) return@runTest
+        val result = executor.executeStreaming(listOf("sh", "-c", "echo ${'$'}PATH"), null, mapOf("OTHER" to "1")) {}
+
+        assertTrue(result.stdout.split(":").contains("/opt/homebrew/bin"))
     }
 
     private fun isRunning(marker: String): Boolean = ProcessHandle.allProcesses().anyMatch { handle ->

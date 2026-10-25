@@ -29,6 +29,8 @@ No hace falta saber qué providers existen. ShogunAi mira los archivos de la car
 
 En los ajustes del proyecto, "Configuración del repositorio" lista los providers que el repositorio podría usar y aún no declara, con los archivos que los delataron, y "Activar" enciende el provider como un cambio sin guardar: no se escribe nada hasta que guardas y confirmas la vista previa. `shogun stacks` imprime lo mismo desde un terminal y no cambia nada. Una sugerencia es solo una pista (un `pom.xml` en una carpeta de pruebas también cuenta), por eso siempre se muestra la evidencia.
 
+ShogunAi también busca, a cualquier profundidad fuera de las carpetas de compilación y de herramientas (`build`, `.gradle`, `node_modules`, `Pods`, `DerivedData`), los archivos sin versionar sin los que un worktree móvil recién creado no compila: `local.properties`, `keystore.properties`, `key.properties`, `*.jks`, `*.keystore`, `google-services.json` y `GoogleService-Info.plist`. Cada uno que todavía no provisiona nada (archivos locales, `copy`, `link` o `.worktreeinclude`) se sugiere como un patrón `link` anclado, como `/app/google-services.json`, para que al rotarlo en el repositorio base se actualicen todos los worktrees. También lee las claves `storeFile` de esos ficheros de propiedades (cualquier clave que termine en `storeFile`, como `RELEASE_STORE_FILE`): un keystore que nombren dentro del repositorio también se sugiere, y una ruta relativa que sale del repositorio se avisa, porque no se resolverá desde un worktree que vive en otra carpeta. Los ajustes del proyecto los listan en "Archivos del worktree" y `shogun stacks` los imprime; no se escribe nada hasta que aceptas y guardas.
+
 ## Gradle
 
 ```json
@@ -86,17 +88,33 @@ La inspección de daemons necesita `ps` y `lsof` (macOS y Linux).
 
 Dos worktrees que ejecutan `docker compose up` comparten nombres de contenedores, redes y volúmenes, y publican los mismos puertos del host. El provider da a cada worktree los suyos:
 
-- `COMPOSE_PROJECT_NAME` es `<carpeta del repositorio>-<carpeta del worktree>`, en minúsculas y con cada carácter que no sea letra, dígito, `-` o `_` sustituido por `-` (`main-repo` y `TASK-123` dan `main-repo-task-123`). Un nombre de carpeta que normalizar volvería ambiguo (`fix login (2)`, o mayúsculas y minúsculas mezcladas) recibe un hash corto y estable, y un nombre de más de 50 caracteres se acorta conservándolo, de modo que worktrees distintos obtienen nombres distintos. El nombre se deriva, no se guarda, así que no queda nada al eliminar un worktree. Un `COMPOSE_PROJECT_NAME` declarado en `env` tiene prioridad.
+- `COMPOSE_PROJECT_NAME` es `<carpeta del repositorio>-<carpeta del worktree>`, en minúsculas y con cada carácter que no sea letra, dígito, `-` o `_` sustituido por `-` (`main-repo` y `TASK-123` dan `main-repo-task-123`). Un nombre de carpeta que normalizar volvería ambiguo (`fix login (2)`, o mayúsculas y minúsculas mezcladas) recibe un hash corto y estable, y un nombre de más de 50 caracteres se acorta conservándolo, de modo que worktrees distintos obtienen nombres distintos. Un `COMPOSE_PROJECT_NAME` declarado en `env` tiene prioridad.
 - `portVariables` es opcional: cada nombre se convierte en una variable con un puerto libre entre 20000 y 29999 reservado para ese worktree (las mismas reglas que `${port}`), de modo que el archivo de Compose puede publicar `${DB_PORT}:5432` sin colisiones. Los nombres siguen la regla de nombres de variable y no pueden ser nombres reservados; un nombre también declarado en `env` recibe el valor declarado y ningún puerto.
 
-La app muestra una sección "Proyectos de Compose" con los proyectos que `docker compose ls` informa para los worktrees del repositorio (estado y worktree) y los proyectos de worktrees eliminados: aquellos cuyo nombre empieza por el de la carpeta del repositorio, cuyos archivos de Compose estaban en el repositorio o en su carpeta de worktrees, y que no coinciden con ningún worktree existente. Los proyectos de otros repositorios, aunque tengan un prefijo parecido, nunca se tocan. "Bajar los proyectos de los worktrees eliminados" ejecuta `docker compose -p <nombre> down`, que elimina contenedores y redes y conserva los volúmenes (solo se eliminan con `--volumes` desde la línea de comandos). "Limpiar" tiene una opción marcada para bajar los proyectos de los worktrees que elimina; si Docker no está disponible, los worktrees se eliminan igualmente y el informe dice que los proyectos se conservaron.
+### Arrancar y construir los servicios
+
+`shogun compose up` arranca en segundo plano los servicios del worktree en el que estás, con su `COMPOSE_PROJECT_NAME` y sus variables de puerto, así que nunca pasas `-p` ni puertos a mano; `--build` construye antes, y todo lo que va tras `--` llega tal cual a `docker compose` (nombres de servicio, `--wait`). `shogun compose build` solo construye. La salida de Docker Compose se muestra mientras se ejecuta. El detalle del worktree en la app tiene una sección Compose con el nombre y el estado del proyecto (`Sin arrancar` cuando Docker no conoce ese proyecto) y las acciones Arrancar, Construir y Bajar. El contexto de SessionStart le dice a Claude que use `shogun compose up`.
+
+### Lo que dejan los worktrees eliminados
+
+Bajar un proyecto conserva sus volúmenes, y Compose nunca elimina las imágenes que construyó, así que los worktrees eliminados dejan volúmenes, redes e imágenes. ShogunAi apunta en `~/.shogunai/compose-projects.json` el nombre de proyecto que da a cada worktree (cuando se resuelve su entorno y en cada `up` o `build`); un volumen, una red o una imagen cuya etiqueta `com.docker.compose.project` es un nombre apuntado cuyo worktree ya no existe es un resto de ese worktree. Solo cuenta un nombre que ahora no usa ningún otro worktree y que ningún otro repositorio ha apuntado, así que los proyectos de otros repositorios, aunque tengan un prefijo parecido, nunca se tocan. Las imágenes descargadas de un registro (como `postgres`) no llevan etiqueta de Compose y nunca se eliminan.
+
+La vista "Proyectos de Compose" de la sección Máquina lista los proyectos que `docker compose ls` informa para los worktrees del repositorio (estado y worktree), los proyectos de worktrees eliminados (los apuntados, y aquellos cuyos archivos de Compose estaban en el repositorio o en su carpeta de worktrees) y, tras ellos, los restos de los worktrees eliminados. "Bajar los proyectos de los worktrees eliminados" ejecuta `docker compose -p <nombre> down`, que elimina contenedores y redes y conserva los volúmenes. "Eliminar redes e imágenes" elimina los restos salvo los volúmenes; "Eliminar también los volúmenes" pregunta antes, porque sus datos se pierden. Nunca se fuerza nada: una imagen o una red que aún usa un contenedor se conserva y se informa.
+
+"Limpiar" tiene una opción marcada para bajar los proyectos de los worktrees que elimina y eliminar sus redes e imágenes construidas, y otra sin marcar para eliminar también sus volúmenes; si Docker no está disponible, los worktrees se eliminan igualmente y el informe dice que los proyectos se conservaron.
+
+Los worktrees eliminados antes de que existiera este registro no están apuntados: sus proyectos con contenedores se siguen encontrando por sus archivos de Compose, y el resto se puede eliminar con `docker volume rm` y `docker image rm`.
 
 ```bash
-shogun compose                     # los proyectos de Compose de los worktrees y su estado
+shogun compose up                  # arranca en segundo plano los servicios de este worktree con su nombre de proyecto y puertos
+shogun compose up --build -- api   # construye antes, y solo el servicio api
+shogun compose build               # construye los servicios de este worktree
+shogun compose                     # los proyectos de Compose de los worktrees y lo que dejaron los eliminados
 shogun compose down                # baja los proyectos de worktrees eliminados (conserva volúmenes)
 shogun compose down TASK-123       # baja el proyecto de un worktree
-shogun compose down --volumes      # elimina también sus volúmenes
-shogun clean --yes --down-compose-projects  # baja además los proyectos de los worktrees eliminados
+shogun compose prune               # lista las redes e imágenes que dejaron los worktrees eliminados
+shogun compose prune --yes         # las elimina (añade --volumes para eliminar también sus volúmenes)
+shogun clean --yes --down-compose-projects  # baja además los proyectos de los eliminados y elimina sus imágenes
 ```
 
 Docker solo se ejecuta en repositorios que declaran el provider, y solo se usa la CLI de Docker.
@@ -159,9 +177,10 @@ Los emuladores, los simuladores de iOS y los daemons de Gradle están limitados 
 
 - Cada worktree que tiene un dispositivo tiene una **concesión** sobre él. Arrancar el dispositivo y cada momento en que su agente trabaja renuevan la concesión, que caduca tras la duración de la concesión sin actividad (20 minutos por defecto, se ajusta en Preferencias > Recursos y nunca en el repositorio). Solo se pueden liberar los dispositivos cuya concesión ha caducado.
 - Cuando arrancas un dispositivo y su pool está lleno, ShogunAi libera uno con la concesión caducada, en este orden (el usado menos recientemente primero dentro de cada paso): un dispositivo detenido cuyo worktree no tiene sesión de agente, uno detenido cuyo agente ha terminado o está inactivo, uno en marcha (se detiene antes) y, el último, uno cuyo agente está bloqueado. Un dispositivo cuyo agente está trabajando, o cuya concesión sigue vigente, nunca se libera; si no se puede liberar ninguno, el arranque falla y nombra los worktrees que los tienen, con cuándo caduca cada concesión.
+- `shogun emulator start --wait` y `shogun simulator start --wait` esperan en cola a un pool lleno en vez de fallar, como mucho 30 minutos (`--wait-timeout <minutos>` lo cambia). Quienes esperan se atienden por orden de llegada en toda la máquina y, mientras alguien espera, otros arranques no pueden quedarse con el dispositivo que espera. Los agentes deben ejecutar un arranque que espera en segundo plano; el aviso de la sesión lo dice.
 - Un emulador liberado pierde su puerto y un simulador liberado se elimina. El worktree liberado recuerda por qué (`shogun emulator status` dice «released for …»), su puerto no se entrega a otro worktree mientras haya otro libre, y recupera el mismo puerto cuando vuelve a arrancar. Los agentes deben ejecutar `shogun emulator start` antes de cada uso del dispositivo: es idempotente, adquiere uno de nuevo si fue liberado e imprime el serial que hay que usar. El aviso de inicio de sesión lo indica.
 - Los daemons de Gradle los arrancan tus builds, así que no se pueden rechazar: la app (cada 30 segundos) y `shogun pool trim` detienen los inactivos, primero los que llevan más tiempo, hasta quedar dentro del límite.
-- `shogun pool status` muestra cada pool con su límite y sus holders, y las vistas de máquina de la app muestran lo mismo con un aviso de lo que se liberó.
+- `shogun pool status` muestra cada pool con su límite, sus holders y quienes esperan, y las vistas de máquina de la app muestran lo mismo con un aviso de lo que se liberó.
 
 ## Xcode
 
@@ -171,15 +190,21 @@ Xcode guarda una carpeta de DerivedData por ruta de proyecto, así que cada work
 { "providers": { "xcode": { "compilationCache": true } } }
 ```
 
-La pantalla de worktrees muestra entonces una sección "DerivedData de Xcode" con la carpeta de cada worktree, su tamaño y su último acceso, y las carpetas huérfanas de la máquina: las de proyectos que ya no existen, las cree la herramienta que las cree. Las carpetas aparecen enseguida; sus tamaños y los totales muestran "Calculando…" hasta que cada carpeta se mide en segundo plano, de una en una, sin congelar la app. El cálculo continúa si sales de la vista (la entrada de la barra lateral muestra el total cuando está listo) y vuelve a empezar al recargarla. "Eliminar huérfanas" las borra, y "Limpiar" (marcado por defecto) también borra las huérfanas tras eliminar worktrees, incluidas las carpetas de los worktrees que elimina.
+La pantalla de worktrees muestra entonces una sección "DerivedData de Xcode" con la carpeta de cada worktree, su tamaño y su último acceso, y las carpetas huérfanas de la máquina: las de proyectos que ya no existen, las cree la herramienta que las cree. Las carpetas aparecen enseguida; sus tamaños y los totales muestran "Calculando…" hasta que cada carpeta se mide en segundo plano, varias a la vez, sin congelar la app. ShogunAi recuerda el tamaño de cada carpeta entre ejecuciones, tanto en la app como en el comando `shogun`, y solo vuelve a medir las carpetas que Xcode ha usado desde entonces, así que tras la primera ejecución la mayoría de tamaños aparecen enseguida. El cálculo continúa si sales de la vista (la entrada de la barra lateral muestra el total cuando está listo), y recargar la vista vuelve a medir todas las carpetas, mostrando los tamaños anteriores hasta que llegan los nuevos. "Eliminar huérfanas" las borra, y "Limpiar" (marcado por defecto) también borra las huérfanas tras eliminar worktrees, incluidas las carpetas de los worktrees que elimina.
 
-Salvo que fijes una cuota, solo se borran carpetas huérfanas, y nunca los DerivedData de un proyecto que sigue existiendo, nunca las cachés compartidas de Xcode (`CompilationCache.noindex`, `ModuleCache.noindex`, …) y nunca una carpeta cuyo proyecto está en un volumen no montado. ShogunAi busca los DerivedData en la ubicación por defecto de Xcode o en la personalizada de sus preferencias.
+Fuera de la cuota, solo se borran carpetas huérfanas, y nunca los DerivedData de un proyecto que sigue existiendo, nunca las cachés compartidas de Xcode (`CompilationCache.noindex`, `ModuleCache.noindex`, …) y nunca una carpeta cuyo proyecto está en un volumen no montado. ShogunAi busca los DerivedData en la ubicación por defecto de Xcode o en la personalizada de sus preferencias.
 
 ### Cuota de DerivedData
 
-El DerivedData crece con cada worktree en el que un agente compila. Fija una cuota en Preferencias > Recursos (un número de gigabytes, o "Sin cuota", el valor por defecto) y ShogunAi mantiene las carpetas dentro de ella. La cuota es un ajuste de la máquina, no forma parte de los perfiles de capacidad y nunca se lee del repositorio.
+El DerivedData crece con cada worktree en el que un agente compila, así que ShogunAi mantiene las carpetas dentro de una cuota, elegida en Preferencias > Recursos:
 
-Cuando las carpetas suman más que la cuota, ShogunAi libera primero las carpetas huérfanas y después las de los worktrees que no están en uso, de la menos a la más recientemente accedida, y se detiene en cuanto el total cabe. Un worktree está en uso mientras su agente trabaja o está bloqueado, o su carpeta se accedió hace menos de una hora. Nunca se liberan las carpetas de otros proyectos, las de volúmenes no disponibles ni la caché de compilación; si solo quedan esas, la vista dice que la cuota sigue superada y nombra los worktrees en uso. La app aplica la cuota cada vez que se han medido los tamaños de las carpetas, y muestra el uso frente a la cuota, también en la barra lateral, y las carpetas que liberó hasta que cierres el aviso. `shogun xcode trim` la aplica desde la línea de comandos.
+- **Automática**, la opción por defecto: una cuarta parte del espacio que DerivedData podría usar en su disco (el espacio libre más lo que ya ocupa DerivedData), entre 20 y 200 GB. Con 100 GB libres y 60 GB de DerivedData, la cuota es de 40 GB. Se calcula cada vez que se aplica la cuota; si no se puede leer el espacio libre, no se libera nada y la vista dice que la cuota es desconocida.
+- **Tamaño fijo**: un número de gigabytes.
+- **Sin cuota**: no se libera nada para respetar una cuota; solo se borran las huérfanas, cuando lo pides.
+
+La cuota es un ajuste de la máquina, no forma parte de los perfiles de capacidad y nunca se lee del repositorio. Los ajustes guardados antes de que existiera la cuota automática conservan su tamaño fijo si lo tenían y, si no, pasan a Automática.
+
+Cuando las carpetas suman más que la cuota, ShogunAi libera primero las carpetas huérfanas y después las de los worktrees que no están en uso, de la menos a la más recientemente accedida, y se detiene en cuanto el total cabe. Un worktree está en uso mientras su agente trabaja o está bloqueado, o su carpeta se accedió hace menos de una hora. Nunca se liberan las carpetas de otros proyectos, las de volúmenes no disponibles ni la caché de compilación; si solo quedan esas, la vista dice que la cuota sigue superada y nombra los worktrees en uso. La app aplica la cuota cada vez que se han medido los tamaños de las carpetas, y muestra el uso frente a la cuota (marcada como "automática" si lo es), también en la barra lateral, y las carpetas que liberó hasta que cierres el aviso. `shogun xcode trim` la aplica desde la línea de comandos.
 
 ```bash
 shogun xcode                               # carpetas de DerivedData de este repositorio, huérfanas y tamaño de la caché de compilación

@@ -1,9 +1,12 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.ComposeResourceKind
 import app.luxion.shogunai.domain.model.ResourceLimits
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.CapacityProfile
+import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.InstallChannel
+import app.luxion.shogunai.domain.model.MobileSecretKind
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.usecase.HookEntry
@@ -84,7 +87,7 @@ object EnglishStrings : Strings {
     override val removeLocalFile = "Remove local file or folder"
     override val newLocalFileLabel = "New local file or folder"
     override val localFilesDescription =
-        "Exact paths of files or folders copied into each new worktree; a folder brings every file under it. They're stored on this machine only."
+        "Paths of files or folders, or patterns such as *.jks, copied into each new worktree, or linked when you turn on Link (a linked folder shows the base folder's changes at once, and a linked secret is shared by every worktree). They're stored on this machine only."
     override val repositoryProvisioningSection = "From the repository"
     override val repositoryProvisioningDescription =
         "Patterns versioned in .shogunai.json and .worktreeinclude. Every untracked file that matches is copied into each new worktree."
@@ -314,6 +317,7 @@ object EnglishStrings : Strings {
         ProvisionDriftState.MISSING -> "$path · missing"
         ProvisionDriftState.DIFFERS -> "$path · differs"
         ProvisionDriftState.NOT_LINKED -> "$path · not linked"
+        ProvisionDriftState.DELETED_IN_BASE -> "$path · deleted in base"
     }
     override val environmentTitle = "Environment"
     override val devicesTitle = "Devices"
@@ -430,7 +434,9 @@ object EnglishStrings : Strings {
         if (count == 1) "1 folder is on an unavailable volume and is kept"
         else "$count folders are on unavailable volumes and are kept"
     override fun derivedDataCompilationCache(size: String) = "Compilation cache · $size"
-    override fun derivedDataQuotaUsage(usage: String, quota: String) = "$usage of $quota quota"
+    override fun derivedDataQuotaUsage(usage: String, quota: String, automatic: Boolean) =
+        "$usage of $quota quota" + if (automatic) " (automatic)" else ""
+    override val derivedDataQuotaUnknown = "Automatic quota unknown: the free disk space couldn't be read"
     override fun derivedDataQuotaExceeded(inUse: List<String>) =
         "Over the quota" + if (inUse.isEmpty()) "" else "; kept because they are in use: ${inUse.joinToString(", ")}"
     override fun derivedDataReleased(count: Int, freed: String) =
@@ -461,6 +467,12 @@ object EnglishStrings : Strings {
     override val invalidLimit = "Must be a positive number, or no limit"
     override val derivedDataQuotaLabel = "DerivedData quota"
     override val noQuota = "No quota"
+    override fun quotaModeName(mode: DerivedDataQuotaMode) = when (mode) {
+        DerivedDataQuotaMode.AUTOMATIC -> "Automatic"
+        DerivedDataQuotaMode.FIXED -> "Fixed size"
+        DerivedDataQuotaMode.NONE -> noQuota
+    }
+    override val automaticQuotaHint = "A quarter of the free disk space plus what DerivedData takes, between 20 and 200 GB"
     override val gigabytesUnit = "GB"
     override val invalidQuota = "Must be a positive whole number, or no quota"
     override val leaseDurationLabel = "Device lease"
@@ -527,18 +539,25 @@ object EnglishStrings : Strings {
     override val worktreeCreatedWithError = "The worktree was created, but its post-creation command failed."
     override val copyLaunchCommand = "Copy launch command"
     override fun worktreeCreated(folder: String) = "Worktree created: $folder"
-    override fun worktreeCreatedCommandsSkipped(folder: String) = "Worktree created: $folder. Its post-creation commands were skipped."
-    override val postCreateApprovalTitle = "These commands will run"
+    override fun worktreeCreatedCommandsSkipped(folder: String) =
+        "Worktree created: $folder. The repository's configuration wasn't approved, so its post-creation commands and environment variables were skipped."
+    override val postCreateApprovalTitle = "Approve this repository's configuration"
     override val postCreateApprovalExplanation =
-        "This repository asks ShogunAi to run these commands in the new worktree. Run them only if you trust the repository."
-    override val runAndRemember = "Run and remember"
+        "This repository asks ShogunAi to run these commands in the new worktree and to give these environment variables to its agent, terminals and environment file. Approve them only if you trust the repository."
+    override val runAndRemember = "Approve and remember"
     override val skipCommands = "Skip"
-    override val postCreateCommandsTitle = "Post-creation commands"
+    override val postCreateCommandsTitle = "Commands and variables to approve"
     override val postCreateApproved = "Approved on this machine"
     override val postCreateNotApproved = "Not approved"
     override val approveCommands = "Approve"
     override val revokeApproval = "Revoke"
-    override val variableNameReserved = "This name changes how shells, runtimes or Git behave, so it can't be declared."
+    override val variableNameReserved = "This name is reserved because it changes how other tools behave, so it can't be declared."
+    override val approvalVariablesTitle = "Environment variables"
+    override fun approvalEnvFile(path: String) = "Environment file: $path"
+    override fun variablesAwaitingApproval(names: List<String>) =
+        "Awaiting approval: ${names.joinToString(", ")}. Approve them in project settings or with shogun trust."
+    override val templateInvalidCharacters = "Templates can't contain line breaks or control characters."
+    override val envFileInvalidCharacters = "The path can't contain line breaks or control characters."
     override val worktreesRepairedAfterMove = "Worktrees repaired after moving the repository"
     override val openInHerdr = "Open in Herdr"
     override fun openedInHerdr(name: String) = "Opened \"$name\" in Herdr with its agent"
@@ -584,6 +603,21 @@ object EnglishStrings : Strings {
     override val stackSuggestionsTitle = "Detected in this repository"
     override fun stackSuggestion(provider: String, evidence: String) = "$provider · $evidence"
     override val turnOnProvider = "Turn on"
+    override val linkLocalEntry = "Link"
+    override val localPatternLabel = "pattern"
+    override fun skippedSymbolicLinks(count: Int) =
+        if (count == 1) "Skips 1 symbolic link inside the folder" else "Skips $count symbolic links inside the folder"
+    override val localPatternMustBeRelative = "Patterns are relative to the repository; use a path inside it."
+    override val mobileSecretsTitle = "Secrets found in this repository"
+    override fun mobileSecretKind(kind: MobileSecretKind) = when (kind) {
+        MobileSecretKind.LOCAL_PROPERTIES -> "local properties"
+        MobileSecretKind.SIGNING_PROPERTIES -> "signing properties"
+        MobileSecretKind.KEYSTORE -> "keystore"
+        MobileSecretKind.FIREBASE_CONFIG -> "Firebase configuration"
+    }
+    override val linkFromRepositoryConfig = "Link from .shogunai.json"
+    override fun keystoreOutsideRepository(file: String, key: String, value: String) =
+        "$key in $file points outside the repository ($value) and won't resolve from a worktree. Use an absolute path, or move the keystore into the repository and link it."
     override val mavenDaemonsTitle = "Maven daemons"
     override fun mavenDaemonsSummary(count: Int, totalMemory: String) =
         (if (count == 1) "1 daemon" else "$count daemons") + " · $totalMemory"
@@ -600,9 +634,30 @@ object EnglishStrings : Strings {
     override val composeVolumesKept = "Containers and networks are removed; volumes are kept."
     override fun composeProjectsTakenDown(count: Int) = if (count == 1) "1 project taken down" else "$count projects taken down"
     override fun composeProjectDownFailed(name: String, detail: String) = "Couldn't take down $name: $detail"
-    override val alsoTakeDownComposeProjects = "Also take down the Compose projects of the worktrees being removed (volumes are kept)"
+    override val alsoTakeDownComposeProjects = "Also take down the Compose projects of the worktrees being removed and remove their networks and built images"
     override fun cleanupComposeKept(reason: String?) =
         "The Compose projects were kept because Docker isn't available" + if (reason.isNullOrBlank()) "" else " ($reason)"
+    override val composeSectionTitle = "Compose"
+    override val composeNotStarted = "Not started"
+    override val startComposeServices = "Start"
+    override val buildComposeServices = "Build"
+    override val takeDownComposeServices = "Take down"
+    override val composeDockerUnavailable = "Docker isn't available"
+    override val composeLeftoversTitle = "Left by removed worktrees"
+    override fun composeResourceKind(kind: ComposeResourceKind) = when (kind) {
+        ComposeResourceKind.NETWORK -> "Network"
+        ComposeResourceKind.IMAGE -> "Image"
+        ComposeResourceKind.VOLUME -> "Volume"
+    }
+    override val removeComposeLeftovers = "Remove networks and images"
+    override val removeComposeLeftoversWithVolumes = "Remove volumes too"
+    override val confirmRemoveComposeVolumesTitle = "Remove the volumes?"
+    override fun confirmRemoveComposeVolumes(count: Int) =
+        (if (count == 1) "1 volume" else "$count volumes") + " of removed worktrees will be removed with their data, together with their networks and images."
+    override val removeVolumes = "Remove volumes"
+    override fun composeResourcesRemoved(count: Int) = if (count == 1) "1 Docker resource removed" else "$count Docker resources removed"
+    override fun composeResourceRemoveFailed(name: String, detail: String) = "Couldn't remove $name: $detail"
+    override val alsoRemoveComposeVolumes = "Also remove their volumes (their data is lost)"
     override val environmentVariableNameLabel = "Name"
     override val environmentVariableTemplateLabel = "Template"
     override val addVariable = "Add variable"
@@ -707,9 +762,6 @@ object EnglishStrings : Strings {
     override val moveUp = "Move up"
     override val moveDown = "Move down"
     override val sortAlphabetically = "Sort alphabetically"
-    override fun existingMultirepo(name: String) =
-        "This folder is already the multirepo $name. Adding it registers it as declared, with a project for each repository that has none."
-    override fun knownMultirepo(name: String) = "The multirepo $name is already in the sidebar."
     override val multirepoNotFound = "This multirepo no longer exists."
     override val workspaceRepositoryTitle = "Workspace repository"
     override val workspaceRepositoryHint = "The multirepo folder is a Git repository: its own files are versioned there and its worktrees go in the multirepo's worktrees folder."
@@ -737,12 +789,46 @@ object EnglishStrings : Strings {
     override fun groupRepositoryFailed(reason: String) = "failed: $reason"
     override fun repositoryAddedToGroup(alias: String, title: String) = "$alias added to $title"
     override fun changeCreated(title: String, aliases: List<String>) = "$title created in ${aliases.joinToString()}"
+    override val multirepoNeedsReview = "Needs review"
+    override val multirepoNeedsReviewExplanation =
+        "This multirepo isn't approved on this machine: its declaration is new here or changed outside ShogunAi, for example with a pull. ShogunAi creates branches and worktrees in the repositories it lists and runs their approved post-creation commands, so check them before trusting it."
+    override val trustMultirepo = "Trust"
+    override val declaredAgentIgnored = "The declaration's agent is ignored; the multirepo agent is set on this machine, in the multirepo's settings."
+    override val existingDeclarationTitle = "This folder already declares a multirepo"
+    override fun outsideMultirepoParent(parent: String) = "outside $parent"
     override fun multirepoInsideRepository(repository: String) = "This folder is inside the repository $repository. A multirepo can't be declared inside a repository."
     override fun useWorktreesFolder(folder: String) = "Worktrees in $folder"
     override fun notARepository(path: String) = "$path isn't the top level of a Git repository"
     override fun folderIsMultirepoWorkspace(path: String, multirepo: String) =
         "$path is the workspace repository of the multirepo $multirepo; it belongs to it and isn't added as a project of its own"
     override fun deleteMultirepoTitle(name: String) = "Delete the multirepo $name?"
+    override val tourMenuItem = "ShogunAi Tour"
+    override val tourTakeTour = "Take the tour"
+    override val tourDialogTitle = "ShogunAi tour"
+    override fun tourWelcomeMessage(folder: String) =
+        "The tour creates a throwaway sample repository in $folder, with worktrees in every state ShogunAi shows, and registers it as the project \"ShogunAi tour\". Then an agent walks you through each feature, one step at a time. Nothing outside that folder is touched, and \"End tour\" removes it all."
+    override val tourStart = "Start"
+    override val tourToolMessage = "Agents, scripts and Claude Code's hooks use the shogun command. Install it now so every step of the tour works."
+    override val tourSkip = "Skip"
+    override val tourContinue = "Continue"
+    override val tourCreating = "Creating the sample repository…"
+    override val tourRetry = "Try again"
+    override val tourOpenAgentMessage = "The sample is ready. Open the tour's agent in its main worktree; it starts the tour on its own."
+    override val tourClaudeDesktopHint = "In Claude Desktop, write \"Start the ShogunAi tour\" to begin."
+    override val tourTrustHint = "The agent first asks whether you trust the sample's folder. It's the throwaway repository the tour just created: choose \"Yes, I trust this folder\" in Claude Code, or allow it in Codex, and the tour starts."
+    override val tourAgentsNeeded = "The tour's agent is Claude Code, or Codex from the agent menu; one of them must be installed."
+    override val tourLoadingWorktrees = "Loading the sample's worktrees…"
+    override val tourLater = "Later"
+    override val tourExistingMessage = "The tour's sample already exists. Open it where you left it, or restart the tour to create it again from scratch."
+    override val tourRestart = "Restart"
+    override val tourOpenExisting = "Open"
+    override val tourNoticeMessage = "New: a guided tour of ShogunAi with a throwaway sample repository and an agent that walks you through every feature."
+    override val tourBannerMessage = "This is the tour's throwaway sample. Its agent walks you through ShogunAi in the main worktree."
+    override val tourOpenAgent = "Open the tour's agent"
+    override val tourEnd = "End tour"
+    override val tourEndTitle = "End the tour?"
+    override fun tourEndMessage(folder: String) =
+        "The project \"ShogunAi tour\", its worktrees and $folder are deleted. Close the tour's agent first. No other project is touched."
 }
 
 internal fun String?.asSuffix(): String = if (isNullOrBlank()) "" else ": $this"

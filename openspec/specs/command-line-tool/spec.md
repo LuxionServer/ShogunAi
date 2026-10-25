@@ -250,10 +250,10 @@ With `--yes`, `shogun clean --stop-gradle-daemons` SHALL also stop the idle Grad
 - **THEN** nothing is removed or stopped, and the output also lists the daemons that would be stopped
 
 ### Requirement: Print a worktree's environment from the command line
-`shogun env [<path>] [--format sh|dotenv|json]` SHALL resolve the environment of the worktree containing the path, or the current directory, and print it: `sh` (the default) as `export NAME='value'` lines safe for `eval`, `dotenv` as `NAME=value` lines, `json` as an object. An empty environment SHALL print nothing and exit with code 0.
+`shogun env [<path>] [--format sh|dotenv|json]` SHALL resolve the environment of the worktree containing the path, or the current directory, and print it: `sh` (the default) as `export NAME='value'` lines safe for `eval`, `dotenv` as `NAME=value` lines, `json` as an object. Declared variables SHALL only be printed while the repository is approved (see `worktree-environment`); when some await approval, a note naming them and `shogun trust` SHALL go to standard error. An empty environment SHALL print nothing on standard output and exit with code 0.
 
 #### Scenario: Shell format
-- **WHEN** the user runs `eval "$(shogun env)"` inside a worktree whose `PORT` resolves to 20001
+- **WHEN** the user runs `eval "$(shogun env)"` inside a worktree of an approved repository whose `PORT` resolves to 20001
 - **THEN** `PORT` is 20001 in that shell
 
 #### Scenario: Values with special characters
@@ -268,12 +268,16 @@ With `--yes`, `shogun clean --stop-gradle-daemons` SHALL also stop the idle Grad
 - **WHEN** the path isn't inside a Git repository
 - **THEN** an error is printed on standard error and the command exits with code 1
 
+#### Scenario: Variables awaiting approval
+- **WHEN** the user runs `shogun env` in a worktree of a repository that declares `PORT` and isn't approved
+- **THEN** `PORT` isn't printed, standard error names `PORT` and `shogun trust`, and the command exits with code 0
+
 ### Requirement: Deliver the environment through Claude Code's SessionStart hook
-`shogun hook session-start` SHALL read the hook's JSON from standard input and, inside a Git repository, resolve the environment of the worktree containing its `cwd` field, append one `export` line per variable to the file named by `CLAUDE_ENV_FILE`, and print the context: a line naming the variables and their values when there are any, followed by the short workflow rules of `shogun guide` that apply to that location. In a group worktree it SHALL also add the group's context, and in a multirepo folder it SHALL print the multirepo's context. Anywhere else outside a Git repository it SHALL write and print nothing and exit with code 0.
+`shogun hook session-start` SHALL read the hook's JSON from standard input and, inside a Git repository, print the short workflow rules of `shogun guide` that apply to that location. Only when the repository is registered as a project SHALL it also resolve the environment of the worktree containing its `cwd` field, append one `export` line per variable to the file named by `CLAUDE_ENV_FILE`, and print a context line naming the variables without their values; declared variables awaiting approval SHALL be named in the context as awaiting the user's approval with `shogun trust`, and not delivered. In a group worktree it SHALL also add the group's context, and in a multirepo folder it SHALL print the multirepo's context. Anywhere else outside a Git repository it SHALL write and print nothing and exit with code 0.
 
 #### Scenario: Session in a worktree
-- **WHEN** Claude Code starts a session in a worktree whose `PORT` resolves to 20001
-- **THEN** `export PORT='20001'` is appended to `$CLAUDE_ENV_FILE`, the context says this worktree uses `PORT=20001` and includes the rule not to change the worktree's branch
+- **WHEN** Claude Code starts a session in a worktree of a registered, approved project whose `PORT` resolves to 20001
+- **THEN** `export PORT='20001'` is appended to `$CLAUDE_ENV_FILE`, the context says this worktree's environment has `PORT` without showing `20001`, and it includes the rule not to change the worktree's branch
 
 #### Scenario: No environment file variable
 - **WHEN** `CLAUDE_ENV_FILE` isn't set
@@ -308,8 +312,16 @@ With `--yes`, `shogun clean --stop-gradle-daemons` SHALL also stop the idle Grad
 - **THEN** nothing is written or printed and the command exits with code 0
 
 #### Scenario: Invalid declaration
-- **WHEN** `.shogunai.json` can't be read
+- **WHEN** `.shogunai.json` of a registered project can't be read
 - **THEN** the error is printed on standard error and the command exits with code 1, without writing to `$CLAUDE_ENV_FILE`
+
+#### Scenario: Repository not registered
+- **WHEN** Claude Code starts a session in a cloned repository that isn't registered as a project and whose `.shogunai.json` declares `env`
+- **THEN** nothing is written to `$CLAUDE_ENV_FILE`, no environment is resolved nor reserved, the context has only the workflow rules, and the command exits with code 0
+
+#### Scenario: Variables awaiting approval
+- **WHEN** a session starts in a worktree of a registered project that declares `PORT` and isn't approved
+- **THEN** nothing about `PORT` is written to `$CLAUDE_ENV_FILE`, and the context names `PORT` as awaiting the user's approval with `shogun trust`
 
 ### Requirement: Manage a worktree's emulator from the command line
 `shogun emulator start [<path>] [--avd <name>] [--no-window]`, `shogun emulator stop [<path>]` and `shogun emulator status [<path>]` SHALL act on the emulator of the worktree containing the path or the current directory, printing its serial and state, or `not acquired` when the worktree holds no emulator. `start` SHALL acquire the emulator from the pool when needed, print on standard error any emulator released to make room, and print the `export ANDROID_SERIAL=…` line to run when the emulator was just acquired. In a repository that doesn't declare the emulator provider they SHALL fail with exit code 1 and say how to declare it.
@@ -450,11 +462,15 @@ With `--yes`, `shogun clean --delete-derived-data` SHALL delete the orphaned Der
 - **THEN** no DerivedData is deleted
 
 ### Requirement: Check a worktree's provisioned files from the command line
-`shogun provision --check [<path>]` SHALL compare the provisioned files of the worktree at `<path>`, or the current directory when omitted, with the base repository's, without changing anything. It SHALL print one line per reported file with its relative path and state (missing, differs or not linked), and exit with code 0 when nothing is reported and code 3 otherwise.
+`shogun provision --check [<path>]` SHALL compare the provisioned files of the worktree at `<path>`, or the current directory when omitted, with the base repository's, without changing anything. It SHALL print one line per reported file with its relative path and state (missing, differs, not linked or deleted in base), and exit with code 0 when nothing is reported and code 3 otherwise.
 
 #### Scenario: Stale secret
 - **WHEN** the worktree's `.env` differs from the base repository's and the user runs `shogun provision --check`
 - **THEN** a line reports `.env` as differing, no file is copied or linked, and the command exits with code 3
+
+#### Scenario: File deleted from the base folder
+- **WHEN** `keys/old.pem` was copied from the local folder `keys` and later deleted from the base folder
+- **THEN** a line reports `keys/old.pem` as deleted in base, nothing is deleted, and the command exits with code 3
 
 #### Scenario: Up to date
 - **WHEN** every declared file of the worktree matches the base repository's
@@ -623,7 +639,7 @@ When a command run with `--json` fails before producing its result, it SHALL pri
 - **THEN** standard output is empty, the error is on standard error and the exit code is 1
 
 ### Requirement: No questions in JSON mode
-A command run with `--json` SHALL never ask a question. Post-creation commands that aren't approved SHALL be skipped and listed in the result, and `trust --json` without `--yes` SHALL only report.
+A command run with `--json` SHALL never ask a question. When the repository isn't approved, its post-creation commands and declared variables SHALL be skipped and listed in the result, and `trust --json` without `--yes` SHALL only report.
 
 #### Scenario: Unapproved post-creation commands
 - **WHEN** the user runs `shogun new TASK-123 --json` in a repository whose post-creation commands aren't approved
@@ -633,8 +649,12 @@ A command run with `--json` SHALL never ask a question. Post-creation commands t
 - **WHEN** the user runs `shogun trust --json` in a repository with unapproved commands
 - **THEN** the object lists the commands with `approved: false`, nothing is approved and nothing is asked
 
+#### Scenario: Unapproved variables
+- **WHEN** the user runs `shogun new TASK-123 --json` in a repository that declares `PORT` and isn't approved
+- **THEN** the worktree is created without `PORT`, and the object lists `PORT` in `skippedVariables`
+
 ### Requirement: JSON result of worktree creation and provisioning
-`shogun new --json` SHALL report the worktree's path and branch, the skipped post-creation commands and any post-creation failure. A post-creation failure SHALL still print the object, since the worktree exists, and exit with code 1. `shogun provision --check --json` SHALL list each reported file with its path and state, and exit with code 3 when there is any.
+`shogun new --json` SHALL report the worktree's path and branch, the skipped post-creation commands, the names of the skipped declared variables and any post-creation failure. A post-creation failure SHALL still print the object, since the worktree exists, and exit with code 1. `shogun provision --check --json` SHALL list each reported file with its path and state, and exit with code 3 when there is any.
 
 #### Scenario: Post-creation command fails
 - **WHEN** `shogun new TASK-123 --json` creates the worktree and a post-creation command exits with code 2
@@ -643,6 +663,10 @@ A command run with `--json` SHALL never ask a question. Post-creation commands t
 #### Scenario: Stale file
 - **WHEN** the user runs `shogun provision --check --json` and `local.properties` differs from the base repository's
 - **THEN** the object's `drift` lists `local.properties` with state `differs`, and the exit code is 3
+
+#### Scenario: Nothing skipped
+- **WHEN** `shogun new TASK-123 --json` creates a worktree in an approved repository
+- **THEN** the object has empty `skippedPostCreateCommands` and `skippedVariables`
 
 ### Requirement: JSON result of cleanup
 `shogun clean --json` SHALL report whether it was a dry run, the candidates with why each qualifies, the worktrees kept because an agent runs in them, the ones skipped because their status couldn't be read, and, with `--yes`, what was removed, which branches were deleted and what failed.
@@ -756,6 +780,10 @@ Session records SHALL be stored in the worktree's Git administrative folder, so 
 - **WHEN** the quota is 50 GB, usage is 62 GB and an unused worktree folder of 15 GB is the oldest
 - **THEN** `shogun xcode trim` prints `released <path>`, `freed 15 GB` and the usage against the quota
 
+#### Scenario: Automatic quota
+- **WHEN** the quota is Automatic and resolves to 40 GB
+- **THEN** it prints the usage against 40 GB, says the quota is automatic, and `--json` reports the quota mode `automatic` with its size
+
 #### Scenario: Dry run
 - **WHEN** the user runs `shogun xcode trim --dry-run` over the quota
 - **THEN** it prints `would release <path>` for each candidate and deletes nothing
@@ -765,18 +793,22 @@ Session records SHALL be stored in the worktree's Git administrative folder, so 
 - **THEN** it prints that the quota is still exceeded and names those worktrees
 
 ### Requirement: Trim without quota or provider
-`shogun xcode trim` SHALL say so and delete nothing when no quota is set, and SHALL say the provider isn't active when the repository doesn't declare Xcode or the OS isn't macOS. In every case it SHALL exit with `0`.
+`shogun xcode trim` SHALL say so and delete nothing when the user chose "No quota" or when the Automatic quota can't be computed, and SHALL say the provider isn't active when the repository doesn't declare Xcode or the OS isn't macOS. In every case it SHALL exit with `0`.
 
 #### Scenario: No quota
-- **WHEN** no quota is set
+- **WHEN** the user chose "No quota"
 - **THEN** it says that no DerivedData quota is set, deletes nothing and exits with `0`
+
+#### Scenario: Automatic quota unknown
+- **WHEN** the quota is Automatic and the free space of the DerivedData volume can't be read
+- **THEN** it says the automatic quota couldn't be computed, deletes nothing and exits with `0`
 
 #### Scenario: Provider not active
 - **WHEN** the repository doesn't declare the Xcode provider
 - **THEN** it says the provider isn't active and exits with `0`
 
 ### Requirement: Show the detected stacks from the command line
-`shogun stacks` SHALL print one line per stack detected in the repository with its evidence and, per suggested provider, whether the repository already declares it. Providers not supported by the platform SHALL NOT be suggested. It SHALL change nothing and exit with code 0 when no stack is detected.
+`shogun stacks` SHALL print one line per stack detected in the repository with its evidence and, per suggested provider, whether the repository already declares it, followed by one line per suggested mobile secret with its path, kind and suggested `link` pattern, and one line per keystore warning. Providers not supported by the platform SHALL NOT be suggested. It SHALL change nothing and exit with code 0 when nothing is detected.
 
 #### Scenario: Stacks detected
 - **WHEN** the user runs `shogun stacks` in a repository with `pom.xml` that declares no provider
@@ -786,8 +818,16 @@ Session records SHALL be stored in the worktree's Git administrative folder, so 
 - **WHEN** the repository already declares the `maven` provider
 - **THEN** the output shows it as declared and not as a suggestion
 
+#### Scenario: Mobile secret suggested
+- **WHEN** the user runs `shogun stacks` in an Android repository with an ignored `local.properties` that nothing provisions
+- **THEN** a line names `local.properties`, its kind and the pattern `/local.properties` to add to `link`, and nothing is written
+
+#### Scenario: Keystore warning
+- **WHEN** `keystore.properties` contains `storeFile=../signing/release.jks`
+- **THEN** a line warns that `storeFile` in `keystore.properties` points outside the repository
+
 #### Scenario: Nothing detected
-- **WHEN** no stack is detected
+- **WHEN** no stack and no mobile secret is detected
 - **THEN** the command says so and exits with code 0
 
 #### Scenario: Outside a repository
@@ -824,17 +864,104 @@ Session records SHALL be stored in the worktree's Git administrative folder, so 
 - **WHEN** the repository doesn't declare the Compose provider
 - **THEN** an error on standard error says so, Docker isn't run and the command exits with code 1
 
+### Requirement: List leftover Docker resources from the command line
+After the projects, `shogun compose` SHALL print one line per volume, network or image left by the projects of removed worktrees, with its kind and project, followed by the `shogun compose prune` command that removes them.
+
+#### Scenario: Leftover resources listed
+- **WHEN** the user runs `shogun compose` and a removed worktree left the volume `main-repo-task-9_db-data`
+- **THEN** a line names that volume, its kind and its project, and says `shogun compose prune --volumes` removes it
+
 ### Requirement: Take down Compose projects when cleaning up from the command line
-With `--yes`, `shogun clean --down-compose-projects` SHALL also take down the Compose projects of the removed worktrees, keeping their volumes, and report how many were taken down and how many failed. Without the option no project SHALL be taken down.
+With `--yes`, `shogun clean --down-compose-projects` SHALL also take down the Compose projects of the removed worktrees and remove the networks and built images those projects leave, keeping their volumes unless `--compose-volumes` is also given, and report how many projects were taken down, which resources were removed and what failed. Without the option no project SHALL be taken down and no resource removed.
 
 #### Scenario: Projects of removed worktrees
-- **WHEN** the user runs `shogun clean --yes --down-compose-projects` and a removed worktree had a project
-- **THEN** that project is taken down and the output says so
+- **WHEN** the user runs `shogun clean --yes --down-compose-projects` and a removed worktree had a project with a built image and a volume
+- **THEN** that project is taken down, its image is removed, its volume is kept and the output says so
+
+#### Scenario: Volumes too
+- **WHEN** the user runs `shogun clean --yes --down-compose-projects --compose-volumes`
+- **THEN** the volumes of the removed worktrees' projects are removed too
+
+#### Scenario: Volumes option alone
+- **WHEN** the user runs `shogun clean --yes --compose-volumes` without `--down-compose-projects`
+- **THEN** a usage error says `--compose-volumes` needs `--down-compose-projects` and nothing is removed
 
 #### Scenario: Without the option
 - **WHEN** the user runs `shogun clean --yes`
-- **THEN** no Compose project is taken down
+- **THEN** no Compose project is taken down and no Docker resource is removed
 
 #### Scenario: Option without confirmation
 - **WHEN** the user runs `shogun clean --down-compose-projects` without `--yes`
 - **THEN** nothing is removed or taken down, and the output also lists the projects that would be taken down
+
+### Requirement: Start and build Compose projects from the command line
+`shogun compose up [<worktree>] [--build] [-- <args>…]` SHALL start the services of the given worktree, or of the worktree containing the current directory, and `shogun compose build [<worktree>] [-- <args>…]` SHALL build them, both with the worktree's environment, passing the arguments after `--` to Docker Compose. Docker Compose's output SHALL be shown as it runs, and the command SHALL exit with Docker Compose's failure as code 1.
+
+#### Scenario: Up in the current worktree
+- **WHEN** the user runs `shogun compose up` inside worktree `TASK-123` of `main-repo`
+- **THEN** the services start under project `main-repo-task-123` with the worktree's ports, and the output names the project
+
+#### Scenario: Up with a build and a service
+- **WHEN** the user runs `shogun compose up TASK-123 --build -- api`
+- **THEN** `docker compose up --detach --build api` runs in that worktree with its environment
+
+#### Scenario: Build
+- **WHEN** the user runs `shogun compose build`
+- **THEN** the services of the current worktree are built with its environment
+
+#### Scenario: Unknown worktree
+- **WHEN** the user runs `shogun compose up TASK-404` and no such worktree exists
+- **THEN** an error on standard error says so, Docker isn't run and the command exits with code 1
+
+#### Scenario: Failure
+- **WHEN** Docker Compose fails
+- **THEN** the reason is printed on standard error and the command exits with code 1
+
+#### Scenario: JSON
+- **WHEN** the user runs `shogun compose up --json`
+- **THEN** standard output has one object with the worktree, the project name and whether it succeeded, and Docker Compose's own output goes to standard error
+
+### Requirement: Remove leftover Docker resources from the command line
+`shogun compose prune [--volumes] [--yes]` SHALL remove the networks and built images left by the projects of removed worktrees, and their volumes with `--volumes`. Without `--yes` it SHALL only list what it would remove and remove nothing. It SHALL report each resource removed and each failure with the reason, and exit with code 1 when any removal fails.
+
+#### Scenario: Dry run
+- **WHEN** the user runs `shogun compose prune` and a removed worktree left a network, an image and a volume
+- **THEN** the output lists the network and the image as to be removed, the volume as kept, and nothing is removed
+
+#### Scenario: Remove
+- **WHEN** the user runs `shogun compose prune --yes`
+- **THEN** the network and the image are removed, the volume is kept and the output says so
+
+#### Scenario: With volumes
+- **WHEN** the user runs `shogun compose prune --yes --volumes`
+- **THEN** the volume is removed too
+
+#### Scenario: Nothing left
+- **WHEN** no removed worktree left any resource
+- **THEN** the output says there is nothing to remove and the command exits with code 0
+
+#### Scenario: JSON
+- **WHEN** the user runs `shogun compose prune --yes --json`
+- **THEN** the object lists the removed resources with their kind, name and project, and the failures with their reason
+
+### Requirement: Report removed files and skipped links from the command line
+`shogun provision [<path>]` SHALL list, after the provisioned files, each file it deleted because it was deleted from its base folder and each symbolic link it skipped inside a local folder, each marked as such. `shogun new` and the worktree creation hook SHALL print the skipped links as a note on standard error, keeping standard output unchanged.
+
+#### Scenario: Provisioning after a deletion
+- **WHEN** `keys/old.pem` was deleted from the base folder and the user runs `shogun provision`
+- **THEN** a line marks `keys/old.pem` as removed
+
+#### Scenario: Skipped link on creation
+- **WHEN** the user runs `shogun new TASK-123` and the local folder `keys` holds the symbolic link `shared.pem`
+- **THEN** standard output is only the worktree's path and standard error notes that `keys/shared.pem` was skipped
+
+### Requirement: JSON result of removed files and skipped links
+`shogun provision --json` SHALL add the lists `removed` and `skippedLinks`, and `shogun new --json` the list `skippedLinks`, each with paths relative to the repository root and empty when there is nothing to report. `shogun provision --check --json` SHALL report a file deleted from its base folder with state `deleted-in-base`. `shogun stacks --json` SHALL add `secrets`, each with `path`, `kind` and `pattern`, and `keystoreWarnings`, each with `file`, `key` and `value`.
+
+#### Scenario: Provision with a removal
+- **WHEN** the user runs `shogun provision --json` and `keys/old.pem` is removed
+- **THEN** the object's `removed` lists `keys/old.pem` and `skippedLinks` is empty
+
+#### Scenario: Stacks with a secret
+- **WHEN** the user runs `shogun stacks --json` and `app/google-services.json` is suggested
+- **THEN** `secrets` holds an entry with path `app/google-services.json`, kind `firebase-config` and pattern `/app/google-services.json`

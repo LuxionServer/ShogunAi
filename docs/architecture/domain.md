@@ -12,7 +12,8 @@ Configuration of a repository that worktrees are created against. It's what make
 |---|---|
 | `baseRepositoryPath` | Absolute path of the main repository, from which Git is run. |
 | `worktreesRoot` | Parent folder where worktrees are created. |
-| `secretFiles` | "Local files": exact paths of files or folders, relative to the base repository or absolute, copied into each new worktree on this machine only (e.g. `local.properties`). What the repository itself declares lives in `.shogunai.json` (see `RepositoryProvisioning`). |
+| `secretFiles` | "Local files": paths of files or folders, relative to the base repository or absolute, or patterns (an entry with `*`, `?` or `[`, see `isLocalPattern`), provisioned into each new worktree on this machine only (e.g. `local.properties`). What the repository itself declares lives in `.shogunai.json` (see `RepositoryProvisioning`). |
+| `linkedSecretFiles` | The entries of `secretFiles` that are linked instead of copied; `isLinked(entry)` ignores a trailing separator. Empty in projects saved before it existed, so their entries keep being copied. |
 | `agentLaunchConfig` | The project's default agent (`AgentLaunchConfig`, see below), used by every launch unless the user picks another one. |
 | `additionalAgents` | The project's other agents, in order. `agents` is the default followed by these, and `agentNamed(displayName)` finds one by name, falling back to the default. Keeping the default in its own field means an older version, which ignores unknown keys, still launches it. |
 | `simulator` | `SimulatorSettings` for this machine: the iOS simulator's device type and runtime (`null` means automatic). Only used when the repository declares the iOS simulator provider; never stored in the repository. |
@@ -36,7 +37,7 @@ Path helpers:
 data class AgentLaunchConfig(
     val name: String? = null,
     val agentCommand: String = "claude",
-    val useHeadroom: Boolean = true,
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val useHeadroom: Boolean = false,
 ) {
     val displayName: String
         get() = name?.takeIf { it.isNotBlank() } ?: executable().replaceFirstChar { it.uppercase() }
@@ -49,6 +50,8 @@ data class AgentLaunchConfig(
 
 A flat `data class` with default values, so it serializes with `kotlinx.serialization` without a polymorphic `SerializersModule`, and projects saved before a field existed still load. `agentCommand` may carry arguments (`claude --model opus`); `executable()` is its first word without folders. An agent is identified within its project by `displayName`: its `name`, or else its executable capitalized (`codex` → "Codex").
 
+Headroom (`headroom wrap`) is off unless the agent turns it on. `useHeadroom` is always written, and so is `ProjectConfig.agentLaunchConfig`: earlier versions, where Headroom was on by default, left the field (or the whole default agent) out when it was on, so `projects.json` reads an agent stored without `useHeadroom`, or a project without `agentLaunchConfig`, as Headroom-wrapped. The multirepo agent in `~/.shogunai/multirepos.json` is written the same way, with its `useHeadroom` always present.
+
 `WorktreeAgents` holds the per-worktree choice: a map from worktree path to agent display name, stored in `settings.json` (never in the repository). `agentFor` returns the worktree's agent, or the default; `choose` records a non-default agent and forgets the entry when the default is chosen; `prune` drops entries of the project whose worktree no longer exists or whose agent was renamed or removed.
 
 ### `BranchType`
@@ -60,7 +63,7 @@ Enum `FEATURE` / `FIX`, each with a `prefix` (`"feature"` / `"fix"`) prepended t
 - `Worktree` — an active worktree as reported by `git worktree list`: `path`, `branch` (`null` if `detached`), `head`, `isMain`, `isBare`, `isLocked` (a `locked` line, e.g. a worktree an agent session is using) and `isPrunable` (a `prunable` line: its folder no longer exists).
 - `BranchOption` — a branch offered when creating a worktree: `name`, `isCheckedOut` (already checked out in the base repository or another worktree) and `isRemote` (an `origin/` branch, named with that prefix). `withoutLocalTwins()` drops the remote branches that have a local branch with the same short name.
 
-A `Worktree` returned by creation also carries `skippedPostCreateCommands`, the repository's post-creation commands that weren't run because they aren't approved (see [Repository trust](#repository-trust)).
+A `Worktree` returned by creation also carries `skippedPostCreateCommands` and `skippedVariables`, the repository's post-creation commands that weren't run and the names of the declared variables that weren't applied because the repository isn't approved (see [Repository trust](#repository-trust)).
 
 ### `WorktreeStatus` / `MainBranch` / `Divergence`
 
@@ -89,7 +92,7 @@ What the repository declares that each new worktree needs, read from files at th
 
 Unknown fields of `.shogunai.json` are ignored, so later versions can add fields without breaking older ones.
 
-What provisioning did to each file is a `ProvisionedFile` (`path` and `ProvisionMode`: `COPIED`, `LINKED`, `COPIED_INSTEAD_OF_LINKING`). `ProvisionDrift` (`path` and `ProvisionDriftState`: `MISSING`, `DIFFERS`, `NOT_LINKED`) is a provisioned file that is no longer as provisioning left it, as `CheckProvisionedFilesUseCase` reports it.
+What provisioning did to each file is a `ProvisionedFile` (`path` and `ProvisionMode`: `COPIED`, `LINKED`, `COPIED_INSTEAD_OF_LINKING`). `ProvisionDrift` (`path` and `ProvisionDriftState`: `MISSING`, `DIFFERS`, `NOT_LINKED`, `DELETED_IN_BASE`) is a provisioned file that is no longer as provisioning left it, as `CheckProvisionedFilesUseCase` reports it.
 
 ### Worktree environment
 
@@ -103,10 +106,10 @@ Variables each worktree gets, declared in `.shogunai.json` (`WorktreeEnvironment
 ```
 
 - `EnvironmentDeclaration` — the `variables` in file order and the optional `envFile`, a path relative to the worktree root that must stay inside it. `portKeys` lists the ports the declaration needs.
-- `EnvironmentVariable` — a valid variable name (letters, digits and `_`, not starting with a digit, and not reserved) and its template, parsed when the file is read into `TemplatePart`s: `Literal`, `WorktreeName` (`${worktree}`, the worktree's folder name) and `Port(key)`. `${port}` is keyed by the variable's own name, so each variable gets its own port; `${port:<key>}` is keyed `port:<key>`, shared by every variable that uses it (`:` can't appear in a variable name, so the keys never collide). `$$` is a literal `$`; any other `${…}` throws `InvalidEnvironmentTemplate`, which reading turns into `InvalidRepositoryConfig`.
-- `WorktreeEnvironment` — a resolved environment: the rendered `variables` and the `ports` reserved for the worktree.
+- `EnvironmentVariable` — a valid variable name (letters, digits and `_`, not starting with a digit, and not reserved), its declared template text (`source`) and that template, parsed when the file is read into `TemplatePart`s: `Literal`, `WorktreeName` (`${worktree}`, the worktree's folder name) and `Port(key)`. `${port}` is keyed by the variable's own name, so each variable gets its own port; `${port:<key>}` is keyed `port:<key>`, shared by every variable that uses it (`:` can't appear in a variable name, so the keys never collide). `$$` is a literal `$`; any other `${…}` throws `InvalidEnvironmentTemplate`, which reading turns into `InvalidRepositoryConfig`.
+- `WorktreeEnvironment` — a resolved environment: the rendered `variables`, the `ports` reserved for the worktree, the names of the declared variables `awaitingApproval`, and whether the declaration is approved (`declarationApproved`).
 
-Variable names that change how shells, runtimes or Git behave can't be declared: `PATH`, `HOME`, `SHELL`, `IFS`, `ENV`, `BASH_ENV`, `ZDOTDIR`, `PROMPT_COMMAND`, `NODE_OPTIONS`, `NODE_PATH`, `PYTHONPATH`, `PYTHONSTARTUP`, `PYTHONHOME`, `RUBYOPT`, `RUBYLIB`, `PERL5OPT`, `PERL5LIB`, `JAVA_TOOL_OPTIONS`, `_JAVA_OPTIONS`, `JDK_JAVA_OPTIONS`, `CLASSPATH` and every name starting with `LD_`, `DYLD_` or `GIT_`. Such a name makes `.shogunai.json` invalid (`RepositoryConfigIssue.ReservedVariableName` in the settings form). Variables that providers add, such as `GRADLE_OPTS`, aren't declared and aren't affected.
+Variable names that change how shells, runtimes, the dynamic loader, Git, package managers, compilers, build tools, network clients or coding agents behave can't be declared (`isReservedVariableName`, compared in upper case against exact names, prefixes such as `XDG_`, `SSH_`, `NODE_` except `NODE_ENV`, `ANTHROPIC_` or `CLAUDE_`, and the suffixes `_PROXY`, `_OPTS` and `_HOME`; the full list is in [Configuration › Reserved variable names](../guide/configuration.md#reserved-variable-names)). Such a name, in `env` or in the `docker-compose` provider's `portVariables`, makes `.shogunai.json` invalid (`RepositoryConfigIssue.ReservedVariableName` in the settings form), whether or not the repository is approved. A template or `envFile` with a Unicode control (Cc) or format (Cf) character, or a line or paragraph separator (`hasHiddenCharacters`), is invalid too (`InvalidVariableValue`, `EnvFileInvalidCharacters`), so every prompt that shows them shows exactly what applies. Variables that providers add, such as `GRADLE_OPTS`, aren't declared and aren't checked; since their names are reserved, `env` can no longer replace them.
 
 ### Android emulator
 
@@ -217,7 +220,8 @@ User preferences: `LIGHT` / `DARK` / `SYSTEM` and `ENGLISH` / `SPANISH`. They're
 - `EnvironmentFileOutsideWorktree` — the declared `envFile` resolves, after following symlinks, outside the worktree.
 - `InvalidRef` — a branch name or start point starts with `-`, so Git could read it as an option.
 - `GitCommandFailed` — a Git command returned a non-zero exit code; keeps the command, exit code and Git's error output.
-- `SecretCopyFailed` — copying or linking local or repository files failed after the worktree had already been created, including a file that would land outside the worktree.
+- `SecretCopyFailed` — copying or linking local or repository files failed after the worktree had already been created, including a file that would land outside the worktree and a failure to write the provisioning record.
+- `LinkedFolderOccupied` — a local folder in link mode can't be linked because the worktree already has a real folder there holding files ShogunAi didn't copy; nothing in it is deleted.
 - `PostCreateCommandFailed` — a post-creation command couldn't start or exited with an error; keeps the worktree, the command, its exit code and its error output. The worktree is kept.
 - `ClipboardWriteFailed` — the launch command couldn't be copied to the clipboard.
 - `GitLfsNotFound` — the repository uses Git LFS but `git-lfs` isn't installed.
@@ -261,7 +265,9 @@ interface FileManager {
     fun hasSameContent(first: String, second: String): Boolean
     fun directorySize(path: String, excluding: Set<String> = emptySet()): Long
     fun isDirectory(path: String): Boolean
-    fun listFiles(directory: String): List<String>
+    fun listTree(directory: String): DirectoryListing
+    fun isSymbolicLink(path: String): Boolean
+    fun deleteFile(path: String)
     fun modificationStamps(path: String): List<Pair<String, Long>>
     fun readProperties(path: String): Map<String, String>
     fun writeText(path: String, text: String)
@@ -270,7 +276,7 @@ interface FileManager {
 }
 ```
 
-Abstracts the filesystem so that copying secrets and measuring worktrees is unit-testable without touching disk. `isInside` tells whether `path`, once its nearest existing ancestor is resolved through symlinks, is inside `root`; provisioning checks it before every copy, link and environment file write, so a hostile symlink in a branch can't make ShogunAi write outside the worktree. `copy` creates the destination's missing parent folders. `createSymbolicLink` replaces whatever is at `link` with a symlink, or throws `SymbolicLinksNotSupported` where links can't be created (e.g. Windows without the privilege); `isSymbolicLinkTo` and `hasSameContent` are what the provisioning check compares. `listFiles` returns the regular files under a folder as relative, `/`-separated paths, hidden files included, without following or listing symbolic links, and nothing if the folder is missing. `directorySize` adds up the regular files under `path`, skipping the folders in `excluding`. `modificationStamps` returns every file and folder under `path` (or `path` itself if it's a file) with its last-modified time, and nothing if it doesn't exist. `readProperties` reads a Java properties file (such as `gradle.properties`), empty if it's missing or unreadable. `writeText` replaces a file atomically, creating its folders; `readText` returns its content, or `null` if it's missing or unreadable. `lastModifiedMillis` returns a file's last-modified time, or `null` if it's missing or unreadable.
+Abstracts the filesystem so that copying secrets and measuring worktrees is unit-testable without touching disk. `isInside` tells whether `path`, once its nearest existing ancestor is resolved through symlinks, is inside `root`; provisioning checks it before every copy, link and environment file write, so a hostile symlink in a branch can't make ShogunAi write outside the worktree. `copy` creates the destination's missing parent folders. `createSymbolicLink` replaces whatever is at `link` with a symlink, or throws `SymbolicLinksNotSupported` where links can't be created (e.g. Windows without the privilege); `isSymbolicLinkTo` and `hasSameContent` are what the provisioning check compares. `listTree` returns a `DirectoryListing` of a folder: its regular `files` and the symbolic links it skips (`skippedLinks`), both as relative, `/`-separated paths, hidden files included, without following links, and nothing if the folder is missing. `isSymbolicLink` tells a link apart without following it, and `deleteFile` removes one file or link, doing nothing if it's missing. `directorySize` adds up the regular files under `path`, skipping the folders in `excluding`. `modificationStamps` returns every file and folder under `path` (or `path` itself if it's a file) with its last-modified time, and nothing if it doesn't exist. `readProperties` reads a Java properties file (such as `gradle.properties`), empty if it's missing or unreadable. `writeText` replaces a file atomically, creating its folders; `readText` returns its content, or `null` if it's missing or unreadable. `lastModifiedMillis` returns a file's last-modified time, or `null` if it's missing or unreadable.
 
 ### `ClipboardWriter`
 
@@ -288,13 +294,29 @@ Writes the launch command of a worktree to the system clipboard.
 interface RepositoryProvisioningSource {
     fun read(repositoryPath: String): RepositoryProvisioning
     fun fingerprint(repositoryPath: String): String
-    fun addCopyPatterns(repositoryPath: String, patterns: List<String>, expectedFingerprint: String? = null)
+    fun addPatterns(
+        repositoryPath: String,
+        copyPatterns: List<String>,
+        linkPatterns: List<String> = emptyList(),
+        expectedFingerprint: String? = null,
+    )
     fun preview(repositoryPath: String, edit: RepositoryConfigEdit): String
     fun write(repositoryPath: String, edit: RepositoryConfigEdit, expectedFingerprint: String)
 }
 ```
 
-Reads the repository's provisioning (throwing `InvalidRepositoryConfig` for an unreadable `.shogunai.json`), appends patterns to `copy` (how the configuration screen moves local files into the repository), and previews and writes the providers and environment edited in the settings form (`RepositoryConfigEdit`). `fingerprint` is a hash of the file's content; a write given the fingerprint read earlier fails with `RepositoryConfigChanged` when the file changed meanwhile.
+Reads the repository's provisioning (throwing `InvalidRepositoryConfig` for an unreadable `.shogunai.json`), appends patterns to `copy` and `link` in one write (how the configuration screen moves local files into the repository and links the mobile secrets it suggests), and previews and writes the providers, the environment and the pending patterns edited in the settings form (`RepositoryConfigEdit`, whose `addCopyPatterns` and `addLinkPatterns` are appended without duplicates).
+
+### `ProvisioningRecordStore`
+
+```kotlin
+interface ProvisioningRecordStore {
+    fun read(worktreePath: String): Map<String, List<String>>
+    fun write(worktreePath: String, localFolders: Map<String, List<String>>)
+}
+```
+
+Remembers, per worktree, the files provisioning copied from each local folder (folder entry → files relative to it). `NioProvisioningRecordStore` keeps it in `shogunai-provisioning.json` inside the worktree's Git admin folder (found through the worktree's `.git` file), so it's never in the working tree and goes away with the worktree. A missing or unreadable record reads as empty; an empty record removes the file. `ProvisioningRecordStore.NONE` keeps nothing, for callers that don't need it. `fingerprint` is a hash of the file's content; a write given the fingerprint read earlier fails with `RepositoryConfigChanged` when the file changed meanwhile.
 
 ### `EnvironmentStateStore` / `PortProbe`
 
@@ -451,21 +473,27 @@ interface ReleaseSource {
 
 The latest published release of ShogunAi, or `UpdateCheckFailed`.
 
-### `RepositoryTrust` / `PostCreateApproval`
+### `RepositoryTrust` / `RepositoryApproval`
 
 ```kotlin
+data class RepositoryApprovalSubject(
+    val commands: List<List<String>>,
+    val variables: List<Pair<String, String>>,
+    val envFile: String?,
+)
+
 interface RepositoryTrust {
-    fun isApproved(repository: String, commands: List<List<String>>): Boolean
-    fun approve(repository: String, commands: List<List<String>>)
+    fun isApproved(repository: String, subject: RepositoryApprovalSubject): Boolean
+    fun approve(repository: String, subject: RepositoryApprovalSubject)
     fun revoke(repository: String)
 }
 
-fun interface PostCreateApproval {
-    suspend fun decide(repository: String, commands: List<List<String>>): PostCreateDecision
+fun interface RepositoryApproval {
+    suspend fun decide(repository: String, subject: RepositoryApprovalSubject): ApprovalDecision
 }
 ```
 
-`RepositoryTrust` remembers, per repository and on this machine, the exact post-creation commands the user approved; a different list isn't approved. `PostCreateApproval` asks the user when they aren't, and answers `RUN` or `SKIP`: the desktop app shows the commands in the dialog that started the creation, the CLI asks on a terminal, and hooks and `--json` use `PostCreateApproval.SKIP`. `RepositoryTrust.NONE` approves nothing, which is the default for use cases built without a trust store.
+The subject is what `.shogunai.json` asks ShogunAi to run or apply: the post-creation commands, each declared variable with its template text, and `envFile` (`RepositoryProvisioning.approvalSubject`). `RepositoryTrust` remembers, per repository and on this machine, the exact subject the user approved; any difference isn't approved, and an empty subject always is. `RepositoryApproval` asks the user when it isn't, and answers `APPROVE` or `SKIP`: the desktop app shows the subject in the dialog that started the creation, the CLI asks on a terminal, and hooks and `--json` use `RepositoryApproval.SKIP`. `RepositoryTrust.NONE` approves only empty subjects, which is the default for use cases built without a trust store, so forgetting to wire it fails closed.
 
 ### `AgentSessionStore`
 
@@ -476,6 +504,12 @@ Keeps the `AgentSessionRecord`s of the sessions of a worktree: `write`, `remove`
 `MultirepoDeclaration` has an optional `workspace` (`WorkspaceSetting`: `enabled`, `alias`, `default`; in JSON `false` or `{ "alias", "default" }`). `Multirepo` carries `folderIsRepository`, set by `ResolveMultirepoUseCase.build` from the folder's `.git` entry. `workspaceRepository` is the folder as a repository when that is true and the declaration doesn't turn it off (or lists the folder in `repos` with the path `.`), `workspaceDetected` says no declaration states it, and `repositories`, `aliases` and `defaultRepos` are the effective lists with it, so create, status, clean and the desktop catalog treat it as one more repository; `declaredRepositories` is the `repos` map alone. `validate` rejects an invalid alias or one that collides with a `repos` key. `ConfigureMultirepoUseCase.setWorkspace`/`clearWorkspace` write only that field, and `setDefaults` maps the workspace alias to its `default` flag. A workspace repository without a project gets `<worktreesRoot>/<alias>` as worktrees folder in `multirepoMembers`. `RegisterProjectUseCase` takes the multirepo whose workspace is the folder (`withWorkspaceAt`) and registers that project with the proposed folder.
 
 `AgentSearch.multirepoFolder(folder, command)` is an exact search: `DetectRunningAgentsUseCase` attributes to it only a working directory equal to the folder, never a subfolder or a member repository.
+
+### Multirepo approval and local agent
+
+A declaration can come from a cloned repository, so `ResolveMultirepoUseCase` only applies a multirepo that is registered in `MultirepoSource.knownFolders()` and whose `approvalSubject` is approved there (`Multirepo.approved`). The subject is a text with the normalized folder, each declared alias with its resolved path (sorted by alias), the resolved worktrees root and the declared workspace setting: what decides where ShogunAi creates branches and worktrees. `defaultRepos` and the declaration's `agent` aren't part of it. The upward walk of `invoke` only matches registered folders, `declaring` and `approved()` skip unapproved multirepos, and `known()` returns every registered one with its state for the desktop app. `nearestDeclaration` finds the nearest declaration registered or not, for `shogun multirepo trust`/`show` and the CLI's note about an ignored declaration. `validate` rejects aliases, repository paths and `worktreesRoot` with control or Unicode formatting characters, so the review can't be spoofed with escape sequences.
+
+The multirepo agent is a local setting (`MultirepoSource.agent`/`setAgent`, `Multirepo.localAgent`); `Multirepo.agent` falls back to `claude` without Headroom and never reads `MultirepoDeclaration.agent`, which only survives so older files parse and `ignoresDeclaredAgent` can report it. `ConfigureMultirepoUseCase` refuses to write an unapproved multirepo (`WorktreeError.MultirepoNeedsReview`), writes the declaration without `agent`, and approves the subject it wrote, so ShogunAi's own edits keep it approved while an edit made elsewhere doesn't. `trust` registers and approves exactly the declaration that was reviewed (it refuses if the file changed in between) and `revoke` forgets it.
 
 ### Repositories
 
@@ -496,10 +530,13 @@ Creates a worktree on a **new** branch `<type>/<taskId>`. The task id is normali
 1. **Upfront validations** (base repo exists, destination free, local files present) and **resolving the repository's files** — done *before* touching Git so as not to leave a half-done worktree.
 2. `git worktree add <path> -b <branch> [<startPoint>]`. The caller resolves the optional start point to a commit id with `ResolveStartPointUseCase` (`git rev-parse --verify --quiet <ref>^{commit}` in its own directory, failing with `StartPointNotFound`), so `HEAD` means the worktree the command runs in even though Git runs in the base repository. The desktop app passes the ref chosen in its "Start from" selector, resolved the same way; without one, the branch starts at the base repository's HEAD.
 3. Copying the local files and the repository's `copy` files into the new directory, at the same relative paths, and symlinking the `link` files to the base repository's copies (copying them where links aren't supported). Every destination must stay inside the worktree once symlinks are resolved (`FileManager.isInside`).
-4. Preparing its environment through the `WorktreeEnvironmentPreparer` it receives: `PrepareWorktreeEnvironmentUseCase` resolves it with reservation (`ResolveWorktreeEnvironmentUseCase`) and, when `envFile` is declared, `WriteEnvironmentFileUseCase` writes it in dotenv format, refusing a file Git tracks (`git ls-files --error-unmatch`, `EnvironmentFileTracked`) and reporting write errors as `EnvironmentFileWriteFailed`. The preparer defaults to `WorktreeEnvironmentPreparer.NONE`, which tests that don't exercise the environment rely on; the app and the CLI always pass the real one.
-5. Running the repository's post-creation commands in the worktree, only when approved (see [Repository trust](#repository-trust)). Commands that aren't approved and that the user doesn't approve now are returned in the worktree's `skippedPostCreateCommands`. A failing command is `PostCreateCommandFailed`, and the worktree is kept, since everything before it succeeded.
+4. Settling the repository's approval (see [Repository trust](#repository-trust)): approved already, or asked through `RepositoryApproval`, recording an `APPROVE` before going on.
+5. Preparing its environment through the `WorktreeEnvironmentPreparer` it receives: `PrepareWorktreeEnvironmentUseCase` resolves it with reservation (`ResolveWorktreeEnvironmentUseCase`) and, when `envFile` is declared and the declaration is approved, `WriteEnvironmentFileUseCase` writes it in dotenv format, refusing a file Git tracks (`git ls-files --error-unmatch`, `EnvironmentFileTracked`) and reporting write errors as `EnvironmentFileWriteFailed`. The preparer defaults to `WorktreeEnvironmentPreparer.NONE`, which tests that don't exercise the environment rely on; the app and the CLI always pass the real one.
+6. Running the repository's post-creation commands in the worktree, only when approved. When the repository isn't approved and the user doesn't approve it now, its commands and the names of its declared variables are returned in the worktree's `skippedPostCreateCommands` and `skippedVariables`. A failing command is `PostCreateCommandFailed`, and the worktree is kept, since everything before it succeeded.
 
-Resolving the repository's files reads `RepositoryProvisioning` and, if it declares any pattern, runs `git ls-files --others --ignored -z -x <pattern>…`: every file not tracked by Git that matches a pattern (tracked files already come with the checkout). Without patterns no Git command runs. An unreadable `.shogunai.json` (`InvalidRepositoryConfig`) or a failing `git ls-files` (`GitCommandFailed`) stops creation before anything is created. Local files are checked strictly (`SecretFileNotFound`), patterns leniently: a pattern with no match copies nothing. A local entry that is a folder is expanded with `FileManager.listFiles` into the files under it each time the files are resolved, so creation, provisioning and the drift check see plain files and a file added to the folder later is picked up. Folders are copied, never linked; a folder that already exists in the worktree is merged (same-path files overwritten, the rest kept); a missing folder is `SecretFileNotFound` like a missing file.
+Resolving the repository's files reads `RepositoryProvisioning` and, if it declares any pattern, runs `git ls-files --others --ignored -z -x <pattern>…`: every file not tracked by Git that matches a pattern (tracked files already come with the checkout). Without patterns no Git command runs. An unreadable `.shogunai.json` (`InvalidRepositoryConfig`) or a failing `git ls-files` (`GitCommandFailed`) stops creation before anything is created. Local files are checked strictly (`SecretFileNotFound`), patterns leniently: a pattern with no match copies nothing. A local entry that is a folder in copy mode is expanded with `FileManager.listTree` into the files under it each time the files are resolved, so creation, provisioning and the drift check see plain files and a file added to the folder later is picked up; the symbolic links it skips are carried as `skippedLinks`. A folder that already exists in the worktree is merged (same-path files overwritten, the rest kept); a missing folder is `SecretFileNotFound` like a missing file. A local entry in link mode is linked, whatever the repository declares for it, and one in copy mode is copied; a linked folder becomes one symbolic link to the base folder, which replaces a real folder only when every file in it is recorded as copied from that folder (otherwise `LinkedFolderOccupied`), and a copied folder whose destination is a link to the base folder has that link removed first. A local pattern is expanded with the same `git ls-files` call as `copy`, so it only selects untracked files, and isn't checked for existence.
+
+After copying, the `ProvisioningRecordStore` record of each copied folder is replaced by the files just copied. Before copying, a recorded file that no longer exists in its base folder is deleted from the worktree when it's a regular file there, and returned as removed; files the record doesn't list are never touched. The drift check reports such files as `DELETED_IN_BASE` instead.
 
 If copying or preparing the environment fails **after** the worktree was created, it's rolled back with `git worktree remove --force` and the branch the creation made is deleted with `git branch -D -- <branch>` (both best-effort) before propagating the error, so a retry finds nothing in its way. If `git worktree add` fails because `git-lfs` is missing, the half-created worktree and its new branch are removed the same way and `GitLfsNotFound` is returned.
 
@@ -576,6 +613,7 @@ Removing one worktree also releases what its providers hold, in two steps around
 - `ResolveResourceLimitsUseCase` turns the stored `ResourceSettings` into `ResourceLimits` with the profile table, using the `MachineCapacity` port (`totalMemoryBytes()` and `cores()`, implemented over the JVM's `OperatingSystemMXBean`). A missing or unreadable setting means Automatic.
 - `ReadResourcePoolUseCase` builds a `PoolUsage` for emulators and simulators from every reservation on the machine (mapping each admin directory to its worktree through its `gitdir` file) and the device states, and for Gradle daemons from `ListGradleDaemonsUseCase`.
 - `AcquireWorktreeResourceUseCase` is what the emulator and simulator start use cases call first. Under the reservation lock: a resource the worktree already holds only has its last use and lease updated; with room in the pool it reserves a port or creates the simulator; at the limit it releases the holder with the lowest `releaseRank` (stopping a running emulator or shutting down a booted simulator first, deleting the simulator, and recording a `ReleaseRecord` on the victim) and reserves; with no releasable holder it fails with `ResourcePoolFull`. Ports are chosen in this order: the worktree's previous port when free, a port not released within the lease duration, any free port. It returns the `PoolRelease`s it made and rewrites the declared environment file of the worktree and of each released one. `StartWorktreeEmulatorUseCase` and `StartWorktreeSimulatorUseCase` return a `DeviceStart` with the device and that result.
+- Waiting for capacity: before releasing anything, the acquisition reads the pool's `DeviceWaitQueue` (dropping tickets whose process `ProcessLiveness` reports dead) and fails with `ResourcePoolFull` carrying the number of waiters when another worktree's ticket is ahead of its own (or of any, without a ticket); a worktree that holds its device is never blocked. Given a `DeviceWait`, it first tries without a ticket and, on `ResourcePoolFull`, adds a `WaitTicket` and retries, sleeping until the earliest of 10 seconds, one second after the next lease expiry or the deadline, and reporting a `DeviceWaitProgress` on each try. It always removes its ticket (also when cancelled), fails with `DeviceWaitTimedOut` once the timeout passes, and returns `waitedSeconds` in `ResourceAcquisition` (`null` without a wait). The boot happens after the wait, outside its deadline.
 - `ReadAgentActivityUseCase` gives the state of a worktree's agent from the live sessions in `AgentSessionStore` (working over blocked over done over idle; `null` without one), `RenewWorktreeLeasesUseCase` renews the leases of the devices a worktree holds without touching their last use or acquiring anything, and `ReadReleaseRecordUseCase` reads a worktree's release record.
 - `TrimGradleDaemonsUseCase` stops idle Gradle daemons, longest idle first, through `StopGradleDaemonsUseCase` until the count is within the limit; busy daemons and daemons of unknown state are never stopped for it.
 
@@ -609,7 +647,7 @@ Deletes a local branch only when it is contained in the project's main branch, r
 
 ### `ProvisionWorktreeUseCase`
 
-Applies the same files as creation (local files and the repository's provisioning, see `CreateWorktreeUseCase`) to an **existing** linked worktree, e.g. one created by another tool. The path must be one of the repository's worktrees (from `ListWorktreesUseCase`) and not the main one (`NotAWorktree`). Files are copied (or linked) over existing ones, the environment is prepared the same way (reserving ports for a worktree another tool created), the approved post-creation commands run, and it returns a `ProvisionResult`: each `ProvisionedFile` and the skipped commands. Unlike creation, a failed copy or environment doesn't remove anything: the worktree isn't ShogunAi's to delete. Creation and provisioning share the same copy and command functions.
+Applies the same files as creation (local files and the repository's provisioning, see `CreateWorktreeUseCase`) to an **existing** linked worktree, e.g. one created by another tool. The path must be one of the repository's worktrees (from `ListWorktreesUseCase`) and not the main one (`NotAWorktree`). Files are copied (or linked) over existing ones, the approval is settled and the environment prepared the same way (reserving ports for a worktree another tool created), the approved post-creation commands run, and it returns a `ProvisionResult`: each `ProvisionedFile`, the skipped commands and the skipped variables. Unlike creation, a failed copy or environment doesn't remove anything: the worktree isn't ShogunAi's to delete. Creation and provisioning share the same copy and command functions.
 
 ### `CheckProvisionedFilesUseCase`
 
@@ -617,7 +655,9 @@ Compares a linked worktree with what provisioning would give it now, without cha
 
 ### Repository trust
 
-`.shogunai.json` is committed, so whoever controls a branch controls what it declares. Its post-creation commands only run once the user approved that exact list on this machine (`RepositoryTrust`, keyed by the repository's real path). Creation and provisioning check the store first and ask `PostCreateApproval` only when the list isn't approved; `RUN` records the approval before running, `SKIP` returns the commands as skipped. A changed list (after a pull, say) asks again. Saving `hooks.postCreate` from the desktop app's settings approves the saved list, since the user wrote it, and the settings can approve or revoke it explicitly.
+`.shogunai.json` is committed, so whoever controls a branch controls what it declares. Its post-creation commands only run, and its declared variables and environment file only apply, once the user approved that exact subject on this machine (`RepositoryTrust`, keyed by the repository's real path). Creation and provisioning check the store first and ask `RepositoryApproval` only when the subject isn't approved, once for commands and variables, before preparing the environment; `APPROVE` records the approval, `SKIP` returns the commands and variable names as skipped. A changed subject (after a pull, say) asks again.
+
+Declared variables are gated in one place, `ResolveWorktreeEnvironmentUseCase`, which receives the trust store: while the subject isn't approved it resolves as if nothing were declared (no declared ports, variables or precedence over providers) and reports the declared names in `awaitingApproval`, with `declarationApproved = false`, which `WriteEnvironmentFileUseCase` honors by writing nothing. Every consumer (the agent's `SessionStart` hook, `shogun env`, terminal and Herdr launches, the desktop detail, the device use cases) goes through it, so none can deliver them unapproved. Saving the environment from the desktop app's settings approves the saved subject when the repository was approved before the save or declares no post-creation commands, and the settings can approve or revoke it explicitly.
 
 ### `RepairWorktreesUseCase`
 
@@ -625,7 +665,7 @@ Re-links the base repository and its worktrees after they were moved on disk. Gi
 
 ### `ResolveWorktreeEnvironmentUseCase`
 
-Resolves a worktree's environment from the base repository's declaration and the providers it declares. Each needed port is a `PortRequest` (a key, candidate ports, ports that must also be free, and the error when none is left): declared `${port}` keys ask for 20000–29999 (`declaredPortRequests`); providers add theirs through `EnvironmentContribution`s, given by the injected `ProviderContributions` factory (`DEFAULT` knows the emulator; the app and the CLI pass one that also builds the iOS simulator's, which needs the `AppleSimulators` port and the project's machine settings), together with the variables they derive from their ports. With nothing declared and no contributing provider it returns an empty `WorktreeEnvironment` without running any command. Otherwise it finds the worktree's administrative and common Git directories (`git rev-parse --path-format=absolute --git-dir --git-common-dir` in the worktree) and, while holding the machine's lock:
+Resolves a worktree's environment from the base repository's declaration, when approved (see [Repository trust](#repository-trust)), and the providers it declares. Each needed port is a `PortRequest` (a key, candidate ports, ports that must also be free, and the error when none is left): declared `${port}` keys ask for 20000–29999 (`declaredPortRequests`); providers add theirs through `EnvironmentContribution`s, given by the injected `ProviderContributions` factory (`DEFAULT` knows the emulator; the app and the CLI pass one that also builds the iOS simulator's, which needs the `AppleSimulators` port and the project's machine settings), together with the variables they derive from their ports. With nothing declared and no contributing provider it returns an empty `WorktreeEnvironment` without running any command. Otherwise it finds the worktree's administrative and common Git directories (`git rev-parse --path-format=absolute --git-dir --git-common-dir` in the worktree) and, while holding the machine's lock:
 
 1. keeps the worktree's stored ports whose keys are still requested, releasing the rest;
 2. reserves each missing key at the first candidate that, together with its extra ports, no worktree on the machine has reserved and `PortProbe` reports free (otherwise the request's error, e.g. `NoFreePort`);

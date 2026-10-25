@@ -256,7 +256,7 @@ class MultirepoCommandsTest {
 
     @Test
     fun `open without a target opens the multirepo agent in its own workspace`() {
-        source.declarations[folder] = declaration.copy(agent = AgentLaunchConfig(agentCommand = "claude", useHeadroom = false))
+        source.agents[folder] = AgentLaunchConfig(agentCommand = "claude", useHeadroom = false)
 
         val exitCode = cli().run(listOf("open", "--herdr"))
 
@@ -366,6 +366,11 @@ class MultirepoCommandsTest {
         assertEquals(0, cli(workingDirectory = home, multirepos = fresh).run(listOf("multirepo", "show", "--json")))
         assertEquals(listOf("web"), json()["defaultRepos"]!!.jsonArray.map { it.jsonPrimitive.content })
         assertEquals("Codex", json()["agent"]!!.jsonObject["name"]!!.jsonPrimitive.content)
+        assertEquals(null, fresh.declarations[home]?.agent)
+        assertEquals(AgentLaunchConfig("Codex", "codex", useHeadroom = false), fresh.agents[home])
+        assertEquals(0, cli(workingDirectory = home, multirepos = fresh).run(listOf("multirepo", "agent", "codex", "--name", "Codex", "--headroom")))
+        assertEquals("headroom wrap codex", fresh.agents[home]?.resolvedCommand())
+        assertEquals(2, cli(workingDirectory = home, multirepos = fresh).run(listOf("multirepo", "agent", "codex", "--headroom", "--no-headroom")))
         assertEquals(2, cli(workingDirectory = home, multirepos = fresh).run(listOf("multirepo", "defaults", "nope")))
         assertEquals(0, cli(workingDirectory = home, multirepos = fresh).run(listOf("multirepo", "delete")))
         assertTrue(fresh.declarations.isEmpty() && fresh.known.isEmpty())
@@ -412,14 +417,25 @@ class MultirepoCommandsTest {
         val registry = FakeMultirepoSource(
             mapOf(moved to MultirepoDeclaration(linkedMapOf("app" to "product-app", "api" to "product-api"), "../product-worktrees")),
             known = listOf(folder),
+            approveAll = false,
         )
         registry.missingFolders += folder
+
+        assertEquals(1, cli(workingDirectory = moved, multirepos = registry).run(listOf("multirepo", "init", "--json")))
+        assertTrue(err.contains("pass --yes"))
+        assertTrue(registry.known.isEmpty())
+        assertEquals(0, cli(workingDirectory = moved, multirepos = registry, answer = "n").run(listOf("multirepo", "init")))
+        assertTrue(registry.known.isEmpty())
+        assertTrue(projects.list().none { it.config.baseRepositoryPath == movedApp })
+        out.clear()
 
         val exitCode = cli(workingDirectory = moved, multirepos = registry, answer = "y").run(listOf("multirepo", "init"))
 
         assertEquals(0, exitCode, err.toString())
+        assertTrue(out.contains("  app  $movedApp"))
+        assertTrue(err.contains("Approve this multirepo?"))
         assertEquals(listOf(moved), registry.known)
-        assertTrue(out.contains("registered the existing multirepo product"))
+        assertTrue(out.contains("approved and registered the existing multirepo product"))
         assertEquals("/home/dev/work/product-worktrees/app", projects.list().first { it.config.baseRepositoryPath == movedApp }.config.worktreesRoot)
         assertTrue(projects.list().any { it.config.baseRepositoryPath == appBase })
         out.clear()
@@ -671,5 +687,154 @@ class MultirepoCommandsTest {
         cli(workingDirectory = "/", input = stateInput("UserPromptSubmit", "$folder/notes"), sessionStore = store).run(listOf("hook", "agent-state"))
 
         assertTrue(store.records.isEmpty())
+    }
+
+    private val cloned = "/home/dev/clones/evil"
+    private val plantedAgent = AgentLaunchConfig(name = "Claude", agentCommand = "touch /tmp/marker; claude", useHeadroom = false)
+
+    private fun clonedWithDeclaration(): FakeMultirepoSource {
+        git.repository(cloned)
+        fileManager.writeText("$cloned/.git", "")
+        return FakeMultirepoSource(mapOf(cloned to MultirepoDeclaration(worktreesRoot = "../wt", agent = plantedAgent)), known = emptyList(), approveAll = false)
+    }
+
+    @Test
+    fun `a declaration in a cloned repository never reaches Herdr`() {
+        val multirepos = clonedWithDeclaration()
+
+        val exitCode = cli(workingDirectory = cloned, multirepos = multirepos).run(listOf("open", "--herdr"))
+
+        assertEquals(2, exitCode)
+        assertTrue(herdr.ran.isEmpty() && herdr.createdWorkspaces.isEmpty())
+        assertTrue(err.contains("ignoring $cloned/.shogunai-multirepo.json") && err.contains("shogun multirepo trust"))
+        assertFalse(out.contains("Claude"))
+    }
+
+    @Test
+    fun `an ignored declaration in a parent folder leaves the repository commands as they were`() {
+        val multirepos = FakeMultirepoSource(mapOf(folder to declaration), known = emptyList(), approveAll = false)
+
+        assertEquals(0, cli(workingDirectory = appBase, multirepos = multirepos).run(listOf("status")))
+
+        assertTrue(out.lines().first().startsWith(appBase))
+        assertEquals(1, err.lines().count { it.contains("shogun multirepo trust") })
+        err.clear()
+        assertEquals(2, cli(workingDirectory = appBase, multirepos = multirepos).run(listOf("new", "TASK-1", "--repos", "app")))
+        assertTrue(err.contains("--repos needs a multirepo approved on this machine"))
+    }
+
+    @Test
+    fun `hooks say nothing about an ignored declaration`() {
+        val multirepos = clonedWithDeclaration()
+
+        cli(input = """{"cwd": "$cloned"}""", multirepos = multirepos).run(listOf("hook", "session-start"))
+
+        assertFalse(out.contains("multirepo") || err.contains("multirepo"))
+    }
+
+    @Test
+    fun `a multirepo registered before approvals existed needs one review`() {
+        val multirepos = FakeMultirepoSource(mapOf(folder to declaration), approveAll = false)
+
+        assertEquals(0, cli(workingDirectory = appBase, multirepos = multirepos).run(listOf("status")))
+        assertTrue(err.contains("shogun multirepo trust"))
+
+        assertEquals(0, cli(multirepos = multirepos, answer = "y").run(listOf("multirepo", "trust")), err.toString())
+        err.clear()
+        out.clear()
+        assertEquals(0, cli(multirepos = multirepos).run(listOf("status", "--json")))
+        assertTrue(json().containsKey("groups"))
+        assertFalse(err.contains("shogun multirepo trust"))
+    }
+
+    @Test
+    fun `multirepo trust reviews the declaration and approves it on yes`() {
+        git.repository("/srv/other/api")
+        fileManager.writeText("/srv/other/api", "")
+        val declared = declaration.copy(repos = declaration.repos + ("api" to "/srv/other/api"), agent = plantedAgent)
+        val multirepos = FakeMultirepoSource(mapOf(folder to declared), known = emptyList(), approveAll = false)
+
+        assertEquals(0, cli(multirepos = multirepos, answer = "y").run(listOf("multirepo", "trust")))
+
+        assertTrue(out.contains("Multirepo declared by $folder/.shogunai-multirepo.json"))
+        assertTrue(out.lines().any { it.contains("api  /srv/other/api  (outside /home/dev/projects)") })
+        assertTrue(out.lines().any { it.contains("app  $appBase") && !it.contains("outside") })
+        assertTrue(out.contains("agent is ignored"))
+        assertFalse(out.contains("touch /tmp/marker"))
+        assertTrue(out.contains("approved"))
+        assertEquals(listOf(folder), multirepos.known)
+        out.clear()
+        assertEquals(0, cli(multirepos = multirepos).run(listOf("open", "--herdr")))
+        assertEquals(listOf("plain1:p1" to "claude"), herdr.ran)
+    }
+
+    @Test
+    fun `multirepo trust approves nothing on no, without a terminal or for an invalid declaration`() {
+        val multirepos = FakeMultirepoSource(mapOf(folder to declaration), known = emptyList(), approveAll = false)
+
+        assertEquals(0, cli(multirepos = multirepos, answer = "").run(listOf("multirepo", "trust")))
+        assertEquals(1, cli(multirepos = multirepos, answer = null).run(listOf("multirepo", "trust")))
+        assertTrue(err.contains("pass --yes"))
+        assertTrue(multirepos.known.isEmpty() && multirepos.approvals.isEmpty())
+
+        multirepos.declarations[folder] = declaration.copy(repos = declaration.repos + ("api" to "product-api\u001b[2K\r"))
+        err.clear()
+        assertEquals(1, cli(multirepos = multirepos).run(listOf("multirepo", "trust", "--yes")))
+        assertTrue(err.contains("control characters") && !err.contains("\u001b"))
+        assertTrue(multirepos.known.isEmpty())
+
+        err.clear()
+        assertEquals(1, cli(workingDirectory = "/home/dev/elsewhere", multirepos = multirepos).run(listOf("multirepo", "trust")))
+        assertTrue(err.contains("No multirepo found"))
+    }
+
+    @Test
+    fun `multirepo trust takes a folder and --yes, and --revoke forgets it keeping the file`() {
+        val multirepos = FakeMultirepoSource(mapOf(folder to declaration), known = emptyList(), approveAll = false)
+
+        assertEquals(0, cli(workingDirectory = "/home/dev", multirepos = multirepos).run(listOf("multirepo", "trust", folder, "--yes")))
+        assertEquals(listOf(folder), multirepos.known)
+        out.clear()
+        assertEquals(0, cli(multirepos = multirepos).run(listOf("multirepo", "trust", "--json")))
+        assertEquals("true", json()["approved"]!!.jsonPrimitive.content)
+
+        assertEquals(0, cli(multirepos = multirepos).run(listOf("multirepo", "trust", "--revoke")))
+
+        assertTrue(multirepos.known.isEmpty())
+        assertEquals(declaration, multirepos.declarations[folder])
+        assertEquals(2, cli(multirepos = multirepos).run(listOf("multirepo", "trust", "--yes", "--revoke")))
+    }
+
+    @Test
+    fun `show reports an unapproved multirepo and an ignored declared agent`() {
+        val multirepos = FakeMultirepoSource(mapOf(folder to declaration.copy(agent = plantedAgent)), known = emptyList(), approveAll = false)
+
+        assertEquals(0, cli(multirepos = multirepos).run(listOf("multirepo", "show")))
+        assertTrue(out.contains("not approved on this machine; review it with 'shogun multirepo trust'"))
+        assertTrue(out.contains("agent  Claude (claude)"))
+        assertTrue(out.contains("agent is ignored"))
+
+        out.clear()
+        assertEquals(0, cli(multirepos = multirepos).run(listOf("multirepo", "show", "--json")))
+        assertEquals("false", json()["approved"]!!.jsonPrimitive.content)
+        assertEquals("true", json()["ignoredDeclaredAgent"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `writing subcommands refuse an unapproved multirepo and change nothing`() {
+        val multirepos = FakeMultirepoSource(mapOf(folder to declaration), approveAll = false)
+
+        listOf(
+            listOf("multirepo", "defaults", "docs"),
+            listOf("multirepo", "agent", "codex"),
+            listOf("multirepo", "remove-repo", "docs"),
+            listOf("multirepo", "worktrees-root", "/tmp/w"),
+        ).forEach { arguments ->
+            err.clear()
+            assertEquals(1, cli(multirepos = multirepos).run(arguments))
+            assertTrue(err.contains("shogun multirepo trust"), err.toString())
+        }
+        assertEquals(declaration, multirepos.declarations[folder])
+        assertTrue(multirepos.agents.isEmpty())
     }
 }

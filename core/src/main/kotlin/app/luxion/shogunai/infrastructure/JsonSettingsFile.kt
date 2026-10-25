@@ -105,6 +105,7 @@ class JsonSettingsFile(
         val skippedVersion: String? = null,
         val worktreeAgents: Map<String, String> = emptyMap(),
         val claudeHooksNoticeDismissed: Boolean = false,
+        val tourOffered: Boolean = false,
         val resources: ResourceSettings = ResourceSettings(),
     )
 

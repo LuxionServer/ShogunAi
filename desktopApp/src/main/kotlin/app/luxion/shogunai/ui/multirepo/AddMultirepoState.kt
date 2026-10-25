@@ -33,6 +33,8 @@ class AddMultirepoState(private val setup: MultirepoSetup, private val scope: Co
         private set
     var enclosingRepository by mutableStateOf<String?>(null)
         private set
+    var existing by mutableStateOf<Multirepo?>(null)
+        private set
     var candidates by mutableStateOf<List<RepositoryCandidate>>(emptyList())
         private set
     var groups by mutableStateOf<List<DetectedGroup>>(emptyList())
@@ -45,24 +47,15 @@ class AddMultirepoState(private val setup: MultirepoSetup, private val scope: Co
         private set
     var notRepository by mutableStateOf<String?>(null)
         private set
-    var existing by mutableStateOf<ExistingMultirepo?>(null)
-        private set
     private var detection: Job? = null
 
-    private val folderName: String
-        get() = folder?.let { Multirepo(it, MultirepoDeclaration()).folderName }.orEmpty()
-
     val name: String
-        get() = existing?.multirepo?.name ?: folderName
+        get() = folder?.let { Multirepo(it, MultirepoDeclaration()).name }.orEmpty()
 
     val worktreesRoot: String
-        get() = existing?.multirepo?.worktreesRoot
-            ?: folder?.let { multirepoPath(File(File(it).parent ?: "/", "$folderName-worktrees").path) }.orEmpty()
+        get() = folder?.let { multirepoPath(File(File(it).parent ?: "/", "$name-worktrees").path) }.orEmpty()
 
     fun proposedFolder(candidate: RepositoryCandidate): String = multirepoPath(File(worktreesRoot, candidate.alias).path)
-
-    val isExisting: Boolean
-        get() = existing != null
 
     val included: List<RepositoryCandidate>
         get() = candidates.filter { it.included }
@@ -80,30 +73,26 @@ class AddMultirepoState(private val setup: MultirepoSetup, private val scope: Co
         }
 
     val canConfirm: Boolean
-        get() {
-            if (folder == null || enclosingRepository != null || isInspecting || isSaving) return false
-            val existing = existing ?: return included.isNotEmpty() && aliasProblems.isEmpty()
-            return existing.multirepo != null && existing.problem == null
-        }
+        get() = folder != null && enclosingRepository == null && !isInspecting && !isSaving &&
+            (included.isNotEmpty() || existing != null) && aliasProblems.isEmpty()
 
     fun choose(folder: String) {
         this.folder = folder
         enclosingRepository = null
+        existing = null
         candidates = emptyList()
         groups = emptyList()
         error = null
         notRepository = null
-        existing = null
         isInspecting = true
         scope.launch {
             try {
                 val inspection = setup.inspect(folder)
                 enclosingRepository = inspection.enclosingRepository
-                existing = inspection.existing
-                val declared = inspection.existing?.multirepo
-                when {
-                    declared != null -> declared.repositories.forEach { addDeclared(it.alias, it.path) }
-                    inspection.enclosingRepository == null && inspection.existing == null -> inspection.repositories.forEach(::addCandidate)
+                if (inspection.enclosingRepository == null) {
+                    existing = setup.read(folder)
+                    val declared = existing?.repositories.orEmpty()
+                    inspection.repositories.filter { path -> declared.none { sameFolder(it.path, path) } }.forEach(::addCandidate)
                 }
             } catch (failure: Exception) {
                 error = failure
@@ -115,7 +104,6 @@ class AddMultirepoState(private val setup: MultirepoSetup, private val scope: Co
     }
 
     fun addFromElsewhere(path: String) {
-        if (isExisting) return
         if (candidates.any { sameFolder(it.path, path) }) return
         notRepository = null
         scope.launch {
@@ -128,13 +116,9 @@ class AddMultirepoState(private val setup: MultirepoSetup, private val scope: Co
         }
     }
 
-    fun setIncluded(path: String, included: Boolean) {
-        if (!isExisting) update(path) { it.copy(included = included) }
-    }
+    fun setIncluded(path: String, included: Boolean) = update(path) { it.copy(included = included) }
 
-    fun setAlias(path: String, alias: String) {
-        if (!isExisting) update(path) { it.copy(alias = alias.trim().lowercase()) }
-    }
+    fun setAlias(path: String, alias: String) = update(path) { it.copy(alias = alias.trim().lowercase()) }
 
     fun setUseProposedFolder(path: String, use: Boolean) = update(path) { it.copy(useProposedFolder = use) }
 
@@ -144,19 +128,19 @@ class AddMultirepoState(private val setup: MultirepoSetup, private val scope: Co
         val chosen = included
         isSaving = true
         error = null
-        val existing = existing
-        if (existing != null) {
-            confirmExisting(folder, existing, chosen, onAdded)
-            return
-        }
         scope.launch {
             try {
-                var multirepo = setup.read(folder) ?: setup.init(folder).getOrThrow()
+                val reviewed = existing
+                var multirepo = when {
+                    reviewed == null -> setup.init(folder).getOrThrow()
+                    reviewed.approved -> reviewed
+                    else -> setup.register(reviewed).getOrThrow().multirepo
+                }
                 chosen.filter { it.alias !in multirepo.declaration.repos }.forEach { candidate ->
                     setup.addRepository(multirepo, candidate.alias, candidate.path, candidate.useProposedFolder).getOrThrow()
                     multirepo = setup.read(folder) ?: multirepo
                 }
-                if (multirepo.declaration.defaultRepos.isEmpty()) setup.setDefaults(multirepo, chosen.map { it.alias }).getOrThrow()
+                if (multirepo.declaration.defaultRepos.isEmpty() && chosen.isNotEmpty()) setup.setDefaults(multirepo, chosen.map { it.alias }).getOrThrow()
                 onAdded(multirepo.folder)
             } catch (failure: Exception) {
                 error = failure
@@ -164,29 +148,6 @@ class AddMultirepoState(private val setup: MultirepoSetup, private val scope: Co
                 isSaving = false
             }
         }
-    }
-
-    private fun confirmExisting(folder: String, existing: ExistingMultirepo, chosen: List<RepositoryCandidate>, onAdded: (String) -> Unit) {
-        if (existing.known) {
-            isSaving = false
-            onAdded(existing.multirepo?.folder ?: folder)
-            return
-        }
-        val accepted = chosen.filter { it.project == null && it.useProposedFolder }.map(::proposedFolder).toSet()
-        scope.launch {
-            try {
-                onAdded(setup.register(folder, accepted).getOrThrow().multirepo.folder)
-            } catch (failure: Exception) {
-                error = failure
-            } finally {
-                isSaving = false
-            }
-        }
-    }
-
-    private fun addDeclared(alias: String, path: String) {
-        val project = setup.projects().firstOrNull { sameFolder(it.config.baseRepositoryPath, path) }
-        candidates = candidates + RepositoryCandidate(path, alias, project = project)
     }
 
     private fun addCandidate(path: String) {

@@ -10,6 +10,7 @@ import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.InvalidEnvironmentTemplate
 import app.luxion.shogunai.domain.model.IosSimulatorProvider
 import app.luxion.shogunai.domain.model.MavenProvider
+import app.luxion.shogunai.domain.model.hasHiddenCharacters
 import app.luxion.shogunai.domain.model.isReservedVariableName
 import app.luxion.shogunai.domain.model.isValidVariableName
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
@@ -68,8 +69,15 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         }
         val envFile = when (val field = config[ENV_FILE_FIELD]) {
             null, is JsonNull -> null
-            is JsonPrimitive -> field.takeIf { it.isString }?.content?.takeIf(RepositoryConfigRules::isInsideWorktree)
-                ?: throw invalid("\"$ENV_FILE_FIELD\" must be a relative path inside the worktree")
+            is JsonPrimitive -> {
+                val value = field.takeIf { it.isString }?.content
+                    ?: throw invalid("\"$ENV_FILE_FIELD\" must be a relative path inside the worktree")
+                if (hasHiddenCharacters(value)) {
+                    throw invalid("\"$ENV_FILE_FIELD\" can't contain line breaks, control characters or invisible format characters")
+                }
+                value.takeIf(RepositoryConfigRules::isInsideWorktree)
+                    ?: throw invalid("\"$ENV_FILE_FIELD\" must be a relative path inside the worktree")
+            }
             else -> throw invalid("\"$ENV_FILE_FIELD\" must be a relative path inside the worktree")
         }
         return EnvironmentDeclaration(variables = variables, envFile = envFile)
@@ -81,14 +89,23 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         return MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(path)).joinToString("") { "%02x".format(it) }
     }
 
-    override fun addCopyPatterns(repositoryPath: String, patterns: List<String>, expectedFingerprint: String?) {
+    override fun addPatterns(
+        repositoryPath: String,
+        copyPatterns: List<String>,
+        linkPatterns: List<String>,
+        expectedFingerprint: String?,
+    ) {
         val configPath = configPathOf(repositoryPath)
         expectedFingerprint?.let { requireUnchanged(repositoryPath, configPath, it) }
         val config = readConfig(configPath) ?: JsonObject(emptyMap())
-        val existing = copyPatternsOf(config, configPath)
-        val merged = (existing + patterns).distinct()
-        val updated = JsonObject(config + (COPY_FIELD to JsonArray(merged.map(::JsonPrimitive))))
-        writeAtomically(configPath, render(updated))
+        val updated = LinkedHashMap(config)
+        if (copyPatterns.isNotEmpty()) {
+            updated[COPY_FIELD] = JsonArray((copyPatternsOf(config, configPath) + copyPatterns).distinct().map(::JsonPrimitive))
+        }
+        if (linkPatterns.isNotEmpty()) {
+            updated[LINK_FIELD] = JsonArray((linkPatternsOf(config, configPath) + linkPatterns).distinct().map(::JsonPrimitive))
+        }
+        writeAtomically(configPath, render(JsonObject(updated)))
     }
 
     override fun preview(repositoryPath: String, edit: RepositoryConfigEdit): String {
@@ -118,6 +135,10 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         if (edit.addCopyPatterns.isNotEmpty()) {
             val merged = (copyPatternsOf(config, path) + edit.addCopyPatterns).distinct()
             result[COPY_FIELD] = JsonArray(merged.map(::JsonPrimitive))
+        }
+        if (edit.addLinkPatterns.isNotEmpty()) {
+            val merged = (linkPatternsOf(config, path) + edit.addLinkPatterns).distinct()
+            result[LINK_FIELD] = JsonArray(merged.map(::JsonPrimitive))
         }
         val providers = providersObjectOf(config, path)
         val updatedProviders = LinkedHashMap(providers)
@@ -338,7 +359,7 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         }
         names.forEach { name ->
             if (!isValidVariableName(name)) throw invalid("\"$label\": \"$name\" isn't a valid variable name")
-            if (isReservedVariableName(name)) throw invalid("\"$label\": \"$name\" is a reserved variable name")
+            if (isReservedVariableName(name)) throw invalid("\"$label\": \"$name\" is a reserved variable name because it changes how other tools behave")
         }
         names.groupBy { it }.entries.firstOrNull { it.value.size > 1 }?.let { throw invalid("\"$label\": \"${it.key}\" is listed more than once") }
         return names

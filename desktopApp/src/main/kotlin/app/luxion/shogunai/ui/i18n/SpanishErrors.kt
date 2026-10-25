@@ -116,6 +116,10 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "No se pudieron copiar los archivos locales al worktree.",
         "Comprueba que la carpeta del worktree admite escritura.",
     )
+    is WorktreeError.LinkedFolderOccupied -> ErrorTexts(
+        "No se pudo enlazar ${error.entry}: el worktree ya tiene una carpeta ${error.entry} con archivos que ShogunAi no copió.",
+        "Cambia ${error.entry} a copiar en los archivos locales del proyecto, o saca esos archivos de la carpeta del worktree.",
+    )
     is WorktreeError.PostCreateCommandFailed -> ErrorTexts(
         "El worktree se creó, pero falló uno de los comandos posteriores a la creación del repositorio.",
         "Lee los detalles técnicos, corrige el comando o su causa y ejecútalo dentro del worktree.",
@@ -148,6 +152,10 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "Docker no está disponible" + if (error.reason.isNullOrBlank()) "." else ": ${error.reason}",
         "Arranca Docker e inténtalo de nuevo.",
     )
+    is WorktreeError.ComposeCommandFailed -> ErrorTexts(
+        "Docker Compose falló para ${error.project}: ${error.detail}",
+        "Revisa el fichero de Compose y la salida de docker compose en el worktree.",
+    )
     is WorktreeError.NoFreePort -> ErrorTexts(
         "No queda ningún puerto libre entre ${error.from} y ${error.to}.",
         "Libera puertos de ese rango, o elimina worktrees que no uses.",
@@ -158,8 +166,14 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     )
     is WorktreeError.ResourcePoolFull -> ErrorTexts(
         "Se alcanzó el límite de ${error.limit} ${spanishKindName(error.kind)} y ninguno se puede liberar: " +
-            error.holders.joinToString("; ") { "${it.displayName} (${spanishHolderState(it.state)}${spanishProtection(it)})" } + ".",
+            error.holders.joinToString("; ") { "${it.displayName} (${spanishHolderState(it.state)}${spanishProtection(it)})" } +
+            spanishWaiting(error.waiting) + ".",
         "Espera a que expire una concesión, detén uno de ellos, o sube el límite en Preferencias.",
+    )
+    is WorktreeError.DeviceWaitTimedOut -> ErrorTexts(
+        "No se liberó ningún ${spanishKindSingular(error.kind)} en ${error.waited.toMinutes()} min: " +
+            error.holders.joinToString("; ") { "${it.displayName} (${spanishHolderState(it.state)}${spanishProtection(it)})" } + ".",
+        "Detén uno de ellos, o sube el límite de ${error.limit} en Preferencias.",
     )
     is WorktreeError.AndroidSdkNotFound -> ErrorTexts(
         "No se encontró el SDK de Android.",
@@ -241,9 +255,21 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "No se encontró ningún multirepo en ${error.path}.",
         "Añade antes la carpeta como multirepo.",
     )
+    is WorktreeError.MultirepoNeedsReview -> ErrorTexts(
+        "El multirepo ${error.path} no está aprobado en este equipo.",
+        "Revisa sus repositorios y rutas y apruébalo desde la vista del multirepo o con shogun multirepo trust.",
+    )
     is WorktreeError.BaseBranchNotFound -> ErrorTexts(
         "No se pudo resolver la rama base de ${error.repository}.",
         "Indica la rama principal del proyecto en sus ajustes.",
+    )
+    is WorktreeError.TourCreationFailed -> ErrorTexts(
+        "No se pudo crear el repositorio de ejemplo del recorrido: falló ${error.command.joinToString(" ")}${error.detail.asSuffix()}.",
+        "Comprueba que Git está instalado y funciona en una terminal, y vuelve a empezar el recorrido. No ha quedado nada a medias.",
+    )
+    is WorktreeError.TourAlreadyExists -> ErrorTexts(
+        "La carpeta del recorrido ${error.path} ya existe.",
+        "Reinicia el recorrido para sustituirla, o borra la carpeta.",
     )
     is WorktreeError.InvalidRef -> ErrorTexts(
         "\"${error.ref}\" no es una rama ni un punto de partida válidos.",
@@ -303,6 +329,18 @@ private fun spanishHolderState(state: PoolHolderState): String = when (state) {
     PoolHolderState.BUSY -> "ocupado"
     PoolHolderState.IDLE -> "inactivo"
     PoolHolderState.UNKNOWN -> "desconocido"
+}
+
+private fun spanishWaiting(waiting: Int): String = when (waiting) {
+    0 -> ""
+    1 -> "; 1 worktree espera uno"
+    else -> "; $waiting worktrees esperan uno"
+}
+
+private fun spanishKindSingular(kind: ResourceKind): String = when (kind) {
+    ResourceKind.EMULATOR -> "emulador"
+    ResourceKind.IOS_SIMULATOR -> "simulador"
+    ResourceKind.GRADLE_DAEMON -> "daemon de Gradle"
 }
 
 private fun spanishProtection(holder: PoolHolder): String = when (holder.protection) {

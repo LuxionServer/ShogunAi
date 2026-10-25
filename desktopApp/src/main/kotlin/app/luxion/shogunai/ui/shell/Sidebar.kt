@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.automirrored.filled.ViewSidebar
 import androidx.compose.material.icons.filled.Add
@@ -36,6 +37,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.Project
@@ -425,9 +427,19 @@ private fun MultirepoRow(multirepo: SidebarMultirepo, selected: Boolean, onClick
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
+        if (multirepo.needsReview) {
+            Icon(
+                Icons.Default.Warning,
+                contentDescription = strings.multirepoNeedsReview,
+                tint = colors.error,
+                modifier = Modifier.size(SidebarMarkSize).testTag("multirepo-needs-review"),
+            )
+        }
         ActivityMarks(multirepo.activity, selected)
     }
 }
+
+private val SidebarMarkSize = 16.dp
 
 data class ProjectActivity(val activeCount: Int, val agentNames: List<String>) {
     operator fun plus(other: ProjectActivity) =
@@ -444,6 +456,7 @@ data class SidebarMultirepo(
     val projects: List<Project>,
     val activity: ProjectActivity,
     val collapsed: Boolean,
+    val needsReview: Boolean = false,
 )
 
 sealed interface SidebarEntry {

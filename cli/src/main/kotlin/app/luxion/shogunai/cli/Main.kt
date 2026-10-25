@@ -2,6 +2,7 @@ package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.infrastructure.FileKmpTestWiring
 import app.luxion.shogunai.infrastructure.HerdrConfigFile
+import app.luxion.shogunai.infrastructure.JsonDerivedDataSizeStore
 import app.luxion.shogunai.infrastructure.JsonProjectRepository
 import app.luxion.shogunai.infrastructure.JsonResourceLimitsRepository
 import app.luxion.shogunai.infrastructure.JsonRepositoryTrust
@@ -12,10 +13,12 @@ import app.luxion.shogunai.infrastructure.NioEnvironmentStateStore
 import app.luxion.shogunai.infrastructure.NioFileManager
 import app.luxion.shogunai.infrastructure.ProcessBuilderShellCommandExecutor
 import app.luxion.shogunai.infrastructure.ProcessGradleDaemonSource
+import app.luxion.shogunai.infrastructure.NioProvisioningRecordStore
 import app.luxion.shogunai.infrastructure.RepositoryProvisioningFiles
 import app.luxion.shogunai.infrastructure.SimctlAppleSimulators
 import app.luxion.shogunai.infrastructure.SocketPortProbe
 import app.luxion.shogunai.infrastructure.defaultGradleUserHome
+import java.nio.file.Path
 import kotlin.system.exitProcess
 
 fun main(args: Array<String>) {
@@ -50,6 +53,8 @@ fun runShogun(args: Array<String>): Int {
         readInput = { System.`in`.bufferedReader().readText() },
         trust = JsonRepositoryTrust(),
         readAnswer = { System.console()?.readLine() },
+        provisioningRecords = NioProvisioningRecordStore(),
+        derivedDataSizes = JsonDerivedDataSizeStore(Path.of(userHome, ".shogunai", "derived-data-sizes.json")),
     ).run(args.toList())
     System.out.flush()
     System.err.flush()

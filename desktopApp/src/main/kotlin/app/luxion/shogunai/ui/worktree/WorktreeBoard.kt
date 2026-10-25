@@ -70,7 +70,7 @@ class WorktreeBoard(
     private val autoRefreshInterval: Duration = AUTO_REFRESH_INTERVAL,
     private val clock: () -> Instant = Instant::now,
     private val deviceRefreshInterval: Duration = DEVICE_REFRESH_INTERVAL,
-    val approval: DialogPostCreateApproval = DialogPostCreateApproval(),
+    val approval: DialogRepositoryApproval = DialogRepositoryApproval(),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val rememberFetchBeforeCreate: (projectId: String, fetch: Boolean) -> Unit = { _, _ -> },
     private val onWorktreeUsed: (WorktreeRef) -> Unit = {},
@@ -114,6 +114,8 @@ class WorktreeBoard(
         private set
     var isOpeningMultirepoAgent by mutableStateOf(false)
         private set
+    var isTrustingMultirepo by mutableStateOf(false)
+        private set
     var newChange by mutableStateOf<NewChange?>(null)
         private set
     var cleanupOnly by mutableStateOf<Set<String>?>(null)
@@ -139,7 +141,14 @@ class WorktreeBoard(
     var cleanupStopEmulators by mutableStateOf(true)
     var cleanupDeleteSimulators by mutableStateOf(true)
     var cleanupDeleteDerivedData by mutableStateOf(true)
-    var cleanupDownComposeProjects by mutableStateOf(true)
+    private var downComposeProjects by mutableStateOf(true)
+    var cleanupDownComposeProjects: Boolean
+        get() = downComposeProjects
+        set(value) {
+            downComposeProjects = value
+            if (!value) cleanupRemoveComposeVolumes = false
+        }
+    var cleanupRemoveComposeVolumes by mutableStateOf(false)
     var isCleaningUp by mutableStateOf(false)
         private set
     var cleanupSuccess by mutableStateOf<WorktreeSuccess.CleanedUp?>(null)
@@ -304,7 +313,7 @@ class WorktreeBoard(
         multirepoAgentsOf(folder).count { it.state == AgentState.WORKING || it.state == AgentState.BLOCKED }
 
     private fun multirepoSearches(): List<AgentSearch> =
-        memberships.map { AgentSearch.multirepoFolder(it.folder, it.multirepo.agent.agentCommand) }
+        memberships.filter { it.multirepo.approved }.map { AgentSearch.multirepoFolder(it.folder, it.multirepo.agent.agentCommand) }
 
     private fun applyMultirepoAgents(detected: Map<String, List<RunningAgent>>?) {
         val folders = memberships.map { it.folder }.toSet()
@@ -585,7 +594,7 @@ class WorktreeBoard(
     }
 
     fun openMultirepoAgent() {
-        val multirepo = shownMultirepo?.multirepo ?: return
+        val multirepo = shownMultirepo?.multirepo?.takeIf { it.approved } ?: return
         if (isOpeningMultirepoAgent) return
         isOpeningMultirepoAgent = true
         viewModelScope.launch {
@@ -604,8 +613,23 @@ class WorktreeBoard(
     }
 
     fun openNewChange() {
-        val membership = shownMultirepo ?: return
+        val membership = shownMultirepo?.takeIf { it.multirepo.approved } ?: return
         if (newChange == null) newChange = NewChange(membership)
+    }
+
+    fun trustShownMultirepo(onTrusted: () -> Unit) {
+        val multirepo = shownMultirepo?.multirepo?.takeIf { !it.approved } ?: return
+        if (isTrustingMultirepo) return
+        isTrustingMultirepo = true
+        viewModelScope.launch {
+            try {
+                withContext(ioDispatcher) { multirepoActions.trust(multirepo) }
+                    .onSuccess { onTrusted() }
+                    .onFailure { multirepoNotice = MultirepoNotice.Failed(it) }
+            } finally {
+                isTrustingMultirepo = false
+            }
+        }
     }
 
     fun dismissNewChange() {
@@ -913,6 +937,7 @@ class WorktreeBoard(
         cleanupDeleteSimulators = true
         cleanupDeleteDerivedData = true
         cleanupDownComposeProjects = true
+        cleanupRemoveComposeVolumes = false
     }
 
     fun dismissCleanup() {
@@ -931,6 +956,7 @@ class WorktreeBoard(
             deleteSimulators = cleanupDeleteSimulators,
             deleteDerivedData = cleanupDeleteDerivedData,
             downComposeProjects = cleanupDownComposeProjects,
+            removeComposeVolumes = cleanupDownComposeProjects && cleanupRemoveComposeVolumes,
         )
         val only = cleanupOnly
         isCleaningUp = true

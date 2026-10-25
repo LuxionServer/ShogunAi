@@ -31,7 +31,7 @@ class MultirepoTestWorld {
     val apiProject = Project("api", "product-api", ProjectConfig(apiBase, "$worktreesRoot/api", emptyList()))
     val docsProject = Project("docs", "product-docs", ProjectConfig(docsBase, "$worktreesRoot/docs", emptyList()))
     val projects = FakeProjectRepository(listOf(appProject, apiProject, docsProject))
-    val multirepo = Multirepo(folder, declaration)
+    val multirepo = Multirepo(folder, declaration, approved = true)
     val resolver = ResolveMultirepoUseCase(source, git, fileManager)
 
     fun makeFolderARepository() = git.repository(folder).also { fileManager.writeText("$folder/.git", "") }

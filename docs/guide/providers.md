@@ -29,6 +29,8 @@ You don't have to know which providers exist. ShogunAi looks at the files of the
 
 In the project settings, "Repository configuration" lists the providers the repository could use and doesn't declare yet, with the files that revealed them, and "Turn on" switches the provider on as an unsaved change: nothing is written until you save and confirm the preview. `shogun stacks` prints the same from a terminal and changes nothing. A suggestion is only a hint (a `pom.xml` in a fixture folder also counts), so the evidence is always shown.
 
+ShogunAi also looks, at any depth outside build and tool folders (`build`, `.gradle`, `node_modules`, `Pods`, `DerivedData`), for the untracked files a fresh mobile worktree can't build without: `local.properties`, `keystore.properties`, `key.properties`, `*.jks`, `*.keystore`, `google-services.json` and `GoogleService-Info.plist`. Each one nothing provisions yet (local files, `copy`, `link` or `.worktreeinclude`) is suggested as an anchored `link` pattern, such as `/app/google-services.json`, so rotating it in the base repository updates every worktree. It also reads the `storeFile` keys of those properties files (any key ending in `storeFile`, such as `RELEASE_STORE_FILE`): a keystore they name inside the repository is suggested too, and a relative path that leaves the repository is reported, because it won't resolve from a worktree that lives in another folder. The project settings list them under "Worktree files" and `shogun stacks` prints them; nothing is written until you accept and save.
+
 ## Gradle
 
 ```json
@@ -86,17 +88,33 @@ Daemon inspection needs `ps` and `lsof` (macOS and Linux).
 
 Two worktrees running `docker compose up` share container, network and volume names, and publish the same host ports. The provider gives each worktree its own:
 
-- `COMPOSE_PROJECT_NAME` is `<repository folder>-<worktree folder>`, lowercased, with every character other than letters, digits, `-` and `_` replaced by `-` (`main-repo` and `TASK-123` give `main-repo-task-123`). A folder name that normalising would make ambiguous (`fix login (2)`, or mixed case) gets a short stable hash, and a name over 50 characters is shortened keeping it, so different worktrees get different names. The name is derived, not stored, so nothing is left behind when a worktree is removed. A `COMPOSE_PROJECT_NAME` declared in `env` takes precedence.
+- `COMPOSE_PROJECT_NAME` is `<repository folder>-<worktree folder>`, lowercased, with every character other than letters, digits, `-` and `_` replaced by `-` (`main-repo` and `TASK-123` give `main-repo-task-123`). A folder name that normalising would make ambiguous (`fix login (2)`, or mixed case) gets a short stable hash, and a name over 50 characters is shortened keeping it, so different worktrees get different names. A `COMPOSE_PROJECT_NAME` declared in `env` takes precedence.
 - `portVariables` is optional: each name becomes a variable with a free port in 20000-29999 reserved for that worktree (the same rules as `${port}`), so the Compose file can publish `${DB_PORT}:5432` without colliding. Names follow the variable name rule and can't be reserved names; a name also declared in `env` gets the declared value and no port.
 
-The app shows a "Compose projects" section with the projects `docker compose ls` reports for the repository's worktrees (status and worktree) and the projects of removed worktrees: those whose name starts with the repository folder's name, whose compose files lived in the repository or its worktrees folder, and that match no existing worktree. Projects of other repositories, even with a similar prefix, are never touched. "Take down the projects of removed worktrees" runs `docker compose -p <name> down`, which removes containers and networks and keeps volumes (volumes are only removed with `--volumes` from the command line). "Clean up" has a checked option to take down the projects of the worktrees it removes; if Docker isn't available the worktrees are still removed and the report says the projects were kept.
+### Starting and building the services
+
+`shogun compose up` starts the services of the worktree you're in, detached, with its `COMPOSE_PROJECT_NAME` and port variables, so you never pass `-p` or ports by hand; `--build` builds first, and everything after `--` goes to `docker compose` as is (service names, `--wait`). `shogun compose build` only builds. Docker Compose's output is shown as it runs. The worktree's detail in the app has a Compose section with the project's name and state (`Not started` when Docker knows no such project) and Start, Build and Take down actions. The SessionStart context tells Claude to use `shogun compose up`.
+
+### What removed worktrees leave behind
+
+Taking a project down keeps its volumes, and Compose never removes the images it built, so removed worktrees leave volumes, networks and images behind. ShogunAi records in `~/.shogunai/compose-projects.json` the project name it gives each worktree (when its environment is resolved and on every `up` or `build`); a volume, network or image whose `com.docker.compose.project` label is a recorded name whose worktree no longer exists is a leftover of that worktree. A name that no other worktree uses now and that no other repository has recorded is the only thing that counts, so projects of other repositories, even with a similar prefix, are never touched. Images pulled from a registry (such as `postgres`) carry no Compose label and are never removed.
+
+The Machine section's "Compose projects" view lists the projects `docker compose ls` reports for the repository's worktrees (status and worktree), the projects of removed worktrees (recorded ones, and those whose compose files lived in the repository or its worktrees folder), and, after them, the leftovers of removed worktrees. "Take down the projects of removed worktrees" runs `docker compose -p <name> down`, which removes containers and networks and keeps volumes. "Remove networks and images" removes the leftovers except volumes; "Remove volumes too" asks first, because their data is lost. Nothing is ever forced: an image or network still used by a container is kept and reported.
+
+"Clean up" has a checked option to take down the projects of the worktrees it removes and remove their networks and built images, and an unchecked one to remove their volumes too; if Docker isn't available the worktrees are still removed and the report says the projects were kept.
+
+Worktrees removed before this registry existed weren't recorded: their projects with containers are still found by their compose files, and the rest can be removed with `docker volume rm` and `docker image rm`.
 
 ```bash
-shogun compose                     # the Compose projects of the worktrees and their status
+shogun compose up                  # start this worktree's services (detached) with its project name and ports
+shogun compose up --build -- api   # build first, and only the api service
+shogun compose build               # build this worktree's services
+shogun compose                     # the Compose projects of the worktrees and what removed worktrees left
 shogun compose down                # take down the projects of removed worktrees (volumes kept)
 shogun compose down TASK-123       # take down one worktree's project
-shogun compose down --volumes      # also remove their volumes
-shogun clean --yes --down-compose-projects  # also take down the projects of the removed worktrees
+shogun compose prune               # list the networks and images left by removed worktrees
+shogun compose prune --yes         # remove them (add --volumes to remove their volumes too)
+shogun clean --yes --down-compose-projects  # also take down the removed worktrees' projects and remove their images
 ```
 
 Docker is only run for repositories that declare the provider, and only the Docker CLI is used.
@@ -159,9 +177,10 @@ Emulators, iOS simulators and Gradle daemons are limited per machine, shared by 
 
 - Every worktree that holds a device has a **lease** on it. Starting the device and every moment its agent is working renew the lease, and it expires after the lease duration without activity (20 minutes by default, set in Preferences > Resources, never in the repository). Only devices whose lease has expired can be released.
 - When you start a device and its pool is full, ShogunAi releases one device with an expired lease, in this order (the least recently used first within each step): a stopped device whose worktree has no agent session, a stopped device whose agent is done or idle, a running device (stopped first) and, last, a device whose agent is blocked. A device whose agent is working, or whose lease is still valid, is never released; if none can be released the start fails and names the worktrees that hold them, with when each lease expires.
+- `shogun emulator start --wait` and `shogun simulator start --wait` wait in line for a full pool instead of failing, for 30 minutes at most (`--wait-timeout <minutes>` changes it). Waiters are served first in, first out across the machine, and while anyone waits, other starts can't take the device they wait for. Agents should run a waiting start in the background; the session hint says so.
 - A released emulator loses its port and a released simulator is deleted. The released worktree remembers why (`shogun emulator status` says "released for …"), its port isn't handed to another worktree while another one is free, and it gets the same port back when it starts again. Agents should run `shogun emulator start` before every use of the device: it is idempotent, re-acquires one if it was released and prints the serial to use. The session hint says so.
 - Gradle daemons are started by your builds, so they can't be refused: the app (every 30 seconds) and `shogun pool trim` stop the idle ones, longest idle first, until they are within the limit.
-- `shogun pool status` shows each pool with its limit and holders, and the machine views of the app show the same with a notice for what was released.
+- `shogun pool status` shows each pool with its limit, holders and waiters, and the machine views of the app show the same with a notice for what was released.
 
 ## Xcode
 
@@ -171,15 +190,21 @@ Xcode keeps one DerivedData folder per project path, so every worktree gets its 
 { "providers": { "xcode": { "compilationCache": true } } }
 ```
 
-The worktree screen then shows an "Xcode DerivedData" section with each worktree's folder, its size and last access, and the orphaned folders on the machine: those whose project no longer exists, whichever tool created them. The folders appear at once; their sizes and the totals read "Calculating…" until each folder has been measured in the background, one at a time, without freezing the app. The calculation goes on if you leave the view (the sidebar entry shows the total once it's ready) and starts over when you reload it. "Delete orphans" removes them, and "Clean up" (checked by default) also deletes the orphans after removing worktrees, including the folders of the worktrees it removes.
+The worktree screen then shows an "Xcode DerivedData" section with each worktree's folder, its size and last access, and the orphaned folders on the machine: those whose project no longer exists, whichever tool created them. The folders appear at once; their sizes and the totals read "Calculating…" until each folder has been measured in the background, several at a time, without freezing the app. ShogunAi remembers each folder's size between runs, in the app and the `shogun` command alike, and only measures again the folders Xcode has used since, so after the first run most sizes appear at once. The calculation goes on if you leave the view (the sidebar entry shows the total once it's ready), and reloading the view measures every folder again, showing the previous sizes until the new ones arrive. "Delete orphans" removes them, and "Clean up" (checked by default) also deletes the orphans after removing worktrees, including the folders of the worktrees it removes.
 
-Unless you set a quota, only orphaned folders are ever deleted, and never the DerivedData of a project that still exists, never Xcode's shared caches (`CompilationCache.noindex`, `ModuleCache.noindex`, …), and never a folder whose project is on a volume that isn't mounted. ShogunAi finds DerivedData in Xcode's default location or the custom one set in Xcode's preferences.
+Outside the quota, only orphaned folders are ever deleted, and never the DerivedData of a project that still exists, never Xcode's shared caches (`CompilationCache.noindex`, `ModuleCache.noindex`, …), and never a folder whose project is on a volume that isn't mounted. ShogunAi finds DerivedData in Xcode's default location or the custom one set in Xcode's preferences.
 
 ### DerivedData quota
 
-DerivedData grows with every worktree an agent builds in. Set a quota in Preferences > Resources (a number of gigabytes, or "No quota", the default) and ShogunAi keeps the folders within it. The quota is a machine setting, not part of the capacity profiles, and is never read from the repository.
+DerivedData grows with every worktree an agent builds in, so ShogunAi keeps the folders within a quota, chosen in Preferences > Resources:
 
-When the folders add up to more than the quota, ShogunAi releases the orphaned folders first and then the least recently accessed folders of worktrees that are not in use, and stops as soon as the total fits. A worktree is in use while its agent is working or blocked, or its folder was accessed within the last hour. Folders of other projects, folders on unavailable volumes and the compilation cache are never released; if only those remain, the view says the quota is still exceeded and names the worktrees in use. The app applies the quota every time the folder sizes have been measured, and shows the usage against the quota, in the sidebar too, and the folders it released until you dismiss the notice. `shogun xcode trim` applies it from the command line.
+- **Automatic**, the default: a quarter of the space DerivedData could use on its disk (the free space plus what DerivedData already takes), between 20 and 200 GB. With 100 GB free and 60 GB of DerivedData, the quota is 40 GB. It's computed each time the quota is applied; if the free space can't be read, nothing is released and the view says the quota is unknown.
+- **Fixed size**: a number of gigabytes.
+- **No quota**: nothing is released to honour a quota; only orphans are deleted, when you ask.
+
+The quota is a machine setting, not part of the capacity profiles, and is never read from the repository. Settings saved before the automatic quota existed keep their fixed size if they had one, and otherwise become Automatic.
+
+When the folders add up to more than the quota, ShogunAi releases the orphaned folders first and then the least recently accessed folders of worktrees that are not in use, and stops as soon as the total fits. A worktree is in use while its agent is working or blocked, or its folder was accessed within the last hour. Folders of other projects, folders on unavailable volumes and the compilation cache are never released; if only those remain, the view says the quota is still exceeded and names the worktrees in use. The app applies the quota every time the folder sizes have been measured, and shows the usage against the quota (marked "automatic" for the automatic one), in the sidebar too, and the folders it released until you dismiss the notice. `shogun xcode trim` applies it from the command line.
 
 ```bash
 shogun xcode                               # this repository's DerivedData folders, the orphans and the compilation cache size

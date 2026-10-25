@@ -14,7 +14,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.rightClick
-import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.v2.runComposeUiTest
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeShellPreferenceRepository
 import app.luxion.shogunai.domain.model.Multirepo
@@ -40,7 +40,7 @@ class SidebarOrderTest {
     private val app = project("app", productFolder)
     private val docs = project("docs", productFolder)
     private val web = project("web", productFolder)
-    private val product = Multirepo(productFolder, MultirepoDeclaration(repos = mapOf("app" to "app", "docs" to "docs", "web" to "web"), worktreesRoot = "../w"))
+    private val product = Multirepo(productFolder, MultirepoDeclaration(repos = mapOf("app" to "app", "docs" to "docs", "web" to "web"), worktreesRoot = "../w"), approved = true)
     private val repository = FakeProjectRepository(initialProjects = listOf(api, mainRepo, mobile, app, docs, web))
     private val preferences = FakeShellPreferenceRepository()
     private var known = listOf(product)
