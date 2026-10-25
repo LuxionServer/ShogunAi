@@ -20,6 +20,7 @@ data class CleanupReport(
     val keptBranches: List<String>,
     val failures: List<CleanupFailure>,
     val herdrFailures: List<CleanupFailure> = emptyList(),
+    val headlessAppFailures: List<CleanupFailure> = emptyList(),
     val composeDown: ComposeDownReport? = null,
     val composeUnavailable: String? = null,
     val composeResources: ComposeLeftoversReport? = null,
@@ -60,8 +61,9 @@ class CleanUpWorktreesUseCase(
     private val composeProjects: ComposeProjectSource? = null,
     fileManager: FileManager? = null,
     private val composeRegistry: ComposeProjectRegistry? = null,
+    stopHeadlessApp: StopHeadlessAppUseCase? = null,
 ) {
-    private val folderRemoval = WorktreeFolderRemoval(config, executor, fileManager, closeHerdrWorkspaces)
+    private val folderRemoval = WorktreeFolderRemoval(config, executor, fileManager, closeHerdrWorkspaces, stopHeadlessApp)
 
     suspend operator fun invoke(
         candidates: List<Worktree>,
@@ -77,12 +79,14 @@ class CleanUpWorktreesUseCase(
         val removedWorktrees = mutableListOf<Worktree>()
         val closedWorkspacePaths = mutableSetOf<String>()
         val herdrFailures = mutableListOf<CleanupFailure>()
+        val headlessAppFailures = mutableListOf<CleanupFailure>()
 
         candidates.filterNot { it.isPrunable }.forEach { worktree ->
             try {
                 val closing = folderRemoval.remove(worktree.path, force = false, workspaceId = workspaces[worktree.path])
                 if (closing.closedWorkspace) closedWorkspacePaths += worktree.path
                 closing.failure?.let { herdrFailures += CleanupFailure(worktree.path, it) }
+                closing.headlessAppFailure?.let { headlessAppFailures += CleanupFailure(worktree.path, it) }
                 removedWorktrees += worktree
             } catch (error: CancellationException) {
                 throw error
@@ -116,6 +120,7 @@ class CleanUpWorktreesUseCase(
             keptBranches = keptBranches,
             failures = failures,
             herdrFailures = herdrFailures,
+            headlessAppFailures = headlessAppFailures,
             composeDown = compose?.getOrNull()?.first,
             composeUnavailable = compose?.exceptionOrNull()?.let { (it as? WorktreeError.DockerUnavailable)?.reason ?: it.message.orEmpty() },
             composeResources = compose?.getOrNull()?.second,

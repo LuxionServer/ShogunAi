@@ -204,6 +204,17 @@ internal object CliHelp {
                               (30 minutes at most by default) instead of failing
                               (repositories with "providers": { "emulator": {} } in .shogunai.json)
 """.trimIndent(),
+        "headless" to """
+  headless start [<path>] [--visible] [--fresh] [--json]
+                              Launch the worktree's Compose Desktop app in the background on macOS, without
+                              taking focus, and hide it (--visible leaves its window shown); --fresh empties
+                              its isolated home first; starting a running app hides it again
+  headless capture [<path>] [--output <file>] [--json]
+                              Save a PNG of the app's window, even while it's hidden or covered
+  headless stop|status [<path>] [--json]
+                              Stop the app, or show its state, log and the macOS permissions it needs
+                              (repositories with "providers": { "desktop-app": { "module": ":desktopApp" } })
+""".trimIndent(),
         "env" to """
   env [<path>] [--format sh|dotenv|json]
                               Print the worktree's environment from .shogunai.json "env"

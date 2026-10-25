@@ -1,6 +1,7 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
+import app.luxion.shogunai.domain.model.DesktopAppProvider
 import app.luxion.shogunai.domain.model.DockerComposeProvider
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
@@ -304,7 +305,23 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
                 val options = providerOptions(value, DOCKER_COMPOSE_PROVIDER, path)
                 DockerComposeProvider(portVariables = portVariablesOf(options, path))
             },
+            desktopApp = providers[DESKTOP_APP_PROVIDER]?.let { value ->
+                val options = providerOptions(value, DESKTOP_APP_PROVIDER, path)
+                DesktopAppProvider(
+                    module = gradleModuleOf(options, path),
+                    isolatedHome = optionalBoolean(options, DESKTOP_APP_PROVIDER, ISOLATED_HOME_FIELD, path) ?: true,
+                )
+            },
         )
+    }
+
+    private fun gradleModuleOf(options: JsonObject, path: Path): String {
+        val invalid = WorktreeError.InvalidRepositoryConfig(
+            path.toString(),
+            "\"$PROVIDERS_FIELD.$DESKTOP_APP_PROVIDER.$MODULE_FIELD\" must be a Gradle project path such as \":desktopApp\"",
+        )
+        val value = options[MODULE_FIELD] as? JsonPrimitive ?: throw invalid
+        return value.takeIf { it.isString }?.content?.takeIf(RepositoryConfigRules::isGradleProjectPath) ?: throw invalid
     }
 
     private fun providerOptions(value: JsonElement, provider: String, path: Path): JsonObject =
@@ -411,6 +428,9 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         const val MAVEN_MAX_HEAP_FIELD = "mavenMaxHeap"
         const val DOCKER_COMPOSE_PROVIDER = "docker-compose"
         const val PORT_VARIABLES_FIELD = "portVariables"
+        const val DESKTOP_APP_PROVIDER = "desktop-app"
+        const val MODULE_FIELD = "module"
+        const val ISOLATED_HOME_FIELD = "isolatedHome"
         const val ENV_FIELD = "env"
         const val ENV_FILE_FIELD = "envFile"
         const val ABSENT_FINGERPRINT = "absent"

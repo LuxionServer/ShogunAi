@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.MacPermission
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.HolderProtection
 import app.luxion.shogunai.domain.model.PoolHolder
@@ -211,6 +212,46 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "Este repositorio no usa el proveedor de emuladores.",
         "Activa el proveedor en los ajustes del proyecto.",
     )
+    WorktreeError.DesktopAppProviderNotDeclared -> ErrorTexts(
+        "Este repositorio no usa el proveedor de app de escritorio.",
+        "Declara \"desktop-app\" con el módulo Gradle de la app en .shogunai.json.",
+    )
+    WorktreeError.HeadlessAppsNotSupported -> ErrorTexts(
+        "Ejecutar una app de escritorio en segundo plano no está disponible en este equipo.",
+        "Necesita macOS.",
+    )
+    is WorktreeError.HeadlessAppLaunchFailed -> ErrorTexts(
+        "Falló el lanzamiento de la app de escritorio.",
+        "Revisa el log del lanzamiento en los detalles técnicos.",
+    )
+    is WorktreeError.HeadlessAppExitedEarly -> ErrorTexts(
+        "La app de escritorio se detuvo antes de mostrar su ventana.",
+        "Revisa el log de la app en los detalles técnicos.",
+    )
+    is WorktreeError.HeadlessAppWindowTimeout -> ErrorTexts(
+        "La app de escritorio no mostró ninguna ventana en ${error.seconds} s.",
+        "Sigue en marcha; párala con shogun headless stop.",
+    )
+    WorktreeError.HeadlessAppNotRunning -> ErrorTexts(
+        "La app de escritorio del worktree no está en marcha.",
+        "Arráncala con shogun headless start.",
+    )
+    WorktreeError.HeadlessAppHasNoWindow -> ErrorTexts(
+        "La app de escritorio del worktree no tiene ventana ahora mismo.",
+        "Vuelve a intentarlo cuando muestre una.",
+    )
+    is WorktreeError.MacWindowToolFailed -> ErrorTexts(
+        "Falló una herramienta de ventanas de macOS.",
+        "Revisa los detalles técnicos.",
+    )
+    is WorktreeError.HeadlessAppStopFailed -> ErrorTexts(
+        "No se pudo parar la app de escritorio del worktree.",
+        "Revisa los detalles técnicos.",
+    )
+    is WorktreeError.MacPermissionMissing -> ErrorTexts(
+        "macOS no ha concedido el permiso de ${spanishPermissionName(error.permission)} a la aplicación que ejecuta shogun.",
+        "Concédelo en Ajustes del Sistema › Privacidad y seguridad › ${spanishPermissionName(error.permission)}.",
+    )
     WorktreeError.IosSimulatorsNotSupported -> ErrorTexts(
         "Los simuladores de iOS no están disponibles en este equipo.",
         "Necesitan macOS con Xcode instalado.",
@@ -347,4 +388,9 @@ private fun spanishProtection(holder: PoolHolder): String = when (holder.protect
     HolderProtection.AGENT_WORKING -> ", agente trabajando"
     HolderProtection.LEASED -> ", concesión hasta ${holder.leaseExpiresAt?.toLocalClockTime()}"
     null -> ""
+}
+
+private fun spanishPermissionName(permission: MacPermission): String = when (permission) {
+    MacPermission.SCREEN_RECORDING -> "Grabación de pantalla"
+    MacPermission.ACCESSIBILITY -> "Accesibilidad"
 }

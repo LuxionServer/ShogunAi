@@ -1,5 +1,9 @@
 package app.luxion.shogunai
 
+import app.luxion.shogunai.infrastructure.MacAppWindowService
+import app.luxion.shogunai.infrastructure.GradleHeadlessAppLauncher
+import app.luxion.shogunai.domain.usecase.StopHeadlessAppUseCase
+import app.luxion.shogunai.domain.usecase.HeadlessAppWorktrees
 import app.luxion.shogunai.domain.model.DerivedDataQuota
 import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.MeasuredSize
@@ -441,6 +445,17 @@ class AppContainer {
     private val startSimulator = StartWorktreeSimulatorUseCase(repositoryProvisioningSource, appleSimulators, acquireResource, resolveEnvironment)
     private val startEmulator = StartWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, acquireResource, androidSdk)
     private val stopEmulator = StopWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)
+    private val headlessAppLauncher = GradleHeadlessAppLauncher(shellCommandExecutor, Path.of(System.getProperty("user.home"), ".shogunai", "headless").toString())
+    private val stopHeadlessApp = StopHeadlessAppUseCase(
+        HeadlessAppWorktrees(
+            repositoryProvisioningSource,
+            { resolveEnvironment.directoriesOf(it).admin },
+            headlessAppLauncher,
+            MacAppWindowService(shellCommandExecutor, Path.of(System.getProperty("user.home"), ".shogunai", "headless").toString()),
+            fileManager,
+        ),
+        headlessAppLauncher,
+    )
     private val readReleaseRecord = ReadReleaseRecordUseCase(resolveEnvironment, environmentStateStore)
     private val readEmulatorStates = ReadEmulatorStatesUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)
 
@@ -646,7 +661,7 @@ class AppContainer {
         listBranches = ListBranchesUseCase(config, shellCommandExecutor),
         fetchRemote = FetchRemoteUseCase(config, shellCommandExecutor),
         resolveStartPoint = { ref -> ResolveStartPointUseCase(shellCommandExecutor)(config.baseRepositoryPath, ref) },
-        remove = RemoveWorktreeUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient), fileManager),
+        remove = RemoveWorktreeUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient), fileManager, stopHeadlessApp),
         deleteBranch = DeleteBranchUseCase(config, shellCommandExecutor),
         copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboardWriter),
         agents = AgentUseCases(config, agentChoices),
@@ -660,6 +675,7 @@ class AppContainer {
             composeProjectSource,
             fileManager,
             composeProjectRegistry,
+            stopHeadlessApp,
         ),
         detectAgents = { worktrees -> detectRunningAgents(config, worktrees) },
         measureSize = MeasureWorktreeSizeUseCase(fileManager),

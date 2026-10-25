@@ -8,6 +8,7 @@ import app.luxion.shogunai.domain.model.WorktreeError
 data class WorktreeRemoval(
     val herdrFailure: WorktreeError? = null,
     val branch: BranchDeletion? = null,
+    val headlessAppFailure: WorktreeError? = null,
 )
 
 class RemoveWorktreeUseCase(
@@ -15,8 +16,9 @@ class RemoveWorktreeUseCase(
     private val executor: ShellCommandExecutor,
     private val closeHerdrWorkspaces: CloseHerdrWorkspacesUseCase? = null,
     private val fileManager: FileManager? = null,
+    private val stopHeadlessApp: StopHeadlessAppUseCase? = null,
 ) {
-    private val folderRemoval = WorktreeFolderRemoval(config, executor, fileManager, closeHerdrWorkspaces)
+    private val folderRemoval = WorktreeFolderRemoval(config, executor, fileManager, closeHerdrWorkspaces, stopHeadlessApp)
 
     suspend operator fun invoke(
         worktreePath: String,
@@ -31,7 +33,7 @@ class RemoveWorktreeUseCase(
             ?: closing.failure
 
         val branch = branchToDelete?.let { deleteBranch(it, forceBranchDeletion) }
-        WorktreeRemoval(herdrFailure, branch)
+        WorktreeRemoval(herdrFailure, branch, closing.headlessAppFailure)
     }
 
     private suspend fun deleteBranch(branch: String, forced: Boolean): BranchDeletion {

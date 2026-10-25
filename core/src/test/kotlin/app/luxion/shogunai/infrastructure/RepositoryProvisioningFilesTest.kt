@@ -1,5 +1,6 @@
 package app.luxion.shogunai.infrastructure
 
+import app.luxion.shogunai.domain.model.DesktopAppProvider
 import app.luxion.shogunai.domain.model.DockerComposeProvider
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EnvironmentEntry
@@ -353,6 +354,40 @@ class RepositoryProvisioningFilesTest {
             configFile.writeText(content)
             assertFailsWith<WorktreeError.InvalidRepositoryConfig>(content) { files.read(repository.toString()) }
         }
+    }
+
+    @Test
+    fun `reads the desktop app provider with an isolated home by default`() {
+        configFile.writeText("""{ "providers": { "desktop-app": { "module": ":desktopApp" } } }""")
+        assertEquals(DesktopAppProvider(":desktopApp"), files.read(repository.toString()).providers.desktopApp)
+
+        configFile.writeText("""{ "providers": { "desktop-app": { "module": ":apps:desktop", "isolatedHome": false } } }""")
+        assertEquals(DesktopAppProvider(":apps:desktop", isolatedHome = false), files.read(repository.toString()).providers.desktopApp)
+    }
+
+    @Test
+    fun `fails with InvalidRepositoryConfig on an invalid desktop app provider`() {
+        listOf(
+            """{ "providers": { "desktop-app": true } }""",
+            """{ "providers": { "desktop-app": {} } }""",
+            """{ "providers": { "desktop-app": { "module": "" } } }""",
+            """{ "providers": { "desktop-app": { "module": "desktopApp/build.gradle.kts" } } }""",
+            """{ "providers": { "desktop-app": { "module": ":desktopApp --init-script x" } } }""",
+            """{ "providers": { "desktop-app": { "module": ":desktopApp", "isolatedHome": "yes" } } }""",
+        ).forEach { content ->
+            configFile.writeText(content)
+            val error = assertFailsWith<WorktreeError.InvalidRepositoryConfig>(content) { files.read(repository.toString()) }
+            assertTrue("providers.desktop-app" in error.detail.orEmpty(), content)
+        }
+    }
+
+    @Test
+    fun `editing other providers keeps the desktop app provider`() {
+        configFile.writeText("""{ "providers": { "desktop-app": { "module": ":desktopApp" } } }""")
+
+        write(edit(providers = RepositoryProviders(gradle = GradleProvider())))
+
+        assertEquals(DesktopAppProvider(":desktopApp"), files.read(repository.toString()).providers.desktopApp)
     }
 
     @Test

@@ -13,7 +13,9 @@ class FakeFileManager(
     private val properties: Map<String, Map<String, String>> = emptyMap(),
 ) : FileManager {
 
-    override fun readProperties(path: String): Map<String, String> = properties[path].orEmpty()
+    val writtenProperties = mutableMapOf<String, Map<String, String>>()
+
+    override fun readProperties(path: String): Map<String, String> = writtenProperties[path] ?: properties[path].orEmpty()
 
     val writtenTexts = mutableMapOf<String, String>()
     var failWrites = false

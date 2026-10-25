@@ -3,7 +3,7 @@
 A provider adds support for one kind of tooling to a repository's worktrees. A repository turns providers on in its [`.shogunai.json`](configuration.md#repository-configuration-shogunaijson) under `providers`; repositories without a provider never see any of its sections, buttons or commands, and none of its tools run.
 
 ```json
-{ "providers": { "gradle": {}, "emulator": {}, "ios-simulator": {}, "xcode": {}, "maven": {}, "docker-compose": {} } }
+{ "providers": { "gradle": {}, "emulator": {}, "ios-simulator": {}, "xcode": {}, "maven": {}, "docker-compose": {}, "desktop-app": { "module": ":desktopApp" } } }
 ```
 
 | Provider | For | Platforms |
@@ -14,6 +14,7 @@ A provider adds support for one kind of tooling to a repository's worktrees. A r
 | [`xcode`](#xcode) | Xcode DerivedData and the shared compilation cache. | macOS |
 | [`maven`](#maven) | Maven builds: a memory bound and the Maven daemons. | Any; the daemon list needs `ps` (macOS, Linux) |
 | [`docker-compose`](#docker-compose) | A Docker Compose project and ports per worktree. | Any with the Docker CLI |
+| [`desktop-app`](#compose-desktop-app) | A Compose Desktop app per worktree, run in the background without taking the desktop. | macOS |
 
 ## Detecting stacks
 
@@ -139,6 +140,25 @@ shogun emulator stop
 - The worktree list shows each emulator with Start and Stop, and "Clean up" (or `shogun clean --stop-emulators`) stops the emulators of the worktrees it removes.
 - The SDK is found through `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `sdk.dir` in `local.properties` or Android Studio's default location.
 - The adb server is shared by every worktree: agents must never restart it (`adb kill-server`) or force a device with `-s`, `-e` or `-d`. The `SessionStart` hook tells Claude so.
+
+## Compose Desktop app
+
+An agent checking a Compose Desktop app with computer use takes the screen, mouse and keyboard away from you, and only one agent can do it at a time. Turn on the desktop app provider to let each worktree's agent run its app in the background instead:
+
+```json
+{ "providers": { "desktop-app": { "module": ":desktopApp" } } }
+```
+
+`module` is the Gradle path of the app's module, which must use Compose Hot Reload (Compose Multiplatform 1.12 or later). `isolatedHome` (default `true`) gives the app its own user home per worktree, so it never touches your own data; set it to `false` for an app that must read the real home.
+
+```bash
+shogun headless start      # launch the app hidden, without taking focus
+shogun headless capture    # PNG of its window, even while hidden
+shogun headless status
+shogun headless stop
+```
+
+The agent drives the app through Compose Hot Reload's MCP server. See [Checking a desktop app in the background](headless-app.md) for the whole workflow, the macOS permissions it needs and what still needs the desktop.
 
 ## iOS simulator
 

@@ -107,6 +107,14 @@ sealed interface CliCommand {
         val json: Boolean = false,
         val wait: Duration? = null,
     ) : CliCommand
+    data class Headless(
+        val action: HeadlessAction,
+        val path: String? = null,
+        val visible: Boolean = false,
+        val fresh: Boolean = false,
+        val output: String? = null,
+        val json: Boolean = false,
+    ) : CliCommand
     data class Simulator(
         val action: SimulatorAction,
         val path: String? = null,
@@ -162,6 +170,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "env" -> parseEnv(arguments)
                 "emulator" -> parseEmulator(arguments)
                 "simulator" -> parseSimulator(arguments)
+                "headless" -> parseHeadless(arguments)
                 else -> throw UsageException("unknown command '$name'")
             }.withJson(json),
         )
@@ -174,7 +183,7 @@ private const val JSON_FLAG = "--json"
 
 private const val ARGUMENTS_SEPARATOR = "--"
 
-private val JSON_COMMANDS = setOf("new", "multirepo", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "stacks", "maven", "compose", "pool", "project", "xcode", "emulator", "simulator", "hooks", "guide")
+private val JSON_COMMANDS = setOf("new", "multirepo", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "stacks", "maven", "compose", "pool", "project", "xcode", "emulator", "simulator", "headless", "hooks", "guide")
 
 private fun isSimulatorGradleInit(name: String, rest: List<String>) = name == "simulator" && rest.firstOrNull() == "gradle-init"
 
@@ -204,6 +213,7 @@ private fun CliCommand.withJson(json: Boolean): CliCommand = if (!json) this els
     is CliCommand.Project -> copy(json = true)
     is CliCommand.Emulator -> copy(json = true)
     is CliCommand.Simulator -> copy(json = true)
+    is CliCommand.Headless -> copy(json = true)
     is CliCommand.Hooks -> copy(json = true)
     is CliCommand.GuideBlock -> copy(json = true)
     else -> this
@@ -633,6 +643,34 @@ private fun parseSimulatorGradleInit(rest: List<String>): CliCommand.SimulatorGr
         }
     }
     return CliCommand.SimulatorGradleInit(install, confirmed)
+}
+
+enum class HeadlessAction { START, STOP, STATUS, CAPTURE }
+
+private fun parseHeadless(rest: List<String>): CliCommand.Headless {
+    val name = rest.firstOrNull() ?: throw UsageException("'headless' needs an action: start, stop, status or capture")
+    val action = HeadlessAction.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
+        ?: throw UsageException("unknown action '$name' for 'headless', expected start, stop, status or capture")
+    var path: String? = null
+    var visible = false
+    var fresh = false
+    var output: String? = null
+    val remaining = ArrayDeque(rest.drop(1))
+    while (remaining.isNotEmpty()) {
+        when (val argument = remaining.removeFirst()) {
+            "--visible" -> visible = true
+            "--fresh" -> fresh = true
+            "--output" -> output = remaining.valueOf(argument)
+            else -> {
+                if (argument.startsWith("-")) throw UsageException("unknown option '$argument' for 'headless'")
+                if (path != null) throw UsageException("'headless $name' takes at most one path")
+                path = argument
+            }
+        }
+    }
+    if (action != HeadlessAction.START && (visible || fresh)) throw UsageException("--visible and --fresh only apply to 'headless start'")
+    if (action != HeadlessAction.CAPTURE && output != null) throw UsageException("--output only applies to 'headless capture'")
+    return CliCommand.Headless(action, path, visible, fresh, output)
 }
 
 private fun parseEmulator(rest: List<String>): CliCommand.Emulator {
