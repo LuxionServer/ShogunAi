@@ -26,7 +26,7 @@ La carpeta está fuera de todo repositorio, o es la raíz de un **repositorio de
 
 ShogunAi recuerda los multirepos que conoce en `~/.shogunai/multirepos.json`, un fichero propio, junto con su aprobación y el agente del multirepo fijado en este equipo; `projects.json` y `settings.json` mantienen su formato, así que una versión anterior sigue funcionando con ellos.
 
-El agente del multirepo, el comando que lanza `shogun open --herdr` en la carpeta del multirepo, se fija con `shogun multirepo agent` (o en los ajustes del multirepo en la app) y se guarda en este equipo; es `claude` con headroom hasta que fijes otro. Nunca se lee de la declaración: una declaración escrita por una versión anterior puede tener todavía un `agent`, que se ignora (`shogun multirepo show` lo indica) y desaparece la próxima vez que ShogunAi escribe el archivo.
+El agente del multirepo, el comando que lanza `shogun open --herdr` en la carpeta del multirepo, se fija con `shogun multirepo agent` (o en los ajustes del multirepo en la app) y se guarda en este equipo; es `claude`, sin Headroom, hasta que fijes otro (`--headroom` lo envuelve con `headroom wrap`). Nunca se lee de la declaración: una declaración escrita por una versión anterior puede tener todavía un `agent`, que se ignora (`shogun multirepo show` lo indica) y desaparece la próxima vez que ShogunAi escribe el archivo.
 
 ```bash
 cd ~/projects/product

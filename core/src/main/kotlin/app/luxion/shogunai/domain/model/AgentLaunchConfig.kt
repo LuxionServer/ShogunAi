@@ -1,12 +1,15 @@
 package app.luxion.shogunai.domain.model
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class AgentLaunchConfig(
     val name: String? = null,
     val agentCommand: String = "claude",
-    val useHeadroom: Boolean = true,
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val useHeadroom: Boolean = false,
 ) {
     val displayName: String
         get() = name?.takeIf { it.isNotBlank() } ?: executable().replaceFirstChar { it.uppercase() }

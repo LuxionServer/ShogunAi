@@ -26,7 +26,7 @@ The folder is outside every repository, or the top level of a **workspace reposi
 
 ShogunAi remembers the multirepos it knows in `~/.shogunai/multirepos.json`, a file of its own, together with their approval and the multirepo agent set on this machine; `projects.json` and `settings.json` keep their format, so an earlier version keeps working with them.
 
-The multirepo agent, the command `shogun open --herdr` runs in the multirepo folder, is set with `shogun multirepo agent` (or the multirepo settings in the app) and kept on this machine; it's `claude` with headroom until you set another. It's never read from the declaration: a declaration written by an earlier version may still hold an `agent`, which is ignored (`shogun multirepo show` says so) and dropped the next time ShogunAi writes the file.
+The multirepo agent, the command `shogun open --herdr` runs in the multirepo folder, is set with `shogun multirepo agent` (or the multirepo settings in the app) and kept on this machine; it's `claude`, without Headroom, until you set another (`--headroom` wraps it with `headroom wrap`). It's never read from the declaration: a declaration written by an earlier version may still hold an `agent`, which is ignored (`shogun multirepo show` says so) and dropped the next time ShogunAi writes the file.
 
 ```bash
 cd ~/projects/product

@@ -22,7 +22,7 @@ A multirepo SHALL be declared by a `.shogunai-multirepo.json` file in a folder o
 
 #### Scenario: No default repositories or agent
 - **WHEN** the declaration has no `defaultRepos` and the user never set a multirepo agent
-- **THEN** it's valid, creating a group from the multirepo folder requires `--repos`, and the multirepo agent is `claude`
+- **THEN** it's valid, creating a group from the multirepo folder requires `--repos`, and the multirepo agent is `claude` without Headroom
 
 #### Scenario: Agent in the declaration
 - **WHEN** the declaration has `"agent": {"agentCommand": "touch /tmp/marker; claude"}`
@@ -82,7 +82,7 @@ ShogunAi SHALL keep the list of known multirepos in `~/.shogunai/multirepos.json
 - **THEN** the command says so, changes nothing and exits with code 1
 
 ### Requirement: Configure a multirepo from the command line
-From the multirepo folder or anywhere it applies, `shogun multirepo add-repo <alias> <path>` and `remove-repo <alias>` SHALL add and remove a repository, `defaults <alias>[,<alias>…]` (or `--clear`) SHALL set `defaultRepos` and `worktrees-root <dir>` the proposed worktrees folder, each validating its input and rewriting only the declaration. `agent <command> [--name <name>] [--no-headroom]` SHALL set the multirepo agent in the user's ShogunAi folder, never in the declaration.
+From the multirepo folder or anywhere it applies, `shogun multirepo add-repo <alias> <path>` and `remove-repo <alias>` SHALL add and remove a repository, `defaults <alias>[,<alias>…]` (or `--clear`) SHALL set `defaultRepos` and `worktrees-root <dir>` the proposed worktrees folder, each validating its input and rewriting only the declaration. `agent <command> [--name <name>] [--headroom]` SHALL set the multirepo agent in the user's ShogunAi folder, never in the declaration.
 
 #### Scenario: Add a repository
 - **WHEN** the user runs `shogun multirepo add-repo app product-app` and `product-app` is a Git repository's main worktree
@@ -98,7 +98,15 @@ From the multirepo folder or anywhere it applies, `shogun multirepo add-repo <al
 
 #### Scenario: Set the agent
 - **WHEN** the user runs `shogun multirepo agent "codex --full-auto" --name Codex`
-- **THEN** the multirepo agent is launched as `headroom wrap codex --full-auto` and shown as `Codex`; with `--no-headroom` as `codex --full-auto`
+- **THEN** the multirepo agent is launched as `codex --full-auto` and shown as `Codex`; with `--headroom` as `headroom wrap codex --full-auto`
+
+#### Scenario: Legacy option
+- **WHEN** the user runs `shogun multirepo agent codex --no-headroom`
+- **THEN** the multirepo agent is launched as `codex`, the same as without the option
+
+#### Scenario: Contradictory options
+- **WHEN** the user runs `shogun multirepo agent codex --headroom --no-headroom`
+- **THEN** the command says the options can't be combined, changes nothing and exits with code 2
 
 #### Scenario: Agent stays on this machine
 - **WHEN** the user sets the multirepo agent of a multirepo whose declaration is versioned in a workspace repository
@@ -339,7 +347,7 @@ When creating the worktree of one repository fails, ShogunAi SHALL handle that r
 
 #### Scenario: Open
 - **WHEN** the user runs `shogun open --herdr` in `~/projects/product` and the multirepo agent is `claude`
-- **THEN** a focused Herdr workspace opens in `~/projects/product` labelled `product` and runs `headroom wrap claude`
+- **THEN** a focused Herdr workspace opens in `~/projects/product` labelled `product` and runs `claude`
 
 #### Scenario: Already open
 - **WHEN** Herdr already has a workspace whose pane is in `~/projects/product`

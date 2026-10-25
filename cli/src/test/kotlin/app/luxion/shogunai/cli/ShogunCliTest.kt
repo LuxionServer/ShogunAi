@@ -34,6 +34,7 @@ import app.luxion.shogunai.domain.FakeGradleDaemonSource.Companion.gradleDaemon
 import app.luxion.shogunai.domain.FakeGradleDaemonSource.Companion.kotlinDaemon
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeRepositoryTrust
+import app.luxion.shogunai.domain.FakeProvisioningRecordStore
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
@@ -157,6 +158,7 @@ class ShogunCliTest {
         mavenDaemons: FakeMavenDaemonSource = FakeMavenDaemonSource(),
         composeProjects: FakeComposeProjectSource = FakeComposeProjectSource(),
         composeRegistry: FakeComposeProjectRegistry = FakeComposeProjectRegistry(),
+        records: FakeProvisioningRecordStore = FakeProvisioningRecordStore(),
     ) = ShogunCli(
         executor = executor,
         fileManager = fileManager,
@@ -187,6 +189,7 @@ class ShogunCliTest {
         mavenDaemonSource = mavenDaemons,
         composeSource = composeProjects,
         composeRegistry = composeRegistry,
+        provisioningRecords = records,
     )
 
     private val gradleUserHome = "/home/dev/.gradle"
@@ -245,6 +248,57 @@ class ShogunCliTest {
         val stack = Json.parseToJsonElement(out.toString()).jsonObject.getValue("stacks").jsonArray.single().jsonObject
         assertEquals("maven", stack.getValue("stack").jsonPrimitive.content)
         assertEquals(false, stack.getValue("providers").jsonArray.single().jsonObject.getValue("declared").jsonPrimitive.content.toBoolean())
+    }
+
+    private fun secretsExecutor() = repositoryExecutor { command, _ ->
+        if ("ls-files" in command && "*.jks" in command) Executor.ok(command, "local.properties\u0000keystore.properties\u0000") else null
+    }
+
+    private val secretsFileManager = FakeFileManager(
+        existing = listOf(base),
+        properties = mapOf("$base/keystore.properties" to mapOf("storeFile" to "../signing/release.jks")),
+    )
+
+    private val noLocalFiles = listOf(project.copy(config = project.config.copy(secretFiles = emptyList())))
+
+    @Test
+    fun `stacks lists the suggested mobile secrets and keystore warnings`() {
+        val exitCode = cli(secretsExecutor(), projects = noLocalFiles, fileManager = secretsFileManager).run(listOf("stacks"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            """
+            Secret  local.properties  kind=local-properties  link=/local.properties
+            Secret  keystore.properties  kind=signing-properties  link=/keystore.properties
+            Warning  keystore.properties: storeFile=../signing/release.jks points outside the repository and won't resolve from a worktree
+
+            """.trimIndent(),
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `stacks doesn't suggest a secret the project already copies`() {
+        cli(secretsExecutor(), fileManager = secretsFileManager).run(listOf("stacks"))
+
+        assertFalse("link=/local.properties" in out.toString())
+        assertTrue("link=/keystore.properties" in out.toString())
+    }
+
+    @Test
+    fun `stacks json lists the secrets and keystore warnings`() {
+        cli(secretsExecutor(), projects = noLocalFiles, fileManager = secretsFileManager).run(listOf("stacks", "--json"))
+
+        val json = Json.parseToJsonElement(out.toString()).jsonObject
+        val secret = json.getValue("secrets").jsonArray.first().jsonObject
+        assertEquals("local.properties", secret.getValue("path").jsonPrimitive.content)
+        assertEquals("local-properties", secret.getValue("kind").jsonPrimitive.content)
+        assertEquals("/local.properties", secret.getValue("pattern").jsonPrimitive.content)
+        val warning = json.getValue("keystoreWarnings").jsonArray.single().jsonObject
+        assertEquals(
+            mapOf("file" to "keystore.properties", "key" to "storeFile", "value" to "../signing/release.jks"),
+            warning.mapValues { it.value.jsonPrimitive.content },
+        )
     }
 
     @Test
@@ -2170,7 +2224,7 @@ class ShogunCliTest {
         assertEquals("opened $merged in Herdr with Claude\n", out.toString())
         assertEquals(listOf(Triple(base, merged, "TASK-1")), herdr.opened)
         assertEquals(listOf(FakeHerdrClient.Split("w1:p1", merged, listOf("APP" to "app"))), herdr.splits)
-        assertEquals(listOf("w1:p2" to "headroom wrap claude"), herdr.ran)
+        assertEquals(listOf("w1:p2" to "claude"), herdr.ran)
     }
 
     @Test
@@ -2456,7 +2510,7 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         val json = jsonOut()
-        assertEquals(setOf("path", "branch", "created", "skippedPostCreateCommands", "skippedVariables", "postCreateFailure"), json.keys)
+        assertEquals(setOf("path", "branch", "created", "skippedPostCreateCommands", "skippedVariables", "postCreateFailure", "skippedLinks"), json.keys)
         assertEquals("$worktreesRoot/TASK-123", (json.getValue("path") as JsonPrimitive).content)
         assertEquals("feature/TASK-123", (json.getValue("branch") as JsonPrimitive).content)
         assertEquals(JsonPrimitive(true), json.getValue("created"))
@@ -2501,7 +2555,10 @@ class ShogunCliTest {
         assertEquals(0, exitCode, err.toString())
         val json = jsonOut()
         assertEquals(
-            setOf("path", "copied", "linked", "copiedInsteadOfLinking", "skippedPostCreateCommands", "skippedVariables", "postCreateFailure"),
+            setOf(
+                "path", "copied", "linked", "copiedInsteadOfLinking", "skippedPostCreateCommands", "skippedVariables",
+                "postCreateFailure", "removed", "skippedLinks",
+            ),
             json.keys,
         )
         assertEquals(merged, (json.getValue("path") as JsonPrimitive).content)
@@ -2509,6 +2566,75 @@ class ShogunCliTest {
         assertEquals(listOf("token.txt"), json.strings("linked"))
         assertEquals(emptyList(), json.strings("copiedInsteadOfLinking"))
         assertTrue(executor.ran("npm", "install"))
+    }
+
+    private val keysProject = listOf(project.copy(config = project.config.copy(secretFiles = listOf("keys"))))
+
+    private fun keysFileManager() = FakeFileManager(
+        existing = listOf(base, "$base/keys", "$merged/keys/old.pem"),
+        directories = setOf("$base/keys"),
+    ).also {
+        it.directoryFiles["$base/keys"] = listOf("a.pem")
+        it.directoryLinks["$base/keys"] = listOf("shared.pem")
+    }
+
+    private fun keysRecords() = FakeProvisioningRecordStore(mapOf(merged to mapOf("keys" to listOf("a.pem", "old.pem"))))
+
+    @Test
+    fun `provision lists the files it removed and the links it skipped`() {
+        val exitCode = cli(repositoryExecutor(), projects = keysProject, fileManager = keysFileManager(), workingDirectory = merged, records = keysRecords())
+            .run(listOf("provision"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            "keys/a.pem\nkeys/old.pem (removed: deleted from the base folder)\nkeys/shared.pem (skipped: symbolic link)\n",
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `provision json lists the removed files and skipped links`() {
+        cli(repositoryExecutor(), projects = keysProject, fileManager = keysFileManager(), workingDirectory = merged, records = keysRecords())
+            .run(listOf("provision", "--json"))
+
+        val json = jsonOut()
+        assertEquals(listOf("keys/old.pem"), json.strings("removed"))
+        assertEquals(listOf("keys/shared.pem"), json.strings("skippedLinks"))
+    }
+
+    @Test
+    fun `provision check reports files deleted from the base folder`() {
+        val fileManager = keysFileManager()
+
+        val exitCode = cli(repositoryExecutor(), projects = keysProject, fileManager = fileManager, workingDirectory = merged, records = keysRecords())
+            .run(listOf("provision", "--check"))
+
+        assertEquals(3, exitCode)
+        assertTrue("keys/old.pem: deleted in base\n" in out.toString(), out.toString())
+        assertTrue(fileManager.deletedFiles.isEmpty())
+    }
+
+    @Test
+    fun `provision check json reports deleted-in-base`() {
+        val exitCode = cli(repositoryExecutor(), projects = keysProject, fileManager = keysFileManager(), workingDirectory = merged, records = keysRecords())
+            .run(listOf("provision", "--check", "--json"))
+
+        assertEquals(3, exitCode)
+        val states = jsonOut().getValue("drift").jsonArray.associate {
+            it.jsonObject.getValue("path").jsonPrimitive.content to it.jsonObject.getValue("state").jsonPrimitive.content
+        }
+        assertEquals("deleted-in-base", states["keys/old.pem"])
+    }
+
+    @Test
+    fun `new notes the skipped links on standard error only`() {
+        val fileManager = keysFileManager()
+
+        val exitCode = cli(repositoryExecutor(), projects = keysProject, fileManager = fileManager).run(listOf("new", "TASK-123"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("$worktreesRoot/TASK-123\n", out.toString())
+        assertTrue("skipped the symbolic link keys/shared.pem" in err.toString(), err.toString())
     }
 
     @Test

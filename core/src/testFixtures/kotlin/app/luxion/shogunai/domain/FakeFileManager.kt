@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain
 
+import app.luxion.shogunai.domain.io.DirectoryListing
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.SymbolicLinksNotSupported
 import java.io.IOException
@@ -60,8 +61,20 @@ class FakeFileManager(
     override fun isDirectory(path: String): Boolean = path in directories
 
     val directoryFiles = mutableMapOf<String, List<String>>()
+    val directoryLinks = mutableMapOf<String, List<String>>()
 
-    override fun listFiles(directory: String): List<String> = directoryFiles[directory].orEmpty()
+    override fun listTree(directory: String): DirectoryListing =
+        DirectoryListing(directoryFiles[directory].orEmpty(), directoryLinks[directory].orEmpty())
+
+    override fun isSymbolicLink(path: String): Boolean = path in symbolicLinks
+
+    val deletedFiles = mutableListOf<String>()
+
+    override fun deleteFile(path: String) {
+        deletedFiles += path
+        symbolicLinks.remove(path)
+        delete(path)
+    }
 
     override fun modificationStamps(path: String): List<Pair<String, Long>> =
         stamps.filterKeys { it == path || it.startsWith("$path/") }.toList()

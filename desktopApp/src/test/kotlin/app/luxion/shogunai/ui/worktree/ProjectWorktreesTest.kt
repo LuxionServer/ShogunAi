@@ -3785,7 +3785,7 @@ class ProjectWorktreesTest {
         holder.copyLaunchCommand(target)
         advanceUntilIdle()
 
-        assertEquals(listOf("cd '$worktreePath' && headroom wrap claude"), clipboard.writtenText)
+        assertEquals(listOf("cd '$worktreePath' && claude"), clipboard.writtenText)
         assertEquals(emptyMap(), choices.chosen)
     }
 

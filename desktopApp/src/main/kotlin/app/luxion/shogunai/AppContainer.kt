@@ -73,6 +73,8 @@ import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.ui.worktree.DialogRepositoryApproval
 import app.luxion.shogunai.domain.io.LanguagePreferenceRepository
 import app.luxion.shogunai.domain.io.ProjectRepository
+import app.luxion.shogunai.domain.io.DirectoryListing
+import app.luxion.shogunai.domain.io.ProvisioningRecordStore
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.io.ShellPreferenceRepository
@@ -118,6 +120,7 @@ import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.model.XcodeProvider
 import app.luxion.shogunai.domain.usecase.CheckGradleBuildCacheUseCase
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
+import app.luxion.shogunai.domain.usecase.DetectMobileSecretsUseCase
 import app.luxion.shogunai.domain.usecase.DetectRepositoryStacksUseCase
 import app.luxion.shogunai.domain.usecase.ListComposeProjectsUseCase
 import app.luxion.shogunai.domain.usecase.ListMavenDaemonsUseCase
@@ -207,6 +210,7 @@ import app.luxion.shogunai.infrastructure.NioFileManager
 import app.luxion.shogunai.infrastructure.RotatingFileDiagnosticsLog
 import app.luxion.shogunai.infrastructure.ProcessBuilderShellCommandExecutor
 import app.luxion.shogunai.infrastructure.ProcessGradleDaemonSource
+import app.luxion.shogunai.infrastructure.NioProvisioningRecordStore
 import app.luxion.shogunai.infrastructure.ProcessHandleLiveness
 import app.luxion.shogunai.infrastructure.RepositoryProvisioningFiles
 import app.luxion.shogunai.infrastructure.SimctlAppleSimulators
@@ -258,6 +262,7 @@ class AppContainer {
         openUrl = ::openInBrowser,
     )
     val repositoryProvisioningSource: RepositoryProvisioningSource = RepositoryProvisioningFiles()
+    private val provisioningRecords: ProvisioningRecordStore = NioProvisioningRecordStore()
     private val gradleUserHome = defaultGradleUserHome()
     private val gradleDaemonSource = ProcessGradleDaemonSource(shellCommandExecutor, gradleUserHome)
     private val mavenDaemonSource = ProcessMavenDaemonSource(shellCommandExecutor)
@@ -440,6 +445,11 @@ class AppContainer {
 
     fun detectStacks(repositoryPath: String) = DetectRepositoryStacksUseCase(fileManager)(repositoryPath)
 
+    suspend fun detectMobileSecrets(config: ProjectConfig) =
+        DetectMobileSecretsUseCase(shellCommandExecutor, fileManager, repositoryProvisioningSource)(config)
+
+    fun listLocalFolder(path: String): DirectoryListing? = if (fileManager.isDirectory(path)) fileManager.listTree(path) else null
+
     suspend fun loadAvds(repositoryPath: String): Result<List<String>> =
         runCatching { androidSdk.listAvds(androidSdk.locate(repositoryPath)) }
 
@@ -538,6 +548,7 @@ class AppContainer {
                 prepareEnvironment,
                 repositoryTrust,
                 repositoryApproval,
+                provisioningRecords,
             )(members, taskId, branchType, fetch, onRepository)
         },
         openAgent = { multirepo -> OpenMultirepoAgentInHerdrUseCase(herdrClient)(multirepo) },
@@ -609,6 +620,7 @@ class AppContainer {
             prepareEnvironment,
             repositoryTrust,
             repositoryApproval,
+            provisioningRecords,
         ),
         createFromBranch = CreateWorktreeFromBranchUseCase(
             config,
@@ -618,6 +630,7 @@ class AppContainer {
             prepareEnvironment,
             repositoryTrust,
             repositoryApproval,
+            provisioningRecords,
         ),
         listBranches = ListBranchesUseCase(config, shellCommandExecutor),
         fetchRemote = FetchRemoteUseCase(config, shellCommandExecutor),
@@ -675,7 +688,9 @@ class AppContainer {
             openInClaudeDesktop = claudeDesktopLauncher::open,
         ),
         provisioning = ProvisioningUseCases(
-            check = CheckProvisionedFilesUseCase(config, shellCommandExecutor, fileManager, repositoryProvisioningSource)::invoke,
+            check = CheckProvisionedFilesUseCase(
+                config, shellCommandExecutor, fileManager, repositoryProvisioningSource, provisioningRecords,
+            )::invoke,
             provision = ProvisionWorktreeUseCase(
                 config,
                 shellCommandExecutor,
@@ -684,6 +699,7 @@ class AppContainer {
                 prepareEnvironment,
                 repositoryTrust,
                 repositoryApproval,
+                provisioningRecords,
             )::invoke,
         ),
         readEnvironment = { worktree -> resolveEnvironment(config.baseRepositoryPath, worktree.path, reserve = false) },

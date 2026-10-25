@@ -118,7 +118,7 @@ The multirepo SHALL have a settings screen to add, remove and rename repositorie
 
 #### Scenario: Change the agent
 - **WHEN** the user sets the multirepo agent to `codex` and saves
-- **THEN** `.shogunai-multirepo.json` is unchanged and `shogun open --herdr` in the multirepo folder runs `headroom wrap codex`
+- **THEN** `.shogunai-multirepo.json` is unchanged and `shogun open --herdr` in the multirepo folder runs `codex`, without Headroom unless the user turned it on
 
 #### Scenario: Delete the multirepo
 - **WHEN** the user deletes the multirepo and confirms
