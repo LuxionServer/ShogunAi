@@ -10,6 +10,7 @@ interface MultirepoSource {
     fun knownFolders(): List<String>
     fun remember(folder: String)
     fun forget(folder: String)
+    fun forgetMissing(): List<String>
     fun isApproved(folder: String, subject: String): Boolean
     fun approve(folder: String, subject: String)
     fun agent(folder: String): AgentLaunchConfig?

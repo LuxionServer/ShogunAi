@@ -119,4 +119,95 @@ class ResolveProvisionedFilesTest {
         assertEquals(listOf("keys/a.pem"), provisioned.copied)
         assertEquals(listOf("keys/c.pem"), provisioned.linked)
     }
+
+    @Test
+    fun `links a local file in link mode`() = runTest {
+        val linkedConfig = config.copy(secretFiles = listOf("local.properties", ".env"), linkedSecretFiles = listOf("local.properties"))
+
+        val provisioned = resolveProvisionedFiles(linkedConfig, FakeShellCommandExecutor(), FakeFileManager(), FakeRepositoryProvisioningSource())
+
+        assertEquals(listOf(".env"), provisioned.copied)
+        assertEquals(listOf("local.properties"), provisioned.linked)
+    }
+
+    @Test
+    fun `a linked local folder is one link and hides the repository's files under it`() = runTest {
+        val fileManager = FakeFileManager(directories = setOf("/home/dev/projects/main-repo/keys"))
+        fileManager.directoryFiles["/home/dev/projects/main-repo/keys"] = listOf("a.pem")
+        fileManager.directoryLinks["/home/dev/projects/main-repo/keys"] = listOf("shared.pem")
+        val executor = FakeShellCommandExecutor { success(it, stdout = "keys/a.pem\u0000.env\u0000") }
+        val linkedConfig = config.copy(secretFiles = listOf("keys/"), linkedSecretFiles = listOf("keys"))
+
+        val provisioned = resolveProvisionedFiles(
+            linkedConfig, executor, fileManager, source(RepositoryProvisioning(copyPatterns = listOf("*"))),
+        )
+
+        assertEquals(mapOf("keys" to listOf("a.pem")), provisioned.linkedFolders)
+        assertEquals(listOf(".env"), provisioned.copied)
+        assertEquals(emptyList(), provisioned.skippedLinks)
+    }
+
+    @Test
+    fun `a copied local folder reports its skipped links and its files`() = runTest {
+        val fileManager = FakeFileManager(directories = setOf("/home/dev/projects/main-repo/keys"))
+        fileManager.directoryFiles["/home/dev/projects/main-repo/keys"] = listOf("a.pem")
+        fileManager.directoryLinks["/home/dev/projects/main-repo/keys"] = listOf("shared.pem")
+
+        val provisioned = resolveProvisionedFiles(
+            config.copy(secretFiles = listOf("keys")), FakeShellCommandExecutor(), fileManager, FakeRepositoryProvisioningSource(),
+        )
+
+        assertEquals(mapOf("keys" to listOf("a.pem")), provisioned.copiedFolders)
+        assertEquals(listOf("keys/shared.pem"), provisioned.skippedLinks)
+    }
+
+    @Test
+    fun `a copy-mode local entry stays copied when the repository links it`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it, stdout = ".env\u0000") }
+
+        val provisioned = resolveProvisionedFiles(
+            config.copy(secretFiles = listOf(".env")), executor, FakeFileManager(), source(RepositoryProvisioning(linkPatterns = listOf(".env"))),
+        )
+
+        assertEquals(listOf(".env"), provisioned.copied)
+        assertEquals(emptyList(), provisioned.linked)
+    }
+
+    @Test
+    fun `a link-mode local entry is linked when the repository only copies it`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it, stdout = ".env\u0000") }
+        val linkedConfig = config.copy(secretFiles = listOf(".env"), linkedSecretFiles = listOf(".env"))
+
+        val provisioned = resolveProvisionedFiles(
+            linkedConfig, executor, FakeFileManager(), source(RepositoryProvisioning(copyPatterns = listOf(".env"))),
+        )
+
+        assertEquals(emptyList(), provisioned.copied)
+        assertEquals(listOf(".env"), provisioned.linked)
+    }
+
+    @Test
+    fun `local patterns select untracked files in their own mode`() = runTest {
+        val executor = FakeShellCommandExecutor {
+            when {
+                "*.jks" in it -> success(it, stdout = "release.jks\u0000app/debug.jks\u0000")
+                "*.p12" in it -> success(it, stdout = "")
+                else -> success(it, stdout = "google-services.json\u0000")
+            }
+        }
+        val patternConfig = config.copy(
+            secretFiles = listOf("*.jks", "*.p12", "**/google-services.json"),
+            linkedSecretFiles = listOf("**/google-services.json"),
+        )
+
+        val provisioned = resolveProvisionedFiles(patternConfig, executor, FakeFileManager(), FakeRepositoryProvisioningSource())
+
+        assertEquals(listOf("release.jks", "app/debug.jks"), provisioned.copied)
+        assertEquals(listOf("google-services.json"), provisioned.linked)
+        assertEquals(
+            listOf("git", "ls-files", "--others", "--ignored", "-z", "-x", "*.jks", "-x", "*.p12"),
+            executor.executedCommands.first(),
+            "patterns select untracked files only, like copy",
+        )
+    }
 }

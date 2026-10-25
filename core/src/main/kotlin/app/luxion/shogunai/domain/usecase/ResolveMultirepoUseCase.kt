@@ -7,8 +7,11 @@ import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.joinPath
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.MAX_MULTIREPO_NAME_LENGTH
 import app.luxion.shogunai.domain.model.hasUnsafePathCharacters
 import app.luxion.shogunai.domain.model.isValidMultirepoAlias
+import app.luxion.shogunai.domain.model.isValidMultirepoName
+import app.luxion.shogunai.domain.model.isValidMultirepoPath
 import java.nio.file.Path
 
 data class MultirepoContext(
@@ -91,8 +94,15 @@ class ResolveMultirepoUseCase(
         declaration.repos.entries.firstOrNull { hasUnsafePathCharacters(it.value) }?.let {
             invalid("the path of '${it.key}' contains control characters")
         }
+        multirepo.declaredName?.takeUnless(::isValidMultirepoName)?.let {
+            invalid("the name must have at most $MAX_MULTIREPO_NAME_LENGTH characters and no control characters")
+        }
         declaration.repos.keys.firstOrNull { !isValidMultirepoAlias(it) }?.let {
             invalid("alias '$it' must use only lowercase letters, digits and hyphens")
+        }
+        if (!isValidMultirepoPath(declaration.worktreesRoot)) invalid("worktreesRoot isn't a valid path")
+        declaration.repos.entries.firstOrNull { !isValidMultirepoPath(it.value) }?.let {
+            invalid("the path of '${it.key}' isn't a valid path")
         }
         declaration.defaultRepos.firstOrNull { it !in declaration.repos }?.let {
             invalid("'$it' isn't a declared repository")

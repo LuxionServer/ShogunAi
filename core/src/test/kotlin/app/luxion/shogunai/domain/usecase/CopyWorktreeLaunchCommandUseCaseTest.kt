@@ -20,25 +20,25 @@ class CopyWorktreeLaunchCommandUseCaseTest {
     private val worktreePath = "/home/dev/projects/TASK-123"
 
     @Test
-    fun `copies the cd and default headroom-wrapped command to the clipboard`() = runTest {
+    fun `copies the cd and the default plain agent command to the clipboard`() = runTest {
         val clipboard = FakeClipboardWriter()
         val useCase = CopyWorktreeLaunchCommandUseCase(config, clipboard, windows = false)
 
         val result = useCase(worktreePath)
 
         assertTrue(result.isSuccess)
-        assertEquals(listOf("cd '$worktreePath' && headroom wrap claude"), clipboard.writtenText)
+        assertEquals(listOf("cd '$worktreePath' && claude"), clipboard.writtenText)
     }
 
     @Test
-    fun `omits the headroom wrap when disabled`() = runTest {
-        val configWithoutHeadroom = config.copy(agentLaunchConfig = AgentLaunchConfig(useHeadroom = false))
+    fun `adds the headroom wrap when enabled`() = runTest {
+        val configWithHeadroom = config.copy(agentLaunchConfig = AgentLaunchConfig(useHeadroom = true))
         val clipboard = FakeClipboardWriter()
-        val useCase = CopyWorktreeLaunchCommandUseCase(configWithoutHeadroom, clipboard, windows = false)
+        val useCase = CopyWorktreeLaunchCommandUseCase(configWithHeadroom, clipboard, windows = false)
 
         useCase(worktreePath).getOrThrow()
 
-        assertEquals(listOf("cd '$worktreePath' && claude"), clipboard.writtenText)
+        assertEquals(listOf("cd '$worktreePath' && headroom wrap claude"), clipboard.writtenText)
     }
 
     @Test
@@ -59,7 +59,7 @@ class CopyWorktreeLaunchCommandUseCaseTest {
 
         CopyWorktreeLaunchCommandUseCase(config, clipboard, windows = false)("/home/dev/x\$(id)").getOrThrow()
 
-        assertEquals(listOf("cd '/home/dev/x\$(id)' && headroom wrap claude"), clipboard.writtenText)
+        assertEquals(listOf("cd '/home/dev/x\$(id)' && claude"), clipboard.writtenText)
     }
 
     @Test
@@ -68,7 +68,7 @@ class CopyWorktreeLaunchCommandUseCaseTest {
 
         CopyWorktreeLaunchCommandUseCase(config, clipboard, windows = false)("/home/dev/it's").getOrThrow()
 
-        assertEquals(listOf("cd '/home/dev/it'\\''s' && headroom wrap claude"), clipboard.writtenText)
+        assertEquals(listOf("cd '/home/dev/it'\\''s' && claude"), clipboard.writtenText)
     }
 
     @Test
@@ -77,7 +77,7 @@ class CopyWorktreeLaunchCommandUseCaseTest {
 
         CopyWorktreeLaunchCommandUseCase(config, clipboard, windows = true)("C:\\Users\\dev\\TASK-123").getOrThrow()
 
-        assertEquals(listOf("cd \"C:\\Users\\dev\\TASK-123\" && headroom wrap claude"), clipboard.writtenText)
+        assertEquals(listOf("cd \"C:\\Users\\dev\\TASK-123\" && claude"), clipboard.writtenText)
     }
 
     @Test

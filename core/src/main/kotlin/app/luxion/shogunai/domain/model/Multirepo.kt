@@ -63,6 +63,7 @@ data class MultirepoDeclaration(
     val defaultRepos: List<String> = emptyList(),
     val agent: AgentLaunchConfig? = null,
     val workspace: WorkspaceSetting? = null,
+    val name: String? = null,
 )
 
 data class MultirepoRepository(val alias: String, val path: String)
@@ -74,8 +75,14 @@ data class Multirepo(
     val approved: Boolean = false,
     val localAgent: AgentLaunchConfig? = null,
 ) {
-    val name: String
+    val folderName: String
         get() = folder.trimEnd('/', '\\').substringAfterLast('/').substringAfterLast('\\')
+
+    val declaredName: String?
+        get() = declaration.name?.trim()?.ifEmpty { null }
+
+    val name: String
+        get() = declaredName?.takeIf(::isValidMultirepoName) ?: folderName
 
     val declarationPath: String
         get() = joinPath(folder, MULTIREPO_FILE_NAME)
@@ -132,7 +139,11 @@ data class Multirepo(
                     else -> "workspace\t${workspace.alias}"
                 },
             )
+            declaredName?.let { add("name\t$it") }
         }.joinToString("\n")
+
+    val parentFolder: String
+        get() = Path.of(folder).normalize().parent?.toString()?.replace('\\', '/') ?: "/"
 
     fun isOutsideParent(path: String): Boolean {
         val parent = Path.of(folder).normalize().parent ?: return false
@@ -161,8 +172,16 @@ private val UNSAFE_PATH_CHARACTER = Regex("[\\p{Cc}\\p{Cf}\\u2028\\u2029]")
 
 fun hasUnsafePathCharacters(path: String): Boolean = UNSAFE_PATH_CHARACTER.containsMatchIn(path)
 
+const val MAX_MULTIREPO_NAME_LENGTH = 80
+
+fun isValidMultirepoName(name: String): Boolean = name.length <= MAX_MULTIREPO_NAME_LENGTH && !hasUnsafePathCharacters(name)
+
+private fun parsedPath(path: String): Path? = runCatching { Path.of(path) }.getOrNull()
+
+fun isValidMultirepoPath(path: String): Boolean = !hasUnsafePathCharacters(path) && parsedPath(path) != null
+
 fun resolveMultirepoPath(folder: String, path: String): String {
-    val candidate = Path.of(path)
+    val candidate = parsedPath(path) ?: return joinPath(folder, path)
     val resolved = if (candidate.isAbsolute) candidate else Path.of(folder).resolve(candidate)
     return resolved.normalize().toString().replace('\\', '/').trimEnd('/').ifEmpty { "/" }
 }

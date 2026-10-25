@@ -5,6 +5,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermissions
 import java.security.MessageDigest
+import kotlinx.serialization.json.JsonPrimitive
 import kotlin.io.path.createDirectories
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
@@ -92,7 +93,7 @@ class JsonRepositoryTrustTest {
         storage.parent.createDirectories()
         val digest = MessageDigest.getInstance("SHA-256").digest("""[["npm","install"]]""".toByteArray())
             .joinToString("") { "%02x".format(it) }
-        storage.writeText("""{ "approvals": { "${Path.of(repository).toRealPath()}": { "sha256": "$digest", "commands": [["npm", "install"]] } } }""")
+        storage.writeText("""{ "approvals": { ${JsonPrimitive(Path.of(repository).toRealPath().toString())}: { "sha256": "$digest", "commands": [["npm", "install"]] } } }""")
 
         assertTrue(trust.isApproved(repository, install))
         assertFalse(trust.isApproved(repository, withEnvironment))

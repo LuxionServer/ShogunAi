@@ -14,6 +14,7 @@ import app.luxion.shogunai.domain.usecase.CreateGroupUseCase
 import app.luxion.shogunai.domain.usecase.DetectGroupsUseCase
 import app.luxion.shogunai.domain.usecase.MultirepoMember
 import app.luxion.shogunai.domain.usecase.OpenMultirepoAgentInHerdrUseCase
+import app.luxion.shogunai.domain.usecase.RegisteredMultirepo
 import app.luxion.shogunai.domain.usecase.ResolveMultirepoUseCase
 import app.luxion.shogunai.domain.usecase.WorktreeGroup
 import app.luxion.shogunai.infrastructure.JsonDerivedDataSizeStore
@@ -73,6 +74,8 @@ import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.ui.worktree.DialogRepositoryApproval
 import app.luxion.shogunai.domain.io.LanguagePreferenceRepository
 import app.luxion.shogunai.domain.io.ProjectRepository
+import app.luxion.shogunai.domain.io.DirectoryListing
+import app.luxion.shogunai.domain.io.ProvisioningRecordStore
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.io.ShellPreferenceRepository
@@ -118,6 +121,7 @@ import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.model.XcodeProvider
 import app.luxion.shogunai.domain.usecase.CheckGradleBuildCacheUseCase
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
+import app.luxion.shogunai.domain.usecase.DetectMobileSecretsUseCase
 import app.luxion.shogunai.domain.usecase.DetectRepositoryStacksUseCase
 import app.luxion.shogunai.domain.usecase.ListComposeProjectsUseCase
 import app.luxion.shogunai.domain.usecase.ListMavenDaemonsUseCase
@@ -128,6 +132,16 @@ import app.luxion.shogunai.domain.model.MavenDaemonProcess
 import app.luxion.shogunai.domain.model.MavenProvider
 import app.luxion.shogunai.domain.model.WorktreeComposeProject
 import app.luxion.shogunai.infrastructure.DockerComposeProjectSource
+import app.luxion.shogunai.infrastructure.JsonComposeProjectRegistry
+import app.luxion.shogunai.domain.model.ComposeAction
+import app.luxion.shogunai.domain.model.ComposeLeftoversReport
+import app.luxion.shogunai.domain.model.ComposeResource
+import app.luxion.shogunai.domain.model.WorktreeComposeState
+import app.luxion.shogunai.domain.usecase.COMPOSE_PROJECT_NAME
+import app.luxion.shogunai.domain.usecase.ListComposeLeftoversUseCase
+import app.luxion.shogunai.domain.usecase.RemoveComposeLeftoversUseCase
+import app.luxion.shogunai.domain.usecase.RunComposeProjectUseCase
+import app.luxion.shogunai.domain.usecase.worktreeComposeProjectName
 import app.luxion.shogunai.infrastructure.ProcessMavenDaemonSource
 import app.luxion.shogunai.domain.usecase.CloseHerdrWorkspacesUseCase
 import app.luxion.shogunai.domain.usecase.CopyWorktreeLaunchCommandUseCase
@@ -197,6 +211,7 @@ import app.luxion.shogunai.infrastructure.NioFileManager
 import app.luxion.shogunai.infrastructure.RotatingFileDiagnosticsLog
 import app.luxion.shogunai.infrastructure.ProcessBuilderShellCommandExecutor
 import app.luxion.shogunai.infrastructure.ProcessGradleDaemonSource
+import app.luxion.shogunai.infrastructure.NioProvisioningRecordStore
 import app.luxion.shogunai.infrastructure.ProcessHandleLiveness
 import app.luxion.shogunai.infrastructure.RepositoryProvisioningFiles
 import app.luxion.shogunai.infrastructure.SimctlAppleSimulators
@@ -248,10 +263,28 @@ class AppContainer {
         openUrl = ::openInBrowser,
     )
     val repositoryProvisioningSource: RepositoryProvisioningSource = RepositoryProvisioningFiles()
+    private val provisioningRecords: ProvisioningRecordStore = NioProvisioningRecordStore()
     private val gradleUserHome = defaultGradleUserHome()
     private val gradleDaemonSource = ProcessGradleDaemonSource(shellCommandExecutor, gradleUserHome)
     private val mavenDaemonSource = ProcessMavenDaemonSource(shellCommandExecutor)
     private val composeProjectSource = DockerComposeProjectSource(shellCommandExecutor)
+    private val composeProjectRegistry = JsonComposeProjectRegistry()
+
+    private suspend fun composeProjectNameOf(config: ProjectConfig, worktreePath: String): String =
+        resolveEnvironment(config.baseRepositoryPath, worktreePath, reserve = false).getOrNull()
+            ?.variables?.lastOrNull { it.first == COMPOSE_PROJECT_NAME }?.second
+            ?: worktreeComposeProjectName(config.baseRepositoryPath, worktreePath)
+
+    private suspend fun readComposeStates(config: ProjectConfig, worktrees: List<Worktree>): Result<Map<String, WorktreeComposeState>> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val statuses = composeProjectSource.list().associate { it.name to it.status }
+                worktrees.associate { worktree ->
+                    val project = composeProjectNameOf(config, worktree.path)
+                    worktree.path to WorktreeComposeState(project, statuses[project])
+                }
+            }
+        }
     private val derivedDataSource = MacDerivedDataSource(
         shellCommandExecutor,
         fileManager,
@@ -342,6 +375,7 @@ class AppContainer {
         factory,
         environmentCache,
         repositoryTrust,
+        composeProjectRegistry,
     )
 
     private fun simulatorSettingsFor(repositoryPath: String): SimulatorSettings =
@@ -412,6 +446,11 @@ class AppContainer {
 
     fun detectStacks(repositoryPath: String) = DetectRepositoryStacksUseCase(fileManager)(repositoryPath)
 
+    suspend fun detectMobileSecrets(config: ProjectConfig) =
+        DetectMobileSecretsUseCase(shellCommandExecutor, fileManager, repositoryProvisioningSource)(config)
+
+    fun listLocalFolder(path: String): DirectoryListing? = if (fileManager.isDirectory(path)) fileManager.listTree(path) else null
+
     suspend fun loadAvds(repositoryPath: String): Result<List<String>> =
         runCatching { androidSdk.listAvds(androidSdk.locate(repositoryPath)) }
 
@@ -433,7 +472,13 @@ class AppContainer {
         listDaemons = { runCatching { gradleDaemonSource.list() } },
         listMavenDaemons = { runCatching { mavenDaemonSource.list() } },
         listComposeProjects = { config, worktrees, root ->
-            ListComposeProjectsUseCase(composeProjectSource)(config.baseRepositoryPath, worktrees, root)
+            ListComposeProjectsUseCase(composeProjectSource, composeProjectRegistry)(config.baseRepositoryPath, worktrees, root)
+        },
+        listComposeLeftovers = { config, worktrees ->
+            ListComposeLeftoversUseCase(composeProjectSource, composeProjectRegistry)(config.baseRepositoryPath, worktrees)
+        },
+        removeComposeLeftovers = { config, resources, removeVolumes ->
+            RemoveComposeLeftoversUseCase(composeProjectSource, composeProjectRegistry)(resources, removeVolumes, config.baseRepositoryPath)
         },
         takeDownComposeProjects = { names -> TakeDownComposeProjectsUseCase(composeProjectSource)(names) },
         stopDaemons = { pids -> StopGradleDaemonsUseCase(gradleDaemonSource, shellCommandExecutor)(pids) },
@@ -504,11 +549,16 @@ class AppContainer {
                 prepareEnvironment,
                 repositoryTrust,
                 repositoryApproval,
+                provisioningRecords,
             )(members, taskId, branchType, fetch, onRepository)
         },
         openAgent = { multirepo -> OpenMultirepoAgentInHerdrUseCase(herdrClient)(multirepo) },
         trust = { multirepo -> configureMultirepo.trust(multirepo) },
     )
+
+    fun forgetMissingMultirepos() {
+        runCatching { multirepoSource.forgetMissing() }
+    }
 
     val multirepoSetup: MultirepoSetup = object : MultirepoSetup {
         override suspend fun inspect(folder: String): FolderInspection = withContext(Dispatchers.IO) {
@@ -541,6 +591,12 @@ class AppContainer {
         override suspend fun init(folder: String): Result<Multirepo> = withContext(Dispatchers.IO) { configureMultirepo.init(folder, null) }
 
         override suspend fun trust(multirepo: Multirepo): Result<Multirepo> = withContext(Dispatchers.IO) { configureMultirepo.trust(multirepo) }
+
+        override suspend fun register(reviewed: Multirepo): Result<RegisteredMultirepo> = withContext(Dispatchers.IO) {
+            configureMultirepo.register(reviewed) { _, _, _ -> true }
+        }
+
+        override fun setName(multirepo: Multirepo, name: String?) = configureMultirepo.setName(multirepo, name)
 
         override suspend fun addRepository(multirepo: Multirepo, alias: String, path: String, useProposedFolder: Boolean): Result<AddedRepository> =
             withContext(Dispatchers.IO) {
@@ -575,6 +631,7 @@ class AppContainer {
             prepareEnvironment,
             repositoryTrust,
             repositoryApproval,
+            provisioningRecords,
         ),
         createFromBranch = CreateWorktreeFromBranchUseCase(
             config,
@@ -584,6 +641,7 @@ class AppContainer {
             prepareEnvironment,
             repositoryTrust,
             repositoryApproval,
+            provisioningRecords,
         ),
         listBranches = ListBranchesUseCase(config, shellCommandExecutor),
         fetchRemote = FetchRemoteUseCase(config, shellCommandExecutor),
@@ -595,7 +653,14 @@ class AppContainer {
         repair = RepairWorktreesUseCase(config, shellCommandExecutor, fileManager),
         resolveMainBranch = ResolveMainBranchUseCase(config, shellCommandExecutor),
         readStatus = ReadWorktreeStatusUseCase(shellCommandExecutor, fileManager),
-        cleanUp = CleanUpWorktreesUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient), composeProjectSource, fileManager),
+        cleanUp = CleanUpWorktreesUseCase(
+            config,
+            shellCommandExecutor,
+            CloseHerdrWorkspacesUseCase(config, herdrClient),
+            composeProjectSource,
+            fileManager,
+            composeProjectRegistry,
+        ),
         detectAgents = { worktrees -> detectRunningAgents(config, worktrees) },
         measureSize = MeasureWorktreeSizeUseCase(fileManager),
         readFingerprint = ReadGitMetadataFingerprintUseCase(config, fileManager),
@@ -634,7 +699,9 @@ class AppContainer {
             openInClaudeDesktop = claudeDesktopLauncher::open,
         ),
         provisioning = ProvisioningUseCases(
-            check = CheckProvisionedFilesUseCase(config, shellCommandExecutor, fileManager, repositoryProvisioningSource)::invoke,
+            check = CheckProvisionedFilesUseCase(
+                config, shellCommandExecutor, fileManager, repositoryProvisioningSource, provisioningRecords,
+            )::invoke,
             provision = ProvisionWorktreeUseCase(
                 config,
                 shellCommandExecutor,
@@ -643,6 +710,7 @@ class AppContainer {
                 prepareEnvironment,
                 repositoryTrust,
                 repositoryApproval,
+                provisioningRecords,
             )::invoke,
         ),
         readEnvironment = { worktree -> resolveEnvironment(config.baseRepositoryPath, worktree.path, reserve = false) },
@@ -692,6 +760,11 @@ class AppContainer {
                     runCatching { repositoryProvisioningSource.read(config.baseRepositoryPath).providers.dockerCompose }.getOrNull()
                 }
             },
+            readStates = { worktrees -> readComposeStates(config, worktrees) },
+            run = { worktreePath, action ->
+                RunComposeProjectUseCase(composeProjectSource, resolveEnvironment, composeProjectRegistry)(config.baseRepositoryPath, worktreePath, action)
+            },
+            down = { worktreePath -> composeProjectSource.down(composeProjectNameOf(config, worktreePath), removeVolumes = false) },
         ),
         xcode = XcodeUseCases(
             provider = {
@@ -815,6 +888,9 @@ class MachineUseCases(
     val listComposeProjects: suspend (ProjectConfig, List<Worktree>, String?) -> Result<List<WorktreeComposeProject>> =
         { _, _, _ -> Result.success(emptyList()) },
     val takeDownComposeProjects: suspend (List<String>) -> ComposeDownReport = { ComposeDownReport() },
+    val listComposeLeftovers: suspend (ProjectConfig, List<Worktree>) -> Result<List<ComposeResource>> = { _, _ -> Result.success(emptyList()) },
+    val removeComposeLeftovers: suspend (ProjectConfig, List<ComposeResource>, Boolean) -> ComposeLeftoversReport =
+        { _, _, _ -> ComposeLeftoversReport() },
 )
 
 data class SimulatorUseCases(
@@ -930,7 +1006,12 @@ data class MavenUseCases(val provider: suspend () -> MavenProvider?) {
     }
 }
 
-data class ComposeUseCases(val provider: suspend () -> DockerComposeProvider?) {
+data class ComposeUseCases(
+    val provider: suspend () -> DockerComposeProvider?,
+    val readStates: suspend (List<Worktree>) -> Result<Map<String, WorktreeComposeState>> = { Result.success(emptyMap()) },
+    val run: suspend (String, ComposeAction) -> Result<String> = { _, _ -> Result.failure(WorktreeError.DockerUnavailable(null)) },
+    val down: suspend (String) -> Result<Unit> = { Result.success(Unit) },
+) {
     companion object {
         val NONE = ComposeUseCases(provider = { null })
     }

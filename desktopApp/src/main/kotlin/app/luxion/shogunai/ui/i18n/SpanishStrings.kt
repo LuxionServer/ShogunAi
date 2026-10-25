@@ -1,10 +1,12 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.ComposeResourceKind
 import app.luxion.shogunai.domain.model.ResourceLimits
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.InstallChannel
+import app.luxion.shogunai.domain.model.MobileSecretKind
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.usecase.HookEntry
@@ -85,7 +87,7 @@ object SpanishStrings : Strings {
     override val removeLocalFile = "Eliminar archivo o carpeta local"
     override val newLocalFileLabel = "Nuevo archivo o carpeta local"
     override val localFilesDescription =
-        "Rutas exactas de archivos o carpetas que se copian a cada nuevo worktree; una carpeta incluye todos los archivos que contiene. Solo se guardan en esta máquina."
+        "Rutas de archivos o carpetas, o patrones como *.jks, que se copian a cada nuevo worktree, o se enlazan si activas Enlazar (una carpeta enlazada muestra al momento los cambios de la carpeta base, y un secreto enlazado lo comparten todos los worktrees). Solo se guardan en esta máquina."
     override val repositoryProvisioningSection = "Del repositorio"
     override val repositoryProvisioningDescription =
         "Patrones versionados en .shogunai.json y .worktreeinclude. Cada archivo no versionado que coincida se copia a cada nuevo worktree."
@@ -315,6 +317,7 @@ object SpanishStrings : Strings {
         ProvisionDriftState.MISSING -> "$path · falta"
         ProvisionDriftState.DIFFERS -> "$path · difiere"
         ProvisionDriftState.NOT_LINKED -> "$path · sin enlazar"
+        ProvisionDriftState.DELETED_IN_BASE -> "$path · borrado en la base"
     }
     override val environmentTitle = "Entorno"
     override val devicesTitle = "Dispositivos"
@@ -600,6 +603,21 @@ object SpanishStrings : Strings {
     override val stackSuggestionsTitle = "Detectado en este repositorio"
     override fun stackSuggestion(provider: String, evidence: String) = "$provider · $evidence"
     override val turnOnProvider = "Activar"
+    override val linkLocalEntry = "Enlazar"
+    override val localPatternLabel = "patrón"
+    override fun skippedSymbolicLinks(count: Int) =
+        if (count == 1) "Omite 1 enlace simbólico de la carpeta" else "Omite $count enlaces simbólicos de la carpeta"
+    override val localPatternMustBeRelative = "Los patrones son relativos al repositorio; usa una ruta dentro de él."
+    override val mobileSecretsTitle = "Secretos encontrados en este repositorio"
+    override fun mobileSecretKind(kind: MobileSecretKind) = when (kind) {
+        MobileSecretKind.LOCAL_PROPERTIES -> "propiedades locales"
+        MobileSecretKind.SIGNING_PROPERTIES -> "propiedades de firma"
+        MobileSecretKind.KEYSTORE -> "keystore"
+        MobileSecretKind.FIREBASE_CONFIG -> "configuración de Firebase"
+    }
+    override val linkFromRepositoryConfig = "Enlazar desde .shogunai.json"
+    override fun keystoreOutsideRepository(file: String, key: String, value: String) =
+        "$key en $file apunta fuera del repositorio ($value) y no se resolverá desde un worktree. Usa una ruta absoluta, o mueve el keystore al repositorio y enlázalo."
     override val mavenDaemonsTitle = "Daemons de Maven"
     override fun mavenDaemonsSummary(count: Int, totalMemory: String) =
         (if (count == 1) "1 daemon" else "$count daemons") + " · $totalMemory"
@@ -616,9 +634,30 @@ object SpanishStrings : Strings {
     override val composeVolumesKept = "Se eliminan los contenedores y las redes; los volúmenes se conservan."
     override fun composeProjectsTakenDown(count: Int) = if (count == 1) "1 proyecto bajado" else "$count proyectos bajados"
     override fun composeProjectDownFailed(name: String, detail: String) = "No se pudo bajar $name: $detail"
-    override val alsoTakeDownComposeProjects = "Bajar también los proyectos de Compose de los worktrees que se eliminan (los volúmenes se conservan)"
+    override val alsoTakeDownComposeProjects = "Bajar también los proyectos de Compose de los worktrees que se eliminan y eliminar sus redes e imágenes construidas"
     override fun cleanupComposeKept(reason: String?) =
         "Los proyectos de Compose se conservaron porque Docker no está disponible" + if (reason.isNullOrBlank()) "" else " ($reason)"
+    override val composeSectionTitle = "Compose"
+    override val composeNotStarted = "Sin arrancar"
+    override val startComposeServices = "Arrancar"
+    override val buildComposeServices = "Construir"
+    override val takeDownComposeServices = "Bajar"
+    override val composeDockerUnavailable = "Docker no está disponible"
+    override val composeLeftoversTitle = "Restos de worktrees eliminados"
+    override fun composeResourceKind(kind: ComposeResourceKind) = when (kind) {
+        ComposeResourceKind.NETWORK -> "Red"
+        ComposeResourceKind.IMAGE -> "Imagen"
+        ComposeResourceKind.VOLUME -> "Volumen"
+    }
+    override val removeComposeLeftovers = "Eliminar redes e imágenes"
+    override val removeComposeLeftoversWithVolumes = "Eliminar también los volúmenes"
+    override val confirmRemoveComposeVolumesTitle = "¿Eliminar los volúmenes?"
+    override fun confirmRemoveComposeVolumes(count: Int) =
+        (if (count == 1) "Se eliminará 1 volumen" else "Se eliminarán $count volúmenes") + " de worktrees eliminados con sus datos, junto con sus redes e imágenes."
+    override val removeVolumes = "Eliminar volúmenes"
+    override fun composeResourcesRemoved(count: Int) = if (count == 1) "1 recurso de Docker eliminado" else "$count recursos de Docker eliminados"
+    override fun composeResourceRemoveFailed(name: String, detail: String) = "No se pudo eliminar $name: $detail"
+    override val alsoRemoveComposeVolumes = "Eliminar también sus volúmenes (se pierden sus datos)"
     override val environmentVariableNameLabel = "Nombre"
     override val environmentVariableTemplateLabel = "Plantilla"
     override val addVariable = "Añadir variable"
@@ -718,6 +757,11 @@ object SpanishStrings : Strings {
     override val detectedGroupsTitle = "Grupos detectados por rama"
     override val noGroupsDetected = "Ninguna rama se comparte todavía entre dos repositorios."
     override val multirepoSettingsTitle = "Ajustes del multirepo"
+    override val multirepoNameTitle = "Nombre"
+    override val multirepoNameHint = "Se muestra en la barra lateral, en la vista del multirepo y a los agentes. Déjalo vacío para usar el nombre de la carpeta."
+    override val moveUp = "Mover arriba"
+    override val moveDown = "Mover abajo"
+    override val sortAlphabetically = "Ordenar alfabéticamente"
     override val multirepoNotFound = "Este multirepo ya no existe."
     override val workspaceRepositoryTitle = "Repositorio workspace"
     override val workspaceRepositoryHint = "La carpeta del multirepo es un repositorio Git: sus archivos propios se versionan ahí y sus worktrees van a la carpeta de worktrees del multirepo."

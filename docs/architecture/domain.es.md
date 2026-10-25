@@ -12,7 +12,8 @@ Configuración de un repositorio sobre el que se crean worktrees. Es el punto qu
 |---|---|
 | `baseRepositoryPath` | Ruta absoluta del repositorio principal, desde donde se ejecuta Git. |
 | `worktreesRoot` | Carpeta padre donde se crean los worktrees. |
-| `secretFiles` | "Archivos locales": rutas exactas de archivos o carpetas, relativas al repositorio base o absolutas, que se copian a cada nuevo worktree solo en esta máquina (p. ej. `local.properties`). Lo que declara el propio repositorio vive en `.shogunai.json` (ver `RepositoryProvisioning`). |
+| `secretFiles` | "Archivos locales": rutas de archivos o carpetas, relativas al repositorio base o absolutas, o patrones (una entrada con `*`, `?` o `[`, ver `isLocalPattern`), que se provisionan en cada nuevo worktree solo en esta máquina (p. ej. `local.properties`). Lo que declara el propio repositorio vive en `.shogunai.json` (ver `RepositoryProvisioning`). |
+| `linkedSecretFiles` | Las entradas de `secretFiles` que se enlazan en vez de copiarse; `isLinked(entry)` ignora un separador final. Vacía en los proyectos guardados antes de que existiera, así que sus entradas se siguen copiando. |
 | `agentLaunchConfig` | El agente por defecto del proyecto (`AgentLaunchConfig`, ver abajo), que usan todos los lanzamientos salvo que el usuario elija otro. |
 | `additionalAgents` | Los demás agentes del proyecto, en orden. `agents` es el agente por defecto seguido de estos, y `agentNamed(displayName)` busca uno por nombre y, si no lo encuentra, devuelve el de por defecto. Mantener el de por defecto en su propio campo hace que una versión anterior, que ignora las claves desconocidas, lo siga lanzando. |
 | `simulator` | `SimulatorSettings` de esta máquina: el tipo de dispositivo y el runtime del simulador de iOS (`null` significa automático). Solo se usa cuando el repositorio declara el provider de simulador de iOS; nunca se guarda en el repositorio. |
@@ -36,7 +37,7 @@ Helpers de rutas:
 data class AgentLaunchConfig(
     val name: String? = null,
     val agentCommand: String = "claude",
-    val useHeadroom: Boolean = true,
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val useHeadroom: Boolean = false,
 ) {
     val displayName: String
         get() = name?.takeIf { it.isNotBlank() } ?: executable().replaceFirstChar { it.uppercase() }
@@ -48,6 +49,8 @@ data class AgentLaunchConfig(
 ```
 
 Una `data class` plana con valores por defecto, para que se serialice con `kotlinx.serialization` sin un `SerializersModule` polimórfico y los proyectos guardados antes de que existiera un campo se sigan cargando. `agentCommand` puede llevar argumentos (`claude --model opus`); `executable()` es su primera palabra sin carpetas. Dentro de su proyecto, un agente se identifica por `displayName`: su `name` o, si no tiene, su ejecutable con la inicial en mayúscula (`codex` → «Codex»).
+
+Headroom (`headroom wrap`) está desactivado salvo que el agente lo active. `useHeadroom` se escribe siempre, igual que `ProjectConfig.agentLaunchConfig`: las versiones anteriores, en las que Headroom venía activado por defecto, omitían el campo (o el agente por defecto entero) cuando estaba activado, así que `projects.json` lee un agente guardado sin `useHeadroom`, o un proyecto sin `agentLaunchConfig`, como envuelto con Headroom. El agente del multirepo en `~/.shogunai/multirepos.json` se escribe igual, siempre con su `useHeadroom`.
 
 `WorktreeAgents` gestiona la elección por worktree: un mapa de ruta de worktree a nombre de agente, guardado en `settings.json` (nunca en el repositorio). `agentFor` devuelve el agente del worktree o el de por defecto; `choose` guarda un agente que no es el de por defecto y olvida la entrada cuando se elige el de por defecto; `prune` quita las entradas del proyecto cuyo worktree ya no existe o cuyo agente se renombró o eliminó.
 
@@ -89,7 +92,7 @@ Lo que el repositorio declara que necesita cada nuevo worktree, leído de ficher
 
 Los campos desconocidos de `.shogunai.json` se ignoran, para que versiones posteriores puedan añadir campos sin romper las anteriores.
 
-Lo que el provisionado hizo con cada archivo es un `ProvisionedFile` (`path` y `ProvisionMode`: `COPIED`, `LINKED`, `COPIED_INSTEAD_OF_LINKING`). `ProvisionDrift` (`path` y `ProvisionDriftState`: `MISSING`, `DIFFERS`, `NOT_LINKED`) es un archivo provisionado que ya no está como lo dejó el provisionado, tal como lo informa `CheckProvisionedFilesUseCase`.
+Lo que el provisionado hizo con cada archivo es un `ProvisionedFile` (`path` y `ProvisionMode`: `COPIED`, `LINKED`, `COPIED_INSTEAD_OF_LINKING`). `ProvisionDrift` (`path` y `ProvisionDriftState`: `MISSING`, `DIFFERS`, `NOT_LINKED`, `DELETED_IN_BASE`) es un archivo provisionado que ya no está como lo dejó el provisionado, tal como lo informa `CheckProvisionedFilesUseCase`.
 
 ### Entorno del worktree
 
@@ -217,7 +220,8 @@ Preferencias del usuario: `LIGHT` / `DARK` / `SYSTEM` y `ENGLISH` / `SPANISH`. S
 - `EnvironmentFileOutsideWorktree` — el `envFile` declarado queda fuera del worktree tras seguir los symlinks.
 - `InvalidRef` — un nombre de rama o punto de partida empieza por `-`, así que Git podría leerlo como una opción.
 - `GitCommandFailed` — un comando de Git devolvió un código de salida distinto de cero; guarda el comando, el código de salida y la salida de error de Git.
-- `SecretCopyFailed` — la copia o el enlace de archivos locales o del repositorio falló después de haber creado ya el worktree, incluido un archivo que acabaría fuera del worktree.
+- `SecretCopyFailed` — la copia o el enlace de archivos locales o del repositorio falló después de haber creado ya el worktree, incluido un archivo que acabaría fuera del worktree y un fallo al escribir el registro del provisionado.
+- `LinkedFolderOccupied` — una carpeta local en modo enlazar no se puede enlazar porque el worktree ya tiene ahí una carpeta real con archivos que ShogunAi no copió; no se borra nada de ella.
 - `PostCreateCommandFailed` — un comando post-creación no pudo arrancar o terminó con error; guarda el worktree, el comando, su código de salida y su salida de error. El worktree se conserva.
 - `ClipboardWriteFailed` — no se pudo copiar el comando de lanzamiento al portapapeles.
 - `GitLfsNotFound` — el repositorio usa Git LFS pero `git-lfs` no está instalado.
@@ -261,7 +265,9 @@ interface FileManager {
     fun hasSameContent(first: String, second: String): Boolean
     fun directorySize(path: String, excluding: Set<String> = emptySet()): Long
     fun isDirectory(path: String): Boolean
-    fun listFiles(directory: String): List<String>
+    fun listTree(directory: String): DirectoryListing
+    fun isSymbolicLink(path: String): Boolean
+    fun deleteFile(path: String)
     fun modificationStamps(path: String): List<Pair<String, Long>>
     fun readProperties(path: String): Map<String, String>
     fun writeText(path: String, text: String)
@@ -270,7 +276,7 @@ interface FileManager {
 }
 ```
 
-Abstrae el sistema de archivos para que la copia de secretos y la medición de worktrees sean testeables sin tocar disco. `isInside` indica si `path`, una vez resuelto a través de symlinks su ancestro existente más cercano, está dentro de `root`; el provisionado lo comprueba antes de cada copia, enlace y escritura del fichero de entorno, para que un symlink hostil en una rama no haga escribir a ShogunAi fuera del worktree. `copy` crea las carpetas padre que falten en el destino. `createSymbolicLink` sustituye lo que haya en `link` por un symlink, o lanza `SymbolicLinksNotSupported` donde no se pueden crear enlaces (p. ej. Windows sin el privilegio); `isSymbolicLinkTo` y `hasSameContent` son lo que compara la comprobación del provisionado. `listFiles` devuelve los archivos regulares bajo una carpeta como rutas relativas separadas por `/`, con los ocultos incluidos, sin seguir ni listar enlaces simbólicos, y nada si la carpeta no existe. `directorySize` suma los archivos regulares bajo `path`, saltándose las carpetas de `excluding`. `modificationStamps` devuelve cada archivo y carpeta bajo `path` (o el propio `path` si es un archivo) con su fecha de modificación, y nada si no existe. `readProperties` lee un fichero de propiedades de Java (como `gradle.properties`), vacío si no existe o no se puede leer. `writeText` sustituye un fichero de forma atómica, creando sus carpetas; `lastModifiedMillis` devuelve la fecha de última modificación de un archivo, o `null` si falta o no se puede leer. `readText` devuelve su contenido, o `null` si no existe o no se puede leer.
+Abstrae el sistema de archivos para que la copia de secretos y la medición de worktrees sean testeables sin tocar disco. `isInside` indica si `path`, una vez resuelto a través de symlinks su ancestro existente más cercano, está dentro de `root`; el provisionado lo comprueba antes de cada copia, enlace y escritura del fichero de entorno, para que un symlink hostil en una rama no haga escribir a ShogunAi fuera del worktree. `copy` crea las carpetas padre que falten en el destino. `createSymbolicLink` sustituye lo que haya en `link` por un symlink, o lanza `SymbolicLinksNotSupported` donde no se pueden crear enlaces (p. ej. Windows sin el privilegio); `isSymbolicLinkTo` y `hasSameContent` son lo que compara la comprobación del provisionado. `listTree` devuelve un `DirectoryListing` de una carpeta: sus archivos regulares (`files`) y los enlaces simbólicos que omite (`skippedLinks`), ambos como rutas relativas separadas por `/`, con los ocultos incluidos, sin seguir enlaces, y nada si la carpeta no existe. `isSymbolicLink` distingue un enlace sin seguirlo, y `deleteFile` borra un archivo o enlace, sin hacer nada si no existe. `directorySize` suma los archivos regulares bajo `path`, saltándose las carpetas de `excluding`. `modificationStamps` devuelve cada archivo y carpeta bajo `path` (o el propio `path` si es un archivo) con su fecha de modificación, y nada si no existe. `readProperties` lee un fichero de propiedades de Java (como `gradle.properties`), vacío si no existe o no se puede leer. `writeText` sustituye un fichero de forma atómica, creando sus carpetas; `lastModifiedMillis` devuelve la fecha de última modificación de un archivo, o `null` si falta o no se puede leer. `readText` devuelve su contenido, o `null` si no existe o no se puede leer.
 
 ### `ClipboardWriter`
 
@@ -288,13 +294,29 @@ Escribe el comando de lanzamiento de un worktree en el portapapeles del sistema.
 interface RepositoryProvisioningSource {
     fun read(repositoryPath: String): RepositoryProvisioning
     fun fingerprint(repositoryPath: String): String
-    fun addCopyPatterns(repositoryPath: String, patterns: List<String>, expectedFingerprint: String? = null)
+    fun addPatterns(
+        repositoryPath: String,
+        copyPatterns: List<String>,
+        linkPatterns: List<String> = emptyList(),
+        expectedFingerprint: String? = null,
+    )
     fun preview(repositoryPath: String, edit: RepositoryConfigEdit): String
     fun write(repositoryPath: String, edit: RepositoryConfigEdit, expectedFingerprint: String)
 }
 ```
 
-Lee el provisionado del repositorio (lanzando `InvalidRepositoryConfig` si `.shogunai.json` no se puede leer), añade patrones a `copy` (así mueve la pantalla de configuración los archivos locales al repositorio), y previsualiza y escribe los providers y el entorno editados en el formulario de ajustes (`RepositoryConfigEdit`). `fingerprint` es un hash del contenido del fichero; una escritura que recibe la huella leída antes falla con `RepositoryConfigChanged` si el fichero cambió entretanto.
+Lee el provisionado del repositorio (lanzando `InvalidRepositoryConfig` si `.shogunai.json` no se puede leer), añade patrones a `copy` y `link` en una sola escritura (así mueve la pantalla de configuración los archivos locales al repositorio y enlaza los secretos móviles que sugiere), y previsualiza y escribe los providers, el entorno y los patrones pendientes editados en el formulario de ajustes (`RepositoryConfigEdit`, cuyos `addCopyPatterns` y `addLinkPatterns` se añaden sin duplicados).
+
+### `ProvisioningRecordStore`
+
+```kotlin
+interface ProvisioningRecordStore {
+    fun read(worktreePath: String): Map<String, List<String>>
+    fun write(worktreePath: String, localFolders: Map<String, List<String>>)
+}
+```
+
+Recuerda, por worktree, los archivos que el provisionado copió de cada carpeta local (entrada de carpeta → archivos relativos a ella). `NioProvisioningRecordStore` lo guarda en `shogunai-provisioning.json` dentro de la carpeta de administración de Git del worktree (que encuentra a través de su fichero `.git`), así que nunca está en el árbol de trabajo y desaparece con el worktree. Un registro que falta o no se puede leer se lee vacío; un registro vacío borra el fichero. `ProvisioningRecordStore.NONE` no guarda nada, para quien no lo necesita. `fingerprint` es un hash del contenido del fichero; una escritura que recibe la huella leída antes falla con `RepositoryConfigChanged` si el fichero cambió entretanto.
 
 ### `EnvironmentStateStore` / `PortProbe`
 
@@ -487,7 +509,7 @@ Guarda los `AgentSessionRecord` de las sesiones de un worktree: `write`, `remove
 
 Una declaración puede venir de un repositorio clonado, así que `ResolveMultirepoUseCase` solo aplica un multirepo registrado en `MultirepoSource.knownFolders()` y cuyo `approvalSubject` está aprobado allí (`Multirepo.approved`). El sujeto es un texto con la carpeta normalizada, cada alias declarado con su ruta resuelta (ordenados por alias), la carpeta de worktrees resuelta y el ajuste de workspace declarado: lo que decide dónde crea ShogunAi ramas y worktrees. `defaultRepos` y el `agent` de la declaración no forman parte de él. La búsqueda hacia arriba de `invoke` solo encaja con carpetas registradas, `declaring` y `approved()` se saltan los multirepos sin aprobar, y `known()` devuelve todos los registrados con su estado para la app de escritorio. `nearestDeclaration` encuentra la declaración más cercana, registrada o no, para `shogun multirepo trust`/`show` y para el aviso del CLI sobre una declaración ignorada. `validate` rechaza alias, rutas de repositorio y `worktreesRoot` con caracteres de control o de formato Unicode, para que la revisión no se pueda falsear con secuencias de escape.
 
-El agente del multirepo es un ajuste local (`MultirepoSource.agent`/`setAgent`, `Multirepo.localAgent`); `Multirepo.agent` usa `claude` con headroom por defecto y nunca lee `MultirepoDeclaration.agent`, que solo se conserva para que los archivos antiguos se sigan leyendo y `ignoresDeclaredAgent` pueda avisar. `ConfigureMultirepoUseCase` se niega a escribir un multirepo sin aprobar (`WorktreeError.MultirepoNeedsReview`), escribe la declaración sin `agent` y aprueba el sujeto que ha escrito, así que las ediciones del propio ShogunAi lo mantienen aprobado y una hecha en otro sitio no. `trust` registra y aprueba exactamente la declaración revisada (se niega si el archivo ha cambiado entretanto) y `revoke` la olvida.
+El agente del multirepo es un ajuste local (`MultirepoSource.agent`/`setAgent`, `Multirepo.localAgent`); `Multirepo.agent` usa `claude` sin Headroom por defecto y nunca lee `MultirepoDeclaration.agent`, que solo se conserva para que los archivos antiguos se sigan leyendo y `ignoresDeclaredAgent` pueda avisar. `ConfigureMultirepoUseCase` se niega a escribir un multirepo sin aprobar (`WorktreeError.MultirepoNeedsReview`), escribe la declaración sin `agent` y aprueba el sujeto que ha escrito, así que las ediciones del propio ShogunAi lo mantienen aprobado y una hecha en otro sitio no. `trust` registra y aprueba exactamente la declaración revisada (se niega si el archivo ha cambiado entretanto) y `revoke` la olvida.
 
 ### Repositorios
 
@@ -512,7 +534,9 @@ Crea un worktree en una rama **nueva** `<tipo>/<taskId>`. Primero normaliza el i
 5. Preparación de su entorno con el `WorktreeEnvironmentPreparer` que recibe: `PrepareWorktreeEnvironmentUseCase` lo resuelve reservando puertos (`ResolveWorktreeEnvironmentUseCase`) y, si se declara `envFile` y la declaración está aprobada, `WriteEnvironmentFileUseCase` lo escribe en formato dotenv, negándose a sobrescribir un fichero que Git versiona (`git ls-files --error-unmatch`, `EnvironmentFileTracked`) e informando de los fallos de escritura como `EnvironmentFileWriteFailed`. El preparador es `WorktreeEnvironmentPreparer.NONE` por defecto, en lo que se apoyan los tests que no tratan del entorno; la app y el CLI siempre pasan el real.
 6. Ejecución de los comandos post-creación del repositorio en el worktree, solo si está aprobado. Cuando el repositorio no está aprobado y el usuario no lo aprueba en ese momento, sus comandos y los nombres de sus variables declaradas se devuelven en `skippedPostCreateCommands` y `skippedVariables` del worktree. Un comando que falla es `PostCreateCommandFailed`, y el worktree se conserva, porque todo lo anterior salió bien.
 
-Para resolver los archivos del repositorio se lee `RepositoryProvisioning` y, si declara algún patrón, se ejecuta `git ls-files --others --ignored -z -x <patrón>…`: todos los archivos que Git no versiona y coinciden con un patrón (los versionados ya llegan con el checkout). Sin patrones no se ejecuta ningún comando de Git. Un `.shogunai.json` ilegible (`InvalidRepositoryConfig`) o un `git ls-files` que falla (`GitCommandFailed`) detienen la creación antes de crear nada. Los archivos locales se comprueban de forma estricta (`SecretFileNotFound`) y los patrones de forma laxa: un patrón sin coincidencias no copia nada. Una entrada local que es una carpeta se expande con `FileManager.listFiles` en los archivos que contiene cada vez que se resuelven los archivos, así que la creación, el provisionado y la comprobación de deriva ven archivos sueltos y un archivo añadido después a la carpeta se incorpora. Las carpetas se copian, nunca se enlazan; si la carpeta ya existe en el worktree se fusiona (los archivos con la misma ruta se sobrescriben, el resto se conserva); una carpeta inexistente es `SecretFileNotFound`, como un archivo inexistente.
+Para resolver los archivos del repositorio se lee `RepositoryProvisioning` y, si declara algún patrón, se ejecuta `git ls-files --others --ignored -z -x <patrón>…`: todos los archivos que Git no versiona y coinciden con un patrón (los versionados ya llegan con el checkout). Sin patrones no se ejecuta ningún comando de Git. Un `.shogunai.json` ilegible (`InvalidRepositoryConfig`) o un `git ls-files` que falla (`GitCommandFailed`) detienen la creación antes de crear nada. Los archivos locales se comprueban de forma estricta (`SecretFileNotFound`) y los patrones de forma laxa: un patrón sin coincidencias no copia nada. Una entrada local que es una carpeta en modo copiar se expande con `FileManager.listTree` en los archivos que contiene cada vez que se resuelven los archivos, así que la creación, el provisionado y la comprobación de deriva ven archivos sueltos y un archivo añadido después a la carpeta se incorpora; los enlaces simbólicos que omite viajan como `skippedLinks`. Si la carpeta ya existe en el worktree se fusiona (los archivos con la misma ruta se sobrescriben, el resto se conserva); una carpeta inexistente es `SecretFileNotFound`, como un archivo inexistente. Una entrada local en modo enlazar se enlaza, declare lo que declare el repositorio, y una en modo copiar se copia; una carpeta enlazada se convierte en un único enlace simbólico a la carpeta base, que sustituye a una carpeta real solo si todos sus archivos constan en el registro como copiados de esa carpeta (si no, `LinkedFolderOccupied`), y a una carpeta copiada cuyo destino es un enlace a la carpeta base se le quita antes ese enlace. Un patrón local se expande con la misma llamada a `git ls-files` que `copy`, así que solo selecciona archivos sin versionar, y no se comprueba que exista.
+
+Después de copiar, el registro de `ProvisioningRecordStore` de cada carpeta copiada se sustituye por los archivos recién copiados. Antes de copiar, un archivo registrado que ya no existe en su carpeta base se borra del worktree si allí es un archivo regular, y se devuelve como eliminado; los archivos que el registro no lista nunca se tocan. La comprobación de deriva informa de esos archivos como `DELETED_IN_BASE`.
 
 Si la copia o la preparación del entorno fallan **después** de crear el worktree, se revierte con `git worktree remove --force` y se borra la rama que creó la creación con `git branch -D -- <rama>` (ambos best-effort) antes de propagar el error, así que un reintento no encuentra nada en su camino. Si `git worktree add` falla porque falta `git-lfs`, se eliminan del mismo modo el worktree a medio crear y su rama nueva y se devuelve `GitLfsNotFound`.
 

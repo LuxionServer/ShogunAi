@@ -1,10 +1,12 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.ComposeResourceKind
 import app.luxion.shogunai.domain.model.ResourceLimits
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.InstallChannel
+import app.luxion.shogunai.domain.model.MobileSecretKind
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.usecase.HookEntry
@@ -85,7 +87,7 @@ object EnglishStrings : Strings {
     override val removeLocalFile = "Remove local file or folder"
     override val newLocalFileLabel = "New local file or folder"
     override val localFilesDescription =
-        "Exact paths of files or folders copied into each new worktree; a folder brings every file under it. They're stored on this machine only."
+        "Paths of files or folders, or patterns such as *.jks, copied into each new worktree, or linked when you turn on Link (a linked folder shows the base folder's changes at once, and a linked secret is shared by every worktree). They're stored on this machine only."
     override val repositoryProvisioningSection = "From the repository"
     override val repositoryProvisioningDescription =
         "Patterns versioned in .shogunai.json and .worktreeinclude. Every untracked file that matches is copied into each new worktree."
@@ -315,6 +317,7 @@ object EnglishStrings : Strings {
         ProvisionDriftState.MISSING -> "$path · missing"
         ProvisionDriftState.DIFFERS -> "$path · differs"
         ProvisionDriftState.NOT_LINKED -> "$path · not linked"
+        ProvisionDriftState.DELETED_IN_BASE -> "$path · deleted in base"
     }
     override val environmentTitle = "Environment"
     override val devicesTitle = "Devices"
@@ -600,6 +603,21 @@ object EnglishStrings : Strings {
     override val stackSuggestionsTitle = "Detected in this repository"
     override fun stackSuggestion(provider: String, evidence: String) = "$provider · $evidence"
     override val turnOnProvider = "Turn on"
+    override val linkLocalEntry = "Link"
+    override val localPatternLabel = "pattern"
+    override fun skippedSymbolicLinks(count: Int) =
+        if (count == 1) "Skips 1 symbolic link inside the folder" else "Skips $count symbolic links inside the folder"
+    override val localPatternMustBeRelative = "Patterns are relative to the repository; use a path inside it."
+    override val mobileSecretsTitle = "Secrets found in this repository"
+    override fun mobileSecretKind(kind: MobileSecretKind) = when (kind) {
+        MobileSecretKind.LOCAL_PROPERTIES -> "local properties"
+        MobileSecretKind.SIGNING_PROPERTIES -> "signing properties"
+        MobileSecretKind.KEYSTORE -> "keystore"
+        MobileSecretKind.FIREBASE_CONFIG -> "Firebase configuration"
+    }
+    override val linkFromRepositoryConfig = "Link from .shogunai.json"
+    override fun keystoreOutsideRepository(file: String, key: String, value: String) =
+        "$key in $file points outside the repository ($value) and won't resolve from a worktree. Use an absolute path, or move the keystore into the repository and link it."
     override val mavenDaemonsTitle = "Maven daemons"
     override fun mavenDaemonsSummary(count: Int, totalMemory: String) =
         (if (count == 1) "1 daemon" else "$count daemons") + " · $totalMemory"
@@ -616,9 +634,30 @@ object EnglishStrings : Strings {
     override val composeVolumesKept = "Containers and networks are removed; volumes are kept."
     override fun composeProjectsTakenDown(count: Int) = if (count == 1) "1 project taken down" else "$count projects taken down"
     override fun composeProjectDownFailed(name: String, detail: String) = "Couldn't take down $name: $detail"
-    override val alsoTakeDownComposeProjects = "Also take down the Compose projects of the worktrees being removed (volumes are kept)"
+    override val alsoTakeDownComposeProjects = "Also take down the Compose projects of the worktrees being removed and remove their networks and built images"
     override fun cleanupComposeKept(reason: String?) =
         "The Compose projects were kept because Docker isn't available" + if (reason.isNullOrBlank()) "" else " ($reason)"
+    override val composeSectionTitle = "Compose"
+    override val composeNotStarted = "Not started"
+    override val startComposeServices = "Start"
+    override val buildComposeServices = "Build"
+    override val takeDownComposeServices = "Take down"
+    override val composeDockerUnavailable = "Docker isn't available"
+    override val composeLeftoversTitle = "Left by removed worktrees"
+    override fun composeResourceKind(kind: ComposeResourceKind) = when (kind) {
+        ComposeResourceKind.NETWORK -> "Network"
+        ComposeResourceKind.IMAGE -> "Image"
+        ComposeResourceKind.VOLUME -> "Volume"
+    }
+    override val removeComposeLeftovers = "Remove networks and images"
+    override val removeComposeLeftoversWithVolumes = "Remove volumes too"
+    override val confirmRemoveComposeVolumesTitle = "Remove the volumes?"
+    override fun confirmRemoveComposeVolumes(count: Int) =
+        (if (count == 1) "1 volume" else "$count volumes") + " of removed worktrees will be removed with their data, together with their networks and images."
+    override val removeVolumes = "Remove volumes"
+    override fun composeResourcesRemoved(count: Int) = if (count == 1) "1 Docker resource removed" else "$count Docker resources removed"
+    override fun composeResourceRemoveFailed(name: String, detail: String) = "Couldn't remove $name: $detail"
+    override val alsoRemoveComposeVolumes = "Also remove their volumes (their data is lost)"
     override val environmentVariableNameLabel = "Name"
     override val environmentVariableTemplateLabel = "Template"
     override val addVariable = "Add variable"
@@ -718,6 +757,11 @@ object EnglishStrings : Strings {
     override val detectedGroupsTitle = "Groups detected by branch"
     override val noGroupsDetected = "No branch is shared by two repositories yet."
     override val multirepoSettingsTitle = "Multirepo settings"
+    override val multirepoNameTitle = "Name"
+    override val multirepoNameHint = "Shown in the sidebar, the multirepo view and to agents. Leave it empty to use the folder's name."
+    override val moveUp = "Move up"
+    override val moveDown = "Move down"
+    override val sortAlphabetically = "Sort alphabetically"
     override val multirepoNotFound = "This multirepo no longer exists."
     override val workspaceRepositoryTitle = "Workspace repository"
     override val workspaceRepositoryHint = "The multirepo folder is a Git repository: its own files are versioned there and its worktrees go in the multirepo's worktrees folder."

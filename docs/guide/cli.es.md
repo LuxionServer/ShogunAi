@@ -13,7 +13,7 @@ shogun repair                      # re-enlaza los worktrees tras mover el repos
 shogun open TASK-123 --herdr       # abre un worktree en Herdr con su entorno y el agente del proyecto
 shogun clean --yes                 # elimina los worktrees mergeados o sin carpeta (sin --yes solo los lista)
 shogun stacks                      # los stacks detectados en el repositorio y los providers que sugieren
-shogun multirepo show              # en un multirepo: sus repositorios, los de por defecto y su agente
+shogun multirepo show              # en un multirepo: su nombre, sus repositorios, los de por defecto y su agente
 shogun project add                 # registra este repositorio como proyecto de la app de escritorio
 shogun app --settings              # abre la app de escritorio en los ajustes del proyecto de este repositorio
 eval "$(shogun env)"               # carga las variables de este worktree desde "env" en .shogunai.json
@@ -59,9 +59,9 @@ shogun provision [<path>]
 shogun provision --check [<path>]
 ```
 
-Copia los archivos locales del proyecto y los archivos `copy` declarados del repositorio en un worktree existente (por defecto, el directorio actual), enlaza sus archivos `link`, reserva sus puertos, escribe su `envFile` y ejecuta los comandos de `hooks.postCreate`. Úsalo con worktrees creados por otra herramienta. Imprime una ruta por línea: los archivos enlazados terminan en `(linked)`, y los declarados en `link` que se copiaron porque no hay enlaces simbólicos terminan en `(copied: symbolic links aren't available)`.
+Copia los archivos locales del proyecto y los archivos `copy` declarados del repositorio en un worktree existente (por defecto, el directorio actual), enlaza sus archivos `link`, reserva sus puertos, escribe su `envFile` y ejecuta los comandos de `hooks.postCreate`. Úsalo con worktrees creados por otra herramienta. Imprime una ruta por línea: los archivos enlazados terminan en `(linked)`, y los declarados en `link` que se copiaron porque no hay enlaces simbólicos terminan en `(copied: symbolic links aren't available)`. Después lista los archivos que borró porque se eliminaron de su carpeta local en el repositorio base, terminados en `(removed: deleted from the base folder)`, y los enlaces simbólicos que omitió dentro de carpetas locales, terminados en `(skipped: symbolic link)`. `shogun new` y el hook `worktree-create` avisan de los enlaces omitidos en la salida de error.
 
-Con `--check` no se cambia nada: compara los archivos que daría el provisionado al worktree con los del repositorio base e imprime una línea por diferencia, `<ruta>: missing`, `<ruta>: differs` (una copia cuyo contenido cambió en el repositorio base) o `<ruta>: not linked` (un archivo de `link` que no es un enlace simbólico al del repositorio base). Sale con 0 si todo coincide, 3 si hay alguna diferencia y 1 si hay un error.
+Con `--check` no se cambia nada: compara los archivos que daría el provisionado al worktree con los del repositorio base e imprime una línea por diferencia, `<ruta>: missing`, `<ruta>: differs` (una copia cuyo contenido cambió en el repositorio base) o `<ruta>: not linked` (un archivo de `link` que no es un enlace simbólico al del repositorio base) o `<ruta>: deleted in base` (un archivo copiado de una carpeta local que la carpeta base ya no tiene; el siguiente `shogun provision` lo borra). Sale con 0 si todo coincide, 3 si hay alguna diferencia y 1 si hay un error.
 
 Los comandos posteriores a la creación se ejecutan, y las variables que el repositorio declara en `env` y su `envFile` se aplican, solo cuando el repositorio está aprobado en este equipo (ver [Aprobar un repositorio](configuration.md#aprobar-un-repositorio)). En un terminal, `shogun new` y `shogun provision` imprimen los comandos, las variables declaradas (`NOMBRE = plantilla`) y el archivo de entorno antes de preparar el entorno del worktree, y preguntan `Approve them on this machine? [y/N]` por la salida de error; solo un sí explícito los aprueba y aplica. Sin terminal los omiten, imprimen `shogun: skipped N post-creation commands not approved on this machine; run 'shogun trust' in <repo> to review them` y `shogun: skipped environment variables not approved on this machine (PORT, …); run 'shogun trust' in <repo> to review them` por la salida de error y terminan bien.
 
@@ -216,7 +216,7 @@ El destino se busca como en `remove`, salvo que se admite el worktree principal.
 
 ```text
 shogun clean [--yes|-y] [--delete-branches] [--stop-gradle-daemons] [--stop-emulators]
-             [--delete-simulators] [--delete-derived-data] [--down-compose-projects]
+             [--delete-simulators] [--delete-derived-data] [--down-compose-projects [--compose-volumes]]
 ```
 
 Selecciona los mismos worktrees que "Limpiar" en la app de escritorio: ni el principal, ni los bloqueados, ni uno donde se ejecute un agente, y o bien mergeados sin cambios sin commitear o bien sin carpeta. Sin `--yes` solo lista lo que haría (`would remove …`) y termina con el comando que hay que ejecutar, repitiendo las opciones que diste y nombrando solo lo que se eliminaría; con `--yes` lo hace (`removed …`). Si no hay nada que hacer imprime `Nothing to clean up.`
@@ -230,7 +230,8 @@ Un worktree donde se ejecuta un agente se lista como `kept <ruta> (claude is run
 | `--stop-emulators` | Para los emuladores de Android de los worktrees eliminados. |
 | `--delete-simulators` | Borra los simuladores de iOS de los worktrees eliminados y los simuladores de ShogunAi huérfanos. |
 | `--delete-derived-data` | Borra los DerivedData de Xcode huérfanos, incluidas las carpetas de los worktrees eliminados. |
-| `--down-compose-projects` | Baja los proyectos de Docker Compose de los worktrees eliminados, conservando sus volúmenes (`took down Compose project …`; `would take down Compose project …` sin `--yes`). Solo en repositorios que declaran el provider `docker-compose`; un proyecto que no se puede bajar, o que Docker no esté disponible, se informa en la salida de error sin cambiar el código de salida. |
+| `--down-compose-projects` | Baja los proyectos de Docker Compose de los worktrees eliminados y elimina las redes e imágenes construidas que dejan, conservando sus volúmenes (`took down Compose project …`, `removed image …`, `kept volume …`; `would take down Compose project …` sin `--yes`). Solo en repositorios que declaran el provider `docker-compose`; un proyecto que no se puede bajar, o que Docker no esté disponible, se informa en la salida de error sin cambiar el código de salida. |
+| `--compose-volumes` | Con `--down-compose-projects`, elimina también los volúmenes de los proyectos de los worktrees eliminados. Sin `--down-compose-projects` es un error de uso. |
 
 También se cierran los espacios de trabajo de Herdr de los worktrees eliminados (`would close Herdr workspace of …` en el listado). Un daemon, emulador o espacio de Herdr que no se puede parar o cerrar se indica en la salida de error sin cambiar el código de salida.
 
@@ -239,13 +240,14 @@ También se cierran los espacios de trabajo de Herdr de los worktrees eliminados
 En la carpeta de un multirepo (ver [Multirepos y grupos](multirepo.md)), `new`, `status`, `open` y `clean` actúan sobre sus grupos, y `shogun multirepo` lo configura.
 
 ```text
-shogun multirepo init [--worktrees-root <dir>]
+shogun multirepo init [--worktrees-root <dir>] [--name <name>] [--use-worktrees-root | --keep-worktrees-folder] [--yes]
 shogun multirepo show
 shogun multirepo trust [<carpeta>] [--yes | --revoke]
+shogun multirepo name <name> | --clear
 shogun multirepo add-repo <alias> <ruta> [--use-worktrees-root | --keep-worktrees-folder]
 shogun multirepo remove-repo <alias>
 shogun multirepo defaults <alias>[,<alias>...] | --clear
-shogun multirepo agent <comando> [--name <nombre>] [--no-headroom]
+shogun multirepo agent <comando> [--name <nombre>] [--headroom]
 shogun multirepo workspace set [--alias <alias>] [--default] | clear
 shogun multirepo worktrees-root <dir>
 shogun multirepo delete
@@ -254,10 +256,12 @@ shogun open <task id | rama> --herdr
 shogun open --herdr
 ```
 
+- `multirepo init` en una carpeta que ya tiene declaración (por ejemplo, una que se ha movido) muestra la misma revisión que `multirepo trust` y pregunta antes de aprobarla (`--yes` aprueba sin preguntar; sin terminal, o con `--json`, y sin `--yes` sale con `1`; si respondes que no, no cambia nada). Una vez aprobada registra el multirepo y un proyecto para cada repositorio declarado que no lo tenga (preguntando por `<worktreesRoot>/<alias>` como hace `add-repo`); ahí `--worktrees-root` y `--name` salen con `2`. En ambos casos olvida antes los multirepos conocidos cuya carpeta ya no existe. Su `--json` para una declaración existente tiene `name`, `path`, `declaration`, `registered` (false si ya estaba aprobado y era conocido) y los `projects` registrados.
+- `multirepo name` fija el nombre con el que se muestra el multirepo; un nombre en blanco sale con `2`. `show` imprime primero el nombre, y su `--json` tiene `name`.
 - Los subcomandos de `multirepo` funcionan en la carpeta del multirepo o en cualquier parte de sus repositorios y worktrees, y aceptan `--json`; fuera de un multirepo salen con `1`. Un alias incorrecto sale con `2`.
 - Solo se aplican los multirepos aprobados en este equipo ([Aprobar un multirepo](multirepo.md#aprobar-un-multirepo)). Bajo una declaración sin aprobar, `new`, `status`, `open` y `clean` se comportan como fuera de un multirepo e imprimen en la salida de error un aviso con el archivo y `shogun multirepo trust`; los hooks no imprimen nada. `multirepo show` lo sigue mostrando, con `not approved on this machine` (`"approved": false` en `--json`); los subcomandos que escriben salen con `1`.
-- `multirepo trust` muestra la declaración más cercana (o la de `<carpeta>`): cada repositorio con su ruta resuelta, la carpeta de worktrees y el repositorio de workspace, marcando las rutas fuera de la carpeta padre. En un terminal pregunta (`[y/N]`) y aprueba si respondes que sí; `--yes` aprueba sin preguntar; sin terminal y sin `--yes` sale con `1`. `--revoke` olvida el multirepo y conserva el archivo. Su objeto `--json` tiene `path`, `declaration`, `approved`, `changed`, `repos` (con `outsideParent`), `worktreesRoot`, `worktreesRootOutsideParent`, `workspace` e `ignoredDeclaredAgent`; sin `--yes` solo informa.
-- `multirepo agent` guarda el agente del multirepo en este equipo, nunca en la declaración; un `agent` que haya dejado en la declaración una versión anterior se ignora, y `show` lo indica (`ignoredDeclaredAgent` en `--json`).
+- `multirepo trust` muestra la declaración más cercana (o la de `<carpeta>`): su nombre declarado, cada repositorio con su ruta resuelta, la carpeta de worktrees y el repositorio de workspace, marcando las rutas fuera de la carpeta padre. En un terminal pregunta (`[y/N]`) y aprueba si respondes que sí; `--yes` aprueba sin preguntar; sin terminal y sin `--yes` sale con `1`. `--revoke` olvida el multirepo y conserva el archivo. Su objeto `--json` tiene `path`, `declaration`, `name` (si está declarado), `approved`, `changed`, `repos` (con `outsideParent`), `worktreesRoot`, `worktreesRootOutsideParent`, `workspace` e `ignoredDeclaredAgent`; sin `--yes` solo informa.
+- `multirepo agent` guarda el agente del multirepo en este equipo, nunca en la declaración; un `agent` que haya dejado en la declaración una versión anterior se ignora, y `show` lo indica (`ignoredDeclaredAgent` en `--json`). El agente ejecuta su comando tal cual; `--headroom` lo envuelve con `headroom wrap`. `--no-headroom`, de versiones anteriores en las que Headroom venía activado por defecto, se sigue aceptando y no cambia nada; junto con `--headroom` sale con `2`.
 - `new <id>` en la carpeta del multirepo cubre los repositorios por defecto, o `--repos` desde cualquier parte del multirepo; imprime la ruta de cada worktree que crea en la salida estándar y una línea por repositorio en la salida de error, y sale con `1` si algún repositorio falló. `--branch`, `--from` y `--worktrees-root` no se aplican a un grupo y salen con `2`. Su objeto `--json` tiene la `branch` y una lista `repos` con `alias`, `path`, `result` (`created`, `existing` o `failed`), los comandos de post-creación omitidos y `error`.
 - Cuando la carpeta del multirepo es un repositorio Git, es el repositorio de workspace del multirepo (alias `workspace` salvo que se declare otro): `show` lo lista, marcado `detected` hasta que `workspace set` lo declara (`--alias` lo renombra, `--default` lo añade a los repositorios por defecto) y `workspace clear` desactiva la detección; en una carpeta que no es un repositorio `workspace set` sale con `1`. `new <id> --repos workspace,app` lo incluye, con su worktree en `<worktreesRoot>/workspace/<id>`. `project add` y `app` ejecutados en esa carpeta registran el repositorio de workspace como miembro del multirepo y ningún proyecto propio de la carpeta (`app` solo abre la app), salvo que la detección esté desactivada. El `--json` de `show` marca cada repositorio con `workspace` y `detected`.
 - `status` en la carpeta del multirepo imprime la rama de cada grupo seguida de una línea por repositorio, y después `ungrouped`; `--json` imprime `groups` (cada uno con `branch`, `title` y `repos` con `alias`, `path`, `branch`, `base`, `folderMissing`, `uncommittedChanges`, `ahead`, `behind`, `merged`, `agents`), `ungrouped` y `failures`.
@@ -312,7 +316,7 @@ Imprime el entorno del worktree que contiene la ruta (o el directorio actual), a
 shogun stacks
 ```
 
-Imprime una línea por cada stack detectado en el repositorio (`Maven  evidence=pom.xml  maven=suggested`): los archivos que lo delataron y, por cada provider que sugiere, `suggested` o `declared` si `.shogunai.json` ya lo tiene. Los providers que el sistema operativo no admite no se mencionan. No cambia nada, imprime `No known stack detected.` y sale con `0` si no hay ninguno, y sale con `1` fuera de un repositorio Git. Ver [detección de stacks](providers.md#deteccion-de-stacks).
+Imprime una línea por cada stack detectado en el repositorio (`Maven  evidence=pom.xml  maven=suggested`): los archivos que lo delataron y, por cada provider que sugiere, `suggested` o `declared` si `.shogunai.json` ya lo tiene. Los providers que el sistema operativo no admite no se mencionan. Tras los stacks imprime una línea `Secret  <ruta>  kind=<tipo>  link=<patrón>` por cada secreto móvil que aún no provisiona nada y una línea `Warning` por cada ruta de keystore que sale del repositorio. No cambia nada, imprime `No known stack detected.` y sale con `0` si no hay nada, y sale con `1` fuera de un repositorio Git. Ver [detección de stacks](providers.md#deteccion-de-stacks).
 
 ## Providers
 
@@ -341,10 +345,17 @@ shogun maven
 
 ```text
 shogun compose
+shogun compose up [<worktree>] [--build] [-- <args>...]
+shogun compose build [<worktree>] [-- <args>...]
 shogun compose down [<worktree>] [--volumes]
+shogun compose prune [--volumes] [--yes]
 ```
 
-`compose` lista los proyectos de Docker Compose de los worktrees del repositorio: nombre, `status=` y `worktree=<ruta>|removed`. `compose down` baja los proyectos de worktrees eliminados, o el proyecto del worktree indicado (que se busca como en `remove`, admitiendo el principal), con `docker compose -p <nombre> down`: los volúmenes se conservan salvo que se pase `--volumes`. Imprime `took down <nombre> (volumes kept)`, informa de un fallo en la salida de error y sale con `1` por él. Si el repositorio no declara el provider `docker-compose`, o el worktree indicado no existe, sale con `1` y no ejecuta ningún comando de Docker.
+`compose` lista los proyectos de Docker Compose de los worktrees del repositorio: nombre, `status=` y `worktree=<ruta>|removed`, y después una línea `leftover <tipo> <nombre>  project=<proyecto>` por cada volumen, red o imagen que dejó un worktree eliminado, con el comando `compose prune` que los elimina.
+
+`compose up` arranca los servicios del worktree indicado, o del que contiene el directorio actual, con `docker compose up --detach` ejecutado en ese worktree con su entorno (su `COMPOSE_PROJECT_NAME` y sus variables de puerto); `--build` añade `--build`, y los argumentos tras `--` llegan tal cual a Docker Compose. `compose build` ejecuta `docker compose build` del mismo modo. La salida de Docker Compose se muestra mientras se ejecuta, y después `started Compose project <nombre> for <ruta>` (o `built …`); un fallo se imprime en la salida de error con código de salida `1`.
+
+`compose prune` lista las redes e imágenes construidas que dejaron los worktrees eliminados (`would remove …`) y los volúmenes que conservaría (`would keep …`); con `--yes` las elimina (`removed …`, `kept …`), y también sus volúmenes con `--volumes`. Nunca se fuerza nada, así que un recurso que aún usa un contenedor se informa en la salida de error y el código de salida es `1`. Si no queda nada imprime `Nothing to remove.` `compose down` baja los proyectos de worktrees eliminados, o el proyecto del worktree indicado (que se busca como en `remove`, admitiendo el principal), con `docker compose -p <nombre> down`: los volúmenes se conservan salvo que se pase `--volumes`. Imprime `took down <nombre> (volumes kept)`, informa de un fallo en la salida de error y sale con `1` por él. Si el repositorio no declara el provider `docker-compose`, o el worktree indicado no existe, sale con `1` y no ejecuta ningún comando de Docker.
 
 ### `emulator`
 
@@ -390,7 +401,7 @@ shogun xcode trim [--dry-run]
 
 ## Salida JSON
 
-Además de `status --json`, todos los comandos que informan de un resultado aceptan `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `compose`, `compose down`, `pool status`, `pool trim`, `project add`, `project list`, `project remove`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks` y `guide install|uninstall|status` (no `simulator gradle-init`, `env`, `hook`, `help` ni `--version`; en ellos es una opción desconocida y sale con `2`). La opción puede ir en cualquier posición tras el comando.
+Además de `status --json`, todos los comandos que informan de un resultado aceptan `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `compose`, `compose up`, `compose build`, `compose down`, `compose prune`, `pool status`, `pool trim`, `project add`, `project list`, `project remove`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks` y `guide install|uninstall|status` (no `simulator gradle-init`, `env`, `hook`, `help` ni `--version`; en ellos es una opción desconocida y sale con `2`). La opción puede ir en cualquier posición tras el comando.
 
 Las reglas son las mismas para todos:
 
@@ -401,9 +412,9 @@ Las reglas son las mismas para todos:
 
 | Comando | Objeto |
 |---|---|
-| `new` | `path`, `branch`, `created` (siempre `true`), `skippedPostCreateCommands` (lista de listas argv), `skippedVariables` (los nombres de las variables declaradas que se dejaron fuera) y `postCreateFailure`: `null`, o `{ command, exitCode, stderr }` si falló un comando posterior a la creación. En ese caso el objeto se imprime igualmente, porque el worktree existe, y el código de salida es `1`. |
-| `provision` | `path`, `copied`, `linked` y `copiedInsteadOfLinking` (rutas de archivos), `skippedPostCreateCommands`, `skippedVariables` y `postCreateFailure`, como en `new`. Si falló un comando, las tres listas de archivos van vacías. |
-| `provision --check` | `path` y `drift`: lista de `{ path, state }` con `state` `missing`, `differs` o `not-linked`. El código de salida es `3` si `drift` no está vacío. |
+| `new` | `path`, `branch`, `created` (siempre `true`), `skippedPostCreateCommands` (lista de listas argv), `skippedVariables` (los nombres de las variables declaradas que se dejaron fuera), `postCreateFailure`: `null`, o `{ command, exitCode, stderr }` si falló un comando posterior a la creación, y `skippedLinks`, los enlaces simbólicos omitidos dentro de carpetas locales. En ese caso el objeto se imprime igualmente, porque el worktree existe, y el código de salida es `1`. |
+| `provision` | `path`, `copied`, `linked` y `copiedInsteadOfLinking` (rutas de archivos), `skippedPostCreateCommands`, `skippedVariables` y `postCreateFailure`, como en `new`, `removed` (archivos borrados porque su carpeta local ya no los tiene) y `skippedLinks`. Si falló un comando, las tres listas de archivos van vacías. |
+| `provision --check` | `path` y `drift`: lista de `{ path, state }` con `state` `missing`, `differs`, `not-linked` o `deleted-in-base`. El código de salida es `3` si `drift` no está vacío. |
 | `trust` | `repository`, `commands` (listas argv), `env` (una lista de `{ name, template }`), `envFile` (o `null`), `approved` y `changed` (esta ejecución lo aprobó o revocó). Un repositorio que no declara nada es `approved: true` con listas vacías. `--revoke` informa `approved: false` si había algo que aprobar. |
 | `remove` | `path`, `branch` (la del worktree, o `null` si está desacoplado), `branchDeleted` (el nombre, o `null` si se conservó o no se pidió borrar la rama), `branchKeptReason` (por qué no se borró una rama cuya eliminación se pidió, o `null`), `providers` (`emulatorsStopped` con los serial, `simulatorsStopped` con los udid y `gradleDaemonsStopped` con los pid) y `failures` (mensajes de lo que no se pudo detener, código de salida `1`). |
 | `hooks install`, `hooks uninstall` | `path`, `applied` (escrito en esta ejecución) y los hooks `added` y `removed` como `{ event, command }` más `replaced` como `{ event, from, to }`. |
@@ -414,12 +425,14 @@ Las reglas son las mismas para todos:
 | `project add`, `project remove` | `action` (`added`, `alreadyRegistered` o `removed`), y el `id`, `name` y `repository` del proyecto. |
 | `project list` | `projects`: `{ id, name, repository }`, vacío sin proyectos. |
 | `open` | `path`, `branch` (o `null` si está desacoplado), `herdr` (`opened` o `focused`) y `agent` (el nombre del agente arrancado, o `null` cuando solo se enfocó el espacio de trabajo). |
-| `clean` | `dryRun`; `candidates`: `{ path, branch, reason }` con `reason` `merged` o `folder-missing`; `keptForAgents`: `{ path, agents }`; `skipped`: `{ path, reason }` (estado no disponible); `removed`; `deletedBranches`; `failures`: `{ path, message }`; y `providers`: `gradleDaemonsStopped`, `emulatorsStopped`, `simulatorsDeleted`, `derivedDataDeleted` y, con `--down-compose-projects`, `composeProjectsDown`. Sin `--yes` (`dryRun: true`) `removed`, `deletedBranches` y las listas de `providers` van vacías. |
+| `clean` | `dryRun`; `candidates`: `{ path, branch, reason }` con `reason` `merged` o `folder-missing`; `keptForAgents`: `{ path, agents }`; `skipped`: `{ path, reason }` (estado no disponible); `removed`; `deletedBranches`; `failures`: `{ path, message }`; y `providers`: `gradleDaemonsStopped`, `emulatorsStopped`, `simulatorsDeleted`, `derivedDataDeleted` y, con `--down-compose-projects`, `composeProjectsDown` y `composeResources` (`removed`, `kept`, `failures`, como en `compose prune`). Sin `--yes` (`dryRun: true`) `removed`, `deletedBranches` y las listas de `providers` van vacías. |
 | `gradle` | `daemons`: `{ pid, kind, version, memoryBytes, state, idleSince, worktree }` con `kind` `gradle` o `kotlin`, `state` `busy`, `idle`, `unknown` o `untracked`, `idleSince` en ISO-8601 UTC (solo si está inactivo) y `worktree` una ruta, `removed`, `other-project` o `null` fuera de un repositorio; y `totalMemoryBytes`. |
 | `gradle stop` | `stopped` (pids), `kept`: `{ pid, kind, reason }` con `reason` `busy`, `state-unknown` o `build-running`, `notDaemons` (pids) y `failures`: `{ pid, message }`. El código de salida es `1` si alguna de las dos últimas no está vacía. |
-| `stacks` | `stacks`: `{ stack, evidence, providers }` con `stack` `gradle`, `android`, `xcode`, `maven` o `docker-compose`, `evidence` los archivos que lo delataron y `providers`: `{ id, declared }` por cada provider que sugiere. |
+| `stacks` | `stacks`: `{ stack, evidence, providers }` con `stack` `gradle`, `android`, `xcode`, `maven` o `docker-compose`, `evidence` los archivos que lo delataron y `providers`: `{ id, declared }` por cada provider que sugiere; `secrets`: `{ path, kind, pattern }` con `kind` `local-properties`, `signing-properties`, `keystore` o `firebase-config`; y `keystoreWarnings`: `{ file, key, value }`. |
 | `maven` | `daemons`: `{ pid, memoryBytes, worktree }` con `worktree` una ruta, `removed`, `other-project` o `null` (desconocido, o fuera de un repositorio); y `totalMemoryBytes`. |
-| `compose` | `projects`: `{ name, status, worktree }` con `worktree` una ruta o `removed`. |
+| `compose` | `projects`: `{ name, status, worktree }` con `worktree` una ruta o `removed`; `leftovers`: `{ kind, name, project }` con `kind` `network`, `image` o `volume`. |
+| `compose up`, `compose build` | `worktree`, `project`, `succeeded` y, si falla, `message`. La salida de Docker Compose va a la salida de error. |
+| `compose prune` | `dryRun`; `removed` y `kept`: `{ kind, name, project }`; `failures`: `{ resource, message }`. Sin `--yes`, `removed` es lo que eliminaría. |
 | `compose down` | `takenDown` (nombres de proyecto) y `failures`: `{ name, message }`. El código de salida es `1` si `failures` no está vacío. |
 | `xcode` | `active` (`false` si el provider no está activo, con el resto vacío), `folders`: `{ path, sizeBytes, worktree }`, `orphans`: `{ path, sizeBytes }`, `unavailableVolumeFolders` (un número) y `compilationCacheBytes` (`null` salvo que esté declarada). |
 | `xcode clean` | `active`, `deleted` (rutas), `freedBytes` y `failures`: `{ path, message }`. |

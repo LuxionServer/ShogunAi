@@ -116,6 +116,10 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "Couldn't copy the local files into the worktree.",
         "Check that the worktree folder is writable.",
     )
+    is WorktreeError.LinkedFolderOccupied -> ErrorTexts(
+        "Couldn't link ${error.entry}: the worktree already has a ${error.entry} folder with files ShogunAi didn't copy.",
+        "Switch ${error.entry} to copy in the project's local files, or move those files out of the worktree's folder.",
+    )
     is WorktreeError.PostCreateCommandFailed -> ErrorTexts(
         "The worktree was created, but one of the repository's post-creation commands failed.",
         "Read the technical details, fix the command or its cause, and run it inside the worktree.",
@@ -147,6 +151,10 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     is WorktreeError.DockerUnavailable -> ErrorTexts(
         "Docker isn't available" + if (error.reason.isNullOrBlank()) "." else ": ${error.reason}",
         "Start Docker and try again.",
+    )
+    is WorktreeError.ComposeCommandFailed -> ErrorTexts(
+        "Docker Compose failed for ${error.project}: ${error.detail}",
+        "Check the Compose file and the output of docker compose in the worktree.",
     )
     is WorktreeError.NoFreePort -> ErrorTexts(
         "No free port is left between ${error.from} and ${error.to}.",

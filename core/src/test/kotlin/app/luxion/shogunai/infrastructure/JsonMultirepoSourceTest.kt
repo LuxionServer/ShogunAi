@@ -4,6 +4,9 @@ import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.WorkspaceSetting
 import app.luxion.shogunai.domain.model.WorktreeError
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermissions
 import kotlin.io.path.createTempDirectory
@@ -121,6 +124,32 @@ class JsonMultirepoSourceTest {
     }
 
     @Test
+    fun `a declared name round trips and an absent one isn't written`() {
+        val declaration = MultirepoDeclaration(repos = mapOf("app" to "product-app"), worktreesRoot = "../product-worktrees", name = "Product")
+
+        source.write(folder.toString(), declaration)
+        assertEquals(declaration, source.read(folder.toString()))
+        assertTrue(folder.resolve(".shogunai-multirepo.json").readText().contains("\"name\": \"Product\""))
+
+        source.write(folder.toString(), declaration.copy(name = null))
+        assertFalse(folder.resolve(".shogunai-multirepo.json").readText().contains("\"name\""))
+    }
+
+    @Test
+    fun `forgetMissing drops entries whose folder is gone and keeps folders without a declaration`() {
+        val moved = home.resolve("moved")
+        val withoutDeclaration = home.resolve("empty").also { Files.createDirectories(it) }
+        listOf(folder, moved, withoutDeclaration).forEach { source.remember(it.toString()) }
+        source.approve(moved.toString(), "subject")
+
+        val forgotten = source.forgetMissing()
+
+        assertEquals(listOf(moved.toString()), forgotten)
+        assertEquals(listOf(folder.toString(), withoutDeclaration.toString()), source.knownFolders())
+        assertFalse(registry.readText().contains(moved.toString()))
+    }
+
+    @Test
     fun `approves a subject for one folder only`() {
         val other = home.resolve("other").also { Files.createDirectories(it) }
         source.remember(folder.toString())
@@ -144,6 +173,15 @@ class JsonMultirepoSourceTest {
     }
 
     @Test
+    fun `writes the local agent's headroom option even when it is the default`() {
+        source.setAgent(folder.toString(), AgentLaunchConfig(agentCommand = "codex"))
+
+        val local = Json.parseToJsonElement(registry.readText()).jsonObject["local"]!!.jsonObject.values.single().jsonObject
+        assertEquals(JsonPrimitive(false), local["agent"]!!.jsonObject["useHeadroom"])
+        assertEquals(AgentLaunchConfig(agentCommand = "codex", useHeadroom = false), source.agent(folder.toString()))
+    }
+
+    @Test
     fun `forgetting drops the approval and the agent`() {
         source.remember(folder.toString())
         source.approve(folder.toString(), "subject")
@@ -159,7 +197,7 @@ class JsonMultirepoSourceTest {
     @Test
     fun `a registry from an earlier version keeps its folders and has nothing approved`() {
         Files.createDirectories(registry.parent)
-        registry.writeText("""{"multirepos": ["${folder.resolve(".shogunai-multirepo.json")}"]}""")
+        registry.writeText("""{"multirepos": [${jsonString(folder.resolve(".shogunai-multirepo.json").toString())}]}""")
 
         assertEquals(listOf(folder.toString()), source.knownFolders())
         assertFalse(source.isApproved(folder.toString(), "subject"))
@@ -173,8 +211,8 @@ class JsonMultirepoSourceTest {
     @Test
     fun `a malformed local entry doesn't hide the known folders`() {
         Files.createDirectories(registry.parent)
-        val key = folder.resolve(".shogunai-multirepo.json").toString()
-        registry.writeText("""{"multirepos": ["$key"], "local": {"$key": "garbage"}}""")
+        val key = jsonString(folder.resolve(".shogunai-multirepo.json").toString())
+        registry.writeText("""{"multirepos": [$key], "local": {$key: "garbage"}}""")
 
         assertEquals(listOf(folder.toString()), source.knownFolders())
         assertNull(source.agent(folder.toString()))
@@ -187,4 +225,6 @@ class JsonMultirepoSourceTest {
         val permissions = runCatching { Files.getPosixFilePermissions(registry) }.getOrNull() ?: return
         assertEquals(PosixFilePermissions.fromString("rw-------"), permissions)
     }
+
+    private fun jsonString(value: String) = JsonPrimitive(value).toString()
 }

@@ -462,11 +462,15 @@ With `--yes`, `shogun clean --delete-derived-data` SHALL delete the orphaned Der
 - **THEN** no DerivedData is deleted
 
 ### Requirement: Check a worktree's provisioned files from the command line
-`shogun provision --check [<path>]` SHALL compare the provisioned files of the worktree at `<path>`, or the current directory when omitted, with the base repository's, without changing anything. It SHALL print one line per reported file with its relative path and state (missing, differs or not linked), and exit with code 0 when nothing is reported and code 3 otherwise.
+`shogun provision --check [<path>]` SHALL compare the provisioned files of the worktree at `<path>`, or the current directory when omitted, with the base repository's, without changing anything. It SHALL print one line per reported file with its relative path and state (missing, differs, not linked or deleted in base), and exit with code 0 when nothing is reported and code 3 otherwise.
 
 #### Scenario: Stale secret
 - **WHEN** the worktree's `.env` differs from the base repository's and the user runs `shogun provision --check`
 - **THEN** a line reports `.env` as differing, no file is copied or linked, and the command exits with code 3
+
+#### Scenario: File deleted from the base folder
+- **WHEN** `keys/old.pem` was copied from the local folder `keys` and later deleted from the base folder
+- **THEN** a line reports `keys/old.pem` as deleted in base, nothing is deleted, and the command exits with code 3
 
 #### Scenario: Up to date
 - **WHEN** every declared file of the worktree matches the base repository's
@@ -804,7 +808,7 @@ Session records SHALL be stored in the worktree's Git administrative folder, so 
 - **THEN** it says the provider isn't active and exits with `0`
 
 ### Requirement: Show the detected stacks from the command line
-`shogun stacks` SHALL print one line per stack detected in the repository with its evidence and, per suggested provider, whether the repository already declares it. Providers not supported by the platform SHALL NOT be suggested. It SHALL change nothing and exit with code 0 when no stack is detected.
+`shogun stacks` SHALL print one line per stack detected in the repository with its evidence and, per suggested provider, whether the repository already declares it, followed by one line per suggested mobile secret with its path, kind and suggested `link` pattern, and one line per keystore warning. Providers not supported by the platform SHALL NOT be suggested. It SHALL change nothing and exit with code 0 when nothing is detected.
 
 #### Scenario: Stacks detected
 - **WHEN** the user runs `shogun stacks` in a repository with `pom.xml` that declares no provider
@@ -814,8 +818,16 @@ Session records SHALL be stored in the worktree's Git administrative folder, so 
 - **WHEN** the repository already declares the `maven` provider
 - **THEN** the output shows it as declared and not as a suggestion
 
+#### Scenario: Mobile secret suggested
+- **WHEN** the user runs `shogun stacks` in an Android repository with an ignored `local.properties` that nothing provisions
+- **THEN** a line names `local.properties`, its kind and the pattern `/local.properties` to add to `link`, and nothing is written
+
+#### Scenario: Keystore warning
+- **WHEN** `keystore.properties` contains `storeFile=../signing/release.jks`
+- **THEN** a line warns that `storeFile` in `keystore.properties` points outside the repository
+
 #### Scenario: Nothing detected
-- **WHEN** no stack is detected
+- **WHEN** no stack and no mobile secret is detected
 - **THEN** the command says so and exits with code 0
 
 #### Scenario: Outside a repository
@@ -852,17 +864,104 @@ Session records SHALL be stored in the worktree's Git administrative folder, so 
 - **WHEN** the repository doesn't declare the Compose provider
 - **THEN** an error on standard error says so, Docker isn't run and the command exits with code 1
 
+### Requirement: List leftover Docker resources from the command line
+After the projects, `shogun compose` SHALL print one line per volume, network or image left by the projects of removed worktrees, with its kind and project, followed by the `shogun compose prune` command that removes them.
+
+#### Scenario: Leftover resources listed
+- **WHEN** the user runs `shogun compose` and a removed worktree left the volume `main-repo-task-9_db-data`
+- **THEN** a line names that volume, its kind and its project, and says `shogun compose prune --volumes` removes it
+
 ### Requirement: Take down Compose projects when cleaning up from the command line
-With `--yes`, `shogun clean --down-compose-projects` SHALL also take down the Compose projects of the removed worktrees, keeping their volumes, and report how many were taken down and how many failed. Without the option no project SHALL be taken down.
+With `--yes`, `shogun clean --down-compose-projects` SHALL also take down the Compose projects of the removed worktrees and remove the networks and built images those projects leave, keeping their volumes unless `--compose-volumes` is also given, and report how many projects were taken down, which resources were removed and what failed. Without the option no project SHALL be taken down and no resource removed.
 
 #### Scenario: Projects of removed worktrees
-- **WHEN** the user runs `shogun clean --yes --down-compose-projects` and a removed worktree had a project
-- **THEN** that project is taken down and the output says so
+- **WHEN** the user runs `shogun clean --yes --down-compose-projects` and a removed worktree had a project with a built image and a volume
+- **THEN** that project is taken down, its image is removed, its volume is kept and the output says so
+
+#### Scenario: Volumes too
+- **WHEN** the user runs `shogun clean --yes --down-compose-projects --compose-volumes`
+- **THEN** the volumes of the removed worktrees' projects are removed too
+
+#### Scenario: Volumes option alone
+- **WHEN** the user runs `shogun clean --yes --compose-volumes` without `--down-compose-projects`
+- **THEN** a usage error says `--compose-volumes` needs `--down-compose-projects` and nothing is removed
 
 #### Scenario: Without the option
 - **WHEN** the user runs `shogun clean --yes`
-- **THEN** no Compose project is taken down
+- **THEN** no Compose project is taken down and no Docker resource is removed
 
 #### Scenario: Option without confirmation
 - **WHEN** the user runs `shogun clean --down-compose-projects` without `--yes`
 - **THEN** nothing is removed or taken down, and the output also lists the projects that would be taken down
+
+### Requirement: Start and build Compose projects from the command line
+`shogun compose up [<worktree>] [--build] [-- <args>…]` SHALL start the services of the given worktree, or of the worktree containing the current directory, and `shogun compose build [<worktree>] [-- <args>…]` SHALL build them, both with the worktree's environment, passing the arguments after `--` to Docker Compose. Docker Compose's output SHALL be shown as it runs, and the command SHALL exit with Docker Compose's failure as code 1.
+
+#### Scenario: Up in the current worktree
+- **WHEN** the user runs `shogun compose up` inside worktree `TASK-123` of `main-repo`
+- **THEN** the services start under project `main-repo-task-123` with the worktree's ports, and the output names the project
+
+#### Scenario: Up with a build and a service
+- **WHEN** the user runs `shogun compose up TASK-123 --build -- api`
+- **THEN** `docker compose up --detach --build api` runs in that worktree with its environment
+
+#### Scenario: Build
+- **WHEN** the user runs `shogun compose build`
+- **THEN** the services of the current worktree are built with its environment
+
+#### Scenario: Unknown worktree
+- **WHEN** the user runs `shogun compose up TASK-404` and no such worktree exists
+- **THEN** an error on standard error says so, Docker isn't run and the command exits with code 1
+
+#### Scenario: Failure
+- **WHEN** Docker Compose fails
+- **THEN** the reason is printed on standard error and the command exits with code 1
+
+#### Scenario: JSON
+- **WHEN** the user runs `shogun compose up --json`
+- **THEN** standard output has one object with the worktree, the project name and whether it succeeded, and Docker Compose's own output goes to standard error
+
+### Requirement: Remove leftover Docker resources from the command line
+`shogun compose prune [--volumes] [--yes]` SHALL remove the networks and built images left by the projects of removed worktrees, and their volumes with `--volumes`. Without `--yes` it SHALL only list what it would remove and remove nothing. It SHALL report each resource removed and each failure with the reason, and exit with code 1 when any removal fails.
+
+#### Scenario: Dry run
+- **WHEN** the user runs `shogun compose prune` and a removed worktree left a network, an image and a volume
+- **THEN** the output lists the network and the image as to be removed, the volume as kept, and nothing is removed
+
+#### Scenario: Remove
+- **WHEN** the user runs `shogun compose prune --yes`
+- **THEN** the network and the image are removed, the volume is kept and the output says so
+
+#### Scenario: With volumes
+- **WHEN** the user runs `shogun compose prune --yes --volumes`
+- **THEN** the volume is removed too
+
+#### Scenario: Nothing left
+- **WHEN** no removed worktree left any resource
+- **THEN** the output says there is nothing to remove and the command exits with code 0
+
+#### Scenario: JSON
+- **WHEN** the user runs `shogun compose prune --yes --json`
+- **THEN** the object lists the removed resources with their kind, name and project, and the failures with their reason
+
+### Requirement: Report removed files and skipped links from the command line
+`shogun provision [<path>]` SHALL list, after the provisioned files, each file it deleted because it was deleted from its base folder and each symbolic link it skipped inside a local folder, each marked as such. `shogun new` and the worktree creation hook SHALL print the skipped links as a note on standard error, keeping standard output unchanged.
+
+#### Scenario: Provisioning after a deletion
+- **WHEN** `keys/old.pem` was deleted from the base folder and the user runs `shogun provision`
+- **THEN** a line marks `keys/old.pem` as removed
+
+#### Scenario: Skipped link on creation
+- **WHEN** the user runs `shogun new TASK-123` and the local folder `keys` holds the symbolic link `shared.pem`
+- **THEN** standard output is only the worktree's path and standard error notes that `keys/shared.pem` was skipped
+
+### Requirement: JSON result of removed files and skipped links
+`shogun provision --json` SHALL add the lists `removed` and `skippedLinks`, and `shogun new --json` the list `skippedLinks`, each with paths relative to the repository root and empty when there is nothing to report. `shogun provision --check --json` SHALL report a file deleted from its base folder with state `deleted-in-base`. `shogun stacks --json` SHALL add `secrets`, each with `path`, `kind` and `pattern`, and `keystoreWarnings`, each with `file`, `key` and `value`.
+
+#### Scenario: Provision with a removal
+- **WHEN** the user runs `shogun provision --json` and `keys/old.pem` is removed
+- **THEN** the object's `removed` lists `keys/old.pem` and `skippedLinks` is empty
+
+#### Scenario: Stacks with a secret
+- **WHEN** the user runs `shogun stacks --json` and `app/google-services.json` is suggested
+- **THEN** `secrets` holds an entry with path `app/google-services.json`, kind `firebase-config` and pattern `/app/google-services.json`

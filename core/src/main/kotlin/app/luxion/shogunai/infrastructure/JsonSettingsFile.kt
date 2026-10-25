@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.RecentWorktree
 import app.luxion.shogunai.domain.model.ResourceSettings
+import app.luxion.shogunai.domain.model.SidebarOrder
 import app.luxion.shogunai.domain.model.TerminalId
 import app.luxion.shogunai.domain.model.ThemeMode
 import app.luxion.shogunai.domain.model.WindowBounds
@@ -88,6 +89,7 @@ class JsonSettingsFile(
         val sidebarCollapsed: Boolean = false,
         val collapsedProjects: List<String> = emptyList(),
         val collapsedMultirepos: List<String> = emptyList(),
+        val sidebarOrder: SidebarOrder = SidebarOrder(),
         val lastCreateProject: String? = null,
         val recentPaletteItems: List<String> = emptyList(),
         val grouping: GroupingSettings = GroupingSettings(),

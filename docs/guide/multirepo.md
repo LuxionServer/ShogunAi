@@ -10,6 +10,7 @@ A multirepo is declared by a `.shogunai-multirepo.json` file in a folder you cho
 
 ```json
 {
+  "name": "Product",
   "repos": { "docs": "product-docs", "app": "product-app", "api": "product-api" },
   "worktreesRoot": "../product-worktrees",
   "defaultRepos": ["app", "api"],
@@ -17,6 +18,7 @@ A multirepo is declared by a `.shogunai-multirepo.json` file in a folder you cho
 }
 ```
 
+- `name` is optional: the name the multirepo is shown with in the sidebar, `shogun multirepo show`, the agents' context and Herdr. Without it, the multirepo is named after its folder, which is handy when a workspace repository's folder isn't named after the product. Paths and aliases never depend on it. It can have at most 80 characters and no control or text-direction characters.
 - `repos` maps an alias (lowercase letters, digits and hyphens) to a repository's path, relative to the folder or absolute. The repositories don't need to share a parent folder.
 - `worktreesRoot` is a common folder under which each repository's worktrees folder is proposed as `<worktreesRoot>/<alias>`.
 - `defaultRepos` are the repositories `shogun new <id>` covers when run in the multirepo folder.
@@ -26,11 +28,14 @@ The folder is outside every repository, or the top level of a **workspace reposi
 
 ShogunAi remembers the multirepos it knows in `~/.shogunai/multirepos.json`, a file of its own, together with their approval and the multirepo agent set on this machine; `projects.json` and `settings.json` keep their format, so an earlier version keeps working with them.
 
-The multirepo agent, the command `shogun open --herdr` runs in the multirepo folder, is set with `shogun multirepo agent` (or the multirepo settings in the app) and kept on this machine; it's `claude` with headroom until you set another. It's never read from the declaration: a declaration written by an earlier version may still hold an `agent`, which is ignored (`shogun multirepo show` says so) and dropped the next time ShogunAi writes the file.
+The multirepo agent, the command `shogun open --herdr` runs in the multirepo folder, is set with `shogun multirepo agent` (or the multirepo settings in the app) and kept on this machine; it's `claude`, without Headroom, until you set another (`--headroom` wraps it with `headroom wrap`). It's never read from the declaration: a declaration written by an earlier version may still hold an `agent`, which is ignored (`shogun multirepo show` says so) and dropped the next time ShogunAi writes the file.
+
+If a multirepo's folder moves, run `shogun multirepo init` in its new place (or add the folder from the desktop app): instead of refusing, it shows the declaration for review as `shogun multirepo trust` does, and once you approve it, registers it as it is and registers a project for each declared repository that has none, proposing `<worktreesRoot>/<alias>` as `add-repo` does. Both `init` and the desktop app also forget the entries of `~/.shogunai/multirepos.json` whose folder no longer exists; an entry whose folder exists but has no declaration is kept and ignored. A multirepo on a volume that isn't mounted is therefore forgotten too, and `shogun multirepo init` there brings it back.
 
 ```bash
 cd ~/projects/product
 shogun multirepo init                       # writes .shogunai-multirepo.json, worktreesRoot ../product-worktrees
+shogun multirepo name "Product"             # optional; --clear goes back to the folder's name
 shogun multirepo add-repo app product-app   # reuses product-app's project, or registers one
 shogun multirepo add-repo api product-api
 shogun multirepo defaults app,api
@@ -52,7 +57,7 @@ shogun multirepo trust --yes      # approve without asking
 shogun multirepo trust --revoke   # forget it; the file stays
 ```
 
-The review lists each repository with the path it resolves to, the worktrees root and the workspace repository, and marks every path outside the multirepo folder's parent. The approval covers exactly that: if a pull or a manual edit changes a repository's path, `worktreesRoot` or the workspace setting, the multirepo stops applying until you review it again. Changing `defaultRepos` doesn't need a new approval. What ShogunAi writes itself (`shogun multirepo init`, `add-repo`, `defaults`…, the desktop app) stays approved, and those commands refuse to write a multirepo that needs review. Multirepos registered before this check existed need one review after updating.
+The review lists the declared name, each repository with the path it resolves to, the worktrees root and the workspace repository, and marks every path outside the multirepo folder's parent. The approval covers exactly that: if a pull or a manual edit changes the name, a repository's path, `worktreesRoot` or the workspace setting, the multirepo stops applying until you review it again. Changing `defaultRepos` doesn't need a new approval. What ShogunAi writes itself (`shogun multirepo init`, `add-repo`, `defaults`…, the desktop app) stays approved, and those commands refuse to write a multirepo that needs review. Multirepos registered before this check existed need one review after updating.
 
 ## Groups
 

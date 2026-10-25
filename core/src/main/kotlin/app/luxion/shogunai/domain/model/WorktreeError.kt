@@ -59,6 +59,9 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class SecretCopyFailed(cause: Throwable) :
         WorktreeError("Failed to copy secret files: ${cause.message}", cause)
 
+    class LinkedFolderOccupied(val entry: String, val worktreePath: String) :
+        WorktreeError("Can't link $entry: the worktree's $entry folder holds files ShogunAi didn't copy")
+
     class PostCreateCommandFailed(
         val worktreePath: String,
         val command: List<String>,
@@ -88,6 +91,9 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
 
     class DockerUnavailable(val reason: String?) :
         WorktreeError("Docker isn't available" + if (reason.isNullOrBlank()) "" else ": $reason")
+
+    class ComposeCommandFailed(val project: String, val detail: String) :
+        WorktreeError("Docker Compose failed for $project: $detail")
 
     class NoFreePort(val from: Int, val to: Int) :
         WorktreeError("No free port left between $from and $to for this worktree")

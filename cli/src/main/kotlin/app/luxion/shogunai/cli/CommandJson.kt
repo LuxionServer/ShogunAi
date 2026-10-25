@@ -1,6 +1,8 @@
 package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.domain.model.ComposeDownReport
+import app.luxion.shogunai.domain.model.ComposeLeftoversReport
+import app.luxion.shogunai.domain.model.ComposeResource
 import app.luxion.shogunai.domain.model.ComposeOwner
 import app.luxion.shogunai.domain.model.DaemonKeptReason
 import app.luxion.shogunai.domain.model.DaemonKind
@@ -23,6 +25,7 @@ import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.MavenDaemon
 import app.luxion.shogunai.domain.model.SuggestionReport
 import app.luxion.shogunai.domain.model.WorktreeComposeProject
+import app.luxion.shogunai.domain.model.MobileSecretsReport
 import app.luxion.shogunai.domain.model.ProvisionDrift
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.ProvisionMode
@@ -76,6 +79,7 @@ fun newJson(
     skippedPostCreateCommands: List<List<String>>,
     skippedVariables: List<String>,
     postCreateFailure: WorktreeError.PostCreateCommandFailed?,
+    skippedLinks: List<String> = emptyList(),
 ): JsonObject = buildJsonObject {
     put("path", path)
     put("branch", branch)
@@ -83,6 +87,7 @@ fun newJson(
     put("skippedPostCreateCommands", commands(skippedPostCreateCommands))
     put("skippedVariables", strings(skippedVariables))
     put("postCreateFailure", postCreateFailureJson(postCreateFailure))
+    put("skippedLinks", strings(skippedLinks))
 }
 
 fun provisionJson(
@@ -91,6 +96,8 @@ fun provisionJson(
     skippedPostCreateCommands: List<List<String>>,
     skippedVariables: List<String>,
     postCreateFailure: WorktreeError.PostCreateCommandFailed?,
+    removed: List<String> = emptyList(),
+    skippedLinks: List<String> = emptyList(),
 ): JsonObject = buildJsonObject {
     put("path", path)
     put("copied", strings(files.filter { it.mode == ProvisionMode.COPIED }.map { it.path }))
@@ -99,6 +106,8 @@ fun provisionJson(
     put("skippedPostCreateCommands", commands(skippedPostCreateCommands))
     put("skippedVariables", strings(skippedVariables))
     put("postCreateFailure", postCreateFailureJson(postCreateFailure))
+    put("removed", strings(removed))
+    put("skippedLinks", strings(skippedLinks))
 }
 
 fun provisionCheckJson(path: String, drift: List<ProvisionDrift>): JsonObject = buildJsonObject {
@@ -123,6 +132,7 @@ private val ProvisionDriftState.label: String
         ProvisionDriftState.MISSING -> "missing"
         ProvisionDriftState.DIFFERS -> "differs"
         ProvisionDriftState.NOT_LINKED -> "not-linked"
+        ProvisionDriftState.DELETED_IN_BASE -> "deleted-in-base"
     }
 
 fun trustJson(repository: String, subject: RepositoryApprovalSubject, approved: Boolean, changed: Boolean): JsonObject = buildJsonObject {
@@ -167,6 +177,7 @@ data class CleanJson(
     val simulatorsDeleted: List<String> = emptyList(),
     val derivedDataDeleted: List<String> = emptyList(),
     val composeProjectsDown: List<String>? = null,
+    val composeResources: ComposeLeftoversReport? = null,
 )
 
 fun cleanJson(clean: CleanJson): JsonObject = buildJsonObject {
@@ -222,6 +233,7 @@ fun cleanJson(clean: CleanJson): JsonObject = buildJsonObject {
             put("simulatorsDeleted", strings(clean.simulatorsDeleted))
             put("derivedDataDeleted", strings(clean.derivedDataDeleted))
             clean.composeProjectsDown?.let { put("composeProjectsDown", strings(it)) }
+            clean.composeResources?.let { put("composeResources", composeLeftoversJson(it)) }
         },
     )
 }
@@ -278,7 +290,7 @@ fun mavenJson(daemons: List<MavenDaemon>, attributed: Boolean): JsonObject = bui
     put("totalMemoryBytes", totalMavenResidentMemory(daemons))
 }
 
-fun stacksJson(stacks: List<DetectedStack>, report: SuggestionReport): JsonObject = buildJsonObject {
+fun stacksJson(stacks: List<DetectedStack>, report: SuggestionReport, secrets: MobileSecretsReport = MobileSecretsReport()): JsonObject = buildJsonObject {
     put(
         "stacks",
         buildJsonArray {
@@ -305,6 +317,34 @@ fun stacksJson(stacks: List<DetectedStack>, report: SuggestionReport): JsonObjec
             }
         },
     )
+    put(
+        "secrets",
+        buildJsonArray {
+            secrets.secrets.forEach {
+                add(
+                    buildJsonObject {
+                        put("path", it.path)
+                        put("kind", it.kind.id)
+                        put("pattern", it.linkPattern)
+                    },
+                )
+            }
+        },
+    )
+    put(
+        "keystoreWarnings",
+        buildJsonArray {
+            secrets.warnings.forEach {
+                add(
+                    buildJsonObject {
+                        put("file", it.file)
+                        put("key", it.key)
+                        put("value", it.value)
+                    },
+                )
+            }
+        },
+    )
 }
 
 val Stack.jsonLabel: String
@@ -316,7 +356,8 @@ val Stack.jsonLabel: String
         Stack.DOCKER_COMPOSE -> "docker-compose"
     }
 
-fun composeJson(projects: List<WorktreeComposeProject>): JsonObject = buildJsonObject {
+fun composeJson(projects: List<WorktreeComposeProject>, leftovers: List<ComposeResource> = emptyList()): JsonObject = buildJsonObject {
+    put("leftovers", composeResourcesJson(leftovers))
     put(
         "projects",
         buildJsonArray {
@@ -337,6 +378,42 @@ fun composeJson(projects: List<WorktreeComposeProject>): JsonObject = buildJsonO
             }
         },
     )
+}
+
+fun composeRunJson(worktree: String, project: String?, error: String?): JsonObject = buildJsonObject {
+    put("worktree", worktree)
+    project?.let { put("project", it) }
+    put("succeeded", error == null)
+    error?.let { put("message", it) }
+}
+
+fun composeLeftoversJson(report: ComposeLeftoversReport, dryRun: Boolean? = null): JsonObject = buildJsonObject {
+    dryRun?.let { put("dryRun", it) }
+    put("removed", composeResourcesJson(report.removed))
+    put("kept", composeResourcesJson(report.kept))
+    put(
+        "failures",
+        buildJsonArray {
+            report.failures.forEach {
+                add(
+                    buildJsonObject {
+                        put("resource", composeResourceJson(it.resource))
+                        put("message", it.detail)
+                    },
+                )
+            }
+        },
+    )
+}
+
+private fun composeResourcesJson(resources: List<ComposeResource>): JsonArray = buildJsonArray {
+    resources.forEach { add(composeResourceJson(it)) }
+}
+
+private fun composeResourceJson(resource: ComposeResource): JsonObject = buildJsonObject {
+    put("kind", resource.kind.id)
+    put("name", resource.name)
+    put("project", resource.project)
 }
 
 fun composeDownJson(report: ComposeDownReport): JsonObject = buildJsonObject {

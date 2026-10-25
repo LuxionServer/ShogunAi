@@ -472,7 +472,9 @@ private fun WorktreeFilesSection(
             RepositoryProvisioningList(
                 state = viewModel.repositoryProvisioning,
                 pendingPatterns = viewModel.pendingRepositoryPatterns,
+                pendingLinkPatterns = viewModel.pendingLinkPatterns,
             )
+            MobileSecretsSuggestions(viewModel)
         }
         SettingsField(strings.localFilesSection) {
             Text(
@@ -482,19 +484,7 @@ private fun WorktreeFilesSection(
             )
             LazyColumn(modifier = Modifier.heightIn(max = LocalFilesListMaxHeight)) {
                 items(viewModel.secretFiles) { file ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(file, style = ShogunTheme.typography.data)
-                        IconAction(
-                            icon = Icons.Default.Close,
-                            label = strings.removeLocalFile,
-                            onClick = { viewModel.removeSecretFile(file) },
-                            tint = ShogunTheme.status.danger.color,
-                        )
-                    }
+                    LocalEntryRow(viewModel, file)
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -524,11 +514,88 @@ private fun WorktreeFilesSection(
                     Text(strings.browse)
                 }
             }
+            viewModel.rejectedLocalPattern?.let {
+                Text(strings.localPatternMustBeRelative, color = ShogunTheme.status.danger.color, style = MaterialTheme.typography.bodySmall)
+            }
             if (viewModel.canMoveLocalFilesToRepository) {
                 SecondaryButton(onClick = viewModel::moveLocalFilesToRepository) {
                     Text(strings.moveToRepositoryConfig)
                 }
             }
+        }
+    }
+}
+
+@Composable
+internal fun LocalEntryRow(viewModel: ProjectConfigViewModel, entry: String) {
+    val strings = LocalStrings.current
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(entry, style = ShogunTheme.typography.data, modifier = Modifier.weight(1f))
+            if (viewModel.isPatternEntry(entry)) {
+                Text(
+                    strings.localPatternLabel,
+                    style = ShogunTheme.typography.dataSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(strings.linkLocalEntry, style = MaterialTheme.typography.bodySmall)
+            Switch(
+                checked = viewModel.isLinkedEntry(entry),
+                onCheckedChange = { viewModel.setEntryLinked(entry, it) },
+                modifier = Modifier.handPointer(),
+            )
+            IconAction(
+                icon = Icons.Default.Close,
+                label = strings.removeLocalFile,
+                onClick = { viewModel.removeSecretFile(entry) },
+                tint = ShogunTheme.status.danger.color,
+            )
+        }
+        viewModel.skippedLinksByFolder[entry]?.let { count ->
+            Text(
+                strings.skippedSymbolicLinks(count),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+internal fun MobileSecretsSuggestions(viewModel: ProjectConfigViewModel) {
+    val strings = LocalStrings.current
+    val secrets = viewModel.mobileSecretSuggestions
+    val warnings = viewModel.mobileSecrets.warnings
+    if (secrets.isEmpty() && warnings.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs), modifier = Modifier.padding(top = Spacing.sm)) {
+        Text(
+            strings.mobileSecretsTitle,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        secrets.forEach { secret ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                Text(
+                    "${secret.path} · ${strings.mobileSecretKind(secret.kind)}",
+                    style = ShogunTheme.typography.data,
+                    modifier = Modifier.weight(1f),
+                )
+                if (viewModel.canLinkMobileSecrets) {
+                    SecondaryButton(onClick = { viewModel.linkMobileSecret(secret) }) { Text(strings.linkFromRepositoryConfig) }
+                }
+            }
+        }
+        warnings.forEach { warning ->
+            Text(
+                strings.keystoreOutsideRepository(warning.file, warning.key, warning.value),
+                style = MaterialTheme.typography.bodySmall,
+                color = ShogunTheme.status.warning.color,
+            )
         }
     }
 }
@@ -737,10 +804,11 @@ private fun AddProjectFolderStep(viewModel: ProjectConfigViewModel, initialFolde
 private fun RepositoryProvisioningList(
     state: RepositoryProvisioningState,
     pendingPatterns: List<String>,
+    pendingLinkPatterns: List<String>,
 ) {
     val strings = LocalStrings.current
     val declared = (state as? RepositoryProvisioningState.Declared)?.provisioning
-    val rows = provisioningRows(declared, pendingPatterns, strings)
+    val rows = provisioningRows(declared, pendingPatterns, strings, pendingLinkPatterns)
     val commandCount = declared?.postCreateCommands?.size ?: 0
 
     when {
