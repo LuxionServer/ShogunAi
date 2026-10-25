@@ -367,6 +367,10 @@ class MultirepoCommandsTest {
         assertEquals(listOf("web"), json()["defaultRepos"]!!.jsonArray.map { it.jsonPrimitive.content })
         assertEquals("Codex", json()["agent"]!!.jsonObject["name"]!!.jsonPrimitive.content)
         assertEquals(null, fresh.declarations[home]?.agent)
+        assertEquals(AgentLaunchConfig("Codex", "codex", useHeadroom = false), fresh.agents[home])
+        assertEquals(0, cli(workingDirectory = home, multirepos = fresh).run(listOf("multirepo", "agent", "codex", "--name", "Codex", "--headroom")))
+        assertEquals("headroom wrap codex", fresh.agents[home]?.resolvedCommand())
+        assertEquals(2, cli(workingDirectory = home, multirepos = fresh).run(listOf("multirepo", "agent", "codex", "--headroom", "--no-headroom")))
         assertEquals(2, cli(workingDirectory = home, multirepos = fresh).run(listOf("multirepo", "defaults", "nope")))
         assertEquals(0, cli(workingDirectory = home, multirepos = fresh).run(listOf("multirepo", "delete")))
         assertTrue(fresh.declarations.isEmpty() && fresh.known.isEmpty())
@@ -680,7 +684,7 @@ class MultirepoCommandsTest {
         assertEquals(listOf(folder), multirepos.known)
         out.clear()
         assertEquals(0, cli(multirepos = multirepos).run(listOf("open", "--herdr")))
-        assertEquals(listOf("plain1:p1" to "headroom wrap claude"), herdr.ran)
+        assertEquals(listOf("plain1:p1" to "claude"), herdr.ran)
     }
 
     @Test
@@ -726,7 +730,7 @@ class MultirepoCommandsTest {
 
         assertEquals(0, cli(multirepos = multirepos).run(listOf("multirepo", "show")))
         assertTrue(out.contains("not approved on this machine; review it with 'shogun multirepo trust'"))
-        assertTrue(out.contains("agent  Claude (headroom wrap claude)"))
+        assertTrue(out.contains("agent  Claude (claude)"))
         assertTrue(out.contains("agent is ignored"))
 
         out.clear()

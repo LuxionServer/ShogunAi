@@ -985,6 +985,21 @@ class ProjectConfigViewModelTest {
     }
 
     @Test
+    fun `a new project and an added agent run without headroom`() {
+        val viewModel = viewModelFor(null).apply {
+            name = "Project"
+            baseRepositoryPath = "/home/dev/projects/main-repo"
+        }
+
+        viewModel.addAgent()
+        viewModel.updateAgent(1) { it.copy(name = "Codex", command = "codex") }
+        val saved = viewModel.save().getOrThrow().config
+
+        assertEquals(AgentLaunchConfig(agentCommand = "claude", useHeadroom = false), saved.agentLaunchConfig)
+        assertEquals(listOf(AgentLaunchConfig(name = "Codex", agentCommand = "codex", useHeadroom = false)), saved.additionalAgents)
+    }
+
+    @Test
     fun `a second agent is saved after the default one`() {
         val viewModel = viewModelFor(projectWith())
 

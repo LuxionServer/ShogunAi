@@ -4,9 +4,11 @@ import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.WorkspaceSetting
 import app.luxion.shogunai.domain.model.WorktreeError
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermissions
-import kotlinx.serialization.json.JsonPrimitive
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.exists
 import kotlin.io.path.readText
@@ -142,6 +144,15 @@ class JsonMultirepoSourceTest {
 
         assertEquals(agent, source.agent(folder.toString()))
         assertNull(source.read(folder.toString()))
+    }
+
+    @Test
+    fun `writes the local agent's headroom option even when it is the default`() {
+        source.setAgent(folder.toString(), AgentLaunchConfig(agentCommand = "codex"))
+
+        val local = Json.parseToJsonElement(registry.readText()).jsonObject["local"]!!.jsonObject.values.single().jsonObject
+        assertEquals(JsonPrimitive(false), local["agent"]!!.jsonObject["useHeadroom"])
+        assertEquals(AgentLaunchConfig(agentCommand = "codex", useHeadroom = false), source.agent(folder.toString()))
     }
 
     @Test

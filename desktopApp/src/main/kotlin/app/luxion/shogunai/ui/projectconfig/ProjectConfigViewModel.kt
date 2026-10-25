@@ -56,7 +56,7 @@ sealed interface EmulatorSectionState {
 
 enum class ProjectConfigField { NAME, BASE_REPOSITORY_PATH, WORKTREES_ROOT, AGENT_COMMAND, AGENT_NAME }
 
-data class AgentDraft(val name: String = "", val command: String = "claude", val useHeadroom: Boolean = true) {
+data class AgentDraft(val name: String = "", val command: String = "claude", val useHeadroom: Boolean = false) {
     fun toConfig() = AgentLaunchConfig(
         name = name.trim().ifEmpty { null },
         agentCommand = command,

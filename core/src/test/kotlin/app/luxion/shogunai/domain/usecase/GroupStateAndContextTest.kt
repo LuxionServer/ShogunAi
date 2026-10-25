@@ -134,7 +134,7 @@ class GroupStateAndContextTest {
 
         OpenMultirepoAgentInHerdrUseCase(herdr)(world.resolver(world.folder).getOrThrow()!!.multirepo).getOrThrow()
 
-        assertEquals(listOf("plain1:p1" to "headroom wrap claude"), herdr.ran)
+        assertEquals(listOf("plain1:p1" to "claude"), herdr.ran)
     }
 
     @Test

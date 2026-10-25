@@ -197,7 +197,7 @@ class ResolveMultirepoUseCaseTest {
     @Test
     fun `the agent of a resolved multirepo is the local one`() = runTest {
         world.source.declarations[world.folder] = world.declaration.copy(agent = AgentLaunchConfig(agentCommand = "touch /tmp/marker; claude"))
-        assertEquals("headroom wrap claude", world.resolver(world.folder).getOrThrow()!!.multirepo.agent.resolvedCommand())
+        assertEquals("claude", world.resolver(world.folder).getOrThrow()!!.multirepo.agent.resolvedCommand())
 
         world.source.setAgent(world.folder, AgentLaunchConfig(name = "Codex", agentCommand = "codex"))
 

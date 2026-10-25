@@ -653,7 +653,7 @@ sealed interface MultirepoAction {
     data class AddRepo(val alias: String, val path: String, val useWorktreesRoot: Boolean? = null) : MultirepoAction
     data class RemoveRepo(val alias: String) : MultirepoAction
     data class Defaults(val aliases: List<String>) : MultirepoAction
-    data class Agent(val command: String, val name: String? = null, val useHeadroom: Boolean = true) : MultirepoAction
+    data class Agent(val command: String, val name: String? = null, val useHeadroom: Boolean = false) : MultirepoAction
     data class WorktreesRoot(val folder: String) : MultirepoAction
     data class WorkspaceSet(val alias: String? = null, val default: Boolean = false) : MultirepoAction
     data object WorkspaceClear : MultirepoAction
@@ -670,7 +670,7 @@ private fun parseMultirepo(rest: List<String>): CliCommand.Multirepo {
         val argument = remaining.removeFirst()
         when (argument) {
             "--worktrees-root", "--name", "--alias" -> options[argument] = remaining.valueOf(argument)
-            "--use-worktrees-root", "--keep-worktrees-folder", "--no-headroom", "--clear", "--default", "--yes", "--revoke" -> options[argument] = null
+            "--use-worktrees-root", "--keep-worktrees-folder", "--headroom", "--no-headroom", "--clear", "--default", "--yes", "--revoke" -> options[argument] = null
             else -> {
                 if (argument.startsWith("-")) throw UsageException("unknown option '$argument' for 'multirepo $action'")
                 positional += argument
@@ -707,8 +707,10 @@ private fun parseMultirepo(rest: List<String>): CliCommand.Multirepo {
                 }
             }
             "agent" -> {
-                allow("--name", "--no-headroom")
-                MultirepoAction.Agent(arguments(1, "agent <command> [--name <name>] [--no-headroom]").single(), options["--name"], "--no-headroom" !in options)
+                allow("--name", "--headroom", "--no-headroom")
+                val headroom = "--headroom" in options
+                if (headroom && "--no-headroom" in options) throw UsageException("--headroom and --no-headroom can't be combined")
+                MultirepoAction.Agent(arguments(1, "agent <command> [--name <name>] [--headroom]").single(), options["--name"], headroom)
             }
             "workspace" -> {
                 val what = positional.firstOrNull() ?: throw UsageException("usage: shogun multirepo workspace set [--alias <alias>] [--default] | clear")
