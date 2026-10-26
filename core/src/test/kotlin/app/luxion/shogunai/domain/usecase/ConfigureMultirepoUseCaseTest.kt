@@ -23,6 +23,8 @@ class ConfigureMultirepoUseCaseTest {
         answer
     }
 
+    private fun reviewed() = world.resolver.build(world.folder, world.source.declarations.getValue(world.folder))
+
     @Test
     fun `init writes an empty declaration with the default worktrees root and remembers it`() = runTest {
         world.source.declarations.clear()
@@ -159,7 +161,7 @@ class ConfigureMultirepoUseCaseTest {
         val withAgent = configure.setAgent(Multirepo(world.folder, world.source.declarations.getValue(world.folder)), AgentLaunchConfig("Codex", "codex --full-auto")).getOrThrow()
 
         assertEquals(listOf("docs"), withAgent.declaration.defaultRepos)
-        assertEquals("headroom wrap codex --full-auto", withAgent.agent.resolvedCommand())
+        assertEquals("codex --full-auto", withAgent.agent.resolvedCommand())
         assertEquals("Codex", withAgent.agent.displayName)
         assertNull(world.source.declarations.getValue(world.folder).agent)
         assertEquals(AgentLaunchConfig("Codex", "codex --full-auto"), world.source.agents[world.folder])
@@ -172,6 +174,105 @@ class ConfigureMultirepoUseCaseTest {
         assertNull(world.source.declarations[world.folder])
         assertTrue(world.source.known.isEmpty())
         assertEquals(3, world.projects.list().size)
+    }
+
+    @Test
+    fun `init stores a trimmed name and keeps the worktrees root after the folder`() = runTest {
+        world.source.declarations.clear()
+
+        val multirepo = configure.init(world.folder, null, "  Product  ").getOrThrow()
+
+        assertEquals(MultirepoDeclaration(worktreesRoot = "../product-worktrees", name = "Product"), world.source.declarations[world.folder])
+        assertEquals("Product", multirepo.name)
+    }
+
+    @Test
+    fun `setName sets, trims and clears the display name`() = runTest {
+        val named = configure.setName(world.multirepo, " Product Suite ").getOrThrow()
+        assertEquals("Product Suite", named.declaration.name)
+        assertEquals("Product Suite", named.name)
+
+        val cleared = configure.setName(named, "   ").getOrThrow()
+        assertNull(cleared.declaration.name)
+        assertEquals("product", cleared.name)
+        assertNull(world.source.declarations.getValue(world.folder).name)
+    }
+
+    @Test
+    fun `register remembers an existing declaration and registers the repositories without a project`() = runTest {
+        world.source.known.clear()
+        world.projects.delete("api")
+
+        val registered = configure.register(reviewed(), answering(true)).getOrThrow()
+
+        assertTrue(registered.trustedNow)
+        assertEquals(listOf(world.folder), world.source.known)
+        assertEquals(listOf("product-api"), registered.registeredProjects.map { it.name })
+        assertEquals("${world.worktreesRoot}/api", world.projects.list().first { it.config.baseRepositoryPath == world.apiBase }.config.worktreesRoot)
+        assertEquals(world.declaration, world.source.declarations[world.folder])
+        assertEquals(listOf(Triple<String, String?, String>("product-api", null, "${world.worktreesRoot}/api")), asked.toList())
+    }
+
+    @Test
+    fun `register of a known multirepo with every project changes nothing`() = runTest {
+        val before = world.projects.list()
+
+        val registered = configure.register(reviewed(), answering(true)).getOrThrow()
+
+        assertFalse(registered.trustedNow)
+        assertTrue(registered.registeredProjects.isEmpty())
+        assertEquals(before, world.projects.list())
+        assertTrue(asked.isEmpty())
+    }
+
+    @Test
+    fun `register refuses an invalid declaration and a repository of another multirepo`() = runTest {
+        world.source.known.clear()
+        world.source.declarations["/home/dev/other"] = MultirepoDeclaration(mapOf("app" to world.appBase), "../w")
+        world.source.known += "/home/dev/other"
+
+        val claimed = assertIs<WorktreeError.InvalidMultirepo>(configure.register(reviewed(), answering(true)).exceptionOrNull())
+        assertTrue(claimed.detail.contains("/home/dev/other"))
+        assertEquals(listOf("/home/dev/other"), world.source.known)
+
+        world.source.known.remove("/home/dev/other")
+        world.source.declarations[world.folder] = world.declaration.copy(defaultRepos = listOf("web"))
+        assertIs<WorktreeError.InvalidMultirepo>(configure.register(reviewed(), answering(true)).exceptionOrNull())
+        assertTrue(world.source.known.isEmpty())
+    }
+
+    @Test
+    fun `register approves the reviewed declaration and refuses one changed since the review`() = runTest {
+        world.source.approveAll = false
+        world.source.known.clear()
+        val review = reviewed()
+        assertFalse(review.approved)
+
+        val registered = configure.register(review, answering(true)).getOrThrow()
+
+        assertTrue(registered.trustedNow)
+        assertTrue(registered.multirepo.approved)
+        assertTrue(reviewed().approved)
+
+        world.source.declarations[world.folder] = world.declaration.copy(worktreesRoot = "../elsewhere")
+        assertIs<WorktreeError.MultirepoNeedsReview>(configure.register(registered.multirepo, answering(true)).exceptionOrNull())
+    }
+
+    @Test
+    fun `the declared name is part of the approval and an unsafe name is rejected`() = runTest {
+        world.source.approveAll = false
+        val trusted = configure.trust(reviewed()).getOrThrow()
+
+        val named = configure.setName(trusted, "Product").getOrThrow()
+        assertTrue(named.approved)
+
+        world.source.declarations[world.folder] = world.source.declarations.getValue(world.folder).copy(name = "Other")
+        assertFalse(reviewed().approved)
+
+        world.source.declarations[world.folder] = named.declaration
+        assertIs<WorktreeError.InvalidMultirepo>(configure.setName(named, "Product‮evil").exceptionOrNull())
+        assertIs<WorktreeError.InvalidMultirepo>(configure.setName(named, "x".repeat(81)).exceptionOrNull())
+        assertEquals("Product", world.source.declarations.getValue(world.folder).name)
     }
 
     @Test

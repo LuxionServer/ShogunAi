@@ -43,7 +43,9 @@ Values in `env` can use these templates:
 
 Ports are unique among the repository's worktrees, free when reserved, and never change afterwards. [Using with agents](../agents.md#per-worktree-environment) explains how agents and shells get these variables.
 
-Linking shares the file: a tool in one worktree that overwrites a linked secret overwrites the base repository's too. Keep `copy` for files a worktree may change. The project's local files are always copied.
+Linking shares the file: a tool in one worktree that overwrites a linked secret overwrites the base repository's too. Keep `copy` for files a worktree may change. The project's local files are copied unless you turn on Link for an entry in the desktop app; a linked local folder is one symbolic link to the base folder, so files added to it or deleted from it show up in every worktree at once.
+
+Files a copied local folder no longer has are removed from the worktree the next time it's provisioned: ShogunAi remembers, in the worktree's Git admin folder, which files it copied from each local folder, deletes only those, and never touches files the worktree created itself. `shogun provision --check` reports them as `deleted in base` first. Symbolic links inside a copied local folder are skipped, and provisioning says which ones.
 
 Post-creation commands run in order and stop at the first one that fails. A failure fails creation or provisioning with an error naming the command, its exit code and its error output, but the worktree is kept, since its checkout and files are fine. The commands run on creation and on every `shogun provision`, so make them safe to repeat, and only declare commands you would run from a repository you trust. They don't receive the worktree's environment variables; a command that needs them can run `shogun env`.
 
@@ -85,6 +87,7 @@ Provider options:
 | `xcode` | `compilationCache`: `true` or `false`. |
 | `maven` | `mavenMaxHeap`: a size such as `512m` or `1g`. |
 | `docker-compose` | `portVariables`: a list of unique variable names that follow the `env` name rules and aren't reserved. |
+| `desktop-app` | `module` (required): the Gradle path of the app's module, such as `:desktopApp`. `isolatedHome`: `true` (default) or `false`. |
 
 Unknown keys and unknown providers are ignored. A file that isn't valid JSON, or a known key with the wrong type, makes creating and provisioning worktrees fail with a message naming the file and the problem, and nothing is created.
 
@@ -116,7 +119,7 @@ These files contain paths of your machine; don't commit them anywhere.
 
 ## Per-worktree state
 
-Each worktree's reserved ports and resources (its iOS simulator, for instance) are kept in `shogunai-env.json` inside Git's own folder for that worktree (`.git/worktrees/<name>/`), not in the worktree itself. Removing the worktree removes them with it.
+Each worktree's reserved ports and resources (its iOS simulator, for instance) are kept in `shogunai-env.json` inside Git's own folder for that worktree (`.git/worktrees/<name>/`), not in the worktree itself. A headless desktop app keeps its isolated home, its launch log and its captures in `shogunai/headless/` in that same folder. Removing the worktree removes them with it.
 
 ## Other locations
 

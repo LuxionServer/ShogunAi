@@ -25,6 +25,7 @@ data class RepositoryProviders(
     val xcode: XcodeProvider? = null,
     val maven: MavenProvider? = null,
     val dockerCompose: DockerComposeProvider? = null,
+    val desktopApp: DesktopAppProvider? = null,
 )
 
 data class GradleProvider(
@@ -45,10 +46,12 @@ data class MavenProvider(val mavenMaxHeap: String? = null)
 
 data class DockerComposeProvider(val portVariables: List<String> = emptyList())
 
+data class DesktopAppProvider(val module: String, val isolatedHome: Boolean = true)
+
 enum class ProvisionMode { COPIED, LINKED, COPIED_INSTEAD_OF_LINKING }
 
 data class ProvisionedFile(val path: String, val mode: ProvisionMode)
 
-enum class ProvisionDriftState { MISSING, DIFFERS, NOT_LINKED }
+enum class ProvisionDriftState { MISSING, DIFFERS, NOT_LINKED, DELETED_IN_BASE }
 
 data class ProvisionDrift(val path: String, val state: ProvisionDriftState)

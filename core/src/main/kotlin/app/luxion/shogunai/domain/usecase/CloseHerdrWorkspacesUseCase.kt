@@ -68,4 +68,8 @@ class CloseHerdrWorkspacesUseCase(
 
 fun WorktreeError.herdrDetail(): String = (this as? WorktreeError.HerdrCommandFailed)?.detail ?: message.orEmpty()
 
-data class HolderClosing(val closedWorkspace: Boolean = false, val failure: WorktreeError? = null)
+data class HolderClosing(
+    val closedWorkspace: Boolean = false,
+    val failure: WorktreeError? = null,
+    val headlessAppFailure: WorktreeError? = null,
+)

@@ -11,7 +11,10 @@ import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorkspaceSetting
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.MAX_MULTIREPO_NAME_LENGTH
+import app.luxion.shogunai.domain.model.MULTIREPO_FILE_NAME
 import app.luxion.shogunai.domain.model.isValidMultirepoAlias
+import app.luxion.shogunai.domain.model.isValidMultirepoName
 import app.luxion.shogunai.domain.model.joinPath
 import app.luxion.shogunai.domain.model.relativeMultirepoPath
 import java.util.UUID
@@ -26,6 +29,12 @@ data class AddedRepository(
     val worktreesFolder: WorktreesFolderProposal,
 )
 
+data class RegisteredMultirepo(
+    val multirepo: Multirepo,
+    val trustedNow: Boolean,
+    val registeredProjects: List<Project>,
+)
+
 fun interface WorktreesFolderDecision {
     fun accept(project: String, current: String?, proposed: String): Boolean
 }
@@ -37,7 +46,7 @@ class ConfigureMultirepoUseCase(
     private val executor: ShellCommandExecutor,
     private val newId: () -> String = { UUID.randomUUID().toString() },
 ) {
-    suspend fun init(folder: String, worktreesRoot: String?): Result<Multirepo> = runCatching {
+    suspend fun init(folder: String, worktreesRoot: String?, name: String? = null): Result<Multirepo> = runCatching {
         val normalized = normalizePath(folder)
         if (source.read(normalized) != null) {
             throw WorktreeError.InvalidMultirepo(Multirepo(normalized, MultirepoDeclaration()).declarationPath, "it's already a multirepo")
@@ -46,12 +55,33 @@ class ConfigureMultirepoUseCase(
         if (enclosing != null && !sameDirectory(enclosing, normalized)) {
             throw WorktreeError.InvalidMultirepo(normalized, "a multirepo is never declared inside a repository ($enclosing)")
         }
-        val name = Multirepo(normalized, MultirepoDeclaration()).name
-        val root = worktreesRoot?.let { relativeMultirepoPath(normalized, it) } ?: "../$name-worktrees"
-        val declaration = MultirepoDeclaration(worktreesRoot = root)
+        val folderName = Multirepo(normalized, MultirepoDeclaration()).folderName
+        val root = worktreesRoot?.let { relativeMultirepoPath(normalized, it) } ?: "../$folderName-worktrees"
+        val declaration = MultirepoDeclaration(worktreesRoot = root, name = displayName(normalized, name))
         source.write(normalized, declaration)
         source.remember(normalized)
         approveWritten(normalized, declaration)
+    }
+
+    suspend fun register(reviewed: Multirepo, decision: WorktreesFolderDecision): Result<RegisteredMultirepo> = runCatching {
+        val folder = reviewed.folder
+        val current = source.read(folder) ?: throw WorktreeError.MultirepoNotFound(folder)
+        if (current != reviewed.declaration) throw WorktreeError.MultirepoNeedsReview(reviewed.declarationPath)
+        val multirepo = resolver.build(folder, current)
+        resolver.validate(multirepo)
+        multirepo.repositories.forEach { repository ->
+            claimingMultirepo(multirepo, repository.path)?.let {
+                throw WorktreeError.InvalidMultirepo(multirepo.declarationPath, "${repository.path} already belongs to the multirepo ${it.folder}")
+            }
+        }
+        val alreadyTrusted = multirepo.approved && source.knownFolders().any { sameDirectory(it, folder) }
+        source.remember(folder)
+        source.approve(folder, multirepo.approvalSubject)
+        val trusted = resolver.build(folder, current)
+        val registered = trusted.repositories
+            .filter { repository -> projects.list().none { sameDirectory(it.config.baseRepositoryPath, repository.path) } }
+            .map { repository -> registerProject(trusted, repository.alias, repository.path, decision).first }
+        RegisteredMultirepo(trusted, trustedNow = !alreadyTrusted, registeredProjects = registered)
     }
 
     suspend fun addRepository(
@@ -70,33 +100,9 @@ class ConfigureMultirepoUseCase(
         multirepo.repositories.firstOrNull { sameDirectory(it.path, repository) }?.let {
             reject("$repository is already declared as '${it.alias}'")
         }
-        resolver.known()
-            .firstOrNull { other -> !sameDirectory(other.folder, multirepo.folder) && other.repositories.any { sameDirectory(it.path, repository) } }
-            ?.let { reject("$repository already belongs to the multirepo ${it.folder}") }
-        val proposed = multirepo.proposedWorktreesFolder(alias)
+        claimingMultirepo(multirepo, repository)?.let { reject("$repository already belongs to the multirepo ${it.folder}") }
         val existing = projects.list().firstOrNull { sameDirectory(it.config.baseRepositoryPath, repository) }
-        val (project, proposal) = if (existing == null) {
-            val accepted = decision.accept(folderName(repository), null, proposed)
-            val project = Project(
-                id = newId(),
-                name = folderName(repository),
-                config = ProjectConfig(
-                    baseRepositoryPath = repository,
-                    worktreesRoot = if (accepted) proposed else defaultWorktreesRoot(repository),
-                    secretFiles = emptyList(),
-                ),
-            )
-            projects.save(project)
-            project to if (accepted) WorktreesFolderProposal.ACCEPTED else WorktreesFolderProposal.DECLINED
-        } else if (existing.config.worktreesRoot.isNotBlank() && sameDirectory(existing.config.worktreesRoot, proposed)) {
-            existing to WorktreesFolderProposal.ALREADY_MATCHES
-        } else if (decision.accept(existing.name, existing.config.worktreesRoot.ifBlank { null }, proposed)) {
-            val moved = existing.copy(config = existing.config.copy(worktreesRoot = proposed))
-            projects.save(moved)
-            moved to WorktreesFolderProposal.ACCEPTED
-        } else {
-            existing to WorktreesFolderProposal.DECLINED
-        }
+        val (project, proposal) = registerProject(multirepo, alias, repository, decision)
         val declaration = multirepo.declaration.copy(
             repos = multirepo.declaration.repos + (alias to relativeMultirepoPath(multirepo.folder, repository)),
             agent = null,
@@ -149,6 +155,10 @@ class ConfigureMultirepoUseCase(
         multirepo.copy(localAgent = agent)
     }
 
+    fun setName(multirepo: Multirepo, name: String?): Result<Multirepo> = update(multirepo) { declaration ->
+        declaration.copy(name = displayName(multirepo.folder, name))
+    }
+
     fun setWorktreesRoot(multirepo: Multirepo, folder: String): Result<Multirepo> = update(multirepo) { declaration ->
         declaration.copy(worktreesRoot = relativeMultirepoPath(multirepo.folder, normalizePath(folder)))
     }
@@ -183,6 +193,54 @@ class ConfigureMultirepoUseCase(
 
     fun revoke(multirepo: Multirepo): Result<Unit> = runCatching {
         source.forget(multirepo.folder)
+    }
+
+    private fun claimingMultirepo(multirepo: Multirepo, repository: String): Multirepo? =
+        resolver.known().firstOrNull { other ->
+            !sameDirectory(other.folder, multirepo.folder) && other.repositories.any { sameDirectory(it.path, repository) }
+        }
+
+    private fun registerProject(
+        multirepo: Multirepo,
+        alias: String,
+        repository: String,
+        decision: WorktreesFolderDecision,
+    ): Pair<Project, WorktreesFolderProposal> {
+        val proposed = multirepo.proposedWorktreesFolder(alias)
+        val existing = projects.list().firstOrNull { sameDirectory(it.config.baseRepositoryPath, repository) }
+        return if (existing == null) {
+            val accepted = decision.accept(folderName(repository), null, proposed)
+            val project = Project(
+                id = newId(),
+                name = folderName(repository),
+                config = ProjectConfig(
+                    baseRepositoryPath = repository,
+                    worktreesRoot = if (accepted) proposed else defaultWorktreesRoot(repository),
+                    secretFiles = emptyList(),
+                ),
+            )
+            projects.save(project)
+            project to if (accepted) WorktreesFolderProposal.ACCEPTED else WorktreesFolderProposal.DECLINED
+        } else if (existing.config.worktreesRoot.isNotBlank() && sameDirectory(existing.config.worktreesRoot, proposed)) {
+            existing to WorktreesFolderProposal.ALREADY_MATCHES
+        } else if (decision.accept(existing.name, existing.config.worktreesRoot.ifBlank { null }, proposed)) {
+            val moved = existing.copy(config = existing.config.copy(worktreesRoot = proposed))
+            projects.save(moved)
+            moved to WorktreesFolderProposal.ACCEPTED
+        } else {
+            existing to WorktreesFolderProposal.DECLINED
+        }
+    }
+
+    private fun displayName(folder: String, name: String?): String? {
+        val trimmed = name?.trim()?.ifEmpty { null } ?: return null
+        if (!isValidMultirepoName(trimmed)) {
+            throw WorktreeError.InvalidMultirepo(
+                joinPath(folder, MULTIREPO_FILE_NAME),
+                "the name must have at most $MAX_MULTIREPO_NAME_LENGTH characters and no control characters",
+            )
+        }
+        return trimmed
     }
 
     private fun update(multirepo: Multirepo, change: (MultirepoDeclaration) -> MultirepoDeclaration): Result<Multirepo> = runCatching {

@@ -1,11 +1,13 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.ComposeResourceKind
 import app.luxion.shogunai.domain.model.ResourceLimits
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import androidx.compose.runtime.staticCompositionLocalOf
 import app.luxion.shogunai.domain.model.InstallChannel
+import app.luxion.shogunai.domain.model.MobileSecretKind
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.model.AgentState
@@ -500,6 +502,14 @@ interface Strings {
     val stackSuggestionsTitle: String
     fun stackSuggestion(provider: String, evidence: String): String
     val turnOnProvider: String
+    val linkLocalEntry: String
+    val localPatternLabel: String
+    fun skippedSymbolicLinks(count: Int): String
+    val localPatternMustBeRelative: String
+    val mobileSecretsTitle: String
+    fun mobileSecretKind(kind: MobileSecretKind): String
+    val linkFromRepositoryConfig: String
+    fun keystoreOutsideRepository(file: String, key: String, value: String): String
     val mavenDaemonsTitle: String
     fun mavenDaemonsSummary(count: Int, totalMemory: String): String
     val noMavenDaemons: String
@@ -516,6 +526,22 @@ interface Strings {
     fun composeProjectDownFailed(name: String, detail: String): String
     val alsoTakeDownComposeProjects: String
     fun cleanupComposeKept(reason: String?): String
+    val composeSectionTitle: String
+    val composeNotStarted: String
+    val startComposeServices: String
+    val buildComposeServices: String
+    val takeDownComposeServices: String
+    val composeDockerUnavailable: String
+    val composeLeftoversTitle: String
+    fun composeResourceKind(kind: ComposeResourceKind): String
+    val removeComposeLeftovers: String
+    val removeComposeLeftoversWithVolumes: String
+    val confirmRemoveComposeVolumesTitle: String
+    fun confirmRemoveComposeVolumes(count: Int): String
+    val removeVolumes: String
+    fun composeResourcesRemoved(count: Int): String
+    fun composeResourceRemoveFailed(name: String, detail: String): String
+    val alsoRemoveComposeVolumes: String
     val environmentVariableNameLabel: String
     val environmentVariableTemplateLabel: String
     val addVariable: String
@@ -609,6 +635,11 @@ interface Strings {
     val rename: String
     val addRepository: String
     val repositoryPathLabel: String
+    val multirepoNameTitle: String
+    val multirepoNameHint: String
+    val moveUp: String
+    val moveDown: String
+    val sortAlphabetically: String
     val multirepoNeedsReview: String
     val multirepoNeedsReviewExplanation: String
     val trustMultirepo: String

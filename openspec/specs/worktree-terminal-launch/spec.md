@@ -20,9 +20,17 @@ The system SHALL let the user copy, to the system clipboard, the shell command n
 - **WHEN** the worktree's path contains `'` on macOS or Linux
 - **THEN** the quote is escaped and the copied command still changes into that folder
 
-#### Scenario: Default agent command wraps Headroom
+#### Scenario: Default agent command runs without Headroom
 - **WHEN** a project has not customized `AgentLaunchConfig`
-- **THEN** the copied command's resolved agent command is `headroom wrap claude`
+- **THEN** the copied command's resolved agent command is `claude`, without the `headroom wrap` prefix
+
+#### Scenario: Headroom wrapping enabled
+- **WHEN** the project's `AgentLaunchConfig.useHeadroom` is `true`
+- **THEN** the copied command's resolved agent command is `headroom wrap <AgentLaunchConfig.agentCommand>`
+
+#### Scenario: Default agent command wraps Headroom
+- **WHEN** a project saved by an earlier version has not customized `AgentLaunchConfig`
+- **THEN** the copied command's resolved agent command is `headroom wrap claude`, as it was before
 
 #### Scenario: Headroom wrapping disabled
 - **WHEN** the project's `AgentLaunchConfig.useHeadroom` is `false`

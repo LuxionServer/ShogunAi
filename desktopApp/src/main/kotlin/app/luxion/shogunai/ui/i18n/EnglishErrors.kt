@@ -116,6 +116,10 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "Couldn't copy the local files into the worktree.",
         "Check that the worktree folder is writable.",
     )
+    is WorktreeError.LinkedFolderOccupied -> ErrorTexts(
+        "Couldn't link ${error.entry}: the worktree already has a ${error.entry} folder with files ShogunAi didn't copy.",
+        "Switch ${error.entry} to copy in the project's local files, or move those files out of the worktree's folder.",
+    )
     is WorktreeError.PostCreateCommandFailed -> ErrorTexts(
         "The worktree was created, but one of the repository's post-creation commands failed.",
         "Read the technical details, fix the command or its cause, and run it inside the worktree.",
@@ -147,6 +151,10 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     is WorktreeError.DockerUnavailable -> ErrorTexts(
         "Docker isn't available" + if (error.reason.isNullOrBlank()) "." else ": ${error.reason}",
         "Start Docker and try again.",
+    )
+    is WorktreeError.ComposeCommandFailed -> ErrorTexts(
+        "Docker Compose failed for ${error.project}: ${error.detail}",
+        "Check the Compose file and the output of docker compose in the worktree.",
     )
     is WorktreeError.NoFreePort -> ErrorTexts(
         "No free port is left between ${error.from} and ${error.to}.",
@@ -202,6 +210,46 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     WorktreeError.EmulatorProviderNotDeclared -> ErrorTexts(
         "This repository doesn't use the emulator provider.",
         "Turn the provider on in the project's settings.",
+    )
+    WorktreeError.DesktopAppProviderNotDeclared -> ErrorTexts(
+        "This repository doesn't use the desktop app provider.",
+        "Declare \"desktop-app\" with the app's Gradle module in .shogunai.json.",
+    )
+    WorktreeError.HeadlessAppsNotSupported -> ErrorTexts(
+        "Running a desktop app in the background isn't available on this computer.",
+        "It needs macOS.",
+    )
+    is WorktreeError.HeadlessAppLaunchFailed -> ErrorTexts(
+        "Launching the desktop app failed.",
+        "Check the launch log in the technical details.",
+    )
+    is WorktreeError.HeadlessAppExitedEarly -> ErrorTexts(
+        "The desktop app stopped before showing its window.",
+        "Check the app's log in the technical details.",
+    )
+    is WorktreeError.HeadlessAppWindowTimeout -> ErrorTexts(
+        "The desktop app showed no window within ${error.seconds} s.",
+        "It's still running; stop it with shogun headless stop.",
+    )
+    WorktreeError.HeadlessAppNotRunning -> ErrorTexts(
+        "The worktree's desktop app isn't running.",
+        "Start it with shogun headless start.",
+    )
+    WorktreeError.HeadlessAppHasNoWindow -> ErrorTexts(
+        "The worktree's desktop app has no window right now.",
+        "Try again once it shows one.",
+    )
+    is WorktreeError.MacWindowToolFailed -> ErrorTexts(
+        "A macOS window tool failed.",
+        "Check the technical details.",
+    )
+    is WorktreeError.HeadlessAppStopFailed -> ErrorTexts(
+        "The worktree's desktop app couldn't be stopped.",
+        "Check the technical details.",
+    )
+    is WorktreeError.MacPermissionMissing -> ErrorTexts(
+        "macOS hasn't granted ${error.permission.displayName} to the application that runs shogun.",
+        "Grant it in System Settings › ${error.permission.settingsPane}.",
     )
     WorktreeError.IosSimulatorsNotSupported -> ErrorTexts(
         "iOS simulators aren't available on this computer.",

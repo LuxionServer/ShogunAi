@@ -1,6 +1,7 @@
 package app.luxion.shogunai.domain
 
 import app.luxion.shogunai.domain.executor.CommandResult
+import app.luxion.shogunai.domain.executor.OutputLine
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import kotlin.time.Duration
 
@@ -26,6 +27,18 @@ class FakeShellCommandExecutor(
     ): CommandResult {
         timeouts[command] = timeout
         return execute(command, workingDirectory)
+    }
+
+    val environments = mutableMapOf<List<String>, Map<String, String>>()
+
+    override suspend fun executeStreaming(
+        command: List<String>,
+        workingDirectory: String?,
+        environment: Map<String, String>,
+        onOutput: (OutputLine) -> Unit,
+    ): CommandResult {
+        environments[command] = environment
+        return super.executeStreaming(command, workingDirectory, environment, onOutput)
     }
 
     fun executed(vararg args: String): Boolean = executedCommands.any { it == args.toList() }

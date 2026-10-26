@@ -18,6 +18,7 @@ import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.usecase.AddedRepository
 import app.luxion.shogunai.domain.usecase.GroupWorktree
 import app.luxion.shogunai.domain.usecase.MultirepoMember
+import app.luxion.shogunai.domain.usecase.RegisteredMultirepo
 import app.luxion.shogunai.domain.usecase.WorktreeGroup
 import app.luxion.shogunai.domain.usecase.WorktreesFolderProposal
 import app.luxion.shogunai.ui.projectconfig.AgentDraft
@@ -44,6 +45,7 @@ class FakeMultirepoSetup(
     val deleted = mutableListOf<String>()
     val approved = mutableSetOf<String>()
     val agents = mutableMapOf<String, AgentLaunchConfig>()
+    val registered = mutableListOf<String>()
 
     override suspend fun inspect(folder: String) = FolderInspection(enclosing[folder], folders[folder].orEmpty().filter { it in repositories })
     override suspend fun isRepository(path: String) = path in repositories
@@ -69,6 +71,19 @@ class FakeMultirepoSetup(
         approved += multirepo.folder
         return Result.success(read(multirepo.folder)!!)
     }
+
+    override suspend fun register(reviewed: Multirepo): Result<RegisteredMultirepo> {
+        registered += reviewed.folder
+        approved += reviewed.folder
+        val multirepo = read(reviewed.folder)!!
+        val added = multirepo.repositories.filter { repository -> savedProjects.none { it.config.baseRepositoryPath == repository.path } }.map { repository ->
+            Project(repository.alias, repository.path.substringAfterLast('/'), ProjectConfig(repository.path, multirepo.proposedWorktreesFolder(repository.alias), emptyList()))
+                .also { savedProjects += it }
+        }
+        return Result.success(RegisteredMultirepo(multirepo, trustedNow = true, registeredProjects = added))
+    }
+
+    override fun setName(multirepo: Multirepo, name: String?) = update(multirepo) { it.copy(name = name) }
 
     override suspend fun addRepository(multirepo: Multirepo, alias: String, path: String, useProposedFolder: Boolean): Result<AddedRepository> {
         val existing = savedProjects.firstOrNull { it.config.baseRepositoryPath == path }
@@ -207,13 +222,14 @@ class MultirepoSetupTest {
     @Test
     fun `the add dialog shows the paths of an existing declaration`() = runComposeUiTest {
         val setup = productSetup().apply {
-            declarations[product] = MultirepoDeclaration(mapOf("tools" to "/home/dev/elsewhere/tools"), "../product-worktrees")
+            declarations[product] = MultirepoDeclaration(mapOf("tools" to "/home/dev/elsewhere/tools"), "../product-worktrees", name = "Product\u202Eevil")
         }
         val state = AddMultirepoState(setup, CoroutineScope(Dispatchers.Unconfined))
         state.choose(product)
         setContent { MaterialTheme { AddMultirepoDialog(state, onDismiss = {}, onAdded = {}, pickFolder = { _, _ -> null }) } }
 
         onNodeWithText("This folder already declares a multirepo").assertIsDisplayed()
+        onNodeWithText("Product\\u202eevil").assertIsDisplayed()
         onNodeWithText("/home/dev/elsewhere/tools").assertIsDisplayed()
         onNodeWithText("outside /home/dev/projects").assertIsDisplayed()
     }
@@ -265,6 +281,42 @@ class MultirepoSetupTest {
     private fun declaredSetup() = productSetup().apply {
         declarations[product] = MultirepoDeclaration(mapOf("app" to app, "api" to api), "../product-worktrees", listOf("app", "api"))
         approved += product
+    }
+
+    @Test
+    fun `confirming an existing declaration registers a project for each declared repository without one`() = runTest {
+        val setup = productSetup()
+        setup.declarations[product] = MultirepoDeclaration(linkedMapOf("app" to app, "api" to api), "../product-worktrees", name = "Product")
+        val state = chosen(setup)
+        state.setIncluded(docs, false)
+        var added: String? = null
+
+        state.confirm { added = it }
+        advanceUntilIdle()
+
+        assertEquals(product, added)
+        assertEquals(listOf(product), setup.registered.toList())
+        assertEquals(setOf(product), setup.approved)
+        assertEquals("/home/dev/projects/product-worktrees/api", setup.savedProjects.single { it.config.baseRepositoryPath == api }.config.worktreesRoot)
+        assertEquals(1, setup.savedProjects.count { it.config.baseRepositoryPath == app })
+    }
+
+    @Test
+    fun `the name is set, cleared and counted as a change`() = runTest {
+        val setup = declaredSetup()
+        val state = settings(setup, this)
+
+        state.name = "  Product  "
+        assertTrue(state.hasChanges)
+        state.save()
+        assertEquals("Product", setup.declarations.getValue(product).name)
+        assertEquals("Product", state.multirepo?.name)
+        assertFalse(state.hasChanges)
+
+        state.name = ""
+        state.save()
+        assertNull(setup.declarations.getValue(product).name)
+        assertEquals("product", state.multirepo?.name)
     }
 
     @Test

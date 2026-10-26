@@ -1,6 +1,7 @@
 package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
+import app.luxion.shogunai.domain.model.DesktopAppProvider
 import app.luxion.shogunai.domain.model.DockerComposeProvider
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
@@ -89,14 +90,23 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         return MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(path)).joinToString("") { "%02x".format(it) }
     }
 
-    override fun addCopyPatterns(repositoryPath: String, patterns: List<String>, expectedFingerprint: String?) {
+    override fun addPatterns(
+        repositoryPath: String,
+        copyPatterns: List<String>,
+        linkPatterns: List<String>,
+        expectedFingerprint: String?,
+    ) {
         val configPath = configPathOf(repositoryPath)
         expectedFingerprint?.let { requireUnchanged(repositoryPath, configPath, it) }
         val config = readConfig(configPath) ?: JsonObject(emptyMap())
-        val existing = copyPatternsOf(config, configPath)
-        val merged = (existing + patterns).distinct()
-        val updated = JsonObject(config + (COPY_FIELD to JsonArray(merged.map(::JsonPrimitive))))
-        writeAtomically(configPath, render(updated))
+        val updated = LinkedHashMap(config)
+        if (copyPatterns.isNotEmpty()) {
+            updated[COPY_FIELD] = JsonArray((copyPatternsOf(config, configPath) + copyPatterns).distinct().map(::JsonPrimitive))
+        }
+        if (linkPatterns.isNotEmpty()) {
+            updated[LINK_FIELD] = JsonArray((linkPatternsOf(config, configPath) + linkPatterns).distinct().map(::JsonPrimitive))
+        }
+        writeAtomically(configPath, render(JsonObject(updated)))
     }
 
     override fun preview(repositoryPath: String, edit: RepositoryConfigEdit): String {
@@ -126,6 +136,10 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         if (edit.addCopyPatterns.isNotEmpty()) {
             val merged = (copyPatternsOf(config, path) + edit.addCopyPatterns).distinct()
             result[COPY_FIELD] = JsonArray(merged.map(::JsonPrimitive))
+        }
+        if (edit.addLinkPatterns.isNotEmpty()) {
+            val merged = (linkPatternsOf(config, path) + edit.addLinkPatterns).distinct()
+            result[LINK_FIELD] = JsonArray(merged.map(::JsonPrimitive))
         }
         val providers = providersObjectOf(config, path)
         val updatedProviders = LinkedHashMap(providers)
@@ -291,7 +305,23 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
                 val options = providerOptions(value, DOCKER_COMPOSE_PROVIDER, path)
                 DockerComposeProvider(portVariables = portVariablesOf(options, path))
             },
+            desktopApp = providers[DESKTOP_APP_PROVIDER]?.let { value ->
+                val options = providerOptions(value, DESKTOP_APP_PROVIDER, path)
+                DesktopAppProvider(
+                    module = gradleModuleOf(options, path),
+                    isolatedHome = optionalBoolean(options, DESKTOP_APP_PROVIDER, ISOLATED_HOME_FIELD, path) ?: true,
+                )
+            },
         )
+    }
+
+    private fun gradleModuleOf(options: JsonObject, path: Path): String {
+        val invalid = WorktreeError.InvalidRepositoryConfig(
+            path.toString(),
+            "\"$PROVIDERS_FIELD.$DESKTOP_APP_PROVIDER.$MODULE_FIELD\" must be a Gradle project path such as \":desktopApp\"",
+        )
+        val value = options[MODULE_FIELD] as? JsonPrimitive ?: throw invalid
+        return value.takeIf { it.isString }?.content?.takeIf(RepositoryConfigRules::isGradleProjectPath) ?: throw invalid
     }
 
     private fun providerOptions(value: JsonElement, provider: String, path: Path): JsonObject =
@@ -398,6 +428,9 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         const val MAVEN_MAX_HEAP_FIELD = "mavenMaxHeap"
         const val DOCKER_COMPOSE_PROVIDER = "docker-compose"
         const val PORT_VARIABLES_FIELD = "portVariables"
+        const val DESKTOP_APP_PROVIDER = "desktop-app"
+        const val MODULE_FIELD = "module"
+        const val ISOLATED_HOME_FIELD = "isolatedHome"
         const val ENV_FIELD = "env"
         const val ENV_FILE_FIELD = "envFile"
         const val ABSENT_FINGERPRINT = "absent"

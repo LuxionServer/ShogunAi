@@ -5,6 +5,7 @@ import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.usecase.AddedRepository
 import app.luxion.shogunai.domain.usecase.MultirepoMember
+import app.luxion.shogunai.domain.usecase.RegisteredMultirepo
 import app.luxion.shogunai.domain.usecase.WorktreeGroup
 import java.nio.file.Path
 
@@ -19,6 +20,8 @@ interface MultirepoSetup {
     fun read(folder: String): Multirepo?
     suspend fun init(folder: String): Result<Multirepo>
     suspend fun trust(multirepo: Multirepo): Result<Multirepo>
+    suspend fun register(reviewed: Multirepo): Result<RegisteredMultirepo>
+    fun setName(multirepo: Multirepo, name: String?): Result<Multirepo>
     suspend fun addRepository(multirepo: Multirepo, alias: String, path: String, useProposedFolder: Boolean): Result<AddedRepository>
     fun removeRepository(multirepo: Multirepo, alias: String): Result<Multirepo>
     fun renameRepository(multirepo: Multirepo, alias: String, newAlias: String): Result<Multirepo>

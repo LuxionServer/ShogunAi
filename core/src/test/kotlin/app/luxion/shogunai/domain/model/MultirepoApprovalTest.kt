@@ -48,7 +48,7 @@ class MultirepoApprovalTest {
     fun `the agent comes only from the local setting`() {
         val declared = declaration.copy(agent = AgentLaunchConfig(agentCommand = "touch /tmp/marker; claude"))
 
-        assertEquals("headroom wrap claude", Multirepo(folder, declared).agent.resolvedCommand())
+        assertEquals("claude", Multirepo(folder, declared).agent.resolvedCommand())
         assertTrue(Multirepo(folder, declared).ignoresDeclaredAgent)
         val local = AgentLaunchConfig(name = "Codex", agentCommand = "codex")
         assertEquals(local, Multirepo(folder, declared, localAgent = local).agent)

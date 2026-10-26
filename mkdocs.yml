@@ -75,6 +75,7 @@ plugins:
             Configuration: Configuración
             Providers: Providers
             Multirepos and groups: Multirepos y grupos
+            Desktop app in the background: App de escritorio en segundo plano
             Release: Proceso de release
 
 nav:
@@ -86,6 +87,7 @@ nav:
       - Configuration: guide/configuration.md
       - Providers: guide/providers.md
       - Multirepos and groups: guide/multirepo.md
+      - Desktop app in the background: guide/headless-app.md
   - Using with agents: agents.md
   - Getting started: getting-started.md
   - Architecture:

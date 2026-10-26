@@ -59,6 +59,9 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class SecretCopyFailed(cause: Throwable) :
         WorktreeError("Failed to copy secret files: ${cause.message}", cause)
 
+    class LinkedFolderOccupied(val entry: String, val worktreePath: String) :
+        WorktreeError("Can't link $entry: the worktree's $entry folder holds files ShogunAi didn't copy")
+
     class PostCreateCommandFailed(
         val worktreePath: String,
         val command: List<String>,
@@ -88,6 +91,9 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
 
     class DockerUnavailable(val reason: String?) :
         WorktreeError("Docker isn't available" + if (reason.isNullOrBlank()) "" else ": $reason")
+
+    class ComposeCommandFailed(val project: String, val detail: String) :
+        WorktreeError("Docker Compose failed for $project: $detail")
 
     class NoFreePort(val from: Int, val to: Int) :
         WorktreeError("No free port left between $from and $to for this worktree")
@@ -160,6 +166,44 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     object EmulatorProviderNotDeclared : WorktreeError(
         "This repository doesn't use the emulator provider. Add \"providers\": { \"emulator\": {} } to .shogunai.json.",
     )
+
+    object DesktopAppProviderNotDeclared : WorktreeError(
+        "This repository doesn't use the desktop app provider. " +
+            "Add \"providers\": { \"desktop-app\": { \"module\": \":desktopApp\" } } to .shogunai.json, naming the app's Gradle module.",
+    )
+
+    object HeadlessAppsNotSupported : WorktreeError("Running a desktop app in the background is only supported on macOS.")
+
+    class HeadlessAppLaunchFailed(val logPath: String, val lastLogLines: String) :
+        WorktreeError(
+            "Launching the desktop app failed; full log in $logPath" +
+                if (lastLogLines.isNotBlank()) ":\n$lastLogLines" else "",
+        )
+
+    class HeadlessAppExitedEarly(val logPath: String, val lastLogLines: String) :
+        WorktreeError(
+            "The desktop app exited before showing its window; full log in $logPath" +
+                if (lastLogLines.isNotBlank()) ":\n$lastLogLines" else "",
+        )
+
+    class HeadlessAppWindowTimeout(val pid: Long, val seconds: Long) :
+        WorktreeError("The desktop app (pid $pid) showed no window within $seconds s; it's still running, stop it with shogun headless stop")
+
+    object HeadlessAppNotRunning : WorktreeError("This worktree's desktop app isn't running. Start it with shogun headless start.")
+
+    object HeadlessAppHasNoWindow : WorktreeError("This worktree's desktop app has no window to capture right now.")
+
+    class MacWindowToolFailed(val detail: String) :
+        WorktreeError("A macOS window tool failed" + if (detail.isBlank()) "" else ": $detail")
+
+    class HeadlessAppStopFailed(val reason: String?) :
+        WorktreeError("Couldn't stop this worktree's desktop app" + if (reason.isNullOrBlank()) "" else ": $reason")
+
+    class MacPermissionMissing(val permission: MacPermission) :
+        WorktreeError(
+            "macOS hasn't granted ${permission.displayName} to the application that runs shogun (such as your terminal). " +
+                "Grant it in System Settings › ${permission.settingsPane} and try again.",
+        )
 
     class EnvironmentFileTracked(val path: String) :
         WorktreeError("Won't write the environment file over $path because Git tracks it")

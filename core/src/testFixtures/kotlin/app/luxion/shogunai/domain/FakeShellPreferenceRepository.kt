@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.io.ShellPreferenceRepository
 import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.RecentWorktree
+import app.luxion.shogunai.domain.model.SidebarOrder
 import app.luxion.shogunai.domain.model.DEFAULT_INACTIVE_AFTER_DAYS
 import app.luxion.shogunai.domain.model.SortedView
 import app.luxion.shogunai.domain.model.WindowBounds
@@ -15,6 +16,7 @@ class FakeShellPreferenceRepository(
     var sidebarCollapsed: Boolean = false,
     var collapsedProjects: Set<String> = emptySet(),
     var collapsedMultirepos: Set<String> = emptySet(),
+    var sidebarOrder: SidebarOrder = SidebarOrder(),
     var lastCreateProject: String? = null,
     var recentPaletteItems: List<String> = emptyList(),
     val groupings: MutableMap<GroupedView, Grouping> = mutableMapOf(),
@@ -54,6 +56,12 @@ class FakeShellPreferenceRepository(
 
     override fun saveCollapsedMultirepos(folders: Set<String>) {
         collapsedMultirepos = folders
+    }
+
+    override fun loadSidebarOrder(): SidebarOrder = sidebarOrder
+
+    override fun saveSidebarOrder(order: SidebarOrder) {
+        sidebarOrder = order
     }
 
     override fun loadLastCreateProject(): String? = lastCreateProject

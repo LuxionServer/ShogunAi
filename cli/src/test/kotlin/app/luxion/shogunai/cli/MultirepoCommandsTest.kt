@@ -367,10 +367,95 @@ class MultirepoCommandsTest {
         assertEquals(listOf("web"), json()["defaultRepos"]!!.jsonArray.map { it.jsonPrimitive.content })
         assertEquals("Codex", json()["agent"]!!.jsonObject["name"]!!.jsonPrimitive.content)
         assertEquals(null, fresh.declarations[home]?.agent)
+        assertEquals(AgentLaunchConfig("Codex", "codex", useHeadroom = false), fresh.agents[home])
+        assertEquals(0, cli(workingDirectory = home, multirepos = fresh).run(listOf("multirepo", "agent", "codex", "--name", "Codex", "--headroom")))
+        assertEquals("headroom wrap codex", fresh.agents[home]?.resolvedCommand())
+        assertEquals(2, cli(workingDirectory = home, multirepos = fresh).run(listOf("multirepo", "agent", "codex", "--headroom", "--no-headroom")))
         assertEquals(2, cli(workingDirectory = home, multirepos = fresh).run(listOf("multirepo", "defaults", "nope")))
         assertEquals(0, cli(workingDirectory = home, multirepos = fresh).run(listOf("multirepo", "delete")))
         assertTrue(fresh.declarations.isEmpty() && fresh.known.isEmpty())
         assertEquals(4, projects.list().size)
+    }
+
+    @Test
+    fun `init with a name, name and name clear set the display name shown by show`() {
+        val fresh = FakeMultirepoSource()
+        val home = "/home/dev/projects/product-workspace"
+
+        assertEquals(0, cli(workingDirectory = home, multirepos = fresh).run(listOf("multirepo", "init", "--name", "Product")))
+        assertEquals(MultirepoDeclaration(worktreesRoot = "../product-workspace-worktrees", name = "Product"), fresh.declarations[home])
+        out.clear()
+        assertEquals(0, cli(workingDirectory = home, multirepos = fresh).run(listOf("multirepo", "show")))
+        assertEquals("Product  $home", out.lines().first())
+        out.clear()
+        assertEquals(0, cli(workingDirectory = home, multirepos = fresh).run(listOf("multirepo", "name", "Product Suite", "--json")))
+        assertEquals("Product Suite", json()["name"]!!.jsonPrimitive.content)
+        assertEquals(0, cli(workingDirectory = home, multirepos = fresh).run(listOf("multirepo", "name", "--clear")))
+        assertEquals(null, fresh.declarations[home]?.name)
+        out.clear()
+        assertEquals(0, cli(workingDirectory = home, multirepos = fresh).run(listOf("multirepo", "show", "--json")))
+        assertEquals("product-workspace", json()["name"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `a blank name is a usage error and changes nothing`() {
+        assertEquals(2, cli().run(listOf("multirepo", "name", "  ")))
+        assertTrue(err.contains("can't be blank"))
+        assertEquals(declaration, source.declarations[folder])
+        assertEquals(2, cli().run(listOf("multirepo", "name")))
+    }
+
+    @Test
+    fun `init in a moved multirepo registers it, its missing projects and forgets the old folder`() {
+        val moved = "/home/dev/work/product"
+        val movedApp = "$moved/product-app"
+        val movedApi = "$moved/product-api"
+        git.repository(movedApp)
+        git.repository(movedApi)
+        fileManager.writeText(movedApp, "")
+        fileManager.writeText(movedApi, "")
+        val registry = FakeMultirepoSource(
+            mapOf(moved to MultirepoDeclaration(linkedMapOf("app" to "product-app", "api" to "product-api"), "../product-worktrees")),
+            known = listOf(folder),
+            approveAll = false,
+        )
+        registry.missingFolders += folder
+
+        assertEquals(1, cli(workingDirectory = moved, multirepos = registry).run(listOf("multirepo", "init", "--json")))
+        assertTrue(err.contains("pass --yes"))
+        assertTrue(registry.known.isEmpty())
+        assertEquals(0, cli(workingDirectory = moved, multirepos = registry, answer = "n").run(listOf("multirepo", "init")))
+        assertTrue(registry.known.isEmpty())
+        assertTrue(projects.list().none { it.config.baseRepositoryPath == movedApp })
+        out.clear()
+
+        val exitCode = cli(workingDirectory = moved, multirepos = registry, answer = "y").run(listOf("multirepo", "init"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.contains("  app  $movedApp"))
+        assertTrue(err.contains("Approve this multirepo?"))
+        assertEquals(listOf(moved), registry.known)
+        assertTrue(out.contains("approved and registered the existing multirepo product"))
+        assertEquals("/home/dev/work/product-worktrees/app", projects.list().first { it.config.baseRepositoryPath == movedApp }.config.worktreesRoot)
+        assertTrue(projects.list().any { it.config.baseRepositoryPath == appBase })
+        out.clear()
+        assertEquals(0, cli(workingDirectory = moved, multirepos = registry).run(listOf("multirepo", "init", "--json")))
+        assertEquals(false, json()["registered"]!!.jsonPrimitive.content.toBoolean())
+        assertTrue(json()["projects"]!!.jsonArray.isEmpty())
+    }
+
+    @Test
+    fun `init over an existing declaration rejects the options of a new one and an invalid declaration`() {
+        source.known.clear()
+
+        assertEquals(2, cli().run(listOf("multirepo", "init", "--name", "Product")))
+        assertTrue(err.contains("'shogun multirepo name'"))
+        assertTrue(source.known.isEmpty())
+
+        source.declarations[folder] = declaration.copy(defaultRepos = listOf("web"))
+        assertEquals(1, cli().run(listOf("multirepo", "init")))
+        assertTrue(source.known.isEmpty())
+        assertEquals(declaration.copy(defaultRepos = listOf("web")), source.declarations[folder])
     }
 
     @Test
@@ -680,7 +765,7 @@ class MultirepoCommandsTest {
         assertEquals(listOf(folder), multirepos.known)
         out.clear()
         assertEquals(0, cli(multirepos = multirepos).run(listOf("open", "--herdr")))
-        assertEquals(listOf("plain1:p1" to "headroom wrap claude"), herdr.ran)
+        assertEquals(listOf("plain1:p1" to "claude"), herdr.ran)
     }
 
     @Test
@@ -726,7 +811,7 @@ class MultirepoCommandsTest {
 
         assertEquals(0, cli(multirepos = multirepos).run(listOf("multirepo", "show")))
         assertTrue(out.contains("not approved on this machine; review it with 'shogun multirepo trust'"))
-        assertTrue(out.contains("agent  Claude (headroom wrap claude)"))
+        assertTrue(out.contains("agent  Claude (claude)"))
         assertTrue(out.contains("agent is ignored"))
 
         out.clear()

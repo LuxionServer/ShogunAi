@@ -1,19 +1,23 @@
 package app.luxion.shogunai.domain.model
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class ProjectConfig(
     val baseRepositoryPath: String,
     val worktreesRoot: String,
     val secretFiles: List<String>,
-    val agentLaunchConfig: AgentLaunchConfig = AgentLaunchConfig(),
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val agentLaunchConfig: AgentLaunchConfig = AgentLaunchConfig(),
     val additionalAgents: List<AgentLaunchConfig> = emptyList(),
     val mainBranch: String? = null,
     val emulator: EmulatorSettings = EmulatorSettings(),
     val simulator: SimulatorSettings = SimulatorSettings(),
     val editorOverride: EditorId? = null,
     val fetchBeforeCreate: Boolean = false,
+    val linkedSecretFiles: List<String> = emptyList(),
 ) {
     val agents: List<AgentLaunchConfig>
         get() = listOf(agentLaunchConfig) + additionalAgents
@@ -30,7 +34,14 @@ data class ProjectConfig(
     }
 
     fun baseSecretPath(fileName: String): String = joinPath(baseRepositoryPath, fileName)
+
+    fun isLinked(entry: String): Boolean =
+        entry.trimEnd('/', '\\') in linkedSecretFiles.map { it.trimEnd('/', '\\') }
 }
+
+fun isLocalPattern(entry: String): Boolean = entry.any { it in LOCAL_PATTERN_CHARACTERS }
+
+private val LOCAL_PATTERN_CHARACTERS = setOf('*', '?', '[')
 
 internal fun joinPath(vararg parts: String): String =
     parts.joinToString("/") { it.trimEnd('/') }

@@ -19,6 +19,8 @@ enum class WorkflowCondition(val label: String) {
     HERDR("when Herdr is available"),
     EMULATOR_PROVIDER("when the repository declares the emulator provider"),
     SIMULATOR_PROVIDER("when the repository declares the ios-simulator provider"),
+    COMPOSE_PROVIDER("when the repository declares the docker-compose provider"),
+    DESKTOP_APP_PROVIDER("when the repository declares the desktop-app provider, on macOS"),
 }
 
 data class WorkflowRule(
@@ -34,6 +36,8 @@ data class WorkflowContext(
     val herdrAvailable: Boolean,
     val emulatorProvider: Boolean,
     val simulatorProvider: Boolean,
+    val composeProvider: Boolean = false,
+    val desktopAppProvider: Boolean = false,
 ) {
     fun holds(condition: WorkflowCondition): Boolean = when (condition) {
         WorkflowCondition.ALWAYS -> true
@@ -42,6 +46,8 @@ data class WorkflowContext(
         WorkflowCondition.HERDR -> herdrAvailable
         WorkflowCondition.EMULATOR_PROVIDER -> emulatorProvider
         WorkflowCondition.SIMULATOR_PROVIDER -> simulatorProvider
+        WorkflowCondition.COMPOSE_PROVIDER -> composeProvider
+        WorkflowCondition.DESKTOP_APP_PROVIDER -> desktopAppProvider
     }
 }
 
@@ -118,14 +124,8 @@ object WorkflowRules {
             "Run `shogun emulator start` before every use of the worktree's Android emulator (installing the app, running instrumented tests): " +
                 "it may have been released to another worktree since the session began, and the command re-acquires one and prints the ANDROID_SERIAL to use. " +
                 "If it fails because the emulator pool is full, retry with `shogun emulator start --wait` run in the background, " +
-                "since it can wait up to 30 minutes for one. `shogun emulator status` shows it.",
-            WorkflowCondition.EMULATOR_PROVIDER,
-            inSessionStart = true,
-        ),
-        WorkflowRule(
-            "resources.adb",
-            WorkflowTopic.RESOURCES,
-            "The adb server is shared with other worktrees' agents: never run 'adb kill-server' or 'adb start-server', " +
+                "since it can wait up to 30 minutes for one. `shogun emulator status` shows it. " +
+                "The adb server is shared with other worktrees' agents: never run 'adb kill-server' or 'adb start-server', " +
                 "and don't pass -s, -e or -d to adb, so every command goes to ANDROID_SERIAL.",
             WorkflowCondition.EMULATOR_PROVIDER,
             inSessionStart = true,
@@ -138,6 +138,24 @@ object WorkflowRules {
                 "If it fails because the simulator pool is full, retry with `shogun simulator start --wait` run in the background, " +
                 "since it can wait up to 30 minutes for one.",
             WorkflowCondition.SIMULATOR_PROVIDER,
+            inSessionStart = true,
+        ),
+        WorkflowRule(
+            "resources.compose",
+            WorkflowTopic.RESOURCES,
+            "Start and build the worktree's Docker Compose services with `shogun compose up` (`--build` to rebuild) and `shogun compose build`, " +
+                "never with a hand-written project name, so they use its COMPOSE_PROJECT_NAME and ports; " +
+                "take them down with `shogun compose down <worktree>`.",
+            WorkflowCondition.COMPOSE_PROVIDER,
+        ),
+        WorkflowRule(
+            "resources.desktop-app",
+            WorkflowTopic.RESOURCES,
+            "Check the desktop app without computer use: `shogun headless start` runs it hidden, drive it with the Compose Hot Reload MCP " +
+                "(re-read the semantic tree after each view change; run `shogun headless start` again after its `restart` to hide it), " +
+                "and see it with `shogun headless capture`, never the MCP's take_screenshot. " +
+                "Keyboard shortcuts, native menus, the menu bar and system dialogs still need the desktop.",
+            WorkflowCondition.DESKTOP_APP_PROVIDER,
             inSessionStart = true,
         ),
         WorkflowRule(

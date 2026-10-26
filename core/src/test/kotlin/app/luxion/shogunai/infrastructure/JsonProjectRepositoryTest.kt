@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.model.EmulatorSettings
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.newProject
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -97,6 +98,48 @@ class JsonProjectRepositoryTest {
         assertEquals(EmulatorSettings(), project.config.emulator)
         assertEquals(SimulatorSettings(), project.config.simulator)
         assertFalse(project.config.fetchBeforeCreate)
+    }
+
+    @Test
+    fun `a project stored without linked entries copies every local file`() {
+        Files.writeString(
+            storagePath,
+            """
+            [
+                {
+                    "id": "project-1",
+                    "name": "Main",
+                    "config": {
+                        "baseRepositoryPath": "/home/dev/projects/main-repo",
+                        "worktreesRoot": "/home/dev/projects",
+                        "secretFiles": ["local.properties", "keys"]
+                    }
+                }
+            ]
+            """.trimIndent(),
+        )
+
+        val config = repository.list().single().config
+
+        assertEquals(emptyList(), config.linkedSecretFiles)
+        assertFalse(config.isLinked("local.properties"))
+        assertFalse(config.isLinked("keys"))
+    }
+
+    @Test
+    fun `keeps the link mode of local entries`() {
+        val config = ProjectConfig(
+            baseRepositoryPath = "/home/dev/projects/main-repo",
+            worktreesRoot = "/home/dev/projects",
+            secretFiles = listOf("local.properties", "keys"),
+            linkedSecretFiles = listOf("keys"),
+        )
+        repository.save(Project(id = "project-1", name = "Main", config = config))
+
+        val loaded = repository.list().single().config
+
+        assertTrue(loaded.isLinked("keys/"))
+        assertFalse(loaded.isLinked("local.properties"))
     }
 
     @Test
@@ -196,6 +239,70 @@ class JsonProjectRepositoryTest {
         assertEquals(listOf(AgentLaunchConfig(agentCommand = "claude", useHeadroom = false)), config.agents)
         assertTrue(config.additionalAgents.isEmpty())
     }
+
+    @Test
+    fun `agents stored without the headroom option by an earlier version keep headroom`() {
+        Files.writeString(
+            storagePath,
+            """
+            [{"id": "p", "name": "Main", "config": {
+                "baseRepositoryPath": "/home/dev/projects/main-repo",
+                "worktreesRoot": "/home/dev/projects",
+                "secretFiles": [],
+                "agentLaunchConfig": {"agentCommand": "claude"},
+                "additionalAgents": [{"name": "Codex", "agentCommand": "codex"}, {"agentCommand": "aider", "useHeadroom": false}]
+            }}]
+            """.trimIndent(),
+        )
+
+        val config = repository.list().single().config
+
+        assertEquals(
+            listOf(
+                AgentLaunchConfig(agentCommand = "claude", useHeadroom = true),
+                AgentLaunchConfig(name = "Codex", agentCommand = "codex", useHeadroom = true),
+                AgentLaunchConfig(agentCommand = "aider", useHeadroom = false),
+            ),
+            config.agents,
+        )
+    }
+
+    @Test
+    fun `a project stored without an agent by an earlier version runs claude with headroom`() {
+        Files.writeString(
+            storagePath,
+            """[{"id":"old","name":"Old","config":{"baseRepositoryPath":"/a","worktreesRoot":"/b","secretFiles":[]}}]""",
+        )
+
+        assertEquals(AgentLaunchConfig(agentCommand = "claude", useHeadroom = true), repository.list().single().config.agentLaunchConfig)
+    }
+
+    @Test
+    fun `a new project's agent is written without headroom and reads back the same`() {
+        val project = newProject("p", "/home/dev/projects/main-repo")
+
+        repository.save(project)
+
+        val agent = writtenConfig()["agentLaunchConfig"]!!.jsonObject
+        assertEquals(JsonPrimitive(false), agent["useHeadroom"])
+        assertEquals(AgentLaunchConfig(), JsonProjectRepository(storagePath).list().single().config.agentLaunchConfig)
+    }
+
+    @Test
+    fun `saving a project from an earlier version writes its headroom explicitly`() {
+        Files.writeString(
+            storagePath,
+            """[{"id":"old","name":"Old","config":{"baseRepositoryPath":"/a","worktreesRoot":"/b","secretFiles":[]}}]""",
+        )
+        val legacy = repository.list().single()
+
+        repository.save(legacy.copy(name = "Renamed"))
+
+        assertEquals(JsonPrimitive(true), writtenConfig()["agentLaunchConfig"]!!.jsonObject["useHeadroom"])
+    }
+
+    private fun writtenConfig() =
+        Json.parseToJsonElement(Files.readString(storagePath)).jsonArray.single().jsonObject["config"]!!.jsonObject
 
     @Test
     fun `keeps several agents of a project in order`() {

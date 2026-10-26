@@ -3,14 +3,23 @@ package app.luxion.shogunai.ui.machine
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.ComposeDownReport
+import app.luxion.shogunai.domain.model.ComposeLeftoversReport
 import app.luxion.shogunai.domain.model.ComposeOwner
+import app.luxion.shogunai.domain.model.ComposeResourceKind
+import app.luxion.shogunai.ui.components.DangerButton
+import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.Notice
 import app.luxion.shogunai.ui.components.NoticeKind
@@ -48,10 +57,69 @@ fun ComposeProjectsView(machine: MachineResources, onOpenWorktree: (String, Stri
                     }
                     MachineSecondaryText(strings.composeVolumesKept)
                 }
+                ComposeLeftovers(machine)
             }
         }
         machine.composeDownReport?.let { report -> ComposeDownMessage(report, machine::dismissComposeDownReport) }
+        machine.composeLeftoversReport?.let { report -> ComposeLeftoversMessage(report, machine::dismissComposeLeftoversReport) }
     }
+}
+
+@Composable
+private fun ComposeLeftovers(machine: MachineResources) {
+    val strings = LocalStrings.current
+    val leftovers = machine.composeLeftovers
+    if (leftovers.isEmpty()) return
+    var confirmingVolumes by remember { mutableStateOf(false) }
+    val volumes = leftovers.count { it.resource.kind == ComposeResourceKind.VOLUME }
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = Spacing.md)) {
+        MachineDataText(strings.composeLeftoversTitle, Modifier.weight(1f))
+        if (machine.isRemovingComposeLeftovers) InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
+        SecondaryButton(
+            onClick = { machine.removeComposeLeftovers(removeVolumes = false) },
+            enabled = !machine.isRemovingComposeLeftovers && leftovers.any { it.resource.kind != ComposeResourceKind.VOLUME },
+        ) { Text(strings.removeComposeLeftovers) }
+        if (volumes > 0) {
+            SecondaryButton(
+                onClick = { confirmingVolumes = true },
+                enabled = !machine.isRemovingComposeLeftovers,
+                modifier = Modifier.padding(start = Spacing.sm),
+            ) { Text(strings.removeComposeLeftoversWithVolumes) }
+        }
+    }
+    leftovers.forEach { leftover ->
+        HorizontalDivider()
+        MachineRowLine {
+            MachineDataText(leftover.resource.name, Modifier.weight(1f))
+            MachineDataText(strings.composeResourceKind(leftover.resource.kind), Modifier.width(150.dp))
+            MachineDataText(leftover.resource.project, Modifier.width(MachineOwnerColumnWidth))
+        }
+    }
+    if (confirmingVolumes) {
+        AlertDialog(
+            onDismissRequest = { confirmingVolumes = false },
+            title = { Text(strings.confirmRemoveComposeVolumesTitle) },
+            text = { Text(strings.confirmRemoveComposeVolumes(volumes)) },
+            confirmButton = {
+                DangerButton(onClick = {
+                    confirmingVolumes = false
+                    machine.removeComposeLeftovers(removeVolumes = true)
+                }) { Text(strings.removeVolumes) }
+            },
+            dismissButton = { NeutralTextButton(onClick = { confirmingVolumes = false }) { Text(strings.cancel) } },
+        )
+    }
+}
+
+@Composable
+private fun ComposeLeftoversMessage(report: ComposeLeftoversReport, onDismiss: () -> Unit) {
+    val strings = LocalStrings.current
+    Notice(
+        kind = if (report.failures.isEmpty()) NoticeKind.SUCCESS else NoticeKind.WARNING,
+        message = (listOf(strings.composeResourcesRemoved(report.removed.size)) +
+            report.failures.map { strings.composeResourceRemoveFailed(it.resource.name, it.detail) }).joinToString("\n"),
+        onDismiss = onDismiss,
+    )
 }
 
 @Composable

@@ -18,8 +18,11 @@ sealed interface RepositoryConfigIssue {
 object RepositoryConfigRules {
     private val MEMORY_SIZE = Regex("[0-9]+[kKmMgG]")
     private val WHOLE_NUMBER = Regex("[0-9]+")
+    private val GRADLE_PROJECT_PATH = Regex("(:[A-Za-z0-9_][A-Za-z0-9_.-]*)+")
 
     fun isMemorySize(value: String): Boolean = MEMORY_SIZE.matches(value)
+
+    fun isGradleProjectPath(value: String): Boolean = GRADLE_PROJECT_PATH.matches(value)
 
     fun positiveWholeNumber(value: String): Int? =
         value.takeIf { WHOLE_NUMBER.matches(it) }?.toIntOrNull()?.takeIf { it > 0 }
@@ -66,4 +69,5 @@ data class RepositoryConfigEdit(
     val environment: List<EnvironmentEntry> = emptyList(),
     val envFile: String? = null,
     val addCopyPatterns: List<String> = emptyList(),
+    val addLinkPatterns: List<String> = emptyList(),
 )

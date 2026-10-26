@@ -49,6 +49,7 @@ sealed interface CliCommand {
         val deleteSimulators: Boolean = false,
         val deleteDerivedData: Boolean = false,
         val downComposeProjects: Boolean = false,
+        val removeComposeVolumes: Boolean = false,
         val json: Boolean = false,
     ) : CliCommand
 
@@ -61,6 +62,14 @@ sealed interface CliCommand {
     data class Maven(val json: Boolean = false) : CliCommand
     data class Compose(val json: Boolean = false) : CliCommand
     data class ComposeDown(val target: String? = null, val volumes: Boolean = false, val json: Boolean = false) : CliCommand
+    data class ComposeRun(
+        val target: String? = null,
+        val build: Boolean = false,
+        val onlyBuild: Boolean = false,
+        val extraArguments: List<String> = emptyList(),
+        val json: Boolean = false,
+    ) : CliCommand
+    data class ComposePrune(val volumes: Boolean = false, val confirmed: Boolean = false, val json: Boolean = false) : CliCommand
     data class Pool(val action: PoolAction, val json: Boolean = false) : CliCommand
     data class Project(val action: ProjectAction, val path: String? = null, val json: Boolean = false) : CliCommand
     data class App(val path: String? = null, val settings: Boolean = false) : CliCommand
@@ -98,6 +107,14 @@ sealed interface CliCommand {
         val json: Boolean = false,
         val wait: Duration? = null,
     ) : CliCommand
+    data class Headless(
+        val action: HeadlessAction,
+        val path: String? = null,
+        val visible: Boolean = false,
+        val fresh: Boolean = false,
+        val output: String? = null,
+        val json: Boolean = false,
+    ) : CliCommand
     data class Simulator(
         val action: SimulatorAction,
         val path: String? = null,
@@ -118,11 +135,13 @@ sealed interface ParsedArguments {
 fun parseArguments(args: List<String>): ParsedArguments {
     val name = args.firstOrNull() ?: return ParsedArguments.Command(CliCommand.Help)
     val rest = args.drop(1)
-    if (name in CliHelp.commandNames && rest.any { it == "--help" || it == "-h" }) {
+    val options = rest.takeWhile { it != ARGUMENTS_SEPARATOR }
+    val passedThrough = rest.drop(options.size)
+    if (name in CliHelp.commandNames && options.any { it == "--help" || it == "-h" }) {
         return ParsedArguments.Command(CliCommand.CommandHelp(name))
     }
-    val json = name in JSON_COMMANDS && !isSimulatorGradleInit(name, rest) && !isGuideReading(name, rest) && JSON_FLAG in rest
-    val arguments = if (json) rest.filter { it != JSON_FLAG } else rest
+    val json = name in JSON_COMMANDS && !isSimulatorGradleInit(name, rest) && !isGuideReading(name, rest) && JSON_FLAG in options
+    val arguments = if (json) options.filter { it != JSON_FLAG } + passedThrough else rest
     return try {
         ParsedArguments.Command(
             when (name) {
@@ -151,6 +170,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "env" -> parseEnv(arguments)
                 "emulator" -> parseEmulator(arguments)
                 "simulator" -> parseSimulator(arguments)
+                "headless" -> parseHeadless(arguments)
                 else -> throw UsageException("unknown command '$name'")
             }.withJson(json),
         )
@@ -161,7 +181,9 @@ fun parseArguments(args: List<String>): ParsedArguments {
 
 private const val JSON_FLAG = "--json"
 
-private val JSON_COMMANDS = setOf("new", "multirepo", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "stacks", "maven", "compose", "pool", "project", "xcode", "emulator", "simulator", "hooks", "guide")
+private const val ARGUMENTS_SEPARATOR = "--"
+
+private val JSON_COMMANDS = setOf("new", "multirepo", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "stacks", "maven", "compose", "pool", "project", "xcode", "emulator", "simulator", "headless", "hooks", "guide")
 
 private fun isSimulatorGradleInit(name: String, rest: List<String>) = name == "simulator" && rest.firstOrNull() == "gradle-init"
 
@@ -184,11 +206,14 @@ private fun CliCommand.withJson(json: Boolean): CliCommand = if (!json) this els
     is CliCommand.Maven -> copy(json = true)
     is CliCommand.Compose -> copy(json = true)
     is CliCommand.ComposeDown -> copy(json = true)
+    is CliCommand.ComposeRun -> copy(json = true)
+    is CliCommand.ComposePrune -> copy(json = true)
     is CliCommand.GradleStop -> copy(json = true)
     is CliCommand.Pool -> copy(json = true)
     is CliCommand.Project -> copy(json = true)
     is CliCommand.Emulator -> copy(json = true)
     is CliCommand.Simulator -> copy(json = true)
+    is CliCommand.Headless -> copy(json = true)
     is CliCommand.Hooks -> copy(json = true)
     is CliCommand.GuideBlock -> copy(json = true)
     else -> this
@@ -324,6 +349,7 @@ private fun parseClean(rest: List<String>): CliCommand.Clean {
     var deleteSimulators = false
     var deleteDerivedData = false
     var downComposeProjects = false
+    var removeComposeVolumes = false
     rest.forEach { argument ->
         when (argument) {
             "--yes", "-y" -> confirmed = true
@@ -333,9 +359,11 @@ private fun parseClean(rest: List<String>): CliCommand.Clean {
             "--delete-simulators" -> deleteSimulators = true
             "--delete-derived-data" -> deleteDerivedData = true
             "--down-compose-projects" -> downComposeProjects = true
+            "--compose-volumes" -> removeComposeVolumes = true
             else -> throw UsageException("unknown argument '$argument' for 'clean'")
         }
     }
+    if (removeComposeVolumes && !downComposeProjects) throw UsageException("--compose-volumes needs --down-compose-projects")
     return CliCommand.Clean(
         confirmed = confirmed,
         deleteBranches = deleteBranches,
@@ -344,15 +372,57 @@ private fun parseClean(rest: List<String>): CliCommand.Clean {
         deleteSimulators = deleteSimulators,
         deleteDerivedData = deleteDerivedData,
         downComposeProjects = downComposeProjects,
+        removeComposeVolumes = removeComposeVolumes,
     )
 }
 
 private fun parseCompose(rest: List<String>): CliCommand {
     val subcommand = rest.firstOrNull() ?: return CliCommand.Compose()
-    if (subcommand != "down") throw UsageException("unknown subcommand '$subcommand' for 'compose', expected down")
+    return when (subcommand) {
+        "down" -> parseComposeDown(rest.drop(1))
+        "up", "build" -> parseComposeRun(subcommand, rest.drop(1))
+        "prune" -> parseComposePrune(rest.drop(1))
+        else -> throw UsageException("unknown subcommand '$subcommand' for 'compose', expected up, build, down or prune")
+    }
+}
+
+private fun parseComposeRun(subcommand: String, rest: List<String>): CliCommand {
+    val options = rest.takeWhile { it != ARGUMENTS_SEPARATOR }
+    var build = false
+    val targets = mutableListOf<String>()
+    options.forEach { argument ->
+        when {
+            argument == "--build" && subcommand == "up" -> build = true
+            argument.startsWith("-") -> throw UsageException("unknown option '$argument' for 'compose $subcommand'")
+            else -> targets += argument
+        }
+    }
+    if (targets.size > 1) throw UsageException("'compose $subcommand' takes at most one worktree; pass Compose arguments after --")
+    return CliCommand.ComposeRun(
+        target = targets.firstOrNull(),
+        build = build,
+        onlyBuild = subcommand == "build",
+        extraArguments = rest.drop(options.size + 1),
+    )
+}
+
+private fun parseComposePrune(rest: List<String>): CliCommand {
+    var volumes = false
+    var confirmed = false
+    rest.forEach { argument ->
+        when (argument) {
+            "--volumes" -> volumes = true
+            "--yes", "-y" -> confirmed = true
+            else -> throw UsageException("unknown argument '$argument' for 'compose prune'")
+        }
+    }
+    return CliCommand.ComposePrune(volumes, confirmed)
+}
+
+private fun parseComposeDown(arguments: List<String>): CliCommand {
     var volumes = false
     val targets = mutableListOf<String>()
-    rest.drop(1).forEach { argument ->
+    arguments.forEach { argument ->
         when {
             argument == "--volumes" -> volumes = true
             argument.startsWith("-") -> throw UsageException("unknown option '$argument' for 'compose down'")
@@ -575,6 +645,34 @@ private fun parseSimulatorGradleInit(rest: List<String>): CliCommand.SimulatorGr
     return CliCommand.SimulatorGradleInit(install, confirmed)
 }
 
+enum class HeadlessAction { START, STOP, STATUS, CAPTURE }
+
+private fun parseHeadless(rest: List<String>): CliCommand.Headless {
+    val name = rest.firstOrNull() ?: throw UsageException("'headless' needs an action: start, stop, status or capture")
+    val action = HeadlessAction.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
+        ?: throw UsageException("unknown action '$name' for 'headless', expected start, stop, status or capture")
+    var path: String? = null
+    var visible = false
+    var fresh = false
+    var output: String? = null
+    val remaining = ArrayDeque(rest.drop(1))
+    while (remaining.isNotEmpty()) {
+        when (val argument = remaining.removeFirst()) {
+            "--visible" -> visible = true
+            "--fresh" -> fresh = true
+            "--output" -> output = remaining.valueOf(argument)
+            else -> {
+                if (argument.startsWith("-")) throw UsageException("unknown option '$argument' for 'headless'")
+                if (path != null) throw UsageException("'headless $name' takes at most one path")
+                path = argument
+            }
+        }
+    }
+    if (action != HeadlessAction.START && (visible || fresh)) throw UsageException("--visible and --fresh only apply to 'headless start'")
+    if (action != HeadlessAction.CAPTURE && output != null) throw UsageException("--output only applies to 'headless capture'")
+    return CliCommand.Headless(action, path, visible, fresh, output)
+}
+
 private fun parseEmulator(rest: List<String>): CliCommand.Emulator {
     val name = rest.firstOrNull() ?: throw UsageException("'emulator' needs an action: start, stop or status")
     val action = EmulatorAction.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
@@ -648,12 +746,18 @@ private fun ArrayDeque<String>.valueOf(option: String): String {
 }
 
 sealed interface MultirepoAction {
-    data class Init(val worktreesRoot: String? = null) : MultirepoAction
+    data class Init(
+        val worktreesRoot: String? = null,
+        val name: String? = null,
+        val useWorktreesRoot: Boolean? = null,
+        val yes: Boolean = false,
+    ) : MultirepoAction
+    data class Name(val name: String?) : MultirepoAction
     data object Show : MultirepoAction
     data class AddRepo(val alias: String, val path: String, val useWorktreesRoot: Boolean? = null) : MultirepoAction
     data class RemoveRepo(val alias: String) : MultirepoAction
     data class Defaults(val aliases: List<String>) : MultirepoAction
-    data class Agent(val command: String, val name: String? = null, val useHeadroom: Boolean = true) : MultirepoAction
+    data class Agent(val command: String, val name: String? = null, val useHeadroom: Boolean = false) : MultirepoAction
     data class WorktreesRoot(val folder: String) : MultirepoAction
     data class WorkspaceSet(val alias: String? = null, val default: Boolean = false) : MultirepoAction
     data object WorkspaceClear : MultirepoAction
@@ -661,8 +765,11 @@ sealed interface MultirepoAction {
     data class Trust(val folder: String? = null, val yes: Boolean = false, val revoke: Boolean = false) : MultirepoAction
 }
 
+private fun multirepoName(name: String): String =
+    name.trim().ifEmpty { throw UsageException("the multirepo name can't be blank") }
+
 private fun parseMultirepo(rest: List<String>): CliCommand.Multirepo {
-    val action = rest.firstOrNull() ?: throw UsageException("'multirepo' needs an action: init, show, trust, add-repo, remove-repo, defaults, agent, workspace, worktrees-root or delete")
+    val action = rest.firstOrNull() ?: throw UsageException("'multirepo' needs an action: init, show, trust, name, add-repo, remove-repo, defaults, agent, workspace, worktrees-root or delete")
     val remaining = ArrayDeque(rest.drop(1))
     val positional = mutableListOf<String>()
     val options = mutableMapOf<String, String?>()
@@ -670,7 +777,7 @@ private fun parseMultirepo(rest: List<String>): CliCommand.Multirepo {
         val argument = remaining.removeFirst()
         when (argument) {
             "--worktrees-root", "--name", "--alias" -> options[argument] = remaining.valueOf(argument)
-            "--use-worktrees-root", "--keep-worktrees-folder", "--no-headroom", "--clear", "--default", "--yes", "--revoke" -> options[argument] = null
+            "--use-worktrees-root", "--keep-worktrees-folder", "--headroom", "--no-headroom", "--clear", "--default", "--yes", "--revoke" -> options[argument] = null
             else -> {
                 if (argument.startsWith("-")) throw UsageException("unknown option '$argument' for 'multirepo $action'")
                 positional += argument
@@ -684,17 +791,33 @@ private fun parseMultirepo(rest: List<String>): CliCommand.Multirepo {
         if (positional.size != count) throw UsageException("usage: shogun multirepo $usage")
         return positional
     }
+    fun worktreesFolderChoice(): Boolean? {
+        val use = "--use-worktrees-root" in options
+        val keep = "--keep-worktrees-folder" in options
+        if (use && keep) throw UsageException("--use-worktrees-root and --keep-worktrees-folder can't be combined")
+        return if (use) true else if (keep) false else null
+    }
     return CliCommand.Multirepo(
         when (action) {
-            "init" -> { allow("--worktrees-root"); arguments(0, "init [--worktrees-root <dir>]"); MultirepoAction.Init(options["--worktrees-root"]) }
+            "init" -> {
+                allow("--worktrees-root", "--name", "--use-worktrees-root", "--keep-worktrees-folder", "--yes")
+                arguments(0, "init [--worktrees-root <dir>] [--name <name>] [--use-worktrees-root | --keep-worktrees-folder] [--yes]")
+                MultirepoAction.Init(options["--worktrees-root"], options["--name"]?.let(::multirepoName), worktreesFolderChoice(), yes = "--yes" in options)
+            }
             "show" -> { allow(); arguments(0, "show"); MultirepoAction.Show }
+            "name" -> {
+                allow("--clear")
+                if ("--clear" in options) {
+                    arguments(0, "name <name> | --clear")
+                    MultirepoAction.Name(null)
+                } else {
+                    MultirepoAction.Name(multirepoName(arguments(1, "name <name> | --clear").single()))
+                }
+            }
             "add-repo" -> {
                 allow("--use-worktrees-root", "--keep-worktrees-folder")
                 val (alias, path) = arguments(2, "add-repo <alias> <path> [--use-worktrees-root | --keep-worktrees-folder]")
-                val use = "--use-worktrees-root" in options
-                val keep = "--keep-worktrees-folder" in options
-                if (use && keep) throw UsageException("--use-worktrees-root and --keep-worktrees-folder can't be combined")
-                MultirepoAction.AddRepo(alias, path, if (use) true else if (keep) false else null)
+                MultirepoAction.AddRepo(alias, path, worktreesFolderChoice())
             }
             "remove-repo" -> { allow(); MultirepoAction.RemoveRepo(arguments(1, "remove-repo <alias>").single()) }
             "defaults" -> {
@@ -707,8 +830,10 @@ private fun parseMultirepo(rest: List<String>): CliCommand.Multirepo {
                 }
             }
             "agent" -> {
-                allow("--name", "--no-headroom")
-                MultirepoAction.Agent(arguments(1, "agent <command> [--name <name>] [--no-headroom]").single(), options["--name"], "--no-headroom" !in options)
+                allow("--name", "--headroom", "--no-headroom")
+                val headroom = "--headroom" in options
+                if (headroom && "--no-headroom" in options) throw UsageException("--headroom and --no-headroom can't be combined")
+                MultirepoAction.Agent(arguments(1, "agent <command> [--name <name>] [--headroom]").single(), options["--name"], headroom)
             }
             "workspace" -> {
                 val what = positional.firstOrNull() ?: throw UsageException("usage: shogun multirepo workspace set [--alias <alias>] [--default] | clear")

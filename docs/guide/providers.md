@@ -3,7 +3,7 @@
 A provider adds support for one kind of tooling to a repository's worktrees. A repository turns providers on in its [`.shogunai.json`](configuration.md#repository-configuration-shogunaijson) under `providers`; repositories without a provider never see any of its sections, buttons or commands, and none of its tools run.
 
 ```json
-{ "providers": { "gradle": {}, "emulator": {}, "ios-simulator": {}, "xcode": {}, "maven": {}, "docker-compose": {} } }
+{ "providers": { "gradle": {}, "emulator": {}, "ios-simulator": {}, "xcode": {}, "maven": {}, "docker-compose": {}, "desktop-app": { "module": ":desktopApp" } } }
 ```
 
 | Provider | For | Platforms |
@@ -14,6 +14,7 @@ A provider adds support for one kind of tooling to a repository's worktrees. A r
 | [`xcode`](#xcode) | Xcode DerivedData and the shared compilation cache. | macOS |
 | [`maven`](#maven) | Maven builds: a memory bound and the Maven daemons. | Any; the daemon list needs `ps` (macOS, Linux) |
 | [`docker-compose`](#docker-compose) | A Docker Compose project and ports per worktree. | Any with the Docker CLI |
+| [`desktop-app`](#compose-desktop-app) | A Compose Desktop app per worktree, run in the background without taking the desktop. | macOS |
 
 ## Detecting stacks
 
@@ -28,6 +29,8 @@ You don't have to know which providers exist. ShogunAi looks at the files of the
 | Docker Compose | `compose.yaml`, `compose.yml`, `docker-compose.yaml` or `docker-compose.yml` in the main folder | `docker-compose` |
 
 In the project settings, "Repository configuration" lists the providers the repository could use and doesn't declare yet, with the files that revealed them, and "Turn on" switches the provider on as an unsaved change: nothing is written until you save and confirm the preview. `shogun stacks` prints the same from a terminal and changes nothing. A suggestion is only a hint (a `pom.xml` in a fixture folder also counts), so the evidence is always shown.
+
+ShogunAi also looks, at any depth outside build and tool folders (`build`, `.gradle`, `node_modules`, `Pods`, `DerivedData`), for the untracked files a fresh mobile worktree can't build without: `local.properties`, `keystore.properties`, `key.properties`, `*.jks`, `*.keystore`, `google-services.json` and `GoogleService-Info.plist`. Each one nothing provisions yet (local files, `copy`, `link` or `.worktreeinclude`) is suggested as an anchored `link` pattern, such as `/app/google-services.json`, so rotating it in the base repository updates every worktree. It also reads the `storeFile` keys of those properties files (any key ending in `storeFile`, such as `RELEASE_STORE_FILE`): a keystore they name inside the repository is suggested too, and a relative path that leaves the repository is reported, because it won't resolve from a worktree that lives in another folder. The project settings list them under "Worktree files" and `shogun stacks` prints them; nothing is written until you accept and save.
 
 ## Gradle
 
@@ -86,17 +89,33 @@ Daemon inspection needs `ps` and `lsof` (macOS and Linux).
 
 Two worktrees running `docker compose up` share container, network and volume names, and publish the same host ports. The provider gives each worktree its own:
 
-- `COMPOSE_PROJECT_NAME` is `<repository folder>-<worktree folder>`, lowercased, with every character other than letters, digits, `-` and `_` replaced by `-` (`main-repo` and `TASK-123` give `main-repo-task-123`). A folder name that normalising would make ambiguous (`fix login (2)`, or mixed case) gets a short stable hash, and a name over 50 characters is shortened keeping it, so different worktrees get different names. The name is derived, not stored, so nothing is left behind when a worktree is removed. A `COMPOSE_PROJECT_NAME` declared in `env` takes precedence.
+- `COMPOSE_PROJECT_NAME` is `<repository folder>-<worktree folder>`, lowercased, with every character other than letters, digits, `-` and `_` replaced by `-` (`main-repo` and `TASK-123` give `main-repo-task-123`). A folder name that normalising would make ambiguous (`fix login (2)`, or mixed case) gets a short stable hash, and a name over 50 characters is shortened keeping it, so different worktrees get different names. A `COMPOSE_PROJECT_NAME` declared in `env` takes precedence.
 - `portVariables` is optional: each name becomes a variable with a free port in 20000-29999 reserved for that worktree (the same rules as `${port}`), so the Compose file can publish `${DB_PORT}:5432` without colliding. Names follow the variable name rule and can't be reserved names; a name also declared in `env` gets the declared value and no port.
 
-The app shows a "Compose projects" section with the projects `docker compose ls` reports for the repository's worktrees (status and worktree) and the projects of removed worktrees: those whose name starts with the repository folder's name, whose compose files lived in the repository or its worktrees folder, and that match no existing worktree. Projects of other repositories, even with a similar prefix, are never touched. "Take down the projects of removed worktrees" runs `docker compose -p <name> down`, which removes containers and networks and keeps volumes (volumes are only removed with `--volumes` from the command line). "Clean up" has a checked option to take down the projects of the worktrees it removes; if Docker isn't available the worktrees are still removed and the report says the projects were kept.
+### Starting and building the services
+
+`shogun compose up` starts the services of the worktree you're in, detached, with its `COMPOSE_PROJECT_NAME` and port variables, so you never pass `-p` or ports by hand; `--build` builds first, and everything after `--` goes to `docker compose` as is (service names, `--wait`). `shogun compose build` only builds. Docker Compose's output is shown as it runs. The worktree's detail in the app has a Compose section with the project's name and state (`Not started` when Docker knows no such project) and Start, Build and Take down actions. The SessionStart context tells Claude to use `shogun compose up`.
+
+### What removed worktrees leave behind
+
+Taking a project down keeps its volumes, and Compose never removes the images it built, so removed worktrees leave volumes, networks and images behind. ShogunAi records in `~/.shogunai/compose-projects.json` the project name it gives each worktree (when its environment is resolved and on every `up` or `build`); a volume, network or image whose `com.docker.compose.project` label is a recorded name whose worktree no longer exists is a leftover of that worktree. A name that no other worktree uses now and that no other repository has recorded is the only thing that counts, so projects of other repositories, even with a similar prefix, are never touched. Images pulled from a registry (such as `postgres`) carry no Compose label and are never removed.
+
+The Machine section's "Compose projects" view lists the projects `docker compose ls` reports for the repository's worktrees (status and worktree), the projects of removed worktrees (recorded ones, and those whose compose files lived in the repository or its worktrees folder), and, after them, the leftovers of removed worktrees. "Take down the projects of removed worktrees" runs `docker compose -p <name> down`, which removes containers and networks and keeps volumes. "Remove networks and images" removes the leftovers except volumes; "Remove volumes too" asks first, because their data is lost. Nothing is ever forced: an image or network still used by a container is kept and reported.
+
+"Clean up" has a checked option to take down the projects of the worktrees it removes and remove their networks and built images, and an unchecked one to remove their volumes too; if Docker isn't available the worktrees are still removed and the report says the projects were kept.
+
+Worktrees removed before this registry existed weren't recorded: their projects with containers are still found by their compose files, and the rest can be removed with `docker volume rm` and `docker image rm`.
 
 ```bash
-shogun compose                     # the Compose projects of the worktrees and their status
+shogun compose up                  # start this worktree's services (detached) with its project name and ports
+shogun compose up --build -- api   # build first, and only the api service
+shogun compose build               # build this worktree's services
+shogun compose                     # the Compose projects of the worktrees and what removed worktrees left
 shogun compose down                # take down the projects of removed worktrees (volumes kept)
 shogun compose down TASK-123       # take down one worktree's project
-shogun compose down --volumes      # also remove their volumes
-shogun clean --yes --down-compose-projects  # also take down the projects of the removed worktrees
+shogun compose prune               # list the networks and images left by removed worktrees
+shogun compose prune --yes         # remove them (add --volumes to remove their volumes too)
+shogun clean --yes --down-compose-projects  # also take down the removed worktrees' projects and remove their images
 ```
 
 Docker is only run for repositories that declare the provider, and only the Docker CLI is used.
@@ -121,6 +140,25 @@ shogun emulator stop
 - The worktree list shows each emulator with Start and Stop, and "Clean up" (or `shogun clean --stop-emulators`) stops the emulators of the worktrees it removes.
 - The SDK is found through `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `sdk.dir` in `local.properties` or Android Studio's default location.
 - The adb server is shared by every worktree: agents must never restart it (`adb kill-server`) or force a device with `-s`, `-e` or `-d`. The `SessionStart` hook tells Claude so.
+
+## Compose Desktop app
+
+An agent checking a Compose Desktop app with computer use takes the screen, mouse and keyboard away from you, and only one agent can do it at a time. Turn on the desktop app provider to let each worktree's agent run its app in the background instead:
+
+```json
+{ "providers": { "desktop-app": { "module": ":desktopApp" } } }
+```
+
+`module` is the Gradle path of the app's module, which must use Compose Hot Reload (Compose Multiplatform 1.12 or later). `isolatedHome` (default `true`) gives the app its own user home per worktree, so it never touches your own data; set it to `false` for an app that must read the real home.
+
+```bash
+shogun headless start      # launch the app hidden, without taking focus
+shogun headless capture    # PNG of its window, even while hidden
+shogun headless status
+shogun headless stop
+```
+
+The agent drives the app through Compose Hot Reload's MCP server. See [Checking a desktop app in the background](headless-app.md) for the whole workflow, the macOS permissions it needs and what still needs the desktop.
 
 ## iOS simulator
 
