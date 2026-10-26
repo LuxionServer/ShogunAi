@@ -5,6 +5,19 @@ import java.time.Instant
 
 const val DEFAULT_DEVICE_WAIT_MINUTES = 30L
 
+enum class WaitQueueName(val key: String) {
+    EMULATOR("emulator"),
+    IOS_SIMULATOR("ios-simulator"),
+    DESKTOP("desktop"),
+}
+
+val ResourceKind.queueName: WaitQueueName
+    get() = when (this) {
+        ResourceKind.EMULATOR -> WaitQueueName.EMULATOR
+        ResourceKind.IOS_SIMULATOR -> WaitQueueName.IOS_SIMULATOR
+        ResourceKind.GRADLE_DAEMON -> throw IllegalArgumentException("Gradle daemons aren't waited for")
+    }
+
 data class ProcessIdentity(val pid: Long, val startedAt: Long?)
 
 data class WaitTicket(

@@ -24,6 +24,7 @@ import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.usecase.Activity
+import app.luxion.shogunai.ui.machine.DesktopTurnWatch
 import app.luxion.shogunai.ui.machine.MachineProject
 import app.luxion.shogunai.ui.tray.TrayOpenAction
 import app.luxion.shogunai.ui.tray.TrayWorktree
@@ -76,6 +77,7 @@ class WorktreeBoard(
     private val onWorktreeUsed: (WorktreeRef) -> Unit = {},
     val inactivity: InactivityPreferences = InactivityPreferences(preferences),
     private val multirepoActions: MultirepoActions = MultirepoActions.NONE,
+    val desktopTurn: DesktopTurnWatch = DesktopTurnWatch.NONE,
 ) : ViewModel() {
     private val deviceRefreshes = mutableMapOf<String, Instant>()
     private val listPermits = Semaphore(MAX_PARALLEL_LISTS)
@@ -752,6 +754,7 @@ class WorktreeBoard(
     }
 
     private suspend fun checkProjects() {
+        desktopTurn.refresh()
         val unchanged = shownEntries()
             .filterNot { it.holder.isBusy }
             .filter { it.holder.checkFingerprint() == FingerprintCheck.UNCHANGED }

@@ -50,8 +50,10 @@ class FakeAppWindowService(
     private var polls = 0
     val hidden = mutableListOf<Long>()
     val captures = mutableListOf<Pair<AppWindow, String>>()
+    var queries = 0
 
     override suspend fun mainWindow(pid: Long): AppWindow? {
+        queries++
         polls++
         if (polls <= windowAfterPolls) return null
         return windows[pid]
@@ -68,5 +70,8 @@ class FakeAppWindowService(
         captures += window to outputPath
     }
 
-    override suspend fun isGranted(permission: MacPermission): Boolean = permission in granted
+    override suspend fun isGranted(permission: MacPermission): Boolean {
+        queries++
+        return permission in granted
+    }
 }

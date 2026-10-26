@@ -33,7 +33,7 @@ The turn is stored in `~/.shogunai/desktop-turn.json` with the holder's worktree
 
 Alternative considered: a per-worktree lease in the admin folder, as devices do. Rejected because finding the holder would mean scanning every worktree of every repository, and two worktrees could each believe they hold it between scans.
 
-The holder is identified by its admin directory (normalized), as device holders are, so the main checkout can hold it too. A recorded holder whose worktree folder no longer exists counts as free.
+The holder is identified by its admin directory (normalized), as device holders are, so the main checkout can hold it too. A holder whose worktree was removed outside ShogunAi keeps the turn only until it expires.
 
 ### Generalize the queue key and extract the waiting loop
 
@@ -56,6 +56,10 @@ Alternative considered: copying the loop. Rejected: the FIFO, liveness and inter
 ### CLI surface
 
 `shogun desktop acquire|release|status`, wired in `CliCommand`/`ShogunCli` like `emulator`, reusing `DeviceWaitText` patterns for progress lines (a `DesktopWaitText` with the same "print only on change" rule) and `CommandJson` for the JSON objects. `--wait`/`--wait-timeout` parsing is shared with the device commands. `shogun status` reads the turn once per run and adds the `desktop` field per worktree (additive, per the JSON stability rule).
+
+### The desktop turn rule in every session start
+
+The rule to take the turn before computer use applies in every repository, so it is a session-start rule with no condition. That raises the session-start budget from ten to eleven lines in the richest context (worktree, Herdr, emulator, simulator and desktop app providers). Alternative considered: keeping it out of the session start and only in `shogun guide resources`; rejected because computer use is exactly what agents start without reading the guide.
 
 ### Desktop app
 

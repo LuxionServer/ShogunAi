@@ -3,7 +3,7 @@ package app.luxion.shogunai.infrastructure
 import app.luxion.shogunai.domain.io.DeviceWaitQueue
 import app.luxion.shogunai.domain.io.ProcessLiveness
 import app.luxion.shogunai.domain.model.ProcessIdentity
-import app.luxion.shogunai.domain.model.ResourceKind
+import app.luxion.shogunai.domain.model.WaitQueueName
 import app.luxion.shogunai.domain.model.WaitTicket
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
@@ -20,11 +20,11 @@ class NioDeviceWaitQueue(
 
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
 
-    override fun read(kind: ResourceKind): List<WaitTicket> = readAll()[kind.queueKey].orEmpty().map { it.toTicket() }
+    override fun read(queue: WaitQueueName): List<WaitTicket> = readAll()[queue.key].orEmpty().map { it.toTicket() }
 
-    override fun write(kind: ResourceKind, tickets: List<WaitTicket>) {
-        val all = readAll() - kind.queueKey
-        val updated = if (tickets.isEmpty()) all else all + (kind.queueKey to tickets.map { it.toEntry() })
+    override fun write(queue: WaitQueueName, tickets: List<WaitTicket>) {
+        val all = readAll() - queue.key
+        val updated = if (tickets.isEmpty()) all else all + (queue.key to tickets.map { it.toEntry() })
         val file = queueFile()
         if (updated.isEmpty()) {
             Files.deleteIfExists(file)
@@ -49,9 +49,6 @@ class NioDeviceWaitQueue(
     }
 
     private fun queueFile(): Path = machineDirectory.resolve(QUEUE_FILE_NAME)
-
-    private val ResourceKind.queueKey: String
-        get() = name.lowercase().replace('_', '-')
 
     @Serializable
     private data class QueueFile(val queues: Map<String, List<TicketEntry>> = emptyMap())

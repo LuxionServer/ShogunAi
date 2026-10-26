@@ -3,6 +3,8 @@ package app.luxion.shogunai.ui.worktree
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.HeadlessAppProcess
+import app.luxion.shogunai.domain.model.HeadlessAppState
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.Worktree
@@ -10,6 +12,7 @@ import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.WorktreeOrigin
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.model.WorktreeStatus
+import app.luxion.shogunai.domain.model.toLocalClockTime
 import app.luxion.shogunai.ui.i18n.EnglishStrings
 import app.luxion.shogunai.ui.theme.Status
 import java.time.Duration
@@ -56,8 +59,12 @@ class WorktreeRowModelTest {
         origin: WorktreeOrigin? = WorktreeOrigin.SHOGUNAI,
         projectName: String? = null,
         inactiveAfter: Duration = Duration.ofDays(3),
+        desktopTurn: WorktreeDesktopTurn? = null,
+        headlessApp: HeadlessAppProcess? = null,
     ) = worktreeRowModel(
         worktree, status, mainBranchName, agents, emulator, simulator, origin, projectName, inactiveAfter, now, EnglishStrings,
+        desktopTurn = desktopTurn,
+        headlessApp = headlessApp,
     )
 
     @Test
@@ -149,6 +156,53 @@ class WorktreeRowModelTest {
         assertNull(stopped.execution.device)
         assertTrue(bootedSimulator.execution.device!!.isSimulator)
         assertNull(shutdownSimulator.execution.device)
+    }
+
+    @Test
+    fun `a worktree holding the desktop shows it on the second line with its expiry in the tooltip`() {
+        val expiresAt = now.plusSeconds(600)
+
+        val line = model(desktopTurn = WorktreeDesktopTurn.Holding(expiresAt.toEpochMilli())).execution.device!!
+
+        assertEquals(SecondLineKind.DESKTOP_HOLDER, line.kind)
+        assertEquals("Has the desktop", line.label)
+        assertEquals("Has the desktop until ${expiresAt.toLocalClockTime()}", line.tooltip)
+        assertEquals(0, line.moreCount)
+    }
+
+    @Test
+    fun `a worktree waiting for the desktop with a running app shows the wait first and counts the app`() {
+        val line = model(
+            desktopTurn = WorktreeDesktopTurn.Waiting(2),
+            headlessApp = HeadlessAppProcess(HeadlessAppState.RUNNING, 4242, "/home/dev/launch.log"),
+        ).execution.device!!
+
+        assertEquals(SecondLineKind.DESKTOP_WAITING, line.kind)
+        assertEquals("Waiting for the desktop, #2", line.label)
+        assertEquals(1, line.moreCount)
+        assertEquals("Waiting for the desktop, #2\nApp in the background", line.tooltip)
+    }
+
+    @Test
+    fun `the desktop turn comes before the device and the headless app after it`() {
+        val line = model(
+            emulator = WorktreeEmulator("emulator-5556", EmulatorState.RUNNING),
+            desktopTurn = WorktreeDesktopTurn.Holding(now.toEpochMilli()),
+            headlessApp = HeadlessAppProcess(HeadlessAppState.RUNNING, 4242, "/home/dev/launch.log"),
+        ).execution.device!!
+
+        assertEquals(SecondLineKind.DESKTOP_HOLDER, line.kind)
+        assertEquals(2, line.moreCount)
+    }
+
+    @Test
+    fun `a running headless app alone shows in the background and a stopped one doesn't`() {
+        val running = model(headlessApp = HeadlessAppProcess(HeadlessAppState.RUNNING, 4242, "/home/dev/launch.log")).execution.device!!
+        val stopped = model(headlessApp = HeadlessAppProcess(HeadlessAppState.STOPPED, null, "/home/dev/launch.log")).execution.device
+
+        assertEquals(SecondLineKind.HEADLESS_APP, running.kind)
+        assertEquals("App in the background", running.label)
+        assertNull(stopped)
     }
 
     @Test

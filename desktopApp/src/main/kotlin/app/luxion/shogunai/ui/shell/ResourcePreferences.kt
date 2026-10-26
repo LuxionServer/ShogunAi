@@ -35,6 +35,9 @@ class ResourcePreferences(
     var leaseDraft by mutableStateOf(CustomLimitDraft(settings.leaseMinutes.toString(), unlimited = false))
         private set
 
+    var desktopTurnDraft by mutableStateOf(CustomLimitDraft(settings.desktopTurnMinutes.toString(), unlimited = false))
+        private set
+
     val kinds: List<ResourceKind>
         get() = listOfNotNull(
             ResourceKind.EMULATOR,
@@ -86,13 +89,17 @@ class ResourcePreferences(
     }
 
     fun editLease(text: String) {
-        val number = text.trim().toIntOrNull()?.takeIf { it > 0 }
-        if (number == null) {
-            leaseDraft = CustomLimitDraft(text, unlimited = false, invalid = true)
-            return
-        }
-        leaseDraft = CustomLimitDraft(number.toString(), unlimited = false)
-        save(settings.copy(leaseMinutes = number))
+        leaseDraft = minutesDraft(text) { save(settings.copy(leaseMinutes = it)) }
+    }
+
+    fun editDesktopTurn(text: String) {
+        desktopTurnDraft = minutesDraft(text) { save(settings.copy(desktopTurnMinutes = it)) }
+    }
+
+    private fun minutesDraft(text: String, store: (Int) -> Unit): CustomLimitDraft {
+        val number = text.trim().toIntOrNull()?.takeIf { it > 0 } ?: return CustomLimitDraft(text, unlimited = false, invalid = true)
+        store(number)
+        return CustomLimitDraft(number.toString(), unlimited = false)
     }
 
     fun chooseQuotaMode(mode: DerivedDataQuotaMode) {

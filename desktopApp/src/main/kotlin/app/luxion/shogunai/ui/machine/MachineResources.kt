@@ -48,7 +48,7 @@ import kotlinx.coroutines.launch
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
-enum class MachineResource { GRADLE_DAEMONS, ANDROID_EMULATORS, IOS_SIMULATORS, XCODE_DERIVED_DATA, MAVEN_DAEMONS, COMPOSE_PROJECTS }
+enum class MachineResource { GRADLE_DAEMONS, ANDROID_EMULATORS, IOS_SIMULATORS, XCODE_DERIVED_DATA, MAVEN_DAEMONS, COMPOSE_PROJECTS, DESKTOP_TURN }
 
 data class MachineProject(
     val project: Project,
@@ -67,6 +67,7 @@ data class MachineSummary(
     val calculating: Boolean = false,
     val quotaBytes: Long? = null,
     val quotaAutomatic: Boolean = false,
+    val holder: String? = null,
 )
 
 sealed interface PoolNoticeContent {
@@ -120,13 +121,20 @@ class MachineResources(
     private val onDevicesChanged: suspend (projectId: String) -> Unit = {},
     private val processInterval: Duration = PROCESS_INTERVAL,
     private val summaryInterval: Duration = SUMMARY_INTERVAL,
+    val desktopTurn: DesktopTurnWatch = DesktopTurnWatch.NONE,
 ) {
     private var shownJob: Job? = null
     var shown by mutableStateOf<MachineResource?>(null)
         private set
 
-    var summaries by mutableStateOf<Map<MachineResource, MachineSummary>>(emptyMap())
-        private set
+    private var providerSummaries by mutableStateOf<Map<MachineResource, MachineSummary>>(emptyMap())
+
+    val summaries: Map<MachineResource, MachineSummary>
+        get() {
+            val turn = desktopTurn.state
+            if (!desktopTurn.isActive) return providerSummaries
+            return providerSummaries + (MachineResource.DESKTOP_TURN to MachineSummary(turn.waiting.size, holder = turn.holder?.displayName))
+        }
 
     private var daemonProcesses by mutableStateOf<MachineLoad<List<DaemonProcess>>>(MachineLoad.Loading)
     private var mavenProcesses by mutableStateOf<MachineLoad<List<MavenDaemonProcess>>>(MachineLoad.Loading)
@@ -216,7 +224,12 @@ class MachineResources(
         get() = projects().flatMapTo(mutableSetOf()) { it.declares }
 
     val visibleResources: List<MachineResource>
-        get() = MachineResource.entries.filter { it in declared }
+        get() {
+            val resources = declared + setOfNotNull(MachineResource.DESKTOP_TURN.takeIf { desktopTurn.isActive || shown == MachineResource.DESKTOP_TURN })
+            return MachineResource.entries.filter { it in resources }
+        }
+
+    fun ownerOfPath(worktreePath: String): ProjectOwner = attributeToProjects(worktreePath, worktreeSets, pathExists)
 
     private val worktreeSets: List<ProjectWorktreeSet>
         get() = projects().map { ProjectWorktreeSet(it.project.id, it.worktrees) }
@@ -354,7 +367,7 @@ class MachineResources(
 
     suspend fun refreshSummaries() {
         val resources = declared
-        val current = summaries.filterKeys { it in resources }.toMutableMap()
+        val current = providerSummaries.filterKeys { it in resources }.toMutableMap()
         if (MachineResource.GRADLE_DAEMONS in resources) {
             trimGradleDaemons()
             useCases.listDaemons().getOrNull()?.let { daemons ->
@@ -409,7 +422,8 @@ class MachineResources(
         } else {
             stopDerivedDataMeasuring()
         }
-        summaries = current
+        desktopTurn.refresh()
+        providerSummaries = current
     }
 
     private suspend fun trimGradleDaemons() {
@@ -436,6 +450,7 @@ class MachineResources(
             MachineResource.XCODE_DERIVED_DATA -> loadDerivedData(remeasure)
             MachineResource.MAVEN_DAEMONS -> loadMavenDaemons()
             MachineResource.COMPOSE_PROJECTS -> loadComposeProjects()
+            MachineResource.DESKTOP_TURN -> desktopTurn.refresh()
         }
     }
 
@@ -816,6 +831,7 @@ fun poolKindOf(resource: MachineResource): ResourceKind? = when (resource) {
     MachineResource.XCODE_DERIVED_DATA -> null
     MachineResource.MAVEN_DAEMONS -> null
     MachineResource.COMPOSE_PROJECTS -> null
+    MachineResource.DESKTOP_TURN -> null
 }
 
 private fun machineResourceOf(kind: ResourceKind): MachineResource = when (kind) {

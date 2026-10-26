@@ -9,7 +9,7 @@ An agent that checks a Compose Desktop app with computer use takes over your scr
 | `shogun headless start` | The agent | Launches the worktree's app without taking focus, with its own user home, and hides it. |
 | Compose Hot Reload's MCP server | The agent, as an MCP server | Reads the app's semantic tree and clicks, types and scrolls through it, in the background. |
 | `shogun headless capture` | The agent | Saves a PNG of the app's window, even while hidden or covered. |
-| `shogun headless stop` | The agent, or the removal of the worktree | Ends the app. |
+| `shogun headless stop` | The agent, the worktree's detail in the desktop app, or the removal of the worktree | Ends the app. |
 
 ## Setting up a repository
 
@@ -52,7 +52,11 @@ The `SessionStart` hook gives Claude these rules in repositories that declare th
 
 ## What still needs the desktop
 
-Real keyboard input doesn't reach an app in the background (the window isn't active, and the toolkit drops key events for it), and neither do keyboard shortcuts, native menus, the menu bar, system dialogs or hover. Checking those still means driving the real desktop with computer use.
+Real keyboard input doesn't reach an app in the background (the window isn't active, and the toolkit drops key events for it), and neither do keyboard shortcuts, native menus, the menu bar, system dialogs or hover. Checking those still means driving the real desktop with computer use, which the agent does after taking the machine's desktop turn with `shogun desktop acquire --wait`, so only one agent drives the desktop at a time, and giving it back with `shogun desktop release` (see [`desktop`](cli.md#desktop)).
+
+## In the desktop app
+
+A worktree whose app is running shows it in the second line of its row, and its detail shows the process id and the launch log with a "Stop" action. The desktop app only checks the recorded process for this, never the macOS window tools, so it asks for no permission. When removing or cleaning up a worktree can't stop its app, a notice says so until you dismiss it.
 
 ## Other platforms
 

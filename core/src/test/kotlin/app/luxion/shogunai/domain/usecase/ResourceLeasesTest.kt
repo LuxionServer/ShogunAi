@@ -84,6 +84,15 @@ class ResourceLeasesTest {
     }
 
     @Test
+    fun `the desktop turn duration defaults to 10 minutes and rejects non positive values`() {
+        assertEquals(Duration.ofMinutes(10), app.luxion.shogunai.domain.model.ResourceSettings().desktopTurnDuration)
+        assertEquals(Duration.ofMinutes(10), app.luxion.shogunai.domain.model.ResourceSettings(desktopTurnMinutes = 0).desktopTurnDuration)
+        assertEquals(Duration.ofMinutes(10), app.luxion.shogunai.domain.model.ResourceSettings(desktopTurnMinutes = -3).desktopTurnDuration)
+        pool.settings.settings = pool.settings.settings.copy(desktopTurnMinutes = 15)
+        assertEquals(Duration.ofMinutes(15), pool.limits.desktopTurnDuration())
+    }
+
+    @Test
     fun `a stored lease duration is the one resolved`() {
         pool.settings.settings = pool.settings.settings.copy(leaseMinutes = 45)
 

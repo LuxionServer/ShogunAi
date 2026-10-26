@@ -8,6 +8,7 @@ import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.toLocalClockTime
 import app.luxion.shogunai.domain.usecase.GitFailureCause
+import java.time.Instant
 
 internal fun englishErrorTexts(error: Throwable, gitCause: GitFailureCause): ErrorTexts = when (error) {
     is WorktreeError.GitCommandFailed -> englishGitTexts(gitCause)
@@ -174,6 +175,19 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "No ${englishKindName(error.kind).removeSuffix("s")} was freed within ${error.waited.toMinutes()} min: " +
             error.holders.joinToString("; ") { "${it.displayName} (${englishHolderState(it.state)}${englishProtection(it)})" } + ".",
         "Stop one of them, or raise the limit of ${error.limit} in Preferences.",
+    )
+    is WorktreeError.DesktopTurnTaken -> ErrorTexts(
+        error.holder?.let { "The desktop is taken by ${it.displayName} until ${Instant.ofEpochMilli(it.expiresAt).toLocalClockTime()}." }
+            ?: "Other worktrees are waiting for the desktop first.",
+        "Wait for it with shogun desktop acquire --wait, or release it from the Desktop view.",
+    )
+    is WorktreeError.DesktopTurnWaitTimedOut -> ErrorTexts(
+        "The desktop wasn't freed within ${error.waited.toMinutes()} min.",
+        "Release it from the Desktop view, or try again later.",
+    )
+    is WorktreeError.DesktopTurnHeldByOther -> ErrorTexts(
+        "The desktop turn belongs to ${error.holder.displayName}.",
+        "Only that worktree, or you from the Desktop view, can release it.",
     )
     is WorktreeError.AndroidSdkNotFound -> ErrorTexts(
         "The Android SDK wasn't found.",

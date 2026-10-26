@@ -21,6 +21,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.DesktopMac
+import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.FiberNew
 import androidx.compose.material.icons.filled.FolderOff
 import androidx.compose.material.icons.filled.Pause
@@ -250,10 +252,10 @@ private fun AgentLineView(agent: AgentLine, compact: Boolean) {
 @Composable
 private fun DeviceLineView(device: DeviceLine, compact: Boolean) {
     val color = ShogunTheme.status.of(device.status).color
-    WithTooltip(label = device.label) {
+    WithTooltip(label = device.tooltip) {
         CellLine {
             Icon(
-                imageVector = if (device.isSimulator) Icons.Default.PhoneIphone else Icons.Default.PhoneAndroid,
+                imageVector = device.kind.icon,
                 contentDescription = device.label,
                 tint = color,
                 modifier = Modifier.size(CellIconSize),
@@ -265,11 +267,23 @@ private fun DeviceLineView(device: DeviceLine, compact: Boolean) {
                     color = color,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
                 )
+                if (device.moreCount > 0) {
+                    Text("+${device.moreCount}", style = ShogunTheme.typography.dataSmall, maxLines = 1)
+                }
             }
         }
     }
 }
+
+private val SecondLineKind.icon: ImageVector
+    get() = when (this) {
+        SecondLineKind.DESKTOP_HOLDER, SecondLineKind.DESKTOP_WAITING -> Icons.Default.DesktopMac
+        SecondLineKind.EMULATOR -> Icons.Default.PhoneAndroid
+        SecondLineKind.SIMULATOR -> Icons.Default.PhoneIphone
+        SecondLineKind.HEADLESS_APP -> Icons.Default.DesktopWindows
+    }
 
 @Composable
 private fun NameCellView(name: NameCell, onOpenGroupTag: () -> Unit, modifier: Modifier) {

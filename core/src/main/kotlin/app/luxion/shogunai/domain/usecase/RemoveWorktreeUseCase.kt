@@ -16,9 +16,10 @@ class RemoveWorktreeUseCase(
     private val executor: ShellCommandExecutor,
     private val closeHerdrWorkspaces: CloseHerdrWorkspacesUseCase? = null,
     private val fileManager: FileManager? = null,
-    private val stopHeadlessApp: StopHeadlessAppUseCase? = null,
+    stopHeadlessApp: StopHeadlessAppUseCase? = null,
+    releaseDesktopTurn: ReleaseDesktopTurnUseCase? = null,
 ) {
-    private val folderRemoval = WorktreeFolderRemoval(config, executor, fileManager, closeHerdrWorkspaces, stopHeadlessApp)
+    private val folderRemoval = WorktreeFolderRemoval(config, executor, fileManager, closeHerdrWorkspaces, stopHeadlessApp, releaseDesktopTurn)
 
     suspend operator fun invoke(
         worktreePath: String,

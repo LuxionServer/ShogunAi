@@ -13,9 +13,11 @@ internal class WorktreeFolderRemoval(
     private val fileManager: FileManager?,
     private val closeHerdrWorkspaces: CloseHerdrWorkspacesUseCase?,
     private val stopHeadlessApp: StopHeadlessAppUseCase? = null,
+    private val releaseDesktopTurn: ReleaseDesktopTurnUseCase? = null,
 ) {
     suspend fun remove(path: String, force: Boolean, workspaceId: String?): HolderClosing {
         val headlessAppFailure = stopHeadlessApp?.beforeRemoving(path)
+        releaseDesktopTurn?.onWorktreeRemoved(path)
         return removeFolder(path, force, workspaceId).copy(headlessAppFailure = headlessAppFailure)
     }
 

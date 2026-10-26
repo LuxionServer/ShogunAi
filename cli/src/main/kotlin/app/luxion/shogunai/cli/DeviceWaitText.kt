@@ -23,7 +23,7 @@ private fun PoolHolder.waitDescription(): String {
     return "$displayName ${state.name.lowercase()}$protectionText"
 }
 
-private fun ordinal(position: Int): String {
+internal fun ordinal(position: Int): String {
     val suffix = when {
         position % 100 in 11..13 -> "th"
         position % 10 == 1 -> "st"

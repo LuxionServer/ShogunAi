@@ -1,5 +1,7 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.domain.model.HeadlessAppProcess
+import app.luxion.shogunai.domain.model.HeadlessAppState
 import app.luxion.shogunai.ui.components.NoticeKind
 import app.luxion.shogunai.ui.components.Notice
 import androidx.compose.foundation.background
@@ -31,6 +33,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboard
 import app.luxion.shogunai.ui.components.copyText
 import androidx.compose.runtime.rememberCoroutineScope
+import app.luxion.shogunai.ui.machine.DesktopTurnWatch
+import app.luxion.shogunai.ui.machine.ReleaseDesktopTurnDialog
+import app.luxion.shogunai.ui.machine.clockTime
 import kotlinx.coroutines.launch
 import androidx.compose.ui.text.style.TextOverflow
 import app.luxion.shogunai.domain.model.Divergence
@@ -79,6 +84,7 @@ fun WorktreeDetailPane(
     modifier: Modifier = Modifier,
     projectName: String? = null,
     projectId: String? = null,
+    desktopTurn: DesktopTurnWatch = DesktopTurnWatch.NONE,
 ) {
     val strings = LocalStrings.current
     val status = viewModel.statuses[worktree.path]
@@ -241,6 +247,14 @@ fun WorktreeDetailPane(
             onStartEmulator = { viewModel.startEmulator(worktree) },
             onStopEmulator = { viewModel.stopEmulator(worktree) },
         )
+        DesktopTurnSection(worktree, desktopTurn)
+        if (viewModel.isHeadlessAppRepository && !worktree.isPrunable) {
+            HeadlessAppSection(
+                app = viewModel.headlessApps[worktree.path],
+                isStopping = worktree.path in viewModel.stoppingHeadlessApps,
+                onStop = { viewModel.stopHeadlessApp(worktree) },
+            )
+        }
         if (viewModel.isComposeRepository && !worktree.isPrunable) {
             ComposeSection(
                 state = viewModel.composeStates[worktree.path],
@@ -427,6 +441,62 @@ private fun ColumnScope.DevicesSection(
         if (showSimulator) {
             SimulatorValue(simulator, simulatorRelease, isStartingSimulator, isStoppingSimulator, strings, onStartSimulator, onStopSimulator)
         }
+    }
+}
+
+@Composable
+private fun ColumnScope.DesktopTurnSection(worktree: Worktree, watch: DesktopTurnWatch) {
+    val strings = LocalStrings.current
+    val scope = rememberCoroutineScope()
+    val held = watch.heldBy(worktree.path)
+    val waiting = watch.waitOf(worktree.path)
+    if (held == null && waiting == null) return
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+        SectionTitle(strings.desktopTurnDetailTitle)
+        if (held != null) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+                StatusChip(Status.INFO, strings.desktopHeldLabel)
+                Text(strings.desktopTurnHeld(clockTime(held.acquiredAt), clockTime(held.expiresAt)), style = ShogunTheme.typography.dataSmall)
+                if (watch.isReleasing) {
+                    InlineProgress(size = ProgressSize.Small)
+                } else {
+                    NeutralTextButton(onClick = watch::requestRelease) { Text(strings.releaseDesktopTurn, style = MaterialTheme.typography.bodySmall) }
+                }
+            }
+        }
+        if (waiting != null) {
+            DetailValue(strings.desktopTurnDetailWaiting(waiting.position, clockTime(waiting.ticket.since), waiting.holder?.displayName))
+        }
+    }
+    if (held != null) {
+        watch.pendingRelease?.let { pending ->
+            ReleaseDesktopTurnDialog(
+                holder = pending.displayName,
+                onConfirm = { scope.launch { watch.confirmRelease() } },
+                onDismiss = watch::cancelRelease,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ColumnScope.HeadlessAppSection(app: HeadlessAppProcess?, isStopping: Boolean, onStop: () -> Unit) {
+    val strings = LocalStrings.current
+    val running = app?.state == HeadlessAppState.RUNNING
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+        SectionTitle(strings.headlessAppDetailTitle)
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+            if (running) {
+                StatusChip(Status.SUCCESS, strings.headlessAppRunning(app.pid))
+            } else {
+                StatusChip(Status.NEUTRAL, strings.headlessAppStopped)
+            }
+            when {
+                isStopping -> InlineProgress(size = ProgressSize.Small)
+                running -> NeutralTextButton(onClick = onStop) { Text(strings.stopHeadlessApp, style = MaterialTheme.typography.bodySmall) }
+            }
+        }
+        if (running) MutedText(strings.headlessAppLog(app.logPath))
     }
 }
 

@@ -1,13 +1,18 @@
 package app.luxion.shogunai.ui.machine
 
 import app.luxion.shogunai.domain.model.CapacityProfile
+import app.luxion.shogunai.domain.model.DesktopTurn
+import app.luxion.shogunai.domain.model.DesktopTurnRelease
+import app.luxion.shogunai.domain.model.DesktopTurnState
 import app.luxion.shogunai.domain.model.PoolHolder
 import app.luxion.shogunai.domain.model.PoolHolderState
 import app.luxion.shogunai.domain.model.PoolRelease
 import app.luxion.shogunai.domain.model.PoolReleaseReason
 import app.luxion.shogunai.domain.model.PoolUsage
+import app.luxion.shogunai.domain.model.ProcessIdentity
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.ResourceSettings
+import app.luxion.shogunai.domain.model.WaitTicket
 import app.luxion.shogunai.domain.usecase.DeviceStart
 import app.luxion.shogunai.domain.usecase.GradleTrim
 import app.luxion.shogunai.domain.usecase.ResourceAcquisition
@@ -36,6 +41,7 @@ import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.usecase.ProjectOwner
+import app.luxion.shogunai.ui.i18n.EnglishStrings
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -180,12 +186,14 @@ class MachineResourcesTest {
         projects: List<MachineProject>,
         existing: Set<String> = emptySet(),
         onDevicesChanged: suspend (String) -> Unit = {},
+        desktopTurn: DesktopTurnWatch = DesktopTurnWatch.NONE,
     ) = MachineResources(
         scope = scope,
         useCases = useCases,
         projects = { projects },
         pathExists = { it in existing },
         onDevicesChanged = onDevicesChanged,
+        desktopTurn = desktopTurn,
     )
 
     @Test
@@ -894,5 +902,54 @@ class MachineResourcesTest {
         assertTrue(machine.derivedDataQuotaExceeded)
         assertEquals(listOf("TASK-1"), machine.derivedDataInUse)
         assertNull(machine.derivedDataTrimReport)
+    }
+
+    private val apiAdmin = "/home/dev/projects/api/.git/worktrees/api-TASK-9"
+
+    private fun heldByApi(waiting: Int = 0) = DesktopTurnState(
+        DesktopTurn(apiAdmin, apiWorktree.path, 0, Long.MAX_VALUE),
+        (1..waiting).map { WaitTicket("t$it", "/home/dev/projects/main-repo/.git/worktrees/TASK-$it", "/home/dev/projects/TASK-$it", ProcessIdentity(it.toLong(), 1), 0) },
+    )
+
+    private fun watchOf(state: () -> DesktopTurnState) = DesktopTurnWatch(
+        read = { Result.success(state()) },
+        forceRelease = { Result.success(DesktopTurnRelease.NobodyHolds) },
+    )
+
+    @Test
+    fun `the desktop entry shows only while someone holds or waits for the turn`() = machineTest {
+        var turn = DesktopTurnState(null, emptyList())
+        val machine = machine(useCases(Calls()), listOf(machineProject("api", listOf(apiWorktree), MachineResource.GRADLE_DAEMONS)), desktopTurn = watchOf { turn })
+
+        machine.refreshSummaries()
+        assertFalse(MachineResource.DESKTOP_TURN in machine.visibleResources)
+
+        turn = heldByApi(waiting = 2)
+        machine.refreshSummaries()
+
+        assertTrue(MachineResource.DESKTOP_TURN in machine.visibleResources)
+        assertEquals("api · api-TASK-9 · 2 waiting", machine.summaries[MachineResource.DESKTOP_TURN]?.text(MachineResource.DESKTOP_TURN, EnglishStrings))
+
+        turn = DesktopTurnState(null, heldByApi(waiting = 1).waiting)
+        machine.desktopTurn.refresh()
+
+        assertEquals("1 waiting", machine.summaries[MachineResource.DESKTOP_TURN]?.text(MachineResource.DESKTOP_TURN, EnglishStrings))
+    }
+
+    @Test
+    fun `the desktop entry shows alone when no project declares a provider`() = machineTest {
+        val machine = machine(useCases(Calls()), listOf(machineProject("api", listOf(apiWorktree))), desktopTurn = watchOf { heldByApi() })
+
+        machine.refreshSummaries()
+
+        assertEquals(listOf(MachineResource.DESKTOP_TURN), machine.visibleResources)
+    }
+
+    @Test
+    fun `the desktop holder is attributed to its project or to a folder outside them`() = machineTest {
+        val machine = machine(useCases(Calls()), listOf(machineProject("api", listOf(apiWorktree))), existing = setOf(apiWorktree.path, "/home/dev/elsewhere/TASK-7"))
+
+        assertEquals(ProjectOwner.Owned("api", apiWorktree.path), machine.ownerOfPath(apiWorktree.path))
+        assertEquals(ProjectOwner.Outside, machine.ownerOfPath("/home/dev/elsewhere/TASK-7"))
     }
 }

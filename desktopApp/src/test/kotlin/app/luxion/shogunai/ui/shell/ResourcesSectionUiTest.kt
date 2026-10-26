@@ -216,4 +216,28 @@ class ResourcesSectionUiTest {
 
         assertEquals(25, repository.settings.leaseMinutes)
     }
+
+    @Test
+    fun `the desktop turn duration shows its default and stores a new value immediately`() = runComposeUiTest {
+        show(preferences(showsQuota = false))
+
+        onNodeWithText("Desktop turn").assertIsDisplayed()
+        onNodeWithText("10").assertIsDisplayed()
+        onAllNodes(hasSetTextAction())[1].performTextClearance()
+        onAllNodes(hasSetTextAction())[1].performTextInput("15")
+
+        assertEquals(15, repository.settings.desktopTurnMinutes)
+        assertEquals(20, repository.settings.leaseMinutes)
+    }
+
+    @Test
+    fun `an invalid desktop turn duration shows the message and keeps the previous one`() = runComposeUiTest {
+        show(preferences(showsQuota = false))
+
+        onAllNodes(hasSetTextAction())[1].performTextClearance()
+        onAllNodes(hasSetTextAction())[1].performTextInput("0")
+
+        onNodeWithText("Must be a positive whole number of minutes").assertIsDisplayed()
+        assertEquals(10, repository.settings.desktopTurnMinutes)
+    }
 }

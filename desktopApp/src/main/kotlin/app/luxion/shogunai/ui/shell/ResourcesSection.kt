@@ -58,17 +58,17 @@ fun ResourcesSection(resources: ResourcePreferences) {
     if (resources.showsDerivedDataQuota) {
         DerivedDataQuotaRow(resources)
     }
-    LeaseDurationRow(resources)
+    MinutesRow(strings.leaseDurationLabel, strings.leaseDurationHint, resources.leaseDraft, resources::editLease)
+    MinutesRow(strings.desktopTurnDurationLabel, strings.desktopTurnDurationHint, resources.desktopTurnDraft, resources::editDesktopTurn)
 }
 
 @Composable
-private fun LeaseDurationRow(resources: ResourcePreferences) {
+private fun MinutesRow(label: String, hint: String, draft: CustomLimitDraft, onEdit: (String) -> Unit) {
     val strings = LocalStrings.current
-    val draft = resources.leaseDraft
     Column(modifier = Modifier.padding(top = Spacing.md)) {
-        Text(strings.leaseDurationLabel, style = MaterialTheme.typography.labelLarge)
+        Text(label, style = MaterialTheme.typography.labelLarge)
         Text(
-            strings.leaseDurationHint,
+            hint,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = Spacing.lg),
@@ -80,7 +80,7 @@ private fun LeaseDurationRow(resources: ResourcePreferences) {
         ) {
             OutlinedTextField(
                 value = draft.text,
-                onValueChange = { resources.editLease(it) },
+                onValueChange = onEdit,
                 singleLine = true,
                 isError = draft.invalid,
                 modifier = Modifier.width(88.dp).trackTextInputFocus(),

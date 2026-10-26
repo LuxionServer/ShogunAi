@@ -1,15 +1,23 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeDesktopTurnStore
+import app.luxion.shogunai.domain.FakeDeviceWaitQueue
+import app.luxion.shogunai.domain.FakeEnvironmentStateStore
+import app.luxion.shogunai.domain.FakeProcessLiveness
 import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
 import app.luxion.shogunai.domain.executor.CommandResult
+import app.luxion.shogunai.domain.model.DesktopTurn
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.MainBranch
+import app.luxion.shogunai.domain.model.ProcessIdentity
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.RunningAgent
+import app.luxion.shogunai.domain.model.WaitQueueName
+import app.luxion.shogunai.domain.model.WaitTicket
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeStatus
@@ -120,6 +128,25 @@ class CleanUpWorktreesUseCaseTest {
         assertTrue(executor.executed("git", "worktree", "remove", first.path))
         assertTrue(executor.executed("git", "worktree", "prune"))
         assertTrue(executor.executedCommands.none { it.getOrNull(1) == "branch" })
+    }
+
+    private fun desktopTurns(store: FakeDesktopTurnStore, queue: FakeDeviceWaitQueue) = ReleaseDesktopTurnUseCase(
+        DesktopTurnLedger(store, FakeEnvironmentStateStore(), queue, FakeProcessLiveness(), { path -> "/home/dev/projects/main-repo/.git/worktrees/${path.substringAfterLast('/')}" }),
+    )
+
+    @Test
+    fun `cleaning up releases the desktop turn and the waits of removed worktrees`() = runTest {
+        val admin1 = "/home/dev/projects/main-repo/.git/worktrees/TASK-1"
+        val admin2 = "/home/dev/projects/main-repo/.git/worktrees/TASK-2"
+        val store = FakeDesktopTurnStore(DesktopTurn(admin1, first.path, 0, Long.MAX_VALUE))
+        val queue = FakeDeviceWaitQueue()
+        queue.write(WaitQueueName.DESKTOP, listOf(WaitTicket("ticket", admin2, second.path, ProcessIdentity(3000, 1), 0)))
+
+        CleanUpWorktreesUseCase(config, executor(), releaseDesktopTurn = desktopTurns(store, queue))(listOf(first, second), mainBranch, deleteBranches = false)
+            .getOrThrow()
+
+        assertEquals(null, store.turn)
+        assertTrue(queue.read(WaitQueueName.DESKTOP).isEmpty())
     }
 
     @Test

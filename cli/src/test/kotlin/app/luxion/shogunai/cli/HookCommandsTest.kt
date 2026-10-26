@@ -9,6 +9,7 @@ import app.luxion.shogunai.domain.model.ResourceSettings
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeDerivedDataSource
+import app.luxion.shogunai.domain.FakeDesktopTurnStore
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeHerdrClient
@@ -24,6 +25,7 @@ import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.AgentSessionRecord
 import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.DesktopTurn
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
@@ -34,6 +36,7 @@ import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class HookCommandsTest {
@@ -83,6 +86,7 @@ class HookCommandsTest {
     private val err = StringBuilder()
 
     private val environmentStore = FakeEnvironmentStateStore()
+    private val desktopTurnStore = FakeDesktopTurnStore()
 
     private fun cli(
         executor: ShellCommandExecutor,
@@ -124,6 +128,7 @@ class HookCommandsTest {
         readAnswer = { "y" },
         sessionStore = sessionStore,
         agentProcessId = { 4242L },
+        desktopTurnStore = desktopTurnStore,
     )
 
     private fun createInput(name: String, cwd: String = base) =
@@ -662,6 +667,33 @@ class HookCommandsTest {
         runAgentState(stateInput("Notification", ""","notification_type":"permission_prompt""""))
 
         assertTrue(environmentStore.readLeases("$base/.git").isEmpty())
+    }
+
+    @Test
+    fun `agent-state releases the desktop turn when the holder's response or session ends`() {
+        listOf(stateInput("Stop", ""","stop_hook_active":false"""), stateInput("SessionEnd", ""","reason":"exit"""")).forEach { input ->
+            desktopTurnStore.turn = DesktopTurn("$base/.git", base, 0, Long.MAX_VALUE)
+
+            val (exitCode, _) = runAgentState(input)
+
+            assertEquals(0, exitCode, err.toString())
+            assertEquals("", out.toString())
+            assertNull(desktopTurnStore.turn)
+        }
+    }
+
+    @Test
+    fun `agent-state keeps the desktop turn on a permission prompt and for another worktree's session`() {
+        val own = DesktopTurn("$base/.git", base, 0, Long.MAX_VALUE)
+        desktopTurnStore.turn = own
+
+        runAgentState(stateInput("Notification", ""","notification_type":"permission_prompt""""))
+        assertEquals(own, desktopTurnStore.turn)
+
+        val other = DesktopTurn("$base/.git/worktrees/TASK-2", "/home/dev/projects/worktrees/TASK-2", 0, Long.MAX_VALUE)
+        desktopTurnStore.turn = other
+        runAgentState(stateInput("Stop", ""","stop_hook_active":false"""))
+        assertEquals(other, desktopTurnStore.turn)
     }
 
     @Test

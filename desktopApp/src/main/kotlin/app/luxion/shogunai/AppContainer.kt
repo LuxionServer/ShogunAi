@@ -1,5 +1,9 @@
 package app.luxion.shogunai
 
+import app.luxion.shogunai.domain.usecase.DesktopTurnLedger
+import app.luxion.shogunai.domain.usecase.ReadDesktopTurnUseCase
+import app.luxion.shogunai.domain.usecase.ReadHeadlessAppUseCase
+import app.luxion.shogunai.domain.usecase.ReleaseDesktopTurnUseCase
 import app.luxion.shogunai.infrastructure.MacAppWindowService
 import app.luxion.shogunai.infrastructure.GradleHeadlessAppLauncher
 import app.luxion.shogunai.domain.usecase.StopHeadlessAppUseCase
@@ -23,6 +27,8 @@ import app.luxion.shogunai.domain.usecase.ResolveMultirepoUseCase
 import app.luxion.shogunai.domain.usecase.WorktreeGroup
 import app.luxion.shogunai.infrastructure.JsonDerivedDataSizeStore
 import app.luxion.shogunai.infrastructure.JsonMultirepoSource
+import app.luxion.shogunai.infrastructure.NioDesktopTurnStore
+import app.luxion.shogunai.ui.machine.DesktopTurnWatch
 import app.luxion.shogunai.ui.multirepo.FolderInspection
 import app.luxion.shogunai.ui.multirepo.MultirepoActions
 import app.luxion.shogunai.ui.multirepo.MultirepoSetup
@@ -109,6 +115,8 @@ import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.domain.model.DerivedDataListing
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleProvider
+import app.luxion.shogunai.domain.model.HeadlessAppProcess
+import app.luxion.shogunai.domain.model.HeadlessAppStop
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.ProvisionDrift
@@ -427,6 +435,7 @@ class AppContainer {
         listGradleDaemons,
         agentActivity = ReadAgentActivityUseCase(agentSessionStore)::invoke,
     )
+    private val deviceWaitQueue = NioDeviceWaitQueue()
     private val acquireResource = AcquireWorktreeResourceUseCase(
         repositoryProvisioningSource,
         resolveEnvironment,
@@ -437,7 +446,7 @@ class AppContainer {
         androidSdk,
         readPool,
         { requested -> contributions.requesting(requested) },
-        NioDeviceWaitQueue(),
+        deviceWaitQueue,
         ProcessHandleLiveness(),
     )
     private val trimGradleDaemons = TrimGradleDaemonsUseCase(listGradleDaemons, stopGradleDaemons, resolveResourceLimits)
@@ -446,15 +455,27 @@ class AppContainer {
     private val startEmulator = StartWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, acquireResource, androidSdk)
     private val stopEmulator = StopWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)
     private val headlessAppLauncher = GradleHeadlessAppLauncher(shellCommandExecutor, Path.of(System.getProperty("user.home"), ".shogunai", "headless").toString())
-    private val stopHeadlessApp = StopHeadlessAppUseCase(
-        HeadlessAppWorktrees(
-            repositoryProvisioningSource,
-            { resolveEnvironment.directoriesOf(it).admin },
-            headlessAppLauncher,
-            MacAppWindowService(shellCommandExecutor, Path.of(System.getProperty("user.home"), ".shogunai", "headless").toString()),
-            fileManager,
-        ),
+    private val headlessAppWindows = MacAppWindowService(shellCommandExecutor, Path.of(System.getProperty("user.home"), ".shogunai", "headless").toString())
+    private val headlessAppWorktrees = HeadlessAppWorktrees(
+        repositoryProvisioningSource,
+        { resolveEnvironment.directoriesOf(it).admin },
         headlessAppLauncher,
+        headlessAppWindows,
+        fileManager,
+    )
+    private val stopHeadlessApp = StopHeadlessAppUseCase(headlessAppWorktrees, headlessAppLauncher)
+    private val readHeadlessApp = ReadHeadlessAppUseCase(headlessAppWorktrees, headlessAppWindows)
+    private val desktopTurnLedger = DesktopTurnLedger(
+        NioDesktopTurnStore(),
+        environmentStateStore,
+        deviceWaitQueue,
+        ProcessHandleLiveness(),
+        { resolveEnvironment.directoriesOf(it).admin },
+    )
+    private val releaseDesktopTurn = ReleaseDesktopTurnUseCase(desktopTurnLedger)
+    val desktopTurn = DesktopTurnWatch(
+        read = ReadDesktopTurnUseCase(desktopTurnLedger)::invoke,
+        forceRelease = releaseDesktopTurn::force,
     )
     private val readReleaseRecord = ReadReleaseRecordUseCase(resolveEnvironment, environmentStateStore)
     private val readEmulatorStates = ReadEmulatorStatesUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)
@@ -661,7 +682,7 @@ class AppContainer {
         listBranches = ListBranchesUseCase(config, shellCommandExecutor),
         fetchRemote = FetchRemoteUseCase(config, shellCommandExecutor),
         resolveStartPoint = { ref -> ResolveStartPointUseCase(shellCommandExecutor)(config.baseRepositoryPath, ref) },
-        remove = RemoveWorktreeUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient), fileManager, stopHeadlessApp),
+        remove = RemoveWorktreeUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient), fileManager, stopHeadlessApp, releaseDesktopTurn),
         deleteBranch = DeleteBranchUseCase(config, shellCommandExecutor),
         copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboardWriter),
         agents = AgentUseCases(config, agentChoices),
@@ -676,6 +697,7 @@ class AppContainer {
             fileManager,
             composeProjectRegistry,
             stopHeadlessApp,
+            releaseDesktopTurn,
         ),
         detectAgents = { worktrees -> detectRunningAgents(config, worktrees) },
         measureSize = MeasureWorktreeSizeUseCase(fileManager),
@@ -696,6 +718,16 @@ class AppContainer {
             stop = { worktreePath -> stopEmulator(config, worktreePath) },
             stopSerials = { serials -> runCatching { stopEmulator.stopSerials(config, serials) } },
             readRelease = { worktreePath -> readReleaseRecord(worktreePath, ResourceKind.EMULATOR) },
+        ),
+        headlessApp = HeadlessAppUseCases(
+            declared = {
+                withContext(Dispatchers.IO) {
+                    headlessAppWindows.isSupported &&
+                        runCatching { repositoryProvisioningSource.read(config.baseRepositoryPath).providers.desktopApp != null }.getOrDefault(false)
+                }
+            },
+            read = { worktreePath -> withContext(Dispatchers.IO) { readHeadlessApp.process(worktreePath) } },
+            stop = { worktreePath -> stopHeadlessApp(worktreePath) },
         ),
         simulator = SimulatorUseCases(
             declared = { withContext(Dispatchers.IO) { simulatorSetup.isAvailable(config.baseRepositoryPath) } },
@@ -849,7 +881,7 @@ data class WorktreeUseCases(
     val readEnvironment: suspend (Worktree) -> Result<WorktreeEnvironment> = { Result.success(WorktreeEnvironment()) },
     val releaseResources: ReleaseResourcesUseCases = ReleaseResourcesUseCases.NONE,
     val agents: AgentUseCases = AgentUseCases.NONE,
-
+    val headlessApp: HeadlessAppUseCases = HeadlessAppUseCases.NONE,
 )
 
 class ProvisioningUseCases(
@@ -1005,6 +1037,20 @@ data class EmulatorUseCases(
             start = { Result.failure(WorktreeError.EmulatorProviderNotDeclared) },
             stop = { Result.success(null) },
             stopSerials = { Result.success(emptyList()) },
+        )
+    }
+}
+
+data class HeadlessAppUseCases(
+    val declared: suspend () -> Boolean,
+    val read: suspend (String) -> Result<HeadlessAppProcess?>,
+    val stop: suspend (String) -> Result<HeadlessAppStop>,
+) {
+    companion object {
+        val NONE = HeadlessAppUseCases(
+            declared = { false },
+            read = { Result.success(null) },
+            stop = { Result.success(HeadlessAppStop(wasRunning = false, pid = null)) },
         )
     }
 }
