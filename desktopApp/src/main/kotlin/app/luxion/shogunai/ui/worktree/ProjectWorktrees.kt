@@ -16,6 +16,7 @@ import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.HerdrOpening
+import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.ProvisionDrift
 import app.luxion.shogunai.domain.model.WorktreeEnvironment
@@ -799,11 +800,12 @@ class ProjectWorktrees(
         onUsed(worktree.path)
         val agent = resolveAgent(worktree, picked)
         openingInHerdr = openingInHerdr + worktree.path
-        val agentPane = agents.orEmpty()[worktree.path].orEmpty().agentPaneToFocus()
+        val agentToFocus = agents.orEmpty()[worktree.path].orEmpty().agentToFocus()
         scope.launch {
             try {
-                val result = if (agentPane != null) {
-                    useCases.herdr.focusAgent(agentPane).map { HerdrOpening.FOCUSED }
+                val result = if (agentToFocus != null) {
+                    val (name, pane) = agentToFocus
+                    useCases.herdr.focusAgent(pane).map { HerdrOpening(HerdrOutcome.FOCUSED, pane, name) }
                 } else {
                     useCases.herdr.open(worktree, agent)
                 }
@@ -812,7 +814,7 @@ class ProjectWorktrees(
                         clearActionError(worktree.path)
                         success = WorktreeSuccess.OpenedInHerdr(
                             path = worktree.path,
-                            focused = opening == HerdrOpening.FOCUSED,
+                            outcome = opening.outcome,
                         )
                     }
                     .onFailure { recordActionError(worktree.path, it) }
@@ -940,8 +942,9 @@ class ProjectWorktrees(
         }
     }
 
-    private fun List<RunningAgent>.agentPaneToFocus(): String? =
-        (firstOrNull { it.waitsForUser && it.herdrPaneId != null } ?: firstOrNull { it.herdrPaneId != null })?.herdrPaneId
+    private fun List<RunningAgent>.agentToFocus(): Pair<String, String>? =
+        (firstOrNull { it.waitsForUser && it.herdrPaneId != null } ?: firstOrNull { it.herdrPaneId != null })
+            ?.let { agent -> agent.herdrPaneId?.let { agent.name to it } }
 
 
     fun copyLastCreatedLaunchCommand() {
@@ -1160,7 +1163,7 @@ sealed interface WorktreeStatusState {
 sealed interface WorktreeSuccess {
     data class Created(val path: String, val commandsSkipped: Boolean = false) : WorktreeSuccess
     data object RepairedAfterMove : WorktreeSuccess
-    data class OpenedInHerdr(val path: String, val focused: Boolean) : WorktreeSuccess
+    data class OpenedInHerdr(val path: String, val outcome: HerdrOutcome) : WorktreeSuccess
     data class BranchDeleted(val branch: String) : WorktreeSuccess
     data class CleanedUp(
         val removedCount: Int,

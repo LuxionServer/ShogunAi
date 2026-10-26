@@ -27,7 +27,7 @@ interface HerdrClient {
 
     suspend fun listWorkspaces(): List<HerdrWorkspace>
 
-    suspend fun listPanes(): List<HerdrPane>
+    suspend fun listPanes(workspaceId: String? = null): List<HerdrPane>
 
     suspend fun focusWorkspace(workspaceId: String)
 }

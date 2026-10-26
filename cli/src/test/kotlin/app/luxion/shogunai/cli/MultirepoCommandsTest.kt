@@ -18,6 +18,8 @@ import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
+import app.luxion.shogunai.domain.model.HerdrWorkspace
+import app.luxion.shogunai.domain.model.HerdrPane
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.Project
@@ -34,6 +36,7 @@ import java.nio.file.Files
 import kotlin.io.path.readText
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -104,6 +107,7 @@ class MultirepoCommandsTest {
         environmentVariable = { if (it == "CLAUDE_ENV_FILE") envFile.toString() else null },
         userHome = "/home/dev",
         herdr = herdrClient,
+        herdrAgentStartTimeout = 100.milliseconds,
         readAnswer = { answer },
         sessionStore = sessionStore,
         multirepoSource = multirepos,
@@ -237,6 +241,40 @@ class MultirepoCommandsTest {
             herdr.opened,
         )
         assertTrue(out.contains("opened $worktreesRoot/app/TASK-1 in Herdr with"))
+        assertTrue(out.contains("(pane w1:p1)"))
+    }
+
+    @Test
+    fun `open a group reports focused and started-agent members in json`() {
+        groupTask1()
+        val app = "$worktreesRoot/app/TASK-1"
+        val api = "$worktreesRoot/api/TASK-1"
+        val herdr = FakeHerdrClient(
+            alreadyOpen = setOf(app, api),
+            panes = listOf(HerdrPane("w1:p1", "w1", app, agent = "claude", agentStatus = "idle"), HerdrPane("w2:p1", "w2", api)),
+        )
+
+        val exitCode = cli(herdrClient = herdr).run(listOf("open", "TASK-1", "--herdr", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val repos = json()["repos"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(listOf("focused", "started-agent"), repos.map { it["result"]!!.jsonPrimitive.content })
+        assertEquals(listOf("w1:p1", "w2:p2"), repos.map { it["pane_id"]!!.jsonPrimitive.content })
+        assertEquals("claude", repos[0]["agent"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `open a group fails for a member whose agent doesn't start`() {
+        groupTask1()
+        val app = "$worktreesRoot/app/TASK-1"
+        val herdr = FakeHerdrClient(alreadyOpen = setOf(app), panes = listOf(HerdrPane("w1:p1", "w1", app, agent = "claude", agentStatus = "working")), startsAgents = false)
+
+        val exitCode = cli(herdrClient = herdr).run(listOf("open", "TASK-1", "--herdr"))
+
+        assertEquals(1, exitCode)
+        assertTrue(out.contains("focused $app in Herdr (already open, pane w1:p1)"), out.toString())
+        assertTrue(err.contains("couldn't open api ($worktreesRoot/api/TASK-1) in Herdr"), err.toString())
+        assertTrue(err.contains("didn't start in Herdr pane w2:p1"), err.toString())
     }
 
     @Test
@@ -263,6 +301,21 @@ class MultirepoCommandsTest {
         assertEquals(0, exitCode, err.toString())
         assertEquals(listOf(folder to "product"), herdr.createdWorkspaces)
         assertEquals(listOf("plain1:p1" to "claude"), herdr.ran)
+        assertTrue(out.contains("opened $folder in Herdr with"), out.toString())
+    }
+
+    @Test
+    fun `open without a target starts the multirepo agent in its open workspace without one`() {
+        source.agents[folder] = AgentLaunchConfig(agentCommand = "claude", useHeadroom = false)
+        val herdr = FakeHerdrClient(workspaces = listOf(HerdrWorkspace("w5", "product", null)), panes = listOf(HerdrPane("w5:p1", "w5", folder)))
+
+        val exitCode = cli(herdrClient = herdr).run(listOf("open", "--herdr", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("started-agent", json()["herdr"]!!.jsonPrimitive.content)
+        assertEquals("w5:p2", json()["pane_id"]!!.jsonPrimitive.content)
+        assertTrue(json()["opened"]!!.jsonPrimitive.content.toBoolean())
+        assertEquals(listOf("w5:p2" to "claude"), herdr.ran)
     }
 
     @Test

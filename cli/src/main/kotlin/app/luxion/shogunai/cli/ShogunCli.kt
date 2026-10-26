@@ -47,7 +47,9 @@ import app.luxion.shogunai.domain.model.DaemonStopReport
 import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.EmulatorState
+import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
 import app.luxion.shogunai.domain.model.HerdrOpening
+import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.GradleDaemon
@@ -115,6 +117,7 @@ import app.luxion.shogunai.domain.usecase.FetchRemoteUseCase
 import app.luxion.shogunai.domain.usecase.findWorktreeTarget
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.MachineProviderContributions
+import app.luxion.shogunai.domain.usecase.HerdrAgentLauncher
 import app.luxion.shogunai.domain.usecase.OpenWorktreeInHerdrUseCase
 import app.luxion.shogunai.domain.usecase.effectiveGradleJvmArgs
 import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
@@ -228,6 +231,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -258,6 +262,7 @@ class ShogunCli(
     private val environmentVariable: (String) -> String? = System::getenv,
     private val userHome: String = System.getProperty("user.home"),
     private val herdr: HerdrClient = CliHerdrClient(executor, userHome = userHome),
+    private val herdrAgentStartTimeout: kotlin.time.Duration = AGENT_START_SECONDS.seconds,
     private val trust: RepositoryTrust = RepositoryTrust.NONE,
     private val readAnswer: () -> String? = { null },
     private val sessionStore: AgentSessionStore = FileAgentSessionStore(),
@@ -808,12 +813,8 @@ class ShogunCli(
         val multirepo = context.multirepo
         val target = command.target
         if (target == null) {
-            val opening = OpenMultirepoAgentInHerdrUseCase(herdr)(multirepo).getOrThrow()
-            when {
-                command.json -> printJson(multirepoAgentOpenJson(multirepo, opening))
-                opening == HerdrOpening.OPENED -> out.line("opened ${multirepo.folder} in Herdr with ${multirepo.agent.displayName}")
-                else -> out.line("focused ${multirepo.folder} in Herdr (already open)")
-            }
+            val opening = OpenMultirepoAgentInHerdrUseCase(herdr, herdrLauncher())(multirepo).getOrThrow()
+            if (command.json) printJson(multirepoAgentOpenJson(multirepo, opening)) else out.line(herdrOpeningLine(multirepo.folder, opening))
             return EXIT_OK
         }
         if (command.agent != null) {
@@ -832,16 +833,13 @@ class ShogunCli(
                 return EXIT_FAILURE
             }
         }
-        val openings = OpenGroupInHerdrUseCase(herdr, resolveEnvironment)(group)
+        val openings = OpenGroupInHerdrUseCase(herdr, resolveEnvironment, herdrLauncher())(group)
         if (command.json) {
             printJson(groupOpenJson(group.branch, openings))
         } else {
             openings.forEach { opening ->
-                val agent = group.worktrees.first { it.alias == opening.alias }.config.agentLaunchConfig.displayName
                 opening.result
-                    .onSuccess {
-                        out.line(if (it == HerdrOpening.OPENED) "opened ${opening.path} in Herdr with $agent" else "focused ${opening.path} in Herdr (already open)")
-                    }
+                    .onSuccess { out.line(herdrOpeningLine(opening.path, it)) }
                     .onFailure { err.line("shogun: couldn't open ${opening.alias} (${opening.path}) in Herdr: ${failureReason(it)}") }
             }
         }
@@ -1191,14 +1189,17 @@ class ShogunCli(
                 return EXIT_USAGE
             }
         }
-        val opening = OpenWorktreeInHerdrUseCase(config, herdr, resolveEnvironment)(worktree, agent).getOrThrow()
-        val startedAgent = agent.displayName.takeIf { opening == HerdrOpening.OPENED }
-        when {
-            command.json -> printJson(openJson(worktree.path, worktree.branch, opening, startedAgent))
-            startedAgent != null -> out.line("opened ${worktree.path} in Herdr with $startedAgent")
-            else -> out.line("focused ${worktree.path} in Herdr (already open)")
-        }
+        val opening = OpenWorktreeInHerdrUseCase(config, herdr, resolveEnvironment, herdrLauncher())(worktree, agent).getOrThrow()
+        if (command.json) printJson(openJson(worktree.path, worktree.branch, opening)) else out.line(herdrOpeningLine(worktree.path, opening))
         return EXIT_OK
+    }
+
+    private fun herdrLauncher() = HerdrAgentLauncher(herdr, herdrAgentStartTimeout)
+
+    private fun herdrOpeningLine(path: String, opening: HerdrOpening): String = when (opening.outcome) {
+        HerdrOutcome.OPENED -> "opened $path in Herdr with ${opening.agent} (pane ${opening.paneId})"
+        HerdrOutcome.STARTED_AGENT -> "started ${opening.agent} in $path's open Herdr workspace (pane ${opening.paneId})"
+        HerdrOutcome.FOCUSED -> "focused $path in Herdr (already open, pane ${opening.paneId})"
     }
 
     private suspend fun repair(command: CliCommand.Repair): Int {

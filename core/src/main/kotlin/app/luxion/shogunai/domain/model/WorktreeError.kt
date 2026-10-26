@@ -232,6 +232,9 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class HerdrCommandFailed(val command: List<String>, val detail: String) :
         WorktreeError("Herdr couldn't open the worktree: $detail")
 
+    class HerdrAgentNotStarted(val paneId: String, val command: String) :
+        WorktreeError("The agent `$command` didn't start in Herdr pane $paneId within $AGENT_START_SECONDS seconds; the pane is left open")
+
     class TerminalLaunchFailed(val terminal: TerminalId, val detail: String) :
         WorktreeError("${terminal.displayName} couldn't open the worktree" + if (detail.isBlank()) "" else ": $detail")
 

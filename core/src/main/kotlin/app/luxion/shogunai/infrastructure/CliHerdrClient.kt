@@ -100,13 +100,19 @@ class CliHerdrClient(
         }
     }
 
-    override suspend fun listPanes(): List<HerdrPane> {
-        val arguments = listOf("pane", "list")
+    override suspend fun listPanes(workspaceId: String?): List<HerdrPane> {
+        val arguments = listOf("pane", "list") + listOfNotNull(workspaceId).flatMap { listOf("--workspace", it) }
         val panes = run(arguments).field("panes") as? JsonArray ?: throw unexpectedResponse(arguments)
         return panes.filterIsInstance<JsonObject>().mapNotNull { pane ->
             val paneId = pane.string("pane_id") ?: return@mapNotNull null
-            val workspaceId = pane.string("workspace_id") ?: return@mapNotNull null
-            HerdrPane(paneId, workspaceId, pane.string("foreground_cwd") ?: pane.string("cwd"))
+            val paneWorkspaceId = pane.string("workspace_id") ?: return@mapNotNull null
+            HerdrPane(
+                paneId = paneId,
+                workspaceId = paneWorkspaceId,
+                directory = pane.string("foreground_cwd") ?: pane.string("cwd"),
+                agent = pane.string("agent"),
+                agentStatus = pane.string("agent_status") ?: HerdrPane.UNKNOWN_AGENT_STATUS,
+            )
         }
     }
 

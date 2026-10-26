@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.HolderProtection
 import app.luxion.shogunai.domain.model.PoolHolder
@@ -326,6 +327,10 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     is WorktreeError.HerdrCommandFailed -> ErrorTexts(
         "Herdr couldn't open the worktree.",
         "Check the technical details.",
+    )
+    is WorktreeError.HerdrAgentNotStarted -> ErrorTexts(
+        "The agent didn't start in Herdr within $AGENT_START_SECONDS seconds.",
+        "Its pane is left open in Herdr: check it and run the agent there, or open it in Herdr again.",
     )
     is WorktreeError.TerminalLaunchFailed -> ErrorTexts(
         "${error.terminal.displayName} couldn't open the worktree.",

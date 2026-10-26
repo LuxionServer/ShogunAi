@@ -82,6 +82,12 @@ Alternative for an agentless workspace: type into an existing idle shell pane. R
 - [Every open now costs extra `herdr pane list` calls] → at most one per 500 ms for up to 10 s, only during an open.
 - [JSON consumers that relied on `agent: null` meaning "focused"] → `herdr` remains the field that tells the outcome; noted as BREAKING in the proposal.
 
+## Implementation check
+
+Checked by hand with Herdr 0.9.5: `shogun open TASK-123 --herdr` reported `opened` (pane `w4E:p1`); after `/exit` in that pane Herdr reported `unknown` and the next run reported `started-agent` in a new pane `w4E:p2` of the same workspace, keeping `w4E:p1`; the run after that reported `focused` with Herdr's agent name `claude`. `--json` gave `herdr`, `pane_id` and `agent` for each outcome.
+
+Headroom: `headroom` isn't installed on the machine used for the check, so whether Herdr detects `headroom wrap claude` couldn't be verified. If it doesn't, an open with Headroom fails with `HerdrAgentNotStarted` after 10 seconds while the agent runs in the pane that's left open; this stays a known risk to confirm on a machine with Headroom.
+
 ## Migration Plan
 
 No data migration. Ships with the next release; rollback is reverting the change.
