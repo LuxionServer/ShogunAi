@@ -177,4 +177,4 @@ mkdocs serve
 
 ## Licencia
 
-[GNU GPLv3](./LICENSE)
+[Apache License 2.0](./LICENSE)
