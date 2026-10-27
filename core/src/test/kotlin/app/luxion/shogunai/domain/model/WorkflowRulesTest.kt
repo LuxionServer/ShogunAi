@@ -48,12 +48,22 @@ class WorkflowRulesTest {
     }
 
     @Test
-    fun `the session start subset fits ten lines in the richest context`() {
+    fun `the session start subset fits eleven lines in the richest context`() {
         val lines = WorkflowRules.sessionStartLines(worktree)
 
-        assertTrue(lines.size <= 10, lines.joinToString("\n"))
+        assertTrue(lines.size <= 11, lines.joinToString("\n"))
         assertEquals(WorkflowRules.PRECEDENCE, lines.first())
         assertEquals(WorkflowRules.GUIDE_POINTER, lines.last())
+    }
+
+    @Test
+    fun `the desktop turn rule is in every session start`() {
+        listOf(worktree, worktree.copy(desktopAppProvider = false, emulatorProvider = false, simulatorProvider = false, inMainCheckout = true)).forEach { context ->
+            val rule = WorkflowRules.sessionStartRules(context).single { it.id == "resources.desktop-turn" }
+            assertTrue("shogun desktop acquire --wait" in rule.text)
+            assertTrue("shogun desktop release" in rule.text)
+            assertTrue("background" in rule.text)
+        }
     }
 
     @Test
@@ -65,7 +75,7 @@ class WorkflowRulesTest {
     @Test
     fun `the desktop app rule is in the session start only with the provider`() {
         val rule = WorkflowRules.sessionStartRules(worktree).single { it.id == "resources.desktop-app" }
-        listOf("shogun headless start", "shogun headless capture", "take_screenshot", "restart", "menu bar").forEach {
+        listOf("shogun headless start", "shogun headless capture", "take_screenshot", "restart", "menu bar", "shogun desktop acquire --wait").forEach {
             assertTrue(it in rule.text, it)
         }
         assertFalse("resources.desktop-app" in ids(WorkflowRules.sessionStartRules(worktree.copy(desktopAppProvider = false))))

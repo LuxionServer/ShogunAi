@@ -205,6 +205,17 @@ fun HerdrCloseFailures(failures: List<CleanupFailure>, onDismiss: () -> Unit) {
 }
 
 @Composable
+fun HeadlessStopFailures(failures: List<CleanupFailure>, onDismiss: () -> Unit) {
+    val strings = LocalStrings.current
+    Notice(
+        kind = NoticeKind.WARNING,
+        message = failures.joinToString("\n") { strings.headlessStopFailed(it.path, it.error.message.orEmpty()) },
+        onDismiss = onDismiss,
+        modifier = Modifier.padding(top = Spacing.sm),
+    )
+}
+
+@Composable
 fun KeptBranchNotice(notice: ProjectWorktrees.KeptBranchNotice, onDelete: () -> Unit, onDismiss: () -> Unit) {
     val strings = LocalStrings.current
     Notice(

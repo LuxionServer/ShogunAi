@@ -1,6 +1,7 @@
 package app.luxion.shogunai.domain.model
 
 import java.time.Duration
+import java.time.Instant
 
 sealed class WorktreeError(message: String, cause: Throwable? = null) : Exception(message, cause) {
 
@@ -120,6 +121,20 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     ) : WorktreeError(
         "Waited ${waited.toWaitText()} for ${kind.article()} ${kind.singularName()} and none could be released: " +
             holders.holderList() + ". Stop one, or raise the limit of $limit in Preferences",
+    )
+
+    class DesktopTurnTaken(val holder: DesktopTurn?, val waiting: Int = 0) : WorktreeError(
+        (holder?.let { "The desktop is taken by ${it.displayName} until ${it.expiryClockTime()}" + desktopWaitingNote(waiting) } ?: desktopQueueNote(waiting)) +
+            ". Wait for it with --wait",
+    )
+
+    class DesktopTurnWaitTimedOut(val waited: Duration, val holder: DesktopTurn?) : WorktreeError(
+        "Waited ${waited.toWaitText()} for the desktop" +
+            (holder?.let { ", still taken by ${it.displayName} until ${it.expiryClockTime()}" } ?: ", still behind other waiters"),
+    )
+
+    class DesktopTurnHeldByOther(val holder: DesktopTurn) : WorktreeError(
+        "The desktop turn belongs to ${holder.displayName}; only that worktree can release it",
     )
 
     class AndroidSdkNotFound(val checked: List<String>) :
@@ -314,6 +329,17 @@ private fun waitingNote(waiting: Int): String = when (waiting) {
     1 -> "; 1 worktree is waiting for one"
     else -> "; $waiting worktrees are waiting for one"
 }
+
+private fun desktopWaitingNote(waiting: Int): String = when (waiting) {
+    0 -> ""
+    1 -> "; 1 worktree is waiting for it"
+    else -> "; $waiting worktrees are waiting for it"
+}
+
+private fun desktopQueueNote(waiting: Int): String =
+    if (waiting == 1) "1 worktree is waiting for the desktop first" else "$waiting worktrees are waiting for the desktop first"
+
+private fun DesktopTurn.expiryClockTime(): String = Instant.ofEpochMilli(expiresAt).toLocalClockTime()
 
 fun Duration.toWaitText(): String = when {
     toMinutes() >= 1 && toSecondsPart() == 0 -> "${toMinutes()} min"

@@ -46,6 +46,8 @@ data class HeadlessAppStatus(
     val grantedPermissions: Set<MacPermission>,
 )
 
+data class HeadlessAppProcess(val state: HeadlessAppState, val pid: Long?, val logPath: String)
+
 data class HeadlessAppStop(val wasRunning: Boolean, val pid: Long?)
 
 fun gradleModuleDirectory(module: String): String = module.trim(':').replace(':', '/')

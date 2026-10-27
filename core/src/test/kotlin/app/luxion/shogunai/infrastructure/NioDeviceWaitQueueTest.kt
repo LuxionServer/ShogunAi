@@ -2,6 +2,7 @@ package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.model.ProcessIdentity
 import app.luxion.shogunai.domain.model.ResourceKind
+import app.luxion.shogunai.domain.model.WaitQueueName
 import app.luxion.shogunai.domain.model.WaitTicket
 import java.nio.file.Files
 import java.nio.file.Path
@@ -34,6 +35,20 @@ class NioDeviceWaitQueueTest {
 
         assertEquals(listOf("TASK-2", "TASK-3"), queue.read(ResourceKind.EMULATOR).map { it.id })
         assertEquals(listOf(ticket("TASK-4", 3)), queue.read(ResourceKind.IOS_SIMULATOR))
+    }
+
+    @Test
+    fun `the desktop queue lives next to the device queues`() {
+        queue.write(ResourceKind.EMULATOR, listOf(ticket("TASK-2", 1)))
+        queue.write(WaitQueueName.DESKTOP, listOf(ticket("TASK-5", 2)))
+
+        assertEquals(listOf("TASK-2"), queue.read(WaitQueueName.EMULATOR).map { it.id })
+        assertEquals(listOf("TASK-5"), queue.read(WaitQueueName.DESKTOP).map { it.id })
+        val file = machine.resolve(NioDeviceWaitQueue.QUEUE_FILE_NAME).toFile().readText()
+        assertTrue("\"emulator\"" in file && "\"desktop\"" in file)
+
+        queue.write(WaitQueueName.DESKTOP, emptyList())
+        assertEquals(1, queue.read(ResourceKind.EMULATOR).size)
     }
 
     @Test

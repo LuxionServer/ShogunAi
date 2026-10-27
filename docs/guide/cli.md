@@ -86,6 +86,7 @@ Lists every worktree of the repository, one per line: path, branch (or `(detache
 | `main` | The main checkout. |
 | `origin=shogunai\|claude-code\|herdr\|other` | Where the worktree was created. |
 | `locked` | Held by an agent session. |
+| `desktop(until 14:10)`, `desktop(waiting 1/2)` | It holds the [desktop turn](#desktop) until that time, or waits for it in that place of the line. |
 | `agents=claude(blocked),codex` | Agents running in it, with their state (`working`, `blocked`, `done`, `idle`) when Herdr reports it or, for Claude, when its [hooks](../agents.md#agent-states-outside-herdr) do. |
 | `changes=N` | Uncommitted changes. |
 | `ahead=N behind=N` | Divergence from its upstream. |
@@ -141,6 +142,7 @@ Prints one compact JSON object on a single line instead of the text lines. Error
 | `status.uncommittedChanges`, `status.merged` | Uncommitted changes; merged into the main branch. |
 | `status.upstream`, `status.mainBranch` | `{ "ahead": n, "behind": n }` against the upstream and the main branch; `null` when there is none. |
 | `status.lastCommitAt` | Time of the last commit in ISO-8601 UTC, or `null`. |
+| `desktop` | `null`, or the worktree's [desktop turn](#desktop): `{ "role": "holder", "since", "expiresAt" }` when it holds it, `{ "role": "waiting", "position", "since" }` when it waits for it, with ISO-8601 UTC times. |
 | `status.createdAt` | Time the worktree was created, in ISO-8601 UTC, read from Git's administrative folder for it; `null` for the main checkout or when it can't be read. |
 
 Every field is always present, with `null` when it doesn't apply. The field names are a contract: later versions only add fields and never rename, remove or change the type of one.
@@ -392,6 +394,20 @@ Runs the worktree's Compose Desktop app in the background (macOS only, repositor
 
 `capture` saves a PNG of the app's window, taken from the window itself, so it shows the app even while hidden or covered; without `--output` it goes to a new file in the worktree's Git folder, and the command prints its path. It needs the Screen Recording permission for the application that runs `shogun`, such as your terminal. `stop` ends the app (`stopped <pid>`, or `stopped` when it wasn't running); `status` prints its state, the isolated home, the launch log and any missing permission. See [Checking a desktop app in the background](headless-app.md).
 
+### `desktop`
+
+```bash
+shogun desktop acquire [<path>] [--wait] [--wait-timeout <minutes>] [--json]
+shogun desktop release [<path>] [--json]
+shogun desktop status [--json]
+```
+
+The desktop (screen, mouse, keyboard and the focused app) is one resource for the whole machine, so agents that check something with computer use take turns: one worktree holds the desktop turn at a time, on any platform. `acquire` gives the turn to the worktree containing the path or the current directory and prints `acquired the desktop until 14:10`; run by the holder again, it renews the turn (`renewed the desktop until 14:15`). The turn expires on its own after the desktop turn duration (10 minutes by default, in Preferences › Resources) unless it's renewed, so an agent that crashes doesn't keep it; the agent working doesn't renew it. Claude Code's `Stop` and `SessionEnd` [hooks](../agents.md#claude-code) release it when the holder's response or session ends, and removing or cleaning up a worktree releases its turn and drops its waits.
+
+While another worktree holds the turn, `acquire` fails with exit code `1`, naming the holder, when its turn expires and how many worktrees are waiting. With `--wait` it waits in line instead, for 30 minutes at most or the minutes given with `--wait-timeout` (which implies `--wait`), printing on standard error its place in the line and who holds the desktop until when, only when that changes, and `waited <time>` once it has the turn. Waiters are served first in, first out across every repository, and an `acquire` without `--wait` can't take the turn while anyone waits. Agents run a waiting `acquire` in the background.
+
+`release` gives the turn back (`released the desktop`), says `nobody holds the desktop` when nobody does, and fails with exit code `1`, changing nothing, when another worktree holds it; the desktop app can release anyone's turn. `status` prints the holder with since when and until when, or `desktop free`, followed by the waiters in order. The turn is cooperative: it keeps agents that follow the [workflow rules](../agents.md#shogunais-workflow-rules) from colliding, it doesn't stop a program that ignores it.
+
 ### `pool`
 
 ```text
@@ -450,6 +466,7 @@ The rules are the same for all of them:
 | `xcode clean` | `active`, `deleted` (paths), `freedBytes` and `failures`: `{ path, message }`. |
 | `xcode trim` | `active`, `quotaMode` (`automatic`, `fixed` or `none`), `quotaBytes` (`null` without a quota or when the automatic one can't be computed), `dryRun`, `usageBeforeBytes`, `usageAfterBytes`, `exceeded`, `released` (paths, those that would be released with `--dry-run`), `freedBytes`, `inUse` (worktree paths) and `failures`: `{ path, message }`. |
 | `emulator start\|stop\|status` | `worktree`, `serial` and `state` (`running`, `booting` or `stopped`). `serial` and `state` are `null` when the worktree has no emulator port reserved yet. `waited` is the whole seconds a `start --wait` waited for capacity (`0` if there was room), `null` otherwise. |
+| `desktop acquire\|release\|status` | `holder` (`null`, or `{ repository, worktree, since, expiresAt }`) and `waiting`: `{ repository, worktree, since }` in line order, with ISO-8601 UTC times. `acquire` adds `renewed` and `waited` (whole seconds waited, `0` when the desktop was free, `null` without `--wait`); `release` adds `released`. |
 | `simulator start\|stop\|status` | `worktree`, `udid`, `name` and `state` (`shutdown`, `booting` or `booted`), `null` when the worktree has no simulator yet, and `waited` as for `emulator`. The KMP wiring hint isn't part of it. |
 
 ```bash

@@ -479,6 +479,38 @@ object SpanishStrings : Strings {
     override val minutesUnit = "min"
     override val invalidLeaseDuration = "Debe ser un número entero positivo de minutos"
     override val leaseDurationHint = "Cuánto tiempo conserva un worktree su emulador o simulador tras su última actividad antes de que otro worktree pueda tomarlo"
+    override val desktopTurnDurationLabel = "Turno del escritorio"
+    override val desktopTurnDurationHint = "Cuánto tiempo conserva un agente el turno del escritorio para computer use tras pedirlo o renovarlo, antes de que caduque y pase al siguiente agente que espera"
+    override val desktopTurnTitle = "Escritorio"
+    override fun desktopTurnSummary(holder: String?, waiting: Int): String {
+        val waitingText = if (waiting == 1) "1 esperando" else "$waiting esperando"
+        return when {
+            holder == null -> waitingText
+            waiting == 0 -> holder
+            else -> "$holder · $waitingText"
+        }
+    }
+    override val desktopTurnExplanation = "Los agentes se turnan para manejar el escritorio con computer use: uno lo tiene a la vez con shogun desktop acquire y los demás esperan en la cola."
+    override val desktopTurnFree = "Nadie tiene el escritorio."
+    override fun desktopTurnHeld(since: String, until: String) = "Desde las $since hasta las $until"
+    override val desktopTurnWaitingTitle = "Esperando"
+    override fun desktopTurnWaitingSince(since: String) = "Esperando desde las $since"
+    override val releaseDesktopTurn = "Liberar"
+    override val confirmReleaseDesktopTurnTitle = "¿Liberar el escritorio?"
+    override fun confirmReleaseDesktopTurnMessage(holder: String) = "$holder pierde el turno del escritorio y lo recibe el primer worktree que lo espera."
+    override val desktopHeldLabel = "Tiene el escritorio"
+    override fun desktopHeldUntil(until: String) = "Tiene el escritorio hasta las $until"
+    override fun desktopWaitingLabel(position: Int) = "Espera el escritorio, nº $position"
+    override val desktopTurnDetailTitle = "Turno del escritorio"
+    override fun desktopTurnDetailWaiting(position: Int, since: String, holder: String?) =
+        "Espera el escritorio, nº $position desde las $since" + (holder?.let { ", detrás de $it" } ?: "")
+    override val headlessAppRunningLabel = "App en segundo plano"
+    override val headlessAppDetailTitle = "App en segundo plano"
+    override fun headlessAppRunning(pid: Long?) = if (pid == null) "En marcha" else "En marcha (proceso $pid)"
+    override val headlessAppStopped = "Parada"
+    override fun headlessAppLog(path: String) = "Log: $path"
+    override val stopHeadlessApp = "Parar"
+    override fun headlessStopFailed(path: String, detail: String) = "No se pudo parar la app de escritorio de $path: $detail"
     override fun releasedFor(worktree: String, time: String) = "Liberado para $worktree a las $time"
     override val notAcquired = "Sin adquirir"
     override fun poolUsage(inUse: Int, limit: Int?, profile: String) =

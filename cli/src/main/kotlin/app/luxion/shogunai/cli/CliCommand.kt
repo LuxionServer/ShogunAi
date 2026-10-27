@@ -115,6 +115,12 @@ sealed interface CliCommand {
         val output: String? = null,
         val json: Boolean = false,
     ) : CliCommand
+    data class Desktop(
+        val action: DesktopAction,
+        val path: String? = null,
+        val json: Boolean = false,
+        val wait: Duration? = null,
+    ) : CliCommand
     data class Simulator(
         val action: SimulatorAction,
         val path: String? = null,
@@ -171,6 +177,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "emulator" -> parseEmulator(arguments)
                 "simulator" -> parseSimulator(arguments)
                 "headless" -> parseHeadless(arguments)
+                "desktop" -> parseDesktop(arguments)
                 else -> throw UsageException("unknown command '$name'")
             }.withJson(json),
         )
@@ -183,7 +190,7 @@ private const val JSON_FLAG = "--json"
 
 private const val ARGUMENTS_SEPARATOR = "--"
 
-private val JSON_COMMANDS = setOf("new", "multirepo", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "stacks", "maven", "compose", "pool", "project", "xcode", "emulator", "simulator", "headless", "hooks", "guide")
+private val JSON_COMMANDS = setOf("new", "multirepo", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "stacks", "maven", "compose", "pool", "project", "xcode", "emulator", "simulator", "headless", "desktop", "hooks", "guide")
 
 private fun isSimulatorGradleInit(name: String, rest: List<String>) = name == "simulator" && rest.firstOrNull() == "gradle-init"
 
@@ -214,6 +221,7 @@ private fun CliCommand.withJson(json: Boolean): CliCommand = if (!json) this els
     is CliCommand.Emulator -> copy(json = true)
     is CliCommand.Simulator -> copy(json = true)
     is CliCommand.Headless -> copy(json = true)
+    is CliCommand.Desktop -> copy(json = true)
     is CliCommand.Hooks -> copy(json = true)
     is CliCommand.GuideBlock -> copy(json = true)
     else -> this
@@ -671,6 +679,32 @@ private fun parseHeadless(rest: List<String>): CliCommand.Headless {
     if (action != HeadlessAction.START && (visible || fresh)) throw UsageException("--visible and --fresh only apply to 'headless start'")
     if (action != HeadlessAction.CAPTURE && output != null) throw UsageException("--output only applies to 'headless capture'")
     return CliCommand.Headless(action, path, visible, fresh, output)
+}
+
+enum class DesktopAction { ACQUIRE, RELEASE, STATUS }
+
+private fun parseDesktop(rest: List<String>): CliCommand.Desktop {
+    val name = rest.firstOrNull() ?: throw UsageException("'desktop' needs an action: acquire, release or status")
+    val action = DesktopAction.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
+        ?: throw UsageException("unknown action '$name' for 'desktop', expected acquire, release or status")
+    var path: String? = null
+    val wait = DeviceWaitOptions()
+    val remaining = ArrayDeque(rest.drop(1))
+    while (remaining.isNotEmpty()) {
+        when (val argument = remaining.removeFirst()) {
+            "--wait" -> wait.requested = true
+            "--wait-timeout" -> wait.timeout(remaining.valueOf(argument))
+            else -> {
+                if (argument.startsWith("-")) throw UsageException("unknown option '$argument' for 'desktop'")
+                if (path != null) throw UsageException("'desktop $name' takes at most one path")
+                path = argument
+            }
+        }
+    }
+    if (action != DesktopAction.ACQUIRE && wait.requested) {
+        throw UsageException("--wait and --wait-timeout only apply to 'desktop acquire'")
+    }
+    return CliCommand.Desktop(action, path, wait = wait.duration)
 }
 
 private fun parseEmulator(rest: List<String>): CliCommand.Emulator {

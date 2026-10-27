@@ -16,6 +16,8 @@ class ResolveResourceLimitsUseCase(
 
     fun leaseDuration(): Duration = runCatching { repository.load() }.getOrDefault(ResourceSettings()).leaseDuration
 
+    fun desktopTurnDuration(): Duration = runCatching { repository.load() }.getOrDefault(ResourceSettings()).desktopTurnDuration
+
     fun limitsFor(settings: ResourceSettings): ResourceLimits = limitsFor(settings.profile, settings.custom)
 
     fun limitsFor(profile: CapacityProfile, custom: ResourceLimits = ResourceLimits.LIGHT): ResourceLimits = when (profile) {

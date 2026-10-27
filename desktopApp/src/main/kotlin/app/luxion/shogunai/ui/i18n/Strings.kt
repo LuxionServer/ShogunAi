@@ -381,6 +381,30 @@ interface Strings {
     val minutesUnit: String
     val invalidLeaseDuration: String
     val leaseDurationHint: String
+    val desktopTurnDurationLabel: String
+    val desktopTurnDurationHint: String
+    val desktopTurnTitle: String
+    fun desktopTurnSummary(holder: String?, waiting: Int): String
+    val desktopTurnExplanation: String
+    val desktopTurnFree: String
+    fun desktopTurnHeld(since: String, until: String): String
+    val desktopTurnWaitingTitle: String
+    fun desktopTurnWaitingSince(since: String): String
+    val releaseDesktopTurn: String
+    val confirmReleaseDesktopTurnTitle: String
+    fun confirmReleaseDesktopTurnMessage(holder: String): String
+    val desktopHeldLabel: String
+    fun desktopHeldUntil(until: String): String
+    fun desktopWaitingLabel(position: Int): String
+    val desktopTurnDetailTitle: String
+    fun desktopTurnDetailWaiting(position: Int, since: String, holder: String?): String
+    val headlessAppRunningLabel: String
+    val headlessAppDetailTitle: String
+    fun headlessAppRunning(pid: Long?): String
+    val headlessAppStopped: String
+    fun headlessAppLog(path: String): String
+    val stopHeadlessApp: String
+    fun headlessStopFailed(path: String, detail: String): String
     fun releasedFor(worktree: String, time: String): String
     val notAcquired: String
     fun poolUsage(inUse: Int, limit: Int?, profile: String): String

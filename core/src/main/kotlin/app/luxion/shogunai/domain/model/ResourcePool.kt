@@ -38,9 +38,13 @@ data class ResourceSettings(
     val derivedDataQuotaGigabytes: Int? = null,
     val leaseMinutes: Int = DEFAULT_LEASE_MINUTES,
     val derivedDataQuotaMode: DerivedDataQuotaMode? = null,
+    val desktopTurnMinutes: Int = DEFAULT_DESKTOP_TURN_MINUTES,
 ) {
     val leaseDuration: Duration
         get() = Duration.ofMinutes(leaseMinutes.takeIf { it > 0 }?.toLong() ?: DEFAULT_LEASE_MINUTES.toLong())
+
+    val desktopTurnDuration: Duration
+        get() = Duration.ofMinutes(desktopTurnMinutes.takeIf { it > 0 }?.toLong() ?: DEFAULT_DESKTOP_TURN_MINUTES.toLong())
 
     val quotaMode: DerivedDataQuotaMode
         get() = derivedDataQuotaMode
@@ -51,6 +55,8 @@ data class ResourceSettings(
 }
 
 const val DEFAULT_LEASE_MINUTES = 20
+
+const val DEFAULT_DESKTOP_TURN_MINUTES = 10
 
 const val BYTES_PER_GIGABYTE = 1024L * 1024 * 1024
 

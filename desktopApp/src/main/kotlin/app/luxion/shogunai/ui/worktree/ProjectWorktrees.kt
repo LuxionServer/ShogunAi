@@ -15,6 +15,7 @@ import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.model.GradleProvider
+import app.luxion.shogunai.domain.model.HeadlessAppProcess
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.MainBranch
@@ -123,6 +124,14 @@ class ProjectWorktrees(
     var openInHerdrPaths by mutableStateOf<Set<String>>(emptySet())
         private set
     var herdrCloseFailures by mutableStateOf<List<CleanupFailure>>(emptyList())
+        private set
+    var headlessStopFailures by mutableStateOf<List<CleanupFailure>>(emptyList())
+        private set
+    var isHeadlessAppRepository by mutableStateOf(false)
+        private set
+    var headlessApps by mutableStateOf<Map<String, HeadlessAppProcess>>(emptyMap())
+        private set
+    var stoppingHeadlessApps by mutableStateOf<Set<String>>(emptySet())
         private set
     var terminalChoiceFor by mutableStateOf<Worktree?>(null)
         private set
@@ -324,6 +333,42 @@ class ProjectWorktrees(
     suspend fun refreshDevices() {
         if (isEmulatorRepository) loadEmulators(listGeneration, worktrees)
         if (isSimulatorRepository) loadSimulators(listGeneration, worktrees)
+        if (isHeadlessAppRepository) loadHeadlessApps(listGeneration, worktrees)
+    }
+
+    fun stopHeadlessApp(worktree: Worktree) {
+        if (worktree.path in stoppingHeadlessApps) return
+        stoppingHeadlessApps = stoppingHeadlessApps + worktree.path
+        scope.launch {
+            try {
+                useCases.headlessApp.stop(worktree.path).onFailure { fail(it) }
+                loadHeadlessApps(listGeneration, worktrees)
+            } finally {
+                stoppingHeadlessApps = stoppingHeadlessApps - worktree.path
+            }
+        }
+    }
+
+    fun dismissHeadlessStopFailures() {
+        headlessStopFailures = emptyList()
+    }
+
+    private fun loadHeadlessAppSection(generation: Int, listed: List<Worktree>) {
+        scope.launch {
+            isHeadlessAppRepository = useCases.headlessApp.declared()
+            if (!isHeadlessAppRepository) {
+                headlessApps = emptyMap()
+                return@launch
+            }
+            loadHeadlessApps(generation, listed)
+        }
+    }
+
+    private suspend fun loadHeadlessApps(generation: Int, listed: List<Worktree>) {
+        val loaded = listed.filterNot { it.isPrunable }.mapNotNull { worktree ->
+            useCases.headlessApp.read(worktree.path).getOrNull()?.let { worktree.path to it }
+        }.toMap()
+        if (generation == listGeneration) headlessApps = loaded
     }
 
     fun repairAfterMove(previousWorktreesRoot: String) {
@@ -380,6 +425,7 @@ class ProjectWorktrees(
         loadMavenAndComposeSections(generation, listed)
         loadPorts(generation, listed)
         loadEmulatorSection(generation, listed)
+        loadHeadlessAppSection(generation, listed)
         loadSimulatorSection(generation, listed)
         loadXcodeSection(generation, listed)
         sizeQueue.submit(
@@ -696,6 +742,7 @@ class ProjectWorktrees(
                     .onSuccess { removal ->
                         launch { useCases.releaseResources.release(resources) }
                         removal.herdrFailure?.let { herdrCloseFailures = listOf(CleanupFailure(worktree.path, it)) }
+                        removal.headlessAppFailure?.let { headlessStopFailures = listOf(CleanupFailure(worktree.path, it)) }
                         worktrees = worktrees.filterNot { it.path == worktree.path }
                         statuses = statuses - worktree.path
                         sizes = sizes - worktree.path
@@ -1024,6 +1071,7 @@ class ProjectWorktrees(
                         removedComposeResources = report.composeResources?.removed?.size ?: 0,
                     )
                     herdrCloseFailures = report.herdrFailures
+                    headlessStopFailures = report.headlessAppFailures
                     cleanupIssues = report.takeIf {
                         it.failures.isNotEmpty() || it.keptBranches.isNotEmpty() ||
                             it.composeUnavailable != null || it.composeDown?.failures?.isNotEmpty() == true ||

@@ -1369,7 +1369,8 @@ class ShogunCliTest {
                   "status": {
                     "uncommittedChanges": 0, "upstream": null, "mainBranch": null,
                     "merged": false, "lastCommitAt": null, "createdAt": null
-                  }
+                  },
+                  "desktop": null
                 },
                 {
                   "path": "$merged", "branch": "feature/TASK-1", "head": "2222222222222222222222222222222222222222",
@@ -1377,7 +1378,8 @@ class ShogunCliTest {
                   "status": {
                     "uncommittedChanges": 0, "upstream": null, "mainBranch": {"ahead": 0, "behind": 3},
                     "merged": true, "lastCommitAt": null, "createdAt": null
-                  }
+                  },
+                  "desktop": null
                 },
                 {
                   "path": "$dirty", "branch": "worktree-spike", "head": "3333333333333333333333333333333333333333",
@@ -1385,7 +1387,8 @@ class ShogunCliTest {
                   "status": {
                     "uncommittedChanges": 2, "upstream": null, "mainBranch": {"ahead": 2, "behind": 0},
                     "merged": false, "lastCommitAt": null, "createdAt": null
-                  }
+                  },
+                  "desktop": null
                 }
               ]
             }

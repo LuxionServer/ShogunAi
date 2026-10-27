@@ -9,7 +9,7 @@ Un agente que comprueba una app de Compose Desktop con computer use se queda con
 | `shogun headless start` | El agente | Lanza la app del worktree sin quitar el foco, con su propio home de usuario, y la oculta. |
 | El servidor MCP de Compose Hot Reload | El agente, como servidor MCP | Lee el árbol semántico de la app y hace clic, escribe y desplaza a través de él, en segundo plano. |
 | `shogun headless capture` | El agente | Guarda un PNG de la ventana de la app, aunque esté oculta o tapada. |
-| `shogun headless stop` | El agente, o la eliminación del worktree | Termina la app. |
+| `shogun headless stop` | El agente, el detalle del worktree en la app de escritorio, o la eliminación del worktree | Termina la app. |
 
 ## Preparar un repositorio
 
@@ -52,7 +52,11 @@ El hook `SessionStart` le da a Claude estas reglas en los repositorios que decla
 
 ## Lo que todavía necesita el escritorio
 
-La entrada real de teclado no llega a una app en segundo plano (su ventana no está activa y el toolkit descarta los eventos de teclado para ella), y tampoco los atajos de teclado, los menús nativos, la barra de menús, los diálogos del sistema ni el hover. Comprobar eso sigue requiriendo manejar el escritorio real con computer use.
+La entrada real de teclado no llega a una app en segundo plano (su ventana no está activa y el toolkit descarta los eventos de teclado para ella), y tampoco los atajos de teclado, los menús nativos, la barra de menús, los diálogos del sistema ni el hover. Comprobar eso sigue requiriendo manejar el escritorio real con computer use, que el agente hace tras pedir el turno del escritorio de la máquina con `shogun desktop acquire --wait`, para que solo un agente maneje el escritorio a la vez, y devolviéndolo con `shogun desktop release` (ver [`desktop`](cli.md#desktop)).
+
+## En la app de escritorio
+
+Un worktree cuya app está en marcha lo muestra en la segunda línea de su fila, y su detalle muestra el id de proceso y el log de arranque con una acción «Stop». La app de escritorio solo comprueba para esto el proceso registrado, nunca las herramientas de ventanas de macOS, así que no pide ningún permiso. Cuando al eliminar o limpiar un worktree no se puede parar su app, un aviso lo dice hasta que lo descartas.
 
 ## Otras plataformas
 

@@ -10,6 +10,7 @@ import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.toLocalClockTime
 import app.luxion.shogunai.domain.usecase.GitFailureCause
+import java.time.Instant
 
 internal fun spanishErrorTexts(error: Throwable, gitCause: GitFailureCause): ErrorTexts = when (error) {
     is WorktreeError.GitCommandFailed -> spanishGitTexts(gitCause)
@@ -176,6 +177,19 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "No se liberó ningún ${spanishKindSingular(error.kind)} en ${error.waited.toMinutes()} min: " +
             error.holders.joinToString("; ") { "${it.displayName} (${spanishHolderState(it.state)}${spanishProtection(it)})" } + ".",
         "Detén uno de ellos, o sube el límite de ${error.limit} en Preferencias.",
+    )
+    is WorktreeError.DesktopTurnTaken -> ErrorTexts(
+        error.holder?.let { "El escritorio lo tiene ${it.displayName} hasta las ${Instant.ofEpochMilli(it.expiresAt).toLocalClockTime()}." }
+            ?: "Otros worktrees esperan antes el escritorio.",
+        "Espéralo con shogun desktop acquire --wait, o libéralo desde la vista Escritorio.",
+    )
+    is WorktreeError.DesktopTurnWaitTimedOut -> ErrorTexts(
+        "El escritorio no se liberó en ${error.waited.toMinutes()} min.",
+        "Libéralo desde la vista Escritorio, o inténtalo más tarde.",
+    )
+    is WorktreeError.DesktopTurnHeldByOther -> ErrorTexts(
+        "El turno del escritorio es de ${error.holder.displayName}.",
+        "Solo ese worktree, o tú desde la vista Escritorio, puede liberarlo.",
     )
     is WorktreeError.AndroidSdkNotFound -> ErrorTexts(
         "No se encontró el SDK de Android.",

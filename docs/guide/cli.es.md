@@ -86,6 +86,7 @@ Lista todos los worktrees del repositorio, uno por línea: ruta, rama (o `(detac
 | `main` | El checkout principal. |
 | `origin=shogunai\|claude-code\|herdr\|other` | Dónde se creó el worktree. |
 | `locked` | Lo retiene una sesión de agente. |
+| `desktop(until 14:10)`, `desktop(waiting 1/2)` | Tiene el [turno del escritorio](#desktop) hasta esa hora, o lo espera en ese puesto de la cola. |
 | `agents=claude(blocked),codex` | Agentes en ejecución en él, con su estado (`working`, `blocked`, `done`, `idle`) cuando lo informa Herdr o, para Claude, sus [hooks](../agents.md#estados-de-los-agentes-fuera-de-herdr). |
 | `changes=N` | Cambios sin commitear. |
 | `ahead=N behind=N` | Divergencia respecto a su upstream. |
@@ -141,6 +142,7 @@ Imprime un único objeto JSON compacto en una línea, en vez de las líneas de t
 | `status.uncommittedChanges`, `status.merged` | Cambios sin commitear; mergeado en la rama principal. |
 | `status.upstream`, `status.mainBranch` | `{ "ahead": n, "behind": n }` respecto al upstream y a la rama principal; `null` si no hay. |
 | `status.lastCommitAt` | Hora del último commit en ISO-8601 UTC, o `null`. |
+| `desktop` | `null`, o el [turno del escritorio](#desktop) del worktree: `{ "role": "holder", "since", "expiresAt" }` cuando lo tiene, `{ "role": "waiting", "position", "since" }` cuando lo espera, con horas ISO-8601 UTC. |
 | `status.createdAt` | Hora en que se creó el worktree, en ISO-8601 UTC, leída de la carpeta administrativa de Git para él; `null` para el checkout principal o si no se puede leer. |
 
 Todos los campos están siempre presentes, con `null` cuando no aplican. Los nombres de los campos son un contrato: las versiones futuras solo añaden campos y nunca renombran, eliminan ni cambian el tipo de uno.
@@ -392,6 +394,20 @@ Ejecuta la app de Compose Desktop del worktree en segundo plano (solo macOS, rep
 
 `capture` guarda un PNG de la ventana de la app, tomado de la propia ventana, así que la muestra aunque esté oculta o tapada; sin `--output` va a un archivo nuevo en la carpeta de Git del worktree, y el comando imprime su ruta. Necesita el permiso de Grabación de pantalla para la aplicación que ejecuta `shogun`, como tu terminal. `stop` termina la app (`stopped <pid>`, o `stopped` si no estaba en marcha); `status` imprime su estado, el home aislado, el log del lanzamiento y los permisos que falten. Consulta [Comprobar una app de escritorio en segundo plano](headless-app.md).
 
+### `desktop`
+
+```bash
+shogun desktop acquire [<ruta>] [--wait] [--wait-timeout <minutos>] [--json]
+shogun desktop release [<ruta>] [--json]
+shogun desktop status [--json]
+```
+
+El escritorio (pantalla, ratón, teclado y la app en primer plano) es un único recurso para toda la máquina, así que los agentes que comprueban algo con computer use se turnan: un solo worktree tiene el turno del escritorio a la vez, en cualquier plataforma. `acquire` da el turno al worktree que contiene la ruta o el directorio actual e imprime `acquired the desktop until 14:10`; si lo vuelve a ejecutar quien lo tiene, renueva el turno (`renewed the desktop until 14:15`). El turno caduca solo tras la duración del turno del escritorio (10 minutos por defecto, en Preferencias › Recursos) si no se renueva, así que un agente que se cuelga no se lo queda; que el agente esté trabajando no lo renueva. Los [hooks](../agents.md#claude-code) `Stop` y `SessionEnd` de Claude Code lo liberan cuando termina la respuesta o la sesión de quien lo tiene, y eliminar o limpiar un worktree libera su turno y quita sus esperas.
+
+Mientras otro worktree tiene el turno, `acquire` falla con código de salida `1`, nombrando a quien lo tiene, cuándo caduca su turno y cuántos worktrees esperan. Con `--wait` espera en la cola en su lugar, como mucho 30 minutos o los minutos indicados con `--wait-timeout` (que implica `--wait`), e imprime en la salida de error su puesto en la cola y quién tiene el escritorio hasta cuándo, solo cuando eso cambia, y `waited <tiempo>` en cuanto tiene el turno. La cola se atiende por orden de llegada en todos los repositorios, y un `acquire` sin `--wait` no puede quedarse el turno mientras alguien espera. Los agentes ejecutan en segundo plano un `acquire` que espera.
+
+`release` devuelve el turno (`released the desktop`), dice `nobody holds the desktop` cuando nadie lo tiene y falla con código de salida `1`, sin cambiar nada, cuando lo tiene otro worktree; la app de escritorio puede liberar el turno de cualquiera. `status` imprime quién lo tiene, desde cuándo y hasta cuándo, o `desktop free`, seguido de los que esperan por orden. El turno es cooperativo: evita que choquen los agentes que siguen las [reglas de flujo](../agents.md#reglas-de-flujo-de-shogunai), no impide nada a un programa que lo ignore.
+
 ### `pool`
 
 ```text
@@ -452,6 +468,7 @@ Las reglas son las mismas para todos:
 | `xcode clean` | `active`, `deleted` (rutas), `freedBytes` y `failures`: `{ path, message }`. |
 | `xcode trim` | `active`, `quotaMode` (`automatic`, `fixed` o `none`), `quotaBytes` (`null` sin cuota o cuando la automática no se puede calcular), `dryRun`, `usageBeforeBytes`, `usageAfterBytes`, `exceeded`, `released` (rutas; con `--dry-run`, las que se liberarían), `freedBytes`, `inUse` (rutas de worktrees) y `failures`: `{ path, message }`. |
 | `emulator start\|stop\|status` | `worktree`, `serial` y `state` (`running`, `booting` o `stopped`). `serial` y `state` son `null` si el worktree aún no tiene puerto de emulador reservado. `waited` son los segundos enteros que un `start --wait` esperó capacidad (`0` si había sitio), `null` en otro caso. |
+| `desktop acquire\|release\|status` | `holder` (`null`, o `{ repository, worktree, since, expiresAt }`) y `waiting`: `{ repository, worktree, since }` por orden de cola, con horas ISO-8601 UTC. `acquire` añade `renewed` y `waited` (segundos enteros de espera, `0` si el escritorio estaba libre, `null` sin `--wait`); `release` añade `released`. |
 | `simulator start\|stop\|status` | `worktree`, `udid`, `name` y `state` (`shutdown`, `booting` o `booted`), `null` si el worktree aún no tiene simulador, y `waited` como en `emulator`. El aviso sobre los tests KMP no forma parte. |
 
 ```bash

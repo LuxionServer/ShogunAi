@@ -1,6 +1,10 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.FakeAppWindowService
+import app.luxion.shogunai.domain.FakeDesktopTurnStore
+import app.luxion.shogunai.domain.FakeDeviceWaitQueue
+import app.luxion.shogunai.domain.FakeEnvironmentStateStore
+import app.luxion.shogunai.domain.FakeProcessLiveness
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeHeadlessAppLauncher
 import app.luxion.shogunai.domain.FakeHerdrClient
@@ -9,9 +13,13 @@ import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
 import app.luxion.shogunai.domain.model.DesktopAppProvider
+import app.luxion.shogunai.domain.model.DesktopTurn
+import app.luxion.shogunai.domain.model.ProcessIdentity
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.domain.model.WaitQueueName
+import app.luxion.shogunai.domain.model.WaitTicket
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -82,6 +90,39 @@ class RemoveWorktreeUseCaseTest {
 
         assertIs<WorktreeError.HeadlessAppStopFailed>(removal.headlessAppFailure)
         assertTrue(executor.executed("git", "worktree", "remove", worktreePath))
+    }
+
+    private fun desktopTurns(store: FakeDesktopTurnStore, queue: FakeDeviceWaitQueue) = ReleaseDesktopTurnUseCase(
+        DesktopTurnLedger(store, FakeEnvironmentStateStore(), queue, FakeProcessLiveness(), { path -> "/home/dev/projects/main-repo/.git/worktrees/${path.substringAfterLast('/')}" }),
+    )
+
+    @Test
+    fun `removing the worktree that holds the desktop turn releases it before its folder goes`() = runTest {
+        val admin = "/home/dev/projects/main-repo/.git/worktrees/TASK-123"
+        val store = FakeDesktopTurnStore(DesktopTurn(admin, worktreePath, 0, Long.MAX_VALUE))
+        val queue = FakeDeviceWaitQueue()
+        queue.write(WaitQueueName.DESKTOP, listOf(WaitTicket("ticket", admin, worktreePath, ProcessIdentity(3000, 1), 0)))
+        var releasedBeforeRemoval = false
+        val executor = FakeShellCommandExecutor { command ->
+            if (command.take(3) == listOf("git", "worktree", "remove")) releasedBeforeRemoval = store.turn == null
+            success(command)
+        }
+
+        RemoveWorktreeUseCase(config, executor, releaseDesktopTurn = desktopTurns(store, queue))(worktreePath).getOrThrow()
+
+        assertTrue(releasedBeforeRemoval)
+        assertTrue(queue.read(WaitQueueName.DESKTOP).isEmpty())
+    }
+
+    @Test
+    fun `removing another worktree keeps the desktop turn`() = runTest {
+        val turn = DesktopTurn("/home/dev/projects/main-repo/.git/worktrees/TASK-9", "/home/dev/projects/TASK-9", 0, Long.MAX_VALUE)
+        val store = FakeDesktopTurnStore(turn)
+
+        RemoveWorktreeUseCase(config, FakeShellCommandExecutor { success(it) }, releaseDesktopTurn = desktopTurns(store, FakeDeviceWaitQueue()))(worktreePath)
+            .getOrThrow()
+
+        assertEquals(turn, store.turn)
     }
 
     private fun branchExecutor(contained: Boolean = true, deleteStderr: String? = null) = FakeShellCommandExecutor { command ->

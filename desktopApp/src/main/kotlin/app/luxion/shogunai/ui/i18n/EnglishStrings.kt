@@ -479,6 +479,38 @@ object EnglishStrings : Strings {
     override val minutesUnit = "min"
     override val invalidLeaseDuration = "Must be a positive whole number of minutes"
     override val leaseDurationHint = "How long a worktree keeps its emulator or simulator after its last activity before another worktree can take it"
+    override val desktopTurnDurationLabel = "Desktop turn"
+    override val desktopTurnDurationHint = "How long an agent keeps the desktop turn for computer use after acquiring or renewing it, before it expires and the next waiting agent gets it"
+    override val desktopTurnTitle = "Desktop"
+    override fun desktopTurnSummary(holder: String?, waiting: Int): String {
+        val waitingText = if (waiting == 1) "1 waiting" else "$waiting waiting"
+        return when {
+            holder == null -> waitingText
+            waiting == 0 -> holder
+            else -> "$holder · $waitingText"
+        }
+    }
+    override val desktopTurnExplanation = "Agents take turns to drive the desktop with computer use: one holds it at a time with shogun desktop acquire, and the others wait in line."
+    override val desktopTurnFree = "Nobody holds the desktop."
+    override fun desktopTurnHeld(since: String, until: String) = "Since $since until $until"
+    override val desktopTurnWaitingTitle = "Waiting"
+    override fun desktopTurnWaitingSince(since: String) = "Waiting since $since"
+    override val releaseDesktopTurn = "Release"
+    override val confirmReleaseDesktopTurnTitle = "Release the desktop?"
+    override fun confirmReleaseDesktopTurnMessage(holder: String) = "$holder loses the desktop turn, and the first worktree waiting for it gets it."
+    override val desktopHeldLabel = "Has the desktop"
+    override fun desktopHeldUntil(until: String) = "Has the desktop until $until"
+    override fun desktopWaitingLabel(position: Int) = "Waiting for the desktop, #$position"
+    override val desktopTurnDetailTitle = "Desktop turn"
+    override fun desktopTurnDetailWaiting(position: Int, since: String, holder: String?) =
+        "Waiting for the desktop, #$position since $since" + (holder?.let { ", behind $it" } ?: "")
+    override val headlessAppRunningLabel = "App in the background"
+    override val headlessAppDetailTitle = "Background app"
+    override fun headlessAppRunning(pid: Long?) = if (pid == null) "Running" else "Running (process $pid)"
+    override val headlessAppStopped = "Stopped"
+    override fun headlessAppLog(path: String) = "Log: $path"
+    override val stopHeadlessApp = "Stop"
+    override fun headlessStopFailed(path: String, detail: String) = "The desktop app of $path couldn't be stopped: $detail"
     override fun releasedFor(worktree: String, time: String) = "Released for $worktree at $time"
     override val notAcquired = "Not acquired"
     override fun poolUsage(inUse: Int, limit: Int?, profile: String) =
