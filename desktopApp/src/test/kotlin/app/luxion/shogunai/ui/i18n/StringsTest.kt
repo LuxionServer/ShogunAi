@@ -195,6 +195,7 @@ class StringsTest {
         WorktreeError.WorktreeFolderInUse("~/projects/TASK-123", true, listOf("git", "worktree", "remove", "~/projects/TASK-123"), 255, "error: failed to delete: Permission denied"),
         WorktreeError.HerdrNotInstalled,
         WorktreeError.HerdrCommandFailed(listOf("herdr", "pane", "list"), "no herdr server is running"),
+        WorktreeError.HerdrAgentNotStarted("w1:p2", "headroom wrap claude"),
         WorktreeError.GitCommandFailed(listOf("git", "worktree", "remove", "TASK-123"), 128, gitOutput),
         CommandExecutionException(listOf("git", "status"), IOException("No such file or directory")),
         IllegalStateException("boom"),
@@ -317,6 +318,28 @@ class StringsTest {
         val error = WorktreeError.SecretCopyFailed(IOException("disk full"))
 
         allStrings.forEach { assertEquals("disk full", it.describe(error).details?.output) }
+    }
+
+    @Test
+    fun `an agent that doesn't start in Herdr keeps its pane and command in the details`() {
+        val error = WorktreeError.HerdrAgentNotStarted("w1:p2", "headroom wrap claude")
+
+        allStrings.forEach { strings ->
+            val output = strings.describe(error).details?.output.orEmpty()
+            assertTrue(output.contains("w1:p2") && output.contains("headroom wrap claude"), output)
+        }
+    }
+
+    @Test
+    fun `the three Herdr outcomes read differently in both languages`() {
+        allStrings.forEach { strings ->
+            val worktree = listOf(strings.openedInHerdr("TASK-123"), strings.agentStartedInHerdr("TASK-123"), strings.focusedInHerdr("TASK-123"))
+            val multirepo = listOf(strings.multirepoAgentOpened, strings.multirepoAgentStarted, strings.multirepoAgentFocused)
+            assertEquals(3, worktree.toSet().size)
+            assertEquals(3, multirepo.toSet().size)
+        }
+        assertNotEquals(EnglishStrings.agentStartedInHerdr("TASK-123"), SpanishStrings.agentStartedInHerdr("TASK-123"))
+        assertNotEquals(EnglishStrings.multirepoAgentStarted, SpanishStrings.multirepoAgentStarted)
     }
 
     @Test

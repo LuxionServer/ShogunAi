@@ -32,6 +32,7 @@ import app.luxion.shogunai.ui.shell.AgentChoices
 import app.luxion.shogunai.SimulatorUseCases
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.HerdrOpening
+import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.WorktreeUseCases
 import app.luxion.shogunai.ProvisioningUseCases
 import app.luxion.shogunai.ReleaseResourcesUseCases
@@ -2893,7 +2894,7 @@ class ProjectWorktreesTest {
     @Test
     fun `opening in Herdr passes the worktree and reports the opening`() = runTest(dispatcher) {
         val calls = mutableListOf<Worktree>()
-        val herdr = HerdrUseCases.NONE.copy(open = { target, _ -> calls += target; Result.success(HerdrOpening.OPENED) })
+        val herdr = HerdrUseCases.NONE.copy(open = { target, _ -> calls += target; Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude")) })
         val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
         advanceUntilIdle()
         val target = viewModel.worktrees.first { it.path == worktreePath }
@@ -2903,7 +2904,7 @@ class ProjectWorktreesTest {
         advanceUntilIdle()
 
         assertEquals(target, calls.single())
-        assertEquals(WorktreeSuccess.OpenedInHerdr(worktreePath, focused = false), viewModel.success)
+        assertEquals(WorktreeSuccess.OpenedInHerdr(worktreePath, HerdrOutcome.OPENED), viewModel.success)
         assertTrue(viewModel.openingInHerdr.isEmpty())
     }
 
@@ -2912,7 +2913,7 @@ class ProjectWorktreesTest {
         val focused = mutableListOf<String>()
         var opened = 0
         val herdr = HerdrUseCases.NONE.copy(
-            open = { _, _ -> opened++; Result.success(HerdrOpening.OPENED) },
+            open = { _, _ -> opened++; Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude")) },
             focusAgent = { pane -> focused += pane; Result.success(Unit) },
         )
         val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
@@ -2931,7 +2932,7 @@ class ProjectWorktreesTest {
 
         assertEquals(listOf("w1:p2"), focused)
         assertEquals(0, opened)
-        assertEquals(WorktreeSuccess.OpenedInHerdr(worktreePath, focused = true), viewModel.success)
+        assertEquals(WorktreeSuccess.OpenedInHerdr(worktreePath, HerdrOutcome.FOCUSED), viewModel.success)
     }
 
     @Test
@@ -2939,7 +2940,7 @@ class ProjectWorktreesTest {
         val focused = mutableListOf<String>()
         var opened = 0
         val herdr = HerdrUseCases.NONE.copy(
-            open = { _, _ -> opened++; Result.success(HerdrOpening.OPENED) },
+            open = { _, _ -> opened++; Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude")) },
             focusAgent = { pane -> focused += pane; Result.success(Unit) },
         )
         val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
@@ -2955,14 +2956,39 @@ class ProjectWorktreesTest {
 
     @Test
     fun `an already open worktree is reported as focused`() = runTest(dispatcher) {
-        val herdr = HerdrUseCases.NONE.copy(open = { _, _ -> Result.success(HerdrOpening.FOCUSED) })
+        val herdr = HerdrUseCases.NONE.copy(open = { _, _ -> Result.success(HerdrOpening(HerdrOutcome.FOCUSED, "w1:p1", "claude")) })
         val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
         advanceUntilIdle()
 
         viewModel.openInHerdr(viewModel.worktrees.first { it.path == worktreePath })
         advanceUntilIdle()
 
-        assertEquals(WorktreeSuccess.OpenedInHerdr(worktreePath, focused = true), viewModel.success)
+        assertEquals(WorktreeSuccess.OpenedInHerdr(worktreePath, HerdrOutcome.FOCUSED), viewModel.success)
+    }
+
+    @Test
+    fun `an agent started in an already open worktree is reported as started`() = runTest(dispatcher) {
+        val herdr = HerdrUseCases.NONE.copy(open = { _, _ -> Result.success(HerdrOpening(HerdrOutcome.STARTED_AGENT, "w1:p2", "Claude")) })
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
+        advanceUntilIdle()
+
+        viewModel.openInHerdr(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+
+        assertEquals(WorktreeSuccess.OpenedInHerdr(worktreePath, HerdrOutcome.STARTED_AGENT), viewModel.success)
+    }
+
+    @Test
+    fun `an agent that doesn't start is recorded for the worktree`() = runTest(dispatcher) {
+        val herdr = HerdrUseCases.NONE.copy(open = { _, _ -> Result.failure(WorktreeError.HerdrAgentNotStarted("w1:p2", "claude")) })
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
+        advanceUntilIdle()
+
+        viewModel.openInHerdr(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+
+        assertIs<WorktreeError.HerdrAgentNotStarted>(viewModel.actionErrors[worktreePath])
+        assertNull(viewModel.success)
     }
 
     @Test
@@ -3816,7 +3842,7 @@ class ProjectWorktreesTest {
     @Test
     fun `opening in Herdr with a picked agent passes it on`() = runTest(dispatcher) {
         val used = mutableListOf<AgentLaunchConfig>()
-        val herdr = HerdrUseCases.NONE.copy(open = { _, agent -> used += agent; Result.success(HerdrOpening.OPENED) })
+        val herdr = HerdrUseCases.NONE.copy(open = { _, agent -> used += agent; Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude")) })
         val holder = projectWorktrees(withAgents().copy(herdr = herdr))
         advanceUntilIdle()
 

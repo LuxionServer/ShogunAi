@@ -2,6 +2,7 @@ package app.luxion.shogunai.ui.multirepo
 
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.HerdrOpening
+import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.usecase.GroupCreation
 import app.luxion.shogunai.domain.usecase.GroupRepositoryResult
@@ -29,7 +30,7 @@ class MultirepoActions(
 sealed interface MultirepoNotice {
     data class AddedToGroup(val alias: String, val title: String) : MultirepoNotice
     data class ChangeCreated(val title: String, val aliases: List<String>) : MultirepoNotice
-    data class AgentOpened(val focused: Boolean) : MultirepoNotice
+    data class AgentOpened(val outcome: HerdrOutcome) : MultirepoNotice
     data class Failed(val error: Throwable) : MultirepoNotice
 }
 

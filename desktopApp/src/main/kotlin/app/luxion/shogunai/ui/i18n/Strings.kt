@@ -463,6 +463,7 @@ interface Strings {
     val openInHerdr: String
     fun openedInHerdr(name: String): String
     fun focusedInHerdr(name: String): String
+    fun agentStartedInHerdr(name: String): String
 
     val toolsLabel: String
     val terminalToolLabel: String
@@ -599,6 +600,7 @@ interface Strings {
     val openMultirepoAgent: String
     val multirepoAgentOpened: String
     val multirepoAgentFocused: String
+    val multirepoAgentStarted: String
     val groupRepositoryCreated: String
     val groupRepositoryExisting: String
     val addMultirepo: String

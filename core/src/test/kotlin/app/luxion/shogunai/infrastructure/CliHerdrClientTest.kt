@@ -15,6 +15,7 @@ import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class CliHerdrClientTest {
@@ -286,11 +287,35 @@ class CliHerdrClientTest {
 
         assertEquals(
             listOf(
-                HerdrPane("w5:p1", "w5", "/home/dev/projects/product"),
-                HerdrPane("wQ:p1", "wQ", "/home/dev/projects/product-worktrees/app/TASK-1"),
+                HerdrPane("w5:p1", "w5", "/home/dev/projects/product", agent = "claude", agentStatus = "idle"),
+                HerdrPane("wQ:p1", "wQ", "/home/dev/projects/product-worktrees/app/TASK-1", agent = null, agentStatus = "unknown"),
             ),
             panes,
         )
+        assertTrue(panes[0].hasLiveAgent)
+        assertFalse(panes[1].hasLiveAgent)
+        assertEquals(listOf("herdr", "pane", "list"), executor.executedCommands.first())
         assertEquals(listOf("herdr", "workspace", "focus", "w5"), executor.executedCommands.last())
+    }
+
+    @Test
+    fun `panes of one workspace are listed with the workspace filter`() = runTest {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("pane-list.json")) }
+
+        client(executor).listPanes("w5")
+
+        assertEquals(listOf("herdr", "pane", "list", "--workspace", "w5"), executor.executedCommands.single())
+    }
+
+    @Test
+    fun `a pane without agent status counts as having no agent`() = runTest {
+        val executor = FakeShellCommandExecutor {
+            FakeShellCommandExecutor.success(it, """{"id":"x","result":{"panes":[{"pane_id":"w1:p1","workspace_id":"w1","cwd":"/home/dev/projects/product"}]}}""")
+        }
+
+        val pane = client(executor).listPanes().single()
+
+        assertEquals("unknown", pane.agentStatus)
+        assertFalse(pane.hasLiveAgent)
     }
 }

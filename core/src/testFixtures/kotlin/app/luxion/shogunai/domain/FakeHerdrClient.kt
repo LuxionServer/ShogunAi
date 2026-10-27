@@ -18,6 +18,8 @@ class FakeHerdrClient(
     private val workspaces: List<HerdrWorkspace> = emptyList(),
     private val panes: List<HerdrPane> = emptyList(),
     private val openFailures: Map<String, Throwable> = emptyMap(),
+    private val startsAgents: Boolean = true,
+    private val agentDetectedAfterListings: Int = 0,
 ) : HerdrClient {
 
     data class Split(val paneId: String, val cwd: String, val environment: List<Pair<String, String>>)
@@ -32,27 +34,63 @@ class FakeHerdrClient(
         private set
     val focusedAgents = mutableListOf<String>()
     val ran = mutableListOf<Pair<String, String>>()
+    val paneListings = mutableListOf<String?>()
+    private val createdPanes = mutableListOf<HerdrPane>()
+    private val startingAgents = mutableMapOf<String, Pair<String, Int>>()
+    private val workspacesByPath = mutableMapOf<String, String>()
+
+    fun quitAgent(paneId: String) {
+        val pane = createdPanes.indexOfFirst { it.paneId == paneId }
+        if (pane >= 0) createdPanes[pane] = createdPanes[pane].copy(agent = null, agentStatus = HerdrPane.UNKNOWN_AGENT_STATUS)
+    }
+
+    private fun addPane(paneId: String, cwd: String) {
+        if (panes.none { it.paneId == paneId } && createdPanes.none { it.paneId == paneId }) {
+            createdPanes += HerdrPane(paneId, paneId.substringBefore(':'), cwd)
+        }
+    }
 
     override suspend fun openWorktree(repository: String, path: String, label: String): HerdrWorktreeOpening {
         failure?.let { throw it }
         openFailures[path]?.let { throw it }
         opened += Triple(repository, path, label)
-        val workspaceId = "w${opened.size}"
-        return HerdrWorktreeOpening(workspaceId = workspaceId, rootPaneId = "$workspaceId:p1", alreadyOpen = path in alreadyOpen)
+        val reopened = path in workspacesByPath
+        val workspaceId = workspacesByPath.getOrPut(path) { "w${workspacesByPath.size + 1}" }
+        addPane("$workspaceId:p1", path)
+        return HerdrWorktreeOpening(workspaceId = workspaceId, rootPaneId = "$workspaceId:p1", alreadyOpen = reopened || path in alreadyOpen)
     }
 
     override suspend fun splitPane(paneId: String, cwd: String, environment: List<Pair<String, String>>): String {
         splits += Split(paneId, cwd, environment)
-        return paneId.substringBefore(':') + ":p${splits.size + 1}"
+        return (paneId.substringBefore(':') + ":p${splits.size + 1}").also { addPane(it, cwd) }
     }
 
     override suspend fun closePane(paneId: String) {
         closed += paneId
+        createdPanes.removeAll { it.paneId == paneId }
     }
 
     override suspend fun runInPane(paneId: String, command: String) {
         runFailure?.let { throw it }
         ran += paneId to command
+        if (startsAgents) {
+            val agent = command.trim().substringAfterLast(' ')
+            if (agentDetectedAfterListings > 0) {
+                startingAgents[paneId] = agent to agentDetectedAfterListings
+            } else {
+                markLive(paneId, agent)
+            }
+        }
+    }
+
+    private fun markLive(paneId: String, agent: String) {
+        val pane = createdPanes.indexOfFirst { it.paneId == paneId }
+        if (pane >= 0) {
+            createdPanes[pane] = createdPanes[pane].copy(agent = agent, agentStatus = "idle")
+        } else {
+            val known = panes.firstOrNull { it.paneId == paneId } ?: HerdrPane(paneId, paneId.substringBefore(':'), null)
+            createdPanes += known.copy(agent = agent, agentStatus = "idle")
+        }
     }
 
     override suspend fun openWorktreeWorkspaces(repository: String): Map<String, String> {
@@ -83,6 +121,7 @@ class FakeHerdrClient(
         failure?.let { throw it }
         createdWorkspaces += cwd to label
         val workspaceId = "plain${createdWorkspaces.size}"
+        addPane("$workspaceId:p1", cwd)
         return HerdrWorktreeOpening(workspaceId = workspaceId, rootPaneId = "$workspaceId:p1", alreadyOpen = false)
     }
 
@@ -91,9 +130,21 @@ class FakeHerdrClient(
         return workspaces
     }
 
-    override suspend fun listPanes(): List<HerdrPane> {
+    override suspend fun listPanes(workspaceId: String?): List<HerdrPane> {
         failure?.let { throw it }
-        return panes
+        paneListings += workspaceId
+        startingAgents.toMap().forEach { (paneId, starting) ->
+            val (agent, remaining) = starting
+            if (remaining <= 1) {
+                startingAgents -= paneId
+                markLive(paneId, agent)
+            } else {
+                startingAgents[paneId] = agent to remaining - 1
+            }
+        }
+        val live = createdPanes.associateBy { it.paneId }
+        val all = panes.map { live[it.paneId] ?: it } + createdPanes.filter { created -> panes.none { it.paneId == created.paneId } }
+        return all.filter { workspaceId == null || it.workspaceId == workspaceId }
     }
 
     override suspend fun focusWorkspace(workspaceId: String) {

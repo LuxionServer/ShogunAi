@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
 import app.luxion.shogunai.domain.model.MacPermission
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.HolderProtection
@@ -327,6 +328,10 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     is WorktreeError.HerdrCommandFailed -> ErrorTexts(
         "Herdr no pudo abrir el worktree.",
         "Revisa los detalles técnicos.",
+    )
+    is WorktreeError.HerdrAgentNotStarted -> ErrorTexts(
+        "El agente no arrancó en Herdr en $AGENT_START_SECONDS segundos.",
+        "Su panel sigue abierto en Herdr: revísalo y lanza allí el agente, o vuelve a abrirlo en Herdr.",
     )
     is WorktreeError.TerminalLaunchFailed -> ErrorTexts(
         "${error.terminal.displayName} no pudo abrir el worktree.",

@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.Grouping
+import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.WorktreeSort
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.ui.components.DangerButton
@@ -508,7 +509,11 @@ private fun Strings.successMessage(success: WorktreeSuccess): String = when (suc
     is WorktreeSuccess.BranchDeleted -> branchDeleted(success.branch)
     is WorktreeSuccess.OpenedInHerdr -> {
         val name = File(success.path).name
-        if (success.focused) focusedInHerdr(name) else openedInHerdr(name)
+        when (success.outcome) {
+            HerdrOutcome.OPENED -> openedInHerdr(name)
+            HerdrOutcome.STARTED_AGENT -> agentStartedInHerdr(name)
+            HerdrOutcome.FOCUSED -> focusedInHerdr(name)
+        }
     }
     is WorktreeSuccess.CleanedUp -> listOfNotNull(
         worktreesCleanedUp(success.removedCount),

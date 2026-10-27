@@ -32,7 +32,6 @@ import app.luxion.shogunai.domain.usecase.isActive
 import app.luxion.shogunai.domain.usecase.worktreeActivity
 import app.luxion.shogunai.domain.usecase.isValidGitRefSegment
 import app.luxion.shogunai.domain.usecase.normalizeTaskId
-import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.usecase.GroupKept
 import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
 import app.luxion.shogunai.domain.usecase.GroupWorktree
@@ -600,7 +599,7 @@ class WorktreeBoard(
         viewModelScope.launch {
             try {
                 withContext(ioDispatcher) { multirepoActions.openAgent(multirepo) }
-                    .onSuccess { multirepoNotice = MultirepoNotice.AgentOpened(it == HerdrOpening.FOCUSED) }
+                    .onSuccess { multirepoNotice = MultirepoNotice.AgentOpened(it.outcome) }
                     .onFailure { multirepoNotice = MultirepoNotice.Failed(it) }
             } finally {
                 isOpeningMultirepoAgent = false

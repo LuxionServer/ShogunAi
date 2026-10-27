@@ -1,6 +1,7 @@
 package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.domain.model.HerdrOpening
+import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.usecase.AddedRepository
@@ -206,7 +207,10 @@ fun groupOpenJson(branch: String, openings: List<GroupOpening>): JsonObject = bu
             add(buildJsonObject {
                 put("alias", opening.alias)
                 put("path", opening.path)
-                put("result", opening.result.getOrNull()?.let { if (it == HerdrOpening.OPENED) "opened" else "focused" } ?: "failed")
+                val herdrOpening = opening.result.getOrNull()
+                put("result", herdrOpening?.outcome?.jsonValue ?: "failed")
+                put("pane_id", herdrOpening?.paneId)
+                put("agent", herdrOpening?.agent)
                 put("error", opening.result.exceptionOrNull()?.message?.let(::JsonPrimitive) ?: JsonNull)
             })
         }
@@ -215,6 +219,8 @@ fun groupOpenJson(branch: String, openings: List<GroupOpening>): JsonObject = bu
 
 fun multirepoAgentOpenJson(multirepo: Multirepo, opening: HerdrOpening): JsonObject = buildJsonObject {
     put("path", multirepo.folder)
-    put("opened", opening == HerdrOpening.OPENED)
-    put("agent", multirepo.agent.displayName)
+    put("opened", opening.outcome != HerdrOutcome.FOCUSED)
+    put("herdr", opening.outcome.jsonValue)
+    put("pane_id", opening.paneId)
+    put("agent", opening.agent ?: multirepo.agent.displayName)
 }

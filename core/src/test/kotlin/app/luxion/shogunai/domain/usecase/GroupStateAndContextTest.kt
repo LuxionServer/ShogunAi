@@ -8,6 +8,7 @@ import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.HerdrOpening
+import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.HerdrPane
 import app.luxion.shogunai.domain.model.HerdrWorkspace
 import app.luxion.shogunai.domain.model.Multirepo
@@ -132,8 +133,37 @@ class GroupStateAndContextTest {
         val openings = OpenGroupInHerdrUseCase(herdr, resolveEnvironment)(group)
 
         assertIs<WorktreeError.HerdrNotInstalled>(openings[0].result.exceptionOrNull())
-        assertEquals(HerdrOpening.OPENED, openings[1].result.getOrThrow())
+        assertEquals(HerdrOutcome.OPENED, openings[1].result.getOrThrow().outcome)
         assertEquals(listOf(Triple(world.apiBase, apiTask, "TASK-1")), herdr.opened)
+    }
+
+    @Test
+    fun `opening a group focuses live agents and starts the agent where the workspace has none`() = runTest {
+        val herdr = FakeHerdrClient(
+            alreadyOpen = setOf(appTask, apiTask),
+            panes = listOf(HerdrPane("w1:p1", "w1", appTask, agent = "claude", agentStatus = "idle"), HerdrPane("w2:p1", "w2", apiTask)),
+        )
+        val resolveEnvironment = ResolveWorktreeEnvironmentUseCase(world.git, FakeRepositoryProvisioningSource(), FakeEnvironmentStateStore(), FakePortProbe(), trust = FakeRepositoryTrust(approvesEverything = true))
+        val group = DetectGroupsUseCase(world.git)(world.members()).groups.single()
+
+        val openings = OpenGroupInHerdrUseCase(herdr, resolveEnvironment)(group)
+
+        assertEquals(HerdrOpening(HerdrOutcome.FOCUSED, "w1:p1", "claude"), openings[0].result.getOrThrow())
+        assertEquals(HerdrOutcome.STARTED_AGENT, openings[1].result.getOrThrow().outcome)
+        assertEquals("w2:p2", openings[1].result.getOrThrow().paneId)
+        assertEquals(listOf("w2:p2"), herdr.ran.map { it.first })
+    }
+
+    @Test
+    fun `a member whose agent doesn't start fails while the other still opens`() = runTest {
+        val herdr = FakeHerdrClient(alreadyOpen = setOf(appTask), panes = listOf(HerdrPane("w1:p1", "w1", appTask, agent = "claude", agentStatus = "working")), startsAgents = false)
+        val resolveEnvironment = ResolveWorktreeEnvironmentUseCase(world.git, FakeRepositoryProvisioningSource(), FakeEnvironmentStateStore(), FakePortProbe(), trust = FakeRepositoryTrust(approvesEverything = true))
+        val group = DetectGroupsUseCase(world.git)(world.members()).groups.single()
+
+        val openings = OpenGroupInHerdrUseCase(herdr, resolveEnvironment)(group)
+
+        assertEquals(HerdrOutcome.FOCUSED, openings[0].result.getOrThrow().outcome)
+        assertIs<WorktreeError.HerdrAgentNotStarted>(openings[1].result.exceptionOrNull())
     }
 
     @Test
@@ -152,16 +182,46 @@ class GroupStateAndContextTest {
         val multirepo = Multirepo(world.folder, world.declaration, approved = true, localAgent = AgentLaunchConfig(agentCommand = "claude", useHeadroom = false))
         val fresh = FakeHerdrClient()
 
-        assertEquals(HerdrOpening.OPENED, OpenMultirepoAgentInHerdrUseCase(fresh)(multirepo).getOrThrow())
+        assertEquals(HerdrOpening(HerdrOutcome.OPENED, "plain1:p1", multirepo.agent.displayName), OpenMultirepoAgentInHerdrUseCase(fresh)(multirepo).getOrThrow())
         assertEquals(listOf(world.folder to "product"), fresh.createdWorkspaces)
         assertEquals(listOf("plain1:p1" to "claude"), fresh.ran)
 
         val open = FakeHerdrClient(
             workspaces = listOf(HerdrWorkspace("w5", "product", null), HerdrWorkspace("w6", "app", world.folder)),
-            panes = listOf(HerdrPane("w6:p1", "w6", world.folder), HerdrPane("w5:p1", "w5", world.folder)),
+            panes = listOf(
+                HerdrPane("w6:p1", "w6", world.folder),
+                HerdrPane("w5:p1", "w5", world.folder),
+                HerdrPane("w5:p2", "w5", world.folder, agent = "claude", agentStatus = "idle"),
+            ),
         )
-        assertEquals(HerdrOpening.FOCUSED, OpenMultirepoAgentInHerdrUseCase(open)(multirepo).getOrThrow())
-        assertEquals(listOf("w5"), open.focusedWorkspaces)
+        assertEquals(HerdrOpening(HerdrOutcome.FOCUSED, "w5:p2", "claude"), OpenMultirepoAgentInHerdrUseCase(open)(multirepo).getOrThrow())
+        assertEquals(listOf("w5:p2"), open.focusedAgents)
         assertTrue(open.createdWorkspaces.isEmpty() && open.ran.isEmpty())
+    }
+
+    @Test
+    fun `the multirepo agent starts in a new pane of its open workspace without an agent`() = runTest {
+        val multirepo = Multirepo(world.folder, world.declaration, approved = true, localAgent = AgentLaunchConfig(agentCommand = "claude", useHeadroom = false))
+        val herdr = FakeHerdrClient(
+            workspaces = listOf(HerdrWorkspace("w5", "product", null)),
+            panes = listOf(HerdrPane("w5:p1", "w5", world.folder)),
+        )
+
+        val opening = OpenMultirepoAgentInHerdrUseCase(herdr)(multirepo).getOrThrow()
+
+        assertEquals(HerdrOpening(HerdrOutcome.STARTED_AGENT, "w5:p2", multirepo.agent.displayName), opening)
+        assertEquals(listOf(FakeHerdrClient.Split("w5:p1", world.folder, emptyList())), herdr.splits)
+        assertEquals(listOf("w5:p2" to "claude"), herdr.ran)
+        assertTrue(herdr.createdWorkspaces.isEmpty() && herdr.closed.isEmpty())
+    }
+
+    @Test
+    fun `the multirepo agent that doesn't start fails`() = runTest {
+        val multirepo = Multirepo(world.folder, world.declaration, approved = true, localAgent = AgentLaunchConfig(agentCommand = "claude", useHeadroom = false))
+
+        val error = OpenMultirepoAgentInHerdrUseCase(FakeHerdrClient(startsAgents = false))(multirepo).exceptionOrNull()
+
+        assertIs<WorktreeError.HerdrAgentNotStarted>(error)
+        assertEquals("plain1:p1", error.paneId)
     }
 }

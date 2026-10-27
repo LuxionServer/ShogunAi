@@ -57,6 +57,7 @@ import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.XcodeProvider
 import java.time.Instant
 import kotlinx.coroutines.runBlocking
+import app.luxion.shogunai.domain.model.HerdrPane
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
@@ -64,6 +65,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -181,6 +183,7 @@ class ShogunCliTest {
         canonicalPath = canonicalPath,
         now = { now },
         herdr = herdr,
+        herdrAgentStartTimeout = 100.milliseconds,
         trust = trust,
         readAnswer = { answer },
         environmentVariable = { environment[it] },
@@ -2221,21 +2224,54 @@ class ShogunCliTest {
             .run(listOf("open", "TASK-1", "--herdr"))
 
         assertEquals(0, exitCode, err.toString())
-        assertEquals("opened $merged in Herdr with Claude\n", out.toString())
+        assertEquals("opened $merged in Herdr with Claude (pane w1:p2)\n", out.toString())
         assertEquals(listOf(Triple(base, merged, "TASK-1")), herdr.opened)
         assertEquals(listOf(FakeHerdrClient.Split("w1:p1", merged, listOf("APP" to "app"))), herdr.splits)
         assertEquals(listOf("w1:p2" to "claude"), herdr.ran)
     }
 
     @Test
-    fun `open in herdr focuses a worktree herdr already has open`() {
-        val herdr = FakeHerdrClient(alreadyOpen = setOf(merged))
+    fun `open in herdr focuses the live agent of a worktree herdr already has open`() {
+        val herdr = FakeHerdrClient(alreadyOpen = setOf(merged), panes = listOf(HerdrPane("w1:p1", "w1", merged, agent = "claude", agentStatus = "idle")))
 
         val exitCode = cli(repositoryExecutor(), herdr = herdr).run(listOf("open", "feature/TASK-1", "--herdr"))
 
         assertEquals(0, exitCode, err.toString())
-        assertEquals("focused $merged in Herdr (already open)\n", out.toString())
+        assertEquals("focused $merged in Herdr (already open, pane w1:p1)\n", out.toString())
+        assertEquals(listOf("w1:p1"), herdr.focusedAgents)
         assertTrue(herdr.ran.isEmpty())
+    }
+
+    @Test
+    fun `open in herdr starts the agent again in a workspace left without one`() {
+        val herdr = FakeHerdrClient()
+        val run = { cli(repositoryExecutor(), herdr = herdr).run(listOf("open", "TASK-1", "--herdr")) }
+
+        assertEquals(0, run(), err.toString())
+        herdr.quitAgent("w1:p1")
+        assertEquals(0, run(), err.toString())
+        assertEquals(0, run(), err.toString())
+
+        assertEquals(
+            "opened $merged in Herdr with Claude (pane w1:p1)\n" +
+                "started Claude in $merged's open Herdr workspace (pane w1:p2)\n" +
+                "focused $merged in Herdr (already open, pane w1:p2)\n",
+            out.toString(),
+        )
+        assertEquals(listOf("w1:p1" to "claude", "w1:p2" to "claude"), herdr.ran)
+        assertTrue(herdr.closed.isEmpty())
+    }
+
+    @Test
+    fun `open in herdr fails when the agent doesn't start`() {
+        val herdr = FakeHerdrClient(startsAgents = false)
+
+        val exitCode = cli(repositoryExecutor(), herdr = herdr).run(listOf("open", "TASK-1", "--herdr"))
+
+        assertEquals(1, exitCode)
+        assertEquals("", out.toString())
+        assertTrue(err.contains("didn't start in Herdr pane w1:p1"), err.toString())
+        assertTrue(err.contains("`claude`"), err.toString())
     }
 
     @Test
@@ -2278,20 +2314,33 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals(
-            Json.parseToJsonElement("""{"path": "$merged", "branch": "feature/TASK-1", "herdr": "opened", "agent": "Claude"}"""),
+            Json.parseToJsonElement("""{"path": "$merged", "branch": "feature/TASK-1", "herdr": "opened", "pane_id": "w1:p1", "agent": "Claude"}"""),
             Json.parseToJsonElement(out.toString()),
         )
     }
 
     @Test
-    fun `open in herdr prints a null agent in json when only focused`() {
-        val herdr = FakeHerdrClient(alreadyOpen = setOf(merged))
+    fun `open in herdr prints the focused agent and its pane in json`() {
+        val herdr = FakeHerdrClient(alreadyOpen = setOf(merged), panes = listOf(HerdrPane("w1:p3", "w1", merged, agent = "claude", agentStatus = "working")))
 
         cli(repositoryExecutor(), herdr = herdr).run(listOf("open", "TASK-1", "--herdr", "--json"))
 
         val result = Json.parseToJsonElement(out.toString()).jsonObject
         assertEquals(JsonPrimitive("focused"), result.getValue("herdr"))
-        assertEquals(JsonNull, result.getValue("agent"))
+        assertEquals(JsonPrimitive("w1:p3"), result.getValue("pane_id"))
+        assertEquals(JsonPrimitive("claude"), result.getValue("agent"))
+    }
+
+    @Test
+    fun `open in herdr prints started-agent in json`() {
+        val herdr = FakeHerdrClient(alreadyOpen = setOf(merged))
+
+        cli(repositoryExecutor(), herdr = herdr).run(listOf("open", "TASK-1", "--herdr", "--json"))
+
+        assertEquals(
+            Json.parseToJsonElement("""{"path": "$merged", "branch": "feature/TASK-1", "herdr": "started-agent", "pane_id": "w1:p2", "agent": "Claude"}"""),
+            Json.parseToJsonElement(out.toString()),
+        )
     }
 
     @Test
