@@ -60,7 +60,7 @@ Creating a worktree for an existing branch (`shogun new --branch`, or a group's 
 - **THEN** the worktree is created and no base is recorded for `hotfix/login`
 
 ### Requirement: Print a worktree's base from the command line
-`shogun base [<target>]` SHALL print the recorded base of the worktree at the current directory, or of `<target>` (task id, path or branch, as `shogun remove` resolves it), alone on standard output. Without a record it SHALL print on standard error that none is recorded, how to set it, and exit with code 1. `--json` SHALL print `{"worktree", "branch", "base"}`, with `base` `null` and exit code 1 when none is recorded.
+`shogun base [<target>]` SHALL print the recorded base of the worktree at the current directory, or of `<target>` (task id, path or branch, as `shogun remove` resolves it), alone on standard output. Without a record it SHALL print on standard error that none is recorded, how to set it, and exit with code 1. `--json` SHALL print `{"path", "branch", "base"}`, with `base` `null` and exit code 1 when none is recorded.
 
 #### Scenario: Recorded base
 - **WHEN** the user runs `shogun base` inside the worktree of `feature/TASK-123`, recorded with base `epic/redesign`
@@ -99,7 +99,7 @@ Creating a worktree for an existing branch (`shogun new --branch`, or a group's 
 
 #### Scenario: Missing value
 - **WHEN** the user runs `shogun base --set`
-- **THEN** it prints that `--set` needs a branch and exits with code 2
+- **THEN** it prints that `--set` needs a value and exits with code 2
 
 ### Requirement: Show the base in status
 `shogun status` SHALL show `base=<branch>` on the line of each worktree with a recorded base, and `shogun status --json` SHALL add a `base` field to every worktree object: the recorded branch, or `null` when none is recorded or the worktree is detached. All the recorded bases SHALL be read with one Git command, and a failure to read them SHALL leave every `base` `null` without failing the command.

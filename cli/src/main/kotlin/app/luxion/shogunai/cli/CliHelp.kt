@@ -36,6 +36,13 @@ internal object CliHelp {
   status [--json]             List the repository's worktrees with their state; in a multirepo folder, its
                               groups (the same branch in several repositories) and the ungrouped worktrees
 """.trimIndent(),
+        "base" to """
+  base [<task id | path | branch>] [--set <branch>] [--json]
+                              Print the branch the worktree's branch was created from, the base for its pull
+                              request (default: the current worktree); exit code 1 when none is recorded;
+                              --set records it, for worktrees created by other tools or to correct it;
+                              stored as branch.<branch>.gh-merge-base, which gh pr create also reads
+""".trimIndent(),
         "remove" to """
   remove <task id | path | branch> [--force] [--delete-branch | --force-delete-branch] [--json]
                               Remove one worktree and stop its emulator, simulator and idle Gradle daemons;

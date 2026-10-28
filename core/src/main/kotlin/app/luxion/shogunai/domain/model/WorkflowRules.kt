@@ -89,6 +89,13 @@ object WorkflowRules {
             inSessionStart = true,
         ),
         WorkflowRule(
+            "worktrees.pull-request-base",
+            WorkflowTopic.WORKTREES,
+            "Open a pull request against the branch `shogun base` prints, passing it explicitly " +
+                "(`gh pr create --base \"\$(shogun base)\"`); if none is recorded, set it with `shogun base --set <branch>` " +
+                "once the base is clear, or ask the person.",
+        ),
+        WorkflowRule(
             "worktrees.handoff",
             WorkflowTopic.WORKTREES,
             "Give the person the path of the new worktree so they open a session there, and consult `shogun status` " +

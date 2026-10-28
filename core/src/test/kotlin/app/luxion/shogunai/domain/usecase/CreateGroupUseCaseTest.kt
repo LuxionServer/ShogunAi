@@ -24,6 +24,8 @@ class CreateGroupUseCaseTest {
         assertEquals(listOf("${world.worktreesRoot}/app/TASK-12", "${world.worktreesRoot}/docs/TASK-12"), creation.repositories.map { it.path })
         assertTrue(world.git.ranIn(world.appBase, "git", "worktree", "add", "--no-track", "${world.worktreesRoot}/app/TASK-12", "-b", "feature/TASK-12", "origin/develop"))
         assertTrue(world.git.ranIn(world.docsBase, "git", "worktree", "add", "--no-track", "${world.worktreesRoot}/docs/TASK-12", "-b", "feature/TASK-12", "origin/main"))
+        assertTrue(world.git.ranIn(world.appBase, "git", "config", "branch.feature/TASK-12.gh-merge-base", "develop"))
+        assertTrue(world.git.ranIn(world.docsBase, "git", "config", "branch.feature/TASK-12.gh-merge-base", "main"))
         assertFalse(creation.failed)
     }
 
@@ -52,6 +54,7 @@ class CreateGroupUseCaseTest {
         create(listOf(world.member("api")), "TASK-12", BranchType.FEATURE).getOrThrow()
 
         assertTrue(world.git.ranIn(world.apiBase, "git", "worktree", "add", "${world.worktreesRoot}/api/TASK-12", "feature/TASK-12"))
+        assertFalse(world.git.calls.any { it.second == world.apiBase && it.first.take(2) == listOf("git", "config") })
     }
 
     @Test

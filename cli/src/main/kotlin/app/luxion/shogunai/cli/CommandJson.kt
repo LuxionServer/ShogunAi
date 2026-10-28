@@ -702,6 +702,12 @@ val ResourceKind.jsonLabel: String
 private val SimulatorState.jsonLabel: String
     get() = name.lowercase()
 
+fun baseJson(path: String, branch: String?, base: String?): JsonObject = buildJsonObject {
+    put("path", path)
+    put("branch", branch)
+    put("base", base)
+}
+
 fun removeJson(
     path: String,
     branch: String?,

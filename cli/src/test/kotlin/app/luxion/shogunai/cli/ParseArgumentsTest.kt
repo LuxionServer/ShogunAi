@@ -100,6 +100,18 @@ class ParseArgumentsTest {
     }
 
     @Test
+    fun `base takes an optional target, set and the json flag`() {
+        assertEquals(ParsedArguments.Command(CliCommand.Base()), parseArguments(listOf("base")))
+        assertEquals(
+            ParsedArguments.Command(CliCommand.Base("TASK-1", "origin/develop", json = true)),
+            parseArguments(listOf("base", "TASK-1", "--set", "origin/develop", "--json")),
+        )
+        assertEquals(ParsedArguments.UsageError("--set needs a value"), parseArguments(listOf("base", "--set")))
+        assertEquals(ParsedArguments.UsageError("unknown option '--yaml' for 'base'"), parseArguments(listOf("base", "--yaml")))
+        assertEquals(ParsedArguments.UsageError("'base' takes a single target, got 'a' and 'b'"), parseArguments(listOf("base", "a", "b")))
+    }
+
+    @Test
     fun `status takes only the json flag`() {
         assertEquals(CliCommand.Status(), command("status"))
         assertEquals(CliCommand.Status(json = true), command("status", "--json"))

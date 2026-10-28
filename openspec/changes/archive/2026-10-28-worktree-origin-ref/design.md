@@ -47,11 +47,14 @@ The branch name is passed as part of the key argument, never through a shell; br
 
 ### `shogun base` as its own command, and `base` in status
 
-A dedicated command answers the one question an agent asks before `gh pr create`, prints the bare value for `--base "$(shogun base)"`, and has a natural place for `--set`. `status` shows it for the overview, as an additive JSON field. `CliCommand.Base(target: String?, set: String?, json: Boolean)`; the target is resolved with `resolveWorktreeTarget` as `remove` does, defaulting to the worktree containing the current directory. `--set` validates the value with `ResolveBaseBranchUseCase` run in the base repository (so `origin/x` becomes `x` and tags or unknown names are rejected with a new `WorktreeError.NotABranch`), then writes with a `SetBaseBranchUseCase` sharing the Git config write with creation. `--json` prints `{"worktree", "branch", "base"}` and follows the existing JSON error rules.
+A dedicated command answers the one question an agent asks before `gh pr create`, prints the bare value for `--base "$(shogun base)"`, and has a natural place for `--set`. `status` shows it for the overview, as an additive JSON field. `CliCommand.Base(target: String?, set: String?, json: Boolean)`; the target is resolved with `resolveWorktreeTarget` as `remove` does, defaulting to the worktree containing the current directory. `--set` validates the value with `ResolveBaseBranchUseCase` run in the base repository (so `origin/x` becomes `x` and tags or unknown names are rejected with a new `WorktreeError.NotABranch`), then writes with a `SetBaseBranchUseCase` sharing the Git config write with creation. `--json` prints `{"path", "branch", "base"}` and follows the existing JSON error rules.
 
 `WorktreeEntry` gains `base: String?`, filled from the map by the worktree's branch; `statusLine` adds `base=<b>` after the branch and origin; `worktreeJson` adds `base`.
 
 ### One workflow rule
+
+The guide's catalog excluded pull requests as a team preference, and the `agent-workflow-guide` design left the base "a team policy" until ShogunAi knew the origin ref. Now the base is a fact ShogunAi records, so the rule only points to it; the catalog requirement is narrowed to exclude pull request format and reviewers, which remain the team's.
+
 
 `worktrees.pull-request-base` in the `worktrees` topic, condition `ALWAYS`, not in the session start lines (they stay short and point to `shogun guide`): "Open a pull request against the branch `shogun base` prints, passing it explicitly (`gh pr create --base \"$(shogun base)\"`); if it has none recorded, set it with `shogun base --set <branch>` once the base is clear, or ask the person." The `AGENTS.md` block installed by `shogun guide install` picks it up through the same catalog.
 
