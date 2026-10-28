@@ -1,6 +1,7 @@
 package app.luxion.shogunai.domain
 
 import app.luxion.shogunai.domain.io.HerdrClient
+import app.luxion.shogunai.domain.model.ClaudeSession
 import app.luxion.shogunai.domain.model.HerdrAgent
 import app.luxion.shogunai.domain.model.HerdrPane
 import app.luxion.shogunai.domain.model.HerdrWorkspace
@@ -39,6 +40,13 @@ class FakeHerdrClient(
     private val startingAgents = mutableMapOf<String, Pair<String, Int>>()
     private val workspacesByPath = mutableMapOf<String, String>()
 
+    fun startedClaudeSessions(): List<ClaudeSession> =
+        ran.mapIndexedNotNull { index, (paneId, command) ->
+            val name = SESSION_NAME_ARGUMENT.find(command)?.value?.substringAfterLast(' ') ?: return@mapIndexedNotNull null
+            val directory = (createdPanes + panes).firstOrNull { it.paneId == paneId }?.directory ?: return@mapIndexedNotNull null
+            ClaudeSession(STARTED_SESSION_PID + index, directory, name, startedAt = index.toLong())
+        }
+
     fun quitAgent(paneId: String) {
         val pane = createdPanes.indexOfFirst { it.paneId == paneId }
         if (pane >= 0) createdPanes[pane] = createdPanes[pane].copy(agent = null, agentStatus = HerdrPane.UNKNOWN_AGENT_STATUS)
@@ -74,7 +82,7 @@ class FakeHerdrClient(
         runFailure?.let { throw it }
         ran += paneId to command
         if (startsAgents) {
-            val agent = command.trim().substringAfterLast(' ')
+            val agent = command.trim().replace(SESSION_NAME_ARGUMENT, "").substringAfterLast(' ')
             if (agentDetectedAfterListings > 0) {
                 startingAgents[paneId] = agent to agentDetectedAfterListings
             } else {
@@ -151,3 +159,7 @@ class FakeHerdrClient(
         focusedWorkspaces += workspaceId
     }
 }
+
+private val SESSION_NAME_ARGUMENT = Regex(" -n \\S+$")
+
+const val STARTED_SESSION_PID = 9000L

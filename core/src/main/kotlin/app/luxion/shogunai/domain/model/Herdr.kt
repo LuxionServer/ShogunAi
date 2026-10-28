@@ -13,7 +13,7 @@ const val AGENT_START_SECONDS = 10
 
 enum class HerdrOutcome { OPENED, STARTED_AGENT, FOCUSED }
 
-data class HerdrOpening(val outcome: HerdrOutcome, val paneId: String, val agent: String?)
+data class HerdrOpening(val outcome: HerdrOutcome, val paneId: String, val agent: String?, val sessionName: String? = null)
 
 data class HerdrWorkspace(val workspaceId: String, val label: String, val worktreePath: String?)
 

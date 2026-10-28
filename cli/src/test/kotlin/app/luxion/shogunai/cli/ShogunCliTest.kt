@@ -9,6 +9,7 @@ import app.luxion.shogunai.domain.model.ResourceSettings
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.BuildInfo
 import app.luxion.shogunai.domain.FakeAgentSessionStore
+import app.luxion.shogunai.domain.FakeClaudeSessionRegistry
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeComposeProjectRegistry
@@ -47,6 +48,7 @@ import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.HerdrAgent
 import app.luxion.shogunai.domain.model.AgentSessionRecord
 import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.ClaudeSession
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.IosSimulatorProvider
@@ -161,6 +163,7 @@ class ShogunCliTest {
         composeProjects: FakeComposeProjectSource = FakeComposeProjectSource(),
         composeRegistry: FakeComposeProjectRegistry = FakeComposeProjectRegistry(),
         records: FakeProvisioningRecordStore = FakeProvisioningRecordStore(),
+        claudeSessions: FakeClaudeSessionRegistry = FakeClaudeSessionRegistry(),
     ) = ShogunCli(
         executor = executor,
         fileManager = fileManager,
@@ -193,6 +196,8 @@ class ShogunCliTest {
         composeSource = composeProjects,
         composeRegistry = composeRegistry,
         provisioningRecords = records,
+        claudeSessions = claudeSessions,
+        isClaudeProcessAlive = { true },
     )
 
     private val gradleUserHome = "/home/dev/.gradle"
@@ -1273,13 +1278,65 @@ class ShogunCliTest {
         )
     }
 
+    private fun twoClaudeSessions() = FakeClaudeSessionRegistry(
+        listOf(
+            ClaudeSession(4242, merged, "main-repo-task-1"),
+            ClaudeSession(4243, "$merged/src", "main-repo-task-1-2"),
+            ClaudeSession(4244, merged, "not-running"),
+        ),
+    )
+
+    private fun twoClaudeProcessesExecutor() = repositoryExecutor { command, _ ->
+        when (command.first()) {
+            "lsof" -> Executor.ok(command, "p4242\ncclaude\nfcwd\nn$merged\np4243\ncclaude\nfcwd\nn$merged/src\n")
+            "ps" -> Executor.ok(command, "4242 /home/dev/.local/bin/claude\n4243 claude\n")
+            else -> null
+        }
+    }
+
+    @Test
+    fun `status shows the Claude session names after the state`() {
+        val exitCode = cli(twoClaudeProcessesExecutor(), sessionStore = blockedSession(), claudeSessions = twoClaudeSessions()).run(listOf("status"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(
+            out.lines().contains("$merged  feature/TASK-1  origin=shogunai  agents=claude(blocked, main-repo-task-1, main-repo-task-1-2)  changes=0  merged"),
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `status shows the session names of an agent without a state`() {
+        val exitCode = cli(twoClaudeProcessesExecutor(), claudeSessions = twoClaudeSessions()).run(listOf("status"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(
+            out.lines().contains("$merged  feature/TASK-1  origin=shogunai  agents=claude(main-repo-task-1, main-repo-task-1-2)  changes=0  merged"),
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `status json lists each agent's sessions`() {
+        cli(twoClaudeProcessesExecutor(), sessionStore = blockedSession(), claudeSessions = twoClaudeSessions()).run(listOf("status", "--json"))
+
+        val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray
+        assertEquals(
+            Json.parseToJsonElement(
+                """[{"name": "claude", "state": "blocked", "stateSource": "claude-code", "herdrState": null,
+                    "sessions": [{"name": "main-repo-task-1", "pid": 4242}, {"name": "main-repo-task-1-2", "pid": 4243}]}]""",
+            ),
+            worktrees[1].jsonObject.getValue("agents"),
+        )
+    }
+
     @Test
     fun `status json reports the state and its source`() {
         cli(claudeProcessExecutor(), sessionStore = blockedSession()).run(listOf("status", "--json"))
 
         val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray
         assertEquals(
-            Json.parseToJsonElement("""[{"name": "claude", "state": "blocked", "stateSource": "claude-code", "herdrState": null}]"""),
+            Json.parseToJsonElement("""[{"name": "claude", "state": "blocked", "stateSource": "claude-code", "herdrState": null, "sessions": []}]"""),
             worktrees[1].jsonObject.getValue("agents"),
         )
     }
@@ -1311,11 +1368,11 @@ class ShogunCliTest {
         assertEquals(0, exitCode, err.toString())
         val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray
         assertEquals(
-            Json.parseToJsonElement("""[{"name": "claude", "state": "blocked", "stateSource": "herdr", "herdrState": "blocked"}]"""),
+            Json.parseToJsonElement("""[{"name": "claude", "state": "blocked", "stateSource": "herdr", "herdrState": "blocked", "sessions": []}]"""),
             worktrees[1].jsonObject.getValue("agents"),
         )
         assertEquals(
-            Json.parseToJsonElement("""[{"name": "aider", "state": null, "stateSource": null, "herdrState": null}]"""),
+            Json.parseToJsonElement("""[{"name": "aider", "state": null, "stateSource": null, "herdrState": null, "sessions": []}]"""),
             worktrees[2].jsonObject.getValue("agents"),
         )
     }
@@ -2230,7 +2287,7 @@ class ShogunCliTest {
         assertEquals("opened $merged in Herdr with Claude (pane w1:p2)\n", out.toString())
         assertEquals(listOf(Triple(base, merged, "TASK-1")), herdr.opened)
         assertEquals(listOf(FakeHerdrClient.Split("w1:p1", merged, listOf("APP" to "app"))), herdr.splits)
-        assertEquals(listOf("w1:p2" to "claude"), herdr.ran)
+        assertEquals(listOf("w1:p2" to "claude -n main-repo-task-1"), herdr.ran)
     }
 
     @Test
@@ -2261,7 +2318,7 @@ class ShogunCliTest {
                 "focused $merged in Herdr (already open, pane w1:p2)\n",
             out.toString(),
         )
-        assertEquals(listOf("w1:p1" to "claude", "w1:p2" to "claude"), herdr.ran)
+        assertEquals(listOf("w1:p1" to "claude -n main-repo-task-1", "w1:p2" to "claude -n main-repo-task-1"), herdr.ran)
         assertTrue(herdr.closed.isEmpty())
     }
 
@@ -2274,7 +2331,7 @@ class ShogunCliTest {
         assertEquals(1, exitCode)
         assertEquals("", out.toString())
         assertTrue(err.contains("didn't start in Herdr pane w1:p1"), err.toString())
-        assertTrue(err.contains("`claude`"), err.toString())
+        assertTrue(err.contains("`claude -n main-repo-task-1`"), err.toString())
     }
 
     @Test
@@ -2317,7 +2374,7 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals(
-            Json.parseToJsonElement("""{"path": "$merged", "branch": "feature/TASK-1", "herdr": "opened", "pane_id": "w1:p1", "agent": "Claude"}"""),
+            Json.parseToJsonElement("""{"path": "$merged", "branch": "feature/TASK-1", "herdr": "opened", "pane_id": "w1:p1", "agent": "Claude", "session_name": null}"""),
             Json.parseToJsonElement(out.toString()),
         )
     }
@@ -2341,9 +2398,60 @@ class ShogunCliTest {
         cli(repositoryExecutor(), herdr = herdr).run(listOf("open", "TASK-1", "--herdr", "--json"))
 
         assertEquals(
-            Json.parseToJsonElement("""{"path": "$merged", "branch": "feature/TASK-1", "herdr": "started-agent", "pane_id": "w1:p2", "agent": "Claude"}"""),
+            Json.parseToJsonElement("""{"path": "$merged", "branch": "feature/TASK-1", "herdr": "started-agent", "pane_id": "w1:p2", "agent": "Claude", "session_name": null}"""),
             Json.parseToJsonElement(out.toString()),
         )
+    }
+
+    @Test
+    fun `open in herdr names the Claude session and reports it`() {
+        val herdr = FakeHerdrClient()
+        val sessions = FakeClaudeSessionRegistry(started = herdr::startedClaudeSessions)
+
+        val exitCode = cli(repositoryExecutor(), herdr = herdr, claudeSessions = sessions).run(listOf("open", "TASK-1", "--herdr"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf("w1:p1" to "claude -n main-repo-task-1"), herdr.ran)
+        assertEquals("opened $merged in Herdr with Claude (pane w1:p1) as session main-repo-task-1\n", out.toString())
+    }
+
+    @Test
+    fun `open in herdr prints the session name in json`() {
+        val herdr = FakeHerdrClient()
+        val sessions = FakeClaudeSessionRegistry(started = herdr::startedClaudeSessions)
+
+        cli(repositoryExecutor(), herdr = herdr, claudeSessions = sessions).run(listOf("open", "TASK-1", "--herdr", "--json"))
+
+        assertEquals(
+            Json.parseToJsonElement("""{"path": "$merged", "branch": "feature/TASK-1", "herdr": "opened", "pane_id": "w1:p1", "agent": "Claude", "session_name": "main-repo-task-1"}"""),
+            Json.parseToJsonElement(out.toString()),
+        )
+    }
+
+    @Test
+    fun `open in herdr reports the session of an agent that was already open`() {
+        val herdr = FakeHerdrClient(alreadyOpen = setOf(merged), panes = listOf(HerdrPane("w1:p3", "w1", merged, agent = "claude", agentStatus = "working")))
+        val sessions = FakeClaudeSessionRegistry(listOf(ClaudeSession(4242, merged, "task-1-1a")))
+
+        cli(repositoryExecutor(), herdr = herdr, claudeSessions = sessions).run(listOf("open", "TASK-1", "--herdr", "--json"))
+
+        val result = Json.parseToJsonElement(out.toString()).jsonObject
+        assertEquals(JsonPrimitive("focused"), result.getValue("herdr"))
+        assertEquals(JsonPrimitive("task-1-1a"), result.getValue("session_name"))
+    }
+
+    @Test
+    fun `open in herdr leaves a non Claude agent unnamed`() {
+        val herdr = FakeHerdrClient()
+        val codex = AgentLaunchConfig(name = "Codex", agentCommand = "codex", useHeadroom = false)
+        val withCodex = project.copy(config = project.config.copy(additionalAgents = listOf(codex)))
+        val sessions = FakeClaudeSessionRegistry(started = herdr::startedClaudeSessions)
+
+        cli(repositoryExecutor(), projects = listOf(withCodex), herdr = herdr, claudeSessions = sessions)
+            .run(listOf("open", "TASK-1", "--herdr", "--agent", "codex", "--json"))
+
+        assertEquals(listOf("w1:p1" to "codex"), herdr.ran)
+        assertEquals(JsonNull, Json.parseToJsonElement(out.toString()).jsonObject.getValue("session_name"))
     }
 
     @Test

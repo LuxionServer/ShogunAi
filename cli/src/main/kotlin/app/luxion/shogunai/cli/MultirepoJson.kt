@@ -219,6 +219,7 @@ fun groupOpenJson(branch: String, openings: List<GroupOpening>): JsonObject = bu
                 put("result", herdrOpening?.outcome?.jsonValue ?: "failed")
                 put("pane_id", herdrOpening?.paneId)
                 put("agent", herdrOpening?.agent)
+                put("session_name", herdrOpening?.sessionName)
                 put("error", opening.result.exceptionOrNull()?.message?.let(::JsonPrimitive) ?: JsonNull)
             })
         }
@@ -231,4 +232,5 @@ fun multirepoAgentOpenJson(multirepo: Multirepo, opening: HerdrOpening): JsonObj
     put("herdr", opening.outcome.jsonValue)
     put("pane_id", opening.paneId)
     put("agent", opening.agent ?: multirepo.agent.displayName)
+    put("session_name", opening.sessionName)
 }

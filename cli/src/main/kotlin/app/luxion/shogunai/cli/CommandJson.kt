@@ -733,6 +733,7 @@ fun openJson(path: String, branch: String?, opening: HerdrOpening): JsonObject =
     put("herdr", opening.outcome.jsonValue)
     put("pane_id", opening.paneId)
     put("agent", opening.agent)
+    put("session_name", opening.sessionName)
 }
 
 val HerdrOutcome.jsonValue: String

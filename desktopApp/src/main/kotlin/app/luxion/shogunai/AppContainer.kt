@@ -78,6 +78,7 @@ import app.luxion.shogunai.domain.usecase.CommandLineTool
 import app.luxion.shogunai.infrastructure.NioLauncherFiles
 import app.luxion.shogunai.infrastructure.PowerShellUserPath
 import app.luxion.shogunai.infrastructure.FileAgentSessionStore
+import app.luxion.shogunai.infrastructure.FileClaudeSessionRegistry
 import app.luxion.shogunai.ui.shell.openInBrowser
 import java.nio.file.Files
 import java.nio.file.Path
@@ -180,6 +181,7 @@ import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.ProviderContributions
 import app.luxion.shogunai.domain.usecase.ReadEmulatorStatesUseCase
 import app.luxion.shogunai.domain.usecase.OpenWorktreeInHerdrUseCase
+import app.luxion.shogunai.domain.usecase.HerdrAgentLauncher
 import app.luxion.shogunai.domain.usecase.ReadGitMetadataFingerprintUseCase
 import app.luxion.shogunai.domain.usecase.ReadSimulatorStatesUseCase
 import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
@@ -429,6 +431,10 @@ class AppContainer {
     private val listGradleDaemons = ListGradleDaemonsUseCase(gradleDaemonSource, fileManager)
     private val stopGradleDaemons = StopGradleDaemonsUseCase(gradleDaemonSource, shellCommandExecutor)
     private val agentSessionStore = FileAgentSessionStore()
+    private val claudeSessions = FileClaudeSessionRegistry(
+        ClaudeCodeHooks.claudeSessionsDirectory(System.getenv("CLAUDE_CONFIG_DIR"), System.getProperty("user.home")),
+    )
+    private val herdrLauncher = HerdrAgentLauncher(herdrClient, registry = claudeSessions)
     private val readPool = ReadResourcePoolUseCase(
         resolveEnvironment,
         environmentStateStore,
@@ -502,7 +508,7 @@ class AppContainer {
             RepositoryInspection(topLevel, mainBranch?.name)
         }
 
-    val detectRunningAgents = DetectRunningAgentsUseCase(shellCommandExecutor, herdrClient, agentSessionStore)
+    val detectRunningAgents = DetectRunningAgentsUseCase(shellCommandExecutor, herdrClient, agentSessionStore, claudeSessions = claudeSessions)
 
     private val prepareEnvironment = PrepareWorktreeEnvironmentUseCase(
         resolveEnvironment,
@@ -593,7 +599,7 @@ class AppContainer {
                 provisioningRecords,
             )(members, taskId, branchType, fetch, onRepository)
         },
-        openAgent = { multirepo -> OpenMultirepoAgentInHerdrUseCase(herdrClient)(multirepo) },
+        openAgent = { multirepo -> OpenMultirepoAgentInHerdrUseCase(herdrClient, herdrLauncher)(multirepo) },
         trust = { multirepo -> configureMultirepo.trust(multirepo) },
     )
 
@@ -784,7 +790,7 @@ class AppContainer {
 
         herdr = HerdrUseCases(
             worktreesRoot = { withContext(Dispatchers.IO) { runCatching { herdrConfig.worktreesRoot() }.getOrNull() } },
-            open = OpenWorktreeInHerdrUseCase(config, herdrClient, resolveEnvironment)::invoke,
+            open = OpenWorktreeInHerdrUseCase(config, herdrClient, resolveEnvironment, herdrLauncher)::invoke,
             openWorkspaces = CloseHerdrWorkspacesUseCase(config, herdrClient)::openWorkspaces,
             focusAgent = { paneId -> runCatching { herdrClient.focusAgent(paneId) } },
         ),

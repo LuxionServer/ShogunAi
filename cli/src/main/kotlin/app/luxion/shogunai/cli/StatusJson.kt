@@ -56,6 +56,14 @@ internal fun agentJson(agent: RunningAgent): JsonObject = buildJsonObject {
     put("state", agent.state?.name?.lowercase())
     put("stateSource", agent.stateSource?.let(::sourceLabel))
     put("herdrState", agent.state?.takeIf { agent.stateSource == AgentStateSource.HERDR }?.name?.lowercase())
+    put("sessions", buildJsonArray {
+        agent.sessions.forEach { session ->
+            add(buildJsonObject {
+                put("name", session.name)
+                put("pid", session.pid)
+            })
+        }
+    })
 }
 
 private fun sourceLabel(source: AgentStateSource): String = when (source) {

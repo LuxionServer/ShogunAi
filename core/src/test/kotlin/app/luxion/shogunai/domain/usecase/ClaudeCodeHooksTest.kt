@@ -197,6 +197,13 @@ class ClaudeCodeHooksTest {
     }
 
     @Test
+    fun `the sessions directory follows the Claude config directory`() {
+        assertEquals("/home/dev/.claude/sessions", ClaudeCodeHooks.claudeSessionsDirectory(null, "/home/dev"))
+        assertEquals("/home/dev/.claude/sessions", ClaudeCodeHooks.claudeSessionsDirectory("", "/home/dev"))
+        assertEquals("/custom/claude/sessions", ClaudeCodeHooks.claudeSessionsDirectory("/custom/claude/", "/home/dev"))
+    }
+
+    @Test
     fun `hooks of an event stay an array`() {
         hooks.install(path).getOrThrow()
 

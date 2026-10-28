@@ -54,6 +54,7 @@ Los multirepos y los grupos por rama están hechos en el CLI y en la app de escr
 
 - Llevarse el agente del multirepo fijado en este equipo cuando su carpeta se mueve: `shogun multirepo init` (o "Añadir multirepo") en la carpeta nueva la registra tras revisarla y olvida la entrada antigua, pero el agente local se queda con ella y hay que volver a fijarlo.
 - Asociar worktrees cuyas ramas no coinciden, por ejemplo `shogun group add <id> <worktree>`.
+- Mostrar en las vistas de la app de escritorio los nombres de las sesiones de Claude de los worktrees de un grupo y del agente del multirepo; hoy los informan `shogun open --herdr` y `shogun status`, y la app solo nombra las sesiones que abre.
 - Una única sesión para todo el grupo, con un entorno combinado, como opción junto a un agente por repositorio.
 - Devolver un repositorio de workspace declarado a la detección (quitando el campo `workspace`), desde el CLI y los ajustes del multirepo; hoy `workspace clear` lo desactiva y para deshacerlo hay que editar el archivo a mano.
 - Editar las variables compartidas de un multirepo desde el CLI y los ajustes del multirepo; hoy se editan en `.shogunai-multirepo.json` y se revisan con `shogun multirepo trust`.

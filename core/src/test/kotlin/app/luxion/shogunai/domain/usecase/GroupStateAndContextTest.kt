@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeClaudeSessionRegistry
 import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeHerdrClient
@@ -7,6 +8,7 @@ import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
+import app.luxion.shogunai.domain.model.ClaudeSession
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.HerdrPane
@@ -174,7 +176,7 @@ class GroupStateAndContextTest {
 
         OpenMultirepoAgentInHerdrUseCase(herdr)(world.resolver(world.folder).getOrThrow()!!.multirepo).getOrThrow()
 
-        assertEquals(listOf("plain1:p1" to "claude"), herdr.ran)
+        assertEquals(listOf("plain1:p1" to "claude -n product"), herdr.ran)
     }
 
     @Test
@@ -184,7 +186,7 @@ class GroupStateAndContextTest {
 
         assertEquals(HerdrOpening(HerdrOutcome.OPENED, "plain1:p1", multirepo.agent.displayName), OpenMultirepoAgentInHerdrUseCase(fresh)(multirepo).getOrThrow())
         assertEquals(listOf(world.folder to "product"), fresh.createdWorkspaces)
-        assertEquals(listOf("plain1:p1" to "claude"), fresh.ran)
+        assertEquals(listOf("plain1:p1" to "claude -n product"), fresh.ran)
 
         val open = FakeHerdrClient(
             workspaces = listOf(HerdrWorkspace("w5", "product", null), HerdrWorkspace("w6", "app", world.folder)),
@@ -211,7 +213,7 @@ class GroupStateAndContextTest {
 
         assertEquals(HerdrOpening(HerdrOutcome.STARTED_AGENT, "w5:p2", multirepo.agent.displayName), opening)
         assertEquals(listOf(FakeHerdrClient.Split("w5:p1", world.folder, emptyList())), herdr.splits)
-        assertEquals(listOf("w5:p2" to "claude"), herdr.ran)
+        assertEquals(listOf("w5:p2" to "claude -n product"), herdr.ran)
         assertTrue(herdr.createdWorkspaces.isEmpty() && herdr.closed.isEmpty())
     }
 
@@ -223,5 +225,43 @@ class GroupStateAndContextTest {
 
         assertIs<WorktreeError.HerdrAgentNotStarted>(error)
         assertEquals("plain1:p1", error.paneId)
+    }
+
+    @Test
+    fun `each member of a group gets its own session name`() = runTest {
+        val herdr = FakeHerdrClient()
+        val registry = FakeClaudeSessionRegistry(started = herdr::startedClaudeSessions)
+        val launcher = HerdrAgentLauncher(herdr, registry = registry, isClaudeProcessAlive = { true })
+        val resolveEnvironment = ResolveWorktreeEnvironmentUseCase(world.git, FakeRepositoryProvisioningSource(), FakeEnvironmentStateStore(), FakePortProbe(), trust = FakeRepositoryTrust(approvesEverything = true))
+        val group = DetectGroupsUseCase(world.git)(world.members()).groups.single()
+
+        val openings = OpenGroupInHerdrUseCase(herdr, resolveEnvironment, launcher)(group)
+
+        assertEquals(setOf("api-task-1", "app-task-1"), openings.map { it.result.getOrThrow().sessionName }.toSet())
+        assertEquals(listOf("api-task-1", "app-task-1"), herdr.ran.map { it.second.substringAfter(" -n ") }.sorted())
+    }
+
+    @Test
+    fun `the multirepo agent reports its session name when opened, started or focused`() = runTest {
+        val multirepo = Multirepo(world.folder, world.declaration, approved = true, localAgent = AgentLaunchConfig(agentCommand = "claude", useHeadroom = false))
+        val fresh = FakeHerdrClient()
+        val freshLauncher = HerdrAgentLauncher(fresh, registry = FakeClaudeSessionRegistry(started = fresh::startedClaudeSessions), isClaudeProcessAlive = { true })
+
+        assertEquals("product", OpenMultirepoAgentInHerdrUseCase(fresh, freshLauncher)(multirepo).getOrThrow().sessionName)
+
+        val started = FakeHerdrClient(workspaces = listOf(HerdrWorkspace("w5", "product", null)), panes = listOf(HerdrPane("w5:p1", "w5", world.folder)))
+        val startedLauncher = HerdrAgentLauncher(started, registry = FakeClaudeSessionRegistry(started = started::startedClaudeSessions), isClaudeProcessAlive = { true })
+
+        assertEquals("product", OpenMultirepoAgentInHerdrUseCase(started, startedLauncher)(multirepo).getOrThrow().sessionName)
+
+        val open = FakeHerdrClient(
+            workspaces = listOf(HerdrWorkspace("w5", "product", null)),
+            panes = listOf(HerdrPane("w5:p2", "w5", world.folder, agent = "claude", agentStatus = "idle")),
+        )
+        val registry = FakeClaudeSessionRegistry(listOf(ClaudeSession(42, world.folder, "product")))
+
+        val focused = OpenMultirepoAgentInHerdrUseCase(open, HerdrAgentLauncher(open, registry = registry, isClaudeProcessAlive = { true }))(multirepo).getOrThrow()
+
+        assertEquals(HerdrOpening(HerdrOutcome.FOCUSED, "w5:p2", "claude", "product"), focused)
     }
 }

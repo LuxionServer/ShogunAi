@@ -4,6 +4,8 @@ import app.luxion.shogunai.domain.io.HerdrClient
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.Multirepo
+import app.luxion.shogunai.domain.model.groupMemberSessionName
+import app.luxion.shogunai.domain.model.multirepoSessionName
 
 sealed interface GroupTarget {
     data class Found(val group: WorktreeGroup) : GroupTarget
@@ -30,7 +32,11 @@ class OpenGroupInHerdrUseCase(
 ) {
     suspend operator fun invoke(group: WorktreeGroup): List<GroupOpening> =
         group.worktrees.map { member ->
-            val opening = OpenWorktreeInHerdrUseCase(member.config, herdr, resolveEnvironment, launcher)(member.worktree, member.config.agentLaunchConfig)
+            val opening = OpenWorktreeInHerdrUseCase(member.config, herdr, resolveEnvironment, launcher)(
+                member.worktree,
+                member.config.agentLaunchConfig,
+                groupMemberSessionName(member.alias, group.title),
+            )
             GroupOpening(member.alias, member.worktree.path, opening)
         }
 }
@@ -45,12 +51,15 @@ class OpenMultirepoAgentInHerdrUseCase(
             pane.workspaceId in plain && pane.directory != null && sameDirectory(pane.directory, multirepo.folder)
         }
         val agent = multirepo.agent
+        val sessionName = multirepoSessionName(multirepo)
         if (open != null) {
-            launcher.focusLiveAgent(open.workspaceId)?.let { return@runCatching it }
+            launcher.focusLiveAgent(open.workspaceId, multirepo.folder, sessionName)?.let { return@runCatching it }
             val pane = herdr.splitPane(open.paneId, multirepo.folder, emptyList())
-            return@runCatching launcher.launch(open.workspaceId, pane, agent.resolvedCommand(), agent.displayName, HerdrOutcome.STARTED_AGENT)
+            return@runCatching launcher.launch(
+                open.workspaceId, pane, agent.resolvedCommand(), agent.displayName, HerdrOutcome.STARTED_AGENT, sessionName, multirepo.folder,
+            )
         }
         val opening = herdr.createWorkspace(multirepo.folder, multirepo.name)
-        launcher.launch(opening.workspaceId, opening.rootPaneId, agent.resolvedCommand(), agent.displayName, HerdrOutcome.OPENED)
+        launcher.launch(opening.workspaceId, opening.rootPaneId, agent.resolvedCommand(), agent.displayName, HerdrOutcome.OPENED, sessionName, multirepo.folder)
     }
 }
