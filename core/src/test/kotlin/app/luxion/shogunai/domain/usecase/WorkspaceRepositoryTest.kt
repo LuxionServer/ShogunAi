@@ -2,7 +2,9 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.model.BranchType
+import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
+import app.luxion.shogunai.domain.model.SharedVariablesDeclaration
 import app.luxion.shogunai.domain.model.WorkspaceSetting
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
@@ -182,5 +184,97 @@ class WorkspaceRepositoryTest {
         configure.setDefaults(world.resolved(), listOf("api")).getOrThrow()
 
         assertNull(world.source.declarations[world.folder]!!.workspace)
+    }
+
+    private val configure = ConfigureMultirepoUseCase(world.source, world.resolver, world.projects, world.git)
+
+    private fun storing(declaration: MultirepoDeclaration): Multirepo {
+        world.source.declarations[world.folder] = declaration
+        return world.resolver.build(world.folder, declaration)
+    }
+
+    private fun stored() = world.source.declarations.getValue(world.folder)
+
+    @Test
+    fun `detect removes a turned off workspace field and keeps the multirepo approved`() = runTest {
+        world.makeFolderARepository()
+        world.source.approveAll = false
+        val off = storing(world.declaration.copy(workspace = WorkspaceSetting(enabled = false)))
+        world.source.approve(world.folder, off.approvalSubject)
+
+        val detected = configure.detectWorkspace(world.resolver.build(world.folder, stored())).getOrThrow()
+
+        assertEquals(world.declaration, stored())
+        assertTrue(detected.workspaceDetected)
+        assertEquals("workspace", detected.workspaceRepository?.alias)
+        assertTrue(world.resolver.build(world.folder, stored()).approved)
+    }
+
+    @Test
+    fun `detect from a declared alias leaves the defaults and renames its shared variables`() = runTest {
+        world.makeFolderARepository()
+        val declared = storing(
+            world.declaration.copy(
+                workspace = WorkspaceSetting(alias = "docs-root", default = true),
+                env = SharedVariablesDeclaration(mapOf("app" to mapOf("DOCS" to "${'$'}{port:docs-root.http}"), "docs-root" to mapOf("A" to "x"))),
+            ),
+        )
+        assertTrue("docs-root" in declared.defaultRepos)
+
+        val detected = configure.detectWorkspace(declared).getOrThrow()
+
+        assertNull(stored().workspace)
+        assertFalse("workspace" in detected.defaultRepos)
+        assertEquals(mapOf("app" to mapOf("DOCS" to "${'$'}{port:workspace.http}"), "workspace" to mapOf("A" to "x")), stored().env?.byAlias)
+    }
+
+    @Test
+    fun `detect when already detected changes nothing`() = runTest {
+        world.makeFolderARepository()
+        val detected = storing(world.declaration)
+
+        assertEquals(detected, configure.detectWorkspace(detected).getOrThrow())
+        assertEquals(world.declaration, stored())
+    }
+
+    @Test
+    fun `detect is refused without a repository, with the folder in repos or with the alias taken`() = runTest {
+        val notRepository = storing(world.declaration.copy(workspace = WorkspaceSetting(enabled = false)))
+        assertIs<WorktreeError.InvalidMultirepo>(configure.detectWorkspace(notRepository).exceptionOrNull())
+
+        world.makeFolderARepository()
+        val inRepos = storing(world.declaration.copy(repos = world.declaration.repos + ("root" to "."), workspace = WorkspaceSetting(enabled = false)))
+        assertIs<WorktreeError.InvalidMultirepo>(configure.detectWorkspace(inRepos).exceptionOrNull())
+
+        val taken = storing(world.declaration.copy(repos = world.declaration.repos + ("workspace" to "product-docs"), workspace = WorkspaceSetting(alias = "root")))
+        val error = configure.detectWorkspace(taken).exceptionOrNull()
+        assertIs<WorktreeError.InvalidMultirepo>(error)
+        assertTrue(error.detail.contains("'workspace' is already taken"))
+        assertEquals(WorkspaceSetting(alias = "root"), stored().workspace)
+    }
+
+    @Test
+    fun `declaring the workspace under another alias renames its shared variables`() = runTest {
+        world.makeFolderARepository()
+        val detected = storing(world.declaration.copy(env = SharedVariablesDeclaration(mapOf("app" to mapOf("DOCS" to "${'$'}{port:workspace.http}")))))
+
+        configure.setWorkspace(detected, "docs-root", default = false).getOrThrow()
+
+        assertEquals(mapOf("app" to mapOf("DOCS" to "${'$'}{port:docs-root.http}")), stored().env?.byAlias)
+    }
+
+    @Test
+    fun `turning off a referenced workspace is refused and an unreferenced one drops its variables`() = runTest {
+        world.makeFolderARepository()
+        val referenced = storing(world.declaration.copy(env = SharedVariablesDeclaration(mapOf("app" to mapOf("DOCS" to "${'$'}{port:workspace.http}")))))
+
+        val error = configure.clearWorkspace(referenced).exceptionOrNull()
+        assertIs<WorktreeError.InvalidMultirepo>(error)
+        assertTrue(error.detail.contains("app.DOCS"))
+
+        val own = storing(world.declaration.copy(env = SharedVariablesDeclaration(mapOf("workspace" to mapOf("A" to "x")))))
+        configure.clearWorkspace(own).getOrThrow()
+        assertNull(stored().env)
+        assertEquals(WorkspaceSetting(enabled = false), stored().workspace)
     }
 }

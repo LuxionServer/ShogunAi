@@ -95,4 +95,42 @@ class SharedEnvironmentTest {
     fun `a repository's own env doesn't accept cross-repository ports`() {
         assertFailsWith<InvalidEnvironmentTemplate> { parseEnvironmentVariable("API_URL", "${'$'}{port:api.http}") }
     }
+
+    @Test
+    fun `renaming an alias moves its variables and rewrites references to it`() {
+        val renamed = env("""{"app": {"API_URL": "http://localhost:${'$'}{port:api.http}/${'$'}{port:api.admin}"}, "api": {"NAME": "${'$'}{worktree}"}}""")
+            .renamingAlias("api", "backend")
+
+        assertEquals(
+            mapOf(
+                "app" to mapOf("API_URL" to "http://localhost:${'$'}{port:backend.http}/${'$'}{port:backend.admin}"),
+                "backend" to mapOf("NAME" to "${'$'}{worktree}"),
+            ),
+            renamed.byAlias,
+        )
+    }
+
+    @Test
+    fun `an escaped reference and an env without the alias are left alone`() {
+        val declared = env("""{"app": {"HINT": "${'$'}${'$'}{port:api.http}", "OTHER": "${'$'}{port:apis.http}"}}""")
+
+        assertEquals(declared, declared.renamingAlias("api", "backend"))
+        assertEquals(declared, declared.renamingAlias("web", "site"))
+        assertTrue(declared.referencesTo("api").isEmpty())
+    }
+
+    @Test
+    fun `references to an alias name the variables of other aliases`() {
+        val declared = env("""{"app": {"API_URL": "${'$'}{port:api.http}"}, "api": {"SELF": "${'$'}{port:api.http}"}}""")
+
+        assertEquals(listOf("app.API_URL"), declared.referencesTo("api"))
+    }
+
+    @Test
+    fun `setting and unsetting variables drops empty aliases`() {
+        val declared = SharedVariablesDeclaration().withVariable("app", "API_URL", "x").withVariable("app", "API_URL", "y")
+
+        assertEquals(mapOf("app" to mapOf("API_URL" to "y")), declared.byAlias)
+        assertEquals(null, declared.withoutVariable("app", "API_URL").withoutEmptyAliases())
+    }
 }
