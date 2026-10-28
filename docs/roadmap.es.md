@@ -14,7 +14,7 @@ Esa dirección se construye en tres capas:
 | **Torre de control** | La vista | La app de escritorio muestra el estado de todos los worktrees, incluidos los creados por otras herramientas, los mantiene limpios y sigue los cambios según ocurren. Abre cada uno en el terminal, el IDE o Herdr con los agentes del proyecto, y queda a un clic en la barra de menús. Los multirepos agrupan los repositorios de un producto, de modo que un cambio abarca varios con un worktree y un agente por repositorio, coordinados por un agente de todo el multirepo, desde el CLI y la app, y el multirepo puede compartir variables entre ellos, como el puerto del backend con el que habla la app de cada grupo, editadas desde el CLI y la app. **Disponible.** |
 | **Plataformas** | El contenido | Providers para los stacks en los que más cuesta preparar un worktree, empezando por Android, KMP, iOS y JVM: Gradle, secretos locales, emuladores, simuladores e IDEs. **Empezado**: los repositorios Gradle muestran sus daemons, pueden parar los ociosos y acotar la memoria y la vida de los daemons que arrancan los agentes, los repositorios Android pueden dar a cada worktree su propio emulador, los KMP e iOS su propio simulador de iOS, ambos adquiridos bajo demanda dentro de límites que siguen un perfil de capacidad de la máquina, con `--wait` para hacer cola ante un pool lleno, los repositorios Xcode ven y limpian sus DerivedData, los mantienen dentro de una cuota de disco, automática por defecto, comparten compilaciones entre worktrees y ven cuánto de ellos son paquetes Swift junto a las cachés compartidas de SwiftPM y CocoaPods, los proyectos CocoaPods reciben clonados los pods del repositorio base en cada worktree nuevo cuando su lock coincide, las apps de Compose Desktop se ejecutan ocultas en segundo plano para que los agentes las comprueben en macOS, los agentes se turnan para manejar el escritorio real con `shogun desktop acquire --wait`, con quién lo tiene y la cola en la torre de control y en `shogun status`, y los backends JVM obtienen compilaciones de Maven acotadas en memoria, ven sus daemons de Maven y pueden parar los ociosos, y obtienen un proyecto de Docker Compose y puertos por worktree, que se arrancan y construyen con `shogun compose up` y se limpian junto con los volúmenes, redes e imágenes que dejan los worktrees eliminados. La app y `shogun stacks` también detectan el stack de un repositorio y sugieren los providers que encajan, y los `local.properties`, keystores y archivos de Firebase que enlazar en cada worktree; los archivos locales se pueden enlazar, seleccionar con patrones y mantener al día cuando la carpeta base pierde archivos. |
 
-Se conecta con las herramientas que ejecutan agentes en vez de sustituirlas: los hooks de worktree y de sesión de Claude Code, y [Herdr](https://herdr.dev), el multiplexor de terminal para agentes, cuyos worktrees provisiona un plugin de ShogunAi y en el que la app de escritorio abre un worktree con su entorno y su agente y muestra qué está haciendo cada agente. **Disponible.**
+Se conecta con las herramientas que ejecutan agentes en vez de sustituirlas: los hooks de worktree y de sesión de Claude Code, y [Herdr](https://herdr.dev), el multiplexor de terminal para agentes, cuyos worktrees provisiona un plugin de ShogunAi y en el que la app de escritorio abre un worktree con su entorno y su agente y muestra qué está haciendo cada agente. **Disponible.** [Orca](https://www.onorca.dev), una app de escritorio para ejecutar agentes en worktrees, se le une como segundo runner de primera clase. **Planificado.**
 
 ## Cómo se fijan las prioridades
 
@@ -24,7 +24,27 @@ Las herramientas de agentes están aprendiendo a crear worktrees, copiar en ello
 
 Numerados en el orden en que se abordarán: el número es la prioridad.
 
-### 1. Provisionado y recursos de los stacks móviles
+### 1. Orca, un segundo runner de primera clase
+
+[Orca](https://www.onorca.dev), la app de escritorio para ejecutar agentes de programación en worktrees, recibe todo lo que ShogunAi hace con Herdr, más lo que Orca ofrece y Herdr no. Un spike comparó los dos: los hooks de repositorio de Orca (`orca.yaml`) pueden provisionar sus worktrees con `shogun`, su CLI puede abrir un worktree de ShogunAi con su entorno y su agente, y informa de estados de agente más ricos que sobreviven a reiniciar la app. Por orden:
+
+- Abrir, provisionar y supervisar en Orca los worktrees de un repositorio: «Abrir en Orca» y `shogun open <id> --orca` con el entorno, el agente del proyecto y el nombre de su sesión; `shogun hook orca` para los scripts `setup` y `archive` de `orca.yaml`; los estados de agente y el origen de Orca en la torre de control y en `shogun status`; y cerrar las terminales de Orca cuando ShogunAi borra un worktree (cambio `orca-integration`).
+- Multirepos en Orca: abrir los worktrees de un grupo, cada uno bajo su repositorio, y el agente del multirepo en la carpeta del multirepo, tras comprobar cómo se comportan los grupos de proyectos y los folder workspaces de Orca; «Abrir todo» del tablero y abrir en Orca los worktrees de un cambio nuevo desde el diálogo «Nuevo cambio».
+- Elegir el runner: Herdr u Orca como opción por defecto de «Abrir», la barra de menús, el atajo y el recorrido guiado, y la guía de flujo de trabajo y el hook de inicio de sesión nombrando el elegido; con los dos adaptadores delante, un solo puerto de runner en vez de dos.
+- Lo que solo ofrece Orca:
+  - La herramienta en la que espera un agente, su prompt y su último mensaje en el detalle del worktree.
+  - El comentario y el estado del worktree en Orca sincronizados con los de ShogunAi (`orca worktree set`), y su pull request o su issue vinculados en Orca cuando la tarea del worktree los tiene.
+  - Los puertos en los que Orca ve escuchar a un worktree, junto a los que reserva ShogunAi.
+  - Los worktrees de un grupo mostrados como hijos del espacio del agente del multirepo.
+  - El emulador de ShogunAi del worktree mostrado en la vista de emuladores de Orca (`orca emulator attach`).
+  - Los agentes que manejan el escritorio con el computer use de Orca tomando antes el turno de escritorio de ShogunAi, como los demás.
+- Comprobar:
+  - En Windows y en Linux (`orca-ide`), la ubicación de la CLI y la shell que ejecutan las terminales de Orca, que solo cubren pruebas con dobles.
+  - Que Orca detecta un agente envuelto por Headroom.
+  - Que los avisos de Orca y su app móvil siguen a los agentes que ShogunAi arranca en Orca.
+- Fuera a propósito: los worktrees remotos y por SSH de Orca, porque ShogunAi prepara worktrees en esta máquina; y las ejecuciones de orquestación de Orca, porque el agente del multirepo ya coordina un grupo.
+
+### 2. Provisionado y recursos de los stacks móviles
 
 Provisionado y recursos acotados para los stacks en los que un worktree recién creado está más lejos de compilar:
 
@@ -33,7 +53,7 @@ Provisionado y recursos acotados para los stacks en los que un worktree recién 
 - Averiguar qué necesita un repositorio Flutter en un worktree y cuáles de los providers de Android e iOS puede reutilizar.
 - Esperar un dispositivo desde la app de escritorio y mostrar en sus vistas de máquina los worktrees que esperan cada pool; hoy solo esperan `shogun emulator start --wait` y `shogun simulator start --wait`, y la app hace fallar un arranque mientras otros esperan.
 
-### 2. Todos los agentes, no solo Claude Code
+### 3. Todos los agentes, no solo Claude Code
 
 La vista de ShogunAi solo es neutral si ve a todos los agentes:
 
@@ -44,7 +64,7 @@ La vista de ShogunAi solo es neutral si ve a todos los agentes:
 - Registrar la rama base de los worktrees que crea Herdr, si su evento `worktree.created` llega a incluir el punto de partida; hoy se registra a mano con `shogun base --set`, mientras que `shogun new`, el hook de Claude Code, la app de escritorio y los grupos de los multirepos la registran solos.
 - Mostrar la rama base de cada worktree en las vistas de la app de escritorio; hoy la informan `shogun base` y `shogun status`.
 
-### 3. Multirepos para todo el equipo
+### 4. Multirepos para todo el equipo
 
 Los multirepos y los grupos por rama están hechos en el CLI y en la app de escritorio, y son también la forma en que quienes no escriben el código siguen un cambio a través de los repositorios. Quedaron fuera:
 
@@ -54,12 +74,13 @@ Los multirepos y los grupos por rama están hechos en el CLI y en la app de escr
 - Una única sesión para todo el grupo, con un entorno combinado, como opción junto a un agente por repositorio.
 - El estado del pull request de cada repositorio de un grupo, que depende de la integración con GitHub en estudio.
 
-### 4. Robustez y mantenimiento
+### 5. Robustez y mantenimiento
 
 - Encontrar la causa raíz de los errores que cerraban la ventana de Preferencias, a partir de las entradas que el aislamiento deja ahora en el registro de diagnóstico, y del crash nativo visto en otra máquina que dejó un informe de diagnóstico vacío.
 - Comprobar la instalación del comando `shogun` desde la app con una app instalada de verdad en Windows (el `shogun.cmd` y el cambio del `PATH` de usuario solo están cubiertos con pruebas con dobles) y en un equipo sin `~/.local/bin` en el `PATH`.
 - Comprobar en un Windows real que borrar y limpiar worktrees con salidas de build de más de 260 caracteres de profundidad funciona ahora (el soporte de rutas largas de Git y el borrado del resto solo están cubiertos con pruebas con dobles).
 - Sacar del hilo de la interfaz los puertos por proyecto de `ProjectWorktrees` que aún se ejecutan en el dispatcher de quien los llama (estados de emuladores y simuladores, puertos, liberar recursos), como ya hace la sección Máquina.
+- Detectar un plugin de Herdr roto: una instalación enlazada a una carpeta que ya no existe deja de provisionar los worktrees de Herdr sin ningún error, así que `shogun hooks status` y la app deberían comprobar `herdr plugin list` y ofrecer reinstalarlo desde el repositorio.
 - Comprobar el estado de los daemons de Maven con un daemon real de mvnd 2.x: se comprobó con mvnd 1.0.6, y 2.x está cubierto por su código fuente y por tests con su argumento de log.
 - Watchers del sistema de ficheros en vez de polling para los cambios de metadatos de Git.
 - Soporte de repositorios bare con worktrees (el esquema «bare clone»), que cambia lo que significan el repositorio base y copiar desde él. Hoy ShogunAi los rechaza con un error específico.
