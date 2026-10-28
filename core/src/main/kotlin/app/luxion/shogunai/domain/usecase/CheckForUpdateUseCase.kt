@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.model.AppVersion
 import app.luxion.shogunai.domain.model.HostArchitecture
 import app.luxion.shogunai.domain.model.UpdateCheck
 import app.luxion.shogunai.domain.model.UpdateCheckMode
+import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.updateAction
 
 class CheckForUpdateUseCase(
@@ -22,13 +23,16 @@ class CheckForUpdateUseCase(
         if (mode == UpdateCheckMode.AUTOMATIC && !(settings.checkAutomatically && running != AppVersion.DEVELOPMENT)) {
             return Result.success(UpdateCheck.NotDue)
         }
-        return source.latest().mapCatching { release ->
+        return source.published().mapCatching { releases ->
+            val release = releases.maxByOrNull { it.version }
+                ?: throw WorktreeError.UpdateCheckFailed("No published release")
             val skipped = mode == UpdateCheckMode.AUTOMATIC && settings.skippedVersion?.let { release.version <= it } == true
             if (release.version <= running || skipped) {
                 UpdateCheck.UpToDate(running)
             } else {
                 val channel = detectChannel()
-                UpdateCheck.Available(running, release, channel, channel.updateAction(release, architecture))
+                val notes = releases.filter { it.version > running }.sortedByDescending { it.version }.map { it.versionNotes() }
+                UpdateCheck.Available(running, release, channel, channel.updateAction(release, architecture), notes)
             }
         }
     }

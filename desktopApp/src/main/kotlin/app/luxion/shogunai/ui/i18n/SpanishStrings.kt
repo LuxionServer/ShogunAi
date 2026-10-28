@@ -9,6 +9,7 @@ import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.MobileSecretKind
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.usecase.HookEntry
 import app.luxion.shogunai.domain.usecase.HookReplacement
 import app.luxion.shogunai.domain.usecase.HooksInstallState
@@ -20,6 +21,7 @@ import app.luxion.shogunai.ui.shell.HooksAction
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
 object SpanishStrings : Strings {
+    override val language = AppLanguage.SPANISH
     override val languageName = "Español"
 
     override val themeLight = "Claro"
@@ -762,6 +764,11 @@ object SpanishStrings : Strings {
     override val updateChecking = "Buscando actualizaciones…"
     override fun updateUpToDateMessage(version: String) = "ShogunAi está al día (versión $version)."
     override val updateCheckAutomaticallyLabel = "Buscar actualizaciones automáticamente"
+    override fun releaseNotesTitle(version: String) = "Novedades de la $version"
+    override fun releaseNotesVersionHeading(version: String) = "Versión $version"
+    override val releaseNotesViewOnGitHub = "Ver en GitHub"
+    override val releaseNotesEmpty = "Esta versión no tiene notas."
+    override val releaseNotesIconDescription = "Ver las novedades"
     override val groupByChange = "Por cambio"
     override val ungrouped = "Sin grupo"
     override val newChange = "Nuevo cambio"

@@ -34,7 +34,14 @@ enum class HostArchitecture {
 
 data class ReleaseAsset(val name: String, val downloadUrl: String)
 
-data class LatestRelease(val version: AppVersion, val pageUrl: String, val assets: List<ReleaseAsset>)
+data class PublishedRelease(
+    val version: AppVersion,
+    val pageUrl: String,
+    val assets: List<ReleaseAsset>,
+    val notes: ReleaseNotes = ReleaseNotes.NONE,
+) {
+    fun versionNotes(): VersionNotes = VersionNotes(version, pageUrl, notes)
+}
 
 enum class InstallChannel {
     HOMEBREW,
@@ -61,7 +68,7 @@ object UpdateCommands {
     fun installDeb(assetName: String) = "sudo apt install ./$assetName"
 }
 
-fun InstallChannel.updateAction(release: LatestRelease, architecture: HostArchitecture): UpdateAction {
+fun InstallChannel.updateAction(release: PublishedRelease, architecture: HostArchitecture): UpdateAction {
     val releasePage = UpdateAction.OpenReleasePage(release.pageUrl)
     fun download(asset: ReleaseAsset?, installCommand: String? = null): UpdateAction =
         asset?.let { UpdateAction.Download(it, installCommand) } ?: releasePage
@@ -97,8 +104,9 @@ sealed interface UpdateCheck {
     data class UpToDate(val running: AppVersion) : UpdateCheck
     data class Available(
         val running: AppVersion,
-        val release: LatestRelease,
+        val release: PublishedRelease,
         val channel: InstallChannel,
         val action: UpdateAction,
+        val notes: List<VersionNotes>,
     ) : UpdateCheck
 }

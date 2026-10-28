@@ -183,7 +183,9 @@ Lo que la vista general de worktrees muestra de cada worktree (`WorktreeOverview
 
 ### Actualizaciones
 
-`Update.kt` modela la comprobación de actualizaciones: `AppVersion` (`X.Y.Z`, comparada numéricamente; `parse` acepta una `v` opcional y rechaza todo lo demás; `DEVELOPMENT` es `0.0.0`), `HostArchitecture` (`ARM64`, `X64`), `LatestRelease` (versión, página de la release y `ReleaseAsset`s), `InstallChannel` (`HOMEBREW`, `DMG`, `SCOOP`, `WINGET`, `MSI`, `DEB`, `UNKNOWN`) y `UpdateAction`, lo que debe hacer el usuario según el canal: ejecutar un comando (`brew upgrade --cask shogunai`, `scoop update shogunai`, `winget upgrade LuxionServer.ShogunAi`), descargar un asset elegido de la release por extensión y arquitectura (con `sudo apt install ./<asset>` para un `.deb`) o abrir la página de la release. `UpdateCheck` es el resultado: `NotDue`, `UpToDate` o `Available` con la release, el canal y la acción. `UpdatePreferences` guarda `checkAutomatically` y `skippedVersion`.
+`Update.kt` modela la comprobación de actualizaciones: `AppVersion` (`X.Y.Z`, comparada numéricamente; `parse` acepta una `v` opcional y rechaza todo lo demás; `DEVELOPMENT` es `0.0.0`), `HostArchitecture` (`ARM64`, `X64`), `PublishedRelease` (versión, página de la release, `ReleaseAsset`s y `ReleaseNotes`), `InstallChannel` (`HOMEBREW`, `DMG`, `SCOOP`, `WINGET`, `MSI`, `DEB`, `UNKNOWN`) y `UpdateAction`, lo que debe hacer el usuario según el canal: ejecutar un comando (`brew upgrade --cask shogunai`, `scoop update shogunai`, `winget upgrade LuxionServer.ShogunAi`), descargar un asset elegido de la release por extensión y arquitectura (con `sudo apt install ./<asset>` para un `.deb`) o abrir la página de la release. `UpdateCheck` es el resultado: `NotDue`, `UpToDate` o `Available` con la release, el canal, la acción y `notes`, las `VersionNotes` (versión, página de la release, notas) de cada versión publicada más nueva que la que se ejecuta, de la más nueva a la más antigua. `UpdatePreferences` guarda `checkAutomatically` y `skippedVersion`.
+
+`ReleaseNotes.kt` guarda las notas de una release por idioma (`english`, `spanish`, cualquiera puede ser `null`). `parse(body)` lee el cuerpo de una release de GitHub: con los marcadores `shogunai:notes:en` / `shogunai:notes:es` que escribe el workflow (ver [Proceso de release](../process/release.md#formato-del-cuerpo-de-la-release)) toma cada idioma entre sus marcadores; sin ellos, en las releases anteriores a ese formato, toma como inglés las notas que genera GitHub, quitando el sufijo `by @user in <enlace>` de cada cambio, el encabezado «What's Changed», la sección «New Contributors» y la línea «Full Changelog»; un resultado vacío es `NONE`. `forLanguage(language)` devuelve las notas de ese idioma, o las inglesas si no las hay.
 
 `RecentWorktree` (`projectId`, `path`) es una entrada de los worktrees recientes que lista el icono de la barra de menús.
 
@@ -203,7 +205,7 @@ Preferencias del usuario: `LIGHT` / `DARK` / `SYSTEM` y `ENGLISH` / `SPANISH`. S
 - `BareRepositoryNotSupported` — el directorio es un repositorio bare o está dentro de uno.
 - `RepositoryHasNoCommits` — el repositorio no tiene ningún commit desde el que crear una rama.
 - `LocalFileUnreadable` — `projects.json` o `settings.json` no se pueden parsear; guarda la ruta y el motivo. El fichero se aparta antes de volver a escribirlo (ver [Capa de infraestructura](infrastructure.md)).
-- `UpdateCheckFailed` — no se pudo leer de GitHub la última release.
+- `UpdateCheckFailed` — no se pudieron leer de GitHub las releases publicadas, o no había ninguna.
 - `NotAWorktree` — la ruta a provisionar es el worktree principal o no es uno de los worktrees del repositorio.
 - `InvalidRepositoryConfig` — `.shogunai.json` existe pero no es JSON válido, no es un objeto, su `copy` o su `link` no son una lista de strings, su `hooks.postCreate` no es un comando ni una lista de comandos, su `providers` (o un provider conocido dentro de él) no es un objeto, una opción de un provider tiene el tipo equivocado, o su `env` o `envFile` no son válidos (incluido un nombre de variable reservado); guarda la ruta del fichero y el detalle.
 - `RepositoryConfigChanged` — `.shogunai.json` cambió en disco desde que lo leyó el formulario de ajustes, así que no se sobrescribe.
@@ -478,11 +480,11 @@ Un `TerminalLauncher` por terminal admitido abre una ventana o pestaña nueva en
 
 ```kotlin
 interface ReleaseSource {
-    suspend fun latest(): Result<LatestRelease>
+    suspend fun published(): Result<List<PublishedRelease>>
 }
 ```
 
-La última release publicada de ShogunAi, o `UpdateCheckFailed`.
+Las releases publicadas recientes de ShogunAi, sin borradores ni pre-releases, o `UpdateCheckFailed`.
 
 ### `RepositoryTrust` / `RepositoryApproval`
 
@@ -738,5 +740,5 @@ Se usan en macOS cuando el repositorio declara el provider de Xcode:
 
 ### Casos de uso de la comprobación de actualizaciones
 
-- `CheckForUpdateUseCase(mode)` lee las preferencias y, en modo `AUTOMATIC`, devuelve `NotDue` cuando la comprobación automática está desactivada o la versión en ejecución es de desarrollo (`0.0.0`). Si no, pide a `ReleaseSource` la última release: una versión que no es más nueva que la que se ejecuta o, en modo automático, que no es más nueva que la versión saltada, es `UpToDate`; una más nueva es `Available` con el canal de instalación y su `UpdateAction`. Una lectura fallida se devuelve como fallo; la app de escritorio la ignora en modo automático y la muestra en modo manual.
+- `CheckForUpdateUseCase(mode)` lee las preferencias y, en modo `AUTOMATIC`, devuelve `NotDue` cuando la comprobación automática está desactivada o la versión en ejecución es de desarrollo (`0.0.0`). Si no, pide a `ReleaseSource` las releases publicadas y toma la versión más alta como la última (una lista vacía es `UpdateCheckFailed`): una versión que no es más nueva que la que se ejecuta o, en modo automático, que no es más nueva que la versión saltada, es `UpToDate`; una más nueva es `Available` con el canal de instalación, su `UpdateAction` y las notas de cada versión más nueva que la que se ejecuta, de la más nueva a la más antigua. Una lectura fallida se devuelve como fallo; la app de escritorio la ignora en modo automático y la muestra en modo manual.
 - `DetectInstallChannelUseCase` indica cómo se instaló la app en ejecución, y solo se llama cuando hay una versión más nueva: en macOS `HOMEBREW` cuando existe una carpeta `shogunai` en `/opt/homebrew/Caskroom` o `/usr/local/Caskroom` y, si no, `DMG`; en Windows `SCOOP` cuando la app se ejecuta desde `\scoop\apps\shogunai\`, si no `WINGET` cuando `winget list --id LuxionServer.ShogunAi --exact` la lista (límite de 10 segundos), y si no `MSI`; en Linux `DEB` cuando la app vive bajo `/opt/shogunai` y, si no, `UNKNOWN`.

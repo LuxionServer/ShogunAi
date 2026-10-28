@@ -183,7 +183,9 @@ What the worktree overview shows about each worktree (`WorktreeOverview.kt`): `W
 
 ### Updates
 
-`Update.kt` models the update check: `AppVersion` (`X.Y.Z`, compared numerically; `parse` accepts an optional `v` and rejects anything else; `DEVELOPMENT` is `0.0.0`), `HostArchitecture` (`ARM64`, `X64`), `LatestRelease` (version, release page and `ReleaseAsset`s), `InstallChannel` (`HOMEBREW`, `DMG`, `SCOOP`, `WINGET`, `MSI`, `DEB`, `UNKNOWN`) and `UpdateAction`, what the user should do for a channel: run a command (`brew upgrade --cask shogunai`, `scoop update shogunai`, `winget upgrade LuxionServer.ShogunAi`), download an asset picked from the release by extension and architecture (with `sudo apt install ./<asset>` for a `.deb`), or open the release page. `UpdateCheck` is the outcome: `NotDue`, `UpToDate` or `Available` with the release, channel and action. `UpdatePreferences` holds `checkAutomatically` and `skippedVersion`.
+`Update.kt` models the update check: `AppVersion` (`X.Y.Z`, compared numerically; `parse` accepts an optional `v` and rejects anything else; `DEVELOPMENT` is `0.0.0`), `HostArchitecture` (`ARM64`, `X64`), `PublishedRelease` (version, release page, `ReleaseAsset`s and `ReleaseNotes`), `InstallChannel` (`HOMEBREW`, `DMG`, `SCOOP`, `WINGET`, `MSI`, `DEB`, `UNKNOWN`) and `UpdateAction`, what the user should do for a channel: run a command (`brew upgrade --cask shogunai`, `scoop update shogunai`, `winget upgrade LuxionServer.ShogunAi`), download an asset picked from the release by extension and architecture (with `sudo apt install ./<asset>` for a `.deb`), or open the release page. `UpdateCheck` is the outcome: `NotDue`, `UpToDate` or `Available` with the release, channel, action and `notes`, the `VersionNotes` (version, release page, notes) of every published version newer than the running one, newest first. `UpdatePreferences` holds `checkAutomatically` and `skippedVersion`.
+
+`ReleaseNotes.kt` holds a release's notes per language (`english`, `spanish`, either may be `null`). `parse(body)` reads a GitHub release body: with the `shogunai:notes:en` / `shogunai:notes:es` markers the workflow writes (see [Release process](../process/release.md#release-body-format)) it takes each language between its markers; without them, for releases before that format, it takes GitHub's generated notes as English, dropping each change's `by @user in <link>` suffix, the "What's Changed" heading, the "New Contributors" section and the "Full Changelog" line; an empty result is `NONE`. `forLanguage(language)` returns that language's notes, falling back to English.
 
 `RecentWorktree` (`projectId`, `path`) is an entry of the recent worktrees the menu bar icon lists.
 
@@ -203,7 +205,7 @@ User preferences: `LIGHT` / `DARK` / `SYSTEM` and `ENGLISH` / `SPANISH`. They're
 - `BareRepositoryNotSupported` — the directory is a bare repository, or inside one.
 - `RepositoryHasNoCommits` — the repository has no commit to start a branch from.
 - `LocalFileUnreadable` — `projects.json` or `settings.json` can't be parsed; keeps the path and the reason. The file is kept aside before it's written again (see [Infrastructure layer](infrastructure.md)).
-- `UpdateCheckFailed` — the latest release couldn't be read from GitHub.
+- `UpdateCheckFailed` — the published releases couldn't be read from GitHub, or there were none.
 - `NotAWorktree` — the path given to provision is the main worktree or isn't one of the repository's worktrees.
 - `InvalidRepositoryConfig` — `.shogunai.json` exists but isn't valid JSON, isn't an object, its `copy` or `link` isn't a list of strings, its `hooks.postCreate` isn't a command or a list of commands, its `providers` (or a known provider in it) isn't an object, a provider option has the wrong type, or its `env` or `envFile` is invalid (a reserved variable name included); keeps the file path and the detail.
 - `RepositoryConfigChanged` — `.shogunai.json` changed on disk since the settings form read it, so it isn't overwritten.
@@ -478,11 +480,11 @@ One `TerminalLauncher` per supported terminal opens a new window or tab in the w
 
 ```kotlin
 interface ReleaseSource {
-    suspend fun latest(): Result<LatestRelease>
+    suspend fun published(): Result<List<PublishedRelease>>
 }
 ```
 
-The latest published release of ShogunAi, or `UpdateCheckFailed`.
+The recent published releases of ShogunAi, without drafts or pre-releases, or `UpdateCheckFailed`.
 
 ### `RepositoryTrust` / `RepositoryApproval`
 
@@ -738,5 +740,5 @@ Used on macOS when the repository declares the Xcode provider:
 
 ### Update check use cases
 
-- `CheckForUpdateUseCase(mode)` reads the preferences and, in `AUTOMATIC` mode, returns `NotDue` when the automatic check is off or the running version is a development build (`0.0.0`). Otherwise it asks `ReleaseSource` for the latest release: a version not newer than the running one, or, in automatic mode, not newer than the skipped version, is `UpToDate`; a newer one is `Available` with the install channel and its `UpdateAction`. A failed read is returned as the failure; the desktop app ignores it in automatic mode and shows it in manual mode.
+- `CheckForUpdateUseCase(mode)` reads the preferences and, in `AUTOMATIC` mode, returns `NotDue` when the automatic check is off or the running version is a development build (`0.0.0`). Otherwise it asks `ReleaseSource` for the published releases and takes the highest version as the latest (an empty list is `UpdateCheckFailed`): a version not newer than the running one, or, in automatic mode, not newer than the skipped version, is `UpToDate`; a newer one is `Available` with the install channel, its `UpdateAction` and the notes of every version newer than the running one, newest first. A failed read is returned as the failure; the desktop app ignores it in automatic mode and shows it in manual mode.
 - `DetectInstallChannelUseCase` tells how the running app was installed, and is only called when a newer version exists: on macOS `HOMEBREW` when a `shogunai` folder exists in `/opt/homebrew/Caskroom` or `/usr/local/Caskroom`, else `DMG`; on Windows `SCOOP` when the app runs from `\scoop\apps\shogunai\`, else `WINGET` when `winget list --id LuxionServer.ShogunAi --exact` lists it (10-second limit), else `MSI`; on Linux `DEB` when the app lives under `/opt/shogunai`, else `UNKNOWN`.
