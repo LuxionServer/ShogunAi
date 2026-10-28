@@ -14,7 +14,7 @@ That direction is built in three layers:
 | **Control tower** | The view | The desktop app shows the state of every worktree, including the ones created by other tools, keeps them clean and follows changes as they happen. It opens each one in the terminal, the IDE or Herdr with the project's agents, and stays one click away in the menu bar. Multirepos group the repositories of one product, so a change spans several of them with one worktree and one agent per repository, coordinated by an agent for the whole multirepo, from the CLI and the app, and the multirepo can share variables between them, such as the port of the backend each group's app talks to. **Available.** |
 | **Platforms** | The content | Providers for the stacks where a worktree is hardest to prepare, starting with Android, KMP, iOS and JVM: Gradle, local secrets, emulators, simulators and IDEs. **Started**: Gradle repositories show their daemons, can stop the idle ones and bound the memory and lifetime of the daemons agents start, Android repositories can give each worktree its own emulator, KMP and iOS repositories its own iOS simulator, both acquired on demand within limits that follow a machine capacity profile, with `--wait` to queue for a full pool, Xcode repositories see and clean up their DerivedData, keep it within a disk quota, automatic by default, and share compilations between worktrees, Compose Desktop apps run hidden in the background for agents to check on macOS, agents take turns to drive the real desktop with `shogun desktop acquire --wait`, with the holder and the queue in the control tower and `shogun status`, and JVM backends get Maven builds bounded in memory and a Docker Compose project and ports per worktree, started and built with `shogun compose up` and cleaned up with the volumes, networks and images removed worktrees leave behind. The app and `shogun stacks` also detect a repository's stack and suggest the providers that fit, and the `local.properties`, keystores and Firebase files to link into every worktree; local files can be linked, matched by patterns and kept in sync when the base folder loses files. |
 
-It plugs into the tools that run agents rather than replacing them: Claude Code's worktree and session hooks, and [Herdr](https://herdr.dev), the terminal multiplexer for agents, whose worktrees a ShogunAi plugin provisions and where the desktop app opens a worktree with its environment and agent and shows what each agent is doing. **Available.**
+It plugs into the tools that run agents rather than replacing them: Claude Code's worktree and session hooks, and [Herdr](https://herdr.dev), the terminal multiplexer for agents, whose worktrees a ShogunAi plugin provisions and where the desktop app opens a worktree with its environment and agent and shows what each agent is doing. **Available.** [Orca](https://www.onorca.dev), a desktop app for running agents in worktrees, joins it as a second first-class runner. **Planned.**
 
 ## How priorities are set
 
@@ -24,13 +24,33 @@ Agent tools are learning to create worktrees, copy local files into them and sho
 
 Numbered in the order they will be picked up: the number is the priority.
 
-### 1. The environment of backends and services
+### 1. Orca, a second first-class runner
+
+[Orca](https://www.onorca.dev), the desktop app for running coding agents in worktrees, gets everything ShogunAi does with Herdr, plus what Orca offers that Herdr doesn't. A spike compared the two: Orca's repository hooks (`orca.yaml`) can provision its worktrees with `shogun`, its CLI can open a ShogunAi worktree with its environment and agent, and it reports richer agent states that survive restarting the app. In order:
+
+- Opening, provisioning and overseeing a repository's worktrees in Orca: "Open in Orca" and `shogun open <id> --orca` with the environment, the project's agent and its session name; `shogun hook orca` for the `setup` and `archive` scripts of `orca.yaml`; Orca's agent states and origin in the control tower and `shogun status`; and closing Orca's terminals when ShogunAi removes a worktree (change `orca-integration`).
+- Multirepos in Orca: opening a group's worktrees, each under its repository, and the multirepo agent in the multirepo folder, after checking how Orca's project groups and folder workspaces behave; "Open all" on the board and opening a new change's worktrees from the "New change" dialog in Orca.
+- Choosing the runner: Herdr or Orca as the default for "Open", the menu bar, the shortcut and the guided tour, and the workflow guide and session-start hook naming the chosen one; with both adapters in hand, one runner port instead of two.
+- What only Orca offers:
+  - The tool an agent waits on, its prompt and its last message in the worktree's detail.
+  - The worktree's comment and status in Orca kept in step with ShogunAi's (`orca worktree set`), and its pull request or issue linked in Orca when the worktree's task has one.
+  - The ports Orca sees a worktree listen on, next to the ones ShogunAi reserves.
+  - A group's worktrees shown as children of the multirepo agent's workspace.
+  - The worktree's ShogunAi emulator shown in Orca's emulator view (`orca emulator attach`).
+  - Agents driving the desktop through Orca's computer use taking ShogunAi's desktop turn first, like the others.
+- Checking:
+  - On Windows and Linux (`orca-ide`), the CLI's location and the shell Orca's terminals run, which only tests with fakes cover.
+  - That Orca detects an agent wrapped by Headroom.
+  - That Orca's notifications and its mobile companion follow the agents ShogunAi starts in Orca.
+- Left out on purpose: Orca's remote and SSH worktrees, since ShogunAi prepares worktrees on this machine; and Orca's orchestration runs, since the multirepo agent already coordinates a group.
+
+### 2. The environment of backends and services
 
 Every worktree of a backend needs its own running services, not only its own code. Stack detection, the Maven and Docker Compose providers, the per-worktree ports and the Compose lifecycle (`up`, `build` and the cleanup of the volumes, networks and images left by removed worktrees) and the variables a multirepo shares between its repositories are done; what remains:
 
 - Stopping Maven daemons once their state can be read reliably.
 
-### 2. Provisioning and resources of mobile stacks
+### 3. Provisioning and resources of mobile stacks
 
 Provisioning and bounded resources for the stacks where a fresh worktree is furthest from building:
 
@@ -38,7 +58,7 @@ Provisioning and bounded resources for the stacks where a fresh worktree is furt
 - Finding out what a Flutter repository needs in a worktree and which of the Android and iOS providers it can reuse.
 - Waiting for a device from the desktop app, and showing the worktrees waiting for each pool in its machine views; today only `shogun emulator start --wait` and `shogun simulator start --wait` wait, and the app fails a start while others wait.
 
-### 3. Every agent, not only Claude Code
+### 4. Every agent, not only Claude Code
 
 ShogunAi's view is only neutral if it sees every agent:
 
@@ -48,7 +68,7 @@ ShogunAi's view is only neutral if it sees every agent:
 - Other agents' user-level files for the workflow guide, as their documentation confirms them (Cursor keeps user rules in its settings today), and a Settings section in the desktop app to install, update and remove the `AGENTS.md` block, as it already does for Claude Code's hooks.
 - Recording the origin ref of each worktree, so the rule for choosing a pull request's base could be answered by `shogun` instead of staying a team policy.
 
-### 4. Multirepos for the whole team
+### 5. Multirepos for the whole team
 
 Multirepos and groups by branch are done in the CLI and the desktop app, and they're also how people who don't write the code follow a change across repositories. Left out:
 
@@ -60,12 +80,13 @@ Multirepos and groups by branch are done in the CLI and the desktop app, and the
 - Editing a multirepo's shared variables from the CLI and the multirepo settings; today they're edited in `.shogunai-multirepo.json` and reviewed with `shogun multirepo trust`.
 - The pull request state of each repository of a group, which depends on the GitHub integration under exploration.
 
-### 5. Robustness and maintenance
+### 6. Robustness and maintenance
 
 - Finding the root cause of the errors that closed the Preferences window, from the entries the isolation now leaves in the diagnostics log, and of the native crash seen on another machine that left an empty diagnostic report.
 - Checking the in-app installation of the `shogun` command on a real installed app on Windows (the `shogun.cmd` and the user `PATH` change are covered by tests with fakes only) and on a machine without `~/.local/bin` on its `PATH`.
 - Checking on a real Windows machine that removing and cleaning up worktrees with build outputs deeper than 260 characters now succeeds (Git's long path support and the leftover fallback are covered by tests with fakes only).
 - Moving the per-project ports of `ProjectWorktrees` that still run on the caller's dispatcher (emulator and simulator states, ports, releasing resources) off the interface thread, as the Machine section now does.
+- Noticing a broken Herdr plugin: an install linked to a folder that no longer exists stops provisioning Herdr's worktrees without any error, so `shogun hooks status` and the app should check `herdr plugin list` and offer reinstalling it from the repository.
 - Filesystem watchers instead of polling for Git metadata changes.
 - Support for bare repositories with worktrees (the "bare clone" layout), which changes what the base repository and copying from it mean. Today ShogunAi rejects them with a specific error.
 - Splitting `ProjectWorktrees.kt` and `ProjectSettingsView.kt` into smaller holders and sections.
