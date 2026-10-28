@@ -29,13 +29,13 @@ Numbered in the order they will be picked up: the number is the priority.
 [Orca](https://www.onorca.dev), the desktop app for running coding agents in worktrees, gets everything ShogunAi does with Herdr, plus what Orca offers that Herdr doesn't. A spike compared the two: Orca's repository hooks (`orca.yaml`) can provision its worktrees with `shogun`, its CLI can open a ShogunAi worktree with its environment and agent, and it reports richer agent states that survive restarting the app. In order:
 
 - Opening, provisioning and overseeing a repository's worktrees in Orca: "Open in Orca" and `shogun open <id> --orca` with the environment, the project's agent and its session name; `shogun hook orca` for the `setup` and `archive` scripts of `orca.yaml`; Orca's agent states and origin in the control tower and `shogun status`; and closing Orca's terminals when ShogunAi removes a worktree (change `orca-integration`).
-- Multirepos in Orca: opening a group's worktrees, each under its repository, and the multirepo agent in the multirepo folder, after checking how Orca's project groups and folder workspaces behave; "Open all" on the board and opening a new change's worktrees from the "New change" dialog in Orca.
+- Multirepos in Orca: `shogun open <id> --orca` and "Open all in Orca" for a group's worktrees, each under its repository; the multirepo agent in the Orca workspace of the multirepo folder (a folder workspace or "Open as Folder" set up once in Orca's app when the folder isn't a Git repository); and the "New change" dialog opening the new worktrees in Herdr or Orca (change `orca-multirepos`).
 - Choosing the runner: Herdr or Orca as the default for "Open", the menu bar, the shortcut and the guided tour, and the workflow guide and session-start hook naming the chosen one; with both adapters in hand, one runner port instead of two.
 - What only Orca offers:
   - The tool an agent waits on, its prompt and its last message in the worktree's detail.
   - The worktree's comment and status in Orca kept in step with ShogunAi's (`orca worktree set`), and its pull request or issue linked in Orca when the worktree's task has one.
   - The ports Orca sees a worktree listen on, next to the ones ShogunAi reserves.
-  - A group's worktrees shown as children of the multirepo agent's workspace.
+  - A group's worktrees shown as children of the multirepo agent's workspace. Orca 1.4.243 accepts a Git or "Open as Folder" workspace as the parent of an existing worktree, but not a folder workspace.
   - The worktree's ShogunAi emulator shown in Orca's emulator view (`orca emulator attach`).
   - Agents driving the desktop through Orca's computer use taking ShogunAi's desktop turn first, like the others.
 - Checking:
