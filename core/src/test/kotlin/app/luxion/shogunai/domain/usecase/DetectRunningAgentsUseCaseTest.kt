@@ -1,6 +1,7 @@
 package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.FakeAgentSessionStore
+import app.luxion.shogunai.domain.FakeClaudeSessionRegistry
 import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
@@ -8,6 +9,8 @@ import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.AgentSessionRecord
 import app.luxion.shogunai.domain.model.AgentStateSource
+import app.luxion.shogunai.domain.model.ClaudeSession
+import app.luxion.shogunai.domain.model.ClaudeSessionRef
 import app.luxion.shogunai.domain.model.HerdrAgent
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -478,5 +481,88 @@ class DetectRunningAgentsUseCaseTest {
         val agents = DetectRunningAgentsUseCase(executor(lsof = "p1\nczsh\nfcwd\nn/elsewhere"), herdr)(multirepoSearches()).getOrThrow()
 
         assertEquals(AgentState.WORKING, agents[multirepoFolder]?.single()?.state)
+    }
+
+    private val appTask = Worktree(path = "/home/dev/worktrees/app/TASK-123", branch = "feature/TASK-123")
+    private val apiTask = Worktree(path = "/home/dev/worktrees/api/TASK-123", branch = "feature/TASK-123")
+    private val nestedRepository = "${appTask.path}/vendor-lib"
+
+    private val groupLsof = """
+        p400
+        cclaude
+        fcwd
+        n${appTask.path}
+        p401
+        cclaude
+        fcwd
+        n${apiTask.path}
+        p402
+        cclaude
+        fcwd
+        n${apiTask.path}/src
+        p403
+        cclaude
+        fcwd
+        n$nestedRepository
+    """.trimIndent()
+
+    private val groupPs = "400 claude\n401 claude\n402 claude\n403 claude\n500 claude"
+
+    private suspend fun groupAgents(registry: FakeClaudeSessionRegistry) =
+        DetectRunningAgentsUseCase(
+            executor(groupLsof, groupPs),
+            hasGitEntry = { it == nestedRepository },
+            claudeSessions = registry,
+        )(listOf(AgentSearch(listOf("claude"), listOf(appTask, apiTask)))).getOrThrow()
+
+    @Test
+    fun `each worktree of a group gets the Claude sessions in its folder`() = runTest {
+        val registry = FakeClaudeSessionRegistry(
+            listOf(
+                ClaudeSession(400, appTask.path, "app-task-123"),
+                ClaudeSession(401, apiTask.path, "api-task-123"),
+                ClaudeSession(402, "${apiTask.path}/src", "api-task-123-2"),
+                ClaudeSession(403, nestedRepository, "vendor"),
+                ClaudeSession(404, "/home/dev/elsewhere", "elsewhere"),
+                ClaudeSession(405, appTask.path, "app-task-123-dead"),
+                ClaudeSession(400, appTask.path, null),
+            ),
+        )
+
+        val agents = groupAgents(registry)
+
+        assertEquals(listOf(RunningAgent("claude", sessions = listOf(ClaudeSessionRef("app-task-123", 400)))), agents[appTask.path])
+        assertEquals(
+            listOf(RunningAgent("claude", sessions = listOf(ClaudeSessionRef("api-task-123", 401), ClaudeSessionRef("api-task-123-2", 402)))),
+            agents[apiTask.path],
+        )
+    }
+
+    @Test
+    fun `a failing registry leaves the agents without sessions`() = runTest {
+        val agents = groupAgents(FakeClaudeSessionRegistry(failure = IllegalStateException("broken")))
+
+        assertEquals(listOf(RunningAgent("claude")), agents[appTask.path])
+        assertEquals(listOf(RunningAgent("claude")), agents[apiTask.path])
+    }
+
+    @Test
+    fun `only a session exactly in the multirepo folder belongs to the multirepo agent`() = runTest {
+        val executor = executor(
+            lsof = "p300\nclaude\nfcwd\nn$multirepoFolder\np301\nclaude\nfcwd\nn${memberMain.path}",
+            ps = "300 claude\n301 claude\n302 claude",
+        )
+        val registry = FakeClaudeSessionRegistry(
+            listOf(
+                ClaudeSession(300, multirepoFolder, "product"),
+                ClaudeSession(301, memberMain.path, "product-app"),
+                ClaudeSession(302, "$multirepoFolder/notes", "notes"),
+            ),
+        )
+
+        val agents = DetectRunningAgentsUseCase(executor, claudeSessions = registry)(multirepoSearches()).getOrThrow()
+
+        assertEquals(listOf(ClaudeSessionRef("product", 300)), agents[multirepoFolder]?.single()?.sessions)
+        assertEquals(listOf(ClaudeSessionRef("product-app", 301)), agents[memberMain.path]?.single()?.sessions)
     }
 }

@@ -1,6 +1,7 @@
 package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.domain.FakeAgentSessionStore
+import app.luxion.shogunai.domain.FakeClaudeSessionRegistry
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeDerivedDataSource
@@ -20,6 +21,7 @@ import app.luxion.shogunai.domain.FakeResourceLimitsRepository
 import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
+import app.luxion.shogunai.domain.model.ClaudeSession
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.SharedVariablesDeclaration
@@ -34,6 +36,7 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.ResourceSettings
 import app.luxion.shogunai.domain.model.WorkspaceSetting
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -91,6 +94,7 @@ class MultirepoCommandsTest {
         herdrClient: FakeHerdrClient = herdr,
         multirepos: FakeMultirepoSource = source,
         sessionStore: FakeAgentSessionStore = FakeAgentSessionStore(),
+        claudeSessions: FakeClaudeSessionRegistry = FakeClaudeSessionRegistry(),
         provisioning: FakeRepositoryProvisioningSource = FakeRepositoryProvisioningSource(),
         trust: RepositoryTrust = RepositoryTrust.NONE,
     ) = ShogunCli(
@@ -121,6 +125,8 @@ class MultirepoCommandsTest {
         readAnswer = { answer },
         sessionStore = sessionStore,
         multirepoSource = multirepos,
+        claudeSessions = claudeSessions,
+        isClaudeProcessAlive = { true },
         trust = trust,
     )
 
@@ -275,6 +281,75 @@ class MultirepoCommandsTest {
     }
 
     @Test
+    fun `open a group names each member's session and reports it in json`() {
+        groupTask1()
+        val sessions = FakeClaudeSessionRegistry(started = herdr::startedClaudeSessions)
+
+        val exitCode = cli(claudeSessions = sessions).run(listOf("open", "TASK-1", "--herdr", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf("claude -n app-task-1", "claude -n api-task-1"), herdr.ran.map { it.second })
+        val repos = json()["repos"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(listOf("app-task-1", "api-task-1"), repos.map { it["session_name"]!!.jsonPrimitive.content })
+    }
+
+    @Test
+    fun `open a group prints each member's session name`() {
+        groupTask1()
+        val sessions = FakeClaudeSessionRegistry(started = herdr::startedClaudeSessions)
+
+        cli(claudeSessions = sessions).run(listOf("open", "TASK-1", "--herdr"))
+
+        assertTrue(out.contains("opened $worktreesRoot/app/TASK-1 in Herdr with Claude (pane w1:p1) as session app-task-1"), out.toString())
+        assertTrue(out.contains("as session api-task-1"), out.toString())
+    }
+
+    @Test
+    fun `open a group reports null for a session it can't confirm`() {
+        groupTask1()
+
+        cli().run(listOf("open", "TASK-1", "--herdr", "--json"))
+
+        val repos = json()["repos"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(listOf(JsonNull, JsonNull), repos.map { it["session_name"] })
+    }
+
+    @Test
+    fun `open without a target reports the multirepo agent's session`() {
+        source.agents[folder] = AgentLaunchConfig(agentCommand = "claude", useHeadroom = false)
+        val sessions = FakeClaudeSessionRegistry(started = herdr::startedClaudeSessions)
+
+        cli(claudeSessions = sessions).run(listOf("open", "--herdr", "--json"))
+
+        assertEquals("product", json()["session_name"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `status in the multirepo folder shows each repository's session names`() {
+        groupTask1()
+        val appTask = "$worktreesRoot/app/TASK-1"
+        val apiTask = "$worktreesRoot/api/TASK-1"
+        git.lsof = "p400\ncclaude\nfcwd\nn$appTask\np401\ncclaude\nfcwd\nn$apiTask\n"
+        git.ps = "400 claude\n401 claude\n"
+        val sessions = FakeClaudeSessionRegistry(listOf(ClaudeSession(400, appTask, "app-task-1"), ClaudeSession(401, apiTask, "api-task-1")))
+
+        cli(claudeSessions = sessions).run(listOf("status"))
+
+        val lines = out.lines()
+        assertTrue(lines[1].startsWith("  app  $appTask") && lines[1].contains("agents=claude(app-task-1)"), out.toString())
+        assertTrue(lines[2].startsWith("  api  $apiTask") && lines[2].contains("agents=claude(api-task-1)"), out.toString())
+
+        out.setLength(0)
+        cli(claudeSessions = sessions).run(listOf("status", "--json"))
+
+        val repo = json()["groups"]!!.jsonArray.single().jsonObject["repos"]!!.jsonArray.first().jsonObject
+        assertEquals(
+            Json.parseToJsonElement("""[{"name": "claude", "state": null, "stateSource": null, "herdrState": null, "sessions": [{"name": "app-task-1", "pid": 400}]}]"""),
+            repo["agents"],
+        )
+    }
+
+    @Test
     fun `open a group fails for a member whose agent doesn't start`() {
         groupTask1()
         val app = "$worktreesRoot/app/TASK-1"
@@ -311,7 +386,7 @@ class MultirepoCommandsTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals(listOf(folder to "product"), herdr.createdWorkspaces)
-        assertEquals(listOf("plain1:p1" to "claude"), herdr.ran)
+        assertEquals(listOf("plain1:p1" to "claude -n product"), herdr.ran)
         assertTrue(out.contains("opened $folder in Herdr with"), out.toString())
     }
 
@@ -326,7 +401,7 @@ class MultirepoCommandsTest {
         assertEquals("started-agent", json()["herdr"]!!.jsonPrimitive.content)
         assertEquals("w5:p2", json()["pane_id"]!!.jsonPrimitive.content)
         assertTrue(json()["opened"]!!.jsonPrimitive.content.toBoolean())
-        assertEquals(listOf("w5:p2" to "claude"), herdr.ran)
+        assertEquals(listOf("w5:p2" to "claude -n product"), herdr.ran)
     }
 
     @Test
@@ -829,7 +904,7 @@ class MultirepoCommandsTest {
         assertEquals(listOf(folder), multirepos.known)
         out.clear()
         assertEquals(0, cli(multirepos = multirepos).run(listOf("open", "--herdr")))
-        assertEquals(listOf("plain1:p1" to "claude"), herdr.ran)
+        assertEquals(listOf("plain1:p1" to "claude -n product"), herdr.ran)
     }
 
     @Test
