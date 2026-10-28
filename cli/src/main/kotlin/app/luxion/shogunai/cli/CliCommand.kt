@@ -41,6 +41,7 @@ sealed interface CliCommand {
     data class Repair(val json: Boolean = false) : CliCommand
     data class Open(val target: String?, val herdr: Boolean = false, val agent: String? = null, val json: Boolean = false) : CliCommand
     data class Status(val json: Boolean = false) : CliCommand
+    data class Base(val target: String? = null, val set: String? = null, val json: Boolean = false) : CliCommand
     data class Clean(
         val confirmed: Boolean = false,
         val deleteBranches: Boolean = false,
@@ -161,6 +162,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "repair" -> noArguments(name, arguments, CliCommand.Repair())
                 "open" -> parseOpen(arguments)
                 "status" -> parseStatus(arguments)
+                "base" -> parseBase(arguments)
                 "clean" -> parseClean(arguments)
                 "hook" -> parseHook(arguments)
                 "hooks" -> parseHooks(arguments)
@@ -190,7 +192,7 @@ private const val JSON_FLAG = "--json"
 
 private const val ARGUMENTS_SEPARATOR = "--"
 
-private val JSON_COMMANDS = setOf("new", "multirepo", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "stacks", "maven", "compose", "pool", "project", "xcode", "emulator", "simulator", "headless", "desktop", "hooks", "guide")
+private val JSON_COMMANDS = setOf("new", "base", "multirepo", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "stacks", "maven", "compose", "pool", "project", "xcode", "emulator", "simulator", "headless", "desktop", "hooks", "guide")
 
 private fun isSimulatorGradleInit(name: String, rest: List<String>) = name == "simulator" && rest.firstOrNull() == "gradle-init"
 
@@ -202,6 +204,7 @@ private fun CliCommand.withJson(json: Boolean): CliCommand = if (!json) this els
     is CliCommand.Provision -> copy(json = true)
     is CliCommand.Trust -> copy(json = true)
     is CliCommand.Remove -> copy(json = true)
+    is CliCommand.Base -> copy(json = true)
     is CliCommand.Repair -> copy(json = true)
     is CliCommand.Open -> copy(json = true)
     is CliCommand.Clean -> copy(json = true)
@@ -329,6 +332,23 @@ private fun parseStatus(rest: List<String>): CliCommand.Status {
         }
     }
     return CliCommand.Status(json)
+}
+
+private fun parseBase(rest: List<String>): CliCommand.Base {
+    var target: String? = null
+    var set: String? = null
+    val remaining = ArrayDeque(rest)
+    while (remaining.isNotEmpty()) {
+        when (val argument = remaining.removeFirst()) {
+            "--set" -> set = remaining.valueOf(argument)
+            else -> {
+                if (argument.startsWith("-")) throw UsageException("unknown option '$argument' for 'base'")
+                if (target != null) throw UsageException("'base' takes a single target, got '$target' and '$argument'")
+                target = argument
+            }
+        }
+    }
+    return CliCommand.Base(target, set)
 }
 
 private fun parseProvision(rest: List<String>): CliCommand.Provision {

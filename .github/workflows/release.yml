@@ -95,12 +95,34 @@ jobs:
         env:
           RELEASE_TITLE: ${{ steps.title.outputs.value }}
         run: |
+          ENGLISH_NOTES=".github/release-notes/${VERSION}.md"
+          SPANISH_NOTES=".github/release-notes/${VERSION}.es.md"
+          BODY_FILE="${RUNNER_TEMP}/release-notes.md"
+          if [ -f "$ENGLISH_NOTES" ]; then
+            {
+              printf '<!-- shogunai:notes:en -->\n\n%s\n\n<!-- /shogunai:notes:en -->\n' "$(cat "$ENGLISH_NOTES")"
+              if [ -f "$SPANISH_NOTES" ]; then
+                printf '\n<details>\n<summary>Español</summary>\n\n<!-- shogunai:notes:es -->\n\n%s\n\n<!-- /shogunai:notes:es -->\n\n</details>\n' "$(cat "$SPANISH_NOTES")"
+              fi
+            } > "$BODY_FILE"
+            if [ ! -f "$SPANISH_NOTES" ]; then
+              echo "::warning::${SPANISH_NOTES} is missing; the release notes will only be in English."
+            fi
+            NOTES_ARGS=(--notes-file "$BODY_FILE")
+          else
+            MISSING="${ENGLISH_NOTES} is"
+            if [ ! -f "$SPANISH_NOTES" ]; then
+              MISSING="${ENGLISH_NOTES} and ${SPANISH_NOTES} are"
+            fi
+            echo "::warning::${MISSING} missing; the release will use GitHub's generated notes."
+            NOTES_ARGS=(--generate-notes)
+          fi
           gh release create "v${VERSION}" \
             --repo "$GITHUB_REPOSITORY" \
             --title "$RELEASE_TITLE" \
             --verify-tag \
             --draft \
-            --generate-notes
+            "${NOTES_ARGS[@]}"
 
   build:
     needs: [resolve-version, create-release]

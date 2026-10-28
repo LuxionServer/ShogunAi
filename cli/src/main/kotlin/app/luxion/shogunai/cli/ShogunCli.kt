@@ -113,6 +113,9 @@ import app.luxion.shogunai.domain.usecase.totalMavenResidentMemory
 import app.luxion.shogunai.domain.usecase.worktreeComposeProjectName
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
+import app.luxion.shogunai.domain.usecase.ResolveBaseBranchUseCase
+import app.luxion.shogunai.domain.usecase.ReadBaseBranchesUseCase
+import app.luxion.shogunai.domain.usecase.SetBaseBranchUseCase
 import app.luxion.shogunai.domain.usecase.DeleteMergedBranchUseCase
 import app.luxion.shogunai.domain.usecase.DetectRunningAgentsUseCase
 import app.luxion.shogunai.domain.usecase.DeleteOrphanedDerivedDataUseCase
@@ -442,6 +445,7 @@ class ShogunCli(
             is CliCommand.Repair -> repair(command)
             is CliCommand.Open -> open(command)
             is CliCommand.Status -> status(command)
+            is CliCommand.Base -> base(command)
             is CliCommand.Clean -> clean(command)
             CliCommand.HookWorktreeCreate -> hookWorktreeCreate()
             CliCommand.HookWorktreeRemove -> hookWorktreeRemove()
@@ -519,6 +523,7 @@ class ShogunCli(
                 command.taskId.orEmpty(),
                 command.branchType,
                 startPoint,
+                resolveBaseBranch(workingDirectory, command.from),
             )
         }
         val failure = created.exceptionOrNull()
@@ -1078,6 +1083,9 @@ class ShogunCli(
         }
     }
 
+    private suspend fun resolveBaseBranch(directory: String, from: String?): String? =
+        ResolveBaseBranchUseCase(executor)(directory, from ?: "HEAD")
+
     private suspend fun provision(command: CliCommand.Provision): Int {
         val target = absolute(command.path ?: workingDirectory)
         return when {
@@ -1154,6 +1162,7 @@ class ShogunCli(
         val herdrWorktreesRoot = herdrConfig.worktreesRoot()
         val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore, claudeSessions = claudeSessions)(config, worktrees.filterNot { it.isPrunable }).getOrNull().orEmpty()
         val desktop = readDesktopTurn().getOrElse { DesktopTurnState(holder = null, waiting = emptyList()) }
+        val bases = ReadBaseBranchesUseCase(config, executor)().getOrElse { emptyMap() }
         val entries = worktrees.map { worktree ->
             val read = if (worktree.isPrunable) null else readStatus(worktree, mainBranch)
             WorktreeEntry(
@@ -1163,6 +1172,7 @@ class ShogunCli(
                 read?.exceptionOrNull()?.let(::failureReason),
                 agents[worktree.path].orEmpty(),
                 desktop,
+                worktree.branch?.let(bases::get),
             )
         }
         if (command.json) {
@@ -1170,6 +1180,32 @@ class ShogunCli(
         } else {
             entries.forEach { out.line(statusLine(it)) }
         }
+        return EXIT_OK
+    }
+
+    private suspend fun base(command: CliCommand.Base): Int {
+        val (config, worktree) = if (command.target == null) {
+            configAndWorktreeContaining(workingDirectory)
+        } else {
+            val config = configFor(workingDirectory)
+            config to findWorktreeTarget(command.target, ListWorktreesUseCase(config, executor)().getOrThrow(), config, ::canonical)
+        }
+        val branch = worktree.branch ?: run {
+            if (command.json) printJson(baseJson(worktree.path, null, null))
+            err.line("shogun: ${worktree.path} has no branch (detached HEAD), so it has no base")
+            return EXIT_FAILURE
+        }
+        val base = if (command.set != null) {
+            SetBaseBranchUseCase(config, executor)(branch, command.set).getOrThrow()
+        } else {
+            ReadBaseBranchesUseCase(config, executor)().getOrThrow()[branch]
+        }
+        if (command.json) printJson(baseJson(worktree.path, branch, base))
+        if (base == null) {
+            err.line("shogun: no base is recorded for $branch; set it with 'shogun base --set <branch>'")
+            return EXIT_FAILURE
+        }
+        if (!command.json) out.line(base)
         return EXIT_OK
     }
 
@@ -2402,6 +2438,7 @@ class ShogunCli(
                 name,
                 BranchType.FEATURE,
                 resolveStartPoint(directory, null),
+                resolveBaseBranch(directory, null),
             )
             when (val failure = created.exceptionOrNull()) {
                 null -> created.getOrThrow().also {
@@ -2695,6 +2732,7 @@ class ShogunCli(
             add(worktree.branch ?: "(detached)")
             if (worktree.isMain) add("main")
             origin?.let { add("origin=${it.label}") }
+            entry.base?.let { add("base=$it") }
             if (worktree.isLocked) add("locked")
             entry.agents.takeIf { it.isNotEmpty() }?.let { agents -> add("agents=${agents.joinToString(",") { agentLabel(it) }}") }
             desktopTurnStatusNote(entry.desktop, worktree.path)?.let(::add)

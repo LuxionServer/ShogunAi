@@ -154,7 +154,7 @@ The top bar has a theme selector (light, dark, or automatic to follow the system
 
 ## Updates
 
-Every time it starts, and then once a day while it stays open, the app asks GitHub for the latest published release. If it is newer than the version you run, a short notice appears at the top of the window ("ShogunAi 1.3.0 is out! You're on 1.2.0.") with a **What's new** link to the release notes. The notice never interrupts your work, and it reminds you how to update for the way ShogunAi was installed:
+Every time it starts, and then once a day while it stays open, the app asks GitHub for the recent published releases. If one is newer than the version you run, a short notice appears at the top of the window ("ShogunAi 1.3.0 is out! You're on 1.2.0."). Its ⓘ icon and its **What's new** button open the release notes inside the app, in the app's language (in English when a version has no Spanish notes). If you are several versions behind, you see the notes of every version you skipped over, newest first, each under its version number; **View on GitHub** opens the release page. Older releases, published before the notes were written by hand, show GitHub's list of changes. The notice never interrupts your work, and it reminds you how to update for the way ShogunAi was installed:
 
 | Installed with | The notice |
 |---|---|
@@ -166,9 +166,9 @@ Every time it starts, and then once a day while it stays open, the app asks GitH
 
 The app never downloads, installs or runs anything by itself. **Skip this version** hides the notice until a newer version comes out; closing it hides it until the next start. A release is sometimes published a few minutes before the Homebrew, Scoop or winget package follows, so the command may need a moment.
 
-**Check for Updates…** in the Help menu checks right away, ignoring the schedule and skipped versions, and tells you whether ShogunAi is up to date, which version is available or why the check failed. Development builds don't check on their own.
+**Check for Updates…** in the Help menu checks right away, ignoring the schedule and skipped versions, and tells you whether ShogunAi is up to date, which version is available (with the same **What's new**) or why the check failed. Development builds don't check on their own.
 
-The only request the app makes on its own is an anonymous `GET` to `https://api.github.com/repos/LuxionServer/ShogunAi/releases/latest`, which carries the app version in its `User-Agent` header and nothing else. Turn **Check for updates automatically** off in Preferences and the app contacts GitHub only when you choose **Check for Updates…**.
+The only request the app makes on its own is an anonymous `GET` to `https://api.github.com/repos/LuxionServer/ShogunAi/releases?per_page=30`, which brings the notes along and carries the app version in its `User-Agent` header and nothing else. Turn **Check for updates automatically** off in Preferences and the app contacts GitHub only when you choose **Check for Updates…**.
 
 ## Diagnostics
 

@@ -154,7 +154,7 @@ La barra superior tiene un selector de tema (claro, oscuro, o automático para s
 
 ## Actualizaciones
 
-Cada vez que arranca, y después una vez al día mientras sigue abierta, la app pregunta a GitHub por la última versión publicada. Si es más reciente que la que usas, aparece un aviso breve arriba de la ventana («¡Ya está aquí ShogunAi 1.3.0! Tienes la 1.2.0.») con un enlace **Novedades** a las notas de la versión. El aviso no interrumpe tu trabajo y te recuerda cómo actualizar según cómo se instaló ShogunAi:
+Cada vez que arranca, y después una vez al día mientras sigue abierta, la app pregunta a GitHub por las versiones publicadas recientes. Si alguna es más reciente que la que usas, aparece un aviso breve arriba de la ventana («¡Ya está aquí ShogunAi 1.3.0! Tienes la 1.2.0.»). Su icono ⓘ y su botón **Novedades** abren las notas de la versión dentro de la app, en el idioma de la app (en inglés cuando una versión no tiene notas en español). Si vas varias versiones por detrás, ves las notas de cada versión que te has saltado, de la más nueva a la más antigua, cada una bajo su número de versión; **Ver en GitHub** abre la página de la versión. Las versiones antiguas, publicadas antes de que las notas se escribieran a mano, muestran la lista de cambios de GitHub. El aviso no interrumpe tu trabajo y te recuerda cómo actualizar según cómo se instaló ShogunAi:
 
 | Instalada con | El aviso |
 |---|---|
@@ -166,9 +166,9 @@ Cada vez que arranca, y después una vez al día mientras sigue abierta, la app 
 
 La app nunca descarga, instala ni ejecuta nada por sí sola. **Omitir esta versión** oculta el aviso hasta que salga una versión más nueva; cerrarlo lo oculta hasta el siguiente arranque. A veces la versión se publica unos minutos antes de que llegue el paquete de Homebrew, Scoop o winget, así que el comando puede tardar un momento en funcionar.
 
-**Buscar actualizaciones…** en el menú Ayuda comprueba al instante, sin tener en cuenta el horario ni las versiones omitidas, y te dice si ShogunAi está al día, qué versión hay disponible o por qué falló la comprobación. Las compilaciones de desarrollo no comprueban por su cuenta.
+**Buscar actualizaciones…** en el menú Ayuda comprueba al instante, sin tener en cuenta el horario ni las versiones omitidas, y te dice si ShogunAi está al día, qué versión hay disponible (con el mismo **Novedades**) o por qué falló la comprobación. Las compilaciones de desarrollo no comprueban por su cuenta.
 
-La única petición que la app hace por su cuenta es un `GET` anónimo a `https://api.github.com/repos/LuxionServer/ShogunAi/releases/latest`, que lleva la versión de la app en la cabecera `User-Agent` y nada más. Desactiva **Buscar actualizaciones automáticamente** en Preferencias y la app solo contactará con GitHub cuando elijas **Buscar actualizaciones…**.
+La única petición que la app hace por su cuenta es un `GET` anónimo a `https://api.github.com/repos/LuxionServer/ShogunAi/releases?per_page=30`, que trae las notas con ella y lleva la versión de la app en la cabecera `User-Agent` y nada más. Desactiva **Buscar actualizaciones automáticamente** en Preferencias y la app solo contactará con GitHub cuando elijas **Buscar actualizaciones…**.
 
 ## Diagnóstico
 

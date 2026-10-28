@@ -8,6 +8,7 @@ shogun new --branch hotfix/login   # worktree for an existing branch
 shogun provision ../other-worktree # copy the declared files into a worktree made by another tool
 shogun status                      # every worktree with its changes, divergence and merged state
 shogun status --json               # the same, as one JSON document for scripts
+shogun base                        # the branch this worktree's branch was created from, its pull request's base
 shogun remove TASK-123             # remove one worktree and stop its emulator and simulator
 shogun repair                      # re-link the worktrees after the repository moved
 shogun open TASK-123 --herdr       # open a worktree in Herdr with its environment and the project's agent
@@ -45,6 +46,7 @@ Creates a worktree, copies the declared files into it, prepares its [environment
 - With a task id, the worktree gets a new `feature/<task-id>` branch, or `fix/<task-id>` with `--fix`. The branch starts at the HEAD of the worktree you run the command in, or at `--from <ref>` (a branch, tag or commit; an unknown ref fails before anything is created).
 - With `--branch`, the worktree checks out an existing branch. `--fix` and `--from` aren't accepted with it. A branch that exists only on `origin`, given as `<name>` or `origin/<name>`, gets a local branch of that name tracking it; a local branch with that name takes precedence.
 - A new branch never tracks its start point, so pushing it never targets the branch it started from.
+- The branch it starts from is recorded as the new branch's [base](#base): the current worktree's branch, or the branch `--from` names (`origin/develop` is recorded as `develop`). A tag, a commit or a detached HEAD records nothing, and `--branch` keeps whatever an existing branch already has.
 - `--fetch` runs `git fetch --prune origin` first, so `--from origin/develop` or a remote branch is current. It never waits for credentials: if the fetch fails, Git's error is printed, nothing is created and the exit code is 1.
 - `--worktrees-root <dir>` sets where the worktree goes. It's required when the repository has no project in the desktop app; relative paths are resolved against the current directory.
 - A task id containing `/` (`team/TASK-1`) keeps the `/` in the branch (`feature/team/TASK-1`) and becomes one folder, `team-TASK-1`.
@@ -85,6 +87,7 @@ Lists every worktree of the repository, one per line: path, branch (or `(detache
 |---|---|
 | `main` | The main checkout. |
 | `origin=shogunai\|claude-code\|herdr\|other` | Where the worktree was created. |
+| `base=develop` | The recorded [base](#base) of its branch. |
 | `locked` | Held by an agent session. |
 | `desktop(until 14:10)`, `desktop(waiting 1/2)` | It holds the [desktop turn](#desktop) until that time, or waits for it in that place of the line. |
 | `agents=claude(blocked, app-task-123),codex` | Agents running in it, with their state (`working`, `blocked`, `done`, `idle`) when Herdr reports it or, for Claude, when its [hooks](../agents.md#agent-states-outside-herdr) do. A Claude agent also lists, after its state, the names of its live sessions whose folder is in that worktree, as Claude Code's session registry has them (`claude(app-task-123)` when there's no state). |
@@ -116,6 +119,7 @@ Prints one compact JSON object on a single line instead of the text lines. Error
       "locked": false,
       "folderMissing": false,
       "origin": null,
+      "base": null,
       "agents": [{ "name": "claude", "state": "blocked", "stateSource": "claude-code", "herdrState": null, "sessions": [{ "name": "main-repo-task-123", "pid": 4242 }] }],
       "status": {
         "uncommittedChanges": 0,
@@ -136,6 +140,7 @@ Prints one compact JSON object on a single line instead of the text lines. Error
 | `branch`, `head` | The checked-out branch (`null` when detached) and the commit. |
 | `main`, `locked`, `folderMissing` | The main checkout, held by an agent session, folder deleted by hand. |
 | `origin` | `shogunai`, `claude-code`, `herdr` or `other`; `null` for the main checkout. |
+| `base` | The recorded [base](#base) of its branch; `null` when none is recorded or it's detached. |
 | `agents` | The agents running in it: `name`, `state` (`working`, `blocked`, `done`, `idle`; `null` when nothing reports one), `stateSource` (`herdr`, `claude-code` or `null`), `herdrState`, the state when Herdr is the source and `null` otherwise, and `sessions`, the agent's live Claude Code sessions in that worktree (`name` and `pid`; empty for other agents or when none is found). |
 | `status` | `null` when the folder is missing or its status couldn't be read. |
 | `statusProblem` | Only present when the status couldn't be read: Git's reason. |
@@ -146,6 +151,20 @@ Prints one compact JSON object on a single line instead of the text lines. Error
 | `status.createdAt` | Time the worktree was created, in ISO-8601 UTC, read from Git's administrative folder for it; `null` for the main checkout or when it can't be read. |
 
 Every field is always present, with `null` when it doesn't apply. The field names are a contract: later versions only add fields and never rename, remove or change the type of one.
+
+### `base`
+
+```text
+shogun base [<task id | path | branch>] [--set <branch>] [--json]
+```
+
+Prints the branch a worktree's branch was created from, alone on standard output, so `gh pr create --base "$(shogun base)"` opens its pull request against the right branch. Without a target it's the worktree containing the current directory.
+
+- ShogunAi records it when it creates a branch: `shogun new`, Claude Code's `WorktreeCreate` hook, the desktop app's "New worktree" and the worktrees of a [multirepo group](#multirepos), which start from each repository's main branch.
+- It's stored in the repository's Git config as `branch.<branch>.gh-merge-base`, the key `gh pr create` already reads as its default base. Nothing goes into the working tree; every worktree of the repository sees it, renaming the branch keeps it and deleting the branch removes it.
+- When none is recorded (a worktree created by Herdr or `git worktree add`, or a branch from before ShogunAi recorded bases), it says so on standard error, suggests `--set` and exits with `1`. A detached worktree has no branch and also exits with `1`.
+- `--set <branch>` records it, replacing any previous value. The value must be a local branch or a branch of a remote, whose remote prefix is dropped (`origin/develop` is recorded as `develop`); a tag or an unknown name records nothing and exits with `1`.
+- `--json` prints `{ "path", "branch", "base" }`, with `base` `null` (and exit code `1`) when none is recorded.
 
 ### `hooks`
 
@@ -433,7 +452,7 @@ shogun xcode trim [--dry-run]
 
 ## JSON output
 
-Besides `status --json` above, every command that reports a result accepts `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `compose`, `compose up`, `compose build`, `compose down`, `compose prune`, `pool status`, `pool trim`, `project add`, `project list`, `project remove`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks` and `guide install|uninstall|status` (not `simulator gradle-init`, `env`, `hook`, `help` or `--version`; on those it is an unknown option and exits with `2`). The option can go anywhere after the command.
+Besides `status --json` above, every command that reports a result accepts `--json`: `new`, `base`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `compose`, `compose up`, `compose build`, `compose down`, `compose prune`, `pool status`, `pool trim`, `project add`, `project list`, `project remove`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks` and `guide install|uninstall|status` (not `simulator gradle-init`, `env`, `hook`, `help` or `--version`; on those it is an unknown option and exits with `2`). The option can go anywhere after the command.
 
 The rules are the same for all of them:
 

@@ -143,6 +143,10 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "\"${error.ref}\" no es un commit.",
         "Elige una rama o un commit existente como punto de partida.",
     )
+    is WorktreeError.NotABranch -> ErrorTexts(
+        "\"${error.ref}\" no es una rama local ni de un remoto.",
+        "Elige una rama existente como base.",
+    )
     is WorktreeError.BranchAlreadyCheckedOut -> ErrorTexts(
         "La rama \"${error.branch}\" ya está en uso${error.path?.let { " en $it" }.orEmpty()}.",
         "Abre el worktree existente de esa rama, o elige otra rama.",
