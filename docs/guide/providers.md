@@ -73,10 +73,14 @@ Every setting is optional. Memory sizes are a number followed by `k`, `m` or `g`
 
 Parallel builds in several worktrees each start a JVM with Maven's default heap, and Maven daemons (mvnd) stay alive after the build. `mavenMaxHeap` is optional, a size such as `512m` or `1g`: with it, every worktree's environment (the main one included) gets `MAVEN_OPTS=-Xmx<size>`. A `MAVEN_OPTS` you declare in `env` takes precedence, one you set yourself in that shell is replaced, and builds started from an IDE don't inherit it.
 
-For a Maven repository the app shows a "Maven daemons" section with every mvnd daemon on the machine: its memory and the worktree it works in (the working directory of the process decides: the deepest worktree that contains it, "removed worktree" when the folder is gone inside the worktrees folder, "other project" otherwise, nothing when it can't be read). Plain `mvn` builds and IDEs are not listed. ShogunAi never stops a Maven daemon, because whether one is busy can't be known reliably, and cleaning up worktrees leaves them running.
+For a Maven repository the app shows a "Maven daemons" section with every mvnd daemon on the machine: its memory, whether it's busy or idle, and the worktree of its last build (mvnd moves the daemon's working directory to each build's folder: the deepest worktree that contains it, "removed worktree" when the folder is gone inside the worktrees folder, "other project" otherwise, nothing when it can't be read). Plain `mvn` builds and IDEs are not listed.
+
+The state comes from the daemon's own log, whose location mvnd puts on the daemon's command line; it works with mvnd 1.x and 2.x and any `mvnd.daemonStorage`. A daemon is busy while a build runs and idle afterwards; one whose log can't be read has an unknown state. You can stop idle daemons there, and "Clean up" offers to stop the idle Maven daemons of the worktrees it removes. A busy daemon, or one whose state is unknown, is never stopped; the state is read again just before stopping.
 
 ```bash
-shogun maven                       # list the Maven daemons, their memory and worktree
+shogun maven                       # list the Maven daemons, their memory, state and worktree
+shogun maven stop                  # stop every idle Maven daemon (or: shogun maven stop <pid>...)
+shogun clean --yes --stop-maven-daemons  # also stop the idle Maven daemons of the removed worktrees
 ```
 
 Daemon inspection needs `ps` and `lsof` (macOS and Linux).

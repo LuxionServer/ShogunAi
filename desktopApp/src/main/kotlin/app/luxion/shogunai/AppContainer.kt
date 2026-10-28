@@ -140,10 +140,13 @@ import app.luxion.shogunai.domain.usecase.DetectMobileSecretsUseCase
 import app.luxion.shogunai.domain.usecase.DetectRepositoryStacksUseCase
 import app.luxion.shogunai.domain.usecase.ListComposeProjectsUseCase
 import app.luxion.shogunai.domain.usecase.ListMavenDaemonsUseCase
+import app.luxion.shogunai.domain.usecase.StopMavenDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.TakeDownComposeProjectsUseCase
 import app.luxion.shogunai.domain.model.ComposeDownReport
 import app.luxion.shogunai.domain.model.DockerComposeProvider
+import app.luxion.shogunai.domain.model.MavenDaemon
 import app.luxion.shogunai.domain.model.MavenDaemonProcess
+import app.luxion.shogunai.domain.model.MavenDaemonStopReport
 import app.luxion.shogunai.domain.model.MavenProvider
 import app.luxion.shogunai.domain.model.WorktreeComposeProject
 import app.luxion.shogunai.infrastructure.DockerComposeProjectSource
@@ -518,6 +521,7 @@ class AppContainer {
     val machineUseCases = MachineUseCases(
         listDaemons = { runCatching { gradleDaemonSource.list() } },
         listMavenDaemons = { runCatching { mavenDaemonSource.list() } },
+        stopMavenDaemons = { pids -> StopMavenDaemonsUseCase(mavenDaemonSource, shellCommandExecutor)(pids) },
         listComposeProjects = { config, worktrees, root ->
             ListComposeProjectsUseCase(composeProjectSource, composeProjectRegistry)(config.baseRepositoryPath, worktrees, root)
         },
@@ -812,6 +816,8 @@ class AppContainer {
                     runCatching { repositoryProvisioningSource.read(config.baseRepositoryPath).providers.maven }.getOrNull()
                 }
             },
+            listDaemons = { worktrees -> ListMavenDaemonsUseCase(mavenDaemonSource, fileManager)(worktrees, config.worktreesRoot.ifBlank { null }) },
+            stopDaemons = { pids -> StopMavenDaemonsUseCase(mavenDaemonSource, shellCommandExecutor)(pids) },
         ),
         compose = ComposeUseCases(
             provider = {
@@ -944,6 +950,7 @@ class MachineUseCases(
     val resolveDerivedDataQuota: suspend (ResourceSettings, Long) -> DerivedDataQuota =
         { settings, _ -> DerivedDataQuota(settings.quotaMode, settings.fixedDerivedDataQuotaBytes.takeIf { settings.quotaMode == DerivedDataQuotaMode.FIXED }) },
     val listMavenDaemons: suspend () -> Result<List<MavenDaemonProcess>> = { Result.success(emptyList()) },
+    val stopMavenDaemons: suspend (List<Long>?) -> Result<MavenDaemonStopReport> = { Result.success(MavenDaemonStopReport()) },
     val listComposeProjects: suspend (ProjectConfig, List<Worktree>, String?) -> Result<List<WorktreeComposeProject>> =
         { _, _, _ -> Result.success(emptyList()) },
     val takeDownComposeProjects: suspend (List<String>) -> ComposeDownReport = { ComposeDownReport() },
@@ -1073,7 +1080,11 @@ data class GradleUseCases(
     val isBuildCacheEnabled: suspend () -> Boolean,
 )
 
-data class MavenUseCases(val provider: suspend () -> MavenProvider?) {
+data class MavenUseCases(
+    val provider: suspend () -> MavenProvider?,
+    val listDaemons: suspend (List<Worktree>) -> Result<List<MavenDaemon>> = { Result.success(emptyList()) },
+    val stopDaemons: suspend (List<Long>) -> Result<MavenDaemonStopReport> = { Result.success(MavenDaemonStopReport()) },
+) {
     companion object {
         val NONE = MavenUseCases(provider = { null })
     }

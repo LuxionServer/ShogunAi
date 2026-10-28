@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Know whether a Maven daemon is busy
-The system SHALL report each Maven daemon as busy, idle (with the time it became idle) or unknown, from the most recent state change the daemon recorded in its own log. A daemon whose log can't be found or read, or whose log has no recorded state change, SHALL be reported as unknown. A daemon that has only started and not yet finished its first build SHALL NOT be reported as idle.
+The system SHALL report each Maven daemon as busy, idle (with the time it became idle) or unknown, from the most recent state change the daemon recorded in its own log. A readable log with no recorded state change SHALL be reported as busy, because the daemon restarts its log when a build starts and is created busy. A daemon whose log can't be found or read SHALL be reported as unknown.
 
 #### Scenario: Idle daemon
 - **WHEN** a daemon's last recorded state change is becoming idle at 12:57
@@ -11,9 +11,9 @@ The system SHALL report each Maven daemon as busy, idle (with the time it became
 - **WHEN** a daemon's last recorded state change is becoming busy, cancelled or broken
 - **THEN** it's reported as busy
 
-#### Scenario: Fresh daemon
-- **WHEN** a daemon has started and its log has no state change yet
-- **THEN** it's reported as unknown
+#### Scenario: Log restarted by a running build
+- **WHEN** a daemon's log has no recorded state change, as while a build runs
+- **THEN** it's reported as busy
 
 #### Scenario: Log unreadable
 - **WHEN** a daemon's log is missing, can't be read or its location isn't on its command line
@@ -40,32 +40,24 @@ The system SHALL stop a Maven daemon only if it is idle when the stop is request
 
 ## MODIFIED Requirements
 
-### Requirement: Attribute a Maven daemon to a worktree
-For a given repository, the system SHALL tie each Maven daemon to the directory of the last build it received, as recorded in its log, or to its process working directory when no build is recorded, and report it as belonging to the worktree that contains that directory (the deepest one when worktrees are nested), to a removed worktree when that folder no longer exists, or to another project. A daemon whose directory can't be determined SHALL be reported as unknown.
+### Requirement: Detect Maven daemons
+The system SHALL list the Maven daemons (mvnd) running on the machine, each with its process id and resident memory, whatever main class the daemon's Java process runs. Other Java processes, including plain `mvn` builds and the `mvnd` client, SHALL NOT be listed.
 
-#### Scenario: Daemon in a worktree
-- **WHEN** a daemon's last build ran in `<worktrees>/task-123/service`
-- **THEN** it belongs to the worktree `task-123`
+#### Scenario: Daemons running
+- **WHEN** two mvnd daemons are running
+- **THEN** both are listed with process id and memory
 
-#### Scenario: Daemon reused by another worktree
-- **WHEN** a daemon was started from the worktree `task-1` and its last build ran in the worktree `task-2`
-- **THEN** it belongs to the worktree `task-2`
+#### Scenario: Daemon started through the Classworlds launcher
+- **WHEN** an mvnd daemon runs with `org.codehaus.plexus.classworlds.launcher.Launcher` as main class and its `mvnd.id` on the command line
+- **THEN** it is listed
 
-#### Scenario: No build recorded
-- **WHEN** a daemon's log records no build and its working directory is `<worktrees>/task-123`
-- **THEN** it belongs to the worktree `task-123`
+#### Scenario: Unrelated Java process
+- **WHEN** an IDE, a plain `mvn` build or the `mvnd` client is running but no daemon is
+- **THEN** no daemon is listed
 
-#### Scenario: Worktree removed
-- **WHEN** a daemon's directory no longer exists and was inside a worktrees folder of the repository
-- **THEN** it's shown as belonging to a removed worktree
-
-#### Scenario: Another project
-- **WHEN** a daemon's directory is outside every worktree of the repository and still exists
-- **THEN** it's shown as belonging to another project
-
-#### Scenario: Directory unreadable
-- **WHEN** a daemon's log records no build and its working directory can't be determined
-- **THEN** it's shown as unknown
+#### Scenario: Process inspection unavailable
+- **WHEN** listing processes fails
+- **THEN** the daemon list is reported as unavailable and nothing else is affected
 
 ## REMOVED Requirements
 

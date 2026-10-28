@@ -9,7 +9,10 @@ class FakeMavenDaemonSource(
     var failure: WorktreeError? = null,
 ) : MavenDaemonSource {
 
+    var listings = 0
+
     override suspend fun list(): List<MavenDaemonProcess> {
+        listings++
         failure?.let { throw it }
         return daemons
     }

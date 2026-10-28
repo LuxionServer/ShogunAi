@@ -24,6 +24,7 @@ import app.luxion.shogunai.domain.model.ReleaseRecord
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.MavenDaemon
+import app.luxion.shogunai.domain.model.MavenDaemonStopReport
 import app.luxion.shogunai.domain.model.SuggestionReport
 import app.luxion.shogunai.domain.model.WorktreeComposeProject
 import app.luxion.shogunai.domain.model.MobileSecretsReport
@@ -174,6 +175,7 @@ data class CleanJson(
     val deletedBranches: List<String> = emptyList(),
     val failures: List<CleanFailureJson> = emptyList(),
     val gradleDaemonsStopped: List<Long> = emptyList(),
+    val mavenDaemonsStopped: List<Long> = emptyList(),
     val emulatorsStopped: List<String> = emptyList(),
     val simulatorsDeleted: List<String> = emptyList(),
     val derivedDataDeleted: List<String> = emptyList(),
@@ -230,6 +232,7 @@ fun cleanJson(clean: CleanJson): JsonObject = buildJsonObject {
         "providers",
         buildJsonObject {
             put("gradleDaemonsStopped", numbers(clean.gradleDaemonsStopped))
+            put("mavenDaemonsStopped", numbers(clean.mavenDaemonsStopped))
             put("emulatorsStopped", strings(clean.emulatorsStopped))
             put("simulatorsDeleted", strings(clean.simulatorsDeleted))
             put("derivedDataDeleted", strings(clean.derivedDataDeleted))
@@ -282,6 +285,8 @@ fun mavenJson(daemons: List<MavenDaemon>, attributed: Boolean): JsonObject = bui
                     buildJsonObject {
                         put("pid", daemon.pid)
                         put("memoryBytes", daemon.process.residentMemoryBytes)
+                        put("state", daemon.process.state.jsonLabel)
+                        put("idleSince", (daemon.process.state as? DaemonState.Idle)?.since?.toString())
                         put("worktree", daemon.owner.takeIf { attributed }?.jsonLabel)
                     },
                 )
@@ -444,6 +449,37 @@ fun gradleStopJson(report: DaemonStopReport): JsonObject = buildJsonObject {
                     buildJsonObject {
                         put("pid", it.pid)
                         put("kind", it.kind.jsonLabel)
+                        put("reason", it.reason.jsonLabel)
+                    },
+                )
+            }
+        },
+    )
+    put("notDaemons", numbers(report.notDaemons))
+    put(
+        "failures",
+        buildJsonArray {
+            report.failures.forEach {
+                add(
+                    buildJsonObject {
+                        put("pid", it.pid)
+                        put("message", it.detail)
+                    },
+                )
+            }
+        },
+    )
+}
+
+fun mavenStopJson(report: MavenDaemonStopReport): JsonObject = buildJsonObject {
+    put("stopped", numbers(report.stopped.map { it.pid }))
+    put(
+        "kept",
+        buildJsonArray {
+            report.kept.forEach {
+                add(
+                    buildJsonObject {
+                        put("pid", it.pid)
                         put("reason", it.reason.jsonLabel)
                     },
                 )

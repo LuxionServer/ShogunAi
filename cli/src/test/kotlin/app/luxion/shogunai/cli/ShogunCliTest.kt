@@ -313,19 +313,19 @@ class ShogunCliTest {
     fun `maven lists the daemons with their memory and worktree`() {
         val daemons = FakeMavenDaemonSource(
             listOf(
-                MavenDaemonProcess(20, 1_073_741_824, "$merged/service"),
-                MavenDaemonProcess(21, 1_073_741_824, "/home/dev/other"),
+                MavenDaemonProcess(20, 1_073_741_824, "$merged/service", idleSinceTenMinutes),
+                MavenDaemonProcess(21, 1_073_741_824, "/home/dev/other", DaemonState.Busy),
             ),
         )
-        val fileManager = FakeFileManager(existing = listOf(base, merged, "/home/dev/other"))
+        val fileManager = FakeFileManager(existing = listOf(base, merged, "$merged/service", "/home/dev/other"))
 
         val exitCode = cli(repositoryExecutor(), fileManager = fileManager, mavenDaemons = daemons).run(listOf("maven"))
 
         assertEquals(0, exitCode, err.toString())
         assertEquals(
             """
-            20  memory=1.0 GB  worktree=$merged
-            21  memory=1.0 GB  worktree=other-project
+            20  memory=1.0 GB  state=idle  idle-for=10m  worktree=$merged
+            21  memory=1.0 GB  state=busy  worktree=other-project
             total  memory=2.0 GB  daemons=2
 
             """.trimIndent(),
@@ -347,7 +347,111 @@ class ShogunCliTest {
         val exitCode = cli(executor, mavenDaemons = daemons, workingDirectory = "/tmp").run(listOf("maven"))
 
         assertEquals(0, exitCode, err.toString())
-        assertEquals("20  memory=1.0 MB\ntotal  memory=1.0 MB  daemons=1\n", out.toString())
+        assertEquals("20  memory=1.0 MB  state=unknown\ntotal  memory=1.0 MB  daemons=1\n", out.toString())
+    }
+
+    private fun mavenDaemon(pid: Long, state: DaemonState, workingDirectory: String? = null) =
+        MavenDaemonProcess(pid, 1_048_576, workingDirectory, state)
+
+    @Test
+    fun `maven stop stops idle daemons and keeps busy ones`() {
+        val daemons = FakeMavenDaemonSource(
+            listOf(mavenDaemon(20, idleSinceTenMinutes), mavenDaemon(21, idleSinceTenMinutes), mavenDaemon(22, DaemonState.Busy)),
+        )
+        val executor = repositoryExecutor()
+
+        val exitCode = cli(executor, mavenDaemons = daemons).run(listOf("maven", "stop"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("stopped 20  Maven\nstopped 21  Maven\nkept 22  Maven  (busy)\n", out.toString())
+        assertTrue(executor.ran("kill", "20"))
+        assertFalse(executor.ran("kill", "22"))
+    }
+
+    @Test
+    fun `maven stop of a busy daemon keeps it and exits with 0`() {
+        val daemons = FakeMavenDaemonSource(listOf(mavenDaemon(4242, DaemonState.Busy)))
+
+        val exitCode = cli(repositoryExecutor(), mavenDaemons = daemons).run(listOf("maven", "stop", "4242"))
+
+        assertEquals(0, exitCode)
+        assertEquals("kept 4242  Maven  (busy)\n", out.toString())
+    }
+
+    @Test
+    fun `maven stop of a process that isn't a maven daemon exits with 1`() {
+        val exitCode = cli(repositoryExecutor()).run(listOf("maven", "stop", "99999"))
+
+        assertEquals(1, exitCode)
+        assertEquals("shogun: 99999 isn't a Maven daemon\n", err.toString())
+    }
+
+    @Test
+    fun `maven stop json lists the stopped and kept daemons`() {
+        val daemons = FakeMavenDaemonSource(listOf(mavenDaemon(20, idleSinceTenMinutes), mavenDaemon(22, DaemonState.Unknown)))
+
+        val exitCode = cli(repositoryExecutor(), mavenDaemons = daemons).run(listOf("maven", "stop", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = jsonOut()
+        assertEquals(setOf("stopped", "kept", "notDaemons", "failures"), json.keys)
+        assertEquals(listOf(JsonPrimitive(20)), json.getValue("stopped").jsonArray.toList())
+        val kept = json.getValue("kept").jsonArray.single().jsonObject
+        assertEquals(setOf("pid", "reason"), kept.keys)
+        assertEquals("state-unknown", (kept.getValue("reason") as JsonPrimitive).content)
+    }
+
+    @Test
+    fun `maven json includes the state of each daemon`() {
+        val daemons = FakeMavenDaemonSource(listOf(mavenDaemon(20, idleSinceTenMinutes, workingDirectory = "$merged/service")))
+
+        cli(repositoryExecutor(), mavenDaemons = daemons).run(listOf("maven", "--json"))
+
+        val daemon = jsonOut().getValue("daemons").jsonArray.single().jsonObject
+        assertEquals("idle", (daemon.getValue("state") as JsonPrimitive).content)
+        assertEquals("2026-10-16T10:50:00Z", (daemon.getValue("idleSince") as JsonPrimitive).content)
+    }
+
+    @Test
+    fun `clean stops the idle maven daemons of removed worktrees`() {
+        val daemons = FakeMavenDaemonSource(
+            listOf(mavenDaemon(20, idleSinceTenMinutes, workingDirectory = "$merged/service"), mavenDaemon(21, idleSinceTenMinutes, workingDirectory = base)),
+        )
+        val executor = repositoryExecutor()
+
+        val exitCode = cli(executor, mavenDaemons = daemons).run(listOf("clean", "--yes", "--stop-maven-daemons"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.contains("removed $merged\n"), out.toString())
+        assertTrue(out.contains("stopped 20  Maven\n"), out.toString())
+        assertTrue(executor.ran("kill", "20"))
+        assertFalse(executor.ran("kill", "21"))
+    }
+
+    @Test
+    fun `clean without the maven option stops no maven daemon`() {
+        val daemons = FakeMavenDaemonSource(listOf(mavenDaemon(20, idleSinceTenMinutes, workingDirectory = "$merged/service")))
+        val executor = repositoryExecutor()
+
+        cli(executor, mavenDaemons = daemons).run(listOf("clean", "--yes"))
+
+        assertFalse(executor.calls.any { it.first.first() == "kill" })
+        assertEquals(0, daemons.listings)
+    }
+
+    @Test
+    fun `clean with the maven option but without yes lists the maven daemons it would stop`() {
+        val daemons = FakeMavenDaemonSource(listOf(mavenDaemon(20, idleSinceTenMinutes, workingDirectory = "$merged/service")))
+        val executor = repositoryExecutor()
+
+        val exitCode = cli(executor, mavenDaemons = daemons).run(listOf("clean", "--stop-maven-daemons"))
+
+        assertEquals(0, exitCode)
+        assertEquals(
+            "would remove $merged\nwould stop Maven daemon 20\nRun 'shogun clean --stop-maven-daemons --yes' to remove the worktree.\n",
+            out.toString(),
+        )
+        assertFalse(executor.calls.any { it.first.first() == "kill" })
     }
 
     private val composeDeclared = declaring(RepositoryProviders(dockerCompose = DockerComposeProvider()))
@@ -2931,7 +3035,7 @@ class ShogunCliTest {
         assertEquals("merged", (candidate.getValue("reason") as JsonPrimitive).content)
         assertEquals(emptyList(), json.strings("removed"))
         assertEquals(
-            setOf("gradleDaemonsStopped", "emulatorsStopped", "simulatorsDeleted", "derivedDataDeleted"),
+            setOf("gradleDaemonsStopped", "mavenDaemonsStopped", "emulatorsStopped", "simulatorsDeleted", "derivedDataDeleted"),
             json.getValue("providers").jsonObject.keys,
         )
         assertFalse(executor.calls.any { it.first.take(3) == listOf("git", "worktree", "remove") })

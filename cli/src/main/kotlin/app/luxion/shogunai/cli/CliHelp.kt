@@ -59,11 +59,12 @@ internal object CliHelp {
   repair [--json]             Re-link the worktrees after the repository or the worktrees folder moved
 """.trimIndent(),
         "clean" to """
-  clean [--yes] [--delete-branches] [--stop-gradle-daemons] [--stop-emulators] [--delete-simulators]
-        [--delete-derived-data] [--down-compose-projects [--compose-volumes]] [--json]
+  clean [--yes] [--delete-branches] [--stop-gradle-daemons] [--stop-maven-daemons] [--stop-emulators]
+        [--delete-simulators] [--delete-derived-data] [--down-compose-projects [--compose-volumes]] [--json]
                               List merged or missing worktrees; remove them with --yes
-                              (--stop-gradle-daemons / --stop-emulators: also stop their idle
-                              Gradle daemons / their emulators; --delete-simulators: also delete
+                              (--stop-gradle-daemons / --stop-maven-daemons / --stop-emulators: also
+                              stop their idle Gradle daemons / their idle Maven daemons / their
+                              emulators; --delete-simulators: also delete
                               their iOS simulators and orphaned ShogunAi simulators;
                               --delete-derived-data: also delete orphaned Xcode DerivedData;
                               --down-compose-projects: also take down the Docker Compose projects of
@@ -124,7 +125,10 @@ internal object CliHelp {
                               Docker Compose) and the providers they suggest; nothing is changed
 """.trimIndent(),
         "maven" to """
-  maven [--json]              List the Maven daemons (mvnd) with their memory and worktree
+  maven [--json]              List the Maven daemons (mvnd) with their memory, state and worktree
+  maven stop [<pid>...] [--json]
+                              Stop idle Maven daemons (all of them, or only the given ones); busy ones and
+                              ones whose state is unknown are kept
 """.trimIndent(),
         "compose" to """
   compose [--json]            List the Docker Compose projects of the worktrees with their status, and

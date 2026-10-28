@@ -113,6 +113,7 @@ class ParseArgumentsTest {
         assertEquals(CliCommand.Clean(confirmed = true, deleteBranches = true), command("clean", "--delete-branches", "-y"))
         assertEquals("unknown argument '--all' for 'clean'", usageError("clean", "--all"))
         assertEquals(CliCommand.Clean(confirmed = true, stopGradleDaemons = true), command("clean", "--yes", "--stop-gradle-daemons"))
+        assertEquals(CliCommand.Clean(confirmed = true, stopMavenDaemons = true), command("clean", "--yes", "--stop-maven-daemons"))
         assertEquals(CliCommand.Clean(confirmed = true, deleteDerivedData = true), command("clean", "--yes", "--delete-derived-data"))
     }
 
@@ -177,6 +178,16 @@ class ParseArgumentsTest {
         assertEquals("'gradle stop' takes process ids, got 'all'", usageError("gradle", "stop", "all"))
         assertEquals("'gradle stop' takes process ids, got '-1'", usageError("gradle", "stop", "-1"))
         assertEquals("unknown subcommand 'kill' for 'gradle', expected stop", usageError("gradle", "kill"))
+    }
+
+    @Test
+    fun `maven commands`() {
+        assertEquals(CliCommand.Maven(), command("maven"))
+        assertEquals(CliCommand.MavenStop(), command("maven", "stop"))
+        assertEquals(CliCommand.MavenStop(listOf(4242, 4243)), command("maven", "stop", "4242", "4243"))
+        assertEquals(CliCommand.MavenStop(listOf(5L), json = true), command("maven", "stop", "5", "--json"))
+        assertEquals("'maven stop' takes process ids, got 'all'", usageError("maven", "stop", "all"))
+        assertEquals("unknown subcommand 'kill' for 'maven', expected stop", usageError("maven", "kill"))
     }
 
     @Test

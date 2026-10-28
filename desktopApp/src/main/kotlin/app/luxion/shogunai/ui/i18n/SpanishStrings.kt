@@ -394,6 +394,7 @@ object SpanishStrings : Strings {
     override val alsoStopEmulators = "Parar también los emuladores de los worktrees que se eliminan"
     override fun emulatorsStopped(count: Int) = if (count == 1) "1 emulador parado" else "$count emuladores parados"
     override val alsoStopIdleGradleDaemons = "Parar también los daemons de Gradle ociosos de los worktrees que se eliminan"
+    override val alsoStopIdleMavenDaemons = "Parar también los daemons de Maven ociosos de los worktrees que se eliminan"
     override val gradleDaemonsTitle = "Daemons de Gradle"
     override fun gradleDaemonsSummary(count: Int, totalMemory: String) =
         (if (count == 1) "1 daemon" else "$count daemons") + " · $totalMemory"
@@ -656,7 +657,6 @@ object SpanishStrings : Strings {
         (if (count == 1) "1 daemon" else "$count daemons") + " · $totalMemory"
     override val noMavenDaemons = "No hay daemons de Maven en ejecución"
     override val mavenDaemonsUnavailable = "No se pueden inspeccionar los daemons de Maven en este sistema"
-    override val mavenDaemonsNotStopped = "Los daemons de Maven solo se listan: ShogunAi no puede saber si uno está ocupado, así que nunca los para."
     override val composeProjectsTitle = "Proyectos de Compose"
     override fun composeProjectsSummary(count: Int) = if (count == 1) "1 proyecto" else "$count proyectos"
     override val noComposeProjects = "No hay proyectos de Compose de los worktrees"
