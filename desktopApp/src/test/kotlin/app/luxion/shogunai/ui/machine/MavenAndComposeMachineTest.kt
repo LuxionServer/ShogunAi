@@ -9,7 +9,11 @@ import app.luxion.shogunai.domain.model.ComposeOwner
 import app.luxion.shogunai.domain.model.ComposeProject
 import app.luxion.shogunai.domain.model.DerivedDataDeletion
 import app.luxion.shogunai.domain.model.DerivedDataListing
+import app.luxion.shogunai.domain.model.DaemonKeptReason
+import app.luxion.shogunai.domain.model.DaemonState
+import app.luxion.shogunai.domain.model.KeptMavenDaemon
 import app.luxion.shogunai.domain.model.MavenDaemonProcess
+import app.luxion.shogunai.domain.model.MavenDaemonStopReport
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.ResourceSettings
@@ -28,6 +32,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -62,6 +67,7 @@ class MavenAndComposeMachineTest {
     private class Calls {
         var mavenDaemons = emptyList<MavenDaemonProcess>()
         var mavenListings = 0
+        val mavenStops = mutableListOf<List<Long>?>()
         var composeProjects: Result<List<WorktreeComposeProject>> = Result.success(emptyList())
         val takenDown = mutableListOf<List<String>>()
         var leftovers = emptyList<ComposeResource>()
@@ -89,6 +95,18 @@ class MavenAndComposeMachineTest {
         readSimulatorOrphans = { Result.success(emptyList()) },
         deleteSimulators = { Result.success(it) },
         listMavenDaemons = { calls.mavenListings++; Result.success(calls.mavenDaemons) },
+        stopMavenDaemons = { pids ->
+            calls.mavenStops += pids
+            val targets = calls.mavenDaemons.filter { pids == null || it.pid in pids }
+            val (idle, others) = targets.partition { it.state is DaemonState.Idle }
+            calls.mavenDaemons = calls.mavenDaemons - idle.toSet()
+            Result.success(
+                MavenDaemonStopReport(
+                    stopped = idle,
+                    kept = others.map { KeptMavenDaemon(it.pid, if (it.state == DaemonState.Busy) DaemonKeptReason.BUSY else DaemonKeptReason.STATE_UNKNOWN) },
+                ),
+            )
+        },
         listComposeProjects = { _, _, _ -> calls.composeProjects },
         takeDownComposeProjects = { names -> calls.takenDown += names; ComposeDownReport(takenDown = names) },
         listComposeLeftovers = { _, _ -> Result.success(calls.leftovers) },
@@ -125,7 +143,7 @@ class MavenAndComposeMachineTest {
     }
 
     @Test
-    fun `maven daemons are attributed to worktrees and have no stop action`() = machineTest {
+    fun `maven daemons are attributed to worktrees`() = machineTest {
         val calls = Calls().apply {
             mavenDaemons = listOf(
                 MavenDaemonProcess(1, 100, "${taskWorktree.path}/service"),
@@ -140,6 +158,46 @@ class MavenAndComposeMachineTest {
 
         val owners = assertIs<MachineLoad.Loaded<List<MachineMavenDaemon>>>(machine.mavenDaemons).value.map { it.owner }
         assertEquals(listOf(ProjectOwner.Owned("main-repo", taskWorktree.path), ProjectOwner.Outside, null), owners)
+    }
+
+    @Test
+    fun `stopping idle maven daemons keeps the busy one, reports it and refreshes the list`() = machineTest {
+        val idle = DaemonState.Idle(Instant.parse("2026-10-28T12:57:00Z"))
+        val calls = Calls().apply {
+            mavenDaemons = listOf(
+                MavenDaemonProcess(1, 100, null, idle),
+                MavenDaemonProcess(2, 100, null, idle),
+                MavenDaemonProcess(3, 100, null, DaemonState.Busy),
+            )
+        }
+        val machine = machine(calls, MachineResource.MAVEN_DAEMONS)
+        machine.show(MachineResource.MAVEN_DAEMONS)
+        runCurrent()
+
+        machine.stopIdleMavenDaemons()
+        runCurrent()
+
+        assertEquals(listOf<List<Long>?>(null), calls.mavenStops)
+        assertEquals(2, machine.mavenDaemonStopReport?.stopped?.size)
+        assertEquals(listOf(KeptMavenDaemon(3, DaemonKeptReason.BUSY)), machine.mavenDaemonStopReport?.kept)
+        assertEquals(listOf(3L), assertIs<MachineLoad.Loaded<List<MachineMavenDaemon>>>(machine.mavenDaemons).value.map { it.process.pid })
+        assertFalse(machine.isStoppingMavenDaemons)
+
+        machine.dismissMavenDaemonStopReport()
+        assertNull(machine.mavenDaemonStopReport)
+    }
+
+    @Test
+    fun `stopping a maven daemon whose state is unknown keeps it and says so`() = machineTest {
+        val calls = Calls().apply { mavenDaemons = listOf(MavenDaemonProcess(1, 100, null, DaemonState.Unknown)) }
+        val machine = machine(calls, MachineResource.MAVEN_DAEMONS)
+
+        machine.stopMavenDaemon(1)
+        runCurrent()
+
+        assertEquals(listOf<List<Long>?>(listOf(1L)), calls.mavenStops)
+        assertEquals(listOf(KeptMavenDaemon(1, DaemonKeptReason.STATE_UNKNOWN)), machine.mavenDaemonStopReport?.kept)
+        assertEquals("state unknown", mavenDaemonStateText(DaemonState.Unknown, EnglishStrings))
     }
 
     @Test

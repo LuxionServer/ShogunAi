@@ -73,10 +73,14 @@ Todos los ajustes son opcionales. Los tamaños de memoria son un número seguido
 
 Las compilaciones en paralelo en varios worktrees arrancan cada una una JVM con el heap por defecto de Maven, y los daemons de Maven (mvnd) siguen vivos tras la compilación. `mavenMaxHeap` es opcional, un tamaño como `512m` o `1g`: con él, el entorno de cada worktree (el principal incluido) recibe `MAVEN_OPTS=-Xmx<tamaño>`. Un `MAVEN_OPTS` declarado en `env` tiene prioridad, uno que pongas tú en ese shell se reemplaza, y las compilaciones lanzadas desde un IDE no lo heredan.
 
-Para un repositorio Maven la app muestra una sección "Daemons de Maven" con cada daemon mvnd de la máquina: su memoria y el worktree en el que trabaja (decide el directorio de trabajo del proceso: el worktree más profundo que lo contiene, "worktree eliminado" si la carpeta ya no existe dentro de la carpeta de worktrees, "otro proyecto" en otro caso, nada si no se puede leer). Las compilaciones con `mvn` a secas y los IDE no aparecen. ShogunAi nunca para un daemon de Maven, porque no se puede saber con fiabilidad si está ocupado, y limpiar worktrees los deja en marcha.
+Para un repositorio Maven la app muestra una sección "Daemons de Maven" con cada daemon mvnd de la máquina: su memoria, si está ocupado u ocioso, y el worktree de su última build (mvnd mueve el directorio de trabajo del daemon a la carpeta de cada build: el worktree más profundo que la contiene, "worktree eliminado" si la carpeta ya no existe dentro de la carpeta de worktrees, "otro proyecto" en otro caso, nada si no se puede leer). Las compilaciones con `mvn` a secas y los IDE no aparecen.
+
+El estado sale del propio log del daemon, cuya ubicación pone mvnd en la línea de comandos del daemon; funciona con mvnd 1.x y 2.x y con cualquier `mvnd.daemonStorage`. Un daemon está ocupado mientras corre una build y ocioso después; uno cuyo log no se puede leer tiene estado desconocido. Desde ahí puedes parar los daemons ociosos, y "Limpiar" ofrece parar los daemons de Maven ociosos de los worktrees que elimina. Un daemon ocupado, o de estado desconocido, nunca se para; el estado se vuelve a leer justo antes de pararlo.
 
 ```bash
-shogun maven                       # lista los daemons de Maven, su memoria y su worktree
+shogun maven                       # lista los daemons de Maven, su memoria, su estado y su worktree
+shogun maven stop                  # para todos los daemons de Maven ociosos (o: shogun maven stop <pid>...)
+shogun clean --yes --stop-maven-daemons  # para también los daemons de Maven ociosos de los worktrees eliminados
 ```
 
 La inspección de daemons necesita `ps` y `lsof` (macOS y Linux).

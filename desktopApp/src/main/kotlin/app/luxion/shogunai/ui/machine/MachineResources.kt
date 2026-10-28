@@ -23,6 +23,7 @@ import app.luxion.shogunai.domain.model.ComposeResource
 import app.luxion.shogunai.domain.model.ComposeOwner
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.MavenDaemonProcess
+import app.luxion.shogunai.domain.model.MavenDaemonStopReport
 import app.luxion.shogunai.domain.model.WorktreeComposeProject
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.PoolUsage
@@ -180,6 +181,10 @@ class MachineResources(
     var isStoppingDaemons by mutableStateOf(false)
         private set
     var daemonStopReport by mutableStateOf<DaemonStopReport?>(null)
+        private set
+    var isStoppingMavenDaemons by mutableStateOf(false)
+        private set
+    var mavenDaemonStopReport by mutableStateOf<MavenDaemonStopReport?>(null)
         private set
     var isDeletingDerivedData by mutableStateOf(false)
         private set
@@ -709,6 +714,29 @@ class MachineResources(
         daemonStopReport = null
     }
 
+    fun stopMavenDaemon(pid: Long) = stopMavenDaemons(listOf(pid))
+
+    fun stopIdleMavenDaemons() = stopMavenDaemons(null)
+
+    private fun stopMavenDaemons(pids: List<Long>?) {
+        if (isStoppingMavenDaemons) return
+        isStoppingMavenDaemons = true
+        scope.launch {
+            try {
+                io { useCases.stopMavenDaemons(pids) }
+                    .onSuccess { mavenDaemonStopReport = it; clearError(MAVEN_DAEMONS_KEY) }
+                    .onFailure { fail(MAVEN_DAEMONS_KEY, it) { stopMavenDaemons(pids) } }
+                loadMavenDaemons()
+            } finally {
+                isStoppingMavenDaemons = false
+            }
+        }
+    }
+
+    fun dismissMavenDaemonStopReport() {
+        mavenDaemonStopReport = null
+    }
+
     fun deleteOrphanedDerivedData() {
         if (isDeletingDerivedData) return
         isDeletingDerivedData = true
@@ -851,6 +879,7 @@ class MachineResources(
         val PROCESS_INTERVAL = 5.seconds
         val SUMMARY_INTERVAL = 30.seconds
         private const val DAEMONS_KEY = "daemons"
+        private const val MAVEN_DAEMONS_KEY = "mavenDaemons"
         private const val DERIVED_DATA_KEY = "derivedData"
         private const val SIMULATOR_ORPHANS_KEY = "simulatorOrphans"
 

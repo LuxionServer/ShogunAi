@@ -139,6 +139,7 @@ class WorktreeBoard(
         private set
     var cleanupDeleteBranches by mutableStateOf(false)
     var cleanupStopGradleDaemons by mutableStateOf(true)
+    var cleanupStopMavenDaemons by mutableStateOf(true)
     var cleanupStopEmulators by mutableStateOf(true)
     var cleanupDeleteSimulators by mutableStateOf(true)
     var cleanupDeleteDerivedData by mutableStateOf(true)
@@ -935,6 +936,7 @@ class WorktreeBoard(
     private fun resetCleanupOptions() {
         cleanupDeleteBranches = false
         cleanupStopGradleDaemons = true
+        cleanupStopMavenDaemons = true
         cleanupStopEmulators = true
         cleanupDeleteSimulators = true
         cleanupDeleteDerivedData = true
@@ -954,6 +956,7 @@ class WorktreeBoard(
         val options = CleanupOptions(
             deleteBranches = cleanupDeleteBranches,
             stopGradleDaemons = cleanupStopGradleDaemons,
+            stopMavenDaemons = cleanupStopMavenDaemons,
             stopEmulators = cleanupStopEmulators,
             deleteSimulators = cleanupDeleteSimulators,
             deleteDerivedData = cleanupDeleteDerivedData,

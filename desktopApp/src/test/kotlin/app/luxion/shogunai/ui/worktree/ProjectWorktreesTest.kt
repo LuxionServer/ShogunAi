@@ -161,6 +161,12 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import app.luxion.shogunai.domain.FakeMavenDaemonSource
+import app.luxion.shogunai.domain.model.MavenDaemonProcess
+import app.luxion.shogunai.domain.model.MavenProvider
+import app.luxion.shogunai.domain.usecase.ListMavenDaemonsUseCase
+import app.luxion.shogunai.domain.usecase.StopMavenDaemonsUseCase
+import app.luxion.shogunai.MavenUseCases
 
 class ProjectWorktreesTest {
 
@@ -337,6 +343,25 @@ class ProjectWorktreesTest {
             gradle = gradleUseCases(executor, source, provider = provider, buildCacheEnabled = buildCacheEnabled),
         )
     }
+
+    private fun mavenRepository(
+        responder: (List<String>) -> CommandResult,
+        source: FakeMavenDaemonSource,
+        declared: Boolean = true,
+    ): WorktreeUseCases {
+        val executor = FakeShellCommandExecutor(responder)
+        val fileManager = FakeFileManager(existing = listOf(config.baseRepositoryPath, worktreePath))
+        return useCasesWith(executor).copy(
+            maven = MavenUseCases(
+                provider = { MavenProvider().takeIf { declared } },
+                listDaemons = { worktrees -> ListMavenDaemonsUseCase(source, fileManager)(worktrees) },
+                stopDaemons = { pids -> StopMavenDaemonsUseCase(source, executor)(pids) },
+            ),
+        )
+    }
+
+    private fun mavenDaemon(pid: Long, state: DaemonState, workingDirectory: String) =
+        MavenDaemonProcess(pid, 100, workingDirectory, state)
 
     private fun existingBase() =
         FakeFileManager(existing = listOf(config.baseRepositoryPath) + config.secretFiles.map { config.baseSecretPath(it) })
@@ -2364,6 +2389,80 @@ class ProjectWorktreesTest {
 
         assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1), board.cleanupSuccess)
         assertEquals("daemon not reachable", board.project.cleanupIssues?.composeUnavailable)
+    }
+
+    @Test
+    fun `cleanup stops the idle maven daemons of the removed worktrees`() = runTest(dispatcher) {
+        val executed = mutableListOf<List<String>>()
+        val source = FakeMavenDaemonSource(
+            listOf(
+                mavenDaemon(20, idle, workingDirectory = "$worktreePath/service"),
+                mavenDaemon(21, idle, workingDirectory = config.baseRepositoryPath),
+            ),
+        )
+        val board = board(mavenRepository(mergedResponder(executed), source))
+        advanceUntilIdle()
+
+        board.openCleanup()
+        assertTrue(board.project.isMavenRepository)
+        assertTrue(board.cleanupStopMavenDaemons)
+        board.confirmCleanup()
+        advanceUntilIdle()
+
+        assertTrue(executed.contains(listOf("kill", "20")))
+        assertFalse(executed.contains(listOf("kill", "21")))
+        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1, stoppedDaemons = 1), board.cleanupSuccess)
+    }
+
+    @Test
+    fun `cleanup keeps a busy maven daemon of a removed worktree and reports it`() = runTest(dispatcher) {
+        val executed = mutableListOf<List<String>>()
+        val source = FakeMavenDaemonSource(listOf(mavenDaemon(20, idle, workingDirectory = worktreePath)))
+        val merged = mergedResponder(executed)
+        val board = board(
+            mavenRepository(
+                { command ->
+                    if (command.take(3) == listOf("git", "worktree", "remove")) {
+                        source.daemons = listOf(mavenDaemon(20, DaemonState.Busy, workingDirectory = worktreePath))
+                    }
+                    merged(command)
+                },
+                source,
+            ),
+        )
+        advanceUntilIdle()
+
+        board.openCleanup()
+        board.confirmCleanup()
+        advanceUntilIdle()
+
+        assertFalse(executed.contains(listOf("kill", "20")))
+        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1, keptDaemons = 1), board.cleanupSuccess)
+    }
+
+    @Test
+    fun `cleanup without the maven option or provider stops no maven daemon`() = runTest(dispatcher) {
+        val executed = mutableListOf<List<String>>()
+        val source = FakeMavenDaemonSource(listOf(mavenDaemon(20, idle, workingDirectory = worktreePath)))
+        val board = board(mavenRepository(mergedResponder(executed), source))
+        advanceUntilIdle()
+        board.openCleanup()
+        board.cleanupStopMavenDaemons = false
+        board.confirmCleanup()
+        advanceUntilIdle()
+
+        val undeclaredExecuted = mutableListOf<List<String>>()
+        val undeclaredSource = FakeMavenDaemonSource(listOf(mavenDaemon(20, idle, workingDirectory = worktreePath)))
+        val undeclared = board(mavenRepository(mergedResponder(undeclaredExecuted), undeclaredSource, declared = false))
+        advanceUntilIdle()
+        assertFalse(undeclared.project.isMavenRepository)
+        undeclared.openCleanup()
+        undeclared.confirmCleanup()
+        advanceUntilIdle()
+
+        assertTrue(executed.none { it.first() == "kill" })
+        assertTrue(undeclaredExecuted.none { it.first() == "kill" })
+        assertEquals(0, undeclaredSource.listings)
     }
 
     @Test

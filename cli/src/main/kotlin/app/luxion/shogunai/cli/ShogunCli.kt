@@ -111,6 +111,7 @@ import app.luxion.shogunai.domain.model.ComposeResourceKind
 import app.luxion.shogunai.infrastructure.JsonComposeProjectRegistry
 import app.luxion.shogunai.domain.usecase.ListComposeProjectsUseCase
 import app.luxion.shogunai.domain.usecase.ListMavenDaemonsUseCase
+import app.luxion.shogunai.domain.usecase.StopMavenDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.TakeDownComposeProjectsUseCase
 import app.luxion.shogunai.domain.usecase.totalMavenResidentMemory
 import app.luxion.shogunai.domain.usecase.worktreeComposeProjectName
@@ -175,6 +176,7 @@ import app.luxion.shogunai.domain.usecase.WriteEnvironmentFileUseCase
 import app.luxion.shogunai.domain.usecase.classifyOrigin
 import app.luxion.shogunai.domain.usecase.formatEnvironment
 import app.luxion.shogunai.domain.usecase.idleDaemonsOfRemovedWorktrees
+import app.luxion.shogunai.domain.usecase.idleMavenDaemonsOfRemovedWorktrees
 import app.luxion.shogunai.domain.usecase.normalizeTaskId
 import app.luxion.shogunai.domain.usecase.owningWorktree
 import app.luxion.shogunai.domain.usecase.classifyGitFailure
@@ -185,6 +187,7 @@ import app.luxion.shogunai.domain.io.ComposeProjectSource
 import app.luxion.shogunai.domain.io.MavenDaemonSource
 import app.luxion.shogunai.domain.model.ComposeOwner
 import app.luxion.shogunai.domain.model.MavenDaemon
+import app.luxion.shogunai.domain.model.MavenDaemonStopReport
 import app.luxion.shogunai.domain.model.suggestProviders
 import app.luxion.shogunai.domain.model.SuggestionReport
 import app.luxion.shogunai.infrastructure.CliHerdrClient
@@ -458,6 +461,7 @@ class ShogunCli(
             is CliCommand.Gradle -> gradle(command)
             is CliCommand.Stacks -> stacks(command)
             is CliCommand.Maven -> maven(command)
+            is CliCommand.MavenStop -> mavenStop(command)
             is CliCommand.Compose -> compose(command)
             is CliCommand.ComposeDown -> composeDown(command)
             is CliCommand.ComposeRun -> composeRun(command)
@@ -955,6 +959,7 @@ class ShogunCli(
             val flags = listOfNotNull(
                 "--delete-branches".takeIf { command.deleteBranches },
                 "--stop-gradle-daemons".takeIf { command.stopGradleDaemons },
+                "--stop-maven-daemons".takeIf { command.stopMavenDaemons },
                 "--stop-emulators".takeIf { command.stopEmulators },
                 "--delete-simulators".takeIf { command.deleteSimulators },
                 "--delete-derived-data".takeIf { command.deleteDerivedData },
@@ -1407,6 +1412,7 @@ class ShogunCli(
             return EXIT_OK
         }
         val daemons = if (command.stopGradleDaemons) daemonsBeforeCleanup(worktrees) else emptyList()
+        val mavenDaemons = if (command.stopMavenDaemons) mavenDaemonsBeforeCleanup(config, worktrees) else emptyList()
         val emulators = if (command.stopEmulators) emulatorsBeforeCleanup(config, candidates) else emptyMap()
         val closeHerdrWorkspaces = CloseHerdrWorkspacesUseCase(config, herdr)
         val downCompose = command.downComposeProjects && declaresCompose(config.baseRepositoryPath)
@@ -1422,6 +1428,8 @@ class ShogunCli(
             }
             idleDaemonsOfRemovedWorktrees(daemons, worktrees, candidates.map { it.path })
                 .forEach { out.line("would stop Gradle daemon $it") }
+            idleMavenDaemonsOfRemovedWorktrees(mavenDaemons, worktrees, candidates.map { it.path })
+                .forEach { out.line("would stop Maven daemon $it") }
             emulators.values.forEach { out.line("would stop emulator $it") }
             simulators.byWorktree.values.forEach { out.line("would delete simulator ${it.name} (${it.udid})") }
             simulators.orphans.forEach { out.line("would delete orphaned simulator ${it.name} (${it.udid})") }
@@ -1453,6 +1461,8 @@ class ShogunCli(
         }
         val pids = idleDaemonsOfRemovedWorktrees(daemons, worktrees, report.removed)
         val stoppedDaemons = if (pids.isNotEmpty()) stopDaemonsAfterCleanup(pids, say) else emptyList()
+        val mavenPids = idleMavenDaemonsOfRemovedWorktrees(mavenDaemons, worktrees, report.removed)
+        val stoppedMavenDaemons = if (mavenPids.isNotEmpty()) stopMavenDaemonsAfterCleanup(mavenPids, say) else emptyList()
         val removedEmulators = report.removed.mapNotNull { emulators[it] }
         val stoppedEmulators = if (removedEmulators.isNotEmpty()) stopEmulatorsAfterCleanup(config, removedEmulators, say) else emptyList()
         var deletedSimulators = emptyList<String>()
@@ -1490,6 +1500,7 @@ class ShogunCli(
                         deletedBranches = deletedBranches,
                         failures = report.failures.map { CleanFailureJson(it.path, it.error.message.orEmpty()) } + derivedDataFailures,
                         gradleDaemonsStopped = stoppedDaemons,
+                        mavenDaemonsStopped = stoppedMavenDaemons,
                         emulatorsStopped = stoppedEmulators,
                         simulatorsDeleted = deletedSimulators,
                         derivedDataDeleted = derivedDataDeleted,
@@ -1506,6 +1517,7 @@ class ShogunCli(
         val flags = listOfNotNull(
             "--delete-branches".takeIf { command.deleteBranches },
             "--stop-gradle-daemons".takeIf { command.stopGradleDaemons },
+            "--stop-maven-daemons".takeIf { command.stopMavenDaemons },
             "--stop-emulators".takeIf { command.stopEmulators },
             "--delete-simulators".takeIf { command.deleteSimulators },
             "--delete-derived-data".takeIf { command.deleteDerivedData },
@@ -1766,6 +1778,20 @@ class ShogunCli(
                 report.failures.forEach { err.line("shogun: couldn't stop Gradle daemon ${it.pid}: ${it.detail}") }
             }
             .onFailure { err.line("shogun: couldn't stop Gradle daemons: ${it.message}") }
+            .getOrNull()?.stopped?.map { it.pid }.orEmpty()
+
+    private suspend fun mavenDaemonsBeforeCleanup(config: ProjectConfig, worktrees: List<Worktree>): List<MavenDaemon> =
+        ListMavenDaemonsUseCase(mavenDaemonSource, fileManager)(worktrees, worktreesRootOf(config, worktrees))
+            .onFailure { err.line("shogun: couldn't list Maven daemons: ${it.message}") }
+            .getOrDefault(emptyList())
+
+    private suspend fun stopMavenDaemonsAfterCleanup(pids: List<Long>, say: (String) -> Unit): List<Long> =
+        StopMavenDaemonsUseCase(mavenDaemonSource, executor)(pids)
+            .onSuccess { report ->
+                printMavenStopReport(report, say)
+                report.failures.forEach { err.line("shogun: couldn't stop Maven daemon ${it.pid}: ${it.detail}") }
+            }
+            .onFailure { err.line("shogun: couldn't stop Maven daemons: ${it.message}") }
             .getOrNull()?.stopped?.map { it.pid }.orEmpty()
 
     private suspend fun env(command: CliCommand.Env): Int {
@@ -2135,6 +2161,7 @@ class ShogunCli(
     private fun mavenDaemonLine(daemon: MavenDaemon, attributed: Boolean): String {
         val details = buildList {
             add("memory=${formatMemory(daemon.process.residentMemoryBytes)}")
+            add(stateDetail(daemon.process.state))
             if (attributed) {
                 when (val owner = daemon.owner) {
                     is DaemonOwner.Worktree -> add("worktree=${owner.path}")
@@ -2145,6 +2172,32 @@ class ShogunCli(
             }
         }
         return (listOf(daemon.pid.toString()) + details).joinToString("  ")
+    }
+
+    private fun stateDetail(state: DaemonState): String = when (state) {
+        DaemonState.Busy -> "state=busy"
+        is DaemonState.Idle -> "state=idle  idle-for=${formatDuration(Duration.between(state.since, now()))}"
+        DaemonState.Unknown, DaemonState.Untracked -> "state=unknown"
+    }
+
+    private suspend fun mavenStop(command: CliCommand.MavenStop): Int {
+        val report = StopMavenDaemonsUseCase(mavenDaemonSource, executor)(command.pids.ifEmpty { null }).getOrThrow()
+        if (command.json) {
+            printJson(mavenStopJson(report))
+        } else {
+            if (command.pids.isEmpty() && report.stopped.isEmpty() && report.kept.isEmpty() && report.failures.isEmpty()) {
+                out.line("No Maven daemons running.")
+            }
+            printMavenStopReport(report, saying(false))
+        }
+        report.notDaemons.forEach { err.line("shogun: $it isn't a Maven daemon") }
+        report.failures.forEach { err.line("shogun: couldn't stop ${it.pid}: ${it.detail}") }
+        return if (report.notDaemons.isEmpty() && report.failures.isEmpty()) EXIT_OK else EXIT_FAILURE
+    }
+
+    private fun printMavenStopReport(report: MavenDaemonStopReport, say: (String) -> Unit) {
+        report.stopped.forEach { say("stopped ${it.pid}  Maven") }
+        report.kept.forEach { say("kept ${it.pid}  Maven  (${it.reason.label})") }
     }
 
     private fun worktreesRootOf(config: ProjectConfig?, worktrees: List<Worktree>?): String? =
