@@ -328,7 +328,7 @@ class MacDerivedDataSourceTest {
         val other = folder("Other-hash")
         writePlist(other, "/home/dev/projects/other/Other.xcodeproj")
         val source = dataSource()
-        val folders = source.folders().associateBy { it.path.substringAfterLast('/') }
+        val folders = source.folders().associateBy { Path.of(it.path).fileName.toString() }
 
         assertEquals(5L, source.packagesSize(folders.getValue("App-hash")))
         assertEquals(8L + Files.size(app.resolve("info.plist")), source.size(folders.getValue("App-hash")))
