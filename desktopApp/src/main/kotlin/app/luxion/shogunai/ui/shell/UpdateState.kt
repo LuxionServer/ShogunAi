@@ -27,6 +27,8 @@ class UpdateState(
         private set
     var checkAutomatically by mutableStateOf(preferences.load().checkAutomatically)
         private set
+    var notes by mutableStateOf<UpdateCheck.Available?>(null)
+        private set
 
     suspend fun checkInBackground() {
         (runCheck(UpdateCheckMode.AUTOMATIC).getOrNull() as? UpdateCheck.Available)?.let { notice = it }
@@ -42,6 +44,14 @@ class UpdateState(
 
     fun closeManualResult() {
         manualResult = null
+    }
+
+    fun showNotes(available: UpdateCheck.Available) {
+        notes = available
+    }
+
+    fun closeNotes() {
+        notes = null
     }
 
     fun dismissNotice() {

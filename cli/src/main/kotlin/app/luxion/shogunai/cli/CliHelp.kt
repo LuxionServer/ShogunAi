@@ -36,6 +36,13 @@ internal object CliHelp {
   status [--json]             List the repository's worktrees with their state; in a multirepo folder, its
                               groups (the same branch in several repositories) and the ungrouped worktrees
 """.trimIndent(),
+        "base" to """
+  base [<task id | path | branch>] [--set <branch>] [--json]
+                              Print the branch the worktree's branch was created from, the base for its pull
+                              request (default: the current worktree); exit code 1 when none is recorded;
+                              --set records it, for worktrees created by other tools or to correct it;
+                              stored as branch.<branch>.gh-merge-base, which gh pr create also reads
+""".trimIndent(),
         "remove" to """
   remove <task id | path | branch> [--force] [--delete-branch | --force-delete-branch] [--json]
                               Remove one worktree and stop its emulator, simulator and idle Gradle daemons;
@@ -99,6 +106,15 @@ internal object CliHelp {
                               Set the agent 'shogun open --herdr' runs in the multirepo folder, kept on
                               this machine and never in the declaration; --headroom wraps it with
                               'headroom wrap'
+  multirepo workspace set [--alias <alias>] [--default] | clear | detect [--json]
+                              Declare the workspace repository (the multirepo folder, when it's a Git
+                              repository), turn it off, or remove the setting so it's detected again
+  multirepo env [--json]      List the variables the multirepo shares with its repositories' worktrees
+  multirepo env set <alias> <name> <template> [--json]
+                              Add or replace a shared variable of a repository, e.g.
+                              env set app API_URL 'http://localhost:${'$'}{port:api.http}'
+  multirepo env unset <alias> <name> [--json]
+                              Remove a shared variable
   multirepo worktrees-root <dir> [--json]
                               Set the folder under which worktrees folders are proposed
   multirepo delete [--json]   Remove the declaration; projects, worktrees and branches are left as they are

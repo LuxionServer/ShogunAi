@@ -1,7 +1,7 @@
 package app.luxion.shogunai.domain.io
 
-import app.luxion.shogunai.domain.model.LatestRelease
+import app.luxion.shogunai.domain.model.PublishedRelease
 
 interface ReleaseSource {
-    suspend fun latest(): Result<LatestRelease>
+    suspend fun published(): Result<List<PublishedRelease>>
 }

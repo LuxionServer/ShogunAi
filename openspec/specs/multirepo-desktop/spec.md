@@ -122,7 +122,7 @@ The user SHALL be able to add a multirepo by dropping a folder on the sidebar or
 - **THEN** the dialog says a multirepo can't be declared inside a repository and offers no confirmation
 
 ### Requirement: Multirepo settings
-The multirepo SHALL have a settings screen to set its name, add, remove and rename repositories, choose the defaults, set the proposed worktrees folder, edit the multirepo agent with the projects' agent editor and delete the multirepo, saving as the `shogun multirepo` subcommands do, with the agent in the user's ShogunAi folder. The screen SHALL say when the declaration holds an ignored `agent`, and SHALL NOT save while the multirepo needs review.
+The multirepo SHALL have a settings screen to set its name, add, remove and rename repositories, choose the defaults, set the proposed worktrees folder, edit the shared variables, edit the multirepo agent with the projects' agent editor and delete the multirepo, saving as the `shogun multirepo` subcommands do, with the agent in the user's ShogunAi folder. The screen SHALL say when the declaration holds an ignored `agent`, and SHALL NOT save while the multirepo needs review.
 
 #### Scenario: Set the name
 - **WHEN** the user types `Product` in the name field and saves
@@ -186,7 +186,7 @@ The sidebar SHALL NOT list as a loose project one whose base repository is the m
 - **THEN** the app explains that it's a multirepo and adds nothing
 
 ### Requirement: Workspace repository in the multirepo settings
-The multirepo settings SHALL show the workspace repository, marked as detected when the declaration doesn't state it, with a checkbox to declare it, a field for its alias, a checkbox to include it in the default repositories and an option to turn detection off, saving as `shogun multirepo workspace` does.
+The multirepo settings SHALL show the workspace repository, marked as detected when the declaration doesn't state it, with a checkbox to declare it, a field for its alias, a checkbox to include it in the default repositories, an option to turn detection off and, when it is declared or turned off, "Return to detection", saving as `shogun multirepo workspace` does.
 
 #### Scenario: Declare a detected workspace
 - **WHEN** the settings of `product` show `workspace` as detected and the user checks "Declare" and saves
@@ -199,6 +199,14 @@ The multirepo settings SHALL show the workspace repository, marked as detected w
 #### Scenario: New change with the workspace repository
 - **WHEN** the workspace repository is declared as a default repository
 - **THEN** "New change" lists it with its checkbox checked
+
+#### Scenario: Return a turned off workspace to detection
+- **WHEN** the declaration holds `"workspace": false` and the user activates "Return to detection"
+- **THEN** the declaration has no `workspace` field, the settings show `workspace` as detected, and the multirepo is still approved
+
+#### Scenario: Detected workspace
+- **WHEN** the workspace repository is detected
+- **THEN** the settings don't offer "Return to detection"
 
 ### Requirement: Register an existing multirepo from the app
 Adding a multirepo from the app with a folder that already has a declaration SHALL show its review (each declared repository with its resolved path, the worktrees root and the workspace repository) and, on confirmation, approve it and register a project for each declared repository without one, as `shogun multirepo init` does there, leaving the declaration's repositories unchanged.
@@ -213,3 +221,22 @@ When the app reloads the known multirepos it SHALL remove from `~/.shogunai/mult
 #### Scenario: Folder deleted while the app is open
 - **WHEN** `~/projects/product` is deleted and the app reloads
 - **THEN** the folder `product` leaves the sidebar, its projects stay listed at the top level, and `~/.shogunai/multirepos.json` no longer lists it
+
+### Requirement: Shared variables in the multirepo settings
+The multirepo settings SHALL list each shared variable with its repository, name and template, let the user edit its template, remove it and add one choosing the repository, and save them with the rest of the settings as `shogun multirepo env` does. An invalid row SHALL be marked with its problem and SHALL keep the settings from saving.
+
+#### Scenario: Add a variable
+- **WHEN** the user adds `API_URL` for `app` with the template `http://localhost:${port:api.http}` and saves
+- **THEN** `env.app.API_URL` holds that template, `shogun multirepo env` lists it, and the multirepo is still approved
+
+#### Scenario: Remove a variable
+- **WHEN** the user removes `app`'s `API_URL`, its last shared variable, and saves
+- **THEN** the declaration has no `env`
+
+#### Scenario: Invalid row
+- **WHEN** the user types `${port}` as a template
+- **THEN** the row says ports a repository uses itself are declared in its own `.shogunai.json`, and "Save" stays disabled until it's fixed or removed
+
+#### Scenario: Variables ShogunAi can't rewrite
+- **WHEN** the declaration's `env` holds a non-string value
+- **THEN** the section names the problem, says to fix the file by hand, and doesn't offer editing

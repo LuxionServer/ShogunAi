@@ -142,6 +142,10 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "\"${error.ref}\" doesn't name a commit.",
         "Choose an existing branch or commit as the start point.",
     )
+    is WorktreeError.NotABranch -> ErrorTexts(
+        "\"${error.ref}\" isn't a local branch or a branch of a remote.",
+        "Choose an existing branch as the base.",
+    )
     is WorktreeError.BranchAlreadyCheckedOut -> ErrorTexts(
         "The branch \"${error.branch}\" is already checked out${error.path?.let { " at $it" }.orEmpty()}.",
         "Open the existing worktree for that branch, or pick another branch.",

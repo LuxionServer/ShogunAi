@@ -9,6 +9,7 @@ import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.MobileSecretKind
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.usecase.HookEntry
 import app.luxion.shogunai.domain.usecase.HookReplacement
 import app.luxion.shogunai.domain.usecase.HooksInstallState
@@ -20,6 +21,7 @@ import app.luxion.shogunai.ui.shell.HooksAction
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
 object SpanishStrings : Strings {
+    override val language = AppLanguage.SPANISH
     override val languageName = "Español"
 
     override val themeLight = "Claro"
@@ -762,6 +764,11 @@ object SpanishStrings : Strings {
     override val updateChecking = "Buscando actualizaciones…"
     override fun updateUpToDateMessage(version: String) = "ShogunAi está al día (versión $version)."
     override val updateCheckAutomaticallyLabel = "Buscar actualizaciones automáticamente"
+    override fun releaseNotesTitle(version: String) = "Novedades de la $version"
+    override fun releaseNotesVersionHeading(version: String) = "Versión $version"
+    override val releaseNotesViewOnGitHub = "Ver en GitHub"
+    override val releaseNotesEmpty = "Esta versión no tiene notas."
+    override val releaseNotesIconDescription = "Ver las novedades"
     override val groupByChange = "Por cambio"
     override val ungrouped = "Sin grupo"
     override val newChange = "Nuevo cambio"
@@ -803,7 +810,14 @@ object SpanishStrings : Strings {
     override val declareWorkspace = "Declararlo en el archivo del multirepo"
     override val workspaceAliasLabel = "Alias"
     override val turnOffWorkspace = "Desactivar"
-    override val workspaceTurnedOff = "Desactivado: la carpeta no se trata como repositorio del multirepo. Decláralo para recuperarlo."
+    override val workspaceTurnedOff = "Desactivado: la carpeta no se trata como repositorio del multirepo. Devuélvelo a la detección o decláralo para recuperarlo."
+    override val returnWorkspaceToDetection = "Volver a la detección"
+    override val sharedVariablesTitle = "Variables compartidas"
+    override val sharedVariablesHint = "Variables que el multirepo añade a los worktrees de un repositorio. Usa \${port:<alias>.<clave>} para el puerto que otro repositorio reserva para su clave."
+    override val sharedVariablesEmpty = "El multirepo no comparte variables."
+    override val sharedVariableOwnPort = "Los puertos que usa un repositorio se declaran en su propio .shogunai.json; aquí usa \${port:<alias>.<clave>}."
+    override fun sharedVariableUnknownRepository(alias: String) = "'$alias' no es un repositorio del multirepo."
+    override fun sharedVariablesUnrepresentable(problem: String) = "Las variables compartidas no se pueden editar aquí ($problem). Corrige .shogunai-multirepo.json a mano."
     override val defaultRepositoriesTitle = "Repositorios por defecto"
     override val defaultRepositoriesHint = "Un cambio nuevo abarca estos repositorios salvo que elijas otros."
     override val multirepoWorktreesRootTitle = "Carpeta de worktrees"

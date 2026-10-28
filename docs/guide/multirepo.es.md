@@ -6,7 +6,7 @@ De un grupo no se guarda nada: ShogunAi calcula los grupos a partir de Git y de 
 
 ## El multirepo
 
-Un multirepo se declara con un fichero `.shogunai-multirepo.json` en una carpeta que eliges tú. Lo escriben los comandos `shogun multirepo` (o la app de escritorio), nunca a mano, salvo sus [variables compartidas](#variables-compartidas):
+Un multirepo se declara con un fichero `.shogunai-multirepo.json` en una carpeta que eliges tú. Lo escriben los comandos `shogun multirepo` (o la app de escritorio), nunca a mano:
 
 ```json
 {
@@ -100,7 +100,17 @@ Los repositorios de un grupo suelen necesitar los puertos de los demás: el work
 - **Cuando no se puede resolver.** Si `api` no está aprobado, no declara la clave o su worktree no se puede leer, la variable se deja fuera: `shogun env` dice por qué en la salida de error y el contexto de la sesión la nombra; el resto se entrega.
 - **Refresco.** Una sesión conserva el valor con el que empezó. Si el worktree pareja de `api` se crea después de empezar la sesión de `app`, el siguiente `shogun env`, la siguiente sesión o la siguiente apertura lo recogen.
 
-Las variables compartidas se editan a mano en el fichero y se revisan con `shogun multirepo trust`; `shogun multirepo show` las lista. Las escrituras del propio ShogunAi las conservan, pero una versión anterior de ShogunAi que reescriba la declaración las pierde.
+Las variables compartidas se editan con `shogun multirepo env` o en los ajustes del multirepo de la app de escritorio:
+
+```bash
+shogun multirepo env                                                      # listarlas
+shogun multirepo env set app API_URL 'http://localhost:${port:api.http}'  # añadir o sustituir una
+shogun multirepo env unset app API_URL                                    # quitarla
+```
+
+Pon la plantilla entre comillas simples para que la shell no toque `${…}`. Cada cambio se comprueba con las reglas de arriba antes de escribir nada, y mantiene aprobado el multirepo como cualquier otra escritura de ShogunAi; un multirepo que necesita revisión hay que revisarlo antes. Editar el fichero a mano sigue funcionando, y entonces se revisa con `shogun multirepo trust`.
+
+Renombrar un repositorio (o declarar el repositorio de workspace con otro alias) mueve sus variables compartidas y reescribe las referencias `${port:<alias>.<clave>}` a él. Quitar un repositorio, o desactivar el repositorio de workspace, elimina sus propias variables compartidas, y se rechaza mientras una variable de otro repositorio lo referencie: cámbialas o quítalas antes. Una versión anterior de ShogunAi que reescriba la declaración pierde las variables compartidas.
 
 ## Contexto para los agentes
 
@@ -111,14 +121,14 @@ Los agentes no necesitan escribirse para saber del grupo: el hook `SessionStart`
 
 ## En la app de escritorio
 
-La app de escritorio muestra los mismos multirepos y grupos, calculados igual: una carpeta en la barra lateral, una vista agrupada por cambio con el estado combinado y las acciones de cada grupo, etiquetas de grupo en las demás vistas y diálogos para añadir un multirepo, crear un cambio y editar sus ajustes, que escriben a través de los mismos casos de uso que `shogun multirepo` y `shogun new`. Consulta [Multirepos en la app de escritorio](desktop-app.md#multirepos).
+La app de escritorio muestra los mismos multirepos y grupos, calculados igual: una carpeta en la barra lateral, una vista agrupada por cambio con el estado combinado y las acciones de cada grupo, etiquetas de grupo en las demás vistas y diálogos para añadir un multirepo, crear un cambio y editar sus ajustes, variables compartidas incluidas, que escriben a través de los mismos casos de uso que `shogun multirepo` y `shogun new`. Consulta [Multirepos en la app de escritorio](desktop-app.md#multirepos).
 
 ## Un repositorio de workspace
 
 Cuando la carpeta del multirepo es la raíz de un repositorio Git, `shogun new`, `status`, `open` y `clean` en su checkout principal actúan sobre el multirepo, y la carpeta se **detecta** como el repositorio de workspace del multirepo con el alias `workspace`, sin necesidad de declararlo:
 
 - Entra en grupos como cualquier otro repositorio: `shogun new TASK-12 --repos workspace,app` crea su worktree en `<worktreesRoot>/workspace/TASK-12`. No es uno de los `defaultRepos` salvo que lo indiques.
-- `shogun multirepo show` lo lista marcado como `detected`. `shogun multirepo workspace set [--alias <alias>] [--default]` lo declara en el archivo (`"workspace": { "alias": … }`), y `shogun multirepo workspace clear` desactiva la detección (`"workspace": false`). Una entrada de `repos` con la ruta `.` también convierte la carpeta en el repositorio de workspace, con ese alias.
+- `shogun multirepo show` lo lista marcado como `detected`. `shogun multirepo workspace set [--alias <alias>] [--default]` lo declara en el archivo (`"workspace": { "alias": … }`), `shogun multirepo workspace clear` desactiva la detección (`"workspace": false`) y `shogun multirepo workspace detect` quita el campo, de modo que la carpeta vuelve a detectarse como `workspace` (y deja de ser un repositorio por defecto). Una entrada de `repos` con la ruta `.` también convierte la carpeta en el repositorio de workspace, con ese alias.
 - La carpeta no es un proyecto propio: la barra lateral lista sus worktrees bajo el multirepo, y `shogun project add` y `shogun app` ejecutados en la carpeta registran una sola vez el repositorio de workspace, como miembro del multirepo, en vez de un proyecto suelto. Con la detección desactivada, la carpeta vuelve a ser un proyecto normal.
 - El agente del multirepo (el que corre en la carpeta) se muestra en la vista del multirepo. Los registros de sesión de Claude Code se guardan en el directorio Git de la carpeta cuando es un repositorio, y si no en un almacén bajo `~/.shogunai/agent-sessions/` con la carpeta como clave, así que el hook `agent-state` también funciona en una carpeta de multirepo que no es un repositorio. Solo cuenta como agente del multirepo el que tiene como directorio de trabajo exactamente la carpeta; uno en un repositorio miembro pertenece al worktree de ese repositorio.
 

@@ -676,7 +676,11 @@ class ProjectWorktrees(
     ) = runCreation(fetch, onCreated) {
         val startPoint = startRef?.let { useCases.resolveStartPoint(it) }
         val startFailure = startPoint?.exceptionOrNull()
-        if (startFailure != null) Result.failure(startFailure) else useCases.create(taskId, branchType, startPoint?.getOrNull())
+        if (startFailure != null) {
+            Result.failure(startFailure)
+        } else {
+            useCases.create(taskId, branchType, startPoint?.getOrNull(), useCases.resolveBaseBranch(startRef ?: "HEAD"))
+        }
     }
 
     private fun runCreation(fetch: Boolean, onCreated: (Worktree) -> Unit, creation: suspend () -> Result<Worktree>) {

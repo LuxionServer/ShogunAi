@@ -950,6 +950,65 @@ class ShogunCliTest {
         assertTrue(executor.ran("git", "worktree", "add", "--no-track", "$worktreesRoot/TASK-123", "-b", "feature/TASK-123", "epic1234"))
     }
 
+    private fun symbolicRefs(vararg refs: Pair<String, String>) = repositoryExecutor { command, _ ->
+        if ("--symbolic-full-name" in command) {
+            refs.toMap()[command.last()]?.let { Executor.ok(command, "$it\n") } ?: Executor.ok(command, "\n")
+        } else if (command.take(2) == listOf("git", "rev-parse") && command.last().endsWith("^{commit}")) {
+            Executor.ok(command, "abc123\n")
+        } else {
+            null
+        }
+    }
+
+    private fun Executor.recordedBase(branch: String): String? =
+        calls.map { it.first }.firstOrNull { it.take(3) == listOf("git", "config", "branch.$branch.gh-merge-base") }?.getOrNull(3)
+
+    @Test
+    fun `new records the current worktree's branch as the base`() {
+        val executor = symbolicRefs("HEAD" to "refs/heads/main")
+
+        assertEquals(0, cli(executor).run(listOf("new", "TASK-123")), err.toString())
+
+        assertEquals("main", executor.recordedBase("feature/TASK-123"))
+        assertTrue(executor.calls.any { "--symbolic-full-name" in it.first && it.second == base })
+    }
+
+    @Test
+    fun `new with from records that branch as the base`() {
+        val executor = symbolicRefs("epic/redesign" to "refs/heads/epic/redesign")
+
+        assertEquals(0, cli(executor).run(listOf("new", "TASK-123", "--from", "epic/redesign")), err.toString())
+
+        assertEquals("epic/redesign", executor.recordedBase("feature/TASK-123"))
+    }
+
+    @Test
+    fun `new with a remote from records the branch without its remote`() {
+        val executor = symbolicRefs("origin/develop" to "refs/remotes/origin/develop")
+
+        assertEquals(0, cli(executor).run(listOf("new", "TASK-123", "--from", "origin/develop")), err.toString())
+
+        assertEquals("develop", executor.recordedBase("feature/TASK-123"))
+    }
+
+    @Test
+    fun `new from a tag records no base`() {
+        val executor = symbolicRefs("v1.2.0" to "refs/tags/v1.2.0")
+
+        assertEquals(0, cli(executor).run(listOf("new", "TASK-123", "--from", "v1.2.0")), err.toString())
+
+        assertFalse(executor.calls.any { it.first.take(2) == listOf("git", "config") && it.first.size == 4 })
+    }
+
+    @Test
+    fun `new with an existing branch records no base`() {
+        val executor = symbolicRefs("HEAD" to "refs/heads/main")
+
+        assertEquals(0, cli(executor).run(listOf("new", "--branch", "hotfix/login")), err.toString())
+
+        assertEquals(null, executor.recordedBase("hotfix/login"))
+    }
+
     @Test
     fun `new with an unknown from creates nothing and exits with 1`() {
         val executor = repositoryExecutor()
@@ -1526,7 +1585,7 @@ class ShogunCliTest {
               "worktrees": [
                 {
                   "path": "$base", "branch": "main", "head": "1111111111111111111111111111111111111111",
-                  "main": true, "locked": false, "folderMissing": false, "origin": null, "agents": [],
+                  "main": true, "locked": false, "folderMissing": false, "origin": null, "base": null, "agents": [],
                   "status": {
                     "uncommittedChanges": 0, "upstream": null, "mainBranch": null,
                     "merged": false, "lastCommitAt": null, "createdAt": null
@@ -1535,7 +1594,7 @@ class ShogunCliTest {
                 },
                 {
                   "path": "$merged", "branch": "feature/TASK-1", "head": "2222222222222222222222222222222222222222",
-                  "main": false, "locked": false, "folderMissing": false, "origin": "shogunai", "agents": [],
+                  "main": false, "locked": false, "folderMissing": false, "origin": "shogunai", "base": null, "agents": [],
                   "status": {
                     "uncommittedChanges": 0, "upstream": null, "mainBranch": {"ahead": 0, "behind": 3},
                     "merged": true, "lastCommitAt": null, "createdAt": null
@@ -1544,7 +1603,7 @@ class ShogunCliTest {
                 },
                 {
                   "path": "$dirty", "branch": "worktree-spike", "head": "3333333333333333333333333333333333333333",
-                  "main": false, "locked": true, "folderMissing": false, "origin": "claude-code", "agents": [],
+                  "main": false, "locked": true, "folderMissing": false, "origin": "claude-code", "base": null, "agents": [],
                   "status": {
                     "uncommittedChanges": 2, "upstream": null, "mainBranch": {"ahead": 2, "behind": 0},
                     "merged": false, "lastCommitAt": null, "createdAt": null
@@ -1556,6 +1615,145 @@ class ShogunCliTest {
             """,
         )
         assertEquals(expected, Json.parseToJsonElement(out.toString()))
+    }
+
+    private val baseRecords = "branch.feature/TASK-1.gh-merge-base develop\nbranch.gone/branch.gh-merge-base main\n"
+
+    private fun recordedBases(output: String? = baseRecords, extra: (List<String>, String?) -> CommandResult? = { _, _ -> null }) =
+        repositoryExecutor { command, directory ->
+            extra(command, directory) ?: if (command.take(3) == listOf("git", "config", "--get-regexp")) {
+                if (output == null) Executor.fail(command, "fatal: bad config", 128) else Executor.ok(command, output)
+            } else {
+                null
+            }
+        }
+
+    @Test
+    fun `status shows the recorded base of each worktree`() {
+        val exitCode = cli(recordedBases()).run(listOf("status"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            listOf(
+                "$base  main  main  changes=0",
+                "$merged  feature/TASK-1  origin=shogunai  base=develop  changes=0  merged",
+                "$dirty  worktree-spike  origin=claude-code  locked  changes=2",
+            ),
+            out.lines().filter { it.isNotEmpty() },
+        )
+    }
+
+    @Test
+    fun `status json reports the recorded base or null`() {
+        val exitCode = cli(recordedBases()).run(listOf("status", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray.map { it.jsonObject }
+        assertEquals(listOf(JsonNull, JsonPrimitive("develop"), JsonNull), worktrees.map { it.getValue("base") })
+    }
+
+    @Test
+    fun `status still works when the bases can't be read`() {
+        val exitCode = cli(recordedBases(output = null)).run(listOf("status", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray.map { it.jsonObject }
+        assertTrue(worktrees.all { it.getValue("base") == JsonNull })
+    }
+
+    @Test
+    fun `base prints the recorded base of the current worktree`() {
+        val exitCode = cli(recordedBases(), workingDirectory = "$merged/src").run(listOf("base"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("develop\n", out.toString())
+    }
+
+    @Test
+    fun `base prints the recorded base of a target worktree`() {
+        val exitCode = cli(recordedBases()).run(listOf("base", "TASK-1"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("develop\n", out.toString())
+    }
+
+    @Test
+    fun `base without a record says how to set it and exits with 1`() {
+        val exitCode = cli(recordedBases(), workingDirectory = dirty).run(listOf("base"))
+
+        assertEquals(1, exitCode)
+        assertEquals("", out.toString())
+        assertTrue(err.contains("no base is recorded for worktree-spike"), err.toString())
+        assertTrue(err.contains("shogun base --set <branch>"), err.toString())
+    }
+
+    @Test
+    fun `base json prints the worktree its branch and its base`() {
+        val exitCode = cli(recordedBases()).run(listOf("base", "feature/TASK-1", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            Json.parseToJsonElement("""{"path": "$merged", "branch": "feature/TASK-1", "base": "develop"}"""),
+            Json.parseToJsonElement(out.toString()),
+        )
+    }
+
+    @Test
+    fun `base json without a record has a null base and exits with 1`() {
+        val exitCode = cli(recordedBases(), workingDirectory = dirty).run(listOf("base", "--json"))
+
+        assertEquals(1, exitCode)
+        assertEquals(JsonNull, Json.parseToJsonElement(out.toString()).jsonObject.getValue("base"))
+    }
+
+    @Test
+    fun `base of a detached worktree says it has no branch`() {
+        val executor = recordedBases { command, _ ->
+            if (command.take(3) == listOf("git", "worktree", "list")) {
+                Executor.ok(command, "worktree $base\nHEAD 1111111111111111111111111111111111111111\nbranch refs/heads/main\n\nworktree $merged\nHEAD 2222222222222222222222222222222222222222\ndetached\n")
+            } else {
+                null
+            }
+        }
+
+        val exitCode = cli(executor, workingDirectory = merged).run(listOf("base"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("detached"), err.toString())
+    }
+
+    @Test
+    fun `base with an unknown target exits with 1`() {
+        val exitCode = cli(recordedBases()).run(listOf("base", "TASK-404"))
+
+        assertEquals(1, exitCode)
+        assertEquals("", out.toString())
+    }
+
+    @Test
+    fun `base set records a remote branch without its remote`() {
+        val executor = recordedBases { command, _ ->
+            if ("--symbolic-full-name" in command) Executor.ok(command, "refs/remotes/origin/epic/redesign\n") else null
+        }
+
+        val exitCode = cli(executor, workingDirectory = dirty).run(listOf("base", "--set", "origin/epic/redesign"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("epic/redesign\n", out.toString())
+        assertTrue(executor.calls.any { it.first == listOf("git", "config", "branch.worktree-spike.gh-merge-base", "epic/redesign") && it.second == base })
+    }
+
+    @Test
+    fun `base set refuses what isn't a branch`() {
+        val executor = recordedBases { command, _ ->
+            if ("--symbolic-full-name" in command) Executor.ok(command, "refs/tags/v1.2.0\n") else null
+        }
+
+        val exitCode = cli(executor, workingDirectory = dirty).run(listOf("base", "--set", "v1.2.0"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("v1.2.0"), err.toString())
+        assertFalse(executor.calls.any { it.first.take(2) == listOf("git", "config") && it.first.size == 4 })
     }
 
     @Test

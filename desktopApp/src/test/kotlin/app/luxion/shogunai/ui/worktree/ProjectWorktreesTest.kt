@@ -118,6 +118,7 @@ import app.luxion.shogunai.domain.usecase.ListDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.FetchRemoteUseCase
 import app.luxion.shogunai.domain.usecase.ListBranchesUseCase
 import app.luxion.shogunai.domain.usecase.ResolveStartPointUseCase
+import app.luxion.shogunai.domain.usecase.ResolveBaseBranchUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
 import app.luxion.shogunai.domain.usecase.DeleteBranchUseCase
@@ -259,6 +260,7 @@ class ProjectWorktreesTest {
             listBranches = ListBranchesUseCase(config, executor),
             fetchRemote = FetchRemoteUseCase(config, executor),
             resolveStartPoint = { ref -> ResolveStartPointUseCase(executor)(config.baseRepositoryPath, ref) },
+            resolveBaseBranch = { ref -> ResolveBaseBranchUseCase(executor)(config.baseRepositoryPath, ref) },
             remove = RemoveWorktreeUseCase(config, executor),
             deleteBranch = DeleteBranchUseCase(config, executor),
             copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboard, windows = false),
@@ -1160,6 +1162,8 @@ class ProjectWorktreesTest {
                     success(command, stdout = "fetched1\n")
                 command.take(2) == listOf("git", "rev-parse") && command.last() == "develop^{commit}" ->
                     success(command, stdout = "local11\n")
+                "--symbolic-full-name" in command && command.last() == "origin/develop" -> success(command, stdout = "refs/remotes/origin/develop\n")
+                "--symbolic-full-name" in command && command.last() == "HEAD" -> success(command, stdout = "refs/heads/develop\n")
                 command.take(2) == listOf("git", "rev-parse") -> failure(command)
                 command.take(3) == listOf("git", "remote", "get-url") ->
                     if (hasOrigin) success(command, stdout = "git@example.com:team/repo.git") else failure(command, exitCode = 2)
@@ -1187,6 +1191,7 @@ class ProjectWorktreesTest {
         advanceUntilIdle()
 
         assertTrue(executor.executed(*(addPrefix + "fetched1").toTypedArray()), executor.executedCommands.toString())
+        assertTrue(executor.executed("git", "config", "branch.feature/TASK-456.gh-merge-base", "develop"), executor.executedCommands.toString())
     }
 
     @Test
@@ -1202,6 +1207,8 @@ class ProjectWorktreesTest {
         advanceUntilIdle()
 
         assertTrue(executor.executed("git", "worktree", "add", "/home/dev/projects/TASK-456", "-b", "feature/TASK-456"), executor.executedCommands.toString())
+        assertTrue(executor.executed("git", "rev-parse", "--verify", "--quiet", "--symbolic-full-name", "HEAD"))
+        assertTrue(executor.executed("git", "config", "branch.feature/TASK-456.gh-merge-base", "develop"), executor.executedCommands.toString())
     }
 
     @Test

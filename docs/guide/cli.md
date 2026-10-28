@@ -8,6 +8,7 @@ shogun new --branch hotfix/login   # worktree for an existing branch
 shogun provision ../other-worktree # copy the declared files into a worktree made by another tool
 shogun status                      # every worktree with its changes, divergence and merged state
 shogun status --json               # the same, as one JSON document for scripts
+shogun base                        # the branch this worktree's branch was created from, its pull request's base
 shogun remove TASK-123             # remove one worktree and stop its emulator and simulator
 shogun repair                      # re-link the worktrees after the repository moved
 shogun open TASK-123 --herdr       # open a worktree in Herdr with its environment and the project's agent
@@ -45,6 +46,7 @@ Creates a worktree, copies the declared files into it, prepares its [environment
 - With a task id, the worktree gets a new `feature/<task-id>` branch, or `fix/<task-id>` with `--fix`. The branch starts at the HEAD of the worktree you run the command in, or at `--from <ref>` (a branch, tag or commit; an unknown ref fails before anything is created).
 - With `--branch`, the worktree checks out an existing branch. `--fix` and `--from` aren't accepted with it. A branch that exists only on `origin`, given as `<name>` or `origin/<name>`, gets a local branch of that name tracking it; a local branch with that name takes precedence.
 - A new branch never tracks its start point, so pushing it never targets the branch it started from.
+- The branch it starts from is recorded as the new branch's [base](#base): the current worktree's branch, or the branch `--from` names (`origin/develop` is recorded as `develop`). A tag, a commit or a detached HEAD records nothing, and `--branch` keeps whatever an existing branch already has.
 - `--fetch` runs `git fetch --prune origin` first, so `--from origin/develop` or a remote branch is current. It never waits for credentials: if the fetch fails, Git's error is printed, nothing is created and the exit code is 1.
 - `--worktrees-root <dir>` sets where the worktree goes. It's required when the repository has no project in the desktop app; relative paths are resolved against the current directory.
 - A task id containing `/` (`team/TASK-1`) keeps the `/` in the branch (`feature/team/TASK-1`) and becomes one folder, `team-TASK-1`.
@@ -85,6 +87,7 @@ Lists every worktree of the repository, one per line: path, branch (or `(detache
 |---|---|
 | `main` | The main checkout. |
 | `origin=shogunai\|claude-code\|herdr\|other` | Where the worktree was created. |
+| `base=develop` | The recorded [base](#base) of its branch. |
 | `locked` | Held by an agent session. |
 | `desktop(until 14:10)`, `desktop(waiting 1/2)` | It holds the [desktop turn](#desktop) until that time, or waits for it in that place of the line. |
 | `agents=claude(blocked, app-task-123),codex` | Agents running in it, with their state (`working`, `blocked`, `done`, `idle`) when Herdr reports it or, for Claude, when its [hooks](../agents.md#agent-states-outside-herdr) do. A Claude agent also lists, after its state, the names of its live sessions whose folder is in that worktree, as Claude Code's session registry has them (`claude(app-task-123)` when there's no state). |
@@ -116,6 +119,7 @@ Prints one compact JSON object on a single line instead of the text lines. Error
       "locked": false,
       "folderMissing": false,
       "origin": null,
+      "base": null,
       "agents": [{ "name": "claude", "state": "blocked", "stateSource": "claude-code", "herdrState": null, "sessions": [{ "name": "main-repo-task-123", "pid": 4242 }] }],
       "status": {
         "uncommittedChanges": 0,
@@ -136,6 +140,7 @@ Prints one compact JSON object on a single line instead of the text lines. Error
 | `branch`, `head` | The checked-out branch (`null` when detached) and the commit. |
 | `main`, `locked`, `folderMissing` | The main checkout, held by an agent session, folder deleted by hand. |
 | `origin` | `shogunai`, `claude-code`, `herdr` or `other`; `null` for the main checkout. |
+| `base` | The recorded [base](#base) of its branch; `null` when none is recorded or it's detached. |
 | `agents` | The agents running in it: `name`, `state` (`working`, `blocked`, `done`, `idle`; `null` when nothing reports one), `stateSource` (`herdr`, `claude-code` or `null`), `herdrState`, the state when Herdr is the source and `null` otherwise, and `sessions`, the agent's live Claude Code sessions in that worktree (`name` and `pid`; empty for other agents or when none is found). |
 | `status` | `null` when the folder is missing or its status couldn't be read. |
 | `statusProblem` | Only present when the status couldn't be read: Git's reason. |
@@ -146,6 +151,20 @@ Prints one compact JSON object on a single line instead of the text lines. Error
 | `status.createdAt` | Time the worktree was created, in ISO-8601 UTC, read from Git's administrative folder for it; `null` for the main checkout or when it can't be read. |
 
 Every field is always present, with `null` when it doesn't apply. The field names are a contract: later versions only add fields and never rename, remove or change the type of one.
+
+### `base`
+
+```text
+shogun base [<task id | path | branch>] [--set <branch>] [--json]
+```
+
+Prints the branch a worktree's branch was created from, alone on standard output, so `gh pr create --base "$(shogun base)"` opens its pull request against the right branch. Without a target it's the worktree containing the current directory.
+
+- ShogunAi records it when it creates a branch: `shogun new`, Claude Code's `WorktreeCreate` hook, the desktop app's "New worktree" and the worktrees of a [multirepo group](#multirepos), which start from each repository's main branch.
+- It's stored in the repository's Git config as `branch.<branch>.gh-merge-base`, the key `gh pr create` already reads as its default base. Nothing goes into the working tree; every worktree of the repository sees it, renaming the branch keeps it and deleting the branch removes it.
+- When none is recorded (a worktree created by Herdr or `git worktree add`, or a branch from before ShogunAi recorded bases), it says so on standard error, suggests `--set` and exits with `1`. A detached worktree has no branch and also exits with `1`.
+- `--set <branch>` records it, replacing any previous value. The value must be a local branch or a branch of a remote, whose remote prefix is dropped (`origin/develop` is recorded as `develop`); a tag or an unknown name records nothing and exits with `1`.
+- `--json` prints `{ "path", "branch", "base" }`, with `base` `null` (and exit code `1`) when none is recorded.
 
 ### `hooks`
 
@@ -255,7 +274,8 @@ shogun multirepo add-repo <alias> <path> [--use-worktrees-root | --keep-worktree
 shogun multirepo remove-repo <alias>
 shogun multirepo defaults <alias>[,<alias>...] | --clear
 shogun multirepo agent <command> [--name <name>] [--headroom]
-shogun multirepo workspace set [--alias <alias>] [--default] | clear
+shogun multirepo workspace set [--alias <alias>] [--default] | clear | detect
+shogun multirepo env [set <alias> <name> <template> | unset <alias> <name>]
 shogun multirepo worktrees-root <dir>
 shogun multirepo delete
 shogun new <task-id> [--repos <alias>[,<alias>...]] [--fix] [--fetch]
@@ -270,7 +290,8 @@ shogun open --herdr
 - `multirepo trust` shows the nearest declaration (or the one in `<folder>`): its declared name, each repository with its resolved path, the worktrees root and the workspace repository, marking paths outside the folder's parent. On a terminal it asks (`[y/N]`) and approves on yes; `--yes` approves without asking; without a terminal and without `--yes` it exits with `1`. `--revoke` forgets the multirepo and keeps the file. Its `--json` object has `path`, `declaration`, `name` (when declared), `approved`, `changed`, `repos` (with `outsideParent`), `worktreesRoot`, `worktreesRootOutsideParent`, `workspace` and `ignoredDeclaredAgent`; without `--yes` it only reports.
 - `multirepo agent` keeps the multirepo agent on this machine, never in the declaration; an `agent` left in the declaration by an earlier version is ignored, and `show` says so (`ignoredDeclaredAgent` in `--json`). The agent runs its command as is; `--headroom` wraps it with `headroom wrap`. `--no-headroom`, from earlier versions where Headroom was on by default, is still accepted and changes nothing; combined with `--headroom` it exits with `2`.
 - `new <id>` in the multirepo folder covers the default repositories, or `--repos` from anywhere in the multirepo; it prints the path of each worktree it creates on standard output and one line per repository on standard error, and exits with `1` if any repository failed. `--branch`, `--from` and `--worktrees-root` don't apply to a group and exit with `2`. Its `--json` object has the `branch` and a `repos` list with each `alias`, `path`, `result` (`created`, `existing` or `failed`), skipped post-creation commands and `error`.
-- When the multirepo folder is a Git repository it is the multirepo's workspace repository (alias `workspace` unless declared otherwise): `show` lists it, marked `detected` until `workspace set` declares it (`--alias` renames it, `--default` adds it to the default repositories) and `workspace clear` turns detection off; in a folder that isn't a repository `workspace set` exits with `1`. `new <id> --repos workspace,app` includes it, with its worktree in `<worktreesRoot>/workspace/<id>`. `project add` and `app` run in that folder register the workspace repository as a member of the multirepo and no project of the folder's own (`app` just opens the app), unless detection is off. `--json` of `show` marks each repository with `workspace` and `detected`.
+- When the multirepo folder is a Git repository it is the multirepo's workspace repository (alias `workspace` unless declared otherwise): `show` lists it, marked `detected` until `workspace set` declares it (`--alias` renames it, `--default` adds it to the default repositories) `workspace clear` turns detection off and `workspace detect` removes the setting so it's detected again (exiting with `1` when the alias `workspace` is taken by a declared repository); in a folder that isn't a repository `workspace set` and `workspace detect` exit with `1`. `new <id> --repos workspace,app` includes it, with its worktree in `<worktreesRoot>/workspace/<id>`. `project add` and `app` run in that folder register the workspace repository as a member of the multirepo and no project of the folder's own (`app` just opens the app), unless detection is off. `--json` of `show` marks each repository with `workspace` and `detected`.
+- `multirepo env` lists the shared variables by repository (`--json`: `{"env": {<alias>: {<name>: <template>}}}`, as in `show`); `env set <alias> <name> <template>` adds or replaces one after checking it (an invalid template exits with `1`, an unknown alias with `2`), and `env unset <alias> <name>` removes one (`1` when it isn't declared). Both keep the multirepo approved and exit with `1` while it needs review; `env` alone lists them anyway. `remove-repo`, and `workspace clear`, exit with `1` while another repository's shared variable references the repository, naming the variables.
 - `status` in the multirepo folder prints each group's branch followed by one line per repository, then `ungrouped`, with each Claude agent's session names as `status` shows them (`agents=claude(working, app-task-123)`); `--json` prints `groups` (each with `branch`, `title` and `repos` with `alias`, `path`, `branch`, `base`, `folderMissing`, `uncommittedChanges`, `ahead`, `behind`, `merged`, `agents`), `ungrouped` and `failures`.
 - `open <id> --herdr` opens each worktree of the group with its project's agent (`--agent` exits with `2`), reporting each as `open` does for one worktree (opened, agent started in its open workspace, or focused, with its pane); a worktree that fails, or whose agent doesn't start, is reported on standard error, the others still open, and the exit code is `1`. An id matching both `feature/<id>` and `fix/<id>` exits with `2`, no match with `1`. `open --herdr` without a target opens the multirepo's agent the same way: it focuses its live agent, starts it in a new pane of its open workspace when it has none, or opens a new workspace, and checks that it started. Each Claude session gets a name as with `open` for one worktree: `<alias>-<id>` for a worktree of the group, where `<id>` is the group's branch without its prefix (`app-task-123`, `api-task-123`), and the multirepo's name for the multirepo agent, so a coordinating session can tell the group's sessions apart and message each by name.
 - `clean` lists the candidate groups (`would remove the group …`) and the kept ones with their reason (`kept feature/TASK-2 (api isn't merged)`), and accepts every option of `clean`. After the groups it lists the loose worktrees of each repository (`would remove api <path>`) that are clean, merged and without a running agent, and removes them with `--yes`; with nothing to remove it prints `Nothing to clean up.`
@@ -435,7 +456,7 @@ shogun xcode trim [--dry-run]
 
 ## JSON output
 
-Besides `status --json` above, every command that reports a result accepts `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `maven stop`, `compose`, `compose up`, `compose build`, `compose down`, `compose prune`, `pool status`, `pool trim`, `project add`, `project list`, `project remove`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks` and `guide install|uninstall|status` (not `simulator gradle-init`, `env`, `hook`, `help` or `--version`; on those it is an unknown option and exits with `2`). The option can go anywhere after the command.
+Besides `status --json` above, every command that reports a result accepts `--json`: `new`, `base`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `maven stop`, `compose`, `compose up`, `compose build`, `compose down`, `compose prune`, `pool status`, `pool trim`, `project add`, `project list`, `project remove`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks` and `guide install|uninstall|status` (not `simulator gradle-init`, `env`, `hook`, `help` or `--version`; on those it is an unknown option and exits with `2`). The option can go anywhere after the command.
 
 The rules are the same for all of them:
 

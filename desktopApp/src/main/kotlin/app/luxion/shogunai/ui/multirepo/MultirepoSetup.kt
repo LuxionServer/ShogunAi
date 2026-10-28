@@ -28,6 +28,8 @@ interface MultirepoSetup {
     fun setDefaults(multirepo: Multirepo, aliases: List<String>): Result<Multirepo>
     fun setWorkspace(multirepo: Multirepo, alias: String, default: Boolean): Result<Multirepo>
     fun clearWorkspace(multirepo: Multirepo): Result<Multirepo>
+    fun detectWorkspace(multirepo: Multirepo): Result<Multirepo>
+    fun setSharedVariables(multirepo: Multirepo, byAlias: Map<String, Map<String, String>>): Result<Multirepo>
     fun setAgent(multirepo: Multirepo, agent: AgentLaunchConfig): Result<Multirepo>
     fun setWorktreesRoot(multirepo: Multirepo, folder: String): Result<Multirepo>
     fun delete(multirepo: Multirepo): Result<Unit>

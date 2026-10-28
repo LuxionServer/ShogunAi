@@ -13,13 +13,13 @@ graph LR
     E --> F["Release: tag vX.X.X + build + publish"]
 ```
 
-1. **Create the branch** `release/X.X.X` (where `X.X.X` is the version to publish) from `develop`, and write the headline feature of the release in `.github/release-title` (see [Release title](#release-title)).
+1. **Create the branch** `release/X.X.X` (where `X.X.X` is the version to publish) from `develop`, write the headline feature of the release in `.github/release-title` (see [Release title](#release-title)) and its notes in `.github/release-notes/X.X.X.md` and `X.X.X.es.md` (see [Release notes](#release-notes)).
 2. **Validate** — every push to `release/**` triggers the `Tests` workflow (`.github/workflows/tests.yml`), which runs `./gradlew test`. Used to iterate and fix issues before opening the PR. The same workflow also runs on every pull request targeting `develop` or an `epic/**` branch and every push to them, so regressions are caught before they reach a release branch.
 3. **Open the PR** from `release/X.X.X` to `main` and review it like any other.
 4. **Merge** — when a PR whose source branch matches `release/*` is merged, the `Release` workflow (`.github/workflows/release.yml`):
       1. validates the version taken from the branch name (or the tag): it must be `X.Y.Z` with digits only, otherwise the run fails before building anything,
       2. runs the full test suite on the release commit on Linux, macOS and Windows (`.github/workflows/test-suite.yml`, the same one `Tests` uses). Nothing else runs until it passes,
-      3. creates and pushes the `vX.X.X` tag on the merge commit (the version comes from the branch name, no need to write it twice) and creates the GitHub Release in **draft** mode with auto-generated notes titled `vX.X.X — <headline>` (the headline read from `.github/release-title`, see [Release title](#release-title)), only once, before building,
+      3. creates and pushes the `vX.X.X` tag on the merge commit (the version comes from the branch name, no need to write it twice) and creates the GitHub Release in **draft** mode with the release notes as its body (see [Release notes](#release-notes)) titled `vX.X.X — <headline>` (the headline read from `.github/release-title`, see [Release title](#release-title)), only once, before building,
       4. builds the installers on macOS Apple Silicon, macOS Intel, Windows and Linux (`packageReleaseDmg`/`Msi`/`Deb`) passing that version, with a read-only token. Each macOS `.dmg` is renamed `ShogunAi-X.X.X-<arch>.dmg` (`arm64`/`x64`, taken from the runner's own architecture) right after the build, and each installer is kept as a workflow artifact,
       5. in parallel, builds the standalone command-line tool once on Linux (`:cli:distZip`, see [Command-line tool](../architecture/cli.md)) and keeps `shogun-X.X.X.zip` as an artifact,
       6. once all four installers and the zip are built, a job that holds only the permissions to sign attestations (it doesn't check out the repository or run the build) generates a signed build provenance attestation for each of them (`actions/attest`). The release isn't published until every attestation exists,
@@ -30,13 +30,64 @@ graph LR
 
 Steps 8, 9 and 10 run in parallel and are independent: if one fails, the release stays published and the others still run.
 
-The whole flow from step 4 happens in a single CI run, with no manual intervention. The release is created as a draft and only published at the end because an already-published release is immutable for GitHub (it rejects new assets), and because generating the notes only once avoids duplicates if each matrix build regenerated them on its own.
+The whole flow from step 4 happens in a single CI run, with no manual intervention. The release is created as a draft and only published at the end because an already-published release is immutable for GitHub (it rejects new assets), and because writing the notes only once avoids duplicates if each matrix build wrote them on its own.
 
 ## Release title
 
 Every release reads its title from `.github/release-title`: the first line of that file is the headline feature, and the workflow titles the release `vX.X.X — <headline>`. For example, 0.9.0 shipping multi-repo support is released as `v0.9.0 — Multi-repo support`.
 
 Write it when creating the release branch, in the same commit that bumps the version. If the file is empty or missing, the workflow falls back to the plain `vX.X.X` title and logs a warning, so a forgotten title never blocks a release — it is still worth an entry in the release notes.
+
+## Release notes
+
+Every release has notes written by hand for its users, in English and Spanish, in two files named after the version: `.github/release-notes/X.X.X.md` and `.github/release-notes/X.X.X.es.md`. Write them on the release branch, in the same commit as `.github/release-title`, and review them in the release pull request. Naming them after the version means a forgotten update can't republish the previous release's notes, and the folder keeps the history of every release.
+
+How to write them:
+
+- Describe what changes for the person using ShogunAi, in plain language: what they can do now, what works better, what was fixed.
+- No pull request numbers, authors, branch names, internal class names or OpenSpec change names.
+- Short: a heading per group (for example "What's new" and "Fixes"), one bullet per change, the feature in bold followed by a sentence or two.
+- The Spanish file says the same as the English one; it isn't a summary.
+- Only headings (`#` to `###`), bullets (one level of nesting), paragraphs, `**bold**`, `` `code` ``, links and bare `https://` URLs: the app renders that much and shows anything else as plain text.
+
+For example:
+
+```markdown
+## What's new
+
+- **Release notes inside the app.** Click the ⓘ icon on the update notice to read what a new version brings, in your language.
+
+## Fixes
+
+- Removing a worktree on Windows no longer fails on very long paths.
+```
+
+### Release body format
+
+The workflow builds the GitHub release body from both files: the English notes visible and the Spanish ones in a collapsed "Español" section. Each language is enclosed in HTML comments, which GitHub doesn't render:
+
+```markdown
+<!-- shogunai:notes:en -->
+
+…contents of X.X.X.md…
+
+<!-- /shogunai:notes:en -->
+
+<details>
+<summary>Español</summary>
+
+<!-- shogunai:notes:es -->
+
+…contents of X.X.X.es.md…
+
+<!-- /shogunai:notes:es -->
+
+</details>
+```
+
+The desktop app reads each language between its markers to show the notes in the update notice (see [Desktop app](../guide/desktop-app.md)), so don't change the markers without changing the app. Releases published before this format only have GitHub's generated notes; the app shows them without authors, pull request links or the "Full Changelog" line.
+
+If `X.X.X.md` is missing, the workflow publishes the release with GitHub's generated notes and logs a warning naming the missing files, so forgotten notes never block a release. If only `X.X.X.es.md` is missing, the body has only the English section and the workflow logs a warning; the app then shows the English notes to Spanish users.
 
 ## Windows package managers
 

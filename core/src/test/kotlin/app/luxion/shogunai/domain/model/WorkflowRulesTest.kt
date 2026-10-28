@@ -92,7 +92,7 @@ class WorkflowRulesTest {
     @Test
     fun `every topic has rules and no rule is about personal preferences`() {
         WorkflowTopic.entries.forEach { topic -> assertTrue(WorkflowRules.all.any { it.topic == topic }, topic.id) }
-        val forbidden = listOf("commit message", "pull request", "code style", "ticket", "delegat")
+        val forbidden = listOf("commit message", "pull request format", "reviewer", "code style", "ticket", "delegat")
         WorkflowRules.all.forEach { rule -> forbidden.forEach { assertFalse(it in rule.text.lowercase(), rule.id) } }
     }
 

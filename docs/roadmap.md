@@ -11,7 +11,7 @@ That direction is built in three layers:
 | Layer | Role | What it brings |
 |---|---|---|
 | **Engine and CLI** | The foundation | Worktree provisioning defined in the repository (`.shogunai.json`) and a `shogun` command that the desktop app, agents and their hooks all use, including a per-worktree environment (reserved ports and variables) delivered to each agent's shell, and JSON output on every command for scripts. **Available.** |
-| **Control tower** | The view | The desktop app shows the state of every worktree, including the ones created by other tools, keeps them clean and follows changes as they happen. It opens each one in the terminal, the IDE or Herdr with the project's agents, and stays one click away in the menu bar. Multirepos group the repositories of one product, so a change spans several of them with one worktree and one agent per repository, coordinated by an agent for the whole multirepo, from the CLI and the app, and the multirepo can share variables between them, such as the port of the backend each group's app talks to. **Available.** |
+| **Control tower** | The view | The desktop app shows the state of every worktree, including the ones created by other tools, keeps them clean and follows changes as they happen. It opens each one in the terminal, the IDE or Herdr with the project's agents, and stays one click away in the menu bar. Multirepos group the repositories of one product, so a change spans several of them with one worktree and one agent per repository, coordinated by an agent for the whole multirepo, from the CLI and the app, and the multirepo can share variables between them, such as the port of the backend each group's app talks to, edited from the CLI and the app. **Available.** |
 | **Platforms** | The content | Providers for the stacks where a worktree is hardest to prepare, starting with Android, KMP, iOS and JVM: Gradle, local secrets, emulators, simulators and IDEs. **Started**: Gradle repositories show their daemons, can stop the idle ones and bound the memory and lifetime of the daemons agents start, Android repositories can give each worktree its own emulator, KMP and iOS repositories its own iOS simulator, both acquired on demand within limits that follow a machine capacity profile, with `--wait` to queue for a full pool, Xcode repositories see and clean up their DerivedData, keep it within a disk quota, automatic by default, and share compilations between worktrees, Compose Desktop apps run hidden in the background for agents to check on macOS, agents take turns to drive the real desktop with `shogun desktop acquire --wait`, with the holder and the queue in the control tower and `shogun status`, and JVM backends get Maven builds bounded in memory, see their Maven daemons and can stop the idle ones, and get a Docker Compose project and ports per worktree, started and built with `shogun compose up` and cleaned up with the volumes, networks and images removed worktrees leave behind. The app and `shogun stacks` also detect a repository's stack and suggest the providers that fit, and the `local.properties`, keystores and Firebase files to link into every worktree; local files can be linked, matched by patterns and kept in sync when the base folder loses files. |
 
 It plugs into the tools that run agents rather than replacing them: Claude Code's worktree and session hooks, and [Herdr](https://herdr.dev), the terminal multiplexer for agents, whose worktrees a ShogunAi plugin provisions and where the desktop app opens a worktree with its environment and agent and shows what each agent is doing. **Available.**
@@ -40,18 +40,17 @@ ShogunAi's view is only neutral if it sees every agent:
 - A notification when an agent (reported by Herdr or by Claude Code's hooks) becomes blocked or done; today the worktree's row and the menu bar icon's menu are the signal.
 - Checking that Herdr detects an agent wrapped by Headroom (`headroom wrap claude`): opening in Herdr waits for Herdr to detect the agent it typed, and if Herdr doesn't see through the wrapper the open fails although the agent runs.
 - Other agents' user-level files for the workflow guide, as their documentation confirms them (Cursor keeps user rules in its settings today), and a Settings section in the desktop app to install, update and remove the `AGENTS.md` block, as it already does for Claude Code's hooks.
-- Recording the origin ref of each worktree, so the rule for choosing a pull request's base could be answered by `shogun` instead of staying a team policy.
+- Recording the base branch of the worktrees Herdr creates, if its `worktree.created` event gains their start point; today `shogun base --set` records it by hand, while `shogun new`, Claude Code's hook, the desktop app and multirepo groups record it themselves.
+- Showing each worktree's base branch in the desktop app's views; today `shogun base` and `shogun status` report it.
 
 ### 3. Multirepos for the whole team
 
 Multirepos and groups by branch are done in the CLI and the desktop app, and they're also how people who don't write the code follow a change across repositories. Left out:
 
 - Carrying the multirepo agent set on this machine over when its folder moves: `shogun multirepo init` (or "Add multirepo") in the new folder registers it after reviewing it and forgets the old entry, but the local agent goes with that entry and has to be set again.
-- Associating worktrees whose branches don't match, e.g. `shogun group add <id> <worktree>`.
+- Associating worktrees whose branches don't match, e.g. `shogun group add <id> <worktree>`. It needs a design of its own: groups have no state today, and the association would reach group detection, the ports shared variables resolve against, cleanup and every group view.
 - Showing the Claude session names of a group's worktrees and of the multirepo agent in the desktop app's views; today `shogun open --herdr` and `shogun status` report them, and the app only names the sessions it opens.
 - A single session for the whole group, with a combined environment, as an option next to one agent per repository.
-- Returning a declared workspace repository to detection (removing the `workspace` field), from the CLI and the multirepo settings; today `workspace clear` turns it off and the file has to be edited by hand to undo it.
-- Editing a multirepo's shared variables from the CLI and the multirepo settings; today they're edited in `.shogunai-multirepo.json` and reviewed with `shogun multirepo trust`.
 - The pull request state of each repository of a group, which depends on the GitHub integration under exploration.
 
 ### 4. Robustness and maintenance
@@ -65,6 +64,7 @@ Multirepos and groups by branch are done in the CLI and the desktop app, and the
 - Support for bare repositories with worktrees (the "bare clone" layout), which changes what the base repository and copying from it mean. Today ShogunAi rejects them with a specific error.
 - Splitting `ProjectWorktrees.kt` and `ProjectSettingsView.kt` into smaller holders and sections.
 - Checking the guided tour on Windows and Linux with a real installed app: creating the sample with the system's Git, and the tour's agent command, whose prompt is quoted for the shell each terminal runs.
+- A changelog page in the documentation site built from the release notes in `.github/release-notes/`, which the app already shows in its update notice.
 
 ## Later
 

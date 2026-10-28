@@ -202,6 +202,7 @@ import app.luxion.shogunai.domain.usecase.ProjectRegistration
 import app.luxion.shogunai.domain.usecase.RegisterProjectUseCase
 import app.luxion.shogunai.domain.usecase.ResolveRepositoryUseCase
 import app.luxion.shogunai.domain.usecase.ResolveStartPointUseCase
+import app.luxion.shogunai.domain.usecase.ResolveBaseBranchUseCase
 import app.luxion.shogunai.ui.projectconfig.RepositoryInspection
 import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.WorktreeEnvironmentCache
@@ -665,6 +666,11 @@ class AppContainer {
 
         override fun clearWorkspace(multirepo: Multirepo) = configureMultirepo.clearWorkspace(multirepo)
 
+        override fun detectWorkspace(multirepo: Multirepo) = configureMultirepo.detectWorkspace(multirepo)
+
+        override fun setSharedVariables(multirepo: Multirepo, byAlias: Map<String, Map<String, String>>) =
+            configureMultirepo.setSharedVariables(multirepo, byAlias)
+
         override fun setAgent(multirepo: Multirepo, agent: AgentLaunchConfig) = configureMultirepo.setAgent(multirepo, agent)
 
         override fun setWorktreesRoot(multirepo: Multirepo, folder: String) = configureMultirepo.setWorktreesRoot(multirepo, folder)
@@ -697,6 +703,7 @@ class AppContainer {
         listBranches = ListBranchesUseCase(config, shellCommandExecutor),
         fetchRemote = FetchRemoteUseCase(config, shellCommandExecutor),
         resolveStartPoint = { ref -> ResolveStartPointUseCase(shellCommandExecutor)(config.baseRepositoryPath, ref) },
+        resolveBaseBranch = { ref -> ResolveBaseBranchUseCase(shellCommandExecutor)(config.baseRepositoryPath, ref) },
         remove = RemoveWorktreeUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient), fileManager, stopHeadlessApp, releaseDesktopTurn),
         deleteBranch = DeleteBranchUseCase(config, shellCommandExecutor),
         copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboardWriter),
@@ -874,6 +881,7 @@ data class WorktreeUseCases(
     val listBranches: ListBranchesUseCase,
     val fetchRemote: FetchRemoteUseCase,
     val resolveStartPoint: suspend (String) -> Result<String>,
+    val resolveBaseBranch: suspend (String) -> String? = { null },
     val remove: RemoveWorktreeUseCase,
     val deleteBranch: DeleteBranchUseCase,
     val copyLaunchCommand: CopyWorktreeLaunchCommandUseCase,

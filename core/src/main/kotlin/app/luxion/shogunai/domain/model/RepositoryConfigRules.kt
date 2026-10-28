@@ -11,6 +11,8 @@ sealed interface RepositoryConfigIssue {
     data object DuplicateVariableName : RepositoryConfigIssue
     data object UnclosedPlaceholder : RepositoryConfigIssue
     data class UnknownPlaceholder(val placeholder: String) : RepositoryConfigIssue
+    data object OwnPortInSharedVariable : RepositoryConfigIssue
+    data class UnknownMultirepoRepository(val alias: String) : RepositoryConfigIssue
     data object EnvFileOutsideWorktree : RepositoryConfigIssue
     data object EnvFileInvalidCharacters : RepositoryConfigIssue
 }
