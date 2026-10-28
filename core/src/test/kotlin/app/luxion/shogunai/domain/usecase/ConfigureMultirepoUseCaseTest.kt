@@ -364,4 +364,120 @@ class ConfigureMultirepoUseCaseTest {
         assertEquals(world.declaration, world.source.declarations[world.folder])
         assertNull(world.resolver(world.folder).getOrThrow())
     }
+
+    private val apiUrl = "http://localhost:${'$'}{port:api.http}"
+
+    private fun stored() = world.source.declarations.getValue(world.folder)
+
+    private fun withEnv(byAlias: Map<String, Map<String, String>>): Multirepo {
+        world.source.declarations[world.folder] = world.declaration.copy(env = SharedVariablesDeclaration(byAlias))
+        return world.resolver.build(world.folder, stored())
+    }
+
+    @Test
+    fun `setting a shared variable adds or replaces it and keeps the multirepo approved`() = runTest {
+        world.source.approveAll = false
+        val trusted = configure.trust(world.resolver.build(world.folder, world.declaration)).getOrThrow()
+
+        val added = configure.setSharedVariable(trusted, "app", "API_URL", apiUrl).getOrThrow()
+        val replaced = configure.setSharedVariable(added, "app", "API_URL", "http://127.0.0.1:${'$'}{port:api.http}").getOrThrow()
+
+        assertEquals(mapOf("app" to mapOf("API_URL" to "http://127.0.0.1:${'$'}{port:api.http}")), stored().env?.byAlias)
+        assertEquals(world.declaration.copy(env = null), stored().copy(env = null))
+        assertTrue(replaced.approved)
+        assertTrue(world.resolver.build(world.folder, stored()).approved)
+    }
+
+    @Test
+    fun `an invalid shared variable or an unknown alias changes nothing`() = runTest {
+        val ownPort = configure.setSharedVariable(world.multirepo, "app", "DEBUG_PORT", "${'$'}{port}").exceptionOrNull()
+
+        assertIs<WorktreeError.InvalidMultirepo>(ownPort)
+        assertTrue(ownPort.detail.contains("DEBUG_PORT"))
+        assertIs<WorktreeError.InvalidMultirepo>(configure.setSharedVariable(world.multirepo, "app", "NODE_OPTIONS", "x").exceptionOrNull())
+        assertIs<UnknownMultirepoAlias>(configure.setSharedVariable(world.multirepo, "web", "API_URL", "x").exceptionOrNull())
+        assertIs<UnknownMultirepoAlias>(configure.setSharedVariables(world.multirepo, mapOf("web" to mapOf("A" to "x"))).exceptionOrNull())
+        assertEquals(world.declaration, stored())
+    }
+
+    @Test
+    fun `unsetting the last shared variable removes env and an undeclared one is refused`() = runTest {
+        val declared = withEnv(mapOf("app" to mapOf("API_URL" to apiUrl)))
+
+        assertIs<WorktreeError.InvalidMultirepo>(configure.unsetSharedVariable(declared, "app", "MISSING").exceptionOrNull())
+        assertEquals(apiUrl, stored().env?.byAlias?.get("app")?.get("API_URL"))
+
+        val unset = configure.unsetSharedVariable(declared, "app", "API_URL").getOrThrow()
+
+        assertNull(stored().env)
+        assertTrue(unset.approved)
+    }
+
+    @Test
+    fun `setting every shared variable replaces the block`() = runTest {
+        val declared = withEnv(mapOf("app" to mapOf("API_URL" to apiUrl)))
+
+        configure.setSharedVariables(declared, mapOf("docs" to mapOf("SITE" to "${'$'}{worktree}"), "app" to emptyMap())).getOrThrow()
+        assertEquals(mapOf("docs" to mapOf("SITE" to "${'$'}{worktree}")), stored().env?.byAlias)
+
+        configure.setSharedVariables(world.resolver.build(world.folder, stored()), emptyMap()).getOrThrow()
+        assertNull(stored().env)
+    }
+
+    @Test
+    fun `shared variables are refused in an unapproved multirepo`() = runTest {
+        world.source.approveAll = false
+        world.source.approve(world.folder, world.resolver.build(world.folder, world.declaration).approvalSubject)
+        val tampered = world.declaration.copy(env = SharedVariablesDeclaration(mapOf("app" to mapOf("API_URL" to apiUrl))))
+        world.source.declarations[world.folder] = tampered
+        val stale = world.resolver.build(world.folder, world.declaration)
+
+        assertIs<WorktreeError.MultirepoNeedsReview>(configure.setSharedVariable(stale, "app", "API_URL", "x").exceptionOrNull())
+        assertIs<WorktreeError.MultirepoNeedsReview>(configure.setSharedVariables(stale, emptyMap()).exceptionOrNull())
+        assertEquals(tampered, stored())
+    }
+
+    @Test
+    fun `an env ShogunAi can't represent refuses every write`() = runTest {
+        val broken = world.declaration.copy(env = SharedVariablesDeclaration(problems = listOf("env.app.RETRIES must be a string")))
+        world.source.declarations[world.folder] = broken
+        val multirepo = world.resolver.build(world.folder, broken)
+
+        listOf(
+            configure.setName(multirepo, "Product").exceptionOrNull(),
+            configure.setSharedVariable(multirepo, "app", "API_URL", "x").exceptionOrNull(),
+            configure.addRepository(multirepo, "web", world.docsBase, answering(true)).exceptionOrNull(),
+        ).forEach { error ->
+            assertIs<WorktreeError.InvalidMultirepo>(error)
+            assertTrue(error.detail.contains("env.app.RETRIES"))
+        }
+        assertEquals(broken, stored())
+    }
+
+    @Test
+    fun `renaming a repository carries its shared variables and the references to it`() = runTest {
+        val declared = withEnv(mapOf("app" to mapOf("API_URL" to apiUrl), "api" to mapOf("NAME" to "${'$'}{worktree}")))
+
+        val renamed = configure.renameRepository(declared, "api", "backend").getOrThrow()
+
+        assertEquals(
+            mapOf("app" to mapOf("API_URL" to "http://localhost:${'$'}{port:backend.http}"), "backend" to mapOf("NAME" to "${'$'}{worktree}")),
+            stored().env?.byAlias,
+        )
+        assertTrue(renamed.approved)
+        world.resolver.validate(renamed)
+    }
+
+    @Test
+    fun `removing a referenced repository is refused and an unreferenced one drops its variables`() = runTest {
+        val declared = withEnv(mapOf("app" to mapOf("API_URL" to apiUrl), "docs" to mapOf("SITE" to "${'$'}{worktree}")))
+
+        val refused = configure.removeRepository(declared, "api").exceptionOrNull()
+        assertIs<WorktreeError.InvalidMultirepo>(refused)
+        assertTrue(refused.detail.contains("app.API_URL"))
+        assertEquals(listOf("app", "api", "docs"), stored().repos.keys.toList())
+
+        configure.removeRepository(declared, "docs").getOrThrow()
+        assertEquals(mapOf("app" to mapOf("API_URL" to apiUrl)), stored().env?.byAlias)
+    }
 }

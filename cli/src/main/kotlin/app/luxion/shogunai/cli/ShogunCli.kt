@@ -589,7 +589,7 @@ class ShogunCli(
         if (action is MultirepoAction.Trust) return trustMultirepo(configure, action, command.json)
         val context = resolveMultirepo(workingDirectory).getOrThrow() ?: run {
             val nearest = resolveMultirepo.nearestDeclaration(workingDirectory) ?: throw WorktreeError.MultirepoNotFound(workingDirectory)
-            if (action != MultirepoAction.Show) throw WorktreeError.MultirepoNeedsReview(nearest.declarationPath)
+            if (action != MultirepoAction.Show && action != MultirepoAction.EnvList) throw WorktreeError.MultirepoNeedsReview(nearest.declarationPath)
             resolveMultirepo.validate(nearest)
             MultirepoContext(nearest, workingDirectory, null)
         }
@@ -614,6 +614,16 @@ class ShogunCli(
                 is MultirepoAction.Agent -> configure.setAgent(multirepo, AgentLaunchConfig(action.name, action.command, action.useHeadroom)).getOrThrow()
                 is MultirepoAction.WorkspaceSet -> configure.setWorkspace(multirepo, action.alias, action.default).getOrThrow()
                 MultirepoAction.WorkspaceClear -> configure.clearWorkspace(multirepo).getOrThrow()
+                MultirepoAction.WorkspaceDetect -> {
+                    val detected = configure.detectWorkspace(multirepo).getOrThrow()
+                    if (!command.json) workspaceDetectionLines(multirepo, detected).forEach { out.line(it) }
+                    detected
+                }
+                MultirepoAction.EnvList -> return printSharedVariables(multirepo, command.json)
+                is MultirepoAction.EnvSet ->
+                    return printSharedVariables(configure.setSharedVariable(multirepo, action.alias, action.name, action.template).getOrThrow(), command.json)
+                is MultirepoAction.EnvUnset ->
+                    return printSharedVariables(configure.unsetSharedVariable(multirepo, action.alias, action.name).getOrThrow(), command.json)
                 is MultirepoAction.WorktreesRoot -> configure.setWorktreesRoot(multirepo, absolute(action.folder)).getOrThrow()
                 MultirepoAction.Delete -> {
                     configure.delete(multirepo).getOrThrow()
@@ -759,6 +769,22 @@ class ShogunCli(
             addAll(sharedVariableLines(multirepo))
             if (multirepo.ignoresDeclaredAgent) add(IGNORED_DECLARED_AGENT)
         }
+    }
+
+    private fun printSharedVariables(multirepo: Multirepo, json: Boolean): Int {
+        when {
+            json -> printJson(sharedVariablesListJson(multirepo))
+            multirepo.sharedTemplates.isEmpty() -> out.line("${multirepo.name} shares no variables")
+            else -> sharedVariableLines(multirepo).forEach { out.line(it) }
+        }
+        return EXIT_OK
+    }
+
+    private fun workspaceDetectionLines(before: Multirepo, after: Multirepo): List<String> {
+        val alias = after.workspaceRepository?.alias ?: return emptyList()
+        if (before.declaration.workspace == null) return listOf("the workspace repository is already detected as '$alias'")
+        val defaults = if (alias in after.defaultRepos) "" else "; it isn't a default repository"
+        return listOf("the workspace repository is detected again as '$alias'$defaults")
     }
 
     private fun sharedVariableLines(multirepo: Multirepo): List<String> {

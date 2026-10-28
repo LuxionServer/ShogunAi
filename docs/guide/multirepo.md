@@ -6,7 +6,7 @@ Nothing about a group is stored: ShogunAi computes groups from Git and the multi
 
 ## The multirepo
 
-A multirepo is declared by a `.shogunai-multirepo.json` file in a folder you choose, written by the `shogun multirepo` commands (or the desktop app), never by hand, except for its [shared variables](#shared-variables):
+A multirepo is declared by a `.shogunai-multirepo.json` file in a folder you choose, written by the `shogun multirepo` commands (or the desktop app), never by hand:
 
 ```json
 {
@@ -100,7 +100,17 @@ The repositories of a group often need each other's ports: the app worktree of `
 - **When it can't be resolved.** If `api` isn't approved, doesn't declare the key, or its worktree can't be read, the variable is left out: `shogun env` says why on standard error and the session's context names it; everything else is delivered.
 - **Refreshing.** A session keeps the value it started with. When `api`'s partner worktree is created after `app`'s session started, the next `shogun env`, new session or opening picks it up.
 
-Shared variables are edited by hand in the file and reviewed with `shogun multirepo trust`; `shogun multirepo show` lists them. ShogunAi's own writes keep them, but an earlier version of ShogunAi that rewrites the declaration drops them.
+Shared variables are edited with `shogun multirepo env` or in the multirepo settings of the desktop app:
+
+```bash
+shogun multirepo env                                                      # list them
+shogun multirepo env set app API_URL 'http://localhost:${port:api.http}'  # add or replace one
+shogun multirepo env unset app API_URL                                    # remove it
+```
+
+Quote the template with single quotes so the shell leaves `${…}` alone. Each change is checked with the rules above before anything is written, and keeps the multirepo approved like every other write of ShogunAi; a multirepo that needs review must be reviewed first. Editing the file by hand still works, and is then reviewed with `shogun multirepo trust`.
+
+Renaming a repository (or declaring the workspace repository under another alias) moves its shared variables and rewrites the `${port:<alias>.<key>}` references to it. Removing a repository, or turning the workspace repository off, drops its own shared variables, and is refused while another repository's variable references it: change or unset those first. An earlier version of ShogunAi that rewrites the declaration drops the shared variables.
 
 ## Context for the agents
 
@@ -111,14 +121,14 @@ Agents don't need to message each other to know about the group: Claude Code's `
 
 ## In the desktop app
 
-The desktop app shows the same multirepos and groups, computed the same way: a folder in the sidebar, a view grouped by change with each group's combined state and actions, group tags in the other views, and dialogs to add a multirepo, create a change and edit its settings, all writing through the same use cases as `shogun multirepo` and `shogun new`. See [Multirepos in the desktop app](desktop-app.md#multirepos).
+The desktop app shows the same multirepos and groups, computed the same way: a folder in the sidebar, a view grouped by change with each group's combined state and actions, group tags in the other views, and dialogs to add a multirepo, create a change and edit its settings, shared variables included, all writing through the same use cases as `shogun multirepo` and `shogun new`. See [Multirepos in the desktop app](desktop-app.md#multirepos).
 
 ## A workspace repository
 
 When the multirepo folder is the top level of a Git repository, `shogun new`, `status`, `open` and `clean` run in its main checkout act on the multirepo, and the folder is **detected** as the multirepo's workspace repository with the alias `workspace`, with no declaration needed:
 
 - It joins groups like any other repository: `shogun new TASK-12 --repos workspace,app` creates its worktree in `<worktreesRoot>/workspace/TASK-12`. It is not one of the `defaultRepos` unless you say so.
-- `shogun multirepo show` lists it marked `detected`. `shogun multirepo workspace set [--alias <alias>] [--default]` declares it in the file (`"workspace": { "alias": … }`), and `shogun multirepo workspace clear` turns detection off (`"workspace": false`). A `repos` entry with the path `.` also makes the folder the workspace repository, under that alias.
+- `shogun multirepo show` lists it marked `detected`. `shogun multirepo workspace set [--alias <alias>] [--default]` declares it in the file (`"workspace": { "alias": … }`), `shogun multirepo workspace clear` turns detection off (`"workspace": false`), and `shogun multirepo workspace detect` removes the field, so the folder is detected again as `workspace` (and no longer a default repository). A `repos` entry with the path `.` also makes the folder the workspace repository, under that alias.
 - The folder is not a project of its own: the sidebar lists its worktrees under the multirepo, and `shogun project add` and `shogun app` run in the folder register the workspace repository once, as a member of the multirepo, instead of a loose project. With detection off, the folder is an ordinary project again.
 - The multirepo agent (the one running in the folder) is shown in the multirepo view. Its Claude Code session records are kept in the folder's Git directory when it is a repository, and otherwise in a store under `~/.shogunai/agent-sessions/` keyed by the folder, so the `agent-state` hook works in a multirepo folder that isn't a repository too. Only an agent whose working directory is exactly the folder counts as the multirepo agent; one in a member repository belongs to that repository's worktree.
 
