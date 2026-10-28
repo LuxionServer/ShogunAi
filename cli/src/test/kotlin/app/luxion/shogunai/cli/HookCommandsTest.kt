@@ -29,6 +29,8 @@ import app.luxion.shogunai.domain.model.DesktopTurn
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.domain.model.XcodeProvider
+import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
 import app.luxion.shogunai.domain.model.WorktreeError
@@ -144,6 +146,20 @@ class HookCommandsTest {
         assertEquals("$worktreesRoot/TASK-123\n", out.toString())
         assertTrue(executor.ran("git", "worktree", "add", "--no-track", "$worktreesRoot/TASK-123", "-b", "feature/TASK-123", "abc123"))
         assertTrue(executor.calls.any { it.first.getOrNull(1) == "rev-parse" && it.second == "$base/src" }, "resolves the repository from cwd")
+    }
+
+    @Test
+    fun `worktree-create notes the folders that need pod install on stderr`() {
+        val executor = Executor(porcelain()) { command ->
+            if (command.lastOrNull() == ":(glob)**/Podfile.lock") CommandResult(command, 0, "iosApp/Podfile.lock\u0000", "") else null
+        }
+        val provisioning = RepositoryProvisioning(providers = RepositoryProviders(xcode = XcodeProvider(cocoaPods = true)))
+
+        val exitCode = cli(executor, createInput("TASK-123"), provisioning = provisioning).run(listOf("hook", "worktree-create"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("$worktreesRoot/TASK-123\n", out.toString())
+        assertTrue(err.contains("shogun: hook worktree-create: iosApp/Pods: pod install needed (the base has no pods)"), err.toString())
     }
 
     @Test

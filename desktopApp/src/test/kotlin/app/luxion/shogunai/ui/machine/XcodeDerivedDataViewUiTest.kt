@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.machine
 
+import app.luxion.shogunai.domain.model.PackageCacheSizes
 import app.luxion.shogunai.domain.model.DerivedDataQuota
 import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.MeasuredSize
@@ -45,12 +46,15 @@ class XcodeDerivedDataViewUiTest {
         settings: ResourceSettings = ResourceSettings(),
         trim: DerivedDataTrim? = null,
         automaticQuota: Long? = null,
+        packages: Long? = null,
+        packageCaches: PackageCacheSizes = PackageCacheSizes(),
     ) = MachineUseCases(
         listDaemons = { Result.success(emptyList()) },
         stopDaemons = { Result.failure(IllegalStateException()) },
         listDerivedData = { Result.success(DerivedDataListing(folders, null)) },
-        measureDerivedData = { list, _ -> flow { list.forEach { emit(MeasuredSize(it.path, measuring.await())) } } },
+        measureDerivedData = { list, _ -> flow { list.forEach { emit(MeasuredSize(it.path, measuring.await(), packagesBytes = packages)) } } },
         measureCompilationCache = { Result.success(null) },
+        measurePackageCaches = { Result.success(packageCaches) },
         deleteOrphanedDerivedData = { Result.success(DerivedDataDeletion()) },
         readEmulatorStates = { _, _ -> Result.success(emptyMap()) },
         readRunningEmulators = { Result.success(emptyMap()) },
@@ -101,6 +105,35 @@ class XcodeDerivedDataViewUiTest {
     }
 
     private val gigabyte = 1_073_741_824L
+
+    @Test
+    fun `a folder shows its packages and the shared package caches are listed`() = runComposeUiTest {
+        val job = Job()
+        val project = Project("p", "Main repo", ProjectConfig("/home/dev/projects/main-repo", "/home/dev/projects", emptyList()))
+        val machine = MachineResources(
+            scope = CoroutineScope(Dispatchers.Unconfined + job),
+            useCases = useCases(
+                CompletableDeferred(gigabyte),
+                packages = gigabyte / 2,
+                packageCaches = PackageCacheSizes(swiftPmBytes = 2 * gigabyte, cocoaPodsBytes = null),
+            ),
+            projects = { listOf(MachineProject(project, emptyList(), setOf(MachineResource.XCODE_DERIVED_DATA))) },
+            pathExists = { true },
+            ioDispatcher = Dispatchers.Unconfined,
+        )
+        machine.show(MachineResource.XCODE_DERIVED_DATA)
+
+        setContent {
+            CompositionLocalProvider(LocalStrings provides EnglishStrings) {
+                MaterialTheme { XcodeDerivedDataView(machine) { _, _ -> } }
+            }
+        }
+
+        onNodeWithText("App.xcodeproj · packages 512.0 MB").assertIsDisplayed()
+        onNodeWithText("SwiftPM cache · 2.0 GB").assertIsDisplayed()
+        assertTrue(onAllNodesWithText("CocoaPods cache", substring = true).fetchSemanticsNodes().isEmpty())
+        job.cancel()
+    }
 
     private fun androidx.compose.ui.test.ComposeUiTest.showView(machine: MachineResources) = setContent {
         CompositionLocalProvider(LocalStrings provides EnglishStrings) {

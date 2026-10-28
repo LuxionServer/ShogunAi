@@ -230,11 +230,19 @@ class RepositoryProvisioningFilesTest {
     }
 
     @Test
+    fun `reads the xcode provider with cocoapods`() {
+        configFile.writeText("""{ "providers": { "xcode": { "cocoaPods": true } } }""")
+
+        assertEquals(XcodeProvider(cocoaPods = true), files.read(repository.toString()).providers.xcode)
+    }
+
+    @Test
     fun `fails with InvalidRepositoryConfig on an invalid xcode provider`() {
         listOf(
             """{ "providers": { "xcode": true } }""",
             """{ "providers": { "xcode": { "compilationCache": "yes" } } }""",
             """{ "providers": { "xcode": { "compilationCache": 1 } } }""",
+            """{ "providers": { "xcode": { "cocoaPods": 1 } } }""",
         ).forEach { content ->
             configFile.writeText(content)
             assertFailsWith<WorktreeError.InvalidRepositoryConfig>(content) { files.read(repository.toString()) }
@@ -557,7 +565,7 @@ class RepositoryProvisioningFilesTest {
             gradle = GradleProvider("2g", 30, "1g"),
             emulator = EmulatorProvider("Pixel_8"),
             iosSimulator = IosSimulatorProvider("iPhone 16", "iOS 18.0"),
-            xcode = XcodeProvider(compilationCache = true),
+            xcode = XcodeProvider(compilationCache = true, cocoaPods = true),
             maven = MavenProvider(mavenMaxHeap = "1g"),
             dockerCompose = DockerComposeProvider(portVariables = listOf("DB_PORT", "API_PORT")),
         )
@@ -565,6 +573,14 @@ class RepositoryProvisioningFilesTest {
         write(edit(providers = providers))
 
         assertEquals(providers, files.read(repository.toString()).providers)
+    }
+
+    @Test
+    fun `omits the cocoapods option when it is off`() {
+        write(edit(providers = RepositoryProviders(xcode = XcodeProvider(compilationCache = true))))
+
+        val xcode = written().getValue("providers").jsonObject.getValue("xcode").jsonObject
+        assertEquals(setOf("compilationCache"), xcode.keys)
     }
 
     @Test

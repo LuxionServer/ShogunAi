@@ -54,6 +54,11 @@ class MacDerivedDataSource(
 
     override suspend fun size(folder: DerivedDataFolder): Long = measure(folder.path)
 
+    override suspend fun packagesSize(folder: DerivedDataFolder): Long {
+        val packages = Path.of(folder.path, SOURCE_PACKAGES_NAME).toString()
+        return if (fileManager.isDirectory(packages)) measure(packages) else 0L
+    }
+
     override suspend fun compilationCacheBytes(): Long? {
         val cache = defaults(CUSTOM_COMPILATION_CACHE_LOCATION_KEY)?.let(::expandHome)
             ?: Path.of(location(), COMPILATION_CACHE_NAME).toString()
@@ -210,6 +215,7 @@ class MacDerivedDataSource(
         const val CUSTOM_COMPILATION_CACHE_LOCATION_KEY = "IDECustomCompilationCacheLocation"
         const val INFO_PLIST = "info.plist"
         const val COMPILATION_CACHE_NAME = "CompilationCache.noindex"
+        const val SOURCE_PACKAGES_NAME = "SourcePackages"
         const val DEFAULT_DERIVED_DATA_RELATIVE = "Library/Developer/Xcode/DerivedData"
         const val KEY_WORKSPACE_PATH = "WorkspacePath"
         const val KEY_LAST_ACCESSED_DATE = "LastAccessedDate"

@@ -54,6 +54,7 @@ import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.IosSimulatorProvider
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.PackageCacheSizes
 import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.XcodeProvider
@@ -164,6 +165,7 @@ class ShogunCliTest {
         composeRegistry: FakeComposeProjectRegistry = FakeComposeProjectRegistry(),
         records: FakeProvisioningRecordStore = FakeProvisioningRecordStore(),
         claudeSessions: FakeClaudeSessionRegistry = FakeClaudeSessionRegistry(),
+        packageCaches: PackageCacheSizes = PackageCacheSizes(),
     ) = ShogunCli(
         executor = executor,
         fileManager = fileManager,
@@ -197,6 +199,7 @@ class ShogunCliTest {
         composeRegistry = composeRegistry,
         provisioningRecords = records,
         claudeSessions = claudeSessions,
+        packageCacheSource = { packageCaches },
         isClaudeProcessAlive = { true },
     )
 
@@ -1795,6 +1798,57 @@ class ShogunCliTest {
     }
 
     @Test
+    fun `xcode shows the packages of each worktree folder and the shared package caches`() {
+        val project = "$base/App.xcodeproj"
+        val derivedData = FakeDerivedDataSource(
+            existing = listOf(FakeDerivedDataSource.derivedData("Main-hash", project, sizeBytes = null)),
+            existingProjects = setOf(project),
+        ).apply {
+            sizes["/home/dev/Library/Developer/Xcode/DerivedData/Main-hash"] = 1_073_741_824L
+            packageSizes["/home/dev/Library/Developer/Xcode/DerivedData/Main-hash"] = 536_870_912L
+        }
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(xcode = XcodeProvider()))),
+        )
+        val caches = PackageCacheSizes(swiftPmBytes = 2_147_483_648L, cocoaPodsBytes = 1_073_741_824L)
+
+        val exitCode = cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData, packageCaches = caches)
+            .run(listOf("xcode"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            """
+            $base  1.0 GB  (packages 512.0 MB)
+            orphans: 0 (0 B)
+            SwiftPM cache: 2.0 GB
+            CocoaPods cache: 1.0 GB
+            """.trimIndent() + "\n",
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `xcode json reports the packages and the shared package caches`() {
+        val project = "$base/App.xcodeproj"
+        val derivedData = FakeDerivedDataSource(
+            existing = listOf(FakeDerivedDataSource.derivedData("Main-hash", project, sizeBytes = null)),
+            existingProjects = setOf(project),
+        ).apply { packageSizes["/home/dev/Library/Developer/Xcode/DerivedData/Main-hash"] = 800L }
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(xcode = XcodeProvider()))),
+        )
+
+        cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData, packageCaches = PackageCacheSizes(swiftPmBytes = 2_000L))
+            .run(listOf("xcode", "--json"))
+
+        val json = jsonOut()
+        val folder = json.getValue("folders").jsonArray.single().jsonObject
+        assertEquals(JsonPrimitive(800L), folder.getValue("sourcePackagesBytes"))
+        assertEquals(JsonPrimitive(2_000L), json.getValue("swiftPmCacheBytes"))
+        assertEquals(JsonNull, json.getValue("cocoaPodsCacheBytes"))
+    }
+
+    @Test
     fun `xcode lists folders on unavailable volumes`() {
         val folder = FakeDerivedDataSource.derivedData("Vol-hash", "/Volumes/Work/App.xcodeproj")
         val derivedData = FakeDerivedDataSource(
@@ -2670,7 +2724,7 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         val json = jsonOut()
-        assertEquals(setOf("path", "branch", "created", "skippedPostCreateCommands", "skippedVariables", "postCreateFailure", "skippedLinks"), json.keys)
+        assertEquals(setOf("path", "branch", "created", "skippedPostCreateCommands", "skippedVariables", "postCreateFailure", "skippedLinks", "pods"), json.keys)
         assertEquals("$worktreesRoot/TASK-123", (json.getValue("path") as JsonPrimitive).content)
         assertEquals("feature/TASK-123", (json.getValue("branch") as JsonPrimitive).content)
         assertEquals(JsonPrimitive(true), json.getValue("created"))
@@ -2678,6 +2732,17 @@ class ShogunCliTest {
         assertEquals(JsonNull, json.getValue("postCreateFailure"))
         assertFalse(executor.calls.any { it.first.first() == "npm" })
         assertFalse(err.contains("Approve them"), err.toString())
+    }
+
+    @Test
+    fun `new keeps the path alone on stdout and notes the pods on stderr`() {
+        val exitCode = cli(podsExecutor(), provisioning = podsProvisioning, fileManager = podsFileManager("$worktreesRoot/TASK-123"))
+            .run(listOf("new", "TASK-123"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("$worktreesRoot/TASK-123\n", out.toString())
+        assertTrue(err.contains("shogun: iosApp/Pods (cloned from the base)"), err.toString())
+        assertTrue(err.contains("shogun: macApp/Pods: pod install needed (the base has no pods)"), err.toString())
     }
 
     @Test
@@ -2717,7 +2782,7 @@ class ShogunCliTest {
         assertEquals(
             setOf(
                 "path", "copied", "linked", "copiedInsteadOfLinking", "skippedPostCreateCommands", "skippedVariables",
-                "postCreateFailure", "removed", "skippedLinks",
+                "postCreateFailure", "removed", "skippedLinks", "pods",
             ),
             json.keys,
         )
@@ -2726,6 +2791,59 @@ class ShogunCliTest {
         assertEquals(listOf("token.txt"), json.strings("linked"))
         assertEquals(emptyList(), json.strings("copiedInsteadOfLinking"))
         assertTrue(executor.ran("npm", "install"))
+    }
+
+    private val podsProvisioning = FakeRepositoryProvisioningSource(
+        byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(xcode = XcodeProvider(cocoaPods = true)))),
+    )
+
+    private fun podsExecutor() = repositoryExecutor { command, _ ->
+        when {
+            command.lastOrNull() == ":(glob)**/Podfile.lock" -> Executor.ok(command, "iosApp/Podfile.lock\u0000macApp/Podfile.lock\u0000")
+            else -> null
+        }
+    }
+
+    private fun podsFileManager(worktree: String) = FakeFileManager(existing = listOf(base, "$base/local.properties", "$base/iosApp/Pods/Manifest.lock")).also {
+        it.contents["$base/iosApp/Pods/Manifest.lock"] = "PODFILE CHECKSUM: abc"
+        it.contents["$worktree/iosApp/Podfile.lock"] = "PODFILE CHECKSUM: abc"
+    }
+
+    @Test
+    fun `provision clones matching pods and lists the folders that need pod install`() {
+        val executor = podsExecutor()
+
+        val exitCode = cli(executor, provisioning = podsProvisioning, fileManager = podsFileManager(merged), workingDirectory = merged)
+            .run(listOf("provision"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(executor.ran("cp", "-c", "-R", "$base/iosApp/Pods", "$merged/iosApp/Pods"))
+        assertTrue(out.contains("iosApp/Pods (cloned from the base)\n"), out.toString())
+        assertTrue(out.contains("macApp/Pods: pod install needed (the base has no pods)\n"), out.toString())
+    }
+
+    @Test
+    fun `provision json reports the pods`() {
+        cli(podsExecutor(), provisioning = podsProvisioning, fileManager = podsFileManager(merged), workingDirectory = merged)
+            .run(listOf("provision", "--json"))
+
+        val pods = jsonOut().getValue("pods").jsonObject
+        assertEquals(listOf("iosApp"), pods.strings("cloned"))
+        val needed = pods.getValue("installNeeded").jsonArray.single().jsonObject
+        assertEquals("macApp", needed.getValue("folder").jsonPrimitive.content)
+        assertEquals("base-has-no-pods", needed.getValue("reason").jsonPrimitive.content)
+        assertEquals(JsonNull, pods.getValue("error"))
+    }
+
+    @Test
+    fun `provision without the cocoapods option reports no pods`() {
+        val executor = podsExecutor()
+
+        cli(executor, fileManager = podsFileManager(merged), workingDirectory = merged).run(listOf("provision", "--json"))
+
+        val pods = jsonOut().getValue("pods").jsonObject
+        assertEquals(emptyList(), pods.strings("cloned"))
+        assertFalse(executor.ran("git", "ls-files", "-z", "--", ":(glob)**/Podfile.lock"))
     }
 
     private val keysProject = listOf(project.copy(config = project.config.copy(secretFiles = listOf("keys"))))
@@ -3113,14 +3231,14 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         val json = jsonOut()
-        assertEquals(setOf("active", "folders", "orphans", "unavailableVolumeFolders", "compilationCacheBytes"), json.keys)
+        assertEquals(setOf("active", "folders", "orphans", "unavailableVolumeFolders", "compilationCacheBytes", "swiftPmCacheBytes", "cocoaPodsCacheBytes"), json.keys)
         assertEquals(JsonPrimitive(true), json.getValue("active"))
         val folder = json.getValue("folders").jsonArray.single().jsonObject
-        assertEquals(setOf("path", "sizeBytes", "worktree"), folder.keys)
+        assertEquals(setOf("path", "sizeBytes", "sourcePackagesBytes", "worktree"), folder.keys)
         assertEquals(base, (folder.getValue("worktree") as JsonPrimitive).content)
         assertEquals(JsonPrimitive(1_073_741_824L), folder.getValue("sizeBytes"))
         val orphan = json.getValue("orphans").jsonArray.single().jsonObject
-        assertEquals(setOf("path", "sizeBytes"), orphan.keys)
+        assertEquals(setOf("path", "sizeBytes", "sourcePackagesBytes"), orphan.keys)
         assertEquals(JsonPrimitive(2_147_483_648L), orphan.getValue("sizeBytes"))
     }
 

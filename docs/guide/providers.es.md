@@ -11,7 +11,7 @@ Un provider añade soporte para un tipo de herramienta a los worktrees de un rep
 | [`gradle`](#gradle) | Repositorios Android, KMP y JVM: los daemons de Gradle y su memoria. | Todas; la lista de daemons necesita `ps` (macOS, Linux) |
 | [`emulator`](#emulador-de-android) | Un emulador de Android por worktree. | Todas, con el Android SDK |
 | [`ios-simulator`](#simulador-de-ios) | Un simulador de iOS por worktree. | macOS |
-| [`xcode`](#xcode) | Los DerivedData de Xcode y la caché de compilación compartida. | macOS |
+| [`xcode`](#xcode) | Los DerivedData de Xcode, la caché de compilación compartida, los paquetes Swift y los pods de CocoaPods. | macOS |
 | [`maven`](#maven) | Compilaciones de Maven: un límite de memoria y los daemons de Maven. | Todas; la lista de daemons necesita `ps` (macOS, Linux) |
 | [`docker-compose`](#docker-compose) | Un proyecto de Docker Compose y puertos por worktree. | Todas, con la CLI de Docker |
 | [`desktop-app`](#app-de-compose-desktop) | Una app de Compose Desktop por worktree, ejecutada en segundo plano sin ocupar el escritorio. | macOS |
@@ -227,7 +227,7 @@ La cuota es un ajuste de la máquina, no forma parte de los perfiles de capacida
 Cuando las carpetas suman más que la cuota, ShogunAi libera primero las carpetas huérfanas y después las de los worktrees que no están en uso, de la menos a la más recientemente accedida, y se detiene en cuanto el total cabe. Un worktree está en uso mientras su agente trabaja o está bloqueado, o su carpeta se accedió hace menos de una hora. Nunca se liberan las carpetas de otros proyectos, las de volúmenes no disponibles ni la caché de compilación; si solo quedan esas, la vista dice que la cuota sigue superada y nombra los worktrees en uso. La app aplica la cuota cada vez que se han medido los tamaños de las carpetas, y muestra el uso frente a la cuota (marcada como "automática" si lo es), también en la barra lateral, y las carpetas que liberó hasta que cierres el aviso. `shogun xcode trim` la aplica desde la línea de comandos.
 
 ```bash
-shogun xcode                               # carpetas de DerivedData de este repositorio, huérfanas y tamaño de la caché de compilación
+shogun xcode                               # carpetas de DerivedData de este repositorio con sus paquetes, huérfanas y cachés compartidas
 shogun xcode clean                         # borrar las carpetas huérfanas
 shogun xcode trim [--dry-run]              # liberar carpetas hasta que el DerivedData quepa en la cuota
 shogun clean --yes --delete-derived-data   # borrarlas también tras eliminar worktrees
@@ -240,3 +240,19 @@ shogun clean --yes --delete-derived-data   # borrarlas también tras eliminar wo
 - Necesita Xcode 26 o posterior y ayuda a proyectos `.xcodeproj` y `.xcworkspace`; los paquetes Swift no reutilizaron nada entre worktrees.
 - Llega a los agentes como cualquier [variable por worktree](../agents.md#entorno-por-worktree). Un `XCODE_XCCONFIG_FILE` que pongas tú en esa shell se sustituye; decláralo en `env` y tendrá prioridad sobre el del provider.
 - Xcode abierto desde el Dock no hereda la shell del agente. Pon los ajustes de build en el proyecto si también quieres la caché ahí.
+
+### Paquetes Swift y cachés de paquetes
+
+Xcode resuelve los paquetes Swift de un proyecto dentro de su carpeta de DerivedData (`SourcePackages`), así que cada worktree tiene sus propios checkouts, que cuentan en la cuota y desaparecen con la carpeta. Salen de la caché de repositorios compartida de Xcode, así que un worktree nuevo los resuelve sin red. La sección y `shogun xcode` muestran cuánto de la carpeta de cada worktree son paquetes ("App.xcodeproj · paquetes 800 MB"), medido y recordado junto al tamaño de la carpeta; los checkouts no se comparten entre worktrees.
+
+Las cachés de paquetes compartidas, la de SwiftPM (`~/Library/Caches/org.swift.swiftpm`) y la de CocoaPods (`~/Library/Caches/CocoaPods`), se muestran debajo de la caché de compilación cuando existen. Como ella, no cuentan en la cuota y ShogunAi nunca las borra; solo se miden sus ubicaciones por defecto.
+
+### CocoaPods
+
+La carpeta `Pods` de un proyecto CocoaPods suele estar ignorada por Git, así que un worktree nuevo no compila hasta que se ejecuta `pod install`. Activa `cocoaPods` y ShogunAi da a cada worktree nuevo o provisionado los pods del repositorio base:
+
+```json
+{ "providers": { "xcode": { "cocoaPods": true } } }
+```
+
+Por cada `Podfile.lock` versionado en Git, a cualquier profundidad, cuyo worktree aún no tenga `Pods`, ShogunAi lo compara con el `Pods/Manifest.lock` de la base, la misma comprobación que hace la fase de build "Check Pods Manifest.lock" de CocoaPods. Si coinciden, el `Pods` de la base se clona en el worktree con copy-on-write de APFS (`cp -c`): es instantáneo y no ocupa disco hasta que cambia un fichero. Si no coinciden, la base nunca ejecutó `pod install` o el volumen no puede clonar, no se copia nada (nunca una copia completa lenta) y `shogun new`, `shogun provision` y el hook de creación de worktrees dicen qué carpetas necesitan `pod install` y por qué (`pods` en su JSON). Los pods se preparan después de copiar los ficheros y antes de los comandos post-creación, así que un `pod install` declarado ahí los encuentra en su sitio; un problema con los pods nunca hace fallar el worktree.

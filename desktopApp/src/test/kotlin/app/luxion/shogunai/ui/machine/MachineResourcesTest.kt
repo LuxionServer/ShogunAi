@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.machine
 
+import app.luxion.shogunai.domain.model.PackageCacheSizes
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.DesktopTurn
 import app.luxion.shogunai.domain.model.DesktopTurnRelease
@@ -135,6 +136,8 @@ class MachineResourcesTest {
         derivedData: DerivedDataListing = DerivedDataListing(emptyList(), null),
         stopReport: DaemonStopReport = DaemonStopReport(),
         sizes: Map<String, Long> = emptyMap(),
+        packages: Map<String, Long> = emptyMap(),
+        packageCaches: PackageCacheSizes = PackageCacheSizes(),
         remembered: Map<String, Long> = emptyMap(),
         resolveQuota: suspend (ResourceSettings, Long) -> DerivedDataQuota = ::fixedQuotaOnly,
         startEmulator: suspend (ProjectConfig, String) -> Result<DeviceStart<WorktreeEmulator>> = { _, path ->
@@ -163,11 +166,12 @@ class MachineResourcesTest {
                 folders.filter { remeasure || it.path !in remembered }.forEach { folder ->
                     calls.measured += folder.path
                     calls.measureGate?.await()
-                    emit(MeasuredSize(folder.path, sizes[folder.path] ?: 1_000L))
+                    emit(MeasuredSize(folder.path, sizes[folder.path] ?: 1_000L, packagesBytes = packages[folder.path]))
                 }
             }
         },
         measureCompilationCache = { calls.cacheMeasurements++; Result.success(7_000L) },
+        measurePackageCaches = { Result.success(packageCaches) },
         deleteOrphanedDerivedData = { calls.derivedDataDeletions++; Result.success(DerivedDataDeletion()) },
         readEmulatorStates = { _, _ -> calls.recordDispatcher(); calls.emulatorReads++; Result.success(emulators) },
         readRunningEmulators = { calls.recordDispatcher(); Result.success(running) },
@@ -808,6 +812,28 @@ class MachineResourcesTest {
 
         assertEquals(2, calls.derivedDataListings)
         assertEquals(listOf("/dd/A", "/dd/A"), calls.measured)
+    }
+
+    @Test
+    fun `derived data folders get their packages and the shared package caches are measured`() = machineTest {
+        val caches = PackageCacheSizes(swiftPmBytes = 2_000L, cocoaPodsBytes = 3_000L)
+        val machine = machine(
+            useCases(
+                Calls(),
+                derivedData = DerivedDataListing(derivedFolders, null),
+                sizes = mapOf("/dd/A" to 300L, "/dd/B" to 200L),
+                packages = mapOf("/dd/A" to 120L),
+                packageCaches = caches,
+            ),
+            listOf(machineProject("main-repo", listOf(mainWorktree), MachineResource.XCODE_DERIVED_DATA)),
+        )
+
+        machine.show(MachineResource.XCODE_DERIVED_DATA)
+        runCurrent()
+
+        assertEquals(mapOf("/dd/A" to 120L, "/dd/B" to null), machine.loadedFolders().associate { it.folder.path to it.folder.packagesBytes })
+        assertEquals(caches, machine.packageCacheSizes)
+        assertEquals(500L, machine.derivedDataUsageBytes)
     }
 
     @Test

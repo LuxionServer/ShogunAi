@@ -434,6 +434,9 @@ object EnglishStrings : Strings {
         if (count == 1) "1 folder is on an unavailable volume and is kept"
         else "$count folders are on unavailable volumes and are kept"
     override fun derivedDataCompilationCache(size: String) = "Compilation cache · $size"
+    override fun derivedDataSwiftPmCache(size: String) = "SwiftPM cache · $size"
+    override fun derivedDataCocoaPodsCache(size: String) = "CocoaPods cache · $size"
+    override fun derivedDataWithPackages(name: String, size: String) = "$name · packages $size"
     override fun derivedDataQuotaUsage(usage: String, quota: String, automatic: Boolean) =
         "$usage of $quota quota" + if (automatic) " (automatic)" else ""
     override val derivedDataQuotaUnknown = "Automatic quota unknown: the free disk space couldn't be read"
@@ -628,6 +631,7 @@ object EnglishStrings : Strings {
     override val preferredDeviceLabel = "Preferred device"
     override val preferredRuntimeLabel = "Preferred runtime"
     override val xcodeCompilationCacheLabel = "Compilation caching"
+    override val xcodeCocoaPodsLabel = "Clone CocoaPods pods from the base"
     override val providerMaven = "Maven"
     override val providerDockerCompose = "Docker Compose"
     override val mavenMaxHeapLabel = "Build heap"

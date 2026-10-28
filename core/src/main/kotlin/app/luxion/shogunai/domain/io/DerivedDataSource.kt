@@ -10,6 +10,8 @@ interface DerivedDataSource {
 
     suspend fun size(folder: DerivedDataFolder): Long
 
+    suspend fun packagesSize(folder: DerivedDataFolder): Long
+
     suspend fun compilationCacheBytes(): Long?
 
     suspend fun freeBytes(): Long?

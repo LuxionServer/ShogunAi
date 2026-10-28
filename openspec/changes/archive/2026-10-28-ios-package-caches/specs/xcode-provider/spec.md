@@ -25,11 +25,15 @@ The packages size SHALL be remembered with the folder's size and used under the 
 - **THEN** the folder is measured again
 
 ### Requirement: Show the packages size
-`shogun xcode` SHALL show each worktree folder's packages size next to its size, and its JSON SHALL include `sourcePackagesBytes` for every folder. The desktop app's DerivedData view SHALL show it next to each worktree's size.
+`shogun xcode` SHALL show each worktree folder's packages size next to its size when it has packages, and its JSON SHALL include `sourcePackagesBytes` for every folder. The desktop app's DerivedData view SHALL show it next to each worktree's size in the same way.
 
 #### Scenario: Command output
 - **WHEN** a worktree's folder is 6 GB with 800 MB of packages and the user runs `shogun xcode`
 - **THEN** its line shows both sizes
+
+#### Scenario: Folder without packages
+- **WHEN** a worktree's folder has no Swift packages
+- **THEN** its line shows only its size and its JSON has `sourcePackagesBytes` 0
 
 #### Scenario: Packages size unknown
 - **WHEN** a folder hasn't been measured yet in the desktop app

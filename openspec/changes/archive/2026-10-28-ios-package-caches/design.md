@@ -61,11 +61,11 @@ JSON: `pods: { cloned: [...], installNeeded: [{ folder, reason }], error }` in `
 
 ### Packages size measured with the folder
 
-`DerivedDataSource.size` returns a `FolderSize(bytes, packagesBytes)`: the Mac source measures the folder and then its `SourcePackages` (zero if missing). The second walk only covers the packages subtree. `MeasuredSize`, `RememberedSize` and `DerivedDataFolder` gain `packagesBytes`; the size store writes it as an optional field, and an entry without it isn't valid, so folders remembered by an earlier version are measured once more. The quota keeps using the total size.
+`DerivedDataSource` gains `packagesSize(folder)` next to `size(folder)`: the Mac source measures the folder and then its `SourcePackages` (zero if missing), and `MeasureDerivedDataUseCase` calls both. A separate method instead of a combined return type keeps every other caller and fake of `size` unchanged. The second walk only covers the packages subtree. `MeasuredSize`, `RememberedSize` and `DerivedDataFolder` gain `packagesBytes`; the size store writes it as an optional field, and an entry without it isn't valid, so folders remembered by an earlier version are measured once more. The quota keeps using the total size.
 
 ### Shared caches as a separate port
 
-A `PackageCacheSource` port (`swiftPmCacheBytes()`, `cocoaPodsCacheBytes()`, null when the folder is missing) with a Mac implementation measuring `~/Library/Caches/org.swift.swiftpm` and `~/Library/Caches/CocoaPods`. They aren't DerivedData, so they don't go into `DerivedDataSource`. `ListDerivedDataUseCase` returns them in `DerivedDataListing.packageCaches`, measured in parallel with the compilation cache, and the app's machine resources holder measures them alongside the compilation cache. They're shown whenever the Xcode provider is active, without a new per-project flag, so `ProjectWorktrees.kt` doesn't change.
+A `PackageCacheSource` port (`swiftPmCacheBytes()`, `cocoaPodsCacheBytes()`, null when the folder is missing) with a Mac implementation measuring `~/Library/Caches/org.swift.swiftpm` and `~/Library/Caches/CocoaPods`. They aren't DerivedData, so they don't go into `DerivedDataSource`. `ListDerivedDataUseCase` returns them in `DerivedDataListing.packageCaches`, measured in parallel with the compilation cache, and the app's machine resources holder measures them alongside the compilation cache. They're shown whenever the Xcode provider is active, without a new per-project flag, so `ProjectWorktrees.kt` doesn't change. A worktree's packages size is shown only when it has packages, so projects without Swift packages read as before.
 
 ## Risks / Trade-offs
 

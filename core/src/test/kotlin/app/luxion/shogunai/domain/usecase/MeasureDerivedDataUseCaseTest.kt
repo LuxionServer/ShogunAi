@@ -32,26 +32,26 @@ class MeasureDerivedDataUseCaseTest {
     fun `an unchanged folder uses its remembered size without being measured`() = runTest {
         val app = folder("App", monday)
         val source = source(app to 15L)
-        val store = FakeDerivedDataSizeStore(mapOf(app.path to RememberedSize(12L, monday)))
+        val store = FakeDerivedDataSizeStore(mapOf(app.path to RememberedSize(12L, monday, 0L)))
 
         val sizes = MeasureDerivedDataUseCase(source, store)(listOf(app)).toList()
 
-        assertEquals(listOf(MeasuredSize(app.path, 12L)), sizes)
+        assertEquals(listOf(MeasuredSize(app.path, 12L, packagesBytes = 0L)), sizes)
         assertEquals(emptyList(), source.measured)
-        assertEquals(mapOf(app.path to RememberedSize(12L, monday)), store.sizes)
+        assertEquals(mapOf(app.path to RememberedSize(12L, monday, 0L)), store.sizes)
     }
 
     @Test
     fun `a folder used again since it was remembered is measured and remembered again`() = runTest {
         val app = folder("App", tuesday)
         val source = source(app to 15L)
-        val store = FakeDerivedDataSizeStore(mapOf(app.path to RememberedSize(12L, monday)))
+        val store = FakeDerivedDataSizeStore(mapOf(app.path to RememberedSize(12L, monday, 0L)))
 
         val sizes = MeasureDerivedDataUseCase(source, store)(listOf(app)).toList()
 
-        assertEquals(listOf(MeasuredSize(app.path, 15L)), sizes)
+        assertEquals(listOf(MeasuredSize(app.path, 15L, packagesBytes = 0L)), sizes)
         assertEquals(listOf(app.path), source.measured)
-        assertEquals(mapOf(app.path to RememberedSize(15L, tuesday)), store.sizes)
+        assertEquals(mapOf(app.path to RememberedSize(15L, tuesday, 0L)), store.sizes)
     }
 
     @Test
@@ -71,7 +71,7 @@ class MeasureDerivedDataUseCaseTest {
     fun `folders that no longer exist are forgotten`() = runTest {
         val app = folder("App", monday)
         val gone = folder("Gone", monday)
-        val store = FakeDerivedDataSizeStore(mapOf(app.path to RememberedSize(12L, monday), gone.path to RememberedSize(8L, monday)))
+        val store = FakeDerivedDataSizeStore(mapOf(app.path to RememberedSize(12L, monday, 0L), gone.path to RememberedSize(8L, monday, 0L)))
 
         MeasureDerivedDataUseCase(source(app to 12L), store)(listOf(app)).collect()
 
@@ -106,7 +106,7 @@ class MeasureDerivedDataUseCaseTest {
 
         val sizes = MeasureDerivedDataUseCase(source, store)(listOf(broken, app)).toList()
 
-        assertEquals(setOf(MeasuredSize(broken.path, null), MeasuredSize(app.path, 5L)), sizes.toSet())
+        assertEquals(setOf(MeasuredSize(broken.path, null), MeasuredSize(app.path, 5L, packagesBytes = 0L)), sizes.toSet())
         assertEquals(setOf(app.path), store.sizes.keys)
     }
 
@@ -115,23 +115,23 @@ class MeasureDerivedDataUseCaseTest {
         val app = folder("App", monday)
         val used = folder("Used", tuesday)
         val source = source(app to 13L, used to 9L)
-        val store = FakeDerivedDataSizeStore(mapOf(app.path to RememberedSize(12L, monday), used.path to RememberedSize(8L, monday)))
+        val store = FakeDerivedDataSizeStore(mapOf(app.path to RememberedSize(12L, monday, 0L), used.path to RememberedSize(8L, monday, 0L)))
 
         val sizes = MeasureDerivedDataUseCase(source, store)(listOf(app, used), remeasure = true).toList()
 
-        assertEquals(listOf(MeasuredSize(app.path, 12L, provisional = true), MeasuredSize(used.path, 8L, provisional = true)), sizes.take(2))
-        assertEquals(setOf(MeasuredSize(app.path, 13L), MeasuredSize(used.path, 9L)), sizes.drop(2).toSet())
+        assertEquals(listOf(MeasuredSize(app.path, 12L, provisional = true, packagesBytes = 0L), MeasuredSize(used.path, 8L, provisional = true, packagesBytes = 0L)), sizes.take(2))
+        assertEquals(setOf(MeasuredSize(app.path, 13L, packagesBytes = 0L), MeasuredSize(used.path, 9L, packagesBytes = 0L)), sizes.drop(2).toSet())
         assertEquals(setOf(app.path, used.path), source.measured.toSet())
     }
 
     @Test
     fun `a stale remembered size isn't shown when not remeasuring`() = runTest {
         val used = folder("Used", tuesday)
-        val store = FakeDerivedDataSizeStore(mapOf(used.path to RememberedSize(8L, monday)))
+        val store = FakeDerivedDataSizeStore(mapOf(used.path to RememberedSize(8L, monday, 0L)))
 
         val sizes = MeasureDerivedDataUseCase(source(used to 9L), store)(listOf(used)).toList()
 
-        assertEquals(listOf(MeasuredSize(used.path, 9L)), sizes)
+        assertEquals(listOf(MeasuredSize(used.path, 9L, packagesBytes = 0L)), sizes)
     }
 
     @Test
@@ -152,5 +152,29 @@ class MeasureDerivedDataUseCaseTest {
 
         assertEquals(0, store.saves)
         assertTrue(store.sizes.isEmpty())
+    }
+
+    @Test
+    fun `measures and remembers the packages with the size`() = runTest {
+        val app = folder("App", monday)
+        val source = source(app to 15L).apply { packageSizes[app.path] = 4L }
+        val store = FakeDerivedDataSizeStore()
+
+        val sizes = MeasureDerivedDataUseCase(source, store)(listOf(app)).toList()
+
+        assertEquals(listOf(MeasuredSize(app.path, 15L, packagesBytes = 4L)), sizes)
+        assertEquals(mapOf(app.path to RememberedSize(15L, monday, 4L)), store.sizes)
+    }
+
+    @Test
+    fun `a size remembered without packages is measured again`() = runTest {
+        val app = folder("App", monday)
+        val source = source(app to 15L).apply { packageSizes[app.path] = 4L }
+        val store = FakeDerivedDataSizeStore(mapOf(app.path to RememberedSize(15L, monday)))
+
+        val sizes = MeasureDerivedDataUseCase(source, store)(listOf(app)).toList()
+
+        assertEquals(listOf(MeasuredSize(app.path, 15L, packagesBytes = 4L)), sizes)
+        assertEquals(listOf(app.path), source.packagesMeasured)
     }
 }

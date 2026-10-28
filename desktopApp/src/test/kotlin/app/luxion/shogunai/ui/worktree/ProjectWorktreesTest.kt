@@ -306,6 +306,7 @@ class ProjectWorktreesTest {
         override fun projectExists(workspacePath: String): Boolean = false
         override fun isOnUnavailableVolume(workspacePath: String): Boolean = false
         override suspend fun size(folder: DerivedDataFolder): Long = 0L
+        override suspend fun packagesSize(folder: DerivedDataFolder): Long = 0L
         override suspend fun delete(folder: DerivedDataFolder) {}
     }
 

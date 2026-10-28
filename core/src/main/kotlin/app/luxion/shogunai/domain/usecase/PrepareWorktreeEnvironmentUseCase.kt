@@ -3,26 +3,31 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
+import app.luxion.shogunai.domain.model.PodsPreparation
 import app.luxion.shogunai.domain.model.WorktreeEnvironment
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.joinPath
 
+data class PreparedWorktree(val pods: PodsPreparation = PodsPreparation())
+
 fun interface WorktreeEnvironmentPreparer {
-    suspend fun prepare(repositoryPath: String, worktreePath: String)
+    suspend fun prepare(repositoryPath: String, worktreePath: String): PreparedWorktree
 
     companion object {
-        val NONE = WorktreeEnvironmentPreparer { _, _ -> }
+        val NONE = WorktreeEnvironmentPreparer { _, _ -> PreparedWorktree() }
     }
 }
 
 class PrepareWorktreeEnvironmentUseCase(
     private val resolve: ResolveWorktreeEnvironmentUseCase,
     private val writeEnvironmentFile: WriteEnvironmentFileUseCase,
+    private val pods: CocoaPodsPreparer = CocoaPodsPreparer.NONE,
 ) : WorktreeEnvironmentPreparer {
 
-    override suspend fun prepare(repositoryPath: String, worktreePath: String) {
+    override suspend fun prepare(repositoryPath: String, worktreePath: String): PreparedWorktree {
         val environment = resolve(repositoryPath, worktreePath).getOrThrow()
         writeEnvironmentFile(repositoryPath, worktreePath, environment).getOrThrow()
+        return PreparedWorktree(pods = pods.prepare(repositoryPath, worktreePath))
     }
 }
 

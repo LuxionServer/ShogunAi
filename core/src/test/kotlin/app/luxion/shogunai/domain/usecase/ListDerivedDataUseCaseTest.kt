@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.model.PackageCacheSizes
 import app.luxion.shogunai.domain.FakeDerivedDataSizeStore
 import app.luxion.shogunai.domain.FakeDerivedDataSource
 import app.luxion.shogunai.domain.FakeDerivedDataSource.Companion.derivedData
@@ -34,7 +35,7 @@ class ListDerivedDataUseCaseTest {
         val accessed = Instant.parse("2026-10-20T09:00:00Z")
         val folder = derivedData("MainRepo", mainProject, sizeBytes = null).copy(lastAccessed = accessed)
         val source = FakeDerivedDataSource(existing = listOf(folder), existingProjects = setOf(mainProject))
-        val store = FakeDerivedDataSizeStore(mapOf(folder.path to RememberedSize(7L, accessed)))
+        val store = FakeDerivedDataSizeStore(mapOf(folder.path to RememberedSize(7L, accessed, 0L)))
 
         val listing = ListDerivedDataUseCase(source, store)(worktrees, includeCompilationCache = false, measure = DerivedDataMeasure.ALL).getOrThrow()
 
@@ -152,5 +153,23 @@ class ListDerivedDataUseCaseTest {
 
         assertEquals(2, source.measured.size)
         assertTrue(listing.folders.all { it.folder.sizeBytes != null })
+    }
+
+    @Test
+    fun `reports the packages of each folder and the shared package caches apart`() = runTest {
+        val folder = derivedData("MainRepo", mainProject, sizeBytes = null)
+        val source = FakeDerivedDataSource(existing = listOf(folder), existingProjects = setOf(mainProject)).apply {
+            sizes[folder.path] = 6_000L
+            packageSizes[folder.path] = 800L
+        }
+        val caches = PackageCacheSizes(swiftPmBytes = 2_000L, cocoaPodsBytes = null)
+
+        val listing = ListDerivedDataUseCase(source, packageCaches = { caches })(
+            worktrees, includeCompilationCache = false, measure = DerivedDataMeasure.ALL,
+        ).getOrThrow()
+
+        assertEquals(6_000L, listing.folders.single().folder.sizeBytes)
+        assertEquals(800L, listing.folders.single().folder.packagesBytes)
+        assertEquals(caches, listing.packageCaches)
     }
 }
