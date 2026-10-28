@@ -49,6 +49,7 @@ class CreateWorktreeFromBranchUseCaseTest {
         assertEquals(worktreePath, worktree.path)
         assertEquals(branch, worktree.branch)
         assertTrue(exec.executed("git", "worktree", "add", worktreePath, branch))
+        assertFalse(exec.executedCommands.any { it.take(2) == listOf("git", "config") }, "an existing branch keeps its recorded base")
         assertEquals(
             listOf(
                 config.baseSecretPath("local.properties") to "$worktreePath/local.properties",

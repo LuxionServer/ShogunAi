@@ -145,6 +145,23 @@ class GuideCommandsTest {
     }
 
     @Test
+    fun `guide tells agents to take a pull request's base from shogun base`() {
+        assertEquals(0, cli().run(listOf("guide", "worktrees")))
+
+        assertTrue(out.contains("pull request against the branch `shogun base` prints"), out.toString())
+        assertTrue(out.contains("--base \"\$(shogun base)\""), out.toString())
+        assertTrue(out.contains("shogun base --set <branch>"), out.toString())
+    }
+
+    @Test
+    fun `the pull request base rule stays out of the session start`() {
+        assertEquals(0, cli(everything(), input = """{"cwd": "$linked"}""", herdr = fakeHerdr()).run(listOf("hook", "session-start")), err.toString())
+
+        assertTrue(out.contains("shogun guide"), out.toString())
+        assertFalse(out.contains("shogun base"), out.toString())
+    }
+
+    @Test
     fun `guide resources tells agents to wait for a full pool in the background`() {
         assertEquals(0, cli(everything()).run(listOf("guide", "resources")))
 

@@ -147,6 +147,19 @@ class HookCommandsTest {
     }
 
     @Test
+    fun `worktree-create records the branch of the cwd's HEAD as the base`() {
+        val executor = Executor(porcelain()) { command ->
+            if ("--symbolic-full-name" in command) CommandResult(command, 0, "refs/heads/develop\n", "") else null
+        }
+
+        val exitCode = cli(executor, createInput("TASK-123", cwd = "$base/src")).run(listOf("hook", "worktree-create"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(executor.calls.any { "--symbolic-full-name" in it.first && it.first.last() == "HEAD" && it.second == "$base/src" })
+        assertTrue(executor.ran("git", "config", "branch.feature/TASK-123.gh-merge-base", "develop"))
+    }
+
+    @Test
     fun `worktree-create keeps the worktree and exits with 0 when a post-creation command fails`() {
         val executor = Executor(porcelain()) { command ->
             if (command.first() == "npm") CommandResult(command, 1, "", "ENOTFOUND") else null
