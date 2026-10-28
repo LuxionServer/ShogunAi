@@ -176,6 +176,16 @@ private fun ProvidersEditor(viewModel: ProjectConfigViewModel, strings: Strings)
                     )
                     Text(strings.xcodeCompilationCacheLabel, modifier = Modifier.padding(start = Spacing.sm))
                 }
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = OptionIndent)) {
+                    Switch(
+                        checked = xcode.cocoaPods,
+                        onCheckedChange = { value ->
+                            viewModel.updateRepositoryDraft { it.copy(xcode = xcode.copy(cocoaPods = value)) }
+                        },
+                        modifier = Modifier.handPointer(),
+                    )
+                    Text(strings.xcodeCocoaPodsLabel, modifier = Modifier.padding(start = Spacing.sm))
+                }
             }
         }
     }

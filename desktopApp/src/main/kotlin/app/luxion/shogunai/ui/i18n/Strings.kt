@@ -361,6 +361,9 @@ interface Strings {
     val deleteOrphans: String
     fun derivedDataOnUnavailableVolumes(count: Int): String
     fun derivedDataCompilationCache(size: String): String
+    fun derivedDataSwiftPmCache(size: String): String
+    fun derivedDataCocoaPodsCache(size: String): String
+    fun derivedDataWithPackages(name: String, size: String): String
     fun derivedDataDeleted(count: Int, freed: String): String
     fun derivedDataQuotaUsage(usage: String, quota: String, automatic: Boolean): String
     val derivedDataQuotaUnknown: String
@@ -526,6 +529,7 @@ interface Strings {
     val preferredDeviceLabel: String
     val preferredRuntimeLabel: String
     val xcodeCompilationCacheLabel: String
+    val xcodeCocoaPodsLabel: String
     val providerMaven: String
     val providerDockerCompose: String
     val mavenMaxHeapLabel: String

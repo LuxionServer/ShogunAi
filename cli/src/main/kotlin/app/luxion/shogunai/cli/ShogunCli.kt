@@ -8,6 +8,7 @@ import app.luxion.shogunai.domain.io.ClaudeSessionRegistry
 import app.luxion.shogunai.domain.io.AndroidSdk
 import app.luxion.shogunai.domain.io.AppleSimulators
 import app.luxion.shogunai.domain.io.DerivedDataSizeStore
+import app.luxion.shogunai.domain.io.PackageCacheSource
 import app.luxion.shogunai.domain.io.DerivedDataSource
 import app.luxion.shogunai.domain.io.DesktopTurnStore
 import app.luxion.shogunai.domain.io.EnvironmentStateStore
@@ -72,6 +73,8 @@ import app.luxion.shogunai.domain.model.SimulatorSettings
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.ProvisionMode
 import app.luxion.shogunai.domain.model.RunningAgent
+import app.luxion.shogunai.domain.model.PodsInstallReason
+import app.luxion.shogunai.domain.model.PodsPreparation
 import app.luxion.shogunai.domain.model.ProvisionedFile
 import app.luxion.shogunai.domain.model.ShellQuoting
 import app.luxion.shogunai.domain.model.UnresolvedReason
@@ -134,6 +137,7 @@ import app.luxion.shogunai.domain.usecase.HerdrAgentLauncher
 import app.luxion.shogunai.domain.usecase.isLiveClaudeProcess
 import app.luxion.shogunai.domain.usecase.OpenWorktreeInHerdrUseCase
 import app.luxion.shogunai.domain.usecase.effectiveGradleJvmArgs
+import app.luxion.shogunai.domain.usecase.PrepareCocoaPodsUseCase
 import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.ProviderContributions
 import app.luxion.shogunai.domain.usecase.CheckProvisionedFilesUseCase
@@ -295,6 +299,7 @@ class ShogunCli(
     private val appLauncher: AppLauncher = DesktopAppLauncher(),
     private val provisioningRecords: ProvisioningRecordStore = ProvisioningRecordStore.NONE,
     private val derivedDataSizes: DerivedDataSizeStore = DerivedDataSizeStore.NONE,
+    private val packageCacheSource: PackageCacheSource = PackageCacheSource.NONE,
     private val deviceWaitQueue: DeviceWaitQueue = NioDeviceWaitQueue(Path.of(userHome, ".shogunai")),
     private val processLiveness: ProcessLiveness = ProcessHandleLiveness(),
     private val deviceClock: () -> Instant = Instant::now,
@@ -320,7 +325,7 @@ class ShogunCli(
         userHome = userHome,
         isMac = derivedDataSource.isSupported(),
     )
-    private val listDerivedData = ListDerivedDataUseCase(derivedDataSource, derivedDataSizes)
+    private val listDerivedData = ListDerivedDataUseCase(derivedDataSource, derivedDataSizes, packageCacheSource)
     private val deleteOrphanedDerivedData = DeleteOrphanedDerivedDataUseCase(derivedDataSource)
     private val resolveEnvironment = resolverWith(contributions)
     private val resolveLimits = ResolveResourceLimitsUseCase(resourceLimits, machineCapacity)
@@ -380,6 +385,7 @@ class ShogunCli(
     private val prepareEnvironment = PrepareWorktreeEnvironmentUseCase(
         resolveEnvironment,
         WriteEnvironmentFileUseCase(executor, fileManager, provisioningSource),
+        PrepareCocoaPodsUseCase(executor, fileManager, provisioningSource, isMacOs = derivedDataSource.isSupported()),
     )
     private val startEmulator = StartWorktreeEmulatorUseCase(provisioningSource, resolveEnvironment, acquireResource, androidSdk)
     private val stopEmulator = StopWorktreeEmulatorUseCase(provisioningSource, resolveEnvironment, androidSdk)
@@ -542,11 +548,12 @@ class ShogunCli(
         }
         val worktree = created.getOrThrow()
         if (command.json) {
-            printJson(newJson(worktree.path, worktree.branch, worktree.skippedPostCreateCommands, worktree.skippedVariables, null, worktree.skippedLinks))
+            printJson(newJson(worktree.path, worktree.branch, worktree.skippedPostCreateCommands, worktree.skippedVariables, null, worktree.skippedLinks, worktree.pods))
             return EXIT_OK
         }
         out.line(worktree.path)
         noteSkippedLinks(worktree.skippedLinks)
+        podsLines(worktree.pods).forEach { err.line("shogun: $it") }
         noteSkipped(config.baseRepositoryPath, worktree.skippedPostCreateCommands, worktree.skippedVariables)
         return EXIT_OK
     }
@@ -999,6 +1006,19 @@ class ShogunCli(
 
     private fun saying(json: Boolean): (String) -> Unit = if (json) { _ -> } else { text -> out.line(text) }
 
+    private fun podsLines(pods: PodsPreparation): List<String> =
+        pods.cloned.map { "${podsFolder(it)} (cloned from the base)" } +
+            pods.installNeeded.map { "${podsFolder(it.folder)}: pod install needed (${podsReason(it.reason)})" } +
+            listOfNotNull(pods.error?.let { "couldn't prepare the pods: $it" })
+
+    private fun podsFolder(folder: String): String = if (folder == ".") "Pods" else "$folder/Pods"
+
+    private fun podsReason(reason: PodsInstallReason): String = when (reason) {
+        PodsInstallReason.BASE_HAS_NO_PODS -> "the base has no pods"
+        PodsInstallReason.BASE_PODS_DIFFER -> "the base's pods differ from Podfile.lock"
+        PodsInstallReason.CLONE_FAILED -> "the base's pods couldn't be cloned"
+    }
+
     private fun noteSkippedLinks(skipped: List<String>, prefix: String = "shogun") {
         skipped.forEach { err.line("$prefix: skipped the symbolic link $it in a local folder") }
     }
@@ -1145,7 +1165,7 @@ class ShogunCli(
             printJson(
                 provisionJson(
                     worktree.path, result.files, result.skippedPostCreateCommands, result.skippedVariables, null,
-                    result.removed, result.skippedLinks,
+                    result.removed, result.skippedLinks, result.pods,
                 ),
             )
             return EXIT_OK
@@ -1153,6 +1173,7 @@ class ShogunCli(
         result.files.forEach { out.line(provisionedLabel(it)) }
         result.removed.forEach { out.line("$it (removed: deleted from the base folder)") }
         result.skippedLinks.forEach { out.line("$it (skipped: symbolic link)") }
+        podsLines(result.pods).forEach { out.line(it) }
         noteSkipped(config.baseRepositoryPath, result.skippedPostCreateCommands, result.skippedVariables)
         onProvisioned(worktree, config)
         return EXIT_OK
@@ -2351,7 +2372,8 @@ class ShogunCli(
         }
         listing.ofWorktrees().forEach { item ->
             val worktree = (item.owner as DerivedDataOwner.Worktree).path
-            out.line("$worktree  ${formatMemory(item.folder.sizeBytes ?: 0L)}")
+            val packages = item.folder.packagesBytes?.takeIf { it > 0 }?.let { "  (packages ${formatMemory(it)})" }.orEmpty()
+            out.line("$worktree  ${formatMemory(item.folder.sizeBytes ?: 0L)}$packages")
         }
         val orphans = listing.orphans
         out.line("orphans: ${orphans.size} (${formatMemory(orphans.sumOf { it.sizeBytes ?: 0L })})")
@@ -2362,6 +2384,8 @@ class ShogunCli(
         if (provider.compilationCache) {
             out.line("compilation cache: ${formatMemory(listing.compilationCacheBytes ?: 0L)}")
         }
+        listing.packageCaches.swiftPmBytes?.let { out.line("SwiftPM cache: ${formatMemory(it)}") }
+        listing.packageCaches.cocoaPodsBytes?.let { out.line("CocoaPods cache: ${formatMemory(it)}") }
         return EXIT_OK
     }
 
@@ -2496,6 +2520,7 @@ class ShogunCli(
             when (val failure = created.exceptionOrNull()) {
                 null -> created.getOrThrow().also {
                     noteSkippedLinks(it.skippedLinks, "shogun: hook worktree-create")
+                    podsLines(it.pods).forEach { line -> err.line("shogun: hook worktree-create: $line") }
                     noteSkipped(config.baseRepositoryPath, it.skippedPostCreateCommands, it.skippedVariables, "shogun: hook worktree-create")
                 }.path
                 is WorktreeError.PostCreateCommandFailed -> {

@@ -17,6 +17,7 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.Worktree
+import app.luxion.shogunai.domain.model.PodsPreparation
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import kotlinx.coroutines.test.runTest
@@ -396,12 +397,28 @@ class CreateWorktreeUseCaseTest {
             executor,
             FakeFileManager(baseWithSecrets),
             FakeRepositoryProvisioningSource(),
-            environment = { repository, worktree -> prepared += repository to worktree },
+            environment = { repository, worktree -> prepared += repository to worktree; PreparedWorktree() },
         )
 
         useCase("TASK-123", BranchType.FEATURE).getOrThrow()
 
         assertEquals(listOf(config.baseRepositoryPath to worktreePath), prepared)
+    }
+
+    @Test
+    fun `reports the pods prepared with the environment`() = runTest {
+        val pods = PodsPreparation(cloned = listOf("iosApp"))
+        val useCase = CreateWorktreeUseCase(
+            config,
+            FakeShellCommandExecutor { success(it) },
+            FakeFileManager(baseWithSecrets),
+            FakeRepositoryProvisioningSource(),
+            environment = { _, _ -> PreparedWorktree(pods) },
+        )
+
+        val created = useCase("TASK-123", BranchType.FEATURE).getOrThrow()
+
+        assertEquals(pods, created.pods)
     }
 
     @Test

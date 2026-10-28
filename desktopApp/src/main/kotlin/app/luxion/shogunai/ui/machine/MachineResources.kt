@@ -14,6 +14,7 @@ import app.luxion.shogunai.domain.model.DerivedDataListing
 import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.DerivedDataQuota
 import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
+import app.luxion.shogunai.domain.model.PackageCacheSizes
 import app.luxion.shogunai.domain.model.DerivedDataTrim
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.ComposeDownReport
@@ -164,6 +165,9 @@ class MachineResources(
         private set
     private var derivedDataListing by mutableStateOf<MachineLoad<DerivedDataListing>>(MachineLoad.Loading)
     private var derivedDataSizes by mutableStateOf<Map<String, Long>>(emptyMap())
+    private var derivedDataPackageSizes by mutableStateOf<Map<String, Long>>(emptyMap())
+    var packageCacheSizes by mutableStateOf<PackageCacheSizes?>(null)
+        private set
     private var compilationCacheSize by mutableStateOf<Long?>(null)
     private var compilationCacheMeasured by mutableStateOf(false)
     private var resolvedDerivedDataQuota by mutableStateOf<DerivedDataQuota?>(null)
@@ -280,8 +284,9 @@ class MachineResources(
         get() = derivedDataListing.map { listing ->
             val sets = worktreeSets
             val sizes = derivedDataSizes
+            val packages = derivedDataPackageSizes
             listing.folders.map { entry ->
-                val folder = entry.folder.copy(sizeBytes = sizes[entry.folder.path])
+                val folder = entry.folder.copy(sizeBytes = sizes[entry.folder.path], packagesBytes = packages[entry.folder.path])
                 MachineDerivedData(folder, derivedOwnerOf(entry.owner, folder, sets))
             }
         }
@@ -605,8 +610,10 @@ class MachineResources(
         sizeJob?.cancel()
         val listing = io { useCases.listDerivedData() }
         derivedDataSizes = emptyMap()
+        derivedDataPackageSizes = emptyMap()
         compilationCacheSize = null
         compilationCacheMeasured = false
+        packageCacheSizes = null
         derivedDataListing = listing.fold({ MachineLoad.Loaded(it) }, { MachineLoad.Unavailable })
         listing.getOrNull()?.let { sizeJob = scope.launch { measureDerivedData(it.folders.map { entry -> entry.folder }, remeasure) } }
     }
@@ -614,10 +621,13 @@ class MachineResources(
     private suspend fun measureDerivedData(folders: List<DerivedDataFolder>, remeasure: Boolean) {
         coroutineScope {
             val compilationCache = async { if (projects().any { it.compilationCache }) io { useCases.measureCompilationCache() }.getOrNull() else null }
+            val packageCaches = async { io { useCases.measurePackageCaches() }.getOrNull() }
             useCases.measureDerivedData(folders, remeasure).flowOn(ioDispatcher).collect { measured ->
                 derivedDataSizes = derivedDataSizes + (measured.path to (measured.sizeBytes ?: 0L))
+                measured.packagesBytes?.let { derivedDataPackageSizes = derivedDataPackageSizes + (measured.path to it) }
             }
             compilationCacheSize = compilationCache.await()
+            packageCacheSizes = packageCaches.await()
         }
         currentCoroutineContext().ensureActive()
         compilationCacheMeasured = true
@@ -652,6 +662,7 @@ class MachineResources(
                     val gone = trim.released.map { it.folder.path }.toSet()
                     derivedDataListing = MachineLoad.Loaded(listing.copy(folders = listing.folders.filterNot { it.folder.path in gone }))
                     derivedDataSizes = derivedDataSizes - gone
+                    derivedDataPackageSizes = derivedDataPackageSizes - gone
                     clearError(DERIVED_DATA_KEY)
                 }
                 .onFailure { fail(DERIVED_DATA_KEY, it) { reloadDerivedData() } }
@@ -674,8 +685,10 @@ class MachineResources(
         if (derivedDataListing is MachineLoad.Loading) return
         derivedDataListing = MachineLoad.Loading
         derivedDataSizes = emptyMap()
+        derivedDataPackageSizes = emptyMap()
         compilationCacheSize = null
         compilationCacheMeasured = false
+        packageCacheSizes = null
     }
 
     fun stopGradleDaemon(pid: Long) = stopGradleDaemons(listOf(pid))

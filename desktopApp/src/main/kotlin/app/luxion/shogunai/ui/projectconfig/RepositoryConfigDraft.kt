@@ -24,7 +24,7 @@ data class EmulatorDraft(val preferredAvd: String = "")
 
 data class IosSimulatorDraft(val device: String = "", val runtime: String = "")
 
-data class XcodeDraft(val compilationCache: Boolean = false)
+data class XcodeDraft(val compilationCache: Boolean = false, val cocoaPods: Boolean = false)
 
 data class MavenDraft(val mavenMaxHeap: String = "")
 
@@ -105,7 +105,7 @@ data class RepositoryConfigDraft(
                 gradle = gradle?.toProvider(),
                 emulator = emulator?.let { EmulatorProvider(preferredAvd = it.preferredAvd.trimmedOrNull()) },
                 iosSimulator = iosSimulator?.let { IosSimulatorProvider(device = it.device.trimmedOrNull(), runtime = it.runtime.trimmedOrNull()) },
-                xcode = xcode?.let { XcodeProvider(compilationCache = it.compilationCache) },
+                xcode = xcode?.let { XcodeProvider(compilationCache = it.compilationCache, cocoaPods = it.cocoaPods) },
                 maven = maven?.let { MavenProvider(mavenMaxHeap = it.mavenMaxHeap.trimmedOrNull()) },
                 dockerCompose = dockerCompose?.let { DockerComposeProvider(portVariables = it.names) },
             ),
@@ -128,7 +128,7 @@ data class RepositoryConfigDraft(
                 },
                 emulator = providers.emulator?.let { EmulatorDraft(it.preferredAvd.orEmpty()) },
                 iosSimulator = providers.iosSimulator?.let { IosSimulatorDraft(it.device.orEmpty(), it.runtime.orEmpty()) },
-                xcode = providers.xcode?.let { XcodeDraft(it.compilationCache) },
+                xcode = providers.xcode?.let { XcodeDraft(it.compilationCache, it.cocoaPods) },
                 maven = providers.maven?.let { MavenDraft(it.mavenMaxHeap.orEmpty()) },
                 dockerCompose = providers.dockerCompose?.let { ComposeDraft(it.portVariables.joinToString(", ")) },
                 environment = provisioning?.environment?.variables.orEmpty().mapIndexed { index, variable ->

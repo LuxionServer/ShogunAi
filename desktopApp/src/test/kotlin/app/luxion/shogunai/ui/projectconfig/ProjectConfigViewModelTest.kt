@@ -820,6 +820,19 @@ class ProjectConfigViewModelTest {
     }
 
     @Test
+    fun `the xcode cocoapods option is written and read back`() {
+        val viewModel = ProjectConfigViewModel(projectRepository, provisioningSource, projectWith(), supportsApplePlatforms = true)
+        viewModel.setXcodeEnabled(true)
+        viewModel.updateRepositoryDraft { it.copy(xcode = XcodeDraft(cocoaPods = true)) }
+
+        viewModel.submit(previewConfirmed = true)
+
+        val written = provisioningSource.writtenEdits.single().second.providers.xcode
+        assertEquals(XcodeProvider(cocoaPods = true), written)
+        assertEquals(XcodeDraft(cocoaPods = true), RepositoryConfigDraft.of(RepositoryProvisioning(providers = RepositoryProviders(xcode = written))).xcode)
+    }
+
+    @Test
     fun `moved local files and provider changes are written together`() {
         val viewModel = viewModelFor(projectWith(listOf("local.properties")))
         viewModel.moveLocalFilesToRepository()

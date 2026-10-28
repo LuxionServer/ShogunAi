@@ -7,6 +7,7 @@ import app.luxion.shogunai.domain.io.RepositoryApproval
 import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.PodsPreparation
 import app.luxion.shogunai.domain.model.ProvisionedFile
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
@@ -26,7 +27,7 @@ class ProvisionWorktreeUseCase(
         val provisioned = checkProvisioningAndResolveFiles(config, executor, fileManager, provisioningSource)
         val applied = applyProvisionedFiles(config, fileManager, records, worktree.path, provisioned)
         val approved = settleApproval(config, trust, approval, provisioned.approvalSubject)
-        environment.prepare(config.baseRepositoryPath, worktree.path)
+        val prepared = environment.prepare(config.baseRepositoryPath, worktree.path)
         val skipped = runPostCreateCommandsIfApproved(executor, approved, worktree.path, provisioned.approvalSubject)
         ProvisionResult(
             files = applied.files,
@@ -34,6 +35,7 @@ class ProvisionWorktreeUseCase(
             skippedVariables = skipped.variables,
             removed = applied.removed,
             skippedLinks = provisioned.skippedLinks,
+            pods = prepared.pods,
         )
     }
 }
@@ -44,6 +46,7 @@ data class ProvisionResult(
     val skippedVariables: List<String> = emptyList(),
     val removed: List<String> = emptyList(),
     val skippedLinks: List<String> = emptyList(),
+    val pods: PodsPreparation = PodsPreparation(),
 )
 
 internal suspend fun findLinkedWorktree(

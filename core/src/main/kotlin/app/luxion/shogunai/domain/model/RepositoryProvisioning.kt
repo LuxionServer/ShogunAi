@@ -40,7 +40,7 @@ data class EmulatorProvider(val preferredAvd: String? = null)
 
 data class IosSimulatorProvider(val device: String? = null, val runtime: String? = null)
 
-data class XcodeProvider(val compilationCache: Boolean = false)
+data class XcodeProvider(val compilationCache: Boolean = false, val cocoaPods: Boolean = false)
 
 data class MavenProvider(val mavenMaxHeap: String? = null)
 
