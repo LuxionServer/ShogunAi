@@ -28,8 +28,13 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.MultirepoRepository
+import app.luxion.shogunai.domain.model.RepositoryConfigIssue
 import app.luxion.shogunai.ui.FilePicker
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import app.luxion.shogunai.ui.components.DangerButton
+import app.luxion.shogunai.ui.components.DropdownSelector
+import app.luxion.shogunai.ui.components.IconAction
 import app.luxion.shogunai.ui.components.DangerTextButton
 import app.luxion.shogunai.ui.components.ErrorNotice
 import app.luxion.shogunai.ui.components.InlineProgress
@@ -42,6 +47,7 @@ import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.handPointer
 import app.luxion.shogunai.ui.components.trackTextInputFocus
 import app.luxion.shogunai.ui.i18n.LocalStrings
+import app.luxion.shogunai.ui.i18n.repositoryConfigIssue
 import app.luxion.shogunai.ui.projectconfig.AgentFields
 import app.luxion.shogunai.ui.projectconfig.SettingsField
 import app.luxion.shogunai.ui.projectconfig.SettingsSection
@@ -49,6 +55,11 @@ import app.luxion.shogunai.ui.theme.ShogunTheme
 
 private val ContentMaxWidth = 760.dp
 private val AliasFieldWidth = 160.dp
+private val NAME_ISSUES = setOf(
+    RepositoryConfigIssue.InvalidVariableName,
+    RepositoryConfigIssue.ReservedVariableName,
+    RepositoryConfigIssue.DuplicateVariableName,
+)
 
 @Composable
 fun MultirepoSettingsView(
@@ -124,6 +135,7 @@ fun MultirepoSettingsView(
                     }
                 }
             }
+            SharedVariablesSection(state)
             SettingsSection(strings.multirepoWorktreesRootTitle) {
                 Text(strings.multirepoWorktreesRootHint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
@@ -193,9 +205,85 @@ private fun WorkspaceSection(state: MultirepoSettingsState) {
                 modifier = Modifier.width(AliasFieldWidth).trackTextInputFocus(),
             )
         }
-        if (!state.workspaceOff) {
-            DangerTextButton(onClick = state::turnOffWorkspace, enabled = !state.isBusy) { Text(strings.turnOffWorkspace) }
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+            if (state.canReturnWorkspaceToDetection) {
+                NeutralTextButton(onClick = state::returnWorkspaceToDetection, enabled = !state.isBusy) { Text(strings.returnWorkspaceToDetection) }
+            }
+            if (!state.workspaceOff) {
+                DangerTextButton(onClick = state::turnOffWorkspace, enabled = !state.isBusy) { Text(strings.turnOffWorkspace) }
+            }
         }
+    }
+}
+
+@Composable
+private fun SharedVariablesSection(state: MultirepoSettingsState) {
+    val strings = LocalStrings.current
+    SettingsSection(strings.sharedVariablesTitle) {
+        Text(strings.sharedVariablesHint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val problem = state.sharedVariablesProblem
+        if (problem != null) {
+            Notice(
+                kind = NoticeKind.WARNING,
+                message = strings.sharedVariablesUnrepresentable(problem),
+                onDismiss = null,
+                modifier = Modifier.testTag("shared-variables-unrepresentable"),
+            )
+        } else {
+            if (state.sharedVariables.isEmpty()) {
+                Text(strings.sharedVariablesEmpty, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            state.sharedVariables.forEach { draft -> SharedVariableRow(state, draft) }
+            SecondaryButton(
+                onClick = state::addSharedVariable,
+                enabled = state.aliases.isNotEmpty() && !state.needsReview,
+                modifier = Modifier.testTag("add-shared-variable"),
+            ) { Text(strings.addVariable) }
+        }
+    }
+}
+
+@Composable
+private fun SharedVariableRow(state: MultirepoSettingsState, draft: SharedVariableDraft) {
+    val strings = LocalStrings.current
+    val issue = state.sharedVariableIssue(draft)
+    val nameIssue = issue?.takeIf { it in NAME_ISSUES }
+    val templateIssue = issue?.takeUnless { it in NAME_ISSUES }
+    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        DropdownSelector(
+            options = state.aliases,
+            selected = draft.alias,
+            onSelect = { state.updateSharedVariable(draft.copy(alias = it)) },
+            label = { it },
+            placeholder = strings.multirepoAliasLabel,
+            modifier = Modifier.width(AliasFieldWidth),
+        )
+        OutlinedTextField(
+            value = draft.name,
+            onValueChange = { state.updateSharedVariable(draft.copy(name = it.trim())) },
+            label = { Text(strings.environmentVariableNameLabel) },
+            textStyle = ShogunTheme.typography.data,
+            singleLine = true,
+            isError = nameIssue != null,
+            supportingText = nameIssue?.let { { Text(strings.repositoryConfigIssue(it)) } },
+            modifier = Modifier.weight(1f).testTag("shared-variable-name-${draft.id}").trackTextInputFocus(),
+        )
+        OutlinedTextField(
+            value = draft.template,
+            onValueChange = { state.updateSharedVariable(draft.copy(template = it)) },
+            label = { Text(strings.environmentVariableTemplateLabel) },
+            textStyle = ShogunTheme.typography.data,
+            singleLine = true,
+            isError = templateIssue != null,
+            supportingText = templateIssue?.let { { Text(strings.repositoryConfigIssue(it)) } },
+            modifier = Modifier.weight(2f).testTag("shared-variable-template-${draft.id}").trackTextInputFocus(),
+        )
+        IconAction(
+            icon = Icons.Default.Close,
+            label = strings.removeVariable,
+            onClick = { state.removeSharedVariable(draft.id) },
+            tint = ShogunTheme.status.danger.color,
+        )
     }
 }
 

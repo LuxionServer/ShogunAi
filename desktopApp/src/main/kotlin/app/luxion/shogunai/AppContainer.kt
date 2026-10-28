@@ -661,6 +661,11 @@ class AppContainer {
 
         override fun clearWorkspace(multirepo: Multirepo) = configureMultirepo.clearWorkspace(multirepo)
 
+        override fun detectWorkspace(multirepo: Multirepo) = configureMultirepo.detectWorkspace(multirepo)
+
+        override fun setSharedVariables(multirepo: Multirepo, byAlias: Map<String, Map<String, String>>) =
+            configureMultirepo.setSharedVariables(multirepo, byAlias)
+
         override fun setAgent(multirepo: Multirepo, agent: AgentLaunchConfig) = configureMultirepo.setAgent(multirepo, agent)
 
         override fun setWorktreesRoot(multirepo: Multirepo, folder: String) = configureMultirepo.setWorktreesRoot(multirepo, folder)

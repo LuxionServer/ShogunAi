@@ -98,6 +98,15 @@ internal object CliHelp {
                               Set the agent 'shogun open --herdr' runs in the multirepo folder, kept on
                               this machine and never in the declaration; --headroom wraps it with
                               'headroom wrap'
+  multirepo workspace set [--alias <alias>] [--default] | clear | detect [--json]
+                              Declare the workspace repository (the multirepo folder, when it's a Git
+                              repository), turn it off, or remove the setting so it's detected again
+  multirepo env [--json]      List the variables the multirepo shares with its repositories' worktrees
+  multirepo env set <alias> <name> <template> [--json]
+                              Add or replace a shared variable of a repository, e.g.
+                              env set app API_URL 'http://localhost:${'$'}{port:api.http}'
+  multirepo env unset <alias> <name> [--json]
+                              Remove a shared variable
   multirepo worktrees-root <dir> [--json]
                               Set the folder under which worktrees folders are proposed
   multirepo delete [--json]   Remove the declaration; projects, worktrees and branches are left as they are

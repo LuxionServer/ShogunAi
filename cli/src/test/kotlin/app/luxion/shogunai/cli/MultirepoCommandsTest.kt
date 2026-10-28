@@ -25,6 +25,7 @@ import app.luxion.shogunai.domain.model.ClaudeSession
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.SharedVariablesDeclaration
+import app.luxion.shogunai.domain.usecase.ResolveMultirepoUseCase
 import app.luxion.shogunai.domain.model.approvalSubject
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import app.luxion.shogunai.domain.model.HerdrWorkspace
@@ -49,6 +50,7 @@ import kotlin.test.Test
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MultirepoCommandsTest {
@@ -1081,5 +1083,107 @@ class MultirepoCommandsTest {
         out.clear()
         cli(answer = "n").run(listOf("multirepo", "trust"))
         assertTrue(out.contains("API_URL=http://localhost:\${port:api.http}"), out.toString())
+    }
+
+    private val apiUrl = "http://localhost:${'$'}{port:api.http}"
+
+    @Test
+    fun `env set adds a shared variable, keeps the approval and env lists it`() {
+        source.approveAll = false
+        source.approve(folder, ResolveMultirepoUseCase(source, git, fileManager).build(folder, declaration).approvalSubject)
+
+        val exitCode = cli().run(listOf("multirepo", "env", "set", "app", "API_URL", apiUrl))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(mapOf("app" to mapOf("API_URL" to apiUrl)), source.declarations.getValue(folder).env?.byAlias)
+        assertEquals(declaration, source.declarations.getValue(folder).copy(env = null))
+        assertTrue(ResolveMultirepoUseCase(source, git, fileManager).build(folder, source.declarations.getValue(folder)).approved)
+        out.clear()
+        assertEquals(0, cli().run(listOf("multirepo", "env")))
+        assertTrue(out.lines().map { it.trim() }.containsAll(listOf("app", "API_URL=$apiUrl")), out.toString())
+        out.clear()
+        assertEquals(0, cli().run(listOf("multirepo", "env", "--json")))
+        assertEquals(apiUrl, json()["env"]!!.jsonObject["app"]!!.jsonObject["API_URL"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `env with no variables says so`() {
+        assertEquals(0, cli().run(listOf("multirepo", "env")))
+        assertTrue(out.contains("shares no variables"), out.toString())
+    }
+
+    @Test
+    fun `env set rejects an invalid template with 1 and an unknown repository with 2`() {
+        assertEquals(1, cli().run(listOf("multirepo", "env", "set", "app", "DEBUG_PORT", "${'$'}{port}")))
+        assertTrue(err.contains(".shogunai.json"), err.toString())
+        assertEquals(2, cli().run(listOf("multirepo", "env", "set", "web", "API_URL", "x")))
+        assertTrue(err.contains("'web' isn't a repository of the multirepo") && err.contains("app, api, docs"), err.toString())
+        assertEquals(declaration, source.declarations.getValue(folder))
+    }
+
+    @Test
+    fun `env unset removes the last variable and refuses an undeclared one`() {
+        source.declarations[folder] = declaration.copy(env = SharedVariablesDeclaration(mapOf("app" to mapOf("API_URL" to apiUrl))))
+
+        assertEquals(1, cli().run(listOf("multirepo", "env", "unset", "app", "MISSING")))
+        assertTrue(err.contains("'app' has no shared variable 'MISSING'"), err.toString())
+        assertEquals(0, cli().run(listOf("multirepo", "env", "unset", "app", "API_URL")), err.toString())
+        assertNull(source.declarations.getValue(folder).env)
+    }
+
+    @Test
+    fun `env set in an unapproved multirepo is refused while env lists it`() {
+        source.approveAll = false
+        source.remember(folder)
+        val tampered = declaration.copy(env = SharedVariablesDeclaration(mapOf("app" to mapOf("API_URL" to apiUrl))))
+        source.declarations[folder] = tampered
+
+        assertEquals(1, cli().run(listOf("multirepo", "env", "set", "app", "API_URL", "x")))
+        assertTrue(err.contains("shogun multirepo trust"), err.toString())
+        assertEquals(tampered, source.declarations.getValue(folder))
+        out.clear()
+        assertEquals(0, cli().run(listOf("multirepo", "env")))
+        assertTrue(out.contains("API_URL=$apiUrl"), out.toString())
+    }
+
+    @Test
+    fun `remove-repo of a repository referenced by a shared variable fails and changes nothing`() {
+        val shared = declaration.copy(env = SharedVariablesDeclaration(mapOf("app" to mapOf("API_URL" to apiUrl))))
+        source.declarations[folder] = shared
+
+        assertEquals(1, cli().run(listOf("multirepo", "remove-repo", "api")))
+        assertTrue(err.contains("app.API_URL"), err.toString())
+        assertEquals(shared, source.declarations.getValue(folder))
+    }
+
+    @Test
+    fun `workspace detect returns a turned off workspace to detection`() {
+        folderIsARepository()
+        source.declarations[folder] = declaration.copy(workspace = WorkspaceSetting(alias = "docs-root", default = true))
+
+        val exitCode = cli().run(listOf("multirepo", "workspace", "detect"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(declaration, source.declarations.getValue(folder))
+        assertTrue(out.contains("detected again as 'workspace'; it isn't a default repository"), out.toString())
+        assertTrue(out.lines().any { it.trim().startsWith("workspace  $folder") && it.contains("detected") })
+        out.clear()
+        assertEquals(0, cli().run(listOf("multirepo", "workspace", "detect")))
+        assertTrue(out.contains("already detected"), out.toString())
+    }
+
+    @Test
+    fun `workspace detect fails outside a repository and when the alias is taken`() {
+        source.declarations[folder] = declaration.copy(workspace = WorkspaceSetting(enabled = false))
+        assertEquals(1, cli().run(listOf("multirepo", "workspace", "detect")))
+        assertTrue(err.contains("no workspace repository"), err.toString())
+
+        folderIsARepository()
+        git.repository("/src/web")
+        val taken = declaration.copy(repos = declaration.repos + ("workspace" to "/src/web"), workspace = WorkspaceSetting(alias = "root"))
+        source.declarations[folder] = taken
+        assertEquals(1, cli().run(listOf("multirepo", "workspace", "detect")))
+        assertTrue(err.contains("'workspace' is already taken"), err.toString())
+        assertEquals(taken, source.declarations.getValue(folder))
     }
 }

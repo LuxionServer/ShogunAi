@@ -70,6 +70,10 @@ fun multirepoTrustJson(multirepo: Multirepo, approved: Boolean, changed: Boolean
     put("ignoredDeclaredAgent", multirepo.ignoresDeclaredAgent)
 }
 
+fun sharedVariablesListJson(multirepo: Multirepo): JsonObject = buildJsonObject {
+    put("env", sharedVariablesJson(multirepo))
+}
+
 private fun sharedVariablesJson(multirepo: Multirepo): JsonObject = buildJsonObject {
     multirepo.sharedTemplates.groupBy { it.first }.forEach { (alias, variables) ->
         put(alias, buildJsonObject { variables.forEach { (_, name, template) -> put(name, template) } })

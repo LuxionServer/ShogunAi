@@ -9,7 +9,10 @@ import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.DEFAULT_WORKSPACE_ALIAS
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.InvalidSharedEnvironment
+import app.luxion.shogunai.domain.model.SharedVariablesDeclaration
 import app.luxion.shogunai.domain.model.WorkspaceSetting
+import app.luxion.shogunai.domain.model.parseSharedEnvironment
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.MAX_MULTIREPO_NAME_LENGTH
 import app.luxion.shogunai.domain.model.MULTIREPO_FILE_NAME
@@ -92,6 +95,7 @@ class ConfigureMultirepoUseCase(
     ): Result<AddedRepository> = runCatching {
         fun reject(detail: String): Nothing = throw WorktreeError.InvalidMultirepo(multirepo.declarationPath, detail)
         requireApproved(multirepo)
+        requireRewritableEnv(multirepo)
         if (!isValidMultirepoAlias(alias)) reject("alias '$alias' must use only lowercase letters, digits and hyphens")
         if (alias in multirepo.declaration.repos) reject("alias '$alias' is already taken")
         val repository = normalizePath(path)
@@ -114,7 +118,7 @@ class ConfigureMultirepoUseCase(
 
     fun removeRepository(multirepo: Multirepo, alias: String): Result<Multirepo> = update(multirepo) { declaration ->
         if (alias !in declaration.repos) throw unknownAlias(multirepo, alias)
-        declaration.copy(repos = declaration.repos - alias, defaultRepos = declaration.defaultRepos - alias)
+        declaration.copy(repos = declaration.repos - alias, defaultRepos = declaration.defaultRepos - alias, env = withoutRepository(multirepo, alias))
     }
 
     fun renameRepository(multirepo: Multirepo, alias: String, newAlias: String): Result<Multirepo> = update(multirepo) { declaration ->
@@ -127,6 +131,7 @@ class ConfigureMultirepoUseCase(
         declaration.copy(
             repos = declaration.repos.entries.associate { (key, path) -> (if (key == alias) newAlias else key) to path },
             defaultRepos = declaration.defaultRepos.map { if (it == alias) newAlias else it },
+            env = declaration.env?.renamingAlias(alias, newAlias),
         )
     }
 
@@ -171,12 +176,58 @@ class ConfigureMultirepoUseCase(
         if (chosen in declaration.repos && multirepo.declaredRepositories.none { it.alias == chosen && sameDirectory(it.path, multirepo.folder) }) {
             reject("alias '$chosen' is already taken")
         }
-        declaration.copy(workspace = WorkspaceSetting(alias = chosen, default = default))
+        val previous = multirepo.workspaceRepository?.alias
+        val env = if (previous != null && previous != chosen) declaration.env?.renamingAlias(previous, chosen) else declaration.env
+        declaration.copy(workspace = WorkspaceSetting(alias = chosen, default = default), env = env)
     }
 
     fun clearWorkspace(multirepo: Multirepo): Result<Multirepo> = update(multirepo) { declaration ->
-        declaration.copy(workspace = WorkspaceSetting(enabled = false))
+        val workspace = multirepo.workspaceRepository?.takeIf { it.alias !in declaration.repos }
+        val env = if (workspace == null) declaration.env else withoutRepository(multirepo, workspace.alias)
+        declaration.copy(workspace = WorkspaceSetting(enabled = false), env = env)
     }
+
+    fun detectWorkspace(multirepo: Multirepo): Result<Multirepo> = runCatching {
+        fun reject(detail: String): Nothing = throw WorktreeError.InvalidMultirepo(multirepo.declarationPath, detail)
+        requireApproved(multirepo)
+        if (!multirepo.folderIsRepository) reject("there is no workspace repository: ${multirepo.folder} isn't a Git repository")
+        multirepo.declaredRepositories.firstOrNull { sameDirectory(it.path, multirepo.folder) }?.let {
+            reject("the workspace repository is declared in repos as '${it.alias}'")
+        }
+        val current = multirepo.declaration.workspace ?: return@runCatching multirepo
+        if (DEFAULT_WORKSPACE_ALIAS in multirepo.declaration.repos) {
+            reject("alias '$DEFAULT_WORKSPACE_ALIAS' is already taken; keep the workspace repository declared under another alias")
+        }
+        update(multirepo) { declaration ->
+            val env = if (current.enabled && current.alias != DEFAULT_WORKSPACE_ALIAS) {
+                declaration.env?.renamingAlias(current.alias, DEFAULT_WORKSPACE_ALIAS)
+            } else {
+                declaration.env
+            }
+            declaration.copy(workspace = null, env = env)
+        }.getOrThrow()
+    }
+
+    fun setSharedVariable(multirepo: Multirepo, alias: String, name: String, template: String): Result<Multirepo> =
+        updateSharedVariables(multirepo) { env ->
+            if (alias !in multirepo.aliases) throw unknownAlias(multirepo, alias)
+            env.withVariable(alias, name, template)
+        }
+
+    fun unsetSharedVariable(multirepo: Multirepo, alias: String, name: String): Result<Multirepo> =
+        updateSharedVariables(multirepo) { env ->
+            if (alias !in multirepo.aliases) throw unknownAlias(multirepo, alias)
+            if (name !in env.byAlias[alias].orEmpty()) {
+                throw WorktreeError.InvalidMultirepo(multirepo.declarationPath, "'$alias' has no shared variable '$name'")
+            }
+            env.withoutVariable(alias, name)
+        }
+
+    fun setSharedVariables(multirepo: Multirepo, byAlias: Map<String, Map<String, String>>): Result<Multirepo> =
+        updateSharedVariables(multirepo) { env ->
+            byAlias.keys.firstOrNull { it !in multirepo.aliases }?.let { throw unknownAlias(multirepo, it) }
+            env.copy(byAlias = byAlias)
+        }
 
     fun delete(multirepo: Multirepo): Result<Unit> = runCatching {
         source.delete(multirepo.folder)
@@ -243,8 +294,40 @@ class ConfigureMultirepoUseCase(
         return trimmed
     }
 
+    private fun updateSharedVariables(
+        multirepo: Multirepo,
+        change: (SharedVariablesDeclaration) -> SharedVariablesDeclaration,
+    ): Result<Multirepo> = update(multirepo) { declaration ->
+        val env = change(declaration.env ?: SharedVariablesDeclaration()).withoutEmptyAliases()
+        try {
+            parseSharedEnvironment(env, multirepo.aliases.toSet())
+        } catch (error: InvalidSharedEnvironment) {
+            throw WorktreeError.InvalidMultirepo(multirepo.declarationPath, error.message.orEmpty())
+        }
+        declaration.copy(env = env)
+    }
+
+    private fun withoutRepository(multirepo: Multirepo, alias: String): SharedVariablesDeclaration? {
+        val env = multirepo.declaration.env ?: return null
+        val referencing = env.referencesTo(alias)
+        if (referencing.isNotEmpty()) {
+            throw WorktreeError.InvalidMultirepo(
+                multirepo.declarationPath,
+                "'$alias' is referenced by the shared variables ${referencing.joinToString()}; change or unset them first",
+            )
+        }
+        return env.withoutAlias(alias).withoutEmptyAliases()
+    }
+
+    private fun requireRewritableEnv(multirepo: Multirepo) {
+        multirepo.declaration.env?.problems?.firstOrNull()?.let {
+            throw WorktreeError.InvalidMultirepo(multirepo.declarationPath, "$it; fix the file by hand")
+        }
+    }
+
     private fun update(multirepo: Multirepo, change: (MultirepoDeclaration) -> MultirepoDeclaration): Result<Multirepo> = runCatching {
         requireApproved(multirepo)
+        requireRewritableEnv(multirepo)
         val declaration = change(multirepo.declaration).copy(agent = null)
         source.write(multirepo.folder, declaration)
         approveWritten(multirepo.folder, declaration)

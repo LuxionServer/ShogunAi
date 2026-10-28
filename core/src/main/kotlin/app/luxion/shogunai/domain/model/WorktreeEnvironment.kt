@@ -157,7 +157,7 @@ private fun sharedPlaceholder(name: String, content: String, aliases: Set<String
         if (alias !in aliases) {
             throw InvalidEnvironmentTemplate(
                 "\${$content} in \"$name\" names '$alias', which isn't a repository of the multirepo",
-                RepositoryConfigIssue.UnknownPlaceholder(content),
+                RepositoryConfigIssue.UnknownMultirepoRepository(alias),
             )
         }
         return TemplatePart.RepositoryPort(alias, SHARED_PORT_PREFIX + key)
@@ -166,7 +166,7 @@ private fun sharedPlaceholder(name: String, content: String, aliases: Set<String
         throw InvalidEnvironmentTemplate(
             "\${$content} in \"$name\" isn't allowed: ports a repository uses itself are declared in its own .shogunai.json, " +
                 "and a multirepo refers to them as \${port:<alias>.<key>}",
-            RepositoryConfigIssue.UnknownPlaceholder(content),
+            RepositoryConfigIssue.OwnPortInSharedVariable,
         )
     }
     throw InvalidEnvironmentTemplate("unknown placeholder \${$content} in \"$name\"", RepositoryConfigIssue.UnknownPlaceholder(content))

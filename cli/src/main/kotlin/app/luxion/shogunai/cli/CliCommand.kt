@@ -795,6 +795,10 @@ sealed interface MultirepoAction {
     data class WorktreesRoot(val folder: String) : MultirepoAction
     data class WorkspaceSet(val alias: String? = null, val default: Boolean = false) : MultirepoAction
     data object WorkspaceClear : MultirepoAction
+    data object WorkspaceDetect : MultirepoAction
+    data object EnvList : MultirepoAction
+    data class EnvSet(val alias: String, val name: String, val template: String) : MultirepoAction
+    data class EnvUnset(val alias: String, val name: String) : MultirepoAction
     data object Delete : MultirepoAction
     data class Trust(val folder: String? = null, val yes: Boolean = false, val revoke: Boolean = false) : MultirepoAction
 }
@@ -803,7 +807,7 @@ private fun multirepoName(name: String): String =
     name.trim().ifEmpty { throw UsageException("the multirepo name can't be blank") }
 
 private fun parseMultirepo(rest: List<String>): CliCommand.Multirepo {
-    val action = rest.firstOrNull() ?: throw UsageException("'multirepo' needs an action: init, show, trust, name, add-repo, remove-repo, defaults, agent, workspace, worktrees-root or delete")
+    val action = rest.firstOrNull() ?: throw UsageException("'multirepo' needs an action: init, show, trust, name, add-repo, remove-repo, defaults, agent, workspace, env, worktrees-root or delete")
     val remaining = ArrayDeque(rest.drop(1))
     val positional = mutableListOf<String>()
     val options = mutableMapOf<String, String?>()
@@ -870,11 +874,28 @@ private fun parseMultirepo(rest: List<String>): CliCommand.Multirepo {
                 MultirepoAction.Agent(arguments(1, "agent <command> [--name <name>] [--headroom]").single(), options["--name"], headroom)
             }
             "workspace" -> {
-                val what = positional.firstOrNull() ?: throw UsageException("usage: shogun multirepo workspace set [--alias <alias>] [--default] | clear")
+                val usage = "usage: shogun multirepo workspace set [--alias <alias>] [--default] | clear | detect"
+                val what = positional.firstOrNull() ?: throw UsageException(usage)
                 when (what) {
                     "set" -> { allow("--alias", "--default"); arguments(1, "workspace set [--alias <alias>] [--default]"); MultirepoAction.WorkspaceSet(options["--alias"], "--default" in options) }
                     "clear" -> { allow(); arguments(1, "workspace clear"); MultirepoAction.WorkspaceClear }
-                    else -> throw UsageException("usage: shogun multirepo workspace set [--alias <alias>] [--default] | clear")
+                    "detect" -> { allow(); arguments(1, "workspace detect"); MultirepoAction.WorkspaceDetect }
+                    else -> throw UsageException(usage)
+                }
+            }
+            "env" -> {
+                allow()
+                when (positional.firstOrNull()) {
+                    null -> MultirepoAction.EnvList
+                    "set" -> {
+                        val (_, alias, name, template) = arguments(4, "env set <alias> <name> <template>")
+                        MultirepoAction.EnvSet(alias, name, template)
+                    }
+                    "unset" -> {
+                        val (_, alias, name) = arguments(3, "env unset <alias> <name>")
+                        MultirepoAction.EnvUnset(alias, name)
+                    }
+                    else -> throw UsageException("usage: shogun multirepo env [set <alias> <name> <template> | unset <alias> <name>]")
                 }
             }
             "worktrees-root" -> { allow(); MultirepoAction.WorktreesRoot(arguments(1, "worktrees-root <dir>").single()) }

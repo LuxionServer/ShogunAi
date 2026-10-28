@@ -55,7 +55,7 @@ No write of ShogunAi to the declaration, from the command line or the multirepo 
 - **THEN** the settings name `env.app.RETRIES`, and the declaration is unchanged
 
 ### Requirement: Shared variables follow renamed repositories
-Renaming a repository, or returning a workspace repository with another alias to detection, SHALL move its `env` entry to the new alias and rewrite every `${port:<old>.<key>}` reference of the declaration to `${port:<new>.<key>}`, keeping each template otherwise as written.
+Renaming a repository, declaring the workspace repository under another alias, or returning it to detection from another alias, SHALL move its `env` entry to the new alias and rewrite every `${port:<old>.<key>}` reference of the declaration to `${port:<new>.<key>}`, keeping each template otherwise as written.
 
 #### Scenario: Rename a referenced repository
 - **WHEN** `env.app.API_URL` is `http://localhost:${port:api.http}` and the user renames `api` to `backend`
@@ -65,8 +65,12 @@ Renaming a repository, or returning a workspace repository with another alias to
 - **WHEN** `env.app` declares `API_URL` and the user renames `app` to `web`
 - **THEN** `env.web.API_URL` holds the same template and `env` has no `app` entry
 
+#### Scenario: Escaped text isn't a reference
+- **WHEN** `env.app.HINT` is `$${port:api.http}`, which renders as that text, and the user renames `api` to `backend`
+- **THEN** `env.app.HINT` is unchanged
+
 ### Requirement: Removing a repository keeps shared variables valid
-Removing a repository SHALL drop its own `env` entry, and SHALL be refused, naming the variables, while another repository's shared variable references it.
+Removing a repository, or turning the workspace repository off, SHALL drop its own `env` entry, and SHALL be refused, naming the variables, while another repository's shared variable references it.
 
 #### Scenario: Repository referenced by another
 - **WHEN** `env.app.API_URL` uses `${port:api.http}` and the user runs `shogun multirepo remove-repo api`
@@ -75,3 +79,7 @@ Removing a repository SHALL drop its own `env` entry, and SHALL be refused, nami
 #### Scenario: Repository with its own variables
 - **WHEN** `env.docs` declares `SITE_URL`, nothing references `docs` and the user removes `docs`
 - **THEN** `docs` leaves `repos` and `env` has no `docs` entry
+
+#### Scenario: Workspace repository referenced
+- **WHEN** `env.app.DOCS_URL` uses `${port:workspace.docs}` and the user runs `shogun multirepo workspace clear`
+- **THEN** the command names `app`'s `DOCS_URL` as referencing `workspace`, changes nothing and exits with code 1
