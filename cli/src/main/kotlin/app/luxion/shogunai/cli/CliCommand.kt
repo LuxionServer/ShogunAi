@@ -46,6 +46,7 @@ sealed interface CliCommand {
         val confirmed: Boolean = false,
         val deleteBranches: Boolean = false,
         val stopGradleDaemons: Boolean = false,
+        val stopMavenDaemons: Boolean = false,
         val stopEmulators: Boolean = false,
         val deleteSimulators: Boolean = false,
         val deleteDerivedData: Boolean = false,
@@ -75,6 +76,8 @@ sealed interface CliCommand {
     data class Project(val action: ProjectAction, val path: String? = null, val json: Boolean = false) : CliCommand
     data class App(val path: String? = null, val settings: Boolean = false) : CliCommand
     data class GradleStop(val pids: List<Long> = emptyList(), val json: Boolean = false) : CliCommand
+
+    data class MavenStop(val pids: List<Long> = emptyList(), val json: Boolean = false) : CliCommand
     data object HookWorktreeCreate : CliCommand
     data object HookWorktreeRemove : CliCommand
     data object HookSessionStart : CliCommand
@@ -169,7 +172,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "guide" -> parseGuide(arguments)
                 "gradle" -> parseGradle(arguments)
                 "stacks" -> noArguments(name, arguments, CliCommand.Stacks())
-                "maven" -> noArguments(name, arguments, CliCommand.Maven())
+                "maven" -> parseMaven(arguments)
                 "compose" -> parseCompose(arguments)
                 "pool" -> parsePool(arguments)
                 "project" -> parseProject(arguments)
@@ -219,6 +222,7 @@ private fun CliCommand.withJson(json: Boolean): CliCommand = if (!json) this els
     is CliCommand.ComposeRun -> copy(json = true)
     is CliCommand.ComposePrune -> copy(json = true)
     is CliCommand.GradleStop -> copy(json = true)
+    is CliCommand.MavenStop -> copy(json = true)
     is CliCommand.Pool -> copy(json = true)
     is CliCommand.Project -> copy(json = true)
     is CliCommand.Emulator -> copy(json = true)
@@ -373,6 +377,7 @@ private fun parseClean(rest: List<String>): CliCommand.Clean {
     var confirmed = false
     var deleteBranches = false
     var stopGradleDaemons = false
+    var stopMavenDaemons = false
     var stopEmulators = false
     var deleteSimulators = false
     var deleteDerivedData = false
@@ -383,6 +388,7 @@ private fun parseClean(rest: List<String>): CliCommand.Clean {
             "--yes", "-y" -> confirmed = true
             "--delete-branches" -> deleteBranches = true
             "--stop-gradle-daemons" -> stopGradleDaemons = true
+            "--stop-maven-daemons" -> stopMavenDaemons = true
             "--stop-emulators" -> stopEmulators = true
             "--delete-simulators" -> deleteSimulators = true
             "--delete-derived-data" -> deleteDerivedData = true
@@ -396,6 +402,7 @@ private fun parseClean(rest: List<String>): CliCommand.Clean {
         confirmed = confirmed,
         deleteBranches = deleteBranches,
         stopGradleDaemons = stopGradleDaemons,
+        stopMavenDaemons = stopMavenDaemons,
         stopEmulators = stopEmulators,
         deleteSimulators = deleteSimulators,
         deleteDerivedData = deleteDerivedData,
@@ -481,6 +488,16 @@ private fun parseGradle(rest: List<String>): CliCommand {
             ?: throw UsageException("'gradle stop' takes process ids, got '$argument'")
     }
     return CliCommand.GradleStop(pids)
+}
+
+private fun parseMaven(rest: List<String>): CliCommand {
+    val subcommand = rest.firstOrNull() ?: return CliCommand.Maven()
+    if (subcommand != "stop") throw UsageException("unknown subcommand '$subcommand' for 'maven', expected stop")
+    val pids = rest.drop(1).map { argument ->
+        argument.toLongOrNull()?.takeIf { it > 0 }
+            ?: throw UsageException("'maven stop' takes process ids, got '$argument'")
+    }
+    return CliCommand.MavenStop(pids)
 }
 
 enum class PoolAction { STATUS, TRIM }

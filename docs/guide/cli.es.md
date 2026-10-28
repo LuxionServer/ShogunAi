@@ -240,8 +240,8 @@ El destino se busca como en `remove`, salvo que se admite el worktree principal.
 ### `clean`
 
 ```text
-shogun clean [--yes|-y] [--delete-branches] [--stop-gradle-daemons] [--stop-emulators]
-             [--delete-simulators] [--delete-derived-data] [--down-compose-projects [--compose-volumes]]
+shogun clean [--yes|-y] [--delete-branches] [--stop-gradle-daemons] [--stop-maven-daemons]
+             [--stop-emulators] [--delete-simulators] [--delete-derived-data] [--down-compose-projects [--compose-volumes]]
 ```
 
 Selecciona los mismos worktrees que "Limpiar" en la app de escritorio: ni el principal, ni los bloqueados, ni uno donde se ejecute un agente, y o bien mergeados sin cambios sin commitear o bien sin carpeta. Sin `--yes` solo lista lo que haría (`would remove …`) y termina con el comando que hay que ejecutar, repitiendo las opciones que diste y nombrando solo lo que se eliminaría; con `--yes` lo hace (`removed …`). Si no hay nada que hacer imprime `Nothing to clean up.`
@@ -252,6 +252,7 @@ Un worktree donde se ejecuta un agente se lista como `kept <ruta> (claude is run
 |---|---|
 | `--delete-branches` | Borra las ramas de los worktrees eliminados si están mergeadas en la rama principal del proyecto (`kept branch …` si no). |
 | `--stop-gradle-daemons` | Para los daemons de Gradle ociosos cuya última build fue en un worktree eliminado. |
+| `--stop-maven-daemons` | Para los daemons de Maven ociosos cuya última build fue en un worktree eliminado (`would stop Maven daemon …` sin `--yes`). |
 | `--stop-emulators` | Para los emuladores de Android de los worktrees eliminados. |
 | `--delete-simulators` | Borra los simuladores de iOS de los worktrees eliminados y los simuladores de ShogunAi huérfanos. |
 | `--delete-derived-data` | Borra los DerivedData de Xcode huérfanos, incluidas las carpetas de los worktrees eliminados. |
@@ -364,9 +365,12 @@ shogun gradle stop [<pid>...]
 
 ```text
 shogun maven
+shogun maven stop [<pid>...]
 ```
 
-`maven` lista los daemons de Maven (mvnd) de la máquina: pid, `memory=` y, dentro de un repositorio Git, `worktree=<ruta>|removed|other-project|unknown`, y luego el total (`No Maven daemons running.` si no hay ninguno). También funciona fuera de un repositorio y nunca para nada.
+`maven` lista los daemons de Maven (mvnd) de la máquina: pid, `memory=`, `state=busy|idle|unknown` (con `idle-for=` si está ocioso) y, dentro de un repositorio Git, `worktree=<ruta>|removed|other-project|unknown`, y luego el total (`No Maven daemons running.` si no hay ninguno). También funciona fuera de un repositorio.
+
+`maven stop` para todos los daemons de Maven ociosos, o solo los ids de proceso indicados; los ocupados y los de estado desconocido se conservan (`kept <pid>  Maven  (<motivo>)`). Un pid que no es un daemon de Maven sale con `1`.
 
 ### `compose`
 
@@ -454,7 +458,7 @@ shogun xcode trim [--dry-run]
 
 ## Salida JSON
 
-Además de `status --json`, todos los comandos que informan de un resultado aceptan `--json`: `new`, `base`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `compose`, `compose up`, `compose build`, `compose down`, `compose prune`, `pool status`, `pool trim`, `project add`, `project list`, `project remove`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks` y `guide install|uninstall|status` (no `simulator gradle-init`, `env`, `hook`, `help` ni `--version`; en ellos es una opción desconocida y sale con `2`). La opción puede ir en cualquier posición tras el comando.
+Además de `status --json`, todos los comandos que informan de un resultado aceptan `--json`: `new`, `base`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `maven stop`, `compose`, `compose up`, `compose build`, `compose down`, `compose prune`, `pool status`, `pool trim`, `project add`, `project list`, `project remove`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks` y `guide install|uninstall|status` (no `simulator gradle-init`, `env`, `hook`, `help` ni `--version`; en ellos es una opción desconocida y sale con `2`). La opción puede ir en cualquier posición tras el comando.
 
 Las reglas son las mismas para todos:
 
@@ -478,11 +482,12 @@ Las reglas son las mismas para todos:
 | `project add`, `project remove` | `action` (`added`, `alreadyRegistered` o `removed`), y el `id`, `name` y `repository` del proyecto. |
 | `project list` | `projects`: `{ id, name, repository }`, vacío sin proyectos. |
 | `open` | `path`, `branch` (o `null` si está desacoplado), `herdr` (`opened`, `started-agent` o `focused`), `pane_id` (el panel del agente), `agent` (el nombre del agente arrancado, o el que Herdr informa en el panel enfocado) y `session_name` (el nombre confirmado de la sesión de Claude Code, o `null`). En la carpeta del multirepo con destino: `branch` y `repos`: `{ alias, path, result, pane_id, agent, session_name, error }` con `result` `opened`, `started-agent`, `focused` o `failed`. Sin destino: `path`, `opened` (`false` solo cuando se enfocó), `herdr`, `pane_id`, `agent` y `session_name`. |
-| `clean` | `dryRun`; `candidates`: `{ path, branch, reason }` con `reason` `merged` o `folder-missing`; `keptForAgents`: `{ path, agents }`; `skipped`: `{ path, reason }` (estado no disponible); `removed`; `deletedBranches`; `failures`: `{ path, message }`; y `providers`: `gradleDaemonsStopped`, `emulatorsStopped`, `simulatorsDeleted`, `derivedDataDeleted` y, con `--down-compose-projects`, `composeProjectsDown` y `composeResources` (`removed`, `kept`, `failures`, como en `compose prune`). Sin `--yes` (`dryRun: true`) `removed`, `deletedBranches` y las listas de `providers` van vacías. |
+| `clean` | `dryRun`; `candidates`: `{ path, branch, reason }` con `reason` `merged` o `folder-missing`; `keptForAgents`: `{ path, agents }`; `skipped`: `{ path, reason }` (estado no disponible); `removed`; `deletedBranches`; `failures`: `{ path, message }`; y `providers`: `gradleDaemonsStopped`, `mavenDaemonsStopped`, `emulatorsStopped`, `simulatorsDeleted`, `derivedDataDeleted` y, con `--down-compose-projects`, `composeProjectsDown` y `composeResources` (`removed`, `kept`, `failures`, como en `compose prune`). Sin `--yes` (`dryRun: true`) `removed`, `deletedBranches` y las listas de `providers` van vacías. |
 | `gradle` | `daemons`: `{ pid, kind, version, memoryBytes, state, idleSince, worktree }` con `kind` `gradle` o `kotlin`, `state` `busy`, `idle`, `unknown` o `untracked`, `idleSince` en ISO-8601 UTC (solo si está inactivo) y `worktree` una ruta, `removed`, `other-project` o `null` fuera de un repositorio; y `totalMemoryBytes`. |
 | `gradle stop` | `stopped` (pids), `kept`: `{ pid, kind, reason }` con `reason` `busy`, `state-unknown` o `build-running`, `notDaemons` (pids) y `failures`: `{ pid, message }`. El código de salida es `1` si alguna de las dos últimas no está vacía. |
 | `stacks` | `stacks`: `{ stack, evidence, providers }` con `stack` `gradle`, `android`, `xcode`, `maven` o `docker-compose`, `evidence` los archivos que lo delataron y `providers`: `{ id, declared }` por cada provider que sugiere; `secrets`: `{ path, kind, pattern }` con `kind` `local-properties`, `signing-properties`, `keystore` o `firebase-config`; y `keystoreWarnings`: `{ file, key, value }`. |
-| `maven` | `daemons`: `{ pid, memoryBytes, worktree }` con `worktree` una ruta, `removed`, `other-project` o `null` (desconocido, o fuera de un repositorio); y `totalMemoryBytes`. |
+| `maven` | `daemons`: `{ pid, memoryBytes, state, idleSince, worktree }` con `state` `busy`, `idle` o `unknown`, `idleSince` en ISO-8601 UTC (solo si está ocioso), y `worktree` una ruta, `removed`, `other-project` o `null` (desconocido, o fuera de un repositorio); y `totalMemoryBytes`. |
+| `maven stop` | `stopped` (pids), `kept`: `{ pid, reason }` con `reason` `busy` o `state-unknown`, `notDaemons` (pids) y `failures`: `{ pid, message }`. El código de salida es `1` si alguna de las dos últimas no está vacía. |
 | `compose` | `projects`: `{ name, status, worktree }` con `worktree` una ruta o `removed`; `leftovers`: `{ kind, name, project }` con `kind` `network`, `image` o `volume`. |
 | `compose up`, `compose build` | `worktree`, `project`, `succeeded` y, si falla, `message`. La salida de Docker Compose va a la salida de error. |
 | `compose prune` | `dryRun`; `removed` y `kept`: `{ kind, name, project }`; `failures`: `{ resource, message }`. Sin `--yes`, `removed` es lo que eliminaría. |

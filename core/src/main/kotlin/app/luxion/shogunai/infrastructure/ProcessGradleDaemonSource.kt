@@ -26,7 +26,7 @@ class ProcessGradleDaemonSource(
         if (!result.isSuccess) throw WorktreeError.ProcessListingFailed(result.command, result.exitCode)
         return parseDaemonProcesses(result.stdout).map { process ->
             if (process.kind != DaemonKind.GRADLE || process.gradleVersion == null) return@map process
-            val log = readLogTail(daemonLogPath(process.gradleVersion, process.pid))
+            val log = readLogTail(daemonLogPath(process.gradleVersion, process.pid), LOG_TAIL_BYTES)
                 ?: return@map process.copy(state = DaemonState.Unknown)
             val record = parseDaemonLog(log)
             process.copy(state = record.state, lastBuildDirectory = record.lastBuildDirectory)
@@ -36,26 +36,26 @@ class ProcessGradleDaemonSource(
     private fun daemonLogPath(version: String, pid: Long): Path =
         Path.of(gradleUserHome, "daemon", version, "daemon-$pid.out.log")
 
-    private fun readLogTail(path: Path): String? = try {
-        if (!Files.isRegularFile(path)) {
-            null
-        } else {
-            RandomAccessFile(path.toFile(), "r").use { file ->
-                val start = maxOf(0L, file.length() - LOG_TAIL_BYTES)
-                val bytes = ByteArray((file.length() - start).toInt())
-                file.seek(start)
-                file.readFully(bytes)
-                String(bytes, Charsets.UTF_8)
-            }
-        }
-    } catch (error: IOException) {
-        null
-    }
-
     private companion object {
         val PS_COMMAND = listOf("ps", "-A", "-ww", "-o", "pid=,rss=,command=")
         const val LOG_TAIL_BYTES = 1L shl 20
     }
+}
+
+internal fun readLogTail(path: Path, bytes: Long): String? = try {
+    if (!Files.isRegularFile(path)) {
+        null
+    } else {
+        RandomAccessFile(path.toFile(), "r").use { file ->
+            val start = maxOf(0L, file.length() - bytes)
+            val tail = ByteArray((file.length() - start).toInt())
+            file.seek(start)
+            file.readFully(tail)
+            String(tail, Charsets.UTF_8)
+        }
+    }
+} catch (error: IOException) {
+    null
 }
 
 fun defaultGradleUserHome(): String =

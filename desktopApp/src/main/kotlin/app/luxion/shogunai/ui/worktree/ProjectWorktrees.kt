@@ -14,6 +14,8 @@ import app.luxion.shogunai.domain.model.DaemonStopReport
 import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleDaemon
+import app.luxion.shogunai.domain.model.MavenDaemon
+import app.luxion.shogunai.domain.model.MavenDaemonStopReport
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.HeadlessAppProcess
 import app.luxion.shogunai.domain.model.HerdrOpening
@@ -41,6 +43,7 @@ import app.luxion.shogunai.domain.usecase.CleanupFailure
 import app.luxion.shogunai.domain.usecase.CleanupReport
 import app.luxion.shogunai.domain.usecase.CleanupSelection
 import app.luxion.shogunai.domain.usecase.idleDaemonsOfRemovedWorktrees
+import app.luxion.shogunai.domain.usecase.idleMavenDaemonsOfRemovedWorktrees
 import app.luxion.shogunai.domain.usecase.selectCleanup
 import app.luxion.shogunai.domain.usecase.waitsForUser
 import kotlinx.coroutines.CoroutineDispatcher
@@ -1019,6 +1022,7 @@ class ProjectWorktrees(
         val candidates = cleanupCandidates.filter { only == null || it.path in only }
         val listed = worktrees
         val stopDaemons = isGradleRepository && options.stopGradleDaemons
+        val stopMavenDaemons = isMavenRepository && options.stopMavenDaemons
         val deleteSimulators = isSimulatorRepository && options.deleteSimulators
         val deleteDerivedData = isXcodeRepository && options.deleteDerivedData && only == null
         val simulatorsToDelete = if (deleteSimulators) {
@@ -1036,6 +1040,7 @@ class ProjectWorktrees(
         var cleanedUp: WorktreeSuccess.CleanedUp? = null
         try {
             val daemonsBefore = if (stopDaemons) useCases.gradle.listDaemons(listed).getOrNull().orEmpty() else emptyList()
+            val mavenDaemonsBefore = if (stopMavenDaemons) useCases.maven.listDaemons(listed).getOrNull().orEmpty() else emptyList()
             val downCompose = isComposeRepository && options.downComposeProjects
             useCases.cleanUp(
                 candidates,
@@ -1047,6 +1052,7 @@ class ProjectWorktrees(
                 .onSuccess { report ->
                     dismissError()
                     val daemonReport = stopDaemonsOfRemovedWorktrees(daemonsBefore, listed, report.removed)
+                    val mavenDaemonReport = stopMavenDaemonsOfRemovedWorktrees(mavenDaemonsBefore, listed, report.removed)
                     val removedSerials = report.removed.mapNotNull { emulatorsBefore[it]?.serial }
                     val stoppedEmulators = if (removedSerials.isEmpty()) {
                         0
@@ -1065,8 +1071,8 @@ class ProjectWorktrees(
                     }
                     cleanedUp = WorktreeSuccess.CleanedUp(
                         removedCount = report.removed.size,
-                        stoppedDaemons = daemonReport?.stopped?.size ?: 0,
-                        keptDaemons = daemonReport?.kept?.size ?: 0,
+                        stoppedDaemons = (daemonReport?.stopped?.size ?: 0) + (mavenDaemonReport?.stopped?.size ?: 0),
+                        keptDaemons = (daemonReport?.kept?.size ?: 0) + (mavenDaemonReport?.kept?.size ?: 0),
                         stoppedEmulators = stoppedEmulators,
                         deletedSimulators = deletedSimulators,
                         deletedDerivedDataFolders = deletedDerivedData?.deleted?.size ?: 0,
@@ -1098,6 +1104,16 @@ class ProjectWorktrees(
         val pids = idleDaemonsOfRemovedWorktrees(daemons, listed, removed)
         if (pids.isEmpty()) return null
         return useCases.gradle.stopDaemons(pids).getOrNull()
+    }
+
+    private suspend fun stopMavenDaemonsOfRemovedWorktrees(
+        daemons: List<MavenDaemon>,
+        listed: List<Worktree>,
+        removed: List<String>,
+    ): MavenDaemonStopReport? {
+        val pids = idleMavenDaemonsOfRemovedWorktrees(daemons, listed, removed)
+        if (pids.isEmpty()) return null
+        return useCases.maven.stopDaemons(pids).getOrNull()
     }
 
     fun dismissCleanupIssues() {
@@ -1199,6 +1215,7 @@ sealed interface ProjectLoadState {
 data class CleanupOptions(
     val deleteBranches: Boolean = false,
     val stopGradleDaemons: Boolean = true,
+    val stopMavenDaemons: Boolean = true,
     val stopEmulators: Boolean = true,
     val deleteSimulators: Boolean = true,
     val deleteDerivedData: Boolean = true,

@@ -94,6 +94,11 @@ fun CleanupDialog(board: WorktreeBoard) {
                         board.cleanupStopGradleDaemons = it
                     }
                 }
+                if (holders.any { it.isMavenRepository }) {
+                    CleanupOption(strings.alsoStopIdleMavenDaemons, board.cleanupStopMavenDaemons, enabled) {
+                        board.cleanupStopMavenDaemons = it
+                    }
+                }
                 if (holders.any { it.isComposeRepository }) {
                     CleanupOption(strings.alsoTakeDownComposeProjects, board.cleanupDownComposeProjects, enabled) {
                         board.cleanupDownComposeProjects = it

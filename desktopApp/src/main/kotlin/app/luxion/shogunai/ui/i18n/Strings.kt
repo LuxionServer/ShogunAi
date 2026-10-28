@@ -335,6 +335,7 @@ interface Strings {
     val alsoStopEmulators: String
     fun emulatorsStopped(count: Int): String
     val alsoStopIdleGradleDaemons: String
+    val alsoStopIdleMavenDaemons: String
     val gradleDaemonsTitle: String
     fun gradleDaemonsSummary(count: Int, totalMemory: String): String
     val noGradleDaemons: String
@@ -549,7 +550,6 @@ interface Strings {
     fun mavenDaemonsSummary(count: Int, totalMemory: String): String
     val noMavenDaemons: String
     val mavenDaemonsUnavailable: String
-    val mavenDaemonsNotStopped: String
     val composeProjectsTitle: String
     fun composeProjectsSummary(count: Int): String
     val noComposeProjects: String
