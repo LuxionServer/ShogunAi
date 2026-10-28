@@ -807,6 +807,7 @@ object SpanishStrings : Strings {
     override val defaultRepositoriesTitle = "Repositorios por defecto"
     override val defaultRepositoriesHint = "Un cambio nuevo abarca estos repositorios salvo que elijas otros."
     override val multirepoWorktreesRootTitle = "Carpeta de worktrees"
+    override val multirepoSharedVariablesTitle = "Variables compartidas"
     override val multirepoWorktreesRootHint = "A cada repositorio que se añada a partir de ahora se le propone <carpeta>/<alias> como carpeta de worktrees."
     override val multirepoAgentTitle = "Agente del multirepo"
     override val multirepoAgentHint = "El agente que supervisa todos los repositorios, abierto en la carpeta del multirepo."

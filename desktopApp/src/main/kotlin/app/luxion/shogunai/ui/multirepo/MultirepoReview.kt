@@ -62,6 +62,16 @@ fun MultirepoReviewDetails(multirepo: Multirepo, modifier: Modifier = Modifier) 
                 }
             }
         }
+        val sharedTemplates = multirepo.sharedTemplates
+        if (sharedTemplates.isNotEmpty()) {
+            Text(strings.multirepoSharedVariablesTitle, style = MaterialTheme.typography.bodyMedium)
+            sharedTemplates.forEach { (alias, name, template) ->
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    Text(alias, style = MaterialTheme.typography.bodyMedium)
+                    Text("${printablePath(name)}=${printablePath(template)}", style = ShogunTheme.typography.data)
+                }
+            }
+        }
         if (multirepo.ignoresDeclaredAgent) Text(strings.declaredAgentIgnored, style = MaterialTheme.typography.bodySmall)
     }
 }

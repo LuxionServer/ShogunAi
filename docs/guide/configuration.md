@@ -37,7 +37,7 @@ Values in `env` can use these templates:
 | Template | Becomes |
 |---|---|
 | `${port}` | A port reserved for that variable. |
-| `${port:<key>}` | A port shared by every variable using the same key. |
+| `${port:<key>}` | A port shared by every variable using the same key. The other repositories of a multirepo can refer to it as `${port:<alias>.<key>}` in its [shared variables](multirepo.md#shared-variables). |
 | `${worktree}` | The worktree's folder name. |
 | `$$` | A literal `$`. |
 

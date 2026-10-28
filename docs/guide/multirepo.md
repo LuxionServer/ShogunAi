@@ -6,7 +6,7 @@ Nothing about a group is stored: ShogunAi computes groups from Git and the multi
 
 ## The multirepo
 
-A multirepo is declared by a `.shogunai-multirepo.json` file in a folder you choose, written by the `shogun multirepo` commands (or the desktop app), never by hand:
+A multirepo is declared by a `.shogunai-multirepo.json` file in a folder you choose, written by the `shogun multirepo` commands (or the desktop app), never by hand, except for its [shared variables](#shared-variables):
 
 ```json
 {
@@ -14,7 +14,8 @@ A multirepo is declared by a `.shogunai-multirepo.json` file in a folder you cho
   "repos": { "docs": "product-docs", "app": "product-app", "api": "product-api" },
   "worktreesRoot": "../product-worktrees",
   "defaultRepos": ["app", "api"],
-  "workspace": { "alias": "workspace", "default": false }
+  "workspace": { "alias": "workspace", "default": false },
+  "env": { "app": { "API_URL": "http://localhost:${port:api.http}" } }
 }
 ```
 
@@ -23,6 +24,7 @@ A multirepo is declared by a `.shogunai-multirepo.json` file in a folder you cho
 - `worktreesRoot` is a common folder under which each repository's worktrees folder is proposed as `<worktreesRoot>/<alias>`.
 - `defaultRepos` are the repositories `shogun new <id>` covers when run in the multirepo folder.
 - `workspace` is optional: `false`, or an object with the `alias` of the [workspace repository](#a-workspace-repository) and whether it is a `default` repository. Files without it keep working.
+- `env` is optional: the [variables the multirepo shares](#shared-variables) with each repository's worktrees.
 
 The folder is outside every repository, or the top level of a **workspace repository** that versions what the repositories share (an `AGENTS.md`, the declaration) and ignores the nested repositories. It's never a subfolder of a repository, so the declaration never ends up inside a repository that isn't yours.
 
@@ -57,7 +59,7 @@ shogun multirepo trust --yes      # approve without asking
 shogun multirepo trust --revoke   # forget it; the file stays
 ```
 
-The review lists the declared name, each repository with the path it resolves to, the worktrees root and the workspace repository, and marks every path outside the multirepo folder's parent. The approval covers exactly that: if a pull or a manual edit changes the name, a repository's path, `worktreesRoot` or the workspace setting, the multirepo stops applying until you review it again. Changing `defaultRepos` doesn't need a new approval. What ShogunAi writes itself (`shogun multirepo init`, `add-repo`, `defaults`…, the desktop app) stays approved, and those commands refuse to write a multirepo that needs review. Multirepos registered before this check existed need one review after updating.
+The review lists the declared name, each repository with the path it resolves to, the worktrees root, the workspace repository and the shared variables with their templates, and marks every path outside the multirepo folder's parent. The approval covers exactly that: if a pull or a manual edit changes the name, a repository's path, `worktreesRoot`, the workspace setting or a shared variable, the multirepo stops applying until you review it again. Changing `defaultRepos` doesn't need a new approval. What ShogunAi writes itself (`shogun multirepo init`, `add-repo`, `defaults`…, the desktop app) stays approved, and those commands refuse to write a multirepo that needs review. Multirepos registered before this check existed need one review after updating.
 
 ## Groups
 
@@ -77,6 +79,27 @@ shogun clean --yes                  # remove the groups whose worktrees are all 
 - **Status.** In the multirepo folder, `shogun status` lists each group with, per repository, its path, changes, ahead/behind its own base, merged state and agents, then the ungrouped worktrees.
 - **Opening.** `shogun open <id> --herdr` opens every worktree of the group as a single worktree opens, under its repository's space with its environment and its project's agent: a worktree whose agent is live is focused, one whose workspace is open without an agent gets its agent started in a new pane, and each is reported with its agent's pane. `<id>` is a branch, or a task id when only one of `feature/<id>` and `fix/<id>` is a group. `shogun open --herdr` treats the multirepo agent's workspace the same way.
 - **Cleaning up.** A group is a candidate only when every worktree is clean and merged into its base and no agent runs in any of them. `--yes` removes its worktrees with each repository's usual cleanup and the same options as `shogun clean` (`--delete-branches`, `--stop-emulators`, `--down-compose-projects`…). After the groups, `shogun clean` also lists the loose worktrees of each repository (including the workspace repository) that belong to no group, when they are clean, merged and have no agent, and removes them under the same confirmation.
+
+## Shared variables
+
+The repositories of a group often need each other's ports: the app worktree of `feature/TASK-12` should talk to the backend running in its own `api` worktree, not to whatever listens on a fixed port. The multirepo's `env` gives that link. It maps an alias to the variables the multirepo adds to that repository's worktrees, and a value can use `${port:<alias>.<key>}`, the port that repository reserves for its key `<key>`:
+
+```json
+// product-api/.shogunai.json
+{ "env": { "SERVER_PORT": "${port:http}" } }
+
+// .shogunai-multirepo.json
+{ "env": { "app": { "API_URL": "http://localhost:${port:api.http}" } } }
+```
+
+- **Which port.** A worktree of `app` gets the port of `api`'s worktree on the same branch, its partner in the group. When `api` has no worktree on that branch (a loose `app` worktree, a group without `api`, or `app`'s main checkout), it gets the port of `api`'s main checkout. The port is `api`'s own reservation: resolving `app`'s environment reserves it in `api`'s worktree exactly as `api`'s own `shogun env` would, so both see the same number.
+- **Templates.** Besides `${port:<alias>.<key>}`, values can use `${worktree}` (the folder of the worktree receiving the variable) and `$$`. A repository's own ports, `${port}` and `${port:<key>}`, are declared in its `.shogunai.json`, not here. Names and values follow the rules of a repository's `env`, [reserved names](configuration.md#reserved-variable-names) included.
+- **Delivery.** Shared variables reach the worktree wherever its own variables do: `shogun env`, the `SessionStart` hook, opening in the terminal or Herdr, and the `envFile`. A variable the repository's own `.shogunai.json` declares wins over a shared one with the same name, and a shared one wins over a provider's.
+- **Approval.** They apply while the multirepo is approved, whatever the receiving repository's approval. The referenced repository must be approved, since its ports are only reserved once it is.
+- **When it can't be resolved.** If `api` isn't approved, doesn't declare the key, or its worktree can't be read, the variable is left out: `shogun env` says why on standard error and the session's context names it; everything else is delivered.
+- **Refreshing.** A session keeps the value it started with. When `api`'s partner worktree is created after `app`'s session started, the next `shogun env`, new session or opening picks it up.
+
+Shared variables are edited by hand in the file and reviewed with `shogun multirepo trust`; `shogun multirepo show` lists them. ShogunAi's own writes keep them, but an earlier version of ShogunAi that rewrites the declaration drops them.
 
 ## Context for the agents
 

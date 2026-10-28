@@ -32,7 +32,7 @@ When a command other than a hook ignores a declaration in the current folder or 
 - **THEN** its output doesn't mention the declaration nor `shogun multirepo trust`
 
 ### Requirement: What the approval of a multirepo covers
-The approval SHALL cover each alias with the repository path it resolves to, the resolved worktrees root, the workspace repository setting and the declared `name`, when there is one. A change in any of them made outside ShogunAi SHALL make the multirepo unapproved; a change only to `defaultRepos`, or to the ignored `agent`, SHALL NOT. Approvals SHALL be stored per machine under the user's ShogunAi folder, readable and writable only by the user.
+The approval SHALL cover each alias with the repository path it resolves to, the resolved worktrees root, the workspace repository setting, the declared `name`, when there is one, and the shared variables of `env`, when there are any. A change in any of them made outside ShogunAi SHALL make the multirepo unapproved; a change only to `defaultRepos`, or to the ignored `agent`, SHALL NOT. Approvals SHALL be stored per machine under the user's ShogunAi folder, readable and writable only by the user.
 
 #### Scenario: Repository redirected by a pull
 - **WHEN** after the approval a pull changes `repos.api` from `product-api` to `/home/user/other-repo`
@@ -54,6 +54,10 @@ The approval SHALL cover each alias with the repository path it resolves to, the
 - **WHEN** another folder holds a byte-identical declaration
 - **THEN** it isn't approved
 
+#### Scenario: Shared variables changed by a pull
+- **WHEN** after the approval a pull changes `env.app.API_URL`, or adds a shared variable
+- **THEN** the multirepo stops applying until the user approves it again, while multirepos approved without `env` stay approved
+
 ### Requirement: ShogunAi's own writes keep a multirepo approved
 Creating a multirepo and changing its declaration through ShogunAi (`shogun multirepo …` subcommands, the desktop app's "Add multirepo" and multirepo settings) SHALL leave the written content approved. A subcommand or setting that writes SHALL refuse an unapproved multirepo, naming `shogun multirepo trust`, and change nothing.
 
@@ -66,7 +70,7 @@ Creating a multirepo and changing its declaration through ShogunAi (`shogun mult
 - **THEN** the command says the multirepo needs review with `shogun multirepo trust`, changes nothing and exits with code 1
 
 ### Requirement: Review and approve a multirepo from the command line
-`shogun multirepo trust [folder]` SHALL print the declaration's path, its declared `name`, each alias with its resolved repository path, the resolved worktrees root and the workspace repository, marking every path outside the multirepo folder's parent, and say whether it's approved. On a terminal it SHALL ask and, on an explicit yes, register and approve it; `--yes` SHALL do so without asking. The folder SHALL default to the nearest declaration in the current folder or a parent.
+`shogun multirepo trust [folder]` SHALL print the declaration's path, its declared `name`, each alias with its resolved repository path, the resolved worktrees root, the workspace repository and each shared variable with its alias and template, marking every path outside the multirepo folder's parent, and say whether it's approved. On a terminal it SHALL ask and, on an explicit yes, register and approve it; `--yes` SHALL do so without asking. The folder SHALL default to the nearest declaration in the current folder or a parent.
 
 #### Scenario: Approve a cloned workspace repository
 - **WHEN** the user runs `shogun multirepo trust` in a cloned `~/projects/product` whose declaration lists `app` as `product-app` and answers yes
@@ -91,6 +95,10 @@ Creating a multirepo and changing its declaration through ShogunAi (`shogun mult
 #### Scenario: No declaration
 - **WHEN** neither the folder nor a parent has a declaration
 - **THEN** the command says no multirepo was found and exits with code 1
+
+#### Scenario: Shared variables in the review
+- **WHEN** the declaration's `env` gives `app` the variable `API_URL` as `http://localhost:${port:api.http}`
+- **THEN** the review lists `API_URL` under `app` with that template
 
 ### Requirement: Revoke a multirepo from the command line
 `shogun multirepo trust --revoke [folder]` SHALL forget the multirepo and its approval and local settings, leaving the declaration file, projects, worktrees and branches as they are.

@@ -16,6 +16,7 @@ sealed interface TemplatePart {
     data class Literal(val text: String) : TemplatePart
     data object WorktreeName : TemplatePart
     data class Port(val key: String) : TemplatePart
+    data class RepositoryPort(val alias: String, val key: String) : TemplatePart
 }
 
 data class WorktreeEnvironment(
@@ -24,14 +25,26 @@ data class WorktreeEnvironment(
     val resources: Map<String, String> = emptyMap(),
     val awaitingApproval: List<String> = emptyList(),
     val declarationApproved: Boolean = true,
+    val unresolved: List<UnresolvedVariable> = emptyList(),
 ) {
     val isEmpty: Boolean get() = variables.isEmpty()
+}
+
+data class UnresolvedVariable(val name: String, val reason: UnresolvedReason)
+
+sealed interface UnresolvedReason {
+    data class RepositoryNotApproved(val alias: String, val repositoryPath: String) : UnresolvedReason
+    data class PortNotDeclared(val alias: String, val key: String) : UnresolvedReason
+    data class PortNotReserved(val alias: String, val key: String) : UnresolvedReason
+    data class WorktreeUnreadable(val alias: String, val detail: String) : UnresolvedReason
+    data class InvalidDeclaration(val declarationPath: String, val detail: String) : UnresolvedReason
 }
 
 class InvalidEnvironmentTemplate(message: String, val issue: RepositoryConfigIssue) : Exception(message)
 
 private val VARIABLE_NAME = Regex("[A-Za-z_][A-Za-z0-9_]*")
 private val PORT_KEY = Regex("[A-Za-z0-9_-]+")
+private val REPOSITORY_PORT = Regex("port:([a-z0-9-]+)\\.([A-Za-z0-9_-]+)")
 private const val SHARED_PORT_PREFIX = "port:"
 
 fun isValidVariableName(name: String): Boolean = VARIABLE_NAME.matches(name)
@@ -80,7 +93,13 @@ fun hasHiddenCharacters(text: String): Boolean =
 
 fun portKeyLabel(key: String): String = key.removePrefix(SHARED_PORT_PREFIX)
 
-fun parseEnvironmentVariable(name: String, value: String): EnvironmentVariable {
+fun parseEnvironmentVariable(name: String, value: String): EnvironmentVariable =
+    parseTemplate(name, value) { content -> placeholder(name, content) }
+
+fun parseSharedEnvironmentVariable(name: String, value: String, aliases: Set<String>): EnvironmentVariable =
+    parseTemplate(name, value) { content -> sharedPlaceholder(name, content, aliases) }
+
+private fun parseTemplate(name: String, value: String, placeholder: (String) -> TemplatePart): EnvironmentVariable {
     if (!isValidVariableName(name)) throw InvalidEnvironmentTemplate("\"$name\" isn't a valid variable name", RepositoryConfigIssue.InvalidVariableName)
     if (isReservedVariableName(name)) {
         throw InvalidEnvironmentTemplate(
@@ -107,7 +126,7 @@ fun parseEnvironmentVariable(name: String, value: String): EnvironmentVariable {
                 val end = value.indexOf('}', index)
                 if (end < 0) throw InvalidEnvironmentTemplate("unclosed placeholder in \"$name\"", RepositoryConfigIssue.UnclosedPlaceholder)
                 if (literal.isNotEmpty()) parts += TemplatePart.Literal(literal.toString()).also { literal.clear() }
-                parts += placeholder(name, value.substring(index + 2, end))
+                parts += placeholder(value.substring(index + 2, end))
                 index = end + 1
             }
             else -> {
@@ -131,11 +150,41 @@ private fun placeholder(name: String, content: String): TemplatePart = when {
     )
 }
 
-fun EnvironmentVariable.render(worktreeName: String, ports: Map<String, Int>): String =
+private fun sharedPlaceholder(name: String, content: String, aliases: Set<String>): TemplatePart {
+    if (content == "worktree") return TemplatePart.WorktreeName
+    REPOSITORY_PORT.matchEntire(content)?.let { match ->
+        val (alias, key) = match.destructured
+        if (alias !in aliases) {
+            throw InvalidEnvironmentTemplate(
+                "\${$content} in \"$name\" names '$alias', which isn't a repository of the multirepo",
+                RepositoryConfigIssue.UnknownPlaceholder(content),
+            )
+        }
+        return TemplatePart.RepositoryPort(alias, SHARED_PORT_PREFIX + key)
+    }
+    if (content == "port" || content.startsWith(SHARED_PORT_PREFIX)) {
+        throw InvalidEnvironmentTemplate(
+            "\${$content} in \"$name\" isn't allowed: ports a repository uses itself are declared in its own .shogunai.json, " +
+                "and a multirepo refers to them as \${port:<alias>.<key>}",
+            RepositoryConfigIssue.UnknownPlaceholder(content),
+        )
+    }
+    throw InvalidEnvironmentTemplate("unknown placeholder \${$content} in \"$name\"", RepositoryConfigIssue.UnknownPlaceholder(content))
+}
+
+val EnvironmentVariable.repositoryPorts: List<TemplatePart.RepositoryPort>
+    get() = template.filterIsInstance<TemplatePart.RepositoryPort>()
+
+fun EnvironmentVariable.render(
+    worktreeName: String,
+    ports: Map<String, Int>,
+    repositoryPorts: Map<TemplatePart.RepositoryPort, Int> = emptyMap(),
+): String =
     template.joinToString("") { part ->
         when (part) {
             is TemplatePart.Literal -> part.text
             TemplatePart.WorktreeName -> worktreeName
             is TemplatePart.Port -> ports.getValue(part.key).toString()
+            is TemplatePart.RepositoryPort -> repositoryPorts.getValue(part).toString()
         }
     }

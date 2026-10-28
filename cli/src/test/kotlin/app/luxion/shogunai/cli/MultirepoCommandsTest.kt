@@ -17,7 +17,14 @@ import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
+import app.luxion.shogunai.domain.FakeRepositoryTrust
+import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
+import app.luxion.shogunai.domain.model.EnvironmentDeclaration
+import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.domain.model.SharedVariablesDeclaration
+import app.luxion.shogunai.domain.model.approvalSubject
+import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import app.luxion.shogunai.domain.model.HerdrWorkspace
 import app.luxion.shogunai.domain.model.HerdrPane
 import app.luxion.shogunai.domain.model.CapacityProfile
@@ -70,6 +77,7 @@ class MultirepoCommandsTest {
     private val out = StringBuilder()
     private val err = StringBuilder()
     private val envFile = Files.createTempFile("claude-env", ".sh")
+    private val environmentStore = FakeEnvironmentStateStore()
 
     @AfterTest
     fun tearDown() {
@@ -83,14 +91,16 @@ class MultirepoCommandsTest {
         herdrClient: FakeHerdrClient = herdr,
         multirepos: FakeMultirepoSource = source,
         sessionStore: FakeAgentSessionStore = FakeAgentSessionStore(),
+        provisioning: FakeRepositoryProvisioningSource = FakeRepositoryProvisioningSource(),
+        trust: RepositoryTrust = RepositoryTrust.NONE,
     ) = ShogunCli(
         executor = git,
         fileManager = fileManager,
         projectRepository = projects,
-        provisioningSource = FakeRepositoryProvisioningSource(),
+        provisioningSource = provisioning,
         daemonSource = FakeGradleDaemonSource(),
         gradleUserHome = "/home/dev/.gradle",
-        environmentStateStore = FakeEnvironmentStateStore(),
+        environmentStateStore = environmentStore,
         portProbe = FakePortProbe(),
         androidSdk = FakeAndroidSdk(),
         appleSimulators = FakeAppleSimulators(),
@@ -111,6 +121,7 @@ class MultirepoCommandsTest {
         readAnswer = { answer },
         sessionStore = sessionStore,
         multirepoSource = multirepos,
+        trust = trust,
     )
 
     private fun json(): JsonObject = Json.parseToJsonElement(out.toString().trim()).jsonObject
@@ -889,5 +900,111 @@ class MultirepoCommandsTest {
         }
         assertEquals(declaration, multirepos.declarations[folder])
         assertTrue(multirepos.agents.isEmpty())
+    }
+
+    private val apiProvisioning = RepositoryProvisioning(
+        environment = EnvironmentDeclaration(listOf(parseEnvironmentVariable("SERVER_PORT", "\${port:http}"))),
+    )
+    private val appProvisioning = RepositoryProvisioning(
+        environment = EnvironmentDeclaration(listOf(parseEnvironmentVariable("APP_NAME", "demo"))),
+    )
+    private val sharedProvisioning = FakeRepositoryProvisioningSource(mapOf(appBase to appProvisioning, apiBase to apiProvisioning))
+
+    private fun sharing(apiUrl: String = "http://localhost:\${port:api.http}") {
+        val env = SharedVariablesDeclaration(mapOf("app" to mapOf("API_URL" to apiUrl)))
+        source.declarations[folder] = declaration.copy(env = env)
+    }
+
+    private fun env(directory: String, trust: RepositoryTrust = FakeRepositoryTrust(approvesEverything = true)): Map<String, String> {
+        out.clear()
+        assertEquals(0, cli(directory, provisioning = sharedProvisioning, trust = trust).run(listOf("env", "--format", "json")))
+        return Json.parseToJsonElement(out.toString().trim()).jsonObject.mapValues { it.value.jsonPrimitive.content }
+    }
+
+    @Test
+    fun `env gives a group worktree the port its partner reserves`() {
+        sharing()
+        groupTask1()
+
+        val app = env("$worktreesRoot/app/TASK-1")
+        val api = env("$worktreesRoot/api/TASK-1")
+
+        assertEquals("http://localhost:${api.getValue("SERVER_PORT")}", app["API_URL"])
+        assertEquals("demo", app["APP_NAME"])
+        assertEquals("", err.toString())
+    }
+
+    @Test
+    fun `env names a shared variable that can't be resolved and still succeeds`() {
+        sharing("http://localhost:\${port:api.admin}")
+        groupTask1()
+
+        val app = env("$worktreesRoot/app/TASK-1")
+
+        assertEquals(mapOf("APP_NAME" to "demo"), app)
+        assertTrue(err.contains("API_URL") && err.contains("'api' doesn't declare the port 'admin'"), err.toString())
+    }
+
+    @Test
+    fun `env points to shogun trust when the referenced repository isn't approved`() {
+        sharing()
+        groupTask1()
+
+        env("$worktreesRoot/app/TASK-1", FakeRepositoryTrust(mapOf(appBase to appProvisioning.approvalSubject)))
+
+        assertTrue(err.contains("API_URL") && err.contains("shogun trust") && err.contains(apiBase), err.toString())
+    }
+
+    @Test
+    fun `env reports invalid shared variables without failing`() {
+        sharing("\${port}")
+        groupTask1()
+
+        val app = env("$worktreesRoot/app/TASK-1")
+
+        assertEquals(mapOf("APP_NAME" to "demo"), app)
+        assertTrue(err.contains("API_URL") && err.contains(".shogunai-multirepo.json"), err.toString())
+    }
+
+    @Test
+    fun `the session start hook delivers shared variables and names unresolved ones`() {
+        sharing()
+        groupTask1()
+
+        val exitCode = cli(
+            input = """{"cwd": "$worktreesRoot/app/TASK-1"}""",
+            provisioning = sharedProvisioning,
+            trust = FakeRepositoryTrust(approvesEverything = true),
+        ).run(listOf("hook", "session-start"))
+
+        assertEquals(0, exitCode)
+        assertTrue(envFile.readText().contains("export API_URL='http://localhost:20000'"), envFile.readText())
+        assertTrue(out.contains("API_URL"))
+
+        sharing("http://localhost:\${port:api.admin}")
+        out.clear()
+        cli(
+            input = """{"cwd": "$worktreesRoot/app/TASK-1"}""",
+            provisioning = sharedProvisioning,
+            trust = FakeRepositoryTrust(approvesEverything = true),
+        ).run(listOf("hook", "session-start"))
+
+        assertTrue(out.contains("Shared variable API_URL of the multirepo isn't available"), out.toString())
+    }
+
+    @Test
+    fun `show and trust list the shared variables`() {
+        sharing()
+
+        cli().run(listOf("multirepo", "show"))
+        assertTrue(out.contains("shared variables") && out.contains("API_URL=http://localhost:\${port:api.http}"), out.toString())
+
+        out.clear()
+        cli().run(listOf("multirepo", "show", "--json"))
+        assertEquals("http://localhost:\${port:api.http}", json()["env"]!!.jsonObject["app"]!!.jsonObject["API_URL"]!!.jsonPrimitive.content)
+
+        out.clear()
+        cli(answer = "n").run(listOf("multirepo", "trust"))
+        assertTrue(out.contains("API_URL=http://localhost:\${port:api.http}"), out.toString())
     }
 }
