@@ -39,6 +39,7 @@ fun multirepoJson(multirepo: Multirepo, configs: Map<String, ProjectConfig?>, ba
         }
     })
     put("defaultRepos", buildJsonArray { multirepo.defaultRepos.forEach { add(JsonPrimitive(it)) } })
+    put("env", sharedVariablesJson(multirepo))
     put("agent", buildJsonObject {
         put("name", multirepo.agent.displayName)
         put("command", multirepo.agent.agentCommand)
@@ -65,7 +66,14 @@ fun multirepoTrustJson(multirepo: Multirepo, approved: Boolean, changed: Boolean
     put("worktreesRoot", multirepo.worktreesRoot)
     put("worktreesRootOutsideParent", multirepo.isOutsideParent(multirepo.worktreesRoot))
     put("workspace", multirepo.workspaceRepository?.alias)
+    put("env", sharedVariablesJson(multirepo))
     put("ignoredDeclaredAgent", multirepo.ignoresDeclaredAgent)
+}
+
+private fun sharedVariablesJson(multirepo: Multirepo): JsonObject = buildJsonObject {
+    multirepo.sharedTemplates.groupBy { it.first }.forEach { (alias, variables) ->
+        put(alias, buildJsonObject { variables.forEach { (_, name, template) -> put(name, template) } })
+    }
 }
 
 fun registeredMultirepoJson(registered: RegisteredMultirepo): JsonObject = buildJsonObject {

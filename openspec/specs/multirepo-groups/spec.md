@@ -6,7 +6,7 @@ Lets one change span several repositories: a multirepo declares which repositori
 ## Requirements
 
 ### Requirement: Declare a multirepo
-A multirepo SHALL be declared by a `.shogunai-multirepo.json` file in a folder outside every Git repository or at its top level: `repos` mapping each alias to a repository's path (relative or absolute), `worktreesRoot`, an optional `name` and an optional `defaultRepos`. The repositories SHALL NOT need to share a parent folder. Aliases SHALL use only lowercase letters, digits and hyphens, and a `name` SHALL have at most 80 characters and no control characters. An `agent` is ignored.
+A multirepo SHALL be declared by a `.shogunai-multirepo.json` file in a folder outside every Git repository or at its top level: `repos` mapping each alias to a repository's path (relative or absolute), `worktreesRoot`, an optional `name`, an optional `defaultRepos` and an optional `env` with the variables it shares with its repositories' worktrees (see `multirepo-environment`). The repositories SHALL NOT need to share a parent folder. Aliases SHALL use only lowercase letters, digits and hyphens, and a `name` SHALL have at most 80 characters and no control characters. An `agent` is ignored.
 
 #### Scenario: Repositories side by side
 - **WHEN** `~/projects/product/.shogunai-multirepo.json` declares `docs`, `app` and `api` as `product-docs`, `product-app` and `product-api`, `worktreesRoot` `../product-worktrees` and `defaultRepos` `app` and `api`
@@ -27,6 +27,10 @@ A multirepo SHALL be declared by a `.shogunai-multirepo.json` file in a folder o
 #### Scenario: Agent in the declaration
 - **WHEN** the declaration has `"agent": {"agentCommand": "touch /tmp/marker; claude"}`
 - **THEN** that command is never run, and the multirepo agent is the one set on this machine or `claude`
+
+#### Scenario: Shared variables
+- **WHEN** the declaration has `"env": { "app": { "API_URL": "http://localhost:${port:api.http}" } }`
+- **THEN** it's a valid multirepo whose `app` worktrees receive `API_URL`
 
 ### Requirement: Reject an invalid multirepo declaration
 ShogunAi SHALL reject a `.shogunai-multirepo.json` whose JSON is invalid, whose alias is invalid, whose repository path doesn't exist or isn't a Git repository, whose `worktreesRoot` is missing, whose `defaultRepos` names an unknown alias, whose repository path or `worktreesRoot` contains control or Unicode formatting characters, or whose folder is inside a Git repository without being its top level, naming the problem and the file and exiting with code 1.
@@ -162,11 +166,11 @@ Adding a repository to a multirepo SHALL propose `<worktreesRoot>/<alias>` as it
 - **THEN** `.shogunai-multirepo.json` is removed, the multirepo is no longer known, the projects and the worktrees stay as they were with their Herdr workspaces, and each repository behaves as before it joined
 
 ### Requirement: Show a multirepo from the command line
-`shogun multirepo show [--json]` SHALL print the multirepo's name and folder, whether it's approved, its proposed worktrees folder, each repository with its alias, path, project, worktrees folder and base branch, the default repositories and the multirepo agent, and say when the declaration holds an `agent` that is ignored. It SHALL also show an unapproved multirepo found in the current folder or a parent.
+`shogun multirepo show [--json]` SHALL print the multirepo's name and folder, whether it's approved, its proposed worktrees folder, each repository with its alias, path, project, worktrees folder and base branch, the default repositories, the shared variables of each repository with their templates and the multirepo agent, and say when the declaration holds an `agent` that is ignored. It SHALL also show an unapproved multirepo found in the current folder or a parent.
 
 #### Scenario: Show
 - **WHEN** the user runs `shogun multirepo show --json` in the multirepo folder
-- **THEN** the output is one JSON object with `name`, `path`, `approved`, `worktreesRoot`, `repos` (each with `alias`, `path`, `project`, `worktreesFolder` and `base`), `defaultRepos` and `agent`
+- **THEN** the output is one JSON object with `name`, `path`, `approved`, `worktreesRoot`, `repos` (each with `alias`, `path`, `project`, `worktreesFolder` and `base`), `defaultRepos`, `env` (each alias with its variables and templates, empty when there are none) and `agent`
 
 #### Scenario: Ignored declared agent
 - **WHEN** the declaration still holds an `agent`
@@ -179,6 +183,10 @@ Adding a repository to a multirepo SHALL propose `<worktreesRoot>/<alias>` as it
 #### Scenario: Not a multirepo
 - **WHEN** the user runs any `shogun multirepo` subcommand other than `init` and `trust` where no multirepo applies and no declaration is found in the current folder or a parent
 - **THEN** the command says no multirepo was found and exits with code 1
+
+#### Scenario: Shared variables
+- **WHEN** the declaration's `env` gives `app` the variable `API_URL`
+- **THEN** the text output lists `API_URL` with its template under `app`
 
 ### Requirement: A multirepo folder that is a repository
 When the multirepo folder is the top level of a Git repository, `shogun new`, `status`, `open` and `clean` run in its main checkout SHALL act on the multirepo, that repository MAY be declared as one more repository with the path `.`, and `shogun hook session-start` there SHALL print the multirepo's context followed by the usual rules of a main checkout. In that repository's linked worktrees, commands SHALL behave as in any repository.

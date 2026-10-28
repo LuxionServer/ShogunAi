@@ -64,7 +64,68 @@ data class MultirepoDeclaration(
     val agent: AgentLaunchConfig? = null,
     val workspace: WorkspaceSetting? = null,
     val name: String? = null,
+    val env: SharedVariablesDeclaration? = null,
 )
+
+@Serializable(with = SharedVariablesSerializer::class)
+data class SharedVariablesDeclaration(
+    val byAlias: Map<String, Map<String, String>> = emptyMap(),
+    val problems: List<String> = emptyList(),
+) {
+    val templates: List<Triple<String, String, String>>
+        get() = byAlias.entries.sortedBy { it.key }.flatMap { (alias, variables) ->
+            variables.entries.sortedBy { it.key }.map { (name, template) -> Triple(alias, name, template) }
+        }
+}
+
+object SharedVariablesSerializer : KSerializer<SharedVariablesDeclaration> {
+    override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+    override fun deserialize(decoder: Decoder): SharedVariablesDeclaration {
+        val element = (decoder as JsonDecoder).decodeJsonElement()
+        if (element !is JsonObject) return SharedVariablesDeclaration(problems = listOf("env must be an object"))
+        val problems = mutableListOf<String>()
+        val byAlias = element.mapValues { (alias, variables) ->
+            if (variables !is JsonObject) {
+                problems += "env.$alias must be an object"
+                emptyMap()
+            } else {
+                variables.mapNotNull { (name, value) ->
+                    val template = (value as? JsonPrimitive)?.takeIf { it.isString }?.content
+                    if (template == null) problems += "env.$alias.$name must be a string"
+                    template?.let { name to it }
+                }.toMap()
+            }
+        }
+        return SharedVariablesDeclaration(byAlias, problems)
+    }
+
+    override fun serialize(encoder: Encoder, value: SharedVariablesDeclaration) {
+        val element = buildJsonObject {
+            value.byAlias.forEach { (alias, variables) ->
+                put(alias, buildJsonObject { variables.forEach { (name, template) -> put(name, template) } })
+            }
+        }
+        (encoder as JsonEncoder).encodeJsonElement(element)
+    }
+}
+
+class InvalidSharedEnvironment(message: String) : Exception(message)
+
+fun parseSharedEnvironment(env: SharedVariablesDeclaration?, aliases: Set<String>): Map<String, List<EnvironmentVariable>> {
+    val declared = env ?: return emptyMap()
+    declared.problems.firstOrNull()?.let { throw InvalidSharedEnvironment(it) }
+    return declared.byAlias.mapValues { (alias, variables) ->
+        if (alias !in aliases) throw InvalidSharedEnvironment("env: '$alias' isn't a declared repository")
+        variables.map { (name, template) ->
+            try {
+                parseSharedEnvironmentVariable(name, template, aliases)
+            } catch (error: InvalidEnvironmentTemplate) {
+                throw InvalidSharedEnvironment("env.$alias: ${error.message}")
+            }
+        }
+    }
+}
 
 data class MultirepoRepository(val alias: String, val path: String)
 
@@ -126,6 +187,12 @@ data class Multirepo(
     val ignoresDeclaredAgent: Boolean
         get() = declaration.agent != null
 
+    fun sharedVariables(): Map<String, List<EnvironmentVariable>> =
+        parseSharedEnvironment(declaration.env, repositories.map { it.alias }.toSet())
+
+    val sharedTemplates: List<Triple<String, String, String>>
+        get() = declaration.env?.templates.orEmpty()
+
     val approvalSubject: String
         get() = buildList {
             add("folder\t${normalizeMultirepoFolder(folder)}")
@@ -140,6 +207,7 @@ data class Multirepo(
                 },
             )
             declaredName?.let { add("name\t$it") }
+            sharedTemplates.forEach { (alias, name, template) -> add("env\t$alias\t$name\t$template") }
         }.joinToString("\n")
 
     val parentFolder: String

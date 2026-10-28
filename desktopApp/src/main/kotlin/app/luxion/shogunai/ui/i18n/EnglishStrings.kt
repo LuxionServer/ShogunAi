@@ -807,6 +807,7 @@ object EnglishStrings : Strings {
     override val defaultRepositoriesTitle = "Default repositories"
     override val defaultRepositoriesHint = "A new change covers these repositories unless you pick others."
     override val multirepoWorktreesRootTitle = "Worktrees folder"
+    override val multirepoSharedVariablesTitle = "Shared variables"
     override val multirepoWorktreesRootHint = "Each repository added from now on is offered <folder>/<alias> as its worktrees folder."
     override val multirepoAgentTitle = "Multirepo agent"
     override val multirepoAgentHint = "The agent that oversees every repository, opened in the multirepo folder."

@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.MultirepoSource
 import app.luxion.shogunai.domain.model.Multirepo
+import app.luxion.shogunai.domain.model.InvalidSharedEnvironment
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.joinPath
 import app.luxion.shogunai.domain.model.WorktreeError
@@ -106,6 +107,11 @@ class ResolveMultirepoUseCase(
         }
         declaration.defaultRepos.firstOrNull { it !in declaration.repos }?.let {
             invalid("'$it' isn't a declared repository")
+        }
+        try {
+            multirepo.sharedVariables()
+        } catch (error: InvalidSharedEnvironment) {
+            invalid(error.message.orEmpty())
         }
         declaration.workspace?.takeIf { it.enabled }?.let { workspace ->
             if (!isValidMultirepoAlias(workspace.alias)) {

@@ -20,6 +20,7 @@ import app.luxion.shogunai.domain.usecase.ResolveDerivedDataQuotaUseCase
 import app.luxion.shogunai.domain.usecase.withWorkspaceAt
 import app.luxion.shogunai.domain.usecase.CreateGroupUseCase
 import app.luxion.shogunai.domain.usecase.DetectGroupsUseCase
+import app.luxion.shogunai.domain.usecase.MultirepoSharedEnvironment
 import app.luxion.shogunai.domain.usecase.MultirepoMember
 import app.luxion.shogunai.domain.usecase.OpenMultirepoAgentInHerdrUseCase
 import app.luxion.shogunai.domain.usecase.RegisteredMultirepo
@@ -390,6 +391,7 @@ class AppContainer {
         environmentCache,
         repositoryTrust,
         composeProjectRegistry,
+        { repository, worktree -> MultirepoSharedEnvironment(resolveMultirepo, shellCommandExecutor).forWorktree(repository, worktree) },
     )
 
     private fun simulatorSettingsFor(repositoryPath: String): SimulatorSettings =
