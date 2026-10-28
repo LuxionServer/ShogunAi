@@ -519,6 +519,55 @@ class MachineResourcesTest {
     )
 
     @Test
+    fun `while the window is hidden only the gradle daemons are trimmed and showing it refreshes the summaries`() = machineTest {
+        val calls = Calls().apply { daemons = listOf(gradleDaemon(10, idle)) }
+        val machine = machine(
+            useCases(calls),
+            listOf(machineProject("main-repo", listOf(mainWorktree), MachineResource.GRADLE_DAEMONS, MachineResource.ANDROID_EMULATORS)),
+        )
+        machine.setWindowActive(false)
+
+        val ticks = scope.launch { machine.runSummaryTicks() }
+        runCurrent()
+        advanceTimeBy(30.seconds)
+        runCurrent()
+        assertEquals(2, calls.trims)
+        assertEquals(0, calls.daemonListings)
+        assertTrue(machine.summaries.isEmpty())
+
+        machine.setWindowActive(true)
+        runCurrent()
+        ticks.cancel()
+
+        assertEquals(3, calls.trims)
+        assertEquals(1, calls.daemonListings)
+        assertEquals(setOf(MachineResource.GRADLE_DAEMONS, MachineResource.ANDROID_EMULATORS), machine.summaries.keys)
+    }
+
+    @Test
+    fun `a shown view stops refreshing while the window is hidden and refreshes when it is shown again`() = machineTest {
+        val calls = Calls().apply { daemons = listOf(gradleDaemon(10, idle)) }
+        val machine = machine(
+            useCases(calls),
+            listOf(machineProject("main-repo", listOf(mainWorktree), MachineResource.GRADLE_DAEMONS)),
+        )
+        machine.show(MachineResource.GRADLE_DAEMONS)
+        runCurrent()
+        assertEquals(1, calls.daemonListings)
+
+        machine.setWindowActive(false)
+        advanceTimeBy(30.seconds)
+        runCurrent()
+        assertEquals(1, calls.daemonListings)
+
+        machine.setWindowActive(true)
+        runCurrent()
+        machine.show(null)
+
+        assertEquals(2, calls.daemonListings)
+    }
+
+    @Test
     fun `a view shows its pool usage against the effective limit`() = machineTest {
         val machine = machine(
             useCases(

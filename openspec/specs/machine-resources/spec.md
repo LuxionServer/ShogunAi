@@ -101,6 +101,13 @@ A machine view SHALL refresh its process and device states every 5 seconds while
 - **WHEN** a busy daemon becomes idle while the Gradle view is shown
 - **THEN** it is shown as idle within a few seconds and its stop action becomes enabled
 
+### Requirement: Pause while the window is hidden
+While the main window is minimized, in the tray or the app is hidden, neither the shown machine view nor the sidebar summaries SHALL refresh, except for trimming Gradle daemons to the pool limit. Both SHALL refresh as soon as the window is shown again.
+
+#### Scenario: Window minimized
+- **WHEN** the Gradle daemons view is shown, a project declares the emulator provider and the user minimizes the window for a minute
+- **THEN** no daemon, emulator or other machine state is read during that minute except to trim idle Gradle daemons beyond the limit, and the view and the summaries refresh when the window is shown again
+
 ### Requirement: Column labels in device views
 The Android emulators and iOS simulators views SHALL show a header row labeling their columns (device, worktree and state), aligned with the rows below it.
 

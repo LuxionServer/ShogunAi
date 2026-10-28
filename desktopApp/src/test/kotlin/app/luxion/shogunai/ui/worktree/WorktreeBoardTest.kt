@@ -839,7 +839,7 @@ class WorktreeBoardTest {
     }
 
     @Test
-    fun `no check runs while the window is inactive and focus resumes them`() = runTest(dispatcher) {
+    fun `no check runs while the window is minimized or hidden and showing it resumes them`() = runTest(dispatcher) {
         val board = board()
         advanceUntilIdle()
         board.startWatching()
