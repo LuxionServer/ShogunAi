@@ -5,6 +5,7 @@ import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
+import app.luxion.shogunai.domain.model.SharedVariablesDeclaration
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -287,6 +288,21 @@ class ConfigureMultirepoUseCaseTest {
 
         assertTrue(updated.approved)
         assertNull(world.source.declarations.getValue(world.folder).agent)
+        assertTrue(world.resolver.build(world.folder, world.source.declarations.getValue(world.folder)).approved)
+    }
+
+    @Test
+    fun `writes keep the shared variables and the approval`() = runTest {
+        world.source.approveAll = false
+        val env = SharedVariablesDeclaration(mapOf("app" to mapOf("API_URL" to "http://localhost:${'$'}{port:api.http}")))
+        val declared = world.declaration.copy(env = env)
+        world.source.declarations[world.folder] = declared
+        val trusted = configure.trust(world.resolver.build(world.folder, declared)).getOrThrow()
+
+        val updated = configure.removeRepository(trusted, "docs").getOrThrow()
+
+        assertTrue(updated.approved)
+        assertEquals(env, world.source.declarations.getValue(world.folder).env)
         assertTrue(world.resolver.build(world.folder, world.source.declarations.getValue(world.folder)).approved)
     }
 

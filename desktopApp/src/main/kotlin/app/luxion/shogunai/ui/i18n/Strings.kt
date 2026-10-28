@@ -653,6 +653,7 @@ interface Strings {
     val defaultRepositoriesHint: String
     val multirepoWorktreesRootTitle: String
     val multirepoWorktreesRootHint: String
+    val multirepoSharedVariablesTitle: String
     val multirepoAgentTitle: String
     val multirepoAgentHint: String
     val deleteMultirepo: String

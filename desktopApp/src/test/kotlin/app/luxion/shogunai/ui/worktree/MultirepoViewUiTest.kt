@@ -18,6 +18,7 @@ import app.luxion.shogunai.domain.usecase.GroupRepositoryResult
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
+import app.luxion.shogunai.domain.model.SharedVariablesDeclaration
 import app.luxion.shogunai.ui.i18n.EnglishStrings
 import app.luxion.shogunai.ui.multirepo.MultirepoMembership
 import app.luxion.shogunai.ui.multirepo.MultirepoReviewPane
@@ -186,6 +187,7 @@ class MultirepoViewUiTest {
                 mapOf("app" to "product-app", "api" to "/srv/other/api"),
                 "../product-worktrees",
                 agent = AgentLaunchConfig(agentCommand = "touch /tmp/marker; claude"),
+                env = SharedVariablesDeclaration(mapOf("app" to mapOf("API_URL" to "http://localhost:\${port:api.http}"))),
             ),
         )
         setContent {
@@ -197,6 +199,8 @@ class MultirepoViewUiTest {
         onNodeWithText("outside /home/dev/projects").assertIsDisplayed()
         onNodeWithText("/home/dev/projects/product-worktrees").assertIsDisplayed()
         onNode(hasText("agent is ignored", substring = true)).assertIsDisplayed()
+        onNodeWithText("Shared variables").assertIsDisplayed()
+        onNodeWithText("API_URL=http://localhost:\${port:api.http}").assertIsDisplayed()
         onNode(hasText("touch /tmp/marker", substring = true)).assertDoesNotExist()
         onNodeWithText("Trust").performClick()
         assertEquals(1, trusted)

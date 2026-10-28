@@ -73,6 +73,7 @@ import app.luxion.shogunai.domain.model.ProvisionMode
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.ProvisionedFile
 import app.luxion.shogunai.domain.model.ShellQuoting
+import app.luxion.shogunai.domain.model.UnresolvedReason
 import app.luxion.shogunai.domain.model.WorkflowContext
 import app.luxion.shogunai.domain.model.WorkflowRules
 import app.luxion.shogunai.domain.model.WorkflowTopic
@@ -195,6 +196,7 @@ import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
 import app.luxion.shogunai.domain.usecase.GroupTarget
 import app.luxion.shogunai.domain.usecase.GroupWorktreeState
 import app.luxion.shogunai.domain.usecase.MultirepoContext
+import app.luxion.shogunai.domain.usecase.MultirepoSharedEnvironment
 import app.luxion.shogunai.domain.usecase.MultirepoMember
 import app.luxion.shogunai.domain.usecase.OpenGroupInHerdrUseCase
 import app.luxion.shogunai.domain.usecase.OpenMultirepoAgentInHerdrUseCase
@@ -356,6 +358,7 @@ class ShogunCli(
             factory,
             trust = trust,
             composeRegistry = composeRegistry,
+            sharedEnvironment = { repository, worktree -> MultirepoSharedEnvironment(resolveMultirepo, executor).forWorktree(repository, worktree) },
         )
 
     private fun simulatorSettingsFor(repositoryPath: String): SimulatorSettings =
@@ -629,6 +632,7 @@ class ShogunCli(
                 )
                 out.line("  ${repository.alias}  ${details.joinToString("  ")}")
             }
+            sharedVariableLines(updated).forEach { out.line(it) }
             out.line("agent  ${updated.agent.displayName} (${updated.agent.resolvedCommand()})")
             if (updated.ignoresDeclaredAgent) out.line(IGNORED_DECLARED_AGENT)
             if (updated.workspaceDetected) out.line("The folder is a Git repository, detected as the workspace repository; declare it with `shogun multirepo workspace set` or turn it off with `shogun multirepo workspace clear`.")
@@ -733,7 +737,16 @@ class ShogunCli(
             }
             if (multirepo.repositories.isEmpty()) add("  no repositories")
             add("worktrees-root  ${located(multirepo.worktreesRoot)}")
+            addAll(sharedVariableLines(multirepo))
             if (multirepo.ignoresDeclaredAgent) add(IGNORED_DECLARED_AGENT)
+        }
+    }
+
+    private fun sharedVariableLines(multirepo: Multirepo): List<String> {
+        val templates = multirepo.sharedTemplates
+        if (templates.isEmpty()) return emptyList()
+        return listOf("shared variables") + templates.groupBy { it.first }.flatMap { (alias, variables) ->
+            listOf("  $alias") + variables.map { (_, name, template) -> "    ${printable(name)}=${printable(template)}" }
         }
     }
 
@@ -1672,7 +1685,17 @@ class ShogunCli(
                     "run 'shogun trust' in $repository to review them",
             )
         }
+        environment.unresolved.forEach { err.line("shogun: shared variable ${it.name} couldn't be resolved: ${unresolvedReason(it.reason)}") }
         return EXIT_OK
+    }
+
+    private fun unresolvedReason(reason: UnresolvedReason): String = when (reason) {
+        is UnresolvedReason.RepositoryNotApproved ->
+            "the environment of '${reason.alias}' isn't approved on this machine; run 'shogun trust' in ${reason.repositoryPath} to review it"
+        is UnresolvedReason.PortNotDeclared -> "'${reason.alias}' doesn't declare the port '${reason.key}' (\${port:${reason.key}} in its .shogunai.json)"
+        is UnresolvedReason.PortNotReserved -> "'${reason.alias}' hasn't reserved the port '${reason.key}' yet"
+        is UnresolvedReason.WorktreeUnreadable -> "the worktree of '${reason.alias}' can't be read: ${reason.detail}"
+        is UnresolvedReason.InvalidDeclaration -> "${reason.declarationPath}: ${reason.detail}"
     }
 
     private suspend fun hookSessionStart(): Int {
@@ -1705,6 +1728,7 @@ class ShogunCli(
                     "Ask the user to review them with 'shogun trust'; don't approve them yourself.",
             )
         }
+        environment.unresolved.forEach { out.line("Shared variable ${it.name} of the multirepo isn't available: ${unresolvedReason(it.reason)}.") }
         WorkflowRules.sessionStartLines(context).forEach { out.line(it) }
         multirepo?.takeIf { !it.atFolder && it.alias != null }?.let { found ->
             runCatching { groupContextLines(found, worktree.path) }.getOrDefault(emptyList()).forEach { out.line(it) }

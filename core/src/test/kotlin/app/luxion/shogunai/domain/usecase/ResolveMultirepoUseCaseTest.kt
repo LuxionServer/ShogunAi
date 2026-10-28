@@ -7,6 +7,7 @@ import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
+import app.luxion.shogunai.domain.model.SharedVariablesDeclaration
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -80,6 +81,23 @@ class ResolveMultirepoUseCaseTest {
         assertIs<WorktreeError.InvalidMultirepo>(error)
         assertTrue(error.detail.contains("'web'"))
         assertTrue(error.path.endsWith("product/.shogunai-multirepo.json"))
+    }
+
+    @Test
+    fun `invalid shared variables are rejected naming the repository, the variable and the file`() = runTest {
+        listOf(
+            "web" to mapOf("API_URL" to "x"),
+            "app" to mapOf("NODE_OPTIONS" to "x"),
+        ).forEach { (alias, variables) ->
+            world.source.declarations[world.folder] = world.declaration.copy(env = SharedVariablesDeclaration(mapOf(alias to variables)))
+
+            val error = world.resolver(world.folder).exceptionOrNull()
+
+            assertIs<WorktreeError.InvalidMultirepo>(error)
+            assertTrue(error.detail.contains(alias), error.detail)
+            assertTrue(error.detail.contains(variables.keys.single()) || alias == "web", error.detail)
+            assertTrue(error.path.endsWith("product/.shogunai-multirepo.json"))
+        }
     }
 
     @Test
