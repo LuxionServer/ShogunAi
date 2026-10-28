@@ -3,11 +3,13 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.executor.CommandTimeouts
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.AgentSessionStore
+import app.luxion.shogunai.domain.io.ClaudeSessionRegistry
 import app.luxion.shogunai.domain.io.HerdrClient
 import app.luxion.shogunai.domain.model.AgentSessionRecord
 import app.luxion.shogunai.domain.model.HerdrAgent
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.AgentStateSource
+import app.luxion.shogunai.domain.model.ClaudeSessionRef
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
@@ -26,6 +28,7 @@ class DetectRunningAgentsUseCase(
     private val transcriptModifiedAt: (String) -> Long? = { path -> File(path).lastModified().takeIf { it > 0 } },
     private val now: () -> Long = System::currentTimeMillis,
     private val hasGitEntry: (String) -> Boolean = { directory -> File(directory, ".git").exists() },
+    private val claudeSessions: ClaudeSessionRegistry? = null,
 ) {
     @Volatile
     private var herdrRetryAt = 0L
@@ -44,6 +47,7 @@ class DetectRunningAgentsUseCase(
         }
         val scan = processes.getOrDefault(ProcessScan())
         merge(withSessionStates(scan, worktrees), herdrAgents, worktrees, exact)
+            .let { merged -> withClaudeSessions(merged, scan.claudePids, worktrees, exact) }
             .also { merged -> if (merged.isEmpty()) processes.getOrThrow() }
     }
 
@@ -87,6 +91,28 @@ class DetectRunningAgentsUseCase(
             agents.map { agent ->
                 if (agent.name == CLAUDE && agent.state == null) agent.copy(state = state, stateSource = AgentStateSource.CLAUDE_CODE) else agent
             }
+        }
+    }
+
+    private fun withClaudeSessions(
+        agents: Map<String, List<RunningAgent>>,
+        claudePids: Set<Long>,
+        worktrees: List<Worktree>,
+        exact: Set<String>,
+    ): Map<String, List<RunningAgent>> {
+        val registry = claudeSessions ?: return agents
+        val refsByPath = runCatching { registry.list() }.getOrDefault(emptyList())
+            .filter { it.pid in claudePids }
+            .mapNotNull { session ->
+                val name = session.name ?: return@mapNotNull null
+                attributedWorktree(session.cwd, worktrees, exact)?.let { it.path to ClaudeSessionRef(name, session.pid) }
+            }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, refs) -> refs.sortedWith(compareBy(ClaudeSessionRef::name, ClaudeSessionRef::pid)) }
+        if (refsByPath.isEmpty()) return agents
+        return agents.mapValues { (path, running) ->
+            val refs = refsByPath[path] ?: return@mapValues running
+            running.map { agent -> if (agent.name == CLAUDE) agent.copy(sessions = refs) else agent }
         }
     }
 

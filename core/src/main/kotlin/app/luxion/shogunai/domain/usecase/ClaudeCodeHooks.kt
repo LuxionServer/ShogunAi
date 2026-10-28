@@ -182,7 +182,13 @@ class ClaudeCodeHooks(private val fileManager: FileManager) {
         val AGENT_STATE_EVENTS: List<String> = listOf("UserPromptSubmit", "Notification", "Stop", "SessionEnd")
 
         fun userSettingsPath(configDirectory: String?, userHome: String): String =
-            (configDirectory?.takeIf { it.isNotBlank() } ?: "$userHome/.claude").trimEnd('/') + "/settings.json"
+            claudeConfigDirectory(configDirectory, userHome) + "/settings.json"
+
+        fun claudeSessionsDirectory(configDirectory: String?, userHome: String): String =
+            claudeConfigDirectory(configDirectory, userHome) + "/sessions"
+
+        private fun claudeConfigDirectory(configDirectory: String?, userHome: String): String =
+            (configDirectory?.takeIf { it.isNotBlank() } ?: "$userHome/.claude").trimEnd('/')
 
         fun projectSettingsPath(repository: String): String = repository.trimEnd('/') + "/.claude/settings.json"
     }

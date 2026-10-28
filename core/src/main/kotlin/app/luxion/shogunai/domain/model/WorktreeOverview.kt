@@ -11,4 +11,5 @@ data class RunningAgent(
     val state: AgentState? = null,
     val herdrPaneId: String? = null,
     val stateSource: AgentStateSource? = null,
+    val sessions: List<ClaudeSessionRef> = emptyList(),
 )

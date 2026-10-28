@@ -55,6 +55,7 @@ Multirepos and groups by branch are done in the CLI and the desktop app, and the
 
 - Carrying the multirepo agent set on this machine over when its folder moves: `shogun multirepo init` (or "Add multirepo") in the new folder registers it after reviewing it and forgets the old entry, but the local agent goes with that entry and has to be set again.
 - Associating worktrees whose branches don't match, e.g. `shogun group add <id> <worktree>`.
+- Showing the Claude session names of a group's worktrees and of the multirepo agent in the desktop app's views; today `shogun open --herdr` and `shogun status` report them, and the app only names the sessions it opens.
 - A single session for the whole group, with a combined environment, as an option next to one agent per repository.
 - Returning a declared workspace repository to detection (removing the `workspace` field), from the CLI and the multirepo settings; today `workspace clear` turns it off and the file has to be edited by hand to undo it.
 - The pull request state of each repository of a group, which depends on the GitHub integration under exploration.

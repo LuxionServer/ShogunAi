@@ -4,6 +4,7 @@ import app.luxion.shogunai.BuildInfo
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.AgentSessionStore
+import app.luxion.shogunai.domain.io.ClaudeSessionRegistry
 import app.luxion.shogunai.domain.io.AndroidSdk
 import app.luxion.shogunai.domain.io.AppleSimulators
 import app.luxion.shogunai.domain.io.DerivedDataSizeStore
@@ -125,6 +126,7 @@ import app.luxion.shogunai.domain.usecase.findWorktreeTarget
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.MachineProviderContributions
 import app.luxion.shogunai.domain.usecase.HerdrAgentLauncher
+import app.luxion.shogunai.domain.usecase.isLiveClaudeProcess
 import app.luxion.shogunai.domain.usecase.OpenWorktreeInHerdrUseCase
 import app.luxion.shogunai.domain.usecase.effectiveGradleJvmArgs
 import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
@@ -178,6 +180,7 @@ import app.luxion.shogunai.domain.model.MavenDaemon
 import app.luxion.shogunai.domain.model.suggestProviders
 import app.luxion.shogunai.domain.model.SuggestionReport
 import app.luxion.shogunai.infrastructure.CliHerdrClient
+import app.luxion.shogunai.infrastructure.FileClaudeSessionRegistry
 import app.luxion.shogunai.infrastructure.DockerComposeProjectSource
 import app.luxion.shogunai.infrastructure.NioDesktopTurnStore
 import app.luxion.shogunai.infrastructure.ProcessMavenDaemonSource
@@ -292,6 +295,10 @@ class ShogunCli(
     private val appWindows: AppWindowService = MacAppWindowService(executor, Path.of(userHome, ".shogunai", "headless").toString()),
     private val pauseWhileStartingApp: suspend (Long) -> Unit = { delay(it) },
     private val desktopTurnStore: DesktopTurnStore = NioDesktopTurnStore(Path.of(userHome, ".shogunai")),
+    private val claudeSessions: ClaudeSessionRegistry = FileClaudeSessionRegistry(
+        ClaudeCodeHooks.claudeSessionsDirectory(environmentVariable(CLAUDE_CONFIG_DIR), userHome),
+    ),
+    private val isClaudeProcessAlive: (Long) -> Boolean = ::isLiveClaudeProcess,
 ) {
     private val terminalApproval = RepositoryApproval { repository, subject ->
         if (confirm("${subjectLines(repository, subject)}$APPROVAL_QUESTION")) ApprovalDecision.APPROVE else ApprovalDecision.SKIP
@@ -557,7 +564,7 @@ class ShogunCli(
         DetectGroupsUseCase(executor),
         resolveBase = { member -> ResolveMainBranchUseCase(member.config, executor)().getOrNull() },
         readStatus = { member, base -> ReadWorktreeStatusUseCase(executor, fileManager)(member.worktree, base) },
-        detectAgents = { searches -> DetectRunningAgentsUseCase(executor, herdr, sessionStore)(searches) },
+        detectAgents = { searches -> DetectRunningAgentsUseCase(executor, herdr, sessionStore, claudeSessions = claudeSessions)(searches) },
     )
 
     private suspend fun multirepo(command: CliCommand.Multirepo): Int {
@@ -1106,7 +1113,7 @@ class ShogunCli(
         val mainBranch = ResolveMainBranchUseCase(config, executor)().getOrNull()
         val readStatus = ReadWorktreeStatusUseCase(executor, fileManager)
         val herdrWorktreesRoot = herdrConfig.worktreesRoot()
-        val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore)(config, worktrees.filterNot { it.isPrunable }).getOrNull().orEmpty()
+        val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore, claudeSessions = claudeSessions)(config, worktrees.filterNot { it.isPrunable }).getOrNull().orEmpty()
         val desktop = readDesktopTurn().getOrElse { DesktopTurnState(holder = null, waiting = emptyList()) }
         val entries = worktrees.map { worktree ->
             val read = if (worktree.isPrunable) null else readStatus(worktree, mainBranch)
@@ -1218,12 +1225,16 @@ class ShogunCli(
         return EXIT_OK
     }
 
-    private fun herdrLauncher() = HerdrAgentLauncher(herdr, herdrAgentStartTimeout)
+    private fun herdrLauncher() =
+        HerdrAgentLauncher(herdr, herdrAgentStartTimeout, registry = claudeSessions, isClaudeProcessAlive = isClaudeProcessAlive)
 
-    private fun herdrOpeningLine(path: String, opening: HerdrOpening): String = when (opening.outcome) {
-        HerdrOutcome.OPENED -> "opened $path in Herdr with ${opening.agent} (pane ${opening.paneId})"
-        HerdrOutcome.STARTED_AGENT -> "started ${opening.agent} in $path's open Herdr workspace (pane ${opening.paneId})"
-        HerdrOutcome.FOCUSED -> "focused $path in Herdr (already open, pane ${opening.paneId})"
+    private fun herdrOpeningLine(path: String, opening: HerdrOpening): String {
+        val line = when (opening.outcome) {
+            HerdrOutcome.OPENED -> "opened $path in Herdr with ${opening.agent} (pane ${opening.paneId})"
+            HerdrOutcome.STARTED_AGENT -> "started ${opening.agent} in $path's open Herdr workspace (pane ${opening.paneId})"
+            HerdrOutcome.FOCUSED -> "focused $path in Herdr (already open, pane ${opening.paneId})"
+        }
+        return opening.sessionName?.let { "$line as session $it" } ?: line
     }
 
     private suspend fun repair(command: CliCommand.Repair): Int {
@@ -2662,8 +2673,10 @@ class ShogunCli(
     private fun folderName(path: String): String =
         path.trimEnd('/', '\\').substringAfterLast('/').substringAfterLast('\\')
 
-    private fun agentLabel(agent: RunningAgent): String =
-        agent.state?.let { "${agent.name}(${it.name.lowercase()})" } ?: agent.name
+    private fun agentLabel(agent: RunningAgent): String {
+        val details = listOfNotNull(agent.state?.name?.lowercase()) + agent.sessions.map { it.name }
+        return if (details.isEmpty()) agent.name else "${agent.name}(${details.joinToString(", ")})"
+    }
 
     private fun absolute(path: String): String =
         if (path.startsWith('/') || File(path).isAbsolute) path else File(workingDirectory, path).toPath().normalize().toString().replace('\\', '/')
