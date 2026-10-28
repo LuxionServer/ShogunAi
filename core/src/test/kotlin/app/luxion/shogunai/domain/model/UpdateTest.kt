@@ -7,7 +7,7 @@ import kotlin.test.assertTrue
 
 class UpdateTest {
 
-    private val release = LatestRelease(
+    private val release = PublishedRelease(
         version = AppVersion(1, 3, 0),
         pageUrl = "https://example.test/releases/1.3.0",
         assets = listOf(

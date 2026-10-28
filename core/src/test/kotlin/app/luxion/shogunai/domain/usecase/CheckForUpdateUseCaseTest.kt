@@ -7,11 +7,13 @@ import app.luxion.shogunai.domain.model.AppVersion
 import app.luxion.shogunai.domain.model.HostArchitecture
 import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.InstallChannel
-import app.luxion.shogunai.domain.model.LatestRelease
+import app.luxion.shogunai.domain.model.PublishedRelease
+import app.luxion.shogunai.domain.model.ReleaseNotes
 import app.luxion.shogunai.domain.model.UpdateAction
 import app.luxion.shogunai.domain.model.UpdateCheck
 import app.luxion.shogunai.domain.model.UpdateCheckMode
 import app.luxion.shogunai.domain.model.UpdatePreferences
+import app.luxion.shogunai.domain.model.VersionNotes
 import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -21,7 +23,14 @@ import kotlin.test.assertTrue
 
 class CheckForUpdateUseCaseTest {
 
-    private val release = LatestRelease(AppVersion(1, 3, 0), "https://example.test/releases/1.3.0", emptyList())
+    private val release = published(1, 3, 0)
+
+    private fun published(major: Int, minor: Int, patch: Int) = PublishedRelease(
+        AppVersion(major, minor, patch),
+        "https://example.test/releases/$major.$minor.$patch",
+        emptyList(),
+        ReleaseNotes("Notes of $major.$minor.$patch", null),
+    )
 
     private fun useCase(
         source: FakeReleaseSource,
@@ -35,7 +44,7 @@ class CheckForUpdateUseCaseTest {
         architecture = HostArchitecture.ARM64,
     )
 
-    private fun source(result: Result<LatestRelease> = Result.success(release)) = FakeReleaseSource { result }
+    private fun source(result: Result<List<PublishedRelease>> = Result.success(listOf(release))) = FakeReleaseSource { result }
 
     private fun preferences(enabled: Boolean = true, skipped: AppVersion? = null) =
         FakeUpdatePreferenceRepository(UpdatePreferences(enabled, skipped))
@@ -102,9 +111,49 @@ class CheckForUpdateUseCaseTest {
     fun `a version newer than the skipped one is announced`() = runTest {
         val newer = release.copy(version = AppVersion(1, 3, 1))
 
-        val check = useCase(source(Result.success(newer)), preferences(skipped = AppVersion(1, 3, 0)))(UpdateCheckMode.AUTOMATIC)
+        val check = useCase(source(Result.success(listOf(newer))), preferences(skipped = AppVersion(1, 3, 0)))(UpdateCheckMode.AUTOMATIC)
 
         assertIs<UpdateCheck.Available>(check.getOrThrow())
+    }
+
+    @Test
+    fun `one version behind carries only its notes`() = runTest {
+        val listing = listOf(published(1, 3, 0), published(1, 2, 0), published(1, 1, 0))
+
+        val available = assertIs<UpdateCheck.Available>(useCase(source(Result.success(listing)), preferences())(UpdateCheckMode.MANUAL).getOrThrow())
+
+        assertEquals(listOf(release.versionNotes()), available.notes)
+    }
+
+    @Test
+    fun `several versions behind carry the notes of every newer version, newest first`() = runTest {
+        val listing = listOf(published(1, 2, 0), published(1, 3, 0), published(1, 1, 0), published(1, 2, 1))
+
+        val available = assertIs<UpdateCheck.Available>(useCase(source(Result.success(listing)), preferences(), "1.1.0")(UpdateCheckMode.MANUAL).getOrThrow())
+
+        assertEquals(AppVersion(1, 3, 0), available.release.version)
+        assertEquals(
+            listOf(AppVersion(1, 3, 0), AppVersion(1, 2, 1), AppVersion(1, 2, 0)),
+            available.notes.map(VersionNotes::version),
+        )
+        assertEquals(ReleaseNotes("Notes of 1.2.1", null), available.notes[1].notes)
+        assertEquals("https://example.test/releases/1.2.1", available.notes[1].pageUrl)
+    }
+
+    @Test
+    fun `the highest version is the latest whatever the listing order`() = runTest {
+        val listing = listOf(published(1, 2, 5), published(1, 3, 0), published(1, 2, 9))
+
+        val available = assertIs<UpdateCheck.Available>(useCase(source(Result.success(listing)), preferences())(UpdateCheckMode.MANUAL).getOrThrow())
+
+        assertEquals(release, available.release)
+    }
+
+    @Test
+    fun `an empty listing fails the check`() = runTest {
+        val check = useCase(source(Result.success(emptyList())), preferences())(UpdateCheckMode.MANUAL)
+
+        assertIs<WorktreeError.UpdateCheckFailed>(check.exceptionOrNull())
     }
 
     @Test

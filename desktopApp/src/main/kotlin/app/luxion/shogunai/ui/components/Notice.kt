@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -33,6 +34,7 @@ enum class NoticeKind(val status: Status, val icon: ImageVector) {
 }
 
 private val NoticeIconSize = 18.dp
+private val NoticeIconPadding = 2.dp
 
 @Composable
 fun Notice(
@@ -41,6 +43,8 @@ fun Notice(
     onDismiss: (() -> Unit)?,
     modifier: Modifier = Modifier,
     details: (@Composable () -> Unit)? = null,
+    onIconClick: (() -> Unit)? = null,
+    iconDescription: String? = null,
 ) {
     val strings = LocalStrings.current
     val colors = ShogunTheme.status.of(kind.status)
@@ -55,7 +59,7 @@ fun Notice(
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(kind.icon, contentDescription = null, modifier = Modifier.size(NoticeIconSize))
+            NoticeIcon(kind, onIconClick, iconDescription)
             Column(modifier = Modifier.weight(1f).padding(vertical = Spacing.xs)) {
                 Text(message, style = MaterialTheme.typography.bodyMedium)
                 details?.invoke()
@@ -68,5 +72,23 @@ fun Notice(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun NoticeIcon(kind: NoticeKind, onClick: (() -> Unit)?, description: String?) {
+    if (onClick == null) {
+        Icon(kind.icon, contentDescription = null, modifier = Modifier.size(NoticeIconSize))
+        return
+    }
+    WithTooltip(label = description.orEmpty()) {
+        Icon(
+            kind.icon,
+            contentDescription = description,
+            modifier = Modifier
+                .interactive(shape = CircleShape, onClick = onClick)
+                .padding(NoticeIconPadding)
+                .size(NoticeIconSize),
+        )
     }
 }
