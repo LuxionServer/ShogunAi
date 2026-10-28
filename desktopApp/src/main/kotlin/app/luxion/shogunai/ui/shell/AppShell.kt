@@ -254,6 +254,7 @@ fun AppShell(
     }
 
     UpdateCheckDialog(appContainer.updates)
+    ReleaseNotesDialog(appContainer.updates)
 
     TourDialog(
         state = appContainer.tour,

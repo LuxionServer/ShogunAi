@@ -20,6 +20,7 @@ data class WorktreeEntry(
     val statusProblem: String? = null,
     val agents: List<RunningAgent> = emptyList(),
     val desktop: DesktopTurnState = DesktopTurnState(holder = null, waiting = emptyList()),
+    val base: String? = null,
 )
 
 val WorktreeOrigin.label: String
@@ -45,6 +46,7 @@ private fun worktreeJson(entry: WorktreeEntry): JsonObject = buildJsonObject {
     put("locked", worktree.isLocked)
     put("folderMissing", worktree.isPrunable)
     put("origin", entry.origin?.label)
+    put("base", entry.base)
     put("agents", buildJsonArray { entry.agents.forEach { add(agentJson(it)) } })
     put("status", entry.status?.let(::statusObject) ?: JsonNull)
     entry.statusProblem?.let { put("statusProblem", it) }

@@ -114,6 +114,7 @@ internal suspend fun addWorktreeAndCopySecrets(
     trust: RepositoryTrust,
     approval: RepositoryApproval,
     records: ProvisioningRecordStore,
+    baseBranch: String? = null,
 ): Worktree {
     val add = executor.execute(command = addArgs, workingDirectory = config.baseRepositoryPath)
     if (!add.isSuccess) {
@@ -129,6 +130,7 @@ internal suspend fun addWorktreeAndCopySecrets(
         throw WorktreeError.GitCommandFailed(add.command, add.exitCode, add.stderr)
     }
 
+    baseBranch?.let { recordBaseBranchOrRollback(config, executor, worktreePath, branch, it, createdBranch) }
     copySecretsOrRollback(config, executor, fileManager, records, worktreePath, provisioned, createdBranch)
     val approved = settleApproval(config, trust, approval, provisioned.approvalSubject)
     val prepared = prepareEnvironmentOrRollback(config, executor, environment, worktreePath, createdBranch)
@@ -142,6 +144,22 @@ internal suspend fun addWorktreeAndCopySecrets(
         skippedLinks = provisioned.skippedLinks,
         pods = prepared.pods,
     )
+}
+
+private suspend fun recordBaseBranchOrRollback(
+    config: ProjectConfig,
+    executor: ShellCommandExecutor,
+    worktreePath: String,
+    branch: String,
+    baseBranch: String,
+    createdBranch: String?,
+) {
+    try {
+        writeBaseBranch(config, executor, branch, baseBranch)
+    } catch (error: WorktreeError.GitCommandFailed) {
+        rollBack(config, executor, worktreePath, createdBranch)
+        throw error
+    }
 }
 
 private suspend fun prepareEnvironmentOrRollback(

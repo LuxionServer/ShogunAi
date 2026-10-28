@@ -23,6 +23,7 @@ import app.luxion.shogunai.domain.model.RepositoryConfigIssue
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
 interface Strings {
+    val language: AppLanguage
     val languageName: String
 
     val themeLight: String
@@ -465,6 +466,11 @@ interface Strings {
     val updateChecking: String
     fun updateUpToDateMessage(version: String): String
     val updateCheckAutomaticallyLabel: String
+    fun releaseNotesTitle(version: String): String
+    fun releaseNotesVersionHeading(version: String): String
+    val releaseNotesViewOnGitHub: String
+    val releaseNotesEmpty: String
+    val releaseNotesIconDescription: String
     val copied: String
     val close: String
     val worktreeCreatedWithError: String

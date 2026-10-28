@@ -47,7 +47,8 @@ ShogunAi's view is only neutral if it sees every agent:
 - A notification when an agent (reported by Herdr or by Claude Code's hooks) becomes blocked or done; today the worktree's row and the menu bar icon's menu are the signal.
 - Checking that Herdr detects an agent wrapped by Headroom (`headroom wrap claude`): opening in Herdr waits for Herdr to detect the agent it typed, and if Herdr doesn't see through the wrapper the open fails although the agent runs.
 - Other agents' user-level files for the workflow guide, as their documentation confirms them (Cursor keeps user rules in its settings today), and a Settings section in the desktop app to install, update and remove the `AGENTS.md` block, as it already does for Claude Code's hooks.
-- Recording the origin ref of each worktree, so the rule for choosing a pull request's base could be answered by `shogun` instead of staying a team policy.
+- Recording the base branch of the worktrees Herdr creates, if its `worktree.created` event gains their start point; today `shogun base --set` records it by hand, while `shogun new`, Claude Code's hook, the desktop app and multirepo groups record it themselves.
+- Showing each worktree's base branch in the desktop app's views; today `shogun base` and `shogun status` report it.
 
 ### 4. Multirepos for the whole team
 
@@ -71,6 +72,7 @@ Multirepos and groups by branch are done in the CLI and the desktop app, and the
 - Support for bare repositories with worktrees (the "bare clone" layout), which changes what the base repository and copying from it mean. Today ShogunAi rejects them with a specific error.
 - Splitting `ProjectWorktrees.kt` and `ProjectSettingsView.kt` into smaller holders and sections.
 - Checking the guided tour on Windows and Linux with a real installed app: creating the sample with the system's Git, and the tour's agent command, whose prompt is quoted for the shell each terminal runs.
+- A changelog page in the documentation site built from the release notes in `.github/release-notes/`, which the app already shows in its update notice.
 
 ## Later
 
