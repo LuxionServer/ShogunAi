@@ -44,7 +44,11 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -124,6 +128,7 @@ class MachineResources(
     val desktopTurn: DesktopTurnWatch = DesktopTurnWatch.NONE,
 ) {
     private var shownJob: Job? = null
+    private val windowActive = MutableStateFlow(true)
     var shown by mutableStateOf<MachineResource?>(null)
         private set
 
@@ -358,11 +363,19 @@ class MachineResources(
         scope.launch { load(resource, remeasure = true) }
     }
 
+    fun setWindowActive(active: Boolean) {
+        windowActive.value = active
+    }
+
     suspend fun runSummaryTicks() {
         while (true) {
-            refreshSummaries()
-            delay(summaryInterval)
+            if (windowActive.value) refreshSummaries() else trimGradleDaemonsWhileHidden()
+            withTimeoutOrNull(summaryInterval) { windowActive.drop(1).first { it } }
         }
+    }
+
+    private suspend fun trimGradleDaemonsWhileHidden() {
+        if (MachineResource.GRADLE_DAEMONS in declared) trimGradleDaemons()
     }
 
     suspend fun refreshSummaries() {
@@ -437,6 +450,7 @@ class MachineResources(
             return
         }
         while (true) {
+            windowActive.first { it }
             load(resource)
             delay(processInterval)
         }

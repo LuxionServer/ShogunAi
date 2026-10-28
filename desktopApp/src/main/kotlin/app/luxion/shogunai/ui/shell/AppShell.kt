@@ -131,7 +131,10 @@ fun AppShell(
         machine.show(destination?.resource)
         if (destination != null && board.isCatalogLoaded && destination.resource !in machine.visibleResources) viewModel.selectActive()
     }
-    LaunchedEffect(windowShown) { board.setWindowActive(windowShown) }
+    LaunchedEffect(windowShown) {
+        board.setWindowActive(windowShown)
+        machine.setWindowActive(windowShown)
+    }
     val windowInfo = LocalWindowInfo.current
     LaunchedEffect(windowInfo) {
         snapshotFlow { windowInfo.isWindowFocused }

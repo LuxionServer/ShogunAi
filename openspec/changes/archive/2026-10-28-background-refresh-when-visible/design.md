@@ -8,7 +8,7 @@
 
 **Goals:**
 - Checks keep running while the window is visible on any monitor, focused or not.
-- No check, and so no process, while the window is minimized, in the tray, or the app is hidden.
+- No check, and so no process, while the window is minimized, in the tray, or the app is hidden, apart from the Gradle daemon trim.
 
 **Non-Goals:**
 - Detecting a window that is fully covered by other windows.
@@ -19,6 +19,8 @@
 **Shown, not focused.** `main.kt` computes `windowShown = windowVisible && !windowState.isMinimized && !appHidden` and passes it to `AppShell`, which calls `board.setWindowActive` whenever it changes. Focus no longer takes part. `AppShell` takes it as a parameter with `true` as default, so its other callers (UI tests) keep today's watching behavior.
 
 **App hidden from `Desktop` events.** A small `rememberAppHidden()` in the shell package registers an `AppHiddenListener` when `Desktop.Action.APP_EVENT_HIDDEN` is supported, sets the state on `appHidden`/`appUnhidden`, and removes the listener on dispose. Where it isn't supported, the state stays `false`, so "unknown counts as active" holds.
+
+**The machine section pauses too, except the Gradle trim.** Validating the board pause showed `docker` and `simctl` still running while minimized: they came from `MachineResources`, whose 5-second loader for the shown view and 30-second summary tick never looked at the window. `MachineResources` gets the same `setWindowActive`. The loader suspends on it like the board. The summary tick, while inactive, only calls the Gradle daemon trim, which the "Trim idle daemons to the pool limit" requirement attaches to the summary refresh: pausing it would let agents exceed the pool while nobody looks, which is exactly when they work alone. The tick waits for its interval or for the window to be shown again, whichever comes first, so the summaries are current as soon as the window reappears. Alternative: pause everything, trim included; rejected for that reason, and `shogun pool trim` is manual.
 
 **`refreshOnFocus` unchanged.** It still runs when the window regains focus. With the watcher running while unfocused it rarely finds anything stale, and its 5-second throttle keeps it from duplicating a recent check. Coming back from minimized or hidden also gives focus back in practice, so the catch-up after a pause still happens.
 
