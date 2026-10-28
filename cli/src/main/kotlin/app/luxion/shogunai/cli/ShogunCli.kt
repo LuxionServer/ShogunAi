@@ -8,6 +8,7 @@ import app.luxion.shogunai.domain.io.ClaudeSessionRegistry
 import app.luxion.shogunai.domain.io.AndroidSdk
 import app.luxion.shogunai.domain.io.AppleSimulators
 import app.luxion.shogunai.domain.io.DerivedDataSizeStore
+import app.luxion.shogunai.domain.io.PackageCacheSource
 import app.luxion.shogunai.domain.io.DerivedDataSource
 import app.luxion.shogunai.domain.io.DesktopTurnStore
 import app.luxion.shogunai.domain.io.EnvironmentStateStore
@@ -72,6 +73,8 @@ import app.luxion.shogunai.domain.model.SimulatorSettings
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.ProvisionMode
 import app.luxion.shogunai.domain.model.RunningAgent
+import app.luxion.shogunai.domain.model.PodsInstallReason
+import app.luxion.shogunai.domain.model.PodsPreparation
 import app.luxion.shogunai.domain.model.ProvisionedFile
 import app.luxion.shogunai.domain.model.ShellQuoting
 import app.luxion.shogunai.domain.model.UnresolvedReason
@@ -113,6 +116,9 @@ import app.luxion.shogunai.domain.usecase.totalMavenResidentMemory
 import app.luxion.shogunai.domain.usecase.worktreeComposeProjectName
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
+import app.luxion.shogunai.domain.usecase.ResolveBaseBranchUseCase
+import app.luxion.shogunai.domain.usecase.ReadBaseBranchesUseCase
+import app.luxion.shogunai.domain.usecase.SetBaseBranchUseCase
 import app.luxion.shogunai.domain.usecase.DeleteMergedBranchUseCase
 import app.luxion.shogunai.domain.usecase.DetectRunningAgentsUseCase
 import app.luxion.shogunai.domain.usecase.DeleteOrphanedDerivedDataUseCase
@@ -130,6 +136,7 @@ import app.luxion.shogunai.domain.usecase.HerdrAgentLauncher
 import app.luxion.shogunai.domain.usecase.isLiveClaudeProcess
 import app.luxion.shogunai.domain.usecase.OpenWorktreeInHerdrUseCase
 import app.luxion.shogunai.domain.usecase.effectiveGradleJvmArgs
+import app.luxion.shogunai.domain.usecase.PrepareCocoaPodsUseCase
 import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.ProviderContributions
 import app.luxion.shogunai.domain.usecase.CheckProvisionedFilesUseCase
@@ -289,6 +296,7 @@ class ShogunCli(
     private val appLauncher: AppLauncher = DesktopAppLauncher(),
     private val provisioningRecords: ProvisioningRecordStore = ProvisioningRecordStore.NONE,
     private val derivedDataSizes: DerivedDataSizeStore = DerivedDataSizeStore.NONE,
+    private val packageCacheSource: PackageCacheSource = PackageCacheSource.NONE,
     private val deviceWaitQueue: DeviceWaitQueue = NioDeviceWaitQueue(Path.of(userHome, ".shogunai")),
     private val processLiveness: ProcessLiveness = ProcessHandleLiveness(),
     private val deviceClock: () -> Instant = Instant::now,
@@ -314,7 +322,7 @@ class ShogunCli(
         userHome = userHome,
         isMac = derivedDataSource.isSupported(),
     )
-    private val listDerivedData = ListDerivedDataUseCase(derivedDataSource, derivedDataSizes)
+    private val listDerivedData = ListDerivedDataUseCase(derivedDataSource, derivedDataSizes, packageCacheSource)
     private val deleteOrphanedDerivedData = DeleteOrphanedDerivedDataUseCase(derivedDataSource)
     private val resolveEnvironment = resolverWith(contributions)
     private val resolveLimits = ResolveResourceLimitsUseCase(resourceLimits, machineCapacity)
@@ -374,6 +382,7 @@ class ShogunCli(
     private val prepareEnvironment = PrepareWorktreeEnvironmentUseCase(
         resolveEnvironment,
         WriteEnvironmentFileUseCase(executor, fileManager, provisioningSource),
+        PrepareCocoaPodsUseCase(executor, fileManager, provisioningSource, isMacOs = derivedDataSource.isSupported()),
     )
     private val startEmulator = StartWorktreeEmulatorUseCase(provisioningSource, resolveEnvironment, acquireResource, androidSdk)
     private val stopEmulator = StopWorktreeEmulatorUseCase(provisioningSource, resolveEnvironment, androidSdk)
@@ -442,6 +451,7 @@ class ShogunCli(
             is CliCommand.Repair -> repair(command)
             is CliCommand.Open -> open(command)
             is CliCommand.Status -> status(command)
+            is CliCommand.Base -> base(command)
             is CliCommand.Clean -> clean(command)
             CliCommand.HookWorktreeCreate -> hookWorktreeCreate()
             CliCommand.HookWorktreeRemove -> hookWorktreeRemove()
@@ -519,6 +529,7 @@ class ShogunCli(
                 command.taskId.orEmpty(),
                 command.branchType,
                 startPoint,
+                resolveBaseBranch(workingDirectory, command.from),
             )
         }
         val failure = created.exceptionOrNull()
@@ -533,11 +544,12 @@ class ShogunCli(
         }
         val worktree = created.getOrThrow()
         if (command.json) {
-            printJson(newJson(worktree.path, worktree.branch, worktree.skippedPostCreateCommands, worktree.skippedVariables, null, worktree.skippedLinks))
+            printJson(newJson(worktree.path, worktree.branch, worktree.skippedPostCreateCommands, worktree.skippedVariables, null, worktree.skippedLinks, worktree.pods))
             return EXIT_OK
         }
         out.line(worktree.path)
         noteSkippedLinks(worktree.skippedLinks)
+        podsLines(worktree.pods).forEach { err.line("shogun: $it") }
         noteSkipped(config.baseRepositoryPath, worktree.skippedPostCreateCommands, worktree.skippedVariables)
         return EXIT_OK
     }
@@ -577,7 +589,7 @@ class ShogunCli(
         if (action is MultirepoAction.Trust) return trustMultirepo(configure, action, command.json)
         val context = resolveMultirepo(workingDirectory).getOrThrow() ?: run {
             val nearest = resolveMultirepo.nearestDeclaration(workingDirectory) ?: throw WorktreeError.MultirepoNotFound(workingDirectory)
-            if (action != MultirepoAction.Show) throw WorktreeError.MultirepoNeedsReview(nearest.declarationPath)
+            if (action != MultirepoAction.Show && action != MultirepoAction.EnvList) throw WorktreeError.MultirepoNeedsReview(nearest.declarationPath)
             resolveMultirepo.validate(nearest)
             MultirepoContext(nearest, workingDirectory, null)
         }
@@ -602,6 +614,16 @@ class ShogunCli(
                 is MultirepoAction.Agent -> configure.setAgent(multirepo, AgentLaunchConfig(action.name, action.command, action.useHeadroom)).getOrThrow()
                 is MultirepoAction.WorkspaceSet -> configure.setWorkspace(multirepo, action.alias, action.default).getOrThrow()
                 MultirepoAction.WorkspaceClear -> configure.clearWorkspace(multirepo).getOrThrow()
+                MultirepoAction.WorkspaceDetect -> {
+                    val detected = configure.detectWorkspace(multirepo).getOrThrow()
+                    if (!command.json) workspaceDetectionLines(multirepo, detected).forEach { out.line(it) }
+                    detected
+                }
+                MultirepoAction.EnvList -> return printSharedVariables(multirepo, command.json)
+                is MultirepoAction.EnvSet ->
+                    return printSharedVariables(configure.setSharedVariable(multirepo, action.alias, action.name, action.template).getOrThrow(), command.json)
+                is MultirepoAction.EnvUnset ->
+                    return printSharedVariables(configure.unsetSharedVariable(multirepo, action.alias, action.name).getOrThrow(), command.json)
                 is MultirepoAction.WorktreesRoot -> configure.setWorktreesRoot(multirepo, absolute(action.folder)).getOrThrow()
                 MultirepoAction.Delete -> {
                     configure.delete(multirepo).getOrThrow()
@@ -747,6 +769,22 @@ class ShogunCli(
             addAll(sharedVariableLines(multirepo))
             if (multirepo.ignoresDeclaredAgent) add(IGNORED_DECLARED_AGENT)
         }
+    }
+
+    private fun printSharedVariables(multirepo: Multirepo, json: Boolean): Int {
+        when {
+            json -> printJson(sharedVariablesListJson(multirepo))
+            multirepo.sharedTemplates.isEmpty() -> out.line("${multirepo.name} shares no variables")
+            else -> sharedVariableLines(multirepo).forEach { out.line(it) }
+        }
+        return EXIT_OK
+    }
+
+    private fun workspaceDetectionLines(before: Multirepo, after: Multirepo): List<String> {
+        val alias = after.workspaceRepository?.alias ?: return emptyList()
+        if (before.declaration.workspace == null) return listOf("the workspace repository is already detected as '$alias'")
+        val defaults = if (alias in after.defaultRepos) "" else "; it isn't a default repository"
+        return listOf("the workspace repository is detected again as '$alias'$defaults")
     }
 
     private fun sharedVariableLines(multirepo: Multirepo): List<String> {
@@ -963,6 +1001,19 @@ class ShogunCli(
 
     private fun saying(json: Boolean): (String) -> Unit = if (json) { _ -> } else { text -> out.line(text) }
 
+    private fun podsLines(pods: PodsPreparation): List<String> =
+        pods.cloned.map { "${podsFolder(it)} (cloned from the base)" } +
+            pods.installNeeded.map { "${podsFolder(it.folder)}: pod install needed (${podsReason(it.reason)})" } +
+            listOfNotNull(pods.error?.let { "couldn't prepare the pods: $it" })
+
+    private fun podsFolder(folder: String): String = if (folder == ".") "Pods" else "$folder/Pods"
+
+    private fun podsReason(reason: PodsInstallReason): String = when (reason) {
+        PodsInstallReason.BASE_HAS_NO_PODS -> "the base has no pods"
+        PodsInstallReason.BASE_PODS_DIFFER -> "the base's pods differ from Podfile.lock"
+        PodsInstallReason.CLONE_FAILED -> "the base's pods couldn't be cloned"
+    }
+
     private fun noteSkippedLinks(skipped: List<String>, prefix: String = "shogun") {
         skipped.forEach { err.line("$prefix: skipped the symbolic link $it in a local folder") }
     }
@@ -1052,6 +1103,9 @@ class ShogunCli(
         }
     }
 
+    private suspend fun resolveBaseBranch(directory: String, from: String?): String? =
+        ResolveBaseBranchUseCase(executor)(directory, from ?: "HEAD")
+
     private suspend fun provision(command: CliCommand.Provision): Int {
         val target = absolute(command.path ?: workingDirectory)
         return when {
@@ -1106,7 +1160,7 @@ class ShogunCli(
             printJson(
                 provisionJson(
                     worktree.path, result.files, result.skippedPostCreateCommands, result.skippedVariables, null,
-                    result.removed, result.skippedLinks,
+                    result.removed, result.skippedLinks, result.pods,
                 ),
             )
             return EXIT_OK
@@ -1114,6 +1168,7 @@ class ShogunCli(
         result.files.forEach { out.line(provisionedLabel(it)) }
         result.removed.forEach { out.line("$it (removed: deleted from the base folder)") }
         result.skippedLinks.forEach { out.line("$it (skipped: symbolic link)") }
+        podsLines(result.pods).forEach { out.line(it) }
         noteSkipped(config.baseRepositoryPath, result.skippedPostCreateCommands, result.skippedVariables)
         onProvisioned(worktree, config)
         return EXIT_OK
@@ -1128,6 +1183,7 @@ class ShogunCli(
         val herdrWorktreesRoot = herdrConfig.worktreesRoot()
         val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore, claudeSessions = claudeSessions)(config, worktrees.filterNot { it.isPrunable }).getOrNull().orEmpty()
         val desktop = readDesktopTurn().getOrElse { DesktopTurnState(holder = null, waiting = emptyList()) }
+        val bases = ReadBaseBranchesUseCase(config, executor)().getOrElse { emptyMap() }
         val entries = worktrees.map { worktree ->
             val read = if (worktree.isPrunable) null else readStatus(worktree, mainBranch)
             WorktreeEntry(
@@ -1137,6 +1193,7 @@ class ShogunCli(
                 read?.exceptionOrNull()?.let(::failureReason),
                 agents[worktree.path].orEmpty(),
                 desktop,
+                worktree.branch?.let(bases::get),
             )
         }
         if (command.json) {
@@ -1144,6 +1201,32 @@ class ShogunCli(
         } else {
             entries.forEach { out.line(statusLine(it)) }
         }
+        return EXIT_OK
+    }
+
+    private suspend fun base(command: CliCommand.Base): Int {
+        val (config, worktree) = if (command.target == null) {
+            configAndWorktreeContaining(workingDirectory)
+        } else {
+            val config = configFor(workingDirectory)
+            config to findWorktreeTarget(command.target, ListWorktreesUseCase(config, executor)().getOrThrow(), config, ::canonical)
+        }
+        val branch = worktree.branch ?: run {
+            if (command.json) printJson(baseJson(worktree.path, null, null))
+            err.line("shogun: ${worktree.path} has no branch (detached HEAD), so it has no base")
+            return EXIT_FAILURE
+        }
+        val base = if (command.set != null) {
+            SetBaseBranchUseCase(config, executor)(branch, command.set).getOrThrow()
+        } else {
+            ReadBaseBranchesUseCase(config, executor)().getOrThrow()[branch]
+        }
+        if (command.json) printJson(baseJson(worktree.path, branch, base))
+        if (base == null) {
+            err.line("shogun: no base is recorded for $branch; set it with 'shogun base --set <branch>'")
+            return EXIT_FAILURE
+        }
+        if (!command.json) out.line(base)
         return EXIT_OK
     }
 
@@ -2236,7 +2319,8 @@ class ShogunCli(
         }
         listing.ofWorktrees().forEach { item ->
             val worktree = (item.owner as DerivedDataOwner.Worktree).path
-            out.line("$worktree  ${formatMemory(item.folder.sizeBytes ?: 0L)}")
+            val packages = item.folder.packagesBytes?.takeIf { it > 0 }?.let { "  (packages ${formatMemory(it)})" }.orEmpty()
+            out.line("$worktree  ${formatMemory(item.folder.sizeBytes ?: 0L)}$packages")
         }
         val orphans = listing.orphans
         out.line("orphans: ${orphans.size} (${formatMemory(orphans.sumOf { it.sizeBytes ?: 0L })})")
@@ -2247,6 +2331,8 @@ class ShogunCli(
         if (provider.compilationCache) {
             out.line("compilation cache: ${formatMemory(listing.compilationCacheBytes ?: 0L)}")
         }
+        listing.packageCaches.swiftPmBytes?.let { out.line("SwiftPM cache: ${formatMemory(it)}") }
+        listing.packageCaches.cocoaPodsBytes?.let { out.line("CocoaPods cache: ${formatMemory(it)}") }
         return EXIT_OK
     }
 
@@ -2376,10 +2462,12 @@ class ShogunCli(
                 name,
                 BranchType.FEATURE,
                 resolveStartPoint(directory, null),
+                resolveBaseBranch(directory, null),
             )
             when (val failure = created.exceptionOrNull()) {
                 null -> created.getOrThrow().also {
                     noteSkippedLinks(it.skippedLinks, "shogun: hook worktree-create")
+                    podsLines(it.pods).forEach { line -> err.line("shogun: hook worktree-create: $line") }
                     noteSkipped(config.baseRepositoryPath, it.skippedPostCreateCommands, it.skippedVariables, "shogun: hook worktree-create")
                 }.path
                 is WorktreeError.PostCreateCommandFailed -> {
@@ -2669,6 +2757,7 @@ class ShogunCli(
             add(worktree.branch ?: "(detached)")
             if (worktree.isMain) add("main")
             origin?.let { add("origin=${it.label}") }
+            entry.base?.let { add("base=$it") }
             if (worktree.isLocked) add("locked")
             entry.agents.takeIf { it.isNotEmpty() }?.let { agents -> add("agents=${agents.joinToString(",") { agentLabel(it) }}") }
             desktopTurnStatusNote(entry.desktop, worktree.path)?.let(::add)

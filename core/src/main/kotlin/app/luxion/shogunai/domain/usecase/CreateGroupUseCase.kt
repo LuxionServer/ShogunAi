@@ -70,7 +70,7 @@ class CreateGroupUseCase(
             } else {
                 val base = ResolveMainBranchUseCase(config, executor)().getOrThrow()
                     ?: throw WorktreeError.BaseBranchNotFound(config.baseRepositoryPath)
-                CreateWorktreeUseCase(config, executor, fileManager, provisioningSource, environment, trust, approval, records)(id, branchType, base.ref)
+                CreateWorktreeUseCase(config, executor, fileManager, provisioningSource, environment, trust, approval, records)(id, branchType, base.ref, base.name)
             }
             val worktree = created.getOrThrow()
             GroupRepositoryResult(member.alias, GroupRepositoryOutcome.CREATED, worktree.path, worktree.skippedPostCreateCommands, worktree.skippedVariables)

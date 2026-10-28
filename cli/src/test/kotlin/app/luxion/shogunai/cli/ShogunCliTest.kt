@@ -54,6 +54,7 @@ import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.IosSimulatorProvider
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.PackageCacheSizes
 import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.XcodeProvider
@@ -164,6 +165,7 @@ class ShogunCliTest {
         composeRegistry: FakeComposeProjectRegistry = FakeComposeProjectRegistry(),
         records: FakeProvisioningRecordStore = FakeProvisioningRecordStore(),
         claudeSessions: FakeClaudeSessionRegistry = FakeClaudeSessionRegistry(),
+        packageCaches: PackageCacheSizes = PackageCacheSizes(),
     ) = ShogunCli(
         executor = executor,
         fileManager = fileManager,
@@ -197,6 +199,7 @@ class ShogunCliTest {
         composeRegistry = composeRegistry,
         provisioningRecords = records,
         claudeSessions = claudeSessions,
+        packageCacheSource = { packageCaches },
         isClaudeProcessAlive = { true },
     )
 
@@ -846,6 +849,65 @@ class ShogunCliTest {
         assertTrue(executor.ran("git", "worktree", "add", "--no-track", "$worktreesRoot/TASK-123", "-b", "feature/TASK-123", "epic1234"))
     }
 
+    private fun symbolicRefs(vararg refs: Pair<String, String>) = repositoryExecutor { command, _ ->
+        if ("--symbolic-full-name" in command) {
+            refs.toMap()[command.last()]?.let { Executor.ok(command, "$it\n") } ?: Executor.ok(command, "\n")
+        } else if (command.take(2) == listOf("git", "rev-parse") && command.last().endsWith("^{commit}")) {
+            Executor.ok(command, "abc123\n")
+        } else {
+            null
+        }
+    }
+
+    private fun Executor.recordedBase(branch: String): String? =
+        calls.map { it.first }.firstOrNull { it.take(3) == listOf("git", "config", "branch.$branch.gh-merge-base") }?.getOrNull(3)
+
+    @Test
+    fun `new records the current worktree's branch as the base`() {
+        val executor = symbolicRefs("HEAD" to "refs/heads/main")
+
+        assertEquals(0, cli(executor).run(listOf("new", "TASK-123")), err.toString())
+
+        assertEquals("main", executor.recordedBase("feature/TASK-123"))
+        assertTrue(executor.calls.any { "--symbolic-full-name" in it.first && it.second == base })
+    }
+
+    @Test
+    fun `new with from records that branch as the base`() {
+        val executor = symbolicRefs("epic/redesign" to "refs/heads/epic/redesign")
+
+        assertEquals(0, cli(executor).run(listOf("new", "TASK-123", "--from", "epic/redesign")), err.toString())
+
+        assertEquals("epic/redesign", executor.recordedBase("feature/TASK-123"))
+    }
+
+    @Test
+    fun `new with a remote from records the branch without its remote`() {
+        val executor = symbolicRefs("origin/develop" to "refs/remotes/origin/develop")
+
+        assertEquals(0, cli(executor).run(listOf("new", "TASK-123", "--from", "origin/develop")), err.toString())
+
+        assertEquals("develop", executor.recordedBase("feature/TASK-123"))
+    }
+
+    @Test
+    fun `new from a tag records no base`() {
+        val executor = symbolicRefs("v1.2.0" to "refs/tags/v1.2.0")
+
+        assertEquals(0, cli(executor).run(listOf("new", "TASK-123", "--from", "v1.2.0")), err.toString())
+
+        assertFalse(executor.calls.any { it.first.take(2) == listOf("git", "config") && it.first.size == 4 })
+    }
+
+    @Test
+    fun `new with an existing branch records no base`() {
+        val executor = symbolicRefs("HEAD" to "refs/heads/main")
+
+        assertEquals(0, cli(executor).run(listOf("new", "--branch", "hotfix/login")), err.toString())
+
+        assertEquals(null, executor.recordedBase("hotfix/login"))
+    }
+
     @Test
     fun `new with an unknown from creates nothing and exits with 1`() {
         val executor = repositoryExecutor()
@@ -1422,7 +1484,7 @@ class ShogunCliTest {
               "worktrees": [
                 {
                   "path": "$base", "branch": "main", "head": "1111111111111111111111111111111111111111",
-                  "main": true, "locked": false, "folderMissing": false, "origin": null, "agents": [],
+                  "main": true, "locked": false, "folderMissing": false, "origin": null, "base": null, "agents": [],
                   "status": {
                     "uncommittedChanges": 0, "upstream": null, "mainBranch": null,
                     "merged": false, "lastCommitAt": null, "createdAt": null
@@ -1431,7 +1493,7 @@ class ShogunCliTest {
                 },
                 {
                   "path": "$merged", "branch": "feature/TASK-1", "head": "2222222222222222222222222222222222222222",
-                  "main": false, "locked": false, "folderMissing": false, "origin": "shogunai", "agents": [],
+                  "main": false, "locked": false, "folderMissing": false, "origin": "shogunai", "base": null, "agents": [],
                   "status": {
                     "uncommittedChanges": 0, "upstream": null, "mainBranch": {"ahead": 0, "behind": 3},
                     "merged": true, "lastCommitAt": null, "createdAt": null
@@ -1440,7 +1502,7 @@ class ShogunCliTest {
                 },
                 {
                   "path": "$dirty", "branch": "worktree-spike", "head": "3333333333333333333333333333333333333333",
-                  "main": false, "locked": true, "folderMissing": false, "origin": "claude-code", "agents": [],
+                  "main": false, "locked": true, "folderMissing": false, "origin": "claude-code", "base": null, "agents": [],
                   "status": {
                     "uncommittedChanges": 2, "upstream": null, "mainBranch": {"ahead": 2, "behind": 0},
                     "merged": false, "lastCommitAt": null, "createdAt": null
@@ -1452,6 +1514,145 @@ class ShogunCliTest {
             """,
         )
         assertEquals(expected, Json.parseToJsonElement(out.toString()))
+    }
+
+    private val baseRecords = "branch.feature/TASK-1.gh-merge-base develop\nbranch.gone/branch.gh-merge-base main\n"
+
+    private fun recordedBases(output: String? = baseRecords, extra: (List<String>, String?) -> CommandResult? = { _, _ -> null }) =
+        repositoryExecutor { command, directory ->
+            extra(command, directory) ?: if (command.take(3) == listOf("git", "config", "--get-regexp")) {
+                if (output == null) Executor.fail(command, "fatal: bad config", 128) else Executor.ok(command, output)
+            } else {
+                null
+            }
+        }
+
+    @Test
+    fun `status shows the recorded base of each worktree`() {
+        val exitCode = cli(recordedBases()).run(listOf("status"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            listOf(
+                "$base  main  main  changes=0",
+                "$merged  feature/TASK-1  origin=shogunai  base=develop  changes=0  merged",
+                "$dirty  worktree-spike  origin=claude-code  locked  changes=2",
+            ),
+            out.lines().filter { it.isNotEmpty() },
+        )
+    }
+
+    @Test
+    fun `status json reports the recorded base or null`() {
+        val exitCode = cli(recordedBases()).run(listOf("status", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray.map { it.jsonObject }
+        assertEquals(listOf(JsonNull, JsonPrimitive("develop"), JsonNull), worktrees.map { it.getValue("base") })
+    }
+
+    @Test
+    fun `status still works when the bases can't be read`() {
+        val exitCode = cli(recordedBases(output = null)).run(listOf("status", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray.map { it.jsonObject }
+        assertTrue(worktrees.all { it.getValue("base") == JsonNull })
+    }
+
+    @Test
+    fun `base prints the recorded base of the current worktree`() {
+        val exitCode = cli(recordedBases(), workingDirectory = "$merged/src").run(listOf("base"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("develop\n", out.toString())
+    }
+
+    @Test
+    fun `base prints the recorded base of a target worktree`() {
+        val exitCode = cli(recordedBases()).run(listOf("base", "TASK-1"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("develop\n", out.toString())
+    }
+
+    @Test
+    fun `base without a record says how to set it and exits with 1`() {
+        val exitCode = cli(recordedBases(), workingDirectory = dirty).run(listOf("base"))
+
+        assertEquals(1, exitCode)
+        assertEquals("", out.toString())
+        assertTrue(err.contains("no base is recorded for worktree-spike"), err.toString())
+        assertTrue(err.contains("shogun base --set <branch>"), err.toString())
+    }
+
+    @Test
+    fun `base json prints the worktree its branch and its base`() {
+        val exitCode = cli(recordedBases()).run(listOf("base", "feature/TASK-1", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            Json.parseToJsonElement("""{"path": "$merged", "branch": "feature/TASK-1", "base": "develop"}"""),
+            Json.parseToJsonElement(out.toString()),
+        )
+    }
+
+    @Test
+    fun `base json without a record has a null base and exits with 1`() {
+        val exitCode = cli(recordedBases(), workingDirectory = dirty).run(listOf("base", "--json"))
+
+        assertEquals(1, exitCode)
+        assertEquals(JsonNull, Json.parseToJsonElement(out.toString()).jsonObject.getValue("base"))
+    }
+
+    @Test
+    fun `base of a detached worktree says it has no branch`() {
+        val executor = recordedBases { command, _ ->
+            if (command.take(3) == listOf("git", "worktree", "list")) {
+                Executor.ok(command, "worktree $base\nHEAD 1111111111111111111111111111111111111111\nbranch refs/heads/main\n\nworktree $merged\nHEAD 2222222222222222222222222222222222222222\ndetached\n")
+            } else {
+                null
+            }
+        }
+
+        val exitCode = cli(executor, workingDirectory = merged).run(listOf("base"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("detached"), err.toString())
+    }
+
+    @Test
+    fun `base with an unknown target exits with 1`() {
+        val exitCode = cli(recordedBases()).run(listOf("base", "TASK-404"))
+
+        assertEquals(1, exitCode)
+        assertEquals("", out.toString())
+    }
+
+    @Test
+    fun `base set records a remote branch without its remote`() {
+        val executor = recordedBases { command, _ ->
+            if ("--symbolic-full-name" in command) Executor.ok(command, "refs/remotes/origin/epic/redesign\n") else null
+        }
+
+        val exitCode = cli(executor, workingDirectory = dirty).run(listOf("base", "--set", "origin/epic/redesign"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("epic/redesign\n", out.toString())
+        assertTrue(executor.calls.any { it.first == listOf("git", "config", "branch.worktree-spike.gh-merge-base", "epic/redesign") && it.second == base })
+    }
+
+    @Test
+    fun `base set refuses what isn't a branch`() {
+        val executor = recordedBases { command, _ ->
+            if ("--symbolic-full-name" in command) Executor.ok(command, "refs/tags/v1.2.0\n") else null
+        }
+
+        val exitCode = cli(executor, workingDirectory = dirty).run(listOf("base", "--set", "v1.2.0"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("v1.2.0"), err.toString())
+        assertFalse(executor.calls.any { it.first.take(2) == listOf("git", "config") && it.first.size == 4 })
     }
 
     @Test
@@ -1792,6 +1993,57 @@ class ShogunCliTest {
             """.trimIndent() + "\n",
             out.toString(),
         )
+    }
+
+    @Test
+    fun `xcode shows the packages of each worktree folder and the shared package caches`() {
+        val project = "$base/App.xcodeproj"
+        val derivedData = FakeDerivedDataSource(
+            existing = listOf(FakeDerivedDataSource.derivedData("Main-hash", project, sizeBytes = null)),
+            existingProjects = setOf(project),
+        ).apply {
+            sizes["/home/dev/Library/Developer/Xcode/DerivedData/Main-hash"] = 1_073_741_824L
+            packageSizes["/home/dev/Library/Developer/Xcode/DerivedData/Main-hash"] = 536_870_912L
+        }
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(xcode = XcodeProvider()))),
+        )
+        val caches = PackageCacheSizes(swiftPmBytes = 2_147_483_648L, cocoaPodsBytes = 1_073_741_824L)
+
+        val exitCode = cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData, packageCaches = caches)
+            .run(listOf("xcode"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            """
+            $base  1.0 GB  (packages 512.0 MB)
+            orphans: 0 (0 B)
+            SwiftPM cache: 2.0 GB
+            CocoaPods cache: 1.0 GB
+            """.trimIndent() + "\n",
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `xcode json reports the packages and the shared package caches`() {
+        val project = "$base/App.xcodeproj"
+        val derivedData = FakeDerivedDataSource(
+            existing = listOf(FakeDerivedDataSource.derivedData("Main-hash", project, sizeBytes = null)),
+            existingProjects = setOf(project),
+        ).apply { packageSizes["/home/dev/Library/Developer/Xcode/DerivedData/Main-hash"] = 800L }
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(xcode = XcodeProvider()))),
+        )
+
+        cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData, packageCaches = PackageCacheSizes(swiftPmBytes = 2_000L))
+            .run(listOf("xcode", "--json"))
+
+        val json = jsonOut()
+        val folder = json.getValue("folders").jsonArray.single().jsonObject
+        assertEquals(JsonPrimitive(800L), folder.getValue("sourcePackagesBytes"))
+        assertEquals(JsonPrimitive(2_000L), json.getValue("swiftPmCacheBytes"))
+        assertEquals(JsonNull, json.getValue("cocoaPodsCacheBytes"))
     }
 
     @Test
@@ -2670,7 +2922,7 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         val json = jsonOut()
-        assertEquals(setOf("path", "branch", "created", "skippedPostCreateCommands", "skippedVariables", "postCreateFailure", "skippedLinks"), json.keys)
+        assertEquals(setOf("path", "branch", "created", "skippedPostCreateCommands", "skippedVariables", "postCreateFailure", "skippedLinks", "pods"), json.keys)
         assertEquals("$worktreesRoot/TASK-123", (json.getValue("path") as JsonPrimitive).content)
         assertEquals("feature/TASK-123", (json.getValue("branch") as JsonPrimitive).content)
         assertEquals(JsonPrimitive(true), json.getValue("created"))
@@ -2678,6 +2930,17 @@ class ShogunCliTest {
         assertEquals(JsonNull, json.getValue("postCreateFailure"))
         assertFalse(executor.calls.any { it.first.first() == "npm" })
         assertFalse(err.contains("Approve them"), err.toString())
+    }
+
+    @Test
+    fun `new keeps the path alone on stdout and notes the pods on stderr`() {
+        val exitCode = cli(podsExecutor(), provisioning = podsProvisioning, fileManager = podsFileManager("$worktreesRoot/TASK-123"))
+            .run(listOf("new", "TASK-123"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("$worktreesRoot/TASK-123\n", out.toString())
+        assertTrue(err.contains("shogun: iosApp/Pods (cloned from the base)"), err.toString())
+        assertTrue(err.contains("shogun: macApp/Pods: pod install needed (the base has no pods)"), err.toString())
     }
 
     @Test
@@ -2717,7 +2980,7 @@ class ShogunCliTest {
         assertEquals(
             setOf(
                 "path", "copied", "linked", "copiedInsteadOfLinking", "skippedPostCreateCommands", "skippedVariables",
-                "postCreateFailure", "removed", "skippedLinks",
+                "postCreateFailure", "removed", "skippedLinks", "pods",
             ),
             json.keys,
         )
@@ -2726,6 +2989,59 @@ class ShogunCliTest {
         assertEquals(listOf("token.txt"), json.strings("linked"))
         assertEquals(emptyList(), json.strings("copiedInsteadOfLinking"))
         assertTrue(executor.ran("npm", "install"))
+    }
+
+    private val podsProvisioning = FakeRepositoryProvisioningSource(
+        byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(xcode = XcodeProvider(cocoaPods = true)))),
+    )
+
+    private fun podsExecutor() = repositoryExecutor { command, _ ->
+        when {
+            command.lastOrNull() == ":(glob)**/Podfile.lock" -> Executor.ok(command, "iosApp/Podfile.lock\u0000macApp/Podfile.lock\u0000")
+            else -> null
+        }
+    }
+
+    private fun podsFileManager(worktree: String) = FakeFileManager(existing = listOf(base, "$base/local.properties", "$base/iosApp/Pods/Manifest.lock")).also {
+        it.contents["$base/iosApp/Pods/Manifest.lock"] = "PODFILE CHECKSUM: abc"
+        it.contents["$worktree/iosApp/Podfile.lock"] = "PODFILE CHECKSUM: abc"
+    }
+
+    @Test
+    fun `provision clones matching pods and lists the folders that need pod install`() {
+        val executor = podsExecutor()
+
+        val exitCode = cli(executor, provisioning = podsProvisioning, fileManager = podsFileManager(merged), workingDirectory = merged)
+            .run(listOf("provision"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(executor.ran("cp", "-c", "-R", "$base/iosApp/Pods", "$merged/iosApp/Pods"))
+        assertTrue(out.contains("iosApp/Pods (cloned from the base)\n"), out.toString())
+        assertTrue(out.contains("macApp/Pods: pod install needed (the base has no pods)\n"), out.toString())
+    }
+
+    @Test
+    fun `provision json reports the pods`() {
+        cli(podsExecutor(), provisioning = podsProvisioning, fileManager = podsFileManager(merged), workingDirectory = merged)
+            .run(listOf("provision", "--json"))
+
+        val pods = jsonOut().getValue("pods").jsonObject
+        assertEquals(listOf("iosApp"), pods.strings("cloned"))
+        val needed = pods.getValue("installNeeded").jsonArray.single().jsonObject
+        assertEquals("macApp", needed.getValue("folder").jsonPrimitive.content)
+        assertEquals("base-has-no-pods", needed.getValue("reason").jsonPrimitive.content)
+        assertEquals(JsonNull, pods.getValue("error"))
+    }
+
+    @Test
+    fun `provision without the cocoapods option reports no pods`() {
+        val executor = podsExecutor()
+
+        cli(executor, fileManager = podsFileManager(merged), workingDirectory = merged).run(listOf("provision", "--json"))
+
+        val pods = jsonOut().getValue("pods").jsonObject
+        assertEquals(emptyList(), pods.strings("cloned"))
+        assertFalse(executor.ran("git", "ls-files", "-z", "--", ":(glob)**/Podfile.lock"))
     }
 
     private val keysProject = listOf(project.copy(config = project.config.copy(secretFiles = listOf("keys"))))
@@ -3113,14 +3429,14 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         val json = jsonOut()
-        assertEquals(setOf("active", "folders", "orphans", "unavailableVolumeFolders", "compilationCacheBytes"), json.keys)
+        assertEquals(setOf("active", "folders", "orphans", "unavailableVolumeFolders", "compilationCacheBytes", "swiftPmCacheBytes", "cocoaPodsCacheBytes"), json.keys)
         assertEquals(JsonPrimitive(true), json.getValue("active"))
         val folder = json.getValue("folders").jsonArray.single().jsonObject
-        assertEquals(setOf("path", "sizeBytes", "worktree"), folder.keys)
+        assertEquals(setOf("path", "sizeBytes", "sourcePackagesBytes", "worktree"), folder.keys)
         assertEquals(base, (folder.getValue("worktree") as JsonPrimitive).content)
         assertEquals(JsonPrimitive(1_073_741_824L), folder.getValue("sizeBytes"))
         val orphan = json.getValue("orphans").jsonArray.single().jsonObject
-        assertEquals(setOf("path", "sizeBytes"), orphan.keys)
+        assertEquals(setOf("path", "sizeBytes", "sourcePackagesBytes"), orphan.keys)
         assertEquals(JsonPrimitive(2_147_483_648L), orphan.getValue("sizeBytes"))
     }
 

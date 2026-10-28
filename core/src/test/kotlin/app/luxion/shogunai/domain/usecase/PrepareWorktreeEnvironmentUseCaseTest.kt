@@ -9,6 +9,7 @@ import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
+import app.luxion.shogunai.domain.model.PodsPreparation
 import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.WorktreeEnvironment
@@ -128,5 +129,24 @@ class PrepareWorktreeEnvironmentUseCaseTest {
         PrepareWorktreeEnvironmentUseCase(resolve, WriteEnvironmentFileUseCase(git, fileManager, source)).prepare(repository, worktree)
 
         assertEquals(setOf("$worktree/.env.shogunai"), fileManager.writtenTexts.keys)
+    }
+
+    @Test
+    fun `prepares the pods after writing the environment file and returns them`() = runTest {
+        val fileManager = FakeFileManager()
+        val source = provisioning(".env.shogunai")
+        val trust = FakeRepositoryTrust(mapOf(repository to RepositoryApprovalSubject(envFile = ".env.shogunai")))
+        val resolve = ResolveWorktreeEnvironmentUseCase(git, source, FakeEnvironmentStateStore(), FakePortProbe(), trust = trust)
+        val pods = PodsPreparation(cloned = listOf("iosApp"))
+        var writtenBeforePods = false
+
+        val prepared = PrepareWorktreeEnvironmentUseCase(
+            resolve,
+            WriteEnvironmentFileUseCase(git, fileManager, source),
+            pods = { _, _ -> writtenBeforePods = fileManager.writtenTexts.isNotEmpty(); pods },
+        ).prepare(repository, worktree)
+
+        assertEquals(pods, prepared.pods)
+        assertTrue(writtenBeforePods)
     }
 }

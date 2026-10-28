@@ -17,6 +17,7 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.Worktree
+import app.luxion.shogunai.domain.model.PodsPreparation
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import kotlinx.coroutines.test.runTest
@@ -84,6 +85,45 @@ class CreateWorktreeUseCaseTest {
         assertTrue(
             executor.executed("git", "worktree", "add", "--no-track", worktreePath, "-b", "feature/TASK-123", "abc123"),
         )
+    }
+
+    @Test
+    fun `records the base branch right after adding the worktree`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+        val useCase = CreateWorktreeUseCase(config, executor, FakeFileManager(baseWithSecrets), FakeRepositoryProvisioningSource())
+
+        useCase("TASK-123", BranchType.FEATURE, startPoint = "abc123", baseBranch = "epic/redesign").getOrThrow()
+
+        val add = executor.executedCommands.indexOfFirst { it.take(3) == listOf("git", "worktree", "add") }
+        val record = executor.executedCommands.indexOf(listOf("git", "config", "branch.feature/TASK-123.gh-merge-base", "epic/redesign"))
+        assertTrue(record == add + 1, "should record the base right after git worktree add")
+        assertEquals(config.baseRepositoryPath, executor.workingDirectories[record])
+    }
+
+    @Test
+    fun `records nothing without a base branch`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+        val useCase = CreateWorktreeUseCase(config, executor, FakeFileManager(baseWithSecrets), FakeRepositoryProvisioningSource())
+
+        useCase("TASK-123", BranchType.FEATURE, startPoint = "abc123").getOrThrow()
+
+        assertFalse(executor.executedCommands.any { it.take(2) == listOf("git", "config") })
+    }
+
+    @Test
+    fun `rolls back when the base can't be recorded`() = runTest {
+        val executor = FakeShellCommandExecutor {
+            if (it.take(2) == listOf("git", "config")) failure(it, exitCode = 255, stderr = "error: could not lock config file") else success(it)
+        }
+        val fileManager = FakeFileManager(existing = baseWithSecrets)
+        val useCase = CreateWorktreeUseCase(config, executor, fileManager, FakeRepositoryProvisioningSource())
+
+        val error = useCase("TASK-123", BranchType.FEATURE, baseBranch = "develop").exceptionOrNull()
+
+        assertIs<WorktreeError.GitCommandFailed>(error)
+        assertTrue(fileManager.copied.isEmpty())
+        assertTrue(executor.executed("git", "worktree", "remove", "--force", worktreePath))
+        assertTrue(executor.executed("git", "branch", "-D", "--", "feature/TASK-123"))
     }
 
     @Test
@@ -357,12 +397,28 @@ class CreateWorktreeUseCaseTest {
             executor,
             FakeFileManager(baseWithSecrets),
             FakeRepositoryProvisioningSource(),
-            environment = { repository, worktree -> prepared += repository to worktree },
+            environment = { repository, worktree -> prepared += repository to worktree; PreparedWorktree() },
         )
 
         useCase("TASK-123", BranchType.FEATURE).getOrThrow()
 
         assertEquals(listOf(config.baseRepositoryPath to worktreePath), prepared)
+    }
+
+    @Test
+    fun `reports the pods prepared with the environment`() = runTest {
+        val pods = PodsPreparation(cloned = listOf("iosApp"))
+        val useCase = CreateWorktreeUseCase(
+            config,
+            FakeShellCommandExecutor { success(it) },
+            FakeFileManager(baseWithSecrets),
+            FakeRepositoryProvisioningSource(),
+            environment = { _, _ -> PreparedWorktree(pods) },
+        )
+
+        val created = useCase("TASK-123", BranchType.FEATURE).getOrThrow()
+
+        assertEquals(pods, created.pods)
     }
 
     @Test
@@ -405,10 +461,11 @@ class CreateWorktreeUseCaseTest {
         val trust = FakeRepositoryTrust(
             mapOf(config.baseRepositoryPath to RepositoryApprovalSubject(listOf(listOf("npm", "install"), listOf("direnv", "allow")))),
         )
-        val error = CreateWorktreeUseCase(config, executor, fileManager, provisioning, trust = trust)("TASK-123", BranchType.FEATURE)
+        val error = CreateWorktreeUseCase(config, executor, fileManager, provisioning, trust = trust)("TASK-123", BranchType.FEATURE, baseBranch = "develop")
             .exceptionOrNull()
 
         assertIs<WorktreeError.PostCreateCommandFailed>(error)
+        assertTrue(executor.executed("git", "config", "branch.feature/TASK-123.gh-merge-base", "develop"))
         assertEquals(worktreePath, error.worktreePath)
         assertEquals(mapOf("$worktreePath/keys/a" to "${config.baseRepositoryPath}/keys/a"), fileManager.symbolicLinks)
         assertFalse(executor.executed("direnv", "allow"))

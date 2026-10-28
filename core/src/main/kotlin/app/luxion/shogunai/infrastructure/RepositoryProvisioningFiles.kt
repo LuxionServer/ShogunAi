@@ -200,6 +200,7 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
 
     private fun xcodeOptions(xcode: XcodeProvider): Map<String, JsonElement> = buildMap {
         if (xcode.compilationCache) put(COMPILATION_CACHE_FIELD, JsonPrimitive(true))
+        if (xcode.cocoaPods) put(COCOA_PODS_FIELD, JsonPrimitive(true))
     }
 
     private fun mavenOptions(maven: MavenProvider): Map<String, JsonElement> = buildMap {
@@ -295,7 +296,10 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
             },
             xcode = providers[XCODE_PROVIDER]?.let { value ->
                 val options = providerOptions(value, XCODE_PROVIDER, path)
-                XcodeProvider(compilationCache = optionalBoolean(options, XCODE_PROVIDER, COMPILATION_CACHE_FIELD, path) ?: false)
+                XcodeProvider(
+                    compilationCache = optionalBoolean(options, XCODE_PROVIDER, COMPILATION_CACHE_FIELD, path) ?: false,
+                    cocoaPods = optionalBoolean(options, XCODE_PROVIDER, COCOA_PODS_FIELD, path) ?: false,
+                )
             },
             maven = providers[MAVEN_PROVIDER]?.let { value ->
                 val options = providerOptions(value, MAVEN_PROVIDER, path)
@@ -424,6 +428,7 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
         const val RUNTIME_FIELD = "runtime"
         const val XCODE_PROVIDER = "xcode"
         const val COMPILATION_CACHE_FIELD = "compilationCache"
+        const val COCOA_PODS_FIELD = "cocoaPods"
         const val MAVEN_PROVIDER = "maven"
         const val MAVEN_MAX_HEAP_FIELD = "mavenMaxHeap"
         const val DOCKER_COMPOSE_PROVIDER = "docker-compose"
@@ -438,7 +443,7 @@ class RepositoryProvisioningFiles : RepositoryProvisioningSource {
             GRADLE_PROVIDER to listOf(DAEMON_MAX_HEAP_FIELD, IDLE_TIMEOUT_MINUTES_FIELD, KOTLIN_DAEMON_MAX_HEAP_FIELD),
             EMULATOR_PROVIDER to listOf(AVD_FIELD),
             IOS_SIMULATOR_PROVIDER to listOf(DEVICE_FIELD, RUNTIME_FIELD),
-            XCODE_PROVIDER to listOf(COMPILATION_CACHE_FIELD),
+            XCODE_PROVIDER to listOf(COMPILATION_CACHE_FIELD, COCOA_PODS_FIELD),
             MAVEN_PROVIDER to listOf(MAVEN_MAX_HEAP_FIELD),
             DOCKER_COMPOSE_PROVIDER to listOf(PORT_VARIABLES_FIELD),
         )

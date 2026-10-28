@@ -11,7 +11,7 @@ A provider adds support for one kind of tooling to a repository's worktrees. A r
 | [`gradle`](#gradle) | Android, KMP and JVM repositories: Gradle daemons and their memory. | Any; the daemon list needs `ps` (macOS, Linux) |
 | [`emulator`](#android-emulator) | An Android emulator per worktree. | Any with the Android SDK |
 | [`ios-simulator`](#ios-simulator) | An iOS simulator per worktree. | macOS |
-| [`xcode`](#xcode) | Xcode DerivedData and the shared compilation cache. | macOS |
+| [`xcode`](#xcode) | Xcode DerivedData, the shared compilation cache, Swift packages and CocoaPods pods. | macOS |
 | [`maven`](#maven) | Maven builds: a memory bound and the Maven daemons. | Any; the daemon list needs `ps` (macOS, Linux) |
 | [`docker-compose`](#docker-compose) | A Docker Compose project and ports per worktree. | Any with the Docker CLI |
 | [`desktop-app`](#compose-desktop-app) | A Compose Desktop app per worktree, run in the background without taking the desktop. | macOS |
@@ -227,7 +227,7 @@ The quota is a machine setting, not part of the capacity profiles, and is never 
 When the folders add up to more than the quota, ShogunAi releases the orphaned folders first and then the least recently accessed folders of worktrees that are not in use, and stops as soon as the total fits. A worktree is in use while its agent is working or blocked, or its folder was accessed within the last hour. Folders of other projects, folders on unavailable volumes and the compilation cache are never released; if only those remain, the view says the quota is still exceeded and names the worktrees in use. The app applies the quota every time the folder sizes have been measured, and shows the usage against the quota (marked "automatic" for the automatic one), in the sidebar too, and the folders it released until you dismiss the notice. `shogun xcode trim` applies it from the command line.
 
 ```bash
-shogun xcode                               # this repository's DerivedData folders, the orphans and the compilation cache size
+shogun xcode                               # this repository's DerivedData folders with their packages, the orphans and the shared caches
 shogun xcode clean                         # delete the orphaned folders
 shogun xcode trim [--dry-run]              # release folders until DerivedData fits the quota
 shogun clean --yes --delete-derived-data   # also delete them after removing worktrees
@@ -240,3 +240,19 @@ shogun clean --yes --delete-derived-data   # also delete them after removing wor
 - It needs Xcode 26 or later and helps `.xcodeproj` and `.xcworkspace` projects; Swift packages got no reuse between worktrees.
 - It reaches agents like any [per-worktree variable](../agents.md#per-worktree-environment). An `XCODE_XCCONFIG_FILE` you set yourself in that shell is replaced; declare it in `env` instead and it takes precedence over the provider's.
 - Xcode opened from the Dock doesn't inherit the agent's shell. Set the build settings in the project if you want caching there too.
+
+### Swift packages and package caches
+
+Xcode resolves a project's Swift packages into its DerivedData folder (`SourcePackages`), so each worktree has its own checkouts, which count against the quota and go away with the folder. They come from Xcode's shared repository cache, so a new worktree resolves them without the network. The section and `shogun xcode` show how much of each worktree's folder are packages ("App.xcodeproj · packages 800 MB"), measured and remembered with the folder's size; checkouts aren't shared between worktrees.
+
+The shared package caches, SwiftPM's (`~/Library/Caches/org.swift.swiftpm`) and CocoaPods' (`~/Library/Caches/CocoaPods`), are shown below the compilation cache when they exist. Like it, they don't count against the quota and ShogunAi never deletes them; only their default locations are measured.
+
+### CocoaPods
+
+A CocoaPods project's `Pods` folder is usually ignored by Git, so a fresh worktree can't build until `pod install` runs. Turn on `cocoaPods` and ShogunAi gives each new or provisioned worktree the base repository's pods:
+
+```json
+{ "providers": { "xcode": { "cocoaPods": true } } }
+```
+
+For every `Podfile.lock` tracked by Git, at any depth, whose worktree has no `Pods` yet, ShogunAi compares it with the base's `Pods/Manifest.lock`, the same check CocoaPods' "Check Pods Manifest.lock" build phase makes. When they match, the base's `Pods` is cloned into the worktree with APFS copy-on-write (`cp -c`): instant, and it takes no disk until a file changes. When they don't match, the base never ran `pod install`, or the volume can't clone, nothing is copied (never a slow full copy) and `shogun new`, `shogun provision` and the worktree creation hook say which folders need `pod install` and why (`pods` in their JSON). Pods are prepared after the files are copied and before the post-creation commands, so a `pod install` declared there finds them in place; a problem with the pods never fails the worktree.

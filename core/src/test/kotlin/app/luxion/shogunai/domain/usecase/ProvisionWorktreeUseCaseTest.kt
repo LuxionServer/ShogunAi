@@ -17,6 +17,7 @@ import app.luxion.shogunai.domain.model.ProvisionMode
 import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.ProvisionedFile
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.domain.model.PodsPreparation
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import kotlinx.coroutines.test.runTest
@@ -112,7 +113,7 @@ class ProvisionWorktreeUseCaseTest {
     fun `prepares the environment of an existing worktree and keeps it on failure`() = runTest {
         val prepared = mutableListOf<String>()
         val fileManager = FakeFileManager(existing = listOf("$base/local.properties"))
-        ProvisionWorktreeUseCase(config, executor(), fileManager, provisioning, environment = { _, worktree -> prepared += worktree })(linked)
+        ProvisionWorktreeUseCase(config, executor(), fileManager, provisioning, environment = { _, worktree -> prepared += worktree; PreparedWorktree() })(linked)
             .getOrThrow()
 
         assertEquals(listOf(linked), prepared)
@@ -208,13 +209,14 @@ class ProvisionWorktreeUseCaseTest {
         val exec = linkingExecutor { order += "hook"; success(it) }
         val fileManager = FakeFileManager(existing = listOf("$base/local.properties"))
 
-        ProvisionWorktreeUseCase(
+        val result = ProvisionWorktreeUseCase(
             config, exec, fileManager, linkingProvisioning,
-            environment = { _, _ -> order += "environment" },
+            environment = { _, _ -> order += "environment"; PreparedWorktree(PodsPreparation(cloned = listOf("iosApp"))) },
             trust = approvedTrust,
         )(linked).getOrThrow()
 
         assertEquals(listOf("environment", "hook", "hook"), order)
+        assertEquals(listOf("iosApp"), result.pods.cloned)
         val hooks = exec.executedCommands.zip(exec.workingDirectories).filter { it.first.first() in setOf("npm", "direnv") }
         assertEquals(listOf(listOf("npm", "install") to linked, listOf("direnv", "allow") to linked), hooks)
     }
@@ -494,7 +496,7 @@ class ProvisionWorktreeUseCaseTest {
 
         val result = ProvisionWorktreeUseCase(
             config, executor(), FakeFileManager(existing = listOf("$base/local.properties")), source,
-            environment = { _, _ -> events += "prepared" },
+            environment = { _, _ -> events += "prepared"; PreparedWorktree() },
             approval = approval,
         )(linked).getOrThrow()
 

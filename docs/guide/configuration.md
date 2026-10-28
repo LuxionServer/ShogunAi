@@ -84,7 +84,7 @@ Provider options:
 | `gradle` | `daemonMaxHeap`, `kotlinDaemonMaxHeap`: a size such as `512m` or `2g` (a number followed by `k`, `m` or `g`). `idleTimeoutMinutes`: a positive whole number, not a string. |
 | `emulator` | `avd`: the preferred AVD name. |
 | `ios-simulator` | `device`, `runtime`: the preferred device type and runtime names. |
-| `xcode` | `compilationCache`: `true` or `false`. |
+| `xcode` | `compilationCache`: `true` or `false`; `cocoaPods`: `true` or `false`. |
 | `maven` | `mavenMaxHeap`: a size such as `512m` or `1g`. |
 | `docker-compose` | `portVariables`: a list of unique variable names that follow the `env` name rules and aren't reserved. |
 | `desktop-app` | `module` (required): the Gradle path of the app's module, such as `:desktopApp`. `isolatedHome`: `true` (default) or `false`. |

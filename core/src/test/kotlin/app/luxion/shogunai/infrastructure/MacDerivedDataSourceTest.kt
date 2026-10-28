@@ -318,4 +318,20 @@ class MacDerivedDataSourceTest {
                 "</dict>\n</plist>\n",
         )
     }
+
+    @Test
+    fun `measures the swift packages of a folder and zero without them`() = runTest {
+        val app = folder("App-hash")
+        writePlist(app, "/home/dev/projects/app/App.xcodeproj")
+        app.resolve("SourcePackages/checkouts/Package").createDirectories().resolve("Package.swift").writeText("12345")
+        app.resolve("Build").createDirectories().resolve("app.o").writeText("123")
+        val other = folder("Other-hash")
+        writePlist(other, "/home/dev/projects/other/Other.xcodeproj")
+        val source = dataSource()
+        val folders = source.folders().associateBy { Path.of(it.path).fileName.toString() }
+
+        assertEquals(5L, source.packagesSize(folders.getValue("App-hash")))
+        assertEquals(8L + Files.size(app.resolve("info.plist")), source.size(folders.getValue("App-hash")))
+        assertEquals(0L, source.packagesSize(folders.getValue("Other-hash")))
+    }
 }

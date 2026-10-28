@@ -2,6 +2,7 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.io.DerivedDataSizeStore
 import app.luxion.shogunai.domain.io.DerivedDataSource
+import app.luxion.shogunai.domain.io.PackageCacheSource
 import app.luxion.shogunai.domain.model.AttributedDerivedData
 import app.luxion.shogunai.domain.model.DerivedDataListing
 import app.luxion.shogunai.domain.model.DerivedDataOwner
@@ -15,6 +16,7 @@ enum class DerivedDataMeasure { NONE, ORPHANS, ALL }
 class ListDerivedDataUseCase(
     private val source: DerivedDataSource,
     sizes: DerivedDataSizeStore = DerivedDataSizeStore.NONE,
+    private val packageCaches: PackageCacheSource = PackageCacheSource.NONE,
 ) {
     private val measureSizes = MeasureDerivedDataUseCase(source, sizes)
 
@@ -25,6 +27,7 @@ class ListDerivedDataUseCase(
     ): Result<DerivedDataListing> = runCatching {
         coroutineScope {
             val compilationCache = async { if (includeCompilationCache) source.compilationCacheBytes() else null }
+            val caches = async { packageCaches.sizes() }
             val attributed = source.folders().map { folder -> AttributedDerivedData(folder, ownerOf(folder.workspacePath, worktrees)) }
             val toMeasure = attributed.filter { entry ->
                 when (measure) {
@@ -33,12 +36,15 @@ class ListDerivedDataUseCase(
                     DerivedDataMeasure.ALL -> true
                 }
             }.map { it.folder }
-            val measured = measureSizes(toMeasure).toList().associate { it.path to (it.sizeBytes ?: 0L) }
+            val measured = measureSizes(toMeasure).toList().associateBy { it.path }
             DerivedDataListing(
                 folders = attributed.map { entry ->
-                    measured[entry.folder.path]?.let { entry.copy(folder = entry.folder.copy(sizeBytes = it)) } ?: entry
+                    measured[entry.folder.path]?.let {
+                        entry.copy(folder = entry.folder.copy(sizeBytes = it.sizeBytes ?: 0L, packagesBytes = it.packagesBytes))
+                    } ?: entry
                 },
                 compilationCacheBytes = compilationCache.await(),
+                packageCaches = caches.await(),
             )
         }
     }

@@ -41,6 +41,7 @@ sealed interface CliCommand {
     data class Repair(val json: Boolean = false) : CliCommand
     data class Open(val target: String?, val herdr: Boolean = false, val agent: String? = null, val json: Boolean = false) : CliCommand
     data class Status(val json: Boolean = false) : CliCommand
+    data class Base(val target: String? = null, val set: String? = null, val json: Boolean = false) : CliCommand
     data class Clean(
         val confirmed: Boolean = false,
         val deleteBranches: Boolean = false,
@@ -161,6 +162,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "repair" -> noArguments(name, arguments, CliCommand.Repair())
                 "open" -> parseOpen(arguments)
                 "status" -> parseStatus(arguments)
+                "base" -> parseBase(arguments)
                 "clean" -> parseClean(arguments)
                 "hook" -> parseHook(arguments)
                 "hooks" -> parseHooks(arguments)
@@ -190,7 +192,7 @@ private const val JSON_FLAG = "--json"
 
 private const val ARGUMENTS_SEPARATOR = "--"
 
-private val JSON_COMMANDS = setOf("new", "multirepo", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "stacks", "maven", "compose", "pool", "project", "xcode", "emulator", "simulator", "headless", "desktop", "hooks", "guide")
+private val JSON_COMMANDS = setOf("new", "base", "multirepo", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "stacks", "maven", "compose", "pool", "project", "xcode", "emulator", "simulator", "headless", "desktop", "hooks", "guide")
 
 private fun isSimulatorGradleInit(name: String, rest: List<String>) = name == "simulator" && rest.firstOrNull() == "gradle-init"
 
@@ -202,6 +204,7 @@ private fun CliCommand.withJson(json: Boolean): CliCommand = if (!json) this els
     is CliCommand.Provision -> copy(json = true)
     is CliCommand.Trust -> copy(json = true)
     is CliCommand.Remove -> copy(json = true)
+    is CliCommand.Base -> copy(json = true)
     is CliCommand.Repair -> copy(json = true)
     is CliCommand.Open -> copy(json = true)
     is CliCommand.Clean -> copy(json = true)
@@ -329,6 +332,23 @@ private fun parseStatus(rest: List<String>): CliCommand.Status {
         }
     }
     return CliCommand.Status(json)
+}
+
+private fun parseBase(rest: List<String>): CliCommand.Base {
+    var target: String? = null
+    var set: String? = null
+    val remaining = ArrayDeque(rest)
+    while (remaining.isNotEmpty()) {
+        when (val argument = remaining.removeFirst()) {
+            "--set" -> set = remaining.valueOf(argument)
+            else -> {
+                if (argument.startsWith("-")) throw UsageException("unknown option '$argument' for 'base'")
+                if (target != null) throw UsageException("'base' takes a single target, got '$target' and '$argument'")
+                target = argument
+            }
+        }
+    }
+    return CliCommand.Base(target, set)
 }
 
 private fun parseProvision(rest: List<String>): CliCommand.Provision {
@@ -795,6 +815,10 @@ sealed interface MultirepoAction {
     data class WorktreesRoot(val folder: String) : MultirepoAction
     data class WorkspaceSet(val alias: String? = null, val default: Boolean = false) : MultirepoAction
     data object WorkspaceClear : MultirepoAction
+    data object WorkspaceDetect : MultirepoAction
+    data object EnvList : MultirepoAction
+    data class EnvSet(val alias: String, val name: String, val template: String) : MultirepoAction
+    data class EnvUnset(val alias: String, val name: String) : MultirepoAction
     data object Delete : MultirepoAction
     data class Trust(val folder: String? = null, val yes: Boolean = false, val revoke: Boolean = false) : MultirepoAction
 }
@@ -803,7 +827,7 @@ private fun multirepoName(name: String): String =
     name.trim().ifEmpty { throw UsageException("the multirepo name can't be blank") }
 
 private fun parseMultirepo(rest: List<String>): CliCommand.Multirepo {
-    val action = rest.firstOrNull() ?: throw UsageException("'multirepo' needs an action: init, show, trust, name, add-repo, remove-repo, defaults, agent, workspace, worktrees-root or delete")
+    val action = rest.firstOrNull() ?: throw UsageException("'multirepo' needs an action: init, show, trust, name, add-repo, remove-repo, defaults, agent, workspace, env, worktrees-root or delete")
     val remaining = ArrayDeque(rest.drop(1))
     val positional = mutableListOf<String>()
     val options = mutableMapOf<String, String?>()
@@ -870,11 +894,28 @@ private fun parseMultirepo(rest: List<String>): CliCommand.Multirepo {
                 MultirepoAction.Agent(arguments(1, "agent <command> [--name <name>] [--headroom]").single(), options["--name"], headroom)
             }
             "workspace" -> {
-                val what = positional.firstOrNull() ?: throw UsageException("usage: shogun multirepo workspace set [--alias <alias>] [--default] | clear")
+                val usage = "usage: shogun multirepo workspace set [--alias <alias>] [--default] | clear | detect"
+                val what = positional.firstOrNull() ?: throw UsageException(usage)
                 when (what) {
                     "set" -> { allow("--alias", "--default"); arguments(1, "workspace set [--alias <alias>] [--default]"); MultirepoAction.WorkspaceSet(options["--alias"], "--default" in options) }
                     "clear" -> { allow(); arguments(1, "workspace clear"); MultirepoAction.WorkspaceClear }
-                    else -> throw UsageException("usage: shogun multirepo workspace set [--alias <alias>] [--default] | clear")
+                    "detect" -> { allow(); arguments(1, "workspace detect"); MultirepoAction.WorkspaceDetect }
+                    else -> throw UsageException(usage)
+                }
+            }
+            "env" -> {
+                allow()
+                when (positional.firstOrNull()) {
+                    null -> MultirepoAction.EnvList
+                    "set" -> {
+                        val (_, alias, name, template) = arguments(4, "env set <alias> <name> <template>")
+                        MultirepoAction.EnvSet(alias, name, template)
+                    }
+                    "unset" -> {
+                        val (_, alias, name) = arguments(3, "env unset <alias> <name>")
+                        MultirepoAction.EnvUnset(alias, name)
+                    }
+                    else -> throw UsageException("usage: shogun multirepo env [set <alias> <name> <template> | unset <alias> <name>]")
                 }
             }
             "worktrees-root" -> { allow(); MultirepoAction.WorktreesRoot(arguments(1, "worktrees-root <dir>").single()) }

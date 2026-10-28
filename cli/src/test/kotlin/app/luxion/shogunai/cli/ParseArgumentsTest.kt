@@ -100,6 +100,18 @@ class ParseArgumentsTest {
     }
 
     @Test
+    fun `base takes an optional target, set and the json flag`() {
+        assertEquals(ParsedArguments.Command(CliCommand.Base()), parseArguments(listOf("base")))
+        assertEquals(
+            ParsedArguments.Command(CliCommand.Base("TASK-1", "origin/develop", json = true)),
+            parseArguments(listOf("base", "TASK-1", "--set", "origin/develop", "--json")),
+        )
+        assertEquals(ParsedArguments.UsageError("--set needs a value"), parseArguments(listOf("base", "--set")))
+        assertEquals(ParsedArguments.UsageError("unknown option '--yaml' for 'base'"), parseArguments(listOf("base", "--yaml")))
+        assertEquals(ParsedArguments.UsageError("'base' takes a single target, got 'a' and 'b'"), parseArguments(listOf("base", "a", "b")))
+    }
+
+    @Test
     fun `status takes only the json flag`() {
         assertEquals(CliCommand.Status(), command("status"))
         assertEquals(CliCommand.Status(json = true), command("status", "--json"))
@@ -235,6 +247,17 @@ class ParseArgumentsTest {
         assertEquals(CliCommand.Multirepo(MultirepoAction.Delete), command("multirepo", "delete"))
         assertEquals("usage: shogun multirepo remove-repo <alias>", usageError("multirepo", "remove-repo"))
         assertEquals("unknown multirepo action 'rename'", usageError("multirepo", "rename"))
+        assertEquals(CliCommand.Multirepo(MultirepoAction.WorkspaceDetect), command("multirepo", "workspace", "detect"))
+        assertEquals(CliCommand.Multirepo(MultirepoAction.EnvList, json = true), command("multirepo", "env", "--json"))
+        assertEquals(
+            CliCommand.Multirepo(MultirepoAction.EnvSet("app", "API_URL", "http://localhost:${'$'}{port:api.http}")),
+            command("multirepo", "env", "set", "app", "API_URL", "http://localhost:${'$'}{port:api.http}"),
+        )
+        assertEquals(CliCommand.Multirepo(MultirepoAction.EnvUnset("app", "API_URL")), command("multirepo", "env", "unset", "app", "API_URL"))
+        assertEquals("usage: shogun multirepo env set <alias> <name> <template>", usageError("multirepo", "env", "set", "app", "API_URL"))
+        assertEquals("usage: shogun multirepo env unset <alias> <name>", usageError("multirepo", "env", "unset", "app"))
+        assertEquals("usage: shogun multirepo env [set <alias> <name> <template> | unset <alias> <name>]", usageError("multirepo", "env", "list"))
+        assertEquals("usage: shogun multirepo workspace detect", usageError("multirepo", "workspace", "detect", "extra"))
         assertEquals("--use-worktrees-root and --keep-worktrees-folder can't be combined", usageError("multirepo", "add-repo", "a", "b", "--use-worktrees-root", "--keep-worktrees-folder"))
     }
 

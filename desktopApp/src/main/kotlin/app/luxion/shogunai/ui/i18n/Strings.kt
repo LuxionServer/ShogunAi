@@ -23,6 +23,7 @@ import app.luxion.shogunai.domain.model.RepositoryConfigIssue
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
 interface Strings {
+    val language: AppLanguage
     val languageName: String
 
     val themeLight: String
@@ -359,6 +360,9 @@ interface Strings {
     val deleteOrphans: String
     fun derivedDataOnUnavailableVolumes(count: Int): String
     fun derivedDataCompilationCache(size: String): String
+    fun derivedDataSwiftPmCache(size: String): String
+    fun derivedDataCocoaPodsCache(size: String): String
+    fun derivedDataWithPackages(name: String, size: String): String
     fun derivedDataDeleted(count: Int, freed: String): String
     fun derivedDataQuotaUsage(usage: String, quota: String, automatic: Boolean): String
     val derivedDataQuotaUnknown: String
@@ -462,6 +466,11 @@ interface Strings {
     val updateChecking: String
     fun updateUpToDateMessage(version: String): String
     val updateCheckAutomaticallyLabel: String
+    fun releaseNotesTitle(version: String): String
+    fun releaseNotesVersionHeading(version: String): String
+    val releaseNotesViewOnGitHub: String
+    val releaseNotesEmpty: String
+    val releaseNotesIconDescription: String
     val copied: String
     val close: String
     val worktreeCreatedWithError: String
@@ -519,6 +528,7 @@ interface Strings {
     val preferredDeviceLabel: String
     val preferredRuntimeLabel: String
     val xcodeCompilationCacheLabel: String
+    val xcodeCocoaPodsLabel: String
     val providerMaven: String
     val providerDockerCompose: String
     val mavenMaxHeapLabel: String
@@ -648,6 +658,13 @@ interface Strings {
     val declareWorkspace: String
     val workspaceAliasLabel: String
     val turnOffWorkspace: String
+    val returnWorkspaceToDetection: String
+    val sharedVariablesTitle: String
+    val sharedVariablesHint: String
+    val sharedVariablesEmpty: String
+    val sharedVariableOwnPort: String
+    fun sharedVariableUnknownRepository(alias: String): String
+    fun sharedVariablesUnrepresentable(problem: String): String
     val workspaceTurnedOff: String
     val defaultRepositoriesTitle: String
     val defaultRepositoriesHint: String
@@ -725,6 +742,8 @@ fun Strings.repositoryConfigIssue(issue: RepositoryConfigIssue): String = when (
     RepositoryConfigIssue.DuplicateVariableName -> variableNameDuplicate
     RepositoryConfigIssue.UnclosedPlaceholder -> templateUnclosed
     is RepositoryConfigIssue.UnknownPlaceholder -> templateUnknown(issue.placeholder)
+    RepositoryConfigIssue.OwnPortInSharedVariable -> sharedVariableOwnPort
+    is RepositoryConfigIssue.UnknownMultirepoRepository -> sharedVariableUnknownRepository(issue.alias)
     RepositoryConfigIssue.EnvFileOutsideWorktree -> envFileOutsideWorktree
     RepositoryConfigIssue.EnvFileInvalidCharacters -> envFileInvalidCharacters
 }

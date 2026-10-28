@@ -8,6 +8,7 @@ shogun new --branch hotfix/login   # worktree para una rama existente
 shogun provision ../otro-worktree  # copia los archivos declarados en un worktree creado por otra herramienta
 shogun status                      # todos los worktrees con sus cambios, divergencia y si están mergeados
 shogun status --json               # lo mismo, como un documento JSON para scripts
+shogun base                        # la rama de la que se creó la rama de este worktree, la base de su pull request
 shogun remove TASK-123             # elimina un worktree y para su emulador y simulador
 shogun repair                      # re-enlaza los worktrees tras mover el repositorio
 shogun open TASK-123 --herdr       # abre un worktree en Herdr con su entorno y el agente del proyecto
@@ -45,6 +46,7 @@ Crea un worktree, copia en él los archivos declarados, prepara su [entorno](../
 - Con un id de tarea, el worktree recibe una rama nueva `feature/<task-id>`, o `fix/<task-id>` con `--fix`. La rama parte del HEAD del worktree donde ejecutas el comando, o de `--from <ref>` (una rama, tag o commit; una referencia desconocida falla antes de crear nada).
 - Con `--branch`, el worktree hace checkout de una rama existente. `--fix` y `--from` no se aceptan con ella. Una rama que existe solo en `origin`, indicada como `<nombre>` u `origin/<nombre>`, recibe una rama local con ese nombre que la sigue; una rama local con ese nombre tiene prioridad.
 - Una rama nueva nunca sigue a su punto de partida, así que al hacer push nunca apunta a la rama de la que partió.
+- La rama de la que parte queda registrada como la [base](#base) de la rama nueva: la rama del worktree actual, o la que nombra `--from` (`origin/develop` se registra como `develop`). Un tag, un commit o un HEAD separado no registran nada, y `--branch` conserva lo que ya tuviera una rama existente.
 - `--fetch` ejecuta antes `git fetch --prune origin`, para que `--from origin/develop` o una rama remota estén al día. Nunca espera credenciales: si el fetch falla, se imprime el error de Git, no se crea nada y el código de salida es 1.
 - `--worktrees-root <dir>` indica dónde va el worktree. Es obligatorio cuando el repositorio no tiene proyecto en la app de escritorio; las rutas relativas se resuelven desde el directorio actual.
 - Un id de tarea con `/` (`team/TASK-1`) conserva la `/` en la rama (`feature/team/TASK-1`) y se convierte en una sola carpeta, `team-TASK-1`.
@@ -85,6 +87,7 @@ Lista todos los worktrees del repositorio, uno por línea: ruta, rama (o `(detac
 |---|---|
 | `main` | El checkout principal. |
 | `origin=shogunai\|claude-code\|herdr\|other` | Dónde se creó el worktree. |
+| `base=develop` | La [base](#base) registrada de su rama. |
 | `locked` | Lo retiene una sesión de agente. |
 | `desktop(until 14:10)`, `desktop(waiting 1/2)` | Tiene el [turno del escritorio](#desktop) hasta esa hora, o lo espera en ese puesto de la cola. |
 | `agents=claude(blocked, app-task-123),codex` | Agentes en ejecución en él, con su estado (`working`, `blocked`, `done`, `idle`) cuando lo informa Herdr o, para Claude, sus [hooks](../agents.md#estados-de-los-agentes-fuera-de-herdr). Un agente Claude también lista, tras su estado, los nombres de sus sesiones vivas cuya carpeta está en ese worktree, tal como los tiene el registro de sesiones de Claude Code (`claude(app-task-123)` cuando no hay estado). |
@@ -116,6 +119,7 @@ Imprime un único objeto JSON compacto en una línea, en vez de las líneas de t
       "locked": false,
       "folderMissing": false,
       "origin": null,
+      "base": null,
       "agents": [{ "name": "claude", "state": "blocked", "stateSource": "claude-code", "herdrState": null, "sessions": [{ "name": "main-repo-task-123", "pid": 4242 }] }],
       "status": {
         "uncommittedChanges": 0,
@@ -136,6 +140,7 @@ Imprime un único objeto JSON compacto en una línea, en vez de las líneas de t
 | `branch`, `head` | La rama activa (`null` si está detached) y el commit. |
 | `main`, `locked`, `folderMissing` | El checkout principal, retenido por una sesión de agente, carpeta borrada a mano. |
 | `origin` | `shogunai`, `claude-code`, `herdr` u `other`; `null` para el checkout principal. |
+| `base` | La [base](#base) registrada de su rama; `null` si no hay ninguna registrada o está en HEAD separado. |
 | `agents` | Los agentes en ejecución en él: `name`, `state` (`working`, `blocked`, `done`, `idle`; `null` cuando nada informa de uno), `stateSource` (`herdr`, `claude-code` o `null`), `herdrState`, el estado cuando la fuente es Herdr y `null` si no, y `sessions`, las sesiones vivas de Claude Code del agente en ese worktree (`name` y `pid`; vacía para otros agentes o cuando no se encuentra ninguna). |
 | `status` | `null` cuando falta la carpeta o no se pudo leer su estado. |
 | `statusProblem` | Solo aparece cuando no se pudo leer el estado: el motivo de Git. |
@@ -146,6 +151,20 @@ Imprime un único objeto JSON compacto en una línea, en vez de las líneas de t
 | `status.createdAt` | Hora en que se creó el worktree, en ISO-8601 UTC, leída de la carpeta administrativa de Git para él; `null` para el checkout principal o si no se puede leer. |
 
 Todos los campos están siempre presentes, con `null` cuando no aplican. Los nombres de los campos son un contrato: las versiones futuras solo añaden campos y nunca renombran, eliminan ni cambian el tipo de uno.
+
+### `base`
+
+```text
+shogun base [<task id | path | branch>] [--set <branch>] [--json]
+```
+
+Imprime la rama de la que se creó la rama de un worktree, sola en la salida estándar, para que `gh pr create --base "$(shogun base)"` abra su pull request contra la rama correcta. Sin destino, es el worktree que contiene el directorio actual.
+
+- ShogunAi la registra al crear una rama: `shogun new`, el hook `WorktreeCreate` de Claude Code, «Nuevo worktree» de la app de escritorio y los worktrees de un [grupo de un multirepo](#multirepos), que parten de la rama principal de cada repositorio.
+- Se guarda en la configuración de Git del repositorio como `branch.<rama>.gh-merge-base`, la clave que `gh pr create` ya lee como base por defecto. No se escribe nada en el árbol de trabajo; todos los worktrees del repositorio la ven, renombrar la rama la conserva y borrar la rama la elimina.
+- Si no hay ninguna registrada (un worktree creado por Herdr o con `git worktree add`, o una rama anterior a que ShogunAi registrara bases), lo dice en la salida de error, sugiere `--set` y sale con `1`. Un worktree en HEAD separado no tiene rama y también sale con `1`.
+- `--set <rama>` la registra, sustituyendo el valor anterior. El valor debe ser una rama local o de un remoto, cuyo prefijo de remoto se quita (`origin/develop` se registra como `develop`); un tag o un nombre desconocido no registran nada y salen con `1`.
+- `--json` imprime `{ "path", "branch", "base" }`, con `base` a `null` (y código de salida `1`) si no hay ninguna registrada.
 
 ### `hooks`
 
@@ -254,7 +273,8 @@ shogun multirepo add-repo <alias> <ruta> [--use-worktrees-root | --keep-worktree
 shogun multirepo remove-repo <alias>
 shogun multirepo defaults <alias>[,<alias>...] | --clear
 shogun multirepo agent <comando> [--name <nombre>] [--headroom]
-shogun multirepo workspace set [--alias <alias>] [--default] | clear
+shogun multirepo workspace set [--alias <alias>] [--default] | clear | detect
+shogun multirepo env [set <alias> <name> <template> | unset <alias> <name>]
 shogun multirepo worktrees-root <dir>
 shogun multirepo delete
 shogun new <task-id> [--repos <alias>[,<alias>...]] [--fix] [--fetch]
@@ -269,7 +289,8 @@ shogun open --herdr
 - `multirepo trust` muestra la declaración más cercana (o la de `<carpeta>`): su nombre declarado, cada repositorio con su ruta resuelta, la carpeta de worktrees y el repositorio de workspace, marcando las rutas fuera de la carpeta padre. En un terminal pregunta (`[y/N]`) y aprueba si respondes que sí; `--yes` aprueba sin preguntar; sin terminal y sin `--yes` sale con `1`. `--revoke` olvida el multirepo y conserva el archivo. Su objeto `--json` tiene `path`, `declaration`, `name` (si está declarado), `approved`, `changed`, `repos` (con `outsideParent`), `worktreesRoot`, `worktreesRootOutsideParent`, `workspace` e `ignoredDeclaredAgent`; sin `--yes` solo informa.
 - `multirepo agent` guarda el agente del multirepo en este equipo, nunca en la declaración; un `agent` que haya dejado en la declaración una versión anterior se ignora, y `show` lo indica (`ignoredDeclaredAgent` en `--json`). El agente ejecuta su comando tal cual; `--headroom` lo envuelve con `headroom wrap`. `--no-headroom`, de versiones anteriores en las que Headroom venía activado por defecto, se sigue aceptando y no cambia nada; junto con `--headroom` sale con `2`.
 - `new <id>` en la carpeta del multirepo cubre los repositorios por defecto, o `--repos` desde cualquier parte del multirepo; imprime la ruta de cada worktree que crea en la salida estándar y una línea por repositorio en la salida de error, y sale con `1` si algún repositorio falló. `--branch`, `--from` y `--worktrees-root` no se aplican a un grupo y salen con `2`. Su objeto `--json` tiene la `branch` y una lista `repos` con `alias`, `path`, `result` (`created`, `existing` o `failed`), los comandos de post-creación omitidos y `error`.
-- Cuando la carpeta del multirepo es un repositorio Git, es el repositorio de workspace del multirepo (alias `workspace` salvo que se declare otro): `show` lo lista, marcado `detected` hasta que `workspace set` lo declara (`--alias` lo renombra, `--default` lo añade a los repositorios por defecto) y `workspace clear` desactiva la detección; en una carpeta que no es un repositorio `workspace set` sale con `1`. `new <id> --repos workspace,app` lo incluye, con su worktree en `<worktreesRoot>/workspace/<id>`. `project add` y `app` ejecutados en esa carpeta registran el repositorio de workspace como miembro del multirepo y ningún proyecto propio de la carpeta (`app` solo abre la app), salvo que la detección esté desactivada. El `--json` de `show` marca cada repositorio con `workspace` y `detected`.
+- Cuando la carpeta del multirepo es un repositorio Git, es el repositorio de workspace del multirepo (alias `workspace` salvo que se declare otro): `show` lo lista, marcado `detected` hasta que `workspace set` lo declara (`--alias` lo renombra, `--default` lo añade a los repositorios por defecto) `workspace clear` desactiva la detección y `workspace detect` quita el ajuste para que vuelva a detectarse (sale con `1` si el alias `workspace` lo usa un repositorio declarado); en una carpeta que no es un repositorio `workspace set` y `workspace detect` salen con `1`. `new <id> --repos workspace,app` lo incluye, con su worktree en `<worktreesRoot>/workspace/<id>`. `project add` y `app` ejecutados en esa carpeta registran el repositorio de workspace como miembro del multirepo y ningún proyecto propio de la carpeta (`app` solo abre la app), salvo que la detección esté desactivada. El `--json` de `show` marca cada repositorio con `workspace` y `detected`.
+- `multirepo env` lista las variables compartidas por repositorio (`--json`: `{"env": {<alias>: {<nombre>: <plantilla>}}}`, como en `show`); `env set <alias> <name> <template>` añade o sustituye una después de comprobarla (una plantilla inválida sale con `1`, un alias desconocido con `2`), y `env unset <alias> <name>` quita una (`1` si no está declarada). Ambos mantienen aprobado el multirepo y salen con `1` mientras necesita revisión; `env` sin subcomando las lista igualmente. `remove-repo`, y `workspace clear`, salen con `1` mientras una variable compartida de otro repositorio referencie el repositorio, nombrando las variables.
 - `status` en la carpeta del multirepo imprime la rama de cada grupo seguida de una línea por repositorio, y después `ungrouped`, con los nombres de sesión de cada agente Claude como los muestra `status` (`agents=claude(working, app-task-123)`); `--json` imprime `groups` (cada uno con `branch`, `title` y `repos` con `alias`, `path`, `branch`, `base`, `folderMissing`, `uncommittedChanges`, `ahead`, `behind`, `merged`, `agents`), `ungrouped` y `failures`.
 - `open <id> --herdr` abre cada worktree del grupo con el agente de su proyecto (`--agent` sale con `2`) e informa de cada uno como `open` con un solo worktree (abierto, agente arrancado en su espacio de trabajo abierto o enfocado, con su panel); un worktree que falla, o cuyo agente no arranca, se informa en la salida de error, los demás se abren igualmente y el código de salida es `1`. Un id que encaja con `feature/<id>` y `fix/<id>` a la vez sale con `2`, y sin coincidencias con `1`. `open --herdr` sin destino abre el agente del multirepo del mismo modo: enfoca su agente vivo, lo arranca en un panel nuevo de su espacio de trabajo abierto si no tiene ninguno, o abre un espacio de trabajo nuevo, y comprueba que arrancó. Cada sesión de Claude recibe un nombre como con `open` de un worktree: `<alias>-<id>` para un worktree del grupo, donde `<id>` es la rama del grupo sin su prefijo (`app-task-123`, `api-task-123`), y el nombre del multirepo para el agente del multirepo, así una sesión coordinadora distingue las sesiones del grupo y envía mensajes a cada una por su nombre.
 - `clean` lista los grupos candidatos (`would remove the group …`) y los que se conservan con su motivo (`kept feature/TASK-2 (api isn't merged)`), y acepta todas las opciones de `clean`. Después de los grupos lista los worktrees sueltos de cada repositorio (`would remove api <ruta>`) que están limpios, fusionados y sin agente en marcha, y con `--yes` los elimina; si no hay nada que eliminar imprime `Nothing to clean up.`
@@ -427,13 +448,13 @@ shogun xcode clean
 shogun xcode trim [--dry-run]
 ```
 
-`xcode` lista las carpetas de DerivedData de los worktrees del repositorio con su tamaño, las carpetas huérfanas de la máquina (`orphans: N (tamaño)`) y, cuando se declara la caché de compilación, su tamaño. `xcode clean` borra las carpetas huérfanas (`deleted <path>`, `freed <tamaño>`, o `Nothing to delete.`). Sin el provider de Xcode, o fuera de macOS, dice que el provider no está activo y sale con `0`.
+`xcode` lista las carpetas de DerivedData de los worktrees del repositorio con su tamaño y, si tienen paquetes Swift, `(packages <tamaño>)`, las carpetas huérfanas de la máquina (`orphans: N (tamaño)`), el tamaño de la caché de compilación cuando se declara, y los de las cachés compartidas de SwiftPM y CocoaPods cuando existen (`SwiftPM cache: <tamaño>`, `CocoaPods cache: <tamaño>`). `xcode clean` borra las carpetas huérfanas (`deleted <path>`, `freed <tamaño>`, o `Nothing to delete.`). Sin el provider de Xcode, o fuera de macOS, dice que el provider no está activo y sale con `0`.
 
 `xcode trim` aplica la cuota de DerivedData fijada en Preferencias > Recursos, automática por defecto (una cuarta parte del espacio libre en disco más lo que ocupa DerivedData, entre 20 y 200 GB): cuando las carpetas suman más que la cuota, libera primero las carpetas huérfanas y después las de los worktrees de tus proyectos guardados que no están en uso, de la menos a la más recientemente accedida, y se detiene en cuanto el total cabe (`released <path>  <tamaño>`, `freed <tamaño>`, `usage <tamaño> of <cuota>`, seguido de `(automatic)` con la cuota automática). Un worktree está en uso mientras su agente trabaja o está bloqueado, o su carpeta se accedió hace menos de una hora, y nunca se liberan las carpetas de otros proyectos, de volúmenes no disponibles ni la caché de compilación; si solo quedan esas, imprime `quota still exceeded` y los worktrees en uso. `--dry-run` imprime `would release` y `would free` sin borrar. Con «Sin cuota» lo dice y no borra nada, y cuando la cuota automática no se puede calcular porque no se conoce el espacio libre en disco, lo dice en su lugar. Los comandos `xcode` recuerdan el tamaño de cada carpeta entre ejecuciones, compartido con la app, y solo vuelven a medir, varias a la vez, las carpetas que Xcode ha usado desde entonces.
 
 ## Salida JSON
 
-Además de `status --json`, todos los comandos que informan de un resultado aceptan `--json`: `new`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `compose`, `compose up`, `compose build`, `compose down`, `compose prune`, `pool status`, `pool trim`, `project add`, `project list`, `project remove`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks` y `guide install|uninstall|status` (no `simulator gradle-init`, `env`, `hook`, `help` ni `--version`; en ellos es una opción desconocida y sale con `2`). La opción puede ir en cualquier posición tras el comando.
+Además de `status --json`, todos los comandos que informan de un resultado aceptan `--json`: `new`, `base`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `compose`, `compose up`, `compose build`, `compose down`, `compose prune`, `pool status`, `pool trim`, `project add`, `project list`, `project remove`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks` y `guide install|uninstall|status` (no `simulator gradle-init`, `env`, `hook`, `help` ni `--version`; en ellos es una opción desconocida y sale con `2`). La opción puede ir en cualquier posición tras el comando.
 
 Las reglas son las mismas para todos:
 
@@ -444,8 +465,8 @@ Las reglas son las mismas para todos:
 
 | Comando | Objeto |
 |---|---|
-| `new` | `path`, `branch`, `created` (siempre `true`), `skippedPostCreateCommands` (lista de listas argv), `skippedVariables` (los nombres de las variables declaradas que se dejaron fuera), `postCreateFailure`: `null`, o `{ command, exitCode, stderr }` si falló un comando posterior a la creación, y `skippedLinks`, los enlaces simbólicos omitidos dentro de carpetas locales. En ese caso el objeto se imprime igualmente, porque el worktree existe, y el código de salida es `1`. |
-| `provision` | `path`, `copied`, `linked` y `copiedInsteadOfLinking` (rutas de archivos), `skippedPostCreateCommands`, `skippedVariables` y `postCreateFailure`, como en `new`, `removed` (archivos borrados porque su carpeta local ya no los tiene) y `skippedLinks`. Si falló un comando, las tres listas de archivos van vacías. |
+| `new` | `path`, `branch`, `created` (siempre `true`), `skippedPostCreateCommands` (lista de listas argv), `skippedVariables` (los nombres de las variables declaradas que se dejaron fuera), `postCreateFailure`: `null`, o `{ command, exitCode, stderr }` si falló un comando posterior a la creación, `skippedLinks`, los enlaces simbólicos omitidos dentro de carpetas locales, y `pods`: `{ cloned, installNeeded, error }` con las carpetas cuyos pods de CocoaPods se clonaron de la base, `{ folder, reason }` para las que necesitan `pod install` (`reason` `base-has-no-pods`, `base-pods-differ` o `clone-failed`) y `error` (`null` salvo que no se pudieran preparar los pods). En ese caso el objeto se imprime igualmente, porque el worktree existe, y el código de salida es `1`. |
+| `provision` | `path`, `copied`, `linked` y `copiedInsteadOfLinking` (rutas de archivos), `skippedPostCreateCommands`, `skippedVariables` y `postCreateFailure`, como en `new`, `removed` (archivos borrados porque su carpeta local ya no los tiene), `skippedLinks` y `pods`, como en `new`. Si falló un comando, las tres listas de archivos van vacías. |
 | `provision --check` | `path` y `drift`: lista de `{ path, state }` con `state` `missing`, `differs`, `not-linked` o `deleted-in-base`. El código de salida es `3` si `drift` no está vacío. |
 | `trust` | `repository`, `commands` (listas argv), `env` (una lista de `{ name, template }`), `envFile` (o `null`), `approved` y `changed` (esta ejecución lo aprobó o revocó). Un repositorio que no declara nada es `approved: true` con listas vacías. `--revoke` informa `approved: false` si había algo que aprobar. |
 | `remove` | `path`, `branch` (la del worktree, o `null` si está desacoplado), `branchDeleted` (el nombre, o `null` si se conservó o no se pidió borrar la rama), `branchKeptReason` (por qué no se borró una rama cuya eliminación se pidió, o `null`), `providers` (`emulatorsStopped` con los serial, `simulatorsStopped` con los udid y `gradleDaemonsStopped` con los pid) y `failures` (mensajes de lo que no se pudo detener, código de salida `1`). |
@@ -466,7 +487,7 @@ Las reglas son las mismas para todos:
 | `compose up`, `compose build` | `worktree`, `project`, `succeeded` y, si falla, `message`. La salida de Docker Compose va a la salida de error. |
 | `compose prune` | `dryRun`; `removed` y `kept`: `{ kind, name, project }`; `failures`: `{ resource, message }`. Sin `--yes`, `removed` es lo que eliminaría. |
 | `compose down` | `takenDown` (nombres de proyecto) y `failures`: `{ name, message }`. El código de salida es `1` si `failures` no está vacío. |
-| `xcode` | `active` (`false` si el provider no está activo, con el resto vacío), `folders`: `{ path, sizeBytes, worktree }`, `orphans`: `{ path, sizeBytes }`, `unavailableVolumeFolders` (un número) y `compilationCacheBytes` (`null` salvo que esté declarada). |
+| `xcode` | `active` (`false` si el provider no está activo, con el resto vacío), `folders`: `{ path, sizeBytes, sourcePackagesBytes, worktree }`, `orphans`: `{ path, sizeBytes, sourcePackagesBytes }`, `unavailableVolumeFolders` (un número), `compilationCacheBytes` (`null` salvo que esté declarada), y `swiftPmCacheBytes` y `cocoaPodsCacheBytes` (`null` si la caché no existe). |
 | `xcode clean` | `active`, `deleted` (rutas), `freedBytes` y `failures`: `{ path, message }`. |
 | `xcode trim` | `active`, `quotaMode` (`automatic`, `fixed` o `none`), `quotaBytes` (`null` sin cuota o cuando la automática no se puede calcular), `dryRun`, `usageBeforeBytes`, `usageAfterBytes`, `exceeded`, `released` (rutas; con `--dry-run`, las que se liberarían), `freedBytes`, `inUse` (rutas de worktrees) y `failures`: `{ path, message }`. |
 | `emulator start\|stop\|status` | `worktree`, `serial` y `state` (`running`, `booting` o `stopped`). `serial` y `state` son `null` si el worktree aún no tiene puerto de emulador reservado. `waited` son los segundos enteros que un `start --wait` esperó capacidad (`0` si había sitio), `null` en otro caso. |

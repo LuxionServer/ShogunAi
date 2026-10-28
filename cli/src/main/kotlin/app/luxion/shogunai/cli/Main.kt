@@ -9,6 +9,7 @@ import app.luxion.shogunai.infrastructure.JsonRepositoryTrust
 import app.luxion.shogunai.infrastructure.JvmMachineCapacity
 import app.luxion.shogunai.infrastructure.LocalAndroidSdk
 import app.luxion.shogunai.infrastructure.MacDerivedDataSource
+import app.luxion.shogunai.infrastructure.MacPackageCacheSource
 import app.luxion.shogunai.infrastructure.NioEnvironmentStateStore
 import app.luxion.shogunai.infrastructure.NioFileManager
 import app.luxion.shogunai.infrastructure.ProcessBuilderShellCommandExecutor
@@ -55,6 +56,7 @@ fun runShogun(args: Array<String>): Int {
         readAnswer = { System.console()?.readLine() },
         provisioningRecords = NioProvisioningRecordStore(),
         derivedDataSizes = JsonDerivedDataSizeStore(Path.of(userHome, ".shogunai", "derived-data-sizes.json")),
+        packageCacheSource = MacPackageCacheSource(fileManager, userHome),
     ).run(args.toList())
     System.out.flush()
     System.err.flush()
