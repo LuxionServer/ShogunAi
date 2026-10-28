@@ -335,7 +335,7 @@ The project settings SHALL show a "Repository configuration" section with a swit
 - **THEN** `.shogunai.json` no longer contains `providers.emulator`, and its other providers are kept
 
 ### Requirement: Edit provider options
-When a provider is on, the section SHALL show its options: Gradle's daemon heap, idle timeout and Kotlin daemon heap, the emulator's preferred AVD, the simulator's preferred device and runtime, and Xcode's compilation caching. An option left empty SHALL be omitted from the file. Invalid values SHALL be flagged next to the field and block saving.
+When a provider is on, the section SHALL show its options: Gradle's daemon heap, idle timeout and Kotlin daemon heap, the emulator's preferred AVD, the simulator's preferred device and runtime, and Xcode's compilation caching and CocoaPods. An option left empty SHALL be omitted from the file. Invalid values SHALL be flagged next to the field and block saving.
 
 #### Scenario: Gradle settings
 - **WHEN** the user turns on Gradle, enters `2g` as daemon heap and `30` as idle timeout, and saves
@@ -344,6 +344,10 @@ When a provider is on, the section SHALL show its options: Gradle's daemon heap,
 #### Scenario: Invalid memory size
 - **WHEN** the user enters `2 GB` as daemon heap
 - **THEN** the field explains the expected format (for example `2g` or `1024m`) and saving is blocked until it's fixed
+
+#### Scenario: Xcode CocoaPods
+- **WHEN** the user turns on Xcode, turns on its CocoaPods option and saves
+- **THEN** `providers.xcode` is `{ "cocoaPods": true }`
 
 ### Requirement: Edit the worktree environment
 The section SHALL list the variables of `env` with their name and template, let the user add, edit and remove them, and edit the environment file path. Names SHALL follow the variable name rule and SHALL NOT be reserved names, templates SHALL NOT contain line breaks, other control characters or invisible format characters, and the environment file SHALL be a relative path inside the worktree. The section SHALL explain the `${port}`, `${port:key}` and `${worktree}` templates.

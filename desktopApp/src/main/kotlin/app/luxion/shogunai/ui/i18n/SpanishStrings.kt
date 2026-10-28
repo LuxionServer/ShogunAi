@@ -436,6 +436,9 @@ object SpanishStrings : Strings {
         if (count == 1) "1 carpeta está en un volumen no montado y se conserva"
         else "$count carpetas están en volúmenes no montados y se conservan"
     override fun derivedDataCompilationCache(size: String) = "Caché de compilación · $size"
+    override fun derivedDataSwiftPmCache(size: String) = "Caché de SwiftPM · $size"
+    override fun derivedDataCocoaPodsCache(size: String) = "Caché de CocoaPods · $size"
+    override fun derivedDataWithPackages(name: String, size: String) = "$name · paquetes $size"
     override fun derivedDataQuotaUsage(usage: String, quota: String, automatic: Boolean) =
         "$usage de $quota de cuota" + if (automatic) " (automática)" else ""
     override val derivedDataQuotaUnknown = "Cuota automática desconocida: no se pudo leer el espacio libre en disco"
@@ -630,6 +633,7 @@ object SpanishStrings : Strings {
     override val preferredDeviceLabel = "Dispositivo preferido"
     override val preferredRuntimeLabel = "Runtime preferido"
     override val xcodeCompilationCacheLabel = "Caché de compilación"
+    override val xcodeCocoaPodsLabel = "Clonar los pods de CocoaPods de la base"
     override val providerMaven = "Maven"
     override val providerDockerCompose = "Docker Compose"
     override val mavenMaxHeapLabel = "Memoria de las compilaciones"

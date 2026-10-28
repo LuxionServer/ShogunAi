@@ -11,6 +11,7 @@ import app.luxion.shogunai.domain.usecase.HeadlessAppWorktrees
 import app.luxion.shogunai.domain.model.DerivedDataQuota
 import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.MeasuredSize
+import app.luxion.shogunai.domain.model.PackageCacheSizes
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.usecase.AddedRepository
@@ -177,6 +178,7 @@ import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.MachineProviderContributions
 import app.luxion.shogunai.domain.usecase.effectiveGradleJvmArgs
 import app.luxion.shogunai.domain.usecase.MeasureWorktreeSizeUseCase
+import app.luxion.shogunai.domain.usecase.PrepareCocoaPodsUseCase
 import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.ProviderContributions
 import app.luxion.shogunai.domain.usecase.ReadEmulatorStatesUseCase
@@ -222,6 +224,7 @@ import app.luxion.shogunai.infrastructure.JsonThemePreferenceRepository
 import app.luxion.shogunai.infrastructure.LocalAndroidSdk
 import app.luxion.shogunai.infrastructure.SharedDeviceStatesAndroidSdk
 import app.luxion.shogunai.infrastructure.MacDerivedDataSource
+import app.luxion.shogunai.infrastructure.MacPackageCacheSource
 import app.luxion.shogunai.infrastructure.NioDeviceWaitQueue
 import app.luxion.shogunai.infrastructure.NioEnvironmentStateStore
 import app.luxion.shogunai.infrastructure.NioFileManager
@@ -303,6 +306,7 @@ class AppContainer {
                 }
             }
         }
+    private val packageCacheSource = MacPackageCacheSource(fileManager, System.getProperty("user.home"))
     private val derivedDataSource = MacDerivedDataSource(
         shellCommandExecutor,
         fileManager,
@@ -514,6 +518,7 @@ class AppContainer {
     private val prepareEnvironment = PrepareWorktreeEnvironmentUseCase(
         resolveEnvironment,
         WriteEnvironmentFileUseCase(shellCommandExecutor, fileManager, repositoryProvisioningSource),
+        PrepareCocoaPodsUseCase(shellCommandExecutor, fileManager, repositoryProvisioningSource, isMacOs = derivedDataSource.isSupported()),
     )
 
     val machineUseCases = MachineUseCases(
@@ -533,6 +538,7 @@ class AppContainer {
         listDerivedData = { ListDerivedDataUseCase(derivedDataSource)(emptyList(), includeCompilationCache = false, measure = DerivedDataMeasure.NONE) },
         measureDerivedData = { folders, remeasure -> measureDerivedDataSizes(folders, remeasure) },
         measureCompilationCache = { runCatching { derivedDataSource.compilationCacheBytes() } },
+        measurePackageCaches = { runCatching { packageCacheSource.sizes() } },
         deleteOrphanedDerivedData = { DeleteOrphanedDerivedDataUseCase(derivedDataSource)() },
         readEmulatorStates = { config, worktrees -> readEmulatorStates(config, worktrees) },
         readRunningEmulators = { config ->
@@ -958,6 +964,7 @@ class MachineUseCases(
     val listComposeLeftovers: suspend (ProjectConfig, List<Worktree>) -> Result<List<ComposeResource>> = { _, _ -> Result.success(emptyList()) },
     val removeComposeLeftovers: suspend (ProjectConfig, List<ComposeResource>, Boolean) -> ComposeLeftoversReport =
         { _, _, _ -> ComposeLeftoversReport() },
+    val measurePackageCaches: suspend () -> Result<PackageCacheSizes> = { Result.success(PackageCacheSizes()) },
 )
 
 data class SimulatorUseCases(

@@ -30,6 +30,7 @@ import app.luxion.shogunai.domain.model.MobileSecretsReport
 import app.luxion.shogunai.domain.model.ProvisionDrift
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.ProvisionMode
+import app.luxion.shogunai.domain.model.PodsPreparation
 import app.luxion.shogunai.domain.model.ProvisionedFile
 import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.ResourceKind
@@ -81,6 +82,7 @@ fun newJson(
     skippedVariables: List<String>,
     postCreateFailure: WorktreeError.PostCreateCommandFailed?,
     skippedLinks: List<String> = emptyList(),
+    pods: PodsPreparation = PodsPreparation(),
 ): JsonObject = buildJsonObject {
     put("path", path)
     put("branch", branch)
@@ -89,6 +91,23 @@ fun newJson(
     put("skippedVariables", strings(skippedVariables))
     put("postCreateFailure", postCreateFailureJson(postCreateFailure))
     put("skippedLinks", strings(skippedLinks))
+    put("pods", podsJson(pods))
+}
+
+fun podsJson(pods: PodsPreparation): JsonObject = buildJsonObject {
+    put("cloned", strings(pods.cloned))
+    put(
+        "installNeeded",
+        JsonArray(
+            pods.installNeeded.map {
+                buildJsonObject {
+                    put("folder", it.folder)
+                    put("reason", it.reason.name.lowercase().replace('_', '-'))
+                }
+            },
+        ),
+    )
+    put("error", pods.error)
 }
 
 fun provisionJson(
@@ -99,6 +118,7 @@ fun provisionJson(
     postCreateFailure: WorktreeError.PostCreateCommandFailed?,
     removed: List<String> = emptyList(),
     skippedLinks: List<String> = emptyList(),
+    pods: PodsPreparation = PodsPreparation(),
 ): JsonObject = buildJsonObject {
     put("path", path)
     put("copied", strings(files.filter { it.mode == ProvisionMode.COPIED }.map { it.path }))
@@ -109,6 +129,7 @@ fun provisionJson(
     put("postCreateFailure", postCreateFailureJson(postCreateFailure))
     put("removed", strings(removed))
     put("skippedLinks", strings(skippedLinks))
+    put("pods", podsJson(pods))
 }
 
 fun provisionCheckJson(path: String, drift: List<ProvisionDrift>): JsonObject = buildJsonObject {
@@ -505,6 +526,7 @@ fun xcodeJson(active: Boolean, listing: DerivedDataListing?): JsonObject = build
                     buildJsonObject {
                         put("path", it.folder.path)
                         put("sizeBytes", it.folder.sizeBytes ?: 0L)
+                        put("sourcePackagesBytes", it.folder.packagesBytes)
                         put("worktree", (it.owner as DerivedDataOwner.Worktree).path)
                     },
                 )
@@ -514,6 +536,8 @@ fun xcodeJson(active: Boolean, listing: DerivedDataListing?): JsonObject = build
     put("orphans", derivedDataFolders(listing?.orphans.orEmpty()))
     put("unavailableVolumeFolders", listing?.folders?.count { it.owner == DerivedDataOwner.UnavailableVolume } ?: 0)
     put("compilationCacheBytes", listing?.compilationCacheBytes)
+    put("swiftPmCacheBytes", listing?.packageCaches?.swiftPmBytes)
+    put("cocoaPodsCacheBytes", listing?.packageCaches?.cocoaPodsBytes)
 }
 
 private fun derivedDataFolders(folders: List<DerivedDataFolder>): JsonArray = buildJsonArray {
@@ -522,6 +546,7 @@ private fun derivedDataFolders(folders: List<DerivedDataFolder>): JsonArray = bu
             buildJsonObject {
                 put("path", it.path)
                 put("sizeBytes", it.sizeBytes ?: 0L)
+                put("sourcePackagesBytes", it.packagesBytes)
             },
         )
     }

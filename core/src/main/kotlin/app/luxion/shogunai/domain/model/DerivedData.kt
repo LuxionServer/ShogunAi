@@ -7,11 +7,19 @@ data class DerivedDataFolder(
     val workspacePath: String,
     val sizeBytes: Long?,
     val lastAccessed: Instant?,
+    val packagesBytes: Long? = null,
 )
 
-data class RememberedSize(val sizeBytes: Long, val lastAccessed: Instant)
+data class RememberedSize(val sizeBytes: Long, val lastAccessed: Instant, val packagesBytes: Long? = null)
 
-data class MeasuredSize(val path: String, val sizeBytes: Long?, val provisional: Boolean = false)
+data class MeasuredSize(
+    val path: String,
+    val sizeBytes: Long?,
+    val provisional: Boolean = false,
+    val packagesBytes: Long? = null,
+)
+
+data class PackageCacheSizes(val swiftPmBytes: Long? = null, val cocoaPodsBytes: Long? = null)
 
 sealed interface DerivedDataOwner {
     data class Worktree(val path: String) : DerivedDataOwner
@@ -25,6 +33,7 @@ data class AttributedDerivedData(val folder: DerivedDataFolder, val owner: Deriv
 data class DerivedDataListing(
     val folders: List<AttributedDerivedData>,
     val compilationCacheBytes: Long?,
+    val packageCaches: PackageCacheSizes = PackageCacheSizes(),
 ) {
     val orphans: List<DerivedDataFolder> get() = folders.filter { it.owner == DerivedDataOwner.Orphaned }.map { it.folder }
 
