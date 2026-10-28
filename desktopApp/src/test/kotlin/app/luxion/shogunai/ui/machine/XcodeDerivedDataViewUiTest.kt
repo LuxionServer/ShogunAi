@@ -84,6 +84,7 @@ class XcodeDerivedDataViewUiTest {
             useCases = useCases(CompletableDeferred()),
             projects = { listOf(MachineProject(project, emptyList(), setOf(MachineResource.XCODE_DERIVED_DATA))) },
             pathExists = { true },
+            ioDispatcher = Dispatchers.Unconfined,
         )
         machine.show(MachineResource.XCODE_DERIVED_DATA)
 
@@ -120,6 +121,7 @@ class XcodeDerivedDataViewUiTest {
             useCases = useCases(CompletableDeferred<Long>().also { it.complete(20 * gigabyte) }, ResourceSettings(derivedDataQuotaGigabytes = quotaGigabytes, derivedDataQuotaMode = mode), trim, automaticQuota),
             projects = { listOf(MachineProject(project, emptyList(), setOf(MachineResource.XCODE_DERIVED_DATA))) },
             pathExists = { true },
+            ioDispatcher = Dispatchers.Unconfined,
         )
         machine.show(MachineResource.XCODE_DERIVED_DATA)
         return machine
@@ -193,6 +195,7 @@ class XcodeDerivedDataViewUiTest {
             useCases = useCases(CompletableDeferred(), ResourceSettings(derivedDataQuotaGigabytes = 30)),
             projects = { listOf(MachineProject(project, emptyList(), setOf(MachineResource.XCODE_DERIVED_DATA))) },
             pathExists = { true },
+            ioDispatcher = Dispatchers.Unconfined,
         )
         machine.show(MachineResource.XCODE_DERIVED_DATA)
         showView(machine)

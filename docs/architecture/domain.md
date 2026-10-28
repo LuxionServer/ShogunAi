@@ -610,6 +610,8 @@ Installs, updates, checks and removes ShogunAi's hooks in a Claude Code `setting
 
 Runs `git worktree remove [--force] <path>` and, optionally, `git branch -d -- <branch>` to delete the local branch (safe delete, not `-D`). It returns a `WorktreeRemoval` whose `herdrFailure` is the error from closing the worktree's Herdr workspace, when that failed (see [`CloseHerdrWorkspacesUseCase`](#closeherdrworkspacesusecase)).
 
+The removal itself (`WorktreeFolderRemoval`, shared with cleanup) handles three failures of `git worktree remove`. A locked folder closes the worktree's Herdr holders and retries once, and fails with `WorktreeFolderInUse` if it's still locked. "is not a working tree" and "Filename too long" mean Git has already unregistered the worktree and left its folder behind (Git deletes the administrative directory even when deleting the folder fails), so the leftover is finished: `git worktree prune`, then `FileManager.deleteRecursively` on the folder, unless it's the base repository or has its own `.git` directory. A folder that can't be deleted becomes `WorktreeFolderInUse` with `unregistered = true`.
+
 !!! note
     Git doesn't allow removing a worktree from inside itself, which is another reason every command runs from the base repository.
 

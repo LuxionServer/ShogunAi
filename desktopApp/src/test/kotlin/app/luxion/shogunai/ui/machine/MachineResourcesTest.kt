@@ -43,6 +43,9 @@ import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.usecase.ProjectOwner
 import app.luxion.shogunai.ui.i18n.EnglishStrings
 import kotlinx.coroutines.CompletableDeferred
+import kotlin.coroutines.ContinuationInterceptor
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -116,6 +119,11 @@ class MachineResourcesTest {
         val remeasures = mutableListOf<Boolean>()
         var trims = 0
         val derivedDataTrims = mutableListOf<Long>()
+        val dispatchers = mutableListOf<ContinuationInterceptor?>()
+
+        suspend fun recordDispatcher() {
+            dispatchers += currentCoroutineContext()[ContinuationInterceptor]
+        }
     }
 
     private fun useCases(
@@ -142,7 +150,7 @@ class MachineResourcesTest {
             Result.success(stopReport)
         },
     ) = MachineUseCases(
-        listDaemons = { calls.daemonListings++; Result.success(calls.daemons) },
+        listDaemons = { calls.recordDispatcher(); calls.daemonListings++; Result.success(calls.daemons) },
         stopDaemons = stopDaemons,
         listDerivedData = {
             calls.derivedDataListings++
@@ -161,16 +169,16 @@ class MachineResourcesTest {
         },
         measureCompilationCache = { calls.cacheMeasurements++; Result.success(7_000L) },
         deleteOrphanedDerivedData = { calls.derivedDataDeletions++; Result.success(DerivedDataDeletion()) },
-        readEmulatorStates = { _, _ -> calls.emulatorReads++; Result.success(emulators) },
-        readRunningEmulators = { Result.success(running) },
+        readEmulatorStates = { _, _ -> calls.recordDispatcher(); calls.emulatorReads++; Result.success(emulators) },
+        readRunningEmulators = { calls.recordDispatcher(); Result.success(running) },
         startEmulator = startEmulator,
-        readPool = { kind, _, _ -> pools[kind]?.let { Result.success(it) } ?: Result.failure(IllegalStateException()) },
-        trimGradleDaemons = { calls.trims++; Result.success(trim) },
+        readPool = { kind, _, _ -> calls.recordDispatcher(); pools[kind]?.let { Result.success(it) } ?: Result.failure(IllegalStateException()) },
+        trimGradleDaemons = { calls.recordDispatcher(); calls.trims++; Result.success(trim) },
         resourceSettings = { settings },
         trimDerivedData = { quota, _, _ -> calls.derivedDataTrims += quota; Result.success(derivedDataTrim(quota)) },
         stopEmulator = { _, _ -> Result.success(null) },
         stopEmulatorSerials = { _, serials -> calls.stoppedSerials += serials; Result.success(emptyList()) },
-        readSimulatorStates = { _, _ -> calls.simulatorReads++; Result.success(simulators) },
+        readSimulatorStates = { _, _ -> calls.recordDispatcher(); calls.simulatorReads++; Result.success(simulators) },
         startSimulator = { _, _ -> Result.failure(IllegalStateException()) },
         stopSimulator = { _, _ -> Result.success(null) },
         readSimulatorOrphans = { Result.success(orphans) },
@@ -187,6 +195,7 @@ class MachineResourcesTest {
         existing: Set<String> = emptySet(),
         onDevicesChanged: suspend (String) -> Unit = {},
         desktopTurn: DesktopTurnWatch = DesktopTurnWatch.NONE,
+        ioDispatcher: CoroutineDispatcher = dispatcher,
     ) = MachineResources(
         scope = scope,
         useCases = useCases,
@@ -194,6 +203,7 @@ class MachineResourcesTest {
         pathExists = { it in existing },
         onDevicesChanged = onDevicesChanged,
         desktopTurn = desktopTurn,
+        ioDispatcher = ioDispatcher,
     )
 
     @Test
@@ -644,6 +654,35 @@ class MachineResourcesTest {
     }
 
     @Test
+    fun `the summary refresh and a shown view read every resource on the IO dispatcher`() = machineTest {
+        val calls = Calls()
+        val io = StandardTestDispatcher(dispatcher.scheduler, name = "io")
+        val machine = machine(
+            useCases(calls),
+            listOf(
+                machineProject(
+                    "api",
+                    listOf(apiWorktree),
+                    MachineResource.GRADLE_DAEMONS,
+                    MachineResource.ANDROID_EMULATORS,
+                    MachineResource.IOS_SIMULATORS,
+                ),
+            ),
+            ioDispatcher = io,
+        )
+
+        machine.refreshSummaries()
+        machine.show(MachineResource.ANDROID_EMULATORS)
+        runCurrent()
+
+        assertEquals(1, calls.trims)
+        assertEquals(1, calls.daemonListings)
+        assertEquals(1, calls.emulatorReads)
+        assertTrue(calls.dispatchers.isNotEmpty())
+        assertTrue(calls.dispatchers.all { it === io }, "Called outside the IO dispatcher: ${calls.dispatchers}")
+    }
+
+    @Test
     fun `the summary refresh does not trim when no project declares Gradle`() = machineTest {
         val calls = Calls()
         val machine = machine(
@@ -815,6 +854,7 @@ class MachineResourcesTest {
                 listOf(machineProject("main-repo", listOf(mainWorktree), *(if (declared) arrayOf(MachineResource.XCODE_DERIVED_DATA) else emptyArray())))
             },
             pathExists = { false },
+            ioDispatcher = dispatcher,
         )
         machine.refreshSummaries()
         runCurrent()

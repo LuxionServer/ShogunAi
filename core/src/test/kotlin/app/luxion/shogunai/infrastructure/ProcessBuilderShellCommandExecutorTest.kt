@@ -69,6 +69,32 @@ class GitLocaleTest {
     }
 }
 
+class GitLongPathsTest {
+
+    @Test
+    fun `git commands on Windows turn on long path support`() {
+        assertEquals(
+            listOf("git", "-c", "core.longpaths=true", "worktree", "remove", "C:\\projects\\api-TASK-123"),
+            GitLongPaths.prepare(listOf("git", "worktree", "remove", "C:\\projects\\api-TASK-123"), "Windows 11"),
+        )
+    }
+
+    @Test
+    fun `other programs on Windows are left unchanged`() {
+        val command = listOf("adb", "devices")
+
+        assertEquals(command, GitLongPaths.prepare(command, "Windows 11"))
+    }
+
+    @Test
+    fun `git commands on other systems are left unchanged`() {
+        val command = listOf("git", "status", "--porcelain")
+
+        assertEquals(command, GitLongPaths.prepare(command, "Mac OS X"))
+        assertEquals(command, GitLongPaths.prepare(command, "Linux"))
+    }
+}
+
 class ProcessBuilderShellCommandExecutorTest {
 
     private val executor = ProcessBuilderShellCommandExecutor()

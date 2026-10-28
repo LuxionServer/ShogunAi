@@ -52,7 +52,7 @@ See proposal.md for the report. Current state of each bug:
 
 `ShownErrorLog(log: DiagnosticsLog, clock)` in `ui/components` remembers the identity of the last 256 errors it recorded and ignores an error it already recorded. `AppContainer` owns one; `main.kt` provides it through `LocalShownErrorLog`, which replaces `LocalDiagnosticsLog` (its only reader was `RecordShownError`). `RecordShownError` keeps its `LaunchedEffect(error)` and calls `ShownErrorLog.record` on IO.
 
-- Identity, not equality: `WorktreeError` variants are data classes, so the same failure happening again later is equal to the first one and must still be recorded (spec scenario "Same failure later"). The holder keeps the same `Throwable` while it is shown, so identity is exactly "this occurrence".
+- Identity, not equality or message: the same failure happening again later carries the same message (and, for the `WorktreeError` variants that are data classes, is equal to the first one) and must still be recorded (spec scenario "Same failure later"). The holder keeps the same `Throwable` while it is shown, so identity is exactly "this occurrence".
 - App-wide rather than `remember` in the composable: a `LazyColumn` item that leaves the composition loses its remembered state, and the same error can be shown by two composables.
 - Bounded so held errors don't grow without limit; 256 is far above how many errors are on screen at once.
 - Recording when the holder stores the error was rejected: there are many holders, and the log is meant to hold what the user actually saw.

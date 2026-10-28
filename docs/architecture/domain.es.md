@@ -610,6 +610,8 @@ Instala, actualiza, comprueba y quita los hooks de ShogunAi en un `settings.json
 
 Ejecuta `git worktree remove [--force] <path>` y, opcionalmente, `git branch -d -- <branch>` para borrar la rama local (borrado seguro, no `-D`). Devuelve un `WorktreeRemoval` cuyo `herdrFailure` es el error de cerrar el workspace de Herdr del worktree, si falló (ver [`CloseHerdrWorkspacesUseCase`](#closeherdrworkspacesusecase)).
 
+El borrado en sí (`WorktreeFolderRemoval`, compartido con la limpieza) trata tres fallos de `git worktree remove`. Una carpeta bloqueada cierra los procesos de Herdr que la usan y reintenta una vez, y falla con `WorktreeFolderInUse` si sigue bloqueada. "is not a working tree" y "Filename too long" significan que Git ya ha desregistrado el worktree y ha dejado su carpeta (Git borra el directorio administrativo aunque falle el borrado de la carpeta), así que se termina el resto: `git worktree prune` y luego `FileManager.deleteRecursively` sobre la carpeta, salvo que sea el repositorio base o tenga su propio directorio `.git`. Una carpeta que no se puede borrar se convierte en `WorktreeFolderInUse` con `unregistered = true`.
+
 !!! note
     Git no permite eliminar un worktree desde dentro de sí mismo, otro motivo para ejecutar siempre los comandos desde el repositorio base.
 

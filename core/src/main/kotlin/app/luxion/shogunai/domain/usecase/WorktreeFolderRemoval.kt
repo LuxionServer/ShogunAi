@@ -29,7 +29,7 @@ internal class WorktreeFolderRemoval(
         }
         val first = git(removeCommand)
         if (first.isSuccess) return HolderClosing()
-        if (isNotAWorkingTreeFailure(first.stderr)) {
+        if (isNotAWorkingTreeFailure(first.stderr) || isPathTooLongFailure(first.stderr)) {
             finishLeftover(path, first)
             return HolderClosing()
         }
@@ -40,6 +40,7 @@ internal class WorktreeFolderRemoval(
         when {
             retry.isSuccess -> Unit
             isNotAWorkingTreeFailure(retry.stderr) -> finishLeftover(path, first)
+            isPathTooLongFailure(retry.stderr) -> finishLeftover(path, retry)
             isFolderInUseFailure(retry.stderr) -> throw folderInUse(path, retry, unregistered = !isRegistered(path))
             else -> throw retry.toError()
         }

@@ -106,6 +106,7 @@ class MavenAndComposeMachineTest {
         useCases = useCases(calls),
         projects = { listOf(declaring(*resources)) },
         pathExists = { it in existing },
+        ioDispatcher = dispatcher,
     )
 
     private fun composeProject(name: String, owner: ComposeOwner) =
