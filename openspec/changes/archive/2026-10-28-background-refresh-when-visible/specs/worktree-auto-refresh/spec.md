@@ -3,7 +3,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Watch only while it is useful
-The system SHALL only check the Git metadata of the projects shown in the current worktree view, SHALL stop checking a project when no shown view includes it, and SHALL skip a project's check while its list is loading or a create, remove or clean up action is running on it. Checks SHALL keep running while the main window is visible, whether or not it is focused. No check SHALL run while the main window is minimized or hidden in the tray, or while the app is hidden; a state the platform doesn't report SHALL count as visible. The light refresh on focus SHALL run when the window regains focus.
+The system SHALL only check the Git metadata of the projects shown in the current worktree view, SHALL stop checking a project when no shown view includes it, and SHALL skip a project's check while it is loading or busy creating, removing or cleaning up. Checks SHALL run while the main window is visible, focused or not, and SHALL pause while it is minimized, in the tray or the app is hidden; unreported states count as visible. The light refresh on focus SHALL run when the window regains focus.
 
 #### Scenario: Leaving the screen
 - **WHEN** the user switches from "All worktrees" to the view filtered to `api`

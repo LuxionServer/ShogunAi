@@ -84,6 +84,7 @@ fun AppShell(
     inactivity: InactivityPreferences,
     onBoardReady: (WorktreeBoard) -> Unit = {},
     messages: AppMessages = rememberAppMessages(),
+    windowShown: Boolean = true,
 ) {
     var projectPendingRemoval by remember { mutableStateOf<Project?>(null) }
     val copiedMessage = LocalStrings.current.copied
@@ -130,10 +131,8 @@ fun AppShell(
         machine.show(destination?.resource)
         if (destination != null && board.isCatalogLoaded && destination.resource !in machine.visibleResources) viewModel.selectActive()
     }
+    LaunchedEffect(windowShown) { board.setWindowActive(windowShown) }
     val windowInfo = LocalWindowInfo.current
-    LaunchedEffect(windowInfo) {
-        snapshotFlow { windowInfo.isWindowFocused }.collect(board::setWindowActive)
-    }
     LaunchedEffect(windowInfo) {
         snapshotFlow { windowInfo.isWindowFocused }
             .drop(1)
