@@ -36,6 +36,8 @@ fun isFolderInUseFailure(stderr: String): Boolean =
 
 fun isNotAWorkingTreeFailure(stderr: String): Boolean = NOT_A_WORKING_TREE in stderr
 
+fun isPathTooLongFailure(stderr: String): Boolean = FILENAME_TOO_LONG in stderr
+
 private val LOCK_FILE = Regex("""Unable to create '([^']*\.lock)': File exists""")
 private const val ANOTHER_PROCESS = "Another git process seems to be running"
 private const val PERMISSION_DENIED = "Permission denied"
@@ -46,3 +48,4 @@ private const val LOCAL_CHANGES = "contains modified or untracked files"
 private const val FAILED_TO_DELETE = "failed to delete"
 private val FOLDER_LOCK_REASONS = listOf("Permission denied", "Device or resource busy", "being used by another process")
 private const val NOT_A_WORKING_TREE = "is not a working tree"
+private const val FILENAME_TOO_LONG = "Filename too long"

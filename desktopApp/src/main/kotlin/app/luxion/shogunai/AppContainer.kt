@@ -29,6 +29,7 @@ import app.luxion.shogunai.domain.usecase.WorktreeGroup
 import app.luxion.shogunai.infrastructure.JsonDerivedDataSizeStore
 import app.luxion.shogunai.infrastructure.JsonMultirepoSource
 import app.luxion.shogunai.infrastructure.NioDesktopTurnStore
+import app.luxion.shogunai.ui.components.ShownErrorLog
 import app.luxion.shogunai.ui.machine.DesktopTurnWatch
 import app.luxion.shogunai.ui.multirepo.FolderInspection
 import app.luxion.shogunai.ui.multirepo.MultirepoActions
@@ -248,6 +249,7 @@ class AppContainer {
     )
     val diagnosticsLog: DiagnosticsLog = RotatingFileDiagnosticsLog(redact = redactor::redact)
     val diagnosticReport = DiagnosticReport(BuildInfo.VERSION, diagnosticsLog)
+    val shownErrorLog = ShownErrorLog(diagnosticsLog)
     private val settingsFile = JsonSettingsFile()
     fun settingsProblem() = settingsFile.lastReadProblem
 
@@ -481,9 +483,10 @@ class AppContainer {
         { resolveEnvironment.directoriesOf(it).admin },
     )
     private val releaseDesktopTurn = ReleaseDesktopTurnUseCase(desktopTurnLedger)
+    private val readDesktopTurn = ReadDesktopTurnUseCase(desktopTurnLedger)
     val desktopTurn = DesktopTurnWatch(
-        read = ReadDesktopTurnUseCase(desktopTurnLedger)::invoke,
-        forceRelease = releaseDesktopTurn::force,
+        read = { withContext(Dispatchers.IO) { readDesktopTurn() } },
+        forceRelease = { withContext(Dispatchers.IO) { releaseDesktopTurn.force() } },
     )
     private val readReleaseRecord = ReadReleaseRecordUseCase(resolveEnvironment, environmentStateStore)
     private val readEmulatorStates = ReadEmulatorStatesUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)

@@ -57,7 +57,7 @@ class ProcessBuilderShellCommandExecutor(
         onOutput: ((OutputLine) -> Unit)? = null,
     ): CommandResult = withContext(ioDispatcher) {
         val process = try {
-            val builder = ProcessBuilder(WindowsArguments.prepare(command, osName))
+            val builder = ProcessBuilder(WindowsArguments.prepare(GitLongPaths.prepare(command, osName), osName))
                 .redirectInput(ProcessBuilder.Redirect.from(File(NULL_DEVICE)))
                 .apply { workingDirectory?.let { directory(File(it)) } }
             builder.environment()["PATH"] = HomebrewPath.merge(builder.environment()["PATH"])
@@ -110,6 +110,15 @@ internal object HomebrewPath {
     fun merge(currentPath: String?): String {
         val existingDirs = currentPath.orEmpty().split(File.pathSeparator).filter { it.isNotEmpty() }
         return (EXTRA_DIRS + existingDirs).distinct().joinToString(File.pathSeparator)
+    }
+}
+
+internal object GitLongPaths {
+    private const val GIT_EXECUTABLE = "git"
+
+    fun prepare(command: List<String>, osName: String): List<String> {
+        if (!osName.startsWith("Windows") || command.firstOrNull() != GIT_EXECUTABLE) return command
+        return listOf(GIT_EXECUTABLE, "-c", "core.longpaths=true") + command.drop(1)
     }
 }
 

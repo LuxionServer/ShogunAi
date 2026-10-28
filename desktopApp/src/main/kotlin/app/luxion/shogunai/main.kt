@@ -21,7 +21,7 @@ import app.luxion.shogunai.diagnostics.copyDiagnosticReport
 import app.luxion.shogunai.diagnostics.diagnosticsExceptionHandler
 import app.luxion.shogunai.diagnostics.installUncaughtExceptionLogging
 import app.luxion.shogunai.domain.io.DiagnosticsLog
-import app.luxion.shogunai.ui.components.LocalDiagnosticsLog
+import app.luxion.shogunai.ui.components.LocalShownErrorLog
 import app.luxion.shogunai.ui.components.copyText
 import app.luxion.shogunai.ui.shell.rememberAppMessages
 import kotlinx.coroutines.Dispatchers
@@ -316,7 +316,7 @@ private fun openWindow() = application {
             onAbout = { aboutOpen = true },
             onQuit = requestQuit,
         )
-        CompositionLocalProvider(LocalDiagnosticsLog provides appContainer.diagnosticsLog) {
+        CompositionLocalProvider(LocalShownErrorLog provides appContainer.shownErrorLog) {
             AppearanceScope(appearance) {
                 AppShell(
                     appContainer,
@@ -333,7 +333,7 @@ private fun openWindow() = application {
 
     if (preferencesOpen) {
         CompositionLocalProvider(
-            LocalDiagnosticsLog provides appContainer.diagnosticsLog,
+            LocalShownErrorLog provides appContainer.shownErrorLog,
             LocalWindowExceptionHandlerFactory provides preferencesErrorHandlers,
         ) {
             PreferencesWindow(appearance, appContainer.tools, appContainer.resources, appContainer.claudeHooks, appContainer.updates, trayPreferences, inactivityPreferences, preferencesFrontRequests, onClose = { preferencesOpen = false })
