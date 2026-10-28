@@ -11,8 +11,8 @@ That direction is built in three layers:
 | Layer | Role | What it brings |
 |---|---|---|
 | **Engine and CLI** | The foundation | Worktree provisioning defined in the repository (`.shogunai.json`) and a `shogun` command that the desktop app, agents and their hooks all use, including a per-worktree environment (reserved ports and variables) delivered to each agent's shell, and JSON output on every command for scripts. **Available.** |
-| **Control tower** | The view | The desktop app shows the state of every worktree, including the ones created by other tools, keeps them clean and follows changes as they happen. It opens each one in the terminal, the IDE or Herdr with the project's agents, and stays one click away in the menu bar. Multirepos group the repositories of one product, so a change spans several of them with one worktree and one agent per repository, coordinated by an agent for the whole multirepo, from the CLI and the app. **Available.** |
-| **Platforms** | The content | Providers for the stacks where a worktree is hardest to prepare, starting with Android, KMP, iOS and JVM: Gradle, local secrets, emulators, simulators and IDEs. **Started**: Gradle repositories show their daemons, can stop the idle ones and bound the memory and lifetime of the daemons agents start, Android repositories can give each worktree its own emulator, KMP and iOS repositories its own iOS simulator, both acquired on demand within limits that follow a machine capacity profile, with `--wait` to queue for a full pool, Xcode repositories see and clean up their DerivedData, keep it within a disk quota, automatic by default, and share compilations between worktrees, Compose Desktop apps run hidden in the background for agents to check on macOS, and JVM backends get Maven builds bounded in memory and a Docker Compose project and ports per worktree, started and built with `shogun compose up` and cleaned up with the volumes, networks and images removed worktrees leave behind. The app and `shogun stacks` also detect a repository's stack and suggest the providers that fit, and the `local.properties`, keystores and Firebase files to link into every worktree; local files can be linked, matched by patterns and kept in sync when the base folder loses files. |
+| **Control tower** | The view | The desktop app shows the state of every worktree, including the ones created by other tools, keeps them clean and follows changes as they happen. It opens each one in the terminal, the IDE or Herdr with the project's agents, and stays one click away in the menu bar. Multirepos group the repositories of one product, so a change spans several of them with one worktree and one agent per repository, coordinated by an agent for the whole multirepo, from the CLI and the app, and the multirepo can share variables between them, such as the port of the backend each group's app talks to. **Available.** |
+| **Platforms** | The content | Providers for the stacks where a worktree is hardest to prepare, starting with Android, KMP, iOS and JVM: Gradle, local secrets, emulators, simulators and IDEs. **Started**: Gradle repositories show their daemons, can stop the idle ones and bound the memory and lifetime of the daemons agents start, Android repositories can give each worktree its own emulator, KMP and iOS repositories its own iOS simulator, both acquired on demand within limits that follow a machine capacity profile, with `--wait` to queue for a full pool, Xcode repositories see and clean up their DerivedData, keep it within a disk quota, automatic by default, and share compilations between worktrees, Compose Desktop apps run hidden in the background for agents to check on macOS, agents take turns to drive the real desktop with `shogun desktop acquire --wait`, with the holder and the queue in the control tower and `shogun status`, and JVM backends get Maven builds bounded in memory and a Docker Compose project and ports per worktree, started and built with `shogun compose up` and cleaned up with the volumes, networks and images removed worktrees leave behind. The app and `shogun stacks` also detect a repository's stack and suggest the providers that fit, and the `local.properties`, keystores and Firebase files to link into every worktree; local files can be linked, matched by patterns and kept in sync when the base folder loses files. |
 
 It plugs into the tools that run agents rather than replacing them: Claude Code's worktree and session hooks, and [Herdr](https://herdr.dev), the terminal multiplexer for agents, whose worktrees a ShogunAi plugin provisions and where the desktop app opens a worktree with its environment and agent and shows what each agent is doing. **Available.**
 
@@ -24,23 +24,13 @@ Agent tools are learning to create worktrees, copy local files into them and sho
 
 Numbered in the order they will be picked up: the number is the priority.
 
-### 1. A turn for the desktop
+### 1. The environment of backends and services
 
-Some things can only be checked by an agent driving the real app with computer use (on macOS, Compose Desktop apps already run in the background for agents with `shogun headless`; what that doesn't reach is real keyboard input, keyboard shortcuts, native menus, the menu bar, system dialogs, hover and hit-testing, and apps of other toolkits), and the desktop (screen, mouse, keyboard and the focused app) is one resource for the whole machine: two agents using it at once step on each other and on the person working there. A desktop turn, on the same model as the device leases and their `--wait` queue:
-
-- `shogun desktop acquire --wait` and `shogun desktop release`, so only one agent drives the desktop at a time and the others wait in line instead of failing or colliding.
-- A turn that expires on its own, so an agent that stops or crashes doesn't keep the desktop.
-- Who holds the turn and who is waiting, in the control tower and in `shogun status`.
-- The background apps of `shogun headless` in the control tower's worktree views, with a notice when stopping one on a removal fails (today only the command line reports it).
-
-### 2. The environment of backends and services
-
-Every worktree of a backend needs its own running services, not only its own code. Stack detection, the Maven and Docker Compose providers, the per-worktree ports and the Compose lifecycle (`up`, `build` and the cleanup of the volumes, networks and images left by removed worktrees) are done; what remains:
+Every worktree of a backend needs its own running services, not only its own code. Stack detection, the Maven and Docker Compose providers, the per-worktree ports and the Compose lifecycle (`up`, `build` and the cleanup of the volumes, networks and images left by removed worktrees) and the variables a multirepo shares between its repositories are done; what remains:
 
 - Stopping Maven daemons once their state can be read reliably.
-- Variables shared between the repositories of a multirepo group, for example the port of the backend the group's app talks to.
 
-### 3. Provisioning and resources of mobile stacks
+### 2. Provisioning and resources of mobile stacks
 
 Provisioning and bounded resources for the stacks where a fresh worktree is furthest from building:
 
@@ -48,29 +38,34 @@ Provisioning and bounded resources for the stacks where a fresh worktree is furt
 - Finding out what a Flutter repository needs in a worktree and which of the Android and iOS providers it can reuse.
 - Waiting for a device from the desktop app, and showing the worktrees waiting for each pool in its machine views; today only `shogun emulator start --wait` and `shogun simulator start --wait` wait, and the app fails a start while others wait.
 
-### 4. Every agent, not only Claude Code
+### 3. Every agent, not only Claude Code
 
 ShogunAi's view is only neutral if it sees every agent:
 
 - Agent states for agents other than Claude Code (Codex, Gemini…), which have no equivalent hooks today.
 - A notification when an agent (reported by Herdr or by Claude Code's hooks) becomes blocked or done; today the worktree's row and the menu bar icon's menu are the signal.
+- Checking that Herdr detects an agent wrapped by Headroom (`headroom wrap claude`): opening in Herdr waits for Herdr to detect the agent it typed, and if Herdr doesn't see through the wrapper the open fails although the agent runs.
 - Other agents' user-level files for the workflow guide, as their documentation confirms them (Cursor keeps user rules in its settings today), and a Settings section in the desktop app to install, update and remove the `AGENTS.md` block, as it already does for Claude Code's hooks.
 - Recording the origin ref of each worktree, so the rule for choosing a pull request's base could be answered by `shogun` instead of staying a team policy.
 
-### 5. Multirepos for the whole team
+### 4. Multirepos for the whole team
 
 Multirepos and groups by branch are done in the CLI and the desktop app, and they're also how people who don't write the code follow a change across repositories. Left out:
 
 - Carrying the multirepo agent set on this machine over when its folder moves: `shogun multirepo init` (or "Add multirepo") in the new folder registers it after reviewing it and forgets the old entry, but the local agent goes with that entry and has to be set again.
 - Associating worktrees whose branches don't match, e.g. `shogun group add <id> <worktree>`.
+- Showing the Claude session names of a group's worktrees and of the multirepo agent in the desktop app's views; today `shogun open --herdr` and `shogun status` report them, and the app only names the sessions it opens.
 - A single session for the whole group, with a combined environment, as an option next to one agent per repository.
 - Returning a declared workspace repository to detection (removing the `workspace` field), from the CLI and the multirepo settings; today `workspace clear` turns it off and the file has to be edited by hand to undo it.
+- Editing a multirepo's shared variables from the CLI and the multirepo settings; today they're edited in `.shogunai-multirepo.json` and reviewed with `shogun multirepo trust`.
 - The pull request state of each repository of a group, which depends on the GitHub integration under exploration.
 
-### 6. Robustness and maintenance
+### 5. Robustness and maintenance
 
 - Finding the root cause of the errors that closed the Preferences window, from the entries the isolation now leaves in the diagnostics log, and of the native crash seen on another machine that left an empty diagnostic report.
 - Checking the in-app installation of the `shogun` command on a real installed app on Windows (the `shogun.cmd` and the user `PATH` change are covered by tests with fakes only) and on a machine without `~/.local/bin` on its `PATH`.
+- Checking on a real Windows machine that removing and cleaning up worktrees with build outputs deeper than 260 characters now succeeds (Git's long path support and the leftover fallback are covered by tests with fakes only).
+- Moving the per-project ports of `ProjectWorktrees` that still run on the caller's dispatcher (emulator and simulator states, ports, releasing resources) off the interface thread, as the Machine section now does.
 - Filesystem watchers instead of polling for Git metadata changes.
 - Support for bare repositories with worktrees (the "bare clone" layout), which changes what the base repository and copying from it mean. Today ShogunAi rejects them with a specific error.
 - Splitting `ProjectWorktrees.kt` and `ProjectSettingsView.kt` into smaller holders and sections.
@@ -89,7 +84,7 @@ Accepted, but left until someone needs them, because they widen what ShogunAi op
 
 ### Background desktop apps beyond macOS and the keyboard
 
-Compose Desktop apps can be checked in the background on macOS (`shogun headless` and the `desktop-app` provider), but two gaps remain. Real keyboard input doesn't reach an app whose window isn't active: a bridge that posts events to the app's own queue, or a key tool in Compose Hot Reload's MCP server (a feature request to JetBrains), could close it. And hiding and capturing a window are macOS-only: Windows and Linux need their own way to keep the app out of sight and capture its window, or a virtual display. Each needs a spike before becoming a change.
+Compose Desktop apps can be checked in the background on macOS (`shogun headless` and the `desktop-app` provider), but two gaps remain. Real keyboard input doesn't reach an app whose window isn't active: a bridge that posts events to the app's own queue, or a key tool in Compose Hot Reload's MCP server (a feature request to JetBrains), could close it. And hiding and capturing a window are macOS-only: Windows and Linux need their own way to keep the app out of sight and capture its window, or a virtual display. Each needs a spike before becoming a change. The desktop turn that agents take for computer use (`shogun desktop`) is cooperative and only for agents: waiting for it from the desktop app, and noticing that the person is using the desktop so agents wait for them too, are left for when the turn is in use.
 
 ### A follow-up view for people who don't run agents
 

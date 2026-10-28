@@ -101,6 +101,13 @@ A machine view SHALL refresh its process and device states every 5 seconds while
 - **WHEN** a busy daemon becomes idle while the Gradle view is shown
 - **THEN** it is shown as idle within a few seconds and its stop action becomes enabled
 
+### Requirement: Pause while the window is hidden
+While the main window is minimized, in the tray or the app is hidden, neither the shown machine view nor the sidebar summaries SHALL refresh, except for trimming Gradle daemons to the pool limit. Both SHALL refresh as soon as the window is shown again.
+
+#### Scenario: Window minimized
+- **WHEN** the Gradle daemons view is shown, a project declares the emulator provider and the user minimizes the window for a minute
+- **THEN** no daemon, emulator or other machine state is read during that minute except to trim idle Gradle daemons beyond the limit, and the view and the summaries refresh when the window is shown again
+
 ### Requirement: Column labels in device views
 The Android emulators and iOS simulators views SHALL show a header row labeling their columns (device, worktree and state), aligned with the rows below it.
 
@@ -208,3 +215,41 @@ The Compose view of the Machine section SHALL list, after the projects, the volu
 #### Scenario: Nothing left
 - **WHEN** no removed worktree left any resource
 - **THEN** the view shows no leftovers section and no removal action
+
+### Requirement: Desktop entry in the Machine section
+While a worktree holds the desktop turn or any worktree waits for it, the Machine section SHALL show a "Desktop" entry, also when no saved project declares a provider, with a summary naming the holder and the number of waiters. Its view SHALL show the holder with project, worktree, since when and until when, and "Release" with a confirmation naming it, then the waiters in order with since when each waits.
+
+#### Scenario: Held with waiters
+- **WHEN** `api` · `TASK-1` holds the turn and two worktrees wait
+- **THEN** the Machine section shows "Desktop" with `api` · `TASK-1` and 2 waiting, and its view lists the holder and the two waiters in order
+
+#### Scenario: Desktop free
+- **WHEN** nobody holds the turn and nobody waits
+- **THEN** the Machine section shows no "Desktop" entry
+
+#### Scenario: No provider declared
+- **WHEN** no saved project declares any provider and a worktree holds the turn
+- **THEN** the sidebar shows the Machine section with only the "Desktop" entry
+
+#### Scenario: Holder outside the saved projects
+- **WHEN** the holder's worktree isn't in any saved project
+- **THEN** the view shows its folder as outside the saved projects
+
+#### Scenario: Go to the holder
+- **WHEN** the user activates the holder `api` · `TASK-1` in the Desktop view
+- **THEN** "All worktrees" opens with `TASK-1` of `api` selected
+
+#### Scenario: Shown while open
+- **WHEN** the Desktop view is shown and the holder releases the turn from the command line
+- **THEN** the view shows the change without the user refreshing it
+
+### Requirement: Reading machine resources never blocks the interface
+The Machine section SHALL read and act on machine resources (daemon lists, pool usage, the Gradle daemon trim, device states, DerivedData, Compose projects, the desktop turn) without blocking the interface: a slow disk, settings file or command SHALL delay only that entry's figures, never the window's response to input.
+
+#### Scenario: Slow settings file during the summary refresh
+- **WHEN** the summary refresh trims Gradle daemons and reading the resource limits takes 20 seconds
+- **THEN** the window keeps responding during those 20 seconds and the summaries update when the read finishes
+
+#### Scenario: Shown view with a slow command
+- **WHEN** the Gradle daemons view is shown and listing the daemons takes several seconds
+- **THEN** the window keeps responding and the list updates when the command finishes

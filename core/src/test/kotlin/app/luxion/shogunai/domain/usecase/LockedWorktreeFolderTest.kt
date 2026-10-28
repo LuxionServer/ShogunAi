@@ -27,6 +27,7 @@ class LockedWorktreeFolderTest {
     private val path = "/home/dev/projects/TASK-123"
     private val locked = "error: failed to delete '$path': Permission denied"
     private val notAWorkingTree = "fatal: '$path' is not a working tree"
+    private val tooLong = "error: failed to delete '$path': Filename too long"
     private val removeCommand = listOf("git", "worktree", "remove", path)
 
     private fun executor(vararg removals: CommandResult.() -> CommandResult, registered: Boolean = false): FakeShellCommandExecutor {
@@ -197,5 +198,66 @@ class LockedWorktreeFolderTest {
         assertIs<WorktreeError.WorktreeFolderInUse>(report.failures.single().error)
         assertEquals(listOf("w2", "w3"), herdr.closedWorkspaces)
         assertTrue(report.herdrFailures.isEmpty())
+    }
+
+    @Test
+    fun `a path too long for Git is finished by deleting the leftover`() = runTest {
+        val files = FakeFileManager(existing = listOf(path))
+        val executor = executor(fails(tooLong))
+
+        removal(executor, null, files)(path).getOrThrow()
+
+        assertEquals(listOf(path), files.deletedRecursively)
+        assertTrue(executor.executed("git", "worktree", "prune"))
+        assertEquals(1, executor.executedCommands.count { it == removeCommand })
+    }
+
+    @Test
+    fun `a path too long after closing Herdr is finished by deleting the leftover`() = runTest {
+        val files = FakeFileManager(existing = listOf(path))
+        val executor = executor(fails(locked), fails(tooLong))
+
+        removal(executor, FakeHerdrClient(openWorkspaces = mapOf(path to "w2")), files)(path).getOrThrow()
+
+        assertEquals(listOf(path), files.deletedRecursively)
+    }
+
+    @Test
+    fun `a path too long in a repository folder deletes nothing`() = runTest {
+        val withGit = FakeFileManager(existing = listOf(path), directories = setOf("$path/.git"))
+
+        val failure = removal(executor(fails(tooLong)), null, withGit)(path).exceptionOrNull()
+
+        assertIs<WorktreeError.GitCommandFailed>(failure)
+        assertTrue(failure.errorOutput.contains("Filename too long"))
+        assertTrue(withGit.deletedRecursively.isEmpty())
+    }
+
+    @Test
+    fun `a path too long whose folder can't be deleted reports an unregistered worktree in use`() = runTest {
+        val files = FakeFileManager(existing = listOf(path)).apply { lockedFolders = setOf(path) }
+
+        val failure = removal(executor(fails(tooLong)), null, files)(path).exceptionOrNull()
+
+        assertIs<WorktreeError.WorktreeFolderInUse>(failure)
+        assertEquals(true, failure.unregistered)
+    }
+
+    @Test
+    fun `cleanup reports a worktree with a path too long for Git as removed`() = runTest {
+        val other = Worktree(path = "/home/dev/projects/TASK-9", branch = "feature/TASK-9")
+        val third = Worktree(path = "/home/dev/projects/TASK-5", branch = "feature/TASK-5")
+        val deep = Worktree(path = path, branch = "feature/TASK-123")
+        val executor = FakeShellCommandExecutor { command ->
+            if (command == removeCommand) failure(command, 255, tooLong) else success(command)
+        }
+        val files = FakeFileManager(existing = listOf(path, other.path, third.path))
+        val useCase = CleanUpWorktreesUseCase(config, executor, null, null, files)
+
+        val report = useCase(listOf(other, deep, third), mainBranch = null, deleteBranches = false).getOrThrow()
+
+        assertEquals(listOf(other.path, path, third.path), report.removed)
+        assertTrue(report.failures.isEmpty())
+        assertEquals(listOf(path), files.deletedRecursively)
     }
 }

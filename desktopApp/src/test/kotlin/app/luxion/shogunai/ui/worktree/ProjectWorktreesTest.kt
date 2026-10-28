@@ -1,5 +1,21 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.HeadlessAppUseCases
+import app.luxion.shogunai.domain.FakeAppWindowService
+import app.luxion.shogunai.domain.FakeHeadlessAppLauncher
+import app.luxion.shogunai.domain.model.DesktopAppProvider
+import app.luxion.shogunai.domain.model.DesktopTurn
+import app.luxion.shogunai.domain.model.DesktopTurnRelease
+import app.luxion.shogunai.domain.model.DesktopTurnState
+import app.luxion.shogunai.domain.model.HeadlessAppProcess
+import app.luxion.shogunai.domain.model.HeadlessAppState
+import app.luxion.shogunai.domain.model.HeadlessAppStop
+import app.luxion.shogunai.domain.model.ProcessIdentity
+import app.luxion.shogunai.domain.model.RepositoryProviders
+import app.luxion.shogunai.domain.model.WaitTicket
+import app.luxion.shogunai.domain.model.toLocalClockTime
+import app.luxion.shogunai.domain.usecase.HeadlessAppWorktrees
+import app.luxion.shogunai.domain.usecase.StopHeadlessAppUseCase
 import app.luxion.shogunai.domain.usecase.worktreeComposeProjectName
 import app.luxion.shogunai.domain.model.ComposeProject
 import app.luxion.shogunai.domain.model.DockerComposeProvider
@@ -22,6 +38,7 @@ import app.luxion.shogunai.domain.model.DetectedTools
 import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.TerminalId
 import app.luxion.shogunai.ui.i18n.EnglishStrings
+import app.luxion.shogunai.ui.machine.DesktopTurnWatch
 import app.luxion.shogunai.ui.shell.ToolsPreferences
 import app.luxion.shogunai.EmulatorUseCases
 import app.luxion.shogunai.GradleUseCases
@@ -32,6 +49,7 @@ import app.luxion.shogunai.ui.shell.AgentChoices
 import app.luxion.shogunai.SimulatorUseCases
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.HerdrOpening
+import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.WorktreeUseCases
 import app.luxion.shogunai.ProvisioningUseCases
 import app.luxion.shogunai.ReleaseResourcesUseCases
@@ -121,6 +139,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -2893,7 +2912,7 @@ class ProjectWorktreesTest {
     @Test
     fun `opening in Herdr passes the worktree and reports the opening`() = runTest(dispatcher) {
         val calls = mutableListOf<Worktree>()
-        val herdr = HerdrUseCases.NONE.copy(open = { target, _ -> calls += target; Result.success(HerdrOpening.OPENED) })
+        val herdr = HerdrUseCases.NONE.copy(open = { target, _ -> calls += target; Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude")) })
         val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
         advanceUntilIdle()
         val target = viewModel.worktrees.first { it.path == worktreePath }
@@ -2903,7 +2922,7 @@ class ProjectWorktreesTest {
         advanceUntilIdle()
 
         assertEquals(target, calls.single())
-        assertEquals(WorktreeSuccess.OpenedInHerdr(worktreePath, focused = false), viewModel.success)
+        assertEquals(WorktreeSuccess.OpenedInHerdr(worktreePath, HerdrOutcome.OPENED), viewModel.success)
         assertTrue(viewModel.openingInHerdr.isEmpty())
     }
 
@@ -2912,7 +2931,7 @@ class ProjectWorktreesTest {
         val focused = mutableListOf<String>()
         var opened = 0
         val herdr = HerdrUseCases.NONE.copy(
-            open = { _, _ -> opened++; Result.success(HerdrOpening.OPENED) },
+            open = { _, _ -> opened++; Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude")) },
             focusAgent = { pane -> focused += pane; Result.success(Unit) },
         )
         val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
@@ -2931,7 +2950,7 @@ class ProjectWorktreesTest {
 
         assertEquals(listOf("w1:p2"), focused)
         assertEquals(0, opened)
-        assertEquals(WorktreeSuccess.OpenedInHerdr(worktreePath, focused = true), viewModel.success)
+        assertEquals(WorktreeSuccess.OpenedInHerdr(worktreePath, HerdrOutcome.FOCUSED), viewModel.success)
     }
 
     @Test
@@ -2939,7 +2958,7 @@ class ProjectWorktreesTest {
         val focused = mutableListOf<String>()
         var opened = 0
         val herdr = HerdrUseCases.NONE.copy(
-            open = { _, _ -> opened++; Result.success(HerdrOpening.OPENED) },
+            open = { _, _ -> opened++; Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude")) },
             focusAgent = { pane -> focused += pane; Result.success(Unit) },
         )
         val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
@@ -2955,14 +2974,39 @@ class ProjectWorktreesTest {
 
     @Test
     fun `an already open worktree is reported as focused`() = runTest(dispatcher) {
-        val herdr = HerdrUseCases.NONE.copy(open = { _, _ -> Result.success(HerdrOpening.FOCUSED) })
+        val herdr = HerdrUseCases.NONE.copy(open = { _, _ -> Result.success(HerdrOpening(HerdrOutcome.FOCUSED, "w1:p1", "claude")) })
         val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
         advanceUntilIdle()
 
         viewModel.openInHerdr(viewModel.worktrees.first { it.path == worktreePath })
         advanceUntilIdle()
 
-        assertEquals(WorktreeSuccess.OpenedInHerdr(worktreePath, focused = true), viewModel.success)
+        assertEquals(WorktreeSuccess.OpenedInHerdr(worktreePath, HerdrOutcome.FOCUSED), viewModel.success)
+    }
+
+    @Test
+    fun `an agent started in an already open worktree is reported as started`() = runTest(dispatcher) {
+        val herdr = HerdrUseCases.NONE.copy(open = { _, _ -> Result.success(HerdrOpening(HerdrOutcome.STARTED_AGENT, "w1:p2", "Claude")) })
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
+        advanceUntilIdle()
+
+        viewModel.openInHerdr(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+
+        assertEquals(WorktreeSuccess.OpenedInHerdr(worktreePath, HerdrOutcome.STARTED_AGENT), viewModel.success)
+    }
+
+    @Test
+    fun `an agent that doesn't start is recorded for the worktree`() = runTest(dispatcher) {
+        val herdr = HerdrUseCases.NONE.copy(open = { _, _ -> Result.failure(WorktreeError.HerdrAgentNotStarted("w1:p2", "claude")) })
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(herdr = herdr))
+        advanceUntilIdle()
+
+        viewModel.openInHerdr(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+
+        assertIs<WorktreeError.HerdrAgentNotStarted>(viewModel.actionErrors[worktreePath])
+        assertNull(viewModel.success)
     }
 
     @Test
@@ -3380,6 +3424,174 @@ class ProjectWorktreesTest {
 
         assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1), board.cleanupSuccess)
         assertEquals(listOf(worktreePath), board.project.herdrCloseFailures.map { it.path })
+    }
+
+    private class RecordingHeadlessApps(running: Map<String, HeadlessAppProcess> = emptyMap()) {
+        var apps = running
+        val stopped = mutableListOf<String>()
+
+        fun useCases() = HeadlessAppUseCases(
+            declared = { true },
+            read = { path -> Result.success(apps[path] ?: HeadlessAppProcess(HeadlessAppState.STOPPED, null, "$path.log")) },
+            stop = { path ->
+                stopped += path
+                apps = apps - path
+                Result.success(HeadlessAppStop(wasRunning = true, pid = 4242))
+            },
+        )
+    }
+
+    private fun runningApp() = HeadlessAppProcess(HeadlessAppState.RUNNING, 4242, "/home/dev/state/launch.log")
+
+    private fun failingHeadlessStop(): StopHeadlessAppUseCase {
+        val files = FakeFileManager()
+        val pidFile = "$worktreePath/desktopApp/build/run/main/main.pid"
+        files.writtenProperties[pidFile] = mapOf("pid" to "4242")
+        val launcher = FakeHeadlessAppLauncher(files, pidFile)
+        launcher.alive += 4242L
+        launcher.failStop = IllegalStateException("operation not permitted")
+        val provisioning = FakeRepositoryProvisioningSource(
+            mapOf(worktreePath to RepositoryProvisioning(providers = RepositoryProviders(desktopApp = DesktopAppProvider(":desktopApp")))),
+        )
+        val worktrees = HeadlessAppWorktrees(provisioning, { "${config.baseRepositoryPath}/.git/worktrees/TASK-123" }, launcher, FakeAppWindowService(), files)
+        return StopHeadlessAppUseCase(worktrees, launcher)
+    }
+
+    @Test
+    fun `a failed headless app stop is a notice after deleting the worktree`() = runTest(dispatcher) {
+        val executor = FakeShellCommandExecutor(listingResponder())
+        val viewModel = projectWorktrees(useCasesWith(executor).copy(remove = RemoveWorktreeUseCase(config, executor, stopHeadlessApp = failingHeadlessStop())))
+        advanceUntilIdle()
+
+        viewModel.requestRemoval(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+        viewModel.confirmPendingRemoval()
+        advanceUntilIdle()
+
+        assertNull(viewModel.error)
+        assertTrue(viewModel.worktrees.none { it.path == worktreePath })
+        assertEquals(listOf(worktreePath), viewModel.headlessStopFailures.map { it.path })
+        viewModel.dismissHeadlessStopFailures()
+        assertTrue(viewModel.headlessStopFailures.isEmpty())
+    }
+
+    @Test
+    fun `cleanup reports the headless apps it couldn't stop`() = runTest(dispatcher) {
+        val executor = FakeShellCommandExecutor(mergedResponder())
+        val board = board(useCasesWith(executor).copy(cleanUp = CleanUpWorktreesUseCase(config, executor, stopHeadlessApp = failingHeadlessStop())))
+        advanceUntilIdle()
+
+        board.openCleanup()
+        advanceUntilIdle()
+        board.confirmCleanup()
+        advanceUntilIdle()
+
+        assertEquals(listOf(worktreePath), board.project.headlessStopFailures.map { it.path })
+    }
+
+    @Test
+    fun `the headless apps load with the worktrees and stop from the holder`() = runTest(dispatcher) {
+        val apps = RecordingHeadlessApps(mapOf(worktreePath to runningApp()))
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(headlessApp = apps.useCases()))
+        advanceUntilIdle()
+
+        assertTrue(viewModel.isHeadlessAppRepository)
+        assertEquals(HeadlessAppState.RUNNING, viewModel.headlessApps[worktreePath]?.state)
+        viewModel.stopHeadlessApp(worktree)
+        viewModel.stopHeadlessApp(worktree)
+        assertTrue(worktreePath in viewModel.stoppingHeadlessApps)
+        advanceUntilIdle()
+
+        assertEquals(listOf(worktreePath), apps.stopped)
+        assertEquals(HeadlessAppState.STOPPED, viewModel.headlessApps[worktreePath]?.state)
+        assertTrue(viewModel.stoppingHeadlessApps.isEmpty())
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the detail shows a running headless app with its process and log and stops it`() = runComposeUiTest {
+        val apps = RecordingHeadlessApps(mapOf(worktreePath to runningApp()))
+        val holder = loadedProjectWorktrees(useCases(listingResponder()).copy(headlessApp = apps.useCases()))
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder) } }
+
+        waitUntil { onAllNodesWithText("Running (process 4242)").fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("Log: /home/dev/state/launch.log").assertIsDisplayed()
+        onNodeWithText("Stop").performClick()
+        waitUntil { onAllNodesWithText("Stopped").fetchSemanticsNodes().isNotEmpty() }
+
+        assertEquals(listOf(worktreePath), apps.stopped)
+        onNodeWithText("Stop").assertDoesNotExist()
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the detail shows a crashed headless app as stopped without Stop`() = runComposeUiTest {
+        val holder = loadedProjectWorktrees(useCases(listingResponder()).copy(headlessApp = RecordingHeadlessApps().useCases()))
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder) } }
+
+        waitUntil { onAllNodesWithText("Stopped").fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("Background app").assertIsDisplayed()
+        onNodeWithText("Stop").assertDoesNotExist()
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the detail shows nothing about a headless app without the provider`() = runComposeUiTest {
+        val holder = loadedProjectWorktrees(useCases(listingResponder()))
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder) } }
+
+        waitForIdle()
+        onNodeWithText("Background app").assertDoesNotExist()
+    }
+
+    private fun desktopTurnWatch(state: () -> DesktopTurnState, released: MutableList<Unit> = mutableListOf()) = DesktopTurnWatch(
+        read = { Result.success(state()) },
+        forceRelease = {
+            released += Unit
+            Result.success(DesktopTurnRelease.NobodyHolds)
+        },
+    )
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the detail of the desktop holder offers to release it after confirming`() = runComposeUiTest {
+        val acquiredAt = Instant.parse("2026-01-05T14:00:00Z")
+        val expiresAt = acquiredAt.plusSeconds(600)
+        var turn = DesktopTurnState(DesktopTurn("${config.baseRepositoryPath}/.git/worktrees/TASK-123", worktreePath, acquiredAt.toEpochMilli(), expiresAt.toEpochMilli()), emptyList())
+        val released = mutableListOf<Unit>()
+        val watch = desktopTurnWatch({ turn }, released)
+        runBlocking { watch.refresh() }
+        val holder = loadedProjectWorktrees(useCases(listingResponder()))
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder, desktopTurn = watch) } }
+
+        onNodeWithText("Has the desktop").assertIsDisplayed()
+        onNodeWithText("Since ${acquiredAt.toLocalClockTime()} until ${expiresAt.toLocalClockTime()}").assertIsDisplayed()
+        onNodeWithText("Release").performClick()
+        onNodeWithText("Release the desktop?").assertIsDisplayed()
+        turn = DesktopTurnState(null, emptyList())
+        onAllNodesWithText("Release")[1].performClick()
+        waitUntil { released.isNotEmpty() }
+        waitUntil { onAllNodesWithText("Has the desktop").fetchSemanticsNodes().isEmpty() }
+
+        onNodeWithText("Desktop turn").assertDoesNotExist()
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the detail of a waiter shows its place and who holds the desktop`() = runComposeUiTest {
+        val since = Instant.parse("2026-01-05T14:03:00Z")
+        val other = DesktopTurn("/home/dev/projects/api/.git/worktrees/TASK-1", "/home/dev/projects/api-worktrees/TASK-1", 0, Long.MAX_VALUE)
+        val tickets = listOf(
+            WaitTicket("a", "/home/dev/projects/api/.git/worktrees/TASK-9", "/home/dev/projects/api-worktrees/TASK-9", ProcessIdentity(1, 1), 0),
+            WaitTicket("b", "${config.baseRepositoryPath}/.git/worktrees/TASK-123", worktreePath, ProcessIdentity(2, 1), since.toEpochMilli()),
+        )
+        val watch = desktopTurnWatch({ DesktopTurnState(other, tickets) })
+        runBlocking { watch.refresh() }
+        val holder = loadedProjectWorktrees(useCases(listingResponder()))
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder, desktopTurn = watch) } }
+
+        onNodeWithText("Waiting for the desktop, #2 since ${since.toLocalClockTime()}, behind api · TASK-1").assertIsDisplayed()
+        onNodeWithText("Release").assertDoesNotExist()
     }
 
     private class ToolCalls {
@@ -3816,7 +4028,7 @@ class ProjectWorktreesTest {
     @Test
     fun `opening in Herdr with a picked agent passes it on`() = runTest(dispatcher) {
         val used = mutableListOf<AgentLaunchConfig>()
-        val herdr = HerdrUseCases.NONE.copy(open = { _, agent -> used += agent; Result.success(HerdrOpening.OPENED) })
+        val herdr = HerdrUseCases.NONE.copy(open = { _, agent -> used += agent; Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude")) })
         val holder = projectWorktrees(withAgents().copy(herdr = herdr))
         advanceUntilIdle()
 

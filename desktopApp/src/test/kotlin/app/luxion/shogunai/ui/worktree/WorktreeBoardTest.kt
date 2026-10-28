@@ -63,6 +63,7 @@ import kotlinx.coroutines.test.setMain
 import app.luxion.shogunai.HerdrUseCases
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.HerdrOpening
+import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.RecentWorktree
 import app.luxion.shogunai.domain.usecase.Activity
 import app.luxion.shogunai.ui.i18n.EnglishStrings
@@ -225,7 +226,7 @@ class WorktreeBoardTest {
                 EmulatorUseCases.NONE
             },
             simulator = SimulatorUseCases.NONE,
-            herdr = HerdrUseCases.NONE.copy(open = { target, _ -> openedInHerdr += target.path; Result.success(HerdrOpening.OPENED) }),
+            herdr = HerdrUseCases.NONE.copy(open = { target, _ -> openedInHerdr += target.path; Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude")) }),
             gradle = GradleUseCases(
                 provider = { GradleProvider().takeIf { id in gradleDeclaredFor } },
                 listDaemons = ListGradleDaemonsUseCase(gradleDaemons, FakeFileManager(existing = listOf(base) + worktrees.map { it.first })),
@@ -838,7 +839,7 @@ class WorktreeBoardTest {
     }
 
     @Test
-    fun `no check runs while the window is inactive and focus resumes them`() = runTest(dispatcher) {
+    fun `no check runs while the window is minimized or hidden and showing it resumes them`() = runTest(dispatcher) {
         val board = board()
         advanceUntilIdle()
         board.startWatching()
@@ -1438,7 +1439,7 @@ class WorktreeBoardTest {
                     calls += Triple(members.map { it.alias }, taskId, type)
                     Result.success(GroupCreation("feature/$taskId", members.map { GroupRepositoryResult(it.alias, GroupRepositoryOutcome.CREATED) }))
                 },
-                openAgent = { Result.success(HerdrOpening.OPENED) },
+                openAgent = { Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude")) },
             ),
         )
         val group = board.changeView.groups.single { it.title == "TASK-1" }
@@ -1461,7 +1462,7 @@ class WorktreeBoardTest {
                     created += members.map { it.alias }
                     Result.success(GroupCreation("feature/$taskId", members.map { GroupRepositoryResult(it.alias, GroupRepositoryOutcome.CREATED) }))
                 },
-                openAgent = { Result.success(HerdrOpening.OPENED) },
+                openAgent = { Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude")) },
             ),
         )
 
@@ -1495,7 +1496,7 @@ class WorktreeBoardTest {
                         ),
                     )
                 },
-                openAgent = { Result.success(HerdrOpening.OPENED) },
+                openAgent = { Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude")) },
             ),
         )
 
@@ -1515,14 +1516,14 @@ class WorktreeBoardTest {
     }
 
     @Test
-    fun `opening the multirepo agent reports whether it was focused`() = runTest(dispatcher) {
+    fun `opening the multirepo agent reports its outcome`() = runTest(dispatcher) {
         val opened = mutableListOf<String>()
         val board = productBoard(
             MultirepoActions(
                 createGroup = { _, _, _, _, _ -> Result.failure(UnsupportedOperationException()) },
                 openAgent = { multirepo ->
                     opened += multirepo.folder
-                    Result.success(HerdrOpening.FOCUSED)
+                    Result.success(HerdrOpening(HerdrOutcome.FOCUSED, "w1:p1", "claude"))
                 },
             ),
         )
@@ -1531,7 +1532,28 @@ class WorktreeBoardTest {
         advanceUntilIdle()
 
         assertEquals(listOf(product.folder), opened)
-        assertEquals(MultirepoNotice.AgentOpened(focused = true), board.multirepoNotice)
+        assertEquals(MultirepoNotice.AgentOpened(HerdrOutcome.FOCUSED), board.multirepoNotice)
+    }
+
+    @Test
+    fun `opening the multirepo agent reports an agent started in its open workspace and a failed start`() = runTest(dispatcher) {
+        var result: Result<HerdrOpening> = Result.success(HerdrOpening(HerdrOutcome.STARTED_AGENT, "w5:p2", "Claude"))
+        val board = productBoard(
+            MultirepoActions(
+                createGroup = { _, _, _, _, _ -> Result.failure(UnsupportedOperationException()) },
+                openAgent = { result },
+            ),
+        )
+
+        board.openMultirepoAgent()
+        advanceUntilIdle()
+        assertEquals(MultirepoNotice.AgentOpened(HerdrOutcome.STARTED_AGENT), board.multirepoNotice)
+
+        val failure = WorktreeError.HerdrAgentNotStarted("w5:p2", "claude")
+        result = Result.failure(failure)
+        board.openMultirepoAgent()
+        advanceUntilIdle()
+        assertEquals(MultirepoNotice.Failed(failure), board.multirepoNotice)
     }
 
     @Test
@@ -1541,7 +1563,7 @@ class WorktreeBoardTest {
         val board = board(
             multirepoActions = MultirepoActions(
                 createGroup = { _, _, _, _, _ -> Result.failure(UnsupportedOperationException()) },
-                openAgent = { multirepo -> opened += multirepo.folder; Result.success(HerdrOpening.OPENED) },
+                openAgent = { multirepo -> opened += multirepo.folder; Result.success(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", "Claude")) },
             ),
         )
         board.syncMultirepos(multirepoMemberships(listOf(product.copy(approved = false)), board.projects))

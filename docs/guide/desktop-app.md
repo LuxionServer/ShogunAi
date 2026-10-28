@@ -65,7 +65,7 @@ When the repository has an `origin` remote, **Fetch from origin first** fetches 
 Each row is two lines with a fixed place for every piece of information, so rows line up and can be compared at a glance:
 
 - A **state badge**: a colored circle with an icon that is different for each [state](#states), so it can be told without color. Hovering it shows the state's name.
-- The **execution** column: the agent on the first line (its name and, with Herdr running, its state: working, blocked, done or idle) and the emulator or simulator on the second, only while it boots or runs. With several agents it shows the most urgent one with a "+N". In a narrow list it collapses to icons that keep their colors; hover them for the labels.
+- The **execution** column: the agent on the first line (its name and, with Herdr running, its state: working, blocked, done or idle) and, on the second, whether the worktree has the [desktop turn](cli.md#desktop) or waits for it (with its place in line), the emulator or simulator while it boots or runs, and its [app running in the background](headless-app.md). With several agents, or several things on the second line, it shows the first one with a "+N" and the tooltip lists them all. In a narrow list it collapses to icons that keep their colors; hover them for the labels.
 - The **name**: the branch on the first line; on the second, the folder when it differs from the branch's last segment, the **origin** (ShogunAi, Claude Code, Herdr or another location) and, in views that span several projects and aren't grouped by project, the project.
 - The **Git** column: uncommitted changes on the first line and, on the second, the commits ahead of and behind the main branch, or "merged". A dash means the status couldn't be read.
 - The **time** column: when the worktree was last active, saying what it measures ("commit 3 h ago" when its branch has commits of its own, "created 2 d ago" otherwise), and the "main" and "locked" marks below.
@@ -104,7 +104,7 @@ A worktree's activity is the date of its last commit when its branch has commits
 ## Working in a worktree
 
 - **Copy command** copies `cd "<worktree>" && <agent command>` to paste in any terminal.
-- **Open in Herdr** opens the worktree in [Herdr](../agents.md#herdr) with its environment and runs the agent command there; if the worktree already has an agent in Herdr, it focuses that agent's pane instead.
+- **Open in Herdr** opens the worktree in [Herdr](../agents.md#herdr) with its environment and runs the agent command there; if the worktree already has an agent in Herdr, it focuses that agent's pane instead, and if its workspace is open without an agent, it starts the agent in a new pane of that workspace. If Herdr doesn't detect the agent within 10 seconds, the worktree shows the error with the pane and the command, and the pane is left open.
 - **Open in terminal** opens a new window or tab of your terminal in the worktree's folder, with the worktree's environment variables set, and runs the agent command; the shell stays open when the agent exits. Terminal and iTerm2 (macOS), Windows Terminal (Windows), and tmux (3.0 or later) and Zellij (macOS and Linux) are supported; tmux and Zellij open a new window or tab in the session you used last, so they're only offered while one is running. The first time, the app asks which terminal to use. On macOS, Terminal and iTerm2 ask your permission the first time ShogunAi controls them; if you decline, allow it in System Settings > Privacy & Security > Automation.
 - **Open in IDE** opens the worktree's folder in VS Code, IntelliJ IDEA or Android Studio, or its Xcode workspace in Xcode (macOS only), whichever is the default IDE or the one chosen for the project. For Xcode it looks for a `.xcworkspace`, then an `.xcodeproj`, in the worktree and its subfolders (e.g. `iosApp/`), and opens the folder if there is none.
 - **Open folder** shows the worktree's folder in Finder, Explorer or the file manager.
@@ -118,7 +118,11 @@ With several agents, the worktree's detail shows an **Agent** field and the thre
 - **Remove** removes one worktree, optionally deleting its local branch, which is deleted only if it's merged into the project's main branch. If it isn't (for example after a squash merge), the worktree is still removed and a notice says the branch was kept, with a **Delete branch anyway** action that asks for confirmation first. The main worktree can't be removed.
 - **Clean up**, next to the "Worktrees" title, lists the worktrees that are merged or whose folder is gone and removes them in one go, optionally deleting their branches. Depending on the repository's providers it also offers to stop their idle Gradle daemons and their emulators, and to delete their iOS simulators and orphaned Xcode DerivedData.
 
-Removing a worktree that's open in Herdr also closes its Herdr workspace; the dialogs say so beforehand.
+Removing a worktree that's open in Herdr also closes its Herdr workspace; the dialogs say so beforehand. Removing or cleaning up a worktree also stops its app running in the background and releases its desktop turn; if the app can't be stopped, the worktree is still removed and a notice says so until you dismiss it.
+
+## The desktop turn
+
+Agents that check something with computer use take turns to drive the desktop ([`shogun desktop`](cli.md#desktop)). While a worktree has the turn or any waits for it, the sidebar's **Machine** section shows a **Desktop** entry with the holder and how many wait, also when no project declares a provider. Its view shows the holder, since when and until when, and the worktrees waiting in order; activate one to go to its worktree. The worktree's detail shows its turn or its place in line too. **Release** frees the desktop whoever holds it, after asking, and the first worktree waiting gets it; use it when an agent is stuck with the turn or you need the desktop yourself.
 
 ## Provider sections
 

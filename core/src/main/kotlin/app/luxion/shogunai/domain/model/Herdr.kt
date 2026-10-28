@@ -9,8 +9,24 @@ data class HerdrAgent(
     val paneId: String,
 )
 
-enum class HerdrOpening { OPENED, FOCUSED }
+const val AGENT_START_SECONDS = 10
+
+enum class HerdrOutcome { OPENED, STARTED_AGENT, FOCUSED }
+
+data class HerdrOpening(val outcome: HerdrOutcome, val paneId: String, val agent: String?, val sessionName: String? = null)
 
 data class HerdrWorkspace(val workspaceId: String, val label: String, val worktreePath: String?)
 
-data class HerdrPane(val paneId: String, val workspaceId: String, val directory: String?)
+data class HerdrPane(
+    val paneId: String,
+    val workspaceId: String,
+    val directory: String?,
+    val agent: String? = null,
+    val agentStatus: String = UNKNOWN_AGENT_STATUS,
+) {
+    val hasLiveAgent: Boolean get() = agentStatus != UNKNOWN_AGENT_STATUS
+
+    companion object {
+        const val UNKNOWN_AGENT_STATUS = "unknown"
+    }
+}

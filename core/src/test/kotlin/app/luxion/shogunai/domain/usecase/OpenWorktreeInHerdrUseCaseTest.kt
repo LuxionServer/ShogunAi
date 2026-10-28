@@ -1,5 +1,6 @@
 package app.luxion.shogunai.domain.usecase
 
+import app.luxion.shogunai.domain.FakeClaudeSessionRegistry
 import app.luxion.shogunai.domain.FakeRepositoryTrust
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeHerdrClient
@@ -9,9 +10,12 @@ import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.model.ANDROID_SERIAL
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
+import app.luxion.shogunai.domain.model.ClaudeSession
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
 import app.luxion.shogunai.domain.model.HerdrOpening
+import app.luxion.shogunai.domain.model.HerdrOutcome
+import app.luxion.shogunai.domain.model.HerdrPane
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
@@ -53,10 +57,12 @@ class OpenWorktreeInHerdrUseCaseTest {
         herdr: FakeHerdrClient,
         source: FakeRepositoryProvisioningSource = provisioning(),
         store: FakeEnvironmentStateStore = FakeEnvironmentStateStore(),
+        registry: FakeClaudeSessionRegistry? = null,
     ) = OpenWorktreeInHerdrUseCase(
         config,
         herdr,
         ResolveWorktreeEnvironmentUseCase(gitExecutor, source, store, FakePortProbe(), trust = FakeRepositoryTrust(approvesEverything = true)),
+        HerdrAgentLauncher(herdr, registry = registry, isClaudeProcessAlive = { true }),
     )
 
     @Test
@@ -65,14 +71,14 @@ class OpenWorktreeInHerdrUseCaseTest {
 
         val opening = useCase(herdr, provisioning("PORT" to "\${port}", "APP_SUFFIX" to "-\${worktree}"))(task).getOrThrow()
 
-        assertEquals(HerdrOpening.OPENED, opening)
+        assertEquals(HerdrOpening(HerdrOutcome.OPENED, "w1:p2", config.agentLaunchConfig.displayName), opening)
         assertEquals(Triple(repository, task.path, "TASK-8"), herdr.opened.single())
         assertEquals(
             FakeHerdrClient.Split("w1:p1", task.path, listOf("PORT" to "20000", "APP_SUFFIX" to "-TASK-8")),
             herdr.splits.single(),
         )
         assertEquals(listOf("w1:p1"), herdr.closed)
-        assertEquals(listOf("w1:p2" to "headroom wrap claude"), herdr.ran)
+        assertEquals(listOf("w1:p2" to "headroom wrap claude -n main-repo-task-8"), herdr.ran)
     }
 
     @Test
@@ -97,20 +103,81 @@ class OpenWorktreeInHerdrUseCaseTest {
 
         assertTrue(herdr.splits.isEmpty())
         assertTrue(herdr.closed.isEmpty())
-        assertEquals(listOf("w1:p1" to "headroom wrap claude"), herdr.ran)
+        assertEquals(listOf("w1:p1" to "headroom wrap claude -n main-repo-task-8"), herdr.ran)
     }
 
     @Test
-    fun `an already open worktree is only focused`() = runTest {
-        val herdr = FakeHerdrClient(alreadyOpen = setOf(task.path))
+    fun `an already open worktree with a live agent focuses that agent's pane`() = runTest {
+        val herdr = FakeHerdrClient(
+            alreadyOpen = setOf(task.path),
+            panes = listOf(
+                HerdrPane("w1:p1", "w1", task.path),
+                HerdrPane("w1:p3", "w1", task.path, agent = "claude", agentStatus = "working"),
+            ),
+        )
 
         val opening = useCase(herdr, provisioning("PORT" to "\${port}"))(task).getOrThrow()
 
-        assertEquals(HerdrOpening.FOCUSED, opening)
+        assertEquals(HerdrOpening(HerdrOutcome.FOCUSED, "w1:p3", "claude"), opening)
+        assertEquals(listOf("w1:p3"), herdr.focusedAgents)
         assertEquals(1, herdr.opened.size)
         assertTrue(herdr.splits.isEmpty())
         assertTrue(herdr.closed.isEmpty())
         assertTrue(herdr.ran.isEmpty())
+    }
+
+    @Test
+    fun `an agent that finished its turn counts as live`() = runTest {
+        val herdr = FakeHerdrClient(
+            alreadyOpen = setOf(task.path),
+            panes = listOf(HerdrPane("w1:p1", "w1", task.path, agent = "claude", agentStatus = "done")),
+        )
+
+        val opening = useCase(herdr)(task).getOrThrow()
+
+        assertEquals(HerdrOutcome.FOCUSED, opening.outcome)
+        assertTrue(herdr.ran.isEmpty())
+    }
+
+    @Test
+    fun `an already open worktree without an agent gets a new agent pane with its environment`() = runTest {
+        val herdr = FakeHerdrClient(
+            alreadyOpen = setOf(task.path),
+            panes = listOf(HerdrPane("w1:p1", "w1", task.path), HerdrPane("w1:p4", "w1", task.path)),
+        )
+
+        val opening = useCase(herdr, provisioning("PORT" to "\${port}"))(task).getOrThrow()
+
+        assertEquals(HerdrOpening(HerdrOutcome.STARTED_AGENT, "w1:p2", config.agentLaunchConfig.displayName), opening)
+        assertEquals(FakeHerdrClient.Split("w1:p1", task.path, listOf("PORT" to "20000")), herdr.splits.single())
+        assertTrue(herdr.closed.isEmpty())
+        assertTrue(herdr.focusedAgents.isEmpty())
+        assertEquals(listOf("w1:p2" to "headroom wrap claude -n main-repo-task-8"), herdr.ran)
+    }
+
+    @Test
+    fun `an already open worktree without an agent nor environment still gets a new pane`() = runTest {
+        val herdr = FakeHerdrClient(alreadyOpen = setOf(task.path))
+
+        val opening = useCase(herdr)(task).getOrThrow()
+
+        assertEquals(HerdrOutcome.STARTED_AGENT, opening.outcome)
+        assertEquals(FakeHerdrClient.Split("w1:p1", task.path, emptyList()), herdr.splits.single())
+        assertTrue(herdr.closed.isEmpty())
+        assertEquals(listOf("w1:p2" to "headroom wrap claude -n main-repo-task-8"), herdr.ran)
+    }
+
+    @Test
+    fun `an agent Herdr never detects fails after the time limit leaving the pane open`() = runTest {
+        val herdr = FakeHerdrClient(startsAgents = false)
+
+        val error = useCase(herdr)(task).exceptionOrNull()
+
+        assertIs<WorktreeError.HerdrAgentNotStarted>(error)
+        assertEquals("w1:p1", error.paneId)
+        assertEquals("headroom wrap claude -n main-repo-task-8", error.command)
+        assertEquals(10_000, testScheduler.currentTime)
+        assertTrue(herdr.closed.isEmpty())
     }
 
     @Test
@@ -139,5 +206,46 @@ class OpenWorktreeInHerdrUseCaseTest {
         useCase(herdr)(task, codex).getOrThrow()
 
         assertEquals(listOf("w1:p1" to "codex"), herdr.ran)
+    }
+
+    @Test
+    fun `an opened worktree reports its session name`() = runTest {
+        val herdr = FakeHerdrClient()
+
+        val opening = useCase(herdr, registry = FakeClaudeSessionRegistry(started = herdr::startedClaudeSessions))(task).getOrThrow()
+
+        assertEquals(HerdrOpening(HerdrOutcome.OPENED, "w1:p1", config.agentLaunchConfig.displayName, "main-repo-task-8"), opening)
+    }
+
+    @Test
+    fun `a started agent reports its session name`() = runTest {
+        val herdr = FakeHerdrClient(alreadyOpen = setOf(task.path))
+
+        val opening = useCase(herdr, registry = FakeClaudeSessionRegistry(started = herdr::startedClaudeSessions))(task).getOrThrow()
+
+        assertEquals(HerdrOutcome.STARTED_AGENT, opening.outcome)
+        assertEquals("main-repo-task-8", opening.sessionName)
+    }
+
+    @Test
+    fun `a focused agent reports the session in its folder`() = runTest {
+        val herdr = FakeHerdrClient(
+            alreadyOpen = setOf(task.path),
+            panes = listOf(HerdrPane("w1:p1", "w1", task.path, agent = "claude", agentStatus = "working")),
+        )
+        val registry = FakeClaudeSessionRegistry(listOf(ClaudeSession(42, task.path, "main-repo-task-8")))
+
+        val opening = useCase(herdr, registry = registry)(task).getOrThrow()
+
+        assertEquals(HerdrOpening(HerdrOutcome.FOCUSED, "w1:p1", "claude", "main-repo-task-8"), opening)
+    }
+
+    @Test
+    fun `the main worktree is named after the project`() = runTest {
+        val herdr = FakeHerdrClient()
+
+        useCase(herdr)(Worktree(path = repository, branch = "main", isMain = true)).getOrThrow()
+
+        assertEquals(listOf("w1:p1" to "headroom wrap claude -n main-repo"), herdr.ran)
     }
 }

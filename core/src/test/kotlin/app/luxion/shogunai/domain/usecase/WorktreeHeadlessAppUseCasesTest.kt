@@ -215,6 +215,29 @@ class WorktreeHeadlessAppUseCasesTest {
     }
 
     @Test
+    fun `the process state for the views never asks the window service`() = runTest {
+        running()
+        windows.windows[4242] = AppWindow(77, isOnScreen = false)
+
+        val process = ReadHeadlessAppUseCase(worktrees(), windows).process(worktree).getOrThrow()
+
+        assertEquals(HeadlessAppState.RUNNING, process?.state)
+        assertEquals(4242L, process?.pid)
+        assertEquals("$state/launch.log", process?.logPath)
+        assertEquals(0, windows.queries)
+    }
+
+    @Test
+    fun `the process state of a crashed app is stopped`() = runTest {
+        files.writtenProperties[pidFile] = mapOf("pid" to "4242")
+
+        val process = ReadHeadlessAppUseCase(worktrees(), windows).process(worktree).getOrThrow()
+
+        assertEquals(HeadlessAppState.STOPPED, process?.state)
+        assertNull(process?.pid)
+    }
+
+    @Test
     fun `a process killed outside ShogunAi is reported as stopped`() = runTest {
         files.writtenProperties[pidFile] = mapOf("pid" to "4242")
 
@@ -277,6 +300,13 @@ class WorktreeHeadlessAppUseCasesTest {
 
         assertNull(StopHeadlessAppUseCase(worktrees(), launcher).beforeRemoving(worktree))
         assertTrue(launcher.stopped.isEmpty())
+    }
+
+    @Test
+    fun `no process state for a repository without the provider`() = runTest {
+        provider = null
+
+        assertNull(ReadHeadlessAppUseCase(worktrees(), windows).process(worktree).getOrThrow())
     }
 
     @Test

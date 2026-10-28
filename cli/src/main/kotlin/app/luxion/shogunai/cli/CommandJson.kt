@@ -22,6 +22,7 @@ import app.luxion.shogunai.domain.model.PoolUsage
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ReleaseRecord
 import app.luxion.shogunai.domain.model.HerdrOpening
+import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.MavenDaemon
 import app.luxion.shogunai.domain.model.SuggestionReport
 import app.luxion.shogunai.domain.model.WorktreeComposeProject
@@ -726,12 +727,21 @@ fun removeJson(
     put("failures", strings(failures))
 }
 
-fun openJson(path: String, branch: String?, opening: HerdrOpening, agent: String?): JsonObject = buildJsonObject {
+fun openJson(path: String, branch: String?, opening: HerdrOpening): JsonObject = buildJsonObject {
     put("path", path)
     put("branch", branch)
-    put("herdr", opening.name.lowercase())
-    put("agent", agent)
+    put("herdr", opening.outcome.jsonValue)
+    put("pane_id", opening.paneId)
+    put("agent", opening.agent)
+    put("session_name", opening.sessionName)
 }
+
+val HerdrOutcome.jsonValue: String
+    get() = when (this) {
+        HerdrOutcome.OPENED -> "opened"
+        HerdrOutcome.STARTED_AGENT -> "started-agent"
+        HerdrOutcome.FOCUSED -> "focused"
+    }
 
 fun repairJson(repaired: List<String>): JsonObject = buildJsonObject {
     put("repaired", strings(repaired))

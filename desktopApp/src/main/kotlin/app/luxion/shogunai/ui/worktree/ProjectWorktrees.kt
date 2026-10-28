@@ -15,7 +15,9 @@ import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.model.GradleProvider
+import app.luxion.shogunai.domain.model.HeadlessAppProcess
 import app.luxion.shogunai.domain.model.HerdrOpening
+import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.ProvisionDrift
 import app.luxion.shogunai.domain.model.WorktreeEnvironment
@@ -122,6 +124,14 @@ class ProjectWorktrees(
     var openInHerdrPaths by mutableStateOf<Set<String>>(emptySet())
         private set
     var herdrCloseFailures by mutableStateOf<List<CleanupFailure>>(emptyList())
+        private set
+    var headlessStopFailures by mutableStateOf<List<CleanupFailure>>(emptyList())
+        private set
+    var isHeadlessAppRepository by mutableStateOf(false)
+        private set
+    var headlessApps by mutableStateOf<Map<String, HeadlessAppProcess>>(emptyMap())
+        private set
+    var stoppingHeadlessApps by mutableStateOf<Set<String>>(emptySet())
         private set
     var terminalChoiceFor by mutableStateOf<Worktree?>(null)
         private set
@@ -323,6 +333,42 @@ class ProjectWorktrees(
     suspend fun refreshDevices() {
         if (isEmulatorRepository) loadEmulators(listGeneration, worktrees)
         if (isSimulatorRepository) loadSimulators(listGeneration, worktrees)
+        if (isHeadlessAppRepository) loadHeadlessApps(listGeneration, worktrees)
+    }
+
+    fun stopHeadlessApp(worktree: Worktree) {
+        if (worktree.path in stoppingHeadlessApps) return
+        stoppingHeadlessApps = stoppingHeadlessApps + worktree.path
+        scope.launch {
+            try {
+                useCases.headlessApp.stop(worktree.path).onFailure { fail(it) }
+                loadHeadlessApps(listGeneration, worktrees)
+            } finally {
+                stoppingHeadlessApps = stoppingHeadlessApps - worktree.path
+            }
+        }
+    }
+
+    fun dismissHeadlessStopFailures() {
+        headlessStopFailures = emptyList()
+    }
+
+    private fun loadHeadlessAppSection(generation: Int, listed: List<Worktree>) {
+        scope.launch {
+            isHeadlessAppRepository = useCases.headlessApp.declared()
+            if (!isHeadlessAppRepository) {
+                headlessApps = emptyMap()
+                return@launch
+            }
+            loadHeadlessApps(generation, listed)
+        }
+    }
+
+    private suspend fun loadHeadlessApps(generation: Int, listed: List<Worktree>) {
+        val loaded = listed.filterNot { it.isPrunable }.mapNotNull { worktree ->
+            useCases.headlessApp.read(worktree.path).getOrNull()?.let { worktree.path to it }
+        }.toMap()
+        if (generation == listGeneration) headlessApps = loaded
     }
 
     fun repairAfterMove(previousWorktreesRoot: String) {
@@ -379,6 +425,7 @@ class ProjectWorktrees(
         loadMavenAndComposeSections(generation, listed)
         loadPorts(generation, listed)
         loadEmulatorSection(generation, listed)
+        loadHeadlessAppSection(generation, listed)
         loadSimulatorSection(generation, listed)
         loadXcodeSection(generation, listed)
         sizeQueue.submit(
@@ -695,6 +742,7 @@ class ProjectWorktrees(
                     .onSuccess { removal ->
                         launch { useCases.releaseResources.release(resources) }
                         removal.herdrFailure?.let { herdrCloseFailures = listOf(CleanupFailure(worktree.path, it)) }
+                        removal.headlessAppFailure?.let { headlessStopFailures = listOf(CleanupFailure(worktree.path, it)) }
                         worktrees = worktrees.filterNot { it.path == worktree.path }
                         statuses = statuses - worktree.path
                         sizes = sizes - worktree.path
@@ -799,11 +847,12 @@ class ProjectWorktrees(
         onUsed(worktree.path)
         val agent = resolveAgent(worktree, picked)
         openingInHerdr = openingInHerdr + worktree.path
-        val agentPane = agents.orEmpty()[worktree.path].orEmpty().agentPaneToFocus()
+        val agentToFocus = agents.orEmpty()[worktree.path].orEmpty().agentToFocus()
         scope.launch {
             try {
-                val result = if (agentPane != null) {
-                    useCases.herdr.focusAgent(agentPane).map { HerdrOpening.FOCUSED }
+                val result = if (agentToFocus != null) {
+                    val (name, pane) = agentToFocus
+                    useCases.herdr.focusAgent(pane).map { HerdrOpening(HerdrOutcome.FOCUSED, pane, name) }
                 } else {
                     useCases.herdr.open(worktree, agent)
                 }
@@ -812,7 +861,7 @@ class ProjectWorktrees(
                         clearActionError(worktree.path)
                         success = WorktreeSuccess.OpenedInHerdr(
                             path = worktree.path,
-                            focused = opening == HerdrOpening.FOCUSED,
+                            outcome = opening.outcome,
                         )
                     }
                     .onFailure { recordActionError(worktree.path, it) }
@@ -940,8 +989,9 @@ class ProjectWorktrees(
         }
     }
 
-    private fun List<RunningAgent>.agentPaneToFocus(): String? =
-        (firstOrNull { it.waitsForUser && it.herdrPaneId != null } ?: firstOrNull { it.herdrPaneId != null })?.herdrPaneId
+    private fun List<RunningAgent>.agentToFocus(): Pair<String, String>? =
+        (firstOrNull { it.waitsForUser && it.herdrPaneId != null } ?: firstOrNull { it.herdrPaneId != null })
+            ?.let { agent -> agent.herdrPaneId?.let { agent.name to it } }
 
 
     fun copyLastCreatedLaunchCommand() {
@@ -1021,6 +1071,7 @@ class ProjectWorktrees(
                         removedComposeResources = report.composeResources?.removed?.size ?: 0,
                     )
                     herdrCloseFailures = report.herdrFailures
+                    headlessStopFailures = report.headlessAppFailures
                     cleanupIssues = report.takeIf {
                         it.failures.isNotEmpty() || it.keptBranches.isNotEmpty() ||
                             it.composeUnavailable != null || it.composeDown?.failures?.isNotEmpty() == true ||
@@ -1160,7 +1211,7 @@ sealed interface WorktreeStatusState {
 sealed interface WorktreeSuccess {
     data class Created(val path: String, val commandsSkipped: Boolean = false) : WorktreeSuccess
     data object RepairedAfterMove : WorktreeSuccess
-    data class OpenedInHerdr(val path: String, val focused: Boolean) : WorktreeSuccess
+    data class OpenedInHerdr(val path: String, val outcome: HerdrOutcome) : WorktreeSuccess
     data class BranchDeleted(val branch: String) : WorktreeSuccess
     data class CleanedUp(
         val removedCount: Int,

@@ -49,6 +49,30 @@ class JsonMultirepoSourceTest {
     }
 
     @Test
+    fun `shared variables round trip unchanged`() {
+        folder.resolve(".shogunai-multirepo.json").writeText(
+            """{"repos": {"app": "product-app", "api": "product-api"}, "worktreesRoot": "../w",
+               "env": {"app": {"API_URL": "http://localhost:${'$'}{port:api.http}"}}}""",
+        )
+        val declaration = source.read(folder.toString())!!
+
+        source.write(folder.toString(), declaration.copy(defaultRepos = listOf("app")))
+
+        assertEquals(declaration.env, source.read(folder.toString())?.env)
+        assertEquals(mapOf("app" to mapOf("API_URL" to "http://localhost:${'$'}{port:api.http}")), declaration.env?.byAlias)
+        assertTrue(folder.resolve(".shogunai-multirepo.json").readText().contains("\"API_URL\": \"http://localhost:${'$'}{port:api.http}\""))
+    }
+
+    @Test
+    fun `shared variables of the wrong type are read as problems naming them`() {
+        folder.resolve(".shogunai-multirepo.json").writeText(
+            """{"repos": {"app": "product-app"}, "worktreesRoot": "../w", "env": {"app": {"PORT": 3000}, "api": "x"}}""",
+        )
+
+        assertEquals(listOf("env.app.PORT must be a string", "env.api must be an object"), source.read(folder.toString())?.env?.problems)
+    }
+
+    @Test
     fun `the workspace field round trips as absent, false or an object and keeps the other fields`() {
         val base = MultirepoDeclaration(repos = mapOf("app" to "product-app"), worktreesRoot = "../product-worktrees")
         listOf(null, WorkspaceSetting(enabled = false), WorkspaceSetting(), WorkspaceSetting(alias = "docs-root", default = true)).forEach { setting ->

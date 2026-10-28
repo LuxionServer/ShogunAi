@@ -21,7 +21,7 @@ import app.luxion.shogunai.diagnostics.copyDiagnosticReport
 import app.luxion.shogunai.diagnostics.diagnosticsExceptionHandler
 import app.luxion.shogunai.diagnostics.installUncaughtExceptionLogging
 import app.luxion.shogunai.domain.io.DiagnosticsLog
-import app.luxion.shogunai.ui.components.LocalDiagnosticsLog
+import app.luxion.shogunai.ui.components.LocalShownErrorLog
 import app.luxion.shogunai.ui.components.copyText
 import app.luxion.shogunai.ui.shell.rememberAppMessages
 import kotlinx.coroutines.Dispatchers
@@ -47,6 +47,7 @@ import app.luxion.shogunai.ui.shell.PreferencesWindow
 import app.luxion.shogunai.ui.shell.ShellViewModel
 import app.luxion.shogunai.ui.shell.installMacAppMenuHandlers
 import app.luxion.shogunai.ui.shell.ShellDestination
+import app.luxion.shogunai.ui.shell.rememberAppHidden
 import app.luxion.shogunai.ui.shell.rememberRestoredWindowState
 import app.luxion.shogunai.ui.shell.saveWindowBounds
 import app.luxion.shogunai.ui.tray.CloseAction
@@ -131,6 +132,7 @@ private fun openWindow() = application {
     }
     val inactivityPreferences = remember { InactivityPreferences(appContainer.shellPreferenceRepository) }
     var windowVisible by remember { mutableStateOf(true) }
+    val appHidden by rememberAppHidden()
     var showWindowRequests by remember { mutableIntStateOf(0) }
     val showMainWindow: () -> Unit = {
         windowVisible = true
@@ -314,16 +316,24 @@ private fun openWindow() = application {
             onAbout = { aboutOpen = true },
             onQuit = requestQuit,
         )
-        CompositionLocalProvider(LocalDiagnosticsLog provides appContainer.diagnosticsLog) {
+        CompositionLocalProvider(LocalShownErrorLog provides appContainer.shownErrorLog) {
             AppearanceScope(appearance) {
-                AppShell(appContainer, shellViewModel, openPreferences, inactivityPreferences, onBoardReady = { boardHolder.value = it }, messages = messages)
+                AppShell(
+                    appContainer,
+                    shellViewModel,
+                    openPreferences,
+                    inactivityPreferences,
+                    onBoardReady = { boardHolder.value = it },
+                    messages = messages,
+                    windowShown = windowVisible && !windowState.isMinimized && !appHidden,
+                )
             }
         }
     }
 
     if (preferencesOpen) {
         CompositionLocalProvider(
-            LocalDiagnosticsLog provides appContainer.diagnosticsLog,
+            LocalShownErrorLog provides appContainer.shownErrorLog,
             LocalWindowExceptionHandlerFactory provides preferencesErrorHandlers,
         ) {
             PreferencesWindow(appearance, appContainer.tools, appContainer.resources, appContainer.claudeHooks, appContainer.updates, trayPreferences, inactivityPreferences, preferencesFrontRequests, onClose = { preferencesOpen = false })

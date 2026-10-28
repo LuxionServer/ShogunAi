@@ -1,13 +1,18 @@
 package app.luxion.shogunai.ui.machine
 
 import app.luxion.shogunai.domain.model.CapacityProfile
+import app.luxion.shogunai.domain.model.DesktopTurn
+import app.luxion.shogunai.domain.model.DesktopTurnRelease
+import app.luxion.shogunai.domain.model.DesktopTurnState
 import app.luxion.shogunai.domain.model.PoolHolder
 import app.luxion.shogunai.domain.model.PoolHolderState
 import app.luxion.shogunai.domain.model.PoolRelease
 import app.luxion.shogunai.domain.model.PoolReleaseReason
 import app.luxion.shogunai.domain.model.PoolUsage
+import app.luxion.shogunai.domain.model.ProcessIdentity
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.ResourceSettings
+import app.luxion.shogunai.domain.model.WaitTicket
 import app.luxion.shogunai.domain.usecase.DeviceStart
 import app.luxion.shogunai.domain.usecase.GradleTrim
 import app.luxion.shogunai.domain.usecase.ResourceAcquisition
@@ -36,7 +41,11 @@ import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.usecase.ProjectOwner
+import app.luxion.shogunai.ui.i18n.EnglishStrings
 import kotlinx.coroutines.CompletableDeferred
+import kotlin.coroutines.ContinuationInterceptor
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -110,6 +119,11 @@ class MachineResourcesTest {
         val remeasures = mutableListOf<Boolean>()
         var trims = 0
         val derivedDataTrims = mutableListOf<Long>()
+        val dispatchers = mutableListOf<ContinuationInterceptor?>()
+
+        suspend fun recordDispatcher() {
+            dispatchers += currentCoroutineContext()[ContinuationInterceptor]
+        }
     }
 
     private fun useCases(
@@ -136,7 +150,7 @@ class MachineResourcesTest {
             Result.success(stopReport)
         },
     ) = MachineUseCases(
-        listDaemons = { calls.daemonListings++; Result.success(calls.daemons) },
+        listDaemons = { calls.recordDispatcher(); calls.daemonListings++; Result.success(calls.daemons) },
         stopDaemons = stopDaemons,
         listDerivedData = {
             calls.derivedDataListings++
@@ -155,16 +169,16 @@ class MachineResourcesTest {
         },
         measureCompilationCache = { calls.cacheMeasurements++; Result.success(7_000L) },
         deleteOrphanedDerivedData = { calls.derivedDataDeletions++; Result.success(DerivedDataDeletion()) },
-        readEmulatorStates = { _, _ -> calls.emulatorReads++; Result.success(emulators) },
-        readRunningEmulators = { Result.success(running) },
+        readEmulatorStates = { _, _ -> calls.recordDispatcher(); calls.emulatorReads++; Result.success(emulators) },
+        readRunningEmulators = { calls.recordDispatcher(); Result.success(running) },
         startEmulator = startEmulator,
-        readPool = { kind, _, _ -> pools[kind]?.let { Result.success(it) } ?: Result.failure(IllegalStateException()) },
-        trimGradleDaemons = { calls.trims++; Result.success(trim) },
+        readPool = { kind, _, _ -> calls.recordDispatcher(); pools[kind]?.let { Result.success(it) } ?: Result.failure(IllegalStateException()) },
+        trimGradleDaemons = { calls.recordDispatcher(); calls.trims++; Result.success(trim) },
         resourceSettings = { settings },
         trimDerivedData = { quota, _, _ -> calls.derivedDataTrims += quota; Result.success(derivedDataTrim(quota)) },
         stopEmulator = { _, _ -> Result.success(null) },
         stopEmulatorSerials = { _, serials -> calls.stoppedSerials += serials; Result.success(emptyList()) },
-        readSimulatorStates = { _, _ -> calls.simulatorReads++; Result.success(simulators) },
+        readSimulatorStates = { _, _ -> calls.recordDispatcher(); calls.simulatorReads++; Result.success(simulators) },
         startSimulator = { _, _ -> Result.failure(IllegalStateException()) },
         stopSimulator = { _, _ -> Result.success(null) },
         readSimulatorOrphans = { Result.success(orphans) },
@@ -180,12 +194,16 @@ class MachineResourcesTest {
         projects: List<MachineProject>,
         existing: Set<String> = emptySet(),
         onDevicesChanged: suspend (String) -> Unit = {},
+        desktopTurn: DesktopTurnWatch = DesktopTurnWatch.NONE,
+        ioDispatcher: CoroutineDispatcher = dispatcher,
     ) = MachineResources(
         scope = scope,
         useCases = useCases,
         projects = { projects },
         pathExists = { it in existing },
         onDevicesChanged = onDevicesChanged,
+        desktopTurn = desktopTurn,
+        ioDispatcher = ioDispatcher,
     )
 
     @Test
@@ -511,6 +529,55 @@ class MachineResourcesTest {
     )
 
     @Test
+    fun `while the window is hidden only the gradle daemons are trimmed and showing it refreshes the summaries`() = machineTest {
+        val calls = Calls().apply { daemons = listOf(gradleDaemon(10, idle)) }
+        val machine = machine(
+            useCases(calls),
+            listOf(machineProject("main-repo", listOf(mainWorktree), MachineResource.GRADLE_DAEMONS, MachineResource.ANDROID_EMULATORS)),
+        )
+        machine.setWindowActive(false)
+
+        val ticks = scope.launch { machine.runSummaryTicks() }
+        runCurrent()
+        advanceTimeBy(30.seconds)
+        runCurrent()
+        assertEquals(2, calls.trims)
+        assertEquals(0, calls.daemonListings)
+        assertTrue(machine.summaries.isEmpty())
+
+        machine.setWindowActive(true)
+        runCurrent()
+        ticks.cancel()
+
+        assertEquals(3, calls.trims)
+        assertEquals(1, calls.daemonListings)
+        assertEquals(setOf(MachineResource.GRADLE_DAEMONS, MachineResource.ANDROID_EMULATORS), machine.summaries.keys)
+    }
+
+    @Test
+    fun `a shown view stops refreshing while the window is hidden and refreshes when it is shown again`() = machineTest {
+        val calls = Calls().apply { daemons = listOf(gradleDaemon(10, idle)) }
+        val machine = machine(
+            useCases(calls),
+            listOf(machineProject("main-repo", listOf(mainWorktree), MachineResource.GRADLE_DAEMONS)),
+        )
+        machine.show(MachineResource.GRADLE_DAEMONS)
+        runCurrent()
+        assertEquals(1, calls.daemonListings)
+
+        machine.setWindowActive(false)
+        advanceTimeBy(30.seconds)
+        runCurrent()
+        assertEquals(1, calls.daemonListings)
+
+        machine.setWindowActive(true)
+        runCurrent()
+        machine.show(null)
+
+        assertEquals(2, calls.daemonListings)
+    }
+
+    @Test
     fun `a view shows its pool usage against the effective limit`() = machineTest {
         val machine = machine(
             useCases(
@@ -584,6 +651,35 @@ class MachineResourcesTest {
 
         assertEquals(1, calls.trims)
         assertEquals(PoolNoticeContent.Trimmed(1, 2), machine.noticesOf(MachineResource.GRADLE_DAEMONS).single().content)
+    }
+
+    @Test
+    fun `the summary refresh and a shown view read every resource on the IO dispatcher`() = machineTest {
+        val calls = Calls()
+        val io = StandardTestDispatcher(dispatcher.scheduler, name = "io")
+        val machine = machine(
+            useCases(calls),
+            listOf(
+                machineProject(
+                    "api",
+                    listOf(apiWorktree),
+                    MachineResource.GRADLE_DAEMONS,
+                    MachineResource.ANDROID_EMULATORS,
+                    MachineResource.IOS_SIMULATORS,
+                ),
+            ),
+            ioDispatcher = io,
+        )
+
+        machine.refreshSummaries()
+        machine.show(MachineResource.ANDROID_EMULATORS)
+        runCurrent()
+
+        assertEquals(1, calls.trims)
+        assertEquals(1, calls.daemonListings)
+        assertEquals(1, calls.emulatorReads)
+        assertTrue(calls.dispatchers.isNotEmpty())
+        assertTrue(calls.dispatchers.all { it === io }, "Called outside the IO dispatcher: ${calls.dispatchers}")
     }
 
     @Test
@@ -758,6 +854,7 @@ class MachineResourcesTest {
                 listOf(machineProject("main-repo", listOf(mainWorktree), *(if (declared) arrayOf(MachineResource.XCODE_DERIVED_DATA) else emptyArray())))
             },
             pathExists = { false },
+            ioDispatcher = dispatcher,
         )
         machine.refreshSummaries()
         runCurrent()
@@ -894,5 +991,54 @@ class MachineResourcesTest {
         assertTrue(machine.derivedDataQuotaExceeded)
         assertEquals(listOf("TASK-1"), machine.derivedDataInUse)
         assertNull(machine.derivedDataTrimReport)
+    }
+
+    private val apiAdmin = "/home/dev/projects/api/.git/worktrees/api-TASK-9"
+
+    private fun heldByApi(waiting: Int = 0) = DesktopTurnState(
+        DesktopTurn(apiAdmin, apiWorktree.path, 0, Long.MAX_VALUE),
+        (1..waiting).map { WaitTicket("t$it", "/home/dev/projects/main-repo/.git/worktrees/TASK-$it", "/home/dev/projects/TASK-$it", ProcessIdentity(it.toLong(), 1), 0) },
+    )
+
+    private fun watchOf(state: () -> DesktopTurnState) = DesktopTurnWatch(
+        read = { Result.success(state()) },
+        forceRelease = { Result.success(DesktopTurnRelease.NobodyHolds) },
+    )
+
+    @Test
+    fun `the desktop entry shows only while someone holds or waits for the turn`() = machineTest {
+        var turn = DesktopTurnState(null, emptyList())
+        val machine = machine(useCases(Calls()), listOf(machineProject("api", listOf(apiWorktree), MachineResource.GRADLE_DAEMONS)), desktopTurn = watchOf { turn })
+
+        machine.refreshSummaries()
+        assertFalse(MachineResource.DESKTOP_TURN in machine.visibleResources)
+
+        turn = heldByApi(waiting = 2)
+        machine.refreshSummaries()
+
+        assertTrue(MachineResource.DESKTOP_TURN in machine.visibleResources)
+        assertEquals("api · api-TASK-9 · 2 waiting", machine.summaries[MachineResource.DESKTOP_TURN]?.text(MachineResource.DESKTOP_TURN, EnglishStrings))
+
+        turn = DesktopTurnState(null, heldByApi(waiting = 1).waiting)
+        machine.desktopTurn.refresh()
+
+        assertEquals("1 waiting", machine.summaries[MachineResource.DESKTOP_TURN]?.text(MachineResource.DESKTOP_TURN, EnglishStrings))
+    }
+
+    @Test
+    fun `the desktop entry shows alone when no project declares a provider`() = machineTest {
+        val machine = machine(useCases(Calls()), listOf(machineProject("api", listOf(apiWorktree))), desktopTurn = watchOf { heldByApi() })
+
+        machine.refreshSummaries()
+
+        assertEquals(listOf(MachineResource.DESKTOP_TURN), machine.visibleResources)
+    }
+
+    @Test
+    fun `the desktop holder is attributed to its project or to a folder outside them`() = machineTest {
+        val machine = machine(useCases(Calls()), listOf(machineProject("api", listOf(apiWorktree))), existing = setOf(apiWorktree.path, "/home/dev/elsewhere/TASK-7"))
+
+        assertEquals(ProjectOwner.Owned("api", apiWorktree.path), machine.ownerOfPath(apiWorktree.path))
+        assertEquals(ProjectOwner.Outside, machine.ownerOfPath("/home/dev/elsewhere/TASK-7"))
     }
 }

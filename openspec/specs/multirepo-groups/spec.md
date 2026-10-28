@@ -6,7 +6,7 @@ Lets one change span several repositories: a multirepo declares which repositori
 ## Requirements
 
 ### Requirement: Declare a multirepo
-A multirepo SHALL be declared by a `.shogunai-multirepo.json` file in a folder outside every Git repository or at its top level: `repos` mapping each alias to a repository's path (relative or absolute), `worktreesRoot`, an optional `name` and an optional `defaultRepos`. The repositories SHALL NOT need to share a parent folder. Aliases SHALL use only lowercase letters, digits and hyphens, and a `name` SHALL have at most 80 characters and no control characters. An `agent` is ignored.
+A multirepo SHALL be declared by a `.shogunai-multirepo.json` file in a folder outside every Git repository or at its top level: `repos` mapping each alias to a repository's path (relative or absolute), `worktreesRoot`, an optional `name`, an optional `defaultRepos` and an optional `env` with the variables it shares with its repositories' worktrees (see `multirepo-environment`). The repositories SHALL NOT need to share a parent folder. Aliases SHALL use only lowercase letters, digits and hyphens, and a `name` SHALL have at most 80 characters and no control characters. An `agent` is ignored.
 
 #### Scenario: Repositories side by side
 - **WHEN** `~/projects/product/.shogunai-multirepo.json` declares `docs`, `app` and `api` as `product-docs`, `product-app` and `product-api`, `worktreesRoot` `../product-worktrees` and `defaultRepos` `app` and `api`
@@ -27,6 +27,10 @@ A multirepo SHALL be declared by a `.shogunai-multirepo.json` file in a folder o
 #### Scenario: Agent in the declaration
 - **WHEN** the declaration has `"agent": {"agentCommand": "touch /tmp/marker; claude"}`
 - **THEN** that command is never run, and the multirepo agent is the one set on this machine or `claude`
+
+#### Scenario: Shared variables
+- **WHEN** the declaration has `"env": { "app": { "API_URL": "http://localhost:${port:api.http}" } }`
+- **THEN** it's a valid multirepo whose `app` worktrees receive `API_URL`
 
 ### Requirement: Reject an invalid multirepo declaration
 ShogunAi SHALL reject a `.shogunai-multirepo.json` whose JSON is invalid, whose alias is invalid, whose repository path doesn't exist or isn't a Git repository, whose `worktreesRoot` is missing, whose `defaultRepos` names an unknown alias, whose repository path or `worktreesRoot` contains control or Unicode formatting characters, or whose folder is inside a Git repository without being its top level, naming the problem and the file and exiting with code 1.
@@ -162,11 +166,11 @@ Adding a repository to a multirepo SHALL propose `<worktreesRoot>/<alias>` as it
 - **THEN** `.shogunai-multirepo.json` is removed, the multirepo is no longer known, the projects and the worktrees stay as they were with their Herdr workspaces, and each repository behaves as before it joined
 
 ### Requirement: Show a multirepo from the command line
-`shogun multirepo show [--json]` SHALL print the multirepo's name and folder, whether it's approved, its proposed worktrees folder, each repository with its alias, path, project, worktrees folder and base branch, the default repositories and the multirepo agent, and say when the declaration holds an `agent` that is ignored. It SHALL also show an unapproved multirepo found in the current folder or a parent.
+`shogun multirepo show [--json]` SHALL print the multirepo's name and folder, whether it's approved, its proposed worktrees folder, each repository with its alias, path, project, worktrees folder and base branch, the default repositories, the shared variables of each repository with their templates and the multirepo agent, and say when the declaration holds an `agent` that is ignored. It SHALL also show an unapproved multirepo found in the current folder or a parent.
 
 #### Scenario: Show
 - **WHEN** the user runs `shogun multirepo show --json` in the multirepo folder
-- **THEN** the output is one JSON object with `name`, `path`, `approved`, `worktreesRoot`, `repos` (each with `alias`, `path`, `project`, `worktreesFolder` and `base`), `defaultRepos` and `agent`
+- **THEN** the output is one JSON object with `name`, `path`, `approved`, `worktreesRoot`, `repos` (each with `alias`, `path`, `project`, `worktreesFolder` and `base`), `defaultRepos`, `env` (each alias with its variables and templates, empty when there are none) and `agent`
 
 #### Scenario: Ignored declared agent
 - **WHEN** the declaration still holds an `agent`
@@ -179,6 +183,10 @@ Adding a repository to a multirepo SHALL propose `<worktreesRoot>/<alias>` as it
 #### Scenario: Not a multirepo
 - **WHEN** the user runs any `shogun multirepo` subcommand other than `init` and `trust` where no multirepo applies and no declaration is found in the current folder or a parent
 - **THEN** the command says no multirepo was found and exits with code 1
+
+#### Scenario: Shared variables
+- **WHEN** the declaration's `env` gives `app` the variable `API_URL`
+- **THEN** the text output lists `API_URL` with its template under `app`
 
 ### Requirement: A multirepo folder that is a repository
 When the multirepo folder is the top level of a Git repository, `shogun new`, `status`, `open` and `clean` run in its main checkout SHALL act on the multirepo, that repository MAY be declared as one more repository with the path `.`, and `shogun hook session-start` there SHALL print the multirepo's context followed by the usual rules of a main checkout. In that repository's linked worktrees, commands SHALL behave as in any repository.
@@ -320,15 +328,19 @@ When creating the worktree of one repository fails, ShogunAi SHALL handle that r
 - **THEN** the object has `branch` `feature/TASK-123` and lists `app` as `created`, `api` as `existing` with its path and `docs` as `failed` with its error, and the command exits with code 1
 
 ### Requirement: Open a group's worktrees in Herdr
-`shogun open <id-or-branch> --herdr` in the multirepo folder SHALL open every worktree of the group whose branch is `<branch>`, or `feature/<id>` or `fix/<id>` when only one of them is a group, as `shogun open --herdr` opens a single worktree: under its repository's space, with its own environment and its project's default agent, focusing the ones already open. A worktree that fails SHALL NOT stop the others.
+`shogun open <id-or-branch> --herdr` in the multirepo folder SHALL open every worktree of the group whose branch is `<branch>`, or `feature/<id>` or `fix/<id>` when only one of them is a group, as `shogun open --herdr` opens a single worktree: under its repository's space, with its own environment and its project's default agent, focusing the ones with a live agent and starting the agent in the open ones without one. Each worktree SHALL be reported as `opened`, `started-agent`, `focused` or failed, with its agent's pane. A worktree that fails SHALL NOT stop the others.
 
 #### Scenario: Open a group
 - **WHEN** the user runs `shogun open TASK-123 --herdr` in `~/projects/product` and `feature/TASK-123` is a group with `app` and `api`
 - **THEN** `app` opens under `product-app`'s space with `app`'s environment and agent, `api` under `product-api`'s space with its own, and the command reports each
 
 #### Scenario: Partly open
-- **WHEN** `app` is already open in Herdr
-- **THEN** it's focused without typing anything and `api` is opened
+- **WHEN** `app` is already open in Herdr with a live agent
+- **THEN** its agent is focused without typing anything and `api` is opened
+
+#### Scenario: Open without an agent
+- **WHEN** `app`'s workspace is open in Herdr but no pane of it has a live agent
+- **THEN** `app`'s agent is started in a new pane of that workspace with `app`'s environment and `app` is reported as `started-agent`
 
 #### Scenario: Ambiguous id
 - **WHEN** both `feature/TASK-5` and `fix/TASK-5` are groups and the user runs `shogun open TASK-5 --herdr`
@@ -339,23 +351,35 @@ When creating the worktree of one repository fails, ShogunAi SHALL handle that r
 - **THEN** the command says so and exits with code 1
 
 #### Scenario: One worktree fails
-- **WHEN** opening `api` fails in Herdr
-- **THEN** `app` is still opened, the failure names `api` and Herdr's message, and the command exits with code 1
+- **WHEN** opening `api` fails in Herdr, or its agent doesn't start in time
+- **THEN** `app` is still opened, the failure names `api` and the reason, and the command exits with code 1
 
 #### Scenario: Agent option
 - **WHEN** the user passes `--agent` while opening a group
 - **THEN** the command says each worktree uses its project's agent and exits with code 2
 
+#### Scenario: Result as JSON
+- **WHEN** the user runs `shogun open TASK-123 --herdr --json` and `app` is focused while `api` gets its agent started
+- **THEN** `app`'s entry has `result` `focused` and `api`'s has `result` `started-agent`, each with its `pane_id` and `agent`
+
 ### Requirement: Open the multirepo agent in Herdr
-`shogun open --herdr` without a target in the folder of an approved multirepo SHALL open a focused Herdr workspace of its own in the multirepo folder, outside every repository's space, and run the multirepo agent set on this machine there; when Herdr already has that workspace open it SHALL focus it without typing anything.
+`shogun open --herdr` without a target in the folder of an approved multirepo SHALL open a focused Herdr workspace of its own in the multirepo folder, outside every repository's space, and run the multirepo agent set on this machine there. When Herdr already has that workspace open it SHALL focus its live agent without typing anything, or, when no pane of it has a live agent, SHALL start the multirepo agent in a new pane of that workspace. It SHALL verify the agent started as for a worktree, and SHALL report `opened`, `started-agent` or `focused` with the agent's pane.
 
 #### Scenario: Open
 - **WHEN** the user runs `shogun open --herdr` in `~/projects/product` and the multirepo agent is `claude`
 - **THEN** a focused Herdr workspace opens in `~/projects/product` labelled `product` and runs `claude`
 
 #### Scenario: Already open
-- **WHEN** Herdr already has a workspace whose pane is in `~/projects/product`
-- **THEN** it's focused and nothing is typed into it
+- **WHEN** Herdr already has a workspace whose pane is in `~/projects/product` and one of its panes has a live agent
+- **THEN** that agent's pane is focused and nothing is typed into it
+
+#### Scenario: Open without an agent
+- **WHEN** Herdr already has that workspace open but no pane of it has a live agent
+- **THEN** `claude` runs in a new pane of that workspace in `~/projects/product` and the result is `started-agent`
+
+#### Scenario: Agent doesn't start
+- **WHEN** Herdr doesn't detect the multirepo agent in time
+- **THEN** the command reports it as it does for a worktree and exits with code 1
 
 #### Scenario: Herdr not installed or failing
 - **WHEN** Herdr isn't installed or its command fails

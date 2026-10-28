@@ -45,6 +45,21 @@ class MultirepoApprovalTest {
     }
 
     @Test
+    fun `shared variables are part of the subject only when declared`() {
+        val shared = declaration.copy(env = env("http://localhost:${'$'}{port:api.http}"))
+
+        assertEquals(subject, Multirepo(folder, declaration.copy(env = SharedVariablesDeclaration())).approvalSubject)
+        assertNotEquals(subject, Multirepo(folder, shared).approvalSubject)
+        assertNotEquals(
+            Multirepo(folder, shared).approvalSubject,
+            Multirepo(folder, declaration.copy(env = env("http://localhost:${'$'}{port:api.admin}"))).approvalSubject,
+        )
+    }
+
+    private fun env(apiUrl: String): SharedVariablesDeclaration =
+        SharedVariablesDeclaration(mapOf("app" to mapOf("API_URL" to apiUrl)))
+
+    @Test
     fun `the agent comes only from the local setting`() {
         val declared = declaration.copy(agent = AgentLaunchConfig(agentCommand = "touch /tmp/marker; claude"))
 

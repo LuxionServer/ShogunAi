@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.HolderProtection
 import app.luxion.shogunai.domain.model.PoolHolder
@@ -8,6 +9,7 @@ import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.toLocalClockTime
 import app.luxion.shogunai.domain.usecase.GitFailureCause
+import java.time.Instant
 
 internal fun englishErrorTexts(error: Throwable, gitCause: GitFailureCause): ErrorTexts = when (error) {
     is WorktreeError.GitCommandFailed -> englishGitTexts(gitCause)
@@ -175,6 +177,19 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
             error.holders.joinToString("; ") { "${it.displayName} (${englishHolderState(it.state)}${englishProtection(it)})" } + ".",
         "Stop one of them, or raise the limit of ${error.limit} in Preferences.",
     )
+    is WorktreeError.DesktopTurnTaken -> ErrorTexts(
+        error.holder?.let { "The desktop is taken by ${it.displayName} until ${Instant.ofEpochMilli(it.expiresAt).toLocalClockTime()}." }
+            ?: "Other worktrees are waiting for the desktop first.",
+        "Wait for it with shogun desktop acquire --wait, or release it from the Desktop view.",
+    )
+    is WorktreeError.DesktopTurnWaitTimedOut -> ErrorTexts(
+        "The desktop wasn't freed within ${error.waited.toMinutes()} min.",
+        "Release it from the Desktop view, or try again later.",
+    )
+    is WorktreeError.DesktopTurnHeldByOther -> ErrorTexts(
+        "The desktop turn belongs to ${error.holder.displayName}.",
+        "Only that worktree, or you from the Desktop view, can release it.",
+    )
     is WorktreeError.AndroidSdkNotFound -> ErrorTexts(
         "The Android SDK wasn't found.",
         "Install the Android SDK or set ANDROID_HOME.",
@@ -326,6 +341,10 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     is WorktreeError.HerdrCommandFailed -> ErrorTexts(
         "Herdr couldn't open the worktree.",
         "Check the technical details.",
+    )
+    is WorktreeError.HerdrAgentNotStarted -> ErrorTexts(
+        "The agent didn't start in Herdr within $AGENT_START_SECONDS seconds.",
+        "Its pane is left open in Herdr: check it and run the agent there, or open it in Herdr again.",
     )
     is WorktreeError.TerminalLaunchFailed -> ErrorTexts(
         "${error.terminal.displayName} couldn't open the worktree.",

@@ -1,6 +1,7 @@
 package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.domain.FakeAgentSessionStore
+import app.luxion.shogunai.domain.FakeClaudeSessionRegistry
 import app.luxion.shogunai.domain.FakeAndroidSdk
 import app.luxion.shogunai.domain.FakeAppleSimulators
 import app.luxion.shogunai.domain.FakeDerivedDataSource
@@ -17,7 +18,17 @@ import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
+import app.luxion.shogunai.domain.FakeRepositoryTrust
+import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
+import app.luxion.shogunai.domain.model.ClaudeSession
+import app.luxion.shogunai.domain.model.EnvironmentDeclaration
+import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.domain.model.SharedVariablesDeclaration
+import app.luxion.shogunai.domain.model.approvalSubject
+import app.luxion.shogunai.domain.model.parseEnvironmentVariable
+import app.luxion.shogunai.domain.model.HerdrWorkspace
+import app.luxion.shogunai.domain.model.HerdrPane
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.Project
@@ -25,6 +36,7 @@ import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.ResourceSettings
 import app.luxion.shogunai.domain.model.WorkspaceSetting
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -34,6 +46,7 @@ import java.nio.file.Files
 import kotlin.io.path.readText
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -67,6 +80,7 @@ class MultirepoCommandsTest {
     private val out = StringBuilder()
     private val err = StringBuilder()
     private val envFile = Files.createTempFile("claude-env", ".sh")
+    private val environmentStore = FakeEnvironmentStateStore()
 
     @AfterTest
     fun tearDown() {
@@ -80,14 +94,17 @@ class MultirepoCommandsTest {
         herdrClient: FakeHerdrClient = herdr,
         multirepos: FakeMultirepoSource = source,
         sessionStore: FakeAgentSessionStore = FakeAgentSessionStore(),
+        claudeSessions: FakeClaudeSessionRegistry = FakeClaudeSessionRegistry(),
+        provisioning: FakeRepositoryProvisioningSource = FakeRepositoryProvisioningSource(),
+        trust: RepositoryTrust = RepositoryTrust.NONE,
     ) = ShogunCli(
         executor = git,
         fileManager = fileManager,
         projectRepository = projects,
-        provisioningSource = FakeRepositoryProvisioningSource(),
+        provisioningSource = provisioning,
         daemonSource = FakeGradleDaemonSource(),
         gradleUserHome = "/home/dev/.gradle",
-        environmentStateStore = FakeEnvironmentStateStore(),
+        environmentStateStore = environmentStore,
         portProbe = FakePortProbe(),
         androidSdk = FakeAndroidSdk(),
         appleSimulators = FakeAppleSimulators(),
@@ -104,9 +121,13 @@ class MultirepoCommandsTest {
         environmentVariable = { if (it == "CLAUDE_ENV_FILE") envFile.toString() else null },
         userHome = "/home/dev",
         herdr = herdrClient,
+        herdrAgentStartTimeout = 100.milliseconds,
         readAnswer = { answer },
         sessionStore = sessionStore,
         multirepoSource = multirepos,
+        claudeSessions = claudeSessions,
+        isClaudeProcessAlive = { true },
+        trust = trust,
     )
 
     private fun json(): JsonObject = Json.parseToJsonElement(out.toString().trim()).jsonObject
@@ -237,6 +258,109 @@ class MultirepoCommandsTest {
             herdr.opened,
         )
         assertTrue(out.contains("opened $worktreesRoot/app/TASK-1 in Herdr with"))
+        assertTrue(out.contains("(pane w1:p1)"))
+    }
+
+    @Test
+    fun `open a group reports focused and started-agent members in json`() {
+        groupTask1()
+        val app = "$worktreesRoot/app/TASK-1"
+        val api = "$worktreesRoot/api/TASK-1"
+        val herdr = FakeHerdrClient(
+            alreadyOpen = setOf(app, api),
+            panes = listOf(HerdrPane("w1:p1", "w1", app, agent = "claude", agentStatus = "idle"), HerdrPane("w2:p1", "w2", api)),
+        )
+
+        val exitCode = cli(herdrClient = herdr).run(listOf("open", "TASK-1", "--herdr", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val repos = json()["repos"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(listOf("focused", "started-agent"), repos.map { it["result"]!!.jsonPrimitive.content })
+        assertEquals(listOf("w1:p1", "w2:p2"), repos.map { it["pane_id"]!!.jsonPrimitive.content })
+        assertEquals("claude", repos[0]["agent"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `open a group names each member's session and reports it in json`() {
+        groupTask1()
+        val sessions = FakeClaudeSessionRegistry(started = herdr::startedClaudeSessions)
+
+        val exitCode = cli(claudeSessions = sessions).run(listOf("open", "TASK-1", "--herdr", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf("claude -n app-task-1", "claude -n api-task-1"), herdr.ran.map { it.second })
+        val repos = json()["repos"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(listOf("app-task-1", "api-task-1"), repos.map { it["session_name"]!!.jsonPrimitive.content })
+    }
+
+    @Test
+    fun `open a group prints each member's session name`() {
+        groupTask1()
+        val sessions = FakeClaudeSessionRegistry(started = herdr::startedClaudeSessions)
+
+        cli(claudeSessions = sessions).run(listOf("open", "TASK-1", "--herdr"))
+
+        assertTrue(out.contains("opened $worktreesRoot/app/TASK-1 in Herdr with Claude (pane w1:p1) as session app-task-1"), out.toString())
+        assertTrue(out.contains("as session api-task-1"), out.toString())
+    }
+
+    @Test
+    fun `open a group reports null for a session it can't confirm`() {
+        groupTask1()
+
+        cli().run(listOf("open", "TASK-1", "--herdr", "--json"))
+
+        val repos = json()["repos"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(listOf(JsonNull, JsonNull), repos.map { it["session_name"] })
+    }
+
+    @Test
+    fun `open without a target reports the multirepo agent's session`() {
+        source.agents[folder] = AgentLaunchConfig(agentCommand = "claude", useHeadroom = false)
+        val sessions = FakeClaudeSessionRegistry(started = herdr::startedClaudeSessions)
+
+        cli(claudeSessions = sessions).run(listOf("open", "--herdr", "--json"))
+
+        assertEquals("product", json()["session_name"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `status in the multirepo folder shows each repository's session names`() {
+        groupTask1()
+        val appTask = "$worktreesRoot/app/TASK-1"
+        val apiTask = "$worktreesRoot/api/TASK-1"
+        git.lsof = "p400\ncclaude\nfcwd\nn$appTask\np401\ncclaude\nfcwd\nn$apiTask\n"
+        git.ps = "400 claude\n401 claude\n"
+        val sessions = FakeClaudeSessionRegistry(listOf(ClaudeSession(400, appTask, "app-task-1"), ClaudeSession(401, apiTask, "api-task-1")))
+
+        cli(claudeSessions = sessions).run(listOf("status"))
+
+        val lines = out.lines()
+        assertTrue(lines[1].startsWith("  app  $appTask") && lines[1].contains("agents=claude(app-task-1)"), out.toString())
+        assertTrue(lines[2].startsWith("  api  $apiTask") && lines[2].contains("agents=claude(api-task-1)"), out.toString())
+
+        out.setLength(0)
+        cli(claudeSessions = sessions).run(listOf("status", "--json"))
+
+        val repo = json()["groups"]!!.jsonArray.single().jsonObject["repos"]!!.jsonArray.first().jsonObject
+        assertEquals(
+            Json.parseToJsonElement("""[{"name": "claude", "state": null, "stateSource": null, "herdrState": null, "sessions": [{"name": "app-task-1", "pid": 400}]}]"""),
+            repo["agents"],
+        )
+    }
+
+    @Test
+    fun `open a group fails for a member whose agent doesn't start`() {
+        groupTask1()
+        val app = "$worktreesRoot/app/TASK-1"
+        val herdr = FakeHerdrClient(alreadyOpen = setOf(app), panes = listOf(HerdrPane("w1:p1", "w1", app, agent = "claude", agentStatus = "working")), startsAgents = false)
+
+        val exitCode = cli(herdrClient = herdr).run(listOf("open", "TASK-1", "--herdr"))
+
+        assertEquals(1, exitCode)
+        assertTrue(out.contains("focused $app in Herdr (already open, pane w1:p1)"), out.toString())
+        assertTrue(err.contains("couldn't open api ($worktreesRoot/api/TASK-1) in Herdr"), err.toString())
+        assertTrue(err.contains("didn't start in Herdr pane w2:p1"), err.toString())
     }
 
     @Test
@@ -262,7 +386,22 @@ class MultirepoCommandsTest {
 
         assertEquals(0, exitCode, err.toString())
         assertEquals(listOf(folder to "product"), herdr.createdWorkspaces)
-        assertEquals(listOf("plain1:p1" to "claude"), herdr.ran)
+        assertEquals(listOf("plain1:p1" to "claude -n product"), herdr.ran)
+        assertTrue(out.contains("opened $folder in Herdr with"), out.toString())
+    }
+
+    @Test
+    fun `open without a target starts the multirepo agent in its open workspace without one`() {
+        source.agents[folder] = AgentLaunchConfig(agentCommand = "claude", useHeadroom = false)
+        val herdr = FakeHerdrClient(workspaces = listOf(HerdrWorkspace("w5", "product", null)), panes = listOf(HerdrPane("w5:p1", "w5", folder)))
+
+        val exitCode = cli(herdrClient = herdr).run(listOf("open", "--herdr", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("started-agent", json()["herdr"]!!.jsonPrimitive.content)
+        assertEquals("w5:p2", json()["pane_id"]!!.jsonPrimitive.content)
+        assertTrue(json()["opened"]!!.jsonPrimitive.content.toBoolean())
+        assertEquals(listOf("w5:p2" to "claude -n product"), herdr.ran)
     }
 
     @Test
@@ -765,7 +904,7 @@ class MultirepoCommandsTest {
         assertEquals(listOf(folder), multirepos.known)
         out.clear()
         assertEquals(0, cli(multirepos = multirepos).run(listOf("open", "--herdr")))
-        assertEquals(listOf("plain1:p1" to "claude"), herdr.ran)
+        assertEquals(listOf("plain1:p1" to "claude -n product"), herdr.ran)
     }
 
     @Test
@@ -836,5 +975,111 @@ class MultirepoCommandsTest {
         }
         assertEquals(declaration, multirepos.declarations[folder])
         assertTrue(multirepos.agents.isEmpty())
+    }
+
+    private val apiProvisioning = RepositoryProvisioning(
+        environment = EnvironmentDeclaration(listOf(parseEnvironmentVariable("SERVER_PORT", "\${port:http}"))),
+    )
+    private val appProvisioning = RepositoryProvisioning(
+        environment = EnvironmentDeclaration(listOf(parseEnvironmentVariable("APP_NAME", "demo"))),
+    )
+    private val sharedProvisioning = FakeRepositoryProvisioningSource(mapOf(appBase to appProvisioning, apiBase to apiProvisioning))
+
+    private fun sharing(apiUrl: String = "http://localhost:\${port:api.http}") {
+        val env = SharedVariablesDeclaration(mapOf("app" to mapOf("API_URL" to apiUrl)))
+        source.declarations[folder] = declaration.copy(env = env)
+    }
+
+    private fun env(directory: String, trust: RepositoryTrust = FakeRepositoryTrust(approvesEverything = true)): Map<String, String> {
+        out.clear()
+        assertEquals(0, cli(directory, provisioning = sharedProvisioning, trust = trust).run(listOf("env", "--format", "json")))
+        return Json.parseToJsonElement(out.toString().trim()).jsonObject.mapValues { it.value.jsonPrimitive.content }
+    }
+
+    @Test
+    fun `env gives a group worktree the port its partner reserves`() {
+        sharing()
+        groupTask1()
+
+        val app = env("$worktreesRoot/app/TASK-1")
+        val api = env("$worktreesRoot/api/TASK-1")
+
+        assertEquals("http://localhost:${api.getValue("SERVER_PORT")}", app["API_URL"])
+        assertEquals("demo", app["APP_NAME"])
+        assertEquals("", err.toString())
+    }
+
+    @Test
+    fun `env names a shared variable that can't be resolved and still succeeds`() {
+        sharing("http://localhost:\${port:api.admin}")
+        groupTask1()
+
+        val app = env("$worktreesRoot/app/TASK-1")
+
+        assertEquals(mapOf("APP_NAME" to "demo"), app)
+        assertTrue(err.contains("API_URL") && err.contains("'api' doesn't declare the port 'admin'"), err.toString())
+    }
+
+    @Test
+    fun `env points to shogun trust when the referenced repository isn't approved`() {
+        sharing()
+        groupTask1()
+
+        env("$worktreesRoot/app/TASK-1", FakeRepositoryTrust(mapOf(appBase to appProvisioning.approvalSubject)))
+
+        assertTrue(err.contains("API_URL") && err.contains("shogun trust") && err.contains(apiBase), err.toString())
+    }
+
+    @Test
+    fun `env reports invalid shared variables without failing`() {
+        sharing("\${port}")
+        groupTask1()
+
+        val app = env("$worktreesRoot/app/TASK-1")
+
+        assertEquals(mapOf("APP_NAME" to "demo"), app)
+        assertTrue(err.contains("API_URL") && err.contains(".shogunai-multirepo.json"), err.toString())
+    }
+
+    @Test
+    fun `the session start hook delivers shared variables and names unresolved ones`() {
+        sharing()
+        groupTask1()
+
+        val exitCode = cli(
+            input = """{"cwd": "$worktreesRoot/app/TASK-1"}""",
+            provisioning = sharedProvisioning,
+            trust = FakeRepositoryTrust(approvesEverything = true),
+        ).run(listOf("hook", "session-start"))
+
+        assertEquals(0, exitCode)
+        assertTrue(envFile.readText().contains("export API_URL='http://localhost:20000'"), envFile.readText())
+        assertTrue(out.contains("API_URL"))
+
+        sharing("http://localhost:\${port:api.admin}")
+        out.clear()
+        cli(
+            input = """{"cwd": "$worktreesRoot/app/TASK-1"}""",
+            provisioning = sharedProvisioning,
+            trust = FakeRepositoryTrust(approvesEverything = true),
+        ).run(listOf("hook", "session-start"))
+
+        assertTrue(out.contains("Shared variable API_URL of the multirepo isn't available"), out.toString())
+    }
+
+    @Test
+    fun `show and trust list the shared variables`() {
+        sharing()
+
+        cli().run(listOf("multirepo", "show"))
+        assertTrue(out.contains("shared variables") && out.contains("API_URL=http://localhost:\${port:api.http}"), out.toString())
+
+        out.clear()
+        cli().run(listOf("multirepo", "show", "--json"))
+        assertEquals("http://localhost:\${port:api.http}", json()["env"]!!.jsonObject["app"]!!.jsonObject["API_URL"]!!.jsonPrimitive.content)
+
+        out.clear()
+        cli(answer = "n").run(listOf("multirepo", "trust"))
+        assertTrue(out.contains("API_URL=http://localhost:\${port:api.http}"), out.toString())
     }
 }

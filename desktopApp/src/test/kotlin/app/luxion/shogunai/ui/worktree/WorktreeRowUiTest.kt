@@ -21,12 +21,15 @@ import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.HeadlessAppProcess
+import app.luxion.shogunai.domain.model.HeadlessAppState
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.WorktreeSort
 import app.luxion.shogunai.domain.model.WorktreeStatus
+import app.luxion.shogunai.domain.model.toLocalClockTime
 import app.luxion.shogunai.ui.i18n.EnglishStrings
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.SpanishStrings
@@ -54,6 +57,8 @@ class WorktreeRowUiTest {
         status: WorktreeStatus = status(),
         agents: List<RunningAgent> = emptyList(),
         emulator: WorktreeEmulator? = null,
+        desktopTurn: WorktreeDesktopTurn? = null,
+        headlessApp: HeadlessAppProcess? = null,
     ) = worktreeRowModel(
         worktree = Worktree(path = "/home/dev/projects/${branch.substringAfterLast('/')}", branch = branch),
         status = WorktreeStatusState.Loaded(status),
@@ -66,6 +71,8 @@ class WorktreeRowUiTest {
         inactiveAfter = Duration.ofDays(3),
         now = now,
         strings = EnglishStrings,
+        desktopTurn = desktopTurn,
+        headlessApp = headlessApp,
     )
 
     @androidx.compose.runtime.Composable
@@ -154,6 +161,35 @@ class WorktreeRowUiTest {
         mainClock.advanceTimeBy(2_000)
 
         onNodeWithText("Claude: blocked").assertIsDisplayed()
+    }
+
+    @Test
+    fun `a wide row shows the desktop wait with the count of the rest`() = runComposeUiTest {
+        val waiting = model(
+            "feature/TASK-1",
+            desktopTurn = WorktreeDesktopTurn.Waiting(2),
+            headlessApp = HeadlessAppProcess(HeadlessAppState.RUNNING, 4242, "/home/dev/launch.log"),
+        )
+        setContent { MaterialTheme { Column(Modifier.width(900.dp)) { Row(waiting) } } }
+
+        onNodeWithText("Waiting for the desktop, #2").assertIsDisplayed()
+        onNodeWithText("+1").assertIsDisplayed()
+    }
+
+    @Test
+    fun `a narrow row keeps the desktop turn and the app in the second line's tooltip`() = runComposeUiTest {
+        val holding = model(
+            "feature/TASK-1",
+            desktopTurn = WorktreeDesktopTurn.Holding(now.toEpochMilli()),
+            headlessApp = HeadlessAppProcess(HeadlessAppState.RUNNING, 4242, "/home/dev/launch.log"),
+        )
+        setContent { MaterialTheme { Column(Modifier.width(500.dp)) { Row(holding, compact = true) } } }
+
+        assertEquals(0, onAllNodesWithText("Has the desktop", useUnmergedTree = true).fetchSemanticsNodes().size)
+        onNodeWithContentDescription("Has the desktop", useUnmergedTree = true).performMouseInput { moveTo(center) }
+        mainClock.advanceTimeBy(2_000)
+
+        onNodeWithText("Has the desktop until ${now.toLocalClockTime()}\nApp in the background").assertIsDisplayed()
     }
 
     @Test

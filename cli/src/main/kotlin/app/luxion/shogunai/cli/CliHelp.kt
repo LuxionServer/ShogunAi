@@ -215,6 +215,16 @@ internal object CliHelp {
                               Stop the app, or show its state, log and the macOS permissions it needs
                               (repositories with "providers": { "desktop-app": { "module": ":desktopApp" } })
 """.trimIndent(),
+        "desktop" to """
+  desktop acquire [<path>] [--wait] [--wait-timeout <minutes>] [--json]
+                              Take the machine's desktop turn before driving the desktop with computer use;
+                              acquiring again renews it; it expires on its own after the turn duration
+                              (10 minutes by default); --wait waits in line while another worktree holds it
+                              (30 minutes at most by default) instead of failing
+  desktop release [<path>] [--json]
+                              Give the turn back; Claude Code's Stop and SessionEnd hooks also release it
+  desktop status [--json]     Show who holds the desktop, until when, and who waits for it
+""".trimIndent(),
         "env" to """
   env [<path>] [--format sh|dotenv|json]
                               Print the worktree's environment from .shogunai.json "env"

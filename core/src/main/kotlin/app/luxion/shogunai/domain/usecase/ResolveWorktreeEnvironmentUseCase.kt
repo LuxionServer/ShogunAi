@@ -11,8 +11,13 @@ import app.luxion.shogunai.domain.model.EnvironmentDeclaration
 import app.luxion.shogunai.domain.model.ShellQuoting
 import app.luxion.shogunai.domain.model.WorktreeEnvironment
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.TemplatePart
+import app.luxion.shogunai.domain.model.UnresolvedReason
+import app.luxion.shogunai.domain.model.UnresolvedVariable
 import app.luxion.shogunai.domain.model.approvalSubject
+import app.luxion.shogunai.domain.model.portKeyLabel
 import app.luxion.shogunai.domain.model.render
+import app.luxion.shogunai.domain.model.repositoryPorts
 
 class ResolveWorktreeEnvironmentUseCase(
     private val executor: ShellCommandExecutor,
@@ -23,25 +28,37 @@ class ResolveWorktreeEnvironmentUseCase(
     private val cache: WorktreeEnvironmentCache? = null,
     private val trust: RepositoryTrust = RepositoryTrust.NONE,
     private val composeRegistry: ComposeProjectRegistry? = null,
+    private val sharedEnvironment: SharedEnvironmentSource = SharedEnvironmentSource.NONE,
 ) {
     suspend operator fun invoke(
         repositoryPath: String,
         worktreePath: String,
         reserve: Boolean = true,
     ): Result<WorktreeEnvironment> = runCatching {
+        resolve(repositoryPath, worktreePath, reserve, sharedVariables(repositoryPath, worktreePath, reserve))
+    }
+
+    private suspend fun resolve(
+        repositoryPath: String,
+        worktreePath: String,
+        reserve: Boolean,
+        shared: SharedResolution = SharedResolution(),
+    ): WorktreeEnvironment {
         val provisioning = provisioningSource.read(repositoryPath)
         val approved = trust.isApproved(repositoryPath, provisioning.approvalSubject)
         val awaitingApproval = if (approved) emptyList() else provisioning.environment.variables.map { it.name }
         val declaration = if (approved) provisioning.environment else EnvironmentDeclaration()
         val gated = { environment: WorktreeEnvironment ->
-            environment.copy(awaitingApproval = awaitingApproval, declarationApproved = approved)
+            environment.copy(awaitingApproval = awaitingApproval, declarationApproved = approved, unresolved = shared.unresolved)
         }
         val declaredNames = declaration.variables.map { it.name }.toSet()
+        val sharedVariables = shared.variables.filterNot { it.first in declaredNames }
+        val overriddenNames = declaredNames + sharedVariables.map { it.first }
         val contributed = contributions.forRepository(repositoryPath, provisioning.providers)
-            .filterNot { it.names.isNotEmpty() && it.names.all { name -> name in declaredNames } }
+            .filterNot { it.names.isNotEmpty() && it.names.all { name -> name in overriddenNames } }
         val requests = declaredPortRequests(declaration) + contributed.flatMap { it.ports }
         val resourceRequests = contributed.flatMap { it.resources }
-        if (declaration.isEmpty && contributed.isEmpty()) return@runCatching gated(WorktreeEnvironment())
+        if (declaration.isEmpty && contributed.isEmpty()) return gated(WorktreeEnvironment(variables = sharedVariables))
         val directories = gitDirectories(worktreePath)
         val portKeys = requests.map { it.key }.toSet()
         val resourceKeys = resourceRequests.map { it.key }.toSet()
@@ -58,18 +75,76 @@ class ResolveWorktreeEnvironmentUseCase(
             stateStore.readResources(directories.admin).filterKeys { it in resourceKeys }
         }
         if (!requiredPortKeys.all { it in ports } || !requiredResourceKeys.all { it in resources }) {
-            return@runCatching gated(WorktreeEnvironment(ports = ports, resources = resources))
+            return gated(WorktreeEnvironment(ports = ports, resources = resources))
         }
         val declared = declaration.variables.map { it.name to it.render(folderName(worktreePath), ports) }
         val reservations = EnvironmentReservations(ports, resources)
         val context = ResourceContext(folderName(repositoryPath), folderName(worktreePath))
         val fromProviders = contributed.filter { it.isAcquiredIn(reservations) }
             .flatMap { it.variables(reservations) + it.contextual(context) }
-            .filterNot { it.first in declaredNames }
-        val environment = gated(WorktreeEnvironment(variables = fromProviders + declared, ports = ports, resources = resources))
+            .filterNot { it.first in overriddenNames }
+        val environment = gated(WorktreeEnvironment(variables = fromProviders + sharedVariables + declared, ports = ports, resources = resources))
         if (reserve && provisioning.providers.dockerCompose != null) recordComposeProject(repositoryPath, worktreePath, environment)
-        environment
+        return environment
     }
+
+    private suspend fun sharedVariables(repositoryPath: String, worktreePath: String, reserve: Boolean): SharedResolution {
+        val shared = sharedEnvironment.forWorktree(repositoryPath, worktreePath) ?: return SharedResolution()
+        shared.invalid?.let { reason -> return SharedResolution(unresolved = shared.invalidNames.map { UnresolvedVariable(it, reason) }) }
+        val referenced = shared.targets.mapValues { (alias, target) -> referencedPorts(alias, target, reserve) }
+        val resolved = mutableListOf<Pair<String, String>>()
+        val unresolved = mutableListOf<UnresolvedVariable>()
+        shared.variables.forEach { variable ->
+            val ports = variable.repositoryPorts.distinct().associateWith { part -> referenced.getValue(part.alias).portOf(part) }
+            val failure = ports.values.filterIsInstance<ReferencedPort.Missing>().firstOrNull()
+            if (failure != null) {
+                unresolved += UnresolvedVariable(variable.name, failure.reason)
+            } else {
+                val values = ports.mapValues { (it.value as ReferencedPort.Found).port }
+                resolved += variable.name to variable.render(folderName(worktreePath), emptyMap(), values)
+            }
+        }
+        return SharedResolution(resolved, unresolved)
+    }
+
+    private suspend fun referencedPorts(alias: String, target: SharedTarget, reserve: Boolean): ReferencedPorts = when (target) {
+        is SharedTarget.Unreadable -> ReferencedPorts.Failed(UnresolvedReason.WorktreeUnreadable(alias, target.detail))
+        is SharedTarget.Located -> runCatching {
+            val environment = resolve(target.repositoryPath, target.worktreePath, reserve)
+            if (!environment.declarationApproved) {
+                ReferencedPorts.Failed(UnresolvedReason.RepositoryNotApproved(alias, target.repositoryPath))
+            } else {
+                ReferencedPorts.Read(alias, provisioningSource.read(target.repositoryPath).environment.portKeys.toSet(), environment.ports)
+            }
+        }.getOrElse { ReferencedPorts.Failed(UnresolvedReason.WorktreeUnreadable(alias, it.message.orEmpty())) }
+    }
+
+    private sealed interface ReferencedPorts {
+        fun portOf(part: TemplatePart.RepositoryPort): ReferencedPort
+
+        data class Failed(val reason: UnresolvedReason) : ReferencedPorts {
+            override fun portOf(part: TemplatePart.RepositoryPort): ReferencedPort = ReferencedPort.Missing(reason)
+        }
+
+        data class Read(val alias: String, val declaredKeys: Set<String>, val ports: Map<String, Int>) : ReferencedPorts {
+            override fun portOf(part: TemplatePart.RepositoryPort): ReferencedPort {
+                val key = portKeyLabel(part.key)
+                if (part.key !in declaredKeys) return ReferencedPort.Missing(UnresolvedReason.PortNotDeclared(alias, key))
+                val port = ports[part.key] ?: return ReferencedPort.Missing(UnresolvedReason.PortNotReserved(alias, key))
+                return ReferencedPort.Found(port)
+            }
+        }
+    }
+
+    private sealed interface ReferencedPort {
+        data class Found(val port: Int) : ReferencedPort
+        data class Missing(val reason: UnresolvedReason) : ReferencedPort
+    }
+
+    private data class SharedResolution(
+        val variables: List<Pair<String, String>> = emptyList(),
+        val unresolved: List<UnresolvedVariable> = emptyList(),
+    )
 
     private fun recordComposeProject(repositoryPath: String, worktreePath: String, environment: WorktreeEnvironment) {
         val registry = composeRegistry ?: return

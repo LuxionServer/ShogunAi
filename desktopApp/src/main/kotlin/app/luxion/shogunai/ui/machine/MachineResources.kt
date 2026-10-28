@@ -37,18 +37,26 @@ import app.luxion.shogunai.domain.usecase.ProjectOwner
 import app.luxion.shogunai.domain.usecase.ResourceAcquisition
 import app.luxion.shogunai.domain.usecase.ProjectWorktreeSet
 import app.luxion.shogunai.domain.usecase.attributeToProjects
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
-enum class MachineResource { GRADLE_DAEMONS, ANDROID_EMULATORS, IOS_SIMULATORS, XCODE_DERIVED_DATA, MAVEN_DAEMONS, COMPOSE_PROJECTS }
+enum class MachineResource { GRADLE_DAEMONS, ANDROID_EMULATORS, IOS_SIMULATORS, XCODE_DERIVED_DATA, MAVEN_DAEMONS, COMPOSE_PROJECTS, DESKTOP_TURN }
 
 data class MachineProject(
     val project: Project,
@@ -67,6 +75,7 @@ data class MachineSummary(
     val calculating: Boolean = false,
     val quotaBytes: Long? = null,
     val quotaAutomatic: Boolean = false,
+    val holder: String? = null,
 )
 
 sealed interface PoolNoticeContent {
@@ -120,13 +129,22 @@ class MachineResources(
     private val onDevicesChanged: suspend (projectId: String) -> Unit = {},
     private val processInterval: Duration = PROCESS_INTERVAL,
     private val summaryInterval: Duration = SUMMARY_INTERVAL,
+    val desktopTurn: DesktopTurnWatch = DesktopTurnWatch.NONE,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private var shownJob: Job? = null
+    private val windowActive = MutableStateFlow(true)
     var shown by mutableStateOf<MachineResource?>(null)
         private set
 
-    var summaries by mutableStateOf<Map<MachineResource, MachineSummary>>(emptyMap())
-        private set
+    private var providerSummaries by mutableStateOf<Map<MachineResource, MachineSummary>>(emptyMap())
+
+    val summaries: Map<MachineResource, MachineSummary>
+        get() {
+            val turn = desktopTurn.state
+            if (!desktopTurn.isActive) return providerSummaries
+            return providerSummaries + (MachineResource.DESKTOP_TURN to MachineSummary(turn.waiting.size, holder = turn.holder?.displayName))
+        }
 
     private var daemonProcesses by mutableStateOf<MachineLoad<List<DaemonProcess>>>(MachineLoad.Loading)
     private var mavenProcesses by mutableStateOf<MachineLoad<List<MavenDaemonProcess>>>(MachineLoad.Loading)
@@ -204,10 +222,12 @@ class MachineResources(
         }
     }
 
+    private suspend fun <T> io(call: suspend () -> T): T = withContext(ioDispatcher) { call() }
+
     private suspend fun loadPool(kind: ResourceKind) {
         val resource = machineResourceOf(kind)
         val project = projects().firstOrNull { resource in it.declares } ?: return
-        useCases.readPool(kind, project.project.config, project.worktrees).getOrNull()?.let { usage ->
+        io { useCases.readPool(kind, project.project.config, project.worktrees) }.getOrNull()?.let { usage ->
             pools = pools + (kind to usage)
         }
     }
@@ -216,7 +236,12 @@ class MachineResources(
         get() = projects().flatMapTo(mutableSetOf()) { it.declares }
 
     val visibleResources: List<MachineResource>
-        get() = MachineResource.entries.filter { it in declared }
+        get() {
+            val resources = declared + setOfNotNull(MachineResource.DESKTOP_TURN.takeIf { desktopTurn.isActive || shown == MachineResource.DESKTOP_TURN })
+            return MachineResource.entries.filter { it in resources }
+        }
+
+    fun ownerOfPath(worktreePath: String): ProjectOwner = attributeToProjects(worktreePath, worktreeSets, pathExists)
 
     private val worktreeSets: List<ProjectWorktreeSet>
         get() = projects().map { ProjectWorktreeSet(it.project.id, it.worktrees) }
@@ -345,19 +370,27 @@ class MachineResources(
         scope.launch { load(resource, remeasure = true) }
     }
 
+    fun setWindowActive(active: Boolean) {
+        windowActive.value = active
+    }
+
     suspend fun runSummaryTicks() {
         while (true) {
-            refreshSummaries()
-            delay(summaryInterval)
+            if (windowActive.value) refreshSummaries() else trimGradleDaemonsWhileHidden()
+            withTimeoutOrNull(summaryInterval) { windowActive.drop(1).first { it } }
         }
+    }
+
+    private suspend fun trimGradleDaemonsWhileHidden() {
+        if (MachineResource.GRADLE_DAEMONS in declared) trimGradleDaemons()
     }
 
     suspend fun refreshSummaries() {
         val resources = declared
-        val current = summaries.filterKeys { it in resources }.toMutableMap()
+        val current = providerSummaries.filterKeys { it in resources }.toMutableMap()
         if (MachineResource.GRADLE_DAEMONS in resources) {
             trimGradleDaemons()
-            useCases.listDaemons().getOrNull()?.let { daemons ->
+            io { useCases.listDaemons() }.getOrNull()?.let { daemons ->
                 loadPool(ResourceKind.GRADLE_DAEMON)
                 val pool = pools[ResourceKind.GRADLE_DAEMON]
                 current[MachineResource.GRADLE_DAEMONS] =
@@ -365,7 +398,7 @@ class MachineResources(
             }
         }
         if (MachineResource.MAVEN_DAEMONS in resources) {
-            useCases.listMavenDaemons().getOrNull()?.let { daemons ->
+            io { useCases.listMavenDaemons() }.getOrNull()?.let { daemons ->
                 current[MachineResource.MAVEN_DAEMONS] = MachineSummary(daemons.size, daemons.sumOf { it.residentMemoryBytes })
             }
         }
@@ -409,11 +442,12 @@ class MachineResources(
         } else {
             stopDerivedDataMeasuring()
         }
-        summaries = current
+        desktopTurn.refresh()
+        providerSummaries = current
     }
 
     private suspend fun trimGradleDaemons() {
-        val trim = useCases.trimGradleDaemons(null).getOrNull() ?: return
+        val trim = io { useCases.trimGradleDaemons(null) }.getOrNull() ?: return
         if (trim.stopped.isNotEmpty()) addNotice(MachineResource.GRADLE_DAEMONS, PoolNoticeContent.Trimmed(trim.stopped.size, trim.limit))
     }
 
@@ -423,6 +457,7 @@ class MachineResources(
             return
         }
         while (true) {
+            windowActive.first { it }
             load(resource)
             delay(processInterval)
         }
@@ -436,11 +471,12 @@ class MachineResources(
             MachineResource.XCODE_DERIVED_DATA -> loadDerivedData(remeasure)
             MachineResource.MAVEN_DAEMONS -> loadMavenDaemons()
             MachineResource.COMPOSE_PROJECTS -> loadComposeProjects()
+            MachineResource.DESKTOP_TURN -> desktopTurn.refresh()
         }
     }
 
     private suspend fun loadMavenDaemons() {
-        mavenProcesses = useCases.listMavenDaemons().fold({ MachineLoad.Loaded(it) }, { MachineLoad.Unavailable })
+        mavenProcesses = io { useCases.listMavenDaemons() }.fold({ MachineLoad.Loaded(it) }, { MachineLoad.Unavailable })
     }
 
     private suspend fun loadComposeProjects() {
@@ -451,7 +487,7 @@ class MachineResources(
 
     private suspend fun readComposeLeftovers(): List<MachineComposeLeftover> =
         composeDeclaring().flatMap { machineProject ->
-            useCases.listComposeLeftovers(machineProject.project.config, machineProject.worktrees.orEmpty()).getOrNull().orEmpty()
+            io { useCases.listComposeLeftovers(machineProject.project.config, machineProject.worktrees.orEmpty()) }.getOrNull().orEmpty()
                 .map { MachineComposeLeftover(machineProject.project.id, it) }
         }
 
@@ -467,7 +503,7 @@ class MachineResources(
                 val configs = composeDeclaring().associate { it.project.id to it.project.config }
                 composeLeftoversReport = leftovers.groupBy { it.projectId }
                     .mapNotNull { (projectId, entries) ->
-                        configs[projectId]?.let { useCases.removeComposeLeftovers(it, entries.map { entry -> entry.resource }, removeVolumes) }
+                        configs[projectId]?.let { io { useCases.removeComposeLeftovers(it, entries.map { entry -> entry.resource }, removeVolumes) } }
                     }
                     .fold(ComposeLeftoversReport()) { total, next ->
                         ComposeLeftoversReport(total.removed + next.removed, total.kept + next.kept, total.failures + next.failures)
@@ -487,7 +523,7 @@ class MachineResources(
         val listed = composeDeclaring().map { machineProject ->
             val config = machineProject.project.config
             val root = config.worktreesRoot.takeIf { it.isNotBlank() }
-            machineProject.project.id to useCases.listComposeProjects(config, machineProject.worktrees.orEmpty(), root)
+            machineProject.project.id to io { useCases.listComposeProjects(config, machineProject.worktrees.orEmpty(), root) }
         }
         listed.firstNotNullOfOrNull { (_, result) -> result.exceptionOrNull() }?.let { failure ->
             composeUnavailableReason = (failure as? WorktreeError.DockerUnavailable)?.reason ?: failure.message
@@ -503,7 +539,7 @@ class MachineResources(
         isTakingDownCompose = true
         scope.launch {
             try {
-                composeDownReport = useCases.takeDownComposeProjects(names)
+                composeDownReport = io { useCases.takeDownComposeProjects(names) }
                 loadComposeProjects()
             } finally {
                 isTakingDownCompose = false
@@ -516,7 +552,7 @@ class MachineResources(
     }
 
     private suspend fun loadDaemons() {
-        daemonProcesses = useCases.listDaemons().fold({ MachineLoad.Loaded(it) }, { MachineLoad.Unavailable })
+        daemonProcesses = io { useCases.listDaemons() }.fold({ MachineLoad.Loaded(it) }, { MachineLoad.Unavailable })
         loadPool(ResourceKind.GRADLE_DAEMON)
     }
 
@@ -524,7 +560,7 @@ class MachineResources(
         val declaring = projects().filter { MachineResource.ANDROID_EMULATORS in it.declares && it.worktrees != null }
         val states = declaring.associate { machineProject ->
             machineProject.project.id to
-                useCases.readEmulatorStates(machineProject.project.config, machineProject.worktrees.orEmpty()).getOrNull()
+                io { useCases.readEmulatorStates(machineProject.project.config, machineProject.worktrees.orEmpty()) }.getOrNull()
         }
         if (states.values.any { it == null }) {
             ownedEmulators = MachineLoad.Unavailable
@@ -539,14 +575,14 @@ class MachineResources(
 
     private suspend fun readRunningEmulators(): Map<String, EmulatorState>? {
         val declaring = projects().firstOrNull { MachineResource.ANDROID_EMULATORS in it.declares } ?: return null
-        return useCases.readRunningEmulators(declaring.project.config).getOrNull()
+        return io { useCases.readRunningEmulators(declaring.project.config) }.getOrNull()
     }
 
     private suspend fun loadSimulators() {
         val owned = readSimulators()
         ownedSimulators = if (owned == null) MachineLoad.Unavailable else MachineLoad.Loaded(owned)
         val declaring = projects().firstOrNull { MachineResource.IOS_SIMULATORS in it.declares } ?: return
-        simulatorOrphans = useCases.readSimulatorOrphans(declaring.project.config).getOrNull() ?: simulatorOrphans
+        simulatorOrphans = io { useCases.readSimulatorOrphans(declaring.project.config) }.getOrNull() ?: simulatorOrphans
         loadPool(ResourceKind.IOS_SIMULATOR)
     }
 
@@ -554,7 +590,7 @@ class MachineResources(
         val declaring = projects().filter { MachineResource.IOS_SIMULATORS in it.declares && it.worktrees != null }
         val states = declaring.associate { machineProject ->
             machineProject.project.id to
-                useCases.readSimulatorStates(machineProject.project.config, machineProject.worktrees.orEmpty()).getOrNull()
+                io { useCases.readSimulatorStates(machineProject.project.config, machineProject.worktrees.orEmpty()) }.getOrNull()
         }
         if (states.values.any { it == null }) return null
         return states.mapValues { (_, byPath) -> byPath.orEmpty() }.filterValues { it.isNotEmpty() }
@@ -562,7 +598,7 @@ class MachineResources(
 
     private suspend fun loadDerivedData(remeasure: Boolean = false) {
         sizeJob?.cancel()
-        val listing = useCases.listDerivedData()
+        val listing = io { useCases.listDerivedData() }
         derivedDataSizes = emptyMap()
         compilationCacheSize = null
         compilationCacheMeasured = false
@@ -572,8 +608,8 @@ class MachineResources(
 
     private suspend fun measureDerivedData(folders: List<DerivedDataFolder>, remeasure: Boolean) {
         coroutineScope {
-            val compilationCache = async { if (projects().any { it.compilationCache }) useCases.measureCompilationCache().getOrNull() else null }
-            useCases.measureDerivedData(folders, remeasure).collect { measured ->
+            val compilationCache = async { if (projects().any { it.compilationCache }) io { useCases.measureCompilationCache() }.getOrNull() else null }
+            useCases.measureDerivedData(folders, remeasure).flowOn(ioDispatcher).collect { measured ->
                 derivedDataSizes = derivedDataSizes + (measured.path to (measured.sizeBytes ?: 0L))
             }
             compilationCacheSize = compilationCache.await()
@@ -596,7 +632,7 @@ class MachineResources(
         try {
             val sizes = derivedDataSizes
             val measured = listing.copy(folders = listing.folders.map { it.copy(folder = it.folder.copy(sizeBytes = sizes[it.folder.path])) })
-            val resolved = useCases.resolveDerivedDataQuota(settings, measured.folders.sumOf { it.folder.sizeBytes ?: 0L })
+            val resolved = io { useCases.resolveDerivedDataQuota(settings, measured.folders.sumOf { it.folder.sizeBytes ?: 0L }) }
             resolvedDerivedDataQuota = resolved
             val quota = resolved.bytes
             if (quota == null) {
@@ -604,7 +640,7 @@ class MachineResources(
                 return
             }
             val declaring = projects().filter { MachineResource.XCODE_DERIVED_DATA in it.declares }
-            useCases.trimDerivedData(quota, declaring, measured)
+            io { useCases.trimDerivedData(quota, declaring, measured) }
                 .onSuccess { trim ->
                     derivedDataTrim = trim
                     if (trim.released.isNotEmpty() || trim.failures.isNotEmpty()) derivedDataTrimReport = trim
@@ -646,7 +682,7 @@ class MachineResources(
         isStoppingDaemons = true
         scope.launch {
             try {
-                useCases.stopDaemons(pids)
+                io { useCases.stopDaemons(pids) }
                     .onSuccess { daemonStopReport = it; clearError(DAEMONS_KEY) }
                     .onFailure { fail(DAEMONS_KEY, it) { stopGradleDaemons(pids) } }
                 loadDaemons()
@@ -665,7 +701,7 @@ class MachineResources(
         isDeletingDerivedData = true
         scope.launch {
             try {
-                useCases.deleteOrphanedDerivedData()
+                io { useCases.deleteOrphanedDerivedData() }
                     .onSuccess { derivedDataDeletionReport = it; clearError(DERIVED_DATA_KEY) }
                     .onFailure { fail(DERIVED_DATA_KEY, it, ::deleteOrphanedDerivedData) }
                 loadDerivedData()
@@ -685,7 +721,7 @@ class MachineResources(
         val udids = simulatorOrphans.map { it.udid }
         scope.launch {
             try {
-                useCases.deleteSimulators(udids)
+                io { useCases.deleteSimulators(udids) }
                     .onSuccess { simulatorsDeleted = it.size; clearError(SIMULATOR_ORPHANS_KEY) }
                     .onFailure { fail(SIMULATOR_ORPHANS_KEY, it, ::deleteSimulatorOrphans) }
                 loadSimulators()
@@ -701,26 +737,26 @@ class MachineResources(
 
     fun startEmulator(projectId: String, worktreePath: String) =
         runDeviceAction(projectId, worktreePath) { config ->
-            useCases.startEmulator(config, worktreePath)
+            io { useCases.startEmulator(config, worktreePath) }
                 .onSuccess { recordReleases(MachineResource.ANDROID_EMULATORS, ResourceKind.EMULATOR, worktreePath, it.acquisition) }
                 .also { loadEmulators() }
         }
 
     fun stopEmulator(projectId: String, worktreePath: String) =
         runDeviceAction(projectId, worktreePath) { config ->
-            useCases.stopEmulator(config, worktreePath).also { loadEmulators() }
+            io { useCases.stopEmulator(config, worktreePath) }.also { loadEmulators() }
         }
 
     fun startSimulator(projectId: String, worktreePath: String) =
         runDeviceAction(projectId, worktreePath) { config ->
-            useCases.startSimulator(config, worktreePath)
+            io { useCases.startSimulator(config, worktreePath) }
                 .onSuccess { recordReleases(MachineResource.IOS_SIMULATORS, ResourceKind.IOS_SIMULATOR, worktreePath, it.acquisition) }
                 .also { loadSimulators() }
         }
 
     fun stopSimulator(projectId: String, worktreePath: String) =
         runDeviceAction(projectId, worktreePath) { config ->
-            useCases.stopSimulator(config, worktreePath).also { loadSimulators() }
+            io { useCases.stopSimulator(config, worktreePath) }.also { loadSimulators() }
         }
 
     fun stopUnownedEmulator(serial: String) {
@@ -730,7 +766,7 @@ class MachineResources(
         scope.launch {
             try {
                 val key = "unowned:$serial"
-                useCases.stopEmulatorSerials(declaring.project.config, listOf(serial))
+                io { useCases.stopEmulatorSerials(declaring.project.config, listOf(serial)) }
                     .onSuccess { clearError(key) }
                     .onFailure { fail(key, it) { stopUnownedEmulator(serial) } }
                 loadEmulators()
@@ -816,6 +852,7 @@ fun poolKindOf(resource: MachineResource): ResourceKind? = when (resource) {
     MachineResource.XCODE_DERIVED_DATA -> null
     MachineResource.MAVEN_DAEMONS -> null
     MachineResource.COMPOSE_PROJECTS -> null
+    MachineResource.DESKTOP_TURN -> null
 }
 
 private fun machineResourceOf(kind: ResourceKind): MachineResource = when (kind) {

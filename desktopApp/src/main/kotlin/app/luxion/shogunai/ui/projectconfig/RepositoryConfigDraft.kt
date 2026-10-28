@@ -152,4 +152,5 @@ private fun TemplatePart.asTemplateText(): String = when (this) {
     is TemplatePart.Literal -> text.replace("$", "$$")
     TemplatePart.WorktreeName -> "\${worktree}"
     is TemplatePart.Port -> if (key.startsWith("port:")) "\${$key}" else "\${port}"
+    is TemplatePart.RepositoryPort -> "\${port:$alias.${key.removePrefix("port:")}}"
 }

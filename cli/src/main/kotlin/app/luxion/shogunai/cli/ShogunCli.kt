@@ -4,10 +4,12 @@ import app.luxion.shogunai.BuildInfo
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
 import app.luxion.shogunai.domain.io.AgentSessionStore
+import app.luxion.shogunai.domain.io.ClaudeSessionRegistry
 import app.luxion.shogunai.domain.io.AndroidSdk
 import app.luxion.shogunai.domain.io.AppleSimulators
 import app.luxion.shogunai.domain.io.DerivedDataSizeStore
 import app.luxion.shogunai.domain.io.DerivedDataSource
+import app.luxion.shogunai.domain.io.DesktopTurnStore
 import app.luxion.shogunai.domain.io.EnvironmentStateStore
 import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.io.GradleDaemonSource
@@ -25,6 +27,8 @@ import app.luxion.shogunai.domain.io.ProvisioningRecordStore
 import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.io.ResourceLimitsRepository
 import app.luxion.shogunai.domain.io.RepositoryTrust
+import app.luxion.shogunai.domain.model.DesktopTurnState
+import app.luxion.shogunai.domain.model.DesktopWait
 import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.approvalSubject
 import app.luxion.shogunai.domain.model.ANDROID_SERIAL
@@ -34,7 +38,11 @@ import app.luxion.shogunai.domain.model.DerivedDataQuota
 import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.DerivedDataTrim
 import app.luxion.shogunai.domain.model.ResourceSettings
+import app.luxion.shogunai.domain.usecase.AcquireDesktopTurnUseCase
 import app.luxion.shogunai.domain.usecase.AgentSearch
+import app.luxion.shogunai.domain.usecase.DesktopTurnLedger
+import app.luxion.shogunai.domain.usecase.ReadDesktopTurnUseCase
+import app.luxion.shogunai.domain.usecase.ReleaseDesktopTurnUseCase
 import app.luxion.shogunai.domain.usecase.TrimDerivedDataUseCase
 import app.luxion.shogunai.domain.model.AttributedDerivedData
 import app.luxion.shogunai.domain.model.BranchType
@@ -47,7 +55,9 @@ import app.luxion.shogunai.domain.model.DaemonStopReport
 import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.EmulatorState
+import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
 import app.luxion.shogunai.domain.model.HerdrOpening
+import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.GradleDaemon
@@ -64,6 +74,7 @@ import app.luxion.shogunai.domain.model.ProvisionMode
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.ProvisionedFile
 import app.luxion.shogunai.domain.model.ShellQuoting
+import app.luxion.shogunai.domain.model.UnresolvedReason
 import app.luxion.shogunai.domain.model.WorkflowContext
 import app.luxion.shogunai.domain.model.WorkflowRules
 import app.luxion.shogunai.domain.model.WorkflowTopic
@@ -115,6 +126,8 @@ import app.luxion.shogunai.domain.usecase.FetchRemoteUseCase
 import app.luxion.shogunai.domain.usecase.findWorktreeTarget
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.MachineProviderContributions
+import app.luxion.shogunai.domain.usecase.HerdrAgentLauncher
+import app.luxion.shogunai.domain.usecase.isLiveClaudeProcess
 import app.luxion.shogunai.domain.usecase.OpenWorktreeInHerdrUseCase
 import app.luxion.shogunai.domain.usecase.effectiveGradleJvmArgs
 import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
@@ -168,7 +181,9 @@ import app.luxion.shogunai.domain.model.MavenDaemon
 import app.luxion.shogunai.domain.model.suggestProviders
 import app.luxion.shogunai.domain.model.SuggestionReport
 import app.luxion.shogunai.infrastructure.CliHerdrClient
+import app.luxion.shogunai.infrastructure.FileClaudeSessionRegistry
 import app.luxion.shogunai.infrastructure.DockerComposeProjectSource
+import app.luxion.shogunai.infrastructure.NioDesktopTurnStore
 import app.luxion.shogunai.infrastructure.ProcessMavenDaemonSource
 import app.luxion.shogunai.infrastructure.FileAgentSessionStore
 import app.luxion.shogunai.infrastructure.FileKmpTestWiring
@@ -184,6 +199,7 @@ import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
 import app.luxion.shogunai.domain.usecase.GroupTarget
 import app.luxion.shogunai.domain.usecase.GroupWorktreeState
 import app.luxion.shogunai.domain.usecase.MultirepoContext
+import app.luxion.shogunai.domain.usecase.MultirepoSharedEnvironment
 import app.luxion.shogunai.domain.usecase.MultirepoMember
 import app.luxion.shogunai.domain.usecase.OpenGroupInHerdrUseCase
 import app.luxion.shogunai.domain.usecase.OpenMultirepoAgentInHerdrUseCase
@@ -228,6 +244,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -258,6 +275,7 @@ class ShogunCli(
     private val environmentVariable: (String) -> String? = System::getenv,
     private val userHome: String = System.getProperty("user.home"),
     private val herdr: HerdrClient = CliHerdrClient(executor, userHome = userHome),
+    private val herdrAgentStartTimeout: kotlin.time.Duration = AGENT_START_SECONDS.seconds,
     private val trust: RepositoryTrust = RepositoryTrust.NONE,
     private val readAnswer: () -> String? = { null },
     private val sessionStore: AgentSessionStore = FileAgentSessionStore(),
@@ -278,6 +296,11 @@ class ShogunCli(
     private val headlessLauncher: HeadlessAppLauncher = GradleHeadlessAppLauncher(executor, Path.of(userHome, ".shogunai", "headless").toString()),
     private val appWindows: AppWindowService = MacAppWindowService(executor, Path.of(userHome, ".shogunai", "headless").toString()),
     private val pauseWhileStartingApp: suspend (Long) -> Unit = { delay(it) },
+    private val desktopTurnStore: DesktopTurnStore = NioDesktopTurnStore(Path.of(userHome, ".shogunai")),
+    private val claudeSessions: ClaudeSessionRegistry = FileClaudeSessionRegistry(
+        ClaudeCodeHooks.claudeSessionsDirectory(environmentVariable(CLAUDE_CONFIG_DIR), userHome),
+    ),
+    private val isClaudeProcessAlive: (Long) -> Boolean = ::isLiveClaudeProcess,
 ) {
     private val terminalApproval = RepositoryApproval { repository, subject ->
         if (confirm("${subjectLines(repository, subject)}$APPROVAL_QUESTION")) ApprovalDecision.APPROVE else ApprovalDecision.SKIP
@@ -342,6 +365,7 @@ class ShogunCli(
             factory,
             trust = trust,
             composeRegistry = composeRegistry,
+            sharedEnvironment = { repository, worktree -> MultirepoSharedEnvironment(resolveMultirepo, executor).forWorktree(repository, worktree) },
         )
 
     private fun simulatorSettingsFor(repositoryPath: String): SimulatorSettings =
@@ -365,6 +389,18 @@ class ShogunCli(
     private val stopHeadlessApp = StopHeadlessAppUseCase(headlessWorktrees, headlessLauncher)
     private val readHeadlessApp = ReadHeadlessAppUseCase(headlessWorktrees, appWindows)
     private val captureHeadlessApp = CaptureHeadlessAppUseCase(headlessWorktrees, appWindows)
+    private val desktopTurns = DesktopTurnLedger(
+        desktopTurnStore,
+        environmentStateStore,
+        deviceWaitQueue,
+        processLiveness,
+        { resolveEnvironment.directoriesOf(it).admin },
+        clock = deviceClock,
+        sleep = pauseWhileWaiting,
+    )
+    private val acquireDesktopTurn = AcquireDesktopTurnUseCase(desktopTurns, resolveLimits::desktopTurnDuration)
+    private val releaseDesktopTurn = ReleaseDesktopTurnUseCase(desktopTurns)
+    private val readDesktopTurn = ReadDesktopTurnUseCase(desktopTurns)
 
     fun run(args: List<String>): Int = when (val parsed = parseArguments(args)) {
         is ParsedArguments.UsageError -> {
@@ -420,6 +456,7 @@ class ShogunCli(
             is CliCommand.Emulator -> emulator(command)
             is CliCommand.Simulator -> simulator(command)
             is CliCommand.Headless -> headless(command)
+            is CliCommand.Desktop -> desktop(command)
             is CliCommand.SimulatorGradleInit -> simulatorGradleInit(command)
             CliCommand.HookSessionStart -> hookSessionStart()
             CliCommand.HookHerdr -> hookHerdr()
@@ -530,7 +567,7 @@ class ShogunCli(
         DetectGroupsUseCase(executor),
         resolveBase = { member -> ResolveMainBranchUseCase(member.config, executor)().getOrNull() },
         readStatus = { member, base -> ReadWorktreeStatusUseCase(executor, fileManager)(member.worktree, base) },
-        detectAgents = { searches -> DetectRunningAgentsUseCase(executor, herdr, sessionStore)(searches) },
+        detectAgents = { searches -> DetectRunningAgentsUseCase(executor, herdr, sessionStore, claudeSessions = claudeSessions)(searches) },
     )
 
     private suspend fun multirepo(command: CliCommand.Multirepo): Int {
@@ -602,6 +639,7 @@ class ShogunCli(
                 )
                 out.line("  ${repository.alias}  ${details.joinToString("  ")}")
             }
+            sharedVariableLines(updated).forEach { out.line(it) }
             out.line("agent  ${updated.agent.displayName} (${updated.agent.resolvedCommand()})")
             if (updated.ignoresDeclaredAgent) out.line(IGNORED_DECLARED_AGENT)
             if (updated.workspaceDetected) out.line("The folder is a Git repository, detected as the workspace repository; declare it with `shogun multirepo workspace set` or turn it off with `shogun multirepo workspace clear`.")
@@ -706,7 +744,16 @@ class ShogunCli(
             }
             if (multirepo.repositories.isEmpty()) add("  no repositories")
             add("worktrees-root  ${located(multirepo.worktreesRoot)}")
+            addAll(sharedVariableLines(multirepo))
             if (multirepo.ignoresDeclaredAgent) add(IGNORED_DECLARED_AGENT)
+        }
+    }
+
+    private fun sharedVariableLines(multirepo: Multirepo): List<String> {
+        val templates = multirepo.sharedTemplates
+        if (templates.isEmpty()) return emptyList()
+        return listOf("shared variables") + templates.groupBy { it.first }.flatMap { (alias, variables) ->
+            listOf("  $alias") + variables.map { (_, name, template) -> "    ${printable(name)}=${printable(template)}" }
         }
     }
 
@@ -808,12 +855,8 @@ class ShogunCli(
         val multirepo = context.multirepo
         val target = command.target
         if (target == null) {
-            val opening = OpenMultirepoAgentInHerdrUseCase(herdr)(multirepo).getOrThrow()
-            when {
-                command.json -> printJson(multirepoAgentOpenJson(multirepo, opening))
-                opening == HerdrOpening.OPENED -> out.line("opened ${multirepo.folder} in Herdr with ${multirepo.agent.displayName}")
-                else -> out.line("focused ${multirepo.folder} in Herdr (already open)")
-            }
+            val opening = OpenMultirepoAgentInHerdrUseCase(herdr, herdrLauncher())(multirepo).getOrThrow()
+            if (command.json) printJson(multirepoAgentOpenJson(multirepo, opening)) else out.line(herdrOpeningLine(multirepo.folder, opening))
             return EXIT_OK
         }
         if (command.agent != null) {
@@ -832,16 +875,13 @@ class ShogunCli(
                 return EXIT_FAILURE
             }
         }
-        val openings = OpenGroupInHerdrUseCase(herdr, resolveEnvironment)(group)
+        val openings = OpenGroupInHerdrUseCase(herdr, resolveEnvironment, herdrLauncher())(group)
         if (command.json) {
             printJson(groupOpenJson(group.branch, openings))
         } else {
             openings.forEach { opening ->
-                val agent = group.worktrees.first { it.alias == opening.alias }.config.agentLaunchConfig.displayName
                 opening.result
-                    .onSuccess {
-                        out.line(if (it == HerdrOpening.OPENED) "opened ${opening.path} in Herdr with $agent" else "focused ${opening.path} in Herdr (already open)")
-                    }
+                    .onSuccess { out.line(herdrOpeningLine(opening.path, it)) }
                     .onFailure { err.line("shogun: couldn't open ${opening.alias} (${opening.path}) in Herdr: ${failureReason(it)}") }
             }
         }
@@ -1086,7 +1126,8 @@ class ShogunCli(
         val mainBranch = ResolveMainBranchUseCase(config, executor)().getOrNull()
         val readStatus = ReadWorktreeStatusUseCase(executor, fileManager)
         val herdrWorktreesRoot = herdrConfig.worktreesRoot()
-        val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore)(config, worktrees.filterNot { it.isPrunable }).getOrNull().orEmpty()
+        val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore, claudeSessions = claudeSessions)(config, worktrees.filterNot { it.isPrunable }).getOrNull().orEmpty()
+        val desktop = readDesktopTurn().getOrElse { DesktopTurnState(holder = null, waiting = emptyList()) }
         val entries = worktrees.map { worktree ->
             val read = if (worktree.isPrunable) null else readStatus(worktree, mainBranch)
             WorktreeEntry(
@@ -1095,6 +1136,7 @@ class ShogunCli(
                 classifyOrigin(worktree, config, herdrWorktreesRoot),
                 read?.exceptionOrNull()?.let(::failureReason),
                 agents[worktree.path].orEmpty(),
+                desktop,
             )
         }
         if (command.json) {
@@ -1129,7 +1171,7 @@ class ShogunCli(
             }
         }
         val plan = releaseResources.plan(config, worktree, worktrees)
-        val removal = RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr), fileManager, stopHeadlessApp)(
+        val removal = RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr), fileManager, stopHeadlessApp, releaseDesktopTurn)(
             worktree.path,
             branchToDelete = worktree.branch?.takeIf { command.deleteBranch || command.forceDeleteBranch },
             force = command.force,
@@ -1191,14 +1233,21 @@ class ShogunCli(
                 return EXIT_USAGE
             }
         }
-        val opening = OpenWorktreeInHerdrUseCase(config, herdr, resolveEnvironment)(worktree, agent).getOrThrow()
-        val startedAgent = agent.displayName.takeIf { opening == HerdrOpening.OPENED }
-        when {
-            command.json -> printJson(openJson(worktree.path, worktree.branch, opening, startedAgent))
-            startedAgent != null -> out.line("opened ${worktree.path} in Herdr with $startedAgent")
-            else -> out.line("focused ${worktree.path} in Herdr (already open)")
-        }
+        val opening = OpenWorktreeInHerdrUseCase(config, herdr, resolveEnvironment, herdrLauncher())(worktree, agent).getOrThrow()
+        if (command.json) printJson(openJson(worktree.path, worktree.branch, opening)) else out.line(herdrOpeningLine(worktree.path, opening))
         return EXIT_OK
+    }
+
+    private fun herdrLauncher() =
+        HerdrAgentLauncher(herdr, herdrAgentStartTimeout, registry = claudeSessions, isClaudeProcessAlive = isClaudeProcessAlive)
+
+    private fun herdrOpeningLine(path: String, opening: HerdrOpening): String {
+        val line = when (opening.outcome) {
+            HerdrOutcome.OPENED -> "opened $path in Herdr with ${opening.agent} (pane ${opening.paneId})"
+            HerdrOutcome.STARTED_AGENT -> "started ${opening.agent} in $path's open Herdr workspace (pane ${opening.paneId})"
+            HerdrOutcome.FOCUSED -> "focused $path in Herdr (already open, pane ${opening.paneId})"
+        }
+        return opening.sessionName?.let { "$line as session $it" } ?: line
     }
 
     private suspend fun repair(command: CliCommand.Repair): Int {
@@ -1298,7 +1347,7 @@ class ShogunCli(
             out.line(dryRunHint(command, candidates.size, simulators.orphans.isNotEmpty(), derivedDataOrphans.isNotEmpty()))
             return EXIT_OK
         }
-        val report = CleanUpWorktreesUseCase(config, executor, closeHerdrWorkspaces, composeSource, fileManager, composeRegistry, stopHeadlessApp)(
+        val report = CleanUpWorktreesUseCase(config, executor, closeHerdrWorkspaces, composeSource, fileManager, composeRegistry, stopHeadlessApp, releaseDesktopTurn)(
             candidates,
             mainBranch,
             command.deleteBranches,
@@ -1647,7 +1696,17 @@ class ShogunCli(
                     "run 'shogun trust' in $repository to review them",
             )
         }
+        environment.unresolved.forEach { err.line("shogun: shared variable ${it.name} couldn't be resolved: ${unresolvedReason(it.reason)}") }
         return EXIT_OK
+    }
+
+    private fun unresolvedReason(reason: UnresolvedReason): String = when (reason) {
+        is UnresolvedReason.RepositoryNotApproved ->
+            "the environment of '${reason.alias}' isn't approved on this machine; run 'shogun trust' in ${reason.repositoryPath} to review it"
+        is UnresolvedReason.PortNotDeclared -> "'${reason.alias}' doesn't declare the port '${reason.key}' (\${port:${reason.key}} in its .shogunai.json)"
+        is UnresolvedReason.PortNotReserved -> "'${reason.alias}' hasn't reserved the port '${reason.key}' yet"
+        is UnresolvedReason.WorktreeUnreadable -> "the worktree of '${reason.alias}' can't be read: ${reason.detail}"
+        is UnresolvedReason.InvalidDeclaration -> "${reason.declarationPath}: ${reason.detail}"
     }
 
     private suspend fun hookSessionStart(): Int {
@@ -1680,6 +1739,7 @@ class ShogunCli(
                     "Ask the user to review them with 'shogun trust'; don't approve them yourself.",
             )
         }
+        environment.unresolved.forEach { out.line("Shared variable ${it.name} of the multirepo isn't available: ${unresolvedReason(it.reason)}.") }
         WorkflowRules.sessionStartLines(context).forEach { out.line(it) }
         multirepo?.takeIf { !it.atFolder && it.alias != null }?.let { found ->
             runCatching { groupContextLines(found, worktree.path) }.getOrDefault(emptyList()).forEach { out.line(it) }
@@ -2342,7 +2402,7 @@ class ShogunCli(
         val worktree = ListWorktreesUseCase(config, executor)().getOrThrow()
             .firstOrNull { !it.isMain && sameDirectory(it.path, path) }
             ?: throw WorktreeError.NotAWorktree(path)
-        val removal = RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr), fileManager, stopHeadlessApp)(
+        val removal = RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr), fileManager, stopHeadlessApp, releaseDesktopTurn)(
             worktree.path,
             branchToDelete = worktree.branch,
             force = true,
@@ -2382,6 +2442,37 @@ class ShogunCli(
         return EXIT_OK
     }
 
+    private suspend fun desktop(command: CliCommand.Desktop): Int {
+        when (command.action) {
+            DesktopAction.ACQUIRE -> {
+                val worktree = worktreeTopLevel(absolute(command.path ?: workingDirectory))
+                val acquisition = acquireDesktopTurn(worktree, command.wait?.let(::desktopWait)).getOrThrow()
+                acquisition.waitedSeconds?.takeIf { it > 0 }?.let { err.line("waited ${Duration.ofSeconds(it).toWaitText()}") }
+                if (command.json) printJson(desktopAcquisitionJson(acquisition)) else out.line(desktopAcquisitionLine(acquisition))
+            }
+            DesktopAction.RELEASE -> {
+                val worktree = worktreeTopLevel(absolute(command.path ?: workingDirectory))
+                val release = releaseDesktopTurn(worktree).getOrThrow()
+                val state = readDesktopTurn().getOrThrow()
+                if (command.json) printJson(desktopReleaseJson(release, state)) else out.line(desktopReleaseLine(release))
+            }
+            DesktopAction.STATUS -> {
+                val state = readDesktopTurn().getOrThrow()
+                if (command.json) printJson(desktopStateJson(state)) else desktopStateLines(state).forEach { out.line(it) }
+            }
+        }
+        return EXIT_OK
+    }
+
+    private fun desktopWait(timeout: Duration): DesktopWait {
+        var lastLine: String? = null
+        return DesktopWait(timeout) { progress ->
+            val line = desktopWaitProgressLine(progress)
+            if (line != lastLine) err.line(line)
+            lastLine = line
+        }
+    }
+
     private suspend fun worktreeTopLevel(directory: String): String {
         val result = executor.execute(listOf("git", "rev-parse", "--show-toplevel"), directory)
         val topLevel = result.stdout.trim()
@@ -2411,6 +2502,7 @@ class ShogunCli(
                 )
                 if (folder == null && state == AgentState.WORKING) renewLeases(sessionPath)
             }
+            if (folder == null && event in DESKTOP_RELEASING_EVENTS) releaseDesktopTurn.ifHeldBy(sessionPath)
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -2579,6 +2671,7 @@ class ShogunCli(
             origin?.let { add("origin=${it.label}") }
             if (worktree.isLocked) add("locked")
             entry.agents.takeIf { it.isNotEmpty() }?.let { agents -> add("agents=${agents.joinToString(",") { agentLabel(it) }}") }
+            desktopTurnStatusNote(entry.desktop, worktree.path)?.let(::add)
             when {
                 worktree.isPrunable -> add("folder-missing")
                 status == null -> add(entry.statusProblem?.let { "status-unavailable ($it)" } ?: "status-unavailable")
@@ -2604,8 +2697,10 @@ class ShogunCli(
     private fun folderName(path: String): String =
         path.trimEnd('/', '\\').substringAfterLast('/').substringAfterLast('\\')
 
-    private fun agentLabel(agent: RunningAgent): String =
-        agent.state?.let { "${agent.name}(${it.name.lowercase()})" } ?: agent.name
+    private fun agentLabel(agent: RunningAgent): String {
+        val details = listOfNotNull(agent.state?.name?.lowercase()) + agent.sessions.map { it.name }
+        return if (details.isEmpty()) agent.name else "${agent.name}(${details.joinToString(", ")})"
+    }
 
     private fun absolute(path: String): String =
         if (path.startsWith('/') || File(path).isAbsolute) path else File(workingDirectory, path).toPath().normalize().toString().replace('\\', '/')
@@ -2646,6 +2741,7 @@ class ShogunCli(
         private const val IGNORED_DECLARED_AGENT =
             "The declaration's agent is ignored; set the multirepo agent on this machine with 'shogun multirepo agent'."
         private const val SESSION_END = "SessionEnd"
+        private val DESKTOP_RELEASING_EVENTS = setOf("Stop", SESSION_END)
         private const val HERDR_PLUGIN_EVENT = "HERDR_PLUGIN_EVENT"
         private const val HERDR_PLUGIN_EVENT_JSON = "HERDR_PLUGIN_EVENT_JSON"
         private const val HERDR_WORKTREE_CREATED = "worktree.created"

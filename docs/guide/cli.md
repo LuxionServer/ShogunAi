@@ -86,7 +86,8 @@ Lists every worktree of the repository, one per line: path, branch (or `(detache
 | `main` | The main checkout. |
 | `origin=shogunai\|claude-code\|herdr\|other` | Where the worktree was created. |
 | `locked` | Held by an agent session. |
-| `agents=claude(blocked),codex` | Agents running in it, with their state (`working`, `blocked`, `done`, `idle`) when Herdr reports it or, for Claude, when its [hooks](../agents.md#agent-states-outside-herdr) do. |
+| `desktop(until 14:10)`, `desktop(waiting 1/2)` | It holds the [desktop turn](#desktop) until that time, or waits for it in that place of the line. |
+| `agents=claude(blocked, app-task-123),codex` | Agents running in it, with their state (`working`, `blocked`, `done`, `idle`) when Herdr reports it or, for Claude, when its [hooks](../agents.md#agent-states-outside-herdr) do. A Claude agent also lists, after its state, the names of its live sessions whose folder is in that worktree, as Claude Code's session registry has them (`claude(app-task-123)` when there's no state). |
 | `changes=N` | Uncommitted changes. |
 | `ahead=N behind=N` | Divergence from its upstream. |
 | `merged` | Merged into the main branch. |
@@ -115,7 +116,7 @@ Prints one compact JSON object on a single line instead of the text lines. Error
       "locked": false,
       "folderMissing": false,
       "origin": null,
-      "agents": [{ "name": "claude", "state": "blocked", "stateSource": "claude-code", "herdrState": null }],
+      "agents": [{ "name": "claude", "state": "blocked", "stateSource": "claude-code", "herdrState": null, "sessions": [{ "name": "main-repo-task-123", "pid": 4242 }] }],
       "status": {
         "uncommittedChanges": 0,
         "upstream": { "ahead": 0, "behind": 0 },
@@ -135,12 +136,13 @@ Prints one compact JSON object on a single line instead of the text lines. Error
 | `branch`, `head` | The checked-out branch (`null` when detached) and the commit. |
 | `main`, `locked`, `folderMissing` | The main checkout, held by an agent session, folder deleted by hand. |
 | `origin` | `shogunai`, `claude-code`, `herdr` or `other`; `null` for the main checkout. |
-| `agents` | The agents running in it: `name`, `state` (`working`, `blocked`, `done`, `idle`; `null` when nothing reports one), `stateSource` (`herdr`, `claude-code` or `null`) and `herdrState`, the state when Herdr is the source and `null` otherwise. |
+| `agents` | The agents running in it: `name`, `state` (`working`, `blocked`, `done`, `idle`; `null` when nothing reports one), `stateSource` (`herdr`, `claude-code` or `null`), `herdrState`, the state when Herdr is the source and `null` otherwise, and `sessions`, the agent's live Claude Code sessions in that worktree (`name` and `pid`; empty for other agents or when none is found). |
 | `status` | `null` when the folder is missing or its status couldn't be read. |
 | `statusProblem` | Only present when the status couldn't be read: Git's reason. |
 | `status.uncommittedChanges`, `status.merged` | Uncommitted changes; merged into the main branch. |
 | `status.upstream`, `status.mainBranch` | `{ "ahead": n, "behind": n }` against the upstream and the main branch; `null` when there is none. |
 | `status.lastCommitAt` | Time of the last commit in ISO-8601 UTC, or `null`. |
+| `desktop` | `null`, or the worktree's [desktop turn](#desktop): `{ "role": "holder", "since", "expiresAt" }` when it holds it, `{ "role": "waiting", "position", "since" }` when it waits for it, with ISO-8601 UTC times. |
 | `status.createdAt` | Time the worktree was created, in ISO-8601 UTC, read from Git's administrative folder for it; `null` for the main checkout or when it can't be read. |
 
 Every field is always present, with `null` when it doesn't apply. The field names are a contract: later versions only add fields and never rename, remove or change the type of one.
@@ -208,9 +210,13 @@ Re-links the worktrees after the repository or the worktrees folder moved, as th
 shogun open <task id | path | branch> --herdr [--agent <name>]
 ```
 
-Opens one worktree in [Herdr](https://herdr.dev), the way the desktop app's "Open in Herdr" does: a focused workspace under the repository's space, a shell with the worktree's environment (what `shogun env` prints) and the project's agent launch command running in it (`opened <path> in Herdr with Claude`). When Herdr already has the worktree open, its workspace is focused and nothing is typed into it (`focused <path> in Herdr (already open)`).
+Opens one worktree in [Herdr](https://herdr.dev), the way the desktop app's "Open in Herdr" does: a focused workspace under the repository's space, a shell with the worktree's environment (what `shogun env` prints) and the project's agent launch command running in it (`opened <path> in Herdr with Claude (pane w1:p2)`). When Herdr already has the worktree open and one of its panes runs an agent (Herdr reports a status for it, `idle` and `done` included), that agent's pane is focused and nothing is typed (`focused <path> in Herdr (already open, pane w1:p3)`). When the workspace is open but no pane has a live agent, for example after quitting it, the agent is started in a new pane of that workspace with the worktree's environment, and the other panes are kept (`started Claude in <path>'s open Herdr workspace (pane w1:p4)`). Every line names the agent's pane, so an orchestrator knows where to write.
 
-The target is found as in `remove`, except that the main worktree is allowed. `--herdr` is the destination and is required; `--agent <name>` runs another of the project's agents, matched by name ignoring case, and an unknown name exits with `2` listing the project's agents. If Herdr isn't installed or its command fails, the error is on standard error and the exit code is `1`.
+When the agent command runs Claude Code (`claude`, a path ending in `/claude`, or either after `headroom wrap` or environment assignments) as a single command without its own `-n`/`--name`, `open` adds `-n <name>` so the session can be told apart when messaging it: `<project>-<id>` for a worktree, where `<project>` is the repository's folder name and `<id>` the worktree's folder name (`main-repo-task-123`), and `<project>` for the main worktree. Names are lowercase letters, digits and single hyphens (other characters become a hyphen, at most 64 characters), and when a live Claude session already has the name, `-2`, `-3`… is appended. Another agent, or a command that chains several (`source env.sh && claude`), is typed unchanged. After the agent starts, `open` waits up to 10 more seconds for the session to appear under that name in Claude Code's session registry (`~/.claude/sessions`, or `$CLAUDE_CONFIG_DIR/sessions`) and appends it to the line (`opened <path> in Herdr with Claude (pane w1:p2) as session main-repo-task-123`). When it only focuses a live Claude agent, it reports the live session in that folder, preferring the name it would have given and otherwise the most recently started one. Without a confirmed name the line has no session and the open still succeeds. The registry is Claude Code's internal format, read only and tolerantly: if it changes or can't be read, names are simply not reported.
+
+After typing the agent command, `open` waits up to 10 seconds for Herdr to detect the agent in that pane. If it doesn't, the command fails with exit code `1`, naming the pane and the command, and the pane is left open: an agent Herdr can't recognise, or a slow start, can be checked there.
+
+The target is found as in `remove`, except that the main worktree is allowed. `--herdr` is the destination and is required; `--agent <name>` runs another of the project's agents, matched by name ignoring case, and an unknown name exits with `2` listing the project's agents. If Herdr isn't installed, its command fails or the agent doesn't start, the error is on standard error and the exit code is `1`.
 
 ### `clean`
 
@@ -264,8 +270,8 @@ shogun open --herdr
 - `multirepo agent` keeps the multirepo agent on this machine, never in the declaration; an `agent` left in the declaration by an earlier version is ignored, and `show` says so (`ignoredDeclaredAgent` in `--json`). The agent runs its command as is; `--headroom` wraps it with `headroom wrap`. `--no-headroom`, from earlier versions where Headroom was on by default, is still accepted and changes nothing; combined with `--headroom` it exits with `2`.
 - `new <id>` in the multirepo folder covers the default repositories, or `--repos` from anywhere in the multirepo; it prints the path of each worktree it creates on standard output and one line per repository on standard error, and exits with `1` if any repository failed. `--branch`, `--from` and `--worktrees-root` don't apply to a group and exit with `2`. Its `--json` object has the `branch` and a `repos` list with each `alias`, `path`, `result` (`created`, `existing` or `failed`), skipped post-creation commands and `error`.
 - When the multirepo folder is a Git repository it is the multirepo's workspace repository (alias `workspace` unless declared otherwise): `show` lists it, marked `detected` until `workspace set` declares it (`--alias` renames it, `--default` adds it to the default repositories) and `workspace clear` turns detection off; in a folder that isn't a repository `workspace set` exits with `1`. `new <id> --repos workspace,app` includes it, with its worktree in `<worktreesRoot>/workspace/<id>`. `project add` and `app` run in that folder register the workspace repository as a member of the multirepo and no project of the folder's own (`app` just opens the app), unless detection is off. `--json` of `show` marks each repository with `workspace` and `detected`.
-- `status` in the multirepo folder prints each group's branch followed by one line per repository, then `ungrouped`; `--json` prints `groups` (each with `branch`, `title` and `repos` with `alias`, `path`, `branch`, `base`, `folderMissing`, `uncommittedChanges`, `ahead`, `behind`, `merged`, `agents`), `ungrouped` and `failures`.
-- `open <id> --herdr` opens each worktree of the group with its project's agent (`--agent` exits with `2`); an id matching both `feature/<id>` and `fix/<id>` exits with `2`, no match with `1`. `open --herdr` without a target opens the multirepo's agent.
+- `status` in the multirepo folder prints each group's branch followed by one line per repository, then `ungrouped`, with each Claude agent's session names as `status` shows them (`agents=claude(working, app-task-123)`); `--json` prints `groups` (each with `branch`, `title` and `repos` with `alias`, `path`, `branch`, `base`, `folderMissing`, `uncommittedChanges`, `ahead`, `behind`, `merged`, `agents`), `ungrouped` and `failures`.
+- `open <id> --herdr` opens each worktree of the group with its project's agent (`--agent` exits with `2`), reporting each as `open` does for one worktree (opened, agent started in its open workspace, or focused, with its pane); a worktree that fails, or whose agent doesn't start, is reported on standard error, the others still open, and the exit code is `1`. An id matching both `feature/<id>` and `fix/<id>` exits with `2`, no match with `1`. `open --herdr` without a target opens the multirepo's agent the same way: it focuses its live agent, starts it in a new pane of its open workspace when it has none, or opens a new workspace, and checks that it started. Each Claude session gets a name as with `open` for one worktree: `<alias>-<id>` for a worktree of the group, where `<id>` is the group's branch without its prefix (`app-task-123`, `api-task-123`), and the multirepo's name for the multirepo agent, so a coordinating session can tell the group's sessions apart and message each by name.
 - `clean` lists the candidate groups (`would remove the group …`) and the kept ones with their reason (`kept feature/TASK-2 (api isn't merged)`), and accepts every option of `clean`. After the groups it lists the loose worktrees of each repository (`would remove api <path>`) that are clean, merged and without a running agent, and removes them with `--yes`; with nothing to remove it prints `Nothing to clean up.`
 - `hook agent-state` records the sessions of a multirepo folder that isn't a Git repository in a store under `~/.shogunai/agent-sessions/`; for any other directory that isn't a repository it still writes nothing.
 
@@ -390,6 +396,20 @@ Runs the worktree's Compose Desktop app in the background (macOS only, repositor
 
 `capture` saves a PNG of the app's window, taken from the window itself, so it shows the app even while hidden or covered; without `--output` it goes to a new file in the worktree's Git folder, and the command prints its path. It needs the Screen Recording permission for the application that runs `shogun`, such as your terminal. `stop` ends the app (`stopped <pid>`, or `stopped` when it wasn't running); `status` prints its state, the isolated home, the launch log and any missing permission. See [Checking a desktop app in the background](headless-app.md).
 
+### `desktop`
+
+```bash
+shogun desktop acquire [<path>] [--wait] [--wait-timeout <minutes>] [--json]
+shogun desktop release [<path>] [--json]
+shogun desktop status [--json]
+```
+
+The desktop (screen, mouse, keyboard and the focused app) is one resource for the whole machine, so agents that check something with computer use take turns: one worktree holds the desktop turn at a time, on any platform. `acquire` gives the turn to the worktree containing the path or the current directory and prints `acquired the desktop until 14:10`; run by the holder again, it renews the turn (`renewed the desktop until 14:15`). The turn expires on its own after the desktop turn duration (10 minutes by default, in Preferences › Resources) unless it's renewed, so an agent that crashes doesn't keep it; the agent working doesn't renew it. Claude Code's `Stop` and `SessionEnd` [hooks](../agents.md#claude-code) release it when the holder's response or session ends, and removing or cleaning up a worktree releases its turn and drops its waits.
+
+While another worktree holds the turn, `acquire` fails with exit code `1`, naming the holder, when its turn expires and how many worktrees are waiting. With `--wait` it waits in line instead, for 30 minutes at most or the minutes given with `--wait-timeout` (which implies `--wait`), printing on standard error its place in the line and who holds the desktop until when, only when that changes, and `waited <time>` once it has the turn. Waiters are served first in, first out across every repository, and an `acquire` without `--wait` can't take the turn while anyone waits. Agents run a waiting `acquire` in the background.
+
+`release` gives the turn back (`released the desktop`), says `nobody holds the desktop` when nobody does, and fails with exit code `1`, changing nothing, when another worktree holds it; the desktop app can release anyone's turn. `status` prints the holder with since when and until when, or `desktop free`, followed by the waiters in order. The turn is cooperative: it keeps agents that follow the [workflow rules](../agents.md#shogunais-workflow-rules) from colliding, it doesn't stop a program that ignores it.
+
 ### `pool`
 
 ```text
@@ -434,7 +454,7 @@ The rules are the same for all of them:
 | `repair` | `repaired`: the re-linked worktree paths. |
 | `project add`, `project remove` | `action` (`added`, `alreadyRegistered` or `removed`), and the project's `id`, `name` and `repository`. |
 | `project list` | `projects`: `{ id, name, repository }`, empty without projects. |
-| `open` | `path`, `branch` (or `null` if detached), `herdr` (`opened` or `focused`) and `agent` (the started agent's name, or `null` when the workspace was only focused). |
+| `open` | `path`, `branch` (or `null` if detached), `herdr` (`opened`, `started-agent` or `focused`), `pane_id` (the agent's pane), `agent` (the started agent's name, or the one Herdr reports in the focused pane) and `session_name` (the Claude Code session's confirmed name, or `null`). In the multirepo folder with a target: `branch` and `repos`: `{ alias, path, result, pane_id, agent, session_name, error }` with `result` `opened`, `started-agent`, `focused` or `failed`. Without a target: `path`, `opened` (`false` only when focused), `herdr`, `pane_id`, `agent` and `session_name`. |
 | `clean` | `dryRun`; `candidates`: `{ path, branch, reason }` with `reason` `merged` or `folder-missing`; `keptForAgents`: `{ path, agents }`; `skipped`: `{ path, reason }` (status unavailable); `removed`; `deletedBranches`; `failures`: `{ path, message }`; and `providers`: `gradleDaemonsStopped`, `emulatorsStopped`, `simulatorsDeleted`, `derivedDataDeleted` and, with `--down-compose-projects`, `composeProjectsDown` and `composeResources` (`removed`, `kept`, `failures`, as in `compose prune`). Without `--yes` (`dryRun: true`) `removed`, `deletedBranches` and the `providers` lists are empty. |
 | `gradle` | `daemons`: `{ pid, kind, version, memoryBytes, state, idleSince, worktree }` with `kind` `gradle` or `kotlin`, `state` `busy`, `idle`, `unknown` or `untracked`, `idleSince` in ISO-8601 UTC (only when idle) and `worktree` a path, `removed`, `other-project` or `null` outside a repository; and `totalMemoryBytes`. |
 | `gradle stop` | `stopped` (pids), `kept`: `{ pid, kind, reason }` with `reason` `busy`, `state-unknown` or `build-running`, `notDaemons` (pids) and `failures`: `{ pid, message }`. The exit code is `1` when either of the last two isn't empty. |
@@ -448,6 +468,7 @@ The rules are the same for all of them:
 | `xcode clean` | `active`, `deleted` (paths), `freedBytes` and `failures`: `{ path, message }`. |
 | `xcode trim` | `active`, `quotaMode` (`automatic`, `fixed` or `none`), `quotaBytes` (`null` without a quota or when the automatic one can't be computed), `dryRun`, `usageBeforeBytes`, `usageAfterBytes`, `exceeded`, `released` (paths, those that would be released with `--dry-run`), `freedBytes`, `inUse` (worktree paths) and `failures`: `{ path, message }`. |
 | `emulator start\|stop\|status` | `worktree`, `serial` and `state` (`running`, `booting` or `stopped`). `serial` and `state` are `null` when the worktree has no emulator port reserved yet. `waited` is the whole seconds a `start --wait` waited for capacity (`0` if there was room), `null` otherwise. |
+| `desktop acquire\|release\|status` | `holder` (`null`, or `{ repository, worktree, since, expiresAt }`) and `waiting`: `{ repository, worktree, since }` in line order, with ISO-8601 UTC times. `acquire` adds `renewed` and `waited` (whole seconds waited, `0` when the desktop was free, `null` without `--wait`); `release` adds `released`. |
 | `simulator start\|stop\|status` | `worktree`, `udid`, `name` and `state` (`shutdown`, `booting` or `booted`), `null` when the worktree has no simulator yet, and `waited` as for `emulator`. The KMP wiring hint isn't part of it. |
 
 ```bash

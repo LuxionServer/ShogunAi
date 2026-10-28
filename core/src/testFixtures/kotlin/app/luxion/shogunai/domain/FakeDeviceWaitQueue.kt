@@ -3,17 +3,17 @@ package app.luxion.shogunai.domain
 import app.luxion.shogunai.domain.io.DeviceWaitQueue
 import app.luxion.shogunai.domain.io.ProcessLiveness
 import app.luxion.shogunai.domain.model.ProcessIdentity
-import app.luxion.shogunai.domain.model.ResourceKind
+import app.luxion.shogunai.domain.model.WaitQueueName
 import app.luxion.shogunai.domain.model.WaitTicket
 
 class FakeDeviceWaitQueue : DeviceWaitQueue {
 
-    val tickets = mutableMapOf<ResourceKind, List<WaitTicket>>()
+    val tickets = mutableMapOf<WaitQueueName, List<WaitTicket>>()
 
-    override fun read(kind: ResourceKind): List<WaitTicket> = tickets[kind].orEmpty()
+    override fun read(queue: WaitQueueName): List<WaitTicket> = tickets[queue].orEmpty()
 
-    override fun write(kind: ResourceKind, tickets: List<WaitTicket>) {
-        if (tickets.isEmpty()) this.tickets.remove(kind) else this.tickets[kind] = tickets
+    override fun write(queue: WaitQueueName, tickets: List<WaitTicket>) {
+        if (tickets.isEmpty()) this.tickets.remove(queue) else this.tickets[queue] = tickets
     }
 }
 

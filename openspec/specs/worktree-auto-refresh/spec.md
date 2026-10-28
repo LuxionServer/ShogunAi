@@ -36,7 +36,7 @@ The system SHALL detect running agents again on every check, once for the worktr
 - **THEN** running processes are inspected once, and each agent is attributed to its worktree in any of the three projects
 
 ### Requirement: Watch only while it is useful
-The system SHALL only check the Git metadata of the projects shown in the current worktree view, SHALL stop checking a project when no shown view includes it, and SHALL skip a project's check while its list is loading or a create, remove or clean up action is running on it. No check SHALL run while the main window isn't focused or is minimized; the light refresh on focus SHALL run when it regains focus.
+The system SHALL only check the Git metadata of the projects shown in the current worktree view, SHALL stop checking a project when no shown view includes it, and SHALL skip a project's check while it is loading or busy creating, removing or cleaning up. Checks SHALL run while the main window is visible, focused or not, and SHALL pause while it is minimized, in the tray or the app is hidden; unreported states count as visible. The light refresh on focus SHALL run when the window regains focus.
 
 #### Scenario: Leaving the screen
 - **WHEN** the user switches from "All worktrees" to the view filtered to `api`
@@ -47,8 +47,12 @@ The system SHALL only check the Git metadata of the projects shown in the curren
 - **THEN** that project's check is skipped, the other projects are checked, and the next check runs normally
 
 #### Scenario: Window in the background
-- **WHEN** the user switches to another app for a minute
-- **THEN** no check runs during that minute, and when the user comes back the shown worktrees' statuses and agents are refreshed once
+- **WHEN** the window stays visible on a second monitor while the user works in another app, and an agent starts in a shown worktree
+- **THEN** checks keep running and the worktree shows the agent within a few seconds, without the window regaining focus
+
+#### Scenario: Window minimized or app hidden
+- **WHEN** the user minimizes the window, closes it to the tray, or hides the app, for a minute
+- **THEN** no check runs during that minute, and checks resume when the window is shown again
 
 #### Scenario: Loaded but hidden project
 - **WHEN** `api` and `web` were loaded and the view now shows only `web`

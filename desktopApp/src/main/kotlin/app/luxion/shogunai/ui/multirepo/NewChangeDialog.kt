@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import app.luxion.shogunai.domain.io.ApprovalDecision
 import app.luxion.shogunai.domain.model.BranchType
+import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
 import app.luxion.shogunai.domain.usecase.GroupRepositoryResult
 import app.luxion.shogunai.ui.components.ErrorNotice
@@ -150,6 +151,10 @@ private fun GroupRepositoryResult.label(strings: Strings): String = when (outcom
 fun Strings.multirepoNoticeMessage(notice: MultirepoNotice): String = when (notice) {
     is MultirepoNotice.AddedToGroup -> repositoryAddedToGroup(notice.alias, notice.title)
     is MultirepoNotice.ChangeCreated -> changeCreated(notice.title, notice.aliases)
-    is MultirepoNotice.AgentOpened -> if (notice.focused) multirepoAgentFocused else multirepoAgentOpened
+    is MultirepoNotice.AgentOpened -> when (notice.outcome) {
+        HerdrOutcome.OPENED -> multirepoAgentOpened
+        HerdrOutcome.STARTED_AGENT -> multirepoAgentStarted
+        HerdrOutcome.FOCUSED -> multirepoAgentFocused
+    }
     is MultirepoNotice.Failed -> describe(notice.error).summary
 }

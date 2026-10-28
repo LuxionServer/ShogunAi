@@ -154,8 +154,16 @@ object WorkflowRules {
             "Check the desktop app without computer use: `shogun headless start` runs it hidden, drive it with the Compose Hot Reload MCP " +
                 "(re-read the semantic tree after each view change; run `shogun headless start` again after its `restart` to hide it), " +
                 "and see it with `shogun headless capture`, never the MCP's take_screenshot. " +
-                "Keyboard shortcuts, native menus, the menu bar and system dialogs still need the desktop.",
+                "Keyboard shortcuts, native menus, the menu bar and system dialogs still need the desktop: take its turn first with `shogun desktop acquire --wait`.",
             WorkflowCondition.DESKTOP_APP_PROVIDER,
+            inSessionStart = true,
+        ),
+        WorkflowRule(
+            "resources.desktop-turn",
+            WorkflowTopic.RESOURCES,
+            "Before driving the desktop with computer use, take the machine's desktop turn with `shogun desktop acquire --wait`, " +
+                "run in the background or with a long enough shell timeout, since it can wait up to 30 minutes; " +
+                "run it again to renew the turn during a long check, before it expires, and give it back with `shogun desktop release` as soon as you are done.",
             inSessionStart = true,
         ),
         WorkflowRule(

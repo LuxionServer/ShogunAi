@@ -1,6 +1,7 @@
 package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.domain.model.HerdrOpening
+import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.usecase.AddedRepository
@@ -38,6 +39,7 @@ fun multirepoJson(multirepo: Multirepo, configs: Map<String, ProjectConfig?>, ba
         }
     })
     put("defaultRepos", buildJsonArray { multirepo.defaultRepos.forEach { add(JsonPrimitive(it)) } })
+    put("env", sharedVariablesJson(multirepo))
     put("agent", buildJsonObject {
         put("name", multirepo.agent.displayName)
         put("command", multirepo.agent.agentCommand)
@@ -64,7 +66,14 @@ fun multirepoTrustJson(multirepo: Multirepo, approved: Boolean, changed: Boolean
     put("worktreesRoot", multirepo.worktreesRoot)
     put("worktreesRootOutsideParent", multirepo.isOutsideParent(multirepo.worktreesRoot))
     put("workspace", multirepo.workspaceRepository?.alias)
+    put("env", sharedVariablesJson(multirepo))
     put("ignoredDeclaredAgent", multirepo.ignoresDeclaredAgent)
+}
+
+private fun sharedVariablesJson(multirepo: Multirepo): JsonObject = buildJsonObject {
+    multirepo.sharedTemplates.groupBy { it.first }.forEach { (alias, variables) ->
+        put(alias, buildJsonObject { variables.forEach { (_, name, template) -> put(name, template) } })
+    }
 }
 
 fun registeredMultirepoJson(registered: RegisteredMultirepo): JsonObject = buildJsonObject {
@@ -206,7 +215,11 @@ fun groupOpenJson(branch: String, openings: List<GroupOpening>): JsonObject = bu
             add(buildJsonObject {
                 put("alias", opening.alias)
                 put("path", opening.path)
-                put("result", opening.result.getOrNull()?.let { if (it == HerdrOpening.OPENED) "opened" else "focused" } ?: "failed")
+                val herdrOpening = opening.result.getOrNull()
+                put("result", herdrOpening?.outcome?.jsonValue ?: "failed")
+                put("pane_id", herdrOpening?.paneId)
+                put("agent", herdrOpening?.agent)
+                put("session_name", herdrOpening?.sessionName)
                 put("error", opening.result.exceptionOrNull()?.message?.let(::JsonPrimitive) ?: JsonNull)
             })
         }
@@ -215,6 +228,9 @@ fun groupOpenJson(branch: String, openings: List<GroupOpening>): JsonObject = bu
 
 fun multirepoAgentOpenJson(multirepo: Multirepo, opening: HerdrOpening): JsonObject = buildJsonObject {
     put("path", multirepo.folder)
-    put("opened", opening == HerdrOpening.OPENED)
-    put("agent", multirepo.agent.displayName)
+    put("opened", opening.outcome != HerdrOutcome.FOCUSED)
+    put("herdr", opening.outcome.jsonValue)
+    put("pane_id", opening.paneId)
+    put("agent", opening.agent ?: multirepo.agent.displayName)
+    put("session_name", opening.sessionName)
 }

@@ -45,6 +45,15 @@ class JsonResourceLimitsRepositoryTest {
     }
 
     @Test
+    fun `the desktop turn duration defaults to 10 minutes and survives a save`() {
+        assertEquals(10, repository.load().desktopTurnMinutes)
+
+        repository.save(ResourceSettings(desktopTurnMinutes = 15))
+
+        assertEquals(15, repository.load().desktopTurnMinutes)
+    }
+
+    @Test
     fun `an unreadable file reads as Automatic`() {
         storagePath.writeText("{ not json")
         assertEquals(CapacityProfile.AUTOMATIC, repository.load().profile)

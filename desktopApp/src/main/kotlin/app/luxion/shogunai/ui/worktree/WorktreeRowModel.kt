@@ -2,6 +2,8 @@ package app.luxion.shogunai.ui.worktree
 
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.EmulatorState
+import app.luxion.shogunai.domain.model.HeadlessAppProcess
+import app.luxion.shogunai.domain.model.HeadlessAppState
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.SimulatorState
@@ -10,6 +12,7 @@ import app.luxion.shogunai.domain.model.WorktreeEmulator
 import app.luxion.shogunai.domain.model.WorktreeOrigin
 import app.luxion.shogunai.domain.model.WorktreeSimulator
 import app.luxion.shogunai.domain.model.WorktreeStatus
+import app.luxion.shogunai.domain.model.toLocalClockTime
 import app.luxion.shogunai.domain.usecase.Activity
 import app.luxion.shogunai.domain.usecase.ActivityDate
 import app.luxion.shogunai.domain.usecase.ActivityKind
@@ -52,7 +55,24 @@ data class AgentLine(
     val tooltip: String,
 )
 
-data class DeviceLine(val label: String, val status: Status, val isSimulator: Boolean)
+enum class SecondLineKind { DESKTOP_HOLDER, DESKTOP_WAITING, EMULATOR, SIMULATOR, HEADLESS_APP }
+
+data class DeviceLine(
+    val label: String,
+    val status: Status,
+    val kind: SecondLineKind,
+    val moreCount: Int = 0,
+    val tooltip: String = label,
+) {
+    val isSimulator: Boolean
+        get() = kind == SecondLineKind.SIMULATOR
+}
+
+sealed interface WorktreeDesktopTurn {
+    data class Holding(val expiresAt: Long) : WorktreeDesktopTurn
+
+    data class Waiting(val position: Int) : WorktreeDesktopTurn
+}
 
 data class ExecutionCell(val agent: AgentLine?, val device: DeviceLine?)
 
@@ -119,6 +139,8 @@ fun worktreeRowModel(
     strings: Strings,
     alias: String? = null,
     groupTag: String? = null,
+    desktopTurn: WorktreeDesktopTurn? = null,
+    headlessApp: HeadlessAppProcess? = null,
 ): WorktreeRowModel {
     val loaded = (status as? WorktreeStatusState.Loaded)?.status
     val kind = worktreeActivity(worktree, loaded, agents, now, inactiveAfter).badgeKind()
@@ -126,7 +148,7 @@ fun worktreeRowModel(
         badge = StateBadge(kind, kind.label(strings)),
         execution = ExecutionCell(
             agent = agentLine(agents, strings),
-            device = deviceLine(emulator, simulator, strings),
+            device = secondLine(desktopTurn, emulator, simulator, headlessApp, strings),
         ),
         name = nameCell(worktree, origin, projectName, strings).copy(groupTag = groupTag),
         git = gitCell(status, loaded, mainBranchName, strings),
@@ -184,9 +206,37 @@ private fun agentLine(agents: List<RunningAgent>, strings: Strings): AgentLine? 
     )
 }
 
+private fun secondLine(
+    desktopTurn: WorktreeDesktopTurn?,
+    emulator: WorktreeEmulator?,
+    simulator: WorktreeSimulator?,
+    headlessApp: HeadlessAppProcess?,
+    strings: Strings,
+): DeviceLine? {
+    val lines = listOfNotNull(
+        desktopTurn?.let { desktopLine(it, strings) },
+        deviceLine(emulator, simulator, strings),
+        headlessApp?.takeIf { it.state == HeadlessAppState.RUNNING }?.let {
+            DeviceLine(strings.headlessAppRunningLabel, Status.INFO, SecondLineKind.HEADLESS_APP)
+        },
+    )
+    val first = lines.firstOrNull() ?: return null
+    return first.copy(moreCount = lines.size - 1, tooltip = lines.joinToString("\n") { it.tooltip })
+}
+
+private fun desktopLine(turn: WorktreeDesktopTurn, strings: Strings): DeviceLine = when (turn) {
+    is WorktreeDesktopTurn.Holding -> DeviceLine(
+        strings.desktopHeldLabel,
+        Status.INFO,
+        SecondLineKind.DESKTOP_HOLDER,
+        tooltip = strings.desktopHeldUntil(Instant.ofEpochMilli(turn.expiresAt).toLocalClockTime()),
+    )
+    is WorktreeDesktopTurn.Waiting -> DeviceLine(strings.desktopWaitingLabel(turn.position), Status.WARNING, SecondLineKind.DESKTOP_WAITING)
+}
+
 private fun deviceLine(emulator: WorktreeEmulator?, simulator: WorktreeSimulator?, strings: Strings): DeviceLine? {
-    activeEmulator(emulator)?.let { return DeviceLine(emulatorStateLabel(it, strings), it.status(), isSimulator = false) }
-    activeSimulator(simulator)?.let { return DeviceLine(simulatorStateLabel(it, strings), it.status(), isSimulator = true) }
+    activeEmulator(emulator)?.let { return DeviceLine(emulatorStateLabel(it, strings), it.status(), SecondLineKind.EMULATOR) }
+    activeSimulator(simulator)?.let { return DeviceLine(simulatorStateLabel(it, strings), it.status(), SecondLineKind.SIMULATOR) }
     return null
 }
 

@@ -62,8 +62,9 @@ class CleanUpWorktreesUseCase(
     fileManager: FileManager? = null,
     private val composeRegistry: ComposeProjectRegistry? = null,
     stopHeadlessApp: StopHeadlessAppUseCase? = null,
+    releaseDesktopTurn: ReleaseDesktopTurnUseCase? = null,
 ) {
-    private val folderRemoval = WorktreeFolderRemoval(config, executor, fileManager, closeHerdrWorkspaces, stopHeadlessApp)
+    private val folderRemoval = WorktreeFolderRemoval(config, executor, fileManager, closeHerdrWorkspaces, stopHeadlessApp, releaseDesktopTurn)
 
     suspend operator fun invoke(
         candidates: List<Worktree>,

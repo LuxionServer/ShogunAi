@@ -1,5 +1,6 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.domain.model.DesktopTurnState
 import app.luxion.shogunai.domain.model.AgentStateSource
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.RunningAgent
@@ -18,6 +19,7 @@ data class WorktreeEntry(
     val origin: WorktreeOrigin?,
     val statusProblem: String? = null,
     val agents: List<RunningAgent> = emptyList(),
+    val desktop: DesktopTurnState = DesktopTurnState(holder = null, waiting = emptyList()),
 )
 
 val WorktreeOrigin.label: String
@@ -46,6 +48,7 @@ private fun worktreeJson(entry: WorktreeEntry): JsonObject = buildJsonObject {
     put("agents", buildJsonArray { entry.agents.forEach { add(agentJson(it)) } })
     put("status", entry.status?.let(::statusObject) ?: JsonNull)
     entry.statusProblem?.let { put("statusProblem", it) }
+    put("desktop", worktreeDesktopJson(entry.desktop, worktree.path) ?: JsonNull)
 }
 
 internal fun agentJson(agent: RunningAgent): JsonObject = buildJsonObject {
@@ -53,6 +56,14 @@ internal fun agentJson(agent: RunningAgent): JsonObject = buildJsonObject {
     put("state", agent.state?.name?.lowercase())
     put("stateSource", agent.stateSource?.let(::sourceLabel))
     put("herdrState", agent.state?.takeIf { agent.stateSource == AgentStateSource.HERDR }?.name?.lowercase())
+    put("sessions", buildJsonArray {
+        agent.sessions.forEach { session ->
+            add(buildJsonObject {
+                put("name", session.name)
+                put("pid", session.pid)
+            })
+        }
+    })
 }
 
 private fun sourceLabel(source: AgentStateSource): String = when (source) {

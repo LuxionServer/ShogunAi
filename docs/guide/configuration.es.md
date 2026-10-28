@@ -37,7 +37,7 @@ Los valores de `env` pueden usar estas plantillas:
 | Plantilla | Se convierte en |
 |---|---|
 | `${port}` | Un puerto reservado para esa variable. |
-| `${port:<clave>}` | Un puerto compartido por todas las variables que usan la misma clave. |
+| `${port:<clave>}` | Un puerto compartido por todas las variables que usan la misma clave. Los demás repositorios de un multirepo pueden referirse a él como `${port:<alias>.<clave>}` en sus [variables compartidas](multirepo.md#variables-compartidas). |
 | `${worktree}` | El nombre de la carpeta del worktree. |
 | `$$` | Un `$` literal. |
 

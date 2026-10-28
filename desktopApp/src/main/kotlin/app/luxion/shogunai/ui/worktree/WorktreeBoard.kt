@@ -24,6 +24,7 @@ import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.usecase.Activity
+import app.luxion.shogunai.ui.machine.DesktopTurnWatch
 import app.luxion.shogunai.ui.machine.MachineProject
 import app.luxion.shogunai.ui.tray.TrayOpenAction
 import app.luxion.shogunai.ui.tray.TrayWorktree
@@ -32,7 +33,6 @@ import app.luxion.shogunai.domain.usecase.isActive
 import app.luxion.shogunai.domain.usecase.worktreeActivity
 import app.luxion.shogunai.domain.usecase.isValidGitRefSegment
 import app.luxion.shogunai.domain.usecase.normalizeTaskId
-import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.usecase.GroupKept
 import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
 import app.luxion.shogunai.domain.usecase.GroupWorktree
@@ -76,6 +76,7 @@ class WorktreeBoard(
     private val onWorktreeUsed: (WorktreeRef) -> Unit = {},
     val inactivity: InactivityPreferences = InactivityPreferences(preferences),
     private val multirepoActions: MultirepoActions = MultirepoActions.NONE,
+    val desktopTurn: DesktopTurnWatch = DesktopTurnWatch.NONE,
 ) : ViewModel() {
     private val deviceRefreshes = mutableMapOf<String, Instant>()
     private val listPermits = Semaphore(MAX_PARALLEL_LISTS)
@@ -600,7 +601,7 @@ class WorktreeBoard(
         viewModelScope.launch {
             try {
                 withContext(ioDispatcher) { multirepoActions.openAgent(multirepo) }
-                    .onSuccess { multirepoNotice = MultirepoNotice.AgentOpened(it == HerdrOpening.FOCUSED) }
+                    .onSuccess { multirepoNotice = MultirepoNotice.AgentOpened(it.outcome) }
                     .onFailure { multirepoNotice = MultirepoNotice.Failed(it) }
             } finally {
                 isOpeningMultirepoAgent = false
@@ -752,6 +753,7 @@ class WorktreeBoard(
     }
 
     private suspend fun checkProjects() {
+        desktopTurn.refresh()
         val unchanged = shownEntries()
             .filterNot { it.holder.isBusy }
             .filter { it.holder.checkFingerprint() == FingerprintCheck.UNCHANGED }

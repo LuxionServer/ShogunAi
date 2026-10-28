@@ -276,7 +276,7 @@ private fun projectListItems(board: WorktreeBoard): List<ListItem> = board.group
 }
 
 private val ProjectWorktrees.hasNotice: Boolean
-    get() = loadState is ProjectLoadState.Failed || error != null || cleanupIssues != null || herdrCloseFailures.isNotEmpty() ||
+    get() = loadState is ProjectLoadState.Failed || error != null || cleanupIssues != null || herdrCloseFailures.isNotEmpty() || headlessStopFailures.isNotEmpty() ||
         keptBranchNotice != null
 
 private val ProjectWorktrees.hasGroupState: Boolean
@@ -392,6 +392,11 @@ private fun GroupState(holder: ProjectWorktrees, projectId: String, projectName:
     holder.keptBranchNotice?.let { kept ->
         Box(Modifier.padding(horizontal = Spacing.md)) {
             KeptBranchNotice(kept, onDelete = { holder.requestForcedBranchDeletion() }, onDismiss = { holder.dismissKeptBranchNotice() })
+        }
+    }
+    if (holder.headlessStopFailures.isNotEmpty()) {
+        Box(Modifier.padding(horizontal = Spacing.md)) {
+            HeadlessStopFailures(holder.headlessStopFailures, onDismiss = { holder.dismissHeadlessStopFailures() })
         }
     }
     if (holder.herdrCloseFailures.isNotEmpty()) {
@@ -515,6 +520,8 @@ private fun WorktreeRowFor(
             strings = strings,
             alias = alias,
             groupTag = groupTag?.label,
+            desktopTurn = board.desktopTurn.rowTurn(worktree.path),
+            headlessApp = holder.headlessApps[worktree.path]?.takeIf { holder.isHeadlessAppRepository },
         ),
         selected = board.selected == ref,
         isCopied = holder.copiedWorktreePath == worktree.path,

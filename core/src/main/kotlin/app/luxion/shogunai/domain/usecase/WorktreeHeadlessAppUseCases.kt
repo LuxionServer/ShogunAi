@@ -7,6 +7,7 @@ import app.luxion.shogunai.domain.io.RepositoryProvisioningSource
 import app.luxion.shogunai.domain.model.AppWindow
 import app.luxion.shogunai.domain.model.DesktopAppProvider
 import app.luxion.shogunai.domain.model.HeadlessAppPaths
+import app.luxion.shogunai.domain.model.HeadlessAppProcess
 import app.luxion.shogunai.domain.model.HeadlessAppStart
 import app.luxion.shogunai.domain.model.HeadlessAppState
 import app.luxion.shogunai.domain.model.HeadlessAppStatus
@@ -154,6 +155,13 @@ class ReadHeadlessAppUseCase(
             paths = paths,
             grantedPermissions = worktrees.grantedPermissions(),
         )
+    }
+
+    suspend fun process(worktreePath: String): Result<HeadlessAppProcess?> = runCatching {
+        if (!worktrees.declaresApp(worktreePath)) return@runCatching null
+        val paths = worktrees.locate(worktreePath).paths
+        val pid = worktrees.runningPid(paths)
+        HeadlessAppProcess(if (pid == null) HeadlessAppState.STOPPED else HeadlessAppState.RUNNING, pid, paths.logPath)
     }
 }
 
