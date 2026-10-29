@@ -314,7 +314,7 @@ class HookCommandsTest {
         val exitCode = cli(executor, """{"worktree_path":"$path"}""", existing = listOf(base, path)).run(listOf("hook", "worktree-remove"))
 
         assertEquals(0, exitCode)
-        assertEquals("shogun: kept branch feature/TASK-123 because it isn't merged into the main branch\n", err.toString())
+        assertEquals("shogun: kept branch feature/TASK-123 because it isn't merged into its base or the main branch\n", err.toString())
     }
 
     @Test
@@ -333,7 +333,27 @@ class HookCommandsTest {
         assertEquals(0, exitCode)
         assertTrue(executor.ran("git", "merge-base", "--is-ancestor", "feature/TASK-123", "main"))
         assertTrue(executor.branchDeletions().isEmpty())
-        assertEquals("shogun: kept branch feature/TASK-123 because it isn't merged into the main branch\n", err.toString())
+        assertEquals("shogun: kept branch feature/TASK-123 because it isn't merged into its base or the main branch\n", err.toString())
+    }
+
+    @Test
+    fun `worktree-remove deletes a branch merged into its recorded base but not into the main branch`() {
+        val path = "$worktreesRoot/TASK-123"
+        val executor = Executor(porcelain(path to "feature/TASK-123")) { command ->
+            when {
+                command.take(3) == listOf("git", "config", "--get") -> CommandResult(command, 0, "epic/redesign\n", "")
+                command.take(2) == listOf("git", "rev-parse") && command.last() == "refs/remotes/origin/epic/redesign" -> CommandResult(command, 1, "", "")
+                command.take(3) == listOf("git", "merge-base", "--is-ancestor") && command.last() == "main" ->
+                    CommandResult(command, 1, "", "")
+                else -> null
+            }
+        }
+
+        val exitCode = cli(executor, """{"worktree_path":"$path"}""", existing = listOf(base, path)).run(listOf("hook", "worktree-remove"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(executor.ran("git", "merge-base", "--is-ancestor", "feature/TASK-123", "epic/redesign"))
+        assertTrue(executor.ran("git", "branch", "-D", "--", "feature/TASK-123"))
     }
 
     @Test
@@ -684,7 +704,7 @@ class HookCommandsTest {
         val exitCode = cli(executor, "", environment = removedEnvironment()).run(listOf("hook", "herdr"))
 
         assertEquals(0, exitCode)
-        assertEquals("shogun: kept branch feature/TASK-9 because it isn't merged into the main branch\n", err.toString())
+        assertEquals("shogun: kept branch feature/TASK-9 because it isn't merged into its base or the main branch\n", err.toString())
     }
 
     @Test

@@ -94,7 +94,8 @@ Lists every worktree of the repository, one per line: path, branch (or `(detache
 | `agents=claude(blocked, app-task-123),codex` | Agents running in it, with their state (`working`, `blocked`, `done`, `idle`) when Herdr or Orca reports it or, for Claude, when its [hooks](../agents.md#agent-states-outside-herdr) do. A Claude agent also lists, after its state, the names of its live sessions whose folder is in that worktree, as Claude Code's session registry has them (`claude(app-task-123)` when there's no state). |
 | `changes=N` | Uncommitted changes. |
 | `ahead=N behind=N` | Divergence from its upstream. |
-| `merged` | Merged into the main branch. |
+| `base-ahead=N base-behind=N of develop` | Divergence from its base: the recorded [base](#base) when it resolves, otherwise the main branch. |
+| `merged` | Merged into its base or into the main branch. |
 | `not-started` | The branch never had commits of its own (shown instead of `merged`). |
 | `folder-missing` | The folder was deleted by hand. |
 | `status-unavailable (reason)` | Its status couldn't be read, with Git's reason. |
@@ -126,6 +127,7 @@ Prints one compact JSON object on a single line instead of the text lines. Error
         "uncommittedChanges": 0,
         "upstream": { "ahead": 0, "behind": 0 },
         "mainBranch": null,
+        "base": null,
         "merged": false,
         "lastCommitAt": "2026-10-18T09:12:44Z",
         "createdAt": "2026-10-17T16:40:02Z"
@@ -145,8 +147,9 @@ Prints one compact JSON object on a single line instead of the text lines. Error
 | `agents` | The agents running in it: `name`, `state` (`working`, `blocked`, `done`, `idle`; `null` when nothing reports one), `stateSource` (`herdr`, `orca`, `claude-code` or `null`), `herdrState`, the state when Herdr is the source and `null` otherwise, and `sessions`, the agent's live Claude Code sessions in that worktree (`name` and `pid`; empty for other agents or when none is found). |
 | `status` | `null` when the folder is missing or its status couldn't be read. |
 | `statusProblem` | Only present when the status couldn't be read: Git's reason. |
-| `status.uncommittedChanges`, `status.merged` | Uncommitted changes; merged into the main branch. |
+| `status.uncommittedChanges`, `status.merged` | Uncommitted changes; merged into its base or into the main branch. |
 | `status.upstream`, `status.mainBranch` | `{ "ahead": n, "behind": n }` against the upstream and the main branch; `null` when there is none. |
+| `status.base` | `{ "branch", "ahead", "behind" }` against its base: the recorded [base](#base) when it resolves (`origin/<base>` first, the local branch otherwise), otherwise the main branch; `null` when there is none or the worktree is on it. |
 | `status.lastCommitAt` | Time of the last commit in ISO-8601 UTC, or `null`. |
 | `desktop` | `null`, or the worktree's [desktop turn](#desktop): `{ "role": "holder", "since", "expiresAt" }` when it holds it, `{ "role": "waiting", "position", "since" }` when it waits for it, with ISO-8601 UTC times. |
 | `status.createdAt` | Time the worktree was created, in ISO-8601 UTC, read from Git's administrative folder for it; `null` for the main checkout or when it can't be read. |
@@ -163,6 +166,7 @@ Prints the branch a worktree's branch was created from, alone on standard output
 
 - ShogunAi records it when it creates a branch: `shogun new`, Claude Code's `WorktreeCreate` hook, the desktop app's "New worktree" and the worktrees of a [multirepo group](#multirepos), which start from each repository's main branch.
 - It's stored in the repository's Git config as `branch.<branch>.gh-merge-base`, the key `gh pr create` already reads as its default base. Nothing goes into the working tree; every worktree of the repository sees it, renaming the branch keeps it and deleting the branch removes it.
+- `status`, `clean` and branch deletion count a branch as merged when it's merged into its recorded base or into the main branch, so a feature branch of an epic can be cleaned up once it reaches the epic. A base that doesn't resolve (deleted, never fetched) falls back to the main branch.
 - When none is recorded (a worktree created by Herdr or `git worktree add`, or a branch from before ShogunAi recorded bases), it says so on standard error, suggests `--set` and exits with `1`. A detached worktree has no branch and also exits with `1`.
 - `--set <branch>` records it, replacing any previous value. The value must be a local branch or a branch of a remote, whose remote prefix is dropped (`origin/develop` is recorded as `develop`); a tag or an unknown name records nothing and exits with `1`.
 - `--json` prints `{ "path", "branch", "base" }`, with `base` `null` (and exit code `1`) when none is recorded.
@@ -212,7 +216,7 @@ shogun remove <task id | path | branch> [--force|-f] [--delete-branch | --force-
 
 Removes one linked worktree, the way the desktop app's remove does. The target is, in this order, the path of a worktree, the exact name of its branch, or a task id (the worktree at `<worktrees folder>/<task id>`); no match, or more than one, removes nothing and fails (listing the candidates). The main worktree is never removed.
 
-Without `--force` it refuses a worktree with uncommitted or untracked changes, or one where an agent is running (`shogun: claude is running in <path>; use --force to remove it anyway`), and exits with `1`. With `--force` it removes it anyway. The branch is kept unless you pass `--delete-branch`, which deletes it only when it's merged into the project's main branch (`deleted branch …`, or `kept branch … (not merged into the main branch)`; a kept branch doesn't make the command fail). `--force-delete-branch` deletes it even if it isn't merged.
+Without `--force` it refuses a worktree with uncommitted or untracked changes, or one where an agent is running (`shogun: claude is running in <path>; use --force to remove it anyway`), and exits with `1`. With `--force` it removes it anyway. The branch is kept unless you pass `--delete-branch`, which deletes it only when it's merged into its recorded [base](#base) or into the project's main branch (`deleted branch …`, or `kept branch … (not merged into its base or the main branch)`; a kept branch doesn't make the command fail). `--force-delete-branch` deletes it even if it isn't merged.
 
 After removing it, the command stops what the repository's providers keep for that worktree: its Android emulator (`stopped emulator …`), its iOS simulator (`stopped simulator …`) and the idle Gradle daemons whose last build was in it (`stopped Gradle daemon …`). A resource that can't be stopped is reported on standard error and the exit code is `1`; the worktree is already removed by then. Its Herdr workspace is closed too, and so are its Orca terminals while Orca is running (Orca is never started for this; a terminal that can't be closed is reported on standard error without changing the exit code). Its headless desktop app, if running, is stopped before the folder is removed. If Git can't delete the folder because a program is using it (typically a Herdr or Orca shell on Windows), the workspace, the Herdr panes inside the worktree and its Orca terminals are closed and the removal is retried once; a worktree Git had already unregistered but whose folder is left is finished by deleting that folder, and a folder still in use fails with a message saying so.
 
@@ -257,7 +261,7 @@ A worktree where an agent is running is listed as `kept <path> (claude is runnin
 
 | Option | Also… |
 |---|---|
-| `--delete-branches` | Deletes the removed worktrees' branches if they're merged into the project's main branch (`kept branch …` otherwise). |
+| `--delete-branches` | Deletes the removed worktrees' branches if they're merged into their recorded [base](#base) or into the project's main branch (`kept branch …` otherwise). |
 | `--stop-gradle-daemons` | Stops the idle Gradle daemons whose last build was in a removed worktree. |
 | `--stop-maven-daemons` | Stops the idle Maven daemons whose last build was in a removed worktree (`would stop Maven daemon …` without `--yes`). |
 | `--stop-emulators` | Stops the removed worktrees' Android emulators. |
@@ -518,10 +522,10 @@ These commands are meant to be called by agents and tools, not typed. How to con
 | Command | Called by |
 |---|---|
 | `shogun hook worktree-create` | Claude Code's `WorktreeCreate` hook. Reads `name` and `cwd` from standard input, creates (or reuses) a provisioned worktree on `feature/<name>` starting at the HEAD of the worktree in `cwd`, and prints its path. If a post-creation command fails it still prints the path as the last line and exits with 0, with the failure on standard error, so Claude Code uses the worktree. Unapproved post-creation commands and declared variables are skipped with a note on standard error; it never asks. |
-| `shogun hook worktree-remove` | Claude Code's `WorktreeRemove` hook. Removes the worktree in `worktree_path`, deletes its branch only if it's merged into the project's main branch (a branch merged only into its own upstream is kept, with a note on standard error) and closes its Herdr workspace and its Orca terminals. |
+| `shogun hook worktree-remove` | Claude Code's `WorktreeRemove` hook. Removes the worktree in `worktree_path`, deletes its branch only if it's merged into its recorded base or into the project's main branch (a branch merged only into its own upstream is kept, with a note on standard error) and closes its Herdr workspace and its Orca terminals. |
 | `shogun hook session-start` | Claude Code's `SessionStart` hook. Inside a Git repository, prints the context. Only when the repository is registered as a project does it append the worktree's environment to `CLAUDE_ENV_FILE` (nothing when the repository declares no `env`) and print a line naming the variables, without their values; declared variables awaiting approval are named on a line of their own, telling the agent to ask you to review them with `shogun trust`, and aren't delivered. Then come the short [workflow rules](#guide) that apply to that location, at most ten lines, starting with the precedence line and ending with a pointer to `shogun guide`. Without Herdr it leaves out the rules about `shogun open --herdr` and messaging sessions; the emulator and simulator rules appear only when the repository declares those providers. Outside a Git repository it prints nothing and exits with `0`. |
 | `shogun hook agent-state` | Claude Code's `UserPromptSubmit`, `Notification`, `Stop` and `SessionEnd` hooks. Reads the hook's JSON from standard input and records the session's state (working, blocked, done) for the worktree containing `cwd`, or removes the record on `SessionEnd`; a `Notification` of type `idle_prompt` means done and `auth_success` is ignored. When the state is working it also renews the leases of the emulator and simulator the worktree holds. It prints nothing, never blocks the session and exits with 0 also outside a repository; input that isn't JSON exits with 2. See [Agent states outside Herdr](../agents.md#agent-states-outside-herdr). |
-| `shogun hook herdr` | The ShogunAi plugin for Herdr, on `worktree.created` (provisions the worktree, skipping unapproved post-creation commands with a note) and `worktree.removed` (deletes its branch if merged into the project's main branch). Reads `HERDR_PLUGIN_EVENT`, `HERDR_PLUGIN_EVENT_JSON` and `HERDR_BIN_PATH`. |
+| `shogun hook herdr` | The ShogunAi plugin for Herdr, on `worktree.created` (provisions the worktree, skipping unapproved post-creation commands with a note) and `worktree.removed` (deletes its branch if merged into its recorded base or into the project's main branch). Reads `HERDR_PLUGIN_EVENT`, `HERDR_PLUGIN_EVENT_JSON` and `HERDR_BIN_PATH`. |
 | `shogun hook orca setup` | Orca's `scripts.setup` in `orca.yaml`. Provisions the worktree at `ORCA_WORKTREE_PATH` like `shogun provision` (`ORCA_ROOT_PATH` finds the repository when the worktree's Git metadata can't), prints the copied files and, when the worktree is outside the project's worktrees folder, a note saying so. Exits with `2` without `ORCA_WORKTREE_PATH` and `1` when provisioning fails. See [Orca](configuration.md#orca). |
 | `shogun hook orca archive` | Orca's `scripts.archive`. Frees the emulator, simulator and idle Gradle daemons of the worktree at `ORCA_WORKTREE_PATH`, leaving the worktree and its branch to Orca, and always exits with `0`, printing what it couldn't free on standard error. Another action exits with `2`. |
 

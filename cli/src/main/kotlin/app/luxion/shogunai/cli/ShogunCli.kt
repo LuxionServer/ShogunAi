@@ -123,6 +123,8 @@ import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.ResolveBaseBranchUseCase
 import app.luxion.shogunai.domain.usecase.ReadBaseBranchesUseCase
+import app.luxion.shogunai.domain.usecase.RepositoryBases
+import app.luxion.shogunai.domain.usecase.ResolveRecordedBasesUseCase
 import app.luxion.shogunai.domain.usecase.SetBaseBranchUseCase
 import app.luxion.shogunai.domain.usecase.DeleteMergedBranchUseCase
 import app.luxion.shogunai.domain.usecase.DetectRunningAgentsUseCase
@@ -600,8 +602,10 @@ class ShogunCli(
 
     private val readGroups = ReadGroupsUseCase(
         DetectGroupsUseCase(executor),
-        resolveBase = { member -> ResolveMainBranchUseCase(member.config, executor)().getOrNull() },
-        readStatus = { member, base -> ReadWorktreeStatusUseCase(executor, fileManager)(member.worktree, base) },
+        resolveBases = { member ->
+            RepositoryBases(ResolveMainBranchUseCase(member.config, executor)().getOrNull(), ResolveRecordedBasesUseCase(member.config, executor)())
+        },
+        readStatus = { member, mainBranch, base -> ReadWorktreeStatusUseCase(executor, fileManager)(member.worktree, mainBranch, base) },
         detectAgents = { searches -> DetectRunningAgentsUseCase(executor, herdr, sessionStore, claudeSessions = claudeSessions, orca = orcaReader)(searches) },
     )
 
@@ -903,7 +907,7 @@ class ShogunCli(
                 status == null -> add(state.status?.exceptionOrNull()?.let { "status-unavailable (${failureReason(it)})" } ?: "status-unavailable")
                 else -> {
                     add("changes=${status.uncommittedChanges}")
-                    status.mainBranch?.let { add("ahead=${it.ahead} behind=${it.behind}" + (state.base?.let { base -> " of ${base.name}" } ?: "")) }
+                    status.base?.let { add("ahead=${it.ahead} behind=${it.behind}" + (status.baseName?.let { base -> " of $base" } ?: "")) }
                     if (status.isMerged) add("merged")
                     if (status.isNotStarted) add("not-started")
                 }
@@ -1229,8 +1233,9 @@ class ShogunCli(
         val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore, claudeSessions = claudeSessions, orca = orcaReader)(config, worktrees.filterNot { it.isPrunable }).getOrNull().orEmpty()
         val desktop = readDesktopTurn().getOrElse { DesktopTurnState(holder = null, waiting = emptyList()) }
         val bases = ReadBaseBranchesUseCase(config, executor)().getOrElse { emptyMap() }
+        val resolvedBases = ResolveRecordedBasesUseCase(config, executor)()
         val entries = worktrees.map { worktree ->
-            val read = if (worktree.isPrunable) null else readStatus(worktree, mainBranch)
+            val read = if (worktree.isPrunable) null else readStatus(worktree, mainBranch, worktree.branch?.let(resolvedBases::get) ?: mainBranch)
             WorktreeEntry(
                 worktree,
                 read?.getOrNull(),
@@ -1422,9 +1427,10 @@ class ShogunCli(
         val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
         val mainBranch = ResolveMainBranchUseCase(config, executor)().getOrNull()
         val readStatus = ReadWorktreeStatusUseCase(executor, fileManager)
+        val bases = ResolveRecordedBasesUseCase(config, executor)()
         val statusReads = worktrees
             .filterNot { it.isMain || it.isPrunable || it.isLocked }
-            .associateWith { worktree -> readStatus(worktree, mainBranch) }
+            .associateWith { worktree -> readStatus(worktree, mainBranch, worktree.branch?.let(bases::get) ?: mainBranch) }
         val statuses = statusReads.mapNotNull { (worktree, read) -> read.getOrNull()?.let { worktree.path to it } }.toMap()
         val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore, orca = orcaReader)(config, worktrees.filterNot { it.isMain || it.isPrunable })
             .onFailure { err.line("shogun: couldn't check for running agents, so none were taken into account: ${it.message}") }
@@ -2932,6 +2938,7 @@ class ShogunCli(
                 else -> {
                     add("changes=${status.uncommittedChanges}")
                     status.upstream?.let { add("ahead=${it.ahead} behind=${it.behind}") }
+                    status.base?.let { add("base-ahead=${it.ahead} base-behind=${it.behind}" + (status.baseName?.let { base -> " of $base" } ?: "")) }
                     if (status.isMerged) add("merged")
                     if (status.isNotStarted) add("not-started")
                 }

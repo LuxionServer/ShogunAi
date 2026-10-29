@@ -14,6 +14,10 @@ data class GroupWorktreeState(
         get() = member.worktree.isPrunable || status?.getOrNull()?.let { it.isMerged && it.uncommittedChanges == 0 } == true
 }
 
+data class RepositoryBases(val main: MainBranch?, val recorded: Map<String, MainBranch> = emptyMap()) {
+    fun of(branch: String?): MainBranch? = branch?.let(recorded::get) ?: main
+}
+
 data class GroupState(val group: WorktreeGroup, val worktrees: List<GroupWorktreeState>)
 
 data class MultirepoState(
@@ -24,21 +28,22 @@ data class MultirepoState(
 
 class ReadGroupsUseCase(
     private val detectGroups: DetectGroupsUseCase,
-    private val resolveBase: suspend (MultirepoMember) -> MainBranch?,
-    private val readStatus: suspend (GroupWorktree, MainBranch?) -> Result<WorktreeStatus>,
+    private val resolveBases: suspend (MultirepoMember) -> RepositoryBases,
+    private val readStatus: suspend (GroupWorktree, MainBranch?, MainBranch?) -> Result<WorktreeStatus>,
     private val detectAgents: suspend (List<AgentSearch>) -> Result<Map<String, List<RunningAgent>>>,
 ) {
     suspend operator fun invoke(members: List<MultirepoMember>, withUngrouped: Boolean = true): MultirepoState {
         val worktrees = detectGroups(members)
-        val bases = members.associate { it.alias to runCatching { resolveBase(it) }.getOrNull() }
+        val bases = members.associate { it.alias to (runCatching { resolveBases(it) }.getOrNull() ?: RepositoryBases(null)) }
         val relevant = worktrees.groups.flatMap { it.worktrees } + if (withUngrouped) worktrees.ungrouped else emptyList()
         val searches = members.map { member ->
             AgentSearch(member.config.agents.map { it.agentCommand }, relevant.filter { it.alias == member.alias && !it.worktree.isPrunable }.map { it.worktree })
         }
         val agents = detectAgents(searches).getOrNull().orEmpty()
         val states = relevant.associate { member ->
-            val base = bases[member.alias]
-            val status = if (member.worktree.isPrunable) null else readStatus(member, base)
+            val repositoryBases = bases.getValue(member.alias)
+            val base = repositoryBases.of(member.worktree.branch)
+            val status = if (member.worktree.isPrunable) null else readStatus(member, repositoryBases.main, base)
             member.worktree.path to GroupWorktreeState(member, base, status, agents[member.worktree.path].orEmpty())
         }
         return MultirepoState(

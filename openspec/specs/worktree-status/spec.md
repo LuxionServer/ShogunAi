@@ -29,7 +29,7 @@ The system SHALL resolve the branch a project's worktrees are compared against. 
 - **THEN** worktree statuses are still shown, without any main branch comparison or merged state
 
 ### Requirement: Read the status of a worktree
-The system SHALL read, for each worktree, the number of uncommitted changes, the commits ahead of and behind its upstream branch, the commits ahead of and behind the main branch, and the date of its last commit. A value that doesn't apply (no upstream, no main branch, a worktree that is itself on the main branch) is left out instead of shown as zero.
+The system SHALL read, for each worktree, the number of uncommitted changes, the commits ahead of and behind its upstream branch, the commits ahead of and behind the main branch, the commits ahead of and behind its base, and the date of its last commit. A value that doesn't apply (no upstream, no main branch, a worktree that is itself on the main branch or on its base) is left out instead of shown as zero.
 
 #### Scenario: Worktree with changes and divergence
 - **WHEN** a worktree has 3 modified or untracked files, is 2 commits ahead of its upstream, and 4 commits ahead of and 1 behind the main branch
@@ -47,8 +47,12 @@ The system SHALL read, for each worktree, the number of uncommitted changes, the
 - **WHEN** a worktree has a detached HEAD
 - **THEN** its status is read from its HEAD commit, without upstream divergence
 
+#### Scenario: Worktree with a recorded base
+- **WHEN** a worktree's branch has recorded base `epic/redesign`, is 3 commits ahead of and 1 behind it, and 9 ahead of the main branch
+- **THEN** its status shows 3 ahead of and 1 behind its base `epic/redesign`, and 9 ahead of the main branch
+
 ### Requirement: Show whether a worktree's branch is merged
-The system SHALL mark a worktree's branch as merged when it has no commits that the main branch lacks and the main branch has moved past it. A branch with no commits of its own that still points at the main branch's tip is not marked as merged. A branch that never had commits of its own is not marked as merged either, even after the main branch moves past it.
+The system SHALL mark a worktree's branch as merged when, against its base or against the main branch, it has no commits that branch lacks and that branch has moved past it. A branch with no commits of its own that still points at the tip of its base or the main branch is not marked as merged for that branch. Squash and rebase merges aren't detected. A branch that never had commits of its own is not marked as merged either, even after the main branch moves past it.
 
 #### Scenario: Branch merged into the main branch
 - **WHEN** every commit of a worktree's branch is already in the main branch and the main branch has at least one commit the branch lacks
@@ -62,8 +66,24 @@ The system SHALL mark a worktree's branch as merged when it has no commits that 
 - **WHEN** a worktree's branch has at least one commit not in the main branch
 - **THEN** the worktree is not shown as merged
 
+#### Scenario: Branch merged into its recorded base
+- **WHEN** `feature/TASK-123`, recorded with base `epic/redesign`, is merged into `epic/redesign`, which isn't merged into the main branch yet
+- **THEN** the worktree is shown as merged
+
+#### Scenario: Stacked branch merged into the branch below
+- **WHEN** `feature/TASK-2` was created from `feature/TASK-1` and is merged into it
+- **THEN** the worktree of `feature/TASK-2` is shown as merged
+
+#### Scenario: Base deleted after reaching the main branch
+- **WHEN** `epic/redesign` was merged into the main branch and deleted, and `feature/TASK-123` is contained in the main branch
+- **THEN** the worktree is shown as merged
+
+#### Scenario: Merged into the main branch but not into the base
+- **WHEN** `feature/TASK-123`, recorded with base `epic/redesign`, was merged straight into the main branch
+- **THEN** the worktree is shown as merged
+
 ### Requirement: Show worktree statuses in the worktree list
-The system SHALL show each worktree's status compactly in its row (uncommitted changes count, commits ahead of and behind the main branch, merged, and the activity date) and in full in its detail (also the upstream divergence, the main branch's name, the last commit date and the creation date). The list SHALL appear without waiting for the statuses, each row SHALL show that its status is loading until it is read for the first time, and a worktree whose status can't be read SHALL show that it is unavailable without affecting the other rows. When statuses are read again, each row SHALL keep showing its previous status until the new one is read. Dates are shown relative to now.
+The system SHALL show each worktree's status compactly in its row (uncommitted changes count, commits ahead of and behind its base, merged, and the activity date) and in full in its detail (also the upstream divergence, the base's name, the last commit date and the creation date). The list SHALL appear without waiting for the statuses, each row SHALL show that its status is loading until it is read for the first time, and a worktree whose status can't be read SHALL show that it is unavailable without affecting the other rows. When statuses are read again, each row SHALL keep showing its previous status until the new one is read. Dates are shown relative to now.
 
 #### Scenario: List shown before statuses
 - **WHEN** the worktree view loads a project's worktrees for the first time
@@ -89,6 +109,10 @@ The system SHALL show each worktree's status compactly in its row (uncommitted c
 - **WHEN** the selected worktree is 2 commits ahead of its upstream and 5 behind `main`
 - **THEN** its detail shows both divergences, naming the upstream and `main`
 
+#### Scenario: Detail of a worktree with a recorded base
+- **WHEN** the selected worktree's branch has recorded base `epic/redesign` and is 3 commits ahead of it
+- **THEN** its detail shows 3 ahead naming `epic/redesign`
+
 ### Requirement: Reload worktree statuses
 The system SHALL read every worktree's status again whenever the worktree list is reloaded, and SHALL read the status of a newly created worktree when it is added to the list.
 
@@ -108,7 +132,7 @@ The system SHALL read worktree statuses without writing to the repository, so re
 - **THEN** the uncommitted changes are read with Git's optional locks disabled, and the worktree's index file is left untouched
 
 ### Requirement: Show a branch that never had commits as not started
-The system SHALL show a worktree as not started when its branch still points at the commit it was created from, Git's record of the branch shows no other update, and the branch has no upstream. When that record is missing or can't be read, the system SHALL keep the merged reading. A not-started worktree SHALL NOT be a cleanup candidate for being merged.
+The system SHALL show a worktree as not started, instead of merged into its base or the main branch, when its branch still points at the commit it was created from, Git's record of the branch shows no other update, and the branch has no upstream. When that record is missing or can't be read, the system SHALL keep the merged reading. A not-started worktree SHALL NOT be a cleanup candidate for being merged.
 
 #### Scenario: Main branch moves after creation
 - **WHEN** a worktree's branch was created from the main branch, has no commits, has no upstream, and the main branch gets a new commit
@@ -130,8 +154,12 @@ The system SHALL show a worktree as not started when its branch still points at 
 - **WHEN** Git keeps no record of the branch's updates
 - **THEN** the worktree is shown as merged under the usual rule
 
+#### Scenario: Recorded base moves after creation
+- **WHEN** a worktree's branch was created from `epic/redesign`, its recorded base, has no commits and no upstream, and `epic/redesign` gets a new commit
+- **THEN** the worktree is shown as not started, not as merged, and cleanup doesn't offer it
+
 ### Requirement: Activity date of a worktree
-A worktree's activity date SHALL be the date of its last commit when its branch has commits the main branch lacks, or when no main branch is resolved or the worktree is the main one. Otherwise it SHALL be the worktree's creation date, read from Git's administrative folder for that worktree without writing to it. When the creation date can't be read, the last commit date SHALL be used, still labelled as a commit.
+A worktree's activity date SHALL be the date of its last commit when its branch has commits its base lacks, or when no base is resolved or the worktree is the main one. Otherwise it SHALL be the worktree's creation date, read from Git's administrative folder for that worktree without writing to it. When the creation date can't be read, the last commit date SHALL be used, still labelled as a commit.
 
 #### Scenario: Branch with commits of its own
 - **WHEN** a worktree's branch is 2 commits ahead of `develop`, the last one made 3 hours ago
@@ -144,3 +172,7 @@ A worktree's activity date SHALL be the date of its last commit when its branch 
 #### Scenario: Main worktree
 - **WHEN** the row is the main worktree
 - **THEN** its activity date is its last commit's date
+
+#### Scenario: Branch of an epic without commits of its own
+- **WHEN** a worktree was created 2 days ago on a new branch at `epic/redesign`'s tip, its recorded base, which is 5 commits ahead of `develop`
+- **THEN** its activity date is 2 days ago, labelled as its creation

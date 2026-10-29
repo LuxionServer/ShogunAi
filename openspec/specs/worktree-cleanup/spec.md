@@ -17,7 +17,7 @@ The system SHALL show in the worktree list which worktrees are locked and which 
 - **THEN** its row shows a "folder missing" label instead of "status unavailable"
 
 ### Requirement: Select worktrees to clean up
-The system SHALL consider for cleanup every non-main worktree that is merged into the main branch and has no uncommitted changes, plus every worktree whose folder is missing. Locked worktrees, the main worktree, worktrees with uncommitted changes, and worktrees whose status isn't loaded SHALL never be selected.
+The system SHALL consider for cleanup every non-main worktree that is merged into its base or into the main branch and has no uncommitted changes, plus every worktree whose folder is missing. Locked worktrees, the main worktree, worktrees with uncommitted changes, and worktrees whose status isn't loaded SHALL never be selected.
 
 #### Scenario: Merged and clean worktree
 - **WHEN** a non-main, unlocked worktree is merged into the main branch and has no uncommitted changes
@@ -37,6 +37,10 @@ The system SHALL consider for cleanup every non-main worktree that is merged int
 
 #### Scenario: Missing folder
 - **WHEN** a worktree's folder is missing and it isn't locked
+- **THEN** it is selected for cleanup
+
+#### Scenario: Merged into its recorded base
+- **WHEN** a clean, unlocked worktree's branch is merged into its recorded base `epic/redesign`, which isn't merged into the main branch
 - **THEN** it is selected for cleanup
 
 ### Requirement: Confirm before cleaning up
@@ -59,7 +63,7 @@ The system SHALL offer a "Clean up" action in the worktree view's header, coveri
 - **THEN** the dialog only lists `api`'s candidates
 
 ### Requirement: Clean up the selected worktrees
-On confirmation, the system SHALL remove each selected worktree whose folder exists without forcing, and prune the records of missing ones. When branch deletion was chosen, a worktree's branch SHALL be deleted only if it is still contained in the main branch at that moment. One failure SHALL NOT stop the rest. The screen SHALL then report the outcome and reload the list.
+On confirmation, the system SHALL remove each selected worktree whose folder exists without forcing, and prune the records of missing ones. When branch deletion was chosen, a worktree's branch SHALL be deleted only if it is still contained in its base or in the main branch at that moment. One failure SHALL NOT stop the rest. The screen SHALL then report the outcome and reload the list.
 
 #### Scenario: All worktrees removed
 - **WHEN** the user confirms and every selected worktree is removed
@@ -84,6 +88,10 @@ On confirmation, the system SHALL remove each selected worktree whose folder exi
 #### Scenario: Cleanup in progress
 - **WHEN** the cleanup is running
 - **THEN** the dialog shows a progress indicator and its actions are disabled until it finishes
+
+#### Scenario: Branch contained in its recorded base
+- **WHEN** the user chose to delete branches and a removed worktree's branch is contained in its recorded base `epic/redesign` but not in the main branch
+- **THEN** that local branch is deleted
 
 ### Requirement: Stop the Gradle daemons of removed worktrees
 When the repository declares the Gradle provider, the cleanup dialog SHALL offer an option, checked by default, to also stop the idle Gradle daemons whose last build was in one of the worktrees it removes. Stopping follows the Gradle provider's rules for idle daemons, runs after the removals, and a daemon that can't be stopped SHALL NOT turn the cleanup into a failure.

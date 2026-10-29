@@ -8,6 +8,7 @@ import app.luxion.shogunai.infrastructure.MacAppWindowService
 import app.luxion.shogunai.infrastructure.GradleHeadlessAppLauncher
 import app.luxion.shogunai.domain.usecase.StopHeadlessAppUseCase
 import app.luxion.shogunai.domain.usecase.HeadlessAppWorktrees
+import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.DerivedDataQuota
 import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.MeasuredSize
@@ -211,6 +212,7 @@ import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.WorktreeResourcePlan
 import app.luxion.shogunai.domain.usecase.RepairWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
+import app.luxion.shogunai.domain.usecase.ResolveRecordedBasesUseCase
 import app.luxion.shogunai.domain.usecase.ProjectRegistration
 import app.luxion.shogunai.domain.usecase.RegisterProjectUseCase
 import app.luxion.shogunai.domain.usecase.ResolveRepositoryUseCase
@@ -743,6 +745,7 @@ class AppContainer {
         agents = AgentUseCases(config, agentChoices),
         repair = RepairWorktreesUseCase(config, shellCommandExecutor, fileManager),
         resolveMainBranch = ResolveMainBranchUseCase(config, shellCommandExecutor),
+        resolveRecordedBases = { ResolveRecordedBasesUseCase(config, shellCommandExecutor)() },
         readStatus = ReadWorktreeStatusUseCase(shellCommandExecutor, fileManager),
         cleanUp = CleanUpWorktreesUseCase(
             config,
@@ -926,6 +929,7 @@ data class WorktreeUseCases(
     val copyLaunchCommand: CopyWorktreeLaunchCommandUseCase,
     val repair: RepairWorktreesUseCase,
     val resolveMainBranch: ResolveMainBranchUseCase,
+    val resolveRecordedBases: suspend () -> Map<String, MainBranch> = { emptyMap() },
     val readStatus: ReadWorktreeStatusUseCase,
     val cleanUp: CleanUpWorktreesUseCase,
     val detectAgents: suspend (List<Worktree>) -> Result<Map<String, List<RunningAgent>>>,

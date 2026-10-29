@@ -343,8 +343,8 @@ private fun ColumnScope.StatusSection(status: WorktreeStatusState?, mainBranchNa
                 if (value.uncommittedChanges > 0) {
                     DetailValue(strings.uncommittedChanges(value.uncommittedChanges))
                 }
-                if (value.isMerged && mainBranchName != null) {
-                    StatusChip(Status.SUCCESS, strings.mergedInto(mainBranchName))
+                value.mergedInto(mainBranchName)?.let { branch ->
+                    StatusChip(Status.SUCCESS, strings.mergedInto(branch))
                 }
                 if (value.isNotStarted) {
                     StatusChip(Status.NEUTRAL, strings.notStarted)
@@ -605,8 +605,8 @@ private fun ColumnScope.ReleaseNote(notAcquired: Boolean, release: ReleaseRecord
 fun statusSegments(status: WorktreeStatus, mainBranchName: String?, now: Instant, strings: Strings): List<String> =
     listOfNotNull(
         status.upstream?.arrows()?.let { "$it ${strings.upstream}" },
-        status.mainBranch?.takeUnless { status.isMerged }?.arrows()?.let { arrows ->
-            listOfNotNull(arrows, mainBranchName).joinToString(" ")
+        status.base?.takeUnless { status.isMerged }?.arrows()?.let { arrows ->
+            listOfNotNull(arrows, status.baseName ?: mainBranchName).joinToString(" ")
         },
         status.lastCommitAt?.let { strings.commitAgo(relativeTime(it, now, strings)) },
         status.createdAt?.let { strings.createdAgo(relativeTime(it, now, strings)) },
