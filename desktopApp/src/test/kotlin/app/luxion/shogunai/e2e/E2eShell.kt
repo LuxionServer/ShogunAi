@@ -102,7 +102,9 @@ private fun ComposeUiTest.textsOnScreen(): List<String> =
     onAllNodes(isRoot(), useUnmergedTree = true).fetchSemanticsNodes().flatMap { root -> textsOf(root) }
 
 private fun textsOf(node: SemanticsNode): List<String> =
-    node.config.getOrNull(SemanticsProperties.Text).orEmpty().map { it.text } + node.children.flatMap(::textsOf)
+    node.config.getOrNull(SemanticsProperties.Text).orEmpty().map { it.text } +
+        listOfNotNull(node.config.getOrNull(SemanticsProperties.EditableText)?.text) +
+        node.children.flatMap(::textsOf)
 
 private fun SemanticsNodeInteractionsProvider.hasNodeWithText(text: String, substring: Boolean): Boolean =
     onAllNodesWithText(text, substring = substring, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()

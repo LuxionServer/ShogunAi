@@ -4,6 +4,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
@@ -54,7 +55,9 @@ class CreateWorktreeE2eTest {
             if (!typed && focusedField) onNode(hasSetTextAction() and isFocused()).performTextReplacement("TASK-123")
             typed
         }
-        onNode(hasClickAction() and hasText(strings.createWorktree)).performClick()
+        val createButton = hasClickAction() and hasText(strings.createWorktree) and isEnabled()
+        awaitCondition("the create button to be enabled") { onAllNodes(createButton).fetchSemanticsNodes().isNotEmpty() }
+        onNode(createButton).performClick()
 
         val worktree = worktreesRoot.resolve("TASK-123")
         awaitCondition("the local files copied into the worktree") {
