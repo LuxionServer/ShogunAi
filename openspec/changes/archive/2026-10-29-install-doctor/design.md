@@ -36,6 +36,8 @@ The check needs `HostEnvironment`, `ExecutableLocator(environment)` and the CLI'
 ```kotlin
 enum class CheckState { PASSED, WARNING, FAILED, NOT_FOUND }
 
+enum class AgentToolId(val id: String, val displayName: String, val website: String) { CLAUDE_CODE, HERDR, ORCA }
+
 data class InstallationCheck(val state: CheckState, val finding: InstallationFinding)
 
 data class InstallationReport(val checks: List<InstallationCheck>) {
@@ -44,14 +46,16 @@ data class InstallationReport(val checks: List<InstallationCheck>) {
 
 sealed interface InstallationFinding {
     val id: String
-    data class Git(val location: String?, val version: String?, val minimum: String) : InstallationFinding
+    data class Git(val location: String?, val version: String?, val minimum: String, val detail: String? = null) : InstallationFinding
     data class PathSource(val source: HostPathSource, val shell: String?) : InstallationFinding
-    data class ShogunCommand(val status: CommandLineToolStatus) : InstallationFinding
+    data class ShogunCommand(val state: CommandLineToolState, val launcher: String?, val folder: String?, val restartNeeded: Boolean) : InstallationFinding
     data class Hooks(val settingsPath: String, val state: HooksInstallState?, val events: List<String>, val shogun: CommandLineToolState, val invalidDetail: String?) : InstallationFinding
-    data class AgentTool(val tool: AgentTool, val location: String?) : InstallationFinding
-    data class ProjectFiles(val project: String, val basePath: String, val baseMissing: Boolean, val checked: Int, val unavailable: List<UnavailableLocalFile>) : InstallationFinding
+    data class AgentTool(val tool: AgentToolId, val location: String?) : InstallationFinding
+    data class ProjectFiles(val project: String, val basePath: String, val baseMissing: Boolean, val checked: Int, val unavailable: List<UnavailableLocalFile>, val detail: String? = null) : InstallationFinding
 }
 ```
+
+The findings reuse `CommandLineToolState` and `HooksInstallState` instead of copying them (`domain/model/Multirepo.kt` already imports from `domain/usecase`); a `null` hooks state means the settings file couldn't be parsed.
 
 Ids are stable strings for JSON (`git`, `path`, `shogun`, `claude-hooks`, `claude-code`, `herdr`, `orca`, `project:<name>`). The state is decided by the use case, not by the renderers, so all three outputs agree. Alternative considered: prebuilt English strings in the model, as `LocalFilesUnavailable` does with its message. The app needs Spanish, and the preflight's desktop texts already render from the structured reasons, so the finding stays structured and each surface renders it.
 
@@ -75,7 +79,7 @@ The hooks check uses the command's status: hooks `INSTALLED` with `shogun` `MISS
 
 ### Reusing the preflight
 
-`WorktreeCreation.kt` gains `internal suspend fun unavailableLocalFiles(config, executor, fileManager, provisioningSource): Pair<ProvisionedFiles, List<UnavailableLocalFile>>`, and `checkLocalFilesAndResolve` becomes "call it, throw if the list isn't empty". The doctor counts `copied + linked` files plus linked folders as "checked". A project's config comes from `ProjectRepository.list()` as the CLI and the app already build it.
+`WorktreeCreation.kt` gains `internal suspend fun checkLocalFiles(config, executor, fileManager, provisioningSource): LocalFilesCheck`, holding the resolved files and the unavailable ones, and `checkLocalFilesAndResolve` becomes "call it, throw if the list isn't empty". `LocalFilesCheck.checked` counts the distinct `copied + linked` files plus linked folders. A project's config comes from `ProjectRepository.list()` as the CLI and the app already build it.
 
 ### The `shogun` command from the CLI
 

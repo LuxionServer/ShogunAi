@@ -342,6 +342,30 @@ El comando vuelve en cuanto se ha avisado a la app, sin esperarla:
 - **La app está abierta**: atiende la orden en un segundo más o menos, con la misma navegación que la barra lateral. Se conservan su ventana, tamaño y posición, y un formulario con cambios sin guardar pregunta si descartarlos en lugar de ser sustituido. Si los ajustes del proyecto ya están abiertos, no cambia nada.
 - **La app está cerrada**: `shogun` la lanza y la app se abre en el proyecto cuando ha arrancado. Funciona donde el lanzador de la propia app es el comando `shogun` (macOS con Homebrew, `.deb` de Linux, `.msi` de Windows). Desde el zip independiente, sin la app instalada, el comando dice que la app de escritorio no está disponible en esa instalación y sale con `1`.
 
+## Instalación
+
+### `doctor`
+
+```text
+shogun doctor [--json]
+```
+
+Comprueba, sin cambiar nada, lo que ShogunAi necesita en esta máquina e imprime una línea por comprobación con `ok`, `warn`, `fail` o `--` (una herramienta opcional que no está instalada), y la solución debajo de cada comprobación que no ha pasado:
+
+```text
+ok    Git 2.45.1 (/usr/bin/git)
+ok    PATH of the process that started ShogunAi
+ok    shogun command at /opt/homebrew/bin/shogun
+warn  Claude Code hooks aren't installed in ~/.claude/settings.json
+      fix: Run 'shogun hooks install', or install them from the desktop app's Preferences › Claude Code
+--    Orca not found
+      fix: Install Orca if you use it: https://www.onorca.dev
+fail  main-repo: 1 local file unavailable in ~/projects/main-repo
+      fix: local.properties: not found at ~/projects/main-repo/local.properties. Create it there, or remove it from the project's local files
+```
+
+Las comprobaciones, por orden: Git se encuentra y es 2.29 o posterior; de dónde viene el `PATH` (el del proceso en la CLI; la app de escritorio lee el del shell de inicio de sesión y avisa cuando no ha podido); el comando `shogun` está en el `PATH` y su lanzador existe; los hooks de Claude Code en los ajustes de usuario (`CLAUDE_CONFIG_DIR` o `~/.claude`) están instalados y el `shogun` que ejecutan se puede usar; Claude Code, Herdr y Orca se encuentran; y la carpeta base de cada proyecto registrado existe y tiene todos los ficheros locales que crear un worktree copiaría o enlazaría, con los mismos motivos y soluciones que [`new`](#new). Sale con `1` cuando ha fallado alguna comprobación y con `0` en otro caso: los avisos y las herramientas que no están instaladas no lo hacen fallar. La app de escritorio ejecuta la misma comprobación desde Ayuda › Comprobar instalación….
+
 ## Entorno
 
 ### `env`
@@ -474,7 +498,7 @@ shogun xcode trim [--dry-run]
 
 ## Salida JSON
 
-Además de `status --json`, todos los comandos que informan de un resultado aceptan `--json`: `new`, `base`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `maven stop`, `compose`, `compose up`, `compose build`, `compose down`, `compose prune`, `pool status`, `pool trim`, `project add`, `project list`, `project remove`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks` y `guide install|uninstall|status` (no `simulator gradle-init`, `env`, `hook`, `help` ni `--version`; en ellos es una opción desconocida y sale con `2`). La opción puede ir en cualquier posición tras el comando.
+Además de `status --json`, todos los comandos que informan de un resultado aceptan `--json`: `new`, `base`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `maven stop`, `compose`, `compose up`, `compose build`, `compose down`, `compose prune`, `pool status`, `pool trim`, `project add`, `project list`, `project remove`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks`, `doctor` y `guide install|uninstall|status` (no `simulator gradle-init`, `env`, `hook`, `help` ni `--version`; en ellos es una opción desconocida y sale con `2`). La opción puede ir en cualquier posición tras el comando.
 
 Las reglas son las mismas para todos:
 
@@ -495,6 +519,7 @@ Las reglas son las mismas para todos:
 | `guide install`, `guide uninstall` | `path`, `applied` (escrito en esta ejecución), `state` (`installed`, `outdated`, `missing`) y `warnings` (mensajes). |
 | `guide status` | `targets`: `{ target, path, state, duplicates }` con `target` `codex`, `gemini`, `project` o `file` y `duplicates` `true` cuando el fichero menciona `shogun new`, `open` o `clean` fuera del bloque; y `warnings`. |
 | `repair` | `repaired`: las rutas de los worktrees re-enlazados. |
+| `doctor` | `checks`: una lista de `{ id, state, summary, fix }`, con `id` `git`, `path`, `shogun`, `claude-hooks`, `claude-code`, `herdr`, `orca` o `project:<nombre>`, `state` `passed`, `warning`, `failed` o `not_found`, y `fix` `null` cuando ha pasado; y `failed`, `true` cuando ha fallado alguna comprobación (el código de salida es entonces `1`). |
 | `project add`, `project remove` | `action` (`added`, `alreadyRegistered` o `removed`), y el `id`, `name` y `repository` del proyecto. |
 | `project list` | `projects`: `{ id, name, repository }`, vacío sin proyectos. |
 | `open` | Con `--orca`: `path`, `branch`, `orca` (`started-agent` o `focused`), `terminal` (el identificador de la terminal del agente), `agent`, `session_name`, `emulator` (el serial del emulador en marcha mostrado en la vista de emuladores de Orca, o `null`), `simulator` (el UDID del simulador arrancado mostrado ahí, o `null`) y `devicesSkipped` (`true` cuando los dos estaban en marcha y no se mostró ninguno). Con `--herdr`: `path`, `branch` (o `null` si está desacoplado), `herdr` (`opened`, `started-agent` o `focused`), `pane_id` (el panel del agente), `agent` (el nombre del agente arrancado, o el que Herdr informa en el panel enfocado) y `session_name` (el nombre confirmado de la sesión de Claude Code, o `null`). En la carpeta del multirepo con destino: `branch` y `repos`: `{ alias, path, result, pane_id, agent, session_name, error }` con `result` `opened`, `started-agent`, `focused` o `failed`. Sin destino: `path`, `opened` (`false` solo cuando se enfocó), `herdr`, `pane_id`, `agent` y `session_name`. Con `--orca` en la carpeta del multirepo, con destino: `branch` y `repos`: `{ alias, path, result, terminal, agent, session_name, emulator, simulator, devicesSkipped, error }` con `result` `started-agent`, `focused` o `failed`; sin destino: `path`, `orca` (`started-agent` o `focused`), `terminal`, `agent` y `session_name`. |
