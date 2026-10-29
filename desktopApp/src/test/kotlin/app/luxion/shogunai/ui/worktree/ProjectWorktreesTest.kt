@@ -60,6 +60,7 @@ import app.luxion.shogunai.ui.shell.AgentChoices
 import app.luxion.shogunai.SimulatorUseCases
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.HerdrOpening
+import app.luxion.shogunai.domain.model.ObservedPort
 import app.luxion.shogunai.domain.model.OrcaOpening
 import app.luxion.shogunai.domain.model.OrcaOutcome
 import app.luxion.shogunai.domain.model.OrcaTerminal
@@ -3553,6 +3554,21 @@ class ProjectWorktreesTest {
 
         assertEquals(listOf(codex), used)
         assertEquals(codex, holder.agentFor(target))
+    }
+
+    @Test
+    fun `the ports Orca sees are read with the agents and follow each check`() = runTest(dispatcher) {
+        var observed = mapOf(worktreePath to listOf(ObservedPort(8765, "Python", "http://127.0.0.1:8765")))
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(orca = OrcaUseCases.NONE.copy(ports = { observed })))
+        advanceUntilIdle()
+
+        assertEquals(listOf(ObservedPort(8765, "Python", "http://127.0.0.1:8765")), viewModel.observedPorts[worktreePath])
+
+        observed = mapOf(worktreePath to listOf(ObservedPort(10011, "java")))
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertEquals(listOf(ObservedPort(10011, "java")), viewModel.observedPorts[worktreePath])
     }
 
     @Test

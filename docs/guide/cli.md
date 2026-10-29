@@ -92,6 +92,7 @@ Lists every worktree of the repository, one per line: path, branch (or `(detache
 | `locked` | Held by an agent session. |
 | `desktop(until 14:10)`, `desktop(waiting 1/2)` | It holds the [desktop turn](#desktop) until that time, or waits for it in that place of the line. |
 | `agents=claude(blocked, app-task-123),codex` | Agents running in it, with their state (`working`, `blocked`, `done`, `idle`) when Herdr or Orca reports it or, for Claude, when its [hooks](../agents.md#agent-states-outside-herdr) do. A Claude agent also lists, after its state, the names of its live sessions whose folder is in that worktree, as Claude Code's session registry has them (`claude(app-task-123)` when there's no state). |
+| `listening=8765,10011` | The ports [Orca](../agents.md#orca) sees it listen on, while Orca runs. |
 | `changes=N` | Uncommitted changes. |
 | `ahead=N behind=N` | Divergence from its upstream. |
 | `base-ahead=N base-behind=N of develop` | Divergence from its base: the recorded [base](#base) when it resolves, otherwise the main branch. |
@@ -122,7 +123,7 @@ Prints one compact JSON object on a single line instead of the text lines. Error
       "folderMissing": false,
       "origin": null,
       "base": null,
-      "agents": [{ "name": "claude", "state": "blocked", "stateSource": "claude-code", "herdrState": null, "sessions": [{ "name": "main-repo-task-123", "pid": 4242 }] }],
+      "agents": [{ "name": "claude", "state": "blocked", "stateSource": "claude-code", "herdrState": null, "sessions": [{ "name": "main-repo-task-123", "pid": 4242 }], "activity": null }],
       "status": {
         "uncommittedChanges": 0,
         "upstream": { "ahead": 0, "behind": 0 },
@@ -131,7 +132,8 @@ Prints one compact JSON object on a single line instead of the text lines. Error
         "merged": false,
         "lastCommitAt": "2026-10-18T09:12:44Z",
         "createdAt": "2026-10-17T16:40:02Z"
-      }
+      },
+      "listeningPorts": [{ "port": 8765, "process": "Python", "url": "http://127.0.0.1:8765" }]
     }
   ]
 }
@@ -144,13 +146,14 @@ Prints one compact JSON object on a single line instead of the text lines. Error
 | `main`, `locked`, `folderMissing` | The main checkout, held by an agent session, folder deleted by hand. |
 | `origin` | `shogunai`, `claude-code`, `herdr`, `orca` or `other`; `null` for the main checkout. |
 | `base` | The recorded [base](#base) of its branch; `null` when none is recorded or it's detached. |
-| `agents` | The agents running in it: `name`, `state` (`working`, `blocked`, `done`, `idle`; `null` when nothing reports one), `stateSource` (`herdr`, `orca`, `claude-code` or `null`), `herdrState`, the state when Herdr is the source and `null` otherwise, and `sessions`, the agent's live Claude Code sessions in that worktree (`name` and `pid`; empty for other agents or when none is found). |
+| `agents` | The agents running in it: `name`, `state` (`working`, `blocked`, `done`, `idle`; `null` when nothing reports one), `stateSource` (`herdr`, `orca`, `claude-code` or `null`), `herdrState`, the state when Herdr is the source and `null` otherwise, and `sessions`, the agent's live Claude Code sessions in that worktree (`name` and `pid`; empty for other agents or when none is found), and `activity`, what Orca reports about it, or `null` when Orca doesn't report the agent: `waitingOn` (`{ "tool", "input" }` while it waits on a tool, otherwise `null`), `prompt` and `lastMessage`, each `null` when missing. |
 | `status` | `null` when the folder is missing or its status couldn't be read. |
 | `statusProblem` | Only present when the status couldn't be read: Git's reason. |
 | `status.uncommittedChanges`, `status.merged` | Uncommitted changes; merged into its base or into the main branch. |
 | `status.upstream`, `status.mainBranch` | `{ "ahead": n, "behind": n }` against the upstream and the main branch; `null` when there is none. |
 | `status.base` | `{ "branch", "ahead", "behind" }` against its base: the recorded [base](#base) when it resolves (`origin/<base>` first, the local branch otherwise), otherwise the main branch; `null` when there is none or the worktree is on it. |
 | `status.lastCommitAt` | Time of the last commit in ISO-8601 UTC, or `null`. |
+| `listeningPorts` | The ports [Orca](../agents.md#orca) sees it listen on, sorted: `{ "port", "process", "url" }`, `url` being the address a dev server printed in an Orca terminal, or `null`. `null` when Orca isn't installed, isn't running or couldn't be asked. |
 | `desktop` | `null`, or the worktree's [desktop turn](#desktop): `{ "role": "holder", "since", "expiresAt" }` when it holds it, `{ "role": "waiting", "position", "since" }` when it waits for it, with ISO-8601 UTC times. |
 | `status.createdAt` | Time the worktree was created, in ISO-8601 UTC, read from Git's administrative folder for it; `null` for the main checkout or when it can't be read. |
 

@@ -2,6 +2,7 @@ package app.luxion.shogunai.domain
 
 import app.luxion.shogunai.domain.io.OrcaClient
 import app.luxion.shogunai.domain.model.ClaudeSession
+import app.luxion.shogunai.domain.model.OrcaPort
 import app.luxion.shogunai.domain.model.OrcaRepo
 import app.luxion.shogunai.domain.model.OrcaStatus
 import app.luxion.shogunai.domain.model.OrcaTerminal
@@ -24,6 +25,8 @@ class FakeOrcaClient(
     private val failure: Throwable? = null,
     private val statusFailure: Throwable? = null,
     private val psFailure: Throwable? = null,
+    var listeningPorts: List<OrcaPort> = emptyList(),
+    var portsFailure: Throwable? = null,
     private val terminalsFailure: Throwable? = null,
     private val closeFailures: Map<String, Throwable> = emptyMap(),
     private val folderPaths: Map<String, String> = emptyMap(),
@@ -42,6 +45,8 @@ class FakeOrcaClient(
     var starts = 0
         private set
     var psReads = 0
+        private set
+    var portReads = 0
         private set
     val addedRepos = mutableListOf<String>()
     val shownExternal = mutableListOf<String>()
@@ -108,6 +113,13 @@ class FakeOrcaClient(
         psReads++
         psFailure?.let { throw it }
         return psRows
+    }
+
+    override suspend fun ports(): List<OrcaPort> {
+        requireInstalled()
+        portReads++
+        portsFailure?.let { throw it }
+        return listeningPorts
     }
 
     override suspend fun terminals(workspace: OrcaWorkspace): List<OrcaTerminal> {

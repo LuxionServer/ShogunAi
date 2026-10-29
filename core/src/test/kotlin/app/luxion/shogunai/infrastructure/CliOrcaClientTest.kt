@@ -4,8 +4,11 @@ import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.model.AgentActivity
 import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.AgentTool
 import app.luxion.shogunai.domain.model.OrcaAgent
+import app.luxion.shogunai.domain.model.OrcaPort
 import app.luxion.shogunai.domain.model.OrcaRepo
 import app.luxion.shogunai.domain.model.OrcaStatus
 import app.luxion.shogunai.domain.model.OrcaTerminal
@@ -159,7 +162,7 @@ class CliOrcaClientTest {
         val worktrees = client(executor).agentsByWorktree().associateBy { it.path }
 
         assertEquals(listOf(orca, "worktree", "ps", "--limit", "1000", "--json"), executor.executedCommands.single())
-        assertEquals(OrcaWorktree(shogunai, false, listOf(OrcaAgent("claude", AgentState.WORKING))), worktrees[shogunai])
+        assertEquals(OrcaWorktree(shogunai, false, listOf(OrcaAgent("claude", AgentState.WORKING, AgentActivity(prompt = COUNT_PROMPT)))), worktrees[shogunai])
         assertEquals(OrcaWorktree(created, true), worktrees[created])
         assertEquals(OrcaWorktree(repository, false), worktrees[repository])
         assertEquals(OrcaWorktree(external, false), worktrees[external])
@@ -169,7 +172,56 @@ class CliOrcaClientTest {
     fun `a finished turn is reported as done`() = runTest {
         val row = client(answering("worktree-ps-done.json")).agentsByWorktree().single { it.path == shogunai }
 
-        assertEquals(listOf(OrcaAgent("claude", AgentState.DONE)), row.agents)
+        assertEquals(
+            listOf(OrcaAgent("claude", AgentState.DONE, AgentActivity(prompt = COUNT_PROMPT, lastMessage = "9\n20\n21\n22\n23\n24\n25\n26\n27\n28\n29\n30\n\ndone"))),
+            row.agents,
+        )
+    }
+
+    @Test
+    fun `an agent waiting for permission reports the tool and its input`() = runTest {
+        val row = client(answering("worktree-ps-tool.json")).agentsByWorktree().single { it.path == external }
+
+        val waitingOn = AgentTool("Bash", "curl -s https://example.com -o page.html")
+        assertEquals(
+            listOf(OrcaAgent("claude", AgentState.BLOCKED, AgentActivity(waitingOn, "Use the Bash tool to run: curl -s https://example.com -o page.html"))),
+            row.agents,
+        )
+    }
+
+    @Test
+    fun `a finished agent's last tool isn't reported as waited on`() = runTest {
+        val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.success(it, fixture("worktree-ps-tool.json").replace("\"waiting\"", "\"done\"")) }
+
+        val agent = client(executor).agentsByWorktree().single { it.path == external }.agents.single()
+
+        assertEquals(AgentState.DONE, agent.state)
+        assertNull(agent.activity?.waitingOn)
+    }
+
+    @Test
+    fun `an agent with blank details has no activity`() = runTest {
+        val agent = client(answering("worktree-ps.json")).agentsByWorktree().single { it.path == external }.agents.single()
+
+        assertNull(agent.activity)
+    }
+
+    @Test
+    fun `one ports call reports the ports Orca ties to workspaces`() = runTest {
+        val executor = answering("ports-all.json")
+
+        val ports = client(executor).ports()
+
+        assertEquals(listOf(orca, "ports", "--all", "--json"), executor.executedCommands.single())
+        assertEquals(
+            listOf(
+                OrcaPort(8765, external, "Python", "http://127.0.0.1:8765"),
+                OrcaPort(10004, "/projects/other-worktree", "java"),
+                OrcaPort(10011, external, "java"),
+                OrcaPort(61610, "/projects/other-worktree", "java"),
+            ),
+            ports,
+        )
     }
 
     @Test
@@ -408,5 +460,9 @@ class CliOrcaClientTest {
         val windows = client(FakeShellCommandExecutor(), files = emptySet(), osName = "Windows 11", onPath = mapOf("orca" to "C:\\Orca\\bin\\orca.cmd"))
 
         assertEquals("C:\\Orca\\bin\\orca.cmd", windows.executable())
+    }
+
+    private companion object {
+        const val COUNT_PROMPT = "Count slowly from 1 to 30, one number per line, then reply with the word done."
     }
 }
