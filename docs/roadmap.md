@@ -54,7 +54,6 @@ ShogunAi has to work the first time on a machine that isn't the one it's develop
 - Checking:
   - On Windows and Linux (`orca-ide`), the CLI's location and the shell Orca's terminals run, which only tests with fakes cover.
   - That Orca detects an agent wrapped by Headroom.
-  - Opening in Orca with Orca's agent hooks off: Orca then only sees Claude while a prompt is on screen, so the open may report that an agent didn't start; a fallback through Claude Code's session registry would cover it.
   - That Orca's notifications and its mobile companion follow the agents ShogunAi starts in Orca.
 - Left out on purpose: Orca's remote and SSH worktrees, since ShogunAi prepares worktrees on this machine; and Orca's orchestration runs, since the multirepo agent already coordinates a group.
 

@@ -79,7 +79,7 @@ A session name SHALL contain only lowercase letters, digits and single hyphens, 
 - **THEN** the new session is named `app-task-123`
 
 ### Requirement: Read Claude Code's session registry tolerantly
-ShogunAi SHALL read Claude Code's session registry, one JSON file per session in the `sessions` folder of Claude Code's configuration directory, only to read each session's process id, folder and name. It SHALL ignore unknown fields, files without a process id or folder, files that can't be read or parsed, and sessions whose process isn't running, and a missing folder SHALL count as no sessions. It SHALL never write there.
+ShogunAi SHALL read Claude Code's session registry, one JSON file per session in the `sessions` folder of Claude Code's configuration directory, only to read each session's process id, folder, name, status, start time and status time. It SHALL ignore unknown fields, files without a process id or folder, files that can't be read or parsed, and sessions whose process isn't running, and a missing folder SHALL count as no sessions. A missing or unknown status SHALL leave the session without a status. It SHALL never write there.
 
 #### Scenario: Unreadable file
 - **WHEN** one session file is not valid JSON and another describes a live session
@@ -92,6 +92,10 @@ ShogunAi SHALL read Claude Code's session registry, one JSON file per session in
 #### Scenario: Stale file
 - **WHEN** a session file's process id belongs to no running Claude process
 - **THEN** that session is ignored
+
+#### Scenario: Unknown status
+- **WHEN** a live session's file has a status ShogunAi doesn't know, or none
+- **THEN** the session is still used for its name and folder, without a status
 
 ### Requirement: Report the session name when opening in Herdr
 After typing a named Claude command, `shogun open --herdr` SHALL wait up to 10 seconds for a live session with that name in the pane's folder, and SHALL report it in its text line and as `session_name` in the `--json` result of a worktree, of each worktree of a group, and of the multirepo agent. Without a confirmed name, `session_name` SHALL be `null` and the open SHALL still succeed.
