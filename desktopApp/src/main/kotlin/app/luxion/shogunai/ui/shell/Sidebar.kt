@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -38,6 +39,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.Project
@@ -47,11 +51,7 @@ import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.WithTooltip
 import app.luxion.shogunai.ui.components.interactive
 import app.luxion.shogunai.ui.i18n.LocalStrings
-import app.luxion.shogunai.ui.machine.MachineResource
-import app.luxion.shogunai.ui.machine.MachineSummary
-import app.luxion.shogunai.ui.machine.icon
-import app.luxion.shogunai.ui.machine.text
-import app.luxion.shogunai.ui.machine.title
+import app.luxion.shogunai.ui.multirepo.MultirepoMembership
 import app.luxion.shogunai.ui.theme.Status
 import app.luxion.shogunai.ui.theme.ShogunTheme
 
@@ -60,6 +60,7 @@ val RailSidebarWidth: Dp = 64.dp
 private val SidebarRowHeight = 32.dp
 private val RailItemSize = 36.dp
 private val AgentDotSize = 8.dp
+private val SidebarIconSize = 16.dp
 
 @Composable
 fun Sidebar(
@@ -70,9 +71,6 @@ fun Sidebar(
     activeCount: Int,
     totalWorktreeCount: Int,
     activityOf: (Project) -> ProjectActivity,
-    machineResources: List<MachineResource>,
-    machineSummaries: Map<MachineResource, MachineSummary>,
-    selectedMachine: MachineResource?,
     rail: Boolean,
     onSelectActive: () -> Unit,
     onSelectAll: () -> Unit,
@@ -80,7 +78,6 @@ fun Sidebar(
     onEditProject: (Project) -> Unit,
     onRemoveProject: (Project) -> Unit,
     onAddProject: () -> Unit,
-    onSelectMachine: (MachineResource) -> Unit,
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
     multirepos: List<SidebarMultirepo> = emptyList(),
@@ -141,7 +138,7 @@ fun Sidebar(
                     ContextMenuItem(strings.sortAlphabetically) { onSortLevel(level) },
                 )
             }
-            val projectItem: @Composable (Project, SidebarLevel, String, Int, Int, SidebarDragState) -> Unit = { project, level, key, index, size, drag ->
+            val projectItem: @Composable (Project, String, SidebarLevel, String, Int, Int, SidebarDragState) -> Unit = { project, label, level, key, index, size, drag ->
                 Box(itemWidth.reorderable(drag, key) { moved, target -> onMoveEntry(level, moved, target) }) {
                     ProjectContextMenu(
                         onEdit = { onEditProject(project) },
@@ -149,16 +146,16 @@ fun Sidebar(
                         reorderItems = reorderItems(level, key, index, size),
                     ) {
                         if (rail) {
-                            RailProjectItem(project, selected = project.id == selectedProjectId) { onSelectProject(project) }
+                            RailProjectItem(label, selected = project.id == selectedProjectId) { onSelectProject(project) }
                         } else {
-                            ProjectRow(project, activityOf(project), selected = project.id == selectedProjectId, nested = level is SidebarLevel.Folder) { onSelectProject(project) }
+                            ProjectRow(label, activityOf(project), selected = project.id == selectedProjectId, nested = level is SidebarLevel.Folder) { onSelectProject(project) }
                         }
                     }
                 }
             }
             entries.forEachIndexed { index, entry ->
                 when (entry) {
-                    is SidebarEntry.ProjectEntry -> projectItem(entry.project, SidebarLevel.TopLevel, entry.key, index, entries.size, topLevelDrag)
+                    is SidebarEntry.ProjectEntry -> projectItem(entry.project, entry.project.name, SidebarLevel.TopLevel, entry.key, index, entries.size, topLevelDrag)
                     is SidebarEntry.FolderEntry -> {
                         val folder = entry.multirepo
                         val folderLevel = SidebarLevel.Folder(folder.folder)
@@ -189,7 +186,7 @@ fun Sidebar(
                             }
                             if (!folder.collapsed) {
                                 folder.projects.forEachIndexed { position, project ->
-                                    projectItem(project, folderLevel, project.id, position, folder.projects.size, folderDrag)
+                                    projectItem(project, folder.labelOf(project), folderLevel, project.id, position, folder.projects.size, folderDrag)
                                 }
                             }
                         }
@@ -206,20 +203,6 @@ fun Sidebar(
             } else {
                 AddProjectRow(onAddProject)
                 AddRow(strings.addMultirepo, Icons.Default.CreateNewFolder, onAddMultirepo)
-            }
-            if (machineResources.isNotEmpty() && !rail) SectionLabel(strings.machineTitle)
-            machineResources.forEach { resource ->
-                if (rail) {
-                    RailViewItem(resource.title(strings), resource.icon, selected = resource == selectedMachine) { onSelectMachine(resource) }
-                } else {
-                    MachineRow(
-                        label = resource.title(strings),
-                        icon = resource.icon,
-                        summary = machineSummaries[resource]?.text(resource, strings),
-                        selected = resource == selectedMachine,
-                        onClick = { onSelectMachine(resource) },
-                    )
-                }
             }
         }
     }
@@ -253,7 +236,7 @@ private fun ViewRow(label: String, icon: ImageVector, count: Int, selected: Bool
             icon,
             contentDescription = null,
             tint = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
-            modifier = Modifier.size(16.dp),
+            modifier = Modifier.size(SidebarIconSize),
         )
         Text(
             label,
@@ -268,45 +251,6 @@ private fun ViewRow(label: String, icon: ImageVector, count: Int, selected: Bool
             style = ShogunTheme.typography.dataSmall,
             color = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
         )
-    }
-}
-
-@Composable
-private fun MachineRow(label: String, icon: ImageVector, summary: String?, selected: Boolean, onClick: () -> Unit) {
-    val colors = MaterialTheme.colorScheme
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = Spacing.sm)
-            .height(SidebarRowHeight)
-            .interactive(onClick = onClick)
-            .background(if (selected) colors.secondaryContainer else colors.surfaceContainerLow)
-            .padding(horizontal = Spacing.sm),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-    ) {
-        Icon(
-            icon,
-            contentDescription = null,
-            tint = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
-            modifier = Modifier.size(16.dp),
-        )
-        Text(
-            label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (selected) colors.onSecondaryContainer else colors.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        summary?.let {
-            Text(
-                it,
-                style = ShogunTheme.typography.dataSmall,
-                color = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
-                maxLines = 1,
-            )
-        }
     }
 }
 
@@ -351,12 +295,12 @@ private fun ProjectContextMenu(
 }
 
 @Composable
-private fun ProjectRow(project: Project, activity: ProjectActivity, selected: Boolean, nested: Boolean = false, onClick: () -> Unit) {
+private fun ProjectRow(label: String, activity: ProjectActivity, selected: Boolean, nested: Boolean = false, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = if (nested) Spacing.lg else Spacing.sm, end = Spacing.sm)
+            .padding(start = if (nested) Spacing.sm + Spacing.lg else Spacing.sm, end = Spacing.sm)
             .height(SidebarRowHeight)
             .interactive(onClick = onClick)
             .background(if (selected) colors.secondaryContainer else colors.surfaceContainerLow)
@@ -364,8 +308,9 @@ private fun ProjectRow(project: Project, activity: ProjectActivity, selected: Bo
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
+        Spacer(Modifier.width(SidebarIconSize))
         Text(
-            project.name,
+            label,
             style = MaterialTheme.typography.bodyMedium,
             color = if (selected) colors.onSecondaryContainer else colors.onSurface,
             maxLines = 1,
@@ -409,16 +354,11 @@ private fun MultirepoRow(multirepo: SidebarMultirepo, selected: Boolean, onClick
             .height(SidebarRowHeight)
             .interactive(onClick = onClick)
             .background(if (selected) colors.secondaryContainer else colors.surfaceContainerLow)
-            .padding(end = Spacing.sm),
+            .padding(horizontal = Spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
-        IconAction(
-            icon = if (multirepo.collapsed) Icons.Default.ChevronRight else Icons.Default.ExpandMore,
-            label = if (multirepo.collapsed) strings.expand else strings.collapse,
-            onClick = onToggle,
-            tint = colors.onSurfaceVariant,
-        )
+        DisclosureToggle(collapsed = multirepo.collapsed, onToggle = onToggle)
         Text(
             multirepo.name,
             style = MaterialTheme.typography.bodyMedium,
@@ -436,6 +376,24 @@ private fun MultirepoRow(multirepo: SidebarMultirepo, selected: Boolean, onClick
             )
         }
         ActivityMarks(multirepo.activity, selected)
+    }
+}
+
+@Composable
+private fun DisclosureToggle(collapsed: Boolean, onToggle: () -> Unit) {
+    val strings = LocalStrings.current
+    val label = if (collapsed) strings.expand else strings.collapse
+    WithTooltip(label = label) {
+        Icon(
+            if (collapsed) Icons.Default.ChevronRight else Icons.Default.ExpandMore,
+            contentDescription = label,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .size(SidebarIconSize)
+                .interactive(shape = CircleShape, onClick = onToggle)
+                .semantics { role = Role.Button }
+                .testTag("multirepo-toggle"),
+        )
     }
 }
 
@@ -457,7 +415,16 @@ data class SidebarMultirepo(
     val activity: ProjectActivity,
     val collapsed: Boolean,
     val needsReview: Boolean = false,
-)
+    val labels: Map<String, String> = emptyMap(),
+) {
+    fun labelOf(project: Project): String = labels[project.id] ?: project.name
+}
+
+fun multirepoChildLabels(membership: MultirepoMembership): Map<String, String> {
+    val workspaceAlias = membership.multirepo.workspaceRepository?.alias ?: return emptyMap()
+    val projectId = membership.projectIdOf(workspaceAlias) ?: return emptyMap()
+    return mapOf(projectId to workspaceAlias)
+}
 
 sealed interface SidebarEntry {
     val name: String
@@ -478,16 +445,16 @@ fun sidebarEntries(projects: List<Project>, multirepos: List<SidebarMultirepo>, 
     val nested = multirepos.flatMap { it.projects }.mapTo(mutableSetOf()) { it.id }
     val folders = multirepos.map { folder ->
         val saved = order.savedFor(SidebarLevel.Folder(folder.folder))
-        folder.copy(projects = folder.projects.orderedBy(saved, Project::id, Project::name))
+        folder.copy(projects = folder.projects.orderedBy(saved, Project::id, folder::labelOf))
     }
     val entries = projects.filter { it.id !in nested }.map(SidebarEntry::ProjectEntry) + folders.map(SidebarEntry::FolderEntry)
     return entries.orderedBy(order.topLevel, SidebarEntry::key, SidebarEntry::name)
 }
 
 @Composable
-private fun RailProjectItem(project: Project, selected: Boolean, onClick: () -> Unit) {
+private fun RailProjectItem(label: String, selected: Boolean, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
-    WithTooltip(label = project.name) {
+    WithTooltip(label = label) {
         Box(
             modifier = Modifier
                 .size(RailItemSize)
@@ -497,7 +464,7 @@ private fun RailProjectItem(project: Project, selected: Boolean, onClick: () -> 
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                project.name.take(1).uppercase(),
+                label.take(1).uppercase(),
                 style = MaterialTheme.typography.titleSmall,
                 color = if (selected) colors.onSecondaryContainer else colors.onSurface,
             )
@@ -521,7 +488,7 @@ private fun AddRow(label: String, icon: ImageVector, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
-        Icon(icon, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(16.dp))
+        Icon(icon, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(SidebarIconSize))
         Text(label, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
     }
 }

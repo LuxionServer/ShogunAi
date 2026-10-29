@@ -370,6 +370,15 @@ interface Strings {
     fun derivedDataQuotaExceeded(inUse: List<String>): String
     fun derivedDataReleased(count: Int, freed: String): String
     val machineTitle: String
+    val machineStatusGradle: String
+    val machineStatusEmulators: String
+    val machineStatusSimulators: String
+    val machineStatusDerivedData: String
+    val machineStatusMaven: String
+    val machineStatusCompose: String
+    val machineStatusDesktop: String
+    val notMeasuredYet: String
+    val overQuota: String
     val resourcesLabel: String
     fun profileName(profile: CapacityProfile): String
     fun resourceLimitsSummary(limits: ResourceLimits, includeSimulators: Boolean): String
