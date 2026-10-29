@@ -152,6 +152,36 @@ class GuideCommandsTest {
     }
 
     @Test
+    fun `the worktree base rule stays out of the session start`() {
+        listOf(linked, base).forEach { cwd ->
+            out.setLength(0)
+            assertEquals(0, cli(everything(), input = """{"cwd": "$cwd"}""", herdr = fakeHerdr()).run(listOf("hook", "session-start")), err.toString())
+
+            assertFalse(out.contains("--from"), out.toString())
+            assertFalse(out.contains("git log -1"), out.toString())
+        }
+    }
+
+    @Test
+    fun `a backend session start has no desktop, emulator or simulator rules`() {
+        val exitCode = cli(declaring(RepositoryProviders(dockerCompose = DockerComposeProvider())), input = """{"cwd": "$linked"}""", herdr = fakeHerdr())
+            .run(listOf("hook", "session-start"))
+
+        assertEquals(0, exitCode, err.toString())
+        val context = out.toString().lowercase()
+        listOf("desktop", "computer use", "emulator", "simulator", "headless").forEach { assertFalse(it in context, "$it in $context") }
+    }
+
+    @Test
+    fun `guide resources keeps the desktop turn rule`() {
+        assertEquals(0, cli().run(listOf("guide", "resources")), err.toString())
+
+        assertTrue(out.contains("shogun desktop acquire --wait"), out.toString())
+        assertTrue(out.contains("shogun desktop release"), out.toString())
+        assertTrue(out.contains("`orca computer`"), out.toString())
+    }
+
+    @Test
     fun `guide tells agents to take a pull request's base from shogun base`() {
         assertEquals(0, cli().run(listOf("guide", "worktrees")))
 
