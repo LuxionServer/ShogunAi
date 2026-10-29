@@ -5,7 +5,9 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyShortcut
 import androidx.compose.ui.window.FrameWindowScope
 import androidx.compose.ui.window.MenuBar
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.ui.i18n.Strings
+import app.luxion.shogunai.ui.i18n.openIn
 import app.luxion.shogunai.ui.isMacOs
 
 @Composable
@@ -16,7 +18,8 @@ fun FrameWindowScope.AppMenuBar(
     onNewWorktree: (() -> Unit)?,
     onFind: (() -> Unit)?,
     onCopySelectedLaunchCommand: (() -> Unit)?,
-    onOpenSelectedInHerdr: (() -> Unit)?,
+    onOpenSelectedInRunner: (() -> Unit)?,
+    runner: RunnerId,
     onDeleteSelectedWorktree: (() -> Unit)?,
     onClearSelection: (() -> Unit)?,
     hasWorktreeSelection: Boolean,
@@ -47,7 +50,7 @@ fun FrameWindowScope.AppMenuBar(
         }
         val hasWorktreeActions = listOf(
             onCopySelectedLaunchCommand,
-            onOpenSelectedInHerdr,
+            onOpenSelectedInRunner,
             onDeleteSelectedWorktree,
             onClearSelection,
         ).any { it != null }
@@ -57,8 +60,8 @@ fun FrameWindowScope.AppMenuBar(
                 onCopySelectedLaunchCommand?.let {
                     Item(strings.copyLaunchCommand, shortcut = shortcut(Key.C, shift = true), enabled = actsOnSelection, onClick = it)
                 }
-                onOpenSelectedInHerdr?.let {
-                    Item(strings.openInHerdr, shortcut = shortcut(Key.E), enabled = actsOnSelection, onClick = it)
+                onOpenSelectedInRunner?.let {
+                    Item(strings.openIn(runner), shortcut = shortcut(Key.E), enabled = actsOnSelection, onClick = it)
                 }
                 onDeleteSelectedWorktree?.let {
                     Item(strings.deleteWorktree, shortcut = shortcut(Key.Backspace), enabled = actsOnSelection, onClick = it)

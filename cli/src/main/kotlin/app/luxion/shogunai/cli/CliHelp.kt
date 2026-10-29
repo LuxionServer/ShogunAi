@@ -70,6 +70,9 @@ internal object CliHelp {
                               its repository with its environment and its project's agent
   open --orca [--json]        In a multirepo folder: open the multirepo's agent in Orca's workspace for the
                               folder; a folder that isn't a Git repository must be added in Orca's app first
+  open <task id | path | branch> [--agent <name>] [--json]
+                              Without --herdr or --orca: open in the runner chosen in the desktop app's
+                              Settings, or the first installed of Herdr and Orca
 """.trimIndent(),
         "repair" to """
   repair [--json]             Re-link the worktrees after the repository or the worktrees folder moved

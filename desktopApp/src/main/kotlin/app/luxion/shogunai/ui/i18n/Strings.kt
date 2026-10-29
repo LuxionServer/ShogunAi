@@ -515,6 +515,8 @@ interface Strings {
     fun openInTool(name: String): String
     val claudeDesktopName: String
     val openFolder: String
+    val defaultRunnerLabel: String
+    val noRunnerFound: String
     val chooseTerminalTitle: String
     val chooseTerminalMessage: String
     val projectEditorLabel: String

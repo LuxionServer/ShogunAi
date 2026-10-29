@@ -16,6 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.usecase.CommandLineToolState
@@ -28,6 +29,7 @@ import app.luxion.shogunai.ui.components.PrimaryButton
 import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.i18n.LocalStrings
+import app.luxion.shogunai.ui.i18n.openIn
 import app.luxion.shogunai.ui.worktree.OpenKind
 import app.luxion.shogunai.ui.worktree.WorktreeBoard
 import app.luxion.shogunai.ui.worktree.WorktreeRef
@@ -123,10 +125,11 @@ fun TourAgentChoices(board: WorktreeBoard, project: Project, onLaunched: () -> U
                     onLaunched()
                 }) { Text(action.label) }
             }
+            val runner = holder.tools.defaultRunner ?: RunnerId.HERDR
             SecondaryButton(onClick = {
-                holder.openInHerdr(main)
+                holder.openIn(runner, main)
                 onLaunched()
-            }) { Text(holder.launchLabel(strings.openInHerdr, main, strings)) }
+            }) { Text(holder.launchLabel(strings.openIn(runner), main, strings)) }
             openActions.filter { it.kind == OpenKind.CLAUDE_DESKTOP }.forEach { action ->
                 SecondaryButton(onClick = {
                     action.onClick()

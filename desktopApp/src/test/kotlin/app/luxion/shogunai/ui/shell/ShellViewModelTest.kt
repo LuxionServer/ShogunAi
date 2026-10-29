@@ -324,7 +324,7 @@ class ShellViewModelTest {
             WorktreeActions(
                 onFind = { found++ },
                 onCopySelectedLaunchCommand = { copied++ },
-                onOpenSelectedInHerdr = { openedInHerdr++ },
+                onOpenSelectedInRunner = { openedInHerdr++ },
                 onDeleteSelectedWorktree = { deleted++ },
                 onClearSelection = { cleared++ },
                 onEscape = {},
@@ -334,7 +334,7 @@ class ShellViewModelTest {
         val actions = viewModel.worktreeActions
         actions?.onFind?.invoke()
         actions?.onCopySelectedLaunchCommand?.invoke()
-        actions?.onOpenSelectedInHerdr?.invoke()
+        actions?.onOpenSelectedInRunner?.invoke()
         actions?.onDeleteSelectedWorktree?.invoke()
         actions?.onClearSelection?.invoke()
 

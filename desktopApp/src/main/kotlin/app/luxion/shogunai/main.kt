@@ -1,5 +1,6 @@
 package app.luxion.shogunai
 
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.ui.multirepo.MultirepoCatalog
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -299,7 +300,8 @@ private fun openWindow() = application {
             onNewWorktree = shellViewModel::requestNewWorktree.takeIf { shellViewModel.canCreateWorktree },
             onFind = worktreeActions?.onFind,
             onCopySelectedLaunchCommand = worktreeActions?.onCopySelectedLaunchCommand,
-            onOpenSelectedInHerdr = worktreeActions?.onOpenSelectedInHerdr,
+            onOpenSelectedInRunner = worktreeActions?.onOpenSelectedInRunner,
+            runner = appContainer.tools.defaultRunner ?: RunnerId.HERDR,
             onDeleteSelectedWorktree = worktreeActions?.onDeleteSelectedWorktree,
             onClearSelection = worktreeActions?.onClearSelection,
             hasWorktreeSelection = worktreeActions?.hasSelection?.invoke() == true,

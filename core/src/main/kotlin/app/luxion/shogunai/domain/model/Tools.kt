@@ -28,6 +28,12 @@ enum class TerminalId(val displayName: String, val usesPowerShell: Boolean = fal
 }
 
 @Serializable
+enum class RunnerId(val displayName: String) {
+    HERDR("Herdr"),
+    ORCA("Orca"),
+}
+
+@Serializable
 enum class EditorId(val displayName: String) {
     VS_CODE("VS Code"),
     INTELLIJ_IDEA("IntelliJ IDEA"),
@@ -46,4 +52,5 @@ data class DetectedTools(
     val terminals: List<TerminalId> = emptyList(),
     val editors: List<EditorId> = emptyList(),
     val claudeDesktop: Boolean = false,
+    val runners: Set<RunnerId> = RunnerId.entries.toSet(),
 )

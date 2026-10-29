@@ -68,6 +68,7 @@ import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.StatusChip
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.Strings
+import app.luxion.shogunai.ui.i18n.openIn
 import app.luxion.shogunai.ui.components.ErrorNotice
 import app.luxion.shogunai.ui.theme.ShogunTheme
 import app.luxion.shogunai.ui.theme.Status
@@ -189,27 +190,18 @@ fun WorktreeDetailPane(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
             if (!worktree.isPrunable) {
-                val opening = worktree.path in viewModel.openingInHerdr
-                SecondaryButton(
-                    onClick = { viewModel.openInHerdr(worktree) },
-                    enabled = !opening,
-                ) {
-                    Text(viewModel.launchLabel(strings.openInHerdr, worktree, strings), style = MaterialTheme.typography.bodySmall)
-                    if (opening) InlineProgress(size = ProgressSize.Small)
-                }
-                if (viewModel.hasAgentChoice) {
-                    AgentMenuButton(viewModel.agentOptions) { viewModel.openInHerdr(worktree, it) }
-                }
-                val openingOrca = worktree.path in viewModel.openingInOrca
-                SecondaryButton(
-                    onClick = { viewModel.openInOrca(worktree) },
-                    enabled = !openingOrca,
-                ) {
-                    Text(viewModel.launchLabel(strings.openInOrca, worktree, strings), style = MaterialTheme.typography.bodySmall)
-                    if (openingOrca) InlineProgress(size = ProgressSize.Small)
-                }
-                if (viewModel.hasAgentChoice) {
-                    AgentMenuButton(viewModel.agentOptions) { viewModel.openInOrca(worktree, it) }
+                viewModel.runnersInOrder.forEach { runner ->
+                    val opening = worktree.path in viewModel.openingIn(runner)
+                    SecondaryButton(
+                        onClick = { viewModel.openIn(runner, worktree) },
+                        enabled = !opening,
+                    ) {
+                        Text(viewModel.launchLabel(strings.openIn(runner), worktree, strings), style = MaterialTheme.typography.bodySmall)
+                        if (opening) InlineProgress(size = ProgressSize.Small)
+                    }
+                    if (viewModel.hasAgentChoice) {
+                        AgentMenuButton(viewModel.agentOptions) { viewModel.openIn(runner, worktree, it) }
+                    }
                 }
             }
             if (!worktree.isMain) {

@@ -618,6 +618,8 @@ object SpanishStrings : Strings {
     override fun openInTool(name: String) = "Abrir en $name"
     override val claudeDesktopName = "Claude Desktop"
     override val openFolder = "Abrir carpeta"
+    override val defaultRunnerLabel = "Runner por defecto"
+    override val noRunnerFound = "No se ha encontrado Herdr ni Orca"
     override val chooseTerminalTitle = "Elige un terminal"
     override val chooseTerminalMessage = "Los worktrees se abrirán en el terminal que elijas. Puedes cambiarlo después en Preferencias."
     override val projectEditorLabel = "IDE en este equipo"

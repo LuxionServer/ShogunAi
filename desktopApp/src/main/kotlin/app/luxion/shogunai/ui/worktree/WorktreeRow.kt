@@ -46,6 +46,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.InteractiveShape
 import app.luxion.shogunai.ui.components.ProgressSize
@@ -53,6 +54,7 @@ import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.WithTooltip
 import app.luxion.shogunai.ui.components.interactive
 import app.luxion.shogunai.ui.i18n.LocalStrings
+import app.luxion.shogunai.ui.i18n.openIn
 import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.theme.ShogunTheme
 import app.luxion.shogunai.ui.theme.Status
@@ -69,6 +71,7 @@ fun WorktreeRow(
     onCopyPath: () -> Unit,
     onOpenInHerdr: () -> Unit,
     onOpenInOrca: () -> Unit = {},
+    runnersInOrder: List<RunnerId> = RunnerId.entries,
     agentName: String? = null,
     launchChoices: List<LaunchChoice> = emptyList(),
     onLaunch: (LaunchChoice) -> Unit = {},
@@ -85,8 +88,10 @@ fun WorktreeRow(
             buildList {
                 add(ContextMenuItem(withAgent(strings.copyLaunchCommand, agentName, strings), onClick = onCopyLaunchCommand))
                 if (!prunable) {
-                    add(ContextMenuItem(withAgent(strings.openInHerdr, agentName, strings), onClick = onOpenInHerdr))
-                    add(ContextMenuItem(withAgent(strings.openInOrca, agentName, strings), onClick = onOpenInOrca))
+                    runnersInOrder.forEach { runner ->
+                        val onOpen = if (runner == RunnerId.HERDR) onOpenInHerdr else onOpenInOrca
+                        add(ContextMenuItem(withAgent(strings.openIn(runner), agentName, strings), onClick = onOpen))
+                    }
                     openActions.forEach { add(ContextMenuItem(it.label, onClick = it.onClick)) }
                 }
                 launchChoices.forEach { choice -> add(ContextMenuItem(choice.label, onClick = { onLaunch(choice) })) }

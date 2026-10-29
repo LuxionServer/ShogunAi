@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.ui.components.StatusChip
 import app.luxion.shogunai.ui.components.WithTooltip
 import app.luxion.shogunai.ui.machine.MachineResource
@@ -537,6 +538,7 @@ private fun WorktreeRowFor(
         onCopyPath = { scope.launch { clipboard.copyText(worktree.path) } },
         onOpenInHerdr = { holder.openInHerdr(worktree) },
         onOpenInOrca = { holder.openInOrca(worktree) },
+        runnersInOrder = holder.runnersInOrder,
         openActions = holder.openActions(worktree, strings),
         agentName = holder.agentFor(worktree).displayName.takeIf { holder.hasAgentChoice },
         launchChoices = holder.launchChoices(worktree, strings),
@@ -559,6 +561,7 @@ private fun ChangeGroupHeader(group: ChangeGroup, board: WorktreeBoard) {
         onOpenAll = { board.openAllInHerdr(group) },
         onOpenAllInOrca = { board.openAllInOrca(group) }.takeIf { board.isOrcaInstalled },
         isOpeningInOrca = group.branch in board.openingGroupsInOrca,
+        orcaFirst = board.runnersInOrder.first() == RunnerId.ORCA,
         onAddRepository = { board.addRepositoryToGroup(group, it) },
         onCleanUp = { board.openGroupCleanup(group) },
     )
@@ -577,6 +580,7 @@ internal fun ChangeGroupHeaderView(
     onCleanUp: () -> Unit,
     onOpenAllInOrca: (() -> Unit)? = null,
     isOpeningInOrca: Boolean = false,
+    orcaFirst: Boolean = false,
 ) {
     val strings = LocalStrings.current
     val colors = MaterialTheme.colorScheme
@@ -607,14 +611,18 @@ internal fun ChangeGroupHeaderView(
         }
         StatusChip(group.state.status ?: Status.INFO, group.state.label(strings))
         if (isAdding || isOpeningInOrca) InlineProgress()
-        NeutralTextButton(onClick = onOpenAll) {
-            Text(strings.openAllInHerdr, style = MaterialTheme.typography.bodySmall)
+        val openAllInHerdr: @Composable () -> Unit = {
+            NeutralTextButton(onClick = onOpenAll) {
+                Text(strings.openAllInHerdr, style = MaterialTheme.typography.bodySmall)
+            }
         }
+        if (!orcaFirst) openAllInHerdr()
         onOpenAllInOrca?.let { openAllInOrca ->
             NeutralTextButton(onClick = openAllInOrca, enabled = !isOpeningInOrca) {
                 Text(strings.openAllInOrca, style = MaterialTheme.typography.bodySmall)
             }
         }
+        if (orcaFirst) openAllInHerdr()
         if (addableAliases.isNotEmpty()) AddRepositoryMenu(addableAliases, onAddRepository)
         val cleanUp: @Composable () -> Unit = {
             DangerTextButton(onClick = onCleanUp, enabled = canCleanUp) {

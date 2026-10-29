@@ -129,7 +129,7 @@ class CliHerdrClient(
         else -> null
     }
 
-    fun isInstalled(): Boolean = isFile(executable()) || findOnPath(binaryName()) != null
+    override fun isInstalled(): Boolean = isFile(executable()) || findOnPath(binaryName()) != null
 
     fun executable(): String {
         val name = binaryName()

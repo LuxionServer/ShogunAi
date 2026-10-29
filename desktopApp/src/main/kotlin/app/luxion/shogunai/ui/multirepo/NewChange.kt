@@ -4,30 +4,19 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.luxion.shogunai.domain.model.BranchType
-import app.luxion.shogunai.domain.model.HerdrOutcome
-import app.luxion.shogunai.domain.model.OrcaOutcome
+import app.luxion.shogunai.domain.model.RunnerId
+import app.luxion.shogunai.domain.model.RunnerOpening
 import app.luxion.shogunai.domain.usecase.GroupRepositoryResult
 import app.luxion.shogunai.domain.usecase.isValidGitRefSegment
 import app.luxion.shogunai.domain.usecase.normalizeTaskId
 
-enum class ChangeRunner { NONE, HERDR, ORCA }
-
-sealed interface RunnerOutcome {
-    data class Herdr(val outcome: HerdrOutcome) : RunnerOutcome
-    data class Orca(val outcome: OrcaOutcome) : RunnerOutcome
-}
-
-class NewChange(val membership: MultirepoMembership, herdrInstalled: Boolean = false, orcaInstalled: Boolean = false) {
+class NewChange(val membership: MultirepoMembership, installedRunners: Set<RunnerId> = emptySet(), runnerInUse: RunnerId? = null) {
     val aliases: List<String> = membership.aliases.values.sorted()
 
-    val runners: List<ChangeRunner> = listOfNotNull(
-        ChangeRunner.NONE,
-        ChangeRunner.HERDR.takeIf { herdrInstalled },
-        ChangeRunner.ORCA.takeIf { orcaInstalled },
-    ).takeIf { it.size > 1 }.orEmpty()
+    val runners: List<RunnerId?> = (listOf(null) + RunnerId.entries.filter { it in installedRunners }).takeIf { it.size > 1 }.orEmpty()
 
-    var runner by mutableStateOf(ChangeRunner.NONE)
-    var openings by mutableStateOf<Map<String, Result<RunnerOutcome>>?>(null)
+    var runner by mutableStateOf(runnerInUse?.takeIf { it in runners })
+    var openings by mutableStateOf<Map<String, Result<RunnerOpening>>?>(null)
         internal set
 
     var taskId by mutableStateOf("")

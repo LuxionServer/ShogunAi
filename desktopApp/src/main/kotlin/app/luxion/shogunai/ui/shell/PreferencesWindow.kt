@@ -128,6 +128,15 @@ fun ToolsSection(tools: ToolsPreferences) {
         modifier = Modifier.padding(top = Spacing.md),
     )
     ToolChoice(
+        title = strings.defaultRunnerLabel,
+        options = tools.installedRunners.takeIf { tools.detected != null }.orEmpty(),
+        selected = tools.defaultRunner,
+        onSelect = tools::chooseRunner,
+        name = { it.displayName },
+        noneFound = strings.noRunnerFound,
+        isDetected = tools.detected != null,
+    )
+    ToolChoice(
         title = strings.terminalToolLabel,
         options = tools.availableTerminals,
         selected = tools.terminalShown,

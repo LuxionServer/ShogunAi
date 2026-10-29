@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.ResourceSettings
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.BuildInfo
 import app.luxion.shogunai.domain.FakeAgentSessionStore
@@ -29,6 +30,7 @@ import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakeHerdrConfigSource
 import app.luxion.shogunai.domain.FakeOrcaClient
+import app.luxion.shogunai.domain.FakeToolPreferenceRepository
 import app.luxion.shogunai.domain.io.OrcaWorkspaceStore
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
@@ -176,6 +178,7 @@ class ShogunCliTest {
         packageCaches: PackageCacheSizes = PackageCacheSizes(),
         orca: FakeOrcaClient = FakeOrcaClient(installed = false),
         orcaWorkspaces: OrcaWorkspaceStore = OrcaWorkspaceStore.NONE,
+        runner: FakeToolPreferenceRepository = FakeToolPreferenceRepository(),
     ) = ShogunCli(
         executor = executor,
         fileManager = fileManager,
@@ -200,6 +203,7 @@ class ShogunCliTest {
         canonicalPath = canonicalPath,
         now = { now },
         herdr = herdr,
+        toolPreferences = runner,
         herdrAgentStartTimeout = 100.milliseconds,
         trust = trust,
         readAnswer = { answer },
@@ -2794,6 +2798,28 @@ class ShogunCliTest {
         assertEquals(listOf(Triple(base, merged, "TASK-1")), herdr.opened)
         assertEquals(listOf(FakeHerdrClient.Split("w1:p1", merged, listOf("APP" to "app"))), herdr.splits)
         assertEquals(listOf("w1:p2" to "claude -n main-repo-task-1"), herdr.ran)
+    }
+
+    @Test
+    fun `open without a runner flag uses Herdr when nothing is chosen`() {
+        val herdr = FakeHerdrClient()
+
+        val exitCode = cli(repositoryExecutor(), herdr = herdr, orca = FakeOrcaClient()).run(listOf("open", "TASK-1"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("opened $merged in Herdr with Claude (pane w1:p1)\n", out.toString())
+    }
+
+    @Test
+    fun `open without a runner flag uses the chosen runner`() {
+        val orca = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)), visibleWorktrees = mapOf("r1" to listOf(OrcaWorktree(merged, false))))
+        val herdr = FakeHerdrClient()
+
+        val exitCode = cli(repositoryExecutor(), herdr = herdr, orca = orca, runner = FakeToolPreferenceRepository(runner = RunnerId.ORCA)).run(listOf("open", "TASK-1", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.contains("\"orca\":\"started-agent\""), out.toString())
+        assertTrue(herdr.opened.isEmpty())
     }
 
     @Test

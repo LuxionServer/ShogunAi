@@ -33,19 +33,24 @@ Settings live in `~/.shogunai/settings.json` (`JsonSettingsFile`), which the CLI
 ## Decisions
 
 ### `RunnerId` and the runner in use
-`RunnerId { HERDR, ORCA }` in `domain/model`, with its display name and its `shogun open` flag (`herdr`, `orca`).
+`RunnerId { HERDR, ORCA }`, with its display name and its `shogun open` flag (`herdr`, `orca`); see below for where it lives.
 
 `runnerInUse(chosen: RunnerId?, installed: (RunnerId) -> Boolean): RunnerId`:
 1. The chosen runner when it's installed.
 2. Otherwise the first installed of Herdr and Orca, in that order.
 3. Otherwise the chosen runner, or Herdr when nothing is chosen, so errors keep naming a runner.
 
-This mirrors `ToolsPreferences.terminalShown`. Someone with only Herdr, or with nothing chosen and Herdr installed, sees no change.
+This mirrors `ToolsPreferences.terminalShown` and matches the epic's `defaultRunner`, which gives no runner instead of the third case. Someone with only Herdr, or with nothing chosen and Herdr installed, sees no change.
 
 *Alternative:* the runner in use is always the chosen one, Herdr by default. Rejected: a person with only Orca would get a shortcut that fails.
 
-### Stored in `settings.json`, behind a port
-`Settings.runner: RunnerId? = null`. A `RunnerPreferenceRepository` port (`load()`, `save(runner)`) with `JsonRunnerPreferenceRepository` over `JsonSettingsFile`, like `JsonToolPreferenceRepository`. The CLI reads it through the same repository. An unreadable file reads as no choice. An unknown value too: `RunnerId` is decoded leniently, so an older binary reading a newer file doesn't fail.
+### Stored in `settings.json`, in the shape the UI redesign epic uses
+The `epic/ui-redesign-v2` branch already stores a default runner for its action catalog. This change uses the same model so the two merge with small conflicts:
+- `RunnerId { HERDR, ORCA }` with its display name, `@Serializable`, in `Tools.kt`; the `shogun open` flag is an extension (`RunnerId.flag`), so the enum's declaration matches the epic's.
+- `Settings.runner: RunnerId? = null`, and `loadRunner()`/`saveRunner()` on `ToolPreferenceRepository`, implemented by `JsonToolPreferenceRepository` over `JsonSettingsFile`.
+- `DetectedTools.runners`, filled by `LocalToolDetector` from an `isRunnerInstalled` check.
+- `ToolsPreferences.chosenRunner`, `installedRunners`, `defaultRunner` and `chooseRunner`, and the "Default runner" choice first in Settings' Tools section.
+The CLI reads the same repository. An unreadable file reads as no choice.
 
 ### One `AgentRunner` port over the existing use cases
 In `domain/io`:
@@ -87,18 +92,18 @@ The JSON writers take `RunnerOpening` and choose the runner's keys from `opening
 - **Multirepo folder.** `GroupContext.multirepoLines(multirepo, runner)` names `shogun open <id> --<flag>`.
 
 ### Desktop app
-- **State.** `RunnerPreferences` holds the chosen runner, the installed runners (checked once, off the UI thread, like the tools) and `inUse`.
-- **Settings.** It's shown in the Tools section of Settings as a third `ToolChoice`, "Runner", listing the installed runners. When none is installed it says so, as for terminals.
+- **State.** `ToolsPreferences` holds the runner too, as in the epic: the chosen runner, the installed runners (from the tool detection, off the UI thread) and `defaultRunner`, the runner in use. It's already refreshed at start-up and when Settings opens, and already reaches every project's view, so the runner needs no wiring of its own.
+- **Settings.** It's shown first in the Tools section of Settings, "Default runner", listing the installed runners. When none is installed it says so, as for terminals.
 - **Default actions.**
   - `WorktreeBoard.openSelectedInRunner()` opens the selection in the runner in use, and the Worktree menu item is labelled with that runner, keeping Cmd+E / Ctrl+E.
   - `TourAgentChoices` offers "Open in <runner in use>".
   - The detail pane, the row's context menu, a group's header and the multirepo agent's menu list the runner in use first and the other after it.
   - `NewChange` starts its selector on the runner in use when it's offered, and on "Don't open" otherwise.
-- **Worktree opens.** `ProjectWorktrees.openInHerdr` and `openInOrca` keep their state and messages. They gain a common `openIn(runner, worktree, picked)`, used by the menu, the shortcut and the tour. Herdr's shortcut of focusing an agent the overview already knows stays in its branch.
-- **Multirepo actions.** `MultirepoActions` replaces `openAgent`, `openAgentInOrca`, `openGroupInHerdr` and `openGroupInOrca` with:
+- **Worktree opens keep their per-runner use cases.** `ProjectWorktrees.openInHerdr` and `openInOrca` keep their state, Herdr's shortcut of focusing an agent the overview already knows, and their messages, so their tests and the code the other Orca changes touch stay as they are. They gain a common `openIn(runner, worktree, picked)`, used by the menu, the shortcut, the tour and the ordered buttons.
+- **Multirepo actions go through the port.** This is where the app branched on the runner. `MultirepoActions` replaces `openAgent`, `openAgentInOrca`, `openGroupInHerdr` and `openGroupInOrca` with:
   - `openGroup(runner, group)` and `openAgent(runner, multirepo)`, both returning the port's outcome;
-  - `installed: Set<RunnerId>`.
-  `NewChange`'s `ChangeRunner`/`RunnerOutcome` become a `RunnerId?` (null is "Don't open") and `RunnerOutcome`. The notices keep their per-runner texts.
+  - `installedRunners: Set<RunnerId>`.
+  `NewChange`'s `ChangeRunner`/`RunnerOutcome` become a `RunnerId?` (null is "Don't open") and `RunnerOpening`. `MultirepoNotice.AgentOpened` carries the runner and replaces `AgentOpenedInOrca`; the texts stay per runner.
 
 ## Risks / Trade-offs
 

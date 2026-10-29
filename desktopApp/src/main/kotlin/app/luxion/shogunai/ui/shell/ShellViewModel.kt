@@ -364,7 +364,7 @@ data class AddMultirepoRequest(val folder: String?)
 data class WorktreeActions(
     val onFind: () -> Unit,
     val onCopySelectedLaunchCommand: () -> Unit,
-    val onOpenSelectedInHerdr: () -> Unit,
+    val onOpenSelectedInRunner: () -> Unit,
     val onDeleteSelectedWorktree: () -> Unit,
     val onClearSelection: () -> Unit,
     val onEscape: () -> Unit,

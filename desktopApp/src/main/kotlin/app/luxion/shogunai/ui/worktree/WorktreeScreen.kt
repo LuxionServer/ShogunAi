@@ -43,6 +43,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.OrcaOutcome
@@ -140,7 +141,9 @@ fun WorktreeScreen(
                 IconAction(icon = Icons.Default.Settings, label = strings.multirepoSettingsTitle, onClick = onOpenMultirepoSettings)
                 val canOpenAgent = !needsReview && !board.isOpeningMultirepoAgent
                 if (board.isOrcaInstalled) {
-                    MultirepoAgentMenu(enabled = canOpenAgent, onOpenInHerdr = board::openMultirepoAgent, onOpenInOrca = board::openMultirepoAgentInOrca)
+                    MultirepoAgentMenu(enabled = canOpenAgent, runners = board.runnersInOrder) { runner ->
+                        if (runner == RunnerId.ORCA) board.openMultirepoAgentInOrca() else board.openMultirepoAgent()
+                    }
                 } else {
                     SecondaryButton(onClick = board::openMultirepoAgent, enabled = canOpenAgent) {
                         Text(strings.openMultirepoAgent)
@@ -567,7 +570,7 @@ private fun PendingSuccess.action(strings: Strings, board: WorktreeBoard): Messa
 }
 
 @Composable
-private fun MultirepoAgentMenu(enabled: Boolean, onOpenInHerdr: () -> Unit, onOpenInOrca: () -> Unit) {
+private fun MultirepoAgentMenu(enabled: Boolean, runners: List<RunnerId>, onOpen: (RunnerId) -> Unit) {
     val strings = LocalStrings.current
     var expanded by remember { mutableStateOf(false) }
     Box {
@@ -576,20 +579,15 @@ private fun MultirepoAgentMenu(enabled: Boolean, onOpenInHerdr: () -> Unit, onOp
             Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(ButtonIconSize))
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            DropdownMenuItem(
-                text = { Text(strings.openMultirepoAgent) },
-                onClick = {
-                    expanded = false
-                    onOpenInHerdr()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text(strings.openMultirepoAgentInOrca) },
-                onClick = {
-                    expanded = false
-                    onOpenInOrca()
-                },
-            )
+            runners.forEach { runner ->
+                DropdownMenuItem(
+                    text = { Text(if (runner == RunnerId.ORCA) strings.openMultirepoAgentInOrca else strings.openMultirepoAgent) },
+                    onClick = {
+                        expanded = false
+                        onOpen(runner)
+                    },
+                )
+            }
         }
     }
 }

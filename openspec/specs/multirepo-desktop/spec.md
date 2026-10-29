@@ -161,11 +161,15 @@ The multirepo SHALL have a settings screen to set its name, add, remove and rena
 - **THEN** the settings screen points to the review and saves nothing
 
 ### Requirement: New change from the app
-The multirepo view SHALL offer "New change", a dialog like "New worktree" with the change id, feature or fix, fetching first, one checkbox per repository with the default repositories checked, and a selector to open the new worktrees in Herdr or in Orca, defaulting to not opening them. It SHALL create the group as `shogun new <id> --repos` does, report each repository's result and then open the group in the chosen runner as "Open all" does.
+The multirepo view SHALL offer "New change", a dialog like "New worktree" with the change id, feature or fix, fetching first, one checkbox per repository with the default repositories checked, and a selector to open the new worktrees in Herdr or in Orca, starting on the runner in use when the selector offers it and on not opening them otherwise. It SHALL create the group as `shogun new <id> --repos` does, report each repository's result and then open the group in the chosen runner as "Open all" does.
 
 #### Scenario: Create a change
-- **WHEN** the user enters `TASK-20`, keeps `app` and `api` checked, leaves the selector on not opening and confirms
+- **WHEN** the user enters `TASK-20`, keeps `app` and `api` checked, sets the selector to not opening and confirms
 - **THEN** both worktrees are created on `feature/TASK-20` in their projects' worktrees folders, the group appears in the multirepo view and nothing is opened
+
+#### Scenario: Selector starts on the runner in use
+- **WHEN** Orca is the runner in use and installed, and the user opens "New change"
+- **THEN** the selector starts on Orca
 
 #### Scenario: Create and open in Orca
 - **WHEN** the user picks Orca in the selector and confirms

@@ -1,6 +1,8 @@
 package app.luxion.shogunai.ui.worktree
 
 import app.luxion.shogunai.domain.usecase.ResourceAcquisition
+import app.luxion.shogunai.domain.model.RunnerId
+import app.luxion.shogunai.domain.model.runnersInUseOrder
 import app.luxion.shogunai.domain.model.ReleaseRecord
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
@@ -908,6 +910,18 @@ class ProjectWorktrees(
                 openingInHerdr = openingInHerdr - worktree.path
             }
         }
+    }
+
+    fun openIn(runner: RunnerId, worktree: Worktree, picked: AgentLaunchConfig? = null) = when (runner) {
+        RunnerId.HERDR -> openInHerdr(worktree, picked)
+        RunnerId.ORCA -> openInOrca(worktree, picked)
+    }
+
+    val runnersInOrder: List<RunnerId> get() = runnersInUseOrder(tools.defaultRunner ?: RunnerId.HERDR)
+
+    fun openingIn(runner: RunnerId): Set<String> = when (runner) {
+        RunnerId.HERDR -> openingInHerdr
+        RunnerId.ORCA -> openingInOrca
     }
 
     fun openInOrca(worktree: Worktree, picked: AgentLaunchConfig? = null) {

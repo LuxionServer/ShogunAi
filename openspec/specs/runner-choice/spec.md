@@ -1,7 +1,12 @@
-## ADDED Requirements
+# runner-choice Specification
+
+## Purpose
+Lets the person choose Herdr or Orca as the default runner once, and makes the desktop app's default open actions, `shogun open` without a runner flag, the workflow guide and the session-start context follow it, through one port for opening agents in either runner.
+
+## Requirements
 
 ### Requirement: Choose the default runner in Settings
-The Tools section of Settings SHALL offer a "Runner" choice between the installed runners, Herdr and Orca, saved in `~/.shogunai/settings.json` so the desktop app and the `shogun` command share it. When neither runner is installed, the section SHALL say so instead of offering a choice.
+The Tools section of Settings SHALL offer a "Default runner" choice between the installed runners, Herdr and Orca, saved in `~/.shogunai/settings.json` so the desktop app and the `shogun` command share it. When neither runner is installed, the section SHALL say so instead of offering a choice.
 
 #### Scenario: Choose Orca
 - **WHEN** Herdr and Orca are installed and the user picks Orca as the runner
@@ -13,7 +18,7 @@ The Tools section of Settings SHALL offer a "Runner" choice between the installe
 
 #### Scenario: No runner installed
 - **WHEN** neither Herdr nor Orca is installed
-- **THEN** the Runner choice says no runner was found
+- **THEN** the "Default runner" choice says no runner was found
 
 ### Requirement: Resolve the runner in use
 The runner in use SHALL be the chosen runner when it's installed; otherwise the first installed of Herdr and Orca, in that order; otherwise the chosen runner, or Herdr when none was chosen. A missing or unreadable choice SHALL count as no choice.

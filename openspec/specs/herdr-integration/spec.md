@@ -210,11 +210,15 @@ Reading agents from Herdr SHALL run at most once per check for all projects, SHA
 - **THEN** ShogunAi runs `herdr` at most once every 30 seconds and shows agents without states meanwhile
 
 ### Requirement: Open a worktree in Herdr from the command line
-`shogun open <target> --herdr` SHALL open the worktree in Herdr with the same workspace, environment and agent command as the desktop app's "Open in Herdr", SHALL reuse an existing workspace as that action does (focusing a live agent, or starting one in a new pane when there's none), and SHALL report on standard error, with exit code 1, that Herdr isn't installed, that its command failed, or that the agent didn't start.
+`shogun open <target> --herdr`, or `shogun open <target>` without a runner flag when Herdr is the runner in use, SHALL open the worktree in Herdr with the same workspace, environment and agent command as the desktop app's "Open in Herdr", SHALL reuse an existing workspace as that action does (focusing a live agent, or starting one in a new pane when there's none), and SHALL report on standard error, with exit code 1, that Herdr isn't installed, that its command failed, or that the agent didn't start.
 
 #### Scenario: Worktree with an environment
 - **WHEN** the user runs `shogun open TASK-123 --herdr` and the repository declares `env`
 - **THEN** the workspace's shell has every variable `shogun env` prints for that worktree and the agent command runs with them
+
+#### Scenario: Herdr in use without a flag
+- **WHEN** Herdr is the runner in use and the user runs `shogun open TASK-123`
+- **THEN** the worktree opens in Herdr as with `shogun open TASK-123 --herdr`
 
 #### Scenario: Herdr not installed
 - **WHEN** the `herdr` command can't be found

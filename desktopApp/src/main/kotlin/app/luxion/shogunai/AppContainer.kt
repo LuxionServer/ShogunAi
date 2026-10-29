@@ -1,5 +1,9 @@
 package app.luxion.shogunai
 
+import app.luxion.shogunai.domain.io.AgentRunner
+import app.luxion.shogunai.domain.model.RunnerId
+import app.luxion.shogunai.domain.usecase.HerdrAgentRunner
+import app.luxion.shogunai.domain.usecase.OrcaAgentRunner
 import app.luxion.shogunai.domain.usecase.DesktopTurnLedger
 import app.luxion.shogunai.domain.usecase.ReadDesktopTurnUseCase
 import app.luxion.shogunai.domain.usecase.ReadHeadlessAppUseCase
@@ -24,7 +28,6 @@ import app.luxion.shogunai.domain.usecase.CreateGroupUseCase
 import app.luxion.shogunai.domain.usecase.DetectGroupsUseCase
 import app.luxion.shogunai.domain.usecase.MultirepoSharedEnvironment
 import app.luxion.shogunai.domain.usecase.MultirepoMember
-import app.luxion.shogunai.domain.usecase.OpenMultirepoAgentInHerdrUseCase
 import app.luxion.shogunai.domain.usecase.RegisteredMultirepo
 import app.luxion.shogunai.domain.usecase.ResolveMultirepoUseCase
 import app.luxion.shogunai.domain.usecase.WorktreeGroup
@@ -166,9 +169,6 @@ import app.luxion.shogunai.infrastructure.ProcessMavenDaemonSource
 import app.luxion.shogunai.domain.usecase.CloseHerdrWorkspacesUseCase
 import app.luxion.shogunai.domain.usecase.ClaudeSessionNaming
 import app.luxion.shogunai.domain.usecase.CloseOrcaTerminalsUseCase
-import app.luxion.shogunai.domain.usecase.OpenGroupInHerdrUseCase
-import app.luxion.shogunai.domain.usecase.OpenGroupInOrcaUseCase
-import app.luxion.shogunai.domain.usecase.OpenMultirepoAgentInOrcaUseCase
 import app.luxion.shogunai.domain.usecase.OpenWorktreeInOrcaUseCase
 import app.luxion.shogunai.domain.usecase.OrcaOrigins
 import app.luxion.shogunai.domain.usecase.OrcaWorktreeReader
@@ -386,7 +386,7 @@ class AppContainer {
     )
     val tools = ToolsPreferences(
         JsonToolPreferenceRepository(settingsFile),
-        LocalToolDetector(shellCommandExecutor, editorResolver = editorResolver),
+        LocalToolDetector(shellCommandExecutor, editorResolver = editorResolver, isRunnerInstalled = ::isRunnerInstalled),
     )
     private val terminalLaunchers = listOf(
         MacTerminalLauncher(TerminalId.TERMINAL, shellCommandExecutor),
@@ -448,6 +448,11 @@ class AppContainer {
     private val herdrConfig = HerdrConfigFile()
     private val herdrClient = CliHerdrClient(shellCommandExecutor)
     private val orcaClient = CliOrcaClient(shellCommandExecutor)
+
+    private fun isRunnerInstalled(runner: RunnerId): Boolean = when (runner) {
+        RunnerId.HERDR -> herdrClient.isInstalled()
+        RunnerId.ORCA -> orcaClient.isInstalled()
+    }
     private val orcaReader = OrcaWorktreeReader(orcaClient, JsonOrcaWorkspaceStore())
     private val resourceLimitsRepository: ResourceLimitsRepository = JsonResourceLimitsRepository(settingsFile)
     private val resolveResourceLimits = ResolveResourceLimitsUseCase(resourceLimitsRepository, JvmMachineCapacity())
@@ -458,6 +463,10 @@ class AppContainer {
         ClaudeCodeHooks.claudeSessionsDirectory(System.getenv("CLAUDE_CONFIG_DIR"), System.getProperty("user.home")),
     )
     private val herdrLauncher = HerdrAgentLauncher(herdrClient, registry = claudeSessions)
+    private val agentRunners: Map<RunnerId, AgentRunner> = listOf(
+        HerdrAgentRunner(herdrClient, resolveEnvironment, herdrLauncher),
+        OrcaAgentRunner(orcaClient, resolveEnvironment, ClaudeSessionNaming(claudeSessions)),
+    ).associateBy { it.id }
     private val readPool = ReadResourcePoolUseCase(
         resolveEnvironment,
         environmentStateStore,
@@ -626,13 +635,10 @@ class AppContainer {
                 provisioningRecords,
             )(members, taskId, branchType, fetch, onRepository)
         },
-        openAgent = { multirepo -> OpenMultirepoAgentInHerdrUseCase(herdrClient, herdrLauncher)(multirepo) },
+        openAgent = { runner, multirepo -> agentRunners.getValue(runner).openMultirepoAgent(multirepo) },
         trust = { multirepo -> configureMultirepo.trust(multirepo) },
-        openGroupInHerdr = { group -> OpenGroupInHerdrUseCase(herdrClient, resolveEnvironment, herdrLauncher)(group) },
-        openGroupInOrca = { group -> OpenGroupInOrcaUseCase(orcaClient, resolveEnvironment, ClaudeSessionNaming(claudeSessions))(group) },
-        openAgentInOrca = { multirepo -> OpenMultirepoAgentInOrcaUseCase(orcaClient, ClaudeSessionNaming(claudeSessions))(multirepo) },
-        herdrInstalled = herdrClient.isInstalled(),
-        orcaInstalled = orcaClient.isInstalled(),
+        openGroup = { runner, group -> agentRunners.getValue(runner).openGroup(group) },
+        installedRunners = agentRunners.values.filter { it.isInstalled() }.map { it.id }.toSet(),
     )
 
     fun forgetMissingMultirepos() {

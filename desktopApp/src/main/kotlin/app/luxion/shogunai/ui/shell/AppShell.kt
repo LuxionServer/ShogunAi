@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.AppContainer
 import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.Project
@@ -98,6 +99,7 @@ fun AppShell(
             onWorktreeUsed = { ref -> viewModel.recordWorktree(ref.projectId, ref.path) },
             inactivity = inactivity,
             multirepoActions = appContainer.multirepoActions,
+            runnerInUse = { appContainer.tools.defaultRunner ?: RunnerId.HERDR },
             desktopTurn = appContainer.desktopTurn,
         )
     }
@@ -418,7 +420,7 @@ private fun WorktreeView(destination: ShellDestination, shellViewModel: ShellVie
             WorktreeActions(
                 onFind = board::requestFind,
                 onCopySelectedLaunchCommand = board::copySelectedLaunchCommand,
-                onOpenSelectedInHerdr = board::openSelectedInHerdr,
+                onOpenSelectedInRunner = board::openSelectedInRunner,
                 onDeleteSelectedWorktree = board::deleteSelectedWorktree,
                 onClearSelection = board::clearSelection,
                 onEscape = board::escape,
