@@ -17,6 +17,9 @@ import app.luxion.shogunai.domain.model.ProvisionedFile
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.isLocalPattern
+import app.luxion.shogunai.domain.model.LocalFileOrigin
+import app.luxion.shogunai.domain.model.UnavailableLocalFile
+import app.luxion.shogunai.domain.model.UnavailableReason
 import app.luxion.shogunai.domain.model.joinPath
 import java.io.IOException
 
@@ -27,6 +30,8 @@ internal data class ProvisionedFiles(
     val linkedFolders: Map<String, List<String>> = emptyMap(),
     val copiedFolders: Map<String, List<String>> = emptyMap(),
     val skippedLinks: List<String> = emptyList(),
+    val repositoryFiles: Set<String> = emptySet(),
+    val unreadableInFolders: List<String> = emptyList(),
 )
 
 internal data class AppliedProvisioning(
@@ -40,14 +45,50 @@ internal suspend fun checkProvisioningAndResolveFiles(
     fileManager: FileManager,
     provisioningSource: RepositoryProvisioningSource,
 ): ProvisionedFiles {
-    val missingSecrets = config.secretFiles
-        .filterNot(::isLocalPattern)
-        .filterNot { fileManager.exists(config.baseSecretPath(it)) }
-    if (missingSecrets.isNotEmpty()) {
-        throw WorktreeError.SecretFileNotFound(missingSecrets, config.baseRepositoryPath)
-    }
+    val missing = missingLocalEntries(config, fileManager)
+    if (missing.isNotEmpty()) throw WorktreeError.LocalFilesUnavailable(config.baseRepositoryPath, missing)
     return resolveProvisionedFiles(config, executor, fileManager, provisioningSource)
 }
+
+internal suspend fun checkLocalFilesAndResolve(
+    config: ProjectConfig,
+    executor: ShellCommandExecutor,
+    fileManager: FileManager,
+    provisioningSource: RepositoryProvisioningSource,
+): ProvisionedFiles {
+    val missing = missingLocalEntries(config, fileManager)
+    val provisioned = resolveProvisionedFiles(config, executor, fileManager, provisioningSource)
+    val unavailable = missing + unavailableProvisionedFiles(config, fileManager, provisioned, missing.map { it.path }.toSet())
+    if (unavailable.isNotEmpty()) throw WorktreeError.LocalFilesUnavailable(config.baseRepositoryPath, unavailable)
+    return provisioned
+}
+
+private fun missingLocalEntries(config: ProjectConfig, fileManager: FileManager): List<UnavailableLocalFile> =
+    config.secretFiles
+        .filterNot(::isLocalPattern)
+        .filterNot { fileManager.exists(config.baseSecretPath(it)) }
+        .map { unavailableLocalFile(config, it, LocalFileOrigin.PROJECT, UnavailableReason.Missing) }
+
+private fun unavailableProvisionedFiles(
+    config: ProjectConfig,
+    fileManager: FileManager,
+    provisioned: ProvisionedFiles,
+    alreadyReported: Set<String>,
+): List<UnavailableLocalFile> {
+    val origin = { file: String -> if (file in provisioned.repositoryFiles) LocalFileOrigin.REPOSITORY else LocalFileOrigin.PROJECT }
+    val files = (provisioned.copied + provisioned.linked).distinct().filterNot { it in alreadyReported }
+    val unavailableFiles = files.mapNotNull { file ->
+        fileManager.unavailableReason(config.baseSecretPath(file))?.let { unavailableLocalFile(config, file, origin(file), it) }
+    }
+    val unreadableEntries = provisioned.unreadableInFolders.map { entry ->
+        val reason = fileManager.unavailableReason(config.baseSecretPath(entry)) ?: UnavailableReason.Unreadable(null)
+        unavailableLocalFile(config, entry, LocalFileOrigin.PROJECT, reason)
+    }
+    return unavailableFiles + unreadableEntries
+}
+
+private fun unavailableLocalFile(config: ProjectConfig, path: String, origin: LocalFileOrigin, reason: UnavailableReason) =
+    UnavailableLocalFile(path, config.baseSecretPath(path), origin, reason)
 
 
 private fun localFolderName(entry: String): String = entry.trimEnd('/', '\\')
@@ -76,7 +117,8 @@ internal suspend fun resolveProvisionedFiles(
     val repositoryLinked = listUntrackedFiles(config, executor, provisioning.linkPatterns)
         .filterNot { it in local || insideLinkedFolder(it) }
     val linked = (localLinked + repositoryLinked).distinct()
-    val copied = (localCopied + listUntrackedFiles(config, executor, provisioning.allPatterns))
+    val repositoryCopied = listUntrackedFiles(config, executor, provisioning.allPatterns)
+    val copied = (localCopied + repositoryCopied)
         .distinct()
         .filterNot { it in linked || insideLinkedFolder(it) }
     return ProvisionedFiles(
@@ -86,6 +128,8 @@ internal suspend fun resolveProvisionedFiles(
         linkedFolders = linkedFolders.associate { it.key to it.value.files },
         copiedFolders = copiedFolders.associate { it.key to it.value.files },
         skippedLinks = copiedFolders.flatMap { (folder, listing) -> listing.skippedLinks.map { "$folder/$it" } },
+        repositoryFiles = (repositoryLinked + repositoryCopied).toSet() - local,
+        unreadableInFolders = copiedFolders.flatMap { (folder, listing) -> listing.unreadable.map { "$folder/$it" } },
     )
 }
 

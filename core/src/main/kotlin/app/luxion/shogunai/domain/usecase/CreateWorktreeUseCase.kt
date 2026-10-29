@@ -43,7 +43,7 @@ class CreateWorktreeUseCase(
                 throw WorktreeError.WorktreeAlreadyExists(worktreePath)
             }
 
-            val provisioned = checkProvisioningAndResolveFiles(config, executor, fileManager, provisioningSource)
+            val provisioned = checkLocalFilesAndResolve(config, executor, fileManager, provisioningSource)
 
             val branch = "${branchType.prefix}/$id"
             addWorktreeAndCopySecrets(

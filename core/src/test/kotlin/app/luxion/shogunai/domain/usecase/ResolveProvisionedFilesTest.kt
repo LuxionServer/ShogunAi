@@ -210,4 +210,28 @@ class ResolveProvisionedFilesTest {
             "patterns select untracked files only, like copy",
         )
     }
+
+    @Test
+    fun `tells the files that come only from the repository's patterns`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it, stdout = "local.properties\u0000.env\u0000") }
+        val localConfig = config.copy(secretFiles = listOf("local.properties"))
+
+        val files = resolveProvisionedFiles(localConfig, executor, FakeFileManager(), source(RepositoryProvisioning(copyPatterns = listOf("*")))).repositoryFiles
+
+        assertEquals(setOf(".env"), files)
+    }
+
+    @Test
+    fun `keeps the entries of a copied local folder that couldn't be read`() = runTest {
+        val keys = config.baseSecretPath("keys")
+        val fileManager = FakeFileManager(directories = setOf(keys)).also {
+            it.directoryFiles[keys] = listOf("a.pem")
+            it.directoryUnreadable[keys] = listOf("private")
+        }
+
+        val provisioned = resolveProvisionedFiles(config.copy(secretFiles = listOf("keys")), FakeShellCommandExecutor(), fileManager, FakeRepositoryProvisioningSource())
+
+        assertEquals(listOf("keys/private"), provisioned.unreadableInFolders)
+        assertEquals(listOf("keys/a.pem"), provisioned.copied)
+    }
 }
