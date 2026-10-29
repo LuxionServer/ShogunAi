@@ -114,6 +114,8 @@ class WorktreeBoard(
         private set
     var multirepoAgents by mutableStateOf<Map<String, List<RunningAgent>>>(emptyMap())
         private set
+    var multirepoAgentsReadAt by mutableStateOf<Instant?>(null)
+        private set
     private var collapsedChanges by mutableStateOf<Set<String>>(emptySet())
     var multirepoNotice by mutableStateOf<MultirepoNotice?>(null)
         private set
@@ -317,6 +319,12 @@ class WorktreeBoard(
 
     fun multirepoAgentsOf(folder: String): List<RunningAgent> = multirepoAgents[folder].orEmpty()
 
+    fun agentsOf(group: ChangeGroup): List<RunningAgent> =
+        group.members.flatMap { it.entry.holder.agents.orEmpty()[it.entry.worktree.path].orEmpty() }
+
+    fun agentsReadAtOf(group: ChangeGroup): Instant? =
+        group.members.mapNotNull { it.entry.holder.agentsReadAt }.maxOrNull()
+
     fun multirepoActivityCountOf(folder: String): Int =
         multirepoAgentsOf(folder).count { it.state == AgentState.WORKING || it.state == AgentState.BLOCKED }
 
@@ -326,6 +334,7 @@ class WorktreeBoard(
     private fun applyMultirepoAgents(detected: Map<String, List<RunningAgent>>?) {
         val folders = memberships.map { it.folder }.toSet()
         multirepoAgents = detected?.filterKeys { it in folders }.orEmpty()
+        if (detected != null) multirepoAgentsReadAt = clock()
     }
 
     fun agentNamesOf(projectId: String): List<String> =

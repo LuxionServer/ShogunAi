@@ -149,14 +149,14 @@ class WorktreeRowUiTest {
             }
         }
 
-        assertEquals(0, onAllNodesWithText("Claude · blocked", useUnmergedTree = true).fetchSemanticsNodes().size)
+        assertEquals(0, onAllNodesWithText("Claude · needs you", useUnmergedTree = true).fetchSemanticsNodes().size)
         assertEquals(2, onAllNodesWithTag(ExecutionTag, useUnmergedTree = true).fetchSemanticsNodes().size)
         val widths = onAllNodesWithTag(ExecutionTag, useUnmergedTree = true).fetchSemanticsNodes().map { it.size.width }
         assertTrue(widths.all { it == widths.first() })
-        onNodeWithContentDescription("Claude · blocked", useUnmergedTree = true).performMouseInput { moveTo(center) }
+        onNodeWithContentDescription("Claude · needs you", useUnmergedTree = true).performMouseInput { moveTo(center) }
         mainClock.advanceTimeBy(2_000)
 
-        onNodeWithText("Claude: blocked").assertIsDisplayed()
+        onNodeWithText("Claude · needs you\nOnly its process was found").assertIsDisplayed()
     }
 
     @Test
@@ -193,7 +193,7 @@ class WorktreeRowUiTest {
         val blocked = model("feature/TASK-1", agents = listOf(RunningAgent("claude", AgentState.BLOCKED)))
         setContent { MaterialTheme { Column(Modifier.width(900.dp)) { Row(blocked) } } }
 
-        onNodeWithText("Claude · blocked").assertIsDisplayed()
+        onNodeWithText("Claude · needs you", useUnmergedTree = true).assertIsDisplayed()
     }
 
     @Test

@@ -10,7 +10,8 @@ import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.MobileSecretKind
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.AppLanguage
-import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.AgentStateSource
+import app.luxion.shogunai.ui.components.AgentPhase
 import app.luxion.shogunai.domain.usecase.HookEntry
 import app.luxion.shogunai.domain.usecase.HookReplacement
 import app.luxion.shogunai.domain.usecase.HooksInstallState
@@ -196,7 +197,21 @@ interface Strings {
     val menuActive: String
     val menuAllWorktrees: String
     fun agentsRunning(names: List<String>): String
-    fun agentLabel(name: String, state: AgentState?): String
+    fun agentLabel(name: String, phase: AgentPhase): String = "$name · ${agentPhaseName(phase)}"
+    fun agentPhaseName(phase: AgentPhase): String
+    fun agentStateSource(source: AgentStateSource?): String
+    fun agentsUpdated(relative: String): String
+    val noAgentRunning: String
+    fun copyValue(key: String): String
+    val agentSectionTitle: String
+    val resourcesTitle: String
+    val expanded: String
+    val collapsed: String
+    val changesKey: String
+    val upstreamKey: String
+    fun versusBranchKey(branch: String): String
+    val lastCommitKey: String
+    fun environmentSummary(ports: Int, variables: Int): String
     val claudeCodeLabel: String
     fun claudeHooksStatus(state: HooksInstallState): String
     val claudeHooksInstall: String
@@ -244,7 +259,6 @@ interface Strings {
     val mergedLabel: String
     fun commitAgo(relative: String): String
     fun createdAgo(relative: String): String
-    fun agentStateName(state: AgentState?): String
     val sortLabel: String
     val sortByName: String
     val sortByLastActivity: String
@@ -273,7 +287,7 @@ interface Strings {
     val provisioningUpToDate: String
     val provisionAction: String
     val copyAsEnv: String
-    fun provisionDriftFile(path: String, state: ProvisionDriftState): String
+    fun provisionDriftState(state: ProvisionDriftState): String
     val devicesTitle: String
     val diskTitle: String
     val deleteWorktree: String

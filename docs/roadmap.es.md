@@ -88,7 +88,6 @@ Los multirepos y los grupos por rama están hechos en el CLI y en la app de escr
 - Comprobar el recorrido guiado en Windows y Linux con una app instalada real: la creación del ejemplo con el Git del sistema, y el comando del agente del recorrido, cuyo prompt se entrecomilla para la shell que ejecuta cada terminal.
 - Una página de changelog en la web de documentación construida con las notas de `.github/release-notes/`, que la app ya muestra en su aviso de actualización.
 - Quitar Cmd/Ctrl+E, que se mantiene una versión como alias de Cmd/Ctrl+O desde que el atajo pasó al runner por defecto.
-- Terminar los tokens del diseño v2 en el detalle del worktree, que la integración con Orca estaba cambiando a la vez: las etiquetas de sus botones aún se encogen con `bodySmall` y muestra el estado del agente y las fechas en mono.
 
 ## Más adelante
 

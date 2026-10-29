@@ -42,6 +42,8 @@ import app.luxion.shogunai.domain.model.OrcaOutcome
 import app.luxion.shogunai.domain.model.WorktreeSort
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.ui.components.DangerButton
+import app.luxion.shogunai.ui.components.AgentIndicator
+import java.time.Instant
 import app.luxion.shogunai.ui.components.DisabledReason
 import app.luxion.shogunai.ui.components.DropdownSelector
 import app.luxion.shogunai.ui.components.EmptyState
@@ -140,8 +142,8 @@ fun WorktreeScreen(
                 )
             }
             if (multirepo != null) {
-                board.multirepoAgentsOf(multirepo.folder).forEach { agent ->
-                    Text(strings.agentLabel(agent.name, agent.state), style = MaterialTheme.typography.bodySmall)
+                agentIndicator(board.multirepoAgentsOf(multirepo.folder), board.multirepoAgentsReadAt, Instant.now(), strings)?.let {
+                    AgentIndicator(it)
                 }
                 IconAction(icon = Icons.Default.Settings, label = strings.multirepoSettingsTitle, onClick = onOpenMultirepoSettings)
             }

@@ -5,6 +5,11 @@ import androidx.compose.ui.test.hasText
 import app.luxion.shogunai.ui.actions.ActionId
 import app.luxion.shogunai.ui.actions.OpenTarget
 import app.luxion.shogunai.ui.actions.paletteEntries
+import app.luxion.shogunai.ui.worktree.inspector.environmentAsDotenv
+import app.luxion.shogunai.ui.worktree.inspector.portsLabel
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.semantics.getOrNull
 import app.luxion.shogunai.HeadlessAppUseCases
 import app.luxion.shogunai.domain.FakeAppWindowService
 import app.luxion.shogunai.domain.FakeHeadlessAppLauncher
@@ -2683,6 +2688,35 @@ class ProjectWorktreesTest {
 
         waitUntil { onAllNodesWithText("Docker isn't available").fetchSemanticsNodes().isNotEmpty() }
         onNodeWithText("Build").assertDoesNotExist()
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `the detail shows its sections in the inspector's fixed order`() = runComposeUiTest {
+        val compose = composeSection(run = { _, _ -> Result.success(worktreeComposeName) })
+        val holder = loadedProjectWorktrees(useCases(listingResponder()).copy(compose = compose))
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder) } }
+
+        waitUntil { onAllNodesWithText("Not started").fetchSemanticsNodes().isNotEmpty() }
+        val headings = onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading)).fetchSemanticsNodes()
+            .sortedBy { it.boundsInRoot.top }
+            .mapNotNull { it.config.getOrNull(SemanticsProperties.Text)?.joinToString() }
+
+        assertEquals(listOf("STATUS", "AGENT", "RESOURCES", "PROVISIONED FILES"), headings.filter { it == it.uppercase() })
+    }
+
+    @Test
+    fun `reading agents records when they were read`() = runTest(dispatcher) {
+        val readAt = Instant.parse("2026-10-16T12:00:00Z")
+        val viewModel = ProjectWorktrees(
+            useCases(listingResponder()),
+            CoroutineScope(SupervisorJob() + dispatcher),
+            ioDispatcher = dispatcher,
+            clock = { readAt },
+        ).also { it.refresh() }
+        advanceUntilIdle()
+
+        assertEquals(readAt, viewModel.agentsReadAt)
     }
 
     @OptIn(ExperimentalTestApi::class)

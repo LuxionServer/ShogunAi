@@ -27,12 +27,20 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.MultirepoRepository
 import app.luxion.shogunai.domain.model.RepositoryConfigIssue
+import app.luxion.shogunai.ui.components.ActionSlot
+import app.luxion.shogunai.ui.components.ColumnSpec
+import app.luxion.shogunai.ui.components.DataCell
+import app.luxion.shogunai.ui.components.DataHeader
+import app.luxion.shogunai.ui.components.DataRow
 import app.luxion.shogunai.ui.components.Field
+import app.luxion.shogunai.ui.components.GhostButton
+import app.luxion.shogunai.ui.components.RowLines
 import app.luxion.shogunai.ui.components.PathField
 import app.luxion.shogunai.ui.components.ShogunDialog
 import app.luxion.shogunai.ui.FilePicker
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import app.luxion.shogunai.ui.components.DangerButton
 import app.luxion.shogunai.ui.components.DropdownSelector
 import app.luxion.shogunai.ui.components.IconAction
@@ -119,6 +127,16 @@ fun MultirepoSettingsView(
                 )
             }
             SettingsSection(strings.multirepoRepositoriesTitle) {
+                if (multirepo.declaredRepositories.isNotEmpty()) {
+                    DataHeader(
+                        listOf(
+                            RepositoryAliasColumn to strings.multirepoAliasLabel,
+                            RepositoryPathColumn to strings.repositoryPathLabel,
+                            RepositoryRenameColumn to "",
+                        ),
+                        actionSlotWidth = RepositoryActionWidth,
+                    )
+                }
                 multirepo.declaredRepositories.forEach { repository -> RepositoryRow(state, repository) }
                 AddRepositoryRow(state, pickFolder)
             }
@@ -285,27 +303,45 @@ private fun SharedVariableRow(state: MultirepoSettingsState, draft: SharedVariab
 private fun RepositoryRow(state: MultirepoSettingsState, repository: MultirepoRepository) {
     val strings = LocalStrings.current
     var alias by remember(repository.alias) { mutableStateOf(repository.alias) }
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-        Field(
-            value = alias,
-            onValueChange = { alias = it.trim().lowercase() },
-            label = strings.multirepoAliasLabel,
-            textStyle = ShogunTheme.typography.data,
-            modifier = Modifier.width(AliasFieldWidth),
-        )
-        Text(
-            repository.path,
-            style = ShogunTheme.typography.dataSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        if (alias != repository.alias) {
-            NeutralTextButton(onClick = { state.renameRepository(repository.alias, alias) }, enabled = !state.isBusy) { Text(strings.rename) }
-        }
-        DangerTextButton(onClick = { state.removeRepository(repository.alias) }, enabled = !state.isBusy) { Text(strings.remove) }
-    }
+    DataRow(
+        cells = listOf(
+            DataCell(RepositoryAliasColumn) {
+                Field(
+                    value = alias,
+                    onValueChange = { alias = it.trim().lowercase() },
+                    placeholder = strings.multirepoAliasLabel,
+                    textStyle = ShogunTheme.typography.data,
+                    inputModifier = Modifier.testTag("repository-alias-${repository.alias}"),
+                )
+            },
+            DataCell(RepositoryPathColumn) {
+                Text(repository.path, style = ShogunTheme.typography.dataSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            },
+            DataCell(RepositoryRenameColumn) {
+                if (alias != repository.alias) {
+                    GhostButton(onClick = { state.renameRepository(repository.alias, alias) }, enabled = !state.isBusy) {
+                        Text(strings.rename)
+                    }
+                }
+            },
+        ),
+        lines = RowLines.ONE,
+        actions = ActionSlot(width = RepositoryActionWidth, alwaysVisible = true) {
+            IconAction(
+                icon = Icons.Default.Delete,
+                label = strings.remove,
+                onClick = { state.removeRepository(repository.alias) },
+                enabled = !state.isBusy,
+                tint = ShogunTheme.status.danger.color,
+            )
+        },
+    )
 }
+
+private val RepositoryAliasColumn = ColumnSpec(width = AliasFieldWidth)
+private val RepositoryPathColumn = ColumnSpec()
+private val RepositoryRenameColumn = ColumnSpec(width = 88.dp)
+private val RepositoryActionWidth = 40.dp
 
 @Composable
 private fun AddRepositoryRow(state: MultirepoSettingsState, pickFolder: (String, String) -> String?) {

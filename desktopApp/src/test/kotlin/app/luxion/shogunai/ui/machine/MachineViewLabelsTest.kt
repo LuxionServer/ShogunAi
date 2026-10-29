@@ -44,9 +44,9 @@ class MachineViewLabelsTest {
             }
         }
 
-        onNodeWithText("Device").assertIsDisplayed()
-        onNodeWithText("Worktree").assertIsDisplayed()
-        onNodeWithText("State").assertIsDisplayed()
+        onNodeWithText("DEVICE").assertIsDisplayed()
+        onNodeWithText("WORKTREE").assertIsDisplayed()
+        onNodeWithText("STATE").assertIsDisplayed()
     }
 
     @Test
