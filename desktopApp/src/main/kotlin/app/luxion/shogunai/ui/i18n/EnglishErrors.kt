@@ -1,6 +1,7 @@
 package app.luxion.shogunai.ui.i18n
 
 import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
+import app.luxion.shogunai.domain.model.ORCA_START_SECONDS
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.HolderProtection
 import app.luxion.shogunai.domain.model.PoolHolder
@@ -349,6 +350,22 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     is WorktreeError.HerdrAgentNotStarted -> ErrorTexts(
         "The agent didn't start in Herdr within $AGENT_START_SECONDS seconds.",
         "Its pane is left open in Herdr: check it and run the agent there, or open it in Herdr again.",
+    )
+    WorktreeError.OrcaNotInstalled -> ErrorTexts(
+        "Orca isn't installed.",
+        "Install it from https://onorca.dev and try again.",
+    )
+    WorktreeError.OrcaNotStarted -> ErrorTexts(
+        "Orca didn't start within $ORCA_START_SECONDS seconds.",
+        "Open Orca yourself and try again.",
+    )
+    is WorktreeError.OrcaCommandFailed -> ErrorTexts(
+        "The worktree couldn't be opened in Orca.",
+        "Check the technical details.",
+    )
+    is WorktreeError.OrcaAgentNotStarted -> ErrorTexts(
+        "The agent didn't start in Orca within $AGENT_START_SECONDS seconds.",
+        "Its terminal is left open in Orca: check it and run the agent there, or open it in Orca again.",
     )
     is WorktreeError.TerminalLaunchFailed -> ErrorTexts(
         "${error.terminal.displayName} couldn't open the worktree.",

@@ -1,0 +1,40 @@
+{
+  "id": "4150afe8-575c-4ecb-9e4c-d5e52a08e0f9",
+  "ok": true,
+  "result": {
+    "terminals": [
+      {
+        "handle": "term_44a32dcb-6aa6-478f-a1f0-0731154c76d2",
+        "ptyId": "0355427a-217f-4a07-9072-67d11e704c23::/projects/worktrees/TASK-1@@b596f52a",
+        "incarnationId": "89a7effb-243e-4e93-8914-23fb03248485",
+        "orphaned": false,
+        "worktreeId": "0355427a-217f-4a07-9072-67d11e704c23::/projects/worktrees/TASK-1",
+        "worktreePath": "/projects/worktrees/TASK-1",
+        "branch": "refs/heads/feature/TASK-1",
+        "tabId": "0ce3321e-98c1-47f6-9d09-31f231cf40f1",
+        "leafId": "f7d850ba-f9a4-49cc-8321-dc7e226f496f",
+        "title": "main-repo-task-1",
+        "connected": true,
+        "writable": true,
+        "lastOutputAt": 1793229499465,
+        "preview": "not, take a moment to review what's in this folder\nfirst.\nClaude Code'll be able to read, edit, and execute\nfiles here.\nSecurity guide\n\u276f No, exit",
+        "executionHostId": "local",
+        "agentIdentity": "claude"
+      }
+    ],
+    "hostScope": {
+      "hostIds": [
+        "local"
+      ],
+      "omittedHostIds": []
+    },
+    "topologyRevisions": {
+      "0355427a-217f-4a07-9072-67d11e704c23::/projects/worktrees/TASK-1": 2
+    },
+    "totalCount": 1,
+    "truncated": false
+  },
+  "_meta": {
+    "runtimeId": "24f610a7-56eb-433d-b32d-6af1e7aa64c7"
+  }
+}

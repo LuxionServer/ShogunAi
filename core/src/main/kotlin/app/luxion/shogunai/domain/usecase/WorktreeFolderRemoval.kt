@@ -14,14 +14,15 @@ internal class WorktreeFolderRemoval(
     private val closeHerdrWorkspaces: CloseHerdrWorkspacesUseCase?,
     private val stopHeadlessApp: StopHeadlessAppUseCase? = null,
     private val releaseDesktopTurn: ReleaseDesktopTurnUseCase? = null,
+    private val closeOrcaTerminals: CloseOrcaTerminalsUseCase? = null,
 ) {
-    suspend fun remove(path: String, force: Boolean, workspaceId: String?): HolderClosing {
+    suspend fun remove(path: String, force: Boolean, workspaceId: String?, hasOrcaTerminals: Boolean = false): HolderClosing {
         val headlessAppFailure = stopHeadlessApp?.beforeRemoving(path)
         releaseDesktopTurn?.onWorktreeRemoved(path)
-        return removeFolder(path, force, workspaceId).copy(headlessAppFailure = headlessAppFailure)
+        return removeFolder(path, force, workspaceId, hasOrcaTerminals).copy(headlessAppFailure = headlessAppFailure)
     }
 
-    private suspend fun removeFolder(path: String, force: Boolean, workspaceId: String?): HolderClosing {
+    private suspend fun removeFolder(path: String, force: Boolean, workspaceId: String?, hasOrcaTerminals: Boolean): HolderClosing {
         val removeCommand = buildList {
             addAll(listOf("git", "worktree", "remove"))
             if (force) add("--force")
@@ -35,7 +36,12 @@ internal class WorktreeFolderRemoval(
         }
         if (!isFolderInUseFailure(first.stderr)) throw first.toError()
 
-        val closing = closeHerdrWorkspaces?.closeHolders(path, workspaceId) ?: HolderClosing()
+        val herdrClosing = closeHerdrWorkspaces?.closeHolders(path, workspaceId) ?: HolderClosing()
+        val orcaFailure = if (hasOrcaTerminals) closeOrcaTerminals?.closeOne(path) else null
+        val closing = herdrClosing.copy(
+            closedOrcaTerminals = hasOrcaTerminals && closeOrcaTerminals != null && orcaFailure == null,
+            orcaFailure = orcaFailure,
+        )
         val retry = git(removeCommand)
         when {
             retry.isSuccess -> Unit

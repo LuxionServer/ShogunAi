@@ -69,6 +69,7 @@ fun WorktreeRow(
     onCopyLaunchCommand: () -> Unit,
     onCopyPath: () -> Unit,
     onOpenInHerdr: () -> Unit,
+    onOpenInOrca: () -> Unit = {},
     agentName: String? = null,
     launchChoices: List<LaunchChoice> = emptyList(),
     onLaunch: (LaunchChoice) -> Unit = {},
@@ -86,6 +87,7 @@ fun WorktreeRow(
                 add(ContextMenuItem(withAgent(strings.copyLaunchCommand, agentName, strings), onClick = onCopyLaunchCommand))
                 if (!prunable) {
                     add(ContextMenuItem(withAgent(strings.openInHerdr, agentName, strings), onClick = onOpenInHerdr))
+                    add(ContextMenuItem(withAgent(strings.openInOrca, agentName, strings), onClick = onOpenInOrca))
                     openActions.forEach { add(ContextMenuItem(it.label, onClick = it.onClick)) }
                 }
                 launchChoices.forEach { choice -> add(ContextMenuItem(choice.label, onClick = { onLaunch(choice) })) }

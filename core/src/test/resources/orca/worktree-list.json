@@ -1,0 +1,176 @@
+{
+  "id": "315d5bd2-d1b8-4e47-985c-4dd56c4e001d",
+  "ok": true,
+  "result": {
+    "worktrees": [
+      {
+        "id": "0355427a-217f-4a07-9072-67d11e704c23::/projects/main-repo",
+        "identity": {
+          "key": "wt2:local:ad0d660a-3c0a-4a21-8492-0bd949ae12bc",
+          "executionHostId": "local",
+          "instanceId": "ad0d660a-3c0a-4a21-8492-0bd949ae12bc"
+        },
+        "instanceId": "ad0d660a-3c0a-4a21-8492-0bd949ae12bc",
+        "repoId": "0355427a-217f-4a07-9072-67d11e704c23",
+        "projectId": "repo:0355427a-217f-4a07-9072-67d11e704c23",
+        "hostId": "local",
+        "projectHostSetupId": "0355427a-217f-4a07-9072-67d11e704c23",
+        "path": "/projects/main-repo",
+        "head": "b31e462b81987fc5c818ffacb7ab2b66a1c1085f",
+        "branch": "refs/heads/main",
+        "isBare": false,
+        "isMainWorktree": true,
+        "displayName": "main",
+        "displayNameMode": "automatic",
+        "comment": "",
+        "linkedIssue": null,
+        "linkedPR": null,
+        "linkedLinearIssue": null,
+        "linkedLinearIssueWorkspaceId": null,
+        "linkedLinearIssueOrganizationUrlKey": null,
+        "linkedGitLabMR": null,
+        "linkedGitLabIssue": null,
+        "linkedBitbucketPR": null,
+        "linkedAzureDevOpsPR": null,
+        "linkedGiteaPR": null,
+        "linkedWorkItem": null,
+        "linkedTaskSourceContext": null,
+        "isArchived": false,
+        "isUnread": false,
+        "isPinned": false,
+        "sortOrder": 1793229470277,
+        "lastActivityAt": 1793229470277,
+        "workspaceStatus": "in-progress",
+        "parentWorktreeId": null,
+        "childWorktreeIds": [],
+        "lineage": null,
+        "git": {
+          "path": "/projects/main-repo",
+          "head": "b31e462b81987fc5c818ffacb7ab2b66a1c1085f",
+          "branch": "refs/heads/main",
+          "isBare": false,
+          "isMainWorktree": true
+        },
+        "linkedItems": []
+      },
+      {
+        "id": "0355427a-217f-4a07-9072-67d11e704c23::/projects/worktrees/TASK-1",
+        "identity": {
+          "key": "wt2:local:37219440-3de0-4cab-a908-69868ae722e4",
+          "executionHostId": "local",
+          "instanceId": "37219440-3de0-4cab-a908-69868ae722e4"
+        },
+        "instanceId": "37219440-3de0-4cab-a908-69868ae722e4",
+        "repoId": "0355427a-217f-4a07-9072-67d11e704c23",
+        "hostId": "local",
+        "path": "/projects/worktrees/TASK-1",
+        "head": "b31e462b81987fc5c818ffacb7ab2b66a1c1085f",
+        "branch": "refs/heads/feature/TASK-1",
+        "isBare": false,
+        "isMainWorktree": false,
+        "displayName": "feature/TASK-1",
+        "displayNameMode": "automatic",
+        "comment": "",
+        "linkedIssue": null,
+        "linkedPR": null,
+        "linkedLinearIssue": null,
+        "linkedLinearIssueWorkspaceId": null,
+        "linkedLinearIssueOrganizationUrlKey": null,
+        "linkedGitLabMR": null,
+        "linkedGitLabIssue": null,
+        "linkedBitbucketPR": null,
+        "linkedAzureDevOpsPR": null,
+        "linkedGiteaPR": null,
+        "linkedWorkItem": null,
+        "linkedTaskSourceContext": null,
+        "isArchived": false,
+        "isUnread": false,
+        "isPinned": false,
+        "sortOrder": 1793229470557,
+        "lastActivityAt": 0,
+        "workspaceStatus": "in-progress",
+        "parentWorktreeId": null,
+        "childWorktreeIds": [],
+        "lineage": null,
+        "git": {
+          "path": "/projects/worktrees/TASK-1",
+          "head": "b31e462b81987fc5c818ffacb7ab2b66a1c1085f",
+          "branch": "refs/heads/feature/TASK-1",
+          "isBare": false,
+          "isMainWorktree": false
+        },
+        "linkedItems": []
+      },
+      {
+        "id": "0355427a-217f-4a07-9072-67d11e704c23::/Users/user/orca/workspaces/main-repo/TASK-2",
+        "identity": {
+          "key": "wt2:local:db161767-2afa-43ff-93ab-9244b1ea7804",
+          "executionHostId": "local",
+          "instanceId": "db161767-2afa-43ff-93ab-9244b1ea7804"
+        },
+        "instanceId": "db161767-2afa-43ff-93ab-9244b1ea7804",
+        "repoId": "0355427a-217f-4a07-9072-67d11e704c23",
+        "projectId": "repo:0355427a-217f-4a07-9072-67d11e704c23",
+        "hostId": "local",
+        "projectHostSetupId": "0355427a-217f-4a07-9072-67d11e704c23",
+        "creatorProvenance": {
+          "kind": "host"
+        },
+        "path": "/Users/user/orca/workspaces/main-repo/TASK-2",
+        "head": "b31e462b81987fc5c818ffacb7ab2b66a1c1085f",
+        "branch": "refs/heads/user/TASK-2",
+        "isBare": false,
+        "isMainWorktree": false,
+        "displayName": "TASK-2",
+        "displayNameMode": "fixed",
+        "comment": "",
+        "linkedIssue": null,
+        "linkedPR": null,
+        "linkedLinearIssue": null,
+        "linkedLinearIssueWorkspaceId": null,
+        "linkedLinearIssueOrganizationUrlKey": null,
+        "linkedGitLabMR": null,
+        "linkedGitLabIssue": null,
+        "linkedBitbucketPR": null,
+        "linkedAzureDevOpsPR": null,
+        "linkedGiteaPR": null,
+        "linkedWorkItem": null,
+        "linkedTaskSourceContext": null,
+        "isArchived": false,
+        "isUnread": false,
+        "isPinned": false,
+        "sortOrder": 1793229477120,
+        "lastActivityAt": 1793229477120,
+        "createdAt": 1793229477120,
+        "cliProvenance": {
+          "kind": "created-by-cli",
+          "createdAt": 1793229476905
+        },
+        "baseRef": "main",
+        "workspaceStatus": "in-progress",
+        "parentWorktreeId": null,
+        "childWorktreeIds": [],
+        "lineage": null,
+        "git": {
+          "path": "/Users/user/orca/workspaces/main-repo/TASK-2",
+          "head": "b31e462b81987fc5c818ffacb7ab2b66a1c1085f",
+          "branch": "refs/heads/user/TASK-2",
+          "isBare": false,
+          "isMainWorktree": false
+        },
+        "linkedItems": []
+      }
+    ],
+    "hostScope": {
+      "hostIds": [
+        "local"
+      ],
+      "omittedHostIds": []
+    },
+    "totalCount": 3,
+    "truncated": false
+  },
+  "_meta": {
+    "runtimeId": "24f610a7-56eb-433d-b32d-6af1e7aa64c7"
+  }
+}

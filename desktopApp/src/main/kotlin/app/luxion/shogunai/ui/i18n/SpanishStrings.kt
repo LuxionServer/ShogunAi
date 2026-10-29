@@ -300,6 +300,7 @@ object SpanishStrings : Strings {
     override val originShogunAi = "ShogunAi"
     override val originClaudeCode = "Claude Code"
     override val originHerdr = "Herdr"
+    override val originOrca = "Orca"
     override val originOther = "otra ubicación"
     override fun worktreesSummary(count: Int, totalSize: String) =
         (if (count == 1) "1 worktree" else "$count worktrees") + " · $totalSize"
@@ -347,6 +348,10 @@ object SpanishStrings : Strings {
     override val herdrCleanupNotice = "A los worktrees abiertos en Herdr se les cerrará el espacio de trabajo y el agente que se ejecuta en él."
     override val openInHerdrMark = "abierto en Herdr"
     override fun herdrCloseFailed(path: String, detail: String) = "Eliminado, pero no se pudo cerrar el espacio de trabajo de Herdr de \"$path\": $detail"
+    override val orcaTerminalsWillClose = "Tiene terminales abiertas en Orca: se cerrarán, junto con el agente que se ejecuta en ellas."
+    override val orcaCleanupNotice = "A los worktrees con terminales abiertas en Orca se les cerrarán esas terminales y los agentes que se ejecutan en ellas."
+    override val openInOrcaMark = "abierto en Orca"
+    override fun orcaCloseFailed(path: String, detail: String) = "Eliminado, pero no se pudieron cerrar las terminales de Orca de \"$path\": $detail"
     override val simulatorSection = "Simulador de iOS"
     override val simulatorSectionDescription =
         "Este repositorio da a cada worktree su propio simulador de iOS (IOS_SIMULATOR_UDID). Estos ajustes solo se aplican en esta máquina."
@@ -611,6 +616,9 @@ object SpanishStrings : Strings {
     override fun openedInHerdr(name: String) = "\"$name\" abierto en Herdr con su agente"
     override fun focusedInHerdr(name: String) = "\"$name\" ya estaba abierto en Herdr; se ha cambiado a su agente"
     override fun agentStartedInHerdr(name: String) = "\"$name\" estaba abierto en Herdr sin agente; se ha iniciado su agente en un panel nuevo"
+    override val openInOrca = "Abrir en Orca"
+    override fun agentStartedInOrca(name: String) = "\"$name\" abierto en Orca; se ha iniciado su agente en una terminal nueva"
+    override fun focusedInOrca(name: String) = "\"$name\" ya tenía un agente en marcha en Orca; se ha cambiado a él"
     override val toolsLabel = "Herramientas"
     override val terminalToolLabel = "Terminal"
     override val editorToolLabel = "IDE"

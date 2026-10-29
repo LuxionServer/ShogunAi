@@ -88,7 +88,7 @@ fun WorktreeDetailPane(
 ) {
     val strings = LocalStrings.current
     val status = viewModel.statuses[worktree.path]
-    val origin = classifyOrigin(worktree, projectConfig, viewModel.herdrWorktreesRoot)
+    val origin = classifyOrigin(worktree, projectConfig, viewModel.herdrWorktreesRoot, viewModel.orcaOrigins)
     val valueColor = MaterialTheme.colorScheme.onSurfaceVariant
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
@@ -199,6 +199,17 @@ fun WorktreeDetailPane(
                 }
                 if (viewModel.hasAgentChoice) {
                     AgentMenuButton(viewModel.agentOptions) { viewModel.openInHerdr(worktree, it) }
+                }
+                val openingOrca = worktree.path in viewModel.openingInOrca
+                SecondaryButton(
+                    onClick = { viewModel.openInOrca(worktree) },
+                    enabled = !openingOrca,
+                ) {
+                    Text(viewModel.launchLabel(strings.openInOrca, worktree, strings), style = MaterialTheme.typography.bodySmall)
+                    if (openingOrca) InlineProgress(size = ProgressSize.Small)
+                }
+                if (viewModel.hasAgentChoice) {
+                    AgentMenuButton(viewModel.agentOptions) { viewModel.openInOrca(worktree, it) }
                 }
             }
             if (!worktree.isMain) {

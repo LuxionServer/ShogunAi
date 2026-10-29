@@ -53,7 +53,7 @@ Post-creation commands run in order and stop at the first one that fails. A fail
 
 Because `.shogunai.json` is committed, whoever controls a branch controls its post-creation commands and the variables it declares in `env`, which reach your agent's session, your terminals and the environment file. They therefore apply only after you have approved them on this machine, for that repository, in one approval that covers the commands, every declared variable with its template, and `envFile`. The approval covers exactly what you saw: if a pull changes, adds or reorders a command, adds, removes or changes a variable, or changes `envFile`, the repository counts as not approved and ShogunAi asks again. Reordering the keys of `env` doesn't. A repository that declares no `env` nor `envFile` keeps the approval its commands had in earlier versions. Approvals are stored in `~/.shogunai/trust.json`, readable only by you.
 
-While a repository isn't approved its commands don't run and its declared variables aren't delivered anywhere: not to the agent's session, `shogun env`, terminals, Herdr panes, the environment file nor the desktop app's environment view, which lists them as awaiting approval. Variables added by [providers](providers.md) are still delivered, since ShogunAi computes their values.
+While a repository isn't approved its commands don't run and its declared variables aren't delivered anywhere: not to the agent's session, `shogun env`, terminals, Herdr panes, Orca terminals, the environment file nor the desktop app's environment view, which lists them as awaiting approval. Variables added by [providers](providers.md) are still delivered, since ShogunAi computes their values.
 
 - The desktop app shows the commands, the variables with their templates and the environment file in the create dialog, before preparing the worktree's environment, and offers "Approve and remember" or "Skip". Skipping creates the worktree without running the commands, without the declared variables and without the environment file. Project settings lists what the repository declares, whether it is approved on this machine, and lets you approve or revoke it. Saving the environment from project settings approves what you saved, unless the repository has commands you hadn't approved.
 - `shogun new` and `shogun provision` print the same and ask on a terminal. Where they can't ask, and always in the agent hooks, they skip them and print a note on standard error that names `shogun trust`.
@@ -71,7 +71,7 @@ These names can't be declared in `env` nor in the `docker-compose` provider's `p
 - Compilers and build tools: `CC`, `CXX`, `CPP`, `LD`, `AR`, `AS`, `CFLAGS`, `CXXFLAGS`, `CPPFLAGS`, `LDFLAGS`, `MAKEFLAGS`, `MAKE`, `PKG_CONFIG_PATH`, and names starting with `CMAKE_` or `CCACHE_`.
 - Any name ending in `_OPTS` (such as `JAVA_OPTS` or `GRADLE_OPTS`) or `_HOME` (such as `JAVA_HOME`).
 - Containers and clouds: names starting with `DOCKER_`, `KUBECONFIG`, `AWS_CONFIG_FILE`, `AWS_SHARED_CREDENTIALS_FILE`, `CLOUDSDK_CONFIG`, `AZURE_CONFIG_DIR`.
-- Coding agents and tools: names starting with `ANTHROPIC_`, `CLAUDE_`, `CODEX_`, `GH_`, `HERDR_` or `SHOGUNAI_`, and `OPENAI_BASE_URL`.
+- Coding agents and tools: names starting with `ANTHROPIC_`, `CLAUDE_`, `CODEX_`, `GH_`, `HERDR_`, `ORCA_` or `SHOGUNAI_`, and `OPENAI_BASE_URL`.
 
 Ordinary application names such as `PORT`, `DATABASE_URL`, `NODE_ENV`, `API_URL`, `VITE_*`, `NEXT_PUBLIC_*` or `ANDROID_SERIAL` are allowed.
 
@@ -101,6 +101,23 @@ Saving only changes `providers`, `env`, `envFile` and, with "Move to .shogunai.j
 
 Claude Code's `.worktreeinclude` is read like `copy`: one gitignore-style pattern per line, skipping blank lines and lines starting with `#`. Both files can be used together.
 
+## Orca
+
+For worktrees created from [Orca](https://onorca.dev) rather than from ShogunAi, add ShogunAi to the scripts of the `orca.yaml` at the repository's root:
+
+```yaml
+scripts:
+  setup: |
+    shogun hook orca setup
+  archive: |
+    shogun hook orca archive
+```
+
+- `setup` runs inside each worktree Orca creates, with `ORCA_WORKTREE_PATH`, `ORCA_ROOT_PATH` and `ORCA_WORKSPACE_NAME` set. `shogun hook orca setup` provisions that worktree like `shogun provision`: the files from `copy`, `.worktreeinclude` and the project's local files, its ports and `envFile`. Like the Herdr plugin, it never runs unapproved `hooks.postCreate` commands nor delivers unapproved variables. When the repository has a ShogunAi project and the worktree is outside its worktrees folder, it prints a note saying so in Orca's setup terminal. It exits with 2 when `ORCA_WORKTREE_PATH` isn't set and with 1 when provisioning fails.
+- `archive` runs inside the worktree before Orca removes it. `shogun hook orca archive` frees what `shogun remove` frees for it: its emulator, its simulator and its idle Gradle daemons. It leaves the worktree and its branch to Orca and always exits with 0, printing what it couldn't free on standard error, so Orca's removal goes on.
+- Orca runs `setup` according to the repository's setup policy (`run-by-default` unless changed in Orca), and `orca worktree create --setup run|skip|inherit` overrides it per worktree. From Orca's command line, `archive` only runs with `orca worktree rm --run-hooks`.
+- `shogun` must be on the `PATH` of the shell Orca's scripts run in.
+
 ## Machine files (`~/.shogunai/`)
 
 | File | Contents |
@@ -112,6 +129,7 @@ Claude Code's `.worktreeinclude` is read like `copy`: one gitignore-style patter
 | `device-queue.json` | The worktrees waiting for an emulator or simulator with `--wait`, in order. It disappears when nobody waits. |
 | `logs/emulator-<port>.log` | The output of each emulator ShogunAi started. |
 | `xcode/compilation-cache.xcconfig` | The shared Xcode settings written by the Xcode provider's `compilationCache`. |
+| `orca.json` | The folder where Orca last created a worktree, to recognize Orca's worktrees while Orca isn't running. |
 
 If `projects.json` or `settings.json` can't be read (for example, it isn't valid JSON), ShogunAi never overwrites it silently: the desktop app shows a notice with the file's path, the `shogun` command fails with one line naming it, and before anything writes a new file the unreadable one is kept next to it as `projects.json.unreadable-<timestamp>` (or `settings.json.unreadable-<timestamp>`). An unreadable `settings.json` makes the app start with the default settings. Writes to both files are serialized between the app and `shogun` with a `projects.json.lock` or `settings.json.lock` file next to them, so two writers never drop each other's change.
 

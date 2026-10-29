@@ -15,6 +15,8 @@ internal fun isInsideDirectory(directory: String, root: String): Boolean {
         inner.startsWith("$outer/", ignoreCase = CASE_INSENSITIVE_FILE_SYSTEM)
 }
 
+internal fun canonicalDirectory(path: String): String = resolvedPath(path)
+
 private fun resolvedPath(path: String): String =
     normalizePath(runCatching { Path.of(path).toRealPath().toString() }.getOrDefault(path))
 

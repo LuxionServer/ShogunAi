@@ -276,7 +276,7 @@ private fun projectListItems(board: WorktreeBoard): List<ListItem> = board.group
 }
 
 private val ProjectWorktrees.hasNotice: Boolean
-    get() = loadState is ProjectLoadState.Failed || error != null || cleanupIssues != null || herdrCloseFailures.isNotEmpty() || headlessStopFailures.isNotEmpty() ||
+    get() = loadState is ProjectLoadState.Failed || error != null || cleanupIssues != null || herdrCloseFailures.isNotEmpty() || orcaCloseFailures.isNotEmpty() || headlessStopFailures.isNotEmpty() ||
         keptBranchNotice != null
 
 private val ProjectWorktrees.hasGroupState: Boolean
@@ -404,6 +404,11 @@ private fun GroupState(holder: ProjectWorktrees, projectId: String, projectName:
             HerdrCloseFailures(holder.herdrCloseFailures, onDismiss = { holder.dismissHerdrCloseFailures() })
         }
     }
+    if (holder.orcaCloseFailures.isNotEmpty()) {
+        Box(Modifier.padding(horizontal = Spacing.md)) {
+            OrcaCloseFailures(holder.orcaCloseFailures, onDismiss = { holder.dismissOrcaCloseFailures() })
+        }
+    }
 }
 
 @Composable
@@ -513,7 +518,7 @@ private fun WorktreeRowFor(
             agents = holder.agents.orEmpty()[worktree.path].orEmpty(),
             emulator = holder.emulators[worktree.path]?.takeIf { holder.isEmulatorRepository },
             simulator = holder.simulators[worktree.path]?.takeIf { holder.isSimulatorRepository },
-            origin = classifyOrigin(worktree, project.config, holder.herdrWorktreesRoot),
+            origin = classifyOrigin(worktree, project.config, holder.herdrWorktreesRoot, holder.orcaOrigins),
             projectName = projectName,
             inactiveAfter = board.inactivity.threshold,
             now = Instant.now(),
@@ -531,6 +536,7 @@ private fun WorktreeRowFor(
         onCopyLaunchCommand = { holder.copyLaunchCommand(worktree) },
         onCopyPath = { scope.launch { clipboard.copyText(worktree.path) } },
         onOpenInHerdr = { holder.openInHerdr(worktree) },
+        onOpenInOrca = { holder.openInOrca(worktree) },
         openActions = holder.openActions(worktree, strings),
         agentName = holder.agentFor(worktree).displayName.takeIf { holder.hasAgentChoice },
         launchChoices = holder.launchChoices(worktree, strings),

@@ -117,6 +117,7 @@ internal fun originLabel(origin: WorktreeOrigin, strings: Strings): String = whe
     WorktreeOrigin.SHOGUNAI -> strings.originShogunAi
     WorktreeOrigin.CLAUDE_CODE -> strings.originClaudeCode
     WorktreeOrigin.HERDR -> strings.originHerdr
+    WorktreeOrigin.ORCA -> strings.originOrca
     WorktreeOrigin.OTHER -> strings.originOther
 }
 
