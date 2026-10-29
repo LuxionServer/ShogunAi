@@ -202,6 +202,7 @@ class StringsTest {
         WorktreeError.OrcaNotStarted,
         WorktreeError.OrcaCommandFailed(listOf("orca", "repo", "list", "--json"), "runtime_unavailable"),
         WorktreeError.OrcaAgentNotStarted("term_1", "env 'PORT=4100' claude -n main-repo-task-1"),
+        WorktreeError.OrcaMultirepoFolderNotOpen("~/projects/product"),
         WorktreeError.GitCommandFailed(listOf("git", "worktree", "remove", "TASK-123"), 128, gitOutput),
         CommandExecutionException(listOf("git", "status"), IOException("No such file or directory")),
         IllegalStateException("boom"),
@@ -355,6 +356,18 @@ class StringsTest {
             assertEquals("runtime_unavailable", strings.describe(failed).details?.output)
             assertTrue(strings.describe(WorktreeError.OrcaNotInstalled).nextStep.contains("https://onorca.dev"))
         }
+    }
+
+    @Test
+    fun `a multirepo folder without an Orca workspace names the folder and both ways to add it`() {
+        val error = WorktreeError.OrcaMultirepoFolderNotOpen("~/projects/product")
+
+        allStrings.forEach { strings ->
+            val description = strings.describe(error)
+            assertTrue(description.summary.contains("~/projects/product"), description.summary)
+            assertTrue(description.nextStep.contains("\"") && description.nextStep.count { it == ';' } >= 1, description.nextStep)
+        }
+        assertTrue(error.message.orEmpty().contains("Open as Folder") && error.message.orEmpty().contains("folder workspace"))
     }
 
     @Test

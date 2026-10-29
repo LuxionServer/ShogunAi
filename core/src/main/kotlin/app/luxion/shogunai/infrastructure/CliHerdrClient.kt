@@ -132,11 +132,13 @@ class CliHerdrClient(
     }
 
     fun executable(): String {
-        val name = if (osName.startsWith("Windows", ignoreCase = true)) "herdr.exe" else "herdr"
+        val name = binaryName()
         val candidates = USER_BIN_FOLDERS.map { "${userHome.trimEnd('/', '\\')}/$it/$name" } +
             SYSTEM_BIN_FOLDERS.map { "$it/$name" }
         return candidates.firstOrNull(isFile) ?: name
     }
+
+    private fun binaryName(): String = if (osName.startsWith("Windows", ignoreCase = true)) "herdr.exe" else "herdr"
 
     private fun command(arguments: List<String>): List<String> = listOf(executable()) + arguments
 

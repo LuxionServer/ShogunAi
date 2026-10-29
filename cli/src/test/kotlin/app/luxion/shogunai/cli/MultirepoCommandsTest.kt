@@ -24,6 +24,8 @@ import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.ClaudeSession
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
+import app.luxion.shogunai.domain.model.OrcaTerminal
+import app.luxion.shogunai.domain.model.OrcaWorktree
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.SharedVariablesDeclaration
 import app.luxion.shogunai.domain.usecase.ResolveMultirepoUseCase
@@ -252,16 +254,117 @@ class MultirepoCommandsTest {
     }
 
     @Test
-    fun `open in orca in a multirepo folder is a usage error`() {
+    fun `open a group in Orca opens each worktree under its repository`() {
         groupTask1()
         val orca = FakeOrcaClient()
 
         val exitCode = cli(orca = orca).run(listOf("open", "TASK-1", "--orca"))
 
-        assertEquals(2, exitCode)
-        assertTrue(err.contains("can't be opened in Orca yet"), err.toString())
-        assertTrue(orca.created.isEmpty())
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf(appBase, apiBase), orca.addedRepos)
+        assertEquals(listOf("$worktreesRoot/app/TASK-1", "$worktreesRoot/api/TASK-1"), orca.created.map { it.worktreePath })
+        assertTrue(out.contains("opened $worktreesRoot/app/TASK-1 in Orca with"), out.toString())
+        assertTrue(out.contains("(terminal term_2)"), out.toString())
         assertTrue(herdr.opened.isEmpty())
+    }
+
+    @Test
+    fun `open a group in Orca reports focused and started-agent members in json`() {
+        groupTask1()
+        val app = "$worktreesRoot/app/TASK-1"
+        val orca = FakeOrcaClient(terminals = mapOf(app to listOf(OrcaTerminal("term_app", app))), agents = mapOf("term_app" to "claude"))
+
+        val exitCode = cli(orca = orca).run(listOf("open", "TASK-1", "--orca", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("feature/TASK-1", json()["branch"]!!.jsonPrimitive.content)
+        val repos = json()["repos"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(listOf("app", "api"), repos.map { it["alias"]!!.jsonPrimitive.content })
+        assertEquals(listOf("focused", "started-agent"), repos.map { it["result"]!!.jsonPrimitive.content })
+        assertEquals(listOf("term_app", "term_1"), repos.map { it["terminal"]!!.jsonPrimitive.content })
+        assertEquals("claude", repos[0]["agent"]!!.jsonPrimitive.content)
+        assertTrue(repos.all { it["error"] is JsonNull && "session_name" in it && "path" in it })
+    }
+
+    @Test
+    fun `open a group in Orca fails for a member whose agent doesn't start and still opens the other`() {
+        groupTask1()
+        val app = "$worktreesRoot/app/TASK-1"
+        val orca = FakeOrcaClient(
+            terminals = mapOf(app to listOf(OrcaTerminal("term_app", app))),
+            agents = mapOf("term_app" to "claude"),
+            startsAgents = false,
+        )
+
+        val exitCode = cli(orca = orca).run(listOf("open", "TASK-1", "--orca"))
+
+        assertEquals(1, exitCode)
+        assertTrue(out.contains("focused $app's running agent in Orca"), out.toString())
+        assertTrue(err.contains("couldn't open api ($worktreesRoot/api/TASK-1) in Orca"), err.toString())
+    }
+
+    @Test
+    fun `open a group in Orca rejects unknown and ambiguous groups and the agent option like Herdr`() {
+        groupTask1()
+        with(git) {
+            app.worktree("/w/app-fix", "fix/TASK-1")
+            docs.worktree("/w/docs-fix", "fix/TASK-1")
+        }
+        val orca = FakeOrcaClient()
+
+        assertEquals(1, cli(orca = orca).run(listOf("open", "TASK-9", "--orca")))
+        assertEquals(2, cli(orca = orca).run(listOf("open", "TASK-1", "--orca")))
+        assertEquals(2, cli(orca = orca).run(listOf("open", "feature/TASK-1", "--orca", "--agent", "Codex")))
+        assertTrue(err.contains("each worktree of a group opens with its own project's agent"), err.toString())
+        assertTrue(orca.created.isEmpty())
+    }
+
+    @Test
+    fun `open a group in Orca without Orca says so once`() {
+        groupTask1()
+
+        val exitCode = cli(orca = FakeOrcaClient(installed = false)).run(listOf("open", "TASK-1", "--orca"))
+
+        assertEquals(1, exitCode)
+        assertEquals(1, Regex("onorca.dev").findAll(err.toString()).count(), err.toString())
+    }
+
+    @Test
+    fun `open without a target in Orca starts the multirepo agent in the folder's workspace`() {
+        source.agents[folder] = AgentLaunchConfig(agentCommand = "claude", useHeadroom = false)
+        val orca = FakeOrcaClient(psRows = listOf(OrcaWorktree(folder, false, folderId = "f1")), folderPaths = mapOf("f1" to folder))
+
+        val exitCode = cli(orca = orca).run(listOf("open", "--orca"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf(FakeOrcaClient.Created(folder, "product", "claude -n product", true)), orca.created)
+        assertTrue(out.contains("opened $folder in Orca with"), out.toString())
+    }
+
+    @Test
+    fun `open without a target in Orca reports the multirepo agent in json`() {
+        source.agents[folder] = AgentLaunchConfig(agentCommand = "claude", useHeadroom = false)
+        val orca = FakeOrcaClient(psRows = listOf(OrcaWorktree(folder, false, folderId = "f1")), folderPaths = mapOf("f1" to folder))
+
+        val exitCode = cli(orca = orca).run(listOf("open", "--orca", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(folder, json()["path"]!!.jsonPrimitive.content)
+        assertEquals("started-agent", json()["orca"]!!.jsonPrimitive.content)
+        assertEquals("term_1", json()["terminal"]!!.jsonPrimitive.content)
+        assertEquals("Claude", json()["agent"]!!.jsonPrimitive.content)
+        assertTrue("session_name" in json())
+    }
+
+    @Test
+    fun `open without a target in Orca explains how to add a folder Orca has no workspace for`() {
+        val orca = FakeOrcaClient()
+
+        val exitCode = cli(orca = orca).run(listOf("open", "--orca"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("Orca has no workspace for $folder") && err.contains("Open as Folder") && err.contains("folder workspace"), err.toString())
+        assertTrue(orca.addedRepos.isEmpty() && orca.created.isEmpty())
     }
 
     @Test
@@ -853,6 +956,18 @@ class MultirepoCommandsTest {
         git.repository(cloned)
         fileManager.writeText("$cloned/.git", "")
         return FakeMultirepoSource(mapOf(cloned to MultirepoDeclaration(worktreesRoot = "../wt", agent = plantedAgent)), known = emptyList(), approveAll = false)
+    }
+
+    @Test
+    fun `an unapproved declaration never reaches Orca and open behaves as outside a multirepo`() {
+        val multirepos = clonedWithDeclaration()
+        val orca = FakeOrcaClient()
+
+        val exitCode = cli(workingDirectory = cloned, multirepos = multirepos, orca = orca).run(listOf("open", "--orca"))
+
+        assertEquals(2, exitCode)
+        assertTrue(err.contains("'open' needs a task id, path or branch"), err.toString())
+        assertTrue(orca.created.isEmpty() && orca.addedRepos.isEmpty() && orca.psReads == 0)
     }
 
     @Test

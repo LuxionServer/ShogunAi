@@ -3,6 +3,7 @@ package app.luxion.shogunai.domain.io
 import app.luxion.shogunai.domain.model.OrcaRepo
 import app.luxion.shogunai.domain.model.OrcaStatus
 import app.luxion.shogunai.domain.model.OrcaTerminal
+import app.luxion.shogunai.domain.model.OrcaWorkspace
 import app.luxion.shogunai.domain.model.OrcaWorktree
 
 interface OrcaClient {
@@ -25,13 +26,13 @@ interface OrcaClient {
 
     suspend fun agentsByWorktree(): List<OrcaWorktree>
 
-    suspend fun terminals(worktreePath: String): List<OrcaTerminal>
+    suspend fun terminals(workspace: OrcaWorkspace): List<OrcaTerminal>
 
     suspend fun terminalAgent(handle: String): String?
 
-    suspend fun createTerminal(worktreePath: String, title: String, command: String, focus: Boolean): OrcaTerminal
+    suspend fun createTerminal(workspace: OrcaWorkspace, title: String, command: String, focus: Boolean): OrcaTerminal
 
     suspend fun switchTo(handle: String)
 
-    suspend fun closeTerminals(worktreePath: String)
+    suspend fun closeTerminals(workspace: OrcaWorkspace)
 }

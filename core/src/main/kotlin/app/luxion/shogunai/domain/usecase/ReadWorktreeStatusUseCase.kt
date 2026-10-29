@@ -8,21 +8,30 @@ import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.WorktreeStatus
+import app.luxion.shogunai.domain.model.readsAsMerged
 import java.time.Instant
 
 class ReadWorktreeStatusUseCase(
     private val executor: ShellCommandExecutor,
     private val fileManager: FileManager,
 ) {
-    suspend operator fun invoke(worktree: Worktree, mainBranch: MainBranch?): Result<WorktreeStatus> = runCatching {
+    suspend operator fun invoke(
+        worktree: Worktree,
+        mainBranch: MainBranch?,
+        base: MainBranch? = mainBranch,
+    ): Result<WorktreeStatus> = runCatching {
         val uncommittedChanges = uncommittedChanges(worktree)
         val upstream = if (worktree.branch != null) divergenceFrom(worktree, "@{upstream}") else null
         val mainBranchDivergence = mainBranch
             ?.takeIf { it.name != worktree.branch }
             ?.let { divergenceFrom(worktree, it.ref) }
-        val wouldReadAsMerged = mainBranchDivergence != null &&
-            mainBranchDivergence.ahead == 0 &&
-            mainBranchDivergence.behind > 0
+        val comparedBase = base?.takeIf { it.name != worktree.branch }
+        val baseDivergence = when {
+            comparedBase == null -> null
+            comparedBase.ref == mainBranch?.ref -> mainBranchDivergence
+            else -> divergenceFrom(worktree, comparedBase.ref)
+        }
+        val wouldReadAsMerged = mainBranchDivergence.readsAsMerged() || baseDivergence.readsAsMerged()
         WorktreeStatus(
             uncommittedChanges = uncommittedChanges,
             upstream = upstream,
@@ -31,6 +40,8 @@ class ReadWorktreeStatusUseCase(
             createdAt = createdAt(worktree),
             neverCommitted = wouldReadAsMerged && upstream == null && worktree.branch != null &&
                 branchNeverCommitted(worktree, worktree.branch),
+            base = baseDivergence,
+            baseName = comparedBase?.name.takeIf { baseDivergence != null },
         )
     }
 

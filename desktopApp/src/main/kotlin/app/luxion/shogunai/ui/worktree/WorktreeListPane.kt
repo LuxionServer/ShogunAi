@@ -2,6 +2,11 @@ package app.luxion.shogunai.ui.worktree
 
 import app.luxion.shogunai.ui.components.AgentIndicator
 import app.luxion.shogunai.ui.components.AgentIndicatorModel
+import app.luxion.shogunai.ui.actions.ActionId
+import app.luxion.shogunai.ui.actions.ActionSpec
+import app.luxion.shogunai.ui.actions.GroupActionContext
+import app.luxion.shogunai.ui.actions.OpenTarget
+import app.luxion.shogunai.ui.actions.groupCatalog
 import app.luxion.shogunai.ui.components.DisabledReason
 import app.luxion.shogunai.ui.components.GroupTitle
 import app.luxion.shogunai.ui.components.SkeletonRows
@@ -549,7 +554,17 @@ private fun ChangeGroupHeader(group: ChangeGroup, board: WorktreeBoard) {
         addableAliases = if (board.canAddRepositories(group)) board.missingAliases(group) else emptyList(),
         isAdding = board.addingToGroup.any { it.startsWith("${group.branch}:") },
         onToggle = { board.toggleChangeCollapsed(group.branch) },
-        onOpenAll = { board.openAllInHerdr(group) },
+        openActions = groupCatalog(
+            GroupActionContext(orcaInstalled = board.isOrcaInstalled, isOpeningInOrca = group.branch in board.openingGroupsInOrca),
+            strings,
+        ),
+        onOpenAction = { spec ->
+            when (spec.id) {
+                ActionId.OpenAll(OpenTarget.HERDR) -> board.openAllInHerdr(group)
+                ActionId.OpenAll(OpenTarget.ORCA) -> board.openAllInOrca(group)
+                else -> Unit
+            }
+        },
         onAddRepository = { board.addRepositoryToGroup(group, it) },
         onCleanUp = { board.openGroupCleanup(group) },
         agent = agentIndicator(board.agentsOf(group), board.agentsReadAtOf(group), Instant.now(), strings),
@@ -564,7 +579,8 @@ internal fun ChangeGroupHeaderView(
     addableAliases: List<String>,
     isAdding: Boolean,
     onToggle: () -> Unit,
-    onOpenAll: () -> Unit,
+    openActions: List<ActionSpec>,
+    onOpenAction: (ActionSpec) -> Unit,
     onAddRepository: (String) -> Unit,
     onCleanUp: () -> Unit,
     agent: AgentIndicatorModel? = null,
@@ -598,9 +614,14 @@ internal fun ChangeGroupHeaderView(
         }
         agent?.let { AgentIndicator(it) }
         StatusChip(group.state.status, group.state.label(strings))
-        if (isAdding) InlineProgress()
-        NeutralTextButton(onClick = onOpenAll) {
-            Text(strings.openAllInHerdr)
+        val visibleOpenActions = openActions.filter { it.isVisible }
+        if (isAdding || visibleOpenActions.any { it.disabledReason != null }) InlineProgress()
+        visibleOpenActions.forEach { spec ->
+            DisabledReason(spec.disabledReason) {
+                NeutralTextButton(onClick = { onOpenAction(spec) }, enabled = spec.isAvailable) {
+                    Text(spec.label)
+                }
+            }
         }
         if (addableAliases.isNotEmpty()) AddRepositoryMenu(addableAliases, onAddRepository)
         val cleanUp: @Composable () -> Unit = {

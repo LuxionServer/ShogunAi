@@ -1,0 +1,22 @@
+{
+  "id": "cbf06eb1-fe29-411e-8608-2413f0da1caa",
+  "ok": true,
+  "result": {
+    "terminal": {
+      "processId": 46455,
+      "handle": "term_f0d9d85e-d490-4984-9e25-64ce0aba0ebb",
+      "tabId": "3c5f1221-9850-4bef-aa0b-cc43e44b54a2",
+      "paneKey": "3c5f1221-9850-4bef-aa0b-cc43e44b54a2:f777918e-69d3-40a3-b92a-793986186a21",
+      "ptyId": "folder:2f00a2db-d2c3-42f0-8f9a-6271686535cc@@4311b371",
+      "worktreeId": "folder:2f00a2db-d2c3-42f0-8f9a-6271686535cc",
+      "title": "product",
+      "executionHostId": "local",
+      "incarnationId": "ce946d3a-e6f8-4a79-80bb-afd36520c462",
+      "hostPlatform": "darwin",
+      "surface": "visible"
+    }
+  },
+  "_meta": {
+    "runtimeId": "cd0c9d23-612d-45dd-8e2c-da966aa71c9d"
+  }
+}

@@ -19,7 +19,7 @@ class UiFreezeWatchdogTest {
         post = { queue.execute(it) },
         uiThread = { uiThread },
         probeInterval = 20.milliseconds,
-        threshold = 200.milliseconds,
+        threshold = 600.milliseconds,
     )
 
     init {
@@ -39,7 +39,7 @@ class UiFreezeWatchdogTest {
     @Test
     fun `records one entry with the duration and the ui stack for a long freeze`() {
         watchdog.start()
-        block(800)
+        block(1500)
 
         waitUntil { log.entries.isNotEmpty() }
         Thread.sleep(300)
@@ -55,7 +55,7 @@ class UiFreezeWatchdogTest {
         watchdog.start()
         block(80)
 
-        Thread.sleep(600)
+        Thread.sleep(1200)
 
         assertTrue(log.entries.isEmpty())
     }

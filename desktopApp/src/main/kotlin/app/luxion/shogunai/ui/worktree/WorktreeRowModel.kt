@@ -224,21 +224,27 @@ private fun gitCell(
             unavailableTooltip = strings.statusUnavailable.takeIf { unavailable },
         )
     }
-    val merged = status.isMerged && mainBranchName != null
+    val mergedInto = status.mergedInto(mainBranchName)
     val changes = status.uncommittedChanges.takeIf { it > 0 }
-    val secondLine = if (merged) strings.mergedLabel else status.mainBranch?.arrows()
+    val secondLine = if (mergedInto != null) strings.mergedLabel else status.base?.arrows()
     return GitCell(
         state = GitCellState.READY,
         changes = changes?.let { "✎ $it" },
         changesTooltip = changes?.let(strings::uncommittedChanges),
         secondLine = secondLine,
         secondLineTooltip = when {
-            merged -> strings.mergedInto(mainBranchName)
-            secondLine != null -> listOfNotNull(secondLine, mainBranchName).joinToString(" ")
+            mergedInto != null -> strings.mergedInto(mergedInto)
+            secondLine != null -> listOfNotNull(secondLine, status.baseName ?: mainBranchName).joinToString(" ")
             else -> null
         },
         unavailableTooltip = null,
     )
+}
+
+fun WorktreeStatus.mergedInto(mainBranchName: String?): String? = when {
+    isMergedIntoBase -> baseName ?: mainBranchName
+    isMergedIntoMainBranch -> mainBranchName
+    else -> null
 }
 
 private fun activeEmulator(emulator: WorktreeEmulator?): EmulatorState? = when (emulator?.state) {

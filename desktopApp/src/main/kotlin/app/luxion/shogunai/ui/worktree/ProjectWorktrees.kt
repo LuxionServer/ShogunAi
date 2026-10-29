@@ -114,6 +114,10 @@ class ProjectWorktrees(
         private set
     var mainBranch by mutableStateOf<MainBranch?>(null)
         private set
+    var recordedBases by mutableStateOf<Map<String, MainBranch>>(emptyMap())
+        private set
+
+    fun baseOf(worktree: Worktree): MainBranch? = worktree.branch?.let(recordedBases::get) ?: mainBranch
     private val statusReadPermits = Semaphore(MAX_PARALLEL_STATUS_READS)
 
     var agents by mutableStateOf<Map<String, List<RunningAgent>>?>(null)
@@ -432,8 +436,10 @@ class ProjectWorktrees(
     private fun readStatuses(generation: Int, listed: List<Worktree>, knownMainBranch: MainBranch?) {
         scope.launch {
             val resolved = knownMainBranch ?: useCases.resolveMainBranch().getOrNull()
+            val bases = useCases.resolveRecordedBases()
             if (generation != listGeneration) return@launch
             mainBranch = resolved
+            recordedBases = bases
             listed.forEach { worktree -> launch { readStatus(generation, worktree, resolved) } }
         }
     }
@@ -670,11 +676,16 @@ class ProjectWorktrees(
     private fun loadStatusOf(worktree: Worktree) {
         val generation = listGeneration
         statuses = statuses + (worktree.path to WorktreeStatusState.Loading)
-        scope.launch { readStatus(generation, worktree, mainBranch) }
+        scope.launch {
+            val bases = useCases.resolveRecordedBases()
+            if (generation != listGeneration) return@launch
+            recordedBases = bases
+            readStatus(generation, worktree, mainBranch)
+        }
     }
 
     private suspend fun readStatus(generation: Int, worktree: Worktree, mainBranch: MainBranch?) {
-        val state = statusReadPermits.withPermit { useCases.readStatus(worktree, mainBranch) }
+        val state = statusReadPermits.withPermit { useCases.readStatus(worktree, mainBranch, baseOf(worktree)) }
             .fold(onSuccess = { WorktreeStatusState.Loaded(it) }, onFailure = { WorktreeStatusState.Unavailable })
         if (generation == listGeneration) statuses = statuses + (worktree.path to state)
     }
@@ -1207,6 +1218,10 @@ class ProjectWorktrees(
         releaseNotices = releaseNotices + (
             path to acquisition.releases.map { ReleaseNotice(kind, it.holderName, path.trimEnd('/').substringAfterLast('/')) }
             )
+    }
+
+    fun showOpenResult(path: String, result: Result<*>) {
+        result.onSuccess { clearActionError(path) }.onFailure { recordActionError(path, it) }
     }
 
     private fun clearActionError(path: String) {

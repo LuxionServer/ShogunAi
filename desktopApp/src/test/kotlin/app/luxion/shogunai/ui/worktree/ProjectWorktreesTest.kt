@@ -142,6 +142,7 @@ import app.luxion.shogunai.domain.usecase.DeleteBranchUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.RepairWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
+import app.luxion.shogunai.domain.usecase.ResolveRecordedBasesUseCase
 import app.luxion.shogunai.domain.usecase.StopGradleDaemonsUseCase
 import app.luxion.shogunai.domain.FakeShellPreferenceRepository
 import app.luxion.shogunai.domain.model.Project
@@ -283,6 +284,7 @@ class ProjectWorktreesTest {
             copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboard, windows = false),
             repair = RepairWorktreesUseCase(config, executor, FakeFileManager(existing = listOf(config.baseRepositoryPath))),
             resolveMainBranch = ResolveMainBranchUseCase(config, executor),
+            resolveRecordedBases = { ResolveRecordedBasesUseCase(config, executor)() },
             readStatus = ReadWorktreeStatusUseCase(executor, FakeFileManager()),
             cleanUp = CleanUpWorktreesUseCase(config, executor),
             detectAgents = { worktrees -> DetectRunningAgentsUseCase(executor)(config, worktrees) },

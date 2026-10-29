@@ -61,12 +61,12 @@ sealed interface ActionId {
         override val key = "project.clean-up"
     }
 
-    data object OpenMultirepoAgent : ActionId {
-        override val key = "multirepo.open-agent.herdr"
+    data class OpenMultirepoAgent(val target: OpenTarget) : ActionId {
+        override val key get() = "multirepo.open-agent.${target.name.lowercase()}"
     }
 
-    data object OpenAllInHerdr : ActionId {
-        override val key = "multirepo.open-all.herdr"
+    data class OpenAll(val target: OpenTarget) : ActionId {
+        override val key get() = "multirepo.open-all.${target.name.lowercase()}"
     }
 }
 
