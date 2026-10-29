@@ -77,6 +77,7 @@ plugins:
             Multirepos and groups: Multirepos y grupos
             Desktop app in the background: App de escritorio en segundo plano
             Release: Proceso de release
+            Idle cost benchmark: Benchmark del coste en reposo
 
 nav:
   - Home: index.md
@@ -100,5 +101,6 @@ nav:
       - Branches: process/branching.md
       - OpenSpec: process/openspec.md
       - Release: process/release.md
+      - Idle cost benchmark: process/benchmark.md
   - Design decisions: decisions/index.md
   - Roadmap: roadmap.md

@@ -209,8 +209,25 @@ Los emuladores, los simuladores de iOS y los daemons de Gradle están limitados 
 - Cuando arrancas un dispositivo y su pool está lleno, ShogunAi libera uno con la concesión caducada, en este orden (el usado menos recientemente primero dentro de cada paso): un dispositivo detenido cuyo worktree no tiene sesión de agente, uno detenido cuyo agente ha terminado o está inactivo, uno en marcha (se detiene antes) y, el último, uno cuyo agente está bloqueado. Un dispositivo cuyo agente está trabajando, o cuya concesión sigue vigente, nunca se libera; si no se puede liberar ninguno, el arranque falla y nombra los worktrees que los tienen, con cuándo caduca cada concesión.
 - `shogun emulator start --wait` y `shogun simulator start --wait` esperan en cola a un pool lleno en vez de fallar, como mucho 30 minutos (`--wait-timeout <minutos>` lo cambia). Quienes esperan se atienden por orden de llegada en toda la máquina y, mientras alguien espera, otros arranques no pueden quedarse con el dispositivo que espera. Los agentes deben ejecutar un arranque que espera en segundo plano; el aviso de la sesión lo dice.
 - Un emulador liberado pierde su puerto y un simulador liberado se elimina. El worktree liberado recuerda por qué (`shogun emulator status` dice «released for …»), su puerto no se entrega a otro worktree mientras haya otro libre, y recupera el mismo puerto cuando vuelve a arrancar. Los agentes deben ejecutar `shogun emulator start` antes de cada uso del dispositivo: es idempotente, adquiere uno de nuevo si fue liberado e imprime el serial que hay que usar. El aviso de inicio de sesión lo indica.
-- Los daemons de Gradle los arrancan tus builds, así que no se pueden rechazar: la app (cada 30 segundos) y `shogun pool trim` detienen los inactivos, primero los que llevan más tiempo, hasta quedar dentro del límite.
+- Los daemons de Gradle los arrancan tus builds, así que no se pueden rechazar: la app (en cada refresco de los resúmenes de la barra lateral, ver más abajo) y `shogun pool trim` detienen los inactivos, primero los que llevan más tiempo, hasta quedar dentro del límite.
 - `shogun pool status` muestra cada pool con su límite, sus holders y quienes esperan, y las vistas de máquina de la app muestran lo mismo con un aviso de lo que se liberó.
+
+### Cadencia de refresco
+
+El perfil de capacidad también decide cada cuánto refresca la app de escritorio lo que muestra, así que un perfil más ligero cuesta menos mientras la app está abierta:
+
+| Perfil | Worktrees, ventana con foco | Worktrees, ventana en segundo plano | Dispositivos | Vista de máquina mostrada | Resúmenes de la barra lateral |
+|---|---|---|---|---|---|
+| Ligero | 10 s | 60 s | 30 s | 15 s | 120 s |
+| Equilibrado | 3 s | 15 s | 10 s | 5 s | 30 s |
+| Uno por worktree | 3 s | 5 s | 10 s | 5 s | 30 s |
+| Personalizado | como Equilibrado | | | | |
+| Automático | Equilibrado con 16 GB de memoria o más, Ligero por debajo | | | | |
+
+- "En segundo plano" quiere decir que la ventana está visible pero el foco lo tiene otra app u otra ventana; una vista de máquina mostrada no se refresca entonces más a menudo que los worktrees. Al dar el foco a la ventana se refrescan en el momento los estados y los agentes.
+- Mientras la ventana está minimizada, en la bandeja o la app está oculta, no se refresca nada por temporizador, salvo recortar los daemons de Gradle a su límite al ritmo de los resúmenes.
+- Con **Automático**, un Mac que funciona con batería usa la cadencia Ligero y vuelve a la suya al enchufarlo; la fuente de alimentación se consulta como mucho una vez por minuto, solo mientras la ventana se muestra. Windows y Linux no la consultan y cuentan como enchufados.
+- Ligar la cadencia de refresco a los perfiles de capacidad es **provisional**: reutiliza una elección que ya existe en lugar de añadir un ajuste, y se revisará cuando se replanteen los Ajustes (ver la [hoja de ruta](../roadmap.es.md)).
 
 ## Xcode
 

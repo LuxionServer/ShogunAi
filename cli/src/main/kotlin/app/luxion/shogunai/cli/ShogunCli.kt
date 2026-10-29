@@ -276,6 +276,11 @@ import java.time.Duration
 import java.time.Instant
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.currentCoroutineContext
@@ -1230,26 +1235,40 @@ class ShogunCli(
         multirepoContext()?.takeIf { it.atFolder }?.let { return groupStatus(it, command.json) }
         val config = configFor(workingDirectory)
         val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
-        val mainBranch = ResolveMainBranchUseCase(config, executor)().getOrNull()
         val readStatus = ReadWorktreeStatusUseCase(executor, fileManager)
         val herdrWorktreesRoot = herdrConfig.worktreesRoot()
-        val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore, claudeSessions = claudeSessions, orca = orcaReader)(config, worktrees.filterNot { it.isPrunable }).getOrNull().orEmpty()
-        val listeningPorts = orcaReader.ports(worktrees)
-        val desktop = readDesktopTurn().getOrElse { DesktopTurnState(holder = null, waiting = emptyList()) }
-        val bases = ReadBaseBranchesUseCase(config, executor)().getOrElse { emptyMap() }
-        val resolvedBases = ResolveRecordedBasesUseCase(config, executor)()
-        val entries = worktrees.map { worktree ->
-            val read = if (worktree.isPrunable) null else readStatus(worktree, mainBranch, worktree.branch?.let(resolvedBases::get) ?: mainBranch)
-            WorktreeEntry(
-                worktree,
-                read?.getOrNull(),
-                classifyOrigin(worktree, config, herdrWorktreesRoot, orcaReader.origins()),
-                read?.exceptionOrNull()?.let(::failureReason),
-                agents[worktree.path].orEmpty(),
-                desktop,
-                worktree.branch?.let(bases::get),
-                listeningPorts?.get(worktree.path),
-            )
+        val (mainBranch, entries) = coroutineScope {
+            val mainBranchRead = async { ResolveMainBranchUseCase(config, executor)().getOrNull() }
+            val agentsRead = async {
+                DetectRunningAgentsUseCase(executor, herdr, sessionStore, claudeSessions = claudeSessions, orca = orcaReader)(config, worktrees.filterNot { it.isPrunable }).getOrNull().orEmpty()
+            }
+            val desktopRead = async { readDesktopTurn().getOrElse { DesktopTurnState(holder = null, waiting = emptyList()) } }
+            val basesRead = async { ReadBaseBranchesUseCase(config, executor)().getOrElse { emptyMap() } }
+            val resolvedBasesRead = async { ResolveRecordedBasesUseCase(config, executor)() }
+            val mainBranch = mainBranchRead.await()
+            val resolvedBases = resolvedBasesRead.await()
+            val permits = Semaphore(MAX_CONCURRENT_STATUS_READS)
+            val reads = worktrees.map { worktree ->
+                async {
+                    if (worktree.isPrunable) null else permits.withPermit { readStatus(worktree, mainBranch, worktree.branch?.let(resolvedBases::get) ?: mainBranch) }
+                }
+            }.awaitAll()
+            val agents = agentsRead.await()
+            val desktop = desktopRead.await()
+            val bases = basesRead.await()
+            val listeningPorts = orcaReader.ports(worktrees)
+            mainBranch to worktrees.zip(reads) { worktree, read ->
+                WorktreeEntry(
+                    worktree,
+                    read?.getOrNull(),
+                    classifyOrigin(worktree, config, herdrWorktreesRoot, orcaReader.origins()),
+                    read?.exceptionOrNull()?.let(::failureReason),
+                    agents[worktree.path].orEmpty(),
+                    desktop,
+                    worktree.branch?.let(bases::get),
+                    listeningPorts?.get(worktree.path),
+                )
+            }
         }
         if (command.json) {
             printJson(statusJson(config.baseRepositoryPath, mainBranch?.name, entries))
@@ -3116,6 +3135,7 @@ class ShogunCli(
         const val EXIT_USAGE = 2
         const val EXIT_DRIFT = 3
         const val EXIT_INTERRUPTED = 130
+        private const val MAX_CONCURRENT_STATUS_READS = 8
         private const val CLAUDE_CODE_WORKTREES = ".claude/worktrees"
         private const val CLAUDE_ENV_FILE = "CLAUDE_ENV_FILE"
         private const val COMPOSE_SESSION_HINT = "Start its Docker Compose services with `shogun compose up` (`--build` to rebuild)."

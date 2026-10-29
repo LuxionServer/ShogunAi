@@ -1,5 +1,7 @@
 package app.luxion.shogunai.ui.machine
 
+import app.luxion.shogunai.domain.model.RefreshCadence
+import app.luxion.shogunai.ui.WindowActivity
 import app.luxion.shogunai.domain.model.PackageCacheSizes
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.DesktopTurn
@@ -201,6 +203,7 @@ class MachineResourcesTest {
         onDevicesChanged: suspend (String) -> Unit = {},
         desktopTurn: DesktopTurnWatch = DesktopTurnWatch.NONE,
         ioDispatcher: CoroutineDispatcher = dispatcher,
+        cadence: RefreshCadence = RefreshCadence.BALANCED,
     ) = MachineResources(
         scope = scope,
         useCases = useCases,
@@ -209,6 +212,7 @@ class MachineResourcesTest {
         onDevicesChanged = onDevicesChanged,
         desktopTurn = desktopTurn,
         ioDispatcher = ioDispatcher,
+        cadence = { cadence },
     )
 
     @Test
@@ -562,7 +566,7 @@ class MachineResourcesTest {
             useCases(calls),
             listOf(machineProject("main-repo", listOf(mainWorktree), MachineResource.GRADLE_DAEMONS, MachineResource.ANDROID_EMULATORS)),
         )
-        machine.setWindowActive(false)
+        machine.setWindowActivity(WindowActivity.HIDDEN)
 
         val ticks = scope.launch { machine.runSummaryTicks() }
         runCurrent()
@@ -572,7 +576,7 @@ class MachineResourcesTest {
         assertEquals(0, calls.daemonListings)
         assertTrue(machine.summaries.isEmpty())
 
-        machine.setWindowActive(true)
+        machine.setWindowActivity(WindowActivity.FOCUSED)
         runCurrent()
         ticks.cancel()
 
@@ -592,12 +596,76 @@ class MachineResourcesTest {
         runCurrent()
         assertEquals(1, calls.daemonListings)
 
-        machine.setWindowActive(false)
+        machine.setWindowActivity(WindowActivity.HIDDEN)
         advanceTimeBy(30.seconds)
         runCurrent()
         assertEquals(1, calls.daemonListings)
 
-        machine.setWindowActive(true)
+        machine.setWindowActivity(WindowActivity.FOCUSED)
+        runCurrent()
+        machine.show(null)
+
+        assertEquals(2, calls.daemonListings)
+    }
+
+    private fun gradleMachine(calls: Calls, cadence: RefreshCadence) = machine(
+        useCases(calls),
+        listOf(machineProject("main-repo", listOf(mainWorktree), MachineResource.GRADLE_DAEMONS)),
+        cadence = cadence,
+    )
+
+    @Test
+    fun `the light cadence refreshes a shown view every fifteen seconds and the summaries every two minutes`() = machineTest {
+        val calls = Calls().apply { daemons = listOf(gradleDaemon(10, idle)) }
+        val machine = gradleMachine(calls, RefreshCadence.LIGHT)
+        machine.show(MachineResource.GRADLE_DAEMONS)
+        runCurrent()
+        advanceTimeBy(60.seconds)
+        runCurrent()
+        machine.show(null)
+        assertEquals(5, calls.daemonListings)
+
+        calls.daemonListings = 0
+        val ticks = scope.launch { machine.runSummaryTicks() }
+        runCurrent()
+        advanceTimeBy(119.seconds)
+        runCurrent()
+        assertEquals(1, calls.daemonListings)
+        advanceTimeBy(1.seconds)
+        runCurrent()
+        ticks.cancel()
+
+        assertEquals(2, calls.daemonListings)
+    }
+
+    @Test
+    fun `an unfocused window refreshes the shown view no more often than unfocused checks`() = machineTest {
+        val calls = Calls().apply { daemons = listOf(gradleDaemon(10, idle)) }
+        val machine = gradleMachine(calls, RefreshCadence.BALANCED)
+        machine.setWindowActivity(WindowActivity.UNFOCUSED)
+        machine.show(MachineResource.GRADLE_DAEMONS)
+        runCurrent()
+        advanceTimeBy(60.seconds)
+        runCurrent()
+        machine.show(null)
+
+        assertEquals(5, calls.daemonListings)
+    }
+
+    @Test
+    fun `losing focus waits for the next refresh and regaining it refreshes the shown view at once`() = machineTest {
+        val calls = Calls().apply { daemons = listOf(gradleDaemon(10, idle)) }
+        val machine = gradleMachine(calls, RefreshCadence.BALANCED)
+        machine.show(MachineResource.GRADLE_DAEMONS)
+        runCurrent()
+
+        machine.setWindowActivity(WindowActivity.UNFOCUSED)
+        runCurrent()
+        advanceTimeBy(10.seconds)
+        runCurrent()
+        assertEquals(1, calls.daemonListings)
+
+        machine.setWindowActivity(WindowActivity.FOCUSED)
         runCurrent()
         machine.show(null)
 

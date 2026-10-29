@@ -45,7 +45,7 @@ Alternatives: keep global invalidation but only on list changes (still re-resolv
 
 ### 3. Index-only changes re-read statuses, not the whole project
 
-`checkFingerprint` diffs the previous and new stamp lists by path. If every changed, added or removed path is an index file (`index`, `index.lock`, `worktrees/<name>/index`, `worktrees/<name>/index.lock`), it calls `refreshStatuses()` (the same light path `refreshOnFocus` uses) and returns a new `FingerprintCheck.STATUSES_REFRESHED`, which counts as unchanged for agent detection and device refresh scheduling. Anything else keeps today's full reload. Re-reading all the project's statuses rather than only the worktree whose index changed keeps the mapping from `worktrees/<name>` to a path out of the picture; status reads are already concurrent in the app.
+`checkFingerprint` diffs the previous and new stamp lists by path. If every changed, added or removed path is an index file (`index`, `index.lock`, `worktrees/<name>/index`, `worktrees/<name>/index.lock`), it calls `refreshStatuses()` (the same light path `refreshOnFocus` uses) and returns `FingerprintCheck.UNCHANGED`, so agent detection and device refresh scheduling treat the project as unchanged. Anything else keeps today's full reload. Re-reading all the project's statuses rather than only the worktree whose index changed keeps the mapping from `worktrees/<name>` to a path out of the picture; status reads are already concurrent in the app.
 
 ### 4. The cadence is a derived core model
 
@@ -61,7 +61,7 @@ Decided by Ciro: the cadence follows the capacity profiles instead of being a se
 
 ### 6. Window activity with three states
 
-`main.kt`/`AppShell` derive a `WindowActivity` (`FOCUSED`, `UNFOCUSED`, `HIDDEN`) from `windowShown` and `windowInfo.isWindowFocused` and push it to `WorktreeBoard` and `MachineResources` through `setWindowActivity`, replacing `setWindowActive(Boolean)`. Their loops wait with `withTimeoutOrNull(interval) { activity.drop(1).first() }`, so a change of state ends the current wait and the next interval is computed for the new state (the pattern `runSummaryTicks` already uses). `HIDDEN` waits until the state changes, as today. Focus regained still runs `refreshOnFocus`. The shown machine view waits `max(machineView, unfocusedCheck)` when unfocused; summaries use `summaries` in both visible states.
+`main.kt`/`AppShell` derive a `WindowActivity` (`FOCUSED`, `UNFOCUSED`, `HIDDEN`) from `windowShown` and `windowInfo.isWindowFocused` and push it to `WorktreeBoard` and `MachineResources` through `setWindowActivity`, replacing `setWindowActive(Boolean)`. Their loops wait with `withTimeoutOrNull(interval) { activity.drop(1).first() }`, so a change of state ends the current wait and the next interval is computed for the new state (the pattern `runSummaryTicks` already uses). `HIDDEN` waits until the state changes, as today. Focus regained still runs `refreshOnFocus`. The shown machine view waits `max(machineView, unfocusedCheck)` when unfocused, keeps waiting (with the new interval) when the window loses focus and loads at once when it regains it; summaries use `summaries` in both visible states.
 
 An unreported focus counts as focused, as an unreported visibility counts as visible today. A Preferences or About window of ShogunAi taking focus leaves the main window unfocused: accepted, the slower pace applies only while that window is in front.
 
@@ -98,3 +98,16 @@ Both new entries go under "Under exploration": neither is ready to become a chan
 ## Migration Plan
 
 No data migration: the cadence is derived from the stored profile. Rollback is reverting the change.
+
+## Benchmark results
+
+Measured with `scripts/benchmark-idle.sh` on the development Mac (24 GB, 12 cores), a generated repository with 10 linked worktrees, no agents running, Orca running, profile Balanced.
+
+| Measure | Before | After |
+|---|---|---|
+| `shogun status`, median of 5 | 0.79 s | 0.58 s |
+| App processes per minute, window in the background (as Gradle launches it), Balanced | 100 (`orca status`, `orca worktree`, `orca ports`, `lsof -d cwd` and `herdr agent list` 20 each: one of each per 3-second check) | 24 (one check every 15 s: `ps -A`, `lsof -a … -p`, `herdr agent list` and the three `orca` calls) |
+| Same, Light | 100 | 6 (one check a minute) |
+| CPU of agent detection per check, about ten Claude Code sessions on the machine | 167 ms (global `lsof`, `ps -p`) | 61 ms (`ps -A`, `lsof -p` on candidates); 29 ms with no agent running (`ps -A` only) |
+
+Before this change the app polls at the same pace whether its window is focused or not and whatever the profile, so the "before" figure stands for every state. The focused window wasn't measured after the change: on Balanced it keeps a check every 3 s, each one cheaper in agent detection, and with agent processes running anywhere on the machine a check starts one more process than before (`ps -A` before `lsof`), so cost per check, not the process count, is the measure that improves there. No cadence value needed tuning. The generated repository has no agent processes and no devices, so it measures the fixed cost of each check; the real machine measured in the proposal adds `ps`, `git` reloads and device listings on top.

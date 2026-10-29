@@ -62,6 +62,8 @@ import app.luxion.shogunai.domain.model.DerivedDataTrim
 import app.luxion.shogunai.ui.machine.MachineProject
 import app.luxion.shogunai.infrastructure.JsonResourceLimitsRepository
 import app.luxion.shogunai.infrastructure.JvmMachineCapacity
+import app.luxion.shogunai.infrastructure.PmsetPowerSource
+import app.luxion.shogunai.ui.isMacOs
 import app.luxion.shogunai.ui.shell.ResourcePreferences
 import app.luxion.shogunai.domain.model.HostArchitecture
 import app.luxion.shogunai.domain.model.HostOs
@@ -228,6 +230,9 @@ import app.luxion.shogunai.domain.usecase.ResolveBaseBranchUseCase
 import app.luxion.shogunai.ui.projectconfig.RepositoryInspection
 import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.WorktreeEnvironmentCache
+import app.luxion.shogunai.domain.usecase.ResolveRefreshCadenceUseCase
+import app.luxion.shogunai.domain.io.PowerSource
+import app.luxion.shogunai.domain.model.RefreshCadence
 import app.luxion.shogunai.domain.usecase.ShowEmulatorInOrcaUseCase
 import app.luxion.shogunai.domain.usecase.StartWorktreeEmulatorUseCase
 import app.luxion.shogunai.domain.usecase.StartWorktreeSimulatorUseCase
@@ -479,6 +484,13 @@ class AppContainer {
     }
     private val resourceLimitsRepository: ResourceLimitsRepository = JsonResourceLimitsRepository(settingsFile)
     private val resolveResourceLimits = ResolveResourceLimitsUseCase(resourceLimitsRepository, JvmMachineCapacity())
+    private val resolveRefreshCadence = ResolveRefreshCadenceUseCase(
+        resourceLimitsRepository,
+        JvmMachineCapacity(),
+        if (isMacOs) PmsetPowerSource(shellCommandExecutor) else PowerSource.UNKNOWN,
+    )
+
+    suspend fun refreshCadence(): RefreshCadence = withContext(Dispatchers.IO) { resolveRefreshCadence() }
     private val listGradleDaemons = ListGradleDaemonsUseCase(gradleDaemonSource, fileManager)
     private val stopGradleDaemons = StopGradleDaemonsUseCase(gradleDaemonSource, shellCommandExecutor)
     private val agentSessionStore = FileAgentSessionStore()

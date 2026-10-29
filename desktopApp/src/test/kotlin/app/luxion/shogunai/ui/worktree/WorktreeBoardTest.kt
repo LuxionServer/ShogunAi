@@ -1,5 +1,7 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.domain.model.RefreshCadence
+import app.luxion.shogunai.ui.WindowActivity
 import app.luxion.shogunai.domain.model.GroupRunnerOpening
 import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.RunnerOpening
@@ -275,6 +277,7 @@ class WorktreeBoardTest {
         multirepoActions: MultirepoActions = MultirepoActions.NONE,
         runnerInUse: RunnerId = RunnerId.HERDR,
         syncOrca: suspend (List<OrcaSyncItem>) -> Unit = {},
+        cadence: () -> RefreshCadence = { RefreshCadence.BALANCED },
     ): WorktreeBoard = WorktreeBoard(
         useCasesFor = { config -> repositories.first { it.base == config.baseRepositoryPath }.useCases() },
         detectAgents = { searches ->
@@ -289,6 +292,7 @@ class WorktreeBoardTest {
         onWorktreeUsed = onWorktreeUsed,
         multirepoActions = multirepoActions,
         runnerInUse = { runnerInUse },
+        cadence = cadence,
     ).also {
         it.syncCatalog(projects)
         it.show(null)
@@ -889,17 +893,101 @@ class WorktreeBoardTest {
         val board = board()
         advanceUntilIdle()
         board.startWatching()
-        board.setWindowActive(false)
+        board.setWindowActivity(WindowActivity.HIDDEN)
 
         repeat(5) { tick() }
         assertTrue(agentSearches.isEmpty())
 
-        board.setWindowActive(true)
+        board.setWindowActivity(WindowActivity.FOCUSED)
         runCurrent()
         tick()
         board.stopWatching()
 
         assertEquals(1, agentSearches.size)
+    }
+
+    @Test
+    fun `checks slow down while the window is visible but unfocused`() = runTest(dispatcher) {
+        val board = board()
+        advanceUntilIdle()
+        board.startWatching()
+
+        tick()
+        assertEquals(1, agentSearches.size)
+
+        board.setWindowActivity(WindowActivity.UNFOCUSED)
+        runCurrent()
+        advanceTimeBy(14.seconds)
+        runCurrent()
+        assertEquals(1, agentSearches.size)
+
+        advanceTimeBy(1.seconds)
+        runCurrent()
+        board.stopWatching()
+
+        assertEquals(2, agentSearches.size)
+    }
+
+    @Test
+    fun `the light cadence checks every ten seconds`() = runTest(dispatcher) {
+        val board = board(cadence = { RefreshCadence.LIGHT })
+        advanceUntilIdle()
+        board.startWatching()
+
+        advanceTimeBy(9.seconds)
+        runCurrent()
+        assertTrue(agentSearches.isEmpty())
+
+        advanceTimeBy(1.seconds)
+        runCurrent()
+        board.stopWatching()
+
+        assertEquals(1, agentSearches.size)
+    }
+
+    @Test
+    fun `regaining focus during a long unfocused wait checks at the focused interval`() = runTest(dispatcher) {
+        val board = board(cadence = { RefreshCadence.LIGHT })
+        advanceUntilIdle()
+        board.setWindowActivity(WindowActivity.UNFOCUSED)
+        board.startWatching()
+        advanceTimeBy(5.seconds)
+        runCurrent()
+
+        board.setWindowActivity(WindowActivity.FOCUSED)
+        runCurrent()
+        advanceTimeBy(9.seconds)
+        runCurrent()
+        assertTrue(agentSearches.isEmpty())
+
+        advanceTimeBy(1.seconds)
+        runCurrent()
+        board.stopWatching()
+
+        assertEquals(1, agentSearches.size)
+    }
+
+    @Test
+    fun `a profile change applies from the next wait`() = runTest(dispatcher) {
+        var cadence = RefreshCadence.BALANCED
+        val board = board(cadence = { cadence })
+        advanceUntilIdle()
+        board.startWatching()
+        tick()
+        assertEquals(1, agentSearches.size)
+
+        cadence = RefreshCadence.LIGHT
+        tick()
+        assertEquals(2, agentSearches.size)
+        advanceTimeBy(9.seconds)
+        runCurrent()
+        assertEquals(2, agentSearches.size)
+
+        advanceTimeBy(1.seconds)
+        runCurrent()
+        board.stopWatching()
+
+        assertEquals(3, agentSearches.size)
     }
 
     @Test

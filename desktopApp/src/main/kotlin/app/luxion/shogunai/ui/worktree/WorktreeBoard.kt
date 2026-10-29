@@ -17,8 +17,11 @@ import app.luxion.shogunai.domain.model.WorktreeSort
 import app.luxion.shogunai.domain.usecase.activityDate
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.RecentWorktree
+import app.luxion.shogunai.domain.model.RefreshCadence
 import app.luxion.shogunai.domain.model.RunnerId
+import app.luxion.shogunai.ui.WindowActivity
 import app.luxion.shogunai.ui.actions.ActionId
+import app.luxion.shogunai.ui.checkInterval
 import app.luxion.shogunai.ui.actions.ActionTools
 import app.luxion.shogunai.ui.actions.WorktreeActionContext
 import app.luxion.shogunai.ui.actions.WorktreeCatalog
@@ -62,6 +65,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -77,9 +81,8 @@ class WorktreeBoard(
     private val detectAgents: suspend (List<AgentSearch>) -> Result<Map<String, List<RunningAgent>>>,
     private val syncOrca: suspend (List<OrcaSyncItem>) -> Unit = {},
     private val preferences: ShellPreferenceRepository,
-    private val autoRefreshInterval: Duration = AUTO_REFRESH_INTERVAL,
+    private val cadence: suspend () -> RefreshCadence = { RefreshCadence.BALANCED },
     private val clock: () -> Instant = Instant::now,
-    private val deviceRefreshInterval: Duration = DEVICE_REFRESH_INTERVAL,
     val approval: DialogRepositoryApproval = DialogRepositoryApproval(),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val rememberFetchBeforeCreate: (projectId: String, fetch: Boolean) -> Unit = { _, _ -> },
@@ -94,7 +97,7 @@ class WorktreeBoard(
     private val sizeQueue = SizeQueue(viewModelScope)
     private var entries by mutableStateOf<Map<String, Entry>>(emptyMap())
     private var watchJob: Job? = null
-    private val windowActive = MutableStateFlow(true)
+    private val windowActivity = MutableStateFlow(WindowActivity.FOCUSED)
 
     var projects by mutableStateOf<List<Project>>(emptyList())
         private set
@@ -854,16 +857,17 @@ class WorktreeBoard(
         watchJob = viewModelScope.launch {
             var check: Job? = null
             while (true) {
-                windowActive.first { it }
-                delay(autoRefreshInterval)
-                if (!windowActive.value) continue
-                if (check?.isActive != true) check = launch { checkProjects() }
+                val activity = windowActivity.first { it.isShown }
+                val current = cadence()
+                val changed = withTimeoutOrNull(current.checkInterval(activity)) { windowActivity.first { it != activity } }
+                if (changed != null) continue
+                if (check?.isActive != true) check = launch { checkProjects(current.devices) }
             }
         }
     }
 
-    fun setWindowActive(active: Boolean) {
-        windowActive.value = active
+    fun setWindowActivity(activity: WindowActivity) {
+        windowActivity.value = activity
     }
 
     fun stopWatching() {
@@ -871,7 +875,7 @@ class WorktreeBoard(
         watchJob = null
     }
 
-    private suspend fun checkProjects() {
+    private suspend fun checkProjects(deviceRefreshInterval: Duration) {
         desktopTurn.refresh()
         val unchanged = shownEntries()
             .filterNot { it.holder.isBusy }
@@ -886,11 +890,11 @@ class WorktreeBoard(
         applyMultirepoAgents(detected)
         syncOrca(loaded.flatMap { orcaSyncItems(it.holder) })
         unchanged.forEach { entry ->
-            if (isDeviceRefreshDue(entry.project.id)) entry.holder.refreshDevices()
+            if (isDeviceRefreshDue(entry.project.id, deviceRefreshInterval)) entry.holder.refreshDevices()
         }
     }
 
-    private fun isDeviceRefreshDue(projectId: String): Boolean {
+    private fun isDeviceRefreshDue(projectId: String, deviceRefreshInterval: Duration): Boolean {
         val now = clock()
         val last = deviceRefreshes[projectId]
         if (last != null && (now.toEpochMilli() - last.toEpochMilli()).milliseconds < deviceRefreshInterval) return false
@@ -1171,8 +1175,6 @@ internal fun isCreateEnabled(
 }
 
 private const val MAX_PARALLEL_LISTS = 2
-private val AUTO_REFRESH_INTERVAL = 3.seconds
-private val DEVICE_REFRESH_INTERVAL = 10.seconds
 private val FOCUS_REFRESH_MIN_INTERVAL = 5.seconds
 
 sealed interface CleanupBlock {

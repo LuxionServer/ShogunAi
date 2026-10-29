@@ -394,6 +394,16 @@ class ProjectWorktreesTest {
     }
 
     @Test
+    fun `reloading the worktree list keeps the resolved environments`() = runTest(dispatcher) {
+        var invalidations = 0
+        val holder = loadedProjectWorktrees(useCases(listingResponder()).copy(invalidateEnvironments = { invalidations++ }))
+
+        holder.refresh()
+
+        assertEquals(0, invalidations)
+    }
+
+    @Test
     fun `createFromBranch adds the worktree on success`() = runTest(dispatcher) {
         val branch = "hotfix/security-patch"
         val branchWorktreePath = "/home/dev/projects/hotfix-security-patch"
@@ -1913,7 +1923,7 @@ class ProjectWorktreesTest {
         val viewModel = projectWorktrees(
             useCases { command ->
                 when {
-                    command.first() == "lsof" -> failure(command, exitCode = 127, stderr = "lsof: not found")
+                    command.first() == "ps" -> failure(command, exitCode = 127, stderr = "ps: not found")
                     command == listCommand -> success(command, porcelainOutput)
                     else -> success(command)
                 }
@@ -1983,7 +1993,8 @@ class ProjectWorktreesTest {
 
     private class Counters {
         var lists = 0
-        var lsof = 0
+        var processListings = 0
+        var statusReads = 0
     }
 
     private fun countingResponder(counters: Counters): (List<String>) -> CommandResult = { command ->
@@ -1992,8 +2003,12 @@ class ProjectWorktreesTest {
                 counters.lists++
                 success(command, porcelainOutput)
             }
-            command.first() == "lsof" -> {
-                counters.lsof++
+            command.first() == "ps" -> {
+                counters.processListings++
+                success(command)
+            }
+            "status" in command -> {
+                counters.statusReads++
                 success(command)
             }
             else -> success(command)
@@ -2026,11 +2041,55 @@ class ProjectWorktreesTest {
     }
 
     @Test
+    fun `a change limited to index files reads the statuses again without reloading the list`() = runTest(dispatcher) {
+        val files = watchedFiles().apply {
+            stamps["$gitDir/index"] = 1
+            stamps["$gitDir/worktrees/TASK-123/index"] = 1
+        }
+        val counters = Counters()
+        val board = board(useCasesWithFiles(files, countingResponder(counters)))
+        advanceUntilIdle()
+        board.startWatching()
+        tick()
+        val statusReadsBefore = counters.statusReads
+
+        files.stamps["$gitDir/worktrees/TASK-123/index"] = 2
+        files.stamps["$gitDir/worktrees/TASK-123/index.lock"] = 2
+        files.stamps["$gitDir/index"] = 2
+        tick()
+        advanceTimeBy(1.seconds)
+        runCurrent()
+        board.stopWatching()
+
+        assertEquals(1, counters.lists)
+        assertTrue(counters.statusReads > statusReadsBefore)
+    }
+
+    @Test
+    fun `an index change together with a ref change reloads the list`() = runTest(dispatcher) {
+        val files = watchedFiles().apply { stamps["$gitDir/worktrees/TASK-123/index"] = 1 }
+        val counters = Counters()
+        val board = board(useCasesWithFiles(files, countingResponder(counters)))
+        advanceUntilIdle()
+        board.startWatching()
+        tick()
+
+        files.stamps["$gitDir/worktrees/TASK-123/index"] = 2
+        files.stamps["$gitDir/refs/heads/main"] = 2
+        tick()
+        advanceTimeBy(1.seconds)
+        runCurrent()
+        board.stopWatching()
+
+        assertEquals(2, counters.lists)
+    }
+
+    @Test
     fun `without changes only agents are detected again`() = runTest(dispatcher) {
         val counters = Counters()
         val board = board(useCasesWithFiles(watchedFiles(), countingResponder(counters)))
         advanceUntilIdle()
-        val lsofAfterLoad = counters.lsof
+        val listingsAfterLoad = counters.processListings
         board.startWatching()
 
         tick()
@@ -2038,7 +2097,7 @@ class ProjectWorktreesTest {
         board.stopWatching()
 
         assertEquals(1, counters.lists)
-        assertEquals(lsofAfterLoad + 2, counters.lsof)
+        assertEquals(listingsAfterLoad + 2, counters.processListings)
     }
 
     @Test
@@ -2047,7 +2106,7 @@ class ProjectWorktreesTest {
         val counters = Counters()
         val board = board(useCasesWithFiles(files, countingResponder(counters)))
         advanceUntilIdle()
-        val lsofAfterLoad = counters.lsof
+        val listingsAfterLoad = counters.processListings
         board.startWatching()
         board.stopWatching()
 
@@ -2056,7 +2115,7 @@ class ProjectWorktreesTest {
         tick()
 
         assertEquals(1, counters.lists)
-        assertEquals(lsofAfterLoad, counters.lsof)
+        assertEquals(listingsAfterLoad, counters.processListings)
     }
 
     @Test
@@ -2091,7 +2150,7 @@ class ProjectWorktreesTest {
         }
         val board = board(useCasesWith(executor, files))
         advanceUntilIdle()
-        val lsofAfterLoad = counters.lsof
+        val listingsAfterLoad = counters.processListings
         board.startWatching()
 
         board.project.remove(worktree, branchToDelete = null)
@@ -2102,7 +2161,7 @@ class ProjectWorktreesTest {
 
         assertTrue(board.project.isRemoving)
         assertEquals(1, counters.lists)
-        assertEquals(lsofAfterLoad, counters.lsof)
+        assertEquals(listingsAfterLoad, counters.processListings)
 
         removeGate.complete(Unit)
         board.stopWatching()
