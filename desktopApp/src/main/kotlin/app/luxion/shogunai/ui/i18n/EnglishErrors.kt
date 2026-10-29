@@ -421,7 +421,7 @@ private fun englishProtection(holder: PoolHolder): String = when (holder.protect
     null -> ""
 }
 
-private fun englishLocalFilesFix(files: List<UnavailableLocalFile>): String {
+internal fun englishLocalFilesFix(files: List<UnavailableLocalFile>): String {
     val reasons = files.map { it.reason }
     val fixes = listOfNotNull(
         "create the missing ones there".takeIf { reasons.any { it is UnavailableReason.Missing } },

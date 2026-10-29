@@ -1,5 +1,8 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.CheckState
+import app.luxion.shogunai.domain.model.InstallationCheck
+import app.luxion.shogunai.domain.model.InstallationReport
 import app.luxion.shogunai.domain.model.AgentStateSource
 import app.luxion.shogunai.ui.components.AgentPhase
 import app.luxion.shogunai.domain.model.ComposeResourceKind
@@ -815,6 +818,15 @@ object SpanishStrings : Strings {
     override val showIconInTray = "Mostrar el icono en la bandeja del sistema"
     override val keepRunningWhenClosed = "Seguir ejecutándose al cerrar la ventana"
     override val menuCopyDiagnosticReport = "Copiar informe de diagnóstico"
+    override val menuCheckInstallation = "Comprobar instalación…"
+    override val installationCheckTitle = "Comprobar instalación"
+    override val installationCheckRunning = "Comprobando la instalación…"
+    override val installationCheckAgain = "Volver a comprobar"
+    override fun installationCheckFailed(reason: String) = "No se ha podido hacer la comprobación: $reason"
+    override fun installationOverview(report: InstallationReport) = spanishInstallationOverview(report)
+    override fun installationState(state: CheckState) = spanishInstallationState(state)
+    override fun installationSummary(check: InstallationCheck) = spanishInstallationSummary(check)
+    override fun installationFix(check: InstallationCheck) = spanishInstallationFix(check)
     override val secondaryWindowError = "La ventana se cerró por un error. Quedó registrado en el registro de diagnóstico."
     override val menuCheckForUpdates = "Buscar actualizaciones…"
     override fun updateAvailableMessage(newVersion: String, runningVersion: String) =

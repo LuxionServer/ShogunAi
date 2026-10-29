@@ -9,6 +9,8 @@ interface HerdrClient {
 
     fun isInstalled(): Boolean = true
 
+    fun location(): String? = null
+
     suspend fun openWorktree(repository: String, path: String, label: String): HerdrWorktreeOpening
 
     suspend fun splitPane(paneId: String, cwd: String, environment: List<Pair<String, String>>): String

@@ -442,7 +442,7 @@ private fun spanishPermissionName(permission: MacPermission): String = when (per
     MacPermission.ACCESSIBILITY -> "Accesibilidad"
 }
 
-private fun spanishLocalFilesFix(files: List<UnavailableLocalFile>): String {
+internal fun spanishLocalFilesFix(files: List<UnavailableLocalFile>): String {
     val reasons = files.map { it.reason }
     val fixes = listOfNotNull(
         "crea los que faltan ahí".takeIf { reasons.any { it is UnavailableReason.Missing } },

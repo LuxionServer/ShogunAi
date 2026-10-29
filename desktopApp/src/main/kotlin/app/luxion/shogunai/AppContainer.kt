@@ -189,6 +189,8 @@ import app.luxion.shogunai.domain.usecase.DeleteSimulatorsUseCase
 import app.luxion.shogunai.domain.usecase.DetectRunningAgentsUseCase
 import app.luxion.shogunai.domain.io.DiagnosticsLog
 import app.luxion.shogunai.domain.usecase.DerivedDataMeasure
+import app.luxion.shogunai.domain.usecase.CheckInstallationUseCase
+import app.luxion.shogunai.ui.shell.InstallationCheckState
 import app.luxion.shogunai.domain.usecase.DiagnosticReport
 import app.luxion.shogunai.domain.usecase.Redactor
 import app.luxion.shogunai.domain.usecase.ListDerivedDataUseCase
@@ -282,7 +284,7 @@ class AppContainer {
         branchNames = { runCatching { loadedBranches() }.getOrDefault(emptyList()) },
     )
     val diagnosticsLog: DiagnosticsLog = RotatingFileDiagnosticsLog(files.logs, redact = redactor::redact)
-    val diagnosticReport = DiagnosticReport(BuildInfo.VERSION, diagnosticsLog)
+    val diagnosticReport = DiagnosticReport(BuildInfo.VERSION, diagnosticsLog, installation = { checkInstallation() }, redact = redactor::redact)
     val shownErrorLog = ShownErrorLog(diagnosticsLog)
     private val settingsFile = JsonSettingsFile(files.settings)
     fun settingsProblem() = settingsFile.lastReadProblem
@@ -471,6 +473,21 @@ class AppContainer {
     private val herdrConfig = HerdrConfigFile(hostEnvironment::variable, hostEnvironment.home)
     private val herdrClient = CliHerdrClient(shellCommandExecutor, locator::find)
     private val orcaClient = CliOrcaClient(shellCommandExecutor, locator::find)
+    val checkInstallation = CheckInstallationUseCase(
+        executor = shellCommandExecutor,
+        findExecutable = locator::find,
+        path = { hostEnvironment.path },
+        shell = hostEnvironment.shell,
+        commandLineTool = commandLineTool::status,
+        hooks = ClaudeCodeHooks(fileManager),
+        hooksSettingsPath = ClaudeCodeHooks.userSettingsPath(hostEnvironment.variable("CLAUDE_CONFIG_DIR"), hostEnvironment.home),
+        herdrLocation = herdrClient::location,
+        orcaLocation = orcaClient::location,
+        projects = projectRepository,
+        fileManager = fileManager,
+        provisioningSource = repositoryProvisioningSource,
+    )
+    val installationCheck = InstallationCheckState { withContext(Dispatchers.IO) { checkInstallation() } }
     private val orcaStore = JsonOrcaWorkspaceStore(files.orcaWorkspaces)
     private val orcaReader = OrcaWorktreeReader(orcaClient, orcaStore, hostEnvironment.home)
     private val orcaSync = OrcaWorktreeSync(orcaClient, orcaStore, CliGitHubClient(shellCommandExecutor, locator::find))

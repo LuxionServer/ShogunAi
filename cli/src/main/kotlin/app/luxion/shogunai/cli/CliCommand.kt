@@ -67,6 +67,8 @@ sealed interface CliCommand {
 
     data class Gradle(val json: Boolean = false) : CliCommand
     data class Stacks(val json: Boolean = false) : CliCommand
+
+    data class Doctor(val json: Boolean = false) : CliCommand
     data class Maven(val json: Boolean = false) : CliCommand
     data class Compose(val json: Boolean = false) : CliCommand
     data class ComposeDown(val target: String? = null, val volumes: Boolean = false, val json: Boolean = false) : CliCommand
@@ -180,6 +182,7 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "guide" -> parseGuide(arguments)
                 "gradle" -> parseGradle(arguments)
                 "stacks" -> noArguments(name, arguments, CliCommand.Stacks())
+                "doctor" -> noArguments(name, arguments, CliCommand.Doctor())
                 "maven" -> parseMaven(arguments)
                 "compose" -> parseCompose(arguments)
                 "pool" -> parsePool(arguments)
@@ -203,7 +206,7 @@ private const val JSON_FLAG = "--json"
 
 private const val ARGUMENTS_SEPARATOR = "--"
 
-private val JSON_COMMANDS = setOf("new", "base", "multirepo", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "stacks", "maven", "compose", "pool", "project", "xcode", "emulator", "simulator", "headless", "desktop", "hooks", "guide")
+private val JSON_COMMANDS = setOf("new", "base", "multirepo", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "stacks", "maven", "compose", "pool", "project", "xcode", "emulator", "simulator", "headless", "desktop", "hooks", "guide", "doctor")
 
 private fun isSimulatorGradleInit(name: String, rest: List<String>) = name == "simulator" && rest.firstOrNull() == "gradle-init"
 
@@ -224,6 +227,7 @@ private fun CliCommand.withJson(json: Boolean): CliCommand = if (!json) this els
     is CliCommand.XcodeTrim -> copy(json = true)
     is CliCommand.Gradle -> copy(json = true)
     is CliCommand.Stacks -> copy(json = true)
+    is CliCommand.Doctor -> copy(json = true)
     is CliCommand.Maven -> copy(json = true)
     is CliCommand.Compose -> copy(json = true)
     is CliCommand.ComposeDown -> copy(json = true)

@@ -16,6 +16,9 @@ import app.luxion.shogunai.domain.usecase.HookEntry
 import app.luxion.shogunai.domain.usecase.HookReplacement
 import app.luxion.shogunai.domain.usecase.HooksInstallState
 import app.luxion.shogunai.domain.model.HostOs
+import app.luxion.shogunai.domain.model.CheckState
+import app.luxion.shogunai.domain.model.InstallationCheck
+import app.luxion.shogunai.domain.model.InstallationReport
 import app.luxion.shogunai.domain.usecase.CommandLineToolInstallation
 import app.luxion.shogunai.domain.usecase.CommandLineToolState
 import app.luxion.shogunai.domain.usecase.CommandLineToolStatus
@@ -499,6 +502,15 @@ interface Strings {
     fun compactMonths(count: Long): String
     fun compactYears(count: Long): String
     val menuCopyDiagnosticReport: String
+    val menuCheckInstallation: String
+    val installationCheckTitle: String
+    val installationCheckRunning: String
+    val installationCheckAgain: String
+    fun installationCheckFailed(reason: String): String
+    fun installationOverview(report: InstallationReport): String
+    fun installationState(state: CheckState): String
+    fun installationSummary(check: InstallationCheck): String
+    fun installationFix(check: InstallationCheck): String?
     val secondaryWindowError: String
     val menuCheckForUpdates: String
     fun updateAvailableMessage(newVersion: String, runningVersion: String): String
