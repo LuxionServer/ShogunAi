@@ -146,6 +146,7 @@ shogun emulator stop
 
 - On each machine, the project configuration chooses the AVD (or leaves it automatic) and whether it runs without a window; `--avd` and `--no-window` override them for one start.
 - The worktree list shows each emulator with Start and Stop, and "Clean up" (or `shogun clean --stop-emulators`) stops the emulators of the worktrees it removes.
+- When the worktree is open in Orca, starting its emulator also shows it in Orca's emulator view; see [Orca](../agents.md#orca).
 - The SDK is found through `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `sdk.dir` in `local.properties` (the main folder's, or else that of a Gradle build in a subfolder such as `android/`) or Android Studio's default location.
 - The adb server is shared by every worktree: agents must never restart it (`adb kill-server`) or force a device with `-s`, `-e` or `-d`. The `SessionStart` hook tells Claude so.
 

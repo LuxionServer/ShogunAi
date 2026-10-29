@@ -24,6 +24,7 @@ class OpenWorktreeInOrcaUseCase(
     private val samePath: (String, String) -> Boolean = ::sameDirectory,
     timeout: Duration = AGENT_START_SECONDS.seconds,
     pollInterval: Duration = 500.milliseconds,
+    private val runningEmulator: suspend (String) -> String? = { null },
 ) {
     private val launcher = OrcaAgentLauncher(orca, naming, samePath, timeout, pollInterval)
 
@@ -36,11 +37,17 @@ class OpenWorktreeInOrcaUseCase(
         val repo = launcher.registeredRepo(config.baseRepositoryPath)
         if (orca.worktrees(repo.id).none { samePath(it.path, worktree.path) }) orca.showExternalWorktrees(repo.id)
         val workspace = OrcaWorkspace.Worktree(worktree.path)
-        launcher.focusLiveAgent(workspace, worktree.path, sessionName)?.let { return@runCatching it }
+        val emulator = showRunningEmulator(workspace, worktree.path)
+        launcher.focusLiveAgent(workspace, worktree.path, sessionName)?.let { return@runCatching it.copy(emulator = emulator) }
 
         val variables = resolveEnvironment(config.baseRepositoryPath, worktree.path).getOrThrow().variables
         launcher.start(workspace, worktree.path, agent.resolvedCommand(), agent.displayName, sessionName) { named ->
             if (usesPowerShell) EnvironmentCommand.powershell(variables, named) else EnvironmentCommand.posix(variables, named)
-        }
+        }.copy(emulator = emulator)
+    }
+
+    private suspend fun showRunningEmulator(workspace: OrcaWorkspace, worktreePath: String): String? {
+        val serial = runCatching { runningEmulator(worktreePath) }.getOrNull() ?: return null
+        return runCatching { orca.attachEmulator(workspace, serial) }.map { serial }.getOrNull()
     }
 }

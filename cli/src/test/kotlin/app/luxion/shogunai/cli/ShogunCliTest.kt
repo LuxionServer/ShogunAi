@@ -2830,6 +2830,37 @@ class ShogunCliTest {
     }
 
     @Test
+    fun `open in orca shows the worktree's running emulator and reports it`() {
+        environmentStore.portsByAdminDirectory["$base/.git/worktrees/TASK-1"] = mapOf("emulator" to 5556)
+        androidSdk.states["emulator-5556"] = EmulatorState.RUNNING
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(emulator = EmulatorProvider()))),
+        )
+        val orca = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)), visibleWorktrees = mapOf("r1" to listOf(OrcaWorktree(merged, false))))
+
+        val exitCode = cli(executorWithAdminDirectories(), provisioning = provisioning, orca = orca).run(listOf("open", "TASK-1", "--orca"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("opened $merged in Orca with Claude (terminal term_1), with emulator-5556 in its emulator view\n", out.toString())
+        assertEquals(listOf("attach:$merged:emulator-5556", "create:$merged"), orca.events)
+
+        out.clear()
+        val again = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)), visibleWorktrees = mapOf("r1" to listOf(OrcaWorktree(merged, false))))
+        assertEquals(0, cli(executorWithAdminDirectories(), provisioning = provisioning, orca = again).run(listOf("open", "TASK-1", "--orca", "--json")))
+        assertEquals("emulator-5556", Json.parseToJsonElement(out.toString()).jsonObject["emulator"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `open in orca without a running emulator reports a null emulator`() {
+        val orca = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)))
+
+        assertEquals(0, cli(repositoryExecutor(), orca = orca).run(listOf("open", "TASK-1", "--orca", "--json")), err.toString())
+
+        assertEquals(JsonNull, Json.parseToJsonElement(out.toString()).jsonObject["emulator"])
+        assertTrue(orca.attachedEmulators.isEmpty())
+    }
+
+    @Test
     fun `open in orca reports the started agent and its session as json`() {
         val orca = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)))
         val sessions = FakeClaudeSessionRegistry(started = orca::startedClaudeSessions)

@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.OrcaOpening
 import app.luxion.shogunai.domain.model.OrcaWorkspace
+import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.groupMemberSessionName
 import app.luxion.shogunai.domain.model.multirepoSessionName
@@ -23,12 +24,15 @@ class OpenGroupInOrcaUseCase(
     private val samePath: (String, String) -> Boolean = ::sameDirectory,
     private val timeout: Duration = AGENT_START_SECONDS.seconds,
     private val pollInterval: Duration = 500.milliseconds,
+    private val runningEmulator: suspend (ProjectConfig, String) -> String? = { _, _ -> null },
 ) {
     suspend operator fun invoke(group: WorktreeGroup): Result<List<GroupOrcaOpening>> {
         if (!orca.isInstalled()) return Result.failure(WorktreeError.OrcaNotInstalled)
         return Result.success(
             group.worktrees.map { member ->
-                val open = OpenWorktreeInOrcaUseCase(member.config, orca, resolveEnvironment, naming, usesPowerShell, samePath, timeout, pollInterval)
+                val open = OpenWorktreeInOrcaUseCase(member.config, orca, resolveEnvironment, naming, usesPowerShell, samePath, timeout, pollInterval) { path ->
+                    runningEmulator(member.config, path)
+                }
                 val opening = open(member.worktree, member.config.agentLaunchConfig, groupMemberSessionName(member.alias, group.title))
                 GroupOrcaOpening(member.alias, member.worktree.path, opening)
             },

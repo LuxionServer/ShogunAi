@@ -23,6 +23,7 @@ import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ReleaseRecord
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.HerdrOutcome
+import app.luxion.shogunai.domain.model.OrcaEmulatorView
 import app.luxion.shogunai.domain.model.OrcaOpening
 import app.luxion.shogunai.domain.model.OrcaOutcome
 import app.luxion.shogunai.domain.model.MavenDaemon
@@ -674,6 +675,7 @@ fun emulatorJson(
     emulator: WorktreeEmulator?,
     acquisition: ResourceAcquisition? = null,
     releaseRecord: ReleaseRecord? = null,
+    orcaView: OrcaEmulatorView? = null,
 ): JsonObject = buildJsonObject {
     put("worktree", worktree)
     put("serial", emulator?.serial)
@@ -682,6 +684,7 @@ fun emulatorJson(
     acquisition?.let { put("acquiredNow", it.acquiredNow) }
     acquisition?.let { put("released", strings(it.releases.mapNotNull { release -> release.worktreePath })) }
     put("waited", acquisition?.waitedSeconds)
+    orcaView?.let { put("orcaView", it.jsonValue) }
     releaseRecord?.let {
         put(
             "releasedFor",
@@ -692,6 +695,13 @@ fun emulatorJson(
         )
     }
 }
+
+private val OrcaEmulatorView.jsonValue: String
+    get() = when (this) {
+        OrcaEmulatorView.Shown -> "shown"
+        OrcaEmulatorView.NotOpen -> "not-open"
+        is OrcaEmulatorView.Failed -> "failed"
+    }
 
 private val EmulatorState.jsonLabel: String
     get() = name.lowercase()
@@ -846,6 +856,7 @@ fun openJson(path: String, branch: String?, opening: OrcaOpening): JsonObject = 
     put("terminal", opening.terminalHandle)
     put("agent", opening.agent)
     put("session_name", opening.sessionName)
+    put("emulator", opening.emulator)
 }
 
 val OrcaOutcome.jsonValue: String
