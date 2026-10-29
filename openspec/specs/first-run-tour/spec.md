@@ -98,11 +98,15 @@ The tour project's agents SHALL start with the prompt "Start the ShogunAi tour":
 - **THEN** the command changes into `~/.shogunai/tour/sample-repo` and runs `claude "Start the ShogunAi tour"`
 
 ### Requirement: Open the tour's agent
-The last step of the dialog SHALL offer the ways to open the sample's main worktree that are available on the machine (Herdr, the terminal, Claude Desktop, copying the launch command), and SHALL open it with the chosen one and the tour project's default agent, then close and show the tour project's view.
+The last step of the dialog SHALL offer the ways to open the sample's main worktree that are available on the machine (the runner in use, Herdr or Orca, the terminal, Claude Desktop, copying the launch command), and SHALL open it with the chosen one and the tour project's default agent, then close and show the tour project's view.
 
 #### Scenario: Open in the terminal
 - **WHEN** the user chooses "Open in terminal" at the last step
 - **THEN** a terminal opens in the sample's main worktree running the tour's agent, and the app shows the tour project's view
+
+#### Scenario: Open in Orca
+- **WHEN** Orca is the runner in use and the user chooses "Open in Orca" at the last step
+- **THEN** the sample's main worktree opens in Orca running the tour's agent, and the app shows the tour project's view
 
 #### Scenario: Folder trust
 - **WHEN** the last step or the banner offers the ways to open the agent

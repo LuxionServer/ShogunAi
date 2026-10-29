@@ -155,11 +155,21 @@ El worktree principal, los worktrees que Orca no lista y los espacios de trabajo
 
 **Multirepos.** En la carpeta de un multirepo, `shogun open <id> --orca` y "Abrir todo en Orca" de la cabecera del grupo abren cada worktree del grupo bajo su propio repositorio de Orca, y `shogun open --orca` y "Abrir agente del multirepo en Orca" ejecutan el agente del multirepo en el espacio de trabajo de Orca de la carpeta del multirepo. Una carpeta que no es un repositorio Git necesita antes una preparación única en la app de Orca; ver [Multirepos y grupos](guide/multirepo.md#grupos). Mientras Orca informa de un agente en ese espacio de trabajo, la vista del multirepo muestra su estado como el del agente de un worktree.
 
+## Elegir el runner
+
+Herdr y Orca son los dos runners de primera clase. Elige el que usas en las preferencias de la app de escritorio, en **Herramientas** → **Runner por defecto**; se guarda en `~/.shogunai/settings.json`, así que `shogun` también lo usa. El runner en uso es el que elegiste mientras esté instalado; si no, el primero instalado de Herdr y Orca, y Herdr si no hay ninguno. Decide:
+
+- dónde abren la acción principal de apertura de un worktree, el elemento de apertura del menú Worktree y su atajo (Cmd+O en macOS, Ctrl+O en los demás), y qué ofrece el recorrido guiado;
+- qué runner va primero en el detalle de un worktree, el menú contextual de su fila, la cabecera de un grupo y el menú del agente del multirepo (el otro sigue disponible);
+- dónde empieza el selector de "Nuevo cambio";
+- dónde abre `shogun open <destino>` cuando no pasas ni `--herdr` ni `--orca`;
+- qué runner nombran las reglas de flujo de abajo: `shogun open <id> --orca` con Orca en uso.
+
 ## Reglas de flujo de ShogunAi
 
 Los agentes que trabajan en los worktrees de ShogunAi suelen romper su flujo: cambian la rama del worktree en el que arranca la sesión, crean worktrees fuera de `shogun`, escriben en el terminal de otra sesión o limpian worktrees sin preguntar. Las reglas que se derivan de cómo funciona `shogun` están en un único catálogo, versionado con el binario, en cuatro temas: `worktrees`, `parallel`, `resources` y `cleanup`. Son valores por defecto: cada salida dice que el `AGENTS.md` del proyecto y tus propias instrucciones tienen prioridad. Las preferencias personales o de equipo (estilo de código, commits, formato o revisores de las pull requests) no forman parte de él; la única regla sobre pull requests apunta a un dato que registra ShogunAi: abrirlas contra la rama que imprime [`shogun base`](guide/cli.md#base).
 
-- **Claude Code** recibe el subconjunto corto, adaptado a la sesión, desde el [hook `SessionStart`](#claude-code) (como máximo once líneas, que terminan con un puntero al resto): la regla del checkout principal o del worktree, ramificar con `--from`, abrir sesiones con `shogun open --herdr` y escribirles mensajes solo cuando Herdr está disponible, las reglas del emulador y el simulador solo cuando el repositorio declara esos providers, pedir el turno del escritorio antes de usar computer use, y preguntar antes de `shogun clean --yes`.
+- **Claude Code** recibe el subconjunto corto, adaptado a la sesión, desde el [hook `SessionStart`](#claude-code) (como máximo once líneas, que terminan con un puntero al resto): la regla del checkout principal o del worktree, ramificar con `--from`, abrir sesiones con `shogun open --herdr` o `--orca`, según el [runner en uso](#elegir-el-runner), y escribirles mensajes solo cuando ese runner está disponible (Herdr responde, u Orca está instalado, ya que abrir lo arranca), las reglas del emulador y el simulador solo cuando el repositorio declara esos providers, pedir el turno del escritorio antes de usar computer use, y preguntar antes de `shogun clean --yes`.
 - **Cualquier agente** puede leerlo todo con `shogun guide [<tema>]`: primero las reglas que aplican donde se ejecuta y después las que no, cada una marcada con lo que necesita. `shogun guide --plain` imprime todas las reglas sin mirar el directorio, así que también funciona fuera de un repositorio.
 - **Los agentes sin hooks** (Codex, Gemini CLI, Cursor) reciben un bloque mínimo en el fichero tipo `AGENTS.md` que leen, que solo dice que ejecuten `shogun guide`, de modo que las reglas salen siempre del binario instalado:
 

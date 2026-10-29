@@ -21,11 +21,11 @@ import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.model.PoolUsage
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ReleaseRecord
-import app.luxion.shogunai.domain.model.HerdrOpening
-import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.OrcaEmulatorView
-import app.luxion.shogunai.domain.model.OrcaOpening
-import app.luxion.shogunai.domain.model.OrcaOutcome
+import app.luxion.shogunai.domain.model.RunnerId
+import app.luxion.shogunai.domain.model.RunnerOpening
+import app.luxion.shogunai.domain.model.RunnerOutcome
+import app.luxion.shogunai.domain.model.flag
 import app.luxion.shogunai.domain.model.MavenDaemon
 import app.luxion.shogunai.domain.model.MavenDaemonStopReport
 import app.luxion.shogunai.domain.model.SuggestionReport
@@ -840,36 +840,27 @@ fun removeJson(
     put("failures", strings(failures))
 }
 
-fun openJson(path: String, branch: String?, opening: HerdrOpening): JsonObject = buildJsonObject {
+fun openJson(path: String, branch: String?, opening: RunnerOpening): JsonObject = buildJsonObject {
     put("path", path)
     put("branch", branch)
-    put("herdr", opening.outcome.jsonValue)
-    put("pane_id", opening.paneId)
+    put(opening.runner.flag, opening.outcome.jsonValue)
+    put(opening.runner.handleKey, opening.handle)
     put("agent", opening.agent)
     put("session_name", opening.sessionName)
+    if (opening.runner == RunnerId.ORCA) put("emulator", opening.emulator)
 }
 
-fun openJson(path: String, branch: String?, opening: OrcaOpening): JsonObject = buildJsonObject {
-    put("path", path)
-    put("branch", branch)
-    put("orca", opening.outcome.jsonValue)
-    put("terminal", opening.terminalHandle)
-    put("agent", opening.agent)
-    put("session_name", opening.sessionName)
-    put("emulator", opening.emulator)
-}
-
-val OrcaOutcome.jsonValue: String
+val RunnerId.handleKey: String
     get() = when (this) {
-        OrcaOutcome.STARTED_AGENT -> "started-agent"
-        OrcaOutcome.FOCUSED -> "focused"
+        RunnerId.HERDR -> "pane_id"
+        RunnerId.ORCA -> "terminal"
     }
 
-val HerdrOutcome.jsonValue: String
+val RunnerOutcome.jsonValue: String
     get() = when (this) {
-        HerdrOutcome.OPENED -> "opened"
-        HerdrOutcome.STARTED_AGENT -> "started-agent"
-        HerdrOutcome.FOCUSED -> "focused"
+        RunnerOutcome.OPENED -> "opened"
+        RunnerOutcome.STARTED_AGENT -> "started-agent"
+        RunnerOutcome.FOCUSED -> "focused"
     }
 
 fun repairJson(repaired: List<String>): JsonObject = buildJsonObject {

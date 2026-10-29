@@ -1,6 +1,7 @@
 package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.domain.model.BranchType
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.usecase.EnvironmentFormat
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -220,22 +221,23 @@ class ParseArgumentsTest {
 
     @Test
     fun `open takes a target, herdr, an agent and json`() {
-        assertEquals(CliCommand.Open("TASK-123", herdr = true), command("open", "TASK-123", "--herdr"))
-        assertEquals(CliCommand.Open("TASK-123", herdr = true, agent = "codex"), command("open", "--herdr", "--agent", "codex", "TASK-123"))
-        assertEquals(CliCommand.Open("TASK-123", herdr = true, json = true), command("open", "TASK-123", "--herdr", "--json"))
+        assertEquals(CliCommand.Open("TASK-123", runner = RunnerId.HERDR), command("open", "TASK-123", "--herdr"))
+        assertEquals(CliCommand.Open("TASK-123", runner = RunnerId.HERDR, agent = "codex"), command("open", "--herdr", "--agent", "codex", "TASK-123"))
+        assertEquals(CliCommand.Open("TASK-123", runner = RunnerId.HERDR, json = true), command("open", "TASK-123", "--herdr", "--json"))
         assertEquals(CliCommand.CommandHelp("open"), command("open", "--help"))
     }
 
     @Test
     fun `open takes orca with an agent and json`() {
-        assertEquals(CliCommand.Open("TASK-123", orca = true), command("open", "TASK-123", "--orca"))
-        assertEquals(CliCommand.Open("TASK-123", agent = "codex", json = true, orca = true), command("open", "--orca", "--agent", "codex", "TASK-123", "--json"))
+        assertEquals(CliCommand.Open("TASK-123", runner = RunnerId.ORCA), command("open", "TASK-123", "--orca"))
+        assertEquals(CliCommand.Open("TASK-123", RunnerId.ORCA, agent = "codex", json = true), command("open", "--orca", "--agent", "codex", "TASK-123", "--json"))
     }
 
     @Test
-    fun `open needs a destination and knows its options`() {
-        assertEquals(CliCommand.Open(null, herdr = true), command("open", "--herdr"))
-        assertEquals("'open' needs where to open the worktree: --herdr or --orca", usageError("open", "TASK-123"))
+    fun `open takes an optional runner and knows its options`() {
+        assertEquals(CliCommand.Open(null, runner = RunnerId.HERDR), command("open", "--herdr"))
+        assertEquals(CliCommand.Open("TASK-123"), command("open", "TASK-123"))
+        assertEquals(CliCommand.Open(null), command("open"))
         assertEquals("'open' opens in one place at a time: pass either --herdr or --orca", usageError("open", "TASK-123", "--herdr", "--orca"))
         assertEquals("unknown option '--terminal' for 'open'", usageError("open", "TASK-123", "--terminal"))
         assertEquals("--agent needs a value", usageError("open", "TASK-123", "--herdr", "--agent"))

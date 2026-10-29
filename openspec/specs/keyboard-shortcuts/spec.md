@@ -42,6 +42,10 @@ The system SHALL let the user open the selected worktree in the default runner w
 - **WHEN** a worktree is selected and the user presses Cmd/Ctrl+E
 - **THEN** it opens in the default runner, same as Cmd/Ctrl+O
 
+#### Scenario: Open the selection in Orca
+- **WHEN** Orca is the runner in use and a worktree is selected
+- **THEN** the Worktree menu shows "Open in Orca", and the shortcut opens the worktree in Orca, same as activating "Open in Orca"
+
 #### Scenario: Nothing selected
 - **WHEN** no worktree is selected
 - **THEN** "Open in <default runner>" and "Open with…" are disabled in the Worktree menu and the shortcuts do nothing
