@@ -4,17 +4,24 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.UpdateAction
 import app.luxion.shogunai.domain.model.UpdateCheck
+import app.luxion.shogunai.domain.model.VersionNotes
+import app.luxion.shogunai.ui.components.DialogSize
+import app.luxion.shogunai.ui.components.ShogunDialog
 import app.luxion.shogunai.ui.components.ErrorNotice
+import app.luxion.shogunai.ui.components.MarkdownText
 import app.luxion.shogunai.ui.components.Notice
 import app.luxion.shogunai.ui.components.NoticeKind
 import app.luxion.shogunai.ui.components.NeutralTextButton
@@ -25,6 +32,8 @@ import app.luxion.shogunai.ui.components.handPointer
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.theme.ShogunTheme
+
+private val ReleaseNotesMaxHeight = 420.dp
 
 @Composable
 fun UpdateNotice(state: UpdateState, modifier: Modifier = Modifier) {
@@ -38,6 +47,8 @@ fun UpdateNotice(state: UpdateState, modifier: Modifier = Modifier) {
         details = {
             UpdateDetails(available, state, onSkip = state::skipVersion)
         },
+        onIconClick = { state.showNotes(available) },
+        iconDescription = strings.releaseNotesIconDescription,
     )
 }
 
@@ -51,7 +62,7 @@ private fun UpdateDetails(available: UpdateCheck.Available, state: UpdateState, 
             verticalArrangement = Arrangement.spacedBy(Spacing.xs),
         ) {
             UpdateActionButton(available.action, state, strings)
-            NeutralTextButton(onClick = { state.open(available.release.pageUrl) }) { Text(strings.updateWhatsNew) }
+            NeutralTextButton(onClick = { state.showNotes(available) }) { Text(strings.updateWhatsNew) }
             onSkip?.let { NeutralTextButton(onClick = it) { Text(strings.updateSkipVersion) } }
         }
     }
@@ -87,14 +98,15 @@ private fun UpdateActionButton(action: UpdateAction, state: UpdateState, strings
 fun UpdateCheckDialog(state: UpdateState) {
     val result = state.manualResult ?: return
     val strings = LocalStrings.current
-    AlertDialog(
+    ShogunDialog(
+        title = strings.updateDialogTitle,
         onDismissRequest = state::closeManualResult,
-        title = { Text(strings.updateDialogTitle) },
-        text = { UpdateCheckDialogContent(result, state) },
-        confirmButton = {
+        confirm = {
             PrimaryButton(onClick = state::closeManualResult) { Text(strings.close) }
         },
-    )
+    ) {
+        UpdateCheckDialogContent(result, state)
+    }
 }
 
 @Composable
@@ -110,6 +122,49 @@ private fun UpdateCheckDialogContent(result: ManualUpdateResult, state: UpdateSt
             }
             is UpdateCheck.UpToDate -> Text(strings.updateUpToDateMessage(check.running.toString()))
             UpdateCheck.NotDue -> Text(strings.updateChecking)
+        }
+    }
+}
+
+@Composable
+fun ReleaseNotesDialog(state: UpdateState) {
+    val available = state.notes ?: return
+    val strings = LocalStrings.current
+    ShogunDialog(
+        title = strings.releaseNotesTitle(available.release.version.toString()),
+        onDismissRequest = state::closeNotes,
+        size = DialogSize.Medium,
+        scrollable = false,
+        confirm = {
+            PrimaryButton(onClick = state::closeNotes) { Text(strings.close) }
+        },
+        dismiss = {
+            SecondaryButton(onClick = { state.open(available.release.pageUrl) }) { Text(strings.releaseNotesViewOnGitHub) }
+        },
+    ) {
+        ReleaseNotesContent(available.notes, state)
+    }
+}
+
+@Composable
+private fun ReleaseNotesContent(versions: List<VersionNotes>, state: UpdateState) {
+    val strings = LocalStrings.current
+    Column(
+        modifier = Modifier.heightIn(max = ReleaseNotesMaxHeight).verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(Spacing.md),
+    ) {
+        versions.forEach { version ->
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                if (versions.size > 1) {
+                    Text(strings.releaseNotesVersionHeading(version.version.toString()), style = MaterialTheme.typography.titleMedium)
+                }
+                val notes = version.notes.forLanguage(strings.language)
+                if (notes == null) {
+                    Text(strings.releaseNotesEmpty, style = MaterialTheme.typography.bodyMedium)
+                } else {
+                    MarkdownText(notes, onOpenUrl = state::open)
+                }
+            }
         }
     }
 }

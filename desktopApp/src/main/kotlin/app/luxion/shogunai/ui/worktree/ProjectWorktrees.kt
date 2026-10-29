@@ -14,15 +14,26 @@ import app.luxion.shogunai.domain.model.DaemonStopReport
 import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleDaemon
+import app.luxion.shogunai.domain.model.MavenDaemon
+import app.luxion.shogunai.domain.model.MavenDaemonStopReport
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.HeadlessAppProcess
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.HerdrOutcome
+import app.luxion.shogunai.domain.model.ObservedPort
+import app.luxion.shogunai.domain.model.OrcaOutcome
+import app.luxion.shogunai.domain.usecase.OrcaOrigins
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.ProvisionDrift
 import app.luxion.shogunai.domain.model.WorktreeEnvironment
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.TerminalId
+import app.luxion.shogunai.ui.actions.ActionId
+import app.luxion.shogunai.ui.actions.ActionTools
+import app.luxion.shogunai.ui.actions.OpenTarget
+import app.luxion.shogunai.ui.actions.WorktreeActionContext
+import app.luxion.shogunai.ui.actions.WorktreeCatalog
+import app.luxion.shogunai.ui.actions.worktreeCatalog
 import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.SimulatorDevice
@@ -41,6 +52,7 @@ import app.luxion.shogunai.domain.usecase.CleanupFailure
 import app.luxion.shogunai.domain.usecase.CleanupReport
 import app.luxion.shogunai.domain.usecase.CleanupSelection
 import app.luxion.shogunai.domain.usecase.idleDaemonsOfRemovedWorktrees
+import app.luxion.shogunai.domain.usecase.idleMavenDaemonsOfRemovedWorktrees
 import app.luxion.shogunai.domain.usecase.selectCleanup
 import app.luxion.shogunai.domain.usecase.waitsForUser
 import kotlinx.coroutines.CoroutineDispatcher
@@ -103,13 +115,21 @@ class ProjectWorktrees(
         private set
     var mainBranch by mutableStateOf<MainBranch?>(null)
         private set
+    var recordedBases by mutableStateOf<Map<String, MainBranch>>(emptyMap())
+        private set
+
+    fun baseOf(worktree: Worktree): MainBranch? = worktree.branch?.let(recordedBases::get) ?: mainBranch
     private val statusReadPermits = Semaphore(MAX_PARALLEL_STATUS_READS)
 
     var agents by mutableStateOf<Map<String, List<RunningAgent>>?>(null)
         private set
+    var agentsReadAt by mutableStateOf<Instant?>(null)
+        private set
     var sizes by mutableStateOf<Map<String, Long>>(emptyMap())
         private set
     var ports by mutableStateOf<Map<String, Map<String, Int>>>(emptyMap())
+        private set
+    var observedPorts by mutableStateOf<Map<String, List<ObservedPort>>>(emptyMap())
         private set
     var environments by mutableStateOf<Map<String, WorktreeEnvironment>>(emptyMap())
         private set
@@ -124,6 +144,14 @@ class ProjectWorktrees(
     var openInHerdrPaths by mutableStateOf<Set<String>>(emptySet())
         private set
     var herdrCloseFailures by mutableStateOf<List<CleanupFailure>>(emptyList())
+        private set
+    var openingInOrca by mutableStateOf<Set<String>>(emptySet())
+        private set
+    var orcaTerminalPaths by mutableStateOf<Set<String>>(emptySet())
+        private set
+    var orcaCloseFailures by mutableStateOf<List<CleanupFailure>>(emptyList())
+        private set
+    var orcaOrigins by mutableStateOf<OrcaOrigins?>(null)
         private set
     var headlessStopFailures by mutableStateOf<List<CleanupFailure>>(emptyList())
         private set
@@ -254,6 +282,8 @@ class ProjectWorktrees(
         get() = pendingRemoval?.requiresForce ?: false
     val pendingRemovalOpenInHerdr: Boolean
         get() = pendingRemoval?.worktree?.path in openInHerdrPaths
+    val pendingRemovalHasOrcaTerminals: Boolean
+        get() = pendingRemoval?.worktree?.path in orcaTerminalPaths
 
     fun refresh(remeasureSizes: Boolean = false) {
         if (isCreating) return
@@ -328,6 +358,9 @@ class ProjectWorktrees(
     fun applyAgents(detected: Map<String, List<RunningAgent>>?) {
         val paths = worktrees.map { it.path }.toSet()
         agents = detected?.filterKeys { it in paths }
+        agentsReadAt = clock()
+        orcaOrigins = useCases.orca.origins()
+        observedPorts = useCases.orca.ports(worktrees).orEmpty()
     }
 
     suspend fun refreshDevices() {
@@ -407,8 +440,10 @@ class ProjectWorktrees(
     private fun readStatuses(generation: Int, listed: List<Worktree>, knownMainBranch: MainBranch?) {
         scope.launch {
             val resolved = knownMainBranch ?: useCases.resolveMainBranch().getOrNull()
+            val bases = useCases.resolveRecordedBases()
             if (generation != listGeneration) return@launch
             mainBranch = resolved
+            recordedBases = bases
             listed.forEach { worktree -> launch { readStatus(generation, worktree, resolved) } }
         }
     }
@@ -419,7 +454,12 @@ class ProjectWorktrees(
         scope.launch { herdrWorktreesRoot = useCases.herdr.worktreesRoot() }
         scope.launch {
             val detected = useCases.detectAgents(listed).getOrNull()
-            if (generation == listGeneration) agents = detected
+            if (generation == listGeneration) {
+                agents = detected
+                agentsReadAt = clock()
+                orcaOrigins = useCases.orca.origins()
+                observedPorts = useCases.orca.ports(listed).orEmpty()
+            }
         }
         loadGradleSection()
         loadMavenAndComposeSections(generation, listed)
@@ -641,11 +681,16 @@ class ProjectWorktrees(
     private fun loadStatusOf(worktree: Worktree) {
         val generation = listGeneration
         statuses = statuses + (worktree.path to WorktreeStatusState.Loading)
-        scope.launch { readStatus(generation, worktree, mainBranch) }
+        scope.launch {
+            val bases = useCases.resolveRecordedBases()
+            if (generation != listGeneration) return@launch
+            recordedBases = bases
+            readStatus(generation, worktree, mainBranch)
+        }
     }
 
     private suspend fun readStatus(generation: Int, worktree: Worktree, mainBranch: MainBranch?) {
-        val state = statusReadPermits.withPermit { useCases.readStatus(worktree, mainBranch) }
+        val state = statusReadPermits.withPermit { useCases.readStatus(worktree, mainBranch, baseOf(worktree)) }
             .fold(onSuccess = { WorktreeStatusState.Loaded(it) }, onFailure = { WorktreeStatusState.Unavailable })
         if (generation == listGeneration) statuses = statuses + (worktree.path to state)
     }
@@ -673,7 +718,11 @@ class ProjectWorktrees(
     ) = runCreation(fetch, onCreated) {
         val startPoint = startRef?.let { useCases.resolveStartPoint(it) }
         val startFailure = startPoint?.exceptionOrNull()
-        if (startFailure != null) Result.failure(startFailure) else useCases.create(taskId, branchType, startPoint?.getOrNull())
+        if (startFailure != null) {
+            Result.failure(startFailure)
+        } else {
+            useCases.create(taskId, branchType, startPoint?.getOrNull(), useCases.resolveBaseBranch(startRef ?: "HEAD"))
+        }
     }
 
     private fun runCreation(fetch: Boolean, onCreated: (Worktree) -> Unit, creation: suspend () -> Result<Worktree>) {
@@ -742,6 +791,7 @@ class ProjectWorktrees(
                     .onSuccess { removal ->
                         launch { useCases.releaseResources.release(resources) }
                         removal.herdrFailure?.let { herdrCloseFailures = listOf(CleanupFailure(worktree.path, it)) }
+                        removal.orcaFailure?.let { orcaCloseFailures = listOf(CleanupFailure(worktree.path, it)) }
                         removal.headlessAppFailure?.let { headlessStopFailures = listOf(CleanupFailure(worktree.path, it)) }
                         worktrees = worktrees.filterNot { it.path == worktree.path }
                         statuses = statuses - worktree.path
@@ -817,8 +867,12 @@ class ProjectWorktrees(
 
     private fun lookUpOpenInHerdr(paths: List<String>) {
         openInHerdrPaths = emptySet()
+        orcaTerminalPaths = emptySet()
         scope.launch {
             openInHerdrPaths = useCases.herdr.openWorkspaces(paths).keys
+        }
+        scope.launch {
+            orcaTerminalPaths = useCases.orca.withTerminals(paths)
         }
     }
 
@@ -871,6 +925,25 @@ class ProjectWorktrees(
         }
     }
 
+    fun openInOrca(worktree: Worktree, picked: AgentLaunchConfig? = null) {
+        if (worktree.path in openingInOrca) return
+        onUsed(worktree.path)
+        val agent = resolveAgent(worktree, picked)
+        openingInOrca = openingInOrca + worktree.path
+        scope.launch {
+            try {
+                useCases.orca.open(worktree, agent)
+                    .onSuccess { opening ->
+                        clearActionError(worktree.path)
+                        success = WorktreeSuccess.OpenedInOrca(path = worktree.path, outcome = opening.outcome)
+                    }
+                    .onFailure { recordActionError(worktree.path, it) }
+            } finally {
+                openingInOrca = openingInOrca - worktree.path
+            }
+        }
+    }
+
     val tools: ToolsPreferences get() = useCases.tools.preferences
 
     val agentOptions: List<AgentLaunchConfig> get() = useCases.agents.options
@@ -882,34 +955,44 @@ class ProjectWorktrees(
         useCases.agents.choose(worktree.path, agent)
     }
 
-    fun launchLabel(base: String, worktree: Worktree, strings: Strings): String =
-        if (hasAgentChoice) strings.launchWithAgent(base, agentFor(worktree).displayName) else base
+    fun actionTools(strings: Strings): ActionTools = ActionTools(
+        runners = tools.installedRunners,
+        defaultRunner = tools.defaultRunner,
+        terminal = tools.terminalShown?.let { tools.terminalInUse?.displayName ?: strings.terminalToolLabel.lowercase() },
+        editor = tools.editorFor(useCases.tools.editorOverride)?.displayName,
+        claudeDesktop = tools.claudeDesktopAvailable,
+    )
 
-    fun launchChoices(worktree: Worktree, strings: Strings): List<LaunchChoice> {
-        if (!hasAgentChoice) return emptyList()
-        val current = agentFor(worktree)
-        val kinds = if (worktree.isPrunable) {
-            listOf(LaunchKind.COPY)
-        } else {
-            listOfNotNull(LaunchKind.COPY, LaunchKind.TERMINAL.takeIf { tools.terminalShown != null }, LaunchKind.HERDR)
-        }
-        return agentOptions.filter { it.displayName != current.displayName }.flatMap { agent ->
-            kinds.map { kind ->
-                val base = when (kind) {
-                    LaunchKind.COPY -> strings.copyLaunchCommand
-                    LaunchKind.TERMINAL -> strings.openInTool(tools.terminalInUse?.displayName ?: strings.terminalToolLabel.lowercase())
-                    LaunchKind.HERDR -> strings.openInHerdr
-                }
-                LaunchChoice(kind, agent, strings.launchWithAgent(base, agent.displayName))
+    fun actionCatalog(worktree: Worktree, strings: Strings): WorktreeCatalog = worktreeCatalog(
+        WorktreeActionContext(
+            tools = actionTools(strings),
+            isMain = worktree.isMain,
+            isFolderMissing = worktree.isPrunable,
+            agents = agentOptions.map { it.displayName },
+            agent = agentFor(worktree).displayName,
+            opening = setOfNotNull(
+                OpenTarget.HERDR.takeIf { worktree.path in openingInHerdr },
+                OpenTarget.ORCA.takeIf { worktree.path in openingInOrca },
+            ),
+        ),
+        strings,
+    )
+
+    fun perform(worktree: Worktree, id: ActionId, agent: String? = null) {
+        val picked = agent?.let { name -> agentOptions.firstOrNull { it.displayName == name } }
+        when (id) {
+            is ActionId.Open -> when (id.target) {
+                OpenTarget.HERDR -> openInHerdr(worktree, picked)
+                OpenTarget.ORCA -> openInOrca(worktree, picked)
+                OpenTarget.TERMINAL -> openInTerminal(worktree, picked)
+                OpenTarget.EDITOR -> openInEditor(worktree)
+                OpenTarget.CLAUDE_DESKTOP -> openInClaudeDesktop(worktree)
+                OpenTarget.FOLDER -> openFolder(worktree)
             }
-        }
-    }
-
-    fun launch(worktree: Worktree, kind: LaunchKind, agent: AgentLaunchConfig) {
-        when (kind) {
-            LaunchKind.COPY -> copyLaunchCommand(worktree, picked = agent)
-            LaunchKind.TERMINAL -> openInTerminal(worktree, agent)
-            LaunchKind.HERDR -> openInHerdr(worktree, agent)
+            ActionId.CopyLaunchCommand -> copyLaunchCommand(worktree, picked = picked)
+            is ActionId.ChooseAgent -> agentOptions.firstOrNull { it.displayName == id.agent }?.let { setAgent(worktree, it) }
+            ActionId.RemoveWorktree -> if (!worktree.isMain) requestRemoval(worktree)
+            else -> Unit
         }
     }
 
@@ -917,31 +1000,6 @@ class ProjectWorktrees(
         if (picked == null) return agentFor(worktree)
         setAgent(worktree, picked)
         return picked
-    }
-
-    fun openActions(worktree: Worktree, strings: Strings): List<OpenAction> {
-        if (worktree.isPrunable) return emptyList()
-        return listOfNotNull(
-            tools.terminalShown?.let {
-                val name = tools.terminalInUse?.displayName ?: strings.terminalToolLabel.lowercase()
-                OpenAction(OpenKind.TERMINAL, launchLabel(strings.openInTool(name), worktree, strings)) { openInTerminal(worktree) }
-            },
-            tools.editorFor(useCases.tools.editorOverride)?.let {
-                OpenAction(OpenKind.EDITOR, strings.openInTool(it.displayName)) { openInEditor(worktree) }
-            },
-            OpenAction(OpenKind.CLAUDE_DESKTOP, strings.openInTool(strings.claudeDesktopName)) { openInClaudeDesktop(worktree) }
-                .takeIf { tools.claudeDesktopAvailable },
-            OpenAction(OpenKind.FOLDER, strings.openFolder) { openFolder(worktree) },
-        )
-    }
-
-    fun open(worktree: Worktree, kind: OpenKind) {
-        when (kind) {
-            OpenKind.TERMINAL -> openInTerminal(worktree)
-            OpenKind.EDITOR -> openInEditor(worktree)
-            OpenKind.CLAUDE_DESKTOP -> openInClaudeDesktop(worktree)
-            OpenKind.FOLDER -> openFolder(worktree)
-        }
     }
 
     fun openInTerminal(worktree: Worktree, picked: AgentLaunchConfig? = null) {
@@ -1015,6 +1073,7 @@ class ProjectWorktrees(
         val candidates = cleanupCandidates.filter { only == null || it.path in only }
         val listed = worktrees
         val stopDaemons = isGradleRepository && options.stopGradleDaemons
+        val stopMavenDaemons = isMavenRepository && options.stopMavenDaemons
         val deleteSimulators = isSimulatorRepository && options.deleteSimulators
         val deleteDerivedData = isXcodeRepository && options.deleteDerivedData && only == null
         val simulatorsToDelete = if (deleteSimulators) {
@@ -1032,6 +1091,7 @@ class ProjectWorktrees(
         var cleanedUp: WorktreeSuccess.CleanedUp? = null
         try {
             val daemonsBefore = if (stopDaemons) useCases.gradle.listDaemons(listed).getOrNull().orEmpty() else emptyList()
+            val mavenDaemonsBefore = if (stopMavenDaemons) useCases.maven.listDaemons(listed).getOrNull().orEmpty() else emptyList()
             val downCompose = isComposeRepository && options.downComposeProjects
             useCases.cleanUp(
                 candidates,
@@ -1043,6 +1103,7 @@ class ProjectWorktrees(
                 .onSuccess { report ->
                     dismissError()
                     val daemonReport = stopDaemonsOfRemovedWorktrees(daemonsBefore, listed, report.removed)
+                    val mavenDaemonReport = stopMavenDaemonsOfRemovedWorktrees(mavenDaemonsBefore, listed, report.removed)
                     val removedSerials = report.removed.mapNotNull { emulatorsBefore[it]?.serial }
                     val stoppedEmulators = if (removedSerials.isEmpty()) {
                         0
@@ -1061,8 +1122,8 @@ class ProjectWorktrees(
                     }
                     cleanedUp = WorktreeSuccess.CleanedUp(
                         removedCount = report.removed.size,
-                        stoppedDaemons = daemonReport?.stopped?.size ?: 0,
-                        keptDaemons = daemonReport?.kept?.size ?: 0,
+                        stoppedDaemons = (daemonReport?.stopped?.size ?: 0) + (mavenDaemonReport?.stopped?.size ?: 0),
+                        keptDaemons = (daemonReport?.kept?.size ?: 0) + (mavenDaemonReport?.kept?.size ?: 0),
                         stoppedEmulators = stoppedEmulators,
                         deletedSimulators = deletedSimulators,
                         deletedDerivedDataFolders = deletedDerivedData?.deleted?.size ?: 0,
@@ -1071,6 +1132,7 @@ class ProjectWorktrees(
                         removedComposeResources = report.composeResources?.removed?.size ?: 0,
                     )
                     herdrCloseFailures = report.herdrFailures
+                    orcaCloseFailures = report.orcaFailures
                     headlessStopFailures = report.headlessAppFailures
                     cleanupIssues = report.takeIf {
                         it.failures.isNotEmpty() || it.keptBranches.isNotEmpty() ||
@@ -1096,12 +1158,26 @@ class ProjectWorktrees(
         return useCases.gradle.stopDaemons(pids).getOrNull()
     }
 
+    private suspend fun stopMavenDaemonsOfRemovedWorktrees(
+        daemons: List<MavenDaemon>,
+        listed: List<Worktree>,
+        removed: List<String>,
+    ): MavenDaemonStopReport? {
+        val pids = idleMavenDaemonsOfRemovedWorktrees(daemons, listed, removed)
+        if (pids.isEmpty()) return null
+        return useCases.maven.stopDaemons(pids).getOrNull()
+    }
+
     fun dismissCleanupIssues() {
         cleanupIssues = null
     }
 
     fun dismissHerdrCloseFailures() {
         herdrCloseFailures = emptyList()
+    }
+
+    fun dismissOrcaCloseFailures() {
+        orcaCloseFailures = emptyList()
     }
 
     private fun loadedStatuses(): Map<String, WorktreeStatus> =
@@ -1147,6 +1223,10 @@ class ProjectWorktrees(
         releaseNotices = releaseNotices + (
             path to acquisition.releases.map { ReleaseNotice(kind, it.holderName, path.trimEnd('/').substringAfterLast('/')) }
             )
+    }
+
+    fun showOpenResult(path: String, result: Result<*>) {
+        result.onSuccess { clearActionError(path) }.onFailure { recordActionError(path, it) }
     }
 
     private fun clearActionError(path: String) {
@@ -1195,6 +1275,7 @@ sealed interface ProjectLoadState {
 data class CleanupOptions(
     val deleteBranches: Boolean = false,
     val stopGradleDaemons: Boolean = true,
+    val stopMavenDaemons: Boolean = true,
     val stopEmulators: Boolean = true,
     val deleteSimulators: Boolean = true,
     val deleteDerivedData: Boolean = true,
@@ -1212,6 +1293,7 @@ sealed interface WorktreeSuccess {
     data class Created(val path: String, val commandsSkipped: Boolean = false) : WorktreeSuccess
     data object RepairedAfterMove : WorktreeSuccess
     data class OpenedInHerdr(val path: String, val outcome: HerdrOutcome) : WorktreeSuccess
+    data class OpenedInOrca(val path: String, val outcome: OrcaOutcome) : WorktreeSuccess
     data class BranchDeleted(val branch: String) : WorktreeSuccess
     data class CleanedUp(
         val removedCount: Int,

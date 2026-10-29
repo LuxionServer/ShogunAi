@@ -13,6 +13,10 @@ data class ShogunStatusColors(
     val danger: StatusColor,
     val neutral: StatusColor,
 ) {
+    val attention: StatusColor get() = warning
+
+    val active: StatusColor get() = info
+
     fun of(status: Status): StatusColor = when (status) {
         Status.SUCCESS -> success
         Status.WARNING -> warning

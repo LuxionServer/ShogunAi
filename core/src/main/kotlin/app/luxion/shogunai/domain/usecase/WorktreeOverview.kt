@@ -13,12 +13,18 @@ val DEFAULT_INACTIVITY_THRESHOLD: Duration = Duration.ofDays(3)
 
 private const val CLAUDE_CODE_WORKTREES = "/.claude/worktrees/"
 
-fun classifyOrigin(worktree: Worktree, config: ProjectConfig, herdrWorktreesRoot: String? = null): WorktreeOrigin? {
+fun classifyOrigin(
+    worktree: Worktree,
+    config: ProjectConfig,
+    herdrWorktreesRoot: String? = null,
+    orca: OrcaOrigins? = null,
+): WorktreeOrigin? {
     if (worktree.isMain) return null
     val path = normalizePath(worktree.path)
     return when {
         CLAUDE_CODE_WORKTREES in "$path/" -> WorktreeOrigin.CLAUDE_CODE
         herdrWorktreesRoot != null && isInside(path, normalizePath(herdrWorktreesRoot)) -> WorktreeOrigin.HERDR
+        orca != null && orca.createdByOrca(worktree.path) -> WorktreeOrigin.ORCA
         isInside(path, normalizePath(config.worktreesRoot)) -> WorktreeOrigin.SHOGUNAI
         else -> WorktreeOrigin.OTHER
     }
@@ -83,7 +89,7 @@ private fun hasUnpushedCommits(status: WorktreeStatus): Boolean =
     if (status.upstream != null) {
         status.upstream.ahead > 0
     } else {
-        (status.mainBranch?.ahead ?: 0) > 0
+        (status.base?.ahead ?: 0) > 0
     }
 
 internal fun normalizePath(path: String): String = path.replace('\\', '/').trimEnd('/')

@@ -7,14 +7,14 @@ import kotlin.test.assertTrue
 
 class WorkflowRulesTest {
 
-    private val worktree = WorkflowContext(inMainCheckout = false, herdrAvailable = true, emulatorProvider = true, simulatorProvider = true, composeProvider = true, desktopAppProvider = true)
-    private val bare = WorkflowContext(inMainCheckout = true, herdrAvailable = false, emulatorProvider = false, simulatorProvider = false)
+    private val worktree = WorkflowContext(inMainCheckout = false, runnerAvailable = true, emulatorProvider = true, simulatorProvider = true, composeProvider = true, desktopAppProvider = true, flutterProvider = true)
+    private val bare = WorkflowContext(inMainCheckout = true, runnerAvailable = false, emulatorProvider = false, simulatorProvider = false)
 
     private fun ids(rules: List<WorkflowRule>) = rules.map { it.id }
 
     @Test
     fun `every rule appears exactly where its condition holds`() {
-        listOf(worktree, bare, worktree.copy(herdrAvailable = false), bare.copy(emulatorProvider = true)).forEach { context ->
+        listOf(worktree, bare, worktree.copy(runnerAvailable = false), bare.copy(emulatorProvider = true)).forEach { context ->
             val selection = WorkflowRules.rulesFor(context)
             selection.applicable.forEach { assertTrue(context.holds(it.condition), it.id) }
             selection.inapplicable.forEach { assertFalse(context.holds(it.condition), it.id) }
@@ -42,16 +42,16 @@ class WorkflowRulesTest {
         val selection = WorkflowRules.rulesFor(bare, WorkflowTopic.RESOURCES)
 
         assertEquals(
-            listOf("resources.emulator", "resources.simulator", "resources.compose", "resources.desktop-app"),
+            listOf("resources.emulator", "resources.simulator", "resources.flutter", "resources.compose", "resources.desktop-app"),
             ids(selection.inapplicable),
         )
     }
 
     @Test
-    fun `the session start subset fits eleven lines in the richest context`() {
+    fun `the session start subset fits twelve lines in the richest context`() {
         val lines = WorkflowRules.sessionStartLines(worktree)
 
-        assertTrue(lines.size <= 11, lines.joinToString("\n"))
+        assertTrue(lines.size <= 12, lines.joinToString("\n"))
         assertEquals(WorkflowRules.PRECEDENCE, lines.first())
         assertEquals(WorkflowRules.GUIDE_POINTER, lines.last())
     }
@@ -63,7 +63,47 @@ class WorkflowRulesTest {
             assertTrue("shogun desktop acquire --wait" in rule.text)
             assertTrue("shogun desktop release" in rule.text)
             assertTrue("background" in rule.text)
+            assertTrue("`orca computer`" in rule.text)
         }
+    }
+
+    private fun flutterRule(context: WorkflowContext): String =
+        WorkflowRules.sessionStartRules(context).single { it.id == "resources.flutter" }.text
+
+    @Test
+    fun `the flutter rule names both devices when both providers are declared`() {
+        val text = flutterRule(worktree)
+
+        assertTrue("`flutter pub get`" in text)
+        assertTrue("`shogun emulator start` and then `flutter run -d \"\$ANDROID_SERIAL\"`" in text, text)
+        assertTrue("`shogun simulator start` and then `flutter run -d \"\$IOS_SIMULATOR_UDID\"`" in text, text)
+        assertTrue("`flutter test integration_test`" in text && "`flutter drive`" in text)
+        assertTrue("`flutter emulators --launch`" in text)
+    }
+
+    @Test
+    fun `the flutter rule names only the declared devices`() {
+        val text = flutterRule(worktree.copy(simulatorProvider = false))
+
+        assertTrue("ANDROID_SERIAL" in text)
+        assertFalse("IOS_SIMULATOR_UDID" in text || "simulator" in text, text)
+
+        val withoutDevices = flutterRule(worktree.copy(emulatorProvider = false, simulatorProvider = false))
+        assertFalse(" -d " in withoutDevices, withoutDevices)
+    }
+
+    @Test
+    fun `the flutter rule uses fvm when the repository pins its version`() {
+        val text = flutterRule(worktree.copy(flutterUsesFvm = true))
+
+        assertTrue("`fvm flutter pub get`" in text)
+        assertTrue("`fvm flutter run -d \"\$ANDROID_SERIAL\"`" in text)
+        assertTrue("use `fvm flutter` for every Flutter command" in text)
+    }
+
+    @Test
+    fun `the flutter rule applies only with the provider`() {
+        assertTrue("resources.flutter" in ids(WorkflowRules.rulesFor(worktree.copy(flutterProvider = false)).inapplicable))
     }
 
     @Test
@@ -82,17 +122,37 @@ class WorkflowRulesTest {
     }
 
     @Test
-    fun `session start without Herdr has no rule about opening or messaging sessions`() {
-        val text = WorkflowRules.sessionStartLines(worktree.copy(herdrAvailable = false)).joinToString("\n")
+    fun `session start without a runner has no rule about opening or messaging sessions`() {
+        val text = WorkflowRules.sessionStartLines(worktree.copy(runnerAvailable = false)).joinToString("\n")
 
         assertFalse("--herdr" in text)
         assertFalse("messages" in text)
     }
 
     @Test
+    fun `with Orca in use the open rule names --orca everywhere`() {
+        val orca = worktree.copy(runner = RunnerId.ORCA)
+        val text = WorkflowRules.sessionStartLines(orca).joinToString("\n")
+
+        assertTrue("`shogun open <id> --orca`" in text, text)
+        assertFalse("--herdr" in text)
+        assertTrue(WorkflowRules.forRunner(RunnerId.ORCA).none { "--herdr" in it.text })
+        assertEquals(WorkflowRules.all, WorkflowRules.forRunner(RunnerId.HERDR))
+    }
+
+    @Test
+    fun `an unavailable runner leaves its rules marked with the condition`() {
+        val inapplicable = WorkflowRules.rulesFor(worktree.copy(runner = RunnerId.ORCA, runnerAvailable = false), WorkflowTopic.PARALLEL).inapplicable
+
+        assertEquals(listOf("parallel.open", "parallel.messages"), ids(inapplicable))
+        assertTrue(inapplicable.all { it.condition == WorkflowCondition.RUNNER })
+        assertTrue("--orca" in inapplicable.first().text)
+    }
+
+    @Test
     fun `every topic has rules and no rule is about personal preferences`() {
         WorkflowTopic.entries.forEach { topic -> assertTrue(WorkflowRules.all.any { it.topic == topic }, topic.id) }
-        val forbidden = listOf("commit message", "pull request", "code style", "ticket", "delegat")
+        val forbidden = listOf("commit message", "pull request format", "reviewer", "code style", "ticket", "delegat")
         WorkflowRules.all.forEach { rule -> forbidden.forEach { assertFalse(it in rule.text.lowercase(), rule.id) } }
     }
 

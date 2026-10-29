@@ -1,0 +1,11 @@
+{
+  "id": "f99daced-0717-4284-b0d2-d700ed1c9cbc",
+  "ok": false,
+  "error": {
+    "code": "runtime_error",
+    "message": "Not a valid git repository: /projects/product"
+  },
+  "_meta": {
+    "runtimeId": "cd0c9d23-612d-45dd-8e2c-da966aa71c9d"
+  }
+}

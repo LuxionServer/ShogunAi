@@ -65,4 +65,20 @@ class RelativeTimeTest {
         assertEquals("hace 1 año", spanishAgo(Duration.ofDays(365)))
         assertEquals("hace 2 años", spanishAgo(Duration.ofDays(800)))
     }
+
+    @Test
+    fun `compact relative time in every unit`() {
+        val english = listOf(30L, 5 * 60L, 12 * 3600L, 2 * 86400L, 90 * 86400L, 400 * 86400L)
+            .map { compactRelativeTime(now.minusSeconds(it), now, EnglishStrings) }
+        val spanish = listOf(30L, 5 * 60L, 12 * 3600L, 2 * 86400L, 90 * 86400L, 400 * 86400L)
+            .map { compactRelativeTime(now.minusSeconds(it), now, SpanishStrings) }
+
+        assertEquals(listOf("now", "5 min", "12 h", "2 d", "3 mo", "1 y"), english)
+        assertEquals(listOf("ahora", "5 min", "12 h", "2 d", "3 meses", "1 año"), spanish)
+    }
+
+    @Test
+    fun `compact relative time in the future is now`() {
+        assertEquals("now", compactRelativeTime(now.plusSeconds(30), now, EnglishStrings))
+    }
 }

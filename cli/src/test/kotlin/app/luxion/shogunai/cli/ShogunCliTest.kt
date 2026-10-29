@@ -1,11 +1,14 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.domain.executor.CommandExecutionException
+import app.luxion.shogunai.domain.model.FlutterProvider
 import app.luxion.shogunai.domain.FakeMachineCapacity
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
 import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.CapacityProfile
 import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.ResourceSettings
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.io.ProjectRepository
 import app.luxion.shogunai.BuildInfo
 import app.luxion.shogunai.domain.FakeAgentSessionStore
@@ -26,8 +29,13 @@ import app.luxion.shogunai.domain.model.MavenProvider
 import app.luxion.shogunai.domain.FakeDerivedDataSource
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
+import app.luxion.shogunai.domain.model.UnavailableReason
 import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakeHerdrConfigSource
+import app.luxion.shogunai.domain.FakeGitHubClient
+import app.luxion.shogunai.domain.FakeOrcaClient
+import app.luxion.shogunai.domain.FakeToolPreferenceRepository
+import app.luxion.shogunai.domain.io.OrcaWorkspaceStore
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
 import app.luxion.shogunai.domain.FakeKmpTestWiring
@@ -49,17 +57,27 @@ import app.luxion.shogunai.domain.model.HerdrAgent
 import app.luxion.shogunai.domain.model.AgentSessionRecord
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.ClaudeSession
+import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.IosSimulatorProvider
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.PackageCacheSizes
 import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.XcodeProvider
 import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import app.luxion.shogunai.domain.model.HerdrPane
+import app.luxion.shogunai.domain.model.HostOs
+import app.luxion.shogunai.domain.model.AgentActivity
+import app.luxion.shogunai.domain.model.AgentTool
+import app.luxion.shogunai.domain.model.OrcaAgent
+import app.luxion.shogunai.domain.model.OrcaPort
+import app.luxion.shogunai.domain.model.OrcaRepo
+import app.luxion.shogunai.domain.model.OrcaTerminal
+import app.luxion.shogunai.domain.model.OrcaWorktree
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
@@ -164,6 +182,11 @@ class ShogunCliTest {
         composeRegistry: FakeComposeProjectRegistry = FakeComposeProjectRegistry(),
         records: FakeProvisioningRecordStore = FakeProvisioningRecordStore(),
         claudeSessions: FakeClaudeSessionRegistry = FakeClaudeSessionRegistry(),
+        packageCaches: PackageCacheSizes = PackageCacheSizes(),
+        orca: FakeOrcaClient = FakeOrcaClient(installed = false),
+        gitHub: FakeGitHubClient = FakeGitHubClient(),
+        orcaWorkspaces: OrcaWorkspaceStore = OrcaWorkspaceStore.NONE,
+        runner: FakeToolPreferenceRepository = FakeToolPreferenceRepository(),
     ) = ShogunCli(
         executor = executor,
         fileManager = fileManager,
@@ -180,12 +203,16 @@ class ShogunCliTest {
         machineCapacity = FakeMachineCapacity(),
         derivedDataSource = derivedDataSource,
         herdrConfig = FakeHerdrConfigSource(herdrWorktreesRoot),
+        orca = orca,
+        gitHub = gitHub,
+        orcaWorkspaces = orcaWorkspaces,
         workingDirectory = workingDirectory,
         out = out,
         err = err,
         canonicalPath = canonicalPath,
         now = { now },
         herdr = herdr,
+        toolPreferences = runner,
         herdrAgentStartTimeout = 100.milliseconds,
         trust = trust,
         readAnswer = { answer },
@@ -197,6 +224,7 @@ class ShogunCliTest {
         composeRegistry = composeRegistry,
         provisioningRecords = records,
         claudeSessions = claudeSessions,
+        packageCacheSource = { packageCaches },
         isClaudeProcessAlive = { true },
     )
 
@@ -313,19 +341,19 @@ class ShogunCliTest {
     fun `maven lists the daemons with their memory and worktree`() {
         val daemons = FakeMavenDaemonSource(
             listOf(
-                MavenDaemonProcess(20, 1_073_741_824, "$merged/service"),
-                MavenDaemonProcess(21, 1_073_741_824, "/home/dev/other"),
+                MavenDaemonProcess(20, 1_073_741_824, "$merged/service", idleSinceTenMinutes),
+                MavenDaemonProcess(21, 1_073_741_824, "/home/dev/other", DaemonState.Busy),
             ),
         )
-        val fileManager = FakeFileManager(existing = listOf(base, merged, "/home/dev/other"))
+        val fileManager = FakeFileManager(existing = listOf(base, merged, "$merged/service", "/home/dev/other"))
 
         val exitCode = cli(repositoryExecutor(), fileManager = fileManager, mavenDaemons = daemons).run(listOf("maven"))
 
         assertEquals(0, exitCode, err.toString())
         assertEquals(
             """
-            20  memory=1.0 GB  worktree=$merged
-            21  memory=1.0 GB  worktree=other-project
+            20  memory=1.0 GB  state=idle  idle-for=10m  worktree=$merged
+            21  memory=1.0 GB  state=busy  worktree=other-project
             total  memory=2.0 GB  daemons=2
 
             """.trimIndent(),
@@ -347,7 +375,111 @@ class ShogunCliTest {
         val exitCode = cli(executor, mavenDaemons = daemons, workingDirectory = "/tmp").run(listOf("maven"))
 
         assertEquals(0, exitCode, err.toString())
-        assertEquals("20  memory=1.0 MB\ntotal  memory=1.0 MB  daemons=1\n", out.toString())
+        assertEquals("20  memory=1.0 MB  state=unknown\ntotal  memory=1.0 MB  daemons=1\n", out.toString())
+    }
+
+    private fun mavenDaemon(pid: Long, state: DaemonState, workingDirectory: String? = null) =
+        MavenDaemonProcess(pid, 1_048_576, workingDirectory, state)
+
+    @Test
+    fun `maven stop stops idle daemons and keeps busy ones`() {
+        val daemons = FakeMavenDaemonSource(
+            listOf(mavenDaemon(20, idleSinceTenMinutes), mavenDaemon(21, idleSinceTenMinutes), mavenDaemon(22, DaemonState.Busy)),
+        )
+        val executor = repositoryExecutor()
+
+        val exitCode = cli(executor, mavenDaemons = daemons).run(listOf("maven", "stop"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("stopped 20  Maven\nstopped 21  Maven\nkept 22  Maven  (busy)\n", out.toString())
+        assertTrue(executor.ran("kill", "20"))
+        assertFalse(executor.ran("kill", "22"))
+    }
+
+    @Test
+    fun `maven stop of a busy daemon keeps it and exits with 0`() {
+        val daemons = FakeMavenDaemonSource(listOf(mavenDaemon(4242, DaemonState.Busy)))
+
+        val exitCode = cli(repositoryExecutor(), mavenDaemons = daemons).run(listOf("maven", "stop", "4242"))
+
+        assertEquals(0, exitCode)
+        assertEquals("kept 4242  Maven  (busy)\n", out.toString())
+    }
+
+    @Test
+    fun `maven stop of a process that isn't a maven daemon exits with 1`() {
+        val exitCode = cli(repositoryExecutor()).run(listOf("maven", "stop", "99999"))
+
+        assertEquals(1, exitCode)
+        assertEquals("shogun: 99999 isn't a Maven daemon\n", err.toString())
+    }
+
+    @Test
+    fun `maven stop json lists the stopped and kept daemons`() {
+        val daemons = FakeMavenDaemonSource(listOf(mavenDaemon(20, idleSinceTenMinutes), mavenDaemon(22, DaemonState.Unknown)))
+
+        val exitCode = cli(repositoryExecutor(), mavenDaemons = daemons).run(listOf("maven", "stop", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = jsonOut()
+        assertEquals(setOf("stopped", "kept", "notDaemons", "failures"), json.keys)
+        assertEquals(listOf(JsonPrimitive(20)), json.getValue("stopped").jsonArray.toList())
+        val kept = json.getValue("kept").jsonArray.single().jsonObject
+        assertEquals(setOf("pid", "reason"), kept.keys)
+        assertEquals("state-unknown", (kept.getValue("reason") as JsonPrimitive).content)
+    }
+
+    @Test
+    fun `maven json includes the state of each daemon`() {
+        val daemons = FakeMavenDaemonSource(listOf(mavenDaemon(20, idleSinceTenMinutes, workingDirectory = "$merged/service")))
+
+        cli(repositoryExecutor(), mavenDaemons = daemons).run(listOf("maven", "--json"))
+
+        val daemon = jsonOut().getValue("daemons").jsonArray.single().jsonObject
+        assertEquals("idle", (daemon.getValue("state") as JsonPrimitive).content)
+        assertEquals("2026-10-16T10:50:00Z", (daemon.getValue("idleSince") as JsonPrimitive).content)
+    }
+
+    @Test
+    fun `clean stops the idle maven daemons of removed worktrees`() {
+        val daemons = FakeMavenDaemonSource(
+            listOf(mavenDaemon(20, idleSinceTenMinutes, workingDirectory = "$merged/service"), mavenDaemon(21, idleSinceTenMinutes, workingDirectory = base)),
+        )
+        val executor = repositoryExecutor()
+
+        val exitCode = cli(executor, mavenDaemons = daemons).run(listOf("clean", "--yes", "--stop-maven-daemons"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.contains("removed $merged\n"), out.toString())
+        assertTrue(out.contains("stopped 20  Maven\n"), out.toString())
+        assertTrue(executor.ran("kill", "20"))
+        assertFalse(executor.ran("kill", "21"))
+    }
+
+    @Test
+    fun `clean without the maven option stops no maven daemon`() {
+        val daemons = FakeMavenDaemonSource(listOf(mavenDaemon(20, idleSinceTenMinutes, workingDirectory = "$merged/service")))
+        val executor = repositoryExecutor()
+
+        cli(executor, mavenDaemons = daemons).run(listOf("clean", "--yes"))
+
+        assertFalse(executor.calls.any { it.first.first() == "kill" })
+        assertEquals(0, daemons.listings)
+    }
+
+    @Test
+    fun `clean with the maven option but without yes lists the maven daemons it would stop`() {
+        val daemons = FakeMavenDaemonSource(listOf(mavenDaemon(20, idleSinceTenMinutes, workingDirectory = "$merged/service")))
+        val executor = repositoryExecutor()
+
+        val exitCode = cli(executor, mavenDaemons = daemons).run(listOf("clean", "--stop-maven-daemons"))
+
+        assertEquals(0, exitCode)
+        assertEquals(
+            "would remove $merged\nwould stop Maven daemon 20\nRun 'shogun clean --stop-maven-daemons --yes' to remove the worktree.\n",
+            out.toString(),
+        )
+        assertFalse(executor.calls.any { it.first.first() == "kill" })
     }
 
     private val composeDeclared = declaring(RepositoryProviders(dockerCompose = DockerComposeProvider()))
@@ -846,6 +978,83 @@ class ShogunCliTest {
         assertTrue(executor.ran("git", "worktree", "add", "--no-track", "$worktreesRoot/TASK-123", "-b", "feature/TASK-123", "epic1234"))
     }
 
+    private fun symbolicRefs(vararg refs: Pair<String, String>) = repositoryExecutor { command, _ ->
+        if ("--symbolic-full-name" in command) {
+            refs.toMap()[command.last()]?.let { Executor.ok(command, "$it\n") } ?: Executor.ok(command, "\n")
+        } else if (command.take(2) == listOf("git", "rev-parse") && command.last().endsWith("^{commit}")) {
+            Executor.ok(command, "abc123\n")
+        } else {
+            null
+        }
+    }
+
+    private fun Executor.recordedBase(branch: String): String? =
+        calls.map { it.first }.firstOrNull { it.take(3) == listOf("git", "config", "branch.$branch.gh-merge-base") }?.getOrNull(3)
+
+    @Test
+    fun `new records the current worktree's branch as the base`() {
+        val executor = symbolicRefs("HEAD" to "refs/heads/main")
+
+        assertEquals(0, cli(executor).run(listOf("new", "TASK-123")), err.toString())
+
+        assertEquals("main", executor.recordedBase("feature/TASK-123"))
+        assertTrue(executor.calls.any { "--symbolic-full-name" in it.first && it.second == base })
+    }
+
+    @Test
+    fun `new with from records that branch as the base`() {
+        val executor = symbolicRefs("epic/redesign" to "refs/heads/epic/redesign")
+
+        assertEquals(0, cli(executor).run(listOf("new", "TASK-123", "--from", "epic/redesign")), err.toString())
+
+        assertEquals("epic/redesign", executor.recordedBase("feature/TASK-123"))
+    }
+
+    @Test
+    fun `new with a remote from records the branch without its remote`() {
+        val executor = symbolicRefs("origin/develop" to "refs/remotes/origin/develop")
+
+        assertEquals(0, cli(executor).run(listOf("new", "TASK-123", "--from", "origin/develop")), err.toString())
+
+        assertEquals("develop", executor.recordedBase("feature/TASK-123"))
+    }
+
+    @Test
+    fun `new from a tag records no base`() {
+        val executor = symbolicRefs("v1.2.0" to "refs/tags/v1.2.0")
+
+        assertEquals(0, cli(executor).run(listOf("new", "TASK-123", "--from", "v1.2.0")), err.toString())
+
+        assertFalse(executor.calls.any { it.first.take(2) == listOf("git", "config") && it.first.size == 4 })
+    }
+
+    @Test
+    fun `new with an existing branch records no base`() {
+        val executor = symbolicRefs("HEAD" to "refs/heads/main")
+
+        assertEquals(0, cli(executor).run(listOf("new", "--branch", "hotfix/login")), err.toString())
+
+        assertEquals(null, executor.recordedBase("hotfix/login"))
+    }
+
+    @Test
+    fun `new prints each unavailable local file with its fix and creates nothing`() {
+        val executor = repositoryExecutor()
+        val fileManager = FakeFileManager(existing = listOf(base, "$base/local.properties"))
+        fileManager.unavailable["$base/local.properties"] = UnavailableReason.Unreadable("Operation not permitted")
+
+        val exitCode = cli(executor, fileManager = fileManager).run(listOf("new", "TASK-123"))
+
+        assertEquals(1, exitCode)
+        assertEquals(
+            "shogun: These local files can't be copied or linked from $base, so nothing was changed:\n" +
+                "  local.properties: $base/local.properties can't be read (Operation not permitted). " +
+                "Make it readable for your user, or remove it from the project's local files\n",
+            err.toString(),
+        )
+        assertFalse(executor.calls.any { "add" in it.first })
+    }
+
     @Test
     fun `new with an unknown from creates nothing and exits with 1`() {
         val executor = repositoryExecutor()
@@ -1194,8 +1403,8 @@ class ShogunCliTest {
         assertEquals(
             listOf(
                 "$base  main  main  changes=0",
-                "$merged  feature/TASK-1  origin=shogunai  changes=0  merged",
-                "$dirty  worktree-spike  origin=claude-code  locked  changes=2",
+                "$merged  feature/TASK-1  origin=shogunai  changes=0  base-ahead=0 base-behind=3 of main  merged",
+                "$dirty  worktree-spike  origin=claude-code  locked  changes=2  base-ahead=2 base-behind=0 of main",
             ),
             out.lines().filter { it.isNotEmpty() },
         )
@@ -1252,7 +1461,7 @@ class ShogunCliTest {
         val exitCode = cli(repositoryExecutor(), herdrWorktreesRoot = worktreesRoot).run(listOf("status"))
 
         assertEquals(0, exitCode, err.toString())
-        assertTrue(out.lines().contains("$merged  feature/TASK-1  origin=herdr  changes=0  merged"), out.toString())
+        assertTrue(out.lines().contains("$merged  feature/TASK-1  origin=herdr  changes=0  base-ahead=0 base-behind=3 of main  merged"), out.toString())
     }
 
     private fun claudeProcessExecutor() = repositoryExecutor { command, _ ->
@@ -1273,7 +1482,7 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertTrue(
-            out.lines().contains("$merged  feature/TASK-1  origin=shogunai  agents=claude(blocked)  changes=0  merged"),
+            out.lines().contains("$merged  feature/TASK-1  origin=shogunai  agents=claude(blocked)  changes=0  base-ahead=0 base-behind=3 of main  merged"),
             out.toString(),
         )
     }
@@ -1300,7 +1509,7 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertTrue(
-            out.lines().contains("$merged  feature/TASK-1  origin=shogunai  agents=claude(blocked, main-repo-task-1, main-repo-task-1-2)  changes=0  merged"),
+            out.lines().contains("$merged  feature/TASK-1  origin=shogunai  agents=claude(blocked, main-repo-task-1, main-repo-task-1-2)  changes=0  base-ahead=0 base-behind=3 of main  merged"),
             out.toString(),
         )
     }
@@ -1311,7 +1520,7 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertTrue(
-            out.lines().contains("$merged  feature/TASK-1  origin=shogunai  agents=claude(main-repo-task-1, main-repo-task-1-2)  changes=0  merged"),
+            out.lines().contains("$merged  feature/TASK-1  origin=shogunai  agents=claude(main-repo-task-1, main-repo-task-1-2)  changes=0  base-ahead=0 base-behind=3 of main  merged"),
             out.toString(),
         )
     }
@@ -1324,7 +1533,7 @@ class ShogunCliTest {
         assertEquals(
             Json.parseToJsonElement(
                 """[{"name": "claude", "state": "blocked", "stateSource": "claude-code", "herdrState": null,
-                    "sessions": [{"name": "main-repo-task-1", "pid": 4242}, {"name": "main-repo-task-1-2", "pid": 4243}]}]""",
+                    "sessions": [{"name": "main-repo-task-1", "pid": 4242}, {"name": "main-repo-task-1-2", "pid": 4243}], "activity": null}]""",
             ),
             worktrees[1].jsonObject.getValue("agents"),
         )
@@ -1336,7 +1545,7 @@ class ShogunCliTest {
 
         val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray
         assertEquals(
-            Json.parseToJsonElement("""[{"name": "claude", "state": "blocked", "stateSource": "claude-code", "herdrState": null, "sessions": []}]"""),
+            Json.parseToJsonElement("""[{"name": "claude", "state": "blocked", "stateSource": "claude-code", "herdrState": null, "sessions": [], "activity": null}]"""),
             worktrees[1].jsonObject.getValue("agents"),
         )
     }
@@ -1349,9 +1558,84 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         assertTrue(
-            out.lines().contains("$merged  feature/TASK-1  origin=shogunai  agents=claude(blocked)  changes=0  merged"),
+            out.lines().contains("$merged  feature/TASK-1  origin=shogunai  agents=claude(blocked)  changes=0  base-ahead=0 base-behind=3 of main  merged"),
             out.toString(),
         )
+    }
+
+    @Test
+    fun `status shows the state Orca reports and labels its worktrees`() {
+        val orca = FakeOrcaClient(psRows = listOf(OrcaWorktree(merged, createdByOrca = true, listOf(OrcaAgent("claude", AgentState.BLOCKED)))))
+
+        val exitCode = cli(repositoryExecutor(), orca = orca).run(listOf("status"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.lines().contains("$merged  feature/TASK-1  origin=orca  agents=claude(blocked)  changes=0  base-ahead=0 base-behind=3 of main  merged"), out.toString())
+    }
+
+    @Test
+    fun `status json reports what an agent waits on in Orca`() {
+        val activity = AgentActivity(AgentTool("Bash", "curl -s https://example.com -o page.html"), prompt = "Download the page")
+        val orca = FakeOrcaClient(psRows = listOf(OrcaWorktree(merged, createdByOrca = false, listOf(OrcaAgent("claude", AgentState.BLOCKED, activity)))))
+
+        val exitCode = cli(repositoryExecutor(), orca = orca).run(listOf("status", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray
+        assertEquals(
+            Json.parseToJsonElement(
+                """{"waitingOn": {"tool": "Bash", "input": "curl -s https://example.com -o page.html"}, "prompt": "Download the page", "lastMessage": null}""",
+            ),
+            worktrees[1].jsonObject.getValue("agents").jsonArray.single().jsonObject.getValue("activity"),
+        )
+    }
+
+    @Test
+    fun `status reports the ports Orca sees each worktree listen on`() {
+        val orca = FakeOrcaClient(
+            listeningPorts = listOf(OrcaPort(10011, merged, "java"), OrcaPort(8765, merged, "Python", "http://127.0.0.1:8765")),
+        )
+
+        val text = cli(repositoryExecutor(), orca = orca)
+        assertEquals(0, text.run(listOf("status")), err.toString())
+        assertTrue(out.lines().any { it.startsWith("$merged  ") && it.contains("  listening=8765,10011  ") }, out.toString())
+        assertTrue(out.lines().filterNot { it.startsWith("$merged  ") }.none { it.contains("listening=") }, out.toString())
+
+        out.clear()
+        assertEquals(0, cli(repositoryExecutor(), orca = orca).run(listOf("status", "--json")), err.toString())
+        val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray
+        assertEquals(
+            Json.parseToJsonElement(
+                """[{"port": 8765, "process": "Python", "url": "http://127.0.0.1:8765"}, {"port": 10011, "process": "java", "url": null}]""",
+            ),
+            worktrees[1].jsonObject.getValue("listeningPorts"),
+        )
+        assertEquals(Json.parseToJsonElement("[]"), worktrees[0].jsonObject.getValue("listeningPorts"))
+    }
+
+    @Test
+    fun `status json has null listening ports without Orca`() {
+        val exitCode = cli(repositoryExecutor(), orca = FakeOrcaClient(running = false)).run(listOf("status", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray
+        assertTrue(worktrees.all { it.jsonObject.getValue("listeningPorts") is JsonNull }, out.toString())
+        assertTrue(worktrees.all { it.jsonObject.getValue("agents").jsonArray.all { agent -> agent.jsonObject.getValue("activity") is JsonNull } })
+    }
+
+    @Test
+    fun `status json reports Orca as the state source and origin`() {
+        val orca = FakeOrcaClient(psRows = listOf(OrcaWorktree(merged, createdByOrca = true, listOf(OrcaAgent("claude", AgentState.BLOCKED)))))
+
+        val exitCode = cli(repositoryExecutor(), orca = orca).run(listOf("status", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray
+        assertEquals(
+            Json.parseToJsonElement("""[{"name": "claude", "state": "blocked", "stateSource": "orca", "herdrState": null, "sessions": [], "activity": null}]"""),
+            worktrees[1].jsonObject.getValue("agents"),
+        )
+        assertEquals("orca", worktrees[1].jsonObject.getValue("origin").jsonPrimitive.content)
     }
 
     @Test
@@ -1368,11 +1652,11 @@ class ShogunCliTest {
         assertEquals(0, exitCode, err.toString())
         val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray
         assertEquals(
-            Json.parseToJsonElement("""[{"name": "claude", "state": "blocked", "stateSource": "herdr", "herdrState": "blocked", "sessions": []}]"""),
+            Json.parseToJsonElement("""[{"name": "claude", "state": "blocked", "stateSource": "herdr", "herdrState": "blocked", "sessions": [], "activity": null}]"""),
             worktrees[1].jsonObject.getValue("agents"),
         )
         assertEquals(
-            Json.parseToJsonElement("""[{"name": "aider", "state": null, "stateSource": null, "herdrState": null, "sessions": []}]"""),
+            Json.parseToJsonElement("""[{"name": "aider", "state": null, "stateSource": null, "herdrState": null, "sessions": [], "activity": null}]"""),
             worktrees[2].jsonObject.getValue("agents"),
         )
     }
@@ -1390,7 +1674,7 @@ class ShogunCliTest {
         val exitCode = cli(executor).run(listOf("status"))
 
         assertEquals(0, exitCode, err.toString())
-        assertTrue(out.lines().contains("$merged  feature/TASK-1  origin=shogunai  changes=0  not-started"), out.toString())
+        assertTrue(out.lines().contains("$merged  feature/TASK-1  origin=shogunai  changes=0  base-ahead=0 base-behind=3 of main  not-started"), out.toString())
     }
 
     @Test
@@ -1422,36 +1706,218 @@ class ShogunCliTest {
               "worktrees": [
                 {
                   "path": "$base", "branch": "main", "head": "1111111111111111111111111111111111111111",
-                  "main": true, "locked": false, "folderMissing": false, "origin": null, "agents": [],
+                  "main": true, "locked": false, "folderMissing": false, "origin": null, "base": null, "agents": [],
                   "status": {
-                    "uncommittedChanges": 0, "upstream": null, "mainBranch": null,
+                    "uncommittedChanges": 0, "upstream": null, "mainBranch": null, "base": null,
                     "merged": false, "lastCommitAt": null, "createdAt": null
                   },
-                  "desktop": null
+                  "desktop": null, "listeningPorts": null
                 },
                 {
                   "path": "$merged", "branch": "feature/TASK-1", "head": "2222222222222222222222222222222222222222",
-                  "main": false, "locked": false, "folderMissing": false, "origin": "shogunai", "agents": [],
+                  "main": false, "locked": false, "folderMissing": false, "origin": "shogunai", "base": null, "agents": [],
                   "status": {
                     "uncommittedChanges": 0, "upstream": null, "mainBranch": {"ahead": 0, "behind": 3},
+                    "base": {"branch": "main", "ahead": 0, "behind": 3},
                     "merged": true, "lastCommitAt": null, "createdAt": null
                   },
-                  "desktop": null
+                  "desktop": null, "listeningPorts": null
                 },
                 {
                   "path": "$dirty", "branch": "worktree-spike", "head": "3333333333333333333333333333333333333333",
-                  "main": false, "locked": true, "folderMissing": false, "origin": "claude-code", "agents": [],
+                  "main": false, "locked": true, "folderMissing": false, "origin": "claude-code", "base": null, "agents": [],
                   "status": {
                     "uncommittedChanges": 2, "upstream": null, "mainBranch": {"ahead": 2, "behind": 0},
+                    "base": {"branch": "main", "ahead": 2, "behind": 0},
                     "merged": false, "lastCommitAt": null, "createdAt": null
                   },
-                  "desktop": null
+                  "desktop": null, "listeningPorts": null
                 }
               ]
             }
             """,
         )
         assertEquals(expected, Json.parseToJsonElement(out.toString()))
+    }
+
+    private val baseRecords = "branch.feature/TASK-1.gh-merge-base develop\nbranch.gone/branch.gh-merge-base main\n"
+
+    private fun recordedBases(output: String? = baseRecords, extra: (List<String>, String?) -> CommandResult? = { _, _ -> null }) =
+        repositoryExecutor { command, directory ->
+            extra(command, directory) ?: if (command.take(3) == listOf("git", "config", "--get-regexp")) {
+                if (output == null) Executor.fail(command, "fatal: bad config", 128) else Executor.ok(command, output)
+            } else {
+                null
+            }
+        }
+
+    private fun mergedIntoEpic() = repositoryExecutor { command, directory ->
+        when {
+            command.take(3) == listOf("git", "config", "--get-regexp") ->
+                Executor.ok(command, "branch.feature/TASK-1.gh-merge-base epic/redesign\n")
+            command.take(2) == listOf("git", "rev-parse") && command.last() == "refs/remotes/origin/epic/redesign" -> Executor.ok(command)
+            "rev-list" in command && directory == merged && command.last() == "origin/epic/redesign...HEAD" -> Executor.ok(command, "1\t0")
+            "rev-list" in command && directory == merged && command.last() == "main...HEAD" -> Executor.ok(command, "0\t4")
+            else -> null
+        }
+    }
+
+    @Test
+    fun `status compares a worktree with its recorded base and reads it merged there`() {
+        val exitCode = cli(mergedIntoEpic()).run(listOf("status"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(
+            out.lines().contains("$merged  feature/TASK-1  origin=shogunai  base=epic/redesign  changes=0  base-ahead=0 base-behind=1 of epic/redesign  merged"),
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `status json reports the divergence from the recorded base next to the main branch`() {
+        val exitCode = cli(mergedIntoEpic()).run(listOf("status", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val status = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray[1].jsonObject.getValue("status").jsonObject
+        assertEquals(Json.parseToJsonElement("""{"branch": "epic/redesign", "ahead": 0, "behind": 1}"""), status.getValue("base"))
+        assertEquals(Json.parseToJsonElement("""{"ahead": 4, "behind": 0}"""), status.getValue("mainBranch"))
+        assertEquals(JsonPrimitive(true), status.getValue("merged"))
+    }
+
+    @Test
+    fun `clean offers a worktree merged into its recorded base`() {
+        val exitCode = cli(mergedIntoEpic()).run(listOf("clean"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.lines().contains("would remove $merged"), out.toString())
+    }
+
+    @Test
+    fun `status shows the recorded base of each worktree`() {
+        val exitCode = cli(recordedBases()).run(listOf("status"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            listOf(
+                "$base  main  main  changes=0",
+                "$merged  feature/TASK-1  origin=shogunai  base=develop  changes=0  base-ahead=0 base-behind=3 of main  merged",
+                "$dirty  worktree-spike  origin=claude-code  locked  changes=2  base-ahead=2 base-behind=0 of main",
+            ),
+            out.lines().filter { it.isNotEmpty() },
+        )
+    }
+
+    @Test
+    fun `status json reports the recorded base or null`() {
+        val exitCode = cli(recordedBases()).run(listOf("status", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray.map { it.jsonObject }
+        assertEquals(listOf(JsonNull, JsonPrimitive("develop"), JsonNull), worktrees.map { it.getValue("base") })
+    }
+
+    @Test
+    fun `status still works when the bases can't be read`() {
+        val exitCode = cli(recordedBases(output = null)).run(listOf("status", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray.map { it.jsonObject }
+        assertTrue(worktrees.all { it.getValue("base") == JsonNull })
+    }
+
+    @Test
+    fun `base prints the recorded base of the current worktree`() {
+        val exitCode = cli(recordedBases(), workingDirectory = "$merged/src").run(listOf("base"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("develop\n", out.toString())
+    }
+
+    @Test
+    fun `base prints the recorded base of a target worktree`() {
+        val exitCode = cli(recordedBases()).run(listOf("base", "TASK-1"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("develop\n", out.toString())
+    }
+
+    @Test
+    fun `base without a record says how to set it and exits with 1`() {
+        val exitCode = cli(recordedBases(), workingDirectory = dirty).run(listOf("base"))
+
+        assertEquals(1, exitCode)
+        assertEquals("", out.toString())
+        assertTrue(err.contains("no base is recorded for worktree-spike"), err.toString())
+        assertTrue(err.contains("shogun base --set <branch>"), err.toString())
+    }
+
+    @Test
+    fun `base json prints the worktree its branch and its base`() {
+        val exitCode = cli(recordedBases()).run(listOf("base", "feature/TASK-1", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            Json.parseToJsonElement("""{"path": "$merged", "branch": "feature/TASK-1", "base": "develop"}"""),
+            Json.parseToJsonElement(out.toString()),
+        )
+    }
+
+    @Test
+    fun `base json without a record has a null base and exits with 1`() {
+        val exitCode = cli(recordedBases(), workingDirectory = dirty).run(listOf("base", "--json"))
+
+        assertEquals(1, exitCode)
+        assertEquals(JsonNull, Json.parseToJsonElement(out.toString()).jsonObject.getValue("base"))
+    }
+
+    @Test
+    fun `base of a detached worktree says it has no branch`() {
+        val executor = recordedBases { command, _ ->
+            if (command.take(3) == listOf("git", "worktree", "list")) {
+                Executor.ok(command, "worktree $base\nHEAD 1111111111111111111111111111111111111111\nbranch refs/heads/main\n\nworktree $merged\nHEAD 2222222222222222222222222222222222222222\ndetached\n")
+            } else {
+                null
+            }
+        }
+
+        val exitCode = cli(executor, workingDirectory = merged).run(listOf("base"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("detached"), err.toString())
+    }
+
+    @Test
+    fun `base with an unknown target exits with 1`() {
+        val exitCode = cli(recordedBases()).run(listOf("base", "TASK-404"))
+
+        assertEquals(1, exitCode)
+        assertEquals("", out.toString())
+    }
+
+    @Test
+    fun `base set records a remote branch without its remote`() {
+        val executor = recordedBases { command, _ ->
+            if ("--symbolic-full-name" in command) Executor.ok(command, "refs/remotes/origin/epic/redesign\n") else null
+        }
+
+        val exitCode = cli(executor, workingDirectory = dirty).run(listOf("base", "--set", "origin/epic/redesign"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("epic/redesign\n", out.toString())
+        assertTrue(executor.calls.any { it.first == listOf("git", "config", "branch.worktree-spike.gh-merge-base", "epic/redesign") && it.second == base })
+    }
+
+    @Test
+    fun `base set refuses what isn't a branch`() {
+        val executor = recordedBases { command, _ ->
+            if ("--symbolic-full-name" in command) Executor.ok(command, "refs/tags/v1.2.0\n") else null
+        }
+
+        val exitCode = cli(executor, workingDirectory = dirty).run(listOf("base", "--set", "v1.2.0"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("v1.2.0"), err.toString())
+        assertFalse(executor.calls.any { it.first.take(2) == listOf("git", "config") && it.first.size == 4 })
     }
 
     @Test
@@ -1543,6 +2009,76 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode)
         assertTrue(err.contains("shogun: couldn't close the Herdr workspace of $merged: workspace w2 not found\n"), err.toString())
+    }
+
+    private fun orcaWithTerminalsIn(vararg paths: String, closeFailures: Map<String, Throwable> = emptyMap(), running: Boolean = true) =
+        FakeOrcaClient(running = running, terminals = paths.associateWith { listOf(OrcaTerminal("term_1", it)) }, closeFailures = closeFailures)
+
+    @Test
+    fun `clean without yes lists the Orca terminals it would close`() {
+        val orca = orcaWithTerminalsIn(merged)
+
+        val exitCode = cli(repositoryExecutor(), orca = orca).run(listOf("clean"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            "would remove $merged\nwould close Orca terminals of $merged\nRun 'shogun clean --yes' to remove the worktree.\n",
+            out.toString(),
+        )
+        assertTrue(orca.closedWorktrees.isEmpty())
+    }
+
+    @Test
+    fun `clean without yes says nothing about Orca when it isn't running`() {
+        val orca = orcaWithTerminalsIn(merged, running = false)
+
+        cli(repositoryExecutor(), orca = orca).run(listOf("clean"))
+
+        assertEquals("would remove $merged\nRun 'shogun clean --yes' to remove the worktree.\n", out.toString())
+        assertEquals(0, orca.starts)
+    }
+
+    @Test
+    fun `clean with yes closes the Orca terminals of the removed worktrees`() {
+        val orca = orcaWithTerminalsIn(merged)
+
+        val exitCode = cli(repositoryExecutor(), orca = orca).run(listOf("clean", "--yes"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf(merged), orca.closedWorktrees)
+    }
+
+    @Test
+    fun `clean with yes reports a failing Orca close and still exits with 0`() {
+        val failure = WorktreeError.OrcaCommandFailed(listOf("orca"), "runtime_unavailable")
+        val orca = orcaWithTerminalsIn(merged, closeFailures = mapOf(merged to failure))
+
+        val exitCode = cli(repositoryExecutor(), orca = orca).run(listOf("clean", "--yes"))
+
+        assertEquals(0, exitCode)
+        assertTrue(err.contains("shogun: couldn't close the Orca terminals of $merged: runtime_unavailable\n"), err.toString())
+    }
+
+    @Test
+    fun `remove closes the Orca terminals of the removed worktree`() {
+        val orca = orcaWithTerminalsIn(merged)
+
+        val exitCode = cli(repositoryExecutor(), orca = orca).run(listOf("remove", "TASK-1", "--force"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf(merged), orca.closedWorktrees)
+    }
+
+    @Test
+    fun `remove reports a failing Orca close on standard error without changing the exit code`() {
+        val failure = WorktreeError.OrcaCommandFailed(listOf("orca"), "runtime_unavailable")
+        val orca = orcaWithTerminalsIn(merged, closeFailures = mapOf(merged to failure))
+
+        val exitCode = cli(repositoryExecutor(), orca = orca).run(listOf("remove", "TASK-1", "--force"))
+
+        assertEquals(0, exitCode)
+        assertTrue(out.contains("removed $merged"), out.toString())
+        assertEquals("shogun: couldn't close the Orca terminals of $merged: runtime_unavailable\n", err.toString())
     }
 
     @Test
@@ -1722,7 +2258,7 @@ class ShogunCliTest {
         cli(repositoryExecutor()).run(listOf("help"))
 
         val hookLines = out.lines().filter { it.trimStart().startsWith("hook ") }
-        assertEquals(5, hookLines.size)
+        assertEquals(7, hookLines.size)
         assertEquals(1, hookLines.map { it.indexOf("  ", it.indexOf("hook") + 5).let { gap -> it.substring(gap).indexOfFirst { c -> c != ' ' } + gap } }.distinct().size)
     }
 
@@ -1792,6 +2328,57 @@ class ShogunCliTest {
             """.trimIndent() + "\n",
             out.toString(),
         )
+    }
+
+    @Test
+    fun `xcode shows the packages of each worktree folder and the shared package caches`() {
+        val project = "$base/App.xcodeproj"
+        val derivedData = FakeDerivedDataSource(
+            existing = listOf(FakeDerivedDataSource.derivedData("Main-hash", project, sizeBytes = null)),
+            existingProjects = setOf(project),
+        ).apply {
+            sizes["/home/dev/Library/Developer/Xcode/DerivedData/Main-hash"] = 1_073_741_824L
+            packageSizes["/home/dev/Library/Developer/Xcode/DerivedData/Main-hash"] = 536_870_912L
+        }
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(xcode = XcodeProvider()))),
+        )
+        val caches = PackageCacheSizes(swiftPmBytes = 2_147_483_648L, cocoaPodsBytes = 1_073_741_824L)
+
+        val exitCode = cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData, packageCaches = caches)
+            .run(listOf("xcode"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            """
+            $base  1.0 GB  (packages 512.0 MB)
+            orphans: 0 (0 B)
+            SwiftPM cache: 2.0 GB
+            CocoaPods cache: 1.0 GB
+            """.trimIndent() + "\n",
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `xcode json reports the packages and the shared package caches`() {
+        val project = "$base/App.xcodeproj"
+        val derivedData = FakeDerivedDataSource(
+            existing = listOf(FakeDerivedDataSource.derivedData("Main-hash", project, sizeBytes = null)),
+            existingProjects = setOf(project),
+        ).apply { packageSizes["/home/dev/Library/Developer/Xcode/DerivedData/Main-hash"] = 800L }
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(xcode = XcodeProvider()))),
+        )
+
+        cli(repositoryExecutor(), provisioning = provisioning, derivedDataSource = derivedData, packageCaches = PackageCacheSizes(swiftPmBytes = 2_000L))
+            .run(listOf("xcode", "--json"))
+
+        val json = jsonOut()
+        val folder = json.getValue("folders").jsonArray.single().jsonObject
+        assertEquals(JsonPrimitive(800L), folder.getValue("sourcePackagesBytes"))
+        assertEquals(JsonPrimitive(2_000L), json.getValue("swiftPmCacheBytes"))
+        assertEquals(JsonNull, json.getValue("cocoaPodsCacheBytes"))
     }
 
     @Test
@@ -2291,6 +2878,28 @@ class ShogunCliTest {
     }
 
     @Test
+    fun `open without a runner flag uses Herdr when nothing is chosen`() {
+        val herdr = FakeHerdrClient()
+
+        val exitCode = cli(repositoryExecutor(), herdr = herdr, orca = FakeOrcaClient()).run(listOf("open", "TASK-1"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("opened $merged in Herdr with Claude (pane w1:p1)\n", out.toString())
+    }
+
+    @Test
+    fun `open without a runner flag uses the chosen runner`() {
+        val orca = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)), visibleWorktrees = mapOf("r1" to listOf(OrcaWorktree(merged, false))))
+        val herdr = FakeHerdrClient()
+
+        val exitCode = cli(repositoryExecutor(), herdr = herdr, orca = orca, runner = FakeToolPreferenceRepository(runner = RunnerId.ORCA)).run(listOf("open", "TASK-1", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.contains("\"orca\":\"started-agent\""), out.toString())
+        assertTrue(herdr.opened.isEmpty())
+    }
+
+    @Test
     fun `open in herdr focuses the live agent of a worktree herdr already has open`() {
         val herdr = FakeHerdrClient(alreadyOpen = setOf(merged), panes = listOf(HerdrPane("w1:p1", "w1", merged, agent = "claude", agentStatus = "idle")))
 
@@ -2300,6 +2909,213 @@ class ShogunCliTest {
         assertEquals("focused $merged in Herdr (already open, pane w1:p1)\n", out.toString())
         assertEquals(listOf("w1:p1"), herdr.focusedAgents)
         assertTrue(herdr.ran.isEmpty())
+    }
+
+    @Test
+    fun `open in orca opens a terminal with the environment and the named agent`() {
+        val orca = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)), visibleWorktrees = mapOf("r1" to listOf(OrcaWorktree(merged, false))))
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(
+                base to RepositoryProvisioning(environment = EnvironmentDeclaration(listOf(parseEnvironmentVariable("APP", "app")))),
+            ),
+        )
+        val trust = FakeRepositoryTrust(mapOf(base to RepositoryApprovalSubject(variables = listOf("APP" to "app"))))
+
+        val exitCode = cli(executorWithAdminDirectories(), provisioning = provisioning, orca = orca, trust = trust)
+            .run(listOf("open", "TASK-1", "--orca"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("opened $merged in Orca with Claude (terminal term_1)\n", out.toString())
+        val command = if (HostOs.current() == HostOs.WINDOWS) "\$env:APP = 'app'; claude -n main-repo-task-1" else "env 'APP=app' claude -n main-repo-task-1"
+        assertEquals(FakeOrcaClient.Created(merged, "main-repo-task-1", command, true), orca.created.single())
+    }
+
+    @Test
+    fun `open in orca syncs the worktree's status and comment in Orca`() {
+        val orca = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)), psRows = listOf(OrcaWorktree(merged, false, comment = "", workspaceStatus = "in-progress")))
+
+        val exitCode = cli(repositoryExecutor(), orca = orca).run(listOf("open", "TASK-1", "--orca"))
+
+        assertEquals(0, exitCode, err.toString())
+        val (path, update) = orca.updates.single()
+        assertEquals(merged, path)
+        assertEquals("completed", update.workspaceStatus)
+        assertEquals("ShogunAi: merged into main", update.comment)
+    }
+
+    @Test
+    fun `open in orca warns when Orca rejects the update and still succeeds`() {
+        val failure = WorktreeError.OrcaCommandFailed(listOf("orca"), "selector_not_found")
+        val orca = FakeOrcaClient(
+            repos = listOf(OrcaRepo("r1", base)),
+            psRows = listOf(OrcaWorktree(merged, false, comment = "", workspaceStatus = "in-progress")),
+            updateFailures = mapOf(merged to failure),
+        )
+
+        val exitCode = cli(repositoryExecutor(), orca = orca).run(listOf("open", "TASK-1", "--orca"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("shogun: couldn't update $merged in Orca: selector_not_found\n", err.toString())
+        assertEquals("opened $merged in Orca with Claude (terminal term_1)\n", out.toString())
+    }
+
+    @Test
+    fun `open in orca leaves a worktree Orca doesn't list alone`() {
+        val orca = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)))
+
+        assertEquals(0, cli(repositoryExecutor(), orca = orca).run(listOf("open", "TASK-1", "--orca")), err.toString())
+        assertTrue(orca.updates.isEmpty())
+        assertEquals("", err.toString())
+    }
+
+    @Test
+    fun `open in orca shows the worktree's running emulator and reports it`() {
+        environmentStore.portsByAdminDirectory["$base/.git/worktrees/TASK-1"] = mapOf("emulator" to 5556)
+        androidSdk.states["emulator-5556"] = EmulatorState.RUNNING
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(emulator = EmulatorProvider()))),
+        )
+        val orca = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)), visibleWorktrees = mapOf("r1" to listOf(OrcaWorktree(merged, false))))
+
+        val exitCode = cli(executorWithAdminDirectories(), provisioning = provisioning, orca = orca).run(listOf("open", "TASK-1", "--orca"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("opened $merged in Orca with Claude (terminal term_1), with emulator-5556 in its emulator view\n", out.toString())
+        assertEquals(listOf("attach:$merged:emulator-5556", "create:$merged"), orca.events)
+
+        out.clear()
+        val again = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)), visibleWorktrees = mapOf("r1" to listOf(OrcaWorktree(merged, false))))
+        assertEquals(0, cli(executorWithAdminDirectories(), provisioning = provisioning, orca = again).run(listOf("open", "TASK-1", "--orca", "--json")))
+        assertEquals("emulator-5556", Json.parseToJsonElement(out.toString()).jsonObject["emulator"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `open in orca shows the worktree's booted simulator and reports it`() {
+        environmentStore.resourcesByAdminDirectory["$base/.git/worktrees/TASK-1"] = mapOf("ios-simulator" to "SIM-MERGED")
+        appleSimulators.addExisting("SIM-MERGED", "ShogunAi · main-repo · TASK-1", SimulatorState.BOOTED)
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(iosSimulator = IosSimulatorProvider()))),
+        )
+        val orca = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)), visibleWorktrees = mapOf("r1" to listOf(OrcaWorktree(merged, false))))
+
+        val exitCode = cli(executorWithAdminDirectories(), provisioning = provisioning, orca = orca).run(listOf("open", "TASK-1", "--orca", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = Json.parseToJsonElement(out.toString()).jsonObject
+        assertEquals("SIM-MERGED", json["simulator"]?.jsonPrimitive?.content)
+        assertEquals(JsonNull, json["emulator"])
+        assertEquals("false", json["devicesSkipped"]?.jsonPrimitive?.content)
+        assertEquals(listOf("attach:$merged:SIM-MERGED", "create:$merged"), orca.events)
+    }
+
+    @Test
+    fun `open in orca with the emulator and the simulator both running shows neither and says why`() {
+        environmentStore.portsByAdminDirectory["$base/.git/worktrees/TASK-1"] = mapOf("emulator" to 5556)
+        androidSdk.states["emulator-5556"] = EmulatorState.RUNNING
+        environmentStore.resourcesByAdminDirectory["$base/.git/worktrees/TASK-1"] = mapOf("ios-simulator" to "SIM-MERGED")
+        appleSimulators.addExisting("SIM-MERGED", "ShogunAi · main-repo · TASK-1", SimulatorState.BOOTED)
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(
+                base to RepositoryProvisioning(providers = RepositoryProviders(emulator = EmulatorProvider(), iosSimulator = IosSimulatorProvider())),
+            ),
+        )
+        val orca = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)), visibleWorktrees = mapOf("r1" to listOf(OrcaWorktree(merged, false))))
+
+        val exitCode = cli(executorWithAdminDirectories(), provisioning = provisioning, orca = orca).run(listOf("open", "TASK-1", "--orca"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("opened $merged in Orca with Claude (terminal term_1)\n", out.toString())
+        assertTrue(err.contains("shogun: didn't show $merged's devices in Orca: its emulator and simulator are both running"), err.toString())
+        assertTrue(orca.attachedEmulators.isEmpty())
+    }
+
+    @Test
+    fun `open in orca without a running emulator reports a null emulator`() {
+        val orca = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)))
+
+        assertEquals(0, cli(repositoryExecutor(), orca = orca).run(listOf("open", "TASK-1", "--orca", "--json")), err.toString())
+
+        assertEquals(JsonNull, Json.parseToJsonElement(out.toString()).jsonObject["emulator"])
+        assertTrue(orca.attachedEmulators.isEmpty())
+    }
+
+    @Test
+    fun `open in orca reports the started agent and its session as json`() {
+        val orca = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)))
+        val sessions = FakeClaudeSessionRegistry(started = orca::startedClaudeSessions)
+
+        val exitCode = cli(repositoryExecutor(), orca = orca, claudeSessions = sessions).run(listOf("open", "TASK-1", "--orca", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = Json.parseToJsonElement(out.toString()).jsonObject
+        assertEquals("started-agent", json["orca"]?.jsonPrimitive?.content)
+        assertEquals("term_1", json["terminal"]?.jsonPrimitive?.content)
+        assertEquals("main-repo-task-1", json["session_name"]?.jsonPrimitive?.content)
+        assertEquals(merged, json["path"]?.jsonPrimitive?.content)
+        assertEquals(listOf("r1"), orca.shownExternal)
+    }
+
+    @Test
+    fun `open in orca focuses the live agent and names its session`() {
+        val orca = FakeOrcaClient(
+            repos = listOf(OrcaRepo("r1", base)),
+            terminals = mapOf(merged to listOf(OrcaTerminal("term_9", merged))),
+            agents = mapOf("term_9" to "claude"),
+        )
+        val sessions = FakeClaudeSessionRegistry(listOf(ClaudeSession(42, merged, "main-repo-task-1")))
+
+        val exitCode = cli(repositoryExecutor(), orca = orca, claudeSessions = sessions).run(listOf("open", "TASK-1", "--orca", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = Json.parseToJsonElement(out.toString()).jsonObject
+        assertEquals("focused", json["orca"]?.jsonPrimitive?.content)
+        assertEquals("main-repo-task-1", json["session_name"]?.jsonPrimitive?.content)
+        assertTrue(orca.created.isEmpty())
+    }
+
+    @Test
+    fun `open in orca without orca installed names onorca dev and exits with 1`() {
+        val exitCode = cli(repositoryExecutor(), orca = FakeOrcaClient(installed = false)).run(listOf("open", "TASK-1", "--orca"))
+
+        assertEquals(1, exitCode)
+        assertEquals("", out.toString())
+        assertTrue(err.contains("Orca isn't installed"), err.toString())
+        assertTrue(err.contains("onorca.dev"), err.toString())
+    }
+
+    @Test
+    fun `open in orca that doesn't start, fails a command or misses the agent exits with 1`() {
+        listOf(
+            FakeOrcaClient(running = false, startsWhenOpened = false) to "Orca didn't start",
+            FakeOrcaClient(failure = WorktreeError.OrcaCommandFailed(listOf("orca"), "runtime_unavailable")) to "runtime_unavailable",
+            FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)), startsAgents = false) to "didn't start in Orca terminal term_1",
+        ).forEach { (orca, message) ->
+            err.clear()
+            val exitCode = cli(repositoryExecutor(), orca = orca).run(listOf("open", "TASK-1", "--orca"))
+
+            assertEquals(1, exitCode, message)
+            assertTrue(err.contains(message), err.toString())
+        }
+    }
+
+    @Test
+    fun `open with both herdr and orca is a usage error that opens nothing`() {
+        val orca = FakeOrcaClient()
+        val herdr = FakeHerdrClient()
+
+        val exitCode = cli(repositoryExecutor(), orca = orca, herdr = herdr).run(listOf("open", "TASK-1", "--herdr", "--orca"))
+
+        assertEquals(2, exitCode)
+        assertTrue(orca.created.isEmpty())
+        assertTrue(herdr.opened.isEmpty())
+    }
+
+    @Test
+    fun `open help mentions orca`() {
+        val exitCode = cli(repositoryExecutor()).run(listOf("open", "--help"))
+
+        assertEquals(0, exitCode)
+        assertTrue(out.contains("--orca"), out.toString())
     }
 
     @Test
@@ -2491,6 +3307,47 @@ class ShogunCliTest {
     }
 
     @Test
+    fun `hook orca archive stops the worktree's emulator and leaves the worktree and branch to Orca`() {
+        environmentStore.portsByAdminDirectory["$base/.git/worktrees/TASK-1"] = mapOf("emulator" to 5556)
+        androidSdk.states["emulator-5556"] = EmulatorState.RUNNING
+        val executor = executorWithAdminDirectories()
+
+        val exitCode = cli(executor, provisioning = emulatorProvisioning, environment = mapOf("ORCA_WORKTREE_PATH" to merged))
+            .run(listOf("hook", "orca", "archive"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("stopped emulator emulator-5556\n", out.toString())
+        assertEquals(listOf("emulator-5556"), androidSdk.stopped)
+        assertFalse(executor.calls.any { it.first.take(3) == listOf("git", "worktree", "remove") })
+        assertFalse(executor.calls.any { it.first.take(2) == listOf("git", "branch") })
+    }
+
+    @Test
+    fun `hook orca archive reports a simulator that fails to stop and still exits with 0`() {
+        environmentStore.resourcesByAdminDirectory["$base/.git/worktrees/TASK-1"] = mapOf("ios-simulator" to "SIM-MERGED")
+        appleSimulators.addExisting("SIM-MERGED", "ShogunAi · main-repo · TASK-1", SimulatorState.BOOTED)
+        appleSimulators.shutdownFailure = IllegalStateException("simctl is busy")
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(iosSimulator = IosSimulatorProvider()))),
+        )
+
+        val exitCode = cli(executorWithAdminDirectories(), provisioning = provisioning, environment = mapOf("ORCA_WORKTREE_PATH" to merged))
+            .run(listOf("hook", "orca", "archive"))
+
+        assertEquals(0, exitCode)
+        assertTrue(err.contains("couldn't stop the simulator SIM-MERGED: simctl is busy"), err.toString())
+    }
+
+    @Test
+    fun `hook orca archive for a path that isn't a worktree says so and exits with 0`() {
+        val exitCode = cli(repositoryExecutor(), environment = mapOf("ORCA_WORKTREE_PATH" to "$worktreesRoot/gone"))
+            .run(listOf("hook", "orca", "archive"))
+
+        assertEquals(0, exitCode)
+        assertTrue(err.contains("couldn't free what ShogunAi holds for $worktreesRoot/gone"), err.toString())
+    }
+
+    @Test
     fun `remove by path and by branch resolve the same worktree`() {
         listOf(merged, "feature/TASK-1").forEach { target ->
             val executor = repositoryExecutor()
@@ -2565,7 +3422,7 @@ class ShogunCliTest {
         val exitCode = cli(executor).run(listOf("remove", "TASK-1", "--delete-branch"))
 
         assertEquals(0, exitCode, err.toString())
-        assertEquals("removed $merged\nkept branch feature/TASK-1 (not merged into the main branch)\n", out.toString())
+        assertEquals("removed $merged\nkept branch feature/TASK-1 (not merged into its base or the main branch)\n", out.toString())
         assertFalse(executor.ran("git", "branch", "-D", "--", "feature/TASK-1"))
     }
 
@@ -2593,7 +3450,7 @@ class ShogunCliTest {
         assertEquals(0, exitCode, err.toString())
         val json = jsonOut()
         assertEquals(JsonNull, json.getValue("branchDeleted"))
-        assertEquals("not merged into the main branch", (json.getValue("branchKeptReason") as JsonPrimitive).content)
+        assertEquals("not merged into its base or the main branch", (json.getValue("branchKeptReason") as JsonPrimitive).content)
     }
 
     @Test
@@ -2670,7 +3527,7 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         val json = jsonOut()
-        assertEquals(setOf("path", "branch", "created", "skippedPostCreateCommands", "skippedVariables", "postCreateFailure", "skippedLinks"), json.keys)
+        assertEquals(setOf("path", "branch", "created", "skippedPostCreateCommands", "skippedVariables", "postCreateFailure", "skippedLinks", "pods"), json.keys)
         assertEquals("$worktreesRoot/TASK-123", (json.getValue("path") as JsonPrimitive).content)
         assertEquals("feature/TASK-123", (json.getValue("branch") as JsonPrimitive).content)
         assertEquals(JsonPrimitive(true), json.getValue("created"))
@@ -2678,6 +3535,17 @@ class ShogunCliTest {
         assertEquals(JsonNull, json.getValue("postCreateFailure"))
         assertFalse(executor.calls.any { it.first.first() == "npm" })
         assertFalse(err.contains("Approve them"), err.toString())
+    }
+
+    @Test
+    fun `new keeps the path alone on stdout and notes the pods on stderr`() {
+        val exitCode = cli(podsExecutor(), provisioning = podsProvisioning, fileManager = podsFileManager("$worktreesRoot/TASK-123"))
+            .run(listOf("new", "TASK-123"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("$worktreesRoot/TASK-123\n", out.toString())
+        assertTrue(err.contains("shogun: iosApp/Pods (cloned from the base)"), err.toString())
+        assertTrue(err.contains("shogun: macApp/Pods: pod install needed (the base has no pods)"), err.toString())
     }
 
     @Test
@@ -2717,7 +3585,7 @@ class ShogunCliTest {
         assertEquals(
             setOf(
                 "path", "copied", "linked", "copiedInsteadOfLinking", "skippedPostCreateCommands", "skippedVariables",
-                "postCreateFailure", "removed", "skippedLinks",
+                "postCreateFailure", "removed", "skippedLinks", "pods",
             ),
             json.keys,
         )
@@ -2726,6 +3594,59 @@ class ShogunCliTest {
         assertEquals(listOf("token.txt"), json.strings("linked"))
         assertEquals(emptyList(), json.strings("copiedInsteadOfLinking"))
         assertTrue(executor.ran("npm", "install"))
+    }
+
+    private val podsProvisioning = FakeRepositoryProvisioningSource(
+        byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(xcode = XcodeProvider(cocoaPods = true)))),
+    )
+
+    private fun podsExecutor() = repositoryExecutor { command, _ ->
+        when {
+            command.lastOrNull() == ":(glob)**/Podfile.lock" -> Executor.ok(command, "iosApp/Podfile.lock\u0000macApp/Podfile.lock\u0000")
+            else -> null
+        }
+    }
+
+    private fun podsFileManager(worktree: String) = FakeFileManager(existing = listOf(base, "$base/local.properties", "$base/iosApp/Pods/Manifest.lock")).also {
+        it.contents["$base/iosApp/Pods/Manifest.lock"] = "PODFILE CHECKSUM: abc"
+        it.contents["$worktree/iosApp/Podfile.lock"] = "PODFILE CHECKSUM: abc"
+    }
+
+    @Test
+    fun `provision clones matching pods and lists the folders that need pod install`() {
+        val executor = podsExecutor()
+
+        val exitCode = cli(executor, provisioning = podsProvisioning, fileManager = podsFileManager(merged), workingDirectory = merged)
+            .run(listOf("provision"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(executor.ran("cp", "-c", "-R", "$base/iosApp/Pods", "$merged/iosApp/Pods"))
+        assertTrue(out.contains("iosApp/Pods (cloned from the base)\n"), out.toString())
+        assertTrue(out.contains("macApp/Pods: pod install needed (the base has no pods)\n"), out.toString())
+    }
+
+    @Test
+    fun `provision json reports the pods`() {
+        cli(podsExecutor(), provisioning = podsProvisioning, fileManager = podsFileManager(merged), workingDirectory = merged)
+            .run(listOf("provision", "--json"))
+
+        val pods = jsonOut().getValue("pods").jsonObject
+        assertEquals(listOf("iosApp"), pods.strings("cloned"))
+        val needed = pods.getValue("installNeeded").jsonArray.single().jsonObject
+        assertEquals("macApp", needed.getValue("folder").jsonPrimitive.content)
+        assertEquals("base-has-no-pods", needed.getValue("reason").jsonPrimitive.content)
+        assertEquals(JsonNull, pods.getValue("error"))
+    }
+
+    @Test
+    fun `provision without the cocoapods option reports no pods`() {
+        val executor = podsExecutor()
+
+        cli(executor, fileManager = podsFileManager(merged), workingDirectory = merged).run(listOf("provision", "--json"))
+
+        val pods = jsonOut().getValue("pods").jsonObject
+        assertEquals(emptyList(), pods.strings("cloned"))
+        assertFalse(executor.ran("git", "ls-files", "-z", "--", ":(glob)**/Podfile.lock"))
     }
 
     private val keysProject = listOf(project.copy(config = project.config.copy(secretFiles = listOf("keys"))))
@@ -2931,7 +3852,7 @@ class ShogunCliTest {
         assertEquals("merged", (candidate.getValue("reason") as JsonPrimitive).content)
         assertEquals(emptyList(), json.strings("removed"))
         assertEquals(
-            setOf("gradleDaemonsStopped", "emulatorsStopped", "simulatorsDeleted", "derivedDataDeleted"),
+            setOf("gradleDaemonsStopped", "mavenDaemonsStopped", "emulatorsStopped", "simulatorsDeleted", "derivedDataDeleted"),
             json.getValue("providers").jsonObject.keys,
         )
         assertFalse(executor.calls.any { it.first.take(3) == listOf("git", "worktree", "remove") })
@@ -3113,14 +4034,14 @@ class ShogunCliTest {
 
         assertEquals(0, exitCode, err.toString())
         val json = jsonOut()
-        assertEquals(setOf("active", "folders", "orphans", "unavailableVolumeFolders", "compilationCacheBytes"), json.keys)
+        assertEquals(setOf("active", "folders", "orphans", "unavailableVolumeFolders", "compilationCacheBytes", "swiftPmCacheBytes", "cocoaPodsCacheBytes"), json.keys)
         assertEquals(JsonPrimitive(true), json.getValue("active"))
         val folder = json.getValue("folders").jsonArray.single().jsonObject
-        assertEquals(setOf("path", "sizeBytes", "worktree"), folder.keys)
+        assertEquals(setOf("path", "sizeBytes", "sourcePackagesBytes", "worktree"), folder.keys)
         assertEquals(base, (folder.getValue("worktree") as JsonPrimitive).content)
         assertEquals(JsonPrimitive(1_073_741_824L), folder.getValue("sizeBytes"))
         val orphan = json.getValue("orphans").jsonArray.single().jsonObject
-        assertEquals(setOf("path", "sizeBytes"), orphan.keys)
+        assertEquals(setOf("path", "sizeBytes", "sourcePackagesBytes"), orphan.keys)
         assertEquals(JsonPrimitive(2_147_483_648L), orphan.getValue("sizeBytes"))
     }
 
@@ -3299,7 +4220,7 @@ class ShogunCliTest {
         val exitCode = cli(repositoryExecutor(), fileManager = files).run(listOf("hooks", "status"))
 
         assertEquals(0, exitCode, err.toString())
-        assertTrue(out.lines().any { it.startsWith("user: outdated (WorktreeRemove, SessionStart, UserPromptSubmit, Notification, Stop, SessionEnd)") }, out.toString())
+        assertTrue(out.lines().any { it.startsWith("user: outdated (WorktreeRemove, SessionStart, UserPromptSubmit, Notification, Stop, SessionEnd, PreToolUse)") }, out.toString())
         assertTrue(out.lines().any { it.startsWith("project: missing") }, out.toString())
     }
 
@@ -3319,5 +4240,86 @@ class ShogunCliTest {
         assertEquals(0, exitCode)
         assertTrue(out.contains("hooks install|uninstall"), out.toString())
         assertTrue(out.contains("hooks status"), out.toString())
+    }
+
+    private val flutterTemplate = FakeFileManager(
+        existing = listOf(
+            base,
+            "$base/pubspec.yaml",
+            "$base/android/settings.gradle.kts",
+            "$base/android/build.gradle.kts",
+            "$base/ios/Runner.xcodeproj",
+        ),
+        directories = setOf("$base/android", "$base/ios"),
+    ).also {
+        it.writeText("$base/pubspec.yaml", "name: sample_app\ndependencies:\n  flutter:\n    sdk: flutter\n")
+        it.writeText("$base/android/settings.gradle.kts", "plugins {\n    id(\"com.android.application\") version \"8.7.0\" apply false\n}\n")
+        it.writeText("$base/android/build.gradle.kts", "allprojects { repositories { google() } }\n")
+    }
+
+    @Test
+    fun `stacks lists a flutter repository and its suggestions`() {
+        val exitCode = cli(repositoryExecutor(), projects = noLocalFiles, fileManager = flutterTemplate).run(listOf("stacks"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            listOf(
+                "Flutter  evidence=pubspec.yaml  flutter=suggested",
+                "Gradle  evidence=android/settings.gradle.kts  gradle=suggested",
+                "Android  evidence=android/settings.gradle.kts  emulator=suggested",
+                "Xcode  evidence=ios/Runner.xcodeproj  ios-simulator=suggested  xcode=suggested",
+            ),
+            out.lines().filter { it.isNotEmpty() },
+        )
+    }
+
+    @Test
+    fun `stacks json lists the flutter stack with its provider`() {
+        cli(repositoryExecutor(), projects = noLocalFiles, fileManager = flutterTemplate).run(listOf("stacks", "--json"))
+
+        val flutter = Json.parseToJsonElement(out.toString()).jsonObject.getValue("stacks").jsonArray.first().jsonObject
+        assertEquals("flutter", flutter.getValue("stack").jsonPrimitive.content)
+        assertEquals("flutter", flutter.getValue("providers").jsonArray.single().jsonObject.getValue("id").jsonPrimitive.content)
+    }
+
+    private val flutterProvisioning = declaring(RepositoryProviders(flutter = FlutterProvider))
+
+    private fun flutterExecutor(flutter: (List<String>) -> CommandResult) =
+        repositoryExecutor { command, _ -> if (command.firstOrNull() == "flutter") flutter(command) else null }
+
+    @Test
+    fun `new notes on stderr that flutter pub get is needed and why`() {
+        val executor = flutterExecutor { throw CommandExecutionException(it, java.io.IOException("No such file or directory")) }
+
+        val exitCode = cli(executor, provisioning = flutterProvisioning).run(listOf("new", "TASK-123"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("$worktreesRoot/TASK-123\n", out.toString())
+        assertTrue(err.contains("shogun: flutter pub get needed: flutter wasn't found"), err.toString())
+    }
+
+    @Test
+    fun `new json reports the flutter packages resolved`() {
+        val executor = flutterExecutor { Executor.ok(it) }
+
+        cli(executor, provisioning = flutterProvisioning).run(listOf("new", "TASK-123", "--json"))
+
+        val pubGet = jsonOut().getValue("flutter").jsonObject.getValue("pubGet").jsonObject
+        assertEquals("resolved", pubGet.getValue("status").jsonPrimitive.content)
+        assertFalse("reason" in pubGet)
+        assertTrue(executor.calls.any { it.first == listOf("flutter", "pub", "get") && it.second == "$worktreesRoot/TASK-123" })
+    }
+
+    @Test
+    fun `provision reports the flutter packages in text and json`() {
+        cli(flutterExecutor { Executor.ok(it) }, provisioning = flutterProvisioning, workingDirectory = merged).run(listOf("provision"))
+        assertTrue(out.contains("flutter pub get: packages resolved\n"), out.toString())
+
+        out.clear()
+        cli(flutterExecutor { Executor.fail(it, stderr = "pub failed", exitCode = 69) }, provisioning = flutterProvisioning, workingDirectory = merged)
+            .run(listOf("provision", "--json"))
+        val pubGet = jsonOut().getValue("flutter").jsonObject.getValue("pubGet").jsonObject
+        assertEquals("needed", pubGet.getValue("status").jsonPrimitive.content)
+        assertEquals("exited with code 69: pub failed", pubGet.getValue("reason").jsonPrimitive.content)
     }
 }

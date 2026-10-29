@@ -2,6 +2,7 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.model.DetectedStack
+import app.luxion.shogunai.domain.model.FlutterProvider
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.MavenProvider
 import app.luxion.shogunai.domain.model.RepositoryProviders
@@ -66,6 +67,68 @@ class DetectRepositoryStacksUseCaseTest {
         )
 
         assertTrue(stacks.none { it.stack == Stack.ANDROID })
+    }
+
+    @Test
+    fun `detects a gradle build in a subfolder when the main folder has none`() {
+        val stacks = detect(files = listOf("android/settings.gradle.kts", "android/build.gradle.kts"), directories = setOf("android"))
+
+        assertEquals(DetectedStack(Stack.GRADLE, listOf("android/settings.gradle.kts")), stacks.single { it.stack == Stack.GRADLE })
+    }
+
+    @Test
+    fun `a nested build next to a root build leaves only the main folder's files as evidence`() {
+        val stacks = detect(files = listOf("settings.gradle.kts", "build-logic/settings.gradle.kts"), directories = setOf("build-logic"))
+
+        assertEquals(listOf(DetectedStack(Stack.GRADLE, listOf("settings.gradle.kts"))), stacks)
+    }
+
+    @Test
+    fun `detects android declared in a settings file`() {
+        val stacks = detect(
+            files = listOf("android/settings.gradle.kts"),
+            directories = setOf("android"),
+            texts = mapOf("android/settings.gradle.kts" to "plugins { id(\"com.android.application\") version \"8.7.0\" apply false }"),
+        )
+
+        assertEquals(DetectedStack(Stack.ANDROID, listOf("android/settings.gradle.kts")), stacks.single { it.stack == Stack.ANDROID })
+    }
+
+    @Test
+    fun `detects a flutter app with its android and ios folders`() {
+        val stacks = detect(
+            files = listOf(
+                "pubspec.yaml",
+                "android/settings.gradle.kts",
+                "android/build.gradle.kts",
+                "android/app/build.gradle.kts",
+                "ios/Runner.xcodeproj",
+            ),
+            directories = setOf("android", "android/app", "ios"),
+            texts = mapOf(
+                "pubspec.yaml" to "name: sample_app\ndependencies:\n  flutter:\n    sdk: flutter\n",
+                "android/settings.gradle.kts" to "plugins {\n    id(\"com.android.application\") version \"8.7.0\" apply false\n}",
+                "android/build.gradle.kts" to "allprojects { repositories { google() } }",
+                "android/app/build.gradle.kts" to "plugins { id(\"com.android.application\") }",
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                DetectedStack(Stack.FLUTTER, listOf("pubspec.yaml")),
+                DetectedStack(Stack.GRADLE, listOf("android/settings.gradle.kts")),
+                DetectedStack(Stack.ANDROID, listOf("android/settings.gradle.kts")),
+                DetectedStack(Stack.XCODE, listOf("ios/Runner.xcodeproj")),
+            ),
+            stacks,
+        )
+    }
+
+    @Test
+    fun `a dart package is not flutter`() {
+        val stacks = detect(files = listOf("pubspec.yaml"), texts = mapOf("pubspec.yaml" to "name: sample_package\ndependencies:\n  path: ^1.9.0\n"))
+
+        assertTrue(stacks.isEmpty())
     }
 
     @Test
@@ -139,6 +202,31 @@ class DetectRepositoryStacksUseCaseTest {
 
         assertEquals(listOf(SuggestedProvider.GRADLE, SuggestedProvider.EMULATOR), report.suggestions.map { it.provider })
         assertEquals(listOf("app/build.gradle.kts"), report.suggestions.last().evidence)
+    }
+
+    @Test
+    fun `suggests every provider of a flutter repository on a mac`() {
+        val stacks = listOf(
+            DetectedStack(Stack.FLUTTER, listOf("pubspec.yaml")),
+            DetectedStack(Stack.GRADLE, listOf("android/settings.gradle.kts")),
+            DetectedStack(Stack.ANDROID, listOf("android/settings.gradle.kts")),
+            DetectedStack(Stack.XCODE, listOf("ios/Runner.xcodeproj")),
+        )
+
+        val report = suggestProviders(stacks, RepositoryProviders(), isMac = true)
+
+        assertEquals(
+            listOf(
+                SuggestedProvider.FLUTTER,
+                SuggestedProvider.GRADLE,
+                SuggestedProvider.EMULATOR,
+                SuggestedProvider.IOS_SIMULATOR,
+                SuggestedProvider.XCODE,
+            ),
+            report.suggestions.map { it.provider },
+        )
+        assertEquals(listOf("pubspec.yaml"), report.suggestions.first().evidence)
+        assertTrue(suggestProviders(stacks.take(1), RepositoryProviders(flutter = FlutterProvider), isMac = true).suggestions.isEmpty())
     }
 
     @Test

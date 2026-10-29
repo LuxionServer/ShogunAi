@@ -1,14 +1,25 @@
 package app.luxion.shogunai.ui.components
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertHeightIsEqualTo
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.v2.runComposeUiTest
+import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -120,5 +131,24 @@ class SelectorUiTest {
 
         onNodeWithText("B").assertIsNotEnabled()
         assertEquals(emptyList(), selections)
+    }
+
+    @Test
+    fun `segmented selector is a compact group of radio buttons`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                SegmentedSelector(
+                    options = listOf("By state", "By project"),
+                    selected = "By state",
+                    onSelect = {},
+                    label = { it },
+                    modifier = Modifier.testTag("segments"),
+                )
+            }
+        }
+
+        onNodeWithTag("segments").assertHeightIsEqualTo(28.dp)
+        onNodeWithText("By state").assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton)).assertIsSelected()
+        onNodeWithText("By project").assertIsNotSelected()
     }
 }

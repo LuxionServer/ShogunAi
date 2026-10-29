@@ -3,6 +3,11 @@ package app.luxion.shogunai.domain.usecase
 import app.luxion.shogunai.domain.FakeAgentSessionStore
 import app.luxion.shogunai.domain.FakeClaudeSessionRegistry
 import app.luxion.shogunai.domain.FakeHerdrClient
+import app.luxion.shogunai.domain.FakeOrcaClient
+import app.luxion.shogunai.domain.model.AgentActivity
+import app.luxion.shogunai.domain.model.AgentTool
+import app.luxion.shogunai.domain.model.OrcaAgent
+import app.luxion.shogunai.domain.model.OrcaWorktree
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
@@ -11,6 +16,7 @@ import app.luxion.shogunai.domain.model.AgentSessionRecord
 import app.luxion.shogunai.domain.model.AgentStateSource
 import app.luxion.shogunai.domain.model.ClaudeSession
 import app.luxion.shogunai.domain.model.ClaudeSessionRef
+import app.luxion.shogunai.domain.model.ClaudeSessionStatus
 import app.luxion.shogunai.domain.model.HerdrAgent
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -20,6 +26,7 @@ import app.luxion.shogunai.domain.model.WorktreeError
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -262,6 +269,225 @@ class DetectRunningAgentsUseCaseTest {
         ).getOrThrow()
 
         assertEquals(1, herdr.agentListings)
+    }
+
+    private fun orcaRow(path: String, vararg agents: Pair<String, AgentState?>, createdByOrca: Boolean = false) =
+        OrcaWorktree(path, createdByOrca, agents.map { (name, state) -> OrcaAgent(name, state) })
+
+    private fun orcaReader(orca: FakeOrcaClient, clock: () -> Long = { 1_000L }) =
+        OrcaWorktreeReader(orca, userHome = "/home/dev", now = clock, canonical = { it })
+
+    private fun detectWithOrca(orca: FakeOrcaClient, failLsof: Boolean = false, clock: () -> Long = { 1_000L }) =
+        DetectRunningAgentsUseCase(executor(failLsof = failLsof), orca = orcaReader(orca, clock), canonical = { it })
+
+    @Test
+    fun `an agent in Orca's folder workspace of the multirepo folder is the multirepo agent, waiting shown as blocked`() = runTest {
+        val folder = "/home/dev/projects/product"
+        val orca = FakeOrcaClient(psRows = listOf(orcaRow(folder, "claude" to AgentState.BLOCKED).copy(folderId = "f1")))
+
+        val agents = detectWithOrca(orca, failLsof = true)(listOf(AgentSearch.multirepoFolder(folder, "claude"))).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("claude", AgentState.BLOCKED, stateSource = AgentStateSource.ORCA)), agents[folder])
+    }
+
+    @Test
+    fun `an Orca agent in a member repository's folder isn't the multirepo agent`() = runTest {
+        val folder = "/home/dev/projects/product"
+        val orca = FakeOrcaClient(psRows = listOf(orcaRow("$folder/product-app", "claude" to AgentState.WORKING)))
+
+        val agents = detectWithOrca(orca)(listOf(AgentSearch.multirepoFolder(folder, "claude"))).getOrThrow()
+
+        assertEquals(null, agents[folder])
+    }
+
+    @Test
+    fun `a waiting agent Orca reports makes the worktree's Claude blocked`() = runTest {
+        val orca = FakeOrcaClient(psRows = listOf(orcaRow(nested.path, "claude" to AgentState.BLOCKED)))
+
+        val agents = detectWithOrca(orca)(config, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("claude", AgentState.BLOCKED, stateSource = AgentStateSource.ORCA)), agents[nested.path])
+        assertEquals(listOf(RunningAgent("codex")), agents[main.path])
+    }
+
+    @Test
+    fun `the most urgent of several Orca agents in a worktree wins`() = runTest {
+        val orca = FakeOrcaClient(psRows = listOf(orcaRow(nested.path, "claude" to AgentState.WORKING, "claude" to AgentState.BLOCKED)))
+
+        val agents = detectWithOrca(orca)(config, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("claude", AgentState.BLOCKED, stateSource = AgentStateSource.ORCA)), agents[nested.path])
+    }
+
+    @Test
+    fun `an agent waiting on a tool in Orca carries the tool, its input and its prompt`() = runTest {
+        val activity = AgentActivity(AgentTool("Bash", "curl -s https://example.com -o page.html"), prompt = "Download the page")
+        val orca = FakeOrcaClient(psRows = listOf(OrcaWorktree(nested.path, false, listOf(OrcaAgent("claude", AgentState.BLOCKED, activity)))))
+
+        val agents = detectWithOrca(orca)(config, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("claude", AgentState.BLOCKED, stateSource = AgentStateSource.ORCA, activity = activity)), agents[nested.path])
+    }
+
+    @Test
+    fun `a done agent only Orca sees carries its prompt and last message`() = runTest {
+        val activity = AgentActivity(prompt = "Save the date", lastMessage = "Saved it in now.txt")
+        val orca = FakeOrcaClient(psRows = listOf(OrcaWorktree(sibling.path, false, listOf(OrcaAgent("claude", AgentState.DONE, activity)))))
+
+        val agents = detectWithOrca(orca)(config, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("claude", AgentState.DONE, stateSource = AgentStateSource.ORCA, activity = activity)), agents[sibling.path])
+    }
+
+    @Test
+    fun `the details of several Orca agents of one name are those of the one shown`() = runTest {
+        val waiting = AgentActivity(AgentTool("Bash"), prompt = "B")
+        val orca = FakeOrcaClient(
+            psRows = listOf(
+                OrcaWorktree(
+                    nested.path,
+                    false,
+                    listOf(OrcaAgent("claude", AgentState.WORKING, AgentActivity(prompt = "A")), OrcaAgent("claude", AgentState.BLOCKED, waiting)),
+                ),
+            ),
+        )
+
+        val agents = detectWithOrca(orca)(config, worktrees).getOrThrow()
+
+        assertEquals(waiting, agents[nested.path]?.single()?.activity)
+    }
+
+    @Test
+    fun `an agent Orca doesn't report carries no details`() = runTest {
+        val orca = FakeOrcaClient(psRows = listOf(orcaRow(sibling.path, "claude" to AgentState.WORKING)))
+
+        val agents = detectWithOrca(orca)(config, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("codex")), agents[main.path])
+        assertNull(agents[nested.path]?.single()?.activity)
+    }
+
+    @Test
+    fun `Orca's details are kept when Herdr's state wins`() = runTest {
+        val herdr = FakeHerdrClient(agents = listOf(herdrAgent(nested.path, AgentState.BLOCKED, pane = "w2:p1")))
+        val activity = AgentActivity(prompt = "Count to ten")
+        val orca = FakeOrcaClient(psRows = listOf(OrcaWorktree(nested.path, false, listOf(OrcaAgent("claude", AgentState.WORKING, activity)))))
+
+        val agents = DetectRunningAgentsUseCase(executor(), herdr, orca = orcaReader(orca), canonical = { it })(config, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("claude", AgentState.BLOCKED, "w2:p1", AgentStateSource.HERDR, activity = activity)), agents[nested.path])
+    }
+
+    @Test
+    fun `working and done map from Orca's states`() = runTest {
+        val orca = FakeOrcaClient(psRows = listOf(orcaRow(nested.path, "claude" to AgentState.WORKING), orcaRow(sibling.path, "codex" to AgentState.DONE)))
+
+        val agents = detectWithOrca(orca)(config, worktrees).getOrThrow()
+
+        assertEquals(AgentState.WORKING, agents.getValue(nested.path).single().state)
+        assertEquals(listOf(RunningAgent("codex", AgentState.DONE, stateSource = AgentStateSource.ORCA)), agents[sibling.path])
+    }
+
+    @Test
+    fun `an agent only Orca sees counts as running when the process list can't be read`() = runTest {
+        val orca = FakeOrcaClient(psRows = listOf(orcaRow(sibling.path, "claude" to AgentState.WORKING)))
+
+        val agents = detectWithOrca(orca, failLsof = true)(config, worktrees).getOrThrow()
+
+        assertEquals(mapOf(sibling.path to listOf(RunningAgent("claude", AgentState.WORKING, stateSource = AgentStateSource.ORCA))), agents)
+    }
+
+    @Test
+    fun `Orca rows are matched by canonical path`() = runTest {
+        val orca = FakeOrcaClient(psRows = listOf(orcaRow("/private${sibling.path}", "claude" to AgentState.DONE)))
+        val canonical = { path: String -> if (path.startsWith("/private")) path else "/private$path" }
+
+        val agents = DetectRunningAgentsUseCase(
+            executor(failLsof = true),
+            orca = OrcaWorktreeReader(orca, userHome = "/home/dev", now = { 1_000L }, canonical = canonical),
+            canonical = canonical,
+        )(config, worktrees).getOrThrow()
+
+        assertEquals(AgentState.DONE, agents.getValue(sibling.path).single().state)
+    }
+
+    @Test
+    fun `Orca not running shows process agents without a state and never starts Orca`() = runTest {
+        val orca = FakeOrcaClient(running = false, psRows = listOf(orcaRow(nested.path, "claude" to AgentState.BLOCKED)))
+
+        val agents = detectWithOrca(orca)(config, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("claude")), agents[nested.path])
+        assertEquals(0, orca.starts)
+        assertEquals(0, orca.psReads)
+    }
+
+    @Test
+    fun `Orca closed is asked at most once every 30 seconds`() = runTest {
+        val orca = FakeOrcaClient(running = false)
+        var clock = 1_000L
+        val useCase = detectWithOrca(orca) { clock }
+
+        useCase(config, worktrees)
+        clock += 29_000
+        useCase(config, worktrees)
+        assertEquals(1, orca.statusChecks)
+
+        clock += 1_000
+        useCase(config, worktrees)
+        assertEquals(2, orca.statusChecks)
+        assertEquals(0, orca.starts)
+    }
+
+    @Test
+    fun `a failing Orca read waits 30 seconds and leaves detection as it was`() = runTest {
+        val orca = FakeOrcaClient(psFailure = WorktreeError.OrcaCommandFailed(listOf("orca"), "runtime_unavailable"))
+        var clock = 1_000L
+        val useCase = detectWithOrca(orca) { clock }
+
+        assertEquals(listOf(RunningAgent("claude")), useCase(config, worktrees).getOrThrow()[nested.path])
+        clock += 10_000
+        useCase(config, worktrees)
+
+        assertEquals(1, orca.psReads)
+    }
+
+    @Test
+    fun `Orca not installed runs nothing`() = runTest {
+        val orca = FakeOrcaClient(installed = false)
+
+        detectWithOrca(orca)(config, worktrees).getOrThrow()
+
+        assertEquals(0, orca.statusChecks)
+        assertEquals(0, orca.psReads)
+    }
+
+    @Test
+    fun `Orca is read once per detection across projects`() = runTest {
+        val orca = FakeOrcaClient()
+        val api = Worktree(path = "/home/dev/projects/api", branch = "main", isMain = true)
+
+        DetectRunningAgentsUseCase(executor(), orca = orcaReader(orca), canonical = { it })(
+            listOf(AgentSearch(listOf("claude"), worktrees), AgentSearch(listOf("claude"), listOf(api))),
+        ).getOrThrow()
+
+        assertEquals(1, orca.psReads)
+    }
+
+    @Test
+    fun `Orca's waiting wins over a working hook record`() = runTest {
+        val store = FakeAgentSessionStore(mapOf(nested.path to listOf(session("s1", AgentState.WORKING))))
+        val orca = FakeOrcaClient(psRows = listOf(orcaRow(nested.path, "claude" to AgentState.BLOCKED)))
+
+        val agents = DetectRunningAgentsUseCase(
+            executor(lsof = claudeAtNestedLsof, ps = "100 claude"),
+            sessionStore = store,
+            now = { 20_000L },
+            orca = orcaReader(orca),
+            canonical = { it },
+        )(config, worktrees).getOrThrow()
+
+        assertEquals(listOf(RunningAgent("claude", AgentState.BLOCKED, stateSource = AgentStateSource.ORCA)), agents[nested.path])
     }
 
     @Test
@@ -564,5 +790,115 @@ class DetectRunningAgentsUseCaseTest {
 
         assertEquals(listOf(ClaudeSessionRef("product", 300)), agents[multirepoFolder]?.single()?.sessions)
         assertEquals(listOf(ClaudeSessionRef("product-app", 301)), agents[memberMain.path]?.single()?.sessions)
+    }
+
+    private fun registered(pid: Long, cwd: String, status: ClaudeSessionStatus, name: String? = null, statusUpdatedAt: Long = 1_083L) =
+        ClaudeSession(pid, cwd, name, startedAt = 1_000L, status = status, statusUpdatedAt = statusUpdatedAt)
+
+    @Test
+    fun `a Claude without any other state takes its registry session's waiting as blocked`() = runTest {
+        val agents = groupAgents(FakeClaudeSessionRegistry(listOf(registered(400, appTask.path, ClaudeSessionStatus.WAITING, "app-task-123"))))
+
+        assertEquals(
+            listOf(RunningAgent("claude", AgentState.BLOCKED, stateSource = AgentStateSource.CLAUDE_CODE, sessions = listOf(ClaudeSessionRef("app-task-123", 400)))),
+            agents[appTask.path],
+        )
+    }
+
+    @Test
+    fun `an idle registry session is done after a turn and idle before its first one`() = runTest {
+        val agents = groupAgents(
+            FakeClaudeSessionRegistry(
+                listOf(
+                    registered(400, appTask.path, ClaudeSessionStatus.IDLE, statusUpdatedAt = 39_000L),
+                    registered(401, apiTask.path, ClaudeSessionStatus.IDLE),
+                ),
+            ),
+        )
+
+        assertEquals(AgentState.DONE, agents[appTask.path]?.single()?.state)
+        assertEquals(AgentState.IDLE, agents[apiTask.path]?.single()?.state)
+    }
+
+    @Test
+    fun `the most urgent registry state of a worktree's sessions wins`() = runTest {
+        val agents = groupAgents(
+            FakeClaudeSessionRegistry(
+                listOf(
+                    registered(401, apiTask.path, ClaudeSessionStatus.BUSY),
+                    registered(402, "${apiTask.path}/src", ClaudeSessionStatus.WAITING),
+                ),
+            ),
+        )
+
+        assertEquals(AgentState.BLOCKED, agents[apiTask.path]?.single()?.state)
+    }
+
+    @Test
+    fun `registry sessions of a nested repository or a dead process give no state`() = runTest {
+        val agents = groupAgents(
+            FakeClaudeSessionRegistry(
+                listOf(
+                    registered(403, nestedRepository, ClaudeSessionStatus.WAITING),
+                    registered(405, appTask.path, ClaudeSessionStatus.WAITING),
+                ),
+            ),
+        )
+
+        assertEquals(listOf(RunningAgent("claude")), agents[appTask.path])
+    }
+
+    @Test
+    fun `a registry session without a status gives no state`() = runTest {
+        val agents = groupAgents(FakeClaudeSessionRegistry(listOf(ClaudeSession(400, appTask.path, "app-task-123"))))
+
+        assertEquals(null, agents[appTask.path]?.single()?.state)
+    }
+
+    @Test
+    fun `Orca's state wins over the registry's`() = runTest {
+        val orca = FakeOrcaClient(psRows = listOf(orcaRow(nested.path, "claude" to AgentState.DONE)))
+        val registry = FakeClaudeSessionRegistry(listOf(registered(100, nested.path, ClaudeSessionStatus.BUSY)))
+
+        val agents = DetectRunningAgentsUseCase(
+            executor(lsof = claudeAtNestedLsof, ps = "100 claude"),
+            claudeSessions = registry,
+            orca = orcaReader(orca),
+            canonical = { it },
+        )(config, worktrees).getOrThrow()
+
+        val claude = agents[nested.path]?.single()
+        assertEquals(AgentState.DONE, claude?.state)
+        assertEquals(AgentStateSource.ORCA, claude?.stateSource)
+    }
+
+    @Test
+    fun `a hook record wins over the registry's state`() = runTest {
+        val store = FakeAgentSessionStore(mapOf(nested.path to listOf(session("s1", AgentState.WORKING))))
+        val registry = FakeClaudeSessionRegistry(listOf(registered(100, nested.path, ClaudeSessionStatus.IDLE, statusUpdatedAt = 39_000L)))
+
+        val agents = DetectRunningAgentsUseCase(
+            executor(lsof = claudeAtNestedLsof, ps = "100 claude"),
+            sessionStore = store,
+            now = { 20_000L },
+            claudeSessions = registry,
+        )(config, worktrees).getOrThrow()
+
+        assertEquals(AgentState.WORKING, agents[nested.path]?.single()?.state)
+    }
+
+    @Test
+    fun `an agent Orca lists without a state takes the registry's`() = runTest {
+        val orca = FakeOrcaClient(psRows = listOf(orcaRow(nested.path, "claude" to null)))
+        val registry = FakeClaudeSessionRegistry(listOf(registered(100, nested.path, ClaudeSessionStatus.BUSY)))
+
+        val agents = DetectRunningAgentsUseCase(
+            executor(lsof = claudeAtNestedLsof, ps = "100 claude"),
+            claudeSessions = registry,
+            orca = orcaReader(orca),
+            canonical = { it },
+        )(config, worktrees).getOrThrow()
+
+        assertEquals(RunningAgent("claude", AgentState.WORKING, stateSource = AgentStateSource.CLAUDE_CODE), agents[nested.path]?.single())
     }
 }

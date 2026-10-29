@@ -11,26 +11,28 @@ A provider adds support for one kind of tooling to a repository's worktrees. A r
 | [`gradle`](#gradle) | Android, KMP and JVM repositories: Gradle daemons and their memory. | Any; the daemon list needs `ps` (macOS, Linux) |
 | [`emulator`](#android-emulator) | An Android emulator per worktree. | Any with the Android SDK |
 | [`ios-simulator`](#ios-simulator) | An iOS simulator per worktree. | macOS |
-| [`xcode`](#xcode) | Xcode DerivedData and the shared compilation cache. | macOS |
+| [`xcode`](#xcode) | Xcode DerivedData, the shared compilation cache, Swift packages and CocoaPods pods. | macOS |
 | [`maven`](#maven) | Maven builds: a memory bound and the Maven daemons. | Any; the daemon list needs `ps` (macOS, Linux) |
 | [`docker-compose`](#docker-compose) | A Docker Compose project and ports per worktree. | Any with the Docker CLI |
 | [`desktop-app`](#compose-desktop-app) | A Compose Desktop app per worktree, run in the background without taking the desktop. | macOS |
+| [`flutter`](#flutter) | Flutter apps: `flutter pub get` in every new worktree, and agents running Flutter on their worktree's devices. | Any with Flutter |
 
 ## Detecting stacks
 
-You don't have to know which providers exist. ShogunAi looks at the files of the repository's main folder and its direct subfolders (never hidden folders, `build`, `node_modules` or `Pods`) and recognises five stacks:
+You don't have to know which providers exist. ShogunAi looks at the files of the repository's main folder and its direct subfolders (never hidden folders, `build`, `node_modules` or `Pods`) and recognises six stacks:
 
 | Stack | Revealed by | Suggests |
 |---|---|---|
-| Gradle | `gradlew`, `settings.gradle` or `settings.gradle.kts` in the main folder | `gradle` |
-| Android | `com.android.` in a `build.gradle(.kts)` of those folders, or in `gradle/libs.versions.toml` | `emulator` |
+| Gradle | `gradlew`, `settings.gradle` or `settings.gradle.kts` in the main folder, or else `settings.gradle(.kts)` in a direct subfolder such as `android/` | `gradle` |
+| Android | `com.android.` in a `build.gradle(.kts)` or `settings.gradle(.kts)` of those folders, or in `gradle/libs.versions.toml` | `emulator` |
 | Xcode | an `.xcodeproj` folder, or `Package.swift` in the main folder | `ios-simulator` and `xcode` (macOS only) |
 | Maven | `pom.xml` or `mvnw` in the main folder | `maven` |
 | Docker Compose | `compose.yaml`, `compose.yml`, `docker-compose.yaml` or `docker-compose.yml` in the main folder | `docker-compose` |
+| Flutter | a `pubspec.yaml` in the main folder that depends on the Flutter SDK (`sdk: flutter`) | `flutter` |
 
 In the project settings, "Repository configuration" lists the providers the repository could use and doesn't declare yet, with the files that revealed them, and "Turn on" switches the provider on as an unsaved change: nothing is written until you save and confirm the preview. `shogun stacks` prints the same from a terminal and changes nothing. A suggestion is only a hint (a `pom.xml` in a fixture folder also counts), so the evidence is always shown.
 
-ShogunAi also looks, at any depth outside build and tool folders (`build`, `.gradle`, `node_modules`, `Pods`, `DerivedData`), for the untracked files a fresh mobile worktree can't build without: `local.properties`, `keystore.properties`, `key.properties`, `*.jks`, `*.keystore`, `google-services.json` and `GoogleService-Info.plist`. Each one nothing provisions yet (local files, `copy`, `link` or `.worktreeinclude`) is suggested as an anchored `link` pattern, such as `/app/google-services.json`, so rotating it in the base repository updates every worktree. It also reads the `storeFile` keys of those properties files (any key ending in `storeFile`, such as `RELEASE_STORE_FILE`): a keystore they name inside the repository is suggested too, and a relative path that leaves the repository is reported, because it won't resolve from a worktree that lives in another folder. The project settings list them under "Worktree files" and `shogun stacks` prints them; nothing is written until you accept and save.
+ShogunAi also looks, at any depth outside build and tool folders (`build`, `.gradle`, `.dart_tool`, `node_modules`, `Pods`, `DerivedData`), for the untracked files a fresh mobile worktree can't build without: `local.properties`, `keystore.properties`, `key.properties`, `*.jks`, `*.keystore`, `google-services.json`, `GoogleService-Info.plist` and FlutterFire's `firebase_options.dart`. Each one nothing provisions yet (local files, `copy`, `link` or `.worktreeinclude`) is suggested as an anchored `link` pattern, such as `/app/google-services.json`, so rotating it in the base repository updates every worktree. It also reads the `storeFile` keys of those properties files (any key ending in `storeFile`, such as `RELEASE_STORE_FILE`): a keystore they name inside the repository is suggested too, and a relative path that leaves the repository is reported, because it won't resolve from a worktree that lives in another folder. A `local.properties` that sets `flutter.sdk` isn't suggested, because Flutter rewrites it in every worktree and a link would write into the base repository's file; its `storeFile` keys are still read. The project settings list them under "Worktree files" and `shogun stacks` prints them; nothing is written until you accept and save.
 
 ## Gradle
 
@@ -41,6 +43,8 @@ ShogunAi also looks, at any depth outside build and tool folders (`build`, `.gra
 Every build in a worktree starts a Gradle daemon (and usually a Kotlin compile daemon) when no idle one can be reused, and each daemon keeps its memory for hours after the build. For a Gradle repository, the worktree screen shows a "Gradle daemons" section with every daemon on the machine: its memory, whether it's busy or idle, and the worktree of its last build. You can stop idle daemons there, and "Clean up" offers to stop the idle daemons of the worktrees it removes. A busy daemon is never stopped.
 
 If the repository doesn't turn on Gradle's build cache (`org.gradle.caching=true` in `gradle.properties`), ShogunAi tells you: with it on, a new worktree's first build reuses what other worktrees already built.
+
+When the main folder isn't a Gradle build but a direct subfolder is, such as `android/` in a Flutter or React Native app, ShogunAi finds that build too: it reads its `gradle.properties` for the build cache and for the JVM arguments `daemonMaxHeap` keeps.
 
 ```bash
 shogun gradle                      # list the daemons, their memory, state and worktree
@@ -73,10 +77,14 @@ Every setting is optional. Memory sizes are a number followed by `k`, `m` or `g`
 
 Parallel builds in several worktrees each start a JVM with Maven's default heap, and Maven daemons (mvnd) stay alive after the build. `mavenMaxHeap` is optional, a size such as `512m` or `1g`: with it, every worktree's environment (the main one included) gets `MAVEN_OPTS=-Xmx<size>`. A `MAVEN_OPTS` you declare in `env` takes precedence, one you set yourself in that shell is replaced, and builds started from an IDE don't inherit it.
 
-For a Maven repository the app shows a "Maven daemons" section with every mvnd daemon on the machine: its memory and the worktree it works in (the working directory of the process decides: the deepest worktree that contains it, "removed worktree" when the folder is gone inside the worktrees folder, "other project" otherwise, nothing when it can't be read). Plain `mvn` builds and IDEs are not listed. ShogunAi never stops a Maven daemon, because whether one is busy can't be known reliably, and cleaning up worktrees leaves them running.
+For a Maven repository the app shows a "Maven daemons" section with every mvnd daemon on the machine: its memory, whether it's busy or idle, and the worktree of its last build (mvnd moves the daemon's working directory to each build's folder: the deepest worktree that contains it, "removed worktree" when the folder is gone inside the worktrees folder, "other project" otherwise, nothing when it can't be read). Plain `mvn` builds and IDEs are not listed.
+
+The state comes from the daemon's own log, whose location mvnd puts on the daemon's command line; it works with mvnd 1.x and 2.x and any `mvnd.daemonStorage`. A daemon is busy while a build runs and idle afterwards; one whose log can't be read has an unknown state. You can stop idle daemons there, and "Clean up" offers to stop the idle Maven daemons of the worktrees it removes. A busy daemon, or one whose state is unknown, is never stopped; the state is read again just before stopping.
 
 ```bash
-shogun maven                       # list the Maven daemons, their memory and worktree
+shogun maven                       # list the Maven daemons, their memory, state and worktree
+shogun maven stop                  # stop every idle Maven daemon (or: shogun maven stop <pid>...)
+shogun clean --yes --stop-maven-daemons  # also stop the idle Maven daemons of the removed worktrees
 ```
 
 Daemon inspection needs `ps` and `lsof` (macOS and Linux).
@@ -100,7 +108,7 @@ Two worktrees running `docker compose up` share container, network and volume na
 
 Taking a project down keeps its volumes, and Compose never removes the images it built, so removed worktrees leave volumes, networks and images behind. ShogunAi records in `~/.shogunai/compose-projects.json` the project name it gives each worktree (when its environment is resolved and on every `up` or `build`); a volume, network or image whose `com.docker.compose.project` label is a recorded name whose worktree no longer exists is a leftover of that worktree. A name that no other worktree uses now and that no other repository has recorded is the only thing that counts, so projects of other repositories, even with a similar prefix, are never touched. Images pulled from a registry (such as `postgres`) carry no Compose label and are never removed.
 
-The Machine section's "Compose projects" view lists the projects `docker compose ls` reports for the repository's worktrees (status and worktree), the projects of removed worktrees (recorded ones, and those whose compose files lived in the repository or its worktrees folder), and, after them, the leftovers of removed worktrees. "Take down the projects of removed worktrees" runs `docker compose -p <name> down`, which removes containers and networks and keeps volumes. "Remove networks and images" removes the leftovers except volumes; "Remove volumes too" asks first, because their data is lost. Nothing is ever forced: an image or network still used by a container is kept and reported.
+The "Compose projects" view, opened from its item in the status bar, lists the projects `docker compose ls` reports for the repository's worktrees (status and worktree), the projects of removed worktrees (recorded ones, and those whose compose files lived in the repository or its worktrees folder), and, after them, the leftovers of removed worktrees. "Take down the projects of removed worktrees" runs `docker compose -p <name> down`, which removes containers and networks and keeps volumes. "Remove networks and images" removes the leftovers except volumes; "Remove volumes too" asks first, because their data is lost. Nothing is ever forced: an image or network still used by a container is kept and reported.
 
 "Clean up" has a checked option to take down the projects of the worktrees it removes and remove their networks and built images, and an unchecked one to remove their volumes too; if Docker isn't available the worktrees are still removed and the report says the projects were kept.
 
@@ -138,7 +146,8 @@ shogun emulator stop
 
 - On each machine, the project configuration chooses the AVD (or leaves it automatic) and whether it runs without a window; `--avd` and `--no-window` override them for one start.
 - The worktree list shows each emulator with Start and Stop, and "Clean up" (or `shogun clean --stop-emulators`) stops the emulators of the worktrees it removes.
-- The SDK is found through `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `sdk.dir` in `local.properties` or Android Studio's default location.
+- When the worktree is open in Orca, starting its emulator also shows it in Orca's emulator view; see [Orca](../agents.md#orca).
+- The SDK is found through `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `sdk.dir` in `local.properties` (the main folder's, or else that of a Gradle build in a subfolder such as `android/`) or Android Studio's default location.
 - The adb server is shared by every worktree: agents must never restart it (`adb kill-server`) or force a device with `-s`, `-e` or `-d`. The `SessionStart` hook tells Claude so.
 
 ## Compose Desktop app
@@ -189,6 +198,7 @@ tasks.withType<org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimu
 If you'd rather not touch the repository, `shogun simulator gradle-init install` (or the button in the project configuration) installs a Gradle init script that does the same for every project on this machine, after asking. Once installed, the project configuration offers to uninstall it, like `shogun simulator gradle-init uninstall`.
 
 - The project configuration also chooses the device type and runtime per machine.
+- When the worktree is open in Orca, starting its simulator also shows it in Orca's emulator view, unless the worktree's emulator is running too; see [Orca](../agents.md#orca).
 - "Clean up" (or `shogun clean --delete-simulators`) deletes the simulators of removed worktrees and ShogunAi simulators whose worktree is gone.
 
 ## Capacity
@@ -227,7 +237,7 @@ The quota is a machine setting, not part of the capacity profiles, and is never 
 When the folders add up to more than the quota, ShogunAi releases the orphaned folders first and then the least recently accessed folders of worktrees that are not in use, and stops as soon as the total fits. A worktree is in use while its agent is working or blocked, or its folder was accessed within the last hour. Folders of other projects, folders on unavailable volumes and the compilation cache are never released; if only those remain, the view says the quota is still exceeded and names the worktrees in use. The app applies the quota every time the folder sizes have been measured, and shows the usage against the quota (marked "automatic" for the automatic one), in the sidebar too, and the folders it released until you dismiss the notice. `shogun xcode trim` applies it from the command line.
 
 ```bash
-shogun xcode                               # this repository's DerivedData folders, the orphans and the compilation cache size
+shogun xcode                               # this repository's DerivedData folders with their packages, the orphans and the shared caches
 shogun xcode clean                         # delete the orphaned folders
 shogun xcode trim [--dry-run]              # release folders until DerivedData fits the quota
 shogun clean --yes --delete-derived-data   # also delete them after removing worktrees
@@ -240,3 +250,36 @@ shogun clean --yes --delete-derived-data   # also delete them after removing wor
 - It needs Xcode 26 or later and helps `.xcodeproj` and `.xcworkspace` projects; Swift packages got no reuse between worktrees.
 - It reaches agents like any [per-worktree variable](../agents.md#per-worktree-environment). An `XCODE_XCCONFIG_FILE` you set yourself in that shell is replaced; declare it in `env` instead and it takes precedence over the provider's.
 - Xcode opened from the Dock doesn't inherit the agent's shell. Set the build settings in the project if you want caching there too.
+
+### Swift packages and package caches
+
+Xcode resolves a project's Swift packages into its DerivedData folder (`SourcePackages`), so each worktree has its own checkouts, which count against the quota and go away with the folder. They come from Xcode's shared repository cache, so a new worktree resolves them without the network. The section and `shogun xcode` show how much of each worktree's folder are packages ("App.xcodeproj · packages 800 MB"), measured and remembered with the folder's size; checkouts aren't shared between worktrees.
+
+The shared package caches, SwiftPM's (`~/Library/Caches/org.swift.swiftpm`) and CocoaPods' (`~/Library/Caches/CocoaPods`), are shown below the compilation cache when they exist. Like it, they don't count against the quota and ShogunAi never deletes them; only their default locations are measured.
+
+### CocoaPods
+
+A CocoaPods project's `Pods` folder is usually ignored by Git, so a fresh worktree can't build until `pod install` runs. Turn on `cocoaPods` and ShogunAi gives each new or provisioned worktree the base repository's pods:
+
+```json
+{ "providers": { "xcode": { "cocoaPods": true } } }
+```
+
+For every `Podfile.lock` tracked by Git, at any depth, whose worktree has no `Pods` yet, ShogunAi compares it with the base's `Pods/Manifest.lock`, the same check CocoaPods' "Check Pods Manifest.lock" build phase makes. When they match, the base's `Pods` is cloned into the worktree with APFS copy-on-write (`cp -c`): instant, and it takes no disk until a file changes. When they don't match, the base never ran `pod install`, or the volume can't clone, nothing is copied (never a slow full copy) and `shogun new`, `shogun provision` and the worktree creation hook say which folders need `pod install` and why (`pods` in their JSON). Pods are prepared after the files are copied and before the post-creation commands, so a `pod install` declared there finds them in place; a problem with the pods never fails the worktree.
+
+## Flutter
+
+A fresh worktree of a Flutter repository doesn't build: `.dart_tool/`, `android/local.properties` (with the `flutter.sdk` the Android build needs), `ios/Flutter/Generated.xcconfig` and `ios/.symlinks` are ignored by Git and only appear after `flutter pub get`. Turn on the Flutter provider and ShogunAi runs it in every new or provisioned worktree:
+
+```json
+{ "providers": { "flutter": {}, "gradle": {}, "emulator": {}, "ios-simulator": {}, "xcode": { "cocoaPods": true } } }
+```
+
+`flutter pub get` runs in the worktree's main folder after the files are copied and the pods are prepared, and before the post-creation commands, so a `dart run build_runner build` declared there finds the packages resolved. It runs whether or not the repository is approved: the command is fixed by ShogunAi and runs no code of the repository. With a warm pub cache it resolves offline in seconds. `shogun new`, `shogun provision` and the worktree creation hook report the outcome (`flutter.pubGet` in their JSON). When it fails, because `flutter` isn't on the `PATH`, a package can't be downloaded or anything else, the worktree is kept and the report says `flutter pub get` is still needed and why. The desktop app started from Finder doesn't inherit the shell's `PATH`: it finds Flutter installed with Homebrew, but not always an SDK unpacked by hand elsewhere.
+
+- **FVM.** When the repository has `.fvmrc`, ShogunAi runs `fvm flutter pub get`, so the version the repository pins is used. A version that isn't installed is reported as `flutter pub get` still needed.
+- **The other providers do the rest.** Flutter's Android build is an ordinary Gradle build in `android/`, so the [`gradle`](#gradle) provider handles its daemons, cache and memory, and the [`emulator`](#android-emulator) provider its devices. `xcodebuild`, which Flutter runs for iOS, writes DerivedData the [`xcode`](#xcode) provider attributes to the worktree, and the [`ios-simulator`](#ios-simulator) provider gives it a simulator. [Stack detection](#detecting-stacks) suggests all of them for a project made from Flutter's template.
+- **Devices.** Flutter doesn't read `ANDROID_SERIAL`, and other worktrees' devices are online too, so `flutter run` without `-d` asks or picks the wrong one. Start the worktree's device with `shogun emulator start` or `shogun simulator start`, then pass it explicitly: `flutter run -d "$ANDROID_SERIAL"` or `flutter run -d "$IOS_SIMULATOR_UDID"`, and the same for `flutter test integration_test` and `flutter drive`. Never launch emulators with `flutter emulators --launch`, which starts one outside ShogunAi's pool and without read-only mode. The `SessionStart` hook tells Claude so, naming only the device providers the repository declares, and `fvm flutter` when it has `.fvmrc`.
+- **CocoaPods.** With `cocoaPods` on, a new worktree gets the base repository's pods next to the tracked `ios/Podfile.lock`. Flutter's first build in that worktree still runs `pod install` itself, because it decides from a fingerprint kept in `build/`; with the pods already in place it downloads nothing. A "needs `pod install`" report is handled by Flutter's own build too.
+- **Ports.** `flutter run` binds its VM service and DevTools to free ports it picks, so worktrees don't collide. If the repository fixes the web server port, reserve one per worktree with `env` and pass it on: `"env": { "FLUTTER_WEB_PORT": "${port}" }` and `flutter run -d chrome --web-port "$FLUTTER_WEB_PORT"`.
+- `build/` and `.dart_tool/` stay per worktree: they hold absolute paths and incremental compiler state. The pub cache (`~/.pub-cache`) is already shared by every worktree.

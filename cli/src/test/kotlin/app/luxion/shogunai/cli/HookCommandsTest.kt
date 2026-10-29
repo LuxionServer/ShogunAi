@@ -1,5 +1,6 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.domain.model.FlutterProvider
 import app.luxion.shogunai.domain.FakeAgentSessionStore
 import app.luxion.shogunai.domain.FakeMachineCapacity
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
@@ -14,6 +15,10 @@ import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakeHerdrConfigSource
+import app.luxion.shogunai.domain.FakeGitHubClient
+import app.luxion.shogunai.domain.FakeOrcaClient
+import app.luxion.shogunai.domain.model.OrcaWorktree
+import app.luxion.shogunai.domain.model.OrcaTerminal
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
 import app.luxion.shogunai.domain.FakeKmpTestWiring
@@ -29,6 +34,8 @@ import app.luxion.shogunai.domain.model.DesktopTurn
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.domain.model.XcodeProvider
+import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
 import app.luxion.shogunai.domain.model.WorktreeError
@@ -53,12 +60,14 @@ class HookCommandsTest {
 
     private class Executor(
         private val worktreeList: String,
+        private val respondIn: (List<String>, String?) -> CommandResult? = { _, _ -> null },
         private val respond: (List<String>) -> CommandResult? = { null },
     ) : ShellCommandExecutor {
         val calls = mutableListOf<Pair<List<String>, String?>>()
 
         override suspend fun execute(command: List<String>, workingDirectory: String?): CommandResult {
             calls += command to workingDirectory
+            respondIn(command, workingDirectory)?.let { return it }
             respond(command)?.let { return it }
             return when {
                 "--git-common-dir" in command -> CommandResult(command, 0, "/home/dev/projects/main-repo/.git\n", "")
@@ -98,6 +107,8 @@ class HookCommandsTest {
         herdr: FakeHerdrClient = FakeHerdrClient(),
         trust: FakeRepositoryTrust = FakeRepositoryTrust(),
         sessionStore: FakeAgentSessionStore = FakeAgentSessionStore(),
+        orca: FakeOrcaClient = FakeOrcaClient(installed = false),
+        gitHub: FakeGitHubClient = FakeGitHubClient(),
     ) = ShogunCli(
         executor = executor,
         fileManager = FakeFileManager(existing = existing),
@@ -116,6 +127,8 @@ class HookCommandsTest {
         machineCapacity = FakeMachineCapacity(),
         derivedDataSource = FakeDerivedDataSource(),
         herdrConfig = FakeHerdrConfigSource(),
+        orca = orca,
+        gitHub = gitHub,
         workingDirectory = "/",
         out = out,
         err = err,
@@ -144,6 +157,33 @@ class HookCommandsTest {
         assertEquals("$worktreesRoot/TASK-123\n", out.toString())
         assertTrue(executor.ran("git", "worktree", "add", "--no-track", "$worktreesRoot/TASK-123", "-b", "feature/TASK-123", "abc123"))
         assertTrue(executor.calls.any { it.first.getOrNull(1) == "rev-parse" && it.second == "$base/src" }, "resolves the repository from cwd")
+    }
+
+    @Test
+    fun `worktree-create notes the folders that need pod install on stderr`() {
+        val executor = Executor(porcelain()) { command ->
+            if (command.lastOrNull() == ":(glob)**/Podfile.lock") CommandResult(command, 0, "iosApp/Podfile.lock\u0000", "") else null
+        }
+        val provisioning = RepositoryProvisioning(providers = RepositoryProviders(xcode = XcodeProvider(cocoaPods = true)))
+
+        val exitCode = cli(executor, createInput("TASK-123"), provisioning = provisioning).run(listOf("hook", "worktree-create"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("$worktreesRoot/TASK-123\n", out.toString())
+        assertTrue(err.contains("shogun: hook worktree-create: iosApp/Pods: pod install needed (the base has no pods)"), err.toString())
+    }
+
+    @Test
+    fun `worktree-create records the branch of the cwd's HEAD as the base`() {
+        val executor = Executor(porcelain()) { command ->
+            if ("--symbolic-full-name" in command) CommandResult(command, 0, "refs/heads/develop\n", "") else null
+        }
+
+        val exitCode = cli(executor, createInput("TASK-123", cwd = "$base/src")).run(listOf("hook", "worktree-create"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(executor.calls.any { "--symbolic-full-name" in it.first && it.first.last() == "HEAD" && it.second == "$base/src" })
+        assertTrue(executor.ran("git", "config", "branch.feature/TASK-123.gh-merge-base", "develop"))
     }
 
     @Test
@@ -279,7 +319,7 @@ class HookCommandsTest {
         val exitCode = cli(executor, """{"worktree_path":"$path"}""", existing = listOf(base, path)).run(listOf("hook", "worktree-remove"))
 
         assertEquals(0, exitCode)
-        assertEquals("shogun: kept branch feature/TASK-123 because it isn't merged into the main branch\n", err.toString())
+        assertEquals("shogun: kept branch feature/TASK-123 because it isn't merged into its base or the main branch\n", err.toString())
     }
 
     @Test
@@ -298,7 +338,27 @@ class HookCommandsTest {
         assertEquals(0, exitCode)
         assertTrue(executor.ran("git", "merge-base", "--is-ancestor", "feature/TASK-123", "main"))
         assertTrue(executor.branchDeletions().isEmpty())
-        assertEquals("shogun: kept branch feature/TASK-123 because it isn't merged into the main branch\n", err.toString())
+        assertEquals("shogun: kept branch feature/TASK-123 because it isn't merged into its base or the main branch\n", err.toString())
+    }
+
+    @Test
+    fun `worktree-remove deletes a branch merged into its recorded base but not into the main branch`() {
+        val path = "$worktreesRoot/TASK-123"
+        val executor = Executor(porcelain(path to "feature/TASK-123")) { command ->
+            when {
+                command.take(3) == listOf("git", "config", "--get") -> CommandResult(command, 0, "epic/redesign\n", "")
+                command.take(2) == listOf("git", "rev-parse") && command.last() == "refs/remotes/origin/epic/redesign" -> CommandResult(command, 1, "", "")
+                command.take(3) == listOf("git", "merge-base", "--is-ancestor") && command.last() == "main" ->
+                    CommandResult(command, 1, "", "")
+                else -> null
+            }
+        }
+
+        val exitCode = cli(executor, """{"worktree_path":"$path"}""", existing = listOf(base, path)).run(listOf("hook", "worktree-remove"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(executor.ran("git", "merge-base", "--is-ancestor", "feature/TASK-123", "epic/redesign"))
+        assertTrue(executor.ran("git", "branch", "-D", "--", "feature/TASK-123"))
     }
 
     @Test
@@ -337,6 +397,19 @@ class HookCommandsTest {
 
         assertEquals(0, exitCode)
         assertEquals("shogun: couldn't close the Herdr workspace of $path: workspace w2 not found\n", err.toString())
+    }
+
+    @Test
+    fun `worktree-remove closes the Orca terminals of the removed worktree`() {
+        val path = "$worktreesRoot/TASK-123"
+        val orca = FakeOrcaClient(terminals = mapOf(path to listOf(OrcaTerminal("term_1", path))))
+
+        val exitCode = cli(Executor(porcelain(path to "feature/TASK-123")), """{"worktree_path":"$path"}""", existing = listOf(base, path), orca = orca)
+            .run(listOf("hook", "worktree-remove"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf(path), orca.closedWorktrees)
+        assertEquals("", err.toString())
     }
 
     @Test
@@ -522,6 +595,120 @@ class HookCommandsTest {
         assertEquals("", out.toString())
     }
 
+    private val orcaWorktree = "/home/dev/orca/workspaces/main-repo/TASK-7"
+
+    @Test
+    fun `orca setup provisions the worktree at ORCA_WORKTREE_PATH and notes it is outside the worktrees folder`() {
+        val executor = Executor(porcelain(orcaWorktree to "user/TASK-7"))
+
+        val exitCode = cli(executor, "", environment = mapOf("ORCA_WORKTREE_PATH" to orcaWorktree, "ORCA_ROOT_PATH" to base))
+            .run(listOf("hook", "orca", "setup"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            ".env\nnote: TASK-7 is outside ShogunAi's worktrees folder ~/projects/worktrees; create new worktrees from ShogunAi so they land there\n",
+            out.toString(),
+        )
+        assertTrue(executor.calls.any { it.first.getOrNull(1) == "rev-parse" && it.second == orcaWorktree }, "resolves the repository from the worktree")
+    }
+
+    @Test
+    fun `orca setup syncs the new worktree in Orca after provisioning`() {
+        val inside = "$worktreesRoot/TASK-7"
+        val executor = Executor(porcelain(inside to "feature/TASK-7"))
+        val orca = FakeOrcaClient(psRows = listOf(OrcaWorktree(inside, createdByOrca = true, comment = "", workspaceStatus = "in-progress")))
+
+        val exitCode = cli(executor, "", environment = mapOf("ORCA_WORKTREE_PATH" to inside), orca = orca).run(listOf("hook", "orca", "setup"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(".env\n", out.toString())
+        assertEquals(listOf(inside), orca.updates.map { it.first })
+        assertTrue(orca.updates.single().second.comment.orEmpty().startsWith("ShogunAi: "), orca.updates.toString())
+    }
+
+    @Test
+    fun `orca setup keeps its exit code when the Orca sync fails`() {
+        val inside = "$worktreesRoot/TASK-7"
+        val executor = Executor(porcelain(inside to "feature/TASK-7"))
+        val orca = FakeOrcaClient(
+            psRows = listOf(OrcaWorktree(inside, createdByOrca = true, comment = "", workspaceStatus = "in-progress")),
+            updateFailures = mapOf(inside to WorktreeError.OrcaCommandFailed(listOf("orca"), "runtime_unavailable")),
+        )
+
+        val exitCode = cli(executor, "", environment = mapOf("ORCA_WORKTREE_PATH" to inside), orca = orca).run(listOf("hook", "orca", "setup"))
+
+        assertEquals(0, exitCode)
+        assertTrue(err.contains("couldn't update $inside in Orca: runtime_unavailable"), err.toString())
+    }
+
+    @Test
+    fun `orca setup prints no note inside the worktrees folder`() {
+        val inside = "$worktreesRoot/TASK-7"
+        val executor = Executor(porcelain(inside to "feature/TASK-7"))
+
+        val exitCode = cli(executor, "", environment = mapOf("ORCA_WORKTREE_PATH" to inside)).run(listOf("hook", "orca", "setup"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(".env\n", out.toString())
+    }
+
+    @Test
+    fun `orca setup copies nothing and notes nothing without ShogunAi configuration`() {
+        val executor = Executor(porcelain(orcaWorktree to "user/TASK-7")) { command ->
+            if (command.getOrNull(1) == "ls-files") CommandResult(command, 0, "", "") else null
+        }
+
+        val exitCode = cli(executor, "", projects = emptyList(), environment = mapOf("ORCA_WORKTREE_PATH" to orcaWorktree), provisioning = RepositoryProvisioning())
+            .run(listOf("hook", "orca", "setup"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("", out.toString())
+    }
+
+    @Test
+    fun `orca setup without ORCA_WORKTREE_PATH fails with 2`() {
+        val executor = Executor(porcelain())
+
+        assertEquals(2, cli(executor, "").run(listOf("hook", "orca", "setup")))
+        assertTrue(err.contains("ORCA_WORKTREE_PATH isn't set"), err.toString())
+        assertTrue(executor.calls.isEmpty())
+    }
+
+    @Test
+    fun `orca setup that fails to provision exits with 1 on standard error`() {
+        val executor = Executor(porcelain())
+
+        val exitCode = cli(executor, "", environment = mapOf("ORCA_WORKTREE_PATH" to orcaWorktree)).run(listOf("hook", "orca", "setup"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("is not a linked worktree"), err.toString())
+    }
+
+    @Test
+    fun `orca falls back to ORCA_ROOT_PATH when the worktree's Git metadata can't name the repository`() {
+        val executor = Executor(
+            porcelain(orcaWorktree to "user/TASK-7"),
+            respondIn = { command, directory ->
+                if ("--git-common-dir" in command && directory == orcaWorktree) CommandResult(command, 128, "", "fatal: not a git repository") else null
+            },
+        )
+
+        val exitCode = cli(executor, "", environment = mapOf("ORCA_WORKTREE_PATH" to orcaWorktree, "ORCA_ROOT_PATH" to base))
+            .run(listOf("hook", "orca", "setup"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(executor.calls.any { "--git-common-dir" in it.first && it.second == base }, "resolves the repository from ORCA_ROOT_PATH")
+    }
+
+    @Test
+    fun `orca rejects an unknown action with 2`() {
+        val executor = Executor(porcelain())
+
+        assertEquals(2, cli(executor, "", environment = mapOf("ORCA_WORKTREE_PATH" to orcaWorktree)).run(listOf("hook", "orca", "cleanup")))
+        assertEquals(2, cli(executor, "").run(listOf("hook", "orca")))
+        assertTrue(executor.calls.isEmpty())
+    }
+
     private val removedPath = "/home/dev/projects/worktrees/TASK-9"
 
     private fun removedEvent() = checkNotNull(javaClass.getResource("/herdr/worktree-removed-event.json")).readText().trim()
@@ -551,7 +738,7 @@ class HookCommandsTest {
         val exitCode = cli(executor, "", environment = removedEnvironment()).run(listOf("hook", "herdr"))
 
         assertEquals(0, exitCode)
-        assertEquals("shogun: kept branch feature/TASK-9 because it isn't merged into the main branch\n", err.toString())
+        assertEquals("shogun: kept branch feature/TASK-9 because it isn't merged into its base or the main branch\n", err.toString())
     }
 
     @Test
@@ -799,5 +986,23 @@ class HookCommandsTest {
 
         assertEquals(2, exitCode)
         assertTrue(err.contains("agent-state"), err.toString())
+    }
+
+    @Test
+    fun `worktree-create notes that flutter pub get is still needed on stderr`() {
+        val executor = Executor(porcelain()) { command ->
+            if (command.firstOrNull() == "flutter") CommandResult(command, 1, "", "Because sample_app depends on missing_package") else null
+        }
+        val provisioning = RepositoryProvisioning(providers = RepositoryProviders(flutter = FlutterProvider))
+
+        val exitCode = cli(executor, createInput("TASK-123"), provisioning = provisioning).run(listOf("hook", "worktree-create"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("$worktreesRoot/TASK-123\n", out.toString())
+        assertTrue(executor.ran("flutter", "pub", "get"))
+        assertTrue(
+            err.contains("shogun: hook worktree-create: flutter pub get needed: exited with code 1: Because sample_app depends on missing_package"),
+            err.toString(),
+        )
     }
 }

@@ -7,6 +7,8 @@ import app.luxion.shogunai.domain.model.HerdrWorktreeOpening
 
 interface HerdrClient {
 
+    fun isInstalled(): Boolean = true
+
     suspend fun openWorktree(repository: String, path: String, label: String): HerdrWorktreeOpening
 
     suspend fun splitPane(paneId: String, cwd: String, environment: List<Pair<String, String>>): String

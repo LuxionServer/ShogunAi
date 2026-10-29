@@ -14,8 +14,8 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class InvalidTaskId(val rawInput: String) :
         WorktreeError("Invalid task id: \"$rawInput\"")
 
-    class SecretFileNotFound(val files: List<String>, val basePath: String) :
-        WorktreeError("Secret files not found in $basePath: ${files.joinToString()}")
+    class LocalFilesUnavailable(val basePath: String, val files: List<UnavailableLocalFile>) :
+        WorktreeError(localFilesUnavailableMessage(basePath, files))
 
     class GitCommandFailed(
         val command: List<String>,
@@ -87,6 +87,9 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class StartPointNotFound(val ref: String) :
         WorktreeError("Start point doesn't name a commit: $ref")
 
+    class NotABranch(val ref: String) :
+        WorktreeError("\"$ref\" isn't a local branch or a branch of a remote")
+
     class ProcessListingFailed(val command: List<String>, val exitCode: Int) :
         WorktreeError("Couldn't list processes (exit code $exitCode): ${command.joinToString(" ")}")
 
@@ -124,9 +127,10 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     )
 
     class DesktopTurnTaken(val holder: DesktopTurn?, val waiting: Int = 0) : WorktreeError(
-        (holder?.let { "The desktop is taken by ${it.displayName} until ${it.expiryClockTime()}" + desktopWaitingNote(waiting) } ?: desktopQueueNote(waiting)) +
-            ". Wait for it with --wait",
-    )
+        desktopTakenSummary(holder, waiting) + ". Wait for it with --wait",
+    ) {
+        val summary: String get() = desktopTakenSummary(holder, waiting)
+    }
 
     class DesktopTurnWaitTimedOut(val waited: Duration, val holder: DesktopTurn?) : WorktreeError(
         "Waited ${waited.toWaitText()} for the desktop" +
@@ -250,6 +254,26 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class HerdrAgentNotStarted(val paneId: String, val command: String) :
         WorktreeError("The agent `$command` didn't start in Herdr pane $paneId within $AGENT_START_SECONDS seconds; the pane is left open")
 
+    object OrcaNotInstalled : WorktreeError(
+        "Orca isn't installed: the orca command wasn't found. Install it from https://onorca.dev",
+    )
+
+    object OrcaNotStarted : WorktreeError(
+        "Orca didn't start: it wasn't accepting commands $ORCA_START_SECONDS seconds after being opened",
+    )
+
+    class OrcaCommandFailed(val command: List<String>, val detail: String) :
+        WorktreeError("Orca couldn't open the worktree: $detail")
+
+    class OrcaAgentNotStarted(val terminalHandle: String, val command: String) :
+        WorktreeError("The agent `$command` didn't start in Orca terminal $terminalHandle within $AGENT_START_SECONDS seconds; the terminal is left open")
+
+    class OrcaMultirepoFolderNotOpen(val folder: String) : WorktreeError(
+        "Orca has no workspace for $folder, and only Orca's app can add a folder that isn't a Git repository. " +
+            "In Orca, add $folder as a project and import its repositories as a group, then add a folder workspace to that group; " +
+            "or add it and choose \"Open as Folder\". Then try again",
+    )
+
     class TerminalLaunchFailed(val terminal: TerminalId, val detail: String) :
         WorktreeError("${terminal.displayName} couldn't open the worktree" + if (detail.isBlank()) "" else ": $detail")
 
@@ -335,6 +359,9 @@ private fun desktopWaitingNote(waiting: Int): String = when (waiting) {
     1 -> "; 1 worktree is waiting for it"
     else -> "; $waiting worktrees are waiting for it"
 }
+
+private fun desktopTakenSummary(holder: DesktopTurn?, waiting: Int): String =
+    holder?.let { "The desktop is taken by ${it.displayName} until ${it.expiryClockTime()}" + desktopWaitingNote(waiting) } ?: desktopQueueNote(waiting)
 
 private fun desktopQueueNote(waiting: Int): String =
     if (waiting == 1) "1 worktree is waiting for the desktop first" else "$waiting worktrees are waiting for the desktop first"

@@ -11,6 +11,8 @@ import app.luxion.shogunai.domain.FakeGitRepositories
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
 import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakeHerdrConfigSource
+import app.luxion.shogunai.domain.FakeOrcaClient
+import app.luxion.shogunai.domain.FakeToolPreferenceRepository
 import app.luxion.shogunai.domain.FakeKmpTestWiring
 import app.luxion.shogunai.domain.FakeMachineCapacity
 import app.luxion.shogunai.domain.FakeMultirepoSource
@@ -23,8 +25,11 @@ import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.ClaudeSession
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
+import app.luxion.shogunai.domain.model.OrcaTerminal
+import app.luxion.shogunai.domain.model.OrcaWorktree
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.SharedVariablesDeclaration
+import app.luxion.shogunai.domain.usecase.ResolveMultirepoUseCase
 import app.luxion.shogunai.domain.model.approvalSubject
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import app.luxion.shogunai.domain.model.HerdrWorkspace
@@ -34,6 +39,7 @@ import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.ResourceSettings
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.WorkspaceSetting
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
@@ -49,6 +55,7 @@ import kotlin.test.Test
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MultirepoCommandsTest {
@@ -97,6 +104,8 @@ class MultirepoCommandsTest {
         claudeSessions: FakeClaudeSessionRegistry = FakeClaudeSessionRegistry(),
         provisioning: FakeRepositoryProvisioningSource = FakeRepositoryProvisioningSource(),
         trust: RepositoryTrust = RepositoryTrust.NONE,
+        orca: FakeOrcaClient = FakeOrcaClient(installed = false),
+        runner: FakeToolPreferenceRepository = FakeToolPreferenceRepository(),
     ) = ShogunCli(
         executor = git,
         fileManager = fileManager,
@@ -113,6 +122,7 @@ class MultirepoCommandsTest {
         machineCapacity = FakeMachineCapacity(),
         derivedDataSource = FakeDerivedDataSource(),
         herdrConfig = FakeHerdrConfigSource(),
+        orca = orca,
         workingDirectory = workingDirectory,
         out = out,
         err = err,
@@ -121,6 +131,7 @@ class MultirepoCommandsTest {
         environmentVariable = { if (it == "CLAUDE_ENV_FILE") envFile.toString() else null },
         userHome = "/home/dev",
         herdr = herdrClient,
+        toolPreferences = runner,
         herdrAgentStartTimeout = 100.milliseconds,
         readAnswer = { answer },
         sessionStore = sessionStore,
@@ -247,6 +258,120 @@ class MultirepoCommandsTest {
     }
 
     @Test
+    fun `open a group in Orca opens each worktree under its repository`() {
+        groupTask1()
+        val orca = FakeOrcaClient()
+
+        val exitCode = cli(orca = orca).run(listOf("open", "TASK-1", "--orca"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf(appBase, apiBase), orca.addedRepos)
+        assertEquals(listOf("$worktreesRoot/app/TASK-1", "$worktreesRoot/api/TASK-1"), orca.created.map { it.worktreePath })
+        assertTrue(out.contains("opened $worktreesRoot/app/TASK-1 in Orca with"), out.toString())
+        assertTrue(out.contains("(terminal term_2)"), out.toString())
+        assertTrue(herdr.opened.isEmpty())
+    }
+
+    @Test
+    fun `open a group in Orca reports focused and started-agent members in json`() {
+        groupTask1()
+        val app = "$worktreesRoot/app/TASK-1"
+        val orca = FakeOrcaClient(terminals = mapOf(app to listOf(OrcaTerminal("term_app", app))), agents = mapOf("term_app" to "claude"))
+
+        val exitCode = cli(orca = orca).run(listOf("open", "TASK-1", "--orca", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("feature/TASK-1", json()["branch"]!!.jsonPrimitive.content)
+        val repos = json()["repos"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(listOf("app", "api"), repos.map { it["alias"]!!.jsonPrimitive.content })
+        assertEquals(listOf("focused", "started-agent"), repos.map { it["result"]!!.jsonPrimitive.content })
+        assertEquals(listOf("term_app", "term_1"), repos.map { it["terminal"]!!.jsonPrimitive.content })
+        assertEquals("claude", repos[0]["agent"]!!.jsonPrimitive.content)
+        assertTrue(repos.all { it["error"] is JsonNull && "session_name" in it && "path" in it })
+    }
+
+    @Test
+    fun `open a group in Orca fails for a member whose agent doesn't start and still opens the other`() {
+        groupTask1()
+        val app = "$worktreesRoot/app/TASK-1"
+        val orca = FakeOrcaClient(
+            terminals = mapOf(app to listOf(OrcaTerminal("term_app", app))),
+            agents = mapOf("term_app" to "claude"),
+            startsAgents = false,
+        )
+
+        val exitCode = cli(orca = orca).run(listOf("open", "TASK-1", "--orca"))
+
+        assertEquals(1, exitCode)
+        assertTrue(out.contains("focused $app's running agent in Orca"), out.toString())
+        assertTrue(err.contains("couldn't open api ($worktreesRoot/api/TASK-1) in Orca"), err.toString())
+    }
+
+    @Test
+    fun `open a group in Orca rejects unknown and ambiguous groups and the agent option like Herdr`() {
+        groupTask1()
+        with(git) {
+            app.worktree("/w/app-fix", "fix/TASK-1")
+            docs.worktree("/w/docs-fix", "fix/TASK-1")
+        }
+        val orca = FakeOrcaClient()
+
+        assertEquals(1, cli(orca = orca).run(listOf("open", "TASK-9", "--orca")))
+        assertEquals(2, cli(orca = orca).run(listOf("open", "TASK-1", "--orca")))
+        assertEquals(2, cli(orca = orca).run(listOf("open", "feature/TASK-1", "--orca", "--agent", "Codex")))
+        assertTrue(err.contains("each worktree of a group opens with its own project's agent"), err.toString())
+        assertTrue(orca.created.isEmpty())
+    }
+
+    @Test
+    fun `open a group in Orca without Orca says so once`() {
+        groupTask1()
+
+        val exitCode = cli(orca = FakeOrcaClient(installed = false)).run(listOf("open", "TASK-1", "--orca"))
+
+        assertEquals(1, exitCode)
+        assertEquals(1, Regex("onorca.dev").findAll(err.toString()).count(), err.toString())
+    }
+
+    @Test
+    fun `open without a target in Orca starts the multirepo agent in the folder's workspace`() {
+        source.agents[folder] = AgentLaunchConfig(agentCommand = "claude", useHeadroom = false)
+        val orca = FakeOrcaClient(psRows = listOf(OrcaWorktree(folder, false, folderId = "f1")), folderPaths = mapOf("f1" to folder))
+
+        val exitCode = cli(orca = orca).run(listOf("open", "--orca"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf(FakeOrcaClient.Created(folder, "product", "claude -n product", true)), orca.created)
+        assertTrue(out.contains("opened $folder in Orca with"), out.toString())
+    }
+
+    @Test
+    fun `open without a target in Orca reports the multirepo agent in json`() {
+        source.agents[folder] = AgentLaunchConfig(agentCommand = "claude", useHeadroom = false)
+        val orca = FakeOrcaClient(psRows = listOf(OrcaWorktree(folder, false, folderId = "f1")), folderPaths = mapOf("f1" to folder))
+
+        val exitCode = cli(orca = orca).run(listOf("open", "--orca", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(folder, json()["path"]!!.jsonPrimitive.content)
+        assertEquals("started-agent", json()["orca"]!!.jsonPrimitive.content)
+        assertEquals("term_1", json()["terminal"]!!.jsonPrimitive.content)
+        assertEquals("Claude", json()["agent"]!!.jsonPrimitive.content)
+        assertTrue("session_name" in json())
+    }
+
+    @Test
+    fun `open without a target in Orca explains how to add a folder Orca has no workspace for`() {
+        val orca = FakeOrcaClient()
+
+        val exitCode = cli(orca = orca).run(listOf("open", "--orca"))
+
+        assertEquals(1, exitCode)
+        assertTrue(err.contains("Orca has no workspace for $folder") && err.contains("Open as Folder") && err.contains("folder workspace"), err.toString())
+        assertTrue(orca.addedRepos.isEmpty() && orca.created.isEmpty())
+    }
+
+    @Test
     fun `open a group opens each worktree under its repository`() {
         groupTask1()
 
@@ -344,7 +469,7 @@ class MultirepoCommandsTest {
 
         val repo = json()["groups"]!!.jsonArray.single().jsonObject["repos"]!!.jsonArray.first().jsonObject
         assertEquals(
-            Json.parseToJsonElement("""[{"name": "claude", "state": null, "stateSource": null, "herdrState": null, "sessions": [{"name": "app-task-1", "pid": 400}]}]"""),
+            Json.parseToJsonElement("""[{"name": "claude", "state": null, "stateSource": null, "herdrState": null, "sessions": [{"name": "app-task-1", "pid": 400}], "activity": null}]"""),
             repo["agents"],
         )
     }
@@ -473,6 +598,26 @@ class MultirepoCommandsTest {
         assertTrue(out.lines().first().startsWith("ShogunAi multirepo product at $folder"))
         assertTrue(out.contains("shogun status"))
         assertEquals("", envFile.readText())
+    }
+
+    @Test
+    fun `session start in the multirepo folder names the runner in use`() {
+        cli(input = """{"cwd": "$folder"}""", orca = FakeOrcaClient(), runner = FakeToolPreferenceRepository(runner = RunnerId.ORCA)).run(listOf("hook", "session-start"))
+
+        assertTrue(out.contains("`shogun open <id> --orca` to open its worktrees"), out.toString())
+        assertFalse(out.contains("--herdr"), out.toString())
+    }
+
+    @Test
+    fun `open without a runner flag opens the group in the runner in use`() {
+        groupTask1()
+        val orca = FakeOrcaClient()
+
+        val exitCode = cli(orca = orca, runner = FakeToolPreferenceRepository(runner = RunnerId.ORCA)).run(listOf("open", "TASK-1"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf("$worktreesRoot/app/TASK-1", "$worktreesRoot/api/TASK-1"), orca.created.map { it.worktreePath })
+        assertTrue(herdr.opened.isEmpty())
     }
 
     @Test
@@ -838,6 +983,18 @@ class MultirepoCommandsTest {
     }
 
     @Test
+    fun `an unapproved declaration never reaches Orca and open behaves as outside a multirepo`() {
+        val multirepos = clonedWithDeclaration()
+        val orca = FakeOrcaClient()
+
+        val exitCode = cli(workingDirectory = cloned, multirepos = multirepos, orca = orca).run(listOf("open", "--orca"))
+
+        assertEquals(2, exitCode)
+        assertTrue(err.contains("'open' needs a task id, path or branch"), err.toString())
+        assertTrue(orca.created.isEmpty() && orca.addedRepos.isEmpty() && orca.psReads == 0)
+    }
+
+    @Test
     fun `a declaration in a cloned repository never reaches Herdr`() {
         val multirepos = clonedWithDeclaration()
 
@@ -1081,5 +1238,107 @@ class MultirepoCommandsTest {
         out.clear()
         cli(answer = "n").run(listOf("multirepo", "trust"))
         assertTrue(out.contains("API_URL=http://localhost:\${port:api.http}"), out.toString())
+    }
+
+    private val apiUrl = "http://localhost:${'$'}{port:api.http}"
+
+    @Test
+    fun `env set adds a shared variable, keeps the approval and env lists it`() {
+        source.approveAll = false
+        source.approve(folder, ResolveMultirepoUseCase(source, git, fileManager).build(folder, declaration).approvalSubject)
+
+        val exitCode = cli().run(listOf("multirepo", "env", "set", "app", "API_URL", apiUrl))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(mapOf("app" to mapOf("API_URL" to apiUrl)), source.declarations.getValue(folder).env?.byAlias)
+        assertEquals(declaration, source.declarations.getValue(folder).copy(env = null))
+        assertTrue(ResolveMultirepoUseCase(source, git, fileManager).build(folder, source.declarations.getValue(folder)).approved)
+        out.clear()
+        assertEquals(0, cli().run(listOf("multirepo", "env")))
+        assertTrue(out.lines().map { it.trim() }.containsAll(listOf("app", "API_URL=$apiUrl")), out.toString())
+        out.clear()
+        assertEquals(0, cli().run(listOf("multirepo", "env", "--json")))
+        assertEquals(apiUrl, json()["env"]!!.jsonObject["app"]!!.jsonObject["API_URL"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `env with no variables says so`() {
+        assertEquals(0, cli().run(listOf("multirepo", "env")))
+        assertTrue(out.contains("shares no variables"), out.toString())
+    }
+
+    @Test
+    fun `env set rejects an invalid template with 1 and an unknown repository with 2`() {
+        assertEquals(1, cli().run(listOf("multirepo", "env", "set", "app", "DEBUG_PORT", "${'$'}{port}")))
+        assertTrue(err.contains(".shogunai.json"), err.toString())
+        assertEquals(2, cli().run(listOf("multirepo", "env", "set", "web", "API_URL", "x")))
+        assertTrue(err.contains("'web' isn't a repository of the multirepo") && err.contains("app, api, docs"), err.toString())
+        assertEquals(declaration, source.declarations.getValue(folder))
+    }
+
+    @Test
+    fun `env unset removes the last variable and refuses an undeclared one`() {
+        source.declarations[folder] = declaration.copy(env = SharedVariablesDeclaration(mapOf("app" to mapOf("API_URL" to apiUrl))))
+
+        assertEquals(1, cli().run(listOf("multirepo", "env", "unset", "app", "MISSING")))
+        assertTrue(err.contains("'app' has no shared variable 'MISSING'"), err.toString())
+        assertEquals(0, cli().run(listOf("multirepo", "env", "unset", "app", "API_URL")), err.toString())
+        assertNull(source.declarations.getValue(folder).env)
+    }
+
+    @Test
+    fun `env set in an unapproved multirepo is refused while env lists it`() {
+        source.approveAll = false
+        source.remember(folder)
+        val tampered = declaration.copy(env = SharedVariablesDeclaration(mapOf("app" to mapOf("API_URL" to apiUrl))))
+        source.declarations[folder] = tampered
+
+        assertEquals(1, cli().run(listOf("multirepo", "env", "set", "app", "API_URL", "x")))
+        assertTrue(err.contains("shogun multirepo trust"), err.toString())
+        assertEquals(tampered, source.declarations.getValue(folder))
+        out.clear()
+        assertEquals(0, cli().run(listOf("multirepo", "env")))
+        assertTrue(out.contains("API_URL=$apiUrl"), out.toString())
+    }
+
+    @Test
+    fun `remove-repo of a repository referenced by a shared variable fails and changes nothing`() {
+        val shared = declaration.copy(env = SharedVariablesDeclaration(mapOf("app" to mapOf("API_URL" to apiUrl))))
+        source.declarations[folder] = shared
+
+        assertEquals(1, cli().run(listOf("multirepo", "remove-repo", "api")))
+        assertTrue(err.contains("app.API_URL"), err.toString())
+        assertEquals(shared, source.declarations.getValue(folder))
+    }
+
+    @Test
+    fun `workspace detect returns a turned off workspace to detection`() {
+        folderIsARepository()
+        source.declarations[folder] = declaration.copy(workspace = WorkspaceSetting(alias = "docs-root", default = true))
+
+        val exitCode = cli().run(listOf("multirepo", "workspace", "detect"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(declaration, source.declarations.getValue(folder))
+        assertTrue(out.contains("detected again as 'workspace'; it isn't a default repository"), out.toString())
+        assertTrue(out.lines().any { it.trim().startsWith("workspace  $folder") && it.contains("detected") })
+        out.clear()
+        assertEquals(0, cli().run(listOf("multirepo", "workspace", "detect")))
+        assertTrue(out.contains("already detected"), out.toString())
+    }
+
+    @Test
+    fun `workspace detect fails outside a repository and when the alias is taken`() {
+        source.declarations[folder] = declaration.copy(workspace = WorkspaceSetting(enabled = false))
+        assertEquals(1, cli().run(listOf("multirepo", "workspace", "detect")))
+        assertTrue(err.contains("no workspace repository"), err.toString())
+
+        folderIsARepository()
+        git.repository("/src/web")
+        val taken = declaration.copy(repos = declaration.repos + ("workspace" to "/src/web"), workspace = WorkspaceSetting(alias = "root"))
+        source.declarations[folder] = taken
+        assertEquals(1, cli().run(listOf("multirepo", "workspace", "detect")))
+        assertTrue(err.contains("'workspace' is already taken"), err.toString())
+        assertEquals(taken, source.declarations.getValue(folder))
     }
 }

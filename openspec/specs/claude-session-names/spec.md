@@ -6,7 +6,7 @@ Lets a person or a coordinating agent tell apart the Claude Code sessions Shogun
 ## Requirements
 
 ### Requirement: Name the Claude sessions ShogunAi launches
-Whenever ShogunAi types an agent launch command into a Herdr pane and that command runs Claude Code, it SHALL add `-n <name>` to it: `<alias>-<id>` for a worktree of a group, where `<id>` is the group's branch without its prefix; `<project>-<id>` for another worktree, where `<id>` is its folder name; `<project>` for a project's main worktree; and the multirepo's name for the multirepo agent.
+Whenever ShogunAi types an agent launch command into a Herdr pane, or starts one in an Orca terminal, and that command runs Claude Code, it SHALL add `-n <name>` to it: `<alias>-<id>` for a worktree of a group, where `<id>` is the group's branch without its prefix; `<project>-<id>` for another worktree, where `<id>` is its folder name; `<project>` for a project's main worktree; and the multirepo's name for the multirepo agent.
 
 #### Scenario: Group worktrees
 - **WHEN** the user runs `shogun open TASK-123 --herdr` in a multirepo folder and `feature/TASK-123` is a group with `app` and `api`
@@ -31,6 +31,10 @@ Whenever ShogunAi types an agent launch command into a Herdr pane and that comma
 #### Scenario: Desktop app
 - **WHEN** the person uses "Open in Herdr" on a worktree whose agent is Claude
 - **THEN** the session is named as from the command line
+
+#### Scenario: Opened in Orca
+- **WHEN** the user runs `shogun open TASK-123 --orca` in project `main-repo` whose worktree folder is `TASK-123`, or uses "Open in Orca" on it
+- **THEN** the Orca terminal runs Claude with `-n main-repo-task-123`
 
 ### Requirement: Only a plain Claude command gets a name
 ShogunAi SHALL add `-n` only when the launch command runs Claude Code directly or through `headroom wrap`, optionally after environment assignments, and is a single command. A command that runs another agent, already passes `-n` or `--name`, or chains several commands SHALL be typed unchanged, and the open SHALL report no session name for it.
@@ -75,7 +79,7 @@ A session name SHALL contain only lowercase letters, digits and single hyphens, 
 - **THEN** the new session is named `app-task-123`
 
 ### Requirement: Read Claude Code's session registry tolerantly
-ShogunAi SHALL read Claude Code's session registry, one JSON file per session in the `sessions` folder of Claude Code's configuration directory, only to read each session's process id, folder and name. It SHALL ignore unknown fields, files without a process id or folder, files that can't be read or parsed, and sessions whose process isn't running, and a missing folder SHALL count as no sessions. It SHALL never write there.
+ShogunAi SHALL read Claude Code's session registry, one JSON file per session in the `sessions` folder of Claude Code's configuration directory, only to read each session's process id, folder, name, status, start time and status time. It SHALL ignore unknown fields, files without a process id or folder, files that can't be read or parsed, and sessions whose process isn't running, and a missing folder SHALL count as no sessions. A missing or unknown status SHALL leave the session without a status. It SHALL never write there.
 
 #### Scenario: Unreadable file
 - **WHEN** one session file is not valid JSON and another describes a live session
@@ -88,6 +92,10 @@ ShogunAi SHALL read Claude Code's session registry, one JSON file per session in
 #### Scenario: Stale file
 - **WHEN** a session file's process id belongs to no running Claude process
 - **THEN** that session is ignored
+
+#### Scenario: Unknown status
+- **WHEN** a live session's file has a status ShogunAi doesn't know, or none
+- **THEN** the session is still used for its name and folder, without a status
 
 ### Requirement: Report the session name when opening in Herdr
 After typing a named Claude command, `shogun open --herdr` SHALL wait up to 10 seconds for a live session with that name in the pane's folder, and SHALL report it in its text line and as `session_name` in the `--json` result of a worktree, of each worktree of a group, and of the multirepo agent. Without a confirmed name, `session_name` SHALL be `null` and the open SHALL still succeed.
@@ -156,3 +164,18 @@ When `shogun open --herdr` only focuses a live agent, it SHALL report as `sessio
 #### Scenario: Dead session
 - **WHEN** a session file's process isn't a running Claude process
 - **THEN** it isn't shown
+
+### Requirement: Report the session name when opening in Orca
+After starting a named Claude command in Orca, `shogun open --orca` SHALL wait up to 10 seconds for a live session with that name in the worktree's folder, and SHALL report it in its text line and as `session_name` in its `--json` result. When it only focuses a live agent, it SHALL report the session name as `shogun open --herdr` does for a focused agent. Without a confirmed name, `session_name` SHALL be `null` and the open SHALL still succeed.
+
+#### Scenario: Opened
+- **WHEN** the user runs `shogun open TASK-123 --orca --json` in project `main-repo` and the session appears as `main-repo-task-123`
+- **THEN** the result has `session_name` `main-repo-task-123`
+
+#### Scenario: Focused agent
+- **WHEN** the worktree's live agent in Orca is focused and the registry has a live session named `main-repo-task-123` in its folder
+- **THEN** the result has `orca` `focused` and `session_name` `main-repo-task-123`
+
+#### Scenario: Name never confirmed
+- **WHEN** the agent starts but no session with that name appears within 10 seconds
+- **THEN** the open succeeds with `session_name` `null`

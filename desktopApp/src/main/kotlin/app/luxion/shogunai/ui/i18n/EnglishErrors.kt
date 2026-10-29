@@ -1,12 +1,16 @@
 package app.luxion.shogunai.ui.i18n
 
 import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
+import app.luxion.shogunai.domain.model.ORCA_START_SECONDS
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.HolderProtection
 import app.luxion.shogunai.domain.model.PoolHolder
 import app.luxion.shogunai.domain.model.PoolHolderState
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.UnavailableReason
+import app.luxion.shogunai.domain.model.UnavailableLocalFile
+import app.luxion.shogunai.domain.model.LocalFileOrigin
 import app.luxion.shogunai.domain.model.toLocalClockTime
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 import java.time.Instant
@@ -94,9 +98,9 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "\"${error.rawInput}\" isn't a valid task id.",
         "Use only letters, digits, \"-\", \"_\" and \"/\".",
     )
-    is WorktreeError.SecretFileNotFound -> ErrorTexts(
-        "These local files weren't found in ${error.basePath}: ${error.files.joinToString()}.",
-        "Create them in the base repository, or remove them from the project's local files.",
+    is WorktreeError.LocalFilesUnavailable -> ErrorTexts(
+        "These local files can't be copied or linked from ${error.basePath}: ${error.files.joinToString { it.path }}. Nothing was changed.",
+        englishLocalFilesFix(error.files),
     )
     is WorktreeError.InvalidRepositoryConfig -> ErrorTexts(
         "Couldn't read ${error.path}.",
@@ -141,6 +145,10 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     is WorktreeError.StartPointNotFound -> ErrorTexts(
         "\"${error.ref}\" doesn't name a commit.",
         "Choose an existing branch or commit as the start point.",
+    )
+    is WorktreeError.NotABranch -> ErrorTexts(
+        "\"${error.ref}\" isn't a local branch or a branch of a remote.",
+        "Choose an existing branch as the base.",
     )
     is WorktreeError.BranchAlreadyCheckedOut -> ErrorTexts(
         "The branch \"${error.branch}\" is already checked out${error.path?.let { " at $it" }.orEmpty()}.",
@@ -346,6 +354,26 @@ private fun englishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "The agent didn't start in Herdr within $AGENT_START_SECONDS seconds.",
         "Its pane is left open in Herdr: check it and run the agent there, or open it in Herdr again.",
     )
+    WorktreeError.OrcaNotInstalled -> ErrorTexts(
+        "Orca isn't installed.",
+        "Install it from https://onorca.dev and try again.",
+    )
+    WorktreeError.OrcaNotStarted -> ErrorTexts(
+        "Orca didn't start within $ORCA_START_SECONDS seconds.",
+        "Open Orca yourself and try again.",
+    )
+    is WorktreeError.OrcaCommandFailed -> ErrorTexts(
+        "The worktree couldn't be opened in Orca.",
+        "Check the technical details.",
+    )
+    is WorktreeError.OrcaAgentNotStarted -> ErrorTexts(
+        "The agent didn't start in Orca within $AGENT_START_SECONDS seconds.",
+        "Its terminal is left open in Orca: check it and run the agent there, or open it in Orca again.",
+    )
+    is WorktreeError.OrcaMultirepoFolderNotOpen -> ErrorTexts(
+        "Orca has no workspace for ${error.folder}.",
+        "Only Orca's app can add a folder that isn't a Git repository. In Orca, add the folder as a project and import its repositories as a group, then add a folder workspace to that group; or add it and choose \"Open as Folder\". Then try again.",
+    )
     is WorktreeError.TerminalLaunchFailed -> ErrorTexts(
         "${error.terminal.displayName} couldn't open the worktree.",
         "Check the technical details.",
@@ -391,4 +419,18 @@ private fun englishProtection(holder: PoolHolder): String = when (holder.protect
     HolderProtection.AGENT_WORKING -> ", agent working"
     HolderProtection.LEASED -> ", lease until ${holder.leaseExpiresAt?.toLocalClockTime()}"
     null -> ""
+}
+
+private fun englishLocalFilesFix(files: List<UnavailableLocalFile>): String {
+    val reasons = files.map { it.reason }
+    val fixes = listOfNotNull(
+        "create the missing ones there".takeIf { reasons.any { it is UnavailableReason.Missing } },
+        "restore the targets of the broken links".takeIf { reasons.any { it is UnavailableReason.BrokenLink } },
+        "make the unreadable ones readable for your user".takeIf { reasons.any { it is UnavailableReason.Unreadable } },
+    )
+    val removals = listOfNotNull(
+        "the project's local files".takeIf { files.any { it.origin == LocalFileOrigin.PROJECT } },
+        ".shogunai.json or .worktreeinclude".takeIf { files.any { it.origin == LocalFileOrigin.REPOSITORY } },
+    )
+    return fixes.joinToString(", ").replaceFirstChar { it.uppercase() } + ", or remove them from " + removals.joinToString(" and ") + "."
 }

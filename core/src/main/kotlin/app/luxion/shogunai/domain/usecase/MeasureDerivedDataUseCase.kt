@@ -25,8 +25,10 @@ class MeasureDerivedDataUseCase(
         val pending = mutableListOf<DerivedDataFolder>()
         folders.forEach { folder ->
             val previous = remembered[folder.path]
-            val valid = previous?.takeIf { folder.lastAccessed != null && it.lastAccessed == folder.lastAccessed }
-            if (previous != null && (valid != null || remeasure)) send(MeasuredSize(folder.path, previous.sizeBytes, provisional = remeasure))
+            val valid = previous?.takeIf { folder.lastAccessed != null && it.lastAccessed == folder.lastAccessed && it.packagesBytes != null }
+            if (previous != null && (valid != null || remeasure)) {
+                send(MeasuredSize(folder.path, previous.sizeBytes, provisional = remeasure, packagesBytes = previous.packagesBytes))
+            }
             if (valid != null && !remeasure) known[folder.path] = valid else pending += folder
         }
         val permits = Semaphore(concurrency)
@@ -34,10 +36,13 @@ class MeasureDerivedDataUseCase(
             pending.forEach { folder ->
                 launch {
                     permits.withPermit {
-                        val size = measure(folder)
+                        val size = measure { source.size(folder) }
+                        val packages = size?.let { measure { source.packagesSize(folder) } }
                         val lastAccessed = folder.lastAccessed
-                        if (size != null && lastAccessed != null) known[folder.path] = RememberedSize(size, lastAccessed)
-                        send(MeasuredSize(folder.path, size))
+                        if (size != null && packages != null && lastAccessed != null) {
+                            known[folder.path] = RememberedSize(size, lastAccessed, packages)
+                        }
+                        send(MeasuredSize(folder.path, size, packagesBytes = packages))
                     }
                 }
             }
@@ -45,8 +50,8 @@ class MeasureDerivedDataUseCase(
         runCatching { store.save(known.toMap()) }
     }
 
-    private suspend fun measure(folder: DerivedDataFolder): Long? = try {
-        source.size(folder)
+    private suspend fun measure(size: suspend () -> Long): Long? = try {
+        size()
     } catch (error: CancellationException) {
         throw error
     } catch (error: Exception) {

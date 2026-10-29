@@ -6,7 +6,7 @@ Connects ShogunAi with Herdr, the terminal multiplexer for AI agents: ShogunAi w
 ## Requirements
 
 ### Requirement: Open a worktree in Herdr from the desktop app
-The worktree's detail and its row's context menu SHALL offer an "Open in Herdr" action that opens the worktree in Herdr as a worktree of its repository, grouped under the repository's space, focused, with a single pane in the worktree whose shell has the worktree's environment, and runs the project's agent launch command in that pane.
+When Herdr is installed, the worktree's detail, its row's context menu, the command palette, the tray and the menu bar SHALL offer an "Open in Herdr" action, as the primary action when Herdr is the default runner and in "Open with…" otherwise, that opens the worktree in Herdr as a worktree of its repository, grouped under the repository's space, focused, with a single pane in the worktree whose shell has the worktree's environment, and runs the project's agent launch command in that pane.
 
 #### Scenario: Worktree with an environment
 - **WHEN** the user opens in Herdr a worktree whose repository declares `env` or a provider that adds variables (e.g. the emulator provider)
@@ -210,11 +210,15 @@ Reading agents from Herdr SHALL run at most once per check for all projects, SHA
 - **THEN** ShogunAi runs `herdr` at most once every 30 seconds and shows agents without states meanwhile
 
 ### Requirement: Open a worktree in Herdr from the command line
-`shogun open <target> --herdr` SHALL open the worktree in Herdr with the same workspace, environment and agent command as the desktop app's "Open in Herdr", SHALL reuse an existing workspace as that action does (focusing a live agent, or starting one in a new pane when there's none), and SHALL report on standard error, with exit code 1, that Herdr isn't installed, that its command failed, or that the agent didn't start.
+`shogun open <target> --herdr`, or `shogun open <target>` without a runner flag when Herdr is the runner in use, SHALL open the worktree in Herdr with the same workspace, environment and agent command as the desktop app's "Open in Herdr", SHALL reuse an existing workspace as that action does (focusing a live agent, or starting one in a new pane when there's none), and SHALL report on standard error, with exit code 1, that Herdr isn't installed, that its command failed, or that the agent didn't start.
 
 #### Scenario: Worktree with an environment
 - **WHEN** the user runs `shogun open TASK-123 --herdr` and the repository declares `env`
 - **THEN** the workspace's shell has every variable `shogun env` prints for that worktree and the agent command runs with them
+
+#### Scenario: Herdr in use without a flag
+- **WHEN** Herdr is the runner in use and the user runs `shogun open TASK-123`
+- **THEN** the worktree opens in Herdr as with `shogun open TASK-123 --herdr`
 
 #### Scenario: Herdr not installed
 - **WHEN** the `herdr` command can't be found

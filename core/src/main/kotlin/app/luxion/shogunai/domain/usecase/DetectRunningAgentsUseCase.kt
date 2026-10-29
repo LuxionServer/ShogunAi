@@ -7,6 +7,8 @@ import app.luxion.shogunai.domain.io.ClaudeSessionRegistry
 import app.luxion.shogunai.domain.io.HerdrClient
 import app.luxion.shogunai.domain.model.AgentSessionRecord
 import app.luxion.shogunai.domain.model.HerdrAgent
+import app.luxion.shogunai.domain.model.OrcaAgent
+import app.luxion.shogunai.domain.model.OrcaWorktree
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.AgentStateSource
 import app.luxion.shogunai.domain.model.ClaudeSessionRef
@@ -29,6 +31,8 @@ class DetectRunningAgentsUseCase(
     private val now: () -> Long = System::currentTimeMillis,
     private val hasGitEntry: (String) -> Boolean = { directory -> File(directory, ".git").exists() },
     private val claudeSessions: ClaudeSessionRegistry? = null,
+    private val orca: OrcaWorktreeReader? = null,
+    private val canonical: (String) -> String = ::canonicalDirectory,
 ) {
     @Volatile
     private var herdrRetryAt = 0L
@@ -40,13 +44,15 @@ class DetectRunningAgentsUseCase(
         val worktrees = searches.flatMap { it.worktrees }
         if (worktrees.isEmpty()) return@runCatching emptyMap()
         val exact = searches.filter { it.exact }.flatMap { it.worktrees }.map { normalizePath(it.path) }.toSet()
-        val (processes, herdrAgents) = coroutineScope {
+        val (processes, herdrAgents, orcaWorktrees) = coroutineScope {
             val herdrAgents = async { readHerdrAgents() }
+            val orcaWorktrees = async { orca?.read().orEmpty() }
             val processes = runCatching { scanProcesses(searches, worktrees, exact) }
-            processes to herdrAgents.await()
+            Triple(processes, herdrAgents.await(), orcaWorktrees.await())
         }
         val scan = processes.getOrDefault(ProcessScan())
         merge(withSessionStates(scan, worktrees), herdrAgents, worktrees, exact)
+            .let { merged -> mergeOrca(merged, orcaWorktrees, worktrees) }
             .let { merged -> withClaudeSessions(merged, scan.claudePids, worktrees, exact) }
             .also { merged -> if (merged.isEmpty()) processes.getOrThrow() }
     }
@@ -101,19 +107,25 @@ class DetectRunningAgentsUseCase(
         exact: Set<String>,
     ): Map<String, List<RunningAgent>> {
         val registry = claudeSessions ?: return agents
-        val refsByPath = runCatching { registry.list() }.getOrDefault(emptyList())
+        val sessionsByPath = runCatching { registry.list() }.getOrDefault(emptyList())
             .filter { it.pid in claudePids }
-            .mapNotNull { session ->
-                val name = session.name ?: return@mapNotNull null
-                attributedWorktree(session.cwd, worktrees, exact)?.let { it.path to ClaudeSessionRef(name, session.pid) }
-            }
+            .mapNotNull { session -> attributedWorktree(session.cwd, worktrees, exact)?.let { it.path to session } }
             .groupBy({ it.first }, { it.second })
-            .mapValues { (_, refs) -> refs.sortedWith(compareBy(ClaudeSessionRef::name, ClaudeSessionRef::pid)) }
-        if (refsByPath.isEmpty()) return agents
+        if (sessionsByPath.isEmpty()) return agents
         return agents.mapValues { (path, running) ->
-            val refs = refsByPath[path] ?: return@mapValues running
-            running.map { agent -> if (agent.name == CLAUDE) agent.copy(sessions = refs) else agent }
+            val sessions = sessionsByPath[path] ?: return@mapValues running
+            val refs = sessions
+                .mapNotNull { session -> session.name?.let { ClaudeSessionRef(it, session.pid) } }
+                .sortedWith(compareBy(ClaudeSessionRef::name, ClaudeSessionRef::pid))
+            val state = sessions.mapNotNull { it.state }.maxByOrNull(::urgency)
+            running.map { agent -> if (agent.name == CLAUDE) withRegistry(agent, refs, state) else agent }
         }
+    }
+
+    private fun withRegistry(agent: RunningAgent, refs: List<ClaudeSessionRef>, state: AgentState?): RunningAgent {
+        val named = if (refs.isEmpty()) agent else agent.copy(sessions = refs)
+        if (named.state != null || state == null) return named
+        return named.copy(state = state, stateSource = AgentStateSource.CLAUDE_CODE)
     }
 
     private fun liveSessions(store: AgentSessionStore, path: String, claudePids: Set<Long>, hasClaudeProcess: Boolean): List<AgentState> =
@@ -164,6 +176,36 @@ class DetectRunningAgentsUseCase(
             processAgents[path].orEmpty().map { agent -> herdrByName[agent.name]?.let { runningAgent(it, agent) } ?: agent } +
                 herdrByName.filterKeys { it !in processNames }.values.map(::runningAgent)
         }
+    }
+
+    private fun mergeOrca(
+        agents: Map<String, List<RunningAgent>>,
+        orcaWorktrees: List<OrcaWorktree>,
+        worktrees: List<Worktree>,
+    ): Map<String, List<RunningAgent>> {
+        if (orcaWorktrees.none { it.agents.isNotEmpty() }) return agents
+        val pathsByCanonical = worktrees.associate { canonical(it.path) to it.path }
+        val orcaByPath = orcaWorktrees
+            .mapNotNull { row -> pathsByCanonical[canonical(row.path)]?.let { it to row.agents } }
+            .filter { (_, rowAgents) -> rowAgents.isNotEmpty() }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, lists) -> lists.flatten() }
+        return (agents.keys + orcaByPath.keys).associateWith { path ->
+            val orcaByName = orcaByPath[path].orEmpty().groupBy { it.agent }.mapValues { (_, same) -> same.maxBy { urgency(it.state) } }
+            val known = agents[path].orEmpty()
+            val knownNames = known.map { it.name }.toSet()
+            known.map { agent -> orcaByName[agent.name]?.let { withOrcaState(agent, it) } ?: agent } +
+                orcaByName.filterKeys { it !in knownNames }.values.map {
+                    RunningAgent(it.agent, it.state, stateSource = it.state?.let { AgentStateSource.ORCA }, activity = it.activity)
+                }
+        }
+    }
+
+    private fun withOrcaState(agent: RunningAgent, orcaAgent: OrcaAgent): RunningAgent {
+        val detailed = agent.copy(activity = orcaAgent.activity)
+        val state = orcaAgent.state ?: return detailed
+        if (agent.stateSource == AgentStateSource.HERDR && urgency(agent.state) >= urgency(state)) return detailed
+        return detailed.copy(state = state, stateSource = AgentStateSource.ORCA)
     }
 
     private fun attributedWorktree(cwd: String, worktrees: List<Worktree>, exact: Set<String>): Worktree? {

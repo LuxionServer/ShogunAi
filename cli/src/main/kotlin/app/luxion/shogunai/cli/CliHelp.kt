@@ -36,11 +36,18 @@ internal object CliHelp {
   status [--json]             List the repository's worktrees with their state; in a multirepo folder, its
                               groups (the same branch in several repositories) and the ungrouped worktrees
 """.trimIndent(),
+        "base" to """
+  base [<task id | path | branch>] [--set <branch>] [--json]
+                              Print the branch the worktree's branch was created from, the base for its pull
+                              request (default: the current worktree); exit code 1 when none is recorded;
+                              --set records it, for worktrees created by other tools or to correct it;
+                              stored as branch.<branch>.gh-merge-base, which gh pr create also reads
+""".trimIndent(),
         "remove" to """
   remove <task id | path | branch> [--force] [--delete-branch | --force-delete-branch] [--json]
                               Remove one worktree and stop its emulator, simulator and idle Gradle daemons;
                               refused while it has changes or an agent running unless --force;
-                              --delete-branch also deletes its branch when it is merged into the main branch,
+                              --delete-branch also deletes its branch when it is merged into its base or the main branch,
                               --force-delete-branch deletes it even if it is not merged;
                               --json prints one JSON object instead of text
 """.trimIndent(),
@@ -54,16 +61,29 @@ internal object CliHelp {
                               In a multirepo folder: open every worktree of the group, each under its
                               repository's space with its environment and its project's agent
   open --herdr [--json]       In a multirepo folder: open the multirepo's agent in a workspace of its own
+  open <task id | path | branch> --orca [--agent <name>] [--json]
+                              Open the worktree in Orca under its repository, in a focused terminal with its
+                              environment and the project's agent, or focus the terminal of its live agent;
+                              starts Orca when it isn't running
+  open <task id | branch> --orca [--json]
+                              In a multirepo folder: open every worktree of the group in Orca, each under
+                              its repository with its environment and its project's agent
+  open --orca [--json]        In a multirepo folder: open the multirepo's agent in Orca's workspace for the
+                              folder; a folder that isn't a Git repository must be added in Orca's app first
+  open <task id | path | branch> [--agent <name>] [--json]
+                              Without --herdr or --orca: open in the runner chosen in the desktop app's
+                              Settings, or the first installed of Herdr and Orca
 """.trimIndent(),
         "repair" to """
   repair [--json]             Re-link the worktrees after the repository or the worktrees folder moved
 """.trimIndent(),
         "clean" to """
-  clean [--yes] [--delete-branches] [--stop-gradle-daemons] [--stop-emulators] [--delete-simulators]
-        [--delete-derived-data] [--down-compose-projects [--compose-volumes]] [--json]
+  clean [--yes] [--delete-branches] [--stop-gradle-daemons] [--stop-maven-daemons] [--stop-emulators]
+        [--delete-simulators] [--delete-derived-data] [--down-compose-projects [--compose-volumes]] [--json]
                               List merged or missing worktrees; remove them with --yes
-                              (--stop-gradle-daemons / --stop-emulators: also stop their idle
-                              Gradle daemons / their emulators; --delete-simulators: also delete
+                              (--stop-gradle-daemons / --stop-maven-daemons / --stop-emulators: also
+                              stop their idle Gradle daemons / their idle Maven daemons / their
+                              emulators; --delete-simulators: also delete
                               their iOS simulators and orphaned ShogunAi simulators;
                               --delete-derived-data: also delete orphaned Xcode DerivedData;
                               --down-compose-projects: also take down the Docker Compose projects of
@@ -98,6 +118,15 @@ internal object CliHelp {
                               Set the agent 'shogun open --herdr' runs in the multirepo folder, kept on
                               this machine and never in the declaration; --headroom wraps it with
                               'headroom wrap'
+  multirepo workspace set [--alias <alias>] [--default] | clear | detect [--json]
+                              Declare the workspace repository (the multirepo folder, when it's a Git
+                              repository), turn it off, or remove the setting so it's detected again
+  multirepo env [--json]      List the variables the multirepo shares with its repositories' worktrees
+  multirepo env set <alias> <name> <template> [--json]
+                              Add or replace a shared variable of a repository, e.g.
+                              env set app API_URL 'http://localhost:${'$'}{port:api.http}'
+  multirepo env unset <alias> <name> [--json]
+                              Remove a shared variable
   multirepo worktrees-root <dir> [--json]
                               Set the folder under which worktrees folders are proposed
   multirepo delete [--json]   Remove the declaration; projects, worktrees and branches are left as they are
@@ -124,7 +153,10 @@ internal object CliHelp {
                               Docker Compose) and the providers they suggest; nothing is changed
 """.trimIndent(),
         "maven" to """
-  maven [--json]              List the Maven daemons (mvnd) with their memory and worktree
+  maven [--json]              List the Maven daemons (mvnd) with their memory, state and worktree
+  maven stop [<pid>...] [--json]
+                              Stop idle Maven daemons (all of them, or only the given ones); busy ones and
+                              ones whose state is unknown are kept
 """.trimIndent(),
         "compose" to """
   compose [--json]            List the Docker Compose projects of the worktrees with their status, and
@@ -158,7 +190,11 @@ internal object CliHelp {
   hook worktree-remove        Claude Code WorktreeRemove hook: remove the worktree, delete its branch if merged
   hook session-start          Claude Code SessionStart hook: export the worktree's environment and give the session ShogunAi's workflow rules
   hook agent-state            Claude Code UserPromptSubmit, Notification, Stop and SessionEnd hook: record the session's state
+  hook desktop-turn           Claude Code PreToolUse hook: take the desktop turn before Orca's orca computer acts on the desktop,
+                              or block the command while another worktree holds it
   hook herdr                  Herdr plugin hook: provision worktrees on worktree.created, delete merged branches on worktree.removed
+  hook orca setup|archive     Orca orca.yaml scripts: provision the worktree at ORCA_WORKTREE_PATH on setup,
+                              free its emulator, simulator and idle Gradle daemons on archive
 """.trimIndent(),
         "hooks" to """
   hooks install|uninstall [--project] [--yes] [--json]
@@ -198,7 +234,8 @@ internal object CliHelp {
   emulator start|stop|status [<path>] [--avd <name>] [--no-window] [--json]
                               Start (and wait for), stop or show the worktree's Android emulator; the first
                               start reserves its console port, releasing the least recently used idle one if
-                              the pool is full
+                              the pool is full; when the worktree is open in Orca, the start also shows the
+                              emulator in its emulator view
   emulator start [--wait] [--wait-timeout <minutes>]
                               When the pool is full and none can be released, wait in line for one
                               (30 minutes at most by default) instead of failing

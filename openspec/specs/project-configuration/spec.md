@@ -335,7 +335,7 @@ The project settings SHALL show a "Repository configuration" section with a swit
 - **THEN** `.shogunai.json` no longer contains `providers.emulator`, and its other providers are kept
 
 ### Requirement: Edit provider options
-When a provider is on, the section SHALL show its options: Gradle's daemon heap, idle timeout and Kotlin daemon heap, the emulator's preferred AVD, the simulator's preferred device and runtime, and Xcode's compilation caching. An option left empty SHALL be omitted from the file. Invalid values SHALL be flagged next to the field and block saving.
+When a provider is on, the section SHALL show its options: Gradle's daemon heap, idle timeout and Kotlin daemon heap, the emulator's preferred AVD, the simulator's preferred device and runtime, and Xcode's compilation caching and CocoaPods. An option left empty SHALL be omitted from the file. Invalid values SHALL be flagged next to the field and block saving.
 
 #### Scenario: Gradle settings
 - **WHEN** the user turns on Gradle, enters `2g` as daemon heap and `30` as idle timeout, and saves
@@ -344,6 +344,10 @@ When a provider is on, the section SHALL show its options: Gradle's daemon heap,
 #### Scenario: Invalid memory size
 - **WHEN** the user enters `2 GB` as daemon heap
 - **THEN** the field explains the expected format (for example `2g` or `1024m`) and saving is blocked until it's fixed
+
+#### Scenario: Xcode CocoaPods
+- **WHEN** the user turns on Xcode, turns on its CocoaPods option and saves
+- **THEN** `providers.xcode` is `{ "cocoaPods": true }`
 
 ### Requirement: Edit the worktree environment
 The section SHALL list the variables of `env` with their name and template, let the user add, edit and remove them, and edit the environment file path. Names SHALL follow the variable name rule and SHALL NOT be reserved names, templates SHALL NOT contain line breaks, other control characters or invisible format characters, and the environment file SHALL be a relative path inside the worktree. The section SHALL explain the `${port}`, `${port:key}` and `${worktree}` templates.
@@ -593,3 +597,18 @@ An agent that an earlier version stored without `useHeadroom` SHALL be read as w
 #### Scenario: Saving keeps the legacy agent's Headroom
 - **WHEN** the app loads a project saved by an earlier version, the user changes its name and saves
 - **THEN** the stored agent has `useHeadroom: true` written explicitly
+
+### Requirement: Turn on the Flutter provider
+The "Repository configuration" section SHALL offer a switch for the Flutter provider on every operating system, with no options, and the Flutter stack's suggestion SHALL turn it on as an unsaved change.
+
+#### Scenario: Turn Flutter on
+- **WHEN** the user turns on Flutter and saves
+- **THEN** `.shogunai.json` declares `"providers": { "flutter": {} }` and its other providers are kept
+
+#### Scenario: Accept the suggestion
+- **WHEN** the repository's `pubspec.yaml` depends on the Flutter SDK and the user uses the Flutter suggestion
+- **THEN** the Flutter switch is on, the change counts as unsaved and `.shogunai.json` is unchanged until the user saves
+
+#### Scenario: Turn Flutter off
+- **WHEN** the repository declares Flutter, the user turns it off and saves
+- **THEN** `.shogunai.json` no longer contains `providers.flutter` and its other providers are kept

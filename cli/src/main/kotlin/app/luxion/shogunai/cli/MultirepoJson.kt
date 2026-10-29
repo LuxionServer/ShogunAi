@@ -1,14 +1,16 @@
 package app.luxion.shogunai.cli
 
-import app.luxion.shogunai.domain.model.HerdrOpening
-import app.luxion.shogunai.domain.model.HerdrOutcome
+import app.luxion.shogunai.domain.model.GroupRunnerOpening
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.Multirepo
+import app.luxion.shogunai.domain.model.RunnerOpening
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.usecase.AddedRepository
 import app.luxion.shogunai.domain.usecase.GroupCleanupSelection
 import app.luxion.shogunai.domain.usecase.GroupCreation
 import app.luxion.shogunai.domain.usecase.GroupKeptReason
-import app.luxion.shogunai.domain.usecase.GroupOpening
+import app.luxion.shogunai.domain.model.RunnerOutcome
+import app.luxion.shogunai.domain.model.flag
 import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
 import app.luxion.shogunai.domain.usecase.GroupWorktreeState
 import app.luxion.shogunai.domain.usecase.MultirepoState
@@ -68,6 +70,10 @@ fun multirepoTrustJson(multirepo: Multirepo, approved: Boolean, changed: Boolean
     put("workspace", multirepo.workspaceRepository?.alias)
     put("env", sharedVariablesJson(multirepo))
     put("ignoredDeclaredAgent", multirepo.ignoresDeclaredAgent)
+}
+
+fun sharedVariablesListJson(multirepo: Multirepo): JsonObject = buildJsonObject {
+    put("env", sharedVariablesJson(multirepo))
 }
 
 private fun sharedVariablesJson(multirepo: Multirepo): JsonObject = buildJsonObject {
@@ -145,8 +151,8 @@ private fun groupWorktreeJson(state: GroupWorktreeState): JsonObject = buildJson
     put("base", state.base?.name)
     put("folderMissing", state.member.worktree.isPrunable)
     put("uncommittedChanges", status?.uncommittedChanges)
-    put("ahead", status?.mainBranch?.ahead)
-    put("behind", status?.mainBranch?.behind)
+    put("ahead", status?.base?.ahead)
+    put("behind", status?.base?.behind)
     put("merged", status?.isMerged)
     state.status?.exceptionOrNull()?.let { put("statusProblem", it.message) }
     put("agents", buildJsonArray { state.agents.forEach { add(agentJson(it)) } })
@@ -208,29 +214,34 @@ internal val GroupKeptReason.label: String
         GroupKeptReason.AGENT_RUNNING -> "agent-running"
     }
 
-fun groupOpenJson(branch: String, openings: List<GroupOpening>): JsonObject = buildJsonObject {
+fun groupOpenJson(branch: String, runner: RunnerId, openings: List<GroupRunnerOpening>): JsonObject = buildJsonObject {
     put("branch", branch)
     put("repos", buildJsonArray {
         openings.forEach { opening ->
             add(buildJsonObject {
                 put("alias", opening.alias)
                 put("path", opening.path)
-                val herdrOpening = opening.result.getOrNull()
-                put("result", herdrOpening?.outcome?.jsonValue ?: "failed")
-                put("pane_id", herdrOpening?.paneId)
-                put("agent", herdrOpening?.agent)
-                put("session_name", herdrOpening?.sessionName)
+                val opened = opening.result.getOrNull()
+                put("result", opened?.outcome?.jsonValue ?: "failed")
+                put(runner.handleKey, opened?.handle)
+                put("agent", opened?.agent)
+                put("session_name", opened?.sessionName)
+                if (runner == RunnerId.ORCA) {
+                    put("emulator", opened?.emulator)
+                    put("simulator", opened?.simulator)
+                    put("devicesSkipped", opened?.devicesSkipped ?: false)
+                }
                 put("error", opening.result.exceptionOrNull()?.message?.let(::JsonPrimitive) ?: JsonNull)
             })
         }
     })
 }
 
-fun multirepoAgentOpenJson(multirepo: Multirepo, opening: HerdrOpening): JsonObject = buildJsonObject {
+fun multirepoAgentOpenJson(multirepo: Multirepo, opening: RunnerOpening): JsonObject = buildJsonObject {
     put("path", multirepo.folder)
-    put("opened", opening.outcome != HerdrOutcome.FOCUSED)
-    put("herdr", opening.outcome.jsonValue)
-    put("pane_id", opening.paneId)
+    if (opening.runner == RunnerId.HERDR) put("opened", opening.outcome != RunnerOutcome.FOCUSED)
+    put(opening.runner.flag, opening.outcome.jsonValue)
+    put(opening.runner.handleKey, opening.handle)
     put("agent", opening.agent ?: multirepo.agent.displayName)
     put("session_name", opening.sessionName)
 }

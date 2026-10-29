@@ -1,5 +1,7 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.OrcaWorktree
 import java.time.Instant
 import app.luxion.shogunai.domain.model.ResourceLimits
 import app.luxion.shogunai.domain.model.EmulatorState
@@ -17,6 +19,7 @@ import app.luxion.shogunai.domain.FakeDerivedDataSource
 import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeHerdrConfigSource
+import app.luxion.shogunai.domain.FakeOrcaClient
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
 import app.luxion.shogunai.domain.FakeKmpTestWiring
 import app.luxion.shogunai.domain.FakePortProbe
@@ -117,6 +120,7 @@ class EnvironmentCommandsTest {
         environment: Map<String, String> = mapOf("CLAUDE_ENV_FILE" to envFile.toString()),
         registered: Boolean = true,
         trust: RepositoryTrust = FakeRepositoryTrust(approvesEverything = true),
+        orca: FakeOrcaClient = FakeOrcaClient(installed = false),
     ) = ShogunCli(
         executor = executor,
         fileManager = FakeFileManager(existing = listOf(base, linked)),
@@ -133,6 +137,7 @@ class EnvironmentCommandsTest {
         machineCapacity = FakeMachineCapacity(),
         derivedDataSource = FakeDerivedDataSource(),
         herdrConfig = FakeHerdrConfigSource(),
+        orca = orca,
         workingDirectory = workingDirectory,
         out = out,
         err = err,
@@ -156,6 +161,16 @@ class EnvironmentCommandsTest {
     private fun withSimulator() = FakeRepositoryProvisioningSource(
         byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(iosSimulator = IosSimulatorProvider()))),
     )
+
+    private fun withBothDevices() = FakeRepositoryProvisioningSource(
+        byRepository = mapOf(
+            base to RepositoryProvisioning(
+                providers = RepositoryProviders(emulator = EmulatorProvider(), iosSimulator = IosSimulatorProvider()),
+            ),
+        ),
+    )
+
+    private fun openInOrca() = FakeOrcaClient(psRows = listOf(OrcaWorktree(linked, createdByOrca = false)))
 
     @Test
     fun `simulator start creates and boots the worktree's simulator`() {
@@ -282,6 +297,127 @@ class EnvironmentCommandsTest {
         assertEquals(0, cli(withSimulator()).run(listOf("simulator", "status")))
 
         assertTrue(out.contains("not acquired (released for main-repo · TASK-9 at 1970-01-01T00:00:01Z)"), out.toString())
+    }
+
+    @Test
+    fun `emulator start shows the emulator in Orca when the worktree is open there, keeping standard output`() {
+        store.writePorts("$common/worktrees/TASK-123", mapOf("emulator" to 5554))
+        androidSdk.states["emulator-5554"] = EmulatorState.RUNNING
+        val orca = FakeOrcaClient(psRows = listOf(OrcaWorktree(linked, createdByOrca = false)))
+
+        assertEquals(0, cli(withEmulator(), orca = orca).run(listOf("emulator", "start")))
+
+        assertEquals("emulator-5554 running\nexport ANDROID_SERIAL=emulator-5554\n", out.toString())
+        assertTrue(err.contains("shown emulator-5554 in Orca's emulator view"), err.toString())
+        assertEquals(listOf(linked to "emulator-5554"), orca.attachedEmulators)
+    }
+
+    @Test
+    fun `emulator start succeeds when Orca can't show the emulator and says why`() {
+        store.writePorts("$common/worktrees/TASK-123", mapOf("emulator" to 5554))
+        androidSdk.states["emulator-5554"] = EmulatorState.RUNNING
+        val orca = FakeOrcaClient(
+            psRows = listOf(OrcaWorktree(linked, createdByOrca = false)),
+            attachFailure = WorktreeError.OrcaCommandFailed(listOf("orca"), "emulator_device_not_found"),
+        )
+
+        assertEquals(0, cli(withEmulator(), orca = orca).run(listOf("emulator", "start")))
+
+        assertEquals("emulator-5554 running\nexport ANDROID_SERIAL=emulator-5554\n", out.toString())
+        assertTrue(err.contains("shogun: couldn't show the emulator in Orca: emulator_device_not_found"), err.toString())
+        assertTrue(androidSdk.stopped.isEmpty())
+    }
+
+    @Test
+    fun `emulator start json reports whether Orca shows the emulator`() {
+        store.writePorts("$common/worktrees/TASK-123", mapOf("emulator" to 5554))
+        androidSdk.states["emulator-5554"] = EmulatorState.RUNNING
+
+        assertEquals(0, cli(withEmulator(), orca = FakeOrcaClient(running = false)).run(listOf("emulator", "start", "--json")))
+        assertEquals("\"not-open\"", jsonOut().getValue("orcaView").toString())
+        assertEquals("", err.toString())
+
+        out.clear()
+        val orca = FakeOrcaClient(psRows = listOf(OrcaWorktree(linked, createdByOrca = false)))
+        assertEquals(0, cli(withEmulator(), orca = orca).run(listOf("emulator", "start", "--json")))
+        assertEquals("\"shown\"", jsonOut().getValue("orcaView").toString())
+
+        out.clear()
+        assertEquals(0, cli(withEmulator(), orca = orca).run(listOf("emulator", "status", "--json")))
+        assertFalse("orcaView" in jsonOut())
+    }
+
+    @Test
+    fun `simulator start shows the simulator in Orca when the worktree is open there, keeping standard output`() {
+        val orca = openInOrca()
+
+        assertEquals(0, cli(withSimulator(), orca = orca).run(listOf("simulator", "start")))
+
+        assertEquals("UDID-1 booted  ShogunAi · main-repo · TASK-123\nexport IOS_SIMULATOR_UDID=UDID-1\n", out.toString())
+        assertTrue(err.contains("shown UDID-1 in Orca's emulator view"), err.toString())
+        assertEquals(listOf(linked to "UDID-1"), orca.attachedEmulators)
+    }
+
+    @Test
+    fun `simulator start succeeds when Orca can't show the simulator and says why`() {
+        val orca = FakeOrcaClient(
+            psRows = listOf(OrcaWorktree(linked, createdByOrca = false)),
+            attachFailure = WorktreeError.OrcaCommandFailed(listOf("orca"), "emulator_device_not_found"),
+        )
+
+        assertEquals(0, cli(withSimulator(), orca = orca).run(listOf("simulator", "start")))
+
+        assertEquals("UDID-1 booted  ShogunAi · main-repo · TASK-123\nexport IOS_SIMULATOR_UDID=UDID-1\n", out.toString())
+        assertTrue(err.contains("shogun: couldn't show the simulator in Orca: emulator_device_not_found"), err.toString())
+        assertTrue(appleSimulators.shutDown.isEmpty())
+    }
+
+    @Test
+    fun `simulator start json reports whether Orca shows the simulator`() {
+        assertEquals(0, cli(withSimulator(), orca = FakeOrcaClient(running = false)).run(listOf("simulator", "start", "--json")))
+        assertEquals("\"not-open\"", jsonOut().getValue("orcaView").toString())
+        assertEquals("", err.toString())
+
+        out.clear()
+        assertEquals(0, cli(withSimulator(), orca = openInOrca()).run(listOf("simulator", "start", "--json")))
+        assertEquals("\"shown\"", jsonOut().getValue("orcaView").toString())
+
+        out.clear()
+        assertEquals(0, cli(withSimulator(), orca = openInOrca()).run(listOf("simulator", "status", "--json")))
+        assertFalse("orcaView" in jsonOut())
+    }
+
+    @Test
+    fun `emulator start leaves Orca alone while the worktree's simulator is booted`() {
+        assertEquals(0, cli(withBothDevices()).run(listOf("simulator", "start")))
+        store.writePorts("$common/worktrees/TASK-123", mapOf("emulator" to 5554))
+        androidSdk.states["emulator-5554"] = EmulatorState.RUNNING
+        out.clear()
+        err.clear()
+        val orca = openInOrca()
+
+        assertEquals(0, cli(withBothDevices(), orca = orca).run(listOf("emulator", "start", "--json")))
+
+        assertEquals("\"skipped\"", jsonOut().getValue("orcaView").toString())
+        assertTrue(
+            err.contains("shogun: didn't show the emulator in Orca: the worktree's simulator is running too, and Orca shows one device per worktree"),
+            err.toString(),
+        )
+        assertTrue(orca.attachedEmulators.isEmpty())
+        assertTrue(appleSimulators.shutDown.isEmpty())
+    }
+
+    @Test
+    fun `simulator start leaves Orca alone while the worktree's emulator is running`() {
+        store.writePorts("$common/worktrees/TASK-123", mapOf("emulator" to 5554))
+        androidSdk.states["emulator-5554"] = EmulatorState.RUNNING
+        val orca = openInOrca()
+
+        assertEquals(0, cli(withBothDevices(), orca = orca).run(listOf("simulator", "start", "--json")))
+
+        assertEquals("\"skipped\"", jsonOut().getValue("orcaView").toString())
+        assertTrue(err.contains("shogun: didn't show the simulator in Orca: the worktree's emulator is running too"), err.toString())
+        assertTrue(orca.attachedEmulators.isEmpty())
     }
 
     @Test
@@ -498,7 +634,7 @@ class EnvironmentCommandsTest {
     fun `emulator json reports the serial and state`() {
         assertEquals(0, cli(withEmulator()).run(listOf("emulator", "start", "--no-window", "--json")))
         val started = jsonOut()
-        assertEquals(setOf("worktree", "serial", "state", "acquired", "acquiredNow", "released", "waited"), started.keys)
+        assertEquals(setOf("worktree", "serial", "state", "acquired", "acquiredNow", "released", "waited", "orcaView"), started.keys)
         assertEquals(linked, started.text("worktree"))
         assertEquals("emulator-5554", started.text("serial"))
         assertEquals("running", started.text("state"))
@@ -534,7 +670,7 @@ class EnvironmentCommandsTest {
     fun `simulator json reports the udid, name and state`() {
         assertEquals(0, cli(withSimulator()).run(listOf("simulator", "start", "--json")))
         val started = jsonOut()
-        assertEquals(setOf("worktree", "udid", "name", "state", "acquired", "acquiredNow", "released", "waited"), started.keys)
+        assertEquals(setOf("worktree", "udid", "name", "state", "acquired", "acquiredNow", "released", "waited", "orcaView"), started.keys)
         assertEquals("UDID-1", started.text("udid"))
         assertEquals("ShogunAi · main-repo · TASK-123", started.text("name"))
         assertEquals("booted", started.text("state"))

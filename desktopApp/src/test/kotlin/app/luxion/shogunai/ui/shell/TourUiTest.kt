@@ -189,7 +189,7 @@ class TourUiTest {
             os = HostOs.MACOS,
             appLauncher = "/Applications/ShogunAi.app/Contents/MacOS/ShogunAi",
             home = "/home/dev",
-            pathFolders = listOf("/usr/bin", "/usr/local/bin"),
+            pathFolders = { listOf("/usr/bin", "/usr/local/bin") },
             userBinFolders = listOf("/usr/local/bin", "/home/dev/.local/bin"),
             findShogun = { found ?: launcherFiles.links.keys.firstOrNull() },
             files = launcherFiles,
@@ -283,7 +283,7 @@ class TourUiTest {
         var tours = 0
         setContent {
             CompositionLocalProvider(LocalStrings provides EnglishStrings) {
-                MaterialTheme { EmptyState(onAddProject = {}, onTakeTour = { tours++ }) }
+                MaterialTheme { FirstLaunchState(onAddProject = {}, onTakeTour = { tours++ }) }
             }
         }
 

@@ -1,0 +1,101 @@
+{
+  "id": "8cac5cd0-e3a6-46f4-a84d-776c36d19aef",
+  "ok": true,
+  "result": {
+    "repos": [
+      {
+        "id": "d9fffb58-3ddb-4f9b-847e-750e151101cd",
+        "path": "/projects/gitmulti",
+        "displayName": "gitmulti",
+        "badgeColor": "#737373",
+        "addedAt": 1793236122028,
+        "kind": "git",
+        "externalWorktreeVisibilityLegacy": false,
+        "gitUsername": "user",
+        "upstream": null,
+        "gitRemoteIdentity": null,
+        "hookSettings": {
+          "mode": "auto",
+          "setupRunPolicy": "run-by-default",
+          "setupAgentStartupPolicy": "start-immediately",
+          "scripts": {
+            "setup": "",
+            "archive": ""
+          }
+        },
+        "externalWorktreeVisibility": "hide"
+      },
+      {
+        "id": "6d70ed36-35d7-4f43-9606-e949b4f5b65f",
+        "path": "/projects/product/product-api",
+        "displayName": "product-api",
+        "badgeColor": "#737373",
+        "addedAt": 1793236182371,
+        "kind": "git",
+        "externalWorktreeVisibilityLegacy": false,
+        "projectGroupId": "c7c7d9be-177f-401e-8bf5-99cab0411407",
+        "projectGroupOrder": 0,
+        "gitUsername": "user",
+        "upstream": null,
+        "gitRemoteIdentity": null,
+        "projectHostSetupMethod": "imported-existing-folder",
+        "hookSettings": {
+          "mode": "auto",
+          "setupRunPolicy": "run-by-default",
+          "setupAgentStartupPolicy": "start-immediately",
+          "scripts": {
+            "setup": "",
+            "archive": ""
+          }
+        },
+        "externalWorktreeVisibility": "hide"
+      },
+      {
+        "id": "ee88a3a5-992f-443e-87b6-60a7f31c8783",
+        "path": "/projects/product/product-app",
+        "displayName": "product-app",
+        "badgeColor": "#737373",
+        "addedAt": 1793236182413,
+        "kind": "git",
+        "externalWorktreeVisibilityLegacy": false,
+        "projectGroupId": "c7c7d9be-177f-401e-8bf5-99cab0411407",
+        "projectGroupOrder": 1,
+        "gitUsername": "user",
+        "upstream": null,
+        "gitRemoteIdentity": null,
+        "projectHostSetupMethod": "imported-existing-folder",
+        "hookSettings": {
+          "mode": "auto",
+          "setupRunPolicy": "run-by-default",
+          "setupAgentStartupPolicy": "start-immediately",
+          "scripts": {
+            "setup": "",
+            "archive": ""
+          }
+        },
+        "externalWorktreeVisibility": "hide"
+      },
+      {
+        "id": "bc50eb97-9c6e-4c7c-82a9-8e5fd1ea111a",
+        "path": "/projects/plainmulti",
+        "displayName": "plainmulti",
+        "badgeColor": "#737373",
+        "addedAt": 1793236259174,
+        "kind": "folder",
+        "gitUsername": "",
+        "hookSettings": {
+          "mode": "auto",
+          "setupRunPolicy": "run-by-default",
+          "setupAgentStartupPolicy": "start-immediately",
+          "scripts": {
+            "setup": "",
+            "archive": ""
+          }
+        }
+      }
+    ]
+  },
+  "_meta": {
+    "runtimeId": "cd0c9d23-612d-45dd-8e2c-da966aa71c9d"
+  }
+}

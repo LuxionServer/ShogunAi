@@ -75,7 +75,7 @@ Every command SHALL work on the Git repository that contains the current directo
 - **THEN** nothing is copied and the command exits with code 1 explaining why
 
 ### Requirement: Show worktree status from the command line
-`shogun status` SHALL print one line per worktree of the repository with its path, branch (or detached), origin (ShogunAi, Claude Code, Herdr or other), uncommitted changes, divergence from its upstream and whether it's merged into the main branch, the same information the desktop app shows. `shogun status --json` SHALL print the same information, plus each worktree's HEAD, its divergence from the main branch and its last commit time, as a single JSON document on standard output, whose fields later versions only add to and never rename, remove or change the type of.
+`shogun status` SHALL print one line per worktree of the repository with its path, branch (or detached), origin (ShogunAi, Claude Code, Herdr or other), uncommitted changes, divergence from its upstream and from its base, and whether it's merged into its base or the main branch, the same information the desktop app shows. `shogun status --json` SHALL print the same information, plus each worktree's HEAD, its divergence from the main branch and its last commit time, as a single JSON document on standard output, whose fields later versions only add to and never rename, remove or change the type of.
 
 #### Scenario: Several worktrees
 - **WHEN** the repository has the main worktree, a merged worktree and one with uncommitted changes
@@ -104,6 +104,10 @@ Every command SHALL work on the Git repository that contains the current directo
 #### Scenario: Unknown option
 - **WHEN** the user runs `shogun status --yaml`
 - **THEN** it prints that the option is unknown for `status` and exits with code 2
+
+#### Scenario: Worktree merged into its recorded base
+- **WHEN** a worktree's branch is merged into its recorded base `epic/redesign`, which isn't in the main branch yet
+- **THEN** its line says it's merged, and its JSON has `status.merged: true`
 
 ### Requirement: Clean up worktrees from the command line
 `shogun clean` SHALL select the same worktrees as the desktop app's cleanup (clean and merged, or with a missing folder; never the main or a locked one) and only list them. With `--yes` it SHALL remove them, and with `--delete-branches` also delete their local branches when merged, reporting what was removed, kept and failed.
@@ -182,7 +186,7 @@ The `shogun` command SHALL be available from each release: on macOS and Linux th
 - **THEN** the error is printed on standard error, nothing is printed on standard output and the command exits with code 1
 
 ### Requirement: Remove worktrees for Claude Code's WorktreeRemove hook
-`shogun hook worktree-remove` SHALL read the hook's JSON from standard input and remove the linked worktree at its `worktree_path` field even if it has changes, as Claude Code's own fallback does, then delete the worktree's branch only if it is merged into the project's main branch, keeping it otherwise.
+`shogun hook worktree-remove` SHALL read the hook's JSON from standard input and remove the linked worktree at its `worktree_path` field even if it has changes, as Claude Code's own fallback does, then delete the worktree's branch only if it is merged into its base or the project's main branch, keeping it otherwise.
 
 #### Scenario: Merged branch
 - **WHEN** the hook runs for a worktree whose branch is merged into the project's main branch
@@ -199,6 +203,10 @@ The `shogun` command SHALL be available from each release: on macOS and Linux th
 #### Scenario: Not a worktree of the repository
 - **WHEN** `worktree_path` is the main worktree or not a linked worktree
 - **THEN** nothing is removed and the command exits with code 1
+
+#### Scenario: Branch merged into its recorded base
+- **WHEN** the hook runs for a worktree whose branch is merged into its recorded base `epic/redesign` but not into the main branch
+- **THEN** the worktree and its branch are removed
 
 ### Requirement: List Gradle daemons from the command line
 `shogun gradle` SHALL print one line per Gradle or Kotlin daemon with its process id, kind, Gradle version, memory, state and, inside a Git repository, its worktree, followed by the total memory. It SHALL work outside a Git repository. Inside a repository that declares the Gradle provider it SHALL also print the build cache notice when it applies.
@@ -579,7 +587,7 @@ Commands SHALL work in submodules and in repositories whose Git folder is separa
 - **THEN** the command prints the fetch error on standard error, creates nothing and exits with code 1
 
 ### Requirement: Remove a worktree from the command line
-`shogun remove <target>` SHALL remove the linked worktree identified by a task id, a path or a branch name. It SHALL refuse a worktree with uncommitted or untracked changes, or with a running agent, unless `--force` is given; it SHALL never remove the main worktree. With `--delete-branch` it SHALL delete the branch only when merged into the main branch, and keep it otherwise, saying why; with `--force-delete-branch` it SHALL delete the branch even if unmerged. A kept branch SHALL NOT make the command fail. With `--json`, `branchDeleted` SHALL name the deleted branch or be `null`, and `branchKeptReason` SHALL say why a requested deletion didn't happen or be `null`. It SHALL stop the resources the repository's providers keep for that worktree, as cleanup does.
+`shogun remove <target>` SHALL remove the linked worktree identified by a task id, a path or a branch name. It SHALL refuse a worktree with uncommitted or untracked changes, or with a running agent, unless `--force` is given; it SHALL never remove the main worktree. With `--delete-branch` it SHALL delete the branch only when merged into its base or the main branch, and keep it otherwise, saying why; with `--force-delete-branch` it SHALL delete the branch even if unmerged. A kept branch SHALL NOT make the command fail. With `--json`, `branchDeleted` SHALL name the deleted branch or be `null`, and `branchKeptReason` SHALL say why a requested deletion didn't happen or be `null`. It SHALL stop the resources the repository's providers keep for that worktree, as cleanup does.
 
 #### Scenario: Remove by task id
 - **WHEN** the user runs `shogun remove TASK-123` and the worktree is clean
@@ -612,6 +620,10 @@ Commands SHALL work in submodules and in repositories whose Git folder is separa
 #### Scenario: Main worktree
 - **WHEN** the target is the main worktree
 - **THEN** nothing is removed and the command exits with code 1
+
+#### Scenario: Delete a branch merged into its recorded base
+- **WHEN** the user runs `shogun remove TASK-123 --delete-branch` and the branch is merged into its recorded base `epic/redesign` but not into the main branch
+- **THEN** the worktree and its branch are removed
 
 ### Requirement: Repair worktrees from the command line
 `shogun repair` SHALL run the same repair the desktop app runs after a repository or its worktrees folder moves, and report the worktrees it re-linked.
@@ -735,15 +747,23 @@ A command run with `--json` SHALL never ask a question. When the repository isn'
 - **THEN** the object's `herdr` is `focused`, `pane_id` is that agent's pane and `agent` is `claude`
 
 ### Requirement: Report each agent's state in status
-`shogun status` SHALL show each agent's state whatever reports it, Herdr or Claude Code's hooks, and `shogun status --json` SHALL add `state` (`working`, `blocked`, `done`, `idle` or `null`) and `stateSource` (`herdr`, `claude-code` or `null`) to each agent, keeping `herdrState` as before.
+`shogun status` SHALL show each agent's state whatever reports it, Herdr, Orca or Claude Code's hooks, and `shogun status --json` SHALL add `state` (`working`, `blocked`, `done`, `idle` or `null`) and `stateSource` (`herdr`, `orca`, `claude-code` or `null`) to each agent, keeping `herdrState` as before.
 
 #### Scenario: Agent state from Claude Code's hooks
-- **WHEN** Claude is blocked in a worktree, as recorded by its `Notification` hook, and Herdr doesn't report it
+- **WHEN** Claude is blocked in a worktree, as recorded by its `Notification` hook, and neither Herdr nor Orca reports it
 - **THEN** the line shows `claude(blocked)` and the JSON agent has `state` `blocked`, `stateSource` `claude-code` and `herdrState` `null`
 
 #### Scenario: Agent state from Herdr
 - **WHEN** Herdr reports Claude as working
 - **THEN** the JSON agent has `state` `working`, `stateSource` `herdr` and `herdrState` `working`
+
+#### Scenario: Agent state from Orca
+- **WHEN** Orca reports Claude as waiting
+- **THEN** the line shows `claude(blocked)` and the JSON agent has `state` `blocked`, `stateSource` `orca` and `herdrState` `null`
+
+#### Scenario: Origin of an Orca worktree
+- **WHEN** a worktree was created by Orca
+- **THEN** its JSON entry has `origin` `orca`
 
 ### Requirement: Record agent states through Claude Code's hooks
 `shogun hook agent-state` SHALL read the hook's JSON from standard input and record the session's state for the worktree containing its `cwd`: working on `UserPromptSubmit`, blocked on `Notification`, done on `Stop`, and remove the record on `SessionEnd`. It SHALL print nothing, never block the session, and exit with code 0 whenever the input is valid, also outside a repository.
@@ -855,11 +875,11 @@ Session records SHALL be stored in the worktree's Git administrative folder, so 
 - **THEN** an error on standard error says so and the command exits with code 1
 
 ### Requirement: List Maven daemons from the command line
-`shogun maven` SHALL print one line per Maven daemon with its process id, memory and, inside a Git repository, its worktree, followed by the total memory. It SHALL work outside a Git repository.
+`shogun maven` SHALL print one line per Maven daemon with its process id, memory, state and, inside a Git repository, its worktree, followed by the total memory. It SHALL work outside a Git repository.
 
 #### Scenario: Daemons running
-- **WHEN** the user runs `shogun maven` while two Maven daemons run
-- **THEN** each has a line with its memory and worktree, and the total memory is printed
+- **WHEN** the user runs `shogun maven` while an idle and a busy Maven daemon run
+- **THEN** each has a line with its memory, state and worktree, and the total memory is printed
 
 #### Scenario: No daemons
 - **WHEN** no Maven daemon is running
@@ -1038,3 +1058,59 @@ When the repository declares the desktop app provider on macOS, the context prin
 #### Scenario: Turn held by another repository
 - **WHEN** a worktree of `api` holds the turn and the user runs `shogun status` in `main-repo`
 - **THEN** no line of `main-repo` mentions the desktop
+
+### Requirement: Stop Maven daemons from the command line
+`shogun maven stop` SHALL stop every idle Maven daemon, and `shogun maven stop <pid>...` only the given ones, following the Maven provider's rules for idle daemons. It SHALL report what was stopped and what was kept with the reason, accept `--json`, and exit with code 1 when a given process id isn't a Maven daemon.
+
+#### Scenario: Stop all idle
+- **WHEN** the user runs `shogun maven stop` with two idle Maven daemons and a busy one
+- **THEN** the two idle ones are stopped, the busy one is reported as kept, and the command exits with code 0
+
+#### Scenario: Stop a busy daemon by id
+- **WHEN** the user runs `shogun maven stop 4242` and daemon 4242 is busy
+- **THEN** it isn't stopped, the output says it's busy and the command exits with code 0
+
+#### Scenario: Not a daemon
+- **WHEN** the user runs `shogun maven stop 99999` and no Maven daemon has that process id
+- **THEN** an error on standard error says so and the command exits with code 1
+
+### Requirement: Stop Maven daemons when cleaning up from the command line
+With `--yes`, `shogun clean --stop-maven-daemons` SHALL also stop the idle Maven daemons whose last build was in a removed worktree, following the cleanup rules of the desktop app, and report how many were stopped and kept. Without the option no Maven daemon SHALL be stopped.
+
+#### Scenario: Daemons of removed worktrees
+- **WHEN** the user runs `shogun clean --yes --stop-maven-daemons` and an idle Maven daemon's last build was in a removed worktree
+- **THEN** that daemon is stopped and the output says so
+
+#### Scenario: Without the option
+- **WHEN** the user runs `shogun clean --yes`
+- **THEN** no Maven daemon is stopped
+
+#### Scenario: Option without confirmation
+- **WHEN** the user runs `shogun clean --stop-maven-daemons` without `--yes`
+- **THEN** nothing is removed or stopped, and the output also lists the Maven daemons that would be stopped
+
+### Requirement: Report Orca's agent details in status
+`shogun status --json` SHALL add to each agent `activity`: `null` when the agent carries no details, otherwise an object with `waitingOn` (`null` or an object with `tool` and `input`, `input` being `null` when missing), `prompt` and `lastMessage` (each a string or `null`).
+
+#### Scenario: Agent waiting on a tool
+- **WHEN** Orca reports Claude as waiting on `Bash` with input `curl -s https://example.com -o page.html` and prompt `Download the page`
+- **THEN** the JSON agent has `activity` with `waitingOn` `{"tool": "Bash", "input": "curl -s https://example.com -o page.html"}`, `prompt` `Download the page` and `lastMessage` `null`
+
+#### Scenario: Agent without details
+- **WHEN** Claude runs in a worktree that Orca doesn't report
+- **THEN** the JSON agent has `activity` `null`
+
+### Requirement: Report the ports Orca sees in status
+`shogun status --json` SHALL add to each worktree `listeningPorts`: `null` when Orca couldn't be asked, otherwise an array, sorted by port, of objects with `port`, `process` and `url` (`url` being `null` when missing). `shogun status` SHALL add `listening=<ports>` to the line of a worktree Orca sees listening, with the port numbers sorted and separated by commas.
+
+#### Scenario: Observed ports
+- **WHEN** Orca sees a worktree listen on 10011 by `java` and on 8765 by `Python` at `http://127.0.0.1:8765`
+- **THEN** its JSON entry has `listeningPorts` `[{"port": 8765, "process": "Python", "url": "http://127.0.0.1:8765"}, {"port": 10011, "process": "java", "url": null}]` and its line shows `listening=8765,10011`
+
+#### Scenario: Orca running, no ports
+- **WHEN** Orca is running and sees no port for a worktree
+- **THEN** its JSON entry has `listeningPorts` `[]` and its line has no `listening=`
+
+#### Scenario: Orca unavailable
+- **WHEN** Orca isn't installed or isn't running
+- **THEN** every worktree's JSON entry has `listeningPorts` `null`, and no line has `listening=`

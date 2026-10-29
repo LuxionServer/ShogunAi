@@ -9,6 +9,7 @@ import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.SdkLocation
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.emulatorSerial
+import app.luxion.shogunai.domain.usecase.nestedGradleBuildFolders
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
@@ -81,9 +82,13 @@ class LocalAndroidSdk(
     private fun sdkCandidates(repositoryPath: String): List<Pair<String, String>> = buildList {
         environmentVariable("ANDROID_HOME")?.takeIf { it.isNotBlank() }?.let { add("ANDROID_HOME" to it) }
         environmentVariable("ANDROID_SDK_ROOT")?.takeIf { it.isNotBlank() }?.let { add("ANDROID_SDK_ROOT" to it) }
-        fileManager.readProperties("${repositoryPath.trimEnd('/')}/local.properties")["sdk.dir"]
-            ?.takeIf { it.isNotBlank() }
-            ?.let { add("local.properties sdk.dir" to it) }
+        val root = repositoryPath.trimEnd('/')
+        (listOf("") + nestedGradleBuildFolders(fileManager, root)).forEach { folder ->
+            val properties = if (folder.isEmpty()) LOCAL_PROPERTIES else "$folder/$LOCAL_PROPERTIES"
+            fileManager.readProperties("$root/$properties")["sdk.dir"]
+                ?.takeIf { it.isNotBlank() }
+                ?.let { add("$properties sdk.dir" to it) }
+        }
         add("default location" to defaultSdkPath())
     }
 
@@ -102,6 +107,7 @@ class LocalAndroidSdk(
     private companion object {
         const val EMULATOR = "emulator"
         const val ADB = "adb"
+        const val LOCAL_PROPERTIES = "local.properties"
     }
 }
 

@@ -4,6 +4,7 @@ import app.luxion.shogunai.domain.model.DesktopAppProvider
 import app.luxion.shogunai.domain.model.DockerComposeProvider
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EnvironmentEntry
+import app.luxion.shogunai.domain.model.FlutterProvider
 import app.luxion.shogunai.domain.model.RepositoryConfigEdit
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.IosSimulatorProvider
@@ -230,11 +231,19 @@ class RepositoryProvisioningFilesTest {
     }
 
     @Test
+    fun `reads the xcode provider with cocoapods`() {
+        configFile.writeText("""{ "providers": { "xcode": { "cocoaPods": true } } }""")
+
+        assertEquals(XcodeProvider(cocoaPods = true), files.read(repository.toString()).providers.xcode)
+    }
+
+    @Test
     fun `fails with InvalidRepositoryConfig on an invalid xcode provider`() {
         listOf(
             """{ "providers": { "xcode": true } }""",
             """{ "providers": { "xcode": { "compilationCache": "yes" } } }""",
             """{ "providers": { "xcode": { "compilationCache": 1 } } }""",
+            """{ "providers": { "xcode": { "cocoaPods": 1 } } }""",
         ).forEach { content ->
             configFile.writeText(content)
             assertFailsWith<WorktreeError.InvalidRepositoryConfig>(content) { files.read(repository.toString()) }
@@ -388,6 +397,47 @@ class RepositoryProvisioningFilesTest {
         write(edit(providers = RepositoryProviders(gradle = GradleProvider())))
 
         assertEquals(DesktopAppProvider(":desktopApp"), files.read(repository.toString()).providers.desktopApp)
+    }
+
+    @Test
+    fun `reads the flutter provider ignoring unknown options`() {
+        configFile.writeText("""{ "providers": { "flutter": {} } }""")
+        assertEquals(FlutterProvider, files.read(repository.toString()).providers.flutter)
+
+        configFile.writeText("""{ "providers": { "flutter": { "future": true } } }""")
+        assertEquals(FlutterProvider, files.read(repository.toString()).providers.flutter)
+    }
+
+    @Test
+    fun `fails with InvalidRepositoryConfig on a flutter provider that isn't an object`() {
+        configFile.writeText("""{ "providers": { "flutter": true } }""")
+
+        val error = assertFailsWith<WorktreeError.InvalidRepositoryConfig> { files.read(repository.toString()) }
+
+        assertTrue(".shogunai.json" in error.path)
+        assertTrue("providers.flutter" in error.detail.orEmpty())
+    }
+
+    @Test
+    fun `writing other providers keeps the flutter provider and its unknown options`() {
+        configFile.writeText("""{ "providers": { "flutter": { "future": 1 } } }""")
+
+        write(edit(providers = RepositoryProviders(gradle = GradleProvider(), flutter = FlutterProvider)))
+
+        val providers = written().getValue("providers").jsonObject
+        assertEquals(listOf("flutter", "gradle"), providers.keys.toList())
+        assertEquals("1", providers.getValue("flutter").jsonObject.getValue("future").jsonPrimitive.content)
+    }
+
+    @Test
+    fun `turns the flutter provider on and off`() {
+        configFile.writeText("""{ "providers": { "gradle": {} } }""")
+
+        write(edit(providers = RepositoryProviders(gradle = GradleProvider(), flutter = FlutterProvider)))
+        assertEquals(emptySet(), written().getValue("providers").jsonObject.getValue("flutter").jsonObject.keys)
+
+        write(edit(providers = RepositoryProviders(gradle = GradleProvider())))
+        assertEquals(setOf("gradle"), written().getValue("providers").jsonObject.keys)
     }
 
     @Test
@@ -557,7 +607,7 @@ class RepositoryProvisioningFilesTest {
             gradle = GradleProvider("2g", 30, "1g"),
             emulator = EmulatorProvider("Pixel_8"),
             iosSimulator = IosSimulatorProvider("iPhone 16", "iOS 18.0"),
-            xcode = XcodeProvider(compilationCache = true),
+            xcode = XcodeProvider(compilationCache = true, cocoaPods = true),
             maven = MavenProvider(mavenMaxHeap = "1g"),
             dockerCompose = DockerComposeProvider(portVariables = listOf("DB_PORT", "API_PORT")),
         )
@@ -565,6 +615,14 @@ class RepositoryProvisioningFilesTest {
         write(edit(providers = providers))
 
         assertEquals(providers, files.read(repository.toString()).providers)
+    }
+
+    @Test
+    fun `omits the cocoapods option when it is off`() {
+        write(edit(providers = RepositoryProviders(xcode = XcodeProvider(compilationCache = true))))
+
+        val xcode = written().getValue("providers").jsonObject.getValue("xcode").jsonObject
+        assertEquals(setOf("compilationCache"), xcode.keys)
     }
 
     @Test
@@ -759,7 +817,7 @@ class RepositoryProvisioningFilesTest {
 
     @Test
     fun `fails with InvalidRepositoryConfig on a reserved variable name and accepts a regular one`() {
-        listOf("PATH", "LD_PRELOAD", "GIT_SSH_COMMAND").forEach { name ->
+        listOf("PATH", "LD_PRELOAD", "GIT_SSH_COMMAND", "ORCA_PORT").forEach { name ->
             configFile.writeText("""{ "env": { "$name": "x" } }""")
             val error = assertFailsWith<WorktreeError.InvalidRepositoryConfig>(name) { files.read(repository.toString()) }
             assertTrue(error.detail.orEmpty().contains(name), name)

@@ -10,6 +10,7 @@ import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
 import app.luxion.shogunai.domain.io.ApprovalDecision
 import app.luxion.shogunai.domain.io.RepositoryApproval
+import app.luxion.shogunai.domain.model.FlutterPubGet
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
@@ -17,7 +18,9 @@ import app.luxion.shogunai.domain.model.ProvisionMode
 import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.ProvisionedFile
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.domain.model.PodsPreparation
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.UnavailableReason
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -102,17 +105,30 @@ class ProvisionWorktreeUseCaseTest {
     }
 
     @Test
+    fun `an unreadable file fails before anything in the worktree changes`() = runTest {
+        val fileManager = FakeFileManager(existing = listOf("$base/local.properties"))
+        fileManager.unavailable["$base/.env"] = UnavailableReason.Unreadable("permission denied")
+
+        val error = ProvisionWorktreeUseCase(config, executor(), fileManager, provisioning)(linked).exceptionOrNull()
+
+        assertIs<WorktreeError.LocalFilesUnavailable>(error)
+        assertEquals(listOf(".env"), error.files.map { it.path })
+        assertTrue(fileManager.copied.isEmpty())
+        assertTrue(fileManager.deletedFiles.isEmpty())
+    }
+
+    @Test
     fun `fails when a local file is missing`() = runTest {
         val error = ProvisionWorktreeUseCase(config, executor(), FakeFileManager(), provisioning)(linked).exceptionOrNull()
 
-        assertIs<WorktreeError.SecretFileNotFound>(error)
+        assertIs<WorktreeError.LocalFilesUnavailable>(error)
     }
 
     @Test
     fun `prepares the environment of an existing worktree and keeps it on failure`() = runTest {
         val prepared = mutableListOf<String>()
         val fileManager = FakeFileManager(existing = listOf("$base/local.properties"))
-        ProvisionWorktreeUseCase(config, executor(), fileManager, provisioning, environment = { _, worktree -> prepared += worktree })(linked)
+        ProvisionWorktreeUseCase(config, executor(), fileManager, provisioning, environment = { _, worktree -> prepared += worktree; PreparedWorktree() })(linked)
             .getOrThrow()
 
         assertEquals(listOf(linked), prepared)
@@ -208,13 +224,15 @@ class ProvisionWorktreeUseCaseTest {
         val exec = linkingExecutor { order += "hook"; success(it) }
         val fileManager = FakeFileManager(existing = listOf("$base/local.properties"))
 
-        ProvisionWorktreeUseCase(
+        val result = ProvisionWorktreeUseCase(
             config, exec, fileManager, linkingProvisioning,
-            environment = { _, _ -> order += "environment" },
+            environment = { _, _ -> order += "environment"; PreparedWorktree(PodsPreparation(cloned = listOf("iosApp")), FlutterPubGet.Resolved) },
             trust = approvedTrust,
         )(linked).getOrThrow()
 
         assertEquals(listOf("environment", "hook", "hook"), order)
+        assertEquals(listOf("iosApp"), result.pods.cloned)
+        assertEquals(FlutterPubGet.Resolved, result.flutter)
         val hooks = exec.executedCommands.zip(exec.workingDirectories).filter { it.first.first() in setOf("npm", "direnv") }
         assertEquals(listOf(listOf("npm", "install") to linked, listOf("direnv", "allow") to linked), hooks)
     }
@@ -429,7 +447,7 @@ class ProvisionWorktreeUseCaseTest {
 
         val error = provision(keysConfig, fileManager, records)(linked).exceptionOrNull()
 
-        assertIs<WorktreeError.SecretFileNotFound>(error)
+        assertIs<WorktreeError.LocalFilesUnavailable>(error)
         assertTrue(fileManager.deletedFiles.isEmpty())
     }
 
@@ -494,7 +512,7 @@ class ProvisionWorktreeUseCaseTest {
 
         val result = ProvisionWorktreeUseCase(
             config, executor(), FakeFileManager(existing = listOf("$base/local.properties")), source,
-            environment = { _, _ -> events += "prepared" },
+            environment = { _, _ -> events += "prepared"; PreparedWorktree() },
             approval = approval,
         )(linked).getOrThrow()
 

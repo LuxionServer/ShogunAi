@@ -2,7 +2,8 @@ package app.luxion.shogunai.ui.i18n
 
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.AppLanguage
-import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.AgentStateSource
+import app.luxion.shogunai.ui.components.AgentPhase
 import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.PoolHolder
 import app.luxion.shogunai.domain.model.PoolHolderState
@@ -10,6 +11,9 @@ import app.luxion.shogunai.domain.model.RepositoryConfigIssue
 import app.luxion.shogunai.domain.model.RepositoryConfigRules
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.LocalFileOrigin
+import app.luxion.shogunai.domain.model.UnavailableLocalFile
+import app.luxion.shogunai.domain.model.UnavailableReason
 import app.luxion.shogunai.ui.worktree.StateGroupKind
 import app.luxion.shogunai.ui.worktree.criterion
 import app.luxion.shogunai.ui.worktree.hint
@@ -154,11 +158,16 @@ class StringsTest {
 
     private val gitOutput = "fatal: 'TASK-123' is not a working tree"
 
+    private val missingLocalFile = WorktreeError.LocalFilesUnavailable(
+        "~/projects/main-repo",
+        listOf(UnavailableLocalFile("local.properties", "~/projects/main-repo/local.properties", LocalFileOrigin.PROJECT, UnavailableReason.Missing)),
+    )
+
     private val everyError: List<Throwable> = listOf(
         WorktreeError.BaseRepositoryNotFound("~/projects/main-repo"),
         WorktreeError.WorktreeAlreadyExists("~/projects/TASK-123"),
         WorktreeError.InvalidTaskId("bad..id"),
-        WorktreeError.SecretFileNotFound(listOf("local.properties"), "~/projects/main-repo"),
+        missingLocalFile,
         WorktreeError.InvalidRepositoryConfig("~/projects/main-repo/.shogunai.json", "unexpected token"),
         WorktreeError.RepositoryNotFound("~/projects/main-repo"),
         WorktreeError.NotAWorktree("~/projects/TASK-123"),
@@ -173,6 +182,7 @@ class StringsTest {
         WorktreeError.GitLfsNotFound,
         WorktreeError.BranchNotFound("feature/TASK-123"),
         WorktreeError.StartPointNotFound("epic/redesign"),
+        WorktreeError.NotABranch("v1.2.0"),
         WorktreeError.BranchAlreadyCheckedOut("feature/TASK-123", "~/projects/TASK-123"),
         WorktreeError.ProcessListingFailed(listOf("lsof", "-d", "cwd"), 1),
         WorktreeError.NoFreePort(20000, 29999),
@@ -196,6 +206,11 @@ class StringsTest {
         WorktreeError.HerdrNotInstalled,
         WorktreeError.HerdrCommandFailed(listOf("herdr", "pane", "list"), "no herdr server is running"),
         WorktreeError.HerdrAgentNotStarted("w1:p2", "headroom wrap claude"),
+        WorktreeError.OrcaNotInstalled,
+        WorktreeError.OrcaNotStarted,
+        WorktreeError.OrcaCommandFailed(listOf("orca", "repo", "list", "--json"), "runtime_unavailable"),
+        WorktreeError.OrcaAgentNotStarted("term_1", "env 'PORT=4100' claude -n main-repo-task-1"),
+        WorktreeError.OrcaMultirepoFolderNotOpen("~/projects/product"),
         WorktreeError.GitCommandFailed(listOf("git", "worktree", "remove", "TASK-123"), 128, gitOutput),
         CommandExecutionException(listOf("git", "status"), IOException("No such file or directory")),
         IllegalStateException("boom"),
@@ -246,7 +261,7 @@ class StringsTest {
         val rawFragments = listOf(
             gitOutput, "128", "git worktree remove", "adb devices", "adb: device offline",
             "Unable to boot device", "xcrun simctl boot", "lsof -d cwd", "no herdr server is running",
-            "disk full", "unexpected token", "ANDROID_HOME (/opt/sdk)", "boom", "exit code",
+            "disk full", "unexpected token", "ANDROID_HOME (/opt/sdk)", "boom", "exit code", "runtime_unavailable",
         )
         (everyError + everyGitFailure).forEach { error ->
             allStrings.forEach { strings ->
@@ -265,11 +280,12 @@ class StringsTest {
             WorktreeError.BaseRepositoryNotFound("~/projects/main-repo") to "~/projects/main-repo",
             WorktreeError.WorktreeAlreadyExists("~/projects/TASK-123") to "~/projects/TASK-123",
             WorktreeError.InvalidTaskId("bad..id") to "bad..id",
-            WorktreeError.SecretFileNotFound(listOf("local.properties"), "~/projects/main-repo") to "local.properties",
+            missingLocalFile to "local.properties",
             WorktreeError.InvalidRepositoryConfig("~/projects/main-repo/.shogunai.json", "x") to "~/projects/main-repo/.shogunai.json",
             WorktreeError.RepositoryConfigChanged("~/projects/main-repo/.shogunai.json") to "~/projects/main-repo/.shogunai.json",
             WorktreeError.BranchNotFound("feature/TASK-123") to "feature/TASK-123",
             WorktreeError.StartPointNotFound("epic/redesign") to "epic/redesign",
+            WorktreeError.NotABranch("v1.2.0") to "v1.2.0",
             WorktreeError.BranchAlreadyCheckedOut("feature/TASK-123", "~/projects/TASK-123") to "~/projects/TASK-123",
             WorktreeError.NoEmulatorPort(5554, 5584) to "5584",
             WorktreeError.EmulatorBootTimeout("emulator-5556", 180) to "emulator-5556",
@@ -331,6 +347,56 @@ class StringsTest {
     }
 
     @Test
+    fun `an agent that doesn't start in Orca keeps its terminal and command in the details`() {
+        val error = WorktreeError.OrcaAgentNotStarted("term_1", "env 'PORT=4100' claude -n main-repo-task-1")
+
+        allStrings.forEach { strings ->
+            val output = strings.describe(error).details?.output.orEmpty()
+            assertTrue(output.contains("term_1") && output.contains("claude -n main-repo-task-1"), output)
+        }
+    }
+
+    @Test
+    fun `Orca's error message is kept in the details and Orca's site is named when it is missing`() {
+        val failed = WorktreeError.OrcaCommandFailed(listOf("orca", "repo", "list", "--json"), "runtime_unavailable")
+
+        allStrings.forEach { strings ->
+            assertEquals("runtime_unavailable", strings.describe(failed).details?.output)
+            assertTrue(strings.describe(WorktreeError.OrcaNotInstalled).nextStep.contains("https://onorca.dev"))
+        }
+    }
+
+    @Test
+    fun `a multirepo folder without an Orca workspace names the folder and both ways to add it`() {
+        val error = WorktreeError.OrcaMultirepoFolderNotOpen("~/projects/product")
+
+        allStrings.forEach { strings ->
+            val description = strings.describe(error)
+            assertTrue(description.summary.contains("~/projects/product"), description.summary)
+            assertTrue(description.nextStep.contains("\"") && description.nextStep.count { it == ';' } >= 1, description.nextStep)
+        }
+        assertTrue(error.message.orEmpty().contains("Open as Folder") && error.message.orEmpty().contains("folder workspace"))
+    }
+
+    @Test
+    fun `the Orca outcomes, origin and notices are translated and keep their data`() {
+        allStrings.forEach { strings ->
+            assertNotEquals(strings.agentStartedInOrca("TASK-123"), strings.focusedInOrca("TASK-123"))
+            assertTrue(strings.agentStartedInOrca("TASK-123").contains("TASK-123"))
+            val failed = strings.orcaCloseFailed("~/projects/TASK-123", "runtime_unavailable")
+            assertTrue(failed.contains("~/projects/TASK-123") && failed.contains("runtime_unavailable"), failed)
+        }
+        assertNotEquals(EnglishStrings.agentStartedInOrca("TASK-123"), SpanishStrings.agentStartedInOrca("TASK-123"))
+        assertNotEquals(EnglishStrings.focusedInOrca("TASK-123"), SpanishStrings.focusedInOrca("TASK-123"))
+        assertNotEquals(EnglishStrings.openInOrca, SpanishStrings.openInOrca)
+        assertNotEquals(EnglishStrings.orcaTerminalsWillClose, SpanishStrings.orcaTerminalsWillClose)
+        assertNotEquals(EnglishStrings.orcaCleanupNotice, SpanishStrings.orcaCleanupNotice)
+        assertNotEquals(EnglishStrings.openInOrcaMark, SpanishStrings.openInOrcaMark)
+        assertEquals("Orca", EnglishStrings.originOrca)
+        assertEquals("Orca", SpanishStrings.originOrca)
+    }
+
+    @Test
     fun `the three Herdr outcomes read differently in both languages`() {
         allStrings.forEach { strings ->
             val worktree = listOf(strings.openedInHerdr("TASK-123"), strings.agentStartedInHerdr("TASK-123"), strings.focusedInHerdr("TASK-123"))
@@ -360,6 +426,57 @@ class StringsTest {
     }
 
     @Test
+    fun `unavailable local files are named with a fix built from their reasons`() {
+        val base = "~/projects/main-repo"
+        val error = WorktreeError.LocalFilesUnavailable(
+            base,
+            listOf(
+                UnavailableLocalFile("local.properties", "$base/local.properties", LocalFileOrigin.PROJECT, UnavailableReason.Missing),
+                UnavailableLocalFile("keys.properties", "$base/keys.properties", LocalFileOrigin.REPOSITORY, UnavailableReason.BrokenLink("/missing/keys.properties")),
+            ),
+        )
+
+        val english = EnglishStrings.describe(error)
+        assertEquals(
+            "These local files can't be copied or linked from $base: local.properties, keys.properties. Nothing was changed.",
+            english.summary,
+        )
+        assertEquals(
+            "Create the missing ones there, restore the targets of the broken links, or remove them from the project's local files and .shogunai.json or .worktreeinclude.",
+            english.nextStep,
+        )
+        val spanish = SpanishStrings.describe(error)
+        assertEquals(
+            "No se pueden copiar ni enlazar estos archivos locales desde $base: local.properties, keys.properties. No se ha cambiado nada.",
+            spanish.summary,
+        )
+        assertEquals(
+            "Crea los que faltan ahí, restaura los destinos de los enlaces rotos, o quítalos de los archivos locales del proyecto y .shogunai.json o .worktreeinclude.",
+            spanish.nextStep,
+        )
+        assertEquals(
+            listOf(
+                "local.properties: not found at $base/local.properties. Create it there, or remove it from the project's local files",
+                "keys.properties: $base/keys.properties is a link to /missing/keys.properties, which doesn't exist. " +
+                    "Restore /missing/keys.properties or replace the link with the file, or stop matching it in .shogunai.json or .worktreeinclude",
+            ),
+            english.details?.output?.lines(),
+        )
+        assertEquals(ErrorFix.OpenProjectSettings, english.fix)
+    }
+
+    @Test
+    fun `an unreadable local file asks to make it readable`() {
+        val error = WorktreeError.LocalFilesUnavailable(
+            "~/projects/main-repo",
+            listOf(UnavailableLocalFile("local.properties", "~/projects/main-repo/local.properties", LocalFileOrigin.PROJECT, UnavailableReason.Unreadable(null))),
+        )
+
+        assertEquals("Make the unreadable ones readable for your user, or remove them from the project's local files.", EnglishStrings.describe(error).nextStep)
+        assertEquals("Da permiso de lectura a tu usuario sobre los que no se pueden leer, o quítalos de los archivos locales del proyecto.", SpanishStrings.describe(error).nextStep)
+    }
+
+    @Test
     fun `errors about a project's repository offer to open its settings`() {
         listOf(
             WorktreeError.BaseRepositoryNotFound("~/projects/main-repo"),
@@ -376,16 +493,26 @@ class StringsTest {
     }
 
     @Test
-    fun `agent labels name the agent and translate each Herdr state`() {
-        AgentState.entries.forEach { state ->
-            val english = EnglishStrings.agentLabel("claude", state)
-            val spanish = SpanishStrings.agentLabel("claude", state)
+    fun `agent labels name the agent and translate each phase`() {
+        AgentPhase.entries.forEach { phase ->
+            val english = EnglishStrings.agentLabel("Claude", phase)
+            val spanish = SpanishStrings.agentLabel("Claude", phase)
 
-            assertTrue(english.startsWith("claude") && spanish.startsWith("claude"))
+            assertTrue(english.startsWith("Claude · ") && spanish.startsWith("Claude · "))
             assertNotEquals(english, spanish)
         }
-        assertEquals("claude", EnglishStrings.agentLabel("claude", null))
-        assertEquals("claude", SpanishStrings.agentLabel("claude", null))
+        assertEquals("Claude · needs you", EnglishStrings.agentLabel("Claude", AgentPhase.NEEDS_YOU))
+        assertEquals("Claude · te necesita", SpanishStrings.agentLabel("Claude", AgentPhase.NEEDS_YOU))
+    }
+
+    @Test
+    fun `the agent's source and the environment summary are translated`() {
+        assertEquals("State from Orca", EnglishStrings.agentStateSource(AgentStateSource.ORCA))
+        assertEquals("Estado de Orca", SpanishStrings.agentStateSource(AgentStateSource.ORCA))
+        assertNotEquals(EnglishStrings.agentStateSource(null), SpanishStrings.agentStateSource(null))
+        assertEquals("2 ports · 5 vars", EnglishStrings.environmentSummary(2, 5))
+        assertEquals("1 puerto · 1 variable", SpanishStrings.environmentSummary(1, 1))
+        assertEquals("", EnglishStrings.environmentSummary(0, 0))
     }
 
     @Test
@@ -476,5 +603,19 @@ class StringsTest {
             assertTrue("1.3.0" in message && "1.2.0" in message)
             assertTrue("brew upgrade --cask shogunai" in strings.updateCommandReminder(InstallChannel.HOMEBREW, "brew upgrade --cask shogunai"))
         }
+    }
+
+    @Test
+    fun `grouped release summaries count the resources in both languages`() {
+        assertEquals(
+            "3 emulators were released to make room for other worktrees",
+            EnglishStrings.releasedSummary(ResourceKind.EMULATOR, 3),
+        )
+        assertEquals(
+            "Se borraron 2 simuladores para dejar sitio a otros worktrees",
+            SpanishStrings.releasedSummary(ResourceKind.IOS_SIMULATOR, 2),
+        )
+        assertEquals("Details (3)", EnglishStrings.noticeDetails(3))
+        assertEquals("Detalles (3)", SpanishStrings.noticeDetails(3))
     }
 }

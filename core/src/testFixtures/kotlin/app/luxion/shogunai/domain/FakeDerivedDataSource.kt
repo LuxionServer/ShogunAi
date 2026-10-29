@@ -15,6 +15,8 @@ class FakeDerivedDataSource(
 ) : DerivedDataSource {
 
     val sizes = mutableMapOf<String, Long>()
+    val packageSizes = mutableMapOf<String, Long>()
+    val packagesMeasured = mutableListOf<String>()
     val deleted = mutableListOf<String>()
     val measured = mutableListOf<String>()
     var beforeDelete: () -> Unit = {}
@@ -35,6 +37,11 @@ class FakeDerivedDataSource(
         onSize(folder)
         if (folder.path in failSizeFor) throw IOException("can't read ${folder.path}")
         return folder.sizeBytes ?: sizes[folder.path] ?: 0L
+    }
+
+    override suspend fun packagesSize(folder: DerivedDataFolder): Long {
+        packagesMeasured += folder.path
+        return packageSizes[folder.path] ?: 0L
     }
 
     override suspend fun compilationCacheBytes(): Long? = cacheBytes

@@ -1,5 +1,15 @@
 package app.luxion.shogunai.ui.worktree
 
+import androidx.compose.ui.test.isSelected
+import androidx.compose.ui.test.hasText
+import app.luxion.shogunai.ui.actions.ActionId
+import app.luxion.shogunai.ui.actions.OpenTarget
+import app.luxion.shogunai.ui.actions.paletteEntries
+import app.luxion.shogunai.ui.worktree.inspector.environmentAsDotenv
+import app.luxion.shogunai.ui.worktree.inspector.portsLabel
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.semantics.getOrNull
 import app.luxion.shogunai.HeadlessAppUseCases
 import app.luxion.shogunai.domain.FakeAppWindowService
 import app.luxion.shogunai.domain.FakeHeadlessAppLauncher
@@ -44,11 +54,16 @@ import app.luxion.shogunai.EmulatorUseCases
 import app.luxion.shogunai.GradleUseCases
 import app.luxion.shogunai.AgentUseCases
 import app.luxion.shogunai.HerdrUseCases
+import app.luxion.shogunai.OrcaUseCases
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.ui.shell.AgentChoices
 import app.luxion.shogunai.SimulatorUseCases
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.HerdrOpening
+import app.luxion.shogunai.domain.model.ObservedPort
+import app.luxion.shogunai.domain.model.OrcaOpening
+import app.luxion.shogunai.domain.model.OrcaOutcome
+import app.luxion.shogunai.domain.model.OrcaTerminal
 import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.WorktreeUseCases
 import app.luxion.shogunai.ProvisioningUseCases
@@ -64,6 +79,7 @@ import app.luxion.shogunai.domain.FakeClipboardWriter
 import app.luxion.shogunai.domain.FakeDerivedDataSource
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeHerdrClient
+import app.luxion.shogunai.domain.FakeOrcaClient
 import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
@@ -106,6 +122,8 @@ import app.luxion.shogunai.domain.model.XcodeProvider
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
 import app.luxion.shogunai.ui.machine.MachineResource
 import app.luxion.shogunai.domain.usecase.CloseHerdrWorkspacesUseCase
+import app.luxion.shogunai.domain.usecase.CloseOrcaTerminalsUseCase
+import app.luxion.shogunai.domain.usecase.OrcaOrigins
 import app.luxion.shogunai.domain.usecase.CopyWorktreeLaunchCommandUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
@@ -118,12 +136,14 @@ import app.luxion.shogunai.domain.usecase.ListDerivedDataUseCase
 import app.luxion.shogunai.domain.usecase.FetchRemoteUseCase
 import app.luxion.shogunai.domain.usecase.ListBranchesUseCase
 import app.luxion.shogunai.domain.usecase.ResolveStartPointUseCase
+import app.luxion.shogunai.domain.usecase.ResolveBaseBranchUseCase
 import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.ReadWorktreeStatusUseCase
 import app.luxion.shogunai.domain.usecase.DeleteBranchUseCase
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.RepairWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
+import app.luxion.shogunai.domain.usecase.ResolveRecordedBasesUseCase
 import app.luxion.shogunai.domain.usecase.StopGradleDaemonsUseCase
 import app.luxion.shogunai.domain.FakeShellPreferenceRepository
 import app.luxion.shogunai.domain.model.Project
@@ -160,6 +180,12 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import app.luxion.shogunai.domain.FakeMavenDaemonSource
+import app.luxion.shogunai.domain.model.MavenDaemonProcess
+import app.luxion.shogunai.domain.model.MavenProvider
+import app.luxion.shogunai.domain.usecase.ListMavenDaemonsUseCase
+import app.luxion.shogunai.domain.usecase.StopMavenDaemonsUseCase
+import app.luxion.shogunai.MavenUseCases
 
 class ProjectWorktreesTest {
 
@@ -253,11 +279,13 @@ class ProjectWorktreesTest {
             listBranches = ListBranchesUseCase(config, executor),
             fetchRemote = FetchRemoteUseCase(config, executor),
             resolveStartPoint = { ref -> ResolveStartPointUseCase(executor)(config.baseRepositoryPath, ref) },
+            resolveBaseBranch = { ref -> ResolveBaseBranchUseCase(executor)(config.baseRepositoryPath, ref) },
             remove = RemoveWorktreeUseCase(config, executor),
             deleteBranch = DeleteBranchUseCase(config, executor),
             copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboard, windows = false),
             repair = RepairWorktreesUseCase(config, executor, FakeFileManager(existing = listOf(config.baseRepositoryPath))),
             resolveMainBranch = ResolveMainBranchUseCase(config, executor),
+            resolveRecordedBases = { ResolveRecordedBasesUseCase(config, executor)() },
             readStatus = ReadWorktreeStatusUseCase(executor, FakeFileManager()),
             cleanUp = CleanUpWorktreesUseCase(config, executor),
             detectAgents = { worktrees -> DetectRunningAgentsUseCase(executor)(config, worktrees) },
@@ -306,6 +334,7 @@ class ProjectWorktreesTest {
         override fun projectExists(workspacePath: String): Boolean = false
         override fun isOnUnavailableVolume(workspacePath: String): Boolean = false
         override suspend fun size(folder: DerivedDataFolder): Long = 0L
+        override suspend fun packagesSize(folder: DerivedDataFolder): Long = 0L
         override suspend fun delete(folder: DerivedDataFolder) {}
     }
 
@@ -334,6 +363,25 @@ class ProjectWorktreesTest {
             gradle = gradleUseCases(executor, source, provider = provider, buildCacheEnabled = buildCacheEnabled),
         )
     }
+
+    private fun mavenRepository(
+        responder: (List<String>) -> CommandResult,
+        source: FakeMavenDaemonSource,
+        declared: Boolean = true,
+    ): WorktreeUseCases {
+        val executor = FakeShellCommandExecutor(responder)
+        val fileManager = FakeFileManager(existing = listOf(config.baseRepositoryPath, worktreePath))
+        return useCasesWith(executor).copy(
+            maven = MavenUseCases(
+                provider = { MavenProvider().takeIf { declared } },
+                listDaemons = { worktrees -> ListMavenDaemonsUseCase(source, fileManager)(worktrees) },
+                stopDaemons = { pids -> StopMavenDaemonsUseCase(source, executor)(pids) },
+            ),
+        )
+    }
+
+    private fun mavenDaemon(pid: Long, state: DaemonState, workingDirectory: String) =
+        MavenDaemonProcess(pid, 100, workingDirectory, state)
 
     private fun existingBase() =
         FakeFileManager(existing = listOf(config.baseRepositoryPath) + config.secretFiles.map { config.baseSecretPath(it) })
@@ -1135,6 +1183,8 @@ class ProjectWorktreesTest {
                     success(command, stdout = "fetched1\n")
                 command.take(2) == listOf("git", "rev-parse") && command.last() == "develop^{commit}" ->
                     success(command, stdout = "local11\n")
+                "--symbolic-full-name" in command && command.last() == "origin/develop" -> success(command, stdout = "refs/remotes/origin/develop\n")
+                "--symbolic-full-name" in command && command.last() == "HEAD" -> success(command, stdout = "refs/heads/develop\n")
                 command.take(2) == listOf("git", "rev-parse") -> failure(command)
                 command.take(3) == listOf("git", "remote", "get-url") ->
                     if (hasOrigin) success(command, stdout = "git@example.com:team/repo.git") else failure(command, exitCode = 2)
@@ -1162,6 +1212,7 @@ class ProjectWorktreesTest {
         advanceUntilIdle()
 
         assertTrue(executor.executed(*(addPrefix + "fetched1").toTypedArray()), executor.executedCommands.toString())
+        assertTrue(executor.executed("git", "config", "branch.feature/TASK-456.gh-merge-base", "develop"), executor.executedCommands.toString())
     }
 
     @Test
@@ -1177,6 +1228,8 @@ class ProjectWorktreesTest {
         advanceUntilIdle()
 
         assertTrue(executor.executed("git", "worktree", "add", "/home/dev/projects/TASK-456", "-b", "feature/TASK-456"), executor.executedCommands.toString())
+        assertTrue(executor.executed("git", "rev-parse", "--verify", "--quiet", "--symbolic-full-name", "HEAD"))
+        assertTrue(executor.executed("git", "config", "branch.feature/TASK-456.gh-merge-base", "develop"), executor.executedCommands.toString())
     }
 
     @Test
@@ -2359,6 +2412,80 @@ class ProjectWorktreesTest {
     }
 
     @Test
+    fun `cleanup stops the idle maven daemons of the removed worktrees`() = runTest(dispatcher) {
+        val executed = mutableListOf<List<String>>()
+        val source = FakeMavenDaemonSource(
+            listOf(
+                mavenDaemon(20, idle, workingDirectory = "$worktreePath/service"),
+                mavenDaemon(21, idle, workingDirectory = config.baseRepositoryPath),
+            ),
+        )
+        val board = board(mavenRepository(mergedResponder(executed), source))
+        advanceUntilIdle()
+
+        board.openCleanup()
+        assertTrue(board.project.isMavenRepository)
+        assertTrue(board.cleanupStopMavenDaemons)
+        board.confirmCleanup()
+        advanceUntilIdle()
+
+        assertTrue(executed.contains(listOf("kill", "20")))
+        assertFalse(executed.contains(listOf("kill", "21")))
+        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1, stoppedDaemons = 1), board.cleanupSuccess)
+    }
+
+    @Test
+    fun `cleanup keeps a busy maven daemon of a removed worktree and reports it`() = runTest(dispatcher) {
+        val executed = mutableListOf<List<String>>()
+        val source = FakeMavenDaemonSource(listOf(mavenDaemon(20, idle, workingDirectory = worktreePath)))
+        val merged = mergedResponder(executed)
+        val board = board(
+            mavenRepository(
+                { command ->
+                    if (command.take(3) == listOf("git", "worktree", "remove")) {
+                        source.daemons = listOf(mavenDaemon(20, DaemonState.Busy, workingDirectory = worktreePath))
+                    }
+                    merged(command)
+                },
+                source,
+            ),
+        )
+        advanceUntilIdle()
+
+        board.openCleanup()
+        board.confirmCleanup()
+        advanceUntilIdle()
+
+        assertFalse(executed.contains(listOf("kill", "20")))
+        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1, keptDaemons = 1), board.cleanupSuccess)
+    }
+
+    @Test
+    fun `cleanup without the maven option or provider stops no maven daemon`() = runTest(dispatcher) {
+        val executed = mutableListOf<List<String>>()
+        val source = FakeMavenDaemonSource(listOf(mavenDaemon(20, idle, workingDirectory = worktreePath)))
+        val board = board(mavenRepository(mergedResponder(executed), source))
+        advanceUntilIdle()
+        board.openCleanup()
+        board.cleanupStopMavenDaemons = false
+        board.confirmCleanup()
+        advanceUntilIdle()
+
+        val undeclaredExecuted = mutableListOf<List<String>>()
+        val undeclaredSource = FakeMavenDaemonSource(listOf(mavenDaemon(20, idle, workingDirectory = worktreePath)))
+        val undeclared = board(mavenRepository(mergedResponder(undeclaredExecuted), undeclaredSource, declared = false))
+        advanceUntilIdle()
+        assertFalse(undeclared.project.isMavenRepository)
+        undeclared.openCleanup()
+        undeclared.confirmCleanup()
+        advanceUntilIdle()
+
+        assertTrue(executed.none { it.first() == "kill" })
+        assertTrue(undeclaredExecuted.none { it.first() == "kill" })
+        assertEquals(0, undeclaredSource.listings)
+    }
+
+    @Test
     fun `cleanup keeps daemons that became busy and reports them`() = runTest(dispatcher) {
         val executed = mutableListOf<List<String>>()
         val source = FakeGradleDaemonSource(listOf(gradleDaemon(10, idle, lastBuildDirectory = worktreePath)))
@@ -2568,6 +2695,35 @@ class ProjectWorktreesTest {
 
     @OptIn(ExperimentalTestApi::class)
     @Test
+    fun `the detail shows its sections in the inspector's fixed order`() = runComposeUiTest {
+        val compose = composeSection(run = { _, _ -> Result.success(worktreeComposeName) })
+        val holder = loadedProjectWorktrees(useCases(listingResponder()).copy(compose = compose))
+        setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder) } }
+
+        waitUntil { onAllNodesWithText("Not started").fetchSemanticsNodes().isNotEmpty() }
+        val headings = onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading)).fetchSemanticsNodes()
+            .sortedBy { it.boundsInRoot.top }
+            .mapNotNull { it.config.getOrNull(SemanticsProperties.Text)?.joinToString() }
+
+        assertEquals(listOf("STATUS", "AGENT", "RESOURCES", "PROVISIONED FILES"), headings.filter { it == it.uppercase() })
+    }
+
+    @Test
+    fun `reading agents records when they were read`() = runTest(dispatcher) {
+        val readAt = Instant.parse("2026-10-16T12:00:00Z")
+        val viewModel = ProjectWorktrees(
+            useCases(listingResponder()),
+            CoroutineScope(SupervisorJob() + dispatcher),
+            ioDispatcher = dispatcher,
+            clock = { readAt },
+        ).also { it.refresh() }
+        advanceUntilIdle()
+
+        assertEquals(readAt, viewModel.agentsReadAt)
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
     fun `copying a path from the detail confirms it`() = runComposeUiTest {
         val holder = projectWorktrees(useCases(listingResponder()))
         setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder) } }
@@ -2579,18 +2735,19 @@ class ProjectWorktreesTest {
 
     @OptIn(ExperimentalTestApi::class)
     @Test
-    fun `the detail of a multi-agent project names the worktree's agent on its launch actions`() = runComposeUiTest {
+    fun `the detail picks the worktree's agent once, in the open with menu`() = runComposeUiTest {
         val holder = projectWorktrees(withAgents())
         setContent { MaterialTheme { WorktreeDetailPane(worktree, multiAgentConfig, holder) } }
 
-        onNodeWithText("Copy launch command · Claude").assertIsDisplayed()
-        onNodeWithText("Open in Herdr · Claude").assertIsDisplayed()
+        onNodeWithText("Open in Herdr").assertIsDisplayed()
+        onNodeWithContentDescription("Open with…", substring = true).performClick()
+        onNodeWithText("With agent").assertIsDisplayed()
+        onNode(hasText("Claude") and isSelected()).assertExists()
 
-        holder.setAgent(worktree, codex)
+        onNodeWithText("Codex").performClick()
         waitForIdle()
 
-        onNodeWithText("Copy launch command · Codex").assertIsDisplayed()
-        onNodeWithText("Open in Herdr · Codex").assertIsDisplayed()
+        assertEquals(codex, holder.agentFor(worktree))
     }
 
     @OptIn(ExperimentalTestApi::class)
@@ -2599,7 +2756,9 @@ class ProjectWorktreesTest {
         val holder = projectWorktrees(withAgents(projectConfig = config))
         setContent { MaterialTheme { WorktreeDetailPane(worktree, config, holder) } }
 
-        onNodeWithText("Copy launch command").assertIsDisplayed()
+        onNodeWithContentDescription("Copy launch command", substring = true).assertIsDisplayed()
+        onNodeWithContentDescription("Open with…", substring = true).performClick()
+        onNodeWithText("With agent").assertDoesNotExist()
         onNodeWithContentDescription("Choose agent").assertDoesNotExist()
     }
 
@@ -3312,6 +3471,192 @@ class ProjectWorktreesTest {
         assertEquals(worktreePath, board.project.worktreePendingRemoval?.path)
     }
 
+    private fun withOrca(
+        responder: (List<String>) -> CommandResult,
+        orca: FakeOrcaClient,
+    ): WorktreeUseCases {
+        val executor = FakeShellCommandExecutor(responder)
+        val close = CloseOrcaTerminalsUseCase(orca)
+        return useCasesWith(executor).copy(
+            remove = RemoveWorktreeUseCase(config, executor, closeOrcaTerminals = close),
+            cleanUp = CleanUpWorktreesUseCase(config, executor, closeOrcaTerminals = close),
+            orca = OrcaUseCases.NONE.copy(withTerminals = close::withTerminals),
+        )
+    }
+
+    private fun orcaWithTerminals(vararg paths: String, closeFailures: Map<String, Throwable> = emptyMap()) =
+        FakeOrcaClient(terminals = paths.associateWith { listOf(OrcaTerminal("term_1", it)) }, closeFailures = closeFailures)
+
+    @Test
+    fun `opening in Orca passes the worktree and reports a started agent`() = runTest(dispatcher) {
+        val calls = mutableListOf<Worktree>()
+        val orca = OrcaUseCases.NONE.copy(open = { target, _ -> calls += target; Result.success(OrcaOpening(OrcaOutcome.STARTED_AGENT, "term_1", "Claude")) })
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(orca = orca))
+        advanceUntilIdle()
+        val target = viewModel.worktrees.first { it.path == worktreePath }
+
+        viewModel.openInOrca(target)
+        assertTrue(worktreePath in viewModel.openingInOrca)
+        advanceUntilIdle()
+
+        assertEquals(target, calls.single())
+        assertEquals(WorktreeSuccess.OpenedInOrca(worktreePath, OrcaOutcome.STARTED_AGENT), viewModel.success)
+        assertTrue(viewModel.openingInOrca.isEmpty())
+    }
+
+    @Test
+    fun `opening in Orca reports a focused live agent`() = runTest(dispatcher) {
+        val orca = OrcaUseCases.NONE.copy(open = { _, _ -> Result.success(OrcaOpening(OrcaOutcome.FOCUSED, "term_9", "claude")) })
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(orca = orca))
+        advanceUntilIdle()
+
+        viewModel.openInOrca(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+
+        assertEquals(WorktreeSuccess.OpenedInOrca(worktreePath, OrcaOutcome.FOCUSED), viewModel.success)
+    }
+
+    @Test
+    fun `an agent that doesn't start in Orca is recorded for the worktree`() = runTest(dispatcher) {
+        val orca = OrcaUseCases.NONE.copy(open = { _, _ -> Result.failure(WorktreeError.OrcaAgentNotStarted("term_1", "claude")) })
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(orca = orca))
+        advanceUntilIdle()
+
+        viewModel.openInOrca(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+
+        assertIs<WorktreeError.OrcaAgentNotStarted>(viewModel.actionErrors[worktreePath])
+        assertNull(viewModel.success)
+    }
+
+    @Test
+    fun `Orca not installed is recorded for the worktree`() = runTest(dispatcher) {
+        val viewModel = projectWorktrees(useCases(listingResponder()))
+        advanceUntilIdle()
+
+        viewModel.openInOrca(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+
+        assertIs<WorktreeError.OrcaNotInstalled>(viewModel.actionErrors[worktreePath])
+        assertTrue(viewModel.openingInOrca.isEmpty())
+    }
+
+    @Test
+    fun `the agent picker opens in Orca with the picked agent`() = runTest(dispatcher) {
+        val used = mutableListOf<AgentLaunchConfig>()
+        val orca = OrcaUseCases.NONE.copy(open = { _, agent -> used += agent; Result.success(OrcaOpening(OrcaOutcome.STARTED_AGENT, "term_1", agent.displayName)) })
+        val holder = projectWorktrees(withAgents().copy(orca = orca))
+        advanceUntilIdle()
+        val target = holder.worktrees.first { it.path == worktreePath }
+
+        holder.perform(target, ActionId.Open(OpenTarget.ORCA), agent = "Codex")
+        advanceUntilIdle()
+
+        assertEquals(listOf(codex), used)
+        assertEquals(codex, holder.agentFor(target))
+    }
+
+    @Test
+    fun `the ports Orca sees are read with the agents and follow each check`() = runTest(dispatcher) {
+        var observed = mapOf(worktreePath to listOf(ObservedPort(8765, "Python", "http://127.0.0.1:8765")))
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(orca = OrcaUseCases.NONE.copy(ports = { observed })))
+        advanceUntilIdle()
+
+        assertEquals(listOf(ObservedPort(8765, "Python", "http://127.0.0.1:8765")), viewModel.observedPorts[worktreePath])
+
+        observed = mapOf(worktreePath to listOf(ObservedPort(10011, "java")))
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertEquals(listOf(ObservedPort(10011, "java")), viewModel.observedPorts[worktreePath])
+    }
+
+    @Test
+    fun `Orca's origins are read with the agents`() = runTest(dispatcher) {
+        val origins = OrcaOrigins(setOf(worktreePath), "/home/dev/orca/workspaces") { it }
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(orca = OrcaUseCases.NONE.copy(origins = { origins })))
+        advanceUntilIdle()
+
+        assertEquals(origins, viewModel.orcaOrigins)
+    }
+
+    @Test
+    fun `the remove dialog says when the worktree has Orca terminals`() = runTest(dispatcher) {
+        val viewModel = projectWorktrees(withOrca(listingResponder(), orcaWithTerminals(worktreePath)))
+        advanceUntilIdle()
+
+        viewModel.requestRemoval(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+
+        assertTrue(viewModel.pendingRemovalHasOrcaTerminals)
+    }
+
+    @Test
+    fun `the remove dialog shows no Orca notice when Orca isn't running`() = runTest(dispatcher) {
+        val orca = orcaWithTerminals(worktreePath).apply { running = false }
+        val viewModel = projectWorktrees(withOrca(listingResponder(), orca))
+        advanceUntilIdle()
+
+        viewModel.requestRemoval(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+
+        assertFalse(viewModel.pendingRemovalHasOrcaTerminals)
+        viewModel.confirmPendingRemoval()
+        advanceUntilIdle()
+        assertTrue(viewModel.worktrees.none { it.path == worktreePath })
+        assertEquals(0, orca.starts)
+    }
+
+    @Test
+    fun `removing a worktree with Orca terminals closes them`() = runTest(dispatcher) {
+        val orca = orcaWithTerminals(worktreePath)
+        val viewModel = projectWorktrees(withOrca(listingResponder(), orca))
+        advanceUntilIdle()
+
+        viewModel.requestRemoval(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+        viewModel.confirmPendingRemoval()
+        advanceUntilIdle()
+
+        assertEquals(listOf(worktreePath), orca.closedWorktrees)
+        assertTrue(viewModel.orcaCloseFailures.isEmpty())
+    }
+
+    @Test
+    fun `a failing Orca close is shown as a warning after the removal`() = runTest(dispatcher) {
+        val failure = WorktreeError.OrcaCommandFailed(listOf("orca"), "runtime_unavailable")
+        val viewModel = projectWorktrees(withOrca(listingResponder(), orcaWithTerminals(worktreePath, closeFailures = mapOf(worktreePath to failure))))
+        advanceUntilIdle()
+
+        viewModel.requestRemoval(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+        viewModel.confirmPendingRemoval()
+        advanceUntilIdle()
+
+        assertNull(viewModel.error)
+        assertTrue(viewModel.worktrees.none { it.path == worktreePath })
+        assertEquals(failure, viewModel.orcaCloseFailures.single().error)
+        viewModel.dismissOrcaCloseFailures()
+        assertTrue(viewModel.orcaCloseFailures.isEmpty())
+    }
+
+    @Test
+    fun `the cleanup dialog marks the candidates with Orca terminals and cleanup closes them`() = runTest(dispatcher) {
+        val failure = WorktreeError.OrcaCommandFailed(listOf("orca"), "runtime_unavailable")
+        val orca = orcaWithTerminals(worktreePath, closeFailures = mapOf(worktreePath to failure))
+        val board = board(withOrca(mergedResponder(), orca))
+        advanceUntilIdle()
+
+        board.openCleanup()
+        advanceUntilIdle()
+        assertEquals(setOf(worktreePath), board.project.orcaTerminalPaths)
+        board.confirmCleanup()
+        advanceUntilIdle()
+
+        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1), board.cleanupSuccess)
+        assertEquals(listOf(worktreePath), board.project.orcaCloseFailures.map { it.path })
+    }
+
     private fun withHerdr(
         responder: (List<String>) -> CommandResult,
         herdr: FakeHerdrClient,
@@ -3633,15 +3978,15 @@ class ProjectWorktreesTest {
         val (holder) = withTools(installed, chosenTerminal = TerminalId.ITERM2)
         advanceUntilIdle()
 
-        val actions = holder.openActions(holder.worktrees.first { it.path == worktreePath }, EnglishStrings)
+        val actions = holder.toolOpens(holder.worktrees.first { it.path == worktreePath })
 
         assertEquals(
             listOf(
-                OpenKind.TERMINAL to "Open in iTerm2",
-                OpenKind.EDITOR to "Open in VS Code",
-                OpenKind.FOLDER to "Open folder",
+                OpenTarget.TERMINAL to "Open in iTerm2",
+                OpenTarget.EDITOR to "Open in VS Code",
+                OpenTarget.FOLDER to "Open folder",
             ),
-            actions.map { it.kind to it.label },
+            actions,
         )
     }
 
@@ -3650,13 +3995,13 @@ class ProjectWorktreesTest {
         val (holder) = withTools(installed.copy(claudeDesktop = true), chosenTerminal = TerminalId.ITERM2)
         advanceUntilIdle()
 
-        val actions = holder.openActions(holder.worktrees.first { it.path == worktreePath }, EnglishStrings)
+        val actions = holder.toolOpens(holder.worktrees.first { it.path == worktreePath })
 
         assertEquals(
-            listOf(OpenKind.TERMINAL, OpenKind.EDITOR, OpenKind.CLAUDE_DESKTOP, OpenKind.FOLDER),
-            actions.map { it.kind },
+            listOf(OpenTarget.TERMINAL, OpenTarget.EDITOR, OpenTarget.CLAUDE_DESKTOP, OpenTarget.FOLDER),
+            actions.map { it.first },
         )
-        assertEquals("Open in Claude Desktop", actions.first { it.kind == OpenKind.CLAUDE_DESKTOP }.label)
+        assertEquals("Open in Claude Desktop", actions.first { it.first == OpenTarget.CLAUDE_DESKTOP }.second)
     }
 
     @Test
@@ -3665,10 +4010,11 @@ class ProjectWorktreesTest {
         val (prunable) = withTools(installed.copy(claudeDesktop = true))
         advanceUntilIdle()
 
-        val offered = missingApp.openActions(missingApp.worktrees.first { it.path == worktreePath }, EnglishStrings)
+        val offered = missingApp.toolOpens(missingApp.worktrees.first { it.path == worktreePath })
 
-        assertTrue(offered.none { it.kind == OpenKind.CLAUDE_DESKTOP })
-        assertTrue(prunable.openActions(Worktree(path = worktreePath, branch = null, isPrunable = true), EnglishStrings).isEmpty())
+        assertTrue(offered.none { it.first == OpenTarget.CLAUDE_DESKTOP })
+        val missingFolder = prunable.actionCatalog(Worktree(path = worktreePath, branch = null, isPrunable = true), EnglishStrings)
+        assertTrue(missingFolder.opens.none { it.isAvailable })
     }
 
     @Test
@@ -3678,10 +4024,10 @@ class ProjectWorktreesTest {
         advanceUntilIdle()
         val target = holder.worktrees.first { it.path == worktreePath }
 
-        holder.open(target, OpenKind.CLAUDE_DESKTOP)
+        holder.perform(target, ActionId.Open(OpenTarget.CLAUDE_DESKTOP))
         advanceUntilIdle()
         calls.failure = WorktreeError.ClaudeDesktopLaunchFailed("boom")
-        holder.open(target, OpenKind.CLAUDE_DESKTOP)
+        holder.perform(target, ActionId.Open(OpenTarget.CLAUDE_DESKTOP))
         advanceUntilIdle()
 
         assertEquals(listOf(worktreePath, worktreePath), calls.claudeDesktop)
@@ -3695,7 +4041,7 @@ class ProjectWorktreesTest {
         advanceUntilIdle()
 
         fun labels(holder: ProjectWorktrees) =
-            holder.openActions(holder.worktrees.first { it.path == worktreePath }, EnglishStrings).map { it.label }
+            holder.toolOpens(holder.worktrees.first { it.path == worktreePath }).map { it.second }
 
         assertTrue("Open in Android Studio" in labels(overridden))
         assertTrue("Open in VS Code" in labels(uninstalled))
@@ -3706,17 +4052,19 @@ class ProjectWorktreesTest {
         val (holder) = withTools(DetectedTools())
         advanceUntilIdle()
 
-        val actions = holder.openActions(holder.worktrees.first { it.path == worktreePath }, EnglishStrings)
+        val actions = holder.toolOpens(holder.worktrees.first { it.path == worktreePath })
 
-        assertEquals(listOf(OpenKind.FOLDER), actions.map { it.kind })
+        assertEquals(listOf(OpenTarget.FOLDER), actions.map { it.first })
     }
 
     @Test
-    fun `a worktree whose folder is missing offers no open action`() = runTest(dispatcher) {
+    fun `a worktree whose folder is missing offers its open actions disabled with the reason`() = runTest(dispatcher) {
         val (holder) = withTools(installed, chosenTerminal = TerminalId.TERMINAL)
         advanceUntilIdle()
 
-        assertTrue(holder.openActions(Worktree(path = worktreePath, branch = null, isPrunable = true), EnglishStrings).isEmpty())
+        val catalog = holder.actionCatalog(Worktree(path = worktreePath, branch = null, isPrunable = true), EnglishStrings)
+        assertTrue(catalog.opens.isNotEmpty())
+        assertTrue(catalog.opens.all { it.disabledReason == "The worktree's folder is missing" })
     }
 
     @Test
@@ -3958,7 +4306,7 @@ class ProjectWorktreesTest {
 
         assertEquals(listOf("cd '$worktreePath' && codex", "cd '$worktreePath' && codex"), clipboard.writtenText)
         assertEquals(codex, holder.agentFor(target))
-        assertEquals("Copy launch command · Codex", holder.launchLabel("Copy launch command", target, EnglishStrings))
+        assertEquals("Codex", holder.actionCatalog(target, EnglishStrings).context.agent)
     }
 
     @Test
@@ -4008,21 +4356,20 @@ class ProjectWorktreesTest {
         val target = holder.worktrees.first { it.path == worktreePath }
 
         assertFalse(holder.hasAgentChoice)
-        assertEquals("Copy launch command", holder.launchLabel("Copy launch command", target, EnglishStrings))
-        assertTrue(holder.launchChoices(target, EnglishStrings).isEmpty())
+        assertTrue(holder.actionCatalog(target, EnglishStrings).agentChoices.isEmpty())
     }
 
     @Test
-    fun `the launch choices offer the other agents`() = runTest(dispatcher) {
+    fun `the palette offers launches with the other agents`() = runTest(dispatcher) {
         val holder = projectWorktrees(withAgents())
         advanceUntilIdle()
         val target = holder.worktrees.first { it.path == worktreePath }
 
-        val choices = holder.launchChoices(target, EnglishStrings)
+        val withOtherAgent = holder.actionCatalog(target, EnglishStrings).paletteEntries(EnglishStrings).filter { it.agent != null }
 
-        assertTrue(choices.isNotEmpty())
-        assertTrue(choices.all { it.agent == codex })
-        assertEquals("Copy launch command · Codex", choices.first { it.kind == LaunchKind.COPY }.label)
+        assertTrue(withOtherAgent.isNotEmpty())
+        assertTrue(withOtherAgent.all { it.agent == "Codex" })
+        assertTrue(withOtherAgent.any { it.title == "Copy launch command with Codex" })
     }
 
     @Test
@@ -4037,4 +4384,9 @@ class ProjectWorktreesTest {
 
         assertEquals(listOf(codex), used)
     }
+
+    private fun ProjectWorktrees.toolOpens(worktree: Worktree): List<Pair<OpenTarget, String>> =
+        actionCatalog(worktree, EnglishStrings).opens
+            .map { (it.id as ActionId.Open).target to it.label }
+            .filter { it.first != OpenTarget.HERDR && it.first != OpenTarget.ORCA }
 }

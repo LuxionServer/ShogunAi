@@ -19,7 +19,7 @@ class DetectMobileSecretsUseCase(
         val found = untrackedSecrets(config.baseRepositoryPath)
         val references = found.filter { it.kind in PROPERTIES_KINDS }.flatMap { keystoreReferences(config.baseRepositoryPath, it.path) }
         val referenced = references.mapNotNull { it.keystore }.map { MobileSecret(it, MobileSecretKind.KEYSTORE) }
-        val provided = providedFiles(config)
+        val provided = providedFiles(config) + found.filter { isWrittenByFlutter(config.baseRepositoryPath, it) }.map { it.path }
         return MobileSecretsReport(
             secrets = (found + referenced).distinctBy { it.path }.filterNot { it.path in provided },
             warnings = references.mapNotNull { it.warning },
@@ -34,6 +34,10 @@ class DetectMobileSecretsUseCase(
             .filter { it.isNotEmpty() && it.split('/').dropLast(1).none { folder -> folder in EXCLUDED_FOLDERS } }
             .mapNotNull { path -> kindOf(path.substringAfterLast('/'))?.let { MobileSecret(path, it) } }
     }
+
+    private fun isWrittenByFlutter(repository: String, secret: MobileSecret): Boolean =
+        secret.kind == MobileSecretKind.LOCAL_PROPERTIES &&
+            FLUTTER_SDK_PROPERTY in fileManager.readProperties("$repository/${secret.path}")
 
     private suspend fun keystoreReferences(repository: String, propertiesFile: String): List<KeystoreReference> =
         fileManager.readProperties("$repository/$propertiesFile")
@@ -75,18 +79,21 @@ class DetectMobileSecretsUseCase(
             "*.keystore",
             "google-services.json",
             "GoogleService-Info.plist",
+            "firebase_options.dart",
         )
+        val FIREBASE_CONFIG_FILES = setOf("google-services.json", "GoogleService-Info.plist", "firebase_options.dart")
         val PROPERTIES_KINDS = setOf(MobileSecretKind.LOCAL_PROPERTIES, MobileSecretKind.SIGNING_PROPERTIES)
-        val EXCLUDED_FOLDERS = setOf("build", ".gradle", "node_modules", "Pods", "DerivedData")
+        val EXCLUDED_FOLDERS = setOf("build", ".gradle", ".dart_tool", "node_modules", "Pods", "DerivedData")
         val KEY_SEPARATORS = setOf('.', '_', '-')
         const val STORE_FILE_SUFFIX = "storefile"
+        const val FLUTTER_SDK_PROPERTY = "flutter.sdk"
         val WINDOWS_DRIVE = Regex("^[A-Za-z]:/")
 
         fun kindOf(name: String): MobileSecretKind? = when {
             name == "local.properties" -> MobileSecretKind.LOCAL_PROPERTIES
             name == "keystore.properties" || name == "key.properties" -> MobileSecretKind.SIGNING_PROPERTIES
             name.endsWith(".jks") || name.endsWith(".keystore") -> MobileSecretKind.KEYSTORE
-            name == "google-services.json" || name == "GoogleService-Info.plist" -> MobileSecretKind.FIREBASE_CONFIG
+            name in FIREBASE_CONFIG_FILES -> MobileSecretKind.FIREBASE_CONFIG
             else -> null
         }
 

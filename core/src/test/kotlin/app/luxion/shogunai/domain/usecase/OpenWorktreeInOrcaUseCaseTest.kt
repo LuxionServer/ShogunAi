@@ -1,0 +1,544 @@
+package app.luxion.shogunai.domain.usecase
+
+import app.luxion.shogunai.domain.FakeClaudeSessionRegistry
+import app.luxion.shogunai.domain.FakeEnvironmentStateStore
+import app.luxion.shogunai.domain.FakeOrcaClient
+import app.luxion.shogunai.domain.FakePortProbe
+import app.luxion.shogunai.domain.FakeProcessEnvironmentReader
+import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
+import app.luxion.shogunai.domain.FakeRepositoryTrust
+import app.luxion.shogunai.domain.FakeShellCommandExecutor
+import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.model.AgentLaunchConfig
+import app.luxion.shogunai.domain.model.ClaudeSession
+import app.luxion.shogunai.domain.model.EnvironmentDeclaration
+import app.luxion.shogunai.domain.model.OrcaOpening
+import app.luxion.shogunai.domain.model.OrcaOutcome
+import app.luxion.shogunai.domain.model.OrcaRepo
+import app.luxion.shogunai.domain.model.OrcaTerminal
+import app.luxion.shogunai.domain.model.OrcaWorktree
+import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.domain.model.Worktree
+import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.parseEnvironmentVariable
+import kotlinx.coroutines.test.runTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+class OpenWorktreeInOrcaUseCaseTest {
+
+    private val repository = "/home/dev/projects/main-repo"
+    private val common = "$repository/.git"
+    private val task = Worktree(path = "/home/dev/projects/worktrees/TASK-8", branch = "feature/TASK-8")
+    private val config = ProjectConfig(
+        baseRepositoryPath = repository,
+        worktreesRoot = "/home/dev/projects/worktrees",
+        secretFiles = emptyList(),
+        agentLaunchConfig = AgentLaunchConfig(agentCommand = "claude"),
+    )
+    private val known = OrcaRepo("r1", repository)
+    private val visible = mapOf("r1" to listOf(OrcaWorktree(task.path, createdByOrca = false)))
+
+    private val gitExecutor = object : ShellCommandExecutor {
+        override suspend fun execute(command: List<String>, workingDirectory: String?) =
+            FakeShellCommandExecutor.success(command, "$common/worktrees/TASK-8\n$common\n")
+    }
+
+    private fun provisioning(vararg variables: Pair<String, String>) = FakeRepositoryProvisioningSource(
+        byRepository = mapOf(
+            repository to RepositoryProvisioning(
+                environment = EnvironmentDeclaration(variables.map { (name, value) -> parseEnvironmentVariable(name, value) }),
+            ),
+        ),
+    )
+
+    private fun useCase(
+        orca: FakeOrcaClient,
+        source: FakeRepositoryProvisioningSource = provisioning(),
+        registry: FakeClaudeSessionRegistry? = null,
+        environment: FakeProcessEnvironmentReader? = null,
+        usesPowerShell: Boolean = false,
+        samePath: (String, String) -> Boolean = { first, second -> first == second },
+        runningEmulator: suspend (String) -> String? = { null },
+        runningSimulator: suspend (String) -> String? = { null },
+    ) = OpenWorktreeInOrcaUseCase(
+        config,
+        orca,
+        ResolveWorktreeEnvironmentUseCase(gitExecutor, source, FakeEnvironmentStateStore(), FakePortProbe(), trust = FakeRepositoryTrust(approvesEverything = true)),
+        ClaudeSessionNaming(registry, isClaudeProcessAlive = { true }, processEnvironment = environment),
+        usesPowerShell = usesPowerShell,
+        samePath = samePath,
+        runningEmulator = runningEmulator,
+        runningSimulator = runningSimulator,
+    )
+
+    @Test
+    fun `opens a focused terminal with the environment and the named agent`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible)
+
+        val opening = useCase(orca, provisioning("PORT" to "\${port}", "APP_SUFFIX" to "-\${worktree}"))(task).getOrThrow()
+
+        assertEquals(OrcaOpening(OrcaOutcome.STARTED_AGENT, "term_1", config.agentLaunchConfig.displayName), opening)
+        assertEquals(
+            FakeOrcaClient.Created(task.path, "main-repo-task-8", "env 'PORT=20000' 'APP_SUFFIX=-TASK-8' claude -n main-repo-task-8", focus = true),
+            orca.created.single(),
+        )
+        assertEquals(1, orca.raised)
+    }
+
+    @Test
+    fun `a running emulator is shown before the agent's terminal is created`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible)
+
+        val opening = useCase(orca, runningEmulator = { path -> "emulator-5556".takeIf { path == task.path } })(task).getOrThrow()
+
+        assertEquals("emulator-5556", opening.emulator)
+        assertEquals(listOf("attach:${task.path}:emulator-5556", "create:${task.path}"), orca.events)
+    }
+
+    @Test
+    fun `a running emulator is shown before the live agent is focused`() = runTest {
+        val orca = FakeOrcaClient(
+            repos = listOf(known),
+            visibleWorktrees = visible,
+            terminals = mapOf(task.path to listOf(OrcaTerminal("term_agent", task.path))),
+            agents = mapOf("term_agent" to "claude"),
+        )
+
+        val opening = useCase(orca, runningEmulator = { "emulator-5556" })(task).getOrThrow()
+
+        assertEquals(OrcaOpening(OrcaOutcome.FOCUSED, "term_agent", "claude", emulator = "emulator-5556"), opening)
+        assertEquals(listOf("attach:${task.path}:emulator-5556", "switch:term_agent"), orca.events)
+    }
+
+    @Test
+    fun `a booted simulator is shown before the agent's terminal is created`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible)
+
+        val opening = useCase(orca, runningSimulator = { path -> SIMULATOR_UDID.takeIf { path == task.path } })(task).getOrThrow()
+
+        assertEquals(SIMULATOR_UDID, opening.simulator)
+        assertNull(opening.emulator)
+        assertFalse(opening.devicesSkipped)
+        assertEquals(listOf("attach:${task.path}:$SIMULATOR_UDID", "create:${task.path}"), orca.events)
+    }
+
+    @Test
+    fun `with the emulator and the simulator both running neither is shown`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible)
+
+        val opening = useCase(orca, runningEmulator = { "emulator-5556" }, runningSimulator = { SIMULATOR_UDID })(task).getOrThrow()
+
+        assertTrue(opening.devicesSkipped)
+        assertNull(opening.emulator)
+        assertNull(opening.simulator)
+        assertTrue(orca.attachedEmulators.isEmpty())
+        assertEquals(OrcaOutcome.STARTED_AGENT, opening.outcome)
+    }
+
+    @Test
+    fun `a simulator lookup that fails leaves the running emulator shown`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible)
+
+        val opening = useCase(
+            orca,
+            runningEmulator = { "emulator-5556" },
+            runningSimulator = { throw IllegalStateException("simctl failed") },
+        )(task).getOrThrow()
+
+        assertEquals("emulator-5556", opening.emulator)
+        assertEquals(listOf(task.path to "emulator-5556"), orca.attachedEmulators)
+    }
+
+    @Test
+    fun `without a running emulator nothing is attached`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible)
+
+        val opening = useCase(orca)(task).getOrThrow()
+
+        assertNull(opening.emulator)
+        assertTrue(orca.attachedEmulators.isEmpty())
+    }
+
+    @Test
+    fun `an emulator Orca can't show doesn't fail the open`() = runTest {
+        val orca = FakeOrcaClient(
+            repos = listOf(known),
+            visibleWorktrees = visible,
+            attachFailure = WorktreeError.OrcaCommandFailed(listOf("orca"), "emulator_device_not_found"),
+        )
+
+        val opening = useCase(orca, runningEmulator = { "emulator-5556" })(task).getOrThrow()
+
+        assertEquals(OrcaOutcome.STARTED_AGENT, opening.outcome)
+        assertNull(opening.emulator)
+        assertEquals(1, orca.created.size)
+    }
+
+    @Test
+    fun `without an environment the terminal runs just the agent`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible)
+
+        useCase(orca)(task).getOrThrow()
+
+        assertEquals("claude -n main-repo-task-8", orca.created.single().command)
+    }
+
+    @Test
+    fun `the project's command runs instead of Orca's launcher settings`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible)
+
+        useCase(orca)(task, AgentLaunchConfig(agentCommand = "claude", useHeadroom = true)).getOrThrow()
+
+        assertEquals("headroom wrap claude -n main-repo-task-8", orca.created.single().command)
+    }
+
+    @Test
+    fun `a non-Claude agent isn't named and the terminal takes its name`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible)
+
+        val opening = useCase(orca)(task, AgentLaunchConfig(agentCommand = "codex")).getOrThrow()
+
+        assertEquals(FakeOrcaClient.Created(task.path, "Codex", "codex", focus = true), orca.created.single())
+        assertNull(opening.sessionName)
+    }
+
+    @Test
+    fun `values with spaces and quotes are quoted for a POSIX shell`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible)
+
+        useCase(orca, provisioning("GREETING" to "it's a b"))(task).getOrThrow()
+
+        assertEquals("env 'GREETING=it'\\''s a b' claude -n main-repo-task-8", orca.created.single().command)
+    }
+
+    @Test
+    fun `on Windows the variables are set the PowerShell way`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible)
+
+        useCase(orca, provisioning("GREETING" to "it's a b", "PORT" to "\${port}"), usesPowerShell = true)(task).getOrThrow()
+
+        assertEquals("\$env:GREETING = 'it''s a b'; \$env:PORT = '20000'; claude -n main-repo-task-8", orca.created.single().command)
+    }
+
+    @Test
+    fun `an unknown repository is registered first`() = runTest {
+        val orca = FakeOrcaClient(worktreesShownWhenExternalVisible = mapOf("repo1" to listOf(OrcaWorktree(task.path, false))))
+
+        useCase(orca)(task).getOrThrow()
+
+        assertEquals(listOf(repository), orca.addedRepos)
+        assertEquals(listOf("repo1"), orca.shownExternal)
+    }
+
+    @Test
+    fun `hidden external worktrees are shown for that repository only`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(OrcaRepo("other", "/home/dev/projects/other"), known))
+
+        useCase(orca)(task).getOrThrow()
+
+        assertTrue(orca.addedRepos.isEmpty())
+        assertEquals(listOf("r1"), orca.shownExternal)
+    }
+
+    @Test
+    fun `an already visible worktree changes no setting`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible)
+
+        useCase(orca)(task).getOrThrow()
+
+        assertTrue(orca.shownExternal.isEmpty())
+        assertTrue(orca.addedRepos.isEmpty())
+    }
+
+    @Test
+    fun `paths are matched canonically, so tmp and private tmp are the same`() = runTest {
+        val tmpRepository = "/tmp/main-repo"
+        val tmpConfig = config.copy(baseRepositoryPath = tmpRepository)
+        val tmpTask = Worktree(path = "/tmp/worktrees/TASK-8", branch = "feature/TASK-8")
+        val orca = FakeOrcaClient(
+            repos = listOf(OrcaRepo("r1", "/private/tmp/main-repo")),
+            visibleWorktrees = mapOf("r1" to listOf(OrcaWorktree("/private/tmp/worktrees/TASK-8", false))),
+        )
+        val canonical = { path: String -> path.replace(Regex("^/tmp/"), "/private/tmp/") }
+
+        OpenWorktreeInOrcaUseCase(
+            tmpConfig,
+            orca,
+            ResolveWorktreeEnvironmentUseCase(gitExecutor, provisioning(), FakeEnvironmentStateStore(), FakePortProbe(), trust = FakeRepositoryTrust(approvesEverything = true)),
+            usesPowerShell = false,
+            samePath = { first, second -> canonical(first) == canonical(second) },
+        )(tmpTask, sessionName = "main-repo-task-8").getOrThrow()
+
+        assertTrue(orca.addedRepos.isEmpty())
+        assertTrue(orca.shownExternal.isEmpty())
+    }
+
+    @Test
+    fun `a live agent is focused without creating or typing anything`() = runTest {
+        val orca = FakeOrcaClient(
+            repos = listOf(known),
+            visibleWorktrees = visible,
+            terminals = mapOf(task.path to listOf(OrcaTerminal("term_shell", task.path), OrcaTerminal("term_agent", task.path))),
+            agents = mapOf("term_agent" to "claude"),
+        )
+
+        val opening = useCase(orca)(task).getOrThrow()
+
+        assertEquals(OrcaOpening(OrcaOutcome.FOCUSED, "term_agent", "claude"), opening)
+        assertEquals(listOf("term_agent"), orca.switched)
+        assertTrue(orca.created.isEmpty())
+        assertEquals(1, orca.raised)
+    }
+
+    @Test
+    fun `an agent that finished its turn still counts as live`() = runTest {
+        val orca = FakeOrcaClient(
+            repos = listOf(known),
+            visibleWorktrees = visible,
+            terminals = mapOf(task.path to listOf(OrcaTerminal("term_done", task.path))),
+            agents = mapOf("term_done" to "claude"),
+        )
+
+        assertEquals(OrcaOutcome.FOCUSED, useCase(orca)(task).getOrThrow().outcome)
+    }
+
+    @Test
+    fun `terminals without an agent are kept and a new one starts the agent`() = runTest {
+        val orca = FakeOrcaClient(
+            repos = listOf(known),
+            visibleWorktrees = visible,
+            terminals = mapOf(task.path to listOf(OrcaTerminal("term_shell", task.path))),
+        )
+
+        val opening = useCase(orca, provisioning("PORT" to "\${port}"))(task).getOrThrow()
+
+        assertEquals(OrcaOutcome.STARTED_AGENT, opening.outcome)
+        assertEquals("env 'PORT=20000' claude -n main-repo-task-8", orca.created.single().command)
+        assertTrue(orca.closedWorktrees.isEmpty())
+        assertTrue(orca.switched.isEmpty())
+    }
+
+    @Test
+    fun `Orca is started when it isn't running`() = runTest {
+        val orca = FakeOrcaClient(running = false, repos = listOf(known), visibleWorktrees = visible)
+
+        val opening = useCase(orca)(task).getOrThrow()
+
+        assertEquals(1, orca.starts)
+        assertEquals(OrcaOutcome.STARTED_AGENT, opening.outcome)
+    }
+
+    @Test
+    fun `a running Orca isn't started again`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible)
+
+        useCase(orca)(task).getOrThrow()
+
+        assertEquals(0, orca.starts)
+    }
+
+    @Test
+    fun `Orca that doesn't come up fails saying it didn't start`() = runTest {
+        val orca = FakeOrcaClient(running = false, startsWhenOpened = false)
+
+        assertIs<WorktreeError.OrcaNotStarted>(useCase(orca)(task).exceptionOrNull())
+        assertTrue(orca.created.isEmpty())
+    }
+
+    @Test
+    fun `Orca not installed fails without touching the worktree`() = runTest {
+        val orca = FakeOrcaClient(installed = false)
+
+        assertIs<WorktreeError.OrcaNotInstalled>(useCase(orca)(task).exceptionOrNull())
+    }
+
+    @Test
+    fun `a failing Orca command is reported with Orca's message`() = runTest {
+        val orca = FakeOrcaClient(failure = WorktreeError.OrcaCommandFailed(listOf("orca", "repo", "list", "--json"), "runtime_unavailable"))
+
+        val error = assertIs<WorktreeError.OrcaCommandFailed>(useCase(orca)(task).exceptionOrNull())
+        assertEquals("runtime_unavailable", error.detail)
+    }
+
+    @Test
+    fun `an agent detected after a few checks succeeds`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible, agentDetectedAfterChecks = 4)
+
+        assertEquals(OrcaOutcome.STARTED_AGENT, useCase(orca)(task).getOrThrow().outcome)
+    }
+
+    @Test
+    fun `an agent never detected fails naming the terminal and the command, leaving it open`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible, startsAgents = false)
+
+        val error = assertIs<WorktreeError.OrcaAgentNotStarted>(useCase(orca)(task).exceptionOrNull())
+
+        assertEquals("term_1", error.terminalHandle)
+        assertEquals("claude -n main-repo-task-8", error.command)
+        assertTrue(orca.closedWorktrees.isEmpty())
+    }
+
+    @Test
+    fun `the started session's name is reported once it appears`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible)
+
+        val opening = useCase(orca, registry = FakeClaudeSessionRegistry(started = orca::startedClaudeSessions))(task).getOrThrow()
+
+        assertEquals("main-repo-task-8", opening.sessionName)
+    }
+
+    @Test
+    fun `a name already taken by a live session gets a suffix`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible)
+        val registry = FakeClaudeSessionRegistry(listOf(ClaudeSession(42, "/elsewhere", "main-repo-task-8")), started = orca::startedClaudeSessions)
+
+        val opening = useCase(orca, registry = registry)(task).getOrThrow()
+
+        assertEquals("claude -n main-repo-task-8-2", orca.created.single().command)
+        assertEquals("main-repo-task-8-2", opening.sessionName)
+    }
+
+    @Test
+    fun `a name never confirmed is null and the open still succeeds`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible)
+
+        val opening = useCase(orca, registry = FakeClaudeSessionRegistry())(task).getOrThrow()
+
+        assertEquals(OrcaOutcome.STARTED_AGENT, opening.outcome)
+        assertNull(opening.sessionName)
+    }
+
+    @Test
+    fun `a focused agent reports its live session's name`() = runTest {
+        val orca = FakeOrcaClient(
+            repos = listOf(known),
+            visibleWorktrees = visible,
+            terminals = mapOf(task.path to listOf(OrcaTerminal("term_agent", task.path))),
+            agents = mapOf("term_agent" to "claude"),
+        )
+        val registry = FakeClaudeSessionRegistry(listOf(ClaudeSession(42, task.path, "main-repo-task-8")))
+
+        val opening = useCase(orca, registry = registry)(task).getOrThrow()
+
+        assertEquals(OrcaOpening(OrcaOutcome.FOCUSED, "term_agent", "claude", "main-repo-task-8"), opening)
+    }
+
+    @Test
+    fun `focusing waits for nothing`() = runTest {
+        val orca = FakeOrcaClient(
+            repos = listOf(known),
+            visibleWorktrees = visible,
+            terminals = mapOf(task.path to listOf(OrcaTerminal("term_agent", task.path))),
+            agents = mapOf("term_agent" to "codex"),
+        )
+        val registry = FakeClaudeSessionRegistry()
+
+        val opening = useCase(orca, registry = registry)(task).getOrThrow()
+
+        assertNull(opening.sessionName)
+        assertEquals(0, registry.listings)
+        assertTrue(orca.created.isEmpty())
+    }
+
+    private fun handles(vararg pairs: Pair<Long, String>) =
+        FakeProcessEnvironmentReader(pairs.associate { (pid, handle) -> pid to mapOf("ORCA_TERMINAL_HANDLE" to handle) })
+
+    private fun withTerminals(vararg handles: String, startsAgents: Boolean = true) = FakeOrcaClient(
+        repos = listOf(known),
+        visibleWorktrees = visible,
+        terminals = mapOf(task.path to handles.map { OrcaTerminal(it, task.path) }),
+        startsAgents = startsAgents,
+    )
+
+    @Test
+    fun `a live Claude Orca doesn't report is focused through its session's terminal`() = runTest {
+        val orca = withTerminals("term_shell", "term_lost")
+        val registry = FakeClaudeSessionRegistry(listOf(ClaudeSession(42, task.path, "main-repo-task-8")))
+
+        val opening = useCase(orca, registry = registry, environment = handles(42L to "term_lost"))(task).getOrThrow()
+
+        assertEquals(OrcaOpening(OrcaOutcome.FOCUSED, "term_lost", "claude", "main-repo-task-8"), opening)
+        assertEquals(listOf("term_lost"), orca.switched)
+        assertTrue(orca.created.isEmpty())
+        assertEquals(1, orca.raised)
+    }
+
+    @Test
+    fun `the session with the expected name wins, then the newest`() = runTest {
+        val sessions = listOf(
+            ClaudeSession(41, task.path, "older", startedAt = 1),
+            ClaudeSession(42, task.path, "main-repo-task-8", startedAt = 0),
+            ClaudeSession(43, task.path, "newer", startedAt = 5),
+        )
+        val environment = handles(41L to "term_a", 42L to "term_b", 43L to "term_c")
+
+        val expected = useCase(withTerminals("term_a", "term_b", "term_c"), registry = FakeClaudeSessionRegistry(sessions), environment = environment)(task)
+        val newest = useCase(withTerminals("term_a", "term_b", "term_c"), registry = FakeClaudeSessionRegistry(sessions.filter { it.pid != 42L }), environment = environment)(task)
+
+        assertEquals("term_b", expected.getOrThrow().terminalHandle)
+        assertEquals(OrcaOpening(OrcaOutcome.FOCUSED, "term_c", "claude", "newer"), newest.getOrThrow())
+    }
+
+    @Test
+    fun `a session running outside the worktree's Orca terminals doesn't stop a new agent`() = runTest {
+        val orca = withTerminals("term_shell")
+        val registry = FakeClaudeSessionRegistry(listOf(ClaudeSession(42, task.path, "main-repo-task-8")))
+
+        val opening = useCase(orca, registry = registry, environment = handles(42L to "term_of_another_worktree"))(task).getOrThrow()
+
+        assertEquals(OrcaOutcome.STARTED_AGENT, opening.outcome)
+        assertTrue(orca.switched.isEmpty())
+        assertEquals(1, orca.created.size)
+    }
+
+    @Test
+    fun `a session whose terminal can't be told doesn't stop a new agent`() = runTest {
+        val registry = FakeClaudeSessionRegistry(listOf(ClaudeSession(42, task.path, "main-repo-task-8")))
+
+        val withoutReader = withTerminals("term_shell")
+        val withoutVariable = withTerminals("term_shell")
+        useCase(withoutReader, registry = registry)(task).getOrThrow()
+        useCase(withoutVariable, registry = registry, environment = FakeProcessEnvironmentReader())(task).getOrThrow()
+
+        assertEquals(1, withoutReader.created.size)
+        assertEquals(1, withoutVariable.created.size)
+    }
+
+    @Test
+    fun `a started agent Orca doesn't report is confirmed by its session's name`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible, startsAgents = false)
+
+        val opening = useCase(orca, registry = FakeClaudeSessionRegistry(started = orca::startedClaudeSessions))(task).getOrThrow()
+
+        assertEquals(OrcaOpening(OrcaOutcome.STARTED_AGENT, "term_1", config.agentLaunchConfig.displayName, "main-repo-task-8"), opening)
+    }
+
+    @Test
+    fun `a started agent Orca doesn't report is confirmed by its session's terminal`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible, startsAgents = false)
+        val registry = FakeClaudeSessionRegistry(listOf(ClaudeSession(99, task.path, null)))
+
+        val opening = useCase(orca, registry = registry, environment = handles(99L to "term_1"))(task).getOrThrow()
+
+        assertEquals(OrcaOutcome.STARTED_AGENT, opening.outcome)
+        assertEquals("term_1", opening.terminalHandle)
+    }
+
+    @Test
+    fun `an agent neither Orca nor the registry shows still fails`() = runTest {
+        val orca = FakeOrcaClient(repos = listOf(known), visibleWorktrees = visible, startsAgents = false)
+        val registry = FakeClaudeSessionRegistry(listOf(ClaudeSession(99, task.path, "someone-else")))
+
+        val result = useCase(orca, registry = registry, environment = handles(99L to "term_other"))(task)
+
+        assertIs<WorktreeError.OrcaAgentNotStarted>(result.exceptionOrNull())
+    }
+}
+
+private const val SIMULATOR_UDID = "8D2C51A4-3F0B-4C6E-9A1D-5B7E2F90C3A1"

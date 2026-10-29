@@ -17,7 +17,7 @@ The system SHALL show in the worktree list which worktrees are locked and which 
 - **THEN** its row shows a "folder missing" label instead of "status unavailable"
 
 ### Requirement: Select worktrees to clean up
-The system SHALL consider for cleanup every non-main worktree that is merged into the main branch and has no uncommitted changes, plus every worktree whose folder is missing. Locked worktrees, the main worktree, worktrees with uncommitted changes, and worktrees whose status isn't loaded SHALL never be selected.
+The system SHALL consider for cleanup every non-main worktree that is merged into its base or into the main branch and has no uncommitted changes, plus every worktree whose folder is missing. Locked worktrees, the main worktree, worktrees with uncommitted changes, and worktrees whose status isn't loaded SHALL never be selected.
 
 #### Scenario: Merged and clean worktree
 - **WHEN** a non-main, unlocked worktree is merged into the main branch and has no uncommitted changes
@@ -39,15 +39,19 @@ The system SHALL consider for cleanup every non-main worktree that is merged int
 - **WHEN** a worktree's folder is missing and it isn't locked
 - **THEN** it is selected for cleanup
 
+#### Scenario: Merged into its recorded base
+- **WHEN** a clean, unlocked worktree's branch is merged into its recorded base `epic/redesign`, which isn't merged into the main branch
+- **THEN** it is selected for cleanup
+
 ### Requirement: Confirm before cleaning up
-The system SHALL offer a "Clean up" action in the worktree view's header, covering the projects shown in the view, and in each project group's header, covering that project. Each action SHALL be enabled only when at least one worktree in its scope is selected for cleanup. Activating it SHALL show a confirmation dialog listing the selected worktrees grouped by project, with an option to also delete their local branches that is off by default. No Git command SHALL run until the user confirms.
+The system SHALL offer a "Clean up" action as the last item of the worktree view header's "More" (⋯) menu, in danger text, covering the projects shown in the view, and in each project group's header, covering that project. Each action SHALL be enabled only when at least one worktree in its scope is selected for cleanup, and when disabled SHALL say why in a tooltip. Activating it SHALL show a confirmation dialog listing the selected worktrees grouped by project, with an option to also delete their local branches that is off by default. No Git command SHALL run until the user confirms.
 
 #### Scenario: Nothing to clean up
 - **WHEN** no worktree in the action's scope is selected for cleanup
-- **THEN** that "Clean up" action is disabled
+- **THEN** that "Clean up" action is disabled and its tooltip says why
 
 #### Scenario: Confirmation dialog
-- **WHEN** the user activates "Clean up" in "All worktrees" with candidates in `api` and `main-repo`
+- **WHEN** the user activates "Clean up" in the ⋯ menu of "All worktrees" with candidates in `api` and `main-repo`
 - **THEN** a dialog lists the candidates under an `api` heading and a `main-repo` heading, with an unchecked "also delete their local branches" option, and nothing is removed until the user confirms
 
 #### Scenario: User cancels
@@ -59,7 +63,7 @@ The system SHALL offer a "Clean up" action in the worktree view's header, coveri
 - **THEN** the dialog only lists `api`'s candidates
 
 ### Requirement: Clean up the selected worktrees
-On confirmation, the system SHALL remove each selected worktree whose folder exists without forcing, and prune the records of missing ones. When branch deletion was chosen, a worktree's branch SHALL be deleted only if it is still contained in the main branch at that moment. One failure SHALL NOT stop the rest. The screen SHALL then report the outcome and reload the list.
+On confirmation, the system SHALL remove each selected worktree whose folder exists without forcing, and prune the records of missing ones. When branch deletion was chosen, a worktree's branch SHALL be deleted only if it is still contained in its base or in the main branch at that moment. One failure SHALL NOT stop the rest. The screen SHALL then report the outcome and reload the list.
 
 #### Scenario: All worktrees removed
 - **WHEN** the user confirms and every selected worktree is removed
@@ -84,6 +88,10 @@ On confirmation, the system SHALL remove each selected worktree whose folder exi
 #### Scenario: Cleanup in progress
 - **WHEN** the cleanup is running
 - **THEN** the dialog shows a progress indicator and its actions are disabled until it finishes
+
+#### Scenario: Branch contained in its recorded base
+- **WHEN** the user chose to delete branches and a removed worktree's branch is contained in its recorded base `epic/redesign` but not in the main branch
+- **THEN** that local branch is deleted
 
 ### Requirement: Stop the Gradle daemons of removed worktrees
 When the repository declares the Gradle provider, the cleanup dialog SHALL offer an option, checked by default, to also stop the idle Gradle daemons whose last build was in one of the worktrees it removes. Stopping follows the Gradle provider's rules for idle daemons, runs after the removals, and a daemon that can't be stopped SHALL NOT turn the cleanup into a failure.
@@ -268,3 +276,26 @@ When Git fails to remove a worktree because a path inside it is too long, the re
 #### Scenario: Folder can't be deleted either
 - **WHEN** Git fails with "Filename too long" and deleting the leftover folder also fails because a program is using it
 - **THEN** the removal fails with the folder-in-use error saying Git already unregistered the worktree
+
+### Requirement: Stop the Maven daemons of removed worktrees
+When the repository declares the Maven provider, the cleanup dialog SHALL offer an option, checked by default, to also stop the idle Maven daemons whose last build was in one of the worktrees it removes. Stopping follows the Maven provider's rules for idle daemons, runs after the removals, and a daemon that can't be stopped SHALL NOT turn the cleanup into a failure.
+
+#### Scenario: Option shown
+- **WHEN** the repository declares the Maven provider and the user activates "Clean up"
+- **THEN** the dialog shows a checked "also stop their idle Maven daemons" option
+
+#### Scenario: Repository without the provider
+- **WHEN** the repository doesn't declare the Maven provider
+- **THEN** the dialog doesn't show the option and no Maven daemon is stopped
+
+#### Scenario: Daemons stopped
+- **WHEN** the option is checked and an idle Maven daemon's last build was in a removed worktree
+- **THEN** that daemon is stopped and the report says how many daemons were stopped
+
+#### Scenario: Daemon of a kept worktree
+- **WHEN** an idle Maven daemon's last build was in a worktree that isn't removed, or whose removal failed
+- **THEN** that daemon isn't stopped
+
+#### Scenario: Busy daemon
+- **WHEN** a Maven daemon of a removed worktree is busy when the cleanup runs
+- **THEN** it isn't stopped, the worktrees are still reported as removed, and the report says the daemon was kept

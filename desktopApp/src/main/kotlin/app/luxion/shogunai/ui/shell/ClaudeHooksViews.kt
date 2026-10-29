@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -13,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.usecase.CommandLineToolState
+import app.luxion.shogunai.ui.components.ShogunDialog
 import app.luxion.shogunai.ui.components.ErrorNotice
 import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.Notice
@@ -33,7 +33,6 @@ fun ClaudeHooksSection(state: ClaudeHooksState, os: HostOs = HostOs.current()) {
         modifier = Modifier.padding(top = Spacing.md),
     )
     state.status?.let { Text(strings.claudeHooksStatus(it.state), style = MaterialTheme.typography.bodyMedium) }
-    CommandLineToolPrerequisite(state, os, showWhenReady = true)
     state.error?.let { ErrorNotice(error = it, onDismiss = state::dismissError) }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         state.installAction?.let { action -> HooksActionButton(state, action, strings, prominent = true) }
@@ -44,6 +43,7 @@ fun ClaudeHooksSection(state: ClaudeHooksState, os: HostOs = HostOs.current()) {
     if (state.installAction != null && !state.canChangeHooks) {
         Text(strings.claudeHooksNeedsTool, style = MaterialTheme.typography.bodySmall)
     }
+    CommandLineToolPrerequisite(state, os, showWhenReady = true)
     state.pending?.let { ClaudeHooksConfirmDialog(it, state, strings) }
 }
 
@@ -95,20 +95,19 @@ internal fun CommandLineToolPrerequisite(state: ClaudeHooksState, os: HostOs, sh
 
 @Composable
 private fun ClaudeHooksConfirmDialog(change: PendingHooksChange, state: ClaudeHooksState, strings: Strings) {
-    AlertDialog(
+    ShogunDialog(
+        title = strings.claudeHooksDialogTitle(change.action),
         onDismissRequest = state::cancel,
-        title = { Text(strings.claudeHooksDialogTitle(change.action)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                Text(strings.claudeHooksChangesIn(change.path), style = MaterialTheme.typography.bodyMedium)
-                change.preview.added.forEach { Text(strings.claudeHooksAdded(it), style = MaterialTheme.typography.bodySmall) }
-                change.preview.replaced.forEach { Text(strings.claudeHooksReplaced(it), style = MaterialTheme.typography.bodySmall) }
-                change.preview.removed.forEach { Text(strings.claudeHooksRemoved(it), style = MaterialTheme.typography.bodySmall) }
-            }
-        },
-        confirmButton = { PrimaryButton(onClick = state::confirm) { Text(strings.claudeHooksConfirm) } },
-        dismissButton = { NeutralTextButton(onClick = state::cancel) { Text(strings.claudeHooksCancel) } },
-    )
+        confirm = { PrimaryButton(onClick = state::confirm) { Text(strings.claudeHooksConfirm) } },
+        dismiss = { NeutralTextButton(onClick = state::cancel) { Text(strings.claudeHooksCancel) } },
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            Text(strings.claudeHooksChangesIn(change.path), style = MaterialTheme.typography.bodyMedium)
+            change.preview.added.forEach { Text(strings.claudeHooksAdded(it), style = MaterialTheme.typography.bodySmall) }
+            change.preview.replaced.forEach { Text(strings.claudeHooksReplaced(it), style = MaterialTheme.typography.bodySmall) }
+            change.preview.removed.forEach { Text(strings.claudeHooksRemoved(it), style = MaterialTheme.typography.bodySmall) }
+        }
+    }
 }
 
 @Composable

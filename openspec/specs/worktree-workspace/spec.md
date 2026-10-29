@@ -36,7 +36,7 @@ The system SHALL let the user create a new worktree in the "New worktree" dialog
 - **THEN** `CreateWorktreeUseCase` returns a failed `Result` with `WorktreeError.InvalidTaskId` and does not run any Git command
 
 #### Scenario: Creation fails with a domain error
-- **WHEN** `CreateWorktreeUseCase` returns a failed `Result` (e.g. `WorktreeError.WorktreeAlreadyExists`, `WorktreeError.SecretFileNotFound`, `WorktreeError.BaseRepositoryNotFound`, `WorktreeError.GitLfsNotFound`, `WorktreeError.InvalidTaskId`)
+- **WHEN** `CreateWorktreeUseCase` returns a failed `Result` (e.g. `WorktreeError.WorktreeAlreadyExists`, `WorktreeError.LocalFilesUnavailable`, `WorktreeError.BaseRepositoryNotFound`, `WorktreeError.GitLfsNotFound`, `WorktreeError.InvalidTaskId`)
 - **THEN** the dialog stays open with the values the user entered, shows an error message describing the failure inside the dialog, and no worktree is added to the list
 
 #### Scenario: Creation fails because Git LFS is required but not installed
@@ -426,11 +426,11 @@ After a removal keeps an unmerged branch, the system SHALL offer to delete it an
 - **THEN** the branch stays
 
 ### Requirement: Local folder errors
-When a local files entry is a folder, a folder that doesn't exist in the base repository SHALL fail creation or provisioning with `WorktreeError.SecretFileNotFound` naming the entry, before any Git command that creates a branch or a worktree. A failure while copying the folder's files SHALL be handled like a failed copy of a file: `WorktreeError.SecretCopyFailed`, and on creation the partially created worktree is removed.
+When a local files entry is a folder, a folder that doesn't exist in the base repository, or an entry inside it that can't be read, SHALL fail creation or provisioning with `WorktreeError.LocalFilesUnavailable` naming the entry, before any Git command that creates a branch or a worktree. A failure while copying the folder's files SHALL be handled like a failed copy of a file: `WorktreeError.SecretCopyFailed`, and on creation the partially created worktree is removed.
 
 #### Scenario: Folder missing in the base repository
 - **WHEN** the local files include `keys` and the base repository has no `keys` folder
-- **THEN** creation fails with `WorktreeError.SecretFileNotFound` listing `keys` and no worktree or branch is created
+- **THEN** creation fails with `WorktreeError.LocalFilesUnavailable` listing `keys` and no worktree or branch is created
 
 #### Scenario: Copy of a folder's file fails
 - **WHEN** copying a file of a local folder into the new worktree fails after `git worktree add` succeeded
@@ -452,8 +452,8 @@ When a local folder in link mode can't be linked because the worktree already ha
 - **THEN** provisioning fails with `WorktreeError.LinkedFolderOccupied`, the worktree is kept and its `keys` files are untouched
 
 ### Requirement: Local patterns aren't required to match
-A local files entry that is a pattern SHALL NOT produce `WorktreeError.SecretFileNotFound` when it matches nothing; exact file and folder entries keep failing with that error when they don't exist in the base repository.
+A local files entry that is a pattern SHALL NOT produce `WorktreeError.LocalFilesUnavailable` when it matches nothing; exact file and folder entries keep failing with that error when they don't exist in the base repository.
 
 #### Scenario: Pattern and missing file
 - **WHEN** the local files include the pattern `*.p12`, which matches nothing, and the file `local.properties`, which doesn't exist in the base repository
-- **THEN** creation fails with `WorktreeError.SecretFileNotFound` listing only `local.properties`
+- **THEN** creation fails with `WorktreeError.LocalFilesUnavailable` listing only `local.properties`

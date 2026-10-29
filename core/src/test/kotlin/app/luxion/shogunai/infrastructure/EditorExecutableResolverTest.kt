@@ -25,7 +25,7 @@ class EditorExecutableResolverTest {
         val locator = ExecutableLocator(
             HostOs.WINDOWS,
             "C:\\Users\\dev",
-            path,
+            { path },
             localAppData,
             listOf(programFiles, "C:\\Program Files (x86)"),
             pathExtensions,
@@ -123,7 +123,7 @@ class EditorExecutableResolverTest {
     @Test
     fun `reads the registry once per snapshot and only when needed`() = runTest {
         var reads = 0
-        val locator = ExecutableLocator(HostOs.WINDOWS, "C:\\Users\\dev", emptyList(), null, emptyList(), listOf(".EXE"), { emptyList() }, { false })
+        val locator = ExecutableLocator(HostOs.WINDOWS, "C:\\Users\\dev", { emptyList() }, null, emptyList(), listOf(".EXE"), { emptyList() }, { false })
         val resolver = EditorExecutableResolver(HostOs.WINDOWS, locator) { reads++; emptyList() }
         val snapshot = resolver.snapshot()
 

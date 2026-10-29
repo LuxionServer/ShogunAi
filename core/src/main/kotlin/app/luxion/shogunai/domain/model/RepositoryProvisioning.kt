@@ -26,6 +26,7 @@ data class RepositoryProviders(
     val maven: MavenProvider? = null,
     val dockerCompose: DockerComposeProvider? = null,
     val desktopApp: DesktopAppProvider? = null,
+    val flutter: FlutterProvider? = null,
 )
 
 data class GradleProvider(
@@ -40,11 +41,13 @@ data class EmulatorProvider(val preferredAvd: String? = null)
 
 data class IosSimulatorProvider(val device: String? = null, val runtime: String? = null)
 
-data class XcodeProvider(val compilationCache: Boolean = false)
+data class XcodeProvider(val compilationCache: Boolean = false, val cocoaPods: Boolean = false)
 
 data class MavenProvider(val mavenMaxHeap: String? = null)
 
 data class DockerComposeProvider(val portVariables: List<String> = emptyList())
+
+data object FlutterProvider
 
 data class DesktopAppProvider(val module: String, val isolatedHome: Boolean = true)
 

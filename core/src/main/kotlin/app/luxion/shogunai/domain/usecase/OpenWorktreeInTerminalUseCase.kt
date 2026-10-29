@@ -2,6 +2,7 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.io.TerminalLauncher
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
+import app.luxion.shogunai.domain.model.EnvironmentCommand
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.ShellQuoting
 import app.luxion.shogunai.domain.model.TerminalId
@@ -36,7 +37,7 @@ class OpenWorktreeInTerminalUseCase(
     }
 
     private fun powershellLine(path: String, variables: List<Pair<String, String>>, agentCommand: String): String {
-        val assignments = variables.map { (name, value) -> "\$env:$name = ${ShellQuoting.powershell(value)}" }
+        val assignments = EnvironmentCommand.powershellAssignments(variables)
         return (listOf("Set-Location -LiteralPath ${ShellQuoting.powershell(path)}") + assignments + agentCommand)
             .joinToString("; ")
     }

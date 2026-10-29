@@ -3,6 +3,8 @@ package app.luxion.shogunai.ui.palette
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ExperimentalTestApi
+import app.luxion.shogunai.ui.i18n.EnglishStrings
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.onNodeWithText
@@ -14,6 +16,8 @@ import androidx.compose.ui.test.hasSetTextAction
 import app.luxion.shogunai.ui.shell.ShellDestination
 import app.luxion.shogunai.ui.worktree.WorktreeRef
 import kotlin.test.Test
+import kotlin.test.assertTrue
+import app.luxion.shogunai.ui.components.OpenMenus
 import kotlin.test.assertEquals
 
 @OptIn(ExperimentalTestApi::class)
@@ -84,6 +88,33 @@ class CommandPaletteUiTest {
         waitForIdle()
 
         onNodeWithText("item-01").assertIsDisplayed()
+    }
+
+    @Test
+    fun `the window's escape closes the palette when only the key release arrives`() = runComposeUiTest {
+        var dismissed = 0
+        setContent { MaterialTheme { CommandPalette(listOf(project), emptyList(), { _, _ -> }, { dismissed++ }) } }
+        waitForIdle()
+
+        assertTrue(OpenMenus.handleEscape(now = Long.MAX_VALUE))
+        assertEquals(1, dismissed)
+    }
+
+    @Test
+    fun `preferences is marked as a setting`() = runComposeUiTest {
+        val preferences = PaletteItem(
+            id = "view:preferences",
+            kind = PaletteKind.SETTING,
+            title = "Preferences",
+            keys = listOf("Preferences"),
+            context = EnglishStrings.paletteKindSetting,
+            primary = PaletteAction.Run(PaletteCommand.OPEN_PREFERENCES),
+        )
+        setContent { MaterialTheme { CommandPalette(listOf(preferences), emptyList(), { _, _ -> }, {}) } }
+
+        onNode(hasSetTextAction()).performTextInput("pref")
+        onNodeWithContentDescription("Setting", useUnmergedTree = true).assertExists()
+        onNodeWithContentDescription("View", useUnmergedTree = true).assertDoesNotExist()
     }
 
     @Test

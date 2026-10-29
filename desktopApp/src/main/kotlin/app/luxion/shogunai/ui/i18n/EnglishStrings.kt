@@ -1,5 +1,7 @@
 package app.luxion.shogunai.ui.i18n
 
+import app.luxion.shogunai.domain.model.AgentStateSource
+import app.luxion.shogunai.ui.components.AgentPhase
 import app.luxion.shogunai.domain.model.ComposeResourceKind
 import app.luxion.shogunai.domain.model.ResourceLimits
 import app.luxion.shogunai.domain.model.ResourceKind
@@ -8,7 +10,7 @@ import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.InstallChannel
 import app.luxion.shogunai.domain.model.MobileSecretKind
 import app.luxion.shogunai.domain.model.ProvisionDriftState
-import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.usecase.HookEntry
 import app.luxion.shogunai.domain.usecase.HookReplacement
 import app.luxion.shogunai.domain.usecase.HooksInstallState
@@ -20,6 +22,7 @@ import app.luxion.shogunai.ui.shell.HooksAction
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 
 object EnglishStrings : Strings {
+    override val language = AppLanguage.ENGLISH
     override val languageName = "English"
 
     override val themeLight = "Light"
@@ -178,13 +181,13 @@ object EnglishStrings : Strings {
     override val groupAgentWorkingHint = "agent running"
     override val groupAgentWorkingCriterion = "An AI agent is working in the worktree, or runs without a known state."
     override val groupNeedsYouHint = "agent waiting, uncommitted or unpushed"
-    override val groupNeedsYouCriterion = "An agent is blocked or done, or no agent is working and there are uncommitted changes or commits not pushed to its upstream (or to the main branch when it has none)."
+    override val groupNeedsYouCriterion = "An agent is blocked or done, or no agent is working and there are uncommitted changes or commits not pushed to its upstream (or to its base when it has none)."
     override val groupNewHint = "no commits yet"
     override val groupNewCriterion = "No commits of its own, no uncommitted changes and no agent running."
     override val groupStoppedHint = "pushed, waiting"
     override val groupStoppedCriterion = "Commits of its own, all pushed, nothing uncommitted, not merged and no agent working."
-    override val groupMergedHint = "in main branch"
-    override val groupMergedCriterion = "No commits of its own ahead of the main branch. Can be cleaned up."
+    override val groupMergedHint = "in its base"
+    override val groupMergedCriterion = "No commits of its own ahead of its base or the main branch. Can be cleaned up."
     override fun groupInactiveHint(days: Int) = "no activity for $days+ days"
     override fun groupInactiveCriterion(days: Int) =
         "Clean, no agent running and no activity in the last " + (if (days == 1) "day." else "$days days.")
@@ -248,13 +251,39 @@ object EnglishStrings : Strings {
     override fun claudeHooksRemoved(entry: HookEntry) = "Remove from ${entry.event}: ${entry.command}"
     override val claudeHooksNoticeMessage = "Claude is running without a known state. Install ShogunAi's Claude Code hooks to see when it needs you."
     override val claudeHooksNoticeDismiss = "Dismiss"
-    override fun agentLabel(name: String, state: AgentState?) = when (state) {
-        null -> name
-        AgentState.WORKING -> "$name · working"
-        AgentState.BLOCKED -> "$name · blocked"
-        AgentState.DONE -> "$name · done"
-        AgentState.IDLE -> "$name · idle"
+    override fun agentPhaseName(phase: AgentPhase) = when (phase) {
+        AgentPhase.NEEDS_YOU -> "needs you"
+        AgentPhase.DONE -> "done"
+        AgentPhase.WORKING -> "working"
+        AgentPhase.RUNNING -> "running"
+        AgentPhase.IDLE -> "idle"
     }
+    override fun agentWaitingOn(tool: String, input: String?) = "Waiting on $tool" + (input?.let { ": $it" } ?: "")
+    override fun agentPrompt(prompt: String) = "Prompt: $prompt"
+    override fun agentLastMessage(message: String) = "Last message: $message"
+    override fun portListening(label: String) = "$label (listening)"
+    override val orcaPortsTitle = "Listening, seen by Orca"
+    override fun agentStateSource(source: AgentStateSource?) = when (source) {
+        AgentStateSource.HERDR -> "State from Herdr"
+        AgentStateSource.ORCA -> "State from Orca"
+        AgentStateSource.CLAUDE_CODE -> "State from Claude Code hooks"
+        null -> "Only its process was found"
+    }
+    override fun agentsUpdated(relative: String) = "Updated $relative"
+    override val noAgentRunning = "No agent running"
+    override fun copyValue(key: String) = "Copy $key"
+    override val agentSectionTitle = "Agent"
+    override val resourcesTitle = "Resources"
+    override val expanded = "Expanded"
+    override val collapsed = "Collapsed"
+    override val changesKey = "Changes"
+    override val upstreamKey = "Upstream"
+    override fun versusBranchKey(branch: String) = "vs $branch"
+    override val lastCommitKey = "Last commit"
+    override fun environmentSummary(ports: Int, variables: Int) = listOfNotNull(
+        ports.takeIf { it > 0 }?.let { if (it == 1) "1 port" else "$it ports" },
+        variables.takeIf { it > 0 }?.let { if (it == 1) "1 var" else "$it vars" },
+    ).joinToString(" · ")
     override fun agentsRunning(names: List<String>) = "Agents running: ${names.joinToString(", ")}"
     override val allProjects = "All projects"
     override val projectLabel = "Project"
@@ -279,13 +308,6 @@ object EnglishStrings : Strings {
     override val mergedLabel = "merged"
     override fun commitAgo(relative: String) = "commit $relative"
     override fun createdAgo(relative: String) = "created $relative"
-    override fun agentStateName(state: AgentState?) = when (state) {
-        null -> "state unknown"
-        AgentState.WORKING -> "working"
-        AgentState.BLOCKED -> "blocked"
-        AgentState.DONE -> "done"
-        AgentState.IDLE -> "idle"
-    }
     override val sortLabel = "Sort"
     override val sortByName = "Name"
     override val sortByLastActivity = "Last activity"
@@ -298,6 +320,7 @@ object EnglishStrings : Strings {
     override val originShogunAi = "ShogunAi"
     override val originClaudeCode = "Claude Code"
     override val originHerdr = "Herdr"
+    override val originOrca = "Orca"
     override val originOther = "other location"
     override fun worktreesSummary(count: Int, totalSize: String) =
         (if (count == 1) "1 worktree" else "$count worktrees") + " · $totalSize"
@@ -313,11 +336,11 @@ object EnglishStrings : Strings {
     override val provisioningUpToDate = "Files are up to date"
     override val provisionAction = "Provision"
     override val copyAsEnv = "Copy as .env"
-    override fun provisionDriftFile(path: String, state: ProvisionDriftState) = when (state) {
-        ProvisionDriftState.MISSING -> "$path · missing"
-        ProvisionDriftState.DIFFERS -> "$path · differs"
-        ProvisionDriftState.NOT_LINKED -> "$path · not linked"
-        ProvisionDriftState.DELETED_IN_BASE -> "$path · deleted in base"
+    override fun provisionDriftState(state: ProvisionDriftState) = when (state) {
+        ProvisionDriftState.MISSING -> "missing"
+        ProvisionDriftState.DIFFERS -> "differs"
+        ProvisionDriftState.NOT_LINKED -> "not linked"
+        ProvisionDriftState.DELETED_IN_BASE -> "deleted in base"
     }
     override val environmentTitle = "Environment"
     override val devicesTitle = "Devices"
@@ -331,20 +354,24 @@ object EnglishStrings : Strings {
     override fun worktreesCleanedUp(count: Int) = if (count == 1) "1 worktree cleaned up" else "$count worktrees cleaned up"
     override fun cleanupFailed(path: String, detail: String) = "Couldn't remove \"$path\": $detail"
     override fun worktreeRemovedBranchKept(branch: String) =
-        "Worktree removed. Branch \"$branch\" kept: it isn't merged into the main branch"
+        "Worktree removed. Branch \"$branch\" kept: it isn't merged into its base or the main branch"
     override fun worktreeRemovedBranchKeptFailed(branch: String, reason: String) =
         "Worktree removed. Branch \"$branch\" kept: $reason"
     override val deleteBranchAnyway = "Delete branch anyway"
     override val deleteBranchAnywayTitle = "Delete the branch?"
     override fun deleteBranchAnywayMessage(branch: String) =
-        "Delete the branch \"$branch\" even though it isn't merged into the main branch? Its commits may be lost."
+        "Delete the branch \"$branch\" even though it isn't merged into its base or the main branch? Its commits may be lost."
     override fun branchDeleted(branch: String) = "Branch \"$branch\" deleted"
-    override fun branchKept(branch: String) = "Branch \"$branch\" kept: it isn't merged into the main branch"
+    override fun branchKept(branch: String) = "Branch \"$branch\" kept: it isn't merged into its base or the main branch"
     override val herdrWorkspaceWillClose = "It's open in Herdr: its workspace, and the agent running there, will be closed."
     override fun keptForRunningAgent(name: String, agents: List<String>) = "$name · kept, ${agents.joinToString()} is running"
     override val herdrCleanupNotice = "The worktrees open in Herdr will have their workspace, and the agent running there, closed."
     override val openInHerdrMark = "open in Herdr"
     override fun herdrCloseFailed(path: String, detail: String) = "Removed, but couldn't close the Herdr workspace of \"$path\": $detail"
+    override val orcaTerminalsWillClose = "It has terminals open in Orca: they, and the agent running in them, will be closed."
+    override val orcaCleanupNotice = "The worktrees with terminals open in Orca will have those terminals, and the agents running in them, closed."
+    override val openInOrcaMark = "open in Orca"
+    override fun orcaCloseFailed(path: String, detail: String) = "Removed, but couldn't close the Orca terminals of \"$path\": $detail"
     override val simulatorSection = "iOS simulator"
     override val simulatorSectionDescription =
         "This repository gives each worktree its own iOS simulator (IOS_SIMULATOR_UDID). These settings apply to this machine only."
@@ -369,9 +396,9 @@ object EnglishStrings : Strings {
     override val uninstall = "Uninstall"
     override val install = "Install"
     override val simulatorLabel = "iOS simulator"
-    override val simulatorShutdown = "shut down"
-    override val simulatorBooting = "booting"
-    override val simulatorBooted = "booted"
+    override val simulatorShutdown = "Shut down"
+    override val simulatorBooting = "Booting"
+    override val simulatorBooted = "Booted"
     override val startSimulator = "Start"
     override val stopSimulator = "Stop"
     override val alsoDeleteSimulators = "Also delete the iOS simulators of the worktrees being removed, and orphaned ShogunAi simulators"
@@ -386,14 +413,15 @@ object EnglishStrings : Strings {
     override fun emulatorMissingAvd(name: String) = "$name (not on this machine)"
     override val emulatorNoWindowLabel = "Run without a window"
     override val emulatorLabel = "Emulator"
-    override val emulatorStopped = "stopped"
-    override val emulatorBooting = "booting"
-    override val emulatorRunning = "running"
+    override val emulatorStopped = "Stopped"
+    override val emulatorBooting = "Booting"
+    override val emulatorRunning = "Running"
     override val startEmulator = "Start"
     override val stopEmulator = "Stop"
     override val alsoStopEmulators = "Also stop the emulators of the worktrees being removed"
     override fun emulatorsStopped(count: Int) = if (count == 1) "1 emulator stopped" else "$count emulators stopped"
     override val alsoStopIdleGradleDaemons = "Also stop the idle Gradle daemons of the worktrees being removed"
+    override val alsoStopIdleMavenDaemons = "Also stop the idle Maven daemons of the worktrees being removed"
     override val gradleDaemonsTitle = "Gradle daemons"
     override fun gradleDaemonsSummary(count: Int, totalMemory: String) =
         (if (count == 1) "1 daemon" else "$count daemons") + " · $totalMemory"
@@ -434,6 +462,9 @@ object EnglishStrings : Strings {
         if (count == 1) "1 folder is on an unavailable volume and is kept"
         else "$count folders are on unavailable volumes and are kept"
     override fun derivedDataCompilationCache(size: String) = "Compilation cache · $size"
+    override fun derivedDataSwiftPmCache(size: String) = "SwiftPM cache · $size"
+    override fun derivedDataCocoaPodsCache(size: String) = "CocoaPods cache · $size"
+    override fun derivedDataWithPackages(name: String, size: String) = "$name · packages $size"
     override fun derivedDataQuotaUsage(usage: String, quota: String, automatic: Boolean) =
         "$usage of $quota quota" + if (automatic) " (automatic)" else ""
     override val derivedDataQuotaUnknown = "Automatic quota unknown: the free disk space couldn't be read"
@@ -444,6 +475,15 @@ object EnglishStrings : Strings {
     override fun derivedDataDeleted(count: Int, freed: String) =
         if (count == 1) "1 DerivedData folder deleted · $freed freed" else "$count DerivedData folders deleted · $freed freed"
     override val machineTitle = "Machine"
+    override val machineStatusGradle = "Gradle"
+    override val machineStatusEmulators = "Emulators"
+    override val machineStatusSimulators = "Simulators"
+    override val machineStatusDerivedData = "DerivedData"
+    override val machineStatusMaven = "Maven"
+    override val machineStatusCompose = "Compose"
+    override val machineStatusDesktop = "Desktop"
+    override val notMeasuredYet = "not measured yet"
+    override val overQuota = "over the quota"
     override val resourcesLabel = "Resources"
     override fun profileName(profile: CapacityProfile) = when (profile) {
         CapacityProfile.AUTOMATIC -> "Automatic"
@@ -513,9 +553,9 @@ object EnglishStrings : Strings {
     override fun headlessStopFailed(path: String, detail: String) = "The desktop app of $path couldn't be stopped: $detail"
     override fun releasedFor(worktree: String, time: String) = "Released for $worktree at $time"
     override val notAcquired = "Not acquired"
-    override fun poolUsage(inUse: Int, limit: Int?, profile: String) =
-        (if (limit == null) "$inUse in use" else "$inUse of $limit in use") + " · $profile"
+    override fun poolUsage(inUse: Int, limit: Int?) = if (limit == null) "$inUse in use" else "$inUse of $limit in use"
     override val overLimit = "over the limit"
+    override val overLimitChip = "Over the limit"
     override val changeInPreferences = "Change in Preferences"
     override fun releasedNotice(kind: ResourceKind, released: String, forWorktree: String) = when (kind) {
         ResourceKind.EMULATOR -> "The emulator of $released was released to make room for $forWorktree"
@@ -538,7 +578,6 @@ object EnglishStrings : Strings {
     override val machineColumnState = "State"
     override val automaticAvd = "Automatic"
     override val simulatorNotCreated = "Not created"
-    override fun simulatorNotCreatedFor(device: String) = "Not created · $device"
     override val noMachineEmulators = "No worktree emulators in these projects"
     override val unownedEmulatorsTitle = "Running outside any worktree"
     override val noMachineSimulators = "No ShogunAi simulators yet"
@@ -566,6 +605,12 @@ object EnglishStrings : Strings {
     override fun daysAgo(count: Long) = if (count == 1L) "1 day ago" else "$count days ago"
     override fun monthsAgo(count: Long) = if (count == 1L) "1 month ago" else "$count months ago"
     override fun yearsAgo(count: Long) = if (count == 1L) "1 year ago" else "$count years ago"
+    override val compactNow = "now"
+    override fun compactMinutes(count: Long) = "$count min"
+    override fun compactHours(count: Long) = "$count h"
+    override fun compactDays(count: Long) = "$count d"
+    override fun compactMonths(count: Long) = "$count mo"
+    override fun compactYears(count: Long) = "$count y"
     override val copied = "Copied"
     override val close = "Close"
     override val worktreeCreatedWithError = "The worktree was created, but its post-creation command failed."
@@ -595,6 +640,9 @@ object EnglishStrings : Strings {
     override fun openedInHerdr(name: String) = "Opened \"$name\" in Herdr with its agent"
     override fun focusedInHerdr(name: String) = "\"$name\" was already open in Herdr; switched to its agent"
     override fun agentStartedInHerdr(name: String) = "\"$name\" was open in Herdr without an agent; started its agent in a new pane"
+    override val openInOrca = "Open in Orca"
+    override fun agentStartedInOrca(name: String) = "Opened \"$name\" in Orca and started its agent in a new terminal"
+    override fun focusedInOrca(name: String) = "\"$name\" already had an agent running in Orca; switched to it"
     override val toolsLabel = "Tools"
     override val terminalToolLabel = "Terminal"
     override val editorToolLabel = "IDE"
@@ -603,6 +651,20 @@ object EnglishStrings : Strings {
     override fun openInTool(name: String) = "Open in $name"
     override val claudeDesktopName = "Claude Desktop"
     override val openFolder = "Open folder"
+    override val openWith = "Open with…"
+    override val openWithMenu = "Open with"
+    override val withAgent = "With agent"
+    override fun actionWithAgent(action: String, agent: String) = "$action with $agent"
+    override val defaultRunnerMark = "default"
+    override val setDefaultRunner = "Set default runner…"
+    override val defaultRunnerLabel = "Default runner"
+    override val noRunnerFound = "Neither Herdr nor Orca was found"
+    override val deleteWorktreeAction = "Delete worktree…"
+    override val moreActions = "More actions"
+    override val folderMissingReason = "The worktree's folder is missing"
+    override val openingReason = "Opening…"
+    override val addProjectFirst = "Add a project first"
+    override val addRepositoryFirst = "Add a repository to the multirepo first"
     override val chooseTerminalTitle = "Choose a terminal"
     override val chooseTerminalMessage = "Worktrees will open in the terminal you choose. You can change it later in Preferences."
     override val projectEditorLabel = "IDE on this machine"
@@ -628,8 +690,10 @@ object EnglishStrings : Strings {
     override val preferredDeviceLabel = "Preferred device"
     override val preferredRuntimeLabel = "Preferred runtime"
     override val xcodeCompilationCacheLabel = "Compilation caching"
+    override val xcodeCocoaPodsLabel = "Clone CocoaPods pods from the base"
     override val providerMaven = "Maven"
     override val providerDockerCompose = "Docker Compose"
+    override val providerFlutter = "Flutter"
     override val mavenMaxHeapLabel = "Build heap"
     override val composePortVariablesLabel = "Port variables"
     override val composePortVariablesHelp = "Names separated by commas, for example DB_PORT, API_PORT. Each gets its own free port in every worktree."
@@ -656,12 +720,10 @@ object EnglishStrings : Strings {
         (if (count == 1) "1 daemon" else "$count daemons") + " · $totalMemory"
     override val noMavenDaemons = "No Maven daemons running"
     override val mavenDaemonsUnavailable = "Maven daemons can't be inspected on this system"
-    override val mavenDaemonsNotStopped = "Maven daemons are only listed: ShogunAi can't tell whether one is busy, so it never stops them."
     override val composeProjectsTitle = "Compose projects"
     override fun composeProjectsSummary(count: Int) = if (count == 1) "1 project" else "$count projects"
     override val noComposeProjects = "No Compose projects for the worktrees"
-    override fun composeProjectsUnavailable(reason: String?) =
-        "Docker isn't available" + if (reason.isNullOrBlank()) "" else ": $reason"
+    override val composeDockerUnavailableMessage = "Docker isn't available. Start Docker Desktop or the Docker daemon, then try again."
     override val composeOwnerRemoved = "removed worktree"
     override val takeDownRemovedComposeProjects = "Take down the projects of removed worktrees"
     override val composeVolumesKept = "Containers and networks are removed; volumes are kept."
@@ -724,6 +786,7 @@ object EnglishStrings : Strings {
     override val paletteNoResults = "No results"
     override val paletteCopyLaunchCommandHint = "Copy launch command"
     override val paletteKindView = "View"
+    override val paletteKindSetting = "Setting"
     override val paletteKindProject = "Project"
     override val paletteKindWorktree = "Worktree"
     override val paletteKindAction = "Action"
@@ -762,19 +825,35 @@ object EnglishStrings : Strings {
     override val updateChecking = "Checking for updates…"
     override fun updateUpToDateMessage(version: String) = "ShogunAi is up to date (version $version)."
     override val updateCheckAutomaticallyLabel = "Check for updates automatically"
+    override fun releaseNotesTitle(version: String) = "What's new in $version"
+    override fun releaseNotesVersionHeading(version: String) = "Version $version"
+    override val releaseNotesViewOnGitHub = "View on GitHub"
+    override val releaseNotesEmpty = "No notes for this version."
+    override val releaseNotesIconDescription = "Read what's new"
     override val groupByChange = "By change"
     override val ungrouped = "Ungrouped"
     override val newChange = "New change"
     override val newChangeRepositories = "Repositories"
     override val createChange = "Create change"
     override val openAllInHerdr = "Open all in Herdr"
+    override val openAllInOrca = "Open all in Orca"
     override val addRepositoryToGroup = "Add repository"
+    override val openAllWith = "Open all with…"
+    override val openMultirepoAgentWith = "Open multirepo agent with…"
     override val cleanUpGroup = "Clean up group"
     override val cleanUpGroupTitle = "Clean up group"
     override val openMultirepoAgent = "Open multirepo agent in Herdr"
     override val multirepoAgentOpened = "Multirepo agent opened in Herdr"
     override val multirepoAgentFocused = "Multirepo agent focused in Herdr"
     override val multirepoAgentStarted = "Multirepo agent started in its open Herdr workspace"
+    override val openMultirepoAgentInOrca = "Open multirepo agent in Orca"
+    override val multirepoAgentStartedInOrca = "Multirepo agent started in a new Orca terminal"
+    override val multirepoAgentFocusedInOrca = "The multirepo agent was already running in Orca; switched to it"
+    override val openNewChangeIn = "Then open it in"
+    override val dontOpen = "Don't open"
+    override val runnerOpened = "opened"
+    override val runnerAgentStarted = "agent started"
+    override val runnerAgentFocused = "running agent focused"
     override val groupRepositoryCreated = "created"
     override val groupRepositoryExisting = "already there"
     override val addMultirepo = "Add multirepo"
@@ -803,7 +882,14 @@ object EnglishStrings : Strings {
     override val declareWorkspace = "Declare it in the multirepo file"
     override val workspaceAliasLabel = "Alias"
     override val turnOffWorkspace = "Turn off"
-    override val workspaceTurnedOff = "Turned off: the folder isn't treated as a repository of the multirepo. Declare it to bring it back."
+    override val workspaceTurnedOff = "Turned off: the folder isn't treated as a repository of the multirepo. Return it to detection or declare it to bring it back."
+    override val returnWorkspaceToDetection = "Return to detection"
+    override val sharedVariablesTitle = "Shared variables"
+    override val sharedVariablesHint = "Variables the multirepo adds to a repository's worktrees. Use \${port:<alias>.<key>} for the port another repository reserves for its key."
+    override val sharedVariablesEmpty = "The multirepo shares no variables."
+    override val sharedVariableOwnPort = "Ports a repository uses itself are declared in its own .shogunai.json; here use \${port:<alias>.<key>}."
+    override fun sharedVariableUnknownRepository(alias: String) = "'$alias' isn't a repository of the multirepo."
+    override fun sharedVariablesUnrepresentable(problem: String) = "The shared variables can't be edited here ($problem). Fix .shogunai-multirepo.json by hand."
     override val defaultRepositoriesTitle = "Default repositories"
     override val defaultRepositoriesHint = "A new change covers these repositories unless you pick others."
     override val multirepoWorktreesRootTitle = "Worktrees folder"
@@ -824,6 +910,12 @@ object EnglishStrings : Strings {
     override fun groupRepositoryFailed(reason: String) = "failed: $reason"
     override fun repositoryAddedToGroup(alias: String, title: String) = "$alias added to $title"
     override fun changeCreated(title: String, aliases: List<String>) = "$title created in ${aliases.joinToString()}"
+    override fun groupOpenedInOrca(title: String, started: List<String>, focused: List<String>) =
+        listOfNotNull(
+            started.takeIf { it.isNotEmpty() }?.let { "agent started in ${it.joinToString()}" },
+            focused.takeIf { it.isNotEmpty() }?.let { "running agent focused in ${it.joinToString()}" },
+        ).joinToString("; ", prefix = "$title opened in Orca: ")
+    override fun runnerOpenFailed(reason: String) = "not opened: $reason"
     override val multirepoNeedsReview = "Needs review"
     override val multirepoNeedsReviewExplanation =
         "This multirepo isn't approved on this machine: its declaration is new here or changed outside ShogunAi, for example with a pull. ShogunAi creates branches and worktrees in the repositories it lists and runs their approved post-creation commands, so check them before trusting it."
@@ -864,6 +956,21 @@ object EnglishStrings : Strings {
     override val tourEndTitle = "End the tour?"
     override fun tourEndMessage(folder: String) =
         "The project \"ShogunAi tour\", its worktrees and $folder are deleted. Close the tour's agent first. No other project is touched."
+    override val loading = "Loading"
+    override fun noticeDetails(count: Int) = "Details ($count)"
+    override fun releasedSummary(kind: ResourceKind, count: Int) = when (kind) {
+        ResourceKind.EMULATOR -> "$count emulators were released to make room for other worktrees"
+        ResourceKind.IOS_SIMULATOR -> "$count simulators were deleted to make room for other worktrees"
+        ResourceKind.GRADLE_DAEMON -> "$count Gradle daemons were stopped to make room for other worktrees"
+    }
+    override val cleanUpBlockedRunning = "A cleanup is already running"
+    override val cleanUpBlockedNothing = "Nothing to clean up: no worktree is merged or missing"
+    override val cleanUpBlockedReview = "Trust the multirepo before cleaning it up"
+    override val daemonStopBlockedBusy = "Only idle daemons can be stopped, and this one is busy"
+    override val daemonStopBlockedUnknown = "Its state is unknown, so it isn't stopped"
+    override val daemonStopBlockedGradleBusy = "Kotlin daemons are stopped only when no Gradle daemon is busy"
+    override val stopIdleBlockedStopping = "Daemons are being stopped"
+    override val stopIdleBlockedNoneIdle = "No daemon is idle"
 }
 
 internal fun String?.asSuffix(): String = if (isNullOrBlank()) "" else ": $this"

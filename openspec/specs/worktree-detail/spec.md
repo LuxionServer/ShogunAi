@@ -28,36 +28,48 @@ The selection SHALL be kept by worktree path when the list reloads, including au
 - **THEN** nothing is selected and the detail pane shows the project summary
 
 ### Requirement: Detail of the selected worktree
-The detail pane SHALL show the selected worktree's branch (or that it is detached), its full path as selectable text with a copy action, its origin, its full status, the agents running in it, its size and its reserved ports. Information that doesn't apply SHALL be omitted.
+The detail pane SHALL show the selected worktree's branch (or that it is detached), its origin and its full path as selectable text with a copy action, then its sections in the inspector's fixed order: Status, Agent, Environment, Resources and Provisioning. Each section SHALL show its data as properties, draw placeholder rows until its data is first read, and not be drawn when it doesn't apply to the worktree.
 
 #### Scenario: Worktree with an agent and ports
 - **WHEN** the selected worktree has Claude running and `PORT` reserved as 20001
-- **THEN** the detail shows Claude as running and `PORT 20001`
+- **THEN** the Agent section shows Claude with its state and the Environment section shows `PORT` with `20001`
 
 #### Scenario: Copy the path
 - **WHEN** the user activates the copy action next to the path
 - **THEN** the worktree's full path is copied to the clipboard
 
+#### Scenario: Main worktree
+- **WHEN** the main worktree is selected
+- **THEN** the detail shows no Provisioning section
+
 ### Requirement: Detail actions
-The detail pane SHALL offer "Copy launch command" as its primary action, "Open in Herdr" as a secondary action that is disabled with a loading indicator while that worktree is being opened, and, for every worktree except the main one, a "Delete worktree" action styled as destructive.
+The detail pane SHALL present the worktree's actions in an action bar: "Open in <default runner>" as its primary action, a split button whose second part opens the "Open with…" menu; then the icon actions "Copy launch command", "Open in <terminal>" and "Open folder" when available; then a "More" (⋯) menu with "Copy path" and, for every worktree except the main one, "Delete worktree…" last, after a separator, in danger text. The primary action SHALL be disabled with a loading indicator while that worktree is being opened in the default runner. The "Open with…" menu SHALL list every available way to open the worktree, the default runner first and marked as the default, then "Copy launch command", "Set default runner…" and, when the project has several agents, a "With agent" section with the project's agents and the worktree's one checked.
 
 #### Scenario: Main worktree
 - **WHEN** the main worktree is selected
-- **THEN** the detail offers "Copy launch command" and "Open in Herdr", and no delete action
+- **THEN** the detail offers "Open in <default runner>", the icon actions and "Copy path", and no delete action
 
 #### Scenario: Opening in Herdr
 - **WHEN** the user activates "Open in Herdr" in the detail and Herdr hasn't answered yet
-- **THEN** the action shows a loading indicator and is disabled until the opening finishes
+- **THEN** the primary action shows a loading indicator and is disabled until the opening finishes
+
+#### Scenario: Open with another tool
+- **WHEN** the default runner is Herdr, Orca and IntelliJ IDEA are installed, and the user opens "Open with…"
+- **THEN** the menu lists "Open in Herdr" marked as default with ⌘O, "Open in Orca", the terminal, "Open in IntelliJ IDEA", Claude Desktop when installed and "Open folder"
+
+#### Scenario: Copy launch command is an icon
+- **WHEN** the user activates the copy icon or presses ⇧⌘C
+- **THEN** the launch command is copied and the icon confirms it in place
 
 ### Requirement: Project summary when nothing is selected
-When no worktree is selected, the detail pane SHALL show the project's summary: the number of worktrees, their total size, and how many can be cleaned up, with the "Clean up" action when there are any.
+When no worktree is selected, the detail pane SHALL show the project's summary: the number of worktrees, their total size, and how many can be cleaned up. The summary SHALL be informative only and offer no action; cleaning up stays in the view's ⋯ menu.
 
 #### Scenario: Nothing selected
 - **WHEN** a project with five worktrees, two of them merged and clean, is shown with no selection
-- **THEN** the detail pane shows five worktrees, their total size and two to clean up with a "Clean up" action
+- **THEN** the detail pane shows five worktrees, their total size and two to clean up, with no "Clean up" action
 
 ### Requirement: Row quick actions
-Hovering a row SHALL reveal a copy-launch-command icon action. Each row SHALL have a context menu with "Copy launch command", "Open in Herdr", "Copy path" and, except for the main worktree, "Delete worktree".
+Hovering a row SHALL reveal a copy-launch-command icon action. Each row SHALL have a context menu built from the action catalog with "Open in <default runner>", "Open with ▸", "Copy launch command", "Copy path" and, except for the main worktree, "Delete worktree…".
 
 #### Scenario: Copy from the row
 - **WHEN** the user hovers a row and activates its copy icon
@@ -65,10 +77,10 @@ Hovering a row SHALL reveal a copy-launch-command icon action. Each row SHALL ha
 
 #### Scenario: Context menu
 - **WHEN** the user opens the context menu of a non-main worktree's row
-- **THEN** it offers copy launch command, open in Herdr, copy path and delete worktree
+- **THEN** it offers open in the default runner, open with, copy launch command, copy path and delete worktree
 
 ### Requirement: Keyboard shortcuts on the selected worktree
-With a worktree selected, Cmd/Ctrl+Shift+C SHALL copy its launch command, and Cmd/Ctrl+Backspace SHALL open the delete confirmation for it unless it is the main worktree. Escape SHALL clear the selection.
+With a worktree selected, Cmd/Ctrl+O SHALL open it in the default runner, Cmd/Ctrl+Shift+O SHALL open its "Open with…" menu, Cmd/Ctrl+Shift+C SHALL copy its launch command, and Cmd/Ctrl+Backspace SHALL open the delete confirmation for it unless it is the main worktree. Escape SHALL clear the selection.
 
 #### Scenario: Copy with the keyboard
 - **WHEN** a worktree is selected and the user presses Cmd/Ctrl+Shift+C
@@ -77,6 +89,10 @@ With a worktree selected, Cmd/Ctrl+Shift+C SHALL copy its launch command, and Cm
 #### Scenario: Delete with the keyboard
 - **WHEN** a non-main worktree is selected and the user presses Cmd/Ctrl+Backspace
 - **THEN** the delete confirmation dialog opens for it
+
+#### Scenario: Open with from the keyboard
+- **WHEN** a worktree is selected and the user presses Cmd/Ctrl+Shift+O
+- **THEN** the detail's "Open with…" menu opens with its first item focused
 
 ### Requirement: Detail over the list on narrow windows
 When the content area is narrower than a threshold, the detail pane SHALL open over the list when a worktree is selected, and Escape or a close action SHALL hide it and clear the selection.
@@ -158,3 +174,59 @@ In a repository that declares the desktop app provider, on macOS, the detail SHA
 #### Scenario: Repository without the provider
 - **WHEN** the selected worktree's repository doesn't declare the desktop app provider
 - **THEN** the detail shows nothing about a headless app
+
+### Requirement: Orca's agent details in the detail
+The detail SHALL show, under each agent that carries them (see `worktree-overview`), the tool it waits on with its input, the prompt it was given and its last message, each labelled and shortened to at most three lines. Details that are missing SHALL be omitted.
+
+#### Scenario: Agent waiting on a tool
+- **WHEN** the selected worktree's Claude is blocked waiting on `Bash` with input `curl -s https://example.com -o page.html` and prompt `Download the page`
+- **THEN** the detail shows Claude as blocked, then that it waits on `Bash: curl -s https://example.com -o page.html`, then the prompt, and no last message
+
+#### Scenario: Long last message
+- **WHEN** the agent's last message has ten lines
+- **THEN** the detail shows its first three lines and marks it as shortened
+
+### Requirement: Observed ports in the detail
+The detail's environment section SHALL show the ports Orca sees the worktree listen on (see `orca-integration`), sorted by number, each with its process and its address when there is one, after the ports ShogunAi reserves. A reserved port that Orca sees listening SHALL be marked as listening. The environment section SHALL appear when there are only observed ports. The observed ports SHALL follow the list's checks without reopening the detail.
+
+#### Scenario: Reserved and observed ports
+- **WHEN** the selected worktree has `PORT` reserved as 20001 and Orca sees it listen on 20001 by `java` and on 8765 by `Python` at `http://127.0.0.1:8765`
+- **THEN** the environment section shows `PORT 20001` marked as listening, and lists 8765 with `Python` and `http://127.0.0.1:8765` and 20001 with `java` as seen by Orca
+
+#### Scenario: Only observed ports
+- **WHEN** the selected worktree has no environment and Orca sees it listen on 8765
+- **THEN** the detail shows the environment section with port 8765 seen by Orca
+
+#### Scenario: Orca not running
+- **WHEN** Orca isn't running
+- **THEN** the environment section shows only the reserved ports, without any listening mark
+
+### Requirement: Agent section
+The detail's Agent section SHALL show every agent running in the worktree with the agent indicator, and say so when no agent runs.
+
+#### Scenario: Agent needing the user
+- **WHEN** Claude, reported by Herdr as blocked, runs in the selected worktree
+- **THEN** the Agent section shows a warning dot with "Claude · needs you", and its tooltip says the state comes from Herdr
+
+#### Scenario: No agent
+- **WHEN** no agent runs in the selected worktree
+- **THEN** the Agent section says no agent is running
+
+### Requirement: Status section summary
+The detail's Status section SHALL show the uncommitted changes, the divergence from the upstream and from the worktree's base (its recorded base, or the main branch when it has none) naming that branch, whether the branch is merged and into which branch, and the last commit or creation date as properties, and summarize the changes and commits ahead in its label line.
+
+#### Scenario: Changes and commits ahead
+- **WHEN** the selected worktree has 4 uncommitted changes and is 2 commits ahead of its upstream
+- **THEN** the Status section's label line reads "4 changes · ↑2" and its properties show the upstream and main branch divergences and the last commit's date
+
+#### Scenario: Recorded base
+- **WHEN** the selected worktree's branch has recorded base `epic/redesign`, is 3 commits ahead of it and 9 ahead of the main branch
+- **THEN** the Status section shows "vs epic/redesign" with 3 ahead, and no main branch divergence
+
+#### Scenario: Merged into the recorded base
+- **WHEN** the selected worktree's branch is merged into its recorded base `epic/redesign` but not into `develop`
+- **THEN** the Status section shows "vs epic/redesign" as merged
+
+#### Scenario: Merged into the main branch but not into the base
+- **WHEN** the selected worktree's branch has recorded base `epic/redesign` and was merged straight into `develop`
+- **THEN** the Status section shows "vs develop" as merged

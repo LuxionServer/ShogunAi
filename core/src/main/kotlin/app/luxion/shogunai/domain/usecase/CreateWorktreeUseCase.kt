@@ -21,7 +21,12 @@ class CreateWorktreeUseCase(
     private val approval: RepositoryApproval = RepositoryApproval.SKIP,
     private val records: ProvisioningRecordStore = ProvisioningRecordStore.NONE,
 ) {
-    suspend operator fun invoke(taskId: String, branchType: BranchType, startPoint: String? = null): Result<Worktree> =
+    suspend operator fun invoke(
+        taskId: String,
+        branchType: BranchType,
+        startPoint: String? = null,
+        baseBranch: String? = null,
+    ): Result<Worktree> =
         runCatching {
             if (startPoint != null && isOptionLikeRef(startPoint)) throw WorktreeError.InvalidRef(startPoint)
             val id = normalizeTaskId(taskId)
@@ -38,7 +43,7 @@ class CreateWorktreeUseCase(
                 throw WorktreeError.WorktreeAlreadyExists(worktreePath)
             }
 
-            val provisioned = checkProvisioningAndResolveFiles(config, executor, fileManager, provisioningSource)
+            val provisioned = checkLocalFilesAndResolve(config, executor, fileManager, provisioningSource)
 
             val branch = "${branchType.prefix}/$id"
             addWorktreeAndCopySecrets(
@@ -49,6 +54,7 @@ class CreateWorktreeUseCase(
                 branch = branch,
                 addArgs = listOf("git", "worktree", "add") + listOfNotNull("--no-track".takeIf { startPoint != null }) + listOf(worktreePath, "-b", branch) + listOfNotNull(startPoint),
                 createdBranch = branch,
+                baseBranch = baseBranch,
                 provisioned = provisioned,
                 environment = environment,
                 trust = trust,

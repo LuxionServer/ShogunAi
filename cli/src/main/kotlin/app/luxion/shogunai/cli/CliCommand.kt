@@ -2,6 +2,7 @@ package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.DEFAULT_DEVICE_WAIT_MINUTES
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.WorkflowTopic
 import app.luxion.shogunai.domain.usecase.EnvironmentFormat
 import java.time.Duration
@@ -39,12 +40,19 @@ sealed interface CliCommand {
         val json: Boolean = false,
     ) : CliCommand
     data class Repair(val json: Boolean = false) : CliCommand
-    data class Open(val target: String?, val herdr: Boolean = false, val agent: String? = null, val json: Boolean = false) : CliCommand
+    data class Open(
+        val target: String?,
+        val runner: RunnerId? = null,
+        val agent: String? = null,
+        val json: Boolean = false,
+    ) : CliCommand
     data class Status(val json: Boolean = false) : CliCommand
+    data class Base(val target: String? = null, val set: String? = null, val json: Boolean = false) : CliCommand
     data class Clean(
         val confirmed: Boolean = false,
         val deleteBranches: Boolean = false,
         val stopGradleDaemons: Boolean = false,
+        val stopMavenDaemons: Boolean = false,
         val stopEmulators: Boolean = false,
         val deleteSimulators: Boolean = false,
         val deleteDerivedData: Boolean = false,
@@ -74,11 +82,15 @@ sealed interface CliCommand {
     data class Project(val action: ProjectAction, val path: String? = null, val json: Boolean = false) : CliCommand
     data class App(val path: String? = null, val settings: Boolean = false) : CliCommand
     data class GradleStop(val pids: List<Long> = emptyList(), val json: Boolean = false) : CliCommand
+
+    data class MavenStop(val pids: List<Long> = emptyList(), val json: Boolean = false) : CliCommand
     data object HookWorktreeCreate : CliCommand
     data object HookWorktreeRemove : CliCommand
     data object HookSessionStart : CliCommand
     data object HookHerdr : CliCommand
+    data class HookOrca(val action: OrcaHookAction) : CliCommand
     data object HookAgentState : CliCommand
+    data object HookDesktopTurn : CliCommand
     data class Hooks(
         val action: HooksAction,
         val project: Boolean = false,
@@ -161,13 +173,14 @@ fun parseArguments(args: List<String>): ParsedArguments {
                 "repair" -> noArguments(name, arguments, CliCommand.Repair())
                 "open" -> parseOpen(arguments)
                 "status" -> parseStatus(arguments)
+                "base" -> parseBase(arguments)
                 "clean" -> parseClean(arguments)
                 "hook" -> parseHook(arguments)
                 "hooks" -> parseHooks(arguments)
                 "guide" -> parseGuide(arguments)
                 "gradle" -> parseGradle(arguments)
                 "stacks" -> noArguments(name, arguments, CliCommand.Stacks())
-                "maven" -> noArguments(name, arguments, CliCommand.Maven())
+                "maven" -> parseMaven(arguments)
                 "compose" -> parseCompose(arguments)
                 "pool" -> parsePool(arguments)
                 "project" -> parseProject(arguments)
@@ -190,7 +203,7 @@ private const val JSON_FLAG = "--json"
 
 private const val ARGUMENTS_SEPARATOR = "--"
 
-private val JSON_COMMANDS = setOf("new", "multirepo", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "stacks", "maven", "compose", "pool", "project", "xcode", "emulator", "simulator", "headless", "desktop", "hooks", "guide")
+private val JSON_COMMANDS = setOf("new", "base", "multirepo", "provision", "trust", "remove", "repair", "open", "clean", "gradle", "stacks", "maven", "compose", "pool", "project", "xcode", "emulator", "simulator", "headless", "desktop", "hooks", "guide")
 
 private fun isSimulatorGradleInit(name: String, rest: List<String>) = name == "simulator" && rest.firstOrNull() == "gradle-init"
 
@@ -202,6 +215,7 @@ private fun CliCommand.withJson(json: Boolean): CliCommand = if (!json) this els
     is CliCommand.Provision -> copy(json = true)
     is CliCommand.Trust -> copy(json = true)
     is CliCommand.Remove -> copy(json = true)
+    is CliCommand.Base -> copy(json = true)
     is CliCommand.Repair -> copy(json = true)
     is CliCommand.Open -> copy(json = true)
     is CliCommand.Clean -> copy(json = true)
@@ -216,6 +230,7 @@ private fun CliCommand.withJson(json: Boolean): CliCommand = if (!json) this els
     is CliCommand.ComposeRun -> copy(json = true)
     is CliCommand.ComposePrune -> copy(json = true)
     is CliCommand.GradleStop -> copy(json = true)
+    is CliCommand.MavenStop -> copy(json = true)
     is CliCommand.Pool -> copy(json = true)
     is CliCommand.Project -> copy(json = true)
     is CliCommand.Emulator -> copy(json = true)
@@ -302,11 +317,13 @@ private fun parseRemove(rest: List<String>): CliCommand.Remove {
 private fun parseOpen(rest: List<String>): CliCommand.Open {
     var target: String? = null
     var herdr = false
+    var orca = false
     var agent: String? = null
     val remaining = ArrayDeque(rest)
     while (remaining.isNotEmpty()) {
         when (val argument = remaining.removeFirst()) {
             "--herdr" -> herdr = true
+            "--orca" -> orca = true
             "--agent" -> agent = remaining.valueOf(argument)
             else -> {
                 if (argument.startsWith("-")) throw UsageException("unknown option '$argument' for 'open'")
@@ -315,8 +332,13 @@ private fun parseOpen(rest: List<String>): CliCommand.Open {
             }
         }
     }
-    if (!herdr) throw UsageException("'open' needs where to open the worktree: --herdr")
-    return CliCommand.Open(target, herdr, agent)
+    if (herdr && orca) throw UsageException("'open' opens in one place at a time: pass either --herdr or --orca")
+    val runner = when {
+        herdr -> RunnerId.HERDR
+        orca -> RunnerId.ORCA
+        else -> null
+    }
+    return CliCommand.Open(target, runner, agent)
 }
 
 private fun parseStatus(rest: List<String>): CliCommand.Status {
@@ -329,6 +351,23 @@ private fun parseStatus(rest: List<String>): CliCommand.Status {
         }
     }
     return CliCommand.Status(json)
+}
+
+private fun parseBase(rest: List<String>): CliCommand.Base {
+    var target: String? = null
+    var set: String? = null
+    val remaining = ArrayDeque(rest)
+    while (remaining.isNotEmpty()) {
+        when (val argument = remaining.removeFirst()) {
+            "--set" -> set = remaining.valueOf(argument)
+            else -> {
+                if (argument.startsWith("-")) throw UsageException("unknown option '$argument' for 'base'")
+                if (target != null) throw UsageException("'base' takes a single target, got '$target' and '$argument'")
+                target = argument
+            }
+        }
+    }
+    return CliCommand.Base(target, set)
 }
 
 private fun parseProvision(rest: List<String>): CliCommand.Provision {
@@ -353,6 +392,7 @@ private fun parseClean(rest: List<String>): CliCommand.Clean {
     var confirmed = false
     var deleteBranches = false
     var stopGradleDaemons = false
+    var stopMavenDaemons = false
     var stopEmulators = false
     var deleteSimulators = false
     var deleteDerivedData = false
@@ -363,6 +403,7 @@ private fun parseClean(rest: List<String>): CliCommand.Clean {
             "--yes", "-y" -> confirmed = true
             "--delete-branches" -> deleteBranches = true
             "--stop-gradle-daemons" -> stopGradleDaemons = true
+            "--stop-maven-daemons" -> stopMavenDaemons = true
             "--stop-emulators" -> stopEmulators = true
             "--delete-simulators" -> deleteSimulators = true
             "--delete-derived-data" -> deleteDerivedData = true
@@ -376,6 +417,7 @@ private fun parseClean(rest: List<String>): CliCommand.Clean {
         confirmed = confirmed,
         deleteBranches = deleteBranches,
         stopGradleDaemons = stopGradleDaemons,
+        stopMavenDaemons = stopMavenDaemons,
         stopEmulators = stopEmulators,
         deleteSimulators = deleteSimulators,
         deleteDerivedData = deleteDerivedData,
@@ -463,6 +505,16 @@ private fun parseGradle(rest: List<String>): CliCommand {
     return CliCommand.GradleStop(pids)
 }
 
+private fun parseMaven(rest: List<String>): CliCommand {
+    val subcommand = rest.firstOrNull() ?: return CliCommand.Maven()
+    if (subcommand != "stop") throw UsageException("unknown subcommand '$subcommand' for 'maven', expected stop")
+    val pids = rest.drop(1).map { argument ->
+        argument.toLongOrNull()?.takeIf { it > 0 }
+            ?: throw UsageException("'maven stop' takes process ids, got '$argument'")
+    }
+    return CliCommand.MavenStop(pids)
+}
+
 enum class PoolAction { STATUS, TRIM }
 
 enum class ProjectAction { ADD, LIST, REMOVE }
@@ -499,18 +551,29 @@ private fun parsePool(rest: List<String>): CliCommand {
 
 private fun parseHook(rest: List<String>): CliCommand {
     val event = rest.firstOrNull() ?: throw UsageException("'hook' needs an event: $HOOK_EVENTS")
+    if (event == "orca") return parseHookOrca(rest.drop(1))
     val command = when (event) {
         "worktree-create" -> CliCommand.HookWorktreeCreate
         "worktree-remove" -> CliCommand.HookWorktreeRemove
         "session-start" -> CliCommand.HookSessionStart
         "herdr" -> CliCommand.HookHerdr
         "agent-state" -> CliCommand.HookAgentState
+        "desktop-turn" -> CliCommand.HookDesktopTurn
         else -> throw UsageException("unknown hook '$event', expected $HOOK_EVENTS")
     }
     return noArguments("hook $event", rest.drop(1), command)
 }
 
-private const val HOOK_EVENTS = "worktree-create, worktree-remove, session-start, agent-state or herdr"
+private const val HOOK_EVENTS = "worktree-create, worktree-remove, session-start, agent-state, desktop-turn, herdr or orca"
+
+enum class OrcaHookAction { SETUP, ARCHIVE }
+
+private fun parseHookOrca(rest: List<String>): CliCommand {
+    val name = rest.firstOrNull() ?: throw UsageException("'hook orca' needs an action: setup or archive")
+    val action = OrcaHookAction.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
+        ?: throw UsageException("unknown action '$name' for 'hook orca', expected setup or archive")
+    return noArguments("hook orca $name", rest.drop(1), CliCommand.HookOrca(action))
+}
 
 enum class HooksAction { INSTALL, UNINSTALL, STATUS }
 
@@ -795,6 +858,10 @@ sealed interface MultirepoAction {
     data class WorktreesRoot(val folder: String) : MultirepoAction
     data class WorkspaceSet(val alias: String? = null, val default: Boolean = false) : MultirepoAction
     data object WorkspaceClear : MultirepoAction
+    data object WorkspaceDetect : MultirepoAction
+    data object EnvList : MultirepoAction
+    data class EnvSet(val alias: String, val name: String, val template: String) : MultirepoAction
+    data class EnvUnset(val alias: String, val name: String) : MultirepoAction
     data object Delete : MultirepoAction
     data class Trust(val folder: String? = null, val yes: Boolean = false, val revoke: Boolean = false) : MultirepoAction
 }
@@ -803,7 +870,7 @@ private fun multirepoName(name: String): String =
     name.trim().ifEmpty { throw UsageException("the multirepo name can't be blank") }
 
 private fun parseMultirepo(rest: List<String>): CliCommand.Multirepo {
-    val action = rest.firstOrNull() ?: throw UsageException("'multirepo' needs an action: init, show, trust, name, add-repo, remove-repo, defaults, agent, workspace, worktrees-root or delete")
+    val action = rest.firstOrNull() ?: throw UsageException("'multirepo' needs an action: init, show, trust, name, add-repo, remove-repo, defaults, agent, workspace, env, worktrees-root or delete")
     val remaining = ArrayDeque(rest.drop(1))
     val positional = mutableListOf<String>()
     val options = mutableMapOf<String, String?>()
@@ -870,11 +937,28 @@ private fun parseMultirepo(rest: List<String>): CliCommand.Multirepo {
                 MultirepoAction.Agent(arguments(1, "agent <command> [--name <name>] [--headroom]").single(), options["--name"], headroom)
             }
             "workspace" -> {
-                val what = positional.firstOrNull() ?: throw UsageException("usage: shogun multirepo workspace set [--alias <alias>] [--default] | clear")
+                val usage = "usage: shogun multirepo workspace set [--alias <alias>] [--default] | clear | detect"
+                val what = positional.firstOrNull() ?: throw UsageException(usage)
                 when (what) {
                     "set" -> { allow("--alias", "--default"); arguments(1, "workspace set [--alias <alias>] [--default]"); MultirepoAction.WorkspaceSet(options["--alias"], "--default" in options) }
                     "clear" -> { allow(); arguments(1, "workspace clear"); MultirepoAction.WorkspaceClear }
-                    else -> throw UsageException("usage: shogun multirepo workspace set [--alias <alias>] [--default] | clear")
+                    "detect" -> { allow(); arguments(1, "workspace detect"); MultirepoAction.WorkspaceDetect }
+                    else -> throw UsageException(usage)
+                }
+            }
+            "env" -> {
+                allow()
+                when (positional.firstOrNull()) {
+                    null -> MultirepoAction.EnvList
+                    "set" -> {
+                        val (_, alias, name, template) = arguments(4, "env set <alias> <name> <template>")
+                        MultirepoAction.EnvSet(alias, name, template)
+                    }
+                    "unset" -> {
+                        val (_, alias, name) = arguments(3, "env unset <alias> <name>")
+                        MultirepoAction.EnvUnset(alias, name)
+                    }
+                    else -> throw UsageException("usage: shogun multirepo env [set <alias> <name> <template> | unset <alias> <name>]")
                 }
             }
             "worktrees-root" -> { allow(); MultirepoAction.WorktreesRoot(arguments(1, "worktrees-root <dir>").single()) }

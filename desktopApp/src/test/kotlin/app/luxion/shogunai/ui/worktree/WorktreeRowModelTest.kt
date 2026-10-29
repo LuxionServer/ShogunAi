@@ -3,6 +3,8 @@ package app.luxion.shogunai.ui.worktree
 import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.AgentStateSource
+import app.luxion.shogunai.ui.components.AgentPhase
 import app.luxion.shogunai.domain.model.HeadlessAppProcess
 import app.luxion.shogunai.domain.model.HeadlessAppState
 import app.luxion.shogunai.domain.model.RunningAgent
@@ -99,40 +101,23 @@ class WorktreeRowModelTest {
     fun `the execution cell shows the most urgent agent with the count of the others`() {
         val agents = listOf(
             RunningAgent("codex", AgentState.WORKING),
-            RunningAgent("claude", AgentState.BLOCKED),
+            RunningAgent("claude", AgentState.BLOCKED, stateSource = AgentStateSource.HERDR),
         )
 
         val agent = model(agents = agents).execution.agent!!
 
-        assertEquals("Claude · blocked", agent.label)
-        assertEquals(Status.WARNING, agent.status)
+        assertEquals("Claude · needs you", agent.label)
+        assertEquals(AgentPhase.NEEDS_YOU, agent.phase)
         assertEquals(1, agent.moreCount)
-        assertEquals("Claude: blocked\nCodex: working", agent.tooltip)
+        assertEquals("Claude · needs you\nCodex · working\nState from Herdr", agent.tooltip)
     }
 
     @Test
-    fun `the agent's status follows the state Herdr reports`() {
-        val expected = mapOf(
-            AgentState.WORKING to ("Claude · working" to Status.INFO),
-            AgentState.BLOCKED to ("Claude · blocked" to Status.WARNING),
-            AgentState.DONE to ("Claude · done" to Status.SUCCESS),
-            AgentState.IDLE to ("Claude · idle" to Status.NEUTRAL),
-        )
-
-        expected.forEach { (state, label) ->
-            val agent = model(agents = listOf(RunningAgent("claude", state))).execution.agent!!
-
-            assertEquals(label, agent.label to agent.status)
-        }
-    }
-
-    @Test
-    fun `an agent without a state shows only its name`() {
+    fun `an agent without a state is shown as running`() {
         val agent = model(agents = listOf(RunningAgent("claude"))).execution.agent!!
 
-        assertEquals("Claude", agent.label)
-        assertEquals(Status.INFO, agent.status)
-        assertEquals("Claude: state unknown", agent.tooltip)
+        assertEquals("Claude · running", agent.label)
+        assertEquals(Status.INFO, agent.phase.status)
     }
 
     @Test
@@ -215,6 +200,12 @@ class WorktreeRowModelTest {
     }
 
     @Test
+    fun `the origin is named in the branch's tooltip`() {
+        assertEquals("feature/TASK-123\nShogunAi", model().name.branchTooltip)
+        assertEquals("feature/TASK-123", model(origin = null).name.branchTooltip)
+    }
+
+    @Test
     fun `the name cell shows the folder when it differs from the branch`() {
         val name = model(worktree = worktree(path = "/home/dev/projects/main-repo-worktrees/task-123-wt")).name
 
@@ -260,6 +251,32 @@ class WorktreeRowModelTest {
     }
 
     @Test
+    fun `the git cell compares with the recorded base and names it`() {
+        val loaded = status(mainBranch = Divergence(9, 0)).copy(base = Divergence(2, 0), baseName = "epic/redesign")
+        val git = model(status = WorktreeStatusState.Loaded(loaded)).git
+
+        assertEquals("↑2", git.secondLine)
+        assertEquals("↑2 epic/redesign", git.secondLineTooltip)
+    }
+
+    @Test
+    fun `the git cell names the recorded base a branch is merged into`() {
+        val loaded = status(mainBranch = Divergence(4, 0)).copy(base = Divergence(0, 1), baseName = "epic/redesign")
+        val git = model(status = WorktreeStatusState.Loaded(loaded)).git
+
+        assertEquals("merged", git.secondLine)
+        assertEquals("merged into epic/redesign", git.secondLineTooltip)
+    }
+
+    @Test
+    fun `a branch merged into the main branch but not its base is merged into the main branch`() {
+        val loaded = status(mainBranch = Divergence(0, 3)).copy(base = Divergence(0, 0), baseName = "epic/redesign")
+        val git = model(status = WorktreeStatusState.Loaded(loaded)).git
+
+        assertEquals("merged into main", git.secondLineTooltip)
+    }
+
+    @Test
     fun `a branch that never had commits is not shown as merged`() {
         val loaded = status(mainBranch = Divergence(0, 5)).copy(neverCommitted = true)
 
@@ -295,6 +312,16 @@ class WorktreeRowModelTest {
     @Test
     fun `the time cell has no date while the status is loading`() {
         assertNull(model(status = WorktreeStatusState.Loading).time.activity)
+        assertNull(model(status = WorktreeStatusState.Loading).time.compactActivity)
+    }
+
+    @Test
+    fun `the time cell has a compact activity for narrow lists`() {
+        val loaded = status().copy(lastCommitAt = now.minus(Duration.ofHours(12)))
+        val time = model(status = WorktreeStatusState.Loaded(loaded)).time
+
+        assertEquals("12 h", time.compactActivity)
+        assertEquals("commit 12 hours ago", time.activity)
     }
 
     @Test

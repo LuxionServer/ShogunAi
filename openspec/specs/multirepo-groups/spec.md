@@ -405,18 +405,22 @@ When creating the worktree of one repository fails, ShogunAi SHALL handle that r
 - **THEN** the context is the same as before
 
 ### Requirement: Tell the multirepo agent about the multirepo
-`shogun hook session-start` in the multirepo folder SHALL print a context naming the multirepo, its repositories with their paths, the multirepo folder's `AGENTS.md` when it exists, and saying that `shogun status` lists the groups, `shogun new <id>` creates one and `shogun open <id> --herdr` opens its worktrees, without writing to `CLAUDE_ENV_FILE`.
+`shogun hook session-start` in the multirepo folder SHALL print a context naming the multirepo, its repositories with their paths, the multirepo folder's `AGENTS.md` when it exists, and saying that `shogun status` lists the groups, `shogun new <id>` creates one and `shogun open <id> --<runner>`, naming the runner in use, opens its worktrees, without writing to `CLAUDE_ENV_FILE`.
 
 #### Scenario: Session in the multirepo folder
 - **WHEN** Claude Code starts a session in `~/projects/product`
 - **THEN** the context lists `docs`, `app` and `api` with their paths and the three commands, nothing is written to `$CLAUDE_ENV_FILE`, and the command exits with code 0
+
+#### Scenario: Orca in use
+- **WHEN** Orca is the runner in use and Claude Code starts a session in `~/projects/product`
+- **THEN** the context says `shogun open <id> --orca` opens a group's worktrees
 
 #### Scenario: Shared instructions
 - **WHEN** `~/projects/product/AGENTS.md` exists
 - **THEN** the context says to read it for what all the repositories share
 
 ### Requirement: Show groups from the command line
-`shogun status` in the multirepo folder SHALL list every group by branch with, per repository, its alias, path, uncommitted changes, commits ahead and behind its base, whether it's merged into the base and the agents running in it, then the ungrouped worktrees of each repository, and with `--json` print the same data as one JSON object. Inside a repository it SHALL behave as before.
+`shogun status` in the multirepo folder SHALL list every group by branch with, per repository, its alias, path, uncommitted changes, commits ahead and behind its base (its branch's recorded base in that repository, or the repository's base branch), whether it's merged into its base or the repository's base branch and the agents running in it, then the ungrouped worktrees of each repository, and with `--json` print the same data as one JSON object. Inside a repository it SHALL behave as before.
 
 #### Scenario: Multirepo folder
 - **WHEN** the user runs `shogun status` in `~/projects/product` with groups `feature/TASK-1` (app, api) and `feature/TASK-2` (app, docs) and a loose worktree of `api`
@@ -430,8 +434,12 @@ When creating the worktree of one repository fails, ShogunAi SHALL handle that r
 - **WHEN** the status of one repository's worktree can't be read
 - **THEN** that repository says why and the rest of the group is still shown
 
+#### Scenario: Group branched from an epic
+- **WHEN** `feature/TASK-3` was created in `app` from `epic/redesign` and in `api` from `develop`
+- **THEN** `app`'s line shows its ahead/behind `of epic/redesign` and its JSON `base` is `epic/redesign`, while `api`'s is `develop`
+
 ### Requirement: Select groups to clean up
-`shogun clean` in the multirepo folder SHALL list as candidates the groups whose every worktree is clean and merged into its base, or has a missing folder, and has no agent running in it; remove nothing without `--yes`; and report each other group with the reason it's kept.
+`shogun clean` in the multirepo folder SHALL list as candidates the groups whose every worktree is clean and merged into its base or its repository's base branch, or has a missing folder, and has no agent running in it; remove nothing without `--yes`; and report each other group with the reason it's kept.
 
 #### Scenario: Merged group
 - **WHEN** the group `feature/TASK-1` has `app` and `api`, both clean and merged into their bases, and no agent runs in them
@@ -448,6 +456,10 @@ When creating the worktree of one repository fails, ShogunAi SHALL handle that r
 #### Scenario: JSON
 - **WHEN** the user runs `shogun clean --json` in the multirepo folder
 - **THEN** the output is one JSON object listing the candidate groups with their worktrees, and the kept groups with their reasons
+
+#### Scenario: Group merged into an epic
+- **WHEN** every worktree of `feature/TASK-3` is clean and merged into its recorded base `epic/redesign`, which isn't in `develop` yet
+- **THEN** the group is a candidate
 
 ### Requirement: Remove a group whole
 `shogun clean --yes` in the multirepo folder SHALL remove every worktree of each candidate group, wherever it lives, with its repository's existing cleanup, accepting the same options as `shogun clean`: `--delete-branches` to delete the merged branches and the provider flags (Compose projects, emulators, simulators, Gradle daemons, DerivedData).
@@ -503,7 +515,7 @@ A multirepo folder that is the top level of a Git repository SHALL be treated as
 - **THEN** every command that reads the declaration names the problem and the file, and exits with code 1
 
 ### Requirement: Show and declare the workspace repository
-`shogun multirepo show` SHALL list the workspace repository, marked `detected` when the declaration doesn't state it, with `workspace` in its `--json` object. `shogun multirepo workspace set [--alias <alias>] [--default]` SHALL declare it, and `workspace clear` SHALL set `"workspace": false`.
+`shogun multirepo show` SHALL list the workspace repository, marked `detected` when the declaration doesn't state it, with `workspace` in its `--json` object. `shogun multirepo workspace set [--alias <alias>] [--default]` SHALL declare it, `workspace clear` SHALL set `"workspace": false`, and `workspace detect` SHALL remove the `workspace` field so the folder is detected again.
 
 #### Scenario: Show a detected workspace
 - **WHEN** the user runs `shogun multirepo show` in a multirepo whose folder is a Git repository and whose declaration says nothing about it
@@ -518,8 +530,28 @@ A multirepo folder that is the top level of a Git repository SHALL be treated as
 - **THEN** the declaration holds `"workspace": false` and the folder is no longer a repository of the multirepo
 
 #### Scenario: Not a repository
-- **WHEN** the user runs `workspace set` in a multirepo folder that isn't a Git repository
+- **WHEN** the user runs `workspace set` or `workspace detect` in a multirepo folder that isn't a Git repository
 - **THEN** the command says there is no workspace repository, changes nothing and exits with code 1
+
+#### Scenario: Back to detection after turning it off
+- **WHEN** the declaration holds `"workspace": false` and the user runs `shogun multirepo workspace detect`
+- **THEN** the declaration has no `workspace` field, `shogun multirepo show` lists `workspace` as detected, and the multirepo is still approved
+
+#### Scenario: Back to detection from a declared alias
+- **WHEN** the declaration holds `"workspace": { "alias": "docs-root", "default": true }` and the user runs `shogun multirepo workspace detect`
+- **THEN** the workspace repository is `workspace`, it isn't in the default repositories, and the output says both
+
+#### Scenario: Already detected
+- **WHEN** the declaration has no `workspace` field and the user runs `shogun multirepo workspace detect`
+- **THEN** the command says the workspace repository is already detected, changes nothing and exits with code 0
+
+#### Scenario: Default alias taken
+- **WHEN** `repos` declares a repository with the alias `workspace` and the user runs `shogun multirepo workspace detect`
+- **THEN** the command says the alias `workspace` is taken and to keep the workspace repository declared with `workspace set --alias`, changes nothing and exits with code 1
+
+#### Scenario: Folder declared in repos
+- **WHEN** `repos` lists the folder with the path `.`
+- **THEN** `workspace detect` says the workspace repository is declared in `repos`, changes nothing and exits with code 1
 
 ### Requirement: Create a group with the workspace repository
 `shogun new <id> --repos <aliases>` in the multirepo folder SHALL accept the workspace repository's alias, declared or only detected, and create its worktree on the group's branch in `<worktreesRoot>/<alias>/<id>`, with its base branch and provisioning resolved as for any repository.
@@ -660,3 +692,84 @@ A multirepo SHALL be named by the optional `name` of its declaration when it's s
 #### Scenario: Repository claimed by another multirepo
 - **WHEN** a declared repository is also declared by another known multirepo whose folder still exists
 - **THEN** the command names the other multirepo, registers nothing and exits with code 1
+
+### Requirement: Open a group's worktrees in Orca
+`shogun open <id-or-branch> --orca` in the multirepo folder SHALL open every worktree of the group, found as `--herdr` finds it, as `shogun open --orca` opens one worktree: under its own repository, with its environment, its project's default agent and its group session name. Each worktree SHALL be reported as `started-agent`, `focused` or failed, with its terminal. A worktree that fails SHALL NOT stop the others.
+
+#### Scenario: Open a group
+- **WHEN** the user runs `shogun open TASK-123 --orca` in `~/projects/product` and `feature/TASK-123` is a group with `app` and `api`
+- **THEN** `app`'s worktree opens in Orca under `product-app` with `app`'s environment and agent, `api`'s under `product-api` with its own, each in a focused terminal, and the command reports each with its terminal
+
+#### Scenario: Partly open
+- **WHEN** Orca already has a terminal with a live agent in `app`'s worktree
+- **THEN** that terminal is focused without typing anything, `app` is reported as `focused`, and `api`'s agent is started
+
+#### Scenario: Repositories grouped in Orca
+- **WHEN** the multirepo was imported in Orca as a group, so Orca already knows `product-app` and `product-api`
+- **THEN** each worktree opens under its repository inside that group and no repository is registered again
+
+#### Scenario: Ambiguous or unknown id
+- **WHEN** the id matches both `feature/TASK-5` and `fix/TASK-5`, or no group
+- **THEN** the command behaves as `shogun open <id> --herdr` does: it lists both branches and exits with code 2, or says no group matches and exits with code 1, opening nothing
+
+#### Scenario: One worktree fails
+- **WHEN** opening `api` in Orca fails, or its agent doesn't start in time
+- **THEN** `app` is still opened, the failure names `api` and the reason, and the command exits with code 1
+
+#### Scenario: Orca not installed
+- **WHEN** Orca isn't installed
+- **THEN** the command says so once, names onorca.dev, opens nothing and exits with code 1
+
+#### Scenario: Agent option
+- **WHEN** the user passes `--agent` while opening a group in Orca
+- **THEN** the command says each worktree uses its project's agent and exits with code 2
+
+#### Scenario: Result as JSON
+- **WHEN** the user runs `shogun open TASK-123 --orca --json` and `app` is focused while `api` gets its agent started
+- **THEN** the object has the group's `branch` and a `repos` list where `app`'s entry has `result` `focused` and `api`'s has `result` `started-agent`, each with its `alias`, `path`, `terminal`, `agent`, `session_name` and `error`
+
+### Requirement: Open the multirepo agent in Orca
+`shogun open --orca` without a target in an approved multirepo's folder SHALL run the multirepo agent set on this machine in the Orca workspace whose path is the multirepo folder, with the multirepo's session name. It SHALL focus a live agent in that workspace without typing anything, or otherwise start the agent in a new focused terminal there and verify it started as for a worktree, reporting `started-agent` or `focused` with the terminal.
+
+#### Scenario: Folder workspace without an agent
+- **WHEN** the user runs `shogun open --orca` in `~/projects/product`, Orca has a folder workspace in `~/projects/product` with no live agent, and the multirepo agent is `claude`
+- **THEN** a focused terminal opens in that workspace running `claude` with the session name `product`, and the result is `started-agent`
+
+#### Scenario: Live agent
+- **WHEN** a terminal of that workspace runs an agent Orca reports, including one that is `done`
+- **THEN** that terminal is focused, nothing is typed or created, and the result is `focused`
+
+#### Scenario: Several workspaces in the folder
+- **WHEN** Orca has more than one workspace whose path is the multirepo folder
+- **THEN** the one with a live agent is used, or else the first one Orca lists
+
+#### Scenario: Agent doesn't start
+- **WHEN** Orca reports no agent in the new terminal 10 seconds after it started
+- **THEN** the command fails naming the terminal and the command, the terminal stays open, and the command exits with code 1
+
+#### Scenario: Unapproved declaration
+- **WHEN** the user runs `shogun open --orca` in a folder whose declaration isn't registered or approved
+- **THEN** no multirepo agent is opened, nothing from the declaration reaches Orca, and the command behaves as outside a multirepo
+
+#### Scenario: Result as JSON
+- **WHEN** the user runs `shogun open --orca --json` in the multirepo folder and the agent is started
+- **THEN** the object has `path`, `orca` `started-agent`, `terminal`, `agent` and `session_name`
+
+### Requirement: Host the multirepo agent in Orca
+ShogunAi SHALL NOT create an Orca workspace for a multirepo folder that isn't a Git repository, since only Orca's app can. When the folder is a Git repository Orca doesn't know, ShogunAi SHALL register it and use its main worktree. When the folder isn't a Git repository and Orca has no workspace for it, the open SHALL fail with an error naming the folder and how to add it in Orca, and SHALL change nothing in Orca.
+
+#### Scenario: Folder isn't a Git repository and isn't in Orca
+- **WHEN** the user runs `shogun open --orca` in `~/projects/product`, which isn't a Git repository, and Orca has no workspace there
+- **THEN** the command says Orca has no workspace for `~/projects/product`, explains how to add the folder in Orca's app as a group with a folder workspace or with "Open as Folder", registers nothing, and exits with code 1
+
+#### Scenario: Folder added with "Open as Folder"
+- **WHEN** the folder isn't a Git repository and was added in Orca with "Open as Folder"
+- **THEN** the multirepo agent opens in that folder's workspace
+
+#### Scenario: Folder is a Git repository unknown to Orca
+- **WHEN** `~/projects/product` is a Git repository that Orca hasn't registered
+- **THEN** it's registered with Orca and the multirepo agent opens in its main worktree
+
+#### Scenario: Orca not running
+- **WHEN** Orca is installed but closed
+- **THEN** Orca is started as for a worktree before looking for the folder's workspace

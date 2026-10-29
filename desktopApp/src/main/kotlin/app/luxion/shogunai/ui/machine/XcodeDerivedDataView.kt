@@ -15,12 +15,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import app.luxion.shogunai.domain.model.DerivedDataFolder
 import app.luxion.shogunai.ui.components.DangerTextButton
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.Notice
 import app.luxion.shogunai.ui.components.NoticeKind
+import app.luxion.shogunai.ui.components.ColumnSpec
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.i18n.LocalStrings
+import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.worktree.formatSize
 import app.luxion.shogunai.ui.worktree.relativeTime
 import java.time.Instant
@@ -94,20 +97,20 @@ private fun LoadedDerivedData(
     }
     owned.forEach { entry ->
         HorizontalDivider()
-        MachineRowLine {
-            MachineDataText(entry.folder.workspacePath.substringAfterLast('/'), Modifier.weight(1f))
-            MachineDataText(sizeText(entry.folder.sizeBytes), Modifier.width(80.dp))
-            MachineDataText(
-                entry.folder.lastAccessed?.let { relativeTime(it, Instant.now(), strings) }.orEmpty(),
-                Modifier.width(120.dp),
-            )
-            when (val owner = entry.owner) {
-                is MachineDerivedDataOwner.Project ->
-                    OwnerCell(owner.owner, machine::projectName, onOpenWorktree, Modifier.width(MachineOwnerColumnWidth))
-                MachineDerivedDataOwner.UnavailableVolume -> MachineDataText(strings.derivedDataKept, Modifier.width(MachineOwnerColumnWidth))
-                MachineDerivedDataOwner.Orphaned -> Unit
-            }
-        }
+        MachineRow(
+            machineCell(MachineMainColumn) { MachineDataText(folderLabel(entry.folder, strings)) },
+            machineCell(MachineSizeColumn) { MachineDataText(sizeText(entry.folder.sizeBytes)) },
+            machineCell(LastAccessColumn) {
+                MachineStateText(entry.folder.lastAccessed?.let { relativeTime(it, Instant.now(), strings) }.orEmpty())
+            },
+            machineCell(MachineOwnerColumn) {
+                when (val owner = entry.owner) {
+                    is MachineDerivedDataOwner.Project -> OwnerCell(owner.owner, machine::projectName, onOpenWorktree)
+                    MachineDerivedDataOwner.UnavailableVolume -> MachineStateText(strings.derivedDataKept)
+                    MachineDerivedDataOwner.Orphaned -> Unit
+                }
+            },
+        )
     }
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -128,6 +131,16 @@ private fun LoadedDerivedData(
     } else {
         machine.compilationCacheBytes?.let { MachineDataText(strings.derivedDataCompilationCache(formatSize(it))) }
     }
+    machine.packageCacheSizes?.swiftPmBytes?.let { MachineDataText(strings.derivedDataSwiftPmCache(formatSize(it))) }
+    machine.packageCacheSizes?.cocoaPodsBytes?.let { MachineDataText(strings.derivedDataCocoaPodsCache(formatSize(it))) }
+}
+
+private fun folderLabel(folder: DerivedDataFolder, strings: Strings): String {
+    val name = folder.workspacePath.substringAfterLast('/')
+    val packages = folder.packagesBytes?.takeIf { it > 0 } ?: return name
+    return strings.derivedDataWithPackages(name, formatSize(packages))
 }
 
 private fun totalSize(sizes: List<Long?>): Long? = if (sizes.any { it == null }) null else sizes.sumOf { it ?: 0L }
+
+private val LastAccessColumn = ColumnSpec(width = 120.dp)

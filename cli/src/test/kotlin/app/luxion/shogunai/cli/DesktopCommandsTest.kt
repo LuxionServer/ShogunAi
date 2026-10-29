@@ -9,6 +9,7 @@ import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
 import app.luxion.shogunai.domain.FakeHerdrConfigSource
+import app.luxion.shogunai.domain.FakeOrcaClient
 import app.luxion.shogunai.domain.FakeKmpTestWiring
 import app.luxion.shogunai.domain.FakeMachineCapacity
 import app.luxion.shogunai.domain.FakePortProbe
@@ -18,6 +19,7 @@ import app.luxion.shogunai.domain.FakeRepositoryProvisioningSource
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
 import app.luxion.shogunai.domain.executor.CommandResult
 import app.luxion.shogunai.domain.executor.ShellCommandExecutor
+import app.luxion.shogunai.domain.io.DesktopTurnStore
 import app.luxion.shogunai.domain.model.DesktopTurn
 import app.luxion.shogunai.domain.model.ProcessIdentity
 import app.luxion.shogunai.domain.model.ResourceSettings
@@ -27,6 +29,7 @@ import app.luxion.shogunai.domain.model.toLocalClockTime
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
@@ -90,7 +93,7 @@ class DesktopCommandsTest {
         }
     }
 
-    private fun cli(workingDirectory: String = task1) = ShogunCli(
+    private fun cli(workingDirectory: String = task1, input: String = "", store: DesktopTurnStore = turnStore) = ShogunCli(
         executor = executor,
         fileManager = FakeFileManager(existing = listOf(base, task1, task2)),
         projectRepository = FakeProjectRepository(emptyList()),
@@ -106,6 +109,7 @@ class DesktopCommandsTest {
         machineCapacity = FakeMachineCapacity(),
         derivedDataSource = FakeDerivedDataSource(),
         herdrConfig = FakeHerdrConfigSource(),
+        orca = FakeOrcaClient(installed = false),
         workingDirectory = workingDirectory,
         out = out,
         err = err,
@@ -119,7 +123,8 @@ class DesktopCommandsTest {
             now += pause
             onPause.removeFirstOrNull()?.invoke()
         },
-        desktopTurnStore = turnStore,
+        desktopTurnStore = store,
+        readInput = { input },
     )
 
     private fun clock(instant: Instant) = instant.toLocalClockTime()
@@ -297,5 +302,129 @@ class DesktopCommandsTest {
         assertEquals(0, cli(workingDirectory = base).run(listOf("remove", task2, "--force")), err.toString())
 
         assertNull(turnStore.turn)
+    }
+
+    private fun preToolUse(command: String, cwd: String = task1, tool: String = "Bash") =
+        Json.encodeToString(
+            JsonObject.serializer(),
+            JsonObject(
+                mapOf(
+                    "session_id" to JsonPrimitive("963d9441"),
+                    "cwd" to JsonPrimitive(cwd),
+                    "hook_event_name" to JsonPrimitive("PreToolUse"),
+                    "tool_name" to JsonPrimitive(tool),
+                    "tool_input" to JsonObject(mapOf("command" to JsonPrimitive(command))),
+                ),
+            ),
+        )
+
+    private fun desktopTurnHook(command: String, cwd: String = task1, tool: String = "Bash", store: DesktopTurnStore = turnStore): Int =
+        cli(input = preToolUse(command, cwd, tool), store = store).run(listOf("hook", "desktop-turn"))
+
+    private fun denialReason(): String {
+        val output = json().getValue("hookSpecificOutput").jsonObject
+        assertEquals("PreToolUse", output["hookEventName"]?.jsonPrimitive?.content)
+        assertEquals("deny", output["permissionDecision"]?.jsonPrimitive?.content)
+        return output.getValue("permissionDecisionReason").jsonPrimitive.content
+    }
+
+    @Test
+    fun `desktop-turn hook takes a free desktop before an acting orca computer command`() {
+        assertEquals(0, desktopTurnHook("orca computer click --app com.example.app --element-index 4 --json"), err.toString())
+
+        assertEquals("", out.toString())
+        assertEquals(admin1, turnStore.turn?.adminDirectory)
+        assertEquals((now + Duration.ofMinutes(10)).toEpochMilli(), turnStore.turn?.expiresAt)
+    }
+
+    @Test
+    fun `desktop-turn hook renews the holder's turn`() {
+        desktopTurnHook("orca computer click --app com.example.app --element-index 4")
+        now += Duration.ofMinutes(5)
+
+        assertEquals(0, desktopTurnHook("orca computer type-text --app com.example.app --text hello"), err.toString())
+
+        assertEquals("", out.toString())
+        assertEquals((now + Duration.ofMinutes(10)).toEpochMilli(), turnStore.turn?.expiresAt)
+    }
+
+    @Test
+    fun `desktop-turn hook takes the turn for an absolute path in a compound command and for restoring a window`() {
+        desktopTurnHook("cd /tmp && /opt/homebrew/bin/orca computer hotkey --app com.example.app --key CmdOrCtrl+A")
+        assertEquals(admin1, turnStore.turn?.adminDirectory)
+
+        turnStore.turn = null
+        desktopTurnHook("orca computer get-app-state --app com.example.app --restore-window --json")
+        assertEquals(admin1, turnStore.turn?.adminDirectory)
+    }
+
+    @Test
+    fun `desktop-turn hook blocks the command while another worktree holds the turn`() {
+        val turn = heldByTask2()
+
+        assertEquals(0, desktopTurnHook("orca computer click --app com.example.app --element-index 4"), err.toString())
+
+        val reason = denialReason()
+        assertTrue("main-repo · TASK-2" in reason, reason)
+        assertTrue(clock(Instant.ofEpochMilli(turn.expiresAt)) in reason, reason)
+        assertTrue("shogun desktop acquire --wait" in reason && "background" in reason, reason)
+        assertEquals(turn, turnStore.turn)
+        assertTrue(queue.read(WaitQueueName.DESKTOP).isEmpty())
+    }
+
+    @Test
+    fun `desktop-turn hook blocks the command while others wait and keeps them first`() {
+        val waiter = WaitTicket("t", admin2, task2, ProcessIdentity(5, 1), 0)
+        queue.write(WaitQueueName.DESKTOP, listOf(waiter))
+
+        assertEquals(0, desktopTurnHook("orca computer press-key --app com.example.app --key Escape", cwd = base), err.toString())
+
+        assertTrue("1 worktree is waiting" in denialReason())
+        assertNull(turnStore.turn)
+        assertEquals(listOf(waiter), queue.read(WaitQueueName.DESKTOP))
+    }
+
+    @Test
+    fun `desktop-turn hook leaves read-only, unrelated and other tools' calls alone`() {
+        val turn = heldByTask2()
+
+        listOf(
+            "orca computer get-app-state --app com.example.app --json" to "Bash",
+            "echo computer science" to "Bash",
+            "orca computer click --app com.example.app" to "Read",
+        ).forEach { (command, tool) ->
+            assertEquals(0, desktopTurnHook(command, tool = tool), err.toString())
+            assertEquals("", out.toString(), command)
+            assertEquals(turn, turnStore.turn)
+        }
+    }
+
+    @Test
+    fun `desktop-turn hook does nothing outside a repository`() {
+        assertEquals(0, desktopTurnHook("orca computer click --app com.example.app", cwd = "/tmp/elsewhere"), err.toString())
+
+        assertEquals("", out.toString())
+        assertNull(turnStore.turn)
+    }
+
+    @Test
+    fun `desktop-turn hook lets the command run when the turn can't be read`() {
+        val unreadable = object : DesktopTurnStore {
+            override fun read(): DesktopTurn? = error("unreadable")
+            override fun write(turn: DesktopTurn?) = error("unwritable")
+        }
+
+        assertEquals(0, desktopTurnHook("orca computer click --app com.example.app", store = unreadable))
+
+        assertEquals("", out.toString())
+    }
+
+    @Test
+    fun `desktop-turn hook never allows a command explicitly`() {
+        desktopTurnHook("orca computer click --app com.example.app")
+        heldByTask2()
+        desktopTurnHook("orca computer click --app com.example.app")
+
+        assertTrue("\"allow\"" !in out.toString(), out.toString())
     }
 }

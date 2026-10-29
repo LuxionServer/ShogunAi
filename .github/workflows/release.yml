@@ -46,6 +46,7 @@ jobs:
           echo "ref=$REF" >> "$GITHUB_OUTPUT"
 
   test:
+    name: Tests
     needs: resolve-version
     permissions:
       contents: read
@@ -95,12 +96,34 @@ jobs:
         env:
           RELEASE_TITLE: ${{ steps.title.outputs.value }}
         run: |
+          ENGLISH_NOTES=".github/release-notes/${VERSION}.md"
+          SPANISH_NOTES=".github/release-notes/${VERSION}.es.md"
+          BODY_FILE="${RUNNER_TEMP}/release-notes.md"
+          if [ -f "$ENGLISH_NOTES" ]; then
+            {
+              printf '<!-- shogunai:notes:en -->\n\n%s\n\n<!-- /shogunai:notes:en -->\n' "$(cat "$ENGLISH_NOTES")"
+              if [ -f "$SPANISH_NOTES" ]; then
+                printf '\n<details>\n<summary>Español</summary>\n\n<!-- shogunai:notes:es -->\n\n%s\n\n<!-- /shogunai:notes:es -->\n\n</details>\n' "$(cat "$SPANISH_NOTES")"
+              fi
+            } > "$BODY_FILE"
+            if [ ! -f "$SPANISH_NOTES" ]; then
+              echo "::warning::${SPANISH_NOTES} is missing; the release notes will only be in English."
+            fi
+            NOTES_ARGS=(--notes-file "$BODY_FILE")
+          else
+            MISSING="${ENGLISH_NOTES} is"
+            if [ ! -f "$SPANISH_NOTES" ]; then
+              MISSING="${ENGLISH_NOTES} and ${SPANISH_NOTES} are"
+            fi
+            echo "::warning::${MISSING} missing; the release will use GitHub's generated notes."
+            NOTES_ARGS=(--generate-notes)
+          fi
           gh release create "v${VERSION}" \
             --repo "$GITHUB_REPOSITORY" \
             --title "$RELEASE_TITLE" \
             --verify-tag \
             --draft \
-            --generate-notes
+            "${NOTES_ARGS[@]}"
 
   build:
     needs: [resolve-version, create-release]
@@ -110,12 +133,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
-            task: packageReleaseDmg
-            artifact-glob: desktopApp/build/compose/binaries/main-release/dmg/*.dmg
-          - os: macos-26-intel
-            task: packageReleaseDmg
-            artifact-glob: desktopApp/build/compose/binaries/main-release/dmg/*.dmg
           - os: windows-latest
             task: packageReleaseMsi
             artifact-glob: desktopApp/build/compose/binaries/main-release/msi/*.msi
@@ -146,23 +163,21 @@ jobs:
           TASK: ${{ matrix.task }}
         run: ./gradlew ":desktopApp:${TASK}" "-PappVersion=${VERSION}"
 
-      - name: Name dmg after release version and architecture
-        if: runner.os == 'macOS'
-        run: |
-          ARCH="$(echo "$RUNNER_ARCH" | tr '[:upper:]' '[:lower:]')"
-          shopt -s nullglob
-          DMGS=(desktopApp/build/compose/binaries/main-release/dmg/*.dmg)
-          if [ "${#DMGS[@]}" -ne 1 ]; then
-            echo "Expected exactly one dmg, found ${#DMGS[@]}." >&2
-            exit 1
-          fi
-          mv "${DMGS[0]}" "desktopApp/build/compose/binaries/main-release/dmg/ShogunAi-${VERSION}-${ARCH}.dmg"
-
       - uses: actions/upload-artifact@v7
         with:
           name: installer-${{ matrix.os }}
           path: ${{ matrix.artifact-glob }}
           if-no-files-found: error
+
+  build-macos:
+    needs: [resolve-version, create-release]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/macos-installer.yml
+    with:
+      version: ${{ needs.resolve-version.outputs.version }}
+      ref: ${{ needs.resolve-version.outputs.ref }}
+    secrets: inherit
 
   build-cli:
     needs: [resolve-version, create-release]
@@ -195,7 +210,7 @@ jobs:
           if-no-files-found: error
 
   attest-assets:
-    needs: [build, build-cli]
+    needs: [build, build-macos, build-cli]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -212,7 +227,7 @@ jobs:
           subject-path: dist/*
 
   publish-release:
-    needs: [resolve-version, build, build-cli, attest-assets]
+    needs: [resolve-version, build, build-macos, build-cli, attest-assets]
     runs-on: ubuntu-latest
     permissions:
       contents: write

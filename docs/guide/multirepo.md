@@ -6,7 +6,7 @@ Nothing about a group is stored: ShogunAi computes groups from Git and the multi
 
 ## The multirepo
 
-A multirepo is declared by a `.shogunai-multirepo.json` file in a folder you choose, written by the `shogun multirepo` commands (or the desktop app), never by hand, except for its [shared variables](#shared-variables):
+A multirepo is declared by a `.shogunai-multirepo.json` file in a folder you choose, written by the `shogun multirepo` commands (or the desktop app), never by hand:
 
 ```json
 {
@@ -72,12 +72,16 @@ shogun new TASK-12 --repos docs     # later: docs joins the group
 shogun status                       # every group, per repository, and the ungrouped worktrees
 shogun open TASK-12 --herdr         # each worktree under its repository's space, with its own agent
 shogun open --herdr                 # the multirepo's agent, in a Herdr workspace of its own
+shogun open TASK-12 --orca          # the same in Orca, each worktree under its own Orca repository
+shogun open --orca                  # the multirepo's agent, in Orca's workspace for the folder
 shogun clean --yes                  # remove the groups whose worktrees are all merged and idle
 ```
 
 - **Creating.** `shogun new <id>` does in each repository what `shogun new <id>` does there today (the project's worktrees folder, the usual folder name, provisioning), except that the branch starts at that repository's `origin/<base>`. Repositories already on the branch are reported and left alone, an existing branch without a worktree is checked out, and a repository that fails doesn't undo the others. It opens nothing. Inside a repository, `shogun new <id>` without `--repos` still creates a single worktree.
-- **Status.** In the multirepo folder, `shogun status` lists each group with, per repository, its path, changes, ahead/behind its own base, merged state and agents, then the ungrouped worktrees.
+- **Status.** In the multirepo folder, `shogun status` lists each group with, per repository, its path, changes, ahead/behind its own base (its recorded base, or the repository's main branch), merged state (into that base or the main branch) and agents, then the ungrouped worktrees.
 - **Opening.** `shogun open <id> --herdr` opens every worktree of the group as a single worktree opens, under its repository's space with its environment and its project's agent: a worktree whose agent is live is focused, one whose workspace is open without an agent gets its agent started in a new pane, and each is reported with its agent's pane. `<id>` is a branch, or a task id when only one of `feature/<id>` and `fix/<id>` is a group. `shogun open --herdr` treats the multirepo agent's workspace the same way.
+- **Opening in Orca.** `shogun open <id> --orca` opens every worktree of the group, one after another, as `shogun open --orca` opens one: under its own Orca repository (registered when Orca doesn't know it), with its environment, its project's agent and its group session name. Each is reported as started or focused with its Orca terminal, and one that fails doesn't stop the others. If you imported the multirepo in Orca as a group ("Group these repositories?"), its worktrees show nested under that group; ShogunAi never moves repositories between Orca's groups. `shogun open --orca` runs the multirepo agent in the Orca workspace whose path is the multirepo folder, focusing its live agent or starting the agent in a new terminal there. A multirepo folder that is a Git repository needs nothing: ShogunAi registers it with Orca when needed and uses its main worktree. A folder that isn't a Git repository can only get a workspace from Orca's app, once: add the folder as a project, accept importing its repositories as a group and add a folder workspace to that group; or add it and choose "Open as Folder". Until then `open --orca` fails explaining these steps and changes nothing in Orca.
+- **Without a runner flag.** `shogun open <id>` and `shogun open` open in the [runner in use](../agents.md#choosing-the-runner), and the context Claude Code gets in the multirepo folder names it (`shogun open <id> --orca` when Orca is in use).
 - **Session names.** When the agent is Claude Code, each session is started with a name: `<alias>-<id>` for each worktree of the group (`app-task-123`, `api-task-123`) and the multirepo's name for the multirepo agent, made unique with `-2`, `-3`… if a live session already has it. `open` reports the names (`as session app-task-123`, `session_name` in `--json`) and `shogun status` shows them on each repository's line (`agents=claude(working, app-task-123)`, `sessions` in `--json`), so the coordinating session can see which session runs in which repository and message each group member by name.
 - **Cleaning up.** A group is a candidate only when every worktree is clean and merged into its base and no agent runs in any of them. `--yes` removes its worktrees with each repository's usual cleanup and the same options as `shogun clean` (`--delete-branches`, `--stop-emulators`, `--down-compose-projects`…). After the groups, `shogun clean` also lists the loose worktrees of each repository (including the workspace repository) that belong to no group, when they are clean, merged and have no agent, and removes them under the same confirmation.
 
@@ -100,7 +104,17 @@ The repositories of a group often need each other's ports: the app worktree of `
 - **When it can't be resolved.** If `api` isn't approved, doesn't declare the key, or its worktree can't be read, the variable is left out: `shogun env` says why on standard error and the session's context names it; everything else is delivered.
 - **Refreshing.** A session keeps the value it started with. When `api`'s partner worktree is created after `app`'s session started, the next `shogun env`, new session or opening picks it up.
 
-Shared variables are edited by hand in the file and reviewed with `shogun multirepo trust`; `shogun multirepo show` lists them. ShogunAi's own writes keep them, but an earlier version of ShogunAi that rewrites the declaration drops them.
+Shared variables are edited with `shogun multirepo env` or in the multirepo settings of the desktop app:
+
+```bash
+shogun multirepo env                                                      # list them
+shogun multirepo env set app API_URL 'http://localhost:${port:api.http}'  # add or replace one
+shogun multirepo env unset app API_URL                                    # remove it
+```
+
+Quote the template with single quotes so the shell leaves `${…}` alone. Each change is checked with the rules above before anything is written, and keeps the multirepo approved like every other write of ShogunAi; a multirepo that needs review must be reviewed first. Editing the file by hand still works, and is then reviewed with `shogun multirepo trust`.
+
+Renaming a repository (or declaring the workspace repository under another alias) moves its shared variables and rewrites the `${port:<alias>.<key>}` references to it. Removing a repository, or turning the workspace repository off, drops its own shared variables, and is refused while another repository's variable references it: change or unset those first. An earlier version of ShogunAi that rewrites the declaration drops the shared variables.
 
 ## Context for the agents
 
@@ -111,14 +125,14 @@ Agents don't need to message each other to know about the group: Claude Code's `
 
 ## In the desktop app
 
-The desktop app shows the same multirepos and groups, computed the same way: a folder in the sidebar, a view grouped by change with each group's combined state and actions, group tags in the other views, and dialogs to add a multirepo, create a change and edit its settings, all writing through the same use cases as `shogun multirepo` and `shogun new`. See [Multirepos in the desktop app](desktop-app.md#multirepos).
+The desktop app shows the same multirepos and groups, computed the same way: a folder in the sidebar, a view grouped by change with each group's combined state and actions, group tags in the other views, and dialogs to add a multirepo, create a change and edit its settings, shared variables included, all writing through the same use cases as `shogun multirepo` and `shogun new`. See [Multirepos in the desktop app](desktop-app.md#multirepos).
 
 ## A workspace repository
 
 When the multirepo folder is the top level of a Git repository, `shogun new`, `status`, `open` and `clean` run in its main checkout act on the multirepo, and the folder is **detected** as the multirepo's workspace repository with the alias `workspace`, with no declaration needed:
 
 - It joins groups like any other repository: `shogun new TASK-12 --repos workspace,app` creates its worktree in `<worktreesRoot>/workspace/TASK-12`. It is not one of the `defaultRepos` unless you say so.
-- `shogun multirepo show` lists it marked `detected`. `shogun multirepo workspace set [--alias <alias>] [--default]` declares it in the file (`"workspace": { "alias": … }`), and `shogun multirepo workspace clear` turns detection off (`"workspace": false`). A `repos` entry with the path `.` also makes the folder the workspace repository, under that alias.
+- `shogun multirepo show` lists it marked `detected`. `shogun multirepo workspace set [--alias <alias>] [--default]` declares it in the file (`"workspace": { "alias": … }`), `shogun multirepo workspace clear` turns detection off (`"workspace": false`), and `shogun multirepo workspace detect` removes the field, so the folder is detected again as `workspace` (and no longer a default repository). A `repos` entry with the path `.` also makes the folder the workspace repository, under that alias.
 - The folder is not a project of its own: the sidebar lists its worktrees under the multirepo, and `shogun project add` and `shogun app` run in the folder register the workspace repository once, as a member of the multirepo, instead of a loose project. With detection off, the folder is an ordinary project again.
 - The multirepo agent (the one running in the folder) is shown in the multirepo view. Its Claude Code session records are kept in the folder's Git directory when it is a repository, and otherwise in a store under `~/.shogunai/agent-sessions/` keyed by the folder, so the `agent-state` hook works in a multirepo folder that isn't a repository too. Only an agent whose working directory is exactly the folder counts as the multirepo agent; one in a member repository belongs to that repository's worktree.
 

@@ -9,14 +9,7 @@ brew tap LuxionServer/shogunai
 brew install --cask shogunai
 ```
 
-Homebrew elige automáticamente el instalador para la arquitectura de tu Mac (Apple Silicon o Intel) y enlaza el comando `shogun`.
-
-!!! note "Aviso de desarrollador no verificado"
-    La app no está notarizada por Apple. Si macOS avisa de que "no se puede verificar el desarrollador" la primera vez que la abres, ábrela con clic derecho → Abrir, o ejecuta:
-
-    ```bash
-    xattr -dr com.apple.quarantine "/Applications/ShogunAi.app"
-    ```
+Homebrew elige automáticamente el instalador para la arquitectura de tu Mac (Apple Silicon o Intel) y enlaza el comando `shogun`. La app está firmada y notarizada por Apple, así que macOS la abre sin avisos.
 
 ## Windows (winget)
 
@@ -54,7 +47,7 @@ La app de escritorio te avisa cuando hay una versión nueva y te recuerda cómo 
 
 ## El comando `shogun`
 
-La app de escritorio puede instalarlo por ti, sea cual sea la forma en que instalaste ShogunAi: abre Preferencias, busca Claude Code y activa "Instalar herramienta de línea de comandos". Usa el runtime que incluye la propia app, así que no necesita Java ni descargas, y el mismo botón aparece junto al "Instalar" de los hooks cuando falta el comando (los hooks no se pueden instalar hasta que esté disponible). En macOS y Linux enlaza el lanzador de la app como `shogun` en una carpeta escribible por tu usuario que ya esté en el `PATH`, o en `~/.local/bin` (la app muestra la línea que añadir al perfil de tu shell si esa carpeta no está en el `PATH`). En Windows escribe `shogun.cmd` en `%USERPROFILE%\.shogunai\bin` y añade esa carpeta al `PATH` de tu usuario, sin permisos de administrador; reinicia el terminal y Claude Code después. "Quitar herramienta de línea de comandos" deshace solo lo que creó la app. Una compilación de desarrollo (`./gradlew run`) no tiene lanzador que exponer y muestra los pasos manuales.
+La app de escritorio puede instalarlo por ti, sea cual sea la forma en que instalaste ShogunAi: abre Preferencias, busca Claude Code y activa "Instalar herramienta de línea de comandos". Usa el runtime que incluye la propia app, así que no necesita Java ni descargas, y el mismo botón aparece junto al "Instalar" de los hooks cuando falta el comando (los hooks no se pueden instalar hasta que esté disponible). En macOS y Linux enlaza el lanzador de la app como `shogun` en una carpeta escribible por tu usuario que ya esté en el `PATH`, o en `~/.local/bin` (la app muestra la línea que añadir al perfil de tu shell si esa carpeta no está en el `PATH`). Ahí, «el `PATH`» es el de tu shell de login: una app abierta desde el Dock o el Finder recibe un `PATH` mínimo, así que al arrancar la app le pide el suyo a tu shell (`$SHELL -l -i`) y, si el shell no responde en unos segundos, usa su propio `PATH` más `/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin` y `~/.cargo/bin`. La app lo lee una vez, así que reiníciala después de cambiar el perfil de tu shell. En Windows escribe `shogun.cmd` en `%USERPROFILE%\.shogunai\bin` y añade esa carpeta al `PATH` de tu usuario, sin permisos de administrador; reinicia el terminal y Claude Code después. "Quitar herramienta de línea de comandos" deshace solo lo que creó la app. Una compilación de desarrollo (`./gradlew run`) no tiene lanzador que exponer y muestra los pasos manuales.
 
 A mano:
 
@@ -78,3 +71,4 @@ ShogunAi solo necesita Git. Algunas funciones usan otras herramientas cuando est
 | Android SDK (`emulator`, `adb`) | El [provider de emulador de Android](providers.md#emulador-de-android). |
 | Xcode y `simctl` (macOS) | Los providers de [simulador de iOS](providers.md#simulador-de-ios) y de [Xcode](providers.md#xcode). |
 | [Herdr](https://herdr.dev) | "Abrir en Herdr" y el plugin de Herdr; consulta [Uso con agentes](../agents.md#herdr). |
+| [Orca](https://onorca.dev) 1.4.243 o posterior | "Abrir en Orca", los estados de los agentes de Orca y los hooks de `orca.yaml`; consulta [Uso con agentes](../agents.md#orca). ShogunAi busca `orca` (y, en Linux, solo `orca-ide`, porque allí `orca` suele ser el lector de pantalla de GNOME). Abrir un worktree puede hacer que su repositorio muestre en Orca los worktrees ajenos a Orca. Los estados de los agentes de Orca vienen de sus propios hooks de Claude Code; `orca agent hooks off` los quita si usas Orca sin sus estados, y ShogunAi recurre entonces al registro de sesiones de Claude Code. |

@@ -76,6 +76,60 @@ data class SharedVariablesDeclaration(
         get() = byAlias.entries.sortedBy { it.key }.flatMap { (alias, variables) ->
             variables.entries.sortedBy { it.key }.map { (name, template) -> Triple(alias, name, template) }
         }
+
+    fun withVariable(alias: String, name: String, template: String): SharedVariablesDeclaration =
+        copy(byAlias = byAlias + (alias to (byAlias[alias].orEmpty() + (name to template))))
+
+    fun withoutVariable(alias: String, name: String): SharedVariablesDeclaration =
+        copy(byAlias = byAlias + (alias to (byAlias[alias].orEmpty() - name)))
+
+    fun withoutAlias(alias: String): SharedVariablesDeclaration = copy(byAlias = byAlias - alias)
+
+    fun renamingAlias(old: String, new: String): SharedVariablesDeclaration =
+        copy(
+            byAlias = byAlias.entries.associate { (alias, variables) ->
+                (if (alias == old) new else alias) to variables.mapValues { (_, template) -> renameRepositoryReferences(template, old, new) }
+            },
+        )
+
+    fun referencesTo(alias: String): List<String> =
+        templates.filter { (owner, _, template) -> owner != alias && repositoryReferenceStarts(template, alias).isNotEmpty() }
+            .map { (owner, name, _) -> "$owner.$name" }
+
+    fun withoutEmptyAliases(): SharedVariablesDeclaration? =
+        copy(byAlias = byAlias.filterValues { it.isNotEmpty() }).takeIf { it.byAlias.isNotEmpty() || it.problems.isNotEmpty() }
+}
+
+private fun repositoryReference(alias: String): String = "\${port:$alias."
+
+private fun repositoryReferenceStarts(template: String, alias: String): List<Int> {
+    val reference = repositoryReference(alias)
+    val starts = mutableListOf<Int>()
+    var index = 0
+    while (index < template.length) {
+        when {
+            template.startsWith("$$", index) -> index += 2
+            template.startsWith(reference, index) -> {
+                starts += index
+                index += reference.length
+            }
+            else -> index++
+        }
+    }
+    return starts
+}
+
+private fun renameRepositoryReferences(template: String, old: String, new: String): String {
+    val starts = repositoryReferenceStarts(template, old)
+    if (starts.isEmpty()) return template
+    val reference = repositoryReference(old)
+    val renamed = StringBuilder()
+    var copied = 0
+    starts.forEach { start ->
+        renamed.append(template, copied, start).append(repositoryReference(new))
+        copied = start + reference.length
+    }
+    return renamed.append(template, copied, template.length).toString()
 }
 
 object SharedVariablesSerializer : KSerializer<SharedVariablesDeclaration> {

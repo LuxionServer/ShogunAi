@@ -28,9 +28,10 @@ core/src/main/kotlin/app/luxion/shogunai/
 │   ├── executor/     # puertos ShellCommandExecutor y ClipboardWriter + CommandResult
 │   ├── io/           # puertos: FileManager, ProjectRepository, preferencias, RepositoryProvisioningSource,
 │   │                 #   EnvironmentStateStore, PortProbe, AndroidSdk, AppleSimulators, KmpTestWiring,
-│   │                 #   HerdrClient, HerdrConfigSource, GradleDaemonSource, DerivedDataSource
+│   │                 #   HerdrClient, HerdrConfigSource, OrcaClient, OrcaWorkspaceStore, GitHubClient,
+│   │                 #   GradleDaemonSource, DerivedDataSource
 │   └── usecase/      # worktrees (crear, listar, provisionar, eliminar, reparar, limpiar, estado, vista general),
-│                     #   entorno y puertos, providers (Gradle, emulador, simulador, Xcode), Herdr
+│                     #   entorno y puertos, providers (Gradle, emulador, simulador, Xcode), Herdr, Orca
 └── infrastructure/   # implementaciones concretas de los puertos de dominio
 core/build/generated/buildInfo/  # BuildInfo.VERSION, compartido por la app y el CLI
 

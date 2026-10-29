@@ -6,13 +6,19 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.v2.runComposeUiTest
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
+import app.luxion.shogunai.domain.model.RepositoryConfigIssue
+import app.luxion.shogunai.domain.model.SharedVariablesDeclaration
 import app.luxion.shogunai.domain.model.WorkspaceSetting
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.usecase.AddedRepository
@@ -131,6 +137,9 @@ class FakeMultirepoSetup(
         update(multirepo) { it.copy(workspace = WorkspaceSetting(alias = alias, default = default)) }
 
     override fun clearWorkspace(multirepo: Multirepo) = update(multirepo) { it.copy(workspace = WorkspaceSetting(enabled = false)) }
+    override fun detectWorkspace(multirepo: Multirepo) = update(multirepo) { it.copy(workspace = null) }
+    override fun setSharedVariables(multirepo: Multirepo, byAlias: Map<String, Map<String, String>>) =
+        update(multirepo) { it.copy(env = SharedVariablesDeclaration(byAlias.filterValues { variables -> variables.isNotEmpty() }).takeIf { env -> env.byAlias.isNotEmpty() }) }
     override fun setAgent(multirepo: Multirepo, agent: AgentLaunchConfig): Result<Multirepo> {
         agents[multirepo.folder] = agent
         return Result.success(read(multirepo.folder)!!)
@@ -472,5 +481,125 @@ class MultirepoSetupTest {
 
         assertEquals(listOf("app", "workspace"), change.aliases)
         assertEquals(setOf("app", "workspace"), change.selected)
+    }
+
+    private val apiUrl = "http://localhost:${'$'}{port:api.http}"
+
+    private fun workspaceSetup(workspace: WorkspaceSetting?) = FakeMultirepoSetup(repositories = setOf(app, api, product), projects = listOf(appProject)).apply {
+        declarations[product] = MultirepoDeclaration(mapOf("app" to app, "api" to api), "../product-worktrees", listOf("app", "api"), workspace = workspace)
+        approved += product
+    }
+
+    @Test
+    fun `a shared variable is added, edited and saved with the settings`() = runTest {
+        val setup = declaredSetup()
+        val state = settings(setup, this)
+
+        state.addSharedVariable()
+        val draft = state.sharedVariables.single()
+        assertEquals("app", draft.alias)
+        state.updateSharedVariable(draft.copy(name = "API_URL", template = apiUrl))
+        assertTrue(state.canSave)
+        state.save()
+
+        assertEquals(mapOf("app" to mapOf("API_URL" to apiUrl)), setup.declarations.getValue(product).env?.byAlias)
+        assertFalse(state.hasChanges)
+    }
+
+    @Test
+    fun `removing the last shared variable removes env`() = runTest {
+        val setup = declaredSetup().apply {
+            declarations[product] = declarations.getValue(product).copy(env = SharedVariablesDeclaration(mapOf("app" to mapOf("API_URL" to apiUrl))))
+        }
+        val state = settings(setup, this)
+
+        state.removeSharedVariable(state.sharedVariables.single().id)
+        state.save()
+
+        assertNull(setup.declarations.getValue(product).env)
+    }
+
+    @Test
+    fun `an invalid or duplicated shared variable keeps the settings from saving`() = runTest {
+        val setup = declaredSetup()
+        val state = settings(setup, this)
+
+        state.addSharedVariable()
+        val own = state.sharedVariables.single().copy(name = "DEBUG_PORT", template = "${'$'}{port}")
+        state.updateSharedVariable(own)
+        assertEquals(RepositoryConfigIssue.OwnPortInSharedVariable, state.sharedVariableIssue(own))
+        assertFalse(state.canSave)
+
+        state.updateSharedVariable(own.copy(template = "x"))
+        state.addSharedVariable()
+        val duplicate = state.sharedVariables.last().copy(name = "DEBUG_PORT", template = "y")
+        state.updateSharedVariable(duplicate)
+        assertEquals(RepositoryConfigIssue.DuplicateVariableName, state.sharedVariableIssue(duplicate))
+        assertFalse(state.canSave)
+        state.save()
+        assertNull(setup.declarations.getValue(product).env)
+    }
+
+    @Test
+    fun `shared variables ShogunAi can't rewrite are named instead of edited`() = runTest {
+        val setup = declaredSetup().apply {
+            declarations[product] = declarations.getValue(product).copy(env = SharedVariablesDeclaration(problems = listOf("env.app.RETRIES must be a string")))
+        }
+        val state = settings(setup, this)
+
+        assertEquals("env.app.RETRIES must be a string", state.sharedVariablesProblem)
+        assertFalse(state.hasChanges)
+    }
+
+    @Test
+    fun `a turned off workspace returns to detection`() = runTest {
+        val setup = workspaceSetup(WorkspaceSetting(enabled = false))
+        val state = settings(setup, this)
+        assertTrue(state.canReturnWorkspaceToDetection)
+
+        state.returnWorkspaceToDetection()
+
+        assertNull(setup.declarations.getValue(product).workspace)
+        assertTrue(state.workspaceDetected)
+        assertFalse(state.canReturnWorkspaceToDetection)
+    }
+
+    @Test
+    fun `the settings add a shared variable through the section`() = runComposeUiTest {
+        val setup = declaredSetup()
+        val state = MultirepoSettingsState(product, setup, CoroutineScope(Dispatchers.Unconfined))
+        setContent { MaterialTheme { MultirepoSettingsView(state, onClose = {}, onDeleted = {}, pickFolder = { _, _ -> null }) } }
+
+        onNodeWithText("The multirepo shares no variables.").performScrollTo().assertIsDisplayed()
+        onNodeWithTag("add-shared-variable").performScrollTo().performClick()
+        onNodeWithTag("shared-variable-name-0").performScrollTo().performTextInput("API_URL")
+        onNodeWithTag("shared-variable-template-0").performScrollTo().performTextInput(apiUrl)
+        onNodeWithText("Save").performClick()
+
+        assertEquals(mapOf("app" to mapOf("API_URL" to apiUrl)), setup.declarations.getValue(product).env?.byAlias)
+    }
+
+    @Test
+    fun `a repository row offers rename only while its alias is edited`() = runComposeUiTest {
+        val setup = declaredSetup()
+        val state = MultirepoSettingsState(product, setup, CoroutineScope(Dispatchers.Unconfined))
+        setContent { MaterialTheme { MultirepoSettingsView(state, onClose = {}, onDeleted = {}, pickFolder = { _, _ -> null }) } }
+
+        onNodeWithText("Rename").assertDoesNotExist()
+        onNodeWithTag("repository-alias-app").performScrollTo().performTextInput("x")
+
+        onNodeWithText("Rename").assertIsDisplayed()
+    }
+
+    @Test
+    fun `the settings return a turned off workspace to detection`() = runComposeUiTest {
+        val setup = workspaceSetup(WorkspaceSetting(enabled = false))
+        val state = MultirepoSettingsState(product, setup, CoroutineScope(Dispatchers.Unconfined))
+        setContent { MaterialTheme { MultirepoSettingsView(state, onClose = {}, onDeleted = {}, pickFolder = { _, _ -> null }) } }
+
+        onNodeWithText("Return to detection").performScrollTo().performClick()
+
+        assertNull(setup.declarations.getValue(product).workspace)
+        onNodeWithText("Return to detection").assertDoesNotExist()
     }
 }

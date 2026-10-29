@@ -1,6 +1,7 @@
 package app.luxion.shogunai.cli
 
 import app.luxion.shogunai.domain.model.BranchType
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.usecase.EnvironmentFormat
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -100,6 +101,18 @@ class ParseArgumentsTest {
     }
 
     @Test
+    fun `base takes an optional target, set and the json flag`() {
+        assertEquals(ParsedArguments.Command(CliCommand.Base()), parseArguments(listOf("base")))
+        assertEquals(
+            ParsedArguments.Command(CliCommand.Base("TASK-1", "origin/develop", json = true)),
+            parseArguments(listOf("base", "TASK-1", "--set", "origin/develop", "--json")),
+        )
+        assertEquals(ParsedArguments.UsageError("--set needs a value"), parseArguments(listOf("base", "--set")))
+        assertEquals(ParsedArguments.UsageError("unknown option '--yaml' for 'base'"), parseArguments(listOf("base", "--yaml")))
+        assertEquals(ParsedArguments.UsageError("'base' takes a single target, got 'a' and 'b'"), parseArguments(listOf("base", "a", "b")))
+    }
+
+    @Test
     fun `status takes only the json flag`() {
         assertEquals(CliCommand.Status(), command("status"))
         assertEquals(CliCommand.Status(json = true), command("status", "--json"))
@@ -113,6 +126,7 @@ class ParseArgumentsTest {
         assertEquals(CliCommand.Clean(confirmed = true, deleteBranches = true), command("clean", "--delete-branches", "-y"))
         assertEquals("unknown argument '--all' for 'clean'", usageError("clean", "--all"))
         assertEquals(CliCommand.Clean(confirmed = true, stopGradleDaemons = true), command("clean", "--yes", "--stop-gradle-daemons"))
+        assertEquals(CliCommand.Clean(confirmed = true, stopMavenDaemons = true), command("clean", "--yes", "--stop-maven-daemons"))
         assertEquals(CliCommand.Clean(confirmed = true, deleteDerivedData = true), command("clean", "--yes", "--delete-derived-data"))
     }
 
@@ -180,6 +194,16 @@ class ParseArgumentsTest {
     }
 
     @Test
+    fun `maven commands`() {
+        assertEquals(CliCommand.Maven(), command("maven"))
+        assertEquals(CliCommand.MavenStop(), command("maven", "stop"))
+        assertEquals(CliCommand.MavenStop(listOf(4242, 4243)), command("maven", "stop", "4242", "4243"))
+        assertEquals(CliCommand.MavenStop(listOf(5L), json = true), command("maven", "stop", "5", "--json"))
+        assertEquals("'maven stop' takes process ids, got 'all'", usageError("maven", "stop", "all"))
+        assertEquals("unknown subcommand 'kill' for 'maven', expected stop", usageError("maven", "kill"))
+    }
+
+    @Test
     fun `hook events`() {
         assertEquals(CliCommand.HookWorktreeCreate, command("hook", "worktree-create"))
         assertEquals(CliCommand.HookWorktreeRemove, command("hook", "worktree-remove"))
@@ -197,16 +221,24 @@ class ParseArgumentsTest {
 
     @Test
     fun `open takes a target, herdr, an agent and json`() {
-        assertEquals(CliCommand.Open("TASK-123", herdr = true), command("open", "TASK-123", "--herdr"))
-        assertEquals(CliCommand.Open("TASK-123", herdr = true, agent = "codex"), command("open", "--herdr", "--agent", "codex", "TASK-123"))
-        assertEquals(CliCommand.Open("TASK-123", herdr = true, json = true), command("open", "TASK-123", "--herdr", "--json"))
+        assertEquals(CliCommand.Open("TASK-123", runner = RunnerId.HERDR), command("open", "TASK-123", "--herdr"))
+        assertEquals(CliCommand.Open("TASK-123", runner = RunnerId.HERDR, agent = "codex"), command("open", "--herdr", "--agent", "codex", "TASK-123"))
+        assertEquals(CliCommand.Open("TASK-123", runner = RunnerId.HERDR, json = true), command("open", "TASK-123", "--herdr", "--json"))
         assertEquals(CliCommand.CommandHelp("open"), command("open", "--help"))
     }
 
     @Test
-    fun `open needs a destination and knows its options`() {
-        assertEquals(CliCommand.Open(null, herdr = true), command("open", "--herdr"))
-        assertEquals("'open' needs where to open the worktree: --herdr", usageError("open", "TASK-123"))
+    fun `open takes orca with an agent and json`() {
+        assertEquals(CliCommand.Open("TASK-123", runner = RunnerId.ORCA), command("open", "TASK-123", "--orca"))
+        assertEquals(CliCommand.Open("TASK-123", RunnerId.ORCA, agent = "codex", json = true), command("open", "--orca", "--agent", "codex", "TASK-123", "--json"))
+    }
+
+    @Test
+    fun `open takes an optional runner and knows its options`() {
+        assertEquals(CliCommand.Open(null, runner = RunnerId.HERDR), command("open", "--herdr"))
+        assertEquals(CliCommand.Open("TASK-123"), command("open", "TASK-123"))
+        assertEquals(CliCommand.Open(null), command("open"))
+        assertEquals("'open' opens in one place at a time: pass either --herdr or --orca", usageError("open", "TASK-123", "--herdr", "--orca"))
         assertEquals("unknown option '--terminal' for 'open'", usageError("open", "TASK-123", "--terminal"))
         assertEquals("--agent needs a value", usageError("open", "TASK-123", "--herdr", "--agent"))
         assertEquals("'open' takes a single target, got 'TASK-1' and 'TASK-2'", usageError("open", "TASK-1", "TASK-2", "--herdr"))
@@ -235,6 +267,17 @@ class ParseArgumentsTest {
         assertEquals(CliCommand.Multirepo(MultirepoAction.Delete), command("multirepo", "delete"))
         assertEquals("usage: shogun multirepo remove-repo <alias>", usageError("multirepo", "remove-repo"))
         assertEquals("unknown multirepo action 'rename'", usageError("multirepo", "rename"))
+        assertEquals(CliCommand.Multirepo(MultirepoAction.WorkspaceDetect), command("multirepo", "workspace", "detect"))
+        assertEquals(CliCommand.Multirepo(MultirepoAction.EnvList, json = true), command("multirepo", "env", "--json"))
+        assertEquals(
+            CliCommand.Multirepo(MultirepoAction.EnvSet("app", "API_URL", "http://localhost:${'$'}{port:api.http}")),
+            command("multirepo", "env", "set", "app", "API_URL", "http://localhost:${'$'}{port:api.http}"),
+        )
+        assertEquals(CliCommand.Multirepo(MultirepoAction.EnvUnset("app", "API_URL")), command("multirepo", "env", "unset", "app", "API_URL"))
+        assertEquals("usage: shogun multirepo env set <alias> <name> <template>", usageError("multirepo", "env", "set", "app", "API_URL"))
+        assertEquals("usage: shogun multirepo env unset <alias> <name>", usageError("multirepo", "env", "unset", "app"))
+        assertEquals("usage: shogun multirepo env [set <alias> <name> <template> | unset <alias> <name>]", usageError("multirepo", "env", "list"))
+        assertEquals("usage: shogun multirepo workspace detect", usageError("multirepo", "workspace", "detect", "extra"))
         assertEquals("--use-worktrees-root and --keep-worktrees-folder can't be combined", usageError("multirepo", "add-repo", "a", "b", "--use-worktrees-root", "--keep-worktrees-folder"))
     }
 

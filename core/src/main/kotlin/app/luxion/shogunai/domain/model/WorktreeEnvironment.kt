@@ -68,7 +68,7 @@ private val RESERVED_VARIABLE_NAMES = setOf(
 private val RESERVED_VARIABLE_PREFIXES = listOf(
     "LD_", "DYLD_", "GIT_", "XDG_", "LESS", "SSH_", "NODE_", "NPM_CONFIG_", "YARN_", "PNPM_", "BUN_",
     "PIP_", "PYTHON", "UV_", "POETRY_", "CONDA", "GEM_", "BUNDLE_", "RUBY", "PERL", "CARGO_", "RUSTC",
-    "RUSTUP_", "CMAKE_", "CCACHE_", "DOCKER_", "GH_", "ANTHROPIC_", "CLAUDE_", "CODEX_", "HERDR_", "SHOGUNAI_",
+    "RUSTUP_", "CMAKE_", "CCACHE_", "DOCKER_", "GH_", "ANTHROPIC_", "CLAUDE_", "CODEX_", "HERDR_", "ORCA_", "SHOGUNAI_",
 )
 
 private val RESERVED_VARIABLE_SUFFIXES = listOf("_PROXY", "_OPTS", "_HOME")
@@ -157,7 +157,7 @@ private fun sharedPlaceholder(name: String, content: String, aliases: Set<String
         if (alias !in aliases) {
             throw InvalidEnvironmentTemplate(
                 "\${$content} in \"$name\" names '$alias', which isn't a repository of the multirepo",
-                RepositoryConfigIssue.UnknownPlaceholder(content),
+                RepositoryConfigIssue.UnknownMultirepoRepository(alias),
             )
         }
         return TemplatePart.RepositoryPort(alias, SHARED_PORT_PREFIX + key)
@@ -166,7 +166,7 @@ private fun sharedPlaceholder(name: String, content: String, aliases: Set<String
         throw InvalidEnvironmentTemplate(
             "\${$content} in \"$name\" isn't allowed: ports a repository uses itself are declared in its own .shogunai.json, " +
                 "and a multirepo refers to them as \${port:<alias>.<key>}",
-            RepositoryConfigIssue.UnknownPlaceholder(content),
+            RepositoryConfigIssue.OwnPortInSharedVariable,
         )
     }
     throw InvalidEnvironmentTemplate("unknown placeholder \${$content} in \"$name\"", RepositoryConfigIssue.UnknownPlaceholder(content))

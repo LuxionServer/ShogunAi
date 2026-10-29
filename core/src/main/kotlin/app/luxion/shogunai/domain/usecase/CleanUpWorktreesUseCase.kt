@@ -20,6 +20,7 @@ data class CleanupReport(
     val keptBranches: List<String>,
     val failures: List<CleanupFailure>,
     val herdrFailures: List<CleanupFailure> = emptyList(),
+    val orcaFailures: List<CleanupFailure> = emptyList(),
     val headlessAppFailures: List<CleanupFailure> = emptyList(),
     val composeDown: ComposeDownReport? = null,
     val composeUnavailable: String? = null,
@@ -63,8 +64,10 @@ class CleanUpWorktreesUseCase(
     private val composeRegistry: ComposeProjectRegistry? = null,
     stopHeadlessApp: StopHeadlessAppUseCase? = null,
     releaseDesktopTurn: ReleaseDesktopTurnUseCase? = null,
+    private val closeOrcaTerminals: CloseOrcaTerminalsUseCase? = null,
 ) {
-    private val folderRemoval = WorktreeFolderRemoval(config, executor, fileManager, closeHerdrWorkspaces, stopHeadlessApp, releaseDesktopTurn)
+    private val folderRemoval =
+        WorktreeFolderRemoval(config, executor, fileManager, closeHerdrWorkspaces, stopHeadlessApp, releaseDesktopTurn, closeOrcaTerminals)
 
     suspend operator fun invoke(
         candidates: List<Worktree>,
@@ -74,18 +77,23 @@ class CleanUpWorktreesUseCase(
         removeComposeVolumes: Boolean = false,
     ): Result<CleanupReport> = runCatching {
         val workspaces = closeHerdrWorkspaces?.openWorkspaces(candidates.map { it.path }).orEmpty()
+        val orcaTerminals = closeOrcaTerminals?.withTerminals(candidates.filterNot { it.isPrunable }.map { it.path }).orEmpty()
         val keptBranches = mutableListOf<String>()
         val failures = mutableListOf<CleanupFailure>()
 
         val removedWorktrees = mutableListOf<Worktree>()
         val closedWorkspacePaths = mutableSetOf<String>()
         val herdrFailures = mutableListOf<CleanupFailure>()
+        val closedOrcaPaths = mutableSetOf<String>()
+        val orcaFailures = mutableListOf<CleanupFailure>()
         val headlessAppFailures = mutableListOf<CleanupFailure>()
 
         candidates.filterNot { it.isPrunable }.forEach { worktree ->
             try {
-                val closing = folderRemoval.remove(worktree.path, force = false, workspaceId = workspaces[worktree.path])
+                val closing = folderRemoval.remove(worktree.path, force = false, workspaceId = workspaces[worktree.path], worktree.path in orcaTerminals)
                 if (closing.closedWorkspace) closedWorkspacePaths += worktree.path
+                if (closing.closedOrcaTerminals || closing.orcaFailure != null) closedOrcaPaths += worktree.path
+                closing.orcaFailure?.let { orcaFailures += CleanupFailure(worktree.path, it) }
                 closing.failure?.let { herdrFailures += CleanupFailure(worktree.path, it) }
                 closing.headlessAppFailure?.let { headlessAppFailures += CleanupFailure(worktree.path, it) }
                 removedWorktrees += worktree
@@ -107,6 +115,7 @@ class CleanUpWorktreesUseCase(
         }
 
         herdrFailures += closeHerdrWorkspaces?.close(workspaces, removedWorktrees.map { it.path }.filter { it !in closedWorkspacePaths }).orEmpty()
+        orcaFailures += closeOrcaTerminals?.close(orcaTerminals, removedWorktrees.map { it.path }.filter { it !in closedOrcaPaths }).orEmpty()
 
         if (deleteBranches) {
             removedWorktrees.mapNotNull { it.branch }.forEach { branch ->
@@ -121,6 +130,7 @@ class CleanUpWorktreesUseCase(
             keptBranches = keptBranches,
             failures = failures,
             herdrFailures = herdrFailures,
+            orcaFailures = orcaFailures,
             headlessAppFailures = headlessAppFailures,
             composeDown = compose?.getOrNull()?.first,
             composeUnavailable = compose?.exceptionOrNull()?.let { (it as? WorktreeError.DockerUnavailable)?.reason ?: it.message.orEmpty() },

@@ -14,15 +14,16 @@ import app.luxion.shogunai.domain.usecase.ProjectOwner
 import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.worktree.formatSize
 
-fun emulatorDeviceLabel(entry: MachineEmulator, project: Project?, strings: Strings): String =
-    entry.emulator?.serial
-        ?: project?.config?.emulator?.avd?.takeIf { it.isNotBlank() }
-        ?: strings.automaticAvd
+data class DeviceLabel(val data: String?, val note: String?)
 
-fun simulatorDeviceLabel(entry: MachineSimulator, project: Project?, strings: Strings): String =
-    entry.simulator?.name
-        ?: project?.config?.simulator?.device?.takeIf { it.isNotBlank() }?.let(strings::simulatorNotCreatedFor)
-        ?: strings.simulatorNotCreated
+fun emulatorDeviceLabel(entry: MachineEmulator, project: Project?, strings: Strings): DeviceLabel =
+    (entry.emulator?.serial ?: project?.config?.emulator?.avd?.takeIf { it.isNotBlank() })
+        ?.let { DeviceLabel(data = it, note = null) }
+        ?: DeviceLabel(data = null, note = strings.automaticAvd)
+
+fun simulatorDeviceLabel(entry: MachineSimulator, project: Project?, strings: Strings): DeviceLabel =
+    entry.simulator?.name?.let { DeviceLabel(data = it, note = null) }
+        ?: DeviceLabel(data = project?.config?.simulator?.device?.takeIf { it.isNotBlank() }, note = strings.simulatorNotCreated)
 
 fun MachineResource.title(strings: Strings): String = when (this) {
     MachineResource.GRADLE_DAEMONS -> strings.gradleDaemonsTitle

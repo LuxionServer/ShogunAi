@@ -69,6 +69,7 @@ class DetectMobileSecretsUseCaseTest {
                 "git", "ls-files", "--others", "--ignored", "-z",
                 "-x", "local.properties", "-x", "keystore.properties", "-x", "key.properties",
                 "-x", "*.jks", "-x", "*.keystore", "-x", "google-services.json", "-x", "GoogleService-Info.plist",
+                "-x", "firebase_options.dart",
             ),
             executor.executedCommands.first(),
         )
@@ -157,5 +158,30 @@ class DetectMobileSecretsUseCaseTest {
 
         assertEquals(listOf(MobileSecret("key.properties", MobileSecretKind.SIGNING_PROPERTIES)), report.secrets)
         assertEquals(emptyList(), report.warnings)
+    }
+
+    @Test
+    fun `finds FlutterFire's options as Firebase configuration`() = runTest {
+        val report = detect(listOf("lib/firebase_options.dart", ".dart_tool/firebase_options.dart"))
+
+        assertEquals(listOf(MobileSecret("lib/firebase_options.dart", MobileSecretKind.FIREBASE_CONFIG)), report.secrets)
+    }
+
+    @Test
+    fun `leaves out the local properties Flutter writes but still reads its keystore keys`() = runTest {
+        val fileManager = FakeFileManager(
+            existing = listOf("$base/android/upload.jks"),
+            properties = mapOf(
+                "$base/android/local.properties" to mapOf(
+                    "flutter.sdk" to "/opt/flutter",
+                    "sdk.dir" to "/opt/android-sdk",
+                    "storeFile" to "upload.jks",
+                ),
+            ),
+        )
+
+        val report = detect(listOf("android/local.properties"), fileManager)
+
+        assertEquals(listOf(MobileSecret("android/upload.jks", MobileSecretKind.KEYSTORE)), report.secrets)
     }
 }

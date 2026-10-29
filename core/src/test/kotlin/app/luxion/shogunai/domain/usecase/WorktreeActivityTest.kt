@@ -184,6 +184,29 @@ class WorktreeActivityTest {
     }
 
     @Test
+    fun `a branch of an epic without commits of its own is new and dated by its creation`() {
+        val status = WorktreeStatus(
+            uncommittedChanges = 0,
+            upstream = null,
+            mainBranch = Divergence(5, 0),
+            lastCommitAt = now.minus(Duration.ofDays(10)),
+            createdAt = now.minus(Duration.ofDays(2)),
+            base = Divergence(0, 0),
+            baseName = "epic/redesign",
+        )
+
+        assertEquals(ActivityDate(now.minus(Duration.ofDays(2)), ActivityKind.CREATED), activityDate(worktree, status))
+        assertEquals(Activity.New, worktreeActivity(worktree, status, emptyList(), now))
+    }
+
+    @Test
+    fun `a branch merged into its base reads as merged`() {
+        val status = WorktreeStatus(0, null, Divergence(4, 2), now, base = Divergence(0, 1), baseName = "epic/redesign")
+
+        assertEquals(Activity.Merged, worktreeActivity(worktree, status, emptyList(), now))
+    }
+
+    @Test
     fun `the main worktree is dated by its last commit`() {
         val date = activityDate(main, statusWithDates(mainBranch = null))
 

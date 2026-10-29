@@ -1,6 +1,7 @@
 package app.luxion.shogunai.ui.i18n
 
 import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
+import app.luxion.shogunai.domain.model.ORCA_START_SECONDS
 import app.luxion.shogunai.domain.model.MacPermission
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.HolderProtection
@@ -8,6 +9,9 @@ import app.luxion.shogunai.domain.model.PoolHolder
 import app.luxion.shogunai.domain.model.PoolHolderState
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.UnavailableReason
+import app.luxion.shogunai.domain.model.UnavailableLocalFile
+import app.luxion.shogunai.domain.model.LocalFileOrigin
 import app.luxion.shogunai.domain.model.toLocalClockTime
 import app.luxion.shogunai.domain.usecase.GitFailureCause
 import java.time.Instant
@@ -95,9 +99,9 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "\"${error.rawInput}\" no es un id de tarea válido.",
         "Usa solo letras, dígitos, \"-\", \"_\" y \"/\".",
     )
-    is WorktreeError.SecretFileNotFound -> ErrorTexts(
-        "No se encontraron estos archivos locales en ${error.basePath}: ${error.files.joinToString()}.",
-        "Créalos en el repositorio base, o quítalos de los archivos locales del proyecto.",
+    is WorktreeError.LocalFilesUnavailable -> ErrorTexts(
+        "No se pueden copiar ni enlazar estos archivos locales desde ${error.basePath}: ${error.files.joinToString { it.path }}. No se ha cambiado nada.",
+        spanishLocalFilesFix(error.files),
     )
     is WorktreeError.InvalidRepositoryConfig -> ErrorTexts(
         "No se pudo leer ${error.path}.",
@@ -142,6 +146,10 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
     is WorktreeError.StartPointNotFound -> ErrorTexts(
         "\"${error.ref}\" no es un commit.",
         "Elige una rama o un commit existente como punto de partida.",
+    )
+    is WorktreeError.NotABranch -> ErrorTexts(
+        "\"${error.ref}\" no es una rama local ni de un remoto.",
+        "Elige una rama existente como base.",
     )
     is WorktreeError.BranchAlreadyCheckedOut -> ErrorTexts(
         "La rama \"${error.branch}\" ya está en uso${error.path?.let { " en $it" }.orEmpty()}.",
@@ -347,6 +355,26 @@ private fun spanishWorktreeTexts(error: WorktreeError): ErrorTexts = when (error
         "El agente no arrancó en Herdr en $AGENT_START_SECONDS segundos.",
         "Su panel sigue abierto en Herdr: revísalo y lanza allí el agente, o vuelve a abrirlo en Herdr.",
     )
+    WorktreeError.OrcaNotInstalled -> ErrorTexts(
+        "Orca no está instalado.",
+        "Instálalo desde https://onorca.dev y vuelve a intentarlo.",
+    )
+    WorktreeError.OrcaNotStarted -> ErrorTexts(
+        "Orca no arrancó en $ORCA_START_SECONDS segundos.",
+        "Abre Orca tú mismo y vuelve a intentarlo.",
+    )
+    is WorktreeError.OrcaCommandFailed -> ErrorTexts(
+        "No se pudo abrir el worktree en Orca.",
+        "Revisa los detalles técnicos.",
+    )
+    is WorktreeError.OrcaAgentNotStarted -> ErrorTexts(
+        "El agente no arrancó en Orca en $AGENT_START_SECONDS segundos.",
+        "Su terminal sigue abierta en Orca: revísala y lanza allí el agente, o vuelve a abrirlo en Orca.",
+    )
+    is WorktreeError.OrcaMultirepoFolderNotOpen -> ErrorTexts(
+        "Orca no tiene ningún espacio de trabajo para ${error.folder}.",
+        "Solo la app de Orca puede añadir una carpeta que no es un repositorio Git. En Orca, añade la carpeta como proyecto e importa sus repositorios como grupo, y luego añade un espacio de trabajo de carpeta a ese grupo; o añádela y elige \"Abrir como carpeta\". Después vuelve a intentarlo.",
+    )
     is WorktreeError.TerminalLaunchFailed -> ErrorTexts(
         "${error.terminal.displayName} no pudo abrir el worktree.",
         "Revisa los detalles técnicos.",
@@ -412,4 +440,18 @@ private fun spanishProtection(holder: PoolHolder): String = when (holder.protect
 private fun spanishPermissionName(permission: MacPermission): String = when (permission) {
     MacPermission.SCREEN_RECORDING -> "Grabación de pantalla"
     MacPermission.ACCESSIBILITY -> "Accesibilidad"
+}
+
+private fun spanishLocalFilesFix(files: List<UnavailableLocalFile>): String {
+    val reasons = files.map { it.reason }
+    val fixes = listOfNotNull(
+        "crea los que faltan ahí".takeIf { reasons.any { it is UnavailableReason.Missing } },
+        "restaura los destinos de los enlaces rotos".takeIf { reasons.any { it is UnavailableReason.BrokenLink } },
+        "da permiso de lectura a tu usuario sobre los que no se pueden leer".takeIf { reasons.any { it is UnavailableReason.Unreadable } },
+    )
+    val removals = listOfNotNull(
+        "los archivos locales del proyecto".takeIf { files.any { it.origin == LocalFileOrigin.PROJECT } },
+        ".shogunai.json o .worktreeinclude".takeIf { files.any { it.origin == LocalFileOrigin.REPOSITORY } },
+    )
+    return fixes.joinToString(", ").replaceFirstChar { it.uppercase() } + ", o quítalos de " + removals.joinToString(" y ") + "."
 }

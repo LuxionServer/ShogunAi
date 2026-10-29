@@ -13,11 +13,19 @@ import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
 import app.luxion.shogunai.domain.io.ApprovalDecision
 import app.luxion.shogunai.domain.model.BranchType
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
+import app.luxion.shogunai.domain.model.FlutterProvider
+import app.luxion.shogunai.domain.model.FlutterPubGet
+import app.luxion.shogunai.domain.model.FlutterPubGetFailure
+import app.luxion.shogunai.domain.model.RepositoryProviders
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.Worktree
+import app.luxion.shogunai.domain.model.PodsPreparation
 import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.LocalFileOrigin
+import app.luxion.shogunai.domain.model.UnavailableLocalFile
+import app.luxion.shogunai.domain.model.UnavailableReason
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -87,6 +95,45 @@ class CreateWorktreeUseCaseTest {
     }
 
     @Test
+    fun `records the base branch right after adding the worktree`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+        val useCase = CreateWorktreeUseCase(config, executor, FakeFileManager(baseWithSecrets), FakeRepositoryProvisioningSource())
+
+        useCase("TASK-123", BranchType.FEATURE, startPoint = "abc123", baseBranch = "epic/redesign").getOrThrow()
+
+        val add = executor.executedCommands.indexOfFirst { it.take(3) == listOf("git", "worktree", "add") }
+        val record = executor.executedCommands.indexOf(listOf("git", "config", "branch.feature/TASK-123.gh-merge-base", "epic/redesign"))
+        assertTrue(record == add + 1, "should record the base right after git worktree add")
+        assertEquals(config.baseRepositoryPath, executor.workingDirectories[record])
+    }
+
+    @Test
+    fun `records nothing without a base branch`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+        val useCase = CreateWorktreeUseCase(config, executor, FakeFileManager(baseWithSecrets), FakeRepositoryProvisioningSource())
+
+        useCase("TASK-123", BranchType.FEATURE, startPoint = "abc123").getOrThrow()
+
+        assertFalse(executor.executedCommands.any { it.take(2) == listOf("git", "config") })
+    }
+
+    @Test
+    fun `rolls back when the base can't be recorded`() = runTest {
+        val executor = FakeShellCommandExecutor {
+            if (it.take(2) == listOf("git", "config")) failure(it, exitCode = 255, stderr = "error: could not lock config file") else success(it)
+        }
+        val fileManager = FakeFileManager(existing = baseWithSecrets)
+        val useCase = CreateWorktreeUseCase(config, executor, fileManager, FakeRepositoryProvisioningSource())
+
+        val error = useCase("TASK-123", BranchType.FEATURE, baseBranch = "develop").exceptionOrNull()
+
+        assertIs<WorktreeError.GitCommandFailed>(error)
+        assertTrue(fileManager.copied.isEmpty())
+        assertTrue(executor.executed("git", "worktree", "remove", "--force", worktreePath))
+        assertTrue(executor.executed("git", "branch", "-D", "--", "feature/TASK-123"))
+    }
+
+    @Test
     fun `uses fix prefix for fix branches`() = runTest {
         val executor = FakeShellCommandExecutor { success(it) }
         val useCase = CreateWorktreeUseCase(config, executor, FakeFileManager(baseWithSecrets), FakeRepositoryProvisioningSource())
@@ -130,8 +177,8 @@ class CreateWorktreeUseCaseTest {
 
         val error = useCase("TASK-123", BranchType.FEATURE).exceptionOrNull()
 
-        assertIs<WorktreeError.SecretFileNotFound>(error)
-        assertEquals(listOf("app-secrets.properties"), error.files)
+        assertIs<WorktreeError.LocalFilesUnavailable>(error)
+        assertEquals(listOf("app-secrets.properties"), error.files.map { it.path })
         assertTrue(executor.executedCommands.isEmpty(), "should not create the worktree if secrets are missing")
     }
 
@@ -357,12 +404,28 @@ class CreateWorktreeUseCaseTest {
             executor,
             FakeFileManager(baseWithSecrets),
             FakeRepositoryProvisioningSource(),
-            environment = { repository, worktree -> prepared += repository to worktree },
+            environment = { repository, worktree -> prepared += repository to worktree; PreparedWorktree() },
         )
 
         useCase("TASK-123", BranchType.FEATURE).getOrThrow()
 
         assertEquals(listOf(config.baseRepositoryPath to worktreePath), prepared)
+    }
+
+    @Test
+    fun `reports the pods prepared with the environment`() = runTest {
+        val pods = PodsPreparation(cloned = listOf("iosApp"))
+        val useCase = CreateWorktreeUseCase(
+            config,
+            FakeShellCommandExecutor { success(it) },
+            FakeFileManager(baseWithSecrets),
+            FakeRepositoryProvisioningSource(),
+            environment = { _, _ -> PreparedWorktree(pods) },
+        )
+
+        val created = useCase("TASK-123", BranchType.FEATURE).getOrThrow()
+
+        assertEquals(pods, created.pods)
     }
 
     @Test
@@ -405,10 +468,11 @@ class CreateWorktreeUseCaseTest {
         val trust = FakeRepositoryTrust(
             mapOf(config.baseRepositoryPath to RepositoryApprovalSubject(listOf(listOf("npm", "install"), listOf("direnv", "allow")))),
         )
-        val error = CreateWorktreeUseCase(config, executor, fileManager, provisioning, trust = trust)("TASK-123", BranchType.FEATURE)
+        val error = CreateWorktreeUseCase(config, executor, fileManager, provisioning, trust = trust)("TASK-123", BranchType.FEATURE, baseBranch = "develop")
             .exceptionOrNull()
 
         assertIs<WorktreeError.PostCreateCommandFailed>(error)
+        assertTrue(executor.executed("git", "config", "branch.feature/TASK-123.gh-merge-base", "develop"))
         assertEquals(worktreePath, error.worktreePath)
         assertEquals(mapOf("$worktreePath/keys/a" to "${config.baseRepositoryPath}/keys/a"), fileManager.symbolicLinks)
         assertFalse(executor.executed("direnv", "allow"))
@@ -538,8 +602,8 @@ class CreateWorktreeUseCaseTest {
 
         val error = useCase("TASK-123", BranchType.FEATURE).exceptionOrNull()
 
-        assertIs<WorktreeError.SecretFileNotFound>(error)
-        assertEquals(listOf("keys"), error.files)
+        assertIs<WorktreeError.LocalFilesUnavailable>(error)
+        assertEquals(listOf("keys"), error.files.map { it.path })
         assertTrue(executor.executedCommands.isEmpty())
     }
 
@@ -564,9 +628,9 @@ class CreateWorktreeUseCaseTest {
 
         val error = useCase("TASK-123", BranchType.FEATURE).exceptionOrNull()
 
-        assertIs<WorktreeError.SecretFileNotFound>(error)
-        assertEquals(listOf("local.properties"), error.files)
-        assertTrue(executor.executedCommands.isEmpty())
+        assertIs<WorktreeError.LocalFilesUnavailable>(error)
+        assertEquals(listOf("local.properties"), error.files.map { it.path })
+        assertFalse(executor.executedCommands.any { it.take(3) == listOf("git", "worktree", "add") })
     }
 
     @Test
@@ -689,5 +753,154 @@ class CreateWorktreeUseCaseTest {
         assertFalse(gitWithDirectories.executed("npm", "install"))
         assertEquals(listOf("PORT"), created.skippedVariables)
         assertEquals(installCommands, created.skippedPostCreateCommands)
+    }
+
+    private val buildRunner = listOf("dart", "run", "build_runner", "build")
+
+    private val flutterProvisioning = FakeRepositoryProvisioningSource(
+        byRepository = mapOf(
+            config.baseRepositoryPath to RepositoryProvisioning(
+                postCreateCommands = listOf(buildRunner),
+                providers = RepositoryProviders(flutter = FlutterProvider),
+            ),
+        ),
+    )
+
+    private fun flutterPreparer(executor: FakeShellCommandExecutor) = WorktreeEnvironmentPreparer { repository, worktree ->
+        PreparedWorktree(flutter = ResolveFlutterPackagesUseCase(executor, FakeFileManager(), flutterProvisioning).prepare(repository, worktree))
+    }
+
+    private suspend fun createFlutterWorktree(executor: FakeShellCommandExecutor, decision: ApprovalDecision) =
+        CreateWorktreeUseCase(
+            config, executor, FakeFileManager(baseWithSecrets), flutterProvisioning,
+            environment = flutterPreparer(executor),
+            approval = FakeRepositoryApproval(decision),
+        )("TASK-123", BranchType.FEATURE)
+
+    @Test
+    fun `resolves the flutter packages before the post-creation commands`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+
+        val created = createFlutterWorktree(executor, ApprovalDecision.APPROVE).getOrThrow()
+
+        val flutterRuns = executor.executedCommands.zip(executor.workingDirectories).filter { it.first.first() in setOf("flutter", "dart") }
+        assertEquals(listOf(listOf("flutter", "pub", "get") to worktreePath, buildRunner to worktreePath), flutterRuns)
+        assertEquals(FlutterPubGet.Resolved, created.flutter)
+    }
+
+    @Test
+    fun `resolves the flutter packages in a repository that isn't approved`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+
+        val created = createFlutterWorktree(executor, ApprovalDecision.SKIP).getOrThrow()
+
+        assertTrue(executor.executed("flutter", "pub", "get"))
+        assertFalse(executor.executed(*buildRunner.toTypedArray()))
+        assertEquals(listOf(buildRunner), created.skippedPostCreateCommands)
+    }
+
+    @Test
+    fun `a failed resolution keeps the worktree and still runs the post-creation commands`() = runTest {
+        val executor = FakeShellCommandExecutor { if (it.first() == "flutter") failure(it, exitCode = 1, stderr = "Could not resolve") else success(it) }
+
+        val created = createFlutterWorktree(executor, ApprovalDecision.APPROVE).getOrThrow()
+
+        assertEquals(FlutterPubGet.Needed(FlutterPubGetFailure.Exited(1, listOf("Could not resolve"))), created.flutter)
+        assertTrue(executor.executed(*buildRunner.toTypedArray()))
+        assertFalse(executor.executedCommands.any { it.take(3) == listOf("git", "worktree", "remove") })
+    }
+
+    private fun withEnvPattern(): Pair<FakeShellCommandExecutor, FakeRepositoryProvisioningSource> =
+        FakeShellCommandExecutor { if (it.getOrNull(1) == "ls-files") success(it, stdout = ".env\u0000") else success(it) } to
+            FakeRepositoryProvisioningSource(byRepository = mapOf(config.baseRepositoryPath to RepositoryProvisioning(copyPatterns = listOf(".env"))))
+
+    @Test
+    fun `a broken link matched by a repository pattern fails before creating or copying anything`() = runTest {
+        val (executor, provisioning) = withEnvPattern()
+        val fileManager = FakeFileManager(existing = baseWithSecrets)
+        fileManager.unavailable[config.baseSecretPath(".env")] = UnavailableReason.BrokenLink("/missing/.env")
+
+        val error = CreateWorktreeUseCase(config, executor, fileManager, provisioning)("TASK-123", BranchType.FEATURE).exceptionOrNull()
+
+        assertIs<WorktreeError.LocalFilesUnavailable>(error)
+        assertEquals(
+            listOf(UnavailableLocalFile(".env", config.baseSecretPath(".env"), LocalFileOrigin.REPOSITORY, UnavailableReason.BrokenLink("/missing/.env"))),
+            error.files,
+        )
+        assertEquals(config.baseRepositoryPath, error.basePath)
+        assertFalse(executor.executedCommands.any { it.take(3) == listOf("git", "worktree", "add") })
+        assertTrue(fileManager.copied.isEmpty())
+    }
+
+    @Test
+    fun `an unreadable local file fails before creating anything`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+        val fileManager = FakeFileManager(existing = baseWithSecrets)
+        fileManager.unavailable[config.baseSecretPath("local.properties")] = UnavailableReason.Unreadable("Operation not permitted")
+
+        val error = CreateWorktreeUseCase(config, executor, fileManager, FakeRepositoryProvisioningSource())("TASK-123", BranchType.FEATURE).exceptionOrNull()
+
+        assertIs<WorktreeError.LocalFilesUnavailable>(error)
+        val file = error.files.single()
+        assertEquals("local.properties", file.path)
+        assertEquals(LocalFileOrigin.PROJECT, file.origin)
+        assertEquals(UnavailableReason.Unreadable("Operation not permitted"), file.reason)
+        assertTrue(executor.executedCommands.isEmpty())
+    }
+
+    @Test
+    fun `an unreadable entry of a local folder fails instead of being skipped`() = runTest {
+        val executor = FakeShellCommandExecutor { success(it) }
+        val fileManager = fileManagerWithKeys()
+        fileManager.directoryUnreadable[keysFolder] = listOf("private")
+        fileManager.unavailable["$keysFolder/private"] = UnavailableReason.Unreadable("permission denied")
+
+        val error = CreateWorktreeUseCase(folderConfig(), executor, fileManager, FakeRepositoryProvisioningSource())("TASK-123", BranchType.FEATURE).exceptionOrNull()
+
+        assertIs<WorktreeError.LocalFilesUnavailable>(error)
+        assertEquals(listOf("keys/private"), error.files.map { it.path })
+        assertEquals(UnavailableReason.Unreadable("permission denied"), error.files.single().reason)
+        assertTrue(executor.executedCommands.isEmpty())
+        assertTrue(fileManager.copied.isEmpty())
+    }
+
+    @Test
+    fun `every file of a copied local folder is checked`() = runTest {
+        val fileManager = fileManagerWithKeys()
+        fileManager.unavailable["$keysFolder/ci/b.pem"] = UnavailableReason.Unreadable(null)
+
+        val error = CreateWorktreeUseCase(folderConfig(), FakeShellCommandExecutor { success(it) }, fileManager, FakeRepositoryProvisioningSource())("TASK-123", BranchType.FEATURE).exceptionOrNull()
+
+        assertIs<WorktreeError.LocalFilesUnavailable>(error)
+        assertEquals(listOf("keys/ci/b.pem"), error.files.map { it.path })
+    }
+
+    @Test
+    fun `reports every unavailable file at once`() = runTest {
+        val (executor, provisioning) = withEnvPattern()
+        val fileManager = FakeFileManager(existing = listOf(config.baseRepositoryPath, config.baseSecretPath("local.properties")))
+        fileManager.unavailable[config.baseSecretPath(".env")] = UnavailableReason.BrokenLink("/missing/.env")
+
+        val error = CreateWorktreeUseCase(config, executor, fileManager, provisioning)("TASK-123", BranchType.FEATURE).exceptionOrNull()
+
+        assertIs<WorktreeError.LocalFilesUnavailable>(error)
+        assertEquals(
+            listOf("app-secrets.properties" to UnavailableReason.Missing, ".env" to UnavailableReason.BrokenLink("/missing/.env")),
+            error.files.map { it.path to it.reason },
+        )
+        assertFalse(fileManager.availabilityChecks.contains(config.baseSecretPath("app-secrets.properties")))
+    }
+
+    @Test
+    fun `linked local files are checked too`() = runTest {
+        val linkedConfig = config.copy(linkedSecretFiles = listOf("local.properties"))
+        val fileManager = FakeFileManager(existing = baseWithSecrets)
+        fileManager.unavailable[config.baseSecretPath("local.properties")] = UnavailableReason.BrokenLink("/missing/local.properties")
+
+        val error = CreateWorktreeUseCase(linkedConfig, FakeShellCommandExecutor { success(it) }, fileManager, FakeRepositoryProvisioningSource())("TASK-123", BranchType.FEATURE).exceptionOrNull()
+
+        assertIs<WorktreeError.LocalFilesUnavailable>(error)
+        assertEquals(listOf("local.properties"), error.files.map { it.path })
+        assertTrue(fileManager.symbolicLinks.isEmpty())
     }
 }

@@ -21,15 +21,22 @@ import app.luxion.shogunai.domain.model.GradleDaemon
 import app.luxion.shogunai.domain.model.PoolUsage
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ReleaseRecord
-import app.luxion.shogunai.domain.model.HerdrOpening
-import app.luxion.shogunai.domain.model.HerdrOutcome
+import app.luxion.shogunai.domain.model.OrcaEmulatorView
+import app.luxion.shogunai.domain.model.RunnerId
+import app.luxion.shogunai.domain.model.RunnerOpening
+import app.luxion.shogunai.domain.model.RunnerOutcome
+import app.luxion.shogunai.domain.model.flag
 import app.luxion.shogunai.domain.model.MavenDaemon
+import app.luxion.shogunai.domain.model.MavenDaemonStopReport
 import app.luxion.shogunai.domain.model.SuggestionReport
 import app.luxion.shogunai.domain.model.WorktreeComposeProject
 import app.luxion.shogunai.domain.model.MobileSecretsReport
 import app.luxion.shogunai.domain.model.ProvisionDrift
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.ProvisionMode
+import app.luxion.shogunai.domain.model.FlutterPubGet
+import app.luxion.shogunai.domain.model.FlutterPubGetFailure
+import app.luxion.shogunai.domain.model.PodsPreparation
 import app.luxion.shogunai.domain.model.ProvisionedFile
 import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
 import app.luxion.shogunai.domain.model.ResourceKind
@@ -81,6 +88,8 @@ fun newJson(
     skippedVariables: List<String>,
     postCreateFailure: WorktreeError.PostCreateCommandFailed?,
     skippedLinks: List<String> = emptyList(),
+    pods: PodsPreparation = PodsPreparation(),
+    flutter: FlutterPubGet? = null,
 ): JsonObject = buildJsonObject {
     put("path", path)
     put("branch", branch)
@@ -89,6 +98,51 @@ fun newJson(
     put("skippedVariables", strings(skippedVariables))
     put("postCreateFailure", postCreateFailureJson(postCreateFailure))
     put("skippedLinks", strings(skippedLinks))
+    put("pods", podsJson(pods))
+    flutter?.let { put("flutter", flutterJson(it)) }
+}
+
+fun flutterJson(pubGet: FlutterPubGet): JsonObject = buildJsonObject {
+    put(
+        "pubGet",
+        buildJsonObject {
+            when (pubGet) {
+                FlutterPubGet.Resolved -> put("status", "resolved")
+                is FlutterPubGet.Needed -> {
+                    put("status", "needed")
+                    put("reason", flutterPubGetReason(pubGet.reason))
+                }
+            }
+        },
+    )
+}
+
+fun flutterPubGetReason(failure: FlutterPubGetFailure): String = when (failure) {
+    is FlutterPubGetFailure.NotFound -> "${failure.executable} wasn't found"
+    is FlutterPubGetFailure.Exited ->
+        "exited with code ${failure.exitCode}" + failure.errorLines.takeIf { it.isNotEmpty() }?.joinToString(" | ", prefix = ": ").orEmpty()
+    is FlutterPubGetFailure.Unexpected -> failure.message
+}
+
+fun flutterPubGetLine(pubGet: FlutterPubGet): String = when (pubGet) {
+    FlutterPubGet.Resolved -> "flutter pub get: packages resolved"
+    is FlutterPubGet.Needed -> "flutter pub get needed: ${flutterPubGetReason(pubGet.reason)}"
+}
+
+fun podsJson(pods: PodsPreparation): JsonObject = buildJsonObject {
+    put("cloned", strings(pods.cloned))
+    put(
+        "installNeeded",
+        JsonArray(
+            pods.installNeeded.map {
+                buildJsonObject {
+                    put("folder", it.folder)
+                    put("reason", it.reason.name.lowercase().replace('_', '-'))
+                }
+            },
+        ),
+    )
+    put("error", pods.error)
 }
 
 fun provisionJson(
@@ -99,6 +153,8 @@ fun provisionJson(
     postCreateFailure: WorktreeError.PostCreateCommandFailed?,
     removed: List<String> = emptyList(),
     skippedLinks: List<String> = emptyList(),
+    pods: PodsPreparation = PodsPreparation(),
+    flutter: FlutterPubGet? = null,
 ): JsonObject = buildJsonObject {
     put("path", path)
     put("copied", strings(files.filter { it.mode == ProvisionMode.COPIED }.map { it.path }))
@@ -109,6 +165,8 @@ fun provisionJson(
     put("postCreateFailure", postCreateFailureJson(postCreateFailure))
     put("removed", strings(removed))
     put("skippedLinks", strings(skippedLinks))
+    put("pods", podsJson(pods))
+    flutter?.let { put("flutter", flutterJson(it)) }
 }
 
 fun provisionCheckJson(path: String, drift: List<ProvisionDrift>): JsonObject = buildJsonObject {
@@ -174,6 +232,7 @@ data class CleanJson(
     val deletedBranches: List<String> = emptyList(),
     val failures: List<CleanFailureJson> = emptyList(),
     val gradleDaemonsStopped: List<Long> = emptyList(),
+    val mavenDaemonsStopped: List<Long> = emptyList(),
     val emulatorsStopped: List<String> = emptyList(),
     val simulatorsDeleted: List<String> = emptyList(),
     val derivedDataDeleted: List<String> = emptyList(),
@@ -230,6 +289,7 @@ fun cleanJson(clean: CleanJson): JsonObject = buildJsonObject {
         "providers",
         buildJsonObject {
             put("gradleDaemonsStopped", numbers(clean.gradleDaemonsStopped))
+            put("mavenDaemonsStopped", numbers(clean.mavenDaemonsStopped))
             put("emulatorsStopped", strings(clean.emulatorsStopped))
             put("simulatorsDeleted", strings(clean.simulatorsDeleted))
             put("derivedDataDeleted", strings(clean.derivedDataDeleted))
@@ -282,6 +342,8 @@ fun mavenJson(daemons: List<MavenDaemon>, attributed: Boolean): JsonObject = bui
                     buildJsonObject {
                         put("pid", daemon.pid)
                         put("memoryBytes", daemon.process.residentMemoryBytes)
+                        put("state", daemon.process.state.jsonLabel)
+                        put("idleSince", (daemon.process.state as? DaemonState.Idle)?.since?.toString())
                         put("worktree", daemon.owner.takeIf { attributed }?.jsonLabel)
                     },
                 )
@@ -355,6 +417,7 @@ val Stack.jsonLabel: String
         Stack.XCODE -> "xcode"
         Stack.MAVEN -> "maven"
         Stack.DOCKER_COMPOSE -> "docker-compose"
+        Stack.FLUTTER -> "flutter"
     }
 
 fun composeJson(projects: List<WorktreeComposeProject>, leftovers: List<ComposeResource> = emptyList()): JsonObject = buildJsonObject {
@@ -466,6 +529,37 @@ fun gradleStopJson(report: DaemonStopReport): JsonObject = buildJsonObject {
     )
 }
 
+fun mavenStopJson(report: MavenDaemonStopReport): JsonObject = buildJsonObject {
+    put("stopped", numbers(report.stopped.map { it.pid }))
+    put(
+        "kept",
+        buildJsonArray {
+            report.kept.forEach {
+                add(
+                    buildJsonObject {
+                        put("pid", it.pid)
+                        put("reason", it.reason.jsonLabel)
+                    },
+                )
+            }
+        },
+    )
+    put("notDaemons", numbers(report.notDaemons))
+    put(
+        "failures",
+        buildJsonArray {
+            report.failures.forEach {
+                add(
+                    buildJsonObject {
+                        put("pid", it.pid)
+                        put("message", it.detail)
+                    },
+                )
+            }
+        },
+    )
+}
+
 val DaemonKind.jsonLabel: String
     get() = when (this) {
         DaemonKind.GRADLE -> "gradle"
@@ -505,6 +599,7 @@ fun xcodeJson(active: Boolean, listing: DerivedDataListing?): JsonObject = build
                     buildJsonObject {
                         put("path", it.folder.path)
                         put("sizeBytes", it.folder.sizeBytes ?: 0L)
+                        put("sourcePackagesBytes", it.folder.packagesBytes)
                         put("worktree", (it.owner as DerivedDataOwner.Worktree).path)
                     },
                 )
@@ -514,6 +609,8 @@ fun xcodeJson(active: Boolean, listing: DerivedDataListing?): JsonObject = build
     put("orphans", derivedDataFolders(listing?.orphans.orEmpty()))
     put("unavailableVolumeFolders", listing?.folders?.count { it.owner == DerivedDataOwner.UnavailableVolume } ?: 0)
     put("compilationCacheBytes", listing?.compilationCacheBytes)
+    put("swiftPmCacheBytes", listing?.packageCaches?.swiftPmBytes)
+    put("cocoaPodsCacheBytes", listing?.packageCaches?.cocoaPodsBytes)
 }
 
 private fun derivedDataFolders(folders: List<DerivedDataFolder>): JsonArray = buildJsonArray {
@@ -522,6 +619,7 @@ private fun derivedDataFolders(folders: List<DerivedDataFolder>): JsonArray = bu
             buildJsonObject {
                 put("path", it.path)
                 put("sizeBytes", it.sizeBytes ?: 0L)
+                put("sourcePackagesBytes", it.packagesBytes)
             },
         )
     }
@@ -577,6 +675,7 @@ fun emulatorJson(
     emulator: WorktreeEmulator?,
     acquisition: ResourceAcquisition? = null,
     releaseRecord: ReleaseRecord? = null,
+    orcaView: OrcaEmulatorView? = null,
 ): JsonObject = buildJsonObject {
     put("worktree", worktree)
     put("serial", emulator?.serial)
@@ -585,6 +684,7 @@ fun emulatorJson(
     acquisition?.let { put("acquiredNow", it.acquiredNow) }
     acquisition?.let { put("released", strings(it.releases.mapNotNull { release -> release.worktreePath })) }
     put("waited", acquisition?.waitedSeconds)
+    orcaView?.let { put("orcaView", it.jsonValue) }
     releaseRecord?.let {
         put(
             "releasedFor",
@@ -596,6 +696,14 @@ fun emulatorJson(
     }
 }
 
+private val OrcaEmulatorView.jsonValue: String
+    get() = when (this) {
+        OrcaEmulatorView.Shown -> "shown"
+        OrcaEmulatorView.NotOpen -> "not-open"
+        OrcaEmulatorView.Skipped -> "skipped"
+        is OrcaEmulatorView.Failed -> "failed"
+    }
+
 private val EmulatorState.jsonLabel: String
     get() = name.lowercase()
 
@@ -604,6 +712,7 @@ fun simulatorJson(
     simulator: WorktreeSimulator?,
     acquisition: ResourceAcquisition? = null,
     releaseRecord: ReleaseRecord? = null,
+    orcaView: OrcaEmulatorView? = null,
 ): JsonObject = buildJsonObject {
     put("worktree", worktree)
     put("udid", simulator?.udid)
@@ -613,6 +722,7 @@ fun simulatorJson(
     acquisition?.let { put("acquiredNow", it.acquiredNow) }
     acquisition?.let { put("released", strings(it.releases.mapNotNull { release -> release.worktreePath })) }
     put("waited", acquisition?.waitedSeconds)
+    orcaView?.let { put("orcaView", it.jsonValue) }
     releaseRecord?.let {
         put(
             "releasedFor",
@@ -702,6 +812,12 @@ val ResourceKind.jsonLabel: String
 private val SimulatorState.jsonLabel: String
     get() = name.lowercase()
 
+fun baseJson(path: String, branch: String?, base: String?): JsonObject = buildJsonObject {
+    put("path", path)
+    put("branch", branch)
+    put("base", base)
+}
+
 fun removeJson(
     path: String,
     branch: String?,
@@ -727,20 +843,31 @@ fun removeJson(
     put("failures", strings(failures))
 }
 
-fun openJson(path: String, branch: String?, opening: HerdrOpening): JsonObject = buildJsonObject {
+fun openJson(path: String, branch: String?, opening: RunnerOpening): JsonObject = buildJsonObject {
     put("path", path)
     put("branch", branch)
-    put("herdr", opening.outcome.jsonValue)
-    put("pane_id", opening.paneId)
+    put(opening.runner.flag, opening.outcome.jsonValue)
+    put(opening.runner.handleKey, opening.handle)
     put("agent", opening.agent)
     put("session_name", opening.sessionName)
+    if (opening.runner == RunnerId.ORCA) {
+        put("emulator", opening.emulator)
+        put("simulator", opening.simulator)
+        put("devicesSkipped", opening.devicesSkipped)
+    }
 }
 
-val HerdrOutcome.jsonValue: String
+val RunnerId.handleKey: String
     get() = when (this) {
-        HerdrOutcome.OPENED -> "opened"
-        HerdrOutcome.STARTED_AGENT -> "started-agent"
-        HerdrOutcome.FOCUSED -> "focused"
+        RunnerId.HERDR -> "pane_id"
+        RunnerId.ORCA -> "terminal"
+    }
+
+val RunnerOutcome.jsonValue: String
+    get() = when (this) {
+        RunnerOutcome.OPENED -> "opened"
+        RunnerOutcome.STARTED_AGENT -> "started-agent"
+        RunnerOutcome.FOCUSED -> "focused"
     }
 
 fun repairJson(repaired: List<String>): JsonObject = buildJsonObject {

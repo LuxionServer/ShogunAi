@@ -11,4 +11,6 @@ data class Worktree(
     val skippedPostCreateCommands: List<List<String>> = emptyList(),
     val skippedVariables: List<String> = emptyList(),
     val skippedLinks: List<String> = emptyList(),
+    val pods: PodsPreparation = PodsPreparation(),
+    val flutter: FlutterPubGet? = null,
 )

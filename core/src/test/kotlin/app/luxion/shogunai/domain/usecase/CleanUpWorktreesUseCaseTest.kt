@@ -117,6 +117,36 @@ class CleanUpWorktreesUseCaseTest {
     }
 
     @Test
+    fun `selects a clean worktree merged into its recorded base but not into the main branch`() {
+        val mergedIntoEpic = WorktreeStatus(
+            uncommittedChanges = 0,
+            upstream = null,
+            mainBranch = Divergence(ahead = 4, behind = 0),
+            lastCommitAt = null,
+            base = Divergence(ahead = 0, behind = 1),
+            baseName = "epic/redesign",
+        )
+
+        assertEquals(listOf(first), selectCleanupCandidates(listOf(first), mapOf(first.path to mergedIntoEpic)))
+    }
+
+    @Test
+    fun `deletes a branch contained in its recorded base but not in the main branch`() = runTest {
+        val executor = executor(
+            mapOf(
+                listOf("git", "config", "--get", "branch.feature/TASK-1.gh-merge-base") to { c -> success(c, "epic/redesign\n") },
+                listOf("git", "merge-base", "--is-ancestor", "feature/TASK-1", "origin/develop") to { c -> failure(c, stderr = "") },
+            ),
+        )
+
+        val report = CleanUpWorktreesUseCase(config, executor)(listOf(first), mainBranch, deleteBranches = true).getOrThrow()
+
+        assertTrue(executor.executed("git", "merge-base", "--is-ancestor", "feature/TASK-1", "origin/epic/redesign"))
+        assertTrue(executor.executed("git", "branch", "-D", "--", "feature/TASK-1"))
+        assertTrue(report.keptBranches.isEmpty())
+    }
+
+    @Test
     fun `removes every worktree and prunes the missing ones`() = runTest {
         val executor = executor()
 

@@ -4,12 +4,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.luxion.shogunai.domain.model.BranchType
+import app.luxion.shogunai.domain.model.RunnerId
+import app.luxion.shogunai.domain.model.RunnerOpening
 import app.luxion.shogunai.domain.usecase.GroupRepositoryResult
 import app.luxion.shogunai.domain.usecase.isValidGitRefSegment
 import app.luxion.shogunai.domain.usecase.normalizeTaskId
 
-class NewChange(val membership: MultirepoMembership) {
+class NewChange(val membership: MultirepoMembership, installedRunners: Set<RunnerId> = emptySet(), runnerInUse: RunnerId? = null) {
     val aliases: List<String> = membership.aliases.values.sorted()
+
+    val runners: List<RunnerId?> = (listOf(null) + RunnerId.entries.filter { it in installedRunners }).takeIf { it.size > 1 }.orEmpty()
+
+    var runner by mutableStateOf(runnerInUse?.takeIf { it in runners })
+    var openings by mutableStateOf<Map<String, Result<RunnerOpening>>?>(null)
+        internal set
 
     var taskId by mutableStateOf("")
         private set

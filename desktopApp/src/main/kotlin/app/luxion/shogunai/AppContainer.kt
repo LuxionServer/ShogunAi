@@ -1,5 +1,9 @@
 package app.luxion.shogunai
 
+import app.luxion.shogunai.domain.io.AgentRunner
+import app.luxion.shogunai.domain.model.RunnerId
+import app.luxion.shogunai.domain.usecase.HerdrAgentRunner
+import app.luxion.shogunai.domain.usecase.OrcaAgentRunner
 import app.luxion.shogunai.domain.usecase.DesktopTurnLedger
 import app.luxion.shogunai.domain.usecase.ReadDesktopTurnUseCase
 import app.luxion.shogunai.domain.usecase.ReadHeadlessAppUseCase
@@ -8,9 +12,11 @@ import app.luxion.shogunai.infrastructure.MacAppWindowService
 import app.luxion.shogunai.infrastructure.GradleHeadlessAppLauncher
 import app.luxion.shogunai.domain.usecase.StopHeadlessAppUseCase
 import app.luxion.shogunai.domain.usecase.HeadlessAppWorktrees
+import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.DerivedDataQuota
 import app.luxion.shogunai.domain.model.DerivedDataQuotaMode
 import app.luxion.shogunai.domain.model.MeasuredSize
+import app.luxion.shogunai.domain.model.PackageCacheSizes
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.Multirepo
 import app.luxion.shogunai.domain.usecase.AddedRepository
@@ -22,7 +28,6 @@ import app.luxion.shogunai.domain.usecase.CreateGroupUseCase
 import app.luxion.shogunai.domain.usecase.DetectGroupsUseCase
 import app.luxion.shogunai.domain.usecase.MultirepoSharedEnvironment
 import app.luxion.shogunai.domain.usecase.MultirepoMember
-import app.luxion.shogunai.domain.usecase.OpenMultirepoAgentInHerdrUseCase
 import app.luxion.shogunai.domain.usecase.RegisteredMultirepo
 import app.luxion.shogunai.domain.usecase.ResolveMultirepoUseCase
 import app.luxion.shogunai.domain.usecase.WorktreeGroup
@@ -74,11 +79,13 @@ import app.luxion.shogunai.domain.usecase.TourLocation
 import app.luxion.shogunai.ui.shell.UpdateState
 import app.luxion.shogunai.domain.usecase.ClaudeCodeHooks
 import app.luxion.shogunai.infrastructure.ExecutableLocator
+import app.luxion.shogunai.infrastructure.ShellLoginShellPath
 import app.luxion.shogunai.domain.usecase.CommandLineTool
 import app.luxion.shogunai.infrastructure.NioLauncherFiles
 import app.luxion.shogunai.infrastructure.PowerShellUserPath
 import app.luxion.shogunai.infrastructure.FileAgentSessionStore
 import app.luxion.shogunai.infrastructure.FileClaudeSessionRegistry
+import app.luxion.shogunai.infrastructure.SystemProcessEnvironmentReader
 import app.luxion.shogunai.ui.shell.openInBrowser
 import java.nio.file.Files
 import java.nio.file.Path
@@ -140,10 +147,13 @@ import app.luxion.shogunai.domain.usecase.DetectMobileSecretsUseCase
 import app.luxion.shogunai.domain.usecase.DetectRepositoryStacksUseCase
 import app.luxion.shogunai.domain.usecase.ListComposeProjectsUseCase
 import app.luxion.shogunai.domain.usecase.ListMavenDaemonsUseCase
+import app.luxion.shogunai.domain.usecase.StopMavenDaemonsUseCase
 import app.luxion.shogunai.domain.usecase.TakeDownComposeProjectsUseCase
 import app.luxion.shogunai.domain.model.ComposeDownReport
 import app.luxion.shogunai.domain.model.DockerComposeProvider
+import app.luxion.shogunai.domain.model.MavenDaemon
 import app.luxion.shogunai.domain.model.MavenDaemonProcess
+import app.luxion.shogunai.domain.model.MavenDaemonStopReport
 import app.luxion.shogunai.domain.model.MavenProvider
 import app.luxion.shogunai.domain.model.WorktreeComposeProject
 import app.luxion.shogunai.infrastructure.DockerComposeProjectSource
@@ -159,6 +169,18 @@ import app.luxion.shogunai.domain.usecase.RunComposeProjectUseCase
 import app.luxion.shogunai.domain.usecase.worktreeComposeProjectName
 import app.luxion.shogunai.infrastructure.ProcessMavenDaemonSource
 import app.luxion.shogunai.domain.usecase.CloseHerdrWorkspacesUseCase
+import app.luxion.shogunai.domain.usecase.ClaudeSessionNaming
+import app.luxion.shogunai.domain.usecase.CloseOrcaTerminalsUseCase
+import app.luxion.shogunai.domain.usecase.OpenWorktreeInOrcaUseCase
+import app.luxion.shogunai.domain.usecase.OrcaOrigins
+import app.luxion.shogunai.domain.usecase.OrcaSyncItem
+import app.luxion.shogunai.domain.usecase.OrcaWorktreeReader
+import app.luxion.shogunai.domain.usecase.OrcaWorktreeSync
+import app.luxion.shogunai.domain.model.ObservedPort
+import app.luxion.shogunai.domain.model.OrcaOpening
+import app.luxion.shogunai.infrastructure.CliGitHubClient
+import app.luxion.shogunai.infrastructure.CliOrcaClient
+import app.luxion.shogunai.infrastructure.JsonOrcaWorkspaceStore
 import app.luxion.shogunai.domain.usecase.CopyWorktreeLaunchCommandUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
@@ -177,6 +199,8 @@ import app.luxion.shogunai.domain.usecase.ListWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.MachineProviderContributions
 import app.luxion.shogunai.domain.usecase.effectiveGradleJvmArgs
 import app.luxion.shogunai.domain.usecase.MeasureWorktreeSizeUseCase
+import app.luxion.shogunai.domain.usecase.PrepareCocoaPodsUseCase
+import app.luxion.shogunai.domain.usecase.ResolveFlutterPackagesUseCase
 import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.ProviderContributions
 import app.luxion.shogunai.domain.usecase.ReadEmulatorStatesUseCase
@@ -195,13 +219,16 @@ import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.WorktreeResourcePlan
 import app.luxion.shogunai.domain.usecase.RepairWorktreesUseCase
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
+import app.luxion.shogunai.domain.usecase.ResolveRecordedBasesUseCase
 import app.luxion.shogunai.domain.usecase.ProjectRegistration
 import app.luxion.shogunai.domain.usecase.RegisterProjectUseCase
 import app.luxion.shogunai.domain.usecase.ResolveRepositoryUseCase
 import app.luxion.shogunai.domain.usecase.ResolveStartPointUseCase
+import app.luxion.shogunai.domain.usecase.ResolveBaseBranchUseCase
 import app.luxion.shogunai.ui.projectconfig.RepositoryInspection
 import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.WorktreeEnvironmentCache
+import app.luxion.shogunai.domain.usecase.ShowEmulatorInOrcaUseCase
 import app.luxion.shogunai.domain.usecase.StartWorktreeEmulatorUseCase
 import app.luxion.shogunai.domain.usecase.StartWorktreeSimulatorUseCase
 import app.luxion.shogunai.domain.usecase.StopGradleDaemonsUseCase
@@ -221,6 +248,7 @@ import app.luxion.shogunai.infrastructure.JsonThemePreferenceRepository
 import app.luxion.shogunai.infrastructure.LocalAndroidSdk
 import app.luxion.shogunai.infrastructure.SharedDeviceStatesAndroidSdk
 import app.luxion.shogunai.infrastructure.MacDerivedDataSource
+import app.luxion.shogunai.infrastructure.MacPackageCacheSource
 import app.luxion.shogunai.infrastructure.NioDeviceWaitQueue
 import app.luxion.shogunai.infrastructure.NioEnvironmentStateStore
 import app.luxion.shogunai.infrastructure.NioFileManager
@@ -302,6 +330,7 @@ class AppContainer {
                 }
             }
         }
+    private val packageCacheSource = MacPackageCacheSource(fileManager, System.getProperty("user.home"))
     private val derivedDataSource = MacDerivedDataSource(
         shellCommandExecutor,
         fileManager,
@@ -324,12 +353,15 @@ class AppContainer {
     val agentChoices = AgentChoices(settingsFile.read().worktreeAgents) { transform ->
         settingsFile.update { it.copy(worktreeAgents = transform(it.worktreeAgents)) }
     }
-    private val commandLineTool = ExecutableLocator().let { locator ->
+    private val loginShellPath = ShellLoginShellPath(shellCommandExecutor).also { path ->
+        Thread({ path.folders() }, "login-shell-path").apply { isDaemon = true }.start()
+    }
+    private val commandLineTool = ExecutableLocator(pathFolders = loginShellPath::folders).let { locator ->
         CommandLineTool(
             os = HostOs.current(),
             appLauncher = System.getProperty("jpackage.app-path"),
             home = System.getProperty("user.home"),
-            pathFolders = System.getenv("PATH").orEmpty().split(java.io.File.pathSeparator).filter { it.isNotBlank() },
+            pathFolders = loginShellPath::folders,
             userBinFolders = locator.userBinFolders(),
             findShogun = { locator.find("shogun") },
             files = NioLauncherFiles(),
@@ -360,12 +392,12 @@ class AppContainer {
     )
     private val editorResolver = EditorExecutableResolver(
         HostOs.current(),
-        ExecutableLocator(),
+        ExecutableLocator(pathFolders = loginShellPath::folders),
         RegistryUninstallLocations(shellCommandExecutor),
     )
     val tools = ToolsPreferences(
         JsonToolPreferenceRepository(settingsFile),
-        LocalToolDetector(shellCommandExecutor, editorResolver = editorResolver),
+        LocalToolDetector(shellCommandExecutor, editorResolver = editorResolver, isRunnerInstalled = ::isRunnerInstalled),
     )
     private val terminalLaunchers = listOf(
         MacTerminalLauncher(TerminalId.TERMINAL, shellCommandExecutor),
@@ -395,6 +427,16 @@ class AppContainer {
         composeProjectRegistry,
         { repository, worktree -> MultirepoSharedEnvironment(resolveMultirepo, shellCommandExecutor).forWorktree(repository, worktree) },
     )
+
+    private suspend fun startEmulatorShownInOrca(config: ProjectConfig, worktreePath: String): Result<DeviceStart<WorktreeEmulator>> =
+        startEmulator(config, worktreePath).onSuccess {
+            showEmulatorInOrca(worktreePath, it.device.serial) { readSimulatorStates.runningUdid(config, worktreePath) != null }
+        }
+
+    private suspend fun startSimulatorShownInOrca(config: ProjectConfig, worktreePath: String): Result<DeviceStart<WorktreeSimulator>> =
+        startSimulator(config, worktreePath).onSuccess {
+            showEmulatorInOrca(worktreePath, it.device.udid) { readEmulatorStates.runningSerial(config, worktreePath) != null }
+        }
 
     private fun simulatorSettingsFor(repositoryPath: String): SimulatorSettings =
         runCatching { projectRepository.list() }.getOrDefault(emptyList())
@@ -426,6 +468,15 @@ class AppContainer {
     private val androidSdk = SharedDeviceStatesAndroidSdk(LocalAndroidSdk(shellCommandExecutor, fileManager))
     private val herdrConfig = HerdrConfigFile()
     private val herdrClient = CliHerdrClient(shellCommandExecutor)
+    private val orcaClient = CliOrcaClient(shellCommandExecutor)
+    private val orcaStore = JsonOrcaWorkspaceStore()
+    private val orcaReader = OrcaWorktreeReader(orcaClient, orcaStore)
+    private val orcaSync = OrcaWorktreeSync(orcaClient, orcaStore, CliGitHubClient(shellCommandExecutor))
+
+    private fun isRunnerInstalled(runner: RunnerId): Boolean = when (runner) {
+        RunnerId.HERDR -> herdrClient.isInstalled()
+        RunnerId.ORCA -> orcaClient.isInstalled()
+    }
     private val resourceLimitsRepository: ResourceLimitsRepository = JsonResourceLimitsRepository(settingsFile)
     private val resolveResourceLimits = ResolveResourceLimitsUseCase(resourceLimitsRepository, JvmMachineCapacity())
     private val listGradleDaemons = ListGradleDaemonsUseCase(gradleDaemonSource, fileManager)
@@ -435,6 +486,20 @@ class AppContainer {
         ClaudeCodeHooks.claudeSessionsDirectory(System.getenv("CLAUDE_CONFIG_DIR"), System.getProperty("user.home")),
     )
     private val herdrLauncher = HerdrAgentLauncher(herdrClient, registry = claudeSessions)
+    private val processEnvironment = SystemProcessEnvironmentReader(shellCommandExecutor)
+
+    private fun orcaSessionNaming() = ClaudeSessionNaming(claudeSessions, processEnvironment = processEnvironment)
+
+    private val agentRunners: Map<RunnerId, AgentRunner> = listOf(
+        HerdrAgentRunner(herdrClient, resolveEnvironment, herdrLauncher),
+        OrcaAgentRunner(
+            orcaClient,
+            resolveEnvironment,
+            orcaSessionNaming(),
+            runningEmulator = { config, path -> readEmulatorStates.runningSerial(config, path) },
+            runningSimulator = { config, path -> readSimulatorStates.runningUdid(config, path) },
+        ),
+    ).associateBy { it.id }
     private val readPool = ReadResourcePoolUseCase(
         resolveEnvironment,
         environmentStateStore,
@@ -463,6 +528,7 @@ class AppContainer {
     val resources = ResourcePreferences(resourceLimitsRepository, resolveResourceLimits, showsSimulators = appleSimulators.isSupported(), showsDerivedDataQuota = derivedDataSource.isSupported())
     private val startSimulator = StartWorktreeSimulatorUseCase(repositoryProvisioningSource, appleSimulators, acquireResource, resolveEnvironment)
     private val startEmulator = StartWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, acquireResource, androidSdk)
+    private val showEmulatorInOrca = ShowEmulatorInOrcaUseCase(orcaClient)
     private val stopEmulator = StopWorktreeEmulatorUseCase(repositoryProvisioningSource, resolveEnvironment, androidSdk)
     private val headlessAppLauncher = GradleHeadlessAppLauncher(shellCommandExecutor, Path.of(System.getProperty("user.home"), ".shogunai", "headless").toString())
     private val headlessAppWindows = MacAppWindowService(shellCommandExecutor, Path.of(System.getProperty("user.home"), ".shogunai", "headless").toString())
@@ -508,16 +574,25 @@ class AppContainer {
             RepositoryInspection(topLevel, mainBranch?.name)
         }
 
-    val detectRunningAgents = DetectRunningAgentsUseCase(shellCommandExecutor, herdrClient, agentSessionStore, claudeSessions = claudeSessions)
+    val detectRunningAgents =
+        DetectRunningAgentsUseCase(shellCommandExecutor, herdrClient, agentSessionStore, claudeSessions = claudeSessions, orca = orcaReader)
+
+    suspend fun syncOrca(items: List<OrcaSyncItem>) {
+        val rows = orcaReader.lastRows() ?: return
+        withContext(Dispatchers.IO) { orcaSync.sync(items, rows, prune = true) }
+    }
 
     private val prepareEnvironment = PrepareWorktreeEnvironmentUseCase(
         resolveEnvironment,
         WriteEnvironmentFileUseCase(shellCommandExecutor, fileManager, repositoryProvisioningSource),
+        PrepareCocoaPodsUseCase(shellCommandExecutor, fileManager, repositoryProvisioningSource, isMacOs = derivedDataSource.isSupported()),
+        ResolveFlutterPackagesUseCase(shellCommandExecutor, fileManager, repositoryProvisioningSource),
     )
 
     val machineUseCases = MachineUseCases(
         listDaemons = { runCatching { gradleDaemonSource.list() } },
         listMavenDaemons = { runCatching { mavenDaemonSource.list() } },
+        stopMavenDaemons = { pids -> StopMavenDaemonsUseCase(mavenDaemonSource, shellCommandExecutor)(pids) },
         listComposeProjects = { config, worktrees, root ->
             ListComposeProjectsUseCase(composeProjectSource, composeProjectRegistry)(config.baseRepositoryPath, worktrees, root)
         },
@@ -532,12 +607,13 @@ class AppContainer {
         listDerivedData = { ListDerivedDataUseCase(derivedDataSource)(emptyList(), includeCompilationCache = false, measure = DerivedDataMeasure.NONE) },
         measureDerivedData = { folders, remeasure -> measureDerivedDataSizes(folders, remeasure) },
         measureCompilationCache = { runCatching { derivedDataSource.compilationCacheBytes() } },
+        measurePackageCaches = { runCatching { packageCacheSource.sizes() } },
         deleteOrphanedDerivedData = { DeleteOrphanedDerivedDataUseCase(derivedDataSource)() },
         readEmulatorStates = { config, worktrees -> readEmulatorStates(config, worktrees) },
         readRunningEmulators = { config ->
             runCatching { androidSdk.deviceStates(androidSdk.locate(config.baseRepositoryPath)) }
         },
-        startEmulator = { config, worktreePath -> startEmulator(config, worktreePath) },
+        startEmulator = { config, worktreePath -> startEmulatorShownInOrca(config, worktreePath) },
         readPool = { kind, config, worktrees ->
             runCatching { readPool.of(kind, config.baseRepositoryPath, worktrees) }
         },
@@ -546,7 +622,7 @@ class AppContainer {
         stopEmulator = { config, worktreePath -> stopEmulator(config, worktreePath) },
         stopEmulatorSerials = { config, serials -> runCatching { stopEmulator.stopSerials(config, serials) } },
         readSimulatorStates = { config, worktrees -> readSimulatorStates(config, worktrees) },
-        startSimulator = { config, worktreePath -> startSimulator(config, worktreePath) },
+        startSimulator = { config, worktreePath -> startSimulatorShownInOrca(config, worktreePath) },
         stopSimulator = { config, worktreePath -> stopSimulator(config, worktreePath) },
         readSimulatorOrphans = { config -> deleteSimulators.orphans(config) },
         deleteSimulators = { udids -> deleteSimulators(udids) },
@@ -599,8 +675,10 @@ class AppContainer {
                 provisioningRecords,
             )(members, taskId, branchType, fetch, onRepository)
         },
-        openAgent = { multirepo -> OpenMultirepoAgentInHerdrUseCase(herdrClient, herdrLauncher)(multirepo) },
+        openAgent = { runner, multirepo -> agentRunners.getValue(runner).openMultirepoAgent(multirepo) },
         trust = { multirepo -> configureMultirepo.trust(multirepo) },
+        openGroup = { runner, group -> agentRunners.getValue(runner).openGroup(group) },
+        installedRunners = agentRunners.values.filter { it.isInstalled() }.map { it.id }.toSet(),
     )
 
     fun forgetMissingMultirepos() {
@@ -661,6 +739,11 @@ class AppContainer {
 
         override fun clearWorkspace(multirepo: Multirepo) = configureMultirepo.clearWorkspace(multirepo)
 
+        override fun detectWorkspace(multirepo: Multirepo) = configureMultirepo.detectWorkspace(multirepo)
+
+        override fun setSharedVariables(multirepo: Multirepo, byAlias: Map<String, Map<String, String>>) =
+            configureMultirepo.setSharedVariables(multirepo, byAlias)
+
         override fun setAgent(multirepo: Multirepo, agent: AgentLaunchConfig) = configureMultirepo.setAgent(multirepo, agent)
 
         override fun setWorktreesRoot(multirepo: Multirepo, folder: String) = configureMultirepo.setWorktreesRoot(multirepo, folder)
@@ -693,12 +776,22 @@ class AppContainer {
         listBranches = ListBranchesUseCase(config, shellCommandExecutor),
         fetchRemote = FetchRemoteUseCase(config, shellCommandExecutor),
         resolveStartPoint = { ref -> ResolveStartPointUseCase(shellCommandExecutor)(config.baseRepositoryPath, ref) },
-        remove = RemoveWorktreeUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient), fileManager, stopHeadlessApp, releaseDesktopTurn),
+        resolveBaseBranch = { ref -> ResolveBaseBranchUseCase(shellCommandExecutor)(config.baseRepositoryPath, ref) },
+        remove = RemoveWorktreeUseCase(
+            config,
+            shellCommandExecutor,
+            CloseHerdrWorkspacesUseCase(config, herdrClient),
+            fileManager,
+            stopHeadlessApp,
+            releaseDesktopTurn,
+            CloseOrcaTerminalsUseCase(orcaClient),
+        ),
         deleteBranch = DeleteBranchUseCase(config, shellCommandExecutor),
         copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboardWriter),
         agents = AgentUseCases(config, agentChoices),
         repair = RepairWorktreesUseCase(config, shellCommandExecutor, fileManager),
         resolveMainBranch = ResolveMainBranchUseCase(config, shellCommandExecutor),
+        resolveRecordedBases = { ResolveRecordedBasesUseCase(config, shellCommandExecutor)() },
         readStatus = ReadWorktreeStatusUseCase(shellCommandExecutor, fileManager),
         cleanUp = CleanUpWorktreesUseCase(
             config,
@@ -709,6 +802,7 @@ class AppContainer {
             composeProjectRegistry,
             stopHeadlessApp,
             releaseDesktopTurn,
+            CloseOrcaTerminalsUseCase(orcaClient),
         ),
         detectAgents = { worktrees -> detectRunningAgents(config, worktrees) },
         measureSize = MeasureWorktreeSizeUseCase(fileManager),
@@ -725,7 +819,7 @@ class AppContainer {
                 }
             },
             readStates = { worktrees -> readEmulatorStates(config, worktrees) },
-            start = { worktreePath -> startEmulator(config, worktreePath) },
+            start = { worktreePath -> startEmulatorShownInOrca(config, worktreePath) },
             stop = { worktreePath -> stopEmulator(config, worktreePath) },
             stopSerials = { serials -> runCatching { stopEmulator.stopSerials(config, serials) } },
             readRelease = { worktreePath -> readReleaseRecord(worktreePath, ResourceKind.EMULATOR) },
@@ -743,7 +837,7 @@ class AppContainer {
         simulator = SimulatorUseCases(
             declared = { withContext(Dispatchers.IO) { simulatorSetup.isAvailable(config.baseRepositoryPath) } },
             readStates = { worktrees -> readSimulatorStates(config, worktrees) },
-            start = { worktreePath -> startSimulator(config, worktreePath) },
+            start = { worktreePath -> startSimulatorShownInOrca(config, worktreePath) },
             stop = { worktreePath -> stopSimulator(config, worktreePath) },
             orphans = { deleteSimulators.orphans(config) },
             delete = { udids -> deleteSimulators(udids) },
@@ -794,6 +888,19 @@ class AppContainer {
             openWorkspaces = CloseHerdrWorkspacesUseCase(config, herdrClient)::openWorkspaces,
             focusAgent = { paneId -> runCatching { herdrClient.focusAgent(paneId) } },
         ),
+        orca = OrcaUseCases(
+            open = OpenWorktreeInOrcaUseCase(
+                config,
+                orcaClient,
+                resolveEnvironment,
+                orcaSessionNaming(),
+                runningEmulator = { path -> readEmulatorStates.runningSerial(config, path) },
+                runningSimulator = { path -> readSimulatorStates.runningUdid(config, path) },
+            )::invoke,
+            withTerminals = { paths -> withContext(Dispatchers.IO) { CloseOrcaTerminalsUseCase(orcaClient).withTerminals(paths) } },
+            origins = orcaReader::origins,
+            ports = orcaReader::ports,
+        ),
         gradle = GradleUseCases(
             provider = {
                 withContext(Dispatchers.IO) {
@@ -812,6 +919,8 @@ class AppContainer {
                     runCatching { repositoryProvisioningSource.read(config.baseRepositoryPath).providers.maven }.getOrNull()
                 }
             },
+            listDaemons = { worktrees -> ListMavenDaemonsUseCase(mavenDaemonSource, fileManager)(worktrees, config.worktreesRoot.ifBlank { null }) },
+            stopDaemons = { pids -> StopMavenDaemonsUseCase(mavenDaemonSource, shellCommandExecutor)(pids) },
         ),
         compose = ComposeUseCases(
             provider = {
@@ -868,11 +977,13 @@ data class WorktreeUseCases(
     val listBranches: ListBranchesUseCase,
     val fetchRemote: FetchRemoteUseCase,
     val resolveStartPoint: suspend (String) -> Result<String>,
+    val resolveBaseBranch: suspend (String) -> String? = { null },
     val remove: RemoveWorktreeUseCase,
     val deleteBranch: DeleteBranchUseCase,
     val copyLaunchCommand: CopyWorktreeLaunchCommandUseCase,
     val repair: RepairWorktreesUseCase,
     val resolveMainBranch: ResolveMainBranchUseCase,
+    val resolveRecordedBases: suspend () -> Map<String, MainBranch> = { emptyMap() },
     val readStatus: ReadWorktreeStatusUseCase,
     val cleanUp: CleanUpWorktreesUseCase,
     val detectAgents: suspend (List<Worktree>) -> Result<Map<String, List<RunningAgent>>>,
@@ -887,6 +998,7 @@ data class WorktreeUseCases(
     val maven: MavenUseCases = MavenUseCases.NONE,
     val compose: ComposeUseCases = ComposeUseCases.NONE,
     val herdr: HerdrUseCases = HerdrUseCases.NONE,
+    val orca: OrcaUseCases = OrcaUseCases.NONE,
     val tools: ToolUseCases = ToolUseCases.NONE,
     val provisioning: ProvisioningUseCases = ProvisioningUseCases.NONE,
     val readEnvironment: suspend (Worktree) -> Result<WorktreeEnvironment> = { Result.success(WorktreeEnvironment()) },
@@ -944,12 +1056,14 @@ class MachineUseCases(
     val resolveDerivedDataQuota: suspend (ResourceSettings, Long) -> DerivedDataQuota =
         { settings, _ -> DerivedDataQuota(settings.quotaMode, settings.fixedDerivedDataQuotaBytes.takeIf { settings.quotaMode == DerivedDataQuotaMode.FIXED }) },
     val listMavenDaemons: suspend () -> Result<List<MavenDaemonProcess>> = { Result.success(emptyList()) },
+    val stopMavenDaemons: suspend (List<Long>?) -> Result<MavenDaemonStopReport> = { Result.success(MavenDaemonStopReport()) },
     val listComposeProjects: suspend (ProjectConfig, List<Worktree>, String?) -> Result<List<WorktreeComposeProject>> =
         { _, _, _ -> Result.success(emptyList()) },
     val takeDownComposeProjects: suspend (List<String>) -> ComposeDownReport = { ComposeDownReport() },
     val listComposeLeftovers: suspend (ProjectConfig, List<Worktree>) -> Result<List<ComposeResource>> = { _, _ -> Result.success(emptyList()) },
     val removeComposeLeftovers: suspend (ProjectConfig, List<ComposeResource>, Boolean) -> ComposeLeftoversReport =
         { _, _, _ -> ComposeLeftoversReport() },
+    val measurePackageCaches: suspend () -> Result<PackageCacheSizes> = { Result.success(PackageCacheSizes()) },
 )
 
 data class SimulatorUseCases(
@@ -1004,6 +1118,17 @@ data class HerdrUseCases(
             worktreesRoot = { null },
             open = { _, _ -> Result.failure(WorktreeError.HerdrNotInstalled) },
         )
+    }
+}
+
+data class OrcaUseCases(
+    val open: suspend (Worktree, AgentLaunchConfig) -> Result<OrcaOpening>,
+    val withTerminals: suspend (List<String>) -> Set<String> = { emptySet() },
+    val origins: () -> OrcaOrigins? = { null },
+    val ports: (List<Worktree>) -> Map<String, List<ObservedPort>>? = { null },
+) {
+    companion object {
+        val NONE = OrcaUseCases(open = { _, _ -> Result.failure(WorktreeError.OrcaNotInstalled) })
     }
 }
 
@@ -1073,7 +1198,11 @@ data class GradleUseCases(
     val isBuildCacheEnabled: suspend () -> Boolean,
 )
 
-data class MavenUseCases(val provider: suspend () -> MavenProvider?) {
+data class MavenUseCases(
+    val provider: suspend () -> MavenProvider?,
+    val listDaemons: suspend (List<Worktree>) -> Result<List<MavenDaemon>> = { Result.success(emptyList()) },
+    val stopDaemons: suspend (List<Long>) -> Result<MavenDaemonStopReport> = { Result.success(MavenDaemonStopReport()) },
+) {
     companion object {
         val NONE = MavenUseCases(provider = { null })
     }

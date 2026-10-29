@@ -1,24 +1,35 @@
 package app.luxion.shogunai.ui.worktree
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runComposeUiTest
 import app.luxion.shogunai.domain.model.Divergence
+import app.luxion.shogunai.domain.model.AgentState
+import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.WorktreeStatus
 import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
 import app.luxion.shogunai.domain.usecase.GroupRepositoryResult
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.Multirepo
+import app.luxion.shogunai.domain.model.RunnerId
+import app.luxion.shogunai.domain.model.RunnerOpening
+import app.luxion.shogunai.domain.model.RunnerOutcome
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.SharedVariablesDeclaration
+import app.luxion.shogunai.ui.actions.ActionId
+import app.luxion.shogunai.ui.actions.GroupActionContext
+import app.luxion.shogunai.ui.actions.groupCatalog
 import app.luxion.shogunai.ui.i18n.EnglishStrings
 import app.luxion.shogunai.ui.multirepo.MultirepoMembership
 import app.luxion.shogunai.ui.multirepo.MultirepoReviewPane
@@ -28,6 +39,7 @@ import java.time.Duration
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
 class MultirepoViewUiTest {
@@ -59,13 +71,9 @@ class MultirepoViewUiTest {
                     model = model(groupTag = "TASK-12 · +api"),
                     selected = false,
                     isCopied = false,
-                    isMain = false,
                     onSelect = {},
                     onCopyLaunchCommand = {},
-                    onCopyPath = {},
-                    onOpenInHerdr = {},
                     onOpenGroupTag = { opened++ },
-                    onRemove = {},
                 )
             }
         }
@@ -82,12 +90,8 @@ class MultirepoViewUiTest {
                     model = model(alias = "api"),
                     selected = false,
                     isCopied = false,
-                    isMain = false,
                     onSelect = {},
                     onCopyLaunchCommand = {},
-                    onCopyPath = {},
-                    onOpenInHerdr = {},
-                    onRemove = {},
                 )
             }
         }
@@ -103,21 +107,30 @@ class MultirepoViewUiTest {
         members = emptyList(),
     )
 
+    private fun context(
+        orcaInstalled: Boolean = false,
+        isOpeningInOrca: Boolean = false,
+        addableAliases: List<String> = emptyList(),
+        cleanUpBlocked: String? = null,
+    ) = groupCatalog(
+        GroupActionContext(
+            orcaInstalled = orcaInstalled,
+            isOpeningInOrca = isOpeningInOrca,
+            addableAliases = addableAliases,
+            cleanUpBlocked = cleanUpBlocked,
+        ),
+        EnglishStrings,
+    )
+
     @Test
     fun `a group header shows the title, the branch and the combined state`() = runComposeUiTest {
-        var cleaned = 0
         setContent {
             MaterialTheme {
                 ChangeGroupHeaderView(
                     group = group(StateBadgeKind.NEEDS_YOU),
-                    cleanUpBlocker = "api isn't merged",
-                    canCleanUp = false,
-                    addableAliases = listOf("docs"),
-                    isAdding = false,
+                    catalog = context(addableAliases = listOf("docs"), cleanUpBlocked = "api isn't merged"),
                     onToggle = {},
-                    onOpenAll = {},
-                    onAddRepository = {},
-                    onCleanUp = { cleaned++ },
+                    onAction = {},
                 )
             }
         }
@@ -125,35 +138,84 @@ class MultirepoViewUiTest {
         onNodeWithText("TASK-1").assertIsDisplayed()
         onNode(hasText("feature/TASK-1", substring = true)).assertIsDisplayed()
         onNodeWithText("Needs you").assertIsDisplayed()
-        onNodeWithText("Clean up group").assertIsNotEnabled()
         onNodeWithText("Open all in Herdr").assertIsEnabled()
-        assertEquals(0, cleaned)
+        onNodeWithText("Clean up group").assertDoesNotExist()
     }
 
     @Test
-    fun `add repository offers the repositories not yet in the group`() = runComposeUiTest {
-        val picked = mutableListOf<String>()
+    fun `a group header shows the agent of its worktrees`() = runComposeUiTest {
+        val agent = agentIndicator(listOf(RunningAgent("claude", AgentState.BLOCKED)), null, now, EnglishStrings)
+        setContent {
+            MaterialTheme {
+                ChangeGroupHeaderView(group = group(StateBadgeKind.NEEDS_YOU), catalog = context(), onToggle = {}, onAction = {}, agent = agent)
+            }
+        }
+
+        onNodeWithContentDescription("Claude · needs you").assertIsDisplayed()
+    }
+
+    @Test
+    fun `a group header has one runner button and offers the other runner in its menu, disabled while it opens`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                ChangeGroupHeaderView(
+                    group = group(StateBadgeKind.STOPPED),
+                    catalog = context(orcaInstalled = true, isOpeningInOrca = true),
+                    onToggle = {},
+                    onAction = {},
+                )
+            }
+        }
+
+        onNodeWithText("Open all in Herdr").assertIsEnabled()
+        onNodeWithText("Open all in Orca").assertDoesNotExist()
+        onNodeWithContentDescription(EnglishStrings.moreActions).performClick()
+        onNodeWithText("Open all with…").performClick()
+        onNodeWithText("Orca").assertIsNotEnabled()
+    }
+
+    @Test
+    fun `clean up group is the last entry of the group's menu, disabled with its reason`() = runComposeUiTest {
+        val ran = mutableListOf<ActionId>()
+        setContent {
+            MaterialTheme {
+                ChangeGroupHeaderView(
+                    group = group(StateBadgeKind.STOPPED),
+                    catalog = context(cleanUpBlocked = "api isn't merged"),
+                    onToggle = {},
+                    onAction = { ran += it.id },
+                )
+            }
+        }
+
+        onNodeWithContentDescription(EnglishStrings.moreActions).performClick()
+        onNode(hasText("Clean up group") and SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "api isn't merged")).assertExists()
+        onNodeWithText("Clean up group").performClick()
+        assertTrue(ran.isEmpty())
+    }
+
+    @Test
+    fun `add repository and clean up group in the menu reach the board's actions`() = runComposeUiTest {
+        val ran = mutableListOf<ActionId>()
         setContent {
             MaterialTheme {
                 ChangeGroupHeaderView(
                     group = group(StateBadgeKind.MERGED),
-                    cleanUpBlocker = null,
-                    canCleanUp = true,
-                    addableAliases = listOf("docs"),
-                    isAdding = false,
+                    catalog = context(addableAliases = listOf("docs")),
                     onToggle = {},
-                    onOpenAll = {},
-                    onAddRepository = { picked += it },
-                    onCleanUp = {},
+                    onAction = { ran += it.id },
                 )
             }
         }
 
         onNodeWithText("Merged").assertIsDisplayed()
-        onNodeWithText("Clean up group").assertIsEnabled()
+        onNodeWithContentDescription(EnglishStrings.moreActions).performClick()
         onNodeWithText("Add repository").performClick()
         onNodeWithText("docs").performClick()
-        assertEquals(listOf("docs"), picked)
+        waitForIdle()
+        onNodeWithContentDescription(EnglishStrings.moreActions).performClick()
+        onNodeWithText("Clean up group").performClick()
+        assertEquals(listOf<ActionId>(ActionId.AddRepository("docs"), ActionId.CleanUpGroup), ran)
     }
 
     @Test
@@ -176,6 +238,36 @@ class MultirepoViewUiTest {
         onNodeWithText("created").assertIsDisplayed()
         onNode(hasText("failed:", substring = true)).assertIsDisplayed()
         onNodeWithText("Close").assertIsDisplayed()
+    }
+
+    @Test
+    fun `the new change dialog offers the runners and reports each repository's opening`() = runComposeUiTest {
+        val membership = MultirepoMembership(
+            Multirepo("/home/dev/projects/product", MultirepoDeclaration(mapOf("app" to "app", "api" to "api"), "../w", listOf("app", "api")), approved = true),
+            mapOf("app" to "app", "api" to "api"),
+        )
+        val change = NewChange(membership, installedRunners = RunnerId.entries.toSet()).apply {
+            updateTaskId("TASK-20")
+            runner = RunnerId.ORCA
+            results = listOf(
+                GroupRepositoryResult("app", GroupRepositoryOutcome.CREATED),
+                GroupRepositoryResult("api", GroupRepositoryOutcome.CREATED),
+            )
+            openings = mapOf(
+                "app" to Result.success(RunnerOpening(RunnerId.ORCA, RunnerOutcome.STARTED_AGENT, "term_1", "Claude")),
+                "api" to Result.failure(IllegalStateException("boom")),
+            )
+        }
+        setContent {
+            MaterialTheme { NewChangeDialog(change, DialogRepositoryApproval(), onConfirm = {}, onDismiss = {}) }
+        }
+
+        onNodeWithText("Then open it in").assertIsDisplayed()
+        onNodeWithText("Don't open").assertIsDisplayed()
+        onNodeWithText("Herdr").assertIsDisplayed()
+        onNodeWithText("Orca").assertIsDisplayed()
+        onNodeWithText("agent started").assertIsDisplayed()
+        onNode(hasText("not opened:", substring = true)).assertIsDisplayed()
     }
 
     @Test
