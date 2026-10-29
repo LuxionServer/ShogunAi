@@ -540,6 +540,7 @@ interface Strings {
     val xcodeCocoaPodsLabel: String
     val providerMaven: String
     val providerDockerCompose: String
+    val providerFlutter: String
     val mavenMaxHeapLabel: String
     val composePortVariablesLabel: String
     val composePortVariablesHelp: String
