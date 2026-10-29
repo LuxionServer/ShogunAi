@@ -32,17 +32,17 @@ The harness (`E2eEnvironment`) checks that `shogunai.e2e.home` is set and equals
 
 ### The tests render the window's content, built the way `main.kt` builds it
 
-`main.kt`'s inline `ShellViewModel(…)` construction moves to `shellViewModelOf(appContainer)` in the `shogunai` package, used by `main.kt` and by the harness, so both build the same view model. The harness renders `CompositionLocalProvider(LocalShownErrorLog, LocalViewModelStoreOwner, LocalFilePicker) { AppearanceScope(appearance) { AppShell(…) } }` with an `InactivityPreferences` and `AppMessages` like `main.kt`. The hooks test renders `ClaudeHooksSection(appContainer.claudeHooks)`, the composable the Preferences window shows, after its `refresh()`.
+`main.kt`'s inline `ShellViewModel(…)` construction moves to `shellViewModelOf(appContainer)` in the `shogunai` package, used by `main.kt` and by the harness, so both build the same view model. The harness renders `CompositionLocalProvider(LocalShownErrorLog, LocalViewModelStoreOwner, LocalPathPicker) { AppearanceScope(appearance) { AppShell(…) } }` with an `InactivityPreferences` like `main.kt`. The hooks test renders `ClaudeHooksSection(appContainer.claudeHooks)`, the composable the Preferences window shows, after its `refresh()`.
 
-### A composition local for the pickers
+### A composition local for the pickers (`LocalPathPicker`)
 
-`LocalFilePicker` provides an interface with `pickDirectory` and `pickFiles`, defaulting to the current `JFileChooser` implementation. `ProjectSettingsView`'s four direct `FilePicker` calls go through it. The add-project test provides a picker that answers with the test repository. The multirepo dialogs keep their existing `pickFolder` parameters.
+`LocalPathPicker` provides a `PathPicker` with `pickDirectory` and `pickFiles`, defaulting to the current `JFileChooser` implementation. `ProjectSettingsView`'s four direct `FilePicker` calls go through it. The add-project test provides a picker that answers with the test repository. The multirepo dialogs keep their existing `pickFolder` parameters.
 
 ### Environment-dependent branches are asserted, not forced
 
 On macOS `ToolCatalog.userBinFolders` always includes `/opt/homebrew/bin`, so on a developer's Mac with Homebrew's `shogun` the command is found even with the filtered `PATH`, while on CI it isn't. Forcing one answer needs the host-environment seam, so:
 - The tour test follows whichever step the app shows: on the "command" step it continues without it; either way it then checks the sample project.
-- The hooks test puts a fake `shogun` launcher in `build/e2e/bin` (first on the `PATH`, so it's found first on every OS) and asserts the hooks it writes run a `shogun` launcher that exists, not a specific path.
+- The hooks test puts a fake `shogun` launcher in `build/e2e/bin` (first on the `PATH`, so it's found first on every OS) and asserts the hooks it writes are `shogun` commands, not a specific launcher path, and that the rest of the settings file is kept.
 - "The command is missing" stays covered by the existing unit and UI tests with fakes.
 
 ### Waiting on real work

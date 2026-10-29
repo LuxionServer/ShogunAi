@@ -33,6 +33,8 @@ You can also use the IDE's run widget. To try the `shogun` command without packa
 ./gradlew test
 ```
 
+It also runs the desktop app's end-to-end tests, which drive its interface against real Git repositories in an isolated home under `desktopApp/build/e2e/`. To run only them: `./gradlew :desktopApp:desktopE2eTest`; they refuse to run from an IDE's default test run, which would use your real home.
+
 ## Finding your way around the code
 
 The project is a Kotlin/JVM desktop app built with Compose Multiplatform, plus the `shogun` command-line tool, in three Gradle modules. `core` holds the domain and the infrastructure, without any UI; `desktopApp` holds the Compose UI and wires everything together; `cli` is the command:

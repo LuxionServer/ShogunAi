@@ -27,6 +27,49 @@ dependencies {
     testImplementation(libs.kotlin.testJunit)
     testImplementation(compose.uiTest)
     testImplementation(libs.kotlinx.coroutinesTest)
+    testImplementation(libs.kotlinx.serializationJson)
+}
+
+val e2ePackage = "app/luxion/shogunai/e2e/**"
+val e2eRoot = layout.buildDirectory.dir("e2e")
+val isWindows = System.getProperty("os.name").startsWith("Windows")
+val shogunLaunchers = if (isWindows) listOf("shogun.exe", "shogun.cmd", "shogun.bat") else listOf("shogun")
+val pathWithoutShogun = System.getenv("PATH").orEmpty().split(File.pathSeparator)
+    .filter { it.isNotBlank() && shogunLaunchers.none { name -> File(it, name).exists() } }
+
+val desktopE2eTest by tasks.registering(Test::class) {
+    description = "Runs the desktop app's end-to-end tests in an isolated home."
+    group = "verification"
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    include(e2ePackage)
+    outputs.upToDateWhen { false }
+    outputs.cacheIf { false }
+    val root = e2eRoot.get().asFile
+    val home = root.resolve("home")
+    val temporary = root.resolve("tmp")
+    val bin = root.resolve("bin")
+    doFirst {
+        root.deleteRecursively()
+        listOf(home, temporary, bin).forEach { it.mkdirs() }
+    }
+    systemProperty("user.home", home.absolutePath)
+    systemProperty("java.io.tmpdir", temporary.absolutePath)
+    systemProperty("shogunai.e2e.home", home.absolutePath)
+    systemProperty("shogunai.e2e.bin", bin.absolutePath)
+    val isolatedVariables = listOf("CLAUDE_CONFIG_DIR", "HOME", "USERPROFILE", "SHELL", "PATH", "GIT_CONFIG_NOSYSTEM")
+    environment = environment.filterKeys { key -> isolatedVariables.none { it.equals(key, ignoreCase = true) } } + mapOf(
+        "HOME" to home.absolutePath,
+        "USERPROFILE" to home.absolutePath,
+        "SHELL" to "",
+        "PATH" to (listOf(bin.absolutePath) + pathWithoutShogun).joinToString(File.pathSeparator),
+        "GIT_CONFIG_NOSYSTEM" to "1",
+    )
+}
+
+tasks.test {
+    exclude(e2ePackage)
+    dependsOn(desktopE2eTest)
 }
 
 fun macBundleVersion(version: String): String {
