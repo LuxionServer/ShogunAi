@@ -17,7 +17,7 @@ import app.luxion.shogunai.ui.components.IconAction
 import app.luxion.shogunai.ui.components.handPointer
 import app.luxion.shogunai.ui.i18n.LocalStrings
 
-enum class LaunchKind { COPY, TERMINAL, HERDR }
+enum class LaunchKind { COPY, TERMINAL, HERDR, ORCA }
 
 data class LaunchChoice(val kind: LaunchKind, val agent: AgentLaunchConfig, val label: String)
 

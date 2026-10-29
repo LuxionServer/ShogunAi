@@ -44,11 +44,15 @@ import app.luxion.shogunai.EmulatorUseCases
 import app.luxion.shogunai.GradleUseCases
 import app.luxion.shogunai.AgentUseCases
 import app.luxion.shogunai.HerdrUseCases
+import app.luxion.shogunai.OrcaUseCases
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.ui.shell.AgentChoices
 import app.luxion.shogunai.SimulatorUseCases
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.HerdrOpening
+import app.luxion.shogunai.domain.model.OrcaOpening
+import app.luxion.shogunai.domain.model.OrcaOutcome
+import app.luxion.shogunai.domain.model.OrcaTerminal
 import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.WorktreeUseCases
 import app.luxion.shogunai.ProvisioningUseCases
@@ -64,6 +68,7 @@ import app.luxion.shogunai.domain.FakeClipboardWriter
 import app.luxion.shogunai.domain.FakeDerivedDataSource
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeHerdrClient
+import app.luxion.shogunai.domain.FakeOrcaClient
 import app.luxion.shogunai.domain.usecase.ResolveWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.model.parseEnvironmentVariable
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
@@ -106,6 +111,8 @@ import app.luxion.shogunai.domain.model.XcodeProvider
 import app.luxion.shogunai.domain.usecase.CleanUpWorktreesUseCase
 import app.luxion.shogunai.ui.machine.MachineResource
 import app.luxion.shogunai.domain.usecase.CloseHerdrWorkspacesUseCase
+import app.luxion.shogunai.domain.usecase.CloseOrcaTerminalsUseCase
+import app.luxion.shogunai.domain.usecase.OrcaOrigins
 import app.luxion.shogunai.domain.usecase.CopyWorktreeLaunchCommandUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
@@ -3417,6 +3424,178 @@ class ProjectWorktreesTest {
         board.selectPath(worktreePath)
         board.deleteSelectedWorktree()
         assertEquals(worktreePath, board.project.worktreePendingRemoval?.path)
+    }
+
+    private fun withOrca(
+        responder: (List<String>) -> CommandResult,
+        orca: FakeOrcaClient,
+    ): WorktreeUseCases {
+        val executor = FakeShellCommandExecutor(responder)
+        val close = CloseOrcaTerminalsUseCase(orca)
+        return useCasesWith(executor).copy(
+            remove = RemoveWorktreeUseCase(config, executor, closeOrcaTerminals = close),
+            cleanUp = CleanUpWorktreesUseCase(config, executor, closeOrcaTerminals = close),
+            orca = OrcaUseCases.NONE.copy(withTerminals = close::withTerminals),
+        )
+    }
+
+    private fun orcaWithTerminals(vararg paths: String, closeFailures: Map<String, Throwable> = emptyMap()) =
+        FakeOrcaClient(terminals = paths.associateWith { listOf(OrcaTerminal("term_1", it)) }, closeFailures = closeFailures)
+
+    @Test
+    fun `opening in Orca passes the worktree and reports a started agent`() = runTest(dispatcher) {
+        val calls = mutableListOf<Worktree>()
+        val orca = OrcaUseCases.NONE.copy(open = { target, _ -> calls += target; Result.success(OrcaOpening(OrcaOutcome.STARTED_AGENT, "term_1", "Claude")) })
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(orca = orca))
+        advanceUntilIdle()
+        val target = viewModel.worktrees.first { it.path == worktreePath }
+
+        viewModel.openInOrca(target)
+        assertTrue(worktreePath in viewModel.openingInOrca)
+        advanceUntilIdle()
+
+        assertEquals(target, calls.single())
+        assertEquals(WorktreeSuccess.OpenedInOrca(worktreePath, OrcaOutcome.STARTED_AGENT), viewModel.success)
+        assertTrue(viewModel.openingInOrca.isEmpty())
+    }
+
+    @Test
+    fun `opening in Orca reports a focused live agent`() = runTest(dispatcher) {
+        val orca = OrcaUseCases.NONE.copy(open = { _, _ -> Result.success(OrcaOpening(OrcaOutcome.FOCUSED, "term_9", "claude")) })
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(orca = orca))
+        advanceUntilIdle()
+
+        viewModel.openInOrca(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+
+        assertEquals(WorktreeSuccess.OpenedInOrca(worktreePath, OrcaOutcome.FOCUSED), viewModel.success)
+    }
+
+    @Test
+    fun `an agent that doesn't start in Orca is recorded for the worktree`() = runTest(dispatcher) {
+        val orca = OrcaUseCases.NONE.copy(open = { _, _ -> Result.failure(WorktreeError.OrcaAgentNotStarted("term_1", "claude")) })
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(orca = orca))
+        advanceUntilIdle()
+
+        viewModel.openInOrca(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+
+        assertIs<WorktreeError.OrcaAgentNotStarted>(viewModel.actionErrors[worktreePath])
+        assertNull(viewModel.success)
+    }
+
+    @Test
+    fun `Orca not installed is recorded for the worktree`() = runTest(dispatcher) {
+        val viewModel = projectWorktrees(useCases(listingResponder()))
+        advanceUntilIdle()
+
+        viewModel.openInOrca(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+
+        assertIs<WorktreeError.OrcaNotInstalled>(viewModel.actionErrors[worktreePath])
+        assertTrue(viewModel.openingInOrca.isEmpty())
+    }
+
+    @Test
+    fun `the agent picker opens in Orca with the picked agent`() = runTest(dispatcher) {
+        val used = mutableListOf<AgentLaunchConfig>()
+        val orca = OrcaUseCases.NONE.copy(open = { _, agent -> used += agent; Result.success(OrcaOpening(OrcaOutcome.STARTED_AGENT, "term_1", agent.displayName)) })
+        val holder = projectWorktrees(withAgents().copy(orca = orca))
+        advanceUntilIdle()
+        val target = holder.worktrees.first { it.path == worktreePath }
+
+        val choice = holder.launchChoices(target, EnglishStrings).single { it.kind == LaunchKind.ORCA }
+        holder.launch(target, choice.kind, choice.agent)
+        advanceUntilIdle()
+
+        assertEquals("Open in Orca · Codex", choice.label)
+        assertEquals(listOf(codex), used)
+    }
+
+    @Test
+    fun `Orca's origins are read with the agents`() = runTest(dispatcher) {
+        val origins = OrcaOrigins(setOf(worktreePath), "/home/dev/orca/workspaces") { it }
+        val viewModel = projectWorktrees(useCases(listingResponder()).copy(orca = OrcaUseCases.NONE.copy(origins = { origins })))
+        advanceUntilIdle()
+
+        assertEquals(origins, viewModel.orcaOrigins)
+    }
+
+    @Test
+    fun `the remove dialog says when the worktree has Orca terminals`() = runTest(dispatcher) {
+        val viewModel = projectWorktrees(withOrca(listingResponder(), orcaWithTerminals(worktreePath)))
+        advanceUntilIdle()
+
+        viewModel.requestRemoval(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+
+        assertTrue(viewModel.pendingRemovalHasOrcaTerminals)
+    }
+
+    @Test
+    fun `the remove dialog shows no Orca notice when Orca isn't running`() = runTest(dispatcher) {
+        val orca = orcaWithTerminals(worktreePath).apply { running = false }
+        val viewModel = projectWorktrees(withOrca(listingResponder(), orca))
+        advanceUntilIdle()
+
+        viewModel.requestRemoval(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+
+        assertFalse(viewModel.pendingRemovalHasOrcaTerminals)
+        viewModel.confirmPendingRemoval()
+        advanceUntilIdle()
+        assertTrue(viewModel.worktrees.none { it.path == worktreePath })
+        assertEquals(0, orca.starts)
+    }
+
+    @Test
+    fun `removing a worktree with Orca terminals closes them`() = runTest(dispatcher) {
+        val orca = orcaWithTerminals(worktreePath)
+        val viewModel = projectWorktrees(withOrca(listingResponder(), orca))
+        advanceUntilIdle()
+
+        viewModel.requestRemoval(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+        viewModel.confirmPendingRemoval()
+        advanceUntilIdle()
+
+        assertEquals(listOf(worktreePath), orca.closedWorktrees)
+        assertTrue(viewModel.orcaCloseFailures.isEmpty())
+    }
+
+    @Test
+    fun `a failing Orca close is shown as a warning after the removal`() = runTest(dispatcher) {
+        val failure = WorktreeError.OrcaCommandFailed(listOf("orca"), "runtime_unavailable")
+        val viewModel = projectWorktrees(withOrca(listingResponder(), orcaWithTerminals(worktreePath, closeFailures = mapOf(worktreePath to failure))))
+        advanceUntilIdle()
+
+        viewModel.requestRemoval(viewModel.worktrees.first { it.path == worktreePath })
+        advanceUntilIdle()
+        viewModel.confirmPendingRemoval()
+        advanceUntilIdle()
+
+        assertNull(viewModel.error)
+        assertTrue(viewModel.worktrees.none { it.path == worktreePath })
+        assertEquals(failure, viewModel.orcaCloseFailures.single().error)
+        viewModel.dismissOrcaCloseFailures()
+        assertTrue(viewModel.orcaCloseFailures.isEmpty())
+    }
+
+    @Test
+    fun `the cleanup dialog marks the candidates with Orca terminals and cleanup closes them`() = runTest(dispatcher) {
+        val failure = WorktreeError.OrcaCommandFailed(listOf("orca"), "runtime_unavailable")
+        val orca = orcaWithTerminals(worktreePath, closeFailures = mapOf(worktreePath to failure))
+        val board = board(withOrca(mergedResponder(), orca))
+        advanceUntilIdle()
+
+        board.openCleanup()
+        advanceUntilIdle()
+        assertEquals(setOf(worktreePath), board.project.orcaTerminalPaths)
+        board.confirmCleanup()
+        advanceUntilIdle()
+
+        assertEquals(WorktreeSuccess.CleanedUp(removedCount = 1), board.cleanupSuccess)
+        assertEquals(listOf(worktreePath), board.project.orcaCloseFailures.map { it.path })
     }
 
     private fun withHerdr(

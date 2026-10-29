@@ -61,6 +61,8 @@ private fun technicalDetailsOf(error: Throwable): TechnicalDetails? = when (erro
     is WorktreeError.WorktreeFolderInUse -> TechnicalDetails(error.command, error.exitCode, error.errorOutput)
     is WorktreeError.HerdrCommandFailed -> TechnicalDetails(error.command, null, error.detail)
     is WorktreeError.HerdrAgentNotStarted -> TechnicalDetails(null, null, "pane: ${error.paneId}\ncommand: ${error.command}")
+    is WorktreeError.OrcaCommandFailed -> TechnicalDetails(error.command, null, error.detail)
+    is WorktreeError.OrcaAgentNotStarted -> TechnicalDetails(null, null, "terminal: ${error.terminalHandle}\ncommand: ${error.command}")
     is WorktreeError.TerminalLaunchFailed -> TechnicalDetails(null, null, error.detail)
     is WorktreeError.EditorLaunchFailed -> TechnicalDetails(null, null, error.detail)
     is WorktreeError.ClaudeDesktopLaunchFailed -> TechnicalDetails(null, null, error.detail)

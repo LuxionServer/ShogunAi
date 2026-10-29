@@ -7,6 +7,8 @@ import app.luxion.shogunai.domain.io.ClaudeSessionRegistry
 import app.luxion.shogunai.domain.io.HerdrClient
 import app.luxion.shogunai.domain.model.AgentSessionRecord
 import app.luxion.shogunai.domain.model.HerdrAgent
+import app.luxion.shogunai.domain.model.OrcaAgent
+import app.luxion.shogunai.domain.model.OrcaWorktree
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.AgentStateSource
 import app.luxion.shogunai.domain.model.ClaudeSessionRef
@@ -29,6 +31,8 @@ class DetectRunningAgentsUseCase(
     private val now: () -> Long = System::currentTimeMillis,
     private val hasGitEntry: (String) -> Boolean = { directory -> File(directory, ".git").exists() },
     private val claudeSessions: ClaudeSessionRegistry? = null,
+    private val orca: OrcaWorktreeReader? = null,
+    private val canonical: (String) -> String = ::canonicalDirectory,
 ) {
     @Volatile
     private var herdrRetryAt = 0L
@@ -40,13 +44,15 @@ class DetectRunningAgentsUseCase(
         val worktrees = searches.flatMap { it.worktrees }
         if (worktrees.isEmpty()) return@runCatching emptyMap()
         val exact = searches.filter { it.exact }.flatMap { it.worktrees }.map { normalizePath(it.path) }.toSet()
-        val (processes, herdrAgents) = coroutineScope {
+        val (processes, herdrAgents, orcaWorktrees) = coroutineScope {
             val herdrAgents = async { readHerdrAgents() }
+            val orcaWorktrees = async { orca?.read().orEmpty() }
             val processes = runCatching { scanProcesses(searches, worktrees, exact) }
-            processes to herdrAgents.await()
+            Triple(processes, herdrAgents.await(), orcaWorktrees.await())
         }
         val scan = processes.getOrDefault(ProcessScan())
         merge(withSessionStates(scan, worktrees), herdrAgents, worktrees, exact)
+            .let { merged -> mergeOrca(merged, orcaWorktrees, worktrees) }
             .let { merged -> withClaudeSessions(merged, scan.claudePids, worktrees, exact) }
             .also { merged -> if (merged.isEmpty()) processes.getOrThrow() }
     }
@@ -164,6 +170,33 @@ class DetectRunningAgentsUseCase(
             processAgents[path].orEmpty().map { agent -> herdrByName[agent.name]?.let { runningAgent(it, agent) } ?: agent } +
                 herdrByName.filterKeys { it !in processNames }.values.map(::runningAgent)
         }
+    }
+
+    private fun mergeOrca(
+        agents: Map<String, List<RunningAgent>>,
+        orcaWorktrees: List<OrcaWorktree>,
+        worktrees: List<Worktree>,
+    ): Map<String, List<RunningAgent>> {
+        if (orcaWorktrees.none { it.agents.isNotEmpty() }) return agents
+        val pathsByCanonical = worktrees.associate { canonical(it.path) to it.path }
+        val orcaByPath = orcaWorktrees
+            .mapNotNull { row -> pathsByCanonical[canonical(row.path)]?.let { it to row.agents } }
+            .filter { (_, rowAgents) -> rowAgents.isNotEmpty() }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, lists) -> lists.flatten() }
+        return (agents.keys + orcaByPath.keys).associateWith { path ->
+            val orcaByName = orcaByPath[path].orEmpty().groupBy { it.agent }.mapValues { (_, same) -> same.maxBy { urgency(it.state) } }
+            val known = agents[path].orEmpty()
+            val knownNames = known.map { it.name }.toSet()
+            known.map { agent -> orcaByName[agent.name]?.let { withOrcaState(agent, it) } ?: agent } +
+                orcaByName.filterKeys { it !in knownNames }.values.map { RunningAgent(it.agent, it.state, stateSource = it.state?.let { AgentStateSource.ORCA }) }
+        }
+    }
+
+    private fun withOrcaState(agent: RunningAgent, orcaAgent: OrcaAgent): RunningAgent {
+        val state = orcaAgent.state ?: return agent
+        if (agent.stateSource == AgentStateSource.HERDR && urgency(agent.state) >= urgency(state)) return agent
+        return agent.copy(state = state, stateSource = AgentStateSource.ORCA)
     }
 
     private fun attributedWorktree(cwd: String, worktrees: List<Worktree>, exact: Set<String>): Worktree? {

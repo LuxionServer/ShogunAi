@@ -28,6 +28,7 @@ val WorktreeOrigin.label: String
         WorktreeOrigin.SHOGUNAI -> "shogunai"
         WorktreeOrigin.CLAUDE_CODE -> "claude-code"
         WorktreeOrigin.HERDR -> "herdr"
+        WorktreeOrigin.ORCA -> "orca"
         WorktreeOrigin.OTHER -> "other"
     }
 
@@ -70,6 +71,7 @@ internal fun agentJson(agent: RunningAgent): JsonObject = buildJsonObject {
 
 private fun sourceLabel(source: AgentStateSource): String = when (source) {
     AgentStateSource.HERDR -> "herdr"
+    AgentStateSource.ORCA -> "orca"
     AgentStateSource.CLAUDE_CODE -> "claude-code"
 }
 

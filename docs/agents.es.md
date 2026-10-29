@@ -81,7 +81,7 @@ Los hooks `agent-state` registran si cada sesión de Claude está trabajando (`U
 - Cada sesión es un archivo pequeño en la carpeta Git propia del worktree (`<git-dir>/shogunai/agent-sessions/`), así que nunca aparece como un cambio, no se copia a otros worktrees y desaparece con el worktree.
 - Un registro cuenta solo mientras su proceso de Claude sigue en marcha; los que deja un cierre abrupto se ignoran y se borran.
 - Conceder un permiso no dispara ningún hook. Una sesión bloqueada cuyo transcript se escribe después se lee como trabajando, así que el estado sigue a la concesión del permiso.
-- Cuando Herdr también informa del agente, se usa el estado de Herdr.
+- Cuando Herdr u [Orca](#orca) también informan del agente, se usa su estado.
 - Los demás agentes (Codex, Gemini…) no tienen esos hooks y se muestran sin estado salvo que Herdr los informe.
 - Cuando la sesión que tiene el [turno del escritorio](guide/cli.md#desktop) termina su respuesta (`Stop`) o acaba (`SessionEnd`), el turno se libera para el siguiente agente que espera.
 - Estas sesiones registradas también protegen el emulador y el simulador de un worktree: una sesión trabajando renueva la concesión del dispositivo y nunca se le libera por debajo, mientras que una bloqueada se libera la última. Los estados de Herdr no se usan para esto. Ver [Providers](guide/providers.md).
@@ -111,6 +111,29 @@ En el otro sentido no hace falta el plugin: eliminar un worktree desde ShogunAi 
 - El plugin ejecuta `shogun`, así que tiene que estar en el `PATH` de la shell desde la que arrancas Herdr (el servidor en segundo plano de Herdr conserva el entorno de esa shell; reinícialo con `herdr server stop` después de instalar `shogun`). `herdr plugin log` muestra cada ejecución con los ficheros copiados, o el error.
 - Herdr abre el workspace nuevo un instante antes de que se ejecute el plugin; un agente que arranques al momento podría encontrarse los ficheros todavía copiándose.
 - El plugin no escribe nada en la shell del workspace nuevo. Sus variables llegan a los agentes por los caminos de siempre: el hook `SessionStart` de Claude Code de arriba, el `envFile` o `direnv` (ver más abajo).
+
+## Orca
+
+[Orca](https://onorca.dev) es una app de escritorio para ejecutar agentes de programación en worktrees: lista los worktrees de cada repositorio, abre terminales en ellos y muestra qué agente está trabajando, esperando o ha terminado. Orca es opcional: sin él no cambia nada. ShogunAi funciona con Orca 1.4.243 o posterior, que busca como `orca` (`~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, el bundle de la app en macOS y luego el `PATH`) o, en Linux, solo como `orca-ide`, porque allí `orca` suele ser el lector de pantalla de GNOME.
+
+**Flujo recomendado.** Crea el worktree desde ShogunAi y usa "Abrir en Orca" en su detalle o en el menú contextual de su fila, o `shogun open <task id> --orca` desde una terminal o un agente (`--agent <nombre>` elige otro de los agentes del proyecto). ShogunAi:
+
+- arranca Orca si no está abierto y espera hasta 30 segundos;
+- registra el repositorio en Orca si Orca no lo conoce y, cuando Orca ocultaría los worktrees que no ha creado en ese repositorio, cambia la visibilidad de "worktrees ajenos a Orca" de ese repositorio para mostrarlos (no cambia la de ningún otro);
+- enfoca la terminal del worktree cuando Orca ya informa de un agente vivo en él (un turno terminado cuenta), sin escribir nada;
+- si no, abre una terminal nueva y enfocada en el worktree que ejecuta el comando del agente del proyecto con el entorno del worktree (`env 'PORT=…' … claude -n <nombre de sesión>`, o `$env:NAME = '…'; …` en Windows) y espera hasta 10 segundos a que Orca informe del agente; si no, falla con la terminal y el comando. La terminal queda abierta en ambos casos.
+
+ShogunAi ejecuta el comando propio del proyecto en lugar del lanzador de agentes de Orca, que por defecto ejecuta Claude con acceso total, y las sesiones de Claude reciben el mismo nombre `-n` que en Herdr, así que los mensajes entre agentes les llegan.
+
+**Estados de los agentes.** Mientras Orca está abierto, la app de escritorio y `shogun status` muestran el estado que Orca informa de cada agente: trabajando, bloqueado ("waiting" en Orca, por ejemplo ante un permiso) o terminado, con `stateSource` `orca`. El estado de Orca prevalece sobre el que registran los hooks de Claude Code. ShogunAi pregunta a Orca una vez por refresco con `orca worktree ps`, nunca lo arranca para esto y, tras un fallo o con Orca cerrado, espera 30 segundos antes de volver a preguntar. Orca informa de estos estados mediante sus propios hooks de agente en `~/.claude/settings.json`; si los desactivas (`orca agent hooks off`), Orca solo ve un agente mientras muestra un aviso como el de confianza de carpeta de Claude, y ShogunAi muestra los agentes sin estado de Orca; "Abrir en Orca" puede entonces informar de que el agente no arrancó aunque sí lo hiciera.
+
+**Origen.** Los worktrees que creó Orca se etiquetan como "Orca". Un worktree de ShogunAi abierto en Orca conserva su etiqueta de ShogunAi. Mientras no se puede preguntar a Orca, los worktrees dentro de la carpeta donde Orca creó uno por última vez, o de `~/orca/workspaces`, se etiquetan como "Orca".
+
+**Worktrees creados desde Orca.** Orca crea sus worktrees en su propia carpeta con ramas llamadas `<usuario de git>/<nombre>`. Mejor créalos desde ShogunAi. Para los que se creen desde Orca de todos modos, añade ShogunAi al `orca.yaml` del repositorio, como se describe en [Configuración](guide/configuration.md#orca): `shogun hook orca setup` los aprovisiona como `shogun provision` y avisa cuando quedan fuera de la carpeta de worktrees del proyecto, y `shogun hook orca archive` libera su emulador, su simulador y sus daemons de Gradle inactivos antes de que Orca los elimine.
+
+**Eliminación.** Eliminar un worktree desde ShogunAi (la acción de eliminar, "Limpiar", `shogun remove`, `shogun clean --yes` o la eliminación de Claude Code) también cierra sus terminales de Orca, y los agentes que tienen, una vez eliminado; si esas shells bloquean la carpeta, se cierran sus terminales y se reintenta la eliminación una vez. Los diálogos y la simulación de `shogun clean` avisan antes de qué worktrees tienen terminales de Orca. Si Orca no está instalado o abierto, no cambia nada y Orca no se arranca; si el cierre falla, la eliminación cuenta igualmente y un aviso muestra el mensaje de Orca.
+
+Los grupos de un multirepo aún no se pueden abrir en Orca: usa `--herdr` ahí.
 
 ## Reglas de flujo de ShogunAi
 

@@ -61,6 +61,10 @@ internal object CliHelp {
                               In a multirepo folder: open every worktree of the group, each under its
                               repository's space with its environment and its project's agent
   open --herdr [--json]       In a multirepo folder: open the multirepo's agent in a workspace of its own
+  open <task id | path | branch> --orca [--agent <name>] [--json]
+                              Open the worktree in Orca under its repository, in a focused terminal with its
+                              environment and the project's agent, or focus the terminal of its live agent;
+                              starts Orca when it isn't running; not available in a multirepo folder yet
 """.trimIndent(),
         "repair" to """
   repair [--json]             Re-link the worktrees after the repository or the worktrees folder moved
@@ -179,6 +183,8 @@ internal object CliHelp {
   hook session-start          Claude Code SessionStart hook: export the worktree's environment and give the session ShogunAi's workflow rules
   hook agent-state            Claude Code UserPromptSubmit, Notification, Stop and SessionEnd hook: record the session's state
   hook herdr                  Herdr plugin hook: provision worktrees on worktree.created, delete merged branches on worktree.removed
+  hook orca setup|archive     Orca orca.yaml scripts: provision the worktree at ORCA_WORKTREE_PATH on setup,
+                              free its emulator, simulator and idle Gradle daemons on archive
 """.trimIndent(),
         "hooks" to """
   hooks install|uninstall [--project] [--yes] [--json]

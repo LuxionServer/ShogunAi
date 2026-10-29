@@ -1,0 +1,22 @@
+{
+  "id": "937fe526-025c-4691-95bd-8426b1870e42",
+  "ok": true,
+  "result": {
+    "terminal": {
+      "processId": 20025,
+      "handle": "term_44a32dcb-6aa6-478f-a1f0-0731154c76d2",
+      "tabId": "0ce3321e-98c1-47f6-9d09-31f231cf40f1",
+      "paneKey": "0ce3321e-98c1-47f6-9d09-31f231cf40f1:f7d850ba-f9a4-49cc-8321-dc7e226f496f",
+      "ptyId": "0355427a-217f-4a07-9072-67d11e704c23::/projects/worktrees/TASK-1@@b596f52a",
+      "worktreeId": "0355427a-217f-4a07-9072-67d11e704c23::/projects/worktrees/TASK-1",
+      "title": "main-repo-task-1",
+      "executionHostId": "local",
+      "incarnationId": "89a7effb-243e-4e93-8914-23fb03248485",
+      "hostPlatform": "darwin",
+      "surface": "visible"
+    }
+  },
+  "_meta": {
+    "runtimeId": "24f610a7-56eb-433d-b32d-6af1e7aa64c7"
+  }
+}

@@ -68,7 +68,7 @@ private val RESERVED_VARIABLE_NAMES = setOf(
 private val RESERVED_VARIABLE_PREFIXES = listOf(
     "LD_", "DYLD_", "GIT_", "XDG_", "LESS", "SSH_", "NODE_", "NPM_CONFIG_", "YARN_", "PNPM_", "BUN_",
     "PIP_", "PYTHON", "UV_", "POETRY_", "CONDA", "GEM_", "BUNDLE_", "RUBY", "PERL", "CARGO_", "RUSTC",
-    "RUSTUP_", "CMAKE_", "CCACHE_", "DOCKER_", "GH_", "ANTHROPIC_", "CLAUDE_", "CODEX_", "HERDR_", "SHOGUNAI_",
+    "RUSTUP_", "CMAKE_", "CCACHE_", "DOCKER_", "GH_", "ANTHROPIC_", "CLAUDE_", "CODEX_", "HERDR_", "ORCA_", "SHOGUNAI_",
 )
 
 private val RESERVED_VARIABLE_SUFFIXES = listOf("_PROXY", "_OPTS", "_HOME")

@@ -28,6 +28,8 @@ import app.luxion.shogunai.domain.FakeEnvironmentStateStore
 import app.luxion.shogunai.domain.FakeFileManager
 import app.luxion.shogunai.domain.FakeHerdrClient
 import app.luxion.shogunai.domain.FakeHerdrConfigSource
+import app.luxion.shogunai.domain.FakeOrcaClient
+import app.luxion.shogunai.domain.io.OrcaWorkspaceStore
 import app.luxion.shogunai.domain.FakePortProbe
 import app.luxion.shogunai.domain.FakeGradleDaemonSource
 import app.luxion.shogunai.domain.FakeKmpTestWiring
@@ -49,6 +51,7 @@ import app.luxion.shogunai.domain.model.HerdrAgent
 import app.luxion.shogunai.domain.model.AgentSessionRecord
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.ClaudeSession
+import app.luxion.shogunai.domain.model.SimulatorState
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.IosSimulatorProvider
@@ -61,6 +64,11 @@ import app.luxion.shogunai.domain.model.XcodeProvider
 import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import app.luxion.shogunai.domain.model.HerdrPane
+import app.luxion.shogunai.domain.model.HostOs
+import app.luxion.shogunai.domain.model.OrcaAgent
+import app.luxion.shogunai.domain.model.OrcaRepo
+import app.luxion.shogunai.domain.model.OrcaTerminal
+import app.luxion.shogunai.domain.model.OrcaWorktree
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
@@ -166,6 +174,8 @@ class ShogunCliTest {
         records: FakeProvisioningRecordStore = FakeProvisioningRecordStore(),
         claudeSessions: FakeClaudeSessionRegistry = FakeClaudeSessionRegistry(),
         packageCaches: PackageCacheSizes = PackageCacheSizes(),
+        orca: FakeOrcaClient = FakeOrcaClient(installed = false),
+        orcaWorkspaces: OrcaWorkspaceStore = OrcaWorkspaceStore.NONE,
     ) = ShogunCli(
         executor = executor,
         fileManager = fileManager,
@@ -182,6 +192,8 @@ class ShogunCliTest {
         machineCapacity = FakeMachineCapacity(),
         derivedDataSource = derivedDataSource,
         herdrConfig = FakeHerdrConfigSource(herdrWorktreesRoot),
+        orca = orca,
+        orcaWorkspaces = orcaWorkspaces,
         workingDirectory = workingDirectory,
         out = out,
         err = err,
@@ -1521,6 +1533,31 @@ class ShogunCliTest {
     }
 
     @Test
+    fun `status shows the state Orca reports and labels its worktrees`() {
+        val orca = FakeOrcaClient(psRows = listOf(OrcaWorktree(merged, createdByOrca = true, listOf(OrcaAgent("claude", AgentState.BLOCKED)))))
+
+        val exitCode = cli(repositoryExecutor(), orca = orca).run(listOf("status"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertTrue(out.lines().contains("$merged  feature/TASK-1  origin=orca  agents=claude(blocked)  changes=0  merged"), out.toString())
+    }
+
+    @Test
+    fun `status json reports Orca as the state source and origin`() {
+        val orca = FakeOrcaClient(psRows = listOf(OrcaWorktree(merged, createdByOrca = true, listOf(OrcaAgent("claude", AgentState.BLOCKED)))))
+
+        val exitCode = cli(repositoryExecutor(), orca = orca).run(listOf("status", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val worktrees = Json.parseToJsonElement(out.toString()).jsonObject.getValue("worktrees").jsonArray
+        assertEquals(
+            Json.parseToJsonElement("""[{"name": "claude", "state": "blocked", "stateSource": "orca", "herdrState": null, "sessions": []}]"""),
+            worktrees[1].jsonObject.getValue("agents"),
+        )
+        assertEquals("orca", worktrees[1].jsonObject.getValue("origin").jsonPrimitive.content)
+    }
+
+    @Test
     fun `status json adds the agents with their Herdr state`() {
         val herdr = FakeHerdrClient(
             agents = listOf(
@@ -1850,6 +1887,76 @@ class ShogunCliTest {
         assertTrue(err.contains("shogun: couldn't close the Herdr workspace of $merged: workspace w2 not found\n"), err.toString())
     }
 
+    private fun orcaWithTerminalsIn(vararg paths: String, closeFailures: Map<String, Throwable> = emptyMap(), running: Boolean = true) =
+        FakeOrcaClient(running = running, terminals = paths.associateWith { listOf(OrcaTerminal("term_1", it)) }, closeFailures = closeFailures)
+
+    @Test
+    fun `clean without yes lists the Orca terminals it would close`() {
+        val orca = orcaWithTerminalsIn(merged)
+
+        val exitCode = cli(repositoryExecutor(), orca = orca).run(listOf("clean"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(
+            "would remove $merged\nwould close Orca terminals of $merged\nRun 'shogun clean --yes' to remove the worktree.\n",
+            out.toString(),
+        )
+        assertTrue(orca.closedWorktrees.isEmpty())
+    }
+
+    @Test
+    fun `clean without yes says nothing about Orca when it isn't running`() {
+        val orca = orcaWithTerminalsIn(merged, running = false)
+
+        cli(repositoryExecutor(), orca = orca).run(listOf("clean"))
+
+        assertEquals("would remove $merged\nRun 'shogun clean --yes' to remove the worktree.\n", out.toString())
+        assertEquals(0, orca.starts)
+    }
+
+    @Test
+    fun `clean with yes closes the Orca terminals of the removed worktrees`() {
+        val orca = orcaWithTerminalsIn(merged)
+
+        val exitCode = cli(repositoryExecutor(), orca = orca).run(listOf("clean", "--yes"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf(merged), orca.closedWorktrees)
+    }
+
+    @Test
+    fun `clean with yes reports a failing Orca close and still exits with 0`() {
+        val failure = WorktreeError.OrcaCommandFailed(listOf("orca"), "runtime_unavailable")
+        val orca = orcaWithTerminalsIn(merged, closeFailures = mapOf(merged to failure))
+
+        val exitCode = cli(repositoryExecutor(), orca = orca).run(listOf("clean", "--yes"))
+
+        assertEquals(0, exitCode)
+        assertTrue(err.contains("shogun: couldn't close the Orca terminals of $merged: runtime_unavailable\n"), err.toString())
+    }
+
+    @Test
+    fun `remove closes the Orca terminals of the removed worktree`() {
+        val orca = orcaWithTerminalsIn(merged)
+
+        val exitCode = cli(repositoryExecutor(), orca = orca).run(listOf("remove", "TASK-1", "--force"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals(listOf(merged), orca.closedWorktrees)
+    }
+
+    @Test
+    fun `remove reports a failing Orca close on standard error without changing the exit code`() {
+        val failure = WorktreeError.OrcaCommandFailed(listOf("orca"), "runtime_unavailable")
+        val orca = orcaWithTerminalsIn(merged, closeFailures = mapOf(merged to failure))
+
+        val exitCode = cli(repositoryExecutor(), orca = orca).run(listOf("remove", "TASK-1", "--force"))
+
+        assertEquals(0, exitCode)
+        assertTrue(out.contains("removed $merged"), out.toString())
+        assertEquals("shogun: couldn't close the Orca terminals of $merged: runtime_unavailable\n", err.toString())
+    }
+
     @Test
     fun `clean without yes only lists the candidates`() {
         val executor = repositoryExecutor()
@@ -2027,7 +2134,7 @@ class ShogunCliTest {
         cli(repositoryExecutor()).run(listOf("help"))
 
         val hookLines = out.lines().filter { it.trimStart().startsWith("hook ") }
-        assertEquals(5, hookLines.size)
+        assertEquals(6, hookLines.size)
         assertEquals(1, hookLines.map { it.indexOf("  ", it.indexOf("hook") + 5).let { gap -> it.substring(gap).indexOfFirst { c -> c != ' ' } + gap } }.distinct().size)
     }
 
@@ -2659,6 +2766,104 @@ class ShogunCliTest {
     }
 
     @Test
+    fun `open in orca opens a terminal with the environment and the named agent`() {
+        val orca = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)), visibleWorktrees = mapOf("r1" to listOf(OrcaWorktree(merged, false))))
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(
+                base to RepositoryProvisioning(environment = EnvironmentDeclaration(listOf(parseEnvironmentVariable("APP", "app")))),
+            ),
+        )
+        val trust = FakeRepositoryTrust(mapOf(base to RepositoryApprovalSubject(variables = listOf("APP" to "app"))))
+
+        val exitCode = cli(executorWithAdminDirectories(), provisioning = provisioning, orca = orca, trust = trust)
+            .run(listOf("open", "TASK-1", "--orca"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("opened $merged in Orca with Claude (terminal term_1)\n", out.toString())
+        val command = if (HostOs.current() == HostOs.WINDOWS) "\$env:APP = 'app'; claude -n main-repo-task-1" else "env 'APP=app' claude -n main-repo-task-1"
+        assertEquals(FakeOrcaClient.Created(merged, "main-repo-task-1", command, true), orca.created.single())
+    }
+
+    @Test
+    fun `open in orca reports the started agent and its session as json`() {
+        val orca = FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)))
+        val sessions = FakeClaudeSessionRegistry(started = orca::startedClaudeSessions)
+
+        val exitCode = cli(repositoryExecutor(), orca = orca, claudeSessions = sessions).run(listOf("open", "TASK-1", "--orca", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = Json.parseToJsonElement(out.toString()).jsonObject
+        assertEquals("started-agent", json["orca"]?.jsonPrimitive?.content)
+        assertEquals("term_1", json["terminal"]?.jsonPrimitive?.content)
+        assertEquals("main-repo-task-1", json["session_name"]?.jsonPrimitive?.content)
+        assertEquals(merged, json["path"]?.jsonPrimitive?.content)
+        assertEquals(listOf("r1"), orca.shownExternal)
+    }
+
+    @Test
+    fun `open in orca focuses the live agent and names its session`() {
+        val orca = FakeOrcaClient(
+            repos = listOf(OrcaRepo("r1", base)),
+            terminals = mapOf(merged to listOf(OrcaTerminal("term_9", merged))),
+            agents = mapOf("term_9" to "claude"),
+        )
+        val sessions = FakeClaudeSessionRegistry(listOf(ClaudeSession(42, merged, "main-repo-task-1")))
+
+        val exitCode = cli(repositoryExecutor(), orca = orca, claudeSessions = sessions).run(listOf("open", "TASK-1", "--orca", "--json"))
+
+        assertEquals(0, exitCode, err.toString())
+        val json = Json.parseToJsonElement(out.toString()).jsonObject
+        assertEquals("focused", json["orca"]?.jsonPrimitive?.content)
+        assertEquals("main-repo-task-1", json["session_name"]?.jsonPrimitive?.content)
+        assertTrue(orca.created.isEmpty())
+    }
+
+    @Test
+    fun `open in orca without orca installed names onorca dev and exits with 1`() {
+        val exitCode = cli(repositoryExecutor(), orca = FakeOrcaClient(installed = false)).run(listOf("open", "TASK-1", "--orca"))
+
+        assertEquals(1, exitCode)
+        assertEquals("", out.toString())
+        assertTrue(err.contains("Orca isn't installed"), err.toString())
+        assertTrue(err.contains("onorca.dev"), err.toString())
+    }
+
+    @Test
+    fun `open in orca that doesn't start, fails a command or misses the agent exits with 1`() {
+        listOf(
+            FakeOrcaClient(running = false, startsWhenOpened = false) to "Orca didn't start",
+            FakeOrcaClient(failure = WorktreeError.OrcaCommandFailed(listOf("orca"), "runtime_unavailable")) to "runtime_unavailable",
+            FakeOrcaClient(repos = listOf(OrcaRepo("r1", base)), startsAgents = false) to "didn't start in Orca terminal term_1",
+        ).forEach { (orca, message) ->
+            err.clear()
+            val exitCode = cli(repositoryExecutor(), orca = orca).run(listOf("open", "TASK-1", "--orca"))
+
+            assertEquals(1, exitCode, message)
+            assertTrue(err.contains(message), err.toString())
+        }
+    }
+
+    @Test
+    fun `open with both herdr and orca is a usage error that opens nothing`() {
+        val orca = FakeOrcaClient()
+        val herdr = FakeHerdrClient()
+
+        val exitCode = cli(repositoryExecutor(), orca = orca, herdr = herdr).run(listOf("open", "TASK-1", "--herdr", "--orca"))
+
+        assertEquals(2, exitCode)
+        assertTrue(orca.created.isEmpty())
+        assertTrue(herdr.opened.isEmpty())
+    }
+
+    @Test
+    fun `open help mentions orca`() {
+        val exitCode = cli(repositoryExecutor()).run(listOf("open", "--help"))
+
+        assertEquals(0, exitCode)
+        assertTrue(out.contains("--orca"), out.toString())
+    }
+
+    @Test
     fun `open in herdr starts the agent again in a workspace left without one`() {
         val herdr = FakeHerdrClient()
         val run = { cli(repositoryExecutor(), herdr = herdr).run(listOf("open", "TASK-1", "--herdr")) }
@@ -2844,6 +3049,47 @@ class ShogunCliTest {
         assertTrue(executor.ran("git", "worktree", "remove", merged))
         assertFalse(executor.calls.any { it.first.take(2) == listOf("git", "branch") })
         assertEquals(listOf("emulator-5556"), androidSdk.stopped)
+    }
+
+    @Test
+    fun `hook orca archive stops the worktree's emulator and leaves the worktree and branch to Orca`() {
+        environmentStore.portsByAdminDirectory["$base/.git/worktrees/TASK-1"] = mapOf("emulator" to 5556)
+        androidSdk.states["emulator-5556"] = EmulatorState.RUNNING
+        val executor = executorWithAdminDirectories()
+
+        val exitCode = cli(executor, provisioning = emulatorProvisioning, environment = mapOf("ORCA_WORKTREE_PATH" to merged))
+            .run(listOf("hook", "orca", "archive"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("stopped emulator emulator-5556\n", out.toString())
+        assertEquals(listOf("emulator-5556"), androidSdk.stopped)
+        assertFalse(executor.calls.any { it.first.take(3) == listOf("git", "worktree", "remove") })
+        assertFalse(executor.calls.any { it.first.take(2) == listOf("git", "branch") })
+    }
+
+    @Test
+    fun `hook orca archive reports a simulator that fails to stop and still exits with 0`() {
+        environmentStore.resourcesByAdminDirectory["$base/.git/worktrees/TASK-1"] = mapOf("ios-simulator" to "SIM-MERGED")
+        appleSimulators.addExisting("SIM-MERGED", "ShogunAi · main-repo · TASK-1", SimulatorState.BOOTED)
+        appleSimulators.shutdownFailure = IllegalStateException("simctl is busy")
+        val provisioning = FakeRepositoryProvisioningSource(
+            byRepository = mapOf(base to RepositoryProvisioning(providers = RepositoryProviders(iosSimulator = IosSimulatorProvider()))),
+        )
+
+        val exitCode = cli(executorWithAdminDirectories(), provisioning = provisioning, environment = mapOf("ORCA_WORKTREE_PATH" to merged))
+            .run(listOf("hook", "orca", "archive"))
+
+        assertEquals(0, exitCode)
+        assertTrue(err.contains("couldn't stop the simulator SIM-MERGED: simctl is busy"), err.toString())
+    }
+
+    @Test
+    fun `hook orca archive for a path that isn't a worktree says so and exits with 0`() {
+        val exitCode = cli(repositoryExecutor(), environment = mapOf("ORCA_WORKTREE_PATH" to "$worktreesRoot/gone"))
+            .run(listOf("hook", "orca", "archive"))
+
+        assertEquals(0, exitCode)
+        assertTrue(err.contains("couldn't free what ShogunAi holds for $worktreesRoot/gone"), err.toString())
     }
 
     @Test

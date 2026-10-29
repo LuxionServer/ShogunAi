@@ -775,7 +775,7 @@ class RepositoryProvisioningFilesTest {
 
     @Test
     fun `fails with InvalidRepositoryConfig on a reserved variable name and accepts a regular one`() {
-        listOf("PATH", "LD_PRELOAD", "GIT_SSH_COMMAND").forEach { name ->
+        listOf("PATH", "LD_PRELOAD", "GIT_SSH_COMMAND", "ORCA_PORT").forEach { name ->
             configFile.writeText("""{ "env": { "$name": "x" } }""")
             val error = assertFailsWith<WorktreeError.InvalidRepositoryConfig>(name) { files.read(repository.toString()) }
             assertTrue(error.detail.orEmpty().contains(name), name)
