@@ -145,7 +145,7 @@ When installing, and in `status`, ShogunAi SHALL warn when the target file has `
 - **THEN** the output lists every rule with its id and says to propose and show the removals without applying them, and the file is unchanged
 
 ### Requirement: Rules for the desktop turn
-The `resources` topic SHALL tell agents, in every repository and on every platform, to take the desktop turn with `shogun desktop acquire --wait` before driving the desktop with computer use, running it in the background or with a long enough shell timeout, to acquire again to renew it during long checks before it expires, and to release it with `shogun desktop release` as soon as they are done.
+The `resources` topic SHALL tell agents, in every repository and on every platform, to take the desktop turn with `shogun desktop acquire --wait` before driving the desktop with computer use, Orca's `orca computer` commands included, running it in the background or with a long enough shell timeout, to acquire again to renew it during long checks before it expires, and to release it with `shogun desktop release` as soon as they are done.
 
 #### Scenario: Guide
 - **WHEN** the user runs `shogun guide resources` in any repository
@@ -154,3 +154,7 @@ The `resources` topic SHALL tell agents, in every repository and on every platfo
 #### Scenario: Session context
 - **WHEN** a Claude Code session starts in a worktree
 - **THEN** the context includes the rule to take the desktop turn before computer use
+
+#### Scenario: Orca's computer use named
+- **WHEN** an agent reads the desktop turn rule from `shogun guide resources` or the session context
+- **THEN** the rule names `orca computer` as computer use that needs the turn

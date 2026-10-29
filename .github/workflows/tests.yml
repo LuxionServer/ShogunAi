@@ -19,5 +19,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  open-pull-request:
+    name: Open pull request
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      exists: ${{ steps.find.outputs.exists }}
+    steps:
+      - id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          count=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open --json baseRefName \
+            --jq '[.[] | select(.baseRefName == "develop" or (.baseRefName | startswith("epic/")))] | length')
+          if [ "$count" -gt 0 ]; then echo "exists=true"; else echo "exists=false"; fi >> "$GITHUB_OUTPUT"
+
   test:
+    name: Gradle
+    needs: open-pull-request
+    if: ${{ !cancelled() && needs.open-pull-request.outputs.exists != 'true' }}
     uses: ./.github/workflows/test-suite.yml

@@ -16,6 +16,7 @@ import app.luxion.shogunai.domain.model.AgentSessionRecord
 import app.luxion.shogunai.domain.model.AgentStateSource
 import app.luxion.shogunai.domain.model.ClaudeSession
 import app.luxion.shogunai.domain.model.ClaudeSessionRef
+import app.luxion.shogunai.domain.model.ClaudeSessionStatus
 import app.luxion.shogunai.domain.model.HerdrAgent
 import app.luxion.shogunai.domain.model.AgentState
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -789,5 +790,115 @@ class DetectRunningAgentsUseCaseTest {
 
         assertEquals(listOf(ClaudeSessionRef("product", 300)), agents[multirepoFolder]?.single()?.sessions)
         assertEquals(listOf(ClaudeSessionRef("product-app", 301)), agents[memberMain.path]?.single()?.sessions)
+    }
+
+    private fun registered(pid: Long, cwd: String, status: ClaudeSessionStatus, name: String? = null, statusUpdatedAt: Long = 1_083L) =
+        ClaudeSession(pid, cwd, name, startedAt = 1_000L, status = status, statusUpdatedAt = statusUpdatedAt)
+
+    @Test
+    fun `a Claude without any other state takes its registry session's waiting as blocked`() = runTest {
+        val agents = groupAgents(FakeClaudeSessionRegistry(listOf(registered(400, appTask.path, ClaudeSessionStatus.WAITING, "app-task-123"))))
+
+        assertEquals(
+            listOf(RunningAgent("claude", AgentState.BLOCKED, stateSource = AgentStateSource.CLAUDE_CODE, sessions = listOf(ClaudeSessionRef("app-task-123", 400)))),
+            agents[appTask.path],
+        )
+    }
+
+    @Test
+    fun `an idle registry session is done after a turn and idle before its first one`() = runTest {
+        val agents = groupAgents(
+            FakeClaudeSessionRegistry(
+                listOf(
+                    registered(400, appTask.path, ClaudeSessionStatus.IDLE, statusUpdatedAt = 39_000L),
+                    registered(401, apiTask.path, ClaudeSessionStatus.IDLE),
+                ),
+            ),
+        )
+
+        assertEquals(AgentState.DONE, agents[appTask.path]?.single()?.state)
+        assertEquals(AgentState.IDLE, agents[apiTask.path]?.single()?.state)
+    }
+
+    @Test
+    fun `the most urgent registry state of a worktree's sessions wins`() = runTest {
+        val agents = groupAgents(
+            FakeClaudeSessionRegistry(
+                listOf(
+                    registered(401, apiTask.path, ClaudeSessionStatus.BUSY),
+                    registered(402, "${apiTask.path}/src", ClaudeSessionStatus.WAITING),
+                ),
+            ),
+        )
+
+        assertEquals(AgentState.BLOCKED, agents[apiTask.path]?.single()?.state)
+    }
+
+    @Test
+    fun `registry sessions of a nested repository or a dead process give no state`() = runTest {
+        val agents = groupAgents(
+            FakeClaudeSessionRegistry(
+                listOf(
+                    registered(403, nestedRepository, ClaudeSessionStatus.WAITING),
+                    registered(405, appTask.path, ClaudeSessionStatus.WAITING),
+                ),
+            ),
+        )
+
+        assertEquals(listOf(RunningAgent("claude")), agents[appTask.path])
+    }
+
+    @Test
+    fun `a registry session without a status gives no state`() = runTest {
+        val agents = groupAgents(FakeClaudeSessionRegistry(listOf(ClaudeSession(400, appTask.path, "app-task-123"))))
+
+        assertEquals(null, agents[appTask.path]?.single()?.state)
+    }
+
+    @Test
+    fun `Orca's state wins over the registry's`() = runTest {
+        val orca = FakeOrcaClient(psRows = listOf(orcaRow(nested.path, "claude" to AgentState.DONE)))
+        val registry = FakeClaudeSessionRegistry(listOf(registered(100, nested.path, ClaudeSessionStatus.BUSY)))
+
+        val agents = DetectRunningAgentsUseCase(
+            executor(lsof = claudeAtNestedLsof, ps = "100 claude"),
+            claudeSessions = registry,
+            orca = orcaReader(orca),
+            canonical = { it },
+        )(config, worktrees).getOrThrow()
+
+        val claude = agents[nested.path]?.single()
+        assertEquals(AgentState.DONE, claude?.state)
+        assertEquals(AgentStateSource.ORCA, claude?.stateSource)
+    }
+
+    @Test
+    fun `a hook record wins over the registry's state`() = runTest {
+        val store = FakeAgentSessionStore(mapOf(nested.path to listOf(session("s1", AgentState.WORKING))))
+        val registry = FakeClaudeSessionRegistry(listOf(registered(100, nested.path, ClaudeSessionStatus.IDLE, statusUpdatedAt = 39_000L)))
+
+        val agents = DetectRunningAgentsUseCase(
+            executor(lsof = claudeAtNestedLsof, ps = "100 claude"),
+            sessionStore = store,
+            now = { 20_000L },
+            claudeSessions = registry,
+        )(config, worktrees).getOrThrow()
+
+        assertEquals(AgentState.WORKING, agents[nested.path]?.single()?.state)
+    }
+
+    @Test
+    fun `an agent Orca lists without a state takes the registry's`() = runTest {
+        val orca = FakeOrcaClient(psRows = listOf(orcaRow(nested.path, "claude" to null)))
+        val registry = FakeClaudeSessionRegistry(listOf(registered(100, nested.path, ClaudeSessionStatus.BUSY)))
+
+        val agents = DetectRunningAgentsUseCase(
+            executor(lsof = claudeAtNestedLsof, ps = "100 claude"),
+            claudeSessions = registry,
+            orca = orcaReader(orca),
+            canonical = { it },
+        )(config, worktrees).getOrThrow()
+
+        assertEquals(RunningAgent("claude", AgentState.WORKING, stateSource = AgentStateSource.CLAUDE_CODE), agents[nested.path]?.single())
     }
 }
