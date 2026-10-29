@@ -1,0 +1,17 @@
+{
+  "id": "41e84bb6-a34c-42e6-8bc6-835017e6be1e",
+  "ok": true,
+  "result": {
+    "attached": true,
+    "info": {
+      "deviceUdid": "emulator-5556",
+      "streamUrl": "scrcpy://emulator-5556",
+      "wsUrl": "",
+      "streamCodec": "h264",
+      "backend": "android"
+    }
+  },
+  "_meta": {
+    "runtimeId": "82367bbd-cceb-4618-970a-a1eac65c406c"
+  }
+}
