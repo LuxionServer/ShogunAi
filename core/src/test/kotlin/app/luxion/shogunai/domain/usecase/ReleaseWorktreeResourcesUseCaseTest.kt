@@ -60,7 +60,7 @@ class ReleaseWorktreeResourcesUseCaseTest {
         )
         val acquired = FakeEnvironmentStateStore(mapOf("$common/worktrees/TASK-123" to mapOf("emulator" to 5554)))
         acquired.writeResources("$common/worktrees/TASK-123", mapOf(IOS_SIMULATOR_KEY to "UDID-1"))
-        val contributions = MachineProviderContributions(simulators, { SimulatorSettings() })
+        val contributions = MachineProviderContributions(simulators, { SimulatorSettings() }, userHome = "/home/dev")
         val resolve = ResolveWorktreeEnvironmentUseCase(git, source, acquired, FakePortProbe(), contributions, trust = FakeRepositoryTrust(approvesEverything = true))
         return ReleaseWorktreeResourcesUseCase(
             provisioningSource = source,

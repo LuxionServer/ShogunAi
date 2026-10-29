@@ -60,3 +60,9 @@ kover {
         }
     }
 }
+
+tasks.named<Test>("test") {
+    inputs.files(fileTree(rootDir) { include("cli/src/main/**/*.kt", "desktopApp/src/main/**/*.kt") })
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+        .withPropertyName("otherModulesSources")
+}

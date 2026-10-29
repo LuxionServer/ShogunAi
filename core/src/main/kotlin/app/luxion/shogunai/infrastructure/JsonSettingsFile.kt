@@ -25,7 +25,7 @@ import kotlin.io.path.exists
 import kotlin.io.path.readText
 
 class JsonSettingsFile(
-    private val storagePath: Path = Path.of(System.getProperty("user.home"), ".shogunai", "settings.json"),
+    private val storagePath: Path,
 ) {
     private val json = Json {
         prettyPrint = true

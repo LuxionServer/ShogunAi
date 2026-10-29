@@ -17,7 +17,7 @@ class MachineProviderContributions(
     private val requestedSimulator: SimulatorSettings = SimulatorSettings(),
     private val gradleJvmArgsFor: (repositoryPath: String) -> String? = { null },
     private val fileManager: FileManager? = null,
-    private val userHome: String = System.getProperty("user.home").orEmpty(),
+    private val userHome: String,
     private val isMac: Boolean = System.getProperty("os.name").orEmpty().startsWith("Mac", ignoreCase = true),
 ) : ProviderContributions {
 

@@ -120,7 +120,7 @@ class ProjectAndAppCommandsTest {
         err = err,
         canonicalPath = { it.trimEnd('/') },
         now = { now },
-        userHome = "/home/dev",
+        environment = hostEnvironment(),
         appRequests = channel,
         appLock = FakeLock(appRunning),
         appLauncher = launcher(appAvailable),

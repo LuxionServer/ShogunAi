@@ -5,7 +5,7 @@ import app.luxion.shogunai.domain.model.AppVersion
 import app.luxion.shogunai.domain.model.UpdatePreferences
 
 class JsonUpdatePreferenceRepository(
-    private val settingsFile: JsonSettingsFile = JsonSettingsFile(),
+    private val settingsFile: JsonSettingsFile,
 ) : UpdatePreferenceRepository {
 
     override fun load(): UpdatePreferences {

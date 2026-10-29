@@ -28,7 +28,7 @@ class TourUseCasesTest {
     private val home: Path = Files.createTempDirectory("tour-home")
     private val location = TourLocation(home.toString())
     private val fileManager = NioFileManager()
-    private val executor = ProcessBuilderShellCommandExecutor()
+    private val executor = ProcessBuilderShellCommandExecutor(path = null)
 
     @AfterTest
     fun cleanUp() {

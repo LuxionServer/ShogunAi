@@ -143,7 +143,7 @@ class EnvironmentCommandsTest {
         err = err,
         readInput = { input },
         canonicalPath = { it.trimEnd('/') },
-        environmentVariable = { environment[it] },
+        environment = hostEnvironment(variables = environment),
         trust = trust,
         deviceWaitQueue = waitQueue,
         processLiveness = FakeProcessLiveness(),

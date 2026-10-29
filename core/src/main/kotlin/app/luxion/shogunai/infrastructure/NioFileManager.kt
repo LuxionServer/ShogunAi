@@ -17,6 +17,8 @@ import java.nio.file.attribute.BasicFileAttributes
 import java.util.Properties
 
 class NioFileManager(
+    private val deleteAttempts: Int = 10,
+    private val pauseBeforeRetry: () -> Unit = { Thread.sleep(200) },
     private val linkTo: (Path, Path) -> Unit = { link, target -> Files.createSymbolicLink(link, target) },
 ) : FileManager {
 
@@ -86,6 +88,17 @@ class NioFileManager(
         runCatching { Files.mismatch(Path.of(first), Path.of(second)) == -1L }.getOrDefault(false)
 
     override fun deleteRecursively(path: String) {
+        repeat(deleteAttempts - 1) {
+            try {
+                return deleteTree(path)
+            } catch (_: FileSystemException) {
+                pauseBeforeRetry()
+            }
+        }
+        deleteTree(path)
+    }
+
+    private fun deleteTree(path: String) {
         val root = Path.of(path)
         if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) return
         Files.walkFileTree(

@@ -20,7 +20,7 @@ import kotlin.io.path.exists
 import kotlin.io.path.readText
 
 class JsonRepositoryTrust(
-    private val storagePath: Path = Path.of(System.getProperty("user.home"), ".shogunai", "trust.json"),
+    private val storagePath: Path,
 ) : RepositoryTrust {
     private val json = Json {
         prettyPrint = true

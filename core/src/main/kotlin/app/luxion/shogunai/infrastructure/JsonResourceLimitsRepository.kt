@@ -4,7 +4,7 @@ import app.luxion.shogunai.domain.io.ResourceLimitsRepository
 import app.luxion.shogunai.domain.model.ResourceSettings
 
 class JsonResourceLimitsRepository(
-    private val settingsFile: JsonSettingsFile = JsonSettingsFile(),
+    private val settingsFile: JsonSettingsFile,
 ) : ResourceLimitsRepository {
 
     override fun load(): ResourceSettings = settingsFile.read().resources

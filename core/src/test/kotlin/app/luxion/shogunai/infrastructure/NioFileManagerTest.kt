@@ -21,6 +21,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
@@ -70,6 +71,41 @@ class NioFileManagerTest {
         fileManager.deleteRecursively(folder.toString())
 
         assertFalse(Files.exists(folder))
+    }
+
+    @Test
+    fun `retries a delete that a process still holds until it lets go`() {
+        if (System.getProperty("os.name").startsWith("Windows")) return
+        val folder = root.resolve("sample-repo")
+        val held = folder.resolve("held").createDirectories()
+        held.resolve("index.lock").writeBytes("x".toByteArray())
+        held.toFile().setWritable(false)
+        var pauses = 0
+        val retrying = NioFileManager(deleteAttempts = 3, pauseBeforeRetry = {
+            pauses++
+            held.toFile().setWritable(true)
+        })
+
+        retrying.deleteRecursively(folder.toString())
+
+        assertFalse(Files.exists(folder))
+        assertEquals(1, pauses)
+    }
+
+    @Test
+    fun `gives up after the last attempt with the file system's error`() {
+        if (System.getProperty("os.name").startsWith("Windows")) return
+        val held = root.resolve("sample-repo/held").createDirectories()
+        held.resolve("index.lock").writeBytes("x".toByteArray())
+        held.toFile().setWritable(false)
+        var pauses = 0
+
+        try {
+            assertFailsWith<FileSystemException> { NioFileManager(deleteAttempts = 3, pauseBeforeRetry = { pauses++ }).deleteRecursively(root.resolve("sample-repo").toString()) }
+            assertEquals(2, pauses)
+        } finally {
+            held.toFile().setWritable(true)
+        }
     }
 
     @Test

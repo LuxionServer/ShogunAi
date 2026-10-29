@@ -1,18 +1,28 @@
 package app.luxion.shogunai.infrastructure
 
+import app.luxion.shogunai.domain.io.HostEnvironment
 import app.luxion.shogunai.domain.model.HostOs
 import java.io.File
 
 class ExecutableLocator(
-    private val os: HostOs = HostOs.current(),
-    private val home: String = System.getProperty("user.home"),
-    private val pathFolders: () -> List<String> = { System.getenv("PATH").orEmpty().split(File.pathSeparator).filter { it.isNotBlank() } },
-    val localAppData: String? = System.getenv("LOCALAPPDATA"),
-    val programFolders: List<String> = listOfNotNull(System.getenv("ProgramFiles"), System.getenv("ProgramFiles(x86)")),
-    val pathExtensions: List<String> = System.getenv("PATHEXT").orEmpty().split(';').filter { it.isNotBlank() }.ifEmpty { DEFAULT_PATH_EXTENSIONS },
+    private val os: HostOs,
+    private val home: String,
+    private val pathFolders: () -> List<String>,
+    val localAppData: String? = null,
+    val programFolders: List<String> = emptyList(),
+    val pathExtensions: List<String> = DEFAULT_PATH_EXTENSIONS,
     val subfolders: (String) -> List<String> = { folder -> File(folder).listFiles { entry -> entry.isDirectory }.orEmpty().map { it.name } },
     val isFile: (String) -> Boolean = { File(it).isFile },
 ) {
+    constructor(environment: HostEnvironment) : this(
+        os = environment.os,
+        home = environment.home,
+        pathFolders = { environment.path.folders },
+        localAppData = environment.variable("LOCALAPPDATA"),
+        programFolders = listOfNotNull(environment.variable("ProgramFiles"), environment.variable("ProgramFiles(x86)")),
+        pathExtensions = environment.variable("PATHEXT").orEmpty().split(';').filter { it.isNotBlank() }.ifEmpty { DEFAULT_PATH_EXTENSIONS },
+    )
+
     fun find(executable: String, includeToolbox: Boolean = false): String? {
         val separator = if (os == HostOs.WINDOWS) "\\" else "/"
         val toolbox = if (includeToolbox) ToolCatalog.toolboxScriptFolders(os, home, localAppData) else emptyList()
