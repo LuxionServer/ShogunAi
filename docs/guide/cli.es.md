@@ -94,7 +94,8 @@ Lista todos los worktrees del repositorio, uno por línea: ruta, rama (o `(detac
 | `agents=claude(blocked, app-task-123),codex` | Agentes en ejecución en él, con su estado (`working`, `blocked`, `done`, `idle`) cuando lo informa Herdr u Orca o, para Claude, sus [hooks](../agents.md#estados-de-los-agentes-fuera-de-herdr). Un agente Claude también lista, tras su estado, los nombres de sus sesiones vivas cuya carpeta está en ese worktree, tal como los tiene el registro de sesiones de Claude Code (`claude(app-task-123)` cuando no hay estado). |
 | `changes=N` | Cambios sin commitear. |
 | `ahead=N behind=N` | Divergencia respecto a su upstream. |
-| `merged` | Mergeado en la rama principal. |
+| `base-ahead=N base-behind=N of develop` | Divergencia con su base: la [base](#base) registrada cuando se resuelve y, si no, la rama principal. |
+| `merged` | Mergeado en su base o en la rama principal. |
 | `not-started` | La rama nunca tuvo commits propios (se muestra en lugar de `merged`). |
 | `folder-missing` | Su carpeta se borró a mano. |
 | `status-unavailable (motivo)` | No se pudo leer su estado, con el motivo de Git. |
@@ -126,6 +127,7 @@ Imprime un único objeto JSON compacto en una línea, en vez de las líneas de t
         "uncommittedChanges": 0,
         "upstream": { "ahead": 0, "behind": 0 },
         "mainBranch": null,
+        "base": null,
         "merged": false,
         "lastCommitAt": "2026-10-18T09:12:44Z",
         "createdAt": "2026-10-17T16:40:02Z"
@@ -145,8 +147,9 @@ Imprime un único objeto JSON compacto en una línea, en vez de las líneas de t
 | `agents` | Los agentes en ejecución en él: `name`, `state` (`working`, `blocked`, `done`, `idle`; `null` cuando nada informa de uno), `stateSource` (`herdr`, `orca`, `claude-code` o `null`), `herdrState`, el estado cuando la fuente es Herdr y `null` si no, y `sessions`, las sesiones vivas de Claude Code del agente en ese worktree (`name` y `pid`; vacía para otros agentes o cuando no se encuentra ninguna). |
 | `status` | `null` cuando falta la carpeta o no se pudo leer su estado. |
 | `statusProblem` | Solo aparece cuando no se pudo leer el estado: el motivo de Git. |
-| `status.uncommittedChanges`, `status.merged` | Cambios sin commitear; mergeado en la rama principal. |
+| `status.uncommittedChanges`, `status.merged` | Cambios sin commitear; mergeado en su base o en la rama principal. |
 | `status.upstream`, `status.mainBranch` | `{ "ahead": n, "behind": n }` respecto al upstream y a la rama principal; `null` si no hay. |
+| `status.base` | `{ "branch", "ahead", "behind" }` respecto a su base: la [base](#base) registrada cuando se resuelve (primero `origin/<base>`, si no la rama local) y, si no, la rama principal; `null` si no hay ninguna o el worktree está en ella. |
 | `status.lastCommitAt` | Hora del último commit en ISO-8601 UTC, o `null`. |
 | `desktop` | `null`, o el [turno del escritorio](#desktop) del worktree: `{ "role": "holder", "since", "expiresAt" }` cuando lo tiene, `{ "role": "waiting", "position", "since" }` cuando lo espera, con horas ISO-8601 UTC. |
 | `status.createdAt` | Hora en que se creó el worktree, en ISO-8601 UTC, leída de la carpeta administrativa de Git para él; `null` para el checkout principal o si no se puede leer. |
@@ -163,6 +166,7 @@ Imprime la rama de la que se creó la rama de un worktree, sola en la salida est
 
 - ShogunAi la registra al crear una rama: `shogun new`, el hook `WorktreeCreate` de Claude Code, «Nuevo worktree» de la app de escritorio y los worktrees de un [grupo de un multirepo](#multirepos), que parten de la rama principal de cada repositorio.
 - Se guarda en la configuración de Git del repositorio como `branch.<rama>.gh-merge-base`, la clave que `gh pr create` ya lee como base por defecto. No se escribe nada en el árbol de trabajo; todos los worktrees del repositorio la ven, renombrar la rama la conserva y borrar la rama la elimina.
+- `status`, `clean` y el borrado de ramas cuentan una rama como mergeada cuando lo está en su base registrada o en la rama principal, así que una rama de feature de una épica se puede limpiar en cuanto llega a la épica. Una base que no se resuelve (borrada, nunca traída con fetch) cae en la rama principal.
 - Si no hay ninguna registrada (un worktree creado por Herdr o con `git worktree add`, o una rama anterior a que ShogunAi registrara bases), lo dice en la salida de error, sugiere `--set` y sale con `1`. Un worktree en HEAD separado no tiene rama y también sale con `1`.
 - `--set <rama>` la registra, sustituyendo el valor anterior. El valor debe ser una rama local o de un remoto, cuyo prefijo de remoto se quita (`origin/develop` se registra como `develop`); un tag o un nombre desconocido no registran nada y salen con `1`.
 - `--json` imprime `{ "path", "branch", "base" }`, con `base` a `null` (y código de salida `1`) si no hay ninguna registrada.
@@ -212,7 +216,7 @@ shogun remove <id de tarea | ruta | rama> [--force|-f] [--delete-branch | --forc
 
 Elimina un worktree enlazado, igual que "Eliminar" en la app de escritorio. El objetivo es, por este orden, la ruta de un worktree, el nombre exacto de su rama o un id de tarea (el worktree en `<carpeta de worktrees>/<id de tarea>`); si no hay coincidencia, o hay más de una, no elimina nada y falla (listando los candidatos). El worktree principal nunca se elimina.
 
-Sin `--force` rechaza un worktree con cambios sin commitear o sin seguimiento, o donde se ejecuta un agente (`shogun: claude is running in <ruta>; use --force to remove it anyway`), y termina con `1`. Con `--force` lo elimina igualmente. La rama se conserva salvo que pases `--delete-branch`, que la borra solo si está mergeada en la rama principal del proyecto (`deleted branch …`, o `kept branch … (not merged into the main branch)`; una rama conservada no hace fallar el comando). `--force-delete-branch` la borra aunque no esté mergeada.
+Sin `--force` rechaza un worktree con cambios sin commitear o sin seguimiento, o donde se ejecuta un agente (`shogun: claude is running in <ruta>; use --force to remove it anyway`), y termina con `1`. Con `--force` lo elimina igualmente. La rama se conserva salvo que pases `--delete-branch`, que la borra solo si está mergeada en su [base](#base) registrada o en la rama principal del proyecto (`deleted branch …`, o `kept branch … (not merged into its base or the main branch)`; una rama conservada no hace fallar el comando). `--force-delete-branch` la borra aunque no esté mergeada.
 
 Tras eliminarlo, el comando para lo que los providers del repositorio mantienen para ese worktree: su emulador de Android (`stopped emulator …`), su simulador de iOS (`stopped simulator …`) y los daemons de Gradle ociosos cuya última build fue en él (`stopped Gradle daemon …`). Un recurso que no se puede parar se indica en la salida de error y el código de salida es `1`; para entonces el worktree ya está eliminado. También se cierra su espacio de trabajo de Herdr, y sus terminales de Orca mientras Orca está abierto (Orca nunca se arranca para esto; una terminal que no se puede cerrar se indica en la salida de error sin cambiar el código de salida). Su app de escritorio en segundo plano, si está en marcha, se para antes de borrar la carpeta. Si Git no puede borrar la carpeta porque un programa la está usando (típicamente una shell de Herdr u Orca en Windows), se cierran el espacio de trabajo, los paneles de Herdr dentro del worktree y sus terminales de Orca y se reintenta la eliminación una vez; un worktree que Git ya había desregistrado pero cuya carpeta queda se termina de eliminar borrando esa carpeta, y una carpeta que sigue en uso falla con un mensaje que lo explica.
 
@@ -257,7 +261,7 @@ Un worktree donde se ejecuta un agente se lista como `kept <ruta> (claude is run
 
 | Opción | Además… |
 |---|---|
-| `--delete-branches` | Borra las ramas de los worktrees eliminados si están mergeadas en la rama principal del proyecto (`kept branch …` si no). |
+| `--delete-branches` | Borra las ramas de los worktrees eliminados si están mergeadas en su [base](#base) registrada o en la rama principal del proyecto (`kept branch …` si no). |
 | `--stop-gradle-daemons` | Para los daemons de Gradle ociosos cuya última build fue en un worktree eliminado. |
 | `--stop-maven-daemons` | Para los daemons de Maven ociosos cuya última build fue en un worktree eliminado (`would stop Maven daemon …` sin `--yes`). |
 | `--stop-emulators` | Para los emuladores de Android de los worktrees eliminados. |
@@ -519,10 +523,10 @@ Estos comandos están pensados para que los llamen agentes y herramientas, no pa
 | Comando | Lo llama |
 |---|---|
 | `shogun hook worktree-create` | El hook `WorktreeCreate` de Claude Code. Lee `name` y `cwd` de la entrada estándar, crea (o reutiliza) un worktree provisionado en `feature/<name>` que parte del HEAD del worktree de `cwd`, e imprime su ruta. Si falla un comando posterior a la creación, imprime igualmente la ruta como última línea y sale con 0, con el fallo en la salida de error, para que Claude Code use el worktree. Los comandos posteriores a la creación y las variables declaradas sin aprobar se omiten con una nota por la salida de error; nunca pregunta. |
-| `shogun hook worktree-remove` | El hook `WorktreeRemove` de Claude Code. Elimina el worktree de `worktree_path`, borra su rama solo si está mergeada en la rama principal del proyecto (una rama mergeada solo en su propio upstream se conserva, con una nota en la salida de error) y cierra su espacio de Herdr y sus terminales de Orca. |
+| `shogun hook worktree-remove` | El hook `WorktreeRemove` de Claude Code. Elimina el worktree de `worktree_path`, borra su rama solo si está mergeada en su base registrada o en la rama principal del proyecto (una rama mergeada solo en su propio upstream se conserva, con una nota en la salida de error) y cierra su espacio de Herdr y sus terminales de Orca. |
 | `shogun hook session-start` | El hook `SessionStart` de Claude Code. Dentro de un repositorio Git, imprime el contexto. Solo cuando el repositorio está registrado como proyecto añade el entorno del worktree a `CLAUDE_ENV_FILE` (nada cuando el repositorio no declara `env`) e imprime una línea que nombra las variables, sin sus valores; las variables declaradas pendientes de aprobación se nombran en una línea aparte, que pide al agente que te pida revisarlas con `shogun trust`, y no se entregan. Después vienen las [reglas de flujo](#guide) cortas que aplican a esa ubicación, como máximo diez líneas, que empiezan con la línea de prioridad y terminan con un puntero a `shogun guide`. Sin Herdr omite las reglas sobre `shogun open --herdr` y sobre escribir a otras sesiones; las reglas del emulador y del simulador aparecen solo cuando el repositorio declara esos providers. Fuera de un repositorio Git no imprime nada y sale con `0`. |
 | `shogun hook agent-state` | Los hooks `UserPromptSubmit`, `Notification`, `Stop` y `SessionEnd` de Claude Code. Lee el JSON del hook por la entrada estándar y registra el estado de la sesión (trabajando, bloqueada, terminada) para el worktree que contiene `cwd`, o borra el registro en `SessionEnd`; una `Notification` de tipo `idle_prompt` significa terminada y `auth_success` se ignora. Cuando el estado es trabajando, renueva además las concesiones del emulador y del simulador que tiene el worktree. No imprime nada, nunca bloquea la sesión y sale con 0 también fuera de un repositorio; una entrada que no es JSON sale con 2. Ver [Estados de los agentes fuera de Herdr](../agents.md#estados-de-los-agentes-fuera-de-herdr). |
-| `shogun hook herdr` | El plugin de ShogunAi para Herdr, en `worktree.created` (provisiona el worktree, omitiendo con una nota los comandos posteriores a la creación sin aprobar) y `worktree.removed` (borra su rama si está mergeada en la rama principal del proyecto). Lee `HERDR_PLUGIN_EVENT`, `HERDR_PLUGIN_EVENT_JSON` y `HERDR_BIN_PATH`. |
+| `shogun hook herdr` | El plugin de ShogunAi para Herdr, en `worktree.created` (provisiona el worktree, omitiendo con una nota los comandos posteriores a la creación sin aprobar) y `worktree.removed` (borra su rama si está mergeada en su base registrada o en la rama principal del proyecto). Lee `HERDR_PLUGIN_EVENT`, `HERDR_PLUGIN_EVENT_JSON` y `HERDR_BIN_PATH`. |
 | `shogun hook orca setup` | El `scripts.setup` de Orca en `orca.yaml`. Aprovisiona el worktree de `ORCA_WORKTREE_PATH` como `shogun provision` (`ORCA_ROOT_PATH` encuentra el repositorio cuando los metadatos Git del worktree no pueden), imprime los archivos copiados y, cuando el worktree queda fuera de la carpeta de worktrees del proyecto, una nota que lo dice. Sale con `2` sin `ORCA_WORKTREE_PATH` y con `1` si el aprovisionamiento falla. Ver [Orca](configuration.md#orca). |
 | `shogun hook orca archive` | El `scripts.archive` de Orca. Libera el emulador, el simulador y los daemons de Gradle inactivos del worktree de `ORCA_WORKTREE_PATH`, deja el worktree y su rama a Orca y siempre sale con `0`, imprimiendo en la salida de error lo que no pudo liberar. Otra acción sale con `2`. |
 

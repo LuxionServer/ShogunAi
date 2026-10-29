@@ -149,8 +149,8 @@ private fun groupWorktreeJson(state: GroupWorktreeState): JsonObject = buildJson
     put("base", state.base?.name)
     put("folderMissing", state.member.worktree.isPrunable)
     put("uncommittedChanges", status?.uncommittedChanges)
-    put("ahead", status?.mainBranch?.ahead)
-    put("behind", status?.mainBranch?.behind)
+    put("ahead", status?.base?.ahead)
+    put("behind", status?.base?.behind)
     put("merged", status?.isMerged)
     state.status?.exceptionOrNull()?.let { put("statusProblem", it.message) }
     put("agents", buildJsonArray { state.agents.forEach { add(agentJson(it)) } })

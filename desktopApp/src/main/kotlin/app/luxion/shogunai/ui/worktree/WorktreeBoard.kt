@@ -577,7 +577,7 @@ class WorktreeBoard(
                 WorktreeStatusState.Unavailable -> Result.failure(IllegalStateException(path))
                 else -> null
             }
-            GroupWorktreeState(worktree, holder.mainBranch, status, holder.agents.orEmpty()[path].orEmpty())
+            GroupWorktreeState(worktree, holder.baseOf(member.entry.worktree), status, holder.agents.orEmpty()[path].orEmpty())
         }
         return selectGroupCleanup(listOf(BranchGroupState(branchGroup, states))).kept.firstOrNull()
     }

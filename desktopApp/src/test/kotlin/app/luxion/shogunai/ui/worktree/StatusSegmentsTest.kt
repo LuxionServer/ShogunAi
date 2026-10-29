@@ -63,4 +63,18 @@ class StatusSegmentsTest {
 
         assertEquals(emptyList(), segments(status))
     }
+
+    @Test
+    fun `shows the divergence from the recorded base naming it`() {
+        val status = WorktreeStatus(
+            uncommittedChanges = 0,
+            upstream = null,
+            mainBranch = Divergence(ahead = 9, behind = 0),
+            lastCommitAt = now.minus(Duration.ofDays(2)),
+            base = Divergence(ahead = 3, behind = 0),
+            baseName = "epic/redesign",
+        )
+
+        assertEquals(listOf("↑3 epic/redesign", "commit 2 days ago"), segments(status))
+    }
 }

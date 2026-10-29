@@ -31,14 +31,16 @@ internal suspend fun deleteBranchIfContained(
     branch: String,
     mainBranch: MainBranch?,
 ): BranchDeletion {
-    if (mainBranch == null) return BranchDeletion.KeptNotMerged
-    val contained = executor.execute(
-        command = listOf("git", "merge-base", "--is-ancestor", branch, mainBranch.ref),
-        workingDirectory = config.baseRepositoryPath,
-    )
-    if (!contained.isSuccess) return BranchDeletion.KeptNotMerged
+    val targets = listOfNotNull(recordedBaseRef(executor, config, branch), mainBranch).distinctBy { it.ref }
+    if (targets.none { isContained(executor, config, branch, it) }) return BranchDeletion.KeptNotMerged
     return forceDeleteBranch(executor, config, branch)
 }
+
+private suspend fun isContained(executor: ShellCommandExecutor, config: ProjectConfig, branch: String, target: MainBranch): Boolean =
+    target.name != branch && executor.execute(
+        command = listOf("git", "merge-base", "--is-ancestor", branch, target.ref),
+        workingDirectory = config.baseRepositoryPath,
+    ).isSuccess
 
 internal suspend fun forceDeleteBranch(
     executor: ShellCommandExecutor,
