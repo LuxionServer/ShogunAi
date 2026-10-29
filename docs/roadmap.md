@@ -79,7 +79,7 @@ Multirepos and groups by branch are done in the CLI and the desktop app, and the
 - Finding the root cause of the errors that closed the Preferences window, from the entries the isolation now leaves in the diagnostics log, and of the native crash seen on another machine that left an empty diagnostic report.
 - Checking the in-app installation of the `shogun` command on a real installed app on Windows (the `shogun.cmd` and the user `PATH` change are covered by tests with fakes only) and on a machine without `~/.local/bin` on its `PATH`.
 - Checking on a real Windows machine that removing and cleaning up worktrees with build outputs deeper than 260 characters now succeeds (Git's long path support and the leftover fallback are covered by tests with fakes only).
-- Moving the per-project ports of `ProjectWorktrees` that still run on the caller's dispatcher (emulator and simulator states, ports, releasing resources) off the interface thread, as the Machine section now does.
+- Moving the per-project ports of `ProjectWorktrees` that still run on the caller's dispatcher (emulator and simulator states, ports, releasing resources) off the interface thread, as the machine views now do.
 - Noticing a broken Herdr plugin: an install linked to a folder that no longer exists stops provisioning Herdr's worktrees without any error, so `shogun hooks status` and the app should check `herdr plugin list` and offer reinstalling it from the repository.
 - Checking the state of Maven daemons on a real mvnd 2.x daemon: it was checked on mvnd 1.0.6, and 2.x is covered by its sources and by tests with its log argument.
 - Filesystem watchers instead of polling for Git metadata changes.
