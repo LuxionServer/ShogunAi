@@ -18,4 +18,12 @@ class ResolveStartPointUseCase(
         }
         commit
     }
+
+    suspend fun describe(directory: String, commit: String): String? {
+        val result = executor.execute(
+            command = listOf("git", "log", "-1", "--format=%h %s", commit),
+            workingDirectory = directory,
+        )
+        return result.stdout.trim().takeIf { result.isSuccess && it.isNotEmpty() }
+    }
 }

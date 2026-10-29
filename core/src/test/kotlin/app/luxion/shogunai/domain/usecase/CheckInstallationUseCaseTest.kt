@@ -10,6 +10,7 @@ import app.luxion.shogunai.domain.io.HostPath
 import app.luxion.shogunai.domain.io.HostPathSource
 import app.luxion.shogunai.domain.model.AgentToolId
 import app.luxion.shogunai.domain.model.CheckState
+import app.luxion.shogunai.domain.model.ClaudeComputerUse
 import app.luxion.shogunai.domain.model.InstallationCheck
 import app.luxion.shogunai.domain.model.InstallationFinding
 import app.luxion.shogunai.domain.model.InstallationReport
@@ -45,7 +46,10 @@ class CheckInstallationUseCaseTest {
           "Notification": [{"hooks": [{"type": "command", "command": "shogun hook agent-state"}]}],
           "Stop": [{"hooks": [{"type": "command", "command": "shogun hook agent-state"}]}],
           "SessionEnd": [{"hooks": [{"type": "command", "command": "shogun hook agent-state"}]}],
-          "PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "shogun hook desktop-turn", "if": "Bash(*computer *)"}]}]
+          "PreToolUse": [
+            {"matcher": "Bash", "hooks": [{"type": "command", "command": "shogun hook desktop-turn", "if": "Bash(*computer *)"}]},
+            {"matcher": "${ClaudeComputerUse.hookMatcher}", "hooks": [{"type": "command", "command": "shogun hook desktop-turn"}]}
+          ]
         }}
     """.trimIndent()
 

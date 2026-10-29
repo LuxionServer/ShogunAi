@@ -310,11 +310,21 @@ class HeadlessCommandsTest {
     }
 
     @Test
-    fun `the session start context tells the agent how to check the desktop app`() {
+    fun `the session start context tells the agent in one line how to check the desktop app`() {
         val context = sessionStart()
 
-        listOf("shogun headless start", "shogun headless capture", "take_screenshot", "restart", "menu bar").forEach {
-            assertTrue(it in context, context)
+        val line = context.lines().single { "shogun headless start" in it }
+        assertTrue("shogun guide resources" in line, context)
+        assertFalse("shogun headless capture" in context, context)
+    }
+
+    @Test
+    fun `the guide keeps the full desktop app rule`() {
+        assertEquals(0, cli().run(listOf("guide", "resources")), err.toString())
+
+        val guide = out.toString()
+        listOf("shogun headless capture", "take_screenshot", "restart", "menu bar", "shogun desktop acquire --wait").forEach {
+            assertTrue(it in guide, it)
         }
     }
 
