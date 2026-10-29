@@ -4,11 +4,11 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
-import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.v2.runComposeUiTest
 import app.luxion.shogunai.AppContainer
 import app.luxion.shogunai.domain.model.Project
@@ -49,7 +49,12 @@ class CreateWorktreeE2eTest {
         awaitText(strings.newWorktree)
         onAllNodesWithText(strings.newWorktree).onFirst().performClick()
         awaitText(strings.taskIdLabel)
-        onAllNodes(hasSetTextAction()).onLast().performTextInput("TASK-123")
+        awaitCondition("the task id in its focused field") {
+            val typed = onAllNodes(hasSetTextAction() and hasText("TASK-123")).fetchSemanticsNodes().isNotEmpty()
+            val focusedField = onAllNodes(hasSetTextAction() and isFocused()).fetchSemanticsNodes().isNotEmpty()
+            if (!typed && focusedField) onNode(hasSetTextAction() and isFocused()).performTextReplacement("TASK-123")
+            typed
+        }
         onNode(hasClickAction() and hasText(strings.createWorktree)).performClick()
 
         val worktree = worktreesRoot.resolve("TASK-123")
