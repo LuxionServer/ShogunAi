@@ -11,6 +11,8 @@ class FakeGitRepositories : ShellCommandExecutor {
         val branches = mutableSetOf<String>()
         val remoteBranches = mutableSetOf<String>()
         val merged = mutableSetOf<String>()
+        val mergedOnlyInto = mutableMapOf<String, String>()
+        val recordedBases = linkedMapOf<String, String>()
         val dirty = mutableMapOf<String, Int>()
         var failAdd: String? = null
     }
@@ -64,7 +66,9 @@ class FakeGitRepositories : ShellCommandExecutor {
             }
             args.take(1) == listOf("status") -> ok(command, " M file\n".repeat(repository.dirty[directory] ?: 0))
             args.take(1) == listOf("rev-list") && args.last().endsWith("@{upstream}...HEAD") -> fail(command)
-            args.take(1) == listOf("rev-list") -> ok(command, if (directory in repository.merged) "3\t0" else "0\t2")
+            args.take(1) == listOf("rev-list") -> ok(command, if (readsAsMerged(repository, directory, args.last())) "3\t0" else "0\t2")
+            args.take(2) == listOf("config", "--get-regexp") ->
+                ok(command, repository.recordedBases.entries.joinToString("") { (branch, base) -> "branch.$branch.gh-merge-base $base\n" })
             args.take(2) == listOf("branch", "-d") || args.take(2) == listOf("branch", "-D") -> {
                 repository.branches.remove(args.last())
                 ok(command)
@@ -73,6 +77,9 @@ class FakeGitRepositories : ShellCommandExecutor {
             else -> ok(command)
         }
     }
+
+    private fun readsAsMerged(repository: Repository, directory: String, range: String): Boolean =
+        repository.mergedOnlyInto[directory]?.let { range.substringBefore("...") == it } ?: (directory in repository.merged)
 
     private fun owner(directory: String): Repository? =
         repositories.flatMap { repository -> (listOf(repository.base) + repository.worktrees.keys).map { it to repository } }

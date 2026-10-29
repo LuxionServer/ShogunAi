@@ -89,7 +89,7 @@ private fun hasUnpushedCommits(status: WorktreeStatus): Boolean =
     if (status.upstream != null) {
         status.upstream.ahead > 0
     } else {
-        (status.mainBranch?.ahead ?: 0) > 0
+        (status.base?.ahead ?: 0) > 0
     }
 
 internal fun normalizePath(path: String): String = path.replace('\\', '/').trimEnd('/')

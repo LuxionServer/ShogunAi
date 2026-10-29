@@ -67,12 +67,12 @@ Each row is two lines with a fixed place for every piece of information, so rows
 - A **state badge**: a colored circle with an icon that is different for each [state](#states), so it can be told without color. Hovering it shows the state's name.
 - The **execution** column: the agent on the first line (its name and, with Herdr or Orca running, its state: working, blocked, done or idle) and, on the second, whether the worktree has the [desktop turn](cli.md#desktop) or waits for it (with its place in line), the emulator or simulator while it boots or runs, and its [app running in the background](headless-app.md). With several agents, or several things on the second line, it shows the first one with a "+N" and the tooltip lists them all. In a narrow list it collapses to icons that keep their colors; hover them for the labels.
 - The **name**: the branch on the first line; on the second, the folder when it differs from the branch's last segment, the **origin** (ShogunAi, Claude Code, Herdr, Orca or another location) and, in views that span several projects and aren't grouped by project, the project.
-- The **Git** column: uncommitted changes on the first line and, on the second, the commits ahead of and behind the main branch, or "merged". A dash means the status couldn't be read.
+- The **Git** column: uncommitted changes on the first line and, on the second, the commits ahead of and behind its base (the branch it was created from, or the main branch when none is recorded), or "merged". A dash means the status couldn't be read.
 - The **time** column: when the worktree was last active, saying what it measures ("commit 3 h ago" when its branch has commits of its own, "created 2 d ago" otherwise), and the "main" and "locked" marks below.
 
 The detail shows more:
 
-- Its **status**: uncommitted changes, ahead/behind its upstream and the main branch, the last commit date, the creation date, and "merged into <main branch>" or "not started" when its branch never had commits of its own. "Folder missing" when its folder was deleted by hand.
+- Its **status**: uncommitted changes, ahead/behind its upstream, the main branch and its base, the last commit date, the creation date, and "merged into <branch>" (its base or the main branch) or "not started" when its branch never had commits of its own. "Folder missing" when its folder was deleted by hand.
 - Its **provisioned files**: whether the files and links declared for new worktrees match the base repository's, listing the missing, differing and not-linked ones. For a worktree made by another tool, or whose copies are stale, **Provision** copies them, reserves its ports and writes its environment file, as `shogun provision` does.
 - Its **environment**: the ports and every variable from `.shogunai.json` `"env"` with its value, in the order `shogun env` prints them. **Copy as .env** puts them on the clipboard in dotenv format. Values aren't masked, since they come from templates in the repository.
 - Its **size** and the **ports** reserved for it (see [per-worktree environment](../agents.md#per-worktree-environment)).
@@ -90,11 +90,11 @@ Each worktree is in the first state that applies. Grouped by state, each group's
 
 | Group | Hint | Criterion |
 |---|---|---|
-| Needs you | agent waiting, uncommitted or unpushed | An agent is blocked or done, or no agent is working and there are uncommitted changes or commits not pushed to its upstream (or to the main branch when it has none). |
+| Needs you | agent waiting, uncommitted or unpushed | An agent is blocked or done, or no agent is working and there are uncommitted changes or commits not pushed to its upstream (or to its base when it has none). |
 | Agent working | agent running | An AI agent is working in the worktree, or runs without a known state. An agent that is idle doesn't decide the state. |
 | New | no commits yet | No commits of its own, no uncommitted changes and no agent running. |
 | Stopped | pushed, waiting | Commits of its own, all pushed, nothing uncommitted, not merged and no agent working. |
-| Merged | in main branch | No commits of its own ahead of the main branch, after having had some. Can be cleaned up. A branch that never had commits and has no upstream reads as "new" instead and is never offered for cleanup. |
+| Merged | in its base | No commits of its own ahead of its base or the main branch, after having had some. Can be cleaned up. A branch that never had commits and has no upstream reads as "new" instead and is never offered for cleanup. |
 | Inactive | no activity for 3+ days | Clean, no agent running and no activity in the last 3 days (see below). |
 | Folder missing | folder deleted | Git still lists it but its folder no longer exists. Can be cleaned up. |
 | Other | main or not read yet | The main worktree when it's clean, or a worktree whose status isn't read yet. |
@@ -116,7 +116,7 @@ With several agents, the worktree's detail shows an **Agent** field and the thre
 
 ## Removing and cleaning up
 
-- **Remove** removes one worktree, optionally deleting its local branch, which is deleted only if it's merged into the project's main branch. If it isn't (for example after a squash merge), the worktree is still removed and a notice says the branch was kept, with a **Delete branch anyway** action that asks for confirmation first. The main worktree can't be removed.
+- **Remove** removes one worktree, optionally deleting its local branch, which is deleted only if it's merged into its base or into the project's main branch. If it isn't (for example after a squash merge), the worktree is still removed and a notice says the branch was kept, with a **Delete branch anyway** action that asks for confirmation first. The main worktree can't be removed.
 - **Clean up**, next to the "Worktrees" title, lists the worktrees that are merged or whose folder is gone and removes them in one go, optionally deleting their branches. Depending on the repository's providers it also offers to stop their idle Gradle daemons and their emulators, and to delete their iOS simulators and orphaned Xcode DerivedData.
 
 Removing a worktree that's open in Herdr also closes its Herdr workspace, and removing one with Orca terminals closes those terminals and the agents in them; the dialogs say so beforehand. Orca is never started to remove a worktree, and if its terminals can't be closed the worktree is still removed and a warning shows Orca's message. Removing or cleaning up a worktree also stops its app running in the background and releases its desktop turn; if the app can't be stopped, the worktree is still removed and a notice says so until you dismiss it.

@@ -67,12 +67,12 @@ Cada fila tiene dos líneas y un sitio fijo para cada dato, así que las filas s
 - Una **insignia de estado**: un círculo de color con un icono distinto para cada [estado](#estados), de modo que se distingue sin color. Al pasar el ratón muestra el nombre del estado.
 - La columna de **ejecución**: el agente en la primera línea (su nombre y, con Herdr u Orca en marcha, su estado: trabajando, bloqueado, terminado o inactivo) y, en la segunda, si el worktree tiene el [turno del escritorio](cli.md#desktop) o lo espera (con su puesto en la cola), el emulador o simulador mientras arranca o está en marcha, y su [app en segundo plano](headless-app.md). Con varios agentes, o varias cosas en la segunda línea, muestra la primera con un "+N" y el tooltip las lista todas. En una lista estrecha se reduce a iconos que conservan sus colores; pasa el ratón para ver las etiquetas.
 - El **nombre**: la rama en la primera línea; en la segunda, la carpeta cuando difiere del último segmento de la rama, el **origen** (ShogunAi, Claude Code, Herdr, Orca u otra ubicación) y, en las vistas que abarcan varios proyectos y no están agrupadas por proyecto, el proyecto.
-- La columna **Git**: los cambios sin commitear en la primera línea y, en la segunda, los commits por delante y por detrás de la rama principal, o "fusionado". Un guion significa que no se pudo leer el estado.
+- La columna **Git**: los cambios sin commitear en la primera línea y, en la segunda, los commits por delante y por detrás de su base (la rama de la que se creó, o la rama principal si no hay ninguna registrada), o "fusionado". Un guion significa que no se pudo leer el estado.
 - La columna de **tiempo**: cuándo estuvo activo el worktree por última vez, diciendo qué mide ("commit hace 3 horas" cuando su rama tiene commits propios, "creado hace 2 días" en otro caso), y debajo las marcas "principal" y "bloqueado".
 
 El detalle muestra más:
 
-- Su **estado**: cambios sin commitear, commits por delante y por detrás de su upstream y de la rama principal, la fecha del último commit, la fecha de creación, y "mergeada en <rama principal>" o "sin empezar" cuando su rama nunca tuvo commits propios. "Carpeta no encontrada" cuando su carpeta se borró a mano.
+- Su **estado**: cambios sin commitear, commits por delante y por detrás de su upstream, de la rama principal y de su base, la fecha del último commit, la fecha de creación, y "mergeada en <rama>" (su base o la rama principal) o "sin empezar" cuando su rama nunca tuvo commits propios. "Carpeta no encontrada" cuando su carpeta se borró a mano.
 - Sus **archivos provisionados**: si los archivos y enlaces declarados para los worktrees nuevos coinciden con los del repositorio base, listando los que faltan, difieren o no están enlazados. En un worktree creado por otra herramienta, o cuyas copias están desactualizadas, **Provisionar** los copia, reserva sus puertos y escribe su archivo de entorno, como hace `shogun provision`.
 - Su **entorno**: los puertos y cada variable de `"env"` en `.shogunai.json` con su valor, en el orden en que las imprime `shogun env`. **Copiar como .env** las pone en el portapapeles en formato dotenv. Los valores no se ocultan, porque salen de plantillas del repositorio.
 - Su **tamaño** y los **puertos** reservados para él (ver [entorno por worktree](../agents.md#entorno-por-worktree)).
@@ -90,11 +90,11 @@ Cada worktree está en el primer estado que se cumple. Agrupada por estado, la c
 
 | Grupo | Pista | Criterio |
 |---|---|---|
-| Te necesitan | agente esperando, sin commit o sin subir | Un agente está bloqueado o ha terminado, o ningún agente trabaja y hay cambios sin commit o commits sin subir a su upstream (o a la rama principal si no tiene). |
+| Te necesitan | agente esperando, sin commit o sin subir | Un agente está bloqueado o ha terminado, o ningún agente trabaja y hay cambios sin commit o commits sin subir a su upstream (o a su base si no tiene). |
 | Con agente | agente en marcha | Un agente de IA está trabajando en el worktree, o se ejecuta sin estado conocido. Un agente inactivo no decide el estado. |
 | Nuevos | aún sin commits | Sin commits propios, sin cambios sin commit y sin agente en marcha. |
 | Parados | subido, en espera | Con commits propios, todos subidos, sin cambios pendientes, sin fusionar y sin agente trabajando. |
-| Fusionados | ya en la rama principal | Sin commits propios por delante de la rama principal, habiéndolos tenido. Se puede limpiar. Una rama que nunca tuvo commits y no tiene upstream se muestra como "nueva" y nunca se ofrece para limpiar. |
+| Fusionados | ya en su base | Sin commits propios por delante de su base o de la rama principal, habiéndolos tenido. Se puede limpiar. Una rama que nunca tuvo commits y no tiene upstream se muestra como "nueva" y nunca se ofrece para limpiar. |
 | Inactivos | sin actividad en 3+ días | Limpio, sin agente en marcha y sin actividad en los últimos 3 días (ver abajo). |
 | Carpeta no encontrada | carpeta borrada | Git aún lo lista, pero su carpeta ya no existe. Se puede limpiar. |
 | Otros | principal o sin leer | El worktree principal cuando está limpio, o un worktree cuyo estado aún no se ha leído. |
@@ -116,7 +116,7 @@ Con varios agentes, el detalle del worktree muestra un campo **Agente** y las tr
 
 ## Eliminar y limpiar
 
-- **Eliminar** elimina un worktree, con la opción de borrar también su rama local, que solo se borra si está mergeada en la rama principal del proyecto. Si no lo está (por ejemplo tras un squash merge), el worktree se elimina igualmente y un aviso indica que la rama se conservó, con la acción **Borrar la rama igualmente**, que pide confirmación antes. El worktree principal no se puede eliminar.
+- **Eliminar** elimina un worktree, con la opción de borrar también su rama local, que solo se borra si está mergeada en su base o en la rama principal del proyecto. Si no lo está (por ejemplo tras un squash merge), el worktree se elimina igualmente y un aviso indica que la rama se conservó, con la acción **Borrar la rama igualmente**, que pide confirmación antes. El worktree principal no se puede eliminar.
 - **Limpiar**, junto al título "Worktrees", lista los worktrees mergeados o cuya carpeta ya no existe y los elimina de una vez, con la opción de borrar sus ramas. Según los providers del repositorio, ofrece también parar sus daemons de Gradle ociosos y sus emuladores, y borrar sus simuladores de iOS y los DerivedData de Xcode huérfanos.
 
 Eliminar un worktree abierto en Herdr cierra también su espacio de trabajo de Herdr, y eliminar uno con terminales de Orca cierra esas terminales y los agentes que tienen; los diálogos lo avisan antes. Orca nunca se arranca para eliminar un worktree y, si sus terminales no se pueden cerrar, el worktree se elimina igualmente y un aviso muestra el mensaje de Orca. Eliminar o limpiar un worktree también para su app en segundo plano y libera su turno del escritorio; si la app no se puede parar, el worktree se elimina igualmente y un aviso lo dice hasta que lo descartas.

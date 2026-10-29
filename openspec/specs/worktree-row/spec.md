@@ -92,7 +92,7 @@ The name cell's first line SHALL show the branch, or that the HEAD is detached. 
 - **THEN** the folder and the origin are truncated before the project's name
 
 ### Requirement: Git cell
-The Git cell's first line SHALL show the number of uncommitted changes, and its second line the commits ahead of and behind the main branch, or that the branch is merged into it. The main branch's name SHALL be shown in the tooltip. While the status is loading, the cell SHALL show a loading indicator; when the status can't be read, a muted dash with the reason in its tooltip.
+The Git cell's first line SHALL show the number of uncommitted changes, and its second line the commits ahead of and behind the worktree's base, or that the branch is merged. The base's name, or the name of the branch it is merged into, SHALL be shown in the tooltip. While the status is loading, the cell SHALL show a loading indicator; when the status can't be read, a muted dash with the reason in its tooltip.
 
 #### Scenario: Changes and divergence
 - **WHEN** a worktree has 3 uncommitted changes and is 2 ahead of and 1 behind `develop`
@@ -105,6 +105,14 @@ The Git cell's first line SHALL show the number of uncommitted changes, and its 
 #### Scenario: Status unavailable
 - **WHEN** a worktree's status can't be read
 - **THEN** the Git cell shows a muted dash, and hovering it says the status is unavailable
+
+#### Scenario: Recorded base
+- **WHEN** a worktree's branch has recorded base `epic/redesign` and is 2 ahead of it
+- **THEN** the second line shows 2 ahead, with `epic/redesign` on hover
+
+#### Scenario: Merged into the recorded base
+- **WHEN** a worktree's branch is merged into its recorded base `epic/redesign` but not into `develop`
+- **THEN** the second line shows it as merged, with `epic/redesign` on hover
 
 ### Requirement: Time cell
 The time cell's first line SHALL show the worktree's activity date relative to now, saying what it measures. Its second line SHALL show the worktree's fixed marks: main worktree and locked.

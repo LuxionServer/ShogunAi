@@ -148,6 +148,24 @@ class RemoveWorktreeUseCaseTest {
     }
 
     @Test
+    fun `deletes a branch merged into its recorded base but not into the main branch`() = runTest {
+        val executor = FakeShellCommandExecutor { command ->
+            when {
+                command.take(3) == listOf("git", "config", "--get") -> success(command, "epic/redesign\n")
+                command.take(3) == listOf("git", "merge-base", "--is-ancestor") ->
+                    if (command.last() == "origin/epic/redesign") success(command) else failure(command, exitCode = 1, stderr = "")
+                command.getOrNull(1) == "symbolic-ref" -> failure(command)
+                else -> success(command)
+            }
+        }
+
+        val removal = RemoveWorktreeUseCase(config, executor)(worktreePath, branchToDelete = "feature/TASK-123").getOrThrow()
+
+        assertEquals(BranchDeletion.Deleted, removal.branch)
+        assertTrue(executor.executed("git", "branch", "-D", "--", "feature/TASK-123"))
+    }
+
+    @Test
     fun `keeps an unmerged branch and still succeeds`() = runTest {
         val executor = branchExecutor(contained = false)
 

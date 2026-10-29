@@ -69,7 +69,7 @@ Un `Worktree` devuelto por la creación también lleva `skippedPostCreateCommand
 
 - `MainBranch` — la rama contra la que se comparan los worktrees: su `name` (`develop`) y la `ref` usada en los comandos de Git (`origin/develop`, o `develop` cuando no hay rama remota de seguimiento).
 - `Divergence` — commits `ahead` (por delante) y `behind` (por detrás) respecto a otra rama.
-- `WorktreeStatus` — el estado de un worktree: `uncommittedChanges`, las divergencias `upstream` y `mainBranch` (`null` cuando no aplican), `lastCommitAt`, `createdAt` (cuándo se creó el worktree, leído de la fecha de modificación del archivo `commondir` en la carpeta administrativa de Git para él, que se encuentra a través del archivo `.git` del worktree; `null` para el worktree principal o si no se puede leer) y `neverCommitted`. `hasOwnCommits` es verdadero cuando la comparación con la rama principal tiene `ahead > 0` (o, sin rama principal, cuando la rama no está «sin empezar»). `isNotStarted` es `neverCommitted`: la rama nunca tuvo commits propios (ver `ReadWorktreeStatusUseCase`). `isMerged` es derivado: la rama no está «sin empezar», no tiene nada que le falte a la rama principal (`ahead == 0`) y la rama principal ha avanzado más allá de ella (`behind > 0`), así que ni una rama recién creada ni una cuya rama principal avanzó después de crearla aparecen como mergeadas.
+- `WorktreeStatus` — el estado de un worktree: `uncommittedChanges`, las divergencias `upstream` y `mainBranch` (`null` cuando no aplican), `lastCommitAt`, `createdAt` (cuándo se creó el worktree, leído de la fecha de modificación del archivo `commondir` en la carpeta administrativa de Git para él, que se encuentra a través del archivo `.git` del worktree; `null` para el worktree principal o si no se puede leer) y `neverCommitted`. `base` es la divergencia con la base del worktree (su rama base registrada, o la rama principal si no se resuelve ninguna) y `baseName` el nombre de esa rama; ambos son `null` cuando no hay base o el worktree está en ella. `hasOwnCommits` es verdadero cuando la comparación con la base tiene `ahead > 0` (o, sin base, cuando la rama no está «sin empezar»). `isNotStarted` es `neverCommitted`: la rama nunca tuvo commits propios (ver `ReadWorktreeStatusUseCase`). `isMergedIntoBase` e `isMergedIntoMainBranch` se derivan de cada comparación: la rama no está «sin empezar», no tiene nada que le falte a esa rama (`ahead == 0`) y esa rama ha avanzado más allá de ella (`behind > 0`), así que ni una rama recién creada ni una cuya base avanzó después de crearla aparecen como mergeadas. `isMerged` es cualquiera de las dos.
 
 ### `RepositoryProvisioning`
 
@@ -611,7 +611,7 @@ Ejecuta `git worktree list --porcelain` (formato estable pensado para parsear, a
 
 ### `ResolveMainBranchUseCase`
 
-Resuelve la `MainBranch` una vez por carga de la lista, desde el repositorio base y sin acceso a red: `config.mainBranch` si está definida; si no, la rama por defecto del remoto `origin` (`git symbolic-ref refs/remotes/origin/HEAD`), y como alternativa una `main` local y después `master`. Una rama con nombre se compara a través de `origin/<nombre>` cuando esa ref existe (`git rev-parse --verify`), porque los merges suelen llegar antes al remoto, y a través de la rama local en caso contrario. Devuelve `null` cuando no se puede resolver nada.
+Resuelve la `MainBranch` una vez por carga de la lista, desde el repositorio base y sin acceso a red: `config.mainBranch` si está definida; si no, la rama por defecto del remoto `origin` (`git symbolic-ref refs/remotes/origin/HEAD`), y como alternativa una `main` local y después `master`. Una rama con nombre se compara a través de `origin/<nombre>` cuando esa ref existe (`git rev-parse --verify`), porque los merges suelen llegar antes al remoto, y a través de la rama local en caso contrario (`resolveBranchRef`, compartido con las bases registradas). Devuelve `null` cuando no se puede resolver nada.
 
 ### `ReadWorktreeStatusUseCase`
 
@@ -620,8 +620,9 @@ Lee un `WorktreeStatus`, ejecutando cada comando en la carpeta del propio worktr
 - `git --no-optional-locks status --porcelain` — cambios sin commitear. Los locks opcionales se desactivan para que `git status` nunca reescriba el índice; si no, leer los estados cambiaría los metadatos que vigila el refresco automático. Es el único comando obligatorio: si falla (p. ej. la carpeta ya no existe), falla todo el estado.
 - `git rev-list --left-right --count @{upstream}...HEAD` — divergencia con el upstream; se omite con HEAD separado y es `null` si no hay upstream.
 - `git rev-list --left-right --count <ref principal>...HEAD` — divergencia con la rama principal; se omite cuando no hay rama principal o el worktree está en ella.
+- `git rev-list --left-right --count <ref base>...HEAD` — divergencia con la base, la `base` que pasa quien llama (la rama principal por defecto); se reutiliza la divergencia con la rama principal cuando la base es la rama principal, y se omite cuando el worktree está en su base.
 - `git log -1 --format=%ct` — fecha del último commit, `null` si no hay commits.
-- `git reflog show --format=%H refs/heads/<rama>` — solo cuando la rama se leería como mergeada y no tiene upstream: un reflog con una sola entrada (su creación) que sigue siendo la punta de la rama significa que la rama nunca tuvo commits propios, así que se lee como «sin empezar» (`neverCommitted`) en vez de mergeada.
+- `git reflog show --format=%H refs/heads/<rama>` — solo cuando la rama se leería como mergeada en su base o en la rama principal y no tiene upstream: un reflog con una sola entrada (su creación) que sigue siendo la punta de la rama significa que la rama nunca tuvo commits propios, así que se lee como «sin empezar» (`neverCommitted`) en vez de mergeada.
 
 Todos los comandos se ejecutan con el timeout de lectura de Git.
 
@@ -629,9 +630,9 @@ Los merges por squash o rebase no se detectan como mergeados, y las ramas remota
 
 ### `CleanUpWorktreesUseCase`
 
-`selectCleanup(worktrees, statuses, runningAgents)` elige los worktrees a limpiar: no el principal, no bloqueados, y o bien con la carpeta perdida (`isPrunable`) o bien mergeados en la rama principal y sin cambios sin commitear. Los worktrees sin estado cargado nunca se eligen, y un worktree que cumple pero tiene un agente en ejecución pasa a `keptForRunningAgent` con sus agentes, así que ni la app de escritorio ni `shogun clean` lo eliminan. `selectCleanupCandidates` devuelve solo los candidatos.
+`selectCleanup(worktrees, statuses, runningAgents)` elige los worktrees a limpiar: no el principal, no bloqueados, y o bien con la carpeta perdida (`isPrunable`) o bien mergeados (en su base o en la rama principal) y sin cambios sin commitear. Los worktrees sin estado cargado nunca se eligen, y un worktree que cumple pero tiene un agente en ejecución pasa a `keptForRunningAgent` con sus agentes, así que ni la app de escritorio ni `shogun clean` lo eliminan. `selectCleanupCandidates` devuelve solo los candidatos.
 
-`CleanUpWorktreesUseCase` recibe esos candidatos, la `MainBranch` y si hay que borrar las ramas, y devuelve un `CleanupReport` (`removed`, `keptBranches`, `failures`, `herdrFailures`, `orcaFailures`). Cada worktree existente se elimina con `git worktree remove` (nunca con `--force`), y los que han perdido la carpeta con un único `git worktree prune`. Si un paso falla se anota y se sigue con los demás. Después, las ramas de cada worktree eliminado, incluidos los podados, solo se borran si `git merge-base --is-ancestor <rama> <ref principal>` sigue teniendo éxito, y entonces con `git branch -D`: `-d` comprueba contra el `HEAD` del repositorio base, que en un repositorio git-flow puede no contener una rama mergeada en `develop`.
+`CleanUpWorktreesUseCase` recibe esos candidatos, la `MainBranch` y si hay que borrar las ramas, y devuelve un `CleanupReport` (`removed`, `keptBranches`, `failures`, `herdrFailures`, `orcaFailures`). Cada worktree existente se elimina con `git worktree remove` (nunca con `--force`), y los que han perdido la carpeta con un único `git worktree prune`. Si un paso falla se anota y se sigue con los demás. Después, las ramas de cada worktree eliminado, incluidos los podados, solo se borran si `git merge-base --is-ancestor` sigue teniendo éxito contra su base registrada (leída con `git config --get` antes de borrar, porque `git branch -D` elimina el registro) o contra la rama principal, y entonces con `git branch -D`: `-d` comprueba contra el `HEAD` del repositorio base, que en un repositorio git-flow puede no contener una rama mergeada en `develop`.
 
 ### Vista completa de worktrees
 
@@ -706,6 +707,7 @@ La rama de la que parte una rama nueva se registra en la configuración de Git d
 
 - `ResolveBaseBranchUseCase` convierte una referencia en ese nombre de rama con `git rev-parse --verify --quiet --symbolic-full-name <ref>`, ejecutado donde se resuelve el punto de partida: `refs/heads/<b>` y `refs/remotes/<remoto>/<b>` dan `<b>`, y un tag, un commit, un `HEAD` separado, el `HEAD` de un remoto o una referencia desconocida dan `null`, así que no se registra nada. El CLI lo llama con la misma referencia que `ResolveStartPointUseCase`, la app de escritorio con la referencia de «Partir de» o `HEAD`, y `CreateGroupUseCase` pasa directamente `MainBranch.name`. `CreateWorktreeFromBranchUseCase` no registra nada.
 - `ReadBaseBranchesUseCase` lee todos los registros con un solo `git config --get-regexp` y devuelve un mapa de rama a base (código de salida 1 sin salida es un mapa vacío).
+- `ResolveRecordedBasesUseCase` devuelve, por rama, la `MainBranch` de su base registrada: una lectura de `ReadBaseBranchesUseCase` más un `resolveBranchRef` por cada base distinta. Las bases que no se resuelven se omiten y una lectura fallida da un mapa vacío, así que quien llama cae en la rama principal (`recordedBases[rama] ?: mainBranch`). `shogun status`, `shogun clean`, la lista de la app de escritorio y cada repositorio de un grupo multirepo (`RepositoryBases`) lo usan para pasar a `ReadWorktreeStatusUseCase` la base de cada worktree.
 - `SetBaseBranchUseCase` valida una rama con `ResolveBaseBranchUseCase` en el repositorio base (si no, `NotABranch`) y escribe la misma clave.
 
 ### `ResolveStartPointUseCase`
@@ -718,7 +720,7 @@ Encuentra el repositorio base (worktree principal) que contiene un directorio, p
 
 ### `DeleteMergedBranchUseCase`
 
-Borra una rama local solo cuando está contenida en la rama principal del proyecto, resuelta con `ResolveMainBranchUseCase` (`git merge-base --is-ancestor <rama> <ref principal>` y después `git branch -D -- <rama>`, la misma regla que usa la limpieza), y devuelve si se borró en vez de fallar. Una rama mergeada solo en su upstream se conserva, y un nombre que empieza por `-` es `InvalidRef`. Lo usan los hooks `WorktreeRemove` de Claude Code y de Herdr del CLI, donde conservar la rama es lo esperado y no un error.
+Borra una rama local solo cuando está contenida en su base registrada o en la rama principal del proyecto, resuelta con `ResolveMainBranchUseCase` (`git merge-base --is-ancestor <rama> <ref>` contra cada una y después `git branch -D -- <rama>`, la misma regla que usa la limpieza), y devuelve si se borró en vez de fallar. Una rama mergeada solo en su upstream se conserva, y un nombre que empieza por `-` es `InvalidRef`. Lo usan los hooks `WorktreeRemove` de Claude Code y de Herdr del CLI, donde conservar la rama es lo esperado y no un error.
 
 ### `ProvisionWorktreeUseCase`
 

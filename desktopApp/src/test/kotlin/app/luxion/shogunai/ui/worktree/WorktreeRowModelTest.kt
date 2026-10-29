@@ -260,6 +260,32 @@ class WorktreeRowModelTest {
     }
 
     @Test
+    fun `the git cell compares with the recorded base and names it`() {
+        val loaded = status(mainBranch = Divergence(9, 0)).copy(base = Divergence(2, 0), baseName = "epic/redesign")
+        val git = model(status = WorktreeStatusState.Loaded(loaded)).git
+
+        assertEquals("↑2", git.secondLine)
+        assertEquals("↑2 epic/redesign", git.secondLineTooltip)
+    }
+
+    @Test
+    fun `the git cell names the recorded base a branch is merged into`() {
+        val loaded = status(mainBranch = Divergence(4, 0)).copy(base = Divergence(0, 1), baseName = "epic/redesign")
+        val git = model(status = WorktreeStatusState.Loaded(loaded)).git
+
+        assertEquals("merged", git.secondLine)
+        assertEquals("merged into epic/redesign", git.secondLineTooltip)
+    }
+
+    @Test
+    fun `a branch merged into the main branch but not its base is merged into the main branch`() {
+        val loaded = status(mainBranch = Divergence(0, 3)).copy(base = Divergence(0, 0), baseName = "epic/redesign")
+        val git = model(status = WorktreeStatusState.Loaded(loaded)).git
+
+        assertEquals("merged into main", git.secondLineTooltip)
+    }
+
+    @Test
     fun `a branch that never had commits is not shown as merged`() {
         val loaded = status(mainBranch = Divergence(0, 5)).copy(neverCommitted = true)
 

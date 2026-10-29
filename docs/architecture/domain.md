@@ -69,7 +69,7 @@ A `Worktree` returned by creation also carries `skippedPostCreateCommands` and `
 
 - `MainBranch` — the branch worktrees are compared against: its `name` (`develop`) and the `ref` used in Git commands (`origin/develop`, or `develop` when there's no remote-tracking branch).
 - `Divergence` — commits `ahead` and `behind` with respect to another branch.
-- `WorktreeStatus` — the state of one worktree: `uncommittedChanges`, `upstream` and `mainBranch` divergences (`null` when they don't apply), `lastCommitAt`, `createdAt` (when the worktree was created, read from the modification time of the `commondir` file in Git's administrative folder for it, found through the worktree's `.git` file; `null` for the main worktree or when it can't be read) and `neverCommitted`. `hasOwnCommits` is true when the main branch comparison has `ahead > 0` (or, without a main branch, when the branch isn't "not started"). `isNotStarted` is `neverCommitted`: the branch never had commits of its own (see `ReadWorktreeStatusUseCase`). `isMerged` is derived: the branch isn't "not started", has nothing the main branch lacks (`ahead == 0`) and the main branch has moved past it (`behind > 0`), so neither a freshly created branch nor one whose main branch moved on since it was created is reported as merged.
+- `WorktreeStatus` — the state of one worktree: `uncommittedChanges`, `upstream` and `mainBranch` divergences (`null` when they don't apply), `lastCommitAt`, `createdAt` (when the worktree was created, read from the modification time of the `commondir` file in Git's administrative folder for it, found through the worktree's `.git` file; `null` for the main worktree or when it can't be read) and `neverCommitted`. `base` is the divergence from the worktree's base (its recorded base branch, or the main branch when none resolves) and `baseName` that branch's name; both are `null` when there's no base or the worktree is on it. `hasOwnCommits` is true when the base comparison has `ahead > 0` (or, without a base, when the branch isn't "not started"). `isNotStarted` is `neverCommitted`: the branch never had commits of its own (see `ReadWorktreeStatusUseCase`). `isMergedIntoBase` and `isMergedIntoMainBranch` are derived from each comparison: the branch isn't "not started", has nothing that branch lacks (`ahead == 0`) and that branch has moved past it (`behind > 0`), so neither a freshly created branch nor one whose base moved on since it was created is reported as merged. `isMerged` is either of them.
 
 ### `RepositoryProvisioning`
 
@@ -611,7 +611,7 @@ Runs `git worktree list --porcelain` (a stable format meant to be parsed, unlike
 
 ### `ResolveMainBranchUseCase`
 
-Resolves the `MainBranch` once per list load, from the base repository and without network access: `config.mainBranch` if set, otherwise the `origin` remote's default branch (`git symbolic-ref refs/remotes/origin/HEAD`), falling back to a local `main` and then `master`. A named branch is compared through `origin/<name>` when that ref exists (`git rev-parse --verify`), because merges usually reach the remote first, and through the local branch otherwise. Returns `null` when nothing can be resolved.
+Resolves the `MainBranch` once per list load, from the base repository and without network access: `config.mainBranch` if set, otherwise the `origin` remote's default branch (`git symbolic-ref refs/remotes/origin/HEAD`), falling back to a local `main` and then `master`. A named branch is compared through `origin/<name>` when that ref exists (`git rev-parse --verify`), because merges usually reach the remote first, and through the local branch otherwise (`resolveBranchRef`, shared with the recorded bases). Returns `null` when nothing can be resolved.
 
 ### `ReadWorktreeStatusUseCase`
 
@@ -620,8 +620,9 @@ Reads a `WorktreeStatus`, running each command in the worktree's own folder:
 - `git --no-optional-locks status --porcelain` — uncommitted changes. Optional locks are disabled so `git status` never rewrites the index; otherwise reading statuses would change the metadata that auto refresh watches. It's the only required command: if it fails (e.g. the folder is gone), the whole status fails.
 - `git rev-list --left-right --count @{upstream}...HEAD` — upstream divergence, skipped on a detached HEAD and `null` if there's no upstream.
 - `git rev-list --left-right --count <main ref>...HEAD` — main branch divergence, skipped when there's no main branch or the worktree is on it.
+- `git rev-list --left-right --count <base ref>...HEAD` — base divergence, for the `base` the caller passes (the main branch by default); the main branch divergence is reused when the base is the main branch, and it's skipped when the worktree is on its base.
 - `git log -1 --format=%ct` — last commit date, `null` if there are no commits.
-- `git reflog show --format=%H refs/heads/<branch>` — only when the branch would otherwise read as merged and has no upstream: a reflog with a single entry (its creation) that is still the branch's tip means the branch never had commits of its own, so it reads as "not started" (`neverCommitted`) instead of merged.
+- `git reflog show --format=%H refs/heads/<branch>` — only when the branch would otherwise read as merged into its base or the main branch and has no upstream: a reflog with a single entry (its creation) that is still the branch's tip means the branch never had commits of its own, so it reads as "not started" (`neverCommitted`) instead of merged.
 
 Every command runs with the Git read timeout.
 
@@ -629,9 +630,9 @@ Squash and rebase merges aren't detected as merged, and remote-tracking branches
 
 ### `CleanUpWorktreesUseCase`
 
-`selectCleanup(worktrees, statuses, runningAgents)` picks the worktrees to clean up: not main, not locked, and either prunable or merged into the main branch with no uncommitted changes. Worktrees without a loaded status are never picked, and a qualifying worktree where an agent is running is moved to `keptForRunningAgent` with its agents, so neither the desktop app nor `shogun clean` removes it. `selectCleanupCandidates` returns only the candidates.
+`selectCleanup(worktrees, statuses, runningAgents)` picks the worktrees to clean up: not main, not locked, and either prunable or merged (into its base or the main branch) with no uncommitted changes. Worktrees without a loaded status are never picked, and a qualifying worktree where an agent is running is moved to `keptForRunningAgent` with its agents, so neither the desktop app nor `shogun clean` removes it. `selectCleanupCandidates` returns only the candidates.
 
-`CleanUpWorktreesUseCase` takes those candidates, the `MainBranch` and whether to delete branches, and returns a `CleanupReport` (`removed`, `keptBranches`, `failures`, `herdrFailures`, `orcaFailures`). Each existing worktree is removed with `git worktree remove` (never `--force`), and missing ones with a single `git worktree prune`. A failing step is recorded and the rest continue. Then the branches of every removed worktree, pruned ones included, are deleted only if `git merge-base --is-ancestor <branch> <main ref>` still succeeds, and then with `git branch -D`: `-d` checks against the base repository's `HEAD`, which in a git-flow repository may not contain a branch merged into `develop`.
+`CleanUpWorktreesUseCase` takes those candidates, the `MainBranch` and whether to delete branches, and returns a `CleanupReport` (`removed`, `keptBranches`, `failures`, `herdrFailures`, `orcaFailures`). Each existing worktree is removed with `git worktree remove` (never `--force`), and missing ones with a single `git worktree prune`. A failing step is recorded and the rest continue. Then the branches of every removed worktree, pruned ones included, are deleted only if `git merge-base --is-ancestor` still succeeds against their recorded base (read with `git config --get` before deleting, since `git branch -D` removes the record) or against the main branch, and then with `git branch -D`: `-d` checks against the base repository's `HEAD`, which in a git-flow repository may not contain a branch merged into `develop`.
 
 ### Worktree overview
 
@@ -706,6 +707,7 @@ The branch a new branch starts from is recorded in the repository's Git config a
 
 - `ResolveBaseBranchUseCase` turns a ref into that branch name with `git rev-parse --verify --quiet --symbolic-full-name <ref>`, run where the start point is resolved: `refs/heads/<b>` and `refs/remotes/<remote>/<b>` give `<b>`, and a tag, a commit, a detached `HEAD`, a remote's `HEAD` or an unknown ref give `null`, so nothing is recorded. The CLI calls it with the same ref as `ResolveStartPointUseCase`, the desktop app with its "Start from" ref or `HEAD`, and `CreateGroupUseCase` passes `MainBranch.name` directly. `CreateWorktreeFromBranchUseCase` records nothing.
 - `ReadBaseBranchesUseCase` reads every record with one `git config --get-regexp`, returning a map from branch to base (exit code 1 without output is an empty map).
+- `ResolveRecordedBasesUseCase` returns, per branch, the `MainBranch` of its recorded base: one `ReadBaseBranchesUseCase` read plus one `resolveBranchRef` per distinct base. Unresolvable bases are left out and a failed read gives an empty map, so callers fall back to the main branch (`recordedBases[branch] ?: mainBranch`). `shogun status`, `shogun clean`, the desktop app's list and each repository of a multirepo group (`RepositoryBases`) use it to pass each worktree's base to `ReadWorktreeStatusUseCase`.
 - `SetBaseBranchUseCase` validates a branch with `ResolveBaseBranchUseCase` in the base repository (`NotABranch` otherwise) and writes the same key.
 
 ### `ResolveStartPointUseCase`
@@ -718,7 +720,7 @@ Finds the base repository (main worktree) that contains a directory, for front e
 
 ### `DeleteMergedBranchUseCase`
 
-Deletes a local branch only when it is contained in the project's main branch, resolved with `ResolveMainBranchUseCase` (`git merge-base --is-ancestor <branch> <main ref>`, then `git branch -D -- <branch>`, the same rule cleanup uses), and returns whether it was deleted instead of failing. A branch merged only into its own upstream is kept, and a name starting with `-` is `InvalidRef`. Used by the CLI's Claude Code `WorktreeRemove` and Herdr hooks, where a kept branch is expected rather than an error.
+Deletes a local branch only when it is contained in its recorded base or in the project's main branch, resolved with `ResolveMainBranchUseCase` (`git merge-base --is-ancestor <branch> <ref>` against each, then `git branch -D -- <branch>`, the same rule cleanup uses), and returns whether it was deleted instead of failing. A branch merged only into its own upstream is kept, and a name starting with `-` is `InvalidRef`. Used by the CLI's Claude Code `WorktreeRemove` and Herdr hooks, where a kept branch is expected rather than an error.
 
 ### `ProvisionWorktreeUseCase`
 
