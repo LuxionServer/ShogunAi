@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
@@ -53,6 +54,7 @@ import app.luxion.shogunai.ui.projectconfig.ProjectConfigViewModel
 import app.luxion.shogunai.ui.rememberScreenViewModelStoreOwner
 import app.luxion.shogunai.ui.machine.MachineResource
 import app.luxion.shogunai.ui.machine.MachineResources
+import app.luxion.shogunai.ui.machine.machineStatusItems
 import app.luxion.shogunai.ui.palette.CommandPalette
 import app.luxion.shogunai.ui.palette.PaletteAction
 import app.luxion.shogunai.ui.palette.PaletteCommand
@@ -168,88 +170,97 @@ fun AppShell(
         val narrow = maxWidth < NarrowWindowThreshold
         LaunchedEffect(narrow) { viewModel.onWindowWidthChanged(narrow) }
 
-        Row(modifier = Modifier.fillMaxSize()) {
-            Sidebar(
-                projects = viewModel.projects,
-                selectedProjectId = viewModel.destination?.referencedProjectId,
-                isActiveSelected = viewModel.destination == ShellDestination.Active,
-                isAllSelected = viewModel.destination == ShellDestination.All(),
-                activeCount = board.activeCount,
-                totalWorktreeCount = board.totalWorktreeCount,
-                activityOf = { project -> ProjectActivity(board.activeCountOf(project.id), board.agentNamesOf(project.id)) },
-                machineResources = machine.visibleResources,
-                machineSummaries = machine.summaries,
-                selectedMachine = (viewModel.destination as? ShellDestination.Machine)?.resource,
-                rail = viewModel.isRail,
-                onSelectActive = viewModel::selectActive,
-                onSelectAll = viewModel::selectAll,
-                onSelectProject = viewModel::selectProject,
-                onEditProject = viewModel::editProject,
-                onRemoveProject = { projectPendingRemoval = it },
-                onAddProject = viewModel::addProject,
-                onSelectMachine = viewModel::selectMachine,
-                onToggle = viewModel::toggleSidebar,
-                multirepos = viewModel.memberships.map { membership ->
-                    val members = viewModel.projects.filter { it.id in membership.aliases }
-                    SidebarMultirepo(
-                        folder = membership.folder,
-                        name = membership.name,
-                        projects = members,
-                        activity = members.fold(
-                            ProjectActivity(board.multirepoActivityCountOf(membership.folder), board.multirepoAgentsOf(membership.folder).map { it.name }),
-                        ) { total, project ->
-                            total + ProjectActivity(board.activeCountOf(project.id), board.agentNamesOf(project.id))
-                        },
-                        collapsed = membership.folder in viewModel.collapsedMultirepos,
-                        needsReview = !membership.multirepo.approved,
-                    )
-                },
-                selectedMultirepo = viewModel.destination?.referencedMultirepo,
-                onSelectMultirepo = { viewModel.selectMultirepo(it) },
-                onToggleMultirepo = viewModel::toggleMultirepoCollapsed,
-                onEditMultirepo = viewModel::editMultirepo,
-                onAddMultirepo = { viewModel.addMultirepo() },
-                order = viewModel.sidebarOrder,
-                onMoveEntry = viewModel::moveSidebarEntry,
-                onSortLevel = viewModel::sortSidebarAlphabetically,
-            )
-            VerticalDivider(modifier = Modifier.fillMaxHeight())
-            Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                appContainer.updates.notice?.let { UpdateNotice(appContainer.updates, Modifier.padding(Spacing.md)) }
-                LaunchedEffect(Unit) { appContainer.claudeHooks.refresh() }
-                TourNotice(appContainer.tour, viewModel.projects.isNotEmpty(), Modifier.padding(Spacing.md))
-                ClaudeHooksNotice(appContainer.claudeHooks, board.hasClaudeWithoutState, Modifier.padding(Spacing.md))
-                tourProjectShown(appContainer, viewModel)?.let { project ->
-                    TourBanner(
-                        state = appContainer.tour,
-                        project = project,
-                        onEnded = viewModel::refresh,
-                        agentChoices = { shown, onLaunched -> TourAgentChoices(board, shown, onLaunched) { messages.show(copiedMessage) } },
-                        modifier = Modifier.padding(Spacing.md),
-                    )
-                }
-                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                    val fixActions = remember(viewModel, onOpenPreferences) {
-                        ErrorFixActions(
-                            openProjectSettings = { projectId -> viewModel.projects.firstOrNull { it.id == projectId }?.let(viewModel::editProject) },
-                            openPreferences = onOpenPreferences,
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                Sidebar(
+                    projects = viewModel.projects,
+                    selectedProjectId = viewModel.destination?.referencedProjectId,
+                    isActiveSelected = viewModel.destination == ShellDestination.Active,
+                    isAllSelected = viewModel.destination == ShellDestination.All(),
+                    activeCount = board.activeCount,
+                    totalWorktreeCount = board.totalWorktreeCount,
+                    activityOf = { project -> ProjectActivity(board.activeCountOf(project.id), board.agentNamesOf(project.id)) },
+                    rail = viewModel.isRail,
+                    onSelectActive = viewModel::selectActive,
+                    onSelectAll = viewModel::selectAll,
+                    onSelectProject = viewModel::selectProject,
+                    onEditProject = viewModel::editProject,
+                    onRemoveProject = { projectPendingRemoval = it },
+                    onAddProject = viewModel::addProject,
+                    onToggle = viewModel::toggleSidebar,
+                    multirepos = viewModel.memberships.map { membership ->
+                        val members = viewModel.projects.filter { it.id in membership.aliases }
+                        SidebarMultirepo(
+                            folder = membership.folder,
+                            name = membership.name,
+                            projects = members,
+                            activity = members.fold(
+                                ProjectActivity(board.multirepoActivityCountOf(membership.folder), board.multirepoAgentsOf(membership.folder).map { it.name }),
+                            ) { total, project ->
+                                total + ProjectActivity(board.activeCountOf(project.id), board.agentNamesOf(project.id))
+                            },
+                            collapsed = membership.folder in viewModel.collapsedMultirepos,
+                            labels = multirepoChildLabels(membership),
+                            needsReview = !membership.multirepo.approved,
+                        )
+                    },
+                    selectedMultirepo = viewModel.destination?.referencedMultirepo,
+                    onSelectMultirepo = { viewModel.selectMultirepo(it) },
+                    onToggleMultirepo = viewModel::toggleMultirepoCollapsed,
+                    onEditMultirepo = viewModel::editMultirepo,
+                    onAddMultirepo = { viewModel.addMultirepo() },
+                    order = viewModel.sidebarOrder,
+                    onMoveEntry = viewModel::moveSidebarEntry,
+                    onSortLevel = viewModel::sortSidebarAlphabetically,
+                )
+                VerticalDivider(modifier = Modifier.fillMaxHeight())
+                Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                    appContainer.updates.notice?.let { UpdateNotice(appContainer.updates, Modifier.padding(Spacing.md)) }
+                    LaunchedEffect(Unit) { appContainer.claudeHooks.refresh() }
+                    TourNotice(appContainer.tour, viewModel.projects.isNotEmpty(), Modifier.padding(Spacing.md))
+                    ClaudeHooksNotice(appContainer.claudeHooks, board.hasClaudeWithoutState, Modifier.padding(Spacing.md))
+                    tourProjectShown(appContainer, viewModel)?.let { project ->
+                        TourBanner(
+                            state = appContainer.tour,
+                            project = project,
+                            onEnded = viewModel::refresh,
+                            agentChoices = { shown, onLaunched -> TourAgentChoices(board, shown, onLaunched) { messages.show(copiedMessage) } },
+                            modifier = Modifier.padding(Spacing.md),
                         )
                     }
-                    CompositionLocalProvider(LocalAppMessages provides messages, LocalErrorFixActions provides fixActions) {
-                        ShellContent(appContainer, viewModel, board, machine)
-                    }
-                    AppMessagesHost(messages, modifier = Modifier.align(Alignment.BottomCenter))
-                    if (viewModel.unreadableFiles.isNotEmpty()) {
-                        Column(
-                            modifier = Modifier.align(Alignment.TopCenter).padding(Spacing.md),
-                            verticalArrangement = Arrangement.spacedBy(Spacing.xs),
-                        ) {
-                            viewModel.unreadableFiles.forEach { problem ->
-                                ErrorNotice(error = problem, onDismiss = viewModel::dismissUnreadableFiles)
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        val fixActions = remember(viewModel, onOpenPreferences) {
+                            ErrorFixActions(
+                                openProjectSettings = { projectId -> viewModel.projects.firstOrNull { it.id == projectId }?.let(viewModel::editProject) },
+                                openPreferences = onOpenPreferences,
+                            )
+                        }
+                        CompositionLocalProvider(LocalAppMessages provides messages, LocalErrorFixActions provides fixActions) {
+                            ShellContent(appContainer, viewModel, board, machine)
+                        }
+                        AppMessagesHost(messages, modifier = Modifier.align(Alignment.BottomCenter))
+                        if (viewModel.unreadableFiles.isNotEmpty()) {
+                            Column(
+                                modifier = Modifier.align(Alignment.TopCenter).padding(Spacing.md),
+                                verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+                            ) {
+                                viewModel.unreadableFiles.forEach { problem ->
+                                    ErrorNotice(error = problem, onDismiss = viewModel::dismissUnreadableFiles)
+                                }
                             }
                         }
                     }
                 }
+            }
+            val statusItems = machineStatusItems(machine.visibleResources, machine.summaries, machine.summaryFailures, LocalStrings.current)
+            if (statusItems.isNotEmpty()) {
+                HorizontalDivider()
+                MachineStatusBar(
+                    items = statusItems,
+                    selected = (viewModel.destination as? ShellDestination.Machine)?.resource,
+                    compact = viewModel.isRail,
+                    onSelect = viewModel::selectMachine,
+                )
             }
         }
     }

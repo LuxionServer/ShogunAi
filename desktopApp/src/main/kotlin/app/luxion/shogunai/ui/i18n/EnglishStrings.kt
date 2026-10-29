@@ -450,6 +450,15 @@ object EnglishStrings : Strings {
     override fun derivedDataDeleted(count: Int, freed: String) =
         if (count == 1) "1 DerivedData folder deleted · $freed freed" else "$count DerivedData folders deleted · $freed freed"
     override val machineTitle = "Machine"
+    override val machineStatusGradle = "Gradle"
+    override val machineStatusEmulators = "Emulators"
+    override val machineStatusSimulators = "Simulators"
+    override val machineStatusDerivedData = "DerivedData"
+    override val machineStatusMaven = "Maven"
+    override val machineStatusCompose = "Compose"
+    override val machineStatusDesktop = "Desktop"
+    override val notMeasuredYet = "not measured yet"
+    override val overQuota = "over the quota"
     override val resourcesLabel = "Resources"
     override fun profileName(profile: CapacityProfile) = when (profile) {
         CapacityProfile.AUTOMATIC -> "Automatic"
