@@ -22,7 +22,7 @@ shogun app --settings              # open the desktop app on this repository's p
 eval "$(shogun env)"               # load this worktree's variables from .shogunai.json "env"
 ```
 
-Output is plain English text; scripts should use `--json`, which every command that reports a result accepts (see [JSON output](#json-output)).
+Output is plain English text; scripts should use `--json`, which every command that reports a result accepts (see [JSON output](#json-output)). Standard output and standard error are always UTF-8, whatever the system's locale or code page, so paths with accents reach scripts and agent hooks intact; on a Windows console set to another code page they may show garbled.
 
 ## Exit codes
 
