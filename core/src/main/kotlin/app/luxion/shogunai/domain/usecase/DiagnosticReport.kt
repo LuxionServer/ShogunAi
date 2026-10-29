@@ -2,13 +2,18 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.io.DiagnosticsLog
 import app.luxion.shogunai.domain.model.DiagnosticEntry
+import app.luxion.shogunai.domain.model.InstallationReport
+import kotlinx.coroutines.CancellationException
 
 class DiagnosticReport(
     private val version: String,
     private val log: DiagnosticsLog,
     private val systemProperty: (String) -> String? = System::getProperty,
+    private val installation: (suspend () -> InstallationReport)? = null,
+    private val redact: (String) -> String = { it },
 ) {
-    fun build(): String {
+    suspend fun build(): String {
+        val installationLines = installation?.let { installationLines(it) }
         val entries = log.recent(ENTRY_LIMIT)
         return buildString {
             appendLine("ShogunAi diagnostic report")
@@ -17,6 +22,11 @@ class DiagnosticReport(
             appendLine("Architecture: ${property("os.arch")}")
             appendLine("Java runtime: ${property("java.runtime.version")}")
             appendLine()
+            installationLines?.let { lines ->
+                appendLine("Installation:")
+                lines.forEach { appendLine(redact(it)) }
+                appendLine()
+            }
             if (entries.isEmpty()) {
                 append("No errors were recorded.")
             } else {
@@ -24,6 +34,14 @@ class DiagnosticReport(
                 entries.forEach { appendLine(format(it)) }
             }
         }.trimEnd()
+    }
+
+    private suspend fun installationLines(check: suspend () -> InstallationReport): List<String> = try {
+        InstallationReportText.lines(check())
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Exception) {
+        listOf("The installation check couldn't run: ${error.message ?: error::class.simpleName}")
     }
 
     private fun property(name: String): String = systemProperty(name).orEmpty().ifBlank { "unknown" }

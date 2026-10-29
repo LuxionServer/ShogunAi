@@ -10,7 +10,9 @@ import app.luxion.shogunai.domain.model.OrcaWorktreeUpdate
 
 interface OrcaClient {
 
-    fun isInstalled(): Boolean
+    fun isInstalled(): Boolean = location() != null
+
+    fun location(): String? = null
 
     suspend fun status(): OrcaStatus
 

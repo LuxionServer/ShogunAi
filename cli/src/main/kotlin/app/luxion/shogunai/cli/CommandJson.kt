@@ -15,6 +15,8 @@ import app.luxion.shogunai.domain.model.DerivedDataListing
 import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.DerivedDataTrim
 import app.luxion.shogunai.domain.model.DetectedStack
+import app.luxion.shogunai.domain.model.InstallationReport
+import app.luxion.shogunai.domain.usecase.InstallationReportText
 import app.luxion.shogunai.domain.model.Stack
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.GradleDaemon
@@ -963,4 +965,23 @@ fun projectListJson(projects: List<Project>): JsonObject = buildJsonObject {
             }
         },
     )
+}
+
+fun doctorJson(report: InstallationReport): JsonObject = buildJsonObject {
+    put(
+        "checks",
+        buildJsonArray {
+            report.checks.forEach { check ->
+                add(
+                    buildJsonObject {
+                        put("id", check.finding.id)
+                        put("state", check.state.name.lowercase())
+                        put("summary", InstallationReportText.summary(check))
+                        put("fix", InstallationReportText.fix(check))
+                    },
+                )
+            }
+        },
+    )
+    put("failed", report.failed)
 }
