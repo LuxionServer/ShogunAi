@@ -3,8 +3,6 @@ package app.luxion.shogunai.ui.shell
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -15,10 +13,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.HostOs
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.usecase.CommandLineToolState
+import app.luxion.shogunai.ui.components.DialogSize
+import app.luxion.shogunai.ui.components.ShogunDialog
 import app.luxion.shogunai.ui.components.DangerButton
 import app.luxion.shogunai.ui.components.ErrorNotice
 import app.luxion.shogunai.ui.components.NeutralTextButton
@@ -33,7 +32,6 @@ import app.luxion.shogunai.ui.worktree.WorktreeBoard
 import app.luxion.shogunai.ui.worktree.WorktreeRef
 import kotlinx.coroutines.launch
 
-private val TourDialogWidth = 520.dp
 
 @Composable
 fun TourDialog(
@@ -46,31 +44,10 @@ fun TourDialog(
     val step = state.step ?: return
     val strings = LocalStrings.current
     val scope = rememberCoroutineScope()
-    AlertDialog(
+    ShogunDialog(
+        title = strings.tourDialogTitle,
         onDismissRequest = { if (step != TourStep.CREATING) state.close() },
-        modifier = Modifier.widthIn(max = TourDialogWidth),
-        title = { Text(strings.tourDialogTitle) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                when (step) {
-                    TourStep.EXISTING -> Text(strings.tourExistingMessage, style = MaterialTheme.typography.bodyMedium)
-                    TourStep.WELCOME -> Text(strings.tourWelcomeMessage(state.folder), style = MaterialTheme.typography.bodyMedium)
-                    TourStep.TOOL -> {
-                        Text(strings.tourToolMessage, style = MaterialTheme.typography.bodyMedium)
-                        CommandLineToolPrerequisite(hooks, os, showWhenReady = true)
-                    }
-                    TourStep.CREATING -> if (state.error == null) Text(strings.tourCreating, style = MaterialTheme.typography.bodyMedium)
-                    TourStep.OPEN_AGENT -> state.project?.let { project ->
-                        LaunchedEffect(project.id) { onShowProject(project) }
-                        Text(strings.tourOpenAgentMessage, style = MaterialTheme.typography.bodyMedium)
-                        Text(strings.tourTrustHint, style = MaterialTheme.typography.bodyMedium)
-                        agentChoices(project, state::close)
-                    }
-                }
-                state.error?.let { ErrorNotice(error = it, onDismiss = state::dismissError) }
-            }
-        },
-        confirmButton = {
+        confirm = {
             when (step) {
                 TourStep.EXISTING -> FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                     state.project?.let { project ->
@@ -94,14 +71,34 @@ fun TourDialog(
                 TourStep.OPEN_AGENT -> Unit
             }
         },
-        dismissButton = {
+        dismiss = {
             when (step) {
                 TourStep.CREATING -> if (state.error != null) NeutralTextButton(onClick = state::close) { Text(strings.cancel) }
                 TourStep.OPEN_AGENT -> NeutralTextButton(onClick = state::close) { Text(strings.tourLater) }
                 else -> NeutralTextButton(onClick = state::close) { Text(strings.cancel) }
             }
         },
-    )
+        size = DialogSize.Medium,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            when (step) {
+                TourStep.EXISTING -> Text(strings.tourExistingMessage, style = MaterialTheme.typography.bodyMedium)
+                TourStep.WELCOME -> Text(strings.tourWelcomeMessage(state.folder), style = MaterialTheme.typography.bodyMedium)
+                TourStep.TOOL -> {
+                    Text(strings.tourToolMessage, style = MaterialTheme.typography.bodyMedium)
+                    CommandLineToolPrerequisite(hooks, os, showWhenReady = true)
+                }
+                TourStep.CREATING -> if (state.error == null) Text(strings.tourCreating, style = MaterialTheme.typography.bodyMedium)
+                TourStep.OPEN_AGENT -> state.project?.let { project ->
+                    LaunchedEffect(project.id) { onShowProject(project) }
+                    Text(strings.tourOpenAgentMessage, style = MaterialTheme.typography.bodyMedium)
+                    Text(strings.tourTrustHint, style = MaterialTheme.typography.bodyMedium)
+                    agentChoices(project, state::close)
+                }
+            }
+            state.error?.let { ErrorNotice(error = it, onDismiss = state::dismissError) }
+        }
+    }
 }
 
 @Composable
@@ -195,14 +192,15 @@ fun TourBanner(
         },
     )
     if (state.isEndRequested) {
-        AlertDialog(
+        ShogunDialog(
+            title = strings.tourEndTitle,
             onDismissRequest = state::cancelEnd,
-            title = { Text(strings.tourEndTitle) },
-            text = { Text(strings.tourEndMessage(state.folder)) },
-            confirmButton = {
+            confirm = {
                 DangerButton(onClick = { scope.launch { state.confirmEnd().onSuccess { onEnded() } } }) { Text(strings.tourEnd) }
             },
-            dismissButton = { NeutralTextButton(onClick = state::cancelEnd) { Text(strings.cancel) } },
-        )
+            dismiss = { NeutralTextButton(onClick = state::cancelEnd) { Text(strings.cancel) } },
+        ) {
+            Text(strings.tourEndMessage(state.folder))
+        }
     }
 }

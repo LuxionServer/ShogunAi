@@ -319,6 +319,21 @@ El anillo de foco (`Modifier.focusRing`) es de 2 dp en el color accent. El tema 
 - **`StatusChip`**: una etiqueta compacta sobre el color contenedor de un estado, con icono opcional.
 - **`IconAction`**: una acción solo con icono de 28 × 28 dp cuya etiqueta es a la vez su tooltip y su descripción accesible.
 - **`Modifier.interactive`**: hace clicable una fila o cabecera propia, con estado hover, el puntero de mano y un anillo de foco (`Modifier.focusRing`).
+- **`ViewTitle`, `SectionTitle`, `GroupTitle`**: el título de una vista, de una sección de formulario o de un diálogo, y de un grupo de una lista. Cada uno se declara como título (`semantics { heading() }`), así que un lector de pantalla puede saltar de uno a otro; los usan `SectionCard`, `SettingsSection`, `ShogunDialog` y `MachineViewFrame`.
+- **`Field`, `PathField`**: campos de formulario con la etiqueta encima de una entrada de 32 dp (nunca flotante) y la ayuda o el error debajo; el error sustituye a la ayuda mientras aplica. `PathField` añade "Examinar…". `inputModifier` llega a la propia entrada de texto, para un `FocusRequester`, `onEnterKey` o una etiqueta de test. `FieldIconAction` es la acción de icono pequeña que cabe dentro de un campo, como borrar el filtro. El ancla de `DropdownSelector` es el mismo campo, de solo lectura.
+- **`ShogunDialog`**: todos los diálogos, en tres anchos (`DialogSize.Small` 400, `Medium` 520 y `Large` 680 dp), con un título declarado como título, un cuerpo que hace scroll cuando no cabe (`scrollable = false` si el cuerpo ya tiene su lista), un hueco `notices` encima del pie y un pie con la acción de cerrar seguida de la de confirmar, alineadas al final. `dismissible = false` lo mantiene abierto mientras corre una operación.
+- **`EmptyState`, `ErrorState`, `SkeletonRows`**: los estados vacío, de error y de primera carga de una superficie asíncrona (ver más abajo). `StateAction` es la etiqueta y la acción de su botón o enlace.
+- **`InlineConfirmButton`, `InlineConfirmIconAction`**: controles que confirman una acción trivial en el sitio, con un ✓ y "Copiado" durante 1,5 s (`rememberInlineConfirm`).
+- **`DisabledReason`**: envuelve un control y, cuando está deshabilitado por un motivo, lo muestra en un tooltip y lo expone como descripción del estado del control.
+- **`GroupedNotice`** y **`groupNotices`**: un solo banner que resume varios avisos del mismo tipo y origen, con "Detalles (n)" para ver cada uno y un único cierre.
+
+### Normas de estados, controles deshabilitados, avisos y títulos
+
+- **Cuatro estados en cada superficie asíncrona.** La carga muestra `SkeletonRows` solo en la primera lectura; una recarga mantiene los datos anteriores, como mucho con un indicador de progreso pequeño. El vacío muestra un `EmptyState` con una sola acción. Un error se muestra dentro del ámbito que falló (la sección, el grupo o la vista), nunca en uno superior; cuando la superficie entera no se puede leer porque falta una herramienta externa, es un `ErrorState` con "Volver a intentar" y el mensaje crudo en "Detalles técnicos" (la vista de Compose sin Docker). Una sección que no aplica no se dibuja.
+- **Un control deshabilitado explica por qué.** Su motivo está tipado en el ViewModel (`CleanupBlock` en `WorktreeBoard`, `DaemonStopBlock` para los daemons de Gradle), traducido y mostrado con `DisabledReason`. Un control que nunca se podrá usar en su contexto no se dibuja.
+- **Los avisos se agrupan.** Los avisos del mismo tipo y origen forman un único `GroupedNotice`, y cada ámbito muestra como mucho uno: cada vista de Machine resume sus avisos de liberación y de recorte (`poolNoticeBanner`).
+- **Las acciones triviales se confirman en el sitio** con los controles de confirmación en línea; los mensajes globales quedan para los resultados que el usuario no está viendo.
+- **Los títulos salen de los componentes de título**, nunca de un `Text` con estilo de título, para que todos se declaren como títulos.
 
 ### Normas
 

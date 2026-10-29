@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.DaemonKind
 import app.luxion.shogunai.domain.model.DaemonState
 import app.luxion.shogunai.domain.model.DaemonStopReport
+import app.luxion.shogunai.ui.components.DisabledReason
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.Notice
 import app.luxion.shogunai.ui.components.NoticeKind
@@ -79,10 +80,13 @@ private fun LoadedDaemons(daemons: List<MachineDaemon>, machine: MachineResource
         MachineDataText(strings.gradleDaemonsSummary(daemons.size, formatSize(processes.sumOf { it.residentMemoryBytes })))
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (machine.isStoppingDaemons) InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
-            SecondaryButton(
-                onClick = machine::stopIdleGradleDaemons,
-                enabled = !machine.isStoppingDaemons && daemons.any { it.isStoppable(daemons) },
-            ) { Text(strings.stopIdleDaemons) }
+            val stopIdleBlock = stopIdleBlock(daemons, machine.isStoppingDaemons)
+            DisabledReason(stopIdleBlock?.describe(strings)) {
+                SecondaryButton(
+                    onClick = machine::stopIdleGradleDaemons,
+                    enabled = stopIdleBlock == null,
+                ) { Text(strings.stopIdleDaemons) }
+            }
         }
     }
     daemons.forEach { daemon ->
@@ -93,10 +97,13 @@ private fun LoadedDaemons(daemons: List<MachineDaemon>, machine: MachineResource
             MachineStateText(daemonStateText(daemon, strings), Modifier.width(170.dp))
             OwnerCell(daemon.owner, machine::projectName, onOpenWorktree, Modifier.width(MachineOwnerColumnWidth))
             Row(Modifier.width(MachineActionColumnWidth), horizontalArrangement = Arrangement.End) {
-                SecondaryButton(
-                    onClick = { machine.stopGradleDaemon(daemon.process.pid) },
-                    enabled = !machine.isStoppingDaemons && daemon.isStoppable(daemons),
-                ) { Text(strings.stopDaemon) }
+                val stopBlock = daemon.stopBlock(daemons, machine.isStoppingDaemons)
+                DisabledReason(stopBlock?.describe(strings)) {
+                    SecondaryButton(
+                        onClick = { machine.stopGradleDaemon(daemon.process.pid) },
+                        enabled = stopBlock == null,
+                    ) { Text(strings.stopDaemon) }
+                }
             }
         }
     }
@@ -125,7 +132,31 @@ fun daemonStateText(daemon: MachineDaemon, strings: Strings, now: Instant = Inst
         DaemonState.Untracked -> ""
     }
 
-fun MachineDaemon.isStoppable(all: List<MachineDaemon>): Boolean = when (process.kind) {
-    DaemonKind.GRADLE -> process.state is DaemonState.Idle
-    DaemonKind.KOTLIN -> all.none { it.process.kind == DaemonKind.GRADLE && it.process.state !is DaemonState.Idle }
+enum class DaemonStopBlock { STOPPING, BUSY, STATE_UNKNOWN, GRADLE_BUSY, NONE_IDLE }
+
+fun MachineDaemon.stopBlock(all: List<MachineDaemon>, stopping: Boolean = false): DaemonStopBlock? = when {
+    stopping -> DaemonStopBlock.STOPPING
+    process.kind == DaemonKind.GRADLE -> when (process.state) {
+        is DaemonState.Idle -> null
+        DaemonState.Busy -> DaemonStopBlock.BUSY
+        DaemonState.Unknown, DaemonState.Untracked -> DaemonStopBlock.STATE_UNKNOWN
+    }
+    all.any { it.process.kind == DaemonKind.GRADLE && it.process.state !is DaemonState.Idle } -> DaemonStopBlock.GRADLE_BUSY
+    else -> null
+}
+
+fun MachineDaemon.isStoppable(all: List<MachineDaemon>): Boolean = stopBlock(all) == null
+
+fun stopIdleBlock(daemons: List<MachineDaemon>, stopping: Boolean): DaemonStopBlock? = when {
+    stopping -> DaemonStopBlock.STOPPING
+    daemons.none { it.isStoppable(daemons) } -> DaemonStopBlock.NONE_IDLE
+    else -> null
+}
+
+fun DaemonStopBlock.describe(strings: Strings): String = when (this) {
+    DaemonStopBlock.STOPPING -> strings.stopIdleBlockedStopping
+    DaemonStopBlock.BUSY -> strings.daemonStopBlockedBusy
+    DaemonStopBlock.STATE_UNKNOWN -> strings.daemonStopBlockedUnknown
+    DaemonStopBlock.GRADLE_BUSY -> strings.daemonStopBlockedGradleBusy
+    DaemonStopBlock.NONE_IDLE -> strings.stopIdleBlockedNoneIdle
 }

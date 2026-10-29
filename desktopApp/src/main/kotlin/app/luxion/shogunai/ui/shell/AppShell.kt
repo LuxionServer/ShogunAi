@@ -10,10 +10,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
@@ -31,19 +30,20 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalWindowInfo
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.luxion.shogunai.AppContainer
 import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.diagnostics.diagnosticsExceptionHandler
+import app.luxion.shogunai.ui.components.EmptyState
+import app.luxion.shogunai.ui.components.ShogunDialog
 import app.luxion.shogunai.ui.components.DangerButton
+import app.luxion.shogunai.ui.components.StateAction
 import app.luxion.shogunai.ui.isMacOs
 import app.luxion.shogunai.ui.components.FocusRingWidth
 import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.PrimaryButton
-import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.ErrorFixActions
 import app.luxion.shogunai.ui.components.ErrorNotice
@@ -77,7 +77,6 @@ import kotlinx.coroutines.flow.filter
 import app.luxion.shogunai.ui.theme.ShogunTheme
 
 private val NarrowWindowThreshold = 900.dp
-private val EmptyStateMaxWidth = 420.dp
 
 @Composable
 fun AppShell(
@@ -374,7 +373,7 @@ private fun runPaletteAction(
 private fun ShellContent(appContainer: AppContainer, viewModel: ShellViewModel, board: WorktreeBoard, machine: MachineResources) {
     val refreshBoard: (String) -> Unit = { projectId -> board.holder(projectId)?.refresh() }
     when (val destination = viewModel.destination) {
-        null -> EmptyState(onAddProject = viewModel::addProject, onTakeTour = appContainer.tour::start)
+        null -> FirstLaunchState(onAddProject = viewModel::addProject, onTakeTour = appContainer.tour::start)
         ShellDestination.Active -> WorktreeView(destination, viewModel, board)
         is ShellDestination.All -> WorktreeView(destination, viewModel, board)
         is ShellDestination.ProjectSettings -> viewModel.projectFor(destination)?.let { project ->
@@ -511,51 +510,41 @@ private fun ProjectForm(
 }
 
 @Composable
-internal fun EmptyState(onAddProject: () -> Unit, onTakeTour: () -> Unit) {
+internal fun FirstLaunchState(onAddProject: () -> Unit, onTakeTour: () -> Unit) {
     val strings = LocalStrings.current
-    Box(modifier = Modifier.fillMaxSize().padding(Spacing.xl), contentAlignment = Alignment.Center) {
-        Column(
-            modifier = Modifier.widthIn(max = EmptyStateMaxWidth),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(Spacing.md),
-        ) {
-            Text(strings.emptyStateTitle, style = ShogunTheme.typography.viewTitle)
-            Text(
-                strings.emptyStateMessage,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                PrimaryButton(onClick = onAddProject) { Text(strings.addProject) }
-                SecondaryButton(onClick = onTakeTour) { Text(strings.tourTakeTour) }
-            }
-        }
-    }
+    EmptyState(
+        icon = Icons.Default.CreateNewFolder,
+        title = strings.emptyStateTitle,
+        message = strings.emptyStateMessage,
+        action = StateAction(strings.addProject, onAddProject),
+        link = StateAction(strings.tourTakeTour, onTakeTour),
+    )
 }
 
 @Composable
 private fun DiscardChangesDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
     val strings = LocalStrings.current
-    AlertDialog(
+    ShogunDialog(
+        title = strings.discardChangesTitle,
         onDismissRequest = onDismiss,
-        title = { Text(strings.discardChangesTitle) },
-        text = { Text(strings.discardChangesMessage) },
-        confirmButton = { PrimaryButton(onClick = onConfirm) { Text(strings.discard) } },
-        dismissButton = { NeutralTextButton(onClick = onDismiss) { Text(strings.keepEditing) } },
-    )
+        confirm = { PrimaryButton(onClick = onConfirm) { Text(strings.discard) } },
+        dismiss = { NeutralTextButton(onClick = onDismiss) { Text(strings.keepEditing) } },
+    ) {
+        Text(strings.discardChangesMessage)
+    }
 }
 
 @Composable
 private fun RemoveProjectDialog(project: Project, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     val strings = LocalStrings.current
-    AlertDialog(
+    ShogunDialog(
+        title = strings.removeProjectTitle,
         onDismissRequest = onDismiss,
-        title = { Text(strings.removeProjectTitle) },
-        text = { Text(strings.removeProjectMessage(project.name)) },
-        confirmButton = { DangerButton(onClick = onConfirm) { Text(strings.remove) } },
-        dismissButton = { NeutralTextButton(onClick = onDismiss) { Text(strings.cancel) } },
-    )
+        confirm = { DangerButton(onClick = onConfirm) { Text(strings.remove) } },
+        dismiss = { NeutralTextButton(onClick = onDismiss) { Text(strings.cancel) } },
+    ) {
+        Text(strings.removeProjectMessage(project.name))
+    }
 }
 
 private fun tourProjectShown(appContainer: AppContainer, viewModel: ShellViewModel): Project? {

@@ -683,8 +683,7 @@ object SpanishStrings : Strings {
     override val composeProjectsTitle = "Proyectos de Compose"
     override fun composeProjectsSummary(count: Int) = if (count == 1) "1 proyecto" else "$count proyectos"
     override val noComposeProjects = "No hay proyectos de Compose de los worktrees"
-    override fun composeProjectsUnavailable(reason: String?) =
-        "Docker no está disponible" + if (reason.isNullOrBlank()) "" else ": $reason"
+    override val composeDockerUnavailableMessage = "Docker no está disponible. Abre Docker Desktop o arranca el daemon de Docker y vuelve a intentarlo."
     override val composeOwnerRemoved = "worktree eliminado"
     override val takeDownRemovedComposeProjects = "Bajar los proyectos de los worktrees eliminados"
     override val composeVolumesKept = "Se eliminan los contenedores y las redes; los volúmenes se conservan."
@@ -899,4 +898,19 @@ object SpanishStrings : Strings {
     override val tourEndTitle = "¿Terminar el recorrido?"
     override fun tourEndMessage(folder: String) =
         "Se eliminan el proyecto \"ShogunAi tour\", sus worktrees y $folder. Cierra antes el agente del recorrido. No se toca ningún otro proyecto."
+    override val loading = "Cargando"
+    override fun noticeDetails(count: Int) = "Detalles ($count)"
+    override fun releasedSummary(kind: ResourceKind, count: Int) = when (kind) {
+        ResourceKind.EMULATOR -> "Se liberaron $count emuladores para dejar sitio a otros worktrees"
+        ResourceKind.IOS_SIMULATOR -> "Se borraron $count simuladores para dejar sitio a otros worktrees"
+        ResourceKind.GRADLE_DAEMON -> "Se pararon $count daemons de Gradle para dejar sitio a otros worktrees"
+    }
+    override val cleanUpBlockedRunning = "Ya hay una limpieza en marcha"
+    override val cleanUpBlockedNothing = "No hay nada que limpiar: ningún worktree está mergeado ni ha perdido su carpeta"
+    override val cleanUpBlockedReview = "Confía en el multirepo antes de limpiarlo"
+    override val daemonStopBlockedBusy = "Solo se pueden parar los daemons inactivos, y este está ocupado"
+    override val daemonStopBlockedUnknown = "No se conoce su estado, así que no se para"
+    override val daemonStopBlockedGradleBusy = "Los daemons de Kotlin solo se paran cuando ningún daemon de Gradle está ocupado"
+    override val stopIdleBlockedStopping = "Se están parando los daemons"
+    override val stopIdleBlockedNoneIdle = "Ningún daemon está inactivo"
 }

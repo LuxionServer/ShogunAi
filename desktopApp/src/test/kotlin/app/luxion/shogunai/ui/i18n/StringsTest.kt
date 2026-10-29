@@ -521,4 +521,18 @@ class StringsTest {
             assertTrue("brew upgrade --cask shogunai" in strings.updateCommandReminder(InstallChannel.HOMEBREW, "brew upgrade --cask shogunai"))
         }
     }
+
+    @Test
+    fun `grouped release summaries count the resources in both languages`() {
+        assertEquals(
+            "3 emulators were released to make room for other worktrees",
+            EnglishStrings.releasedSummary(ResourceKind.EMULATOR, 3),
+        )
+        assertEquals(
+            "Se borraron 2 simuladores para dejar sitio a otros worktrees",
+            SpanishStrings.releasedSummary(ResourceKind.IOS_SIMULATOR, 2),
+        )
+        assertEquals("Details (3)", EnglishStrings.noticeDetails(3))
+        assertEquals("Detalles (3)", SpanishStrings.noticeDetails(3))
+    }
 }

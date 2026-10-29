@@ -3,15 +3,15 @@ package app.luxion.shogunai.ui.machine
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.toLocalClockTime
+import app.luxion.shogunai.ui.components.GroupTitle
+import app.luxion.shogunai.ui.components.ShogunDialog
 import app.luxion.shogunai.ui.components.DangerButton
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.NeutralTextButton
@@ -51,7 +51,7 @@ fun DesktopTurnView(machine: MachineResources, onOpenWorktree: (String, String) 
         }
         val waiting = watch.state.waiting
         if (waiting.isNotEmpty()) {
-            Text(strings.desktopTurnWaitingTitle, style = MaterialTheme.typography.titleSmall)
+            GroupTitle(strings.desktopTurnWaitingTitle)
             waiting.forEachIndexed { index, ticket ->
                 HorizontalDivider()
                 MachineRowLine {
@@ -74,13 +74,14 @@ fun DesktopTurnView(machine: MachineResources, onOpenWorktree: (String, String) 
 @Composable
 fun ReleaseDesktopTurnDialog(holder: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     val strings = LocalStrings.current
-    AlertDialog(
+    ShogunDialog(
+        title = strings.confirmReleaseDesktopTurnTitle,
         onDismissRequest = onDismiss,
-        title = { Text(strings.confirmReleaseDesktopTurnTitle) },
-        text = { Text(strings.confirmReleaseDesktopTurnMessage(holder)) },
-        confirmButton = { DangerButton(onClick = onConfirm) { Text(strings.releaseDesktopTurn) } },
-        dismissButton = { NeutralTextButton(onClick = onDismiss) { Text(strings.cancel) } },
-    )
+        confirm = { DangerButton(onClick = onConfirm) { Text(strings.releaseDesktopTurn) } },
+        dismiss = { NeutralTextButton(onClick = onDismiss) { Text(strings.cancel) } },
+    ) {
+        Text(strings.confirmReleaseDesktopTurnMessage(holder))
+    }
 }
 
 fun clockTime(epochMillis: Long): String = Instant.ofEpochMilli(epochMillis).toLocalClockTime()

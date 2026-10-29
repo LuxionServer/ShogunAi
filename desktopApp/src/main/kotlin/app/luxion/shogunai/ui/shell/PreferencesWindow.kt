@@ -11,7 +11,6 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,6 +20,7 @@ import androidx.compose.ui.platform.testTag
 import app.luxion.shogunai.domain.model.INACTIVE_AFTER_DAYS_RANGE
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import app.luxion.shogunai.ui.components.Field
 import app.luxion.shogunai.ui.components.rememberAppIconPainter
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -157,16 +157,16 @@ fun InactivitySection(inactivity: InactivityPreferences) {
         style = MaterialTheme.typography.labelLarge,
         modifier = Modifier.padding(top = Spacing.md),
     )
-    OutlinedTextField(
+    Field(
         value = text,
         onValueChange = { input ->
             text = input.filter(Char::isDigit).take(3)
             text.toIntOrNull()?.let(inactivity::change)
         },
-        singleLine = true,
-        isError = !isValid,
-        supportingText = { Text(if (isValid) strings.inactivityThresholdHint else strings.inactivityThresholdInvalid) },
-        modifier = Modifier.fillMaxWidth().testTag(InactivityFieldTag),
+        help = strings.inactivityThresholdHint,
+        error = if (isValid) null else strings.inactivityThresholdInvalid,
+        modifier = Modifier.fillMaxWidth(),
+        inputModifier = Modifier.testTag(InactivityFieldTag),
     )
 }
 

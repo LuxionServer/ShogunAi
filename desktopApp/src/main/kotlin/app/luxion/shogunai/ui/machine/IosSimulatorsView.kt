@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.machine
 
+import app.luxion.shogunai.ui.components.GroupTitle
 import app.luxion.shogunai.ui.theme.Status
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -7,7 +8,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -56,7 +56,7 @@ fun IosSimulatorsView(machine: MachineResources, onOpenWorktree: (String, String
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(strings.simulatorOrphansTitle(orphans.size), style = MaterialTheme.typography.titleSmall)
+                GroupTitle(strings.simulatorOrphansTitle(orphans.size))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     if (machine.isDeletingSimulators) InlineProgress(size = ProgressSize.Small)
                     DangerTextButton(onClick = { confirmingDelete = true }, enabled = !machine.isDeletingSimulators) {

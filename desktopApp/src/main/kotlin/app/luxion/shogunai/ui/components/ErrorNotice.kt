@@ -10,7 +10,6 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -25,7 +24,6 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboard
-import app.luxion.shogunai.ui.components.copyText
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -103,11 +101,15 @@ private fun fixActionFor(fix: ErrorFix?, projectId: String?): Pair<String, () ->
 
 @Composable
 private fun TechnicalDetailsDisclosure(details: TechnicalDetails) {
+    TechnicalDetailsDisclosure(details.asPlainText())
+}
+
+@Composable
+internal fun TechnicalDetailsDisclosure(text: String) {
     val strings = LocalStrings.current
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
-    var expanded by remember(details) { mutableStateOf(false) }
-    val text = details.asPlainText()
+    var expanded by remember(text) { mutableStateOf(false) }
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
             NeutralTextButton(onClick = { expanded = !expanded }) {
@@ -118,8 +120,7 @@ private fun TechnicalDetailsDisclosure(details: TechnicalDetails) {
                 Text(strings.technicalDetails)
             }
             if (expanded) {
-                IconAction(
-                    icon = Icons.Default.ContentCopy,
+                InlineConfirmIconAction(
                     label = strings.copyTechnicalDetails,
                     onClick = { scope.launch { clipboard.copyText(text) } },
                 )

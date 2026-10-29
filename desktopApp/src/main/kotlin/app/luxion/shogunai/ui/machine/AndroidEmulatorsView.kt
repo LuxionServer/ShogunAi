@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.machine
 
+import app.luxion.shogunai.ui.components.GroupTitle
 import app.luxion.shogunai.ui.theme.Status
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -9,7 +10,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.usecase.ProjectOwner
 import app.luxion.shogunai.ui.components.InlineProgress
@@ -39,7 +39,7 @@ fun AndroidEmulatorsView(machine: MachineResources, onOpenWorktree: (String, Str
         }
         val unowned = machine.unownedEmulators
         if (unowned.isNotEmpty()) {
-            Text(strings.unownedEmulatorsTitle, style = androidx.compose.material3.MaterialTheme.typography.titleSmall)
+            GroupTitle(strings.unownedEmulatorsTitle)
             unowned.forEach { emulator ->
                 HorizontalDivider()
                 MachineRowLine {

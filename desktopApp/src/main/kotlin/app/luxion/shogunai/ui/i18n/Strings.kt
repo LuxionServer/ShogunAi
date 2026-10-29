@@ -570,7 +570,7 @@ interface Strings {
     val composeProjectsTitle: String
     fun composeProjectsSummary(count: Int): String
     val noComposeProjects: String
-    fun composeProjectsUnavailable(reason: String?): String
+    val composeDockerUnavailableMessage: String
     val composeOwnerRemoved: String
     val takeDownRemovedComposeProjects: String
     val composeVolumesKept: String
@@ -744,6 +744,17 @@ interface Strings {
     val tourEnd: String
     val tourEndTitle: String
     fun tourEndMessage(folder: String): String
+    val loading: String
+    fun noticeDetails(count: Int): String
+    fun releasedSummary(kind: ResourceKind, count: Int): String
+    val cleanUpBlockedRunning: String
+    val cleanUpBlockedNothing: String
+    val cleanUpBlockedReview: String
+    val daemonStopBlockedBusy: String
+    val daemonStopBlockedUnknown: String
+    val daemonStopBlockedGradleBusy: String
+    val stopIdleBlockedStopping: String
+    val stopIdleBlockedNoneIdle: String
 }
 
 val LocalStrings = staticCompositionLocalOf<Strings> { EnglishStrings }

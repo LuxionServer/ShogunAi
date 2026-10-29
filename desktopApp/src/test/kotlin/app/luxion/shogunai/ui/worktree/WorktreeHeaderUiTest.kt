@@ -11,7 +11,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performMouseInput
@@ -59,6 +62,24 @@ class WorktreeHeaderUiTest {
         onNodeWithText("All projects").performClick()
 
         assertEquals(listOf<String?>("api", null), picks)
+    }
+
+    @Test
+    fun `a disabled merged cleanup says why`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                StateGroupHeader(
+                    StateGroupKind.MERGED,
+                    count = 1,
+                    canCleanUp = false,
+                    onCleanUp = {},
+                    cleanUpBlockedReason = "A cleanup is already running",
+                )
+            }
+        }
+
+        onNodeWithText("Clean up").assertIsNotEnabled()
+        onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "A cleanup is already running")).assertExists()
     }
 
     @Test

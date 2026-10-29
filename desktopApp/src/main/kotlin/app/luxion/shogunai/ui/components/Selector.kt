@@ -1,5 +1,7 @@
 package app.luxion.shogunai.ui.components
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
@@ -13,7 +15,6 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -86,16 +87,19 @@ fun <T> DropdownSelector(
         onExpandedChange = { expanded = it && fieldEnabled },
         modifier = modifier,
     ) {
-        OutlinedTextField(
-            value = selected?.let(label) ?: "",
-            onValueChange = {},
-            readOnly = true,
-            enabled = fieldEnabled,
-            placeholder = { Text(placeholder) },
-            label = fieldLabel?.let { { Text(it) } },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, fieldEnabled).fillMaxWidth().handPointer(fieldEnabled),
-        )
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            fieldLabel?.let { FieldLabel(it, fieldEnabled) }
+            FieldInput(
+                value = selected?.let(label) ?: "",
+                onValueChange = {},
+                readOnly = true,
+                enabled = fieldEnabled,
+                description = fieldLabel,
+                placeholder = placeholder,
+                trailing = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, fieldEnabled).fillMaxWidth().handPointer(fieldEnabled),
+            )
+        }
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             groupOptions(options, groupBy).forEach { (group, groupOptions) ->
                 if (group != null) {

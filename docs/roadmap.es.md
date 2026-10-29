@@ -87,7 +87,7 @@ Los multirepos y los grupos por rama están hechos en el CLI y en la app de escr
 - Dividir `ProjectWorktrees.kt` y `ProjectSettingsView.kt` en holders y secciones más pequeños.
 - Comprobar el recorrido guiado en Windows y Linux con una app instalada real: la creación del ejemplo con el Git del sistema, y el comando del agente del recorrido, cuyo prompt se entrecomilla para la shell que ejecuta cada terminal.
 - Una página de changelog en la web de documentación construida con las notas de `.github/release-notes/`, que la app ya muestra en su aviso de actualización.
-- Terminar los tokens del diseño v2 donde la integración con Orca estaba cambiando el código a la vez: las etiquetas de los botones del detalle del worktree aún se encogen con `bodySmall` y muestran el estado del agente y las fechas en mono, y hay que revisar los botones de los diálogos de borrado y de limpieza con los tamaños compacto y normal cuando llegue `ShogunDialog`.
+- Terminar los tokens del diseño v2 en el detalle del worktree, que la integración con Orca estaba cambiando a la vez: las etiquetas de sus botones aún se encogen con `bodySmall` y muestra el estado del agente y las fechas en mono.
 
 ## Más adelante
 

@@ -1065,6 +1065,18 @@ class WorktreeBoardTest {
     }
 
     @Test
+    fun `a disabled cleanup says there is nothing to clean up`() = runTest(dispatcher) {
+        api.worktrees = emptyList()
+        val board = board()
+        advanceUntilIdle()
+
+        assertEquals(CleanupBlock.NothingToCleanUp, board.cleanUpBlock("api"))
+        assertNull(board.cleanUpBlock())
+        assertEquals(EnglishStrings.cleanUpBlockedNothing, CleanupBlock.NothingToCleanUp.describe(EnglishStrings))
+        assertEquals(EnglishStrings.cleanUpBlockedRunning, CleanupBlock.Running.describe(EnglishStrings))
+    }
+
+    @Test
     fun `refreshing the view reloads branches only for an open existing-branch dialog`() = runTest(dispatcher) {
         val board = board()
         advanceUntilIdle()

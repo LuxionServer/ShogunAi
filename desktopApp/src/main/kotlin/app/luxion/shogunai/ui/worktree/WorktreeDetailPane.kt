@@ -1,7 +1,11 @@
 package app.luxion.shogunai.ui.worktree
 
+import androidx.compose.runtime.key
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import app.luxion.shogunai.domain.model.HeadlessAppProcess
 import app.luxion.shogunai.domain.model.HeadlessAppState
+import app.luxion.shogunai.ui.components.InlineConfirmIconAction
 import app.luxion.shogunai.ui.components.NoticeKind
 import app.luxion.shogunai.ui.components.Notice
 import androidx.compose.foundation.background
@@ -17,28 +21,24 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboard
 import app.luxion.shogunai.ui.components.copyText
 import androidx.compose.runtime.rememberCoroutineScope
+import app.luxion.shogunai.ui.components.rememberInlineConfirm
 import app.luxion.shogunai.ui.machine.DesktopTurnWatch
 import app.luxion.shogunai.ui.machine.ReleaseDesktopTurnDialog
 import app.luxion.shogunai.ui.machine.clockTime
 import kotlinx.coroutines.launch
 import androidx.compose.ui.text.style.TextOverflow
-import app.luxion.shogunai.domain.model.Divergence
 import app.luxion.shogunai.domain.model.EMULATOR_PORT_KEY
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.ProjectConfig
@@ -71,10 +71,7 @@ import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.components.ErrorNotice
 import app.luxion.shogunai.ui.theme.ShogunTheme
 import app.luxion.shogunai.ui.theme.Status
-import kotlinx.coroutines.delay
 import java.time.Instant
-
-private const val PATH_COPIED_FEEDBACK_MS = 2000L
 
 @Composable
 fun WorktreeDetailPane(
@@ -127,20 +124,10 @@ fun WorktreeDetailPane(
                 SelectionContainer(Modifier.weight(1f)) {
                     Text(worktree.path, style = ShogunTheme.typography.dataSmall, color = valueColor)
                 }
-                var pathCopied by remember(worktree.path) { mutableStateOf(false) }
-                LaunchedEffect(pathCopied) {
-                    if (pathCopied) {
-                        delay(PATH_COPIED_FEEDBACK_MS)
-                        pathCopied = false
-                    }
-                }
-                IconAction(
-                    icon = if (pathCopied) Icons.Default.Check else Icons.Default.ContentCopy,
-                    label = if (pathCopied) strings.copied else strings.copyPath,
-                    onClick = {
-                        scope.launch { clipboard.copyText(worktree.path) }
-                        pathCopied = true
-                    },
+                InlineConfirmIconAction(
+                    label = strings.copyPath,
+                    onClick = { scope.launch { clipboard.copyText(worktree.path) } },
+                    state = key(worktree.path) { rememberInlineConfirm() },
                 )
             }
         }
@@ -523,7 +510,12 @@ private fun ColumnScope.DiskSection(size: Long?) {
 
 @Composable
 private fun ColumnScope.SectionTitle(title: String) {
-    Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(
+        title,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.semantics { heading() },
+    )
 }
 
 @Composable

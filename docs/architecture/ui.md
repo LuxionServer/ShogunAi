@@ -319,6 +319,21 @@ The focus ring (`Modifier.focusRing`) is 2 dp in the accent color. The theme rai
 - **`StatusChip`**: a compact label on a status container color, with an optional icon.
 - **`IconAction`**: a 28 × 28 dp icon-only action whose label is both its tooltip and its accessible description.
 - **`Modifier.interactive`**: makes a custom row or header clickable, with a hover state, the hand pointer and a focus ring (`Modifier.focusRing`).
+- **`ViewTitle`, `SectionTitle`, `GroupTitle`**: the title of a view, of a form section or dialog, and of a list group. Each declares itself a heading (`semantics { heading() }`), so a screen reader can jump between them; `SectionCard`, `SettingsSection`, `ShogunDialog` and `MachineViewFrame` use them.
+- **`Field`, `PathField`**: form fields with the label above a 32 dp input (never a floating label) and the help or the error below; the error replaces the help while it applies. `PathField` adds "Browse…". `inputModifier` reaches the text input itself, for a `FocusRequester`, `onEnterKey` or a test tag. `FieldIconAction` is the small icon action that fits inside a field, such as clearing the filter. `DropdownSelector`'s anchor is the same field, read-only.
+- **`ShogunDialog`**: every dialog, in three widths (`DialogSize.Small` 400, `Medium` 520, `Large` 680 dp), with a heading title, a body that scrolls when it doesn't fit (`scrollable = false` when the body has its own list), a `notices` slot above the footer, and a footer with the dismiss action followed by the confirm action, aligned to the end. `dismissible = false` keeps it open while an operation runs.
+- **`EmptyState`, `ErrorState`, `SkeletonRows`**: the empty, error and first-load states of an asynchronous surface (see below). `StateAction` is the label and callback of their action or link.
+- **`InlineConfirmButton`, `InlineConfirmIconAction`**: controls that confirm a trivial action in place, showing a check and "Copied" for 1.5 s (`rememberInlineConfirm`).
+- **`DisabledReason`**: wraps a control and, when it's disabled for a reason, shows the reason in a tooltip and exposes it as the control's state description.
+- **`GroupedNotice`** and **`groupNotices`**: one banner that summarizes several notices of the same kind and source, with "Details (n)" listing each one and a single dismiss.
+
+### Rules for states, disabled controls, notices and titles
+
+- **Four states for every asynchronous surface.** Loading shows `SkeletonRows` on the first read only; a reload keeps the previous data with at most a small progress indicator. Empty shows an `EmptyState` with one action. An error is shown inside the scope that failed (the section, the group or the view), never in an enclosing one; when the whole surface can't be read because an external tool is missing, it's an `ErrorState` with "Try again" and the raw message under "Technical details" (the Compose view without Docker). A section that doesn't apply isn't drawn.
+- **A disabled control explains why.** Its reason is typed in the ViewModel (`CleanupBlock` in `WorktreeBoard`, `DaemonStopBlock` for Gradle daemons), translated, and shown through `DisabledReason`. A control that can never be used in its context isn't drawn.
+- **Notices are grouped.** Notices of the same kind and source become one `GroupedNotice`, and a scope shows at most one such banner: each machine view summarizes its release and trim reports (`poolNoticeBanner`).
+- **Trivial actions confirm in place** with the inline-confirm controls; global messages are for results the user isn't looking at.
+- **Titles come from the title components**, never from a `Text` styled as a title, so every heading is declared.
 
 ### Rules
 

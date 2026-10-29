@@ -661,7 +661,7 @@ class MachineResourcesTest {
         val notice = machine.noticesOf(MachineResource.ANDROID_EMULATORS).single()
         assertEquals(PoolNoticeContent.Released(ResourceKind.EMULATOR, "api · TASK-1", "api-TASK-9"), notice.content)
 
-        machine.dismissNotice(notice.id)
+        machine.dismissNotices(MachineResource.ANDROID_EMULATORS)
         assertTrue(machine.noticesOf(MachineResource.ANDROID_EMULATORS).isEmpty())
     }
 

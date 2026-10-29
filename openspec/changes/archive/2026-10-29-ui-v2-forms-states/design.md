@@ -41,7 +41,7 @@ Alternative considered: `DialogWindow` (a separate OS window). It breaks the in-
 
 ### `DisabledReason` wraps the control
 
-`DisabledReason(reason: String?, content)` renders `content` alone when `reason` is null, and otherwise wraps it in `WithTooltip(reason)` and sets the reason as the wrapper's `stateDescription`. Screens pass `reason` only when the control is disabled. The reasons are typed in the ViewModels: `WorktreeBoard.cleanUpBlock(projectId): CleanupBlock?` (`CLEANING_UP`, `NOTHING_TO_CLEAN_UP`) with `canCleanUp` defined as its absence, the header adding `NEEDS_REVIEW` for an untrusted multirepo; `MachineDaemon.stopBlock(all): DaemonStopBlock?` (`BUSY`, `STATE_UNKNOWN`, `GRADLE_BUSY` for Kotlin daemons) with `isStoppable` defined as its absence, and `MachineResources.stopIdleBlock` (`STOPPING`, `NONE_IDLE`). "Clean up group" already has its blocker; it moves to `DisabledReason` and gains `CLEANING_UP`.
+`DisabledReason(reason: String?, content)` renders `content` alone when `reason` is null, and otherwise wraps it in `WithTooltip(reason)` and sets the reason as the wrapper's `stateDescription`. Screens pass `reason` only when the control is disabled. The reasons are typed in the ViewModels: `WorktreeBoard.cleanUpBlock(projectId): CleanupBlock?` (`CLEANING_UP`, `NOTHING_TO_CLEAN_UP`) with `canCleanUp` defined as its absence, the header adding `NEEDS_REVIEW` for an untrusted multirepo; `MachineDaemon.stopBlock(all, stopping): DaemonStopBlock?` (`STOPPING`, `BUSY`, `STATE_UNKNOWN`, `GRADLE_BUSY` for Kotlin daemons) with `isStoppable` defined as its absence, and `stopIdleBlock(daemons, stopping)` (`STOPPING`, `NONE_IDLE`), pure functions next to `isStoppable` in `GradleDaemonsView.kt`. `CleanupBlock` is a sealed interface (`Running`, `NothingToCleanUp`, `NeedsReview`, `Kept(GroupKept)`) so the group's blocker keeps its alias and agents. "Clean up group" already has its blocker; it moves to `DisabledReason` and gains `CLEANING_UP`.
 
 Alternative considered: a `Modifier.disabledReason()`. A modifier can't wrap the content in `TooltipArea`, which is a composable.
 
@@ -53,15 +53,19 @@ Alternative considered: a `Modifier.disabledReason()`. A modifier can't wrap the
 
 `EmptyState(icon, message, modifier, title, action, link)` centers an icon, an optional title (a `ViewTitle`-level heading only for the first-launch screen, a plain sentence otherwise), the sentence, a `PrimaryButton` or `SecondaryButton` action and a `NeutralTextButton` link. `ErrorState(message, actionLabel, onAction, modifier, technicalDetails)` shows the danger icon, the sentence, a `SecondaryButton` and the existing "Technical details" disclosure, extracted from `ErrorNotice` into a shared internal composable that takes plain text. `SkeletonRows(count, modifier)` draws rows of `surfaceContainerHigh` bars at the row height of a two-line list row, with `clearAndSetSemantics { contentDescription = strings.loading }`, and no animation (the design keeps motion low).
 
+`FieldIconAction` is a 16 dp icon action that fits inside a 32 dp field (the filter's clear action); `IconAction` keeps Material's 40 dp button until tokens resizes it. The first-launch screen keeps its own composable, renamed `FirstLaunchState`, built on `EmptyState`.
+
+The detail pane's own section titles keep their eyebrow look and gain `heading()` semantics until `InspectorSection` replaces them. The runner notices of the removal and cleanup dialogs (Herdr and Orca) are warning `Notice`s in the dialog's `notices` slot.
+
 Adoption: a project group's `ProjectLoadState.Loading` (first read only, since `hasLoaded` already keeps the rows on reload) shows `SkeletonRows`; `NothingActive`, `NoMatch` and the first-launch screen become `EmptyState`; the summary panel shows `SkeletonRows` until every shown project has loaded once; Compose's `MachineLoad.Unavailable` becomes an `ErrorState` whose action calls a new `MachineResources.retryComposeProjects()` and whose details hold `composeUnavailableReason`.
 
 ### `InlineConfirm` as a state holder plus two controls
 
 `rememberInlineConfirm(durationMillis = 1500)` returns an object with `confirmed` and `confirm()`, reset by a `LaunchedEffect`. `InlineConfirmButton(label, onClick)` (a `SecondaryButton`) and `InlineConfirmIconAction(icon, label, onClick)` show ✓ and `strings.copied` while confirmed. Adopted in the simulator snippet copy and the "Copy technical details" action; the path copy in the detail and in the row wait for `orca-integration`.
 
-### Provisional constants until tokens merges
+### Provisional constants until tokens merged
 
-`FieldHeight = 32.dp`, `FieldHorizontalPadding = 10.dp`, `DialogShape = RoundedCornerShape(12.dp)`, `DialogShadow`, `RowPadding = 12.dp` (the future `Spacing.smd`) and `SkeletonRowHeight = 48.dp` are private constants in their components. When `ui-v2-tokens` merges into the epic, this branch merges the epic and swaps them for its tokens (task 9).
+`FieldHeight = 32.dp`, `FieldHorizontalPadding = 10.dp`, `DialogShape = RoundedCornerShape(12.dp)`, `DialogShadow`, `RowPadding = 12.dp` (the future `Spacing.smd`) and `SkeletonRowHeight = 48.dp` are private constants in their components. They were replaced by `ui-v2-tokens`' roles after merging the epic (task 9.1): `ShogunTheme.typography.viewTitle` and `sectionTitle` for the titles, `ShogunTheme.colors.accent` for focus and cursor, `ShogunTheme.colors.disabledContent`, `DialogShape`, `ShogunTheme.elevation.level2` and `Spacing.smd`. The field and the dialog keep their component-internal sizes as named constants.
 
 ## Risks / Trade-offs
 

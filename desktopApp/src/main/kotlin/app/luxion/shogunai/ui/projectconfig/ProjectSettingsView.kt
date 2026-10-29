@@ -22,10 +22,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -50,7 +48,10 @@ import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.Project
-import app.luxion.shogunai.domain.model.RepositoryProvisioning
+import app.luxion.shogunai.ui.components.DialogSize
+import app.luxion.shogunai.ui.components.Field
+import app.luxion.shogunai.ui.components.PathField
+import app.luxion.shogunai.ui.components.ShogunDialog
 import app.luxion.shogunai.ui.FilePicker
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.ui.components.DangerTextButton
@@ -62,6 +63,7 @@ import app.luxion.shogunai.ui.components.NoticeKind
 import app.luxion.shogunai.ui.components.PrimaryButton
 import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.Spacing
+import app.luxion.shogunai.ui.components.ViewTitle
 import app.luxion.shogunai.ui.components.handPointer
 import app.luxion.shogunai.ui.components.interactive
 import app.luxion.shogunai.ui.components.onEnterKey
@@ -232,10 +234,7 @@ private fun SettingsForm(
                             .padding(Spacing.lg),
                         verticalArrangement = Arrangement.spacedBy(Spacing.lg),
                     ) {
-                        Text(
-                            settingsTitle(strings, viewModel.isNewProject, viewModel.savedName),
-                            style = ShogunTheme.typography.viewTitle,
-                        )
+                        ViewTitle(settingsTitle(strings, viewModel.isNewProject, viewModel.savedName))
                         GeneralSection(viewModel, nameFocus, baseRepositoryFocus, worktreesRootFocus, settleBasePath, sectionTops)
                         HorizontalDivider()
                         WorktreeFilesSection(viewModel, newSecretFile, { newSecretFile = it }, sectionTops)
@@ -270,24 +269,24 @@ private fun Modifier.trackTop(
 @Composable
 private fun RepositoryPreviewDialog(content: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     val strings = LocalStrings.current
-    AlertDialog(
+    ShogunDialog(
+        title = strings.repositoryPreviewTitle,
         onDismissRequest = onDismiss,
-        title = { Text(strings.repositoryPreviewTitle) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                Text(strings.repositoryPreviewMessage)
-                Surface(tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth().heightIn(max = PreviewMaxHeight)) {
-                    Text(
-                        content,
-                        style = ShogunTheme.typography.data,
-                        modifier = Modifier.verticalScroll(rememberScrollState()).padding(Spacing.sm),
-                    )
-                }
+        size = DialogSize.Medium,
+        confirm = { PrimaryButton(onClick = onConfirm) { Text(strings.repositoryPreviewConfirm) } },
+        dismiss = { NeutralTextButton(onClick = onDismiss) { Text(strings.cancel) } },
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+            Text(strings.repositoryPreviewMessage)
+            Surface(tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth().heightIn(max = PreviewMaxHeight)) {
+                Text(
+                    content,
+                    style = ShogunTheme.typography.data,
+                    modifier = Modifier.verticalScroll(rememberScrollState()).padding(Spacing.sm),
+                )
             }
-        },
-        confirmButton = { PrimaryButton(onClick = onConfirm) { Text(strings.repositoryPreviewConfirm) } },
-        dismissButton = { NeutralTextButton(onClick = onDismiss) { Text(strings.cancel) } },
-    )
+        }
+    }
 }
 
 @Composable
@@ -361,66 +360,58 @@ private fun GeneralSection(
     SettingsSection(strings.generalSection, Modifier.trackTop(SettingsSectionId.GENERAL, tops)) {
         SettingsField(strings.nameLabel) {
             val error = viewModel.isErrorVisible(ProjectConfigField.NAME)
-            OutlinedTextField(
+            Field(
                 value = viewModel.name,
                 onValueChange = { viewModel.name = it },
-                singleLine = true,
-                isError = error,
-                supportingText = { Text(if (error) strings.nameEmptyError else strings.nameHelp) },
-                modifier = Modifier.fillMaxWidth().focusRequester(nameFocus),
+                help = strings.nameHelp,
+                error = if (error) strings.nameEmptyError else null,
+                modifier = Modifier.fillMaxWidth(),
+                inputModifier = Modifier.focusRequester(nameFocus),
             )
         }
         SettingsField(strings.baseRepositoryPathLabel) {
             val error = viewModel.isErrorVisible(ProjectConfigField.BASE_REPOSITORY_PATH)
             val errorMessage = baseRepositoryErrorMessage(viewModel, strings)
-            Row(verticalAlignment = Alignment.Top) {
-                OutlinedTextField(
-                    value = viewModel.baseRepositoryPath,
-                    onValueChange = { viewModel.baseRepositoryPath = it },
-                    textStyle = ShogunTheme.typography.data,
-                    singleLine = true,
-                    isError = error,
-                    supportingText = { Text(if (error && errorMessage != null) errorMessage else strings.baseRepositoryPathHelp) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .focusRequester(baseRepositoryFocus)
-                        .onFocusChanged { if (!it.isFocused) onSettleBasePath() },
-                )
-                BrowseButton {
+            PathField(
+                value = viewModel.baseRepositoryPath,
+                onValueChange = { viewModel.baseRepositoryPath = it },
+                onBrowse = {
                     FilePicker.pickDirectory(viewModel.baseRepositoryPath, strings.selectFolderDialogTitle)?.let {
                         viewModel.baseRepositoryPath = it
                         onSettleBasePath()
                     }
-                }
-            }
+                },
+                help = strings.baseRepositoryPathHelp,
+                error = if (error && errorMessage != null) errorMessage else null,
+                textStyle = ShogunTheme.typography.data,
+                modifier = Modifier.fillMaxWidth(),
+                inputModifier = Modifier.focusRequester(baseRepositoryFocus).onFocusChanged { if (!it.isFocused) onSettleBasePath() },
+            )
         }
         SettingsField(strings.worktreesRootLabel) {
             val rootError = viewModel.worktreesRoot.isBlank()
-            Row(verticalAlignment = Alignment.Top) {
-                OutlinedTextField(
-                    value = viewModel.worktreesRoot,
-                    onValueChange = { viewModel.worktreesRoot = it },
-                    textStyle = ShogunTheme.typography.data,
-                    singleLine = true,
-                    isError = rootError,
-                    supportingText = { Text(if (rootError) strings.worktreesRootEmptyError else strings.worktreesRootHelp) },
-                    modifier = Modifier.weight(1f).focusRequester(worktreesRootFocus),
-                )
-                BrowseButton {
+            PathField(
+                value = viewModel.worktreesRoot,
+                onValueChange = { viewModel.worktreesRoot = it },
+                onBrowse = {
                     FilePicker.pickDirectory(viewModel.worktreesRoot, strings.selectFolderDialogTitle)?.let {
                         viewModel.worktreesRoot = it
                     }
-                }
-            }
+                },
+                help = strings.worktreesRootHelp,
+                error = if (rootError) strings.worktreesRootEmptyError else null,
+                textStyle = ShogunTheme.typography.data,
+                modifier = Modifier.fillMaxWidth(),
+                inputModifier = Modifier.focusRequester(worktreesRootFocus),
+            )
         }
         SettingsField(strings.mainBranchLabel) {
-            OutlinedTextField(
+            Field(
                 value = viewModel.mainBranch,
                 onValueChange = { viewModel.mainBranch = it },
+                help = viewModel.detectedMainBranch?.let(strings::detectedMainBranch) ?: strings.mainBranchHelp,
+                placeholder = viewModel.detectedMainBranch ?: strings.mainBranchPlaceholder,
                 textStyle = ShogunTheme.typography.data,
-                placeholder = { Text(viewModel.detectedMainBranch ?: strings.mainBranchPlaceholder) },
-                singleLine = true,
-                supportingText = { Text(viewModel.detectedMainBranch?.let(strings::detectedMainBranch) ?: strings.mainBranchHelp) },
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -438,19 +429,13 @@ private fun baseRepositoryErrorMessage(viewModel: ProjectConfigViewModel, string
 @Composable
 private fun DiscardRepositoryEditsDialog(path: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     val strings = LocalStrings.current
-    AlertDialog(
+    ShogunDialog(
+        title = strings.discardRepositoryEditsTitle,
         onDismissRequest = onDismiss,
-        title = { Text(strings.discardRepositoryEditsTitle) },
-        text = { Text(strings.discardRepositoryEditsMessage(path)) },
-        confirmButton = { PrimaryButton(onClick = onConfirm) { Text(strings.discard) } },
-        dismissButton = { NeutralTextButton(onClick = onDismiss) { Text(strings.keepEditing) } },
-    )
-}
-
-@Composable
-private fun BrowseButton(onClick: () -> Unit) {
-    SecondaryButton(onClick = onClick, modifier = Modifier.padding(start = Spacing.sm, top = Spacing.xs)) {
-        Text(LocalStrings.current.browse)
+        confirm = { PrimaryButton(onClick = onConfirm) { Text(strings.discard) } },
+        dismiss = { NeutralTextButton(onClick = onDismiss) { Text(strings.keepEditing) } },
+    ) {
+        Text(strings.discardRepositoryEditsMessage(path))
     }
 }
 
@@ -492,13 +477,13 @@ private fun WorktreeFilesSection(
                     viewModel.addSecretFile(newSecretFile)
                     onNewSecretFileChange("")
                 }
-                OutlinedTextField(
+                Field(
                     value = newSecretFile,
                     onValueChange = onNewSecretFileChange,
-                    placeholder = { Text(strings.newLocalFileLabel) },
+                    placeholder = strings.newLocalFileLabel,
                     textStyle = ShogunTheme.typography.data,
-                    singleLine = true,
-                    modifier = Modifier.weight(1f).onEnterKey(action = addSecretFile),
+                    modifier = Modifier.weight(1f),
+                    inputModifier = Modifier.onEnterKey(action = addSecretFile),
                 )
                 SecondaryButton(onClick = addSecretFile, modifier = Modifier.padding(start = Spacing.sm)) {
                     Text(strings.add)
@@ -676,34 +661,23 @@ internal fun AgentFields(
     val config = agent.toConfig()
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         SettingsField(strings.agentNameLabel) {
-            OutlinedTextField(
+            Field(
                 value = agent.name,
                 onValueChange = { value -> onChange(agent.copy(name = value)) },
+                error = if (duplicated) strings.duplicateAgentNameError(config.displayName) else null,
+                placeholder = AgentLaunchConfig(agentCommand = agent.command).displayName,
                 textStyle = ShogunTheme.typography.data,
-                singleLine = true,
-                placeholder = { Text(AgentLaunchConfig(agentCommand = agent.command).displayName) },
-                isError = duplicated,
-                supportingText = if (duplicated) {
-                    { Text(strings.duplicateAgentNameError(config.displayName)) }
-                } else {
-                    null
-                },
                 modifier = Modifier.fillMaxWidth(),
             )
         }
         SettingsField(strings.agentCommandLabel) {
-            OutlinedTextField(
+            Field(
                 value = agent.command,
                 onValueChange = { value -> onChange(agent.copy(command = value)) },
+                error = if (agent.command.isBlank()) strings.agentCommandEmptyError else null,
                 textStyle = ShogunTheme.typography.data,
-                singleLine = true,
-                isError = agent.command.isBlank(),
-                supportingText = if (agent.command.isBlank()) {
-                    { Text(strings.agentCommandEmptyError) }
-                } else {
-                    null
-                },
-                modifier = Modifier.fillMaxWidth().let { if (commandFocus != null) it.focusRequester(commandFocus) else it },
+                modifier = Modifier.fillMaxWidth(),
+                inputModifier = Modifier.let { if (commandFocus != null) it.focusRequester(commandFocus) else it },
             )
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -763,7 +737,7 @@ private fun AddProjectFolderStep(viewModel: ProjectConfigViewModel, initialFolde
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
-            Text(strings.addProjectTitle, style = ShogunTheme.typography.viewTitle)
+            ViewTitle(strings.addProjectTitle)
             Text(
                 strings.addProjectIntro,
                 style = MaterialTheme.typography.bodyLarge,

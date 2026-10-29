@@ -222,8 +222,8 @@ class MachineResources(
 
     fun noticesOf(resource: MachineResource): List<PoolNotice> = notices.filter { it.resource == resource }
 
-    fun dismissNotice(id: Long) {
-        notices = notices.filterNot { it.id == id }
+    fun dismissNotices(resource: MachineResource) {
+        notices = notices.filterNot { it.resource == resource }
     }
 
     private fun addNotice(resource: MachineResource, content: PoolNoticeContent) {
@@ -556,6 +556,10 @@ class MachineResources(
         composeFailure = null
         composeUnavailableReason = null
         return listed.flatMap { (projectId, result) -> result.getOrThrow().map { MachineComposeProject(projectId, it) } }
+    }
+
+    fun retryComposeProjects() {
+        scope.launch { loadComposeProjects() }
     }
 
     fun takeDownRemovedComposeProjects() {

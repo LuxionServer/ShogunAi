@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -21,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.RepositoryProvisioning
 import app.luxion.shogunai.domain.model.SuggestedProvider
+import app.luxion.shogunai.ui.components.Field
 import app.luxion.shogunai.ui.worktree.ApprovalSubjectLines
 import app.luxion.shogunai.ui.components.IconAction
 import app.luxion.shogunai.ui.components.NeutralTextButton
@@ -134,15 +134,14 @@ private fun ProvidersEditor(viewModel: ProjectConfigViewModel, strings: Strings)
         ProviderSwitch(strings.providerDockerCompose, draft.dockerCompose != null, viewModel::setDockerComposeEnabled)
         draft.dockerCompose?.let { compose ->
             val issue = draft.issueFor(RepositoryConfigField.ComposePortVariables)
-            OutlinedTextField(
+            Field(
                 value = compose.portVariables,
                 onValueChange = { value -> viewModel.updateRepositoryDraft { it.copy(dockerCompose = compose.copy(portVariables = value)) } },
-                label = { Text(strings.composePortVariablesLabel) },
-                placeholder = { Text("DB_PORT, API_PORT") },
+                label = strings.composePortVariablesLabel,
+                help = strings.composePortVariablesHelp,
+                error = issue?.let(strings::repositoryConfigIssue),
+                placeholder = "DB_PORT, API_PORT",
                 textStyle = ShogunTheme.typography.data,
-                singleLine = true,
-                isError = issue != null,
-                supportingText = { Text(issue?.let(strings::repositoryConfigIssue) ?: strings.composePortVariablesHelp) },
                 modifier = Modifier.fillMaxWidth().padding(start = OptionIndent),
             )
         }
@@ -240,15 +239,13 @@ private fun OptionField(
     onChange: (String) -> Unit,
 ) {
     val strings = LocalStrings.current
-    OutlinedTextField(
+    Field(
         value = value,
         onValueChange = onChange,
-        label = { Text(label) },
-        placeholder = { Text(placeholder) },
+        label = label,
+        error = issue?.let { strings.repositoryConfigIssue(it) },
+        placeholder = placeholder,
         textStyle = ShogunTheme.typography.data,
-        singleLine = true,
-        isError = issue != null,
-        supportingText = issue?.let { { Text(strings.repositoryConfigIssue(it)) } },
         modifier = Modifier.fillMaxWidth().padding(start = OptionIndent),
     )
 }
@@ -269,24 +266,20 @@ private fun EnvironmentEditor(viewModel: ProjectConfigViewModel, strings: String
             val nameIssue = draft.issueFor(RepositoryConfigField.EnvironmentName(row.id))
             val templateIssue = draft.issueFor(RepositoryConfigField.EnvironmentTemplate(row.id))
             Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                OutlinedTextField(
+                Field(
                     value = row.name,
                     onValueChange = { viewModel.updateEnvironmentRow(row.id, name = it) },
-                    label = { Text(strings.environmentVariableNameLabel) },
+                    label = strings.environmentVariableNameLabel,
+                    error = nameIssue?.let { strings.repositoryConfigIssue(it) },
                     textStyle = ShogunTheme.typography.data,
-                    singleLine = true,
-                    isError = nameIssue != null,
-                    supportingText = nameIssue?.let { { Text(strings.repositoryConfigIssue(it)) } },
                     modifier = Modifier.weight(1f),
                 )
-                OutlinedTextField(
+                Field(
                     value = row.template,
                     onValueChange = { viewModel.updateEnvironmentRow(row.id, template = it) },
-                    label = { Text(strings.environmentVariableTemplateLabel) },
+                    label = strings.environmentVariableTemplateLabel,
+                    error = templateIssue?.let { strings.repositoryConfigIssue(it) },
                     textStyle = ShogunTheme.typography.data,
-                    singleLine = true,
-                    isError = templateIssue != null,
-                    supportingText = templateIssue?.let { { Text(strings.repositoryConfigIssue(it)) } },
                     modifier = Modifier.weight(1f),
                 )
                 IconAction(
@@ -303,15 +296,14 @@ private fun EnvironmentEditor(viewModel: ProjectConfigViewModel, strings: String
         }
         if (showTemplates) TemplateHelpList(strings)
         val envFileIssue = draft.issueFor(RepositoryConfigField.EnvFile)
-        OutlinedTextField(
+        Field(
             value = draft.envFile,
             onValueChange = { value -> viewModel.updateRepositoryDraft { it.copy(envFile = value) } },
-            label = { Text(strings.envFileLabel) },
-            placeholder = { Text(".env.shogunai") },
+            label = strings.envFileLabel,
+            help = strings.envFileHelp,
+            error = envFileIssue?.let(strings::repositoryConfigIssue),
+            placeholder = ".env.shogunai",
             textStyle = ShogunTheme.typography.data,
-            singleLine = true,
-            isError = envFileIssue != null,
-            supportingText = { Text(envFileIssue?.let(strings::repositoryConfigIssue) ?: strings.envFileHelp) },
             modifier = Modifier.fillMaxWidth(),
         )
     }
