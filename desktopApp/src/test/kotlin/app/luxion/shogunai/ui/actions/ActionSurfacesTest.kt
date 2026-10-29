@@ -108,7 +108,7 @@ class ActionSurfacesTest {
 
         assertEquals(ActionId.NewChange, view.primary?.id)
         val overflow = viewOverflow(view)
-        assertEquals(listOf(ActionId.OpenMultirepoAgent, ActionId.CleanUp), overflow.filterIsInstance<ActionEntry.Run>().map { it.spec.id })
+        assertEquals(listOf(ActionId.OpenMultirepoAgent(OpenTarget.HERDR), ActionId.CleanUp), overflow.filterIsInstance<ActionEntry.Run>().map { it.spec.id })
         assertEquals(ActionEntry.Divider, overflow[1])
         assertEquals(Availability.Disabled("Nothing to clean up"), view.find(ActionId.CleanUp)?.availability)
     }
@@ -123,7 +123,63 @@ class ActionSurfacesTest {
         assertEquals(ActionId.NewWorktree, view.primary?.id)
         assertEquals(listOf(ActionId.CleanUp), view.overflow.map { it.id })
         assertTrue(view.find(ActionId.ProjectSettings)!!.isVisible)
-        assertEquals(Availability.Hidden, view.find(ActionId.OpenAllInHerdr)?.availability)
+        assertEquals(Availability.Hidden, view.find(ActionId.OpenMultirepoAgent(OpenTarget.HERDR))?.availability)
+    }
+
+    @Test
+    fun `with orca installed the overflow offers the multirepo agent in herdr then orca before clean up`() {
+        val view = viewCatalog(
+            ViewActionContext(isMultirepo = true, isProjectView = false, createBlocked = null, cleanUpBlocked = null, orcaInstalled = true),
+            strings,
+        )
+
+        val overflow = viewOverflow(view)
+        assertEquals(
+            listOf(ActionId.OpenMultirepoAgent(OpenTarget.HERDR), ActionId.OpenMultirepoAgent(OpenTarget.ORCA), ActionId.CleanUp),
+            overflow.filterIsInstance<ActionEntry.Run>().map { it.spec.id },
+        )
+        assertEquals(ActionEntry.Divider, overflow[2])
+        assertEquals("Open multirepo agent in Orca", view.find(ActionId.OpenMultirepoAgent(OpenTarget.ORCA))?.label)
+    }
+
+    @Test
+    fun `the multirepo agent in orca is disabled like herdr's while one opens or the multirepo needs review`() {
+        val opening = viewCatalog(
+            ViewActionContext(isMultirepo = true, isProjectView = false, createBlocked = null, cleanUpBlocked = null, isOpeningMultirepoAgent = true, orcaInstalled = true),
+            strings,
+        )
+        val review = viewCatalog(
+            ViewActionContext(isMultirepo = true, isProjectView = false, createBlocked = null, cleanUpBlocked = null, multirepoNeedsReview = "Needs review", orcaInstalled = true),
+            strings,
+        )
+
+        assertEquals(Availability.Disabled(strings.openingReason), opening.find(ActionId.OpenMultirepoAgent(OpenTarget.ORCA))?.availability)
+        assertEquals(Availability.Disabled("Needs review"), review.find(ActionId.OpenMultirepoAgent(OpenTarget.ORCA))?.availability)
+    }
+
+    @Test
+    fun `a group offers open all in herdr then orca, and hides orca when it isn't installed`() {
+        val withOrca = groupCatalog(GroupActionContext(orcaInstalled = true, isOpeningInOrca = false), strings)
+        val withoutOrca = groupCatalog(GroupActionContext(orcaInstalled = false, isOpeningInOrca = false), strings)
+
+        assertEquals(listOf("Open all in Herdr", "Open all in Orca"), withOrca.filter { it.isVisible }.map { it.label })
+        assertEquals(listOf(ActionId.OpenAll(OpenTarget.HERDR)), withoutOrca.filter { it.isVisible }.map { it.id })
+    }
+
+    @Test
+    fun `open all in orca is disabled while the group opens in orca`() {
+        val group = groupCatalog(GroupActionContext(orcaInstalled = true, isOpeningInOrca = true), strings)
+
+        assertEquals(Availability.Disabled(strings.openingReason), group.single { it.id == ActionId.OpenAll(OpenTarget.ORCA) }.availability)
+        assertTrue(group.single { it.id == ActionId.OpenAll(OpenTarget.HERDR) }.isAvailable)
+    }
+
+    @Test
+    fun `multirepo action keys keep the herdr ones and name the runner`() {
+        assertEquals("multirepo.open-agent.herdr", ActionId.OpenMultirepoAgent(OpenTarget.HERDR).key)
+        assertEquals("multirepo.open-all.herdr", ActionId.OpenAll(OpenTarget.HERDR).key)
+        assertEquals("multirepo.open-agent.orca", ActionId.OpenMultirepoAgent(OpenTarget.ORCA).key)
+        assertEquals("multirepo.open-all.orca", ActionId.OpenAll(OpenTarget.ORCA).key)
     }
 
     @Test

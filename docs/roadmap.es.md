@@ -28,7 +28,6 @@ Numerados en el orden en que se abordarán: el número es la prioridad.
 
 [Orca](https://www.onorca.dev), la app de escritorio para ejecutar agentes de programación en worktrees, recibe todo lo que ShogunAi hace con Herdr, más lo que Orca ofrece y Herdr no. Un spike comparó los dos: los hooks de repositorio de Orca (`orca.yaml`) pueden provisionar sus worktrees con `shogun`, su CLI puede abrir un worktree de ShogunAi con su entorno y su agente, y informa de estados de agente más ricos que sobreviven a reiniciar la app. Por orden:
 
-- Las acciones de Orca de los multirepos («Abrir todo en Orca» y «Abrir agente del multirepo en Orca») entran por el catálogo de acciones, junto a «Abrir todo en Herdr» y el agente del multirepo en Herdr, en vez de con botones propios.
 - El runner por defecto fuera de la app: la guía de flujo de trabajo y el hook de inicio de sesión nombrando el elegido y, con los dos adaptadores delante, un solo puerto de runner en vez de dos. «Abrir», la barra de menús y el atajo de la app ya lo siguen.
 - Lo que solo ofrece Orca:
   - La herramienta en la que espera un agente, su prompt y su último mensaje en el detalle del worktree.

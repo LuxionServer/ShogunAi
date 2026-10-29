@@ -9,6 +9,12 @@ data class ViewActionContext(
     val cleanUpBlocked: String?,
     val isOpeningMultirepoAgent: Boolean = false,
     val multirepoNeedsReview: String? = null,
+    val orcaInstalled: Boolean = false,
+)
+
+data class GroupActionContext(
+    val orcaInstalled: Boolean,
+    val isOpeningInOrca: Boolean,
 )
 
 data class ViewCatalog(val actions: List<ActionSpec>) {
@@ -17,7 +23,7 @@ data class ViewCatalog(val actions: List<ActionSpec>) {
     val primary: ActionSpec? get() = actions.firstOrNull { it.id == ActionId.NewWorktree || it.id == ActionId.NewChange }?.takeIf { it.isVisible }
 
     val overflow: List<ActionSpec>
-        get() = actions.filter { it.isVisible && (it.id == ActionId.OpenMultirepoAgent || it.id == ActionId.CleanUp) }
+        get() = actions.filter { it.isVisible && (it.id is ActionId.OpenMultirepoAgent || it.id == ActionId.CleanUp) }
 }
 
 fun viewOverflow(catalog: ViewCatalog): List<ActionEntry> = buildList {
@@ -45,27 +51,8 @@ fun viewCatalog(context: ViewActionContext, strings: Strings): ViewCatalog {
                 ActionIcon.SETTINGS,
                 if (context.isProjectView) Availability.Available else Availability.Hidden,
             ),
-            ActionSpec(
-                ActionId.OpenMultirepoAgent,
-                ActionScope.MULTIREPO,
-                ActionGroup.OPEN,
-                strings.openMultirepoAgent,
-                ActionIcon.RUNNER,
-                when {
-                    !context.isMultirepo -> Availability.Hidden
-                    context.multirepoNeedsReview != null -> Availability.Disabled(context.multirepoNeedsReview)
-                    context.isOpeningMultirepoAgent -> Availability.Disabled(strings.openingReason)
-                    else -> Availability.Available
-                },
-            ),
-            ActionSpec(
-                ActionId.OpenAllInHerdr,
-                ActionScope.MULTIREPO,
-                ActionGroup.OPEN,
-                strings.openAllInHerdr,
-                ActionIcon.RUNNER,
-                if (context.isMultirepo) Availability.Available else Availability.Hidden,
-            ),
+            multirepoAgent(OpenTarget.HERDR, strings.openMultirepoAgent, context, strings, installed = true),
+            multirepoAgent(OpenTarget.ORCA, strings.openMultirepoAgentInOrca, context, strings, installed = context.orcaInstalled),
             ActionSpec(
                 ActionId.CleanUp,
                 multirepoScope,
@@ -79,6 +66,37 @@ fun viewCatalog(context: ViewActionContext, strings: Strings): ViewCatalog {
         ),
     )
 }
+
+fun groupCatalog(context: GroupActionContext, strings: Strings): List<ActionSpec> = listOf(
+    ActionSpec(ActionId.OpenAll(OpenTarget.HERDR), ActionScope.MULTIREPO, ActionGroup.OPEN, strings.openAllInHerdr, ActionIcon.RUNNER),
+    ActionSpec(
+        ActionId.OpenAll(OpenTarget.ORCA),
+        ActionScope.MULTIREPO,
+        ActionGroup.OPEN,
+        strings.openAllInOrca,
+        ActionIcon.RUNNER,
+        when {
+            !context.orcaInstalled -> Availability.Hidden
+            context.isOpeningInOrca -> Availability.Disabled(strings.openingReason)
+            else -> Availability.Available
+        },
+    ),
+)
+
+private fun multirepoAgent(target: OpenTarget, label: String, context: ViewActionContext, strings: Strings, installed: Boolean): ActionSpec =
+    ActionSpec(
+        ActionId.OpenMultirepoAgent(target),
+        ActionScope.MULTIREPO,
+        ActionGroup.OPEN,
+        label,
+        ActionIcon.RUNNER,
+        when {
+            !context.isMultirepo || !installed -> Availability.Hidden
+            context.multirepoNeedsReview != null -> Availability.Disabled(context.multirepoNeedsReview)
+            context.isOpeningMultirepoAgent -> Availability.Disabled(strings.openingReason)
+            else -> Availability.Available
+        },
+    )
 
 private fun availableUnless(reason: String?): Availability =
     reason?.let(Availability::Disabled) ?: Availability.Available

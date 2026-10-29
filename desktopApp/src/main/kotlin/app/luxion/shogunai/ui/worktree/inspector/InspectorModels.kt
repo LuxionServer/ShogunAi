@@ -14,6 +14,7 @@ import app.luxion.shogunai.ui.components.SectionState
 import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.worktree.ProvisioningState
 import app.luxion.shogunai.ui.worktree.WorktreeStatusState
+import app.luxion.shogunai.ui.worktree.mergedInto
 import app.luxion.shogunai.ui.worktree.relativeTime
 import java.time.Instant
 
@@ -29,19 +30,24 @@ fun statusProperties(status: WorktreeStatus, mainBranchName: String?, now: Insta
     listOfNotNull(
         Property(strings.changesKey, status.uncommittedChanges.toString()),
         status.upstream?.let { Property(strings.upstreamKey, it.bothArrows()) },
-        mainBranchName?.let { name ->
-            when {
-                status.isMerged -> Property(strings.versusBranchKey(name), strings.mergedLabel, isData = false)
-                status.mainBranch != null -> Property(strings.versusBranchKey(name), status.mainBranch!!.bothArrows())
-                else -> null
-            }
-        },
+        baseProperty(status, mainBranchName, strings),
         when {
             status.isNotStarted -> Property(strings.lastCommitKey, strings.notStarted, isData = false)
             else -> status.lastCommitAt?.let { Property(strings.lastCommitKey, relativeTime(it, now, strings), isData = false) }
         },
         status.createdAt?.let { Property(strings.createdTitle, relativeTime(it, now, strings), isData = false) },
     )
+
+private fun baseProperty(status: WorktreeStatus, mainBranchName: String?, strings: Strings): Property? {
+    val mergedInto = status.mergedInto(mainBranchName)
+    val baseName = status.baseName ?: mainBranchName
+    val base = status.base
+    return when {
+        mergedInto != null -> Property(strings.versusBranchKey(mergedInto), strings.mergedLabel, isData = false)
+        baseName != null && base != null -> Property(strings.versusBranchKey(baseName), base.bothArrows())
+        else -> null
+    }
+}
 
 fun statusSummary(status: WorktreeStatus, strings: Strings): String? =
     listOfNotNull(

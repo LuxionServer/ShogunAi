@@ -20,13 +20,18 @@ import app.luxion.shogunai.domain.usecase.GroupRepositoryOutcome
 import app.luxion.shogunai.domain.usecase.GroupRepositoryResult
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
 import app.luxion.shogunai.domain.model.Multirepo
+import app.luxion.shogunai.domain.model.OrcaOutcome
 import app.luxion.shogunai.domain.model.MultirepoDeclaration
 import app.luxion.shogunai.domain.model.SharedVariablesDeclaration
+import app.luxion.shogunai.ui.actions.GroupActionContext
+import app.luxion.shogunai.ui.actions.groupCatalog
 import app.luxion.shogunai.ui.i18n.EnglishStrings
+import app.luxion.shogunai.ui.multirepo.ChangeRunner
 import app.luxion.shogunai.ui.multirepo.MultirepoMembership
 import app.luxion.shogunai.ui.multirepo.MultirepoReviewPane
 import app.luxion.shogunai.ui.multirepo.NewChange
 import app.luxion.shogunai.ui.multirepo.NewChangeDialog
+import app.luxion.shogunai.ui.multirepo.RunnerOutcome
 import java.time.Duration
 import java.time.Instant
 import kotlin.test.Test
@@ -110,7 +115,8 @@ class MultirepoViewUiTest {
                     addableAliases = listOf("docs"),
                     isAdding = false,
                     onToggle = {},
-                    onOpenAll = {},
+                    openActions = groupCatalog(GroupActionContext(orcaInstalled = false, isOpeningInOrca = false), EnglishStrings),
+                    onOpenAction = {},
                     onAddRepository = {},
                     onCleanUp = { cleaned++ },
                 )
@@ -137,7 +143,8 @@ class MultirepoViewUiTest {
                     addableAliases = emptyList(),
                     isAdding = false,
                     onToggle = {},
-                    onOpenAll = {},
+                    openActions = groupCatalog(GroupActionContext(orcaInstalled = false, isOpeningInOrca = false), EnglishStrings),
+                    onOpenAction = {},
                     onAddRepository = {},
                     onCleanUp = {},
                     agent = agent,
@@ -146,6 +153,29 @@ class MultirepoViewUiTest {
         }
 
         onNodeWithContentDescription("Claude · needs you").assertIsDisplayed()
+    }
+
+    @Test
+    fun `a group header shows open all in orca from the catalog, disabled while it opens`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                ChangeGroupHeaderView(
+                    group = group(StateBadgeKind.STOPPED),
+                    cleanUpBlocker = null,
+                    canCleanUp = false,
+                    addableAliases = emptyList(),
+                    isAdding = false,
+                    onToggle = {},
+                    openActions = groupCatalog(GroupActionContext(orcaInstalled = true, isOpeningInOrca = true), EnglishStrings),
+                    onOpenAction = {},
+                    onAddRepository = {},
+                    onCleanUp = {},
+                )
+            }
+        }
+
+        onNodeWithText("Open all in Herdr").assertIsEnabled()
+        onNodeWithText("Open all in Orca").assertIsNotEnabled()
     }
 
     @Test
@@ -160,7 +190,8 @@ class MultirepoViewUiTest {
                     addableAliases = listOf("docs"),
                     isAdding = false,
                     onToggle = {},
-                    onOpenAll = {},
+                    openActions = groupCatalog(GroupActionContext(orcaInstalled = false, isOpeningInOrca = false), EnglishStrings),
+                    onOpenAction = {},
                     onAddRepository = { picked += it },
                     onCleanUp = {},
                 )
@@ -194,6 +225,36 @@ class MultirepoViewUiTest {
         onNodeWithText("created").assertIsDisplayed()
         onNode(hasText("failed:", substring = true)).assertIsDisplayed()
         onNodeWithText("Close").assertIsDisplayed()
+    }
+
+    @Test
+    fun `the new change dialog offers the runners and reports each repository's opening`() = runComposeUiTest {
+        val membership = MultirepoMembership(
+            Multirepo("/home/dev/projects/product", MultirepoDeclaration(mapOf("app" to "app", "api" to "api"), "../w", listOf("app", "api")), approved = true),
+            mapOf("app" to "app", "api" to "api"),
+        )
+        val change = NewChange(membership, herdrInstalled = true, orcaInstalled = true).apply {
+            updateTaskId("TASK-20")
+            runner = ChangeRunner.ORCA
+            results = listOf(
+                GroupRepositoryResult("app", GroupRepositoryOutcome.CREATED),
+                GroupRepositoryResult("api", GroupRepositoryOutcome.CREATED),
+            )
+            openings = mapOf(
+                "app" to Result.success(RunnerOutcome.Orca(OrcaOutcome.STARTED_AGENT)),
+                "api" to Result.failure(IllegalStateException("boom")),
+            )
+        }
+        setContent {
+            MaterialTheme { NewChangeDialog(change, DialogRepositoryApproval(), onConfirm = {}, onDismiss = {}) }
+        }
+
+        onNodeWithText("Then open it in").assertIsDisplayed()
+        onNodeWithText("Don't open").assertIsDisplayed()
+        onNodeWithText("Herdr").assertIsDisplayed()
+        onNodeWithText("Orca").assertIsDisplayed()
+        onNodeWithText("agent started").assertIsDisplayed()
+        onNode(hasText("not opened:", substring = true)).assertIsDisplayed()
     }
 
     @Test

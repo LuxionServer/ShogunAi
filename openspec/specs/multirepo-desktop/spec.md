@@ -310,7 +310,7 @@ The multirepo settings SHALL list the repositories with the shared list row: the
 - **THEN** the row offers "Rename", and it offers no "Rename" while the alias is unchanged
 
 ### Requirement: Open the multirepo agent in Orca from the app
-The multirepo view SHALL offer "Open multirepo agent in Orca", which opens the multirepo agent as `shogun open --orca` does in the multirepo folder, and SHALL tell apart, in English and Spanish, that the agent was started or focused.
+The multirepo view SHALL offer "Open multirepo agent in Orca" in its header's "More" (⋯) menu, after "Open multirepo agent in Herdr" and only when Orca is installed, which opens the multirepo agent as `shogun open --orca` does in the multirepo folder, and SHALL tell apart, in English and Spanish, that the agent was started or focused.
 
 #### Scenario: Open the multirepo agent in Orca
 - **WHEN** the user activates it in `product`'s view and Orca has a workspace in the multirepo folder without a live agent
@@ -327,3 +327,7 @@ The multirepo view SHALL offer "Open multirepo agent in Orca", which opens the m
 #### Scenario: Agent doesn't start
 - **WHEN** Orca doesn't report the multirepo agent in time
 - **THEN** the view shows the error naming the terminal and the command
+
+#### Scenario: Orca not installed
+- **WHEN** Orca isn't installed
+- **THEN** the view's ⋯ menu doesn't offer "Open multirepo agent in Orca"

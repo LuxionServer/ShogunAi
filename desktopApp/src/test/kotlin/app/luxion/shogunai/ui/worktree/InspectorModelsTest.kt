@@ -56,6 +56,35 @@ class InspectorModelsTest {
     }
 
     @Test
+    fun `the divergence is against the recorded base, naming it`() {
+        val stacked = status.copy(base = Divergence(ahead = 3, behind = 0), baseName = "epic/redesign")
+
+        assertEquals(
+            listOf(
+                Property("Changes", "4"),
+                Property("Upstream", "↑2 ↓0"),
+                Property("vs epic/redesign", "↑3 ↓0"),
+                Property("Last commit", "3 hours ago", isData = false),
+            ),
+            statusProperties(stacked, "develop", now, EnglishStrings),
+        )
+    }
+
+    @Test
+    fun `a branch merged into its recorded base says so naming the base`() {
+        val merged = status.copy(mainBranch = Divergence(ahead = 4, behind = 0), base = Divergence(ahead = 0, behind = 1), baseName = "epic/redesign")
+
+        assertEquals(Property("vs epic/redesign", "merged", isData = false), statusProperties(merged, "develop", now, EnglishStrings)[2])
+    }
+
+    @Test
+    fun `a branch merged into the main branch but not its base is merged into the main branch`() {
+        val merged = status.copy(mainBranch = Divergence(ahead = 0, behind = 3), base = Divergence(ahead = 2, behind = 0), baseName = "epic/redesign")
+
+        assertEquals(Property("vs develop", "merged", isData = false), statusProperties(merged, "develop", now, EnglishStrings)[2])
+    }
+
+    @Test
     fun `the status summary counts changes and commits ahead`() {
         assertEquals("4 changes · ↑2", statusSummary(status, EnglishStrings))
         assertNull(statusSummary(status.copy(uncommittedChanges = 0, upstream = Divergence(0, 0)), EnglishStrings))

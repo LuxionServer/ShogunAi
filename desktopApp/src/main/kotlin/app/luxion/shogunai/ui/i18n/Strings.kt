@@ -682,7 +682,6 @@ interface Strings {
     val multirepoAgentFocused: String
     val multirepoAgentStarted: String
     val openMultirepoAgentInOrca: String
-    val openMultirepoAgentMenu: String
     val multirepoAgentStartedInOrca: String
     val multirepoAgentFocusedInOrca: String
     val openNewChangeIn: String

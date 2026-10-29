@@ -833,7 +833,6 @@ object SpanishStrings : Strings {
     override val multirepoAgentFocused = "Agente del multirepo enfocado en Herdr"
     override val multirepoAgentStarted = "Agente del multirepo iniciado en su workspace abierto de Herdr"
     override val openMultirepoAgentInOrca = "Abrir agente del multirepo en Orca"
-    override val openMultirepoAgentMenu = "Abrir agente del multirepo"
     override val multirepoAgentStartedInOrca = "Agente del multirepo iniciado en una terminal nueva de Orca"
     override val multirepoAgentFocusedInOrca = "El agente del multirepo ya estaba en marcha en Orca; se ha cambiado a él"
     override val openNewChangeIn = "Después, abrirlo en"

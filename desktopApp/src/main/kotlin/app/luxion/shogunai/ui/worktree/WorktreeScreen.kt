@@ -65,6 +65,7 @@ import app.luxion.shogunai.ui.components.ViewTitle
 import app.luxion.shogunai.ui.components.handPointer
 import app.luxion.shogunai.ui.components.onNewItemShortcut
 import app.luxion.shogunai.ui.actions.ActionId
+import app.luxion.shogunai.ui.actions.OpenTarget
 import app.luxion.shogunai.ui.actions.PerformAction
 import app.luxion.shogunai.ui.actions.ViewActionContext
 import app.luxion.shogunai.ui.actions.toMenu
@@ -160,12 +161,14 @@ fun WorktreeScreen(
                     cleanUpBlocked = reviewReason ?: board.cleanUpBlock()?.describe(strings),
                     isOpeningMultirepoAgent = board.isOpeningMultirepoAgent,
                     multirepoNeedsReview = reviewReason,
+                    orcaInstalled = board.isOrcaInstalled,
                 ),
                 strings,
             )
             val performView: PerformAction = { spec, _ ->
                 when (spec.id) {
-                    ActionId.OpenMultirepoAgent -> board.openMultirepoAgent()
+                    ActionId.OpenMultirepoAgent(OpenTarget.HERDR) -> board.openMultirepoAgent()
+                    ActionId.OpenMultirepoAgent(OpenTarget.ORCA) -> board.openMultirepoAgentInOrca()
                     ActionId.CleanUp -> board.openCleanup()
                     ActionId.NewChange -> board.openNewChange()
                     ActionId.NewWorktree -> board.openCreateDialog()
