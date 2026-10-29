@@ -25,7 +25,7 @@ class ProvisionWorktreeUseCase(
 ) {
     suspend operator fun invoke(worktreePath: String): Result<ProvisionResult> = runCatching {
         val worktree = findLinkedWorktree(config, executor, worktreePath)
-        val provisioned = checkProvisioningAndResolveFiles(config, executor, fileManager, provisioningSource)
+        val provisioned = checkLocalFilesAndResolve(config, executor, fileManager, provisioningSource)
         val applied = applyProvisionedFiles(config, fileManager, records, worktree.path, provisioned)
         val approved = settleApproval(config, trust, approval, provisioned.approvalSubject)
         val prepared = environment.prepare(config.baseRepositoryPath, worktree.path)

@@ -20,7 +20,7 @@ graph LR
       1. validates the version taken from the branch name (or the tag): it must be `X.Y.Z` with digits only, otherwise the run fails before building anything,
       2. runs the full test suite on the release commit on Linux, macOS and Windows (`.github/workflows/test-suite.yml`, the same one `Tests` uses). Nothing else runs until it passes,
       3. creates and pushes the `vX.X.X` tag on the merge commit (the version comes from the branch name, no need to write it twice) and creates the GitHub Release in **draft** mode with the release notes as its body (see [Release notes](#release-notes)) titled `vX.X.X — <headline>` (the headline read from `.github/release-title`, see [Release title](#release-title)), only once, before building,
-      4. builds the installers on macOS Apple Silicon, macOS Intel, Windows and Linux (`packageReleaseDmg`/`Msi`/`Deb`) passing that version, with a read-only token. Each macOS `.dmg` is renamed `ShogunAi-X.X.X-<arch>.dmg` (`arm64`/`x64`, taken from the runner's own architecture) right after the build, and each installer is kept as a workflow artifact,
+      4. builds the installers on macOS Apple Silicon, macOS Intel, Windows and Linux (`packageReleaseDmg`/`Msi`/`Deb`) passing that version, with a read-only token. The macOS installers are built by `.github/workflows/macos-installer.yml`, which signs the app with the Developer ID certificate, renames each `.dmg` `ShogunAi-X.X.X-<arch>.dmg` (`arm64`/`x64`, taken from the runner's own architecture), signs it, notarizes it with Apple, staples the ticket and checks it with Gatekeeper (see [macOS signing and notarization](#macos-signing-and-notarization)). Each installer is kept as a workflow artifact,
       5. in parallel, builds the standalone command-line tool once on Linux (`:cli:distZip`, see [Command-line tool](../architecture/cli.md)) and keeps `shogun-X.X.X.zip` as an artifact,
       6. once all four installers and the zip are built, a job that holds only the permissions to sign attestations (it doesn't check out the repository or run the build) generates a signed build provenance attestation for each of them (`actions/attest`). The release isn't published until every attestation exists,
       7. once every attestation exists, the only job that writes to the repository writes `SHA256SUMS` with the checksum of every asset, uploads everything to the draft and publishes the release (takes it out of draft),
@@ -88,6 +88,26 @@ The workflow builds the GitHub release body from both files: the English notes v
 The desktop app reads each language between its markers to show the notes in the update notice (see [Desktop app](../guide/desktop-app.md)), so don't change the markers without changing the app. Releases published before this format only have GitHub's generated notes; the app shows them without authors, pull request links or the "Full Changelog" line.
 
 If `X.X.X.md` is missing, the workflow publishes the release with GitHub's generated notes and logs a warning naming the missing files, so forgotten notes never block a release. If only `X.X.X.es.md` is missing, the body has only the English section and the workflow logs a warning; the app then shows the English notes to Spanish users.
+
+## macOS signing and notarization
+
+Every macOS `.dmg` is signed with the project's Developer ID Application certificate under the hardened runtime (entitlements in `desktopApp/macos/entitlements.plist`), notarized with `notarytool` using an App Store Connect API key, and stapled, so Gatekeeper opens it without warnings. A missing secret or a rejected notarization fails the macOS build and the release stays in draft: an unsigned installer is never published. The notary log is printed in the job when Apple rejects a submission.
+
+The build only signs when it's given an identity (`-PmacSigningIdentity=<name without the "Developer ID Application: " prefix>`, plus `-PmacSigningKeychain=<path>` if the certificate isn't in the default keychain). Local builds and tests stay unsigned and need nothing.
+
+The workflow reads five Actions secrets:
+
+- `MACOS_CERTIFICATE_P12`: the certificate with its private key, exported from Keychain Access as `.p12` and base64-encoded (`base64 -i <file>.p12 | gh secret set MACOS_CERTIFICATE_P12 -R LuxionServer/ShogunAi`).
+- `MACOS_CERTIFICATE_PASSWORD`: the password chosen when exporting the `.p12`.
+- `MACOS_NOTARY_KEY`: the content of the App Store Connect team API key's `.p8` file, created with the Developer role (`gh secret set MACOS_NOTARY_KEY -R LuxionServer/ShogunAi < AuthKey_<id>.p8`).
+- `MACOS_NOTARY_KEY_ID` and `MACOS_NOTARY_ISSUER_ID`: the key's ID and the issuer ID shown on App Store Connect's API keys page.
+
+The signing identity is read from the certificate, so no name or team ID is stored in the repository. Delete the local `.p12` and `.p8` once the secrets are set.
+
+To check the setup without releasing, run the `macOS installer` workflow by hand (`gh workflow run macos-installer.yml -R LuxionServer/ShogunAi -f version=X.Y.Z`): it uploads both signed and notarized `.dmg` files as workflow artifacts and touches no release, tag or package manager.
+
+- **Renewing the certificate**: Developer ID certificates last five years. Before it expires, create a new one from a CSR in Keychain Access at developer.apple.com, export it as `.p12` and replace `MACOS_CERTIFICATE_P12` and `MACOS_CERTIFICATE_PASSWORD`. Installers already published keep opening, because their signatures are timestamped.
+- **Rotating the API key**: create a new team key in App Store Connect, replace `MACOS_NOTARY_KEY` and `MACOS_NOTARY_KEY_ID`, check with a manual run, then revoke the old key.
 
 ## Windows package managers
 
