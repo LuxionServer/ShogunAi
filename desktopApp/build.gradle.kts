@@ -45,6 +45,10 @@ val desktopE2eTest by tasks.registering(Test::class) {
     include(e2ePackage)
     outputs.upToDateWhen { false }
     outputs.cacheIf { false }
+    testLogging {
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
     val root = e2eRoot.get().asFile
     val home = root.resolve("home")
     val temporary = root.resolve("tmp")
