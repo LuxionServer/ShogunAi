@@ -4,16 +4,15 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.v2.runComposeUiTest
 import app.luxion.shogunai.AppContainer
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
@@ -49,12 +48,18 @@ class CreateWorktreeE2eTest {
         clickUntil(strings.newWorktree, "the new worktree dialog") {
             onAllNodesWithText(strings.taskIdLabel).fetchSemanticsNodes().isNotEmpty()
         }
-        onAllNodes(hasSetTextAction()).onLast().performTextInput("TASK-123")
+        awaitCondition("the task id in its focused field") {
+            val typed = onAllNodes(hasSetTextAction() and hasText("TASK-123")).fetchSemanticsNodes().isNotEmpty()
+            val focusedField = onAllNodes(hasSetTextAction() and isFocused()).fetchSemanticsNodes().isNotEmpty()
+            if (!typed && focusedField) onNode(hasSetTextAction() and isFocused()).performTextReplacement("TASK-123")
+            typed
+        }
         onNode(hasClickAction() and hasText(strings.createWorktree)).performClick()
 
         val worktree = worktreesRoot.resolve("TASK-123")
-        awaitCondition("the local files in the worktree") { localFiles.keys.all { worktree.resolve(it).exists() } }
-        localFiles.forEach { (path, text) -> assertEquals(text, worktree.resolve(path).readText()) }
+        awaitCondition("the local files copied into the worktree") {
+            localFiles.all { (path, text) -> runCatching { worktree.resolve(path).readText() }.getOrNull() == text }
+        }
         assertTrue(environment.git(repository, "worktree", "list").contains(worktree.canonicalPath.replace('\\', '/')))
         assertTrue(environment.git(repository, "branch", "--list").contains("TASK-123"))
         awaitText("TASK-123", substring = true)

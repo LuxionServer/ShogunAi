@@ -4,7 +4,7 @@ import app.luxion.shogunai.domain.io.LanguagePreferenceRepository
 import app.luxion.shogunai.domain.model.AppLanguage
 
 class JsonLanguagePreferenceRepository(
-    private val settingsFile: JsonSettingsFile = JsonSettingsFile(),
+    private val settingsFile: JsonSettingsFile,
 ) : LanguagePreferenceRepository {
 
     override fun load(): AppLanguage = settingsFile.read().language

@@ -58,7 +58,7 @@ Real Git work runs on `Dispatchers.IO`, outside the test clock. The harness wait
 
 ## Bug found
 
-On Windows CI, about one run in two, ending the tour showed "Something unexpected went wrong" and left the sample half-deleted: `EndTourUseCase` removed the project and deleted its folder at once, while the board's work on those worktrees (folder watching, Git status, size measurement) still held files open, which Windows refuses to delete. `EndTourUseCase` now retries the deletion while it fails with a `FileSystemException`, waiting 100 ms, 250 ms, 500 ms, 1 s and 2 s between attempts before giving up, covered by a regression test that fails the first two attempts.
+On Windows CI, about one run in two, ending the tour showed "Something unexpected went wrong" and left the sample half-deleted: `EndTourUseCase` removed the project and deleted its folder at once, while the board's work on those worktrees (folder watching, Git status, size measurement) still held files open, which Windows refuses to delete. `NioFileManager.deleteRecursively` now retries a pass that fails with a file system error, waiting 200 ms between up to ten attempts, covered by its regression test in `NioFileManagerTest` (fixed on `develop` in parallel; this branch's earlier retry inside `EndTourUseCase` was dropped when merging it).
 
 ## Dependencies and follow-ups
 

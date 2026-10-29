@@ -4,7 +4,7 @@ import app.luxion.shogunai.domain.io.ThemePreferenceRepository
 import app.luxion.shogunai.domain.model.ThemeMode
 
 class JsonThemePreferenceRepository(
-    private val settingsFile: JsonSettingsFile = JsonSettingsFile(),
+    private val settingsFile: JsonSettingsFile,
 ) : ThemePreferenceRepository {
 
     override fun load(): ThemeMode = settingsFile.read().themeMode

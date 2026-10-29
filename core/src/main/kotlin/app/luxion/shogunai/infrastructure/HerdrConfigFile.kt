@@ -4,8 +4,8 @@ import app.luxion.shogunai.domain.io.HerdrConfigSource
 import java.io.File
 
 class HerdrConfigFile(
-    private val environmentVariable: (String) -> String? = System::getenv,
-    private val userHome: String = System.getProperty("user.home"),
+    private val environmentVariable: (String) -> String?,
+    private val userHome: String,
     private val osName: String = System.getProperty("os.name").orEmpty(),
 ) : HerdrConfigSource {
 

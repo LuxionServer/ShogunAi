@@ -2,7 +2,6 @@ package app.luxion.shogunai.domain.usecase
 
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeShellCommandExecutor
-import app.luxion.shogunai.domain.io.FileManager
 import app.luxion.shogunai.domain.model.AppLanguage
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.WorktreeError
@@ -11,7 +10,6 @@ import app.luxion.shogunai.infrastructure.NioFileManager
 import app.luxion.shogunai.infrastructure.ProcessBuilderShellCommandExecutor
 import app.luxion.shogunai.infrastructure.RepositoryProvisioningFiles
 import kotlinx.coroutines.test.runTest
-import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
@@ -29,7 +27,7 @@ class TourUseCasesTest {
     private val home: Path = Files.createTempDirectory("tour-home")
     private val location = TourLocation(home.toString())
     private val fileManager = NioFileManager()
-    private val executor = ProcessBuilderShellCommandExecutor()
+    private val executor = ProcessBuilderShellCommandExecutor(path = null)
 
     @AfterTest
     fun cleanUp() {
@@ -124,24 +122,6 @@ class TourUseCasesTest {
         EndTourUseCase(fileManager, projects, location)().getOrThrow()
 
         assertEquals(listOf(other), projects.list())
-        assertFalse(Path.of(location.root).exists())
-    }
-
-    @Test
-    fun `terminar el recorrido reintenta el borrado mientras algo aún usa sus carpetas`() = runTest {
-        val projects = FakeProjectRepository()
-        CreateTourUseCase(executor, fileManager, projects, location)(AppLanguage.ENGLISH).getOrThrow()
-        var busyAttempts = 2
-        val busyFolders = object : FileManager by fileManager {
-            override fun deleteRecursively(path: String) {
-                if (busyAttempts-- > 0) throw FileSystemException(path, null, "being used by another process")
-                fileManager.deleteRecursively(path)
-            }
-        }
-
-        EndTourUseCase(busyFolders, projects, location)().getOrThrow()
-
-        assertTrue(projects.list().isEmpty())
         assertFalse(Path.of(location.root).exists())
     }
 

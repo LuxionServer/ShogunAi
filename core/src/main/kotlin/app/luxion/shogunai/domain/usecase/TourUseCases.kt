@@ -11,13 +11,8 @@ import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.model.WorktreeError
 import app.luxion.shogunai.domain.model.joinPath
-import kotlinx.coroutines.delay
-import java.nio.file.FileSystemException
 import java.util.UUID
 import java.util.concurrent.TimeUnit
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.seconds
 
 const val TOUR_PROJECT_NAME = "ShogunAi tour"
 
@@ -30,7 +25,7 @@ class CreateTourUseCase(
     private val executor: ShellCommandExecutor,
     private val fileManager: FileManager,
     private val projects: ProjectRepository,
-    private val location: TourLocation = TourLocation(),
+    private val location: TourLocation,
     private val now: () -> Long = System::currentTimeMillis,
     private val newId: () -> String = { UUID.randomUUID().toString() },
 ) {
@@ -174,26 +169,10 @@ class CreateTourUseCase(
 class EndTourUseCase(
     private val fileManager: FileManager,
     private val projects: ProjectRepository,
-    private val location: TourLocation = TourLocation(),
-    private val retryDelays: List<Duration> = END_RETRY_DELAYS,
+    private val location: TourLocation,
 ) {
-    suspend operator fun invoke(): Result<Unit> = runCatching {
+    operator fun invoke(): Result<Unit> = runCatching {
         projects.list().filter(location::isTour).forEach { projects.delete(it.id) }
-        deleteFolderOnceReleased()
-    }
-
-    private suspend fun deleteFolderOnceReleased() {
-        retryDelays.forEach { wait ->
-            try {
-                return fileManager.deleteRecursively(location.root)
-            } catch (_: FileSystemException) {
-                delay(wait)
-            }
-        }
         fileManager.deleteRecursively(location.root)
-    }
-
-    private companion object {
-        val END_RETRY_DELAYS = listOf(100.milliseconds, 250.milliseconds, 500.milliseconds, 1.seconds, 2.seconds)
     }
 }
