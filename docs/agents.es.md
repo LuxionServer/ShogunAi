@@ -28,6 +28,8 @@ En repositorios Gradle, los ajustes del provider de Gradle (`"providers": { "gra
 
 En repositorios Xcode, `"providers": { "xcode": { "compilationCache": true } }` añade `XCODE_XCCONFIG_FILE` al entorno de cada worktree, apuntando a un `.xcconfig` de máquina que activa la caché de compilación con prefix mapping, así que el primer `xcodebuild` de un agente en un worktree nuevo reutiliza lo que otros worktrees ya compilaron. Sustituye un `XCODE_XCCONFIG_FILE` que ya tuviera la shell, no llega a Xcode abierto desde el Dock y no ayuda a los paquetes Swift. Con `"cocoaPods": true`, un worktree nuevo recibe clonados los pods de CocoaPods del repositorio base cuando su `Podfile.lock` coincide, y `shogun new` y `shogun provision` nombran las carpetas que aún necesitan `pod install`. Los agentes pueden consultar los DerivedData con `shogun xcode` y borrar las carpetas huérfanas con `shogun xcode clean` ([Providers › Xcode](guide/providers.md#xcode)).
 
+En repositorios Flutter, `"providers": { "flutter": {} }` ejecuta `flutter pub get` (`fvm flutter pub get` con `.fvmrc`) en cada worktree nuevo o provisionado, para que compile a la primera. Flutter no lee `ANDROID_SERIAL`, así que el hook `SessionStart` le dice a Claude que arranque antes el dispositivo del worktree y lo pase siempre con `flutter run -d "$ANDROID_SERIAL"` o `-d "$IOS_SIMULATOR_UDID"`, y que nunca lance emuladores con `flutter emulators --launch` ([Providers › Flutter](guide/providers.md#flutter)).
+
 Las recetas de abajo muestran cómo recibe cada agente estas variables.
 
 ## Aprobar un repositorio

@@ -1,6 +1,7 @@
 package app.luxion.shogunai.ui.projectconfig
 
 import app.luxion.shogunai.domain.model.DockerComposeProvider
+import app.luxion.shogunai.domain.model.FlutterProvider
 import app.luxion.shogunai.domain.model.EmulatorProvider
 import app.luxion.shogunai.domain.model.EnvironmentEntry
 import app.luxion.shogunai.domain.model.GradleProvider
@@ -54,6 +55,7 @@ data class RepositoryConfigDraft(
     val xcode: XcodeDraft? = null,
     val maven: MavenDraft? = null,
     val dockerCompose: ComposeDraft? = null,
+    val flutter: Boolean = false,
     val environment: List<EnvironmentRow> = emptyList(),
     val envFile: String = "",
 ) {
@@ -108,6 +110,7 @@ data class RepositoryConfigDraft(
                 xcode = xcode?.let { XcodeProvider(compilationCache = it.compilationCache, cocoaPods = it.cocoaPods) },
                 maven = maven?.let { MavenProvider(mavenMaxHeap = it.mavenMaxHeap.trimmedOrNull()) },
                 dockerCompose = dockerCompose?.let { DockerComposeProvider(portVariables = it.names) },
+                flutter = FlutterProvider.takeIf { flutter },
             ),
             environment = environment.map { EnvironmentEntry(it.name.trim(), it.template) },
             envFile = envFile.trimmedOrNull(),
@@ -131,6 +134,7 @@ data class RepositoryConfigDraft(
                 xcode = providers.xcode?.let { XcodeDraft(it.compilationCache, it.cocoaPods) },
                 maven = providers.maven?.let { MavenDraft(it.mavenMaxHeap.orEmpty()) },
                 dockerCompose = providers.dockerCompose?.let { ComposeDraft(it.portVariables.joinToString(", ")) },
+                flutter = providers.flutter != null,
                 environment = provisioning?.environment?.variables.orEmpty().mapIndexed { index, variable ->
                     EnvironmentRow(index, variable.name, variable.template.joinToString("") { it.asTemplateText() })
                 },

@@ -7,7 +7,7 @@ class CheckGradleBuildCacheUseCase(
     private val gradleUserHome: String,
 ) {
     operator fun invoke(repositoryPath: String): Boolean =
-        listOf(repositoryPath, gradleUserHome).any { directory ->
+        (listOf(repositoryPath) + nestedGradleBuildPaths(fileManager, repositoryPath) + gradleUserHome).any { directory ->
             fileManager.readProperties("${directory.trimEnd('/', '\\')}/$PROPERTIES_FILE")[CACHING_PROPERTY]
                 ?.trim()
                 .equals("true", ignoreCase = true)

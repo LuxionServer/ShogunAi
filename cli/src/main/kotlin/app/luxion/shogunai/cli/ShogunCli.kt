@@ -145,6 +145,8 @@ import app.luxion.shogunai.domain.usecase.isLiveClaudeProcess
 import app.luxion.shogunai.domain.usecase.OpenWorktreeInHerdrUseCase
 import app.luxion.shogunai.domain.usecase.effectiveGradleJvmArgs
 import app.luxion.shogunai.domain.usecase.PrepareCocoaPodsUseCase
+import app.luxion.shogunai.domain.usecase.ResolveFlutterPackagesUseCase
+import app.luxion.shogunai.domain.usecase.usesFvm
 import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.ProviderContributions
 import app.luxion.shogunai.domain.usecase.CheckProvisionedFilesUseCase
@@ -409,6 +411,7 @@ class ShogunCli(
         resolveEnvironment,
         WriteEnvironmentFileUseCase(executor, fileManager, provisioningSource),
         PrepareCocoaPodsUseCase(executor, fileManager, provisioningSource, isMacOs = derivedDataSource.isSupported()),
+        ResolveFlutterPackagesUseCase(executor, fileManager, provisioningSource),
     )
     private val startEmulator = StartWorktreeEmulatorUseCase(provisioningSource, resolveEnvironment, acquireResource, androidSdk)
     private val stopEmulator = StopWorktreeEmulatorUseCase(provisioningSource, resolveEnvironment, androidSdk)
@@ -573,12 +576,13 @@ class ShogunCli(
         }
         val worktree = created.getOrThrow()
         if (command.json) {
-            printJson(newJson(worktree.path, worktree.branch, worktree.skippedPostCreateCommands, worktree.skippedVariables, null, worktree.skippedLinks, worktree.pods))
+            printJson(newJson(worktree.path, worktree.branch, worktree.skippedPostCreateCommands, worktree.skippedVariables, null, worktree.skippedLinks, worktree.pods, worktree.flutter))
             return EXIT_OK
         }
         out.line(worktree.path)
         noteSkippedLinks(worktree.skippedLinks)
         podsLines(worktree.pods).forEach { err.line("shogun: $it") }
+        worktree.flutter?.let { err.line("shogun: ${flutterPubGetLine(it)}") }
         noteSkipped(config.baseRepositoryPath, worktree.skippedPostCreateCommands, worktree.skippedVariables)
         return EXIT_OK
     }
@@ -1218,7 +1222,7 @@ class ShogunCli(
             printJson(
                 provisionJson(
                     worktree.path, result.files, result.skippedPostCreateCommands, result.skippedVariables, null,
-                    result.removed, result.skippedLinks, result.pods,
+                    result.removed, result.skippedLinks, result.pods, result.flutter,
                 ),
             )
             return EXIT_OK
@@ -1227,6 +1231,7 @@ class ShogunCli(
         result.removed.forEach { out.line("$it (removed: deleted from the base folder)") }
         result.skippedLinks.forEach { out.line("$it (skipped: symbolic link)") }
         podsLines(result.pods).forEach { out.line(it) }
+        result.flutter?.let { out.line(flutterPubGetLine(it)) }
         noteSkipped(config.baseRepositoryPath, result.skippedPostCreateCommands, result.skippedVariables)
         onProvisioned(worktree, config)
         return EXIT_OK
@@ -1975,6 +1980,8 @@ class ShogunCli(
             simulatorProvider = providers.iosSimulator != null && appleSimulators.isSupported(),
             composeProvider = providers.dockerCompose != null,
             desktopAppProvider = declaresHeadlessApp(worktree.path),
+            flutterProvider = providers.flutter != null,
+            flutterUsesFvm = usesFvm(fileManager, worktree.path),
         )
     }
 
@@ -2236,6 +2243,7 @@ class ShogunCli(
         app.luxion.shogunai.domain.model.Stack.XCODE -> "Xcode"
         app.luxion.shogunai.domain.model.Stack.MAVEN -> "Maven"
         app.luxion.shogunai.domain.model.Stack.DOCKER_COMPOSE -> "Docker Compose"
+        app.luxion.shogunai.domain.model.Stack.FLUTTER -> "Flutter"
     }
 
     private suspend fun maven(command: CliCommand.Maven): Int {
@@ -2619,6 +2627,7 @@ class ShogunCli(
                 null -> created.getOrThrow().also {
                     noteSkippedLinks(it.skippedLinks, "shogun: hook worktree-create")
                     podsLines(it.pods).forEach { line -> err.line("shogun: hook worktree-create: $line") }
+                    it.flutter?.let { pubGet -> err.line("shogun: hook worktree-create: ${flutterPubGetLine(pubGet)}") }
                     noteSkipped(config.baseRepositoryPath, it.skippedPostCreateCommands, it.skippedVariables, "shogun: hook worktree-create")
                 }.path
                 is WorktreeError.PostCreateCommandFailed -> {

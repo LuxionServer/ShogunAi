@@ -1,5 +1,6 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.domain.model.FlutterProvider
 import app.luxion.shogunai.domain.FakeAgentSessionStore
 import app.luxion.shogunai.domain.FakeMachineCapacity
 import app.luxion.shogunai.domain.FakeResourceLimitsRepository
@@ -952,5 +953,23 @@ class HookCommandsTest {
 
         assertEquals(2, exitCode)
         assertTrue(err.contains("agent-state"), err.toString())
+    }
+
+    @Test
+    fun `worktree-create notes that flutter pub get is still needed on stderr`() {
+        val executor = Executor(porcelain()) { command ->
+            if (command.firstOrNull() == "flutter") CommandResult(command, 1, "", "Because sample_app depends on missing_package") else null
+        }
+        val provisioning = RepositoryProvisioning(providers = RepositoryProviders(flutter = FlutterProvider))
+
+        val exitCode = cli(executor, createInput("TASK-123"), provisioning = provisioning).run(listOf("hook", "worktree-create"))
+
+        assertEquals(0, exitCode, err.toString())
+        assertEquals("$worktreesRoot/TASK-123\n", out.toString())
+        assertTrue(executor.ran("flutter", "pub", "get"))
+        assertTrue(
+            err.contains("shogun: hook worktree-create: flutter pub get needed: exited with code 1: Because sample_app depends on missing_package"),
+            err.toString(),
+        )
     }
 }

@@ -195,6 +195,7 @@ import app.luxion.shogunai.domain.usecase.MachineProviderContributions
 import app.luxion.shogunai.domain.usecase.effectiveGradleJvmArgs
 import app.luxion.shogunai.domain.usecase.MeasureWorktreeSizeUseCase
 import app.luxion.shogunai.domain.usecase.PrepareCocoaPodsUseCase
+import app.luxion.shogunai.domain.usecase.ResolveFlutterPackagesUseCase
 import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.ProviderContributions
 import app.luxion.shogunai.domain.usecase.ReadEmulatorStatesUseCase
@@ -547,6 +548,7 @@ class AppContainer {
         resolveEnvironment,
         WriteEnvironmentFileUseCase(shellCommandExecutor, fileManager, repositoryProvisioningSource),
         PrepareCocoaPodsUseCase(shellCommandExecutor, fileManager, repositoryProvisioningSource, isMacOs = derivedDataSource.isSupported()),
+        ResolveFlutterPackagesUseCase(shellCommandExecutor, fileManager, repositoryProvisioningSource),
     )
 
     val machineUseCases = MachineUseCases(

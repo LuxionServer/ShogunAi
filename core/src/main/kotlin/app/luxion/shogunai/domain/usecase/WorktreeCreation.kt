@@ -143,6 +143,7 @@ internal suspend fun addWorktreeAndCopySecrets(
         skippedVariables = skipped.variables,
         skippedLinks = provisioned.skippedLinks,
         pods = prepared.pods,
+        flutter = prepared.flutter,
     )
 }
 
