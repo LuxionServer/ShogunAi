@@ -8,6 +8,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import app.luxion.shogunai.ui.components.SectionTitle
 import app.luxion.shogunai.ui.components.Spacing
 
 @Composable
@@ -20,7 +21,7 @@ fun SettingsSection(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
-        Text(title, style = MaterialTheme.typography.titleLarge)
+        SectionTitle(title)
         content()
     }
 }

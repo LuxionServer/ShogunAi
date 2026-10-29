@@ -18,6 +18,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -211,16 +212,20 @@ class MacDerivedDataSourceTest {
     fun `reads the free space of the volume holding the location`() = runTest {
         defaultLocation.createDirectories()
 
+        val before = Files.getFileStore(defaultLocation).usableSpace
         val free = dataSource().freeBytes()
+        val after = Files.getFileStore(defaultLocation).usableSpace
 
-        assertEquals(Files.getFileStore(defaultLocation).usableSpace, free)
+        assertWithinReads(before, after, free)
     }
 
     @Test
     fun `reads the free space of the nearest existing parent when the location is missing`() = runTest {
+        val before = Files.getFileStore(home).usableSpace
         val free = dataSource().freeBytes()
+        val after = Files.getFileStore(home).usableSpace
 
-        assertEquals(Files.getFileStore(home).usableSpace, free)
+        assertWithinReads(before, after, free)
     }
 
     @Test
@@ -334,4 +339,11 @@ class MacDerivedDataSourceTest {
         assertEquals(8L + Files.size(app.resolve("info.plist")), source.size(folders.getValue("App-hash")))
         assertEquals(0L, source.packagesSize(folders.getValue("Other-hash")))
     }
+
+    private fun assertWithinReads(before: Long, after: Long, free: Long?) {
+        assertNotNull(free)
+        assertTrue(free in minOf(before, after) - FreeSpaceDrift..maxOf(before, after) + FreeSpaceDrift, "$free not near $before..$after")
+    }
 }
+
+private const val FreeSpaceDrift = 64L * 1024 * 1024

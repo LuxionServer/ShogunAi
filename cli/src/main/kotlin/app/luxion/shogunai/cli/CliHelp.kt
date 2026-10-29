@@ -231,7 +231,8 @@ internal object CliHelp {
   emulator start|stop|status [<path>] [--avd <name>] [--no-window] [--json]
                               Start (and wait for), stop or show the worktree's Android emulator; the first
                               start reserves its console port, releasing the least recently used idle one if
-                              the pool is full
+                              the pool is full; when the worktree is open in Orca, the start also shows the
+                              emulator in its emulator view
   emulator start [--wait] [--wait-timeout <minutes>]
                               When the pool is full and none can be released, wait in line for one
                               (30 minutes at most by default) instead of failing

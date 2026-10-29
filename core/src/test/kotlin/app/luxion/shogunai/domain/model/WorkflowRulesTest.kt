@@ -7,7 +7,7 @@ import kotlin.test.assertTrue
 
 class WorkflowRulesTest {
 
-    private val worktree = WorkflowContext(inMainCheckout = false, herdrAvailable = true, emulatorProvider = true, simulatorProvider = true, composeProvider = true, desktopAppProvider = true)
+    private val worktree = WorkflowContext(inMainCheckout = false, herdrAvailable = true, emulatorProvider = true, simulatorProvider = true, composeProvider = true, desktopAppProvider = true, flutterProvider = true)
     private val bare = WorkflowContext(inMainCheckout = true, herdrAvailable = false, emulatorProvider = false, simulatorProvider = false)
 
     private fun ids(rules: List<WorkflowRule>) = rules.map { it.id }
@@ -42,16 +42,16 @@ class WorkflowRulesTest {
         val selection = WorkflowRules.rulesFor(bare, WorkflowTopic.RESOURCES)
 
         assertEquals(
-            listOf("resources.emulator", "resources.simulator", "resources.compose", "resources.desktop-app"),
+            listOf("resources.emulator", "resources.simulator", "resources.flutter", "resources.compose", "resources.desktop-app"),
             ids(selection.inapplicable),
         )
     }
 
     @Test
-    fun `the session start subset fits eleven lines in the richest context`() {
+    fun `the session start subset fits twelve lines in the richest context`() {
         val lines = WorkflowRules.sessionStartLines(worktree)
 
-        assertTrue(lines.size <= 11, lines.joinToString("\n"))
+        assertTrue(lines.size <= 12, lines.joinToString("\n"))
         assertEquals(WorkflowRules.PRECEDENCE, lines.first())
         assertEquals(WorkflowRules.GUIDE_POINTER, lines.last())
     }
@@ -65,6 +65,45 @@ class WorkflowRulesTest {
             assertTrue("background" in rule.text)
             assertTrue("`orca computer`" in rule.text)
         }
+    }
+
+    private fun flutterRule(context: WorkflowContext): String =
+        WorkflowRules.sessionStartRules(context).single { it.id == "resources.flutter" }.text
+
+    @Test
+    fun `the flutter rule names both devices when both providers are declared`() {
+        val text = flutterRule(worktree)
+
+        assertTrue("`flutter pub get`" in text)
+        assertTrue("`shogun emulator start` and then `flutter run -d \"\$ANDROID_SERIAL\"`" in text, text)
+        assertTrue("`shogun simulator start` and then `flutter run -d \"\$IOS_SIMULATOR_UDID\"`" in text, text)
+        assertTrue("`flutter test integration_test`" in text && "`flutter drive`" in text)
+        assertTrue("`flutter emulators --launch`" in text)
+    }
+
+    @Test
+    fun `the flutter rule names only the declared devices`() {
+        val text = flutterRule(worktree.copy(simulatorProvider = false))
+
+        assertTrue("ANDROID_SERIAL" in text)
+        assertFalse("IOS_SIMULATOR_UDID" in text || "simulator" in text, text)
+
+        val withoutDevices = flutterRule(worktree.copy(emulatorProvider = false, simulatorProvider = false))
+        assertFalse(" -d " in withoutDevices, withoutDevices)
+    }
+
+    @Test
+    fun `the flutter rule uses fvm when the repository pins its version`() {
+        val text = flutterRule(worktree.copy(flutterUsesFvm = true))
+
+        assertTrue("`fvm flutter pub get`" in text)
+        assertTrue("`fvm flutter run -d \"\$ANDROID_SERIAL\"`" in text)
+        assertTrue("use `fvm flutter` for every Flutter command" in text)
+    }
+
+    @Test
+    fun `the flutter rule applies only with the provider`() {
+        assertTrue("resources.flutter" in ids(WorkflowRules.rulesFor(worktree.copy(flutterProvider = false)).inapplicable))
     }
 
     @Test

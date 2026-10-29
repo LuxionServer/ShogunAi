@@ -11,11 +11,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -29,9 +27,20 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.MultirepoRepository
 import app.luxion.shogunai.domain.model.RepositoryConfigIssue
+import app.luxion.shogunai.ui.components.ActionSlot
+import app.luxion.shogunai.ui.components.ColumnSpec
+import app.luxion.shogunai.ui.components.DataCell
+import app.luxion.shogunai.ui.components.DataHeader
+import app.luxion.shogunai.ui.components.DataRow
+import app.luxion.shogunai.ui.components.Field
+import app.luxion.shogunai.ui.components.GhostButton
+import app.luxion.shogunai.ui.components.RowLines
+import app.luxion.shogunai.ui.components.PathField
+import app.luxion.shogunai.ui.components.ShogunDialog
 import app.luxion.shogunai.ui.FilePicker
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import app.luxion.shogunai.ui.components.DangerButton
 import app.luxion.shogunai.ui.components.DropdownSelector
 import app.luxion.shogunai.ui.components.IconAction
@@ -44,8 +53,8 @@ import app.luxion.shogunai.ui.components.NoticeKind
 import app.luxion.shogunai.ui.components.PrimaryButton
 import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.Spacing
+import app.luxion.shogunai.ui.components.ViewTitle
 import app.luxion.shogunai.ui.components.handPointer
-import app.luxion.shogunai.ui.components.trackTextInputFocus
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.repositoryConfigIssue
 import app.luxion.shogunai.ui.projectconfig.AgentFields
@@ -77,7 +86,7 @@ fun MultirepoSettingsView(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(strings.multirepoSettingsTitle, style = MaterialTheme.typography.headlineSmall)
+                ViewTitle(strings.multirepoSettingsTitle)
                 multirepo?.let {
                     Text(it.folder, style = ShogunTheme.typography.dataSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -109,15 +118,25 @@ fun MultirepoSettingsView(
         ) {
             SettingsSection(strings.multirepoNameTitle) {
                 Text(strings.multirepoNameHint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                OutlinedTextField(
+                Field(
                     value = state.name,
                     onValueChange = { state.name = it },
-                    placeholder = { Text(multirepo.folderName) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().testTag("multirepo-name").trackTextInputFocus(),
+                    placeholder = multirepo.folderName,
+                    modifier = Modifier.fillMaxWidth(),
+                    inputModifier = Modifier.testTag("multirepo-name"),
                 )
             }
             SettingsSection(strings.multirepoRepositoriesTitle) {
+                if (multirepo.declaredRepositories.isNotEmpty()) {
+                    DataHeader(
+                        listOf(
+                            RepositoryAliasColumn to strings.multirepoAliasLabel,
+                            RepositoryPathColumn to strings.repositoryPathLabel,
+                            RepositoryRenameColumn to "",
+                        ),
+                        actionSlotWidth = RepositoryActionWidth,
+                    )
+                }
                 multirepo.declaredRepositories.forEach { repository -> RepositoryRow(state, repository) }
                 AddRepositoryRow(state, pickFolder)
             }
@@ -138,18 +157,13 @@ fun MultirepoSettingsView(
             SharedVariablesSection(state)
             SettingsSection(strings.multirepoWorktreesRootTitle) {
                 Text(strings.multirepoWorktreesRootHint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    OutlinedTextField(
-                        value = state.worktreesRoot,
-                        onValueChange = { state.worktreesRoot = it },
-                        textStyle = ShogunTheme.typography.data,
-                        singleLine = true,
-                        modifier = Modifier.weight(1f).trackTextInputFocus(),
-                    )
-                    SecondaryButton(onClick = { pickFolder(state.worktreesRoot, strings.multirepoWorktreesRootTitle)?.let { state.worktreesRoot = it } }) {
-                        Text(strings.browse)
-                    }
-                }
+                PathField(
+                    value = state.worktreesRoot,
+                    onValueChange = { state.worktreesRoot = it },
+                    onBrowse = { pickFolder(state.worktreesRoot, strings.multirepoWorktreesRootTitle)?.let { state.worktreesRoot = it } },
+                    textStyle = ShogunTheme.typography.data,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
             SettingsSection(strings.multirepoAgentTitle) {
                 Text(strings.multirepoAgentHint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -161,18 +175,19 @@ fun MultirepoSettingsView(
             HorizontalDivider()
             SettingsSection(strings.deleteMultirepo) {
                 Text(strings.deleteMultirepoHint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                DangerButton(onClick = state::requestDelete) { Text(strings.deleteMultirepo) }
+                DangerTextButton(onClick = state::requestDelete) { Text(strings.deleteMultirepo) }
             }
         }
     }
     if (state.isConfirmingDelete && multirepo != null) {
-        AlertDialog(
+        ShogunDialog(
+            title = strings.deleteMultirepoTitle(multirepo.name),
             onDismissRequest = state::cancelDelete,
-            title = { Text(strings.deleteMultirepoTitle(multirepo.name)) },
-            text = { Text(strings.deleteMultirepoMessage) },
-            confirmButton = { DangerButton(onClick = { state.confirmDelete(onDeleted) }) { Text(strings.delete) } },
-            dismissButton = { NeutralTextButton(onClick = state::cancelDelete) { Text(strings.cancel) } },
-        )
+            confirm = { DangerButton(onClick = { state.confirmDelete(onDeleted) }) { Text(strings.delete) } },
+            dismiss = { NeutralTextButton(onClick = state::cancelDelete) { Text(strings.cancel) } },
+        ) {
+            Text(strings.deleteMultirepoMessage)
+        }
     }
 }
 
@@ -196,13 +211,12 @@ private fun WorkspaceSection(state: MultirepoSettingsState) {
             Text(strings.declareWorkspace, style = MaterialTheme.typography.bodyMedium)
         }
         if (state.workspaceDeclared) {
-            OutlinedTextField(
+            Field(
                 value = state.workspaceAlias,
                 onValueChange = { state.workspaceAlias = it.trim().lowercase() },
+                label = strings.workspaceAliasLabel,
                 textStyle = ShogunTheme.typography.data,
-                singleLine = true,
-                label = { Text(strings.workspaceAliasLabel) },
-                modifier = Modifier.width(AliasFieldWidth).trackTextInputFocus(),
+                modifier = Modifier.width(AliasFieldWidth),
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
@@ -258,25 +272,23 @@ private fun SharedVariableRow(state: MultirepoSettingsState, draft: SharedVariab
             placeholder = strings.multirepoAliasLabel,
             modifier = Modifier.width(AliasFieldWidth),
         )
-        OutlinedTextField(
+        Field(
             value = draft.name,
             onValueChange = { state.updateSharedVariable(draft.copy(name = it.trim())) },
-            label = { Text(strings.environmentVariableNameLabel) },
+            label = strings.environmentVariableNameLabel,
+            error = nameIssue?.let { strings.repositoryConfigIssue(it) },
             textStyle = ShogunTheme.typography.data,
-            singleLine = true,
-            isError = nameIssue != null,
-            supportingText = nameIssue?.let { { Text(strings.repositoryConfigIssue(it)) } },
-            modifier = Modifier.weight(1f).testTag("shared-variable-name-${draft.id}").trackTextInputFocus(),
+            modifier = Modifier.weight(1f),
+            inputModifier = Modifier.testTag("shared-variable-name-${draft.id}"),
         )
-        OutlinedTextField(
+        Field(
             value = draft.template,
             onValueChange = { state.updateSharedVariable(draft.copy(template = it)) },
-            label = { Text(strings.environmentVariableTemplateLabel) },
+            label = strings.environmentVariableTemplateLabel,
+            error = templateIssue?.let { strings.repositoryConfigIssue(it) },
             textStyle = ShogunTheme.typography.data,
-            singleLine = true,
-            isError = templateIssue != null,
-            supportingText = templateIssue?.let { { Text(strings.repositoryConfigIssue(it)) } },
-            modifier = Modifier.weight(2f).testTag("shared-variable-template-${draft.id}").trackTextInputFocus(),
+            modifier = Modifier.weight(2f),
+            inputModifier = Modifier.testTag("shared-variable-template-${draft.id}"),
         )
         IconAction(
             icon = Icons.Default.Close,
@@ -291,51 +303,66 @@ private fun SharedVariableRow(state: MultirepoSettingsState, draft: SharedVariab
 private fun RepositoryRow(state: MultirepoSettingsState, repository: MultirepoRepository) {
     val strings = LocalStrings.current
     var alias by remember(repository.alias) { mutableStateOf(repository.alias) }
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-        OutlinedTextField(
-            value = alias,
-            onValueChange = { alias = it.trim().lowercase() },
-            textStyle = ShogunTheme.typography.data,
-            singleLine = true,
-            label = { Text(strings.multirepoAliasLabel) },
-            modifier = Modifier.width(AliasFieldWidth).trackTextInputFocus(),
-        )
-        Text(
-            repository.path,
-            style = ShogunTheme.typography.dataSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        if (alias != repository.alias) {
-            NeutralTextButton(onClick = { state.renameRepository(repository.alias, alias) }, enabled = !state.isBusy) { Text(strings.rename) }
-        }
-        DangerTextButton(onClick = { state.removeRepository(repository.alias) }, enabled = !state.isBusy) { Text(strings.remove) }
-    }
+    DataRow(
+        cells = listOf(
+            DataCell(RepositoryAliasColumn) {
+                Field(
+                    value = alias,
+                    onValueChange = { alias = it.trim().lowercase() },
+                    placeholder = strings.multirepoAliasLabel,
+                    textStyle = ShogunTheme.typography.data,
+                    inputModifier = Modifier.testTag("repository-alias-${repository.alias}"),
+                )
+            },
+            DataCell(RepositoryPathColumn) {
+                Text(repository.path, style = ShogunTheme.typography.dataSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            },
+            DataCell(RepositoryRenameColumn) {
+                if (alias != repository.alias) {
+                    GhostButton(onClick = { state.renameRepository(repository.alias, alias) }, enabled = !state.isBusy) {
+                        Text(strings.rename)
+                    }
+                }
+            },
+        ),
+        lines = RowLines.ONE,
+        actions = ActionSlot(width = RepositoryActionWidth, alwaysVisible = true) {
+            IconAction(
+                icon = Icons.Default.Delete,
+                label = strings.remove,
+                onClick = { state.removeRepository(repository.alias) },
+                enabled = !state.isBusy,
+                tint = ShogunTheme.status.danger.color,
+            )
+        },
+    )
 }
+
+private val RepositoryAliasColumn = ColumnSpec(width = AliasFieldWidth)
+private val RepositoryPathColumn = ColumnSpec()
+private val RepositoryRenameColumn = ColumnSpec(width = 88.dp)
+private val RepositoryActionWidth = 40.dp
 
 @Composable
 private fun AddRepositoryRow(state: MultirepoSettingsState, pickFolder: (String, String) -> String?) {
     val strings = LocalStrings.current
     SettingsField(strings.addRepository) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            OutlinedTextField(
+            Field(
                 value = state.newAlias,
                 onValueChange = { state.newAlias = it.trim().lowercase() },
+                label = strings.multirepoAliasLabel,
                 textStyle = ShogunTheme.typography.data,
-                singleLine = true,
-                label = { Text(strings.multirepoAliasLabel) },
-                modifier = Modifier.width(AliasFieldWidth).trackTextInputFocus(),
+                modifier = Modifier.width(AliasFieldWidth),
             )
-            OutlinedTextField(
+            PathField(
                 value = state.newPath,
                 onValueChange = { state.newPath = it },
+                onBrowse = { pickFolder(state.newPath, strings.addRepository)?.let(state::chooseNewPath) },
+                label = strings.repositoryPathLabel,
                 textStyle = ShogunTheme.typography.data,
-                singleLine = true,
-                label = { Text(strings.repositoryPathLabel) },
-                modifier = Modifier.weight(1f).trackTextInputFocus(),
+                modifier = Modifier.weight(1f),
             )
-            SecondaryButton(onClick = { pickFolder(state.newPath, strings.addRepository)?.let(state::chooseNewPath) }) { Text(strings.browse) }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(

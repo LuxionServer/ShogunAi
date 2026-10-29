@@ -7,6 +7,7 @@ import app.luxion.shogunai.domain.model.GroupedView
 import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.RecentWorktree
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.TerminalId
 import app.luxion.shogunai.domain.model.ThemeMode
 import app.luxion.shogunai.domain.model.SortedView
@@ -244,6 +245,21 @@ class JsonSettingsFileTest {
 
         assertNull(tools.loadTerminal())
         assertNull(tools.loadEditor())
+    }
+
+    @Test
+    fun `the default runner is unset in a file written before it existed and is remembered once chosen`() {
+        val tools = JsonToolPreferenceRepository(settingsFile)
+        Files.writeString(storagePath, """{ "themeMode": "DARK", "terminal": "ITERM2" }""")
+        assertNull(tools.loadRunner())
+
+        tools.saveRunner(RunnerId.ORCA)
+
+        val reloaded = JsonToolPreferenceRepository(JsonSettingsFile(storagePath))
+        assertEquals(RunnerId.ORCA, reloaded.loadRunner())
+        assertEquals(TerminalId.ITERM2, reloaded.loadTerminal())
+        reloaded.saveRunner(null)
+        assertNull(reloaded.loadRunner())
     }
 
     @Test

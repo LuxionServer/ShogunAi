@@ -10,9 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,14 +36,14 @@ fun SectionCard(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(title, style = MaterialTheme.typography.titleMedium)
+                    SectionTitle(title, modifier = Modifier.weight(1f))
                     Icon(
                         imageVector = if (expanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
                         contentDescription = if (expanded) LocalStrings.current.collapse else LocalStrings.current.expand,
                     )
                 }
             } else {
-                Text(title, style = MaterialTheme.typography.titleMedium)
+                SectionTitle(title)
             }
             if (!collapsible || expanded) {
                 content()

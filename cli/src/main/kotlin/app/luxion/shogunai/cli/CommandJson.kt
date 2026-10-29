@@ -23,6 +23,7 @@ import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ReleaseRecord
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.HerdrOutcome
+import app.luxion.shogunai.domain.model.OrcaEmulatorView
 import app.luxion.shogunai.domain.model.OrcaOpening
 import app.luxion.shogunai.domain.model.OrcaOutcome
 import app.luxion.shogunai.domain.model.MavenDaemon
@@ -33,6 +34,8 @@ import app.luxion.shogunai.domain.model.MobileSecretsReport
 import app.luxion.shogunai.domain.model.ProvisionDrift
 import app.luxion.shogunai.domain.model.ProvisionDriftState
 import app.luxion.shogunai.domain.model.ProvisionMode
+import app.luxion.shogunai.domain.model.FlutterPubGet
+import app.luxion.shogunai.domain.model.FlutterPubGetFailure
 import app.luxion.shogunai.domain.model.PodsPreparation
 import app.luxion.shogunai.domain.model.ProvisionedFile
 import app.luxion.shogunai.domain.model.RepositoryApprovalSubject
@@ -86,6 +89,7 @@ fun newJson(
     postCreateFailure: WorktreeError.PostCreateCommandFailed?,
     skippedLinks: List<String> = emptyList(),
     pods: PodsPreparation = PodsPreparation(),
+    flutter: FlutterPubGet? = null,
 ): JsonObject = buildJsonObject {
     put("path", path)
     put("branch", branch)
@@ -95,6 +99,34 @@ fun newJson(
     put("postCreateFailure", postCreateFailureJson(postCreateFailure))
     put("skippedLinks", strings(skippedLinks))
     put("pods", podsJson(pods))
+    flutter?.let { put("flutter", flutterJson(it)) }
+}
+
+fun flutterJson(pubGet: FlutterPubGet): JsonObject = buildJsonObject {
+    put(
+        "pubGet",
+        buildJsonObject {
+            when (pubGet) {
+                FlutterPubGet.Resolved -> put("status", "resolved")
+                is FlutterPubGet.Needed -> {
+                    put("status", "needed")
+                    put("reason", flutterPubGetReason(pubGet.reason))
+                }
+            }
+        },
+    )
+}
+
+fun flutterPubGetReason(failure: FlutterPubGetFailure): String = when (failure) {
+    is FlutterPubGetFailure.NotFound -> "${failure.executable} wasn't found"
+    is FlutterPubGetFailure.Exited ->
+        "exited with code ${failure.exitCode}" + failure.errorLines.takeIf { it.isNotEmpty() }?.joinToString(" | ", prefix = ": ").orEmpty()
+    is FlutterPubGetFailure.Unexpected -> failure.message
+}
+
+fun flutterPubGetLine(pubGet: FlutterPubGet): String = when (pubGet) {
+    FlutterPubGet.Resolved -> "flutter pub get: packages resolved"
+    is FlutterPubGet.Needed -> "flutter pub get needed: ${flutterPubGetReason(pubGet.reason)}"
 }
 
 fun podsJson(pods: PodsPreparation): JsonObject = buildJsonObject {
@@ -122,6 +154,7 @@ fun provisionJson(
     removed: List<String> = emptyList(),
     skippedLinks: List<String> = emptyList(),
     pods: PodsPreparation = PodsPreparation(),
+    flutter: FlutterPubGet? = null,
 ): JsonObject = buildJsonObject {
     put("path", path)
     put("copied", strings(files.filter { it.mode == ProvisionMode.COPIED }.map { it.path }))
@@ -133,6 +166,7 @@ fun provisionJson(
     put("removed", strings(removed))
     put("skippedLinks", strings(skippedLinks))
     put("pods", podsJson(pods))
+    flutter?.let { put("flutter", flutterJson(it)) }
 }
 
 fun provisionCheckJson(path: String, drift: List<ProvisionDrift>): JsonObject = buildJsonObject {
@@ -383,6 +417,7 @@ val Stack.jsonLabel: String
         Stack.XCODE -> "xcode"
         Stack.MAVEN -> "maven"
         Stack.DOCKER_COMPOSE -> "docker-compose"
+        Stack.FLUTTER -> "flutter"
     }
 
 fun composeJson(projects: List<WorktreeComposeProject>, leftovers: List<ComposeResource> = emptyList()): JsonObject = buildJsonObject {
@@ -640,6 +675,7 @@ fun emulatorJson(
     emulator: WorktreeEmulator?,
     acquisition: ResourceAcquisition? = null,
     releaseRecord: ReleaseRecord? = null,
+    orcaView: OrcaEmulatorView? = null,
 ): JsonObject = buildJsonObject {
     put("worktree", worktree)
     put("serial", emulator?.serial)
@@ -648,6 +684,7 @@ fun emulatorJson(
     acquisition?.let { put("acquiredNow", it.acquiredNow) }
     acquisition?.let { put("released", strings(it.releases.mapNotNull { release -> release.worktreePath })) }
     put("waited", acquisition?.waitedSeconds)
+    orcaView?.let { put("orcaView", it.jsonValue) }
     releaseRecord?.let {
         put(
             "releasedFor",
@@ -658,6 +695,13 @@ fun emulatorJson(
         )
     }
 }
+
+private val OrcaEmulatorView.jsonValue: String
+    get() = when (this) {
+        OrcaEmulatorView.Shown -> "shown"
+        OrcaEmulatorView.NotOpen -> "not-open"
+        is OrcaEmulatorView.Failed -> "failed"
+    }
 
 private val EmulatorState.jsonLabel: String
     get() = name.lowercase()
@@ -812,6 +856,7 @@ fun openJson(path: String, branch: String?, opening: OrcaOpening): JsonObject = 
     put("terminal", opening.terminalHandle)
     put("agent", opening.agent)
     put("session_name", opening.sessionName)
+    put("emulator", opening.emulator)
 }
 
 val OrcaOutcome.jsonValue: String

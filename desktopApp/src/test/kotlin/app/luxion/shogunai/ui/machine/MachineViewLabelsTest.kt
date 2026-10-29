@@ -44,38 +44,38 @@ class MachineViewLabelsTest {
             }
         }
 
-        onNodeWithText("Device").assertIsDisplayed()
-        onNodeWithText("Worktree").assertIsDisplayed()
-        onNodeWithText("State").assertIsDisplayed()
+        onNodeWithText("DEVICE").assertIsDisplayed()
+        onNodeWithText("WORKTREE").assertIsDisplayed()
+        onNodeWithText("STATE").assertIsDisplayed()
     }
 
     @Test
-    fun `a stopped emulator shows the project's AVD or automatic`() {
+    fun `a stopped emulator shows the project's AVD as data or automatic as a mode`() {
         val stopped = MachineEmulator("p", worktreePath, null)
 
-        assertEquals("Pixel_8_API_35", emulatorDeviceLabel(stopped, project(EmulatorSettings(avd = "Pixel_8_API_35")), EnglishStrings))
-        assertEquals("Automatic", emulatorDeviceLabel(stopped, project(), EnglishStrings))
+        assertEquals(DeviceLabel("Pixel_8_API_35", null), emulatorDeviceLabel(stopped, project(EmulatorSettings(avd = "Pixel_8_API_35")), EnglishStrings))
+        assertEquals(DeviceLabel(data = null, note = "Automatic"), emulatorDeviceLabel(stopped, project(), EnglishStrings))
     }
 
     @Test
     fun `a running emulator shows its serial`() {
         val running = MachineEmulator("p", worktreePath, WorktreeEmulator("emulator-5554", EmulatorState.RUNNING))
 
-        assertEquals("emulator-5554", emulatorDeviceLabel(running, project(EmulatorSettings(avd = "Pixel_8_API_35")), EnglishStrings))
+        assertEquals(DeviceLabel("emulator-5554", null), emulatorDeviceLabel(running, project(EmulatorSettings(avd = "Pixel_8_API_35")), EnglishStrings))
     }
 
     @Test
     fun `a missing simulator shows not created with the configured device type`() {
         val missing = MachineSimulator("p", worktreePath, null)
 
-        assertEquals("Not created · iPhone 16", simulatorDeviceLabel(missing, project(simulator = SimulatorSettings(device = "iPhone 16")), EnglishStrings))
-        assertEquals("Not created", simulatorDeviceLabel(missing, project(), EnglishStrings))
+        assertEquals(DeviceLabel(data = "iPhone 16", note = "Not created"), simulatorDeviceLabel(missing, project(simulator = SimulatorSettings(device = "iPhone 16")), EnglishStrings))
+        assertEquals(DeviceLabel(data = null, note = "Not created"), simulatorDeviceLabel(missing, project(), EnglishStrings))
     }
 
     @Test
     fun `an existing simulator shows its name`() {
         val existing = MachineSimulator("p", worktreePath, WorktreeSimulator("udid", "ShogunAi · main-repo · TASK-1", SimulatorState.SHUTDOWN))
 
-        assertEquals("ShogunAi · main-repo · TASK-1", simulatorDeviceLabel(existing, project(), EnglishStrings))
+        assertEquals(DeviceLabel("ShogunAi · main-repo · TASK-1", null), simulatorDeviceLabel(existing, project(), EnglishStrings))
     }
 }
