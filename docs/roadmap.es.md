@@ -28,13 +28,13 @@ Numerados en el orden en que se abordarán: el número es la prioridad.
 
 [Orca](https://www.onorca.dev), la app de escritorio para ejecutar agentes de programación en worktrees, recibe todo lo que ShogunAi hace con Herdr, más lo que Orca ofrece y Herdr no. Un spike comparó los dos: los hooks de repositorio de Orca (`orca.yaml`) pueden provisionar sus worktrees con `shogun`, su CLI puede abrir un worktree de ShogunAi con su entorno y su agente, y informa de estados de agente más ricos que sobreviven a reiniciar la app. Por orden:
 
-- Multirepos en Orca: abrir los worktrees de un grupo, cada uno bajo su repositorio, y el agente del multirepo en la carpeta del multirepo, tras comprobar cómo se comportan los grupos de proyectos y los folder workspaces de Orca; «Abrir todo» del tablero y abrir en Orca los worktrees de un cambio nuevo desde el diálogo «Nuevo cambio».
+- Multirepos en Orca: `shogun open <id> --orca` y «Abrir todo en Orca» para los worktrees de un grupo, cada uno bajo su repositorio; el agente del multirepo en el espacio de Orca de la carpeta del multirepo (un folder workspace o «Abrir como carpeta», preparados una vez en la app de Orca cuando la carpeta no es un repositorio Git); y el diálogo «Nuevo cambio» abriendo los worktrees nuevos en Herdr u Orca (cambio `orca-multirepos`).
 - Elegir el runner: Herdr u Orca como opción por defecto de «Abrir», la barra de menús, el atajo y el recorrido guiado, y la guía de flujo de trabajo y el hook de inicio de sesión nombrando el elegido; con los dos adaptadores delante, un solo puerto de runner en vez de dos.
 - Lo que solo ofrece Orca:
   - La herramienta en la que espera un agente, su prompt y su último mensaje en el detalle del worktree.
   - El comentario y el estado del worktree en Orca sincronizados con los de ShogunAi (`orca worktree set`), y su pull request o su issue vinculados en Orca cuando la tarea del worktree los tiene.
   - Los puertos en los que Orca ve escuchar a un worktree, junto a los que reserva ShogunAi.
-  - Los worktrees de un grupo mostrados como hijos del espacio del agente del multirepo.
+  - Los worktrees de un grupo mostrados como hijos del espacio del agente del multirepo. Orca 1.4.243 acepta como padre de un worktree existente un espacio Git o de «Abrir como carpeta», pero no un folder workspace.
   - El emulador de ShogunAi del worktree mostrado en la vista de emuladores de Orca (`orca emulator attach`).
   - Los agentes que manejan el escritorio con el computer use de Orca tomando antes el turno de escritorio de ShogunAi, como los demás.
 - Comprobar:
