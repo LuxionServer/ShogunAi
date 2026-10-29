@@ -1,0 +1,15 @@
+{
+  "id": "dbd98023-1dd0-48e6-b286-942359152fe2",
+  "ok": true,
+  "result": {
+    "focus": {
+      "handle": "term_44a32dcb-6aa6-478f-a1f0-0731154c76d2",
+      "tabId": "0ce3321e-98c1-47f6-9d09-31f231cf40f1",
+      "worktreeId": "0355427a-217f-4a07-9072-67d11e704c23::/projects/worktrees/TASK-1",
+      "navigated": true
+    }
+  },
+  "_meta": {
+    "runtimeId": "24f610a7-56eb-433d-b32d-6af1e7aa64c7"
+  }
+}

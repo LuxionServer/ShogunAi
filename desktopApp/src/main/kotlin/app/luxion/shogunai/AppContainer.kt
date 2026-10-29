@@ -163,6 +163,14 @@ import app.luxion.shogunai.domain.usecase.RunComposeProjectUseCase
 import app.luxion.shogunai.domain.usecase.worktreeComposeProjectName
 import app.luxion.shogunai.infrastructure.ProcessMavenDaemonSource
 import app.luxion.shogunai.domain.usecase.CloseHerdrWorkspacesUseCase
+import app.luxion.shogunai.domain.usecase.ClaudeSessionNaming
+import app.luxion.shogunai.domain.usecase.CloseOrcaTerminalsUseCase
+import app.luxion.shogunai.domain.usecase.OpenWorktreeInOrcaUseCase
+import app.luxion.shogunai.domain.usecase.OrcaOrigins
+import app.luxion.shogunai.domain.usecase.OrcaWorktreeReader
+import app.luxion.shogunai.domain.model.OrcaOpening
+import app.luxion.shogunai.infrastructure.CliOrcaClient
+import app.luxion.shogunai.infrastructure.JsonOrcaWorkspaceStore
 import app.luxion.shogunai.domain.usecase.CopyWorktreeLaunchCommandUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeFromBranchUseCase
 import app.luxion.shogunai.domain.usecase.CreateWorktreeUseCase
@@ -434,6 +442,8 @@ class AppContainer {
     private val androidSdk = SharedDeviceStatesAndroidSdk(LocalAndroidSdk(shellCommandExecutor, fileManager))
     private val herdrConfig = HerdrConfigFile()
     private val herdrClient = CliHerdrClient(shellCommandExecutor)
+    private val orcaClient = CliOrcaClient(shellCommandExecutor)
+    private val orcaReader = OrcaWorktreeReader(orcaClient, JsonOrcaWorkspaceStore())
     private val resourceLimitsRepository: ResourceLimitsRepository = JsonResourceLimitsRepository(settingsFile)
     private val resolveResourceLimits = ResolveResourceLimitsUseCase(resourceLimitsRepository, JvmMachineCapacity())
     private val listGradleDaemons = ListGradleDaemonsUseCase(gradleDaemonSource, fileManager)
@@ -516,7 +526,8 @@ class AppContainer {
             RepositoryInspection(topLevel, mainBranch?.name)
         }
 
-    val detectRunningAgents = DetectRunningAgentsUseCase(shellCommandExecutor, herdrClient, agentSessionStore, claudeSessions = claudeSessions)
+    val detectRunningAgents =
+        DetectRunningAgentsUseCase(shellCommandExecutor, herdrClient, agentSessionStore, claudeSessions = claudeSessions, orca = orcaReader)
 
     private val prepareEnvironment = PrepareWorktreeEnvironmentUseCase(
         resolveEnvironment,
@@ -710,7 +721,15 @@ class AppContainer {
         fetchRemote = FetchRemoteUseCase(config, shellCommandExecutor),
         resolveStartPoint = { ref -> ResolveStartPointUseCase(shellCommandExecutor)(config.baseRepositoryPath, ref) },
         resolveBaseBranch = { ref -> ResolveBaseBranchUseCase(shellCommandExecutor)(config.baseRepositoryPath, ref) },
-        remove = RemoveWorktreeUseCase(config, shellCommandExecutor, CloseHerdrWorkspacesUseCase(config, herdrClient), fileManager, stopHeadlessApp, releaseDesktopTurn),
+        remove = RemoveWorktreeUseCase(
+            config,
+            shellCommandExecutor,
+            CloseHerdrWorkspacesUseCase(config, herdrClient),
+            fileManager,
+            stopHeadlessApp,
+            releaseDesktopTurn,
+            CloseOrcaTerminalsUseCase(orcaClient),
+        ),
         deleteBranch = DeleteBranchUseCase(config, shellCommandExecutor),
         copyLaunchCommand = CopyWorktreeLaunchCommandUseCase(config, clipboardWriter),
         agents = AgentUseCases(config, agentChoices),
@@ -726,6 +745,7 @@ class AppContainer {
             composeProjectRegistry,
             stopHeadlessApp,
             releaseDesktopTurn,
+            CloseOrcaTerminalsUseCase(orcaClient),
         ),
         detectAgents = { worktrees -> detectRunningAgents(config, worktrees) },
         measureSize = MeasureWorktreeSizeUseCase(fileManager),
@@ -810,6 +830,11 @@ class AppContainer {
             open = OpenWorktreeInHerdrUseCase(config, herdrClient, resolveEnvironment, herdrLauncher)::invoke,
             openWorkspaces = CloseHerdrWorkspacesUseCase(config, herdrClient)::openWorkspaces,
             focusAgent = { paneId -> runCatching { herdrClient.focusAgent(paneId) } },
+        ),
+        orca = OrcaUseCases(
+            open = OpenWorktreeInOrcaUseCase(config, orcaClient, resolveEnvironment, ClaudeSessionNaming(claudeSessions))::invoke,
+            withTerminals = { paths -> withContext(Dispatchers.IO) { CloseOrcaTerminalsUseCase(orcaClient).withTerminals(paths) } },
+            origins = orcaReader::origins,
         ),
         gradle = GradleUseCases(
             provider = {
@@ -907,6 +932,7 @@ data class WorktreeUseCases(
     val maven: MavenUseCases = MavenUseCases.NONE,
     val compose: ComposeUseCases = ComposeUseCases.NONE,
     val herdr: HerdrUseCases = HerdrUseCases.NONE,
+    val orca: OrcaUseCases = OrcaUseCases.NONE,
     val tools: ToolUseCases = ToolUseCases.NONE,
     val provisioning: ProvisioningUseCases = ProvisioningUseCases.NONE,
     val readEnvironment: suspend (Worktree) -> Result<WorktreeEnvironment> = { Result.success(WorktreeEnvironment()) },
@@ -1026,6 +1052,16 @@ data class HerdrUseCases(
             worktreesRoot = { null },
             open = { _, _ -> Result.failure(WorktreeError.HerdrNotInstalled) },
         )
+    }
+}
+
+data class OrcaUseCases(
+    val open: suspend (Worktree, AgentLaunchConfig) -> Result<OrcaOpening>,
+    val withTerminals: suspend (List<String>) -> Set<String> = { emptySet() },
+    val origins: () -> OrcaOrigins? = { null },
+) {
+    companion object {
+        val NONE = OrcaUseCases(open = { _, _ -> Result.failure(WorktreeError.OrcaNotInstalled) })
     }
 }
 

@@ -257,6 +257,7 @@ interface Strings {
     val originShogunAi: String
     val originClaudeCode: String
     val originHerdr: String
+    val originOrca: String
     val originOther: String
     fun worktreesSummary(count: Int, totalSize: String): String
     fun cleanupCandidatesSummary(count: Int): String
@@ -294,6 +295,10 @@ interface Strings {
     fun keptForRunningAgent(name: String, agents: List<String>): String
     val openInHerdrMark: String
     fun herdrCloseFailed(path: String, detail: String): String
+    val orcaTerminalsWillClose: String
+    val orcaCleanupNotice: String
+    val openInOrcaMark: String
+    fun orcaCloseFailed(path: String, detail: String): String
     val simulatorSection: String
     val simulatorSectionDescription: String
     val simulatorRuntimeLabel: String
@@ -498,6 +503,9 @@ interface Strings {
     fun openedInHerdr(name: String): String
     fun focusedInHerdr(name: String): String
     fun agentStartedInHerdr(name: String): String
+    val openInOrca: String
+    fun agentStartedInOrca(name: String): String
+    fun focusedInOrca(name: String): String
 
     val toolsLabel: String
     val terminalToolLabel: String

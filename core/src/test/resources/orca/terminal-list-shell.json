@@ -1,0 +1,39 @@
+{
+  "id": "9c884505-537c-48fa-ae9c-aa3ace1babcb",
+  "ok": true,
+  "result": {
+    "terminals": [
+      {
+        "handle": "term_6ed7b245-36a1-4197-aee9-bf9d1989b3b2",
+        "ptyId": "0355427a-217f-4a07-9072-67d11e704c23::/Users/user/orca/workspaces/main-repo/TASK-2@@ce3cf054",
+        "incarnationId": "39999312-622d-40b4-b060-117b42576e9e",
+        "orphaned": false,
+        "worktreeId": "0355427a-217f-4a07-9072-67d11e704c23::/Users/user/orca/workspaces/main-repo/TASK-2",
+        "worktreePath": "/Users/user/orca/workspaces/main-repo/TASK-2",
+        "branch": "refs/heads/user/TASK-2",
+        "tabId": "2dd53700-6e67-420c-8539-8261a82e3667",
+        "leafId": "b1d209ec-e30b-4d2a-9218-4020cfe75947",
+        "title": "Terminal 1",
+        "connected": true,
+        "writable": true,
+        "lastOutputAt": 1793229477269,
+        "preview": "user@host TASK-2 %",
+        "executionHostId": "local"
+      }
+    ],
+    "hostScope": {
+      "hostIds": [
+        "local"
+      ],
+      "omittedHostIds": []
+    },
+    "topologyRevisions": {
+      "0355427a-217f-4a07-9072-67d11e704c23::/Users/user/orca/workspaces/main-repo/TASK-2": 1
+    },
+    "totalCount": 1,
+    "truncated": false
+  },
+  "_meta": {
+    "runtimeId": "24f610a7-56eb-433d-b32d-6af1e7aa64c7"
+  }
+}

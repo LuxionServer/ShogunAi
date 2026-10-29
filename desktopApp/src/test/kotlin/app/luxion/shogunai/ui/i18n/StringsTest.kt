@@ -197,6 +197,10 @@ class StringsTest {
         WorktreeError.HerdrNotInstalled,
         WorktreeError.HerdrCommandFailed(listOf("herdr", "pane", "list"), "no herdr server is running"),
         WorktreeError.HerdrAgentNotStarted("w1:p2", "headroom wrap claude"),
+        WorktreeError.OrcaNotInstalled,
+        WorktreeError.OrcaNotStarted,
+        WorktreeError.OrcaCommandFailed(listOf("orca", "repo", "list", "--json"), "runtime_unavailable"),
+        WorktreeError.OrcaAgentNotStarted("term_1", "env 'PORT=4100' claude -n main-repo-task-1"),
         WorktreeError.GitCommandFailed(listOf("git", "worktree", "remove", "TASK-123"), 128, gitOutput),
         CommandExecutionException(listOf("git", "status"), IOException("No such file or directory")),
         IllegalStateException("boom"),
@@ -247,7 +251,7 @@ class StringsTest {
         val rawFragments = listOf(
             gitOutput, "128", "git worktree remove", "adb devices", "adb: device offline",
             "Unable to boot device", "xcrun simctl boot", "lsof -d cwd", "no herdr server is running",
-            "disk full", "unexpected token", "ANDROID_HOME (/opt/sdk)", "boom", "exit code",
+            "disk full", "unexpected token", "ANDROID_HOME (/opt/sdk)", "boom", "exit code", "runtime_unavailable",
         )
         (everyError + everyGitFailure).forEach { error ->
             allStrings.forEach { strings ->
@@ -330,6 +334,44 @@ class StringsTest {
             val output = strings.describe(error).details?.output.orEmpty()
             assertTrue(output.contains("w1:p2") && output.contains("headroom wrap claude"), output)
         }
+    }
+
+    @Test
+    fun `an agent that doesn't start in Orca keeps its terminal and command in the details`() {
+        val error = WorktreeError.OrcaAgentNotStarted("term_1", "env 'PORT=4100' claude -n main-repo-task-1")
+
+        allStrings.forEach { strings ->
+            val output = strings.describe(error).details?.output.orEmpty()
+            assertTrue(output.contains("term_1") && output.contains("claude -n main-repo-task-1"), output)
+        }
+    }
+
+    @Test
+    fun `Orca's error message is kept in the details and Orca's site is named when it is missing`() {
+        val failed = WorktreeError.OrcaCommandFailed(listOf("orca", "repo", "list", "--json"), "runtime_unavailable")
+
+        allStrings.forEach { strings ->
+            assertEquals("runtime_unavailable", strings.describe(failed).details?.output)
+            assertTrue(strings.describe(WorktreeError.OrcaNotInstalled).nextStep.contains("https://onorca.dev"))
+        }
+    }
+
+    @Test
+    fun `the Orca outcomes, origin and notices are translated and keep their data`() {
+        allStrings.forEach { strings ->
+            assertNotEquals(strings.agentStartedInOrca("TASK-123"), strings.focusedInOrca("TASK-123"))
+            assertTrue(strings.agentStartedInOrca("TASK-123").contains("TASK-123"))
+            val failed = strings.orcaCloseFailed("~/projects/TASK-123", "runtime_unavailable")
+            assertTrue(failed.contains("~/projects/TASK-123") && failed.contains("runtime_unavailable"), failed)
+        }
+        assertNotEquals(EnglishStrings.agentStartedInOrca("TASK-123"), SpanishStrings.agentStartedInOrca("TASK-123"))
+        assertNotEquals(EnglishStrings.focusedInOrca("TASK-123"), SpanishStrings.focusedInOrca("TASK-123"))
+        assertNotEquals(EnglishStrings.openInOrca, SpanishStrings.openInOrca)
+        assertNotEquals(EnglishStrings.orcaTerminalsWillClose, SpanishStrings.orcaTerminalsWillClose)
+        assertNotEquals(EnglishStrings.orcaCleanupNotice, SpanishStrings.orcaCleanupNotice)
+        assertNotEquals(EnglishStrings.openInOrcaMark, SpanishStrings.openInOrcaMark)
+        assertEquals("Orca", EnglishStrings.originOrca)
+        assertEquals("Orca", SpanishStrings.originOrca)
     }
 
     @Test

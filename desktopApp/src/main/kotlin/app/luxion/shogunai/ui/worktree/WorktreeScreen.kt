@@ -39,6 +39,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.HerdrOutcome
+import app.luxion.shogunai.domain.model.OrcaOutcome
 import app.luxion.shogunai.domain.model.WorktreeSort
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.ui.components.DangerButton
@@ -345,6 +346,13 @@ private fun RemoveWorktreeDialog(holder: ProjectWorktrees) {
                         modifier = Modifier.padding(top = Spacing.sm),
                     )
                 }
+                if (holder.pendingRemovalHasOrcaTerminals) {
+                    Text(
+                        strings.orcaTerminalsWillClose,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = Spacing.sm),
+                    )
+                }
                 holder.removeError?.let { error ->
                     ErrorNotice(error = error, onDismiss = null, modifier = Modifier.padding(top = Spacing.sm))
                 }
@@ -514,6 +522,13 @@ private fun Strings.successMessage(success: WorktreeSuccess): String = when (suc
             HerdrOutcome.OPENED -> openedInHerdr(name)
             HerdrOutcome.STARTED_AGENT -> agentStartedInHerdr(name)
             HerdrOutcome.FOCUSED -> focusedInHerdr(name)
+        }
+    }
+    is WorktreeSuccess.OpenedInOrca -> {
+        val name = File(success.path).name
+        when (success.outcome) {
+            OrcaOutcome.STARTED_AGENT -> agentStartedInOrca(name)
+            OrcaOutcome.FOCUSED -> focusedInOrca(name)
         }
     }
     is WorktreeSuccess.CleanedUp -> listOfNotNull(
