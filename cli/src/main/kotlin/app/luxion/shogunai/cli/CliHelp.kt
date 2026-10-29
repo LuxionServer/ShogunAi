@@ -205,6 +205,11 @@ internal object CliHelp {
                               Say whether the hooks are installed, outdated or missing, in the user
                               settings and in the current repository's
 """.trimIndent(),
+        "doctor" to """
+  doctor [--json]             Check Git, the PATH, the shogun command, Claude Code's hooks, Claude Code, Herdr,
+                              Orca and every project's local files, with the fix for each problem; nothing
+                              is changed; exit code 1 when a check failed
+""".trimIndent(),
         "guide" to """
   guide [<topic>] [--plain]   Print ShogunAi's workflow rules for agents that apply here (topics: worktrees,
                               parallel, resources, cleanup); the others are listed after them, marked with

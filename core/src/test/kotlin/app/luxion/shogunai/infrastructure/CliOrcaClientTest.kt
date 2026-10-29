@@ -451,6 +451,15 @@ class CliOrcaClientTest {
     }
 
     @Test
+    fun `location is the binary that would run, the app bundle's included`() {
+        val bundle = "/Applications/Orca.app/Contents/Resources/bin/orca"
+
+        assertEquals(bundle, client(FakeShellCommandExecutor(), files = setOf(bundle), onPath = emptyMap()).location())
+        assertEquals("/opt/tools/orca", client(FakeShellCommandExecutor(), files = setOf(bundle), onPath = mapOf("orca" to "/opt/tools/orca")).location())
+        assertNull(client(FakeShellCommandExecutor(), files = emptySet(), onPath = emptyMap()).location())
+    }
+
+    @Test
     fun `the binary found on the PATH comes before the app bundle`() {
         val bundle = "/Applications/Orca.app/Contents/Resources/bin/orca"
 

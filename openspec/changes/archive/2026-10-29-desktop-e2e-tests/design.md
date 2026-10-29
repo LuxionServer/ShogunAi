@@ -56,6 +56,10 @@ Real Git work runs on `Dispatchers.IO`, outside the test clock. The harness wait
 - [Slower `./gradlew test`] → four flows, each a few seconds of Git work; the task runs after the regular tests.
 - [Developer's Homebrew `shogun` makes the tour skip its command step locally] → accepted; CI covers the other branch.
 
+## Bug found
+
+On Windows CI, about one run in two, ending the tour showed "Something unexpected went wrong" and left the sample half-deleted: `EndTourUseCase` removed the project and deleted its folder at once, while the board's work on those worktrees (folder watching, Git status, size measurement) still held files open, which Windows refuses to delete. `NioFileManager.deleteRecursively` now retries a pass that fails with a file system error, waiting 200 ms between up to ten attempts, covered by its regression test in `NioFileManagerTest` (fixed on `develop` in parallel; this branch's earlier retry inside `EndTourUseCase` was dropped when merging it).
+
 ## Dependencies and follow-ups
 
 - host-environment: once the home, shell and `PATH` are resolved in one place, the harness can inject them instead of relying on the task's JVM settings, and the tour and hooks tests can force "command missing" and "command installed" deterministically. Left as a follow-up for that change.

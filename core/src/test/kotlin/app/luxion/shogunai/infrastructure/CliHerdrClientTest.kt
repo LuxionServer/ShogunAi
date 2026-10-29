@@ -16,6 +16,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class CliHerdrClientTest {
@@ -36,6 +37,14 @@ class CliHerdrClientTest {
         val executor = FakeShellCommandExecutor { FakeShellCommandExecutor.failure(it) }
         assertTrue(client(executor, onPath = mapOf("herdr" to "/home/dev/tools/bin/herdr")).isInstalled())
         assertFalse(client(executor).isInstalled())
+    }
+
+    @Test
+    fun `location is the herdr binary that would run`() {
+        val executor = FakeShellCommandExecutor()
+
+        assertEquals("/home/dev/tools/bin/herdr", client(executor, onPath = mapOf("herdr" to "/home/dev/tools/bin/herdr")).location())
+        assertNull(client(executor).location())
     }
 
     @Test

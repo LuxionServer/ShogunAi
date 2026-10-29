@@ -51,6 +51,14 @@ Cada comando parte de un directorio (el actual, o la ruta que se pasa a `provisi
 
 El módulo aplica el plugin `application` de Gradle, así que `./gradlew :cli:run --args="status"` lo ejecuta durante el desarrollo y `:cli:distZip` construye el zip independiente.
 
+## Tests de extremo a extremo
+
+`cli/src/e2eTest` contiene tests que ejecutan el comando como lo hace un usuario, sin fakes: cada test ejecuta el lanzador de la distribución de `:cli` (`bin/shogun`, `bin/shogun.bat` en Windows) como un proceso aparte contra repositorios Git creados con el `git` real en una carpeta temporal, cada uno con un repositorio bare local como `origin`. Cubren crear, aprovisionar, listar, abrir y limpiar worktrees y grupos de multirepos, con archivos locales copiados, enlazados y por patrones desde `.shogunai.json`, `.worktreeinclude` y el proyecto.
+
+- **Aislamiento**: la carpeta temporal contiene el home que ve el comando (`SHOGUN_OPTS=-Duser.home=…`, porque la JVM lee `user.home` de la cuenta y no de `HOME`, además de `HOME` y `USERPROFILE`), así que `~/.shogunai` y la configuración global de Git (`GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM`) son los del test. Las variables que harían creer al comando que corre dentro de un runner o de un agente (`HERDR_*`, `ORCA_*`, `CLAUDE*`, `SHOGUNAI_*`) no se heredan.
+- **Runners**: `herdr` y `orca` son un fake escrito en Kotlin (`FakeRunner.kt`), instalado como scripts lanzadores en la carpeta del sandbox que va primera en el `PATH` con el que se arranca el comando, así que ganan a un Herdr u Orca reales de la máquina (en Windows, solo `orca.cmd`). Registra cada llamada y responde como la herramienta real, así que los tests comprueban los comandos que envía una apertura sin que Herdr ni Orca estén instalados. Los tests de Herdr se omiten en Windows, donde su cliente solo ejecuta `herdr.exe`.
+- **Cómo se ejecutan**: `./gradlew :cli:e2eTest`. `./gradlew test` depende de él, así que el workflow de Tests los ejecuta en Linux, macOS y Windows.
+
 ## Cómo se llega a la app de escritorio
 
 `shogun app` corre en un proceso distinto del de una app en marcha, así que la orden viaja por dos elementos de `~/.shogunai/`, ambos nuevos y ignorados por las versiones que no los conocen:

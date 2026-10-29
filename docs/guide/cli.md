@@ -22,7 +22,7 @@ shogun app --settings              # open the desktop app on this repository's p
 eval "$(shogun env)"               # load this worktree's variables from .shogunai.json "env"
 ```
 
-Output is plain English text; scripts should use `--json`, which every command that reports a result accepts (see [JSON output](#json-output)).
+Output is plain English text; scripts should use `--json`, which every command that reports a result accepts (see [JSON output](#json-output)). Standard output and standard error are always UTF-8, whatever the system's locale or code page, so paths with accents reach scripts and agent hooks intact; on a Windows console set to another code page they may show garbled.
 
 ## Exit codes
 
@@ -342,6 +342,30 @@ The command returns as soon as the app has been asked, without waiting for it:
 - **The app is open**: it serves the request in a second or so, through the same navigation as the sidebar. Its window, size and position are kept, and a form with unsaved changes asks whether to discard them instead of being replaced. If the project's settings are already open, nothing changes.
 - **The app is closed**: `shogun` launches it and the app opens on the project once started. This works where the app's own launcher is the `shogun` command (macOS with Homebrew, Linux `.deb`, Windows `.msi`). From the standalone zip, with no app installed, the command says the desktop app isn't available from that install and exits with `1`.
 
+## Installation
+
+### `doctor`
+
+```text
+shogun doctor [--json]
+```
+
+Checks, without changing anything, what ShogunAi needs on this machine and prints one line per check with `ok`, `warn`, `fail` or `--` (an optional tool that isn't installed), and the fix under each check that didn't pass:
+
+```text
+ok    Git 2.45.1 (/usr/bin/git)
+ok    PATH of the process that started ShogunAi
+ok    shogun command at /opt/homebrew/bin/shogun
+warn  Claude Code hooks aren't installed in ~/.claude/settings.json
+      fix: Run 'shogun hooks install', or install them from the desktop app's Preferences › Claude Code
+--    Orca not found
+      fix: Install Orca if you use it: https://www.onorca.dev
+fail  main-repo: 1 local file unavailable in ~/projects/main-repo
+      fix: local.properties: not found at ~/projects/main-repo/local.properties. Create it there, or remove it from the project's local files
+```
+
+The checks, in order: Git is found and is 2.29 or later; where the `PATH` comes from (the process's for the CLI; the desktop app reads the login shell's and warns when it couldn't); the `shogun` command is on the `PATH` and its launcher exists; Claude Code's hooks in the user settings (`CLAUDE_CONFIG_DIR` or `~/.claude`) are installed and the `shogun` they run is usable; Claude Code, Herdr and Orca are found; and every registered project's base folder exists and has every local file that creating a worktree would copy or link, with the same reasons and fixes as [`new`](#new). It exits with `1` when a check failed and with `0` otherwise: warnings and tools that aren't installed don't fail it. The desktop app runs the same check from Help › Check Installation….
+
 ## Environment
 
 ### `env`
@@ -472,7 +496,7 @@ shogun xcode trim [--dry-run]
 
 ## JSON output
 
-Besides `status --json` above, every command that reports a result accepts `--json`: `new`, `base`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `maven stop`, `compose`, `compose up`, `compose build`, `compose down`, `compose prune`, `pool status`, `pool trim`, `project add`, `project list`, `project remove`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks` and `guide install|uninstall|status` (not `simulator gradle-init`, `env`, `hook`, `help` or `--version`; on those it is an unknown option and exits with `2`). The option can go anywhere after the command.
+Besides `status --json` above, every command that reports a result accepts `--json`: `new`, `base`, `provision`, `trust`, `remove`, `repair`, `open`, `clean`, `gradle`, `gradle stop`, `stacks`, `maven`, `maven stop`, `compose`, `compose up`, `compose build`, `compose down`, `compose prune`, `pool status`, `pool trim`, `project add`, `project list`, `project remove`, `xcode`, `xcode clean`, `xcode trim`, `emulator`, `simulator`, `hooks`, `doctor` and `guide install|uninstall|status` (not `simulator gradle-init`, `env`, `hook`, `help` or `--version`; on those it is an unknown option and exits with `2`). The option can go anywhere after the command.
 
 The rules are the same for all of them:
 
@@ -493,6 +517,7 @@ The rules are the same for all of them:
 | `guide install`, `guide uninstall` | `path`, `applied` (written this run), `state` (`installed`, `outdated`, `missing`) and `warnings` (messages). |
 | `guide status` | `targets`: `{ target, path, state, duplicates }` with `target` `codex`, `gemini`, `project` or `file` and `duplicates` `true` when the file mentions `shogun new`, `open` or `clean` outside the block; and `warnings`. |
 | `repair` | `repaired`: the re-linked worktree paths. |
+| `doctor` | `checks`: a list of `{ id, state, summary, fix }`, with `id` `git`, `path`, `shogun`, `claude-hooks`, `claude-code`, `herdr`, `orca` or `project:<name>`, `state` `passed`, `warning`, `failed` or `not_found`, and `fix` `null` when it passed; and `failed`, `true` when a check failed (the exit code is then `1`). |
 | `project add`, `project remove` | `action` (`added`, `alreadyRegistered` or `removed`), and the project's `id`, `name` and `repository`. |
 | `project list` | `projects`: `{ id, name, repository }`, empty without projects. |
 | `open` | With `--orca`: `path`, `branch`, `orca` (`started-agent` or `focused`), `terminal` (the agent's terminal handle), `agent`, `session_name`, `emulator` (the serial of the running emulator shown in Orca's emulator view, or `null`), `simulator` (the UDID of the booted simulator shown there, or `null`) and `devicesSkipped` (`true` when both were running and neither was shown). With `--herdr`: `path`, `branch` (or `null` if detached), `herdr` (`opened`, `started-agent` or `focused`), `pane_id` (the agent's pane), `agent` (the started agent's name, or the one Herdr reports in the focused pane) and `session_name` (the Claude Code session's confirmed name, or `null`). In the multirepo folder with a target: `branch` and `repos`: `{ alias, path, result, pane_id, agent, session_name, error }` with `result` `opened`, `started-agent`, `focused` or `failed`. Without a target: `path`, `opened` (`false` only when focused), `herdr`, `pane_id`, `agent` and `session_name`. With `--orca` in the multirepo folder, with a target: `branch` and `repos`: `{ alias, path, result, terminal, agent, session_name, emulator, simulator, devicesSkipped, error }` with `result` `started-agent`, `focused` or `failed`; without a target: `path`, `orca` (`started-agent` or `focused`), `terminal`, `agent` and `session_name`. |

@@ -156,6 +156,11 @@ import app.luxion.shogunai.domain.usecase.usesFvm
 import app.luxion.shogunai.domain.usecase.PrepareWorktreeEnvironmentUseCase
 import app.luxion.shogunai.domain.usecase.ProviderContributions
 import app.luxion.shogunai.domain.usecase.CheckProvisionedFilesUseCase
+import app.luxion.shogunai.domain.usecase.CheckInstallationUseCase
+import app.luxion.shogunai.domain.usecase.CommandLineTool
+import app.luxion.shogunai.domain.usecase.InstallationReportText
+import app.luxion.shogunai.infrastructure.NioLauncherFiles
+import app.luxion.shogunai.infrastructure.PowerShellUserPath
 import app.luxion.shogunai.domain.usecase.ProvisionWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.ReadEmulatorStatesUseCase
 import app.luxion.shogunai.domain.usecase.ReadAgentActivityUseCase
@@ -352,6 +357,16 @@ class ShogunCli(
         ClaudeCodeHooks.claudeSessionsDirectory(environment.variable(CLAUDE_CONFIG_DIR), environment.home),
     ),
     private val isClaudeProcessAlive: (Long) -> Boolean = ::isLiveClaudeProcess,
+    private val commandLineTool: CommandLineTool = CommandLineTool(
+        os = environment.os,
+        appLauncher = null,
+        home = environment.home,
+        pathFolders = { environment.path.folders },
+        userBinFolders = locator.userBinFolders(),
+        findShogun = { locator.find("shogun") },
+        files = NioLauncherFiles(),
+        userPath = PowerShellUserPath(executor),
+    ),
 ) {
     private val userHome: String = environment.home
 
@@ -508,6 +523,7 @@ class ShogunCli(
             CliCommand.HookWorktreeRemove -> hookWorktreeRemove()
             is CliCommand.Gradle -> gradle(command)
             is CliCommand.Stacks -> stacks(command)
+            is CliCommand.Doctor -> doctor(command)
             is CliCommand.Maven -> maven(command)
             is CliCommand.MavenStop -> mavenStop(command)
             is CliCommand.Compose -> compose(command)
@@ -2254,6 +2270,25 @@ class ShogunCli(
             },
         )
         return EXIT_OK
+    }
+
+    private suspend fun doctor(command: CliCommand.Doctor): Int {
+        val report = CheckInstallationUseCase(
+            executor = executor,
+            findExecutable = locator::find,
+            path = { environment.path },
+            shell = environment.shell,
+            commandLineTool = commandLineTool::status,
+            hooks = claudeHooks,
+            hooksSettingsPath = userHooksSettingsPath(),
+            herdrLocation = herdr::location,
+            orcaLocation = orca::location,
+            projects = projectRepository,
+            fileManager = fileManager,
+            provisioningSource = provisioningSource,
+        )()
+        if (command.json) printJson(doctorJson(report)) else InstallationReportText.lines(report).forEach { out.line(it) }
+        return if (report.failed) EXIT_FAILURE else EXIT_OK
     }
 
     private suspend fun stacks(command: CliCommand.Stacks): Int {
