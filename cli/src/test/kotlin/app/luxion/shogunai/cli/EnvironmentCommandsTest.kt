@@ -1,5 +1,7 @@
 package app.luxion.shogunai.cli
 
+import app.luxion.shogunai.domain.model.WorktreeError
+import app.luxion.shogunai.domain.model.OrcaWorktree
 import java.time.Instant
 import app.luxion.shogunai.domain.model.ResourceLimits
 import app.luxion.shogunai.domain.model.EmulatorState
@@ -118,6 +120,7 @@ class EnvironmentCommandsTest {
         environment: Map<String, String> = mapOf("CLAUDE_ENV_FILE" to envFile.toString()),
         registered: Boolean = true,
         trust: RepositoryTrust = FakeRepositoryTrust(approvesEverything = true),
+        orca: FakeOrcaClient = FakeOrcaClient(installed = false),
     ) = ShogunCli(
         executor = executor,
         fileManager = FakeFileManager(existing = listOf(base, linked)),
@@ -134,7 +137,7 @@ class EnvironmentCommandsTest {
         machineCapacity = FakeMachineCapacity(),
         derivedDataSource = FakeDerivedDataSource(),
         herdrConfig = FakeHerdrConfigSource(),
-        orca = FakeOrcaClient(installed = false),
+        orca = orca,
         workingDirectory = workingDirectory,
         out = out,
         err = err,
@@ -284,6 +287,54 @@ class EnvironmentCommandsTest {
         assertEquals(0, cli(withSimulator()).run(listOf("simulator", "status")))
 
         assertTrue(out.contains("not acquired (released for main-repo · TASK-9 at 1970-01-01T00:00:01Z)"), out.toString())
+    }
+
+    @Test
+    fun `emulator start shows the emulator in Orca when the worktree is open there, keeping standard output`() {
+        store.writePorts("$common/worktrees/TASK-123", mapOf("emulator" to 5554))
+        androidSdk.states["emulator-5554"] = EmulatorState.RUNNING
+        val orca = FakeOrcaClient(psRows = listOf(OrcaWorktree(linked, createdByOrca = false)))
+
+        assertEquals(0, cli(withEmulator(), orca = orca).run(listOf("emulator", "start")))
+
+        assertEquals("emulator-5554 running\nexport ANDROID_SERIAL=emulator-5554\n", out.toString())
+        assertTrue(err.contains("shown emulator-5554 in Orca's emulator view"), err.toString())
+        assertEquals(listOf(linked to "emulator-5554"), orca.attachedEmulators)
+    }
+
+    @Test
+    fun `emulator start succeeds when Orca can't show the emulator and says why`() {
+        store.writePorts("$common/worktrees/TASK-123", mapOf("emulator" to 5554))
+        androidSdk.states["emulator-5554"] = EmulatorState.RUNNING
+        val orca = FakeOrcaClient(
+            psRows = listOf(OrcaWorktree(linked, createdByOrca = false)),
+            attachFailure = WorktreeError.OrcaCommandFailed(listOf("orca"), "emulator_device_not_found"),
+        )
+
+        assertEquals(0, cli(withEmulator(), orca = orca).run(listOf("emulator", "start")))
+
+        assertEquals("emulator-5554 running\nexport ANDROID_SERIAL=emulator-5554\n", out.toString())
+        assertTrue(err.contains("shogun: couldn't show the emulator in Orca: emulator_device_not_found"), err.toString())
+        assertTrue(androidSdk.stopped.isEmpty())
+    }
+
+    @Test
+    fun `emulator start json reports whether Orca shows the emulator`() {
+        store.writePorts("$common/worktrees/TASK-123", mapOf("emulator" to 5554))
+        androidSdk.states["emulator-5554"] = EmulatorState.RUNNING
+
+        assertEquals(0, cli(withEmulator(), orca = FakeOrcaClient(running = false)).run(listOf("emulator", "start", "--json")))
+        assertEquals("\"not-open\"", jsonOut().getValue("orcaView").toString())
+        assertEquals("", err.toString())
+
+        out.clear()
+        val orca = FakeOrcaClient(psRows = listOf(OrcaWorktree(linked, createdByOrca = false)))
+        assertEquals(0, cli(withEmulator(), orca = orca).run(listOf("emulator", "start", "--json")))
+        assertEquals("\"shown\"", jsonOut().getValue("orcaView").toString())
+
+        out.clear()
+        assertEquals(0, cli(withEmulator(), orca = orca).run(listOf("emulator", "status", "--json")))
+        assertFalse("orcaView" in jsonOut())
     }
 
     @Test
@@ -500,7 +551,7 @@ class EnvironmentCommandsTest {
     fun `emulator json reports the serial and state`() {
         assertEquals(0, cli(withEmulator()).run(listOf("emulator", "start", "--no-window", "--json")))
         val started = jsonOut()
-        assertEquals(setOf("worktree", "serial", "state", "acquired", "acquiredNow", "released", "waited"), started.keys)
+        assertEquals(setOf("worktree", "serial", "state", "acquired", "acquiredNow", "released", "waited", "orcaView"), started.keys)
         assertEquals(linked, started.text("worktree"))
         assertEquals("emulator-5554", started.text("serial"))
         assertEquals("running", started.text("state"))

@@ -64,6 +64,22 @@ class OpenGroupInOrcaUseCaseTest {
     }
 
     @Test
+    fun `a member with a running emulator gets it shown by its own repository's lookup`() = runTest {
+        val orca = FakeOrcaClient()
+        val lookups = mutableListOf<Pair<String, String>>()
+        val open = OpenGroupInOrcaUseCase(orca, resolveEnvironment, usesPowerShell = false) { config, path ->
+            lookups += config.baseRepositoryPath to path
+            "emulator-5556".takeIf { config.baseRepositoryPath == world.appBase }
+        }
+
+        val openings = open(group()).getOrThrow()
+
+        assertEquals(listOf(world.appBase to appTask, world.apiBase to apiTask), lookups)
+        assertEquals(listOf(appTask to "emulator-5556"), orca.attachedEmulators)
+        assertEquals(listOf("emulator-5556", null), openings.map { it.result.getOrThrow().emulator })
+    }
+
+    @Test
     fun `a worktree with a live agent is focused and the other gets its agent started`() = runTest {
         val orca = FakeOrcaClient(terminals = mapOf(appTask to listOf(OrcaTerminal("term_app", appTask))), agents = mapOf("term_app" to "claude"))
 

@@ -106,6 +106,12 @@ class ReadEmulatorStatesUseCase(
             val states = sdk.deviceStates(sdk.locate(config.baseRepositoryPath))
             serials.mapValues { (_, serial) -> WorktreeEmulator(serial, states[serial] ?: EmulatorState.STOPPED) }
         }
+
+    suspend fun runningSerial(config: ProjectConfig, worktreePath: String): String? =
+        invoke(config, listOf(Worktree(worktreePath, branch = null))).getOrNull()
+            ?.get(worktreePath)
+            ?.takeIf { it.state == EmulatorState.RUNNING }
+            ?.serial
 }
 
 private fun emulatorProvider(provisioningSource: RepositoryProvisioningSource, config: ProjectConfig): EmulatorProvider =
