@@ -253,6 +253,20 @@ sealed class WorktreeError(message: String, cause: Throwable? = null) : Exceptio
     class HerdrAgentNotStarted(val paneId: String, val command: String) :
         WorktreeError("The agent `$command` didn't start in Herdr pane $paneId within $AGENT_START_SECONDS seconds; the pane is left open")
 
+    object OrcaNotInstalled : WorktreeError(
+        "Orca isn't installed: the orca command wasn't found. Install it from https://onorca.dev",
+    )
+
+    object OrcaNotStarted : WorktreeError(
+        "Orca didn't start: it wasn't accepting commands $ORCA_START_SECONDS seconds after being opened",
+    )
+
+    class OrcaCommandFailed(val command: List<String>, val detail: String) :
+        WorktreeError("Orca couldn't open the worktree: $detail")
+
+    class OrcaAgentNotStarted(val terminalHandle: String, val command: String) :
+        WorktreeError("The agent `$command` didn't start in Orca terminal $terminalHandle within $AGENT_START_SECONDS seconds; the terminal is left open")
+
     class TerminalLaunchFailed(val terminal: TerminalId, val detail: String) :
         WorktreeError("${terminal.displayName} couldn't open the worktree" + if (detail.isBlank()) "" else ": $detail")
 

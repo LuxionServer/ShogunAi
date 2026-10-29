@@ -1,0 +1,34 @@
+{
+  "id": "local-status",
+  "ok": true,
+  "result": {
+    "target": {
+      "kind": "local"
+    },
+    "app": {
+      "running": true,
+      "pid": 78662,
+      "desktopWindowStatus": "available"
+    },
+    "runtime": {
+      "state": "ready",
+      "reachable": true,
+      "connectionState": "connected",
+      "runtimeId": "24f610a7-56eb-433d-b32d-6af1e7aa64c7",
+      "appVersion": "1.4.200",
+      "remoteUpdateSupport": {
+        "installMode": "interactive",
+        "automatic": true,
+        "reason": "available"
+      },
+      "capabilities": [
+        "agent-session.saved-resume-origin.v1",
+        "runtime.status.compat.v1",
+        "runtime.environments.v1"
+      ]
+    }
+  },
+  "_meta": {
+    "runtimeId": "24f610a7-56eb-433d-b32d-6af1e7aa64c7"
+  }
+}

@@ -735,15 +735,23 @@ A command run with `--json` SHALL never ask a question. When the repository isn'
 - **THEN** the object's `herdr` is `focused`, `pane_id` is that agent's pane and `agent` is `claude`
 
 ### Requirement: Report each agent's state in status
-`shogun status` SHALL show each agent's state whatever reports it, Herdr or Claude Code's hooks, and `shogun status --json` SHALL add `state` (`working`, `blocked`, `done`, `idle` or `null`) and `stateSource` (`herdr`, `claude-code` or `null`) to each agent, keeping `herdrState` as before.
+`shogun status` SHALL show each agent's state whatever reports it, Herdr, Orca or Claude Code's hooks, and `shogun status --json` SHALL add `state` (`working`, `blocked`, `done`, `idle` or `null`) and `stateSource` (`herdr`, `orca`, `claude-code` or `null`) to each agent, keeping `herdrState` as before.
 
 #### Scenario: Agent state from Claude Code's hooks
-- **WHEN** Claude is blocked in a worktree, as recorded by its `Notification` hook, and Herdr doesn't report it
+- **WHEN** Claude is blocked in a worktree, as recorded by its `Notification` hook, and neither Herdr nor Orca reports it
 - **THEN** the line shows `claude(blocked)` and the JSON agent has `state` `blocked`, `stateSource` `claude-code` and `herdrState` `null`
 
 #### Scenario: Agent state from Herdr
 - **WHEN** Herdr reports Claude as working
 - **THEN** the JSON agent has `state` `working`, `stateSource` `herdr` and `herdrState` `working`
+
+#### Scenario: Agent state from Orca
+- **WHEN** Orca reports Claude as waiting
+- **THEN** the line shows `claude(blocked)` and the JSON agent has `state` `blocked`, `stateSource` `orca` and `herdrState` `null`
+
+#### Scenario: Origin of an Orca worktree
+- **WHEN** a worktree was created by Orca
+- **THEN** its JSON entry has `origin` `orca`
 
 ### Requirement: Record agent states through Claude Code's hooks
 `shogun hook agent-state` SHALL read the hook's JSON from standard input and record the session's state for the worktree containing its `cwd`: working on `UserPromptSubmit`, blocked on `Notification`, done on `Stop`, and remove the record on `SessionEnd`. It SHALL print nothing, never block the session, and exit with code 0 whenever the input is valid, also outside a repository.

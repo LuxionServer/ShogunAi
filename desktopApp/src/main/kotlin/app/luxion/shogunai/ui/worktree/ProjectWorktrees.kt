@@ -20,6 +20,8 @@ import app.luxion.shogunai.domain.model.GradleProvider
 import app.luxion.shogunai.domain.model.HeadlessAppProcess
 import app.luxion.shogunai.domain.model.HerdrOpening
 import app.luxion.shogunai.domain.model.HerdrOutcome
+import app.luxion.shogunai.domain.model.OrcaOutcome
+import app.luxion.shogunai.domain.usecase.OrcaOrigins
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.ProvisionDrift
 import app.luxion.shogunai.domain.model.WorktreeEnvironment
@@ -127,6 +129,14 @@ class ProjectWorktrees(
     var openInHerdrPaths by mutableStateOf<Set<String>>(emptySet())
         private set
     var herdrCloseFailures by mutableStateOf<List<CleanupFailure>>(emptyList())
+        private set
+    var openingInOrca by mutableStateOf<Set<String>>(emptySet())
+        private set
+    var orcaTerminalPaths by mutableStateOf<Set<String>>(emptySet())
+        private set
+    var orcaCloseFailures by mutableStateOf<List<CleanupFailure>>(emptyList())
+        private set
+    var orcaOrigins by mutableStateOf<OrcaOrigins?>(null)
         private set
     var headlessStopFailures by mutableStateOf<List<CleanupFailure>>(emptyList())
         private set
@@ -257,6 +267,8 @@ class ProjectWorktrees(
         get() = pendingRemoval?.requiresForce ?: false
     val pendingRemovalOpenInHerdr: Boolean
         get() = pendingRemoval?.worktree?.path in openInHerdrPaths
+    val pendingRemovalHasOrcaTerminals: Boolean
+        get() = pendingRemoval?.worktree?.path in orcaTerminalPaths
 
     fun refresh(remeasureSizes: Boolean = false) {
         if (isCreating) return
@@ -331,6 +343,7 @@ class ProjectWorktrees(
     fun applyAgents(detected: Map<String, List<RunningAgent>>?) {
         val paths = worktrees.map { it.path }.toSet()
         agents = detected?.filterKeys { it in paths }
+        orcaOrigins = useCases.orca.origins()
     }
 
     suspend fun refreshDevices() {
@@ -422,7 +435,10 @@ class ProjectWorktrees(
         scope.launch { herdrWorktreesRoot = useCases.herdr.worktreesRoot() }
         scope.launch {
             val detected = useCases.detectAgents(listed).getOrNull()
-            if (generation == listGeneration) agents = detected
+            if (generation == listGeneration) {
+                agents = detected
+                orcaOrigins = useCases.orca.origins()
+            }
         }
         loadGradleSection()
         loadMavenAndComposeSections(generation, listed)
@@ -749,6 +765,7 @@ class ProjectWorktrees(
                     .onSuccess { removal ->
                         launch { useCases.releaseResources.release(resources) }
                         removal.herdrFailure?.let { herdrCloseFailures = listOf(CleanupFailure(worktree.path, it)) }
+                        removal.orcaFailure?.let { orcaCloseFailures = listOf(CleanupFailure(worktree.path, it)) }
                         removal.headlessAppFailure?.let { headlessStopFailures = listOf(CleanupFailure(worktree.path, it)) }
                         worktrees = worktrees.filterNot { it.path == worktree.path }
                         statuses = statuses - worktree.path
@@ -824,8 +841,12 @@ class ProjectWorktrees(
 
     private fun lookUpOpenInHerdr(paths: List<String>) {
         openInHerdrPaths = emptySet()
+        orcaTerminalPaths = emptySet()
         scope.launch {
             openInHerdrPaths = useCases.herdr.openWorkspaces(paths).keys
+        }
+        scope.launch {
+            orcaTerminalPaths = useCases.orca.withTerminals(paths)
         }
     }
 
@@ -878,6 +899,25 @@ class ProjectWorktrees(
         }
     }
 
+    fun openInOrca(worktree: Worktree, picked: AgentLaunchConfig? = null) {
+        if (worktree.path in openingInOrca) return
+        onUsed(worktree.path)
+        val agent = resolveAgent(worktree, picked)
+        openingInOrca = openingInOrca + worktree.path
+        scope.launch {
+            try {
+                useCases.orca.open(worktree, agent)
+                    .onSuccess { opening ->
+                        clearActionError(worktree.path)
+                        success = WorktreeSuccess.OpenedInOrca(path = worktree.path, outcome = opening.outcome)
+                    }
+                    .onFailure { recordActionError(worktree.path, it) }
+            } finally {
+                openingInOrca = openingInOrca - worktree.path
+            }
+        }
+    }
+
     val tools: ToolsPreferences get() = useCases.tools.preferences
 
     val agentOptions: List<AgentLaunchConfig> get() = useCases.agents.options
@@ -898,7 +938,7 @@ class ProjectWorktrees(
         val kinds = if (worktree.isPrunable) {
             listOf(LaunchKind.COPY)
         } else {
-            listOfNotNull(LaunchKind.COPY, LaunchKind.TERMINAL.takeIf { tools.terminalShown != null }, LaunchKind.HERDR)
+            listOfNotNull(LaunchKind.COPY, LaunchKind.TERMINAL.takeIf { tools.terminalShown != null }, LaunchKind.HERDR, LaunchKind.ORCA)
         }
         return agentOptions.filter { it.displayName != current.displayName }.flatMap { agent ->
             kinds.map { kind ->
@@ -906,6 +946,7 @@ class ProjectWorktrees(
                     LaunchKind.COPY -> strings.copyLaunchCommand
                     LaunchKind.TERMINAL -> strings.openInTool(tools.terminalInUse?.displayName ?: strings.terminalToolLabel.lowercase())
                     LaunchKind.HERDR -> strings.openInHerdr
+                    LaunchKind.ORCA -> strings.openInOrca
                 }
                 LaunchChoice(kind, agent, strings.launchWithAgent(base, agent.displayName))
             }
@@ -917,6 +958,7 @@ class ProjectWorktrees(
             LaunchKind.COPY -> copyLaunchCommand(worktree, picked = agent)
             LaunchKind.TERMINAL -> openInTerminal(worktree, agent)
             LaunchKind.HERDR -> openInHerdr(worktree, agent)
+            LaunchKind.ORCA -> openInOrca(worktree, agent)
         }
     }
 
@@ -1081,6 +1123,7 @@ class ProjectWorktrees(
                         removedComposeResources = report.composeResources?.removed?.size ?: 0,
                     )
                     herdrCloseFailures = report.herdrFailures
+                    orcaCloseFailures = report.orcaFailures
                     headlessStopFailures = report.headlessAppFailures
                     cleanupIssues = report.takeIf {
                         it.failures.isNotEmpty() || it.keptBranches.isNotEmpty() ||
@@ -1122,6 +1165,10 @@ class ProjectWorktrees(
 
     fun dismissHerdrCloseFailures() {
         herdrCloseFailures = emptyList()
+    }
+
+    fun dismissOrcaCloseFailures() {
+        orcaCloseFailures = emptyList()
     }
 
     private fun loadedStatuses(): Map<String, WorktreeStatus> =
@@ -1233,6 +1280,7 @@ sealed interface WorktreeSuccess {
     data class Created(val path: String, val commandsSkipped: Boolean = false) : WorktreeSuccess
     data object RepairedAfterMove : WorktreeSuccess
     data class OpenedInHerdr(val path: String, val outcome: HerdrOutcome) : WorktreeSuccess
+    data class OpenedInOrca(val path: String, val outcome: OrcaOutcome) : WorktreeSuccess
     data class BranchDeleted(val branch: String) : WorktreeSuccess
     data class CleanedUp(
         val removedCount: Int,

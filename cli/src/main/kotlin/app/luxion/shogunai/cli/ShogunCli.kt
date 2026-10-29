@@ -17,6 +17,8 @@ import app.luxion.shogunai.domain.io.GradleDaemonSource
 import app.luxion.shogunai.domain.io.AppWindowService
 import app.luxion.shogunai.domain.io.HeadlessAppLauncher
 import app.luxion.shogunai.domain.io.HerdrClient
+import app.luxion.shogunai.domain.io.OrcaClient
+import app.luxion.shogunai.domain.io.OrcaWorkspaceStore
 import app.luxion.shogunai.domain.io.HerdrConfigSource
 import app.luxion.shogunai.domain.io.KmpTestWiring
 import app.luxion.shogunai.domain.io.MachineCapacity
@@ -58,6 +60,8 @@ import app.luxion.shogunai.domain.model.DerivedDataOwner
 import app.luxion.shogunai.domain.model.EmulatorState
 import app.luxion.shogunai.domain.model.AGENT_START_SECONDS
 import app.luxion.shogunai.domain.model.HerdrOpening
+import app.luxion.shogunai.domain.model.OrcaOpening
+import app.luxion.shogunai.domain.model.OrcaOutcome
 import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.MainBranch
 import app.luxion.shogunai.domain.model.Multirepo
@@ -155,6 +159,11 @@ import app.luxion.shogunai.domain.usecase.GitFailureCause
 import app.luxion.shogunai.domain.usecase.resolveWorktreeTarget
 import app.luxion.shogunai.domain.usecase.RemoveWorktreeUseCase
 import app.luxion.shogunai.domain.usecase.herdrDetail
+import app.luxion.shogunai.domain.usecase.ClaudeSessionNaming
+import app.luxion.shogunai.domain.usecase.CloseOrcaTerminalsUseCase
+import app.luxion.shogunai.domain.usecase.orcaDetail
+import app.luxion.shogunai.domain.usecase.OpenWorktreeInOrcaUseCase
+import app.luxion.shogunai.domain.usecase.OrcaWorktreeReader
 import app.luxion.shogunai.domain.usecase.ResolveMainBranchUseCase
 import app.luxion.shogunai.domain.usecase.ResolveRepositoryUseCase
 import app.luxion.shogunai.domain.usecase.ResolveResourceLimitsUseCase
@@ -191,6 +200,8 @@ import app.luxion.shogunai.domain.model.MavenDaemonStopReport
 import app.luxion.shogunai.domain.model.suggestProviders
 import app.luxion.shogunai.domain.model.SuggestionReport
 import app.luxion.shogunai.infrastructure.CliHerdrClient
+import app.luxion.shogunai.infrastructure.CliOrcaClient
+import app.luxion.shogunai.infrastructure.JsonOrcaWorkspaceStore
 import app.luxion.shogunai.infrastructure.FileClaudeSessionRegistry
 import app.luxion.shogunai.infrastructure.DockerComposeProjectSource
 import app.luxion.shogunai.infrastructure.NioDesktopTurnStore
@@ -286,6 +297,8 @@ class ShogunCli(
     private val userHome: String = System.getProperty("user.home"),
     private val herdr: HerdrClient = CliHerdrClient(executor, userHome = userHome),
     private val herdrAgentStartTimeout: kotlin.time.Duration = AGENT_START_SECONDS.seconds,
+    private val orca: OrcaClient = CliOrcaClient(executor, userHome = userHome),
+    private val orcaWorkspaces: OrcaWorkspaceStore = JsonOrcaWorkspaceStore(Path.of(userHome, ".shogunai", "orca.json")),
     private val trust: RepositoryTrust = RepositoryTrust.NONE,
     private val readAnswer: () -> String? = { null },
     private val sessionStore: AgentSessionStore = FileAgentSessionStore(),
@@ -313,6 +326,8 @@ class ShogunCli(
     ),
     private val isClaudeProcessAlive: (Long) -> Boolean = ::isLiveClaudeProcess,
 ) {
+    private val orcaReader = OrcaWorktreeReader(orca, orcaWorkspaces, userHome)
+
     private val terminalApproval = RepositoryApproval { repository, subject ->
         if (confirm("${subjectLines(repository, subject)}$APPROVAL_QUESTION")) ApprovalDecision.APPROVE else ApprovalDecision.SKIP
     }
@@ -474,6 +489,7 @@ class ShogunCli(
             is CliCommand.SimulatorGradleInit -> simulatorGradleInit(command)
             CliCommand.HookSessionStart -> hookSessionStart()
             CliCommand.HookHerdr -> hookHerdr()
+            is CliCommand.HookOrca -> hookOrca(command.action)
             CliCommand.HookAgentState -> hookAgentState()
             is CliCommand.Hooks -> hooks(command)
             is CliCommand.Guide -> guide(command)
@@ -583,7 +599,7 @@ class ShogunCli(
         DetectGroupsUseCase(executor),
         resolveBase = { member -> ResolveMainBranchUseCase(member.config, executor)().getOrNull() },
         readStatus = { member, base -> ReadWorktreeStatusUseCase(executor, fileManager)(member.worktree, base) },
-        detectAgents = { searches -> DetectRunningAgentsUseCase(executor, herdr, sessionStore, claudeSessions = claudeSessions)(searches) },
+        detectAgents = { searches -> DetectRunningAgentsUseCase(executor, herdr, sessionStore, claudeSessions = claudeSessions, orca = orcaReader)(searches) },
     )
 
     private suspend fun multirepo(command: CliCommand.Multirepo): Int {
@@ -1148,8 +1164,9 @@ class ShogunCli(
         approval: RepositoryApproval,
         onProvisioned: suspend (Worktree, ProjectConfig) -> Unit = { _, _ -> },
         json: Boolean = false,
+        configDirectory: String = target,
     ): Int {
-        val config = configFor(target)
+        val config = configFor(configDirectory)
         val worktree = ListWorktreesUseCase(config, executor)().getOrThrow()
             .firstOrNull { sameDirectory(it.path, target) }
             ?: throw WorktreeError.NotAWorktree(target)
@@ -1186,7 +1203,7 @@ class ShogunCli(
         val mainBranch = ResolveMainBranchUseCase(config, executor)().getOrNull()
         val readStatus = ReadWorktreeStatusUseCase(executor, fileManager)
         val herdrWorktreesRoot = herdrConfig.worktreesRoot()
-        val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore, claudeSessions = claudeSessions)(config, worktrees.filterNot { it.isPrunable }).getOrNull().orEmpty()
+        val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore, claudeSessions = claudeSessions, orca = orcaReader)(config, worktrees.filterNot { it.isPrunable }).getOrNull().orEmpty()
         val desktop = readDesktopTurn().getOrElse { DesktopTurnState(holder = null, waiting = emptyList()) }
         val bases = ReadBaseBranchesUseCase(config, executor)().getOrElse { emptyMap() }
         val entries = worktrees.map { worktree ->
@@ -1194,7 +1211,7 @@ class ShogunCli(
             WorktreeEntry(
                 worktree,
                 read?.getOrNull(),
-                classifyOrigin(worktree, config, herdrWorktreesRoot),
+                classifyOrigin(worktree, config, herdrWorktreesRoot, orcaReader.origins()),
                 read?.exceptionOrNull()?.let(::failureReason),
                 agents[worktree.path].orEmpty(),
                 desktop,
@@ -1259,7 +1276,7 @@ class ShogunCli(
             }
         }
         val plan = releaseResources.plan(config, worktree, worktrees)
-        val removal = RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr), fileManager, stopHeadlessApp, releaseDesktopTurn)(
+        val removal = RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr), fileManager, stopHeadlessApp, releaseDesktopTurn, CloseOrcaTerminalsUseCase(orca))(
             worktree.path,
             branchToDelete = worktree.branch?.takeIf { command.deleteBranch || command.forceDeleteBranch },
             force = command.force,
@@ -1275,6 +1292,7 @@ class ShogunCli(
         val say = saying(command.json)
         say("removed ${worktree.path}")
         removal.herdrFailure?.let { err.line(herdrCloseFailure(worktree.path, it)) }
+        removal.orcaFailure?.let { err.line(orcaCloseFailure(worktree.path, it)) }
         removal.headlessAppFailure?.let { err.line(headlessStopFailure(worktree.path, it)) }
         val released = releaseResources.release(config, plan)
         released.stoppedEmulators.forEach { say("stopped emulator $it") }
@@ -1305,7 +1323,13 @@ class ShogunCli(
     }
 
     private suspend fun open(command: CliCommand.Open): Int {
-        multirepoContext()?.takeIf { it.atFolder }?.let { return openInMultirepo(it, command) }
+        multirepoContext()?.takeIf { it.atFolder }?.let { context ->
+            if (command.orca) {
+                err.line("shogun: groups and the multirepo agent can't be opened in Orca yet; use --herdr in a multirepo folder")
+                return EXIT_USAGE
+            }
+            return openInMultirepo(context, command)
+        }
         val target = command.target ?: run {
             err.line("shogun: 'open' needs a task id, path or branch")
             return EXIT_USAGE
@@ -1321,9 +1345,25 @@ class ShogunCli(
                 return EXIT_USAGE
             }
         }
+        if (command.orca) {
+            val opening = OpenWorktreeInOrcaUseCase(config, orca, resolveEnvironment, claudeSessionNaming(herdrAgentStartTimeout))(worktree, agent).getOrThrow()
+            if (command.json) printJson(openJson(worktree.path, worktree.branch, opening)) else out.line(orcaOpeningLine(worktree.path, opening))
+            return EXIT_OK
+        }
         val opening = OpenWorktreeInHerdrUseCase(config, herdr, resolveEnvironment, herdrLauncher())(worktree, agent).getOrThrow()
         if (command.json) printJson(openJson(worktree.path, worktree.branch, opening)) else out.line(herdrOpeningLine(worktree.path, opening))
         return EXIT_OK
+    }
+
+    private fun claudeSessionNaming(timeout: kotlin.time.Duration) =
+        ClaudeSessionNaming(claudeSessions, isClaudeProcessAlive, timeout)
+
+    private fun orcaOpeningLine(path: String, opening: OrcaOpening): String {
+        val line = when (opening.outcome) {
+            OrcaOutcome.STARTED_AGENT -> "opened $path in Orca with ${opening.agent} (terminal ${opening.terminalHandle})"
+            OrcaOutcome.FOCUSED -> "focused $path's running agent in Orca (terminal ${opening.terminalHandle})"
+        }
+        return opening.sessionName?.let { "$line as session $it" } ?: line
     }
 
     private fun herdrLauncher() =
@@ -1367,7 +1407,7 @@ class ShogunCli(
             .filterNot { it.isMain || it.isPrunable || it.isLocked }
             .associateWith { worktree -> readStatus(worktree, mainBranch) }
         val statuses = statusReads.mapNotNull { (worktree, read) -> read.getOrNull()?.let { worktree.path to it } }.toMap()
-        val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore)(config, worktrees.filterNot { it.isMain || it.isPrunable })
+        val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore, orca = orcaReader)(config, worktrees.filterNot { it.isMain || it.isPrunable })
             .onFailure { err.line("shogun: couldn't check for running agents, so none were taken into account: ${it.message}") }
             .getOrNull()
         val selection = selectCleanup(worktrees, statuses, agents)
@@ -1415,6 +1455,7 @@ class ShogunCli(
         val mavenDaemons = if (command.stopMavenDaemons) mavenDaemonsBeforeCleanup(config, worktrees) else emptyList()
         val emulators = if (command.stopEmulators) emulatorsBeforeCleanup(config, candidates) else emptyMap()
         val closeHerdrWorkspaces = CloseHerdrWorkspacesUseCase(config, herdr)
+        val closeOrcaTerminals = CloseOrcaTerminalsUseCase(orca)
         val downCompose = command.downComposeProjects && declaresCompose(config.baseRepositoryPath)
         if (!command.confirmed) {
             if (command.json) {
@@ -1422,9 +1463,11 @@ class ShogunCli(
                 return EXIT_OK
             }
             val herdrWorkspaces = closeHerdrWorkspaces.openWorkspaces(candidates.map { it.path })
+            val orcaTerminals = closeOrcaTerminals.withTerminals(candidates.filterNot { it.isPrunable }.map { it.path })
             candidates.forEach {
                 out.line("would remove ${it.path}${if (it.isPrunable) " (folder missing)" else ""}")
                 if (it.path in herdrWorkspaces) out.line("would close Herdr workspace of ${it.path}")
+                if (it.path in orcaTerminals) out.line("would close Orca terminals of ${it.path}")
             }
             idleDaemonsOfRemovedWorktrees(daemons, worktrees, candidates.map { it.path })
                 .forEach { out.line("would stop Gradle daemon $it") }
@@ -1438,7 +1481,9 @@ class ShogunCli(
             out.line(dryRunHint(command, candidates.size, simulators.orphans.isNotEmpty(), derivedDataOrphans.isNotEmpty()))
             return EXIT_OK
         }
-        val report = CleanUpWorktreesUseCase(config, executor, closeHerdrWorkspaces, composeSource, fileManager, composeRegistry, stopHeadlessApp, releaseDesktopTurn)(
+        val report = CleanUpWorktreesUseCase(
+            config, executor, closeHerdrWorkspaces, composeSource, fileManager, composeRegistry, stopHeadlessApp, releaseDesktopTurn, closeOrcaTerminals,
+        )(
             candidates,
             mainBranch,
             command.deleteBranches,
@@ -1449,6 +1494,7 @@ class ShogunCli(
         report.keptBranches.forEach { say("kept branch $it (not merged)") }
         report.failures.forEach { err.line("shogun: couldn't remove ${it.path}: ${it.error.message}") }
         report.herdrFailures.forEach { err.line(herdrCloseFailure(it.path, it.error)) }
+        report.orcaFailures.forEach { err.line(orcaCloseFailure(it.path, it.error)) }
         report.headlessAppFailures.forEach { err.line(headlessStopFailure(it.path, it.error)) }
         report.composeDown?.takenDown?.forEach { say("took down Compose project $it") }
         report.composeDown?.failures?.forEach { err.line("shogun: couldn't take down Compose project ${it.name}: ${it.detail}") }
@@ -2432,7 +2478,7 @@ class ShogunCli(
         val listing = listDerivedData(worktrees, includeCompilationCache = false, measure = DerivedDataMeasure.ALL).getOrThrow()
         val quota = ResolveDerivedDataQuotaUseCase(derivedDataSource)(settings, listing.folders.sumOf { it.folder.sizeBytes ?: 0L })
         val quotaBytes = quota.bytes ?: return noDerivedDataQuota(command, quota)
-        val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore)(searches).getOrNull().orEmpty()
+        val agents = DetectRunningAgentsUseCase(executor, herdr, sessionStore, orca = orcaReader)(searches).getOrNull().orEmpty()
         val active = agents.filterValues { running -> running.any { it.state == AgentState.WORKING || it.state == AgentState.BLOCKED } }.keys
         val trim = TrimDerivedDataUseCase(derivedDataSource, listDerivedData, now)(quotaBytes, worktrees, active, command.dryRun, listing, quota.mode).getOrThrow()
         if (command.json) {
@@ -2543,12 +2589,13 @@ class ShogunCli(
         val worktree = ListWorktreesUseCase(config, executor)().getOrThrow()
             .firstOrNull { !it.isMain && sameDirectory(it.path, path) }
             ?: throw WorktreeError.NotAWorktree(path)
-        val removal = RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr), fileManager, stopHeadlessApp, releaseDesktopTurn)(
+        val removal = RemoveWorktreeUseCase(config, executor, CloseHerdrWorkspacesUseCase(config, herdr), fileManager, stopHeadlessApp, releaseDesktopTurn, CloseOrcaTerminalsUseCase(orca))(
             worktree.path,
             branchToDelete = worktree.branch,
             force = true,
         ).getOrThrow()
         removal.herdrFailure?.let { err.line(herdrCloseFailure(worktree.path, it)) }
+        removal.orcaFailure?.let { err.line(orcaCloseFailure(worktree.path, it)) }
         removal.headlessAppFailure?.let { err.line(headlessStopFailure(worktree.path, it)) }
         reportKeptBranch(worktree.branch, removal.branch)
         return EXIT_OK
@@ -2623,6 +2670,9 @@ class ShogunCli(
 
     private fun herdrCloseFailure(path: String, error: WorktreeError) =
         "shogun: couldn't close the Herdr workspace of $path: ${error.herdrDetail()}"
+
+    private fun orcaCloseFailure(path: String, error: WorktreeError) =
+        "shogun: couldn't close the Orca terminals of $path: ${error.orcaDetail()}"
 
     private suspend fun hookAgentState(): Int {
         val input = hookInput("agent-state") ?: return EXIT_USAGE
@@ -2743,6 +2793,49 @@ class ShogunCli(
         if (event == HERDR_WORKTREE_CREATED) return provisionWorktreeAt(path, RepositoryApproval.SKIP, ::flagOutsideWorktreesRoot)
         val repoRoot = ((data.get("workspace") as? JsonObject)?.get("worktree") as? JsonObject)?.string("repo_root")
         return deleteMergedBranchOfRemovedWorktree(path, removed.string("branch"), repoRoot)
+    }
+
+    private suspend fun hookOrca(action: OrcaHookAction): Int {
+        val path = environmentVariable(ORCA_WORKTREE_PATH)?.takeIf { it.isNotBlank() }
+            ?: return hookUsageError("orca", "$ORCA_WORKTREE_PATH isn't set; run it from the scripts of Orca's orca.yaml")
+        val repository = repositoryOfOrcaWorktree(path)
+        return when (action) {
+            OrcaHookAction.SETUP -> provisionWorktreeAt(path, RepositoryApproval.SKIP, ::noteOutsideWorktreesRoot, configDirectory = repository)
+            OrcaHookAction.ARCHIVE -> releaseOrcaWorktree(path, repository)
+        }
+    }
+
+    private suspend fun repositoryOfOrcaWorktree(path: String): String {
+        if (ResolveRepositoryUseCase(executor)(path).isSuccess) return path
+        return environmentVariable(ORCA_ROOT_PATH)?.takeIf { it.isNotBlank() } ?: path
+    }
+
+    private suspend fun releaseOrcaWorktree(path: String, repository: String): Int {
+        try {
+            val config = configFor(repository)
+            val worktrees = ListWorktreesUseCase(config, executor)().getOrThrow()
+            val worktree = worktrees.firstOrNull { sameDirectory(it.path, path) } ?: throw WorktreeError.NotAWorktree(path)
+            stopHeadlessApp.beforeRemoving(worktree.path)?.let { err.line(headlessStopFailure(worktree.path, it)) }
+            releaseDesktopTurn.onWorktreeRemoved(worktree.path)
+            val released = releaseResources.release(config, releaseResources.plan(config, worktree, worktrees))
+            released.stoppedEmulators.forEach { out.line("stopped emulator $it") }
+            released.stoppedSimulators.forEach { out.line("stopped simulator $it") }
+            released.stoppedDaemons.forEach { out.line("stopped Gradle daemon $it") }
+            released.failures.forEach { err.line("shogun: hook orca: $it") }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            err.line("shogun: hook orca: couldn't free what ShogunAi holds for $path: ${error.message}")
+        }
+        return EXIT_OK
+    }
+
+    private fun noteOutsideWorktreesRoot(worktree: Worktree, config: ProjectConfig) {
+        if (config.worktreesRoot.isBlank() || classifyOrigin(worktree, config) == WorktreeOrigin.SHOGUNAI) return
+        out.line(
+            "note: ${folderName(worktree.path)} is outside ShogunAi's worktrees folder ${displayPath(config.worktreesRoot)}; " +
+                "create new worktrees from ShogunAi so they land there",
+        )
     }
 
     private suspend fun deleteMergedBranchOfRemovedWorktree(path: String, branch: String?, repoRoot: String?): Int {
@@ -2889,6 +2982,8 @@ class ShogunCli(
         private const val HERDR_WORKTREE_CREATED = "worktree.created"
         private const val HERDR_WORKTREE_REMOVED = "worktree.removed"
         private const val HERDR_BIN_PATH = "HERDR_BIN_PATH"
+        private const val ORCA_WORKTREE_PATH = "ORCA_WORKTREE_PATH"
+        private const val ORCA_ROOT_PATH = "ORCA_ROOT_PATH"
 
         const val BUILD_CACHE_NOTICE =
             "Gradle's build cache is off: add org.gradle.caching=true to gradle.properties so a new worktree " +

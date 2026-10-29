@@ -300,6 +300,7 @@ object EnglishStrings : Strings {
     override val originShogunAi = "ShogunAi"
     override val originClaudeCode = "Claude Code"
     override val originHerdr = "Herdr"
+    override val originOrca = "Orca"
     override val originOther = "other location"
     override fun worktreesSummary(count: Int, totalSize: String) =
         (if (count == 1) "1 worktree" else "$count worktrees") + " · $totalSize"
@@ -347,6 +348,10 @@ object EnglishStrings : Strings {
     override val herdrCleanupNotice = "The worktrees open in Herdr will have their workspace, and the agent running there, closed."
     override val openInHerdrMark = "open in Herdr"
     override fun herdrCloseFailed(path: String, detail: String) = "Removed, but couldn't close the Herdr workspace of \"$path\": $detail"
+    override val orcaTerminalsWillClose = "It has terminals open in Orca: they, and the agent running in them, will be closed."
+    override val orcaCleanupNotice = "The worktrees with terminals open in Orca will have those terminals, and the agents running in them, closed."
+    override val openInOrcaMark = "open in Orca"
+    override fun orcaCloseFailed(path: String, detail: String) = "Removed, but couldn't close the Orca terminals of \"$path\": $detail"
     override val simulatorSection = "iOS simulator"
     override val simulatorSectionDescription =
         "This repository gives each worktree its own iOS simulator (IOS_SIMULATOR_UDID). These settings apply to this machine only."
@@ -601,6 +606,9 @@ object EnglishStrings : Strings {
     override fun openedInHerdr(name: String) = "Opened \"$name\" in Herdr with its agent"
     override fun focusedInHerdr(name: String) = "\"$name\" was already open in Herdr; switched to its agent"
     override fun agentStartedInHerdr(name: String) = "\"$name\" was open in Herdr without an agent; started its agent in a new pane"
+    override val openInOrca = "Open in Orca"
+    override fun agentStartedInOrca(name: String) = "Opened \"$name\" in Orca and started its agent in a new terminal"
+    override fun focusedInOrca(name: String) = "\"$name\" already had an agent running in Orca; switched to it"
     override val toolsLabel = "Tools"
     override val terminalToolLabel = "Terminal"
     override val editorToolLabel = "IDE"

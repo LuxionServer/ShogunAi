@@ -39,7 +39,13 @@ sealed interface CliCommand {
         val json: Boolean = false,
     ) : CliCommand
     data class Repair(val json: Boolean = false) : CliCommand
-    data class Open(val target: String?, val herdr: Boolean = false, val agent: String? = null, val json: Boolean = false) : CliCommand
+    data class Open(
+        val target: String?,
+        val herdr: Boolean = false,
+        val agent: String? = null,
+        val json: Boolean = false,
+        val orca: Boolean = false,
+    ) : CliCommand
     data class Status(val json: Boolean = false) : CliCommand
     data class Base(val target: String? = null, val set: String? = null, val json: Boolean = false) : CliCommand
     data class Clean(
@@ -82,6 +88,7 @@ sealed interface CliCommand {
     data object HookWorktreeRemove : CliCommand
     data object HookSessionStart : CliCommand
     data object HookHerdr : CliCommand
+    data class HookOrca(val action: OrcaHookAction) : CliCommand
     data object HookAgentState : CliCommand
     data class Hooks(
         val action: HooksAction,
@@ -309,11 +316,13 @@ private fun parseRemove(rest: List<String>): CliCommand.Remove {
 private fun parseOpen(rest: List<String>): CliCommand.Open {
     var target: String? = null
     var herdr = false
+    var orca = false
     var agent: String? = null
     val remaining = ArrayDeque(rest)
     while (remaining.isNotEmpty()) {
         when (val argument = remaining.removeFirst()) {
             "--herdr" -> herdr = true
+            "--orca" -> orca = true
             "--agent" -> agent = remaining.valueOf(argument)
             else -> {
                 if (argument.startsWith("-")) throw UsageException("unknown option '$argument' for 'open'")
@@ -322,8 +331,9 @@ private fun parseOpen(rest: List<String>): CliCommand.Open {
             }
         }
     }
-    if (!herdr) throw UsageException("'open' needs where to open the worktree: --herdr")
-    return CliCommand.Open(target, herdr, agent)
+    if (herdr && orca) throw UsageException("'open' opens in one place at a time: pass either --herdr or --orca")
+    if (!herdr && !orca) throw UsageException("'open' needs where to open the worktree: --herdr or --orca")
+    return CliCommand.Open(target, herdr, agent, orca = orca)
 }
 
 private fun parseStatus(rest: List<String>): CliCommand.Status {
@@ -536,6 +546,7 @@ private fun parsePool(rest: List<String>): CliCommand {
 
 private fun parseHook(rest: List<String>): CliCommand {
     val event = rest.firstOrNull() ?: throw UsageException("'hook' needs an event: $HOOK_EVENTS")
+    if (event == "orca") return parseHookOrca(rest.drop(1))
     val command = when (event) {
         "worktree-create" -> CliCommand.HookWorktreeCreate
         "worktree-remove" -> CliCommand.HookWorktreeRemove
@@ -547,7 +558,16 @@ private fun parseHook(rest: List<String>): CliCommand {
     return noArguments("hook $event", rest.drop(1), command)
 }
 
-private const val HOOK_EVENTS = "worktree-create, worktree-remove, session-start, agent-state or herdr"
+private const val HOOK_EVENTS = "worktree-create, worktree-remove, session-start, agent-state, herdr or orca"
+
+enum class OrcaHookAction { SETUP, ARCHIVE }
+
+private fun parseHookOrca(rest: List<String>): CliCommand {
+    val name = rest.firstOrNull() ?: throw UsageException("'hook orca' needs an action: setup or archive")
+    val action = OrcaHookAction.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
+        ?: throw UsageException("unknown action '$name' for 'hook orca', expected setup or archive")
+    return noArguments("hook orca $name", rest.drop(1), CliCommand.HookOrca(action))
+}
 
 enum class HooksAction { INSTALL, UNINSTALL, STATUS }
 

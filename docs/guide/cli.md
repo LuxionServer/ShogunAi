@@ -12,6 +12,7 @@ shogun base                        # the branch this worktree's branch was creat
 shogun remove TASK-123             # remove one worktree and stop its emulator and simulator
 shogun repair                      # re-link the worktrees after the repository moved
 shogun open TASK-123 --herdr       # open a worktree in Herdr with its environment and the project's agent
+shogun open TASK-123 --orca        # the same in Orca
 shogun clean --yes                 # remove merged or missing worktrees (without --yes it only lists them)
 shogun stacks                      # the stacks detected in the repository and the providers they suggest
 shogun multirepo show              # in a multirepo: its name, repositories, defaults and agent
@@ -86,11 +87,11 @@ Lists every worktree of the repository, one per line: path, branch (or `(detache
 | Detail | Meaning |
 |---|---|
 | `main` | The main checkout. |
-| `origin=shogunai\|claude-code\|herdr\|other` | Where the worktree was created. |
+| `origin=shogunai\|claude-code\|herdr\|orca\|other` | Where the worktree was created. |
 | `base=develop` | The recorded [base](#base) of its branch. |
 | `locked` | Held by an agent session. |
 | `desktop(until 14:10)`, `desktop(waiting 1/2)` | It holds the [desktop turn](#desktop) until that time, or waits for it in that place of the line. |
-| `agents=claude(blocked, app-task-123),codex` | Agents running in it, with their state (`working`, `blocked`, `done`, `idle`) when Herdr reports it or, for Claude, when its [hooks](../agents.md#agent-states-outside-herdr) do. A Claude agent also lists, after its state, the names of its live sessions whose folder is in that worktree, as Claude Code's session registry has them (`claude(app-task-123)` when there's no state). |
+| `agents=claude(blocked, app-task-123),codex` | Agents running in it, with their state (`working`, `blocked`, `done`, `idle`) when Herdr or Orca reports it or, for Claude, when its [hooks](../agents.md#agent-states-outside-herdr) do. A Claude agent also lists, after its state, the names of its live sessions whose folder is in that worktree, as Claude Code's session registry has them (`claude(app-task-123)` when there's no state). |
 | `changes=N` | Uncommitted changes. |
 | `ahead=N behind=N` | Divergence from its upstream. |
 | `merged` | Merged into the main branch. |
@@ -139,9 +140,9 @@ Prints one compact JSON object on a single line instead of the text lines. Error
 | `repository`, `mainBranch` | The repository's path and its resolved main branch (`null` if it can't be resolved). |
 | `branch`, `head` | The checked-out branch (`null` when detached) and the commit. |
 | `main`, `locked`, `folderMissing` | The main checkout, held by an agent session, folder deleted by hand. |
-| `origin` | `shogunai`, `claude-code`, `herdr` or `other`; `null` for the main checkout. |
+| `origin` | `shogunai`, `claude-code`, `herdr`, `orca` or `other`; `null` for the main checkout. |
 | `base` | The recorded [base](#base) of its branch; `null` when none is recorded or it's detached. |
-| `agents` | The agents running in it: `name`, `state` (`working`, `blocked`, `done`, `idle`; `null` when nothing reports one), `stateSource` (`herdr`, `claude-code` or `null`), `herdrState`, the state when Herdr is the source and `null` otherwise, and `sessions`, the agent's live Claude Code sessions in that worktree (`name` and `pid`; empty for other agents or when none is found). |
+| `agents` | The agents running in it: `name`, `state` (`working`, `blocked`, `done`, `idle`; `null` when nothing reports one), `stateSource` (`herdr`, `orca`, `claude-code` or `null`), `herdrState`, the state when Herdr is the source and `null` otherwise, and `sessions`, the agent's live Claude Code sessions in that worktree (`name` and `pid`; empty for other agents or when none is found). |
 | `status` | `null` when the folder is missing or its status couldn't be read. |
 | `statusProblem` | Only present when the status couldn't be read: Git's reason. |
 | `status.uncommittedChanges`, `status.merged` | Uncommitted changes; merged into the main branch. |
@@ -213,7 +214,7 @@ Removes one linked worktree, the way the desktop app's remove does. The target i
 
 Without `--force` it refuses a worktree with uncommitted or untracked changes, or one where an agent is running (`shogun: claude is running in <path>; use --force to remove it anyway`), and exits with `1`. With `--force` it removes it anyway. The branch is kept unless you pass `--delete-branch`, which deletes it only when it's merged into the project's main branch (`deleted branch …`, or `kept branch … (not merged into the main branch)`; a kept branch doesn't make the command fail). `--force-delete-branch` deletes it even if it isn't merged.
 
-After removing it, the command stops what the repository's providers keep for that worktree: its Android emulator (`stopped emulator …`), its iOS simulator (`stopped simulator …`) and the idle Gradle daemons whose last build was in it (`stopped Gradle daemon …`). A resource that can't be stopped is reported on standard error and the exit code is `1`; the worktree is already removed by then. Its Herdr workspace is closed too. Its headless desktop app, if running, is stopped before the folder is removed. If Git can't delete the folder because a program is using it (typically a Herdr shell on Windows), the workspace and the Herdr panes inside the worktree are closed and the removal is retried once; a worktree Git had already unregistered but whose folder is left is finished by deleting that folder, and a folder still in use fails with a message saying so.
+After removing it, the command stops what the repository's providers keep for that worktree: its Android emulator (`stopped emulator …`), its iOS simulator (`stopped simulator …`) and the idle Gradle daemons whose last build was in it (`stopped Gradle daemon …`). A resource that can't be stopped is reported on standard error and the exit code is `1`; the worktree is already removed by then. Its Herdr workspace is closed too, and so are its Orca terminals while Orca is running (Orca is never started for this; a terminal that can't be closed is reported on standard error without changing the exit code). Its headless desktop app, if running, is stopped before the folder is removed. If Git can't delete the folder because a program is using it (typically a Herdr or Orca shell on Windows), the workspace, the Herdr panes inside the worktree and its Orca terminals are closed and the removal is retried once; a worktree Git had already unregistered but whose folder is left is finished by deleting that folder, and a folder still in use fails with a message saying so.
 
 ### `repair`
 
@@ -237,6 +238,12 @@ After typing the agent command, `open` waits up to 10 seconds for Herdr to detec
 
 The target is found as in `remove`, except that the main worktree is allowed. `--herdr` is the destination and is required; `--agent <name>` runs another of the project's agents, matched by name ignoring case, and an unknown name exits with `2` listing the project's agents. If Herdr isn't installed, its command fails or the agent doesn't start, the error is on standard error and the exit code is `1`.
 
+```text
+shogun open <task id | path | branch> --orca [--agent <name>]
+```
+
+Opens one worktree in [Orca](https://onorca.dev), the way the desktop app's "Open in Orca" does (see [Orca](../agents.md#orca)). Orca is started when it isn't running (up to 30 seconds), the repository is registered with Orca when needed, and the repository's non-Orca worktrees are made visible when Orca would hide this one. When one of the worktree's Orca terminals has a live agent, that terminal is focused and nothing is typed (`focused <path>'s running agent in Orca (terminal term_…)`). Otherwise a new focused terminal runs the agent command with the worktree's environment (`env 'NAME=value' … <agent>`, or PowerShell assignments on Windows), named as with `--herdr`, and `open` waits up to 10 seconds for Orca to report the agent in it (`opened <path> in Orca with Claude (terminal term_…) as session main-repo-task-123`); if it doesn't, the command fails with exit code `1`, naming the terminal and the command, and the terminal is left open. Exactly one of `--herdr` and `--orca` is required. If Orca isn't installed (the message names onorca.dev), doesn't start, or its command fails, the error is on standard error and the exit code is `1`. In a multirepo folder `--orca` is a usage error (exit `2`): groups and the multirepo agent can't be opened in Orca yet.
+
 ### `clean`
 
 ```text
@@ -259,7 +266,7 @@ A worktree where an agent is running is listed as `kept <path> (claude is runnin
 | `--down-compose-projects` | Takes down the Docker Compose projects of the removed worktrees and removes the networks and built images they leave, keeping their volumes (`took down Compose project …`, `removed image …`, `kept volume …`; `would take down Compose project …` without `--yes`). Only for repositories that declare the `docker-compose` provider; a project that can't be taken down, or Docker being unavailable, is reported on standard error without changing the exit code. |
 | `--compose-volumes` | With `--down-compose-projects`, also removes the volumes of the removed worktrees' projects. Without `--down-compose-projects` it is a usage error. |
 
-The Herdr workspaces of removed worktrees are closed too (`would close Herdr workspace of …` in the listing). A daemon, emulator or Herdr workspace that can't be stopped or closed is reported on standard error without changing the exit code.
+The Herdr workspaces and Orca terminals of removed worktrees are closed too (`would close Herdr workspace of …` and `would close Orca terminals of …` in the listing; Orca is only asked while it runs). A daemon, emulator, Herdr workspace or Orca terminal that can't be stopped or closed is reported on standard error without changing the exit code.
 
 ## Multirepos
 
@@ -479,7 +486,7 @@ The rules are the same for all of them:
 | `repair` | `repaired`: the re-linked worktree paths. |
 | `project add`, `project remove` | `action` (`added`, `alreadyRegistered` or `removed`), and the project's `id`, `name` and `repository`. |
 | `project list` | `projects`: `{ id, name, repository }`, empty without projects. |
-| `open` | `path`, `branch` (or `null` if detached), `herdr` (`opened`, `started-agent` or `focused`), `pane_id` (the agent's pane), `agent` (the started agent's name, or the one Herdr reports in the focused pane) and `session_name` (the Claude Code session's confirmed name, or `null`). In the multirepo folder with a target: `branch` and `repos`: `{ alias, path, result, pane_id, agent, session_name, error }` with `result` `opened`, `started-agent`, `focused` or `failed`. Without a target: `path`, `opened` (`false` only when focused), `herdr`, `pane_id`, `agent` and `session_name`. |
+| `open` | With `--orca`: `path`, `branch`, `orca` (`started-agent` or `focused`), `terminal` (the agent's terminal handle), `agent` and `session_name`. With `--herdr`: `path`, `branch` (or `null` if detached), `herdr` (`opened`, `started-agent` or `focused`), `pane_id` (the agent's pane), `agent` (the started agent's name, or the one Herdr reports in the focused pane) and `session_name` (the Claude Code session's confirmed name, or `null`). In the multirepo folder with a target: `branch` and `repos`: `{ alias, path, result, pane_id, agent, session_name, error }` with `result` `opened`, `started-agent`, `focused` or `failed`. Without a target: `path`, `opened` (`false` only when focused), `herdr`, `pane_id`, `agent` and `session_name`. |
 | `clean` | `dryRun`; `candidates`: `{ path, branch, reason }` with `reason` `merged` or `folder-missing`; `keptForAgents`: `{ path, agents }`; `skipped`: `{ path, reason }` (status unavailable); `removed`; `deletedBranches`; `failures`: `{ path, message }`; and `providers`: `gradleDaemonsStopped`, `mavenDaemonsStopped`, `emulatorsStopped`, `simulatorsDeleted`, `derivedDataDeleted` and, with `--down-compose-projects`, `composeProjectsDown` and `composeResources` (`removed`, `kept`, `failures`, as in `compose prune`). Without `--yes` (`dryRun: true`) `removed`, `deletedBranches` and the `providers` lists are empty. |
 | `gradle` | `daemons`: `{ pid, kind, version, memoryBytes, state, idleSince, worktree }` with `kind` `gradle` or `kotlin`, `state` `busy`, `idle`, `unknown` or `untracked`, `idleSince` in ISO-8601 UTC (only when idle) and `worktree` a path, `removed`, `other-project` or `null` outside a repository; and `totalMemoryBytes`. |
 | `gradle stop` | `stopped` (pids), `kept`: `{ pid, kind, reason }` with `reason` `busy`, `state-unknown` or `build-running`, `notDaemons` (pids) and `failures`: `{ pid, message }`. The exit code is `1` when either of the last two isn't empty. |
@@ -510,10 +517,12 @@ These commands are meant to be called by agents and tools, not typed. How to con
 | Command | Called by |
 |---|---|
 | `shogun hook worktree-create` | Claude Code's `WorktreeCreate` hook. Reads `name` and `cwd` from standard input, creates (or reuses) a provisioned worktree on `feature/<name>` starting at the HEAD of the worktree in `cwd`, and prints its path. If a post-creation command fails it still prints the path as the last line and exits with 0, with the failure on standard error, so Claude Code uses the worktree. Unapproved post-creation commands and declared variables are skipped with a note on standard error; it never asks. |
-| `shogun hook worktree-remove` | Claude Code's `WorktreeRemove` hook. Removes the worktree in `worktree_path`, deletes its branch only if it's merged into the project's main branch (a branch merged only into its own upstream is kept, with a note on standard error) and closes its Herdr workspace. |
+| `shogun hook worktree-remove` | Claude Code's `WorktreeRemove` hook. Removes the worktree in `worktree_path`, deletes its branch only if it's merged into the project's main branch (a branch merged only into its own upstream is kept, with a note on standard error) and closes its Herdr workspace and its Orca terminals. |
 | `shogun hook session-start` | Claude Code's `SessionStart` hook. Inside a Git repository, prints the context. Only when the repository is registered as a project does it append the worktree's environment to `CLAUDE_ENV_FILE` (nothing when the repository declares no `env`) and print a line naming the variables, without their values; declared variables awaiting approval are named on a line of their own, telling the agent to ask you to review them with `shogun trust`, and aren't delivered. Then come the short [workflow rules](#guide) that apply to that location, at most ten lines, starting with the precedence line and ending with a pointer to `shogun guide`. Without Herdr it leaves out the rules about `shogun open --herdr` and messaging sessions; the emulator and simulator rules appear only when the repository declares those providers. Outside a Git repository it prints nothing and exits with `0`. |
 | `shogun hook agent-state` | Claude Code's `UserPromptSubmit`, `Notification`, `Stop` and `SessionEnd` hooks. Reads the hook's JSON from standard input and records the session's state (working, blocked, done) for the worktree containing `cwd`, or removes the record on `SessionEnd`; a `Notification` of type `idle_prompt` means done and `auth_success` is ignored. When the state is working it also renews the leases of the emulator and simulator the worktree holds. It prints nothing, never blocks the session and exits with 0 also outside a repository; input that isn't JSON exits with 2. See [Agent states outside Herdr](../agents.md#agent-states-outside-herdr). |
 | `shogun hook herdr` | The ShogunAi plugin for Herdr, on `worktree.created` (provisions the worktree, skipping unapproved post-creation commands with a note) and `worktree.removed` (deletes its branch if merged into the project's main branch). Reads `HERDR_PLUGIN_EVENT`, `HERDR_PLUGIN_EVENT_JSON` and `HERDR_BIN_PATH`. |
+| `shogun hook orca setup` | Orca's `scripts.setup` in `orca.yaml`. Provisions the worktree at `ORCA_WORKTREE_PATH` like `shogun provision` (`ORCA_ROOT_PATH` finds the repository when the worktree's Git metadata can't), prints the copied files and, when the worktree is outside the project's worktrees folder, a note saying so. Exits with `2` without `ORCA_WORKTREE_PATH` and `1` when provisioning fails. See [Orca](configuration.md#orca). |
+| `shogun hook orca archive` | Orca's `scripts.archive`. Frees the emulator, simulator and idle Gradle daemons of the worktree at `ORCA_WORKTREE_PATH`, leaving the worktree and its branch to Orca, and always exits with `0`, printing what it couldn't free on standard error. Another action exits with `2`. |
 
 ## Help and version
 
