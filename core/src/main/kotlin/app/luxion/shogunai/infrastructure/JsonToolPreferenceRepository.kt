@@ -2,6 +2,7 @@ package app.luxion.shogunai.infrastructure
 
 import app.luxion.shogunai.domain.io.ToolPreferenceRepository
 import app.luxion.shogunai.domain.model.EditorId
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.TerminalId
 
 class JsonToolPreferenceRepository(
@@ -18,5 +19,11 @@ class JsonToolPreferenceRepository(
 
     override fun saveEditor(editor: EditorId?) {
         settingsFile.update { it.copy(editor = editor) }
+    }
+
+    override fun loadRunner(): RunnerId? = settingsFile.read().runner
+
+    override fun saveRunner(runner: RunnerId?) {
+        settingsFile.update { it.copy(runner = runner) }
     }
 }

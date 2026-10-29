@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.model.EditorId
 import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.RecentWorktree
 import app.luxion.shogunai.domain.model.ResourceSettings
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.SidebarOrder
 import app.luxion.shogunai.domain.model.TerminalId
 import app.luxion.shogunai.domain.model.ThemeMode
@@ -97,6 +98,7 @@ class JsonSettingsFile(
         val inactiveAfterDays: Int = DEFAULT_INACTIVE_AFTER_DAYS,
         val terminal: TerminalId? = null,
         val editor: EditorId? = null,
+        val runner: RunnerId? = null,
         val recentProjects: List<String> = emptyList(),
         val recentWorktrees: List<RecentWorktree> = emptyList(),
         val showTrayIcon: Boolean = true,

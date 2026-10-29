@@ -4,14 +4,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -21,12 +18,19 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.luxion.shogunai.domain.usecase.ProjectOwner
+import app.luxion.shogunai.ui.components.ColumnSpec
+import app.luxion.shogunai.ui.components.DataCell
+import app.luxion.shogunai.ui.components.DataHeader
+import app.luxion.shogunai.ui.components.DataRow
+import app.luxion.shogunai.ui.components.GroupedNotice
+import app.luxion.shogunai.ui.components.RowLines
+import app.luxion.shogunai.ui.components.ShogunDialog
 import app.luxion.shogunai.ui.components.DangerButton
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.LocalErrorFixActions
-import app.luxion.shogunai.ui.components.Notice
 import app.luxion.shogunai.ui.components.NoticeKind
 import app.luxion.shogunai.ui.components.StatusChip
+import app.luxion.shogunai.ui.components.ViewTitle
 import app.luxion.shogunai.ui.theme.Status
 import app.luxion.shogunai.ui.components.NeutralTextButton
 import app.luxion.shogunai.ui.components.Spacing
@@ -45,7 +49,7 @@ fun MachineViewFrame(title: String, content: @Composable ColumnScope.() -> Unit)
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.md),
         verticalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
-        Text(title, style = MaterialTheme.typography.titleLarge)
+        ViewTitle(title)
         content()
     }
 }
@@ -56,23 +60,24 @@ fun PoolUsageSection(machine: MachineResources, resource: MachineResource) {
     val usage = machine.poolOf(resource)
     if (usage != null) {
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
-            MachineDataText(strings.poolUsage(usage.inUse, usage.effectiveLimit, strings.profileName(machine.profile)))
-            if (usage.isOverLimit) StatusChip(Status.WARNING, strings.overLimit)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                MachineDataText(strings.poolUsage(usage.inUse, usage.effectiveLimit))
+                MachineStateText(" · " + strings.profileName(machine.profile))
+            }
+            if (usage.isOverLimit) StatusChip(Status.WARNING, strings.overLimitChip)
             LocalErrorFixActions.current?.let { actions ->
                 NeutralTextButton(onClick = actions.openPreferences) {
-                    Text(strings.changeInPreferences, style = MaterialTheme.typography.bodySmall)
+                    Text(strings.changeInPreferences)
                 }
             }
         }
     }
-    machine.noticesOf(resource).forEach { notice ->
-        Notice(
+    poolNoticeBanner(machine.noticesOf(resource), strings)?.let { banner ->
+        GroupedNotice(
             kind = NoticeKind.INFO,
-            message = when (val content = notice.content) {
-                is PoolNoticeContent.Released -> strings.releasedNotice(content.kind, content.released, content.forWorktree)
-                is PoolNoticeContent.Trimmed -> strings.trimmedNotice(content.count, content.limit)
-            },
-            onDismiss = { machine.dismissNotice(notice.id) },
+            summary = banner.summary,
+            details = banner.details,
+            onDismiss = { machine.dismissNotices(resource) },
         )
     }
 }
@@ -101,29 +106,57 @@ fun MachineDataText(text: String, modifier: Modifier = Modifier, color: androidx
 }
 
 @Composable
-fun MachineRowLine(content: @Composable (androidx.compose.foundation.layout.RowScope.() -> Unit)) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.xs),
-        horizontalArrangement = Arrangement.spacedBy(Spacing.md),
-        verticalAlignment = Alignment.CenterVertically,
-        content = content,
+fun DeviceLabelText(label: DeviceLabel) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        label.note?.let { MachineStateText(it) }
+        if (label.note != null && label.data != null) MachineStateText(" · ")
+        label.data?.let { MachineDataText(it) }
+    }
+}
+
+@Composable
+fun MachineStateText(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier,
     )
+}
+
+val MachineMainColumn = ColumnSpec()
+val MachineOwnerColumn = ColumnSpec(width = MachineOwnerColumnWidth)
+val MachineStateColumn = ColumnSpec(width = MachineStateColumnWidth)
+val MachineActionColumn = ColumnSpec(width = MachineActionColumnWidth)
+val MachineSizeColumn = ColumnSpec(width = 80.dp)
+val MachineDaemonStateColumn = ColumnSpec(width = 170.dp)
+
+fun machineCell(spec: ColumnSpec, content: @Composable () -> Unit): DataCell = DataCell(spec) { content() }
+
+fun machineActionCell(content: @Composable () -> Unit): DataCell = DataCell(MachineActionColumn) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+        content()
+    }
+}
+
+@Composable
+fun MachineRow(vararg cells: DataCell) {
+    DataRow(cells = cells.toList(), lines = RowLines.ONE)
 }
 
 @Composable
 fun MachineColumnHeader() {
     val strings = LocalStrings.current
-    MachineRowLine {
-        MachineHeaderText(strings.machineColumnDevice, Modifier.weight(1f))
-        MachineHeaderText(strings.machineColumnWorktree, Modifier.width(MachineOwnerColumnWidth))
-        MachineHeaderText(strings.machineColumnState, Modifier.width(MachineStateColumnWidth))
-        Spacer(Modifier.width(MachineActionColumnWidth))
-    }
-}
-
-@Composable
-private fun MachineHeaderText(text: String, modifier: Modifier = Modifier) {
-    Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = modifier)
+    DataHeader(
+        listOf(
+            MachineMainColumn to strings.machineColumnDevice,
+            MachineOwnerColumn to strings.machineColumnWorktree,
+            MachineStateColumn to strings.machineColumnState,
+            MachineActionColumn to "",
+        ),
+    )
 }
 
 @Composable
@@ -143,7 +176,7 @@ fun OwnerCell(
         Text(
             label,
             style = ShogunTheme.typography.dataSmall,
-            color = MaterialTheme.colorScheme.primary,
+            color = ShogunTheme.colors.accent,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = modifier.interactive { onOpenWorktree(owner.projectId, owner.worktreePath) },
@@ -161,11 +194,12 @@ fun MachineBusy(isBusy: Boolean) {
 @Composable
 fun ConfirmDeleteOrphansDialog(message: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     val strings = LocalStrings.current
-    AlertDialog(
+    ShogunDialog(
+        title = strings.confirmDeleteOrphansTitle,
         onDismissRequest = onDismiss,
-        title = { Text(strings.confirmDeleteOrphansTitle) },
-        text = { Text(message) },
-        confirmButton = { DangerButton(onClick = onConfirm) { Text(strings.deleteOrphans) } },
-        dismissButton = { NeutralTextButton(onClick = onDismiss) { Text(strings.cancel) } },
-    )
+        confirm = { DangerButton(onClick = onConfirm) { Text(strings.deleteOrphans) } },
+        dismiss = { NeutralTextButton(onClick = onDismiss) { Text(strings.cancel) } },
+    ) {
+        Text(message)
+    }
 }

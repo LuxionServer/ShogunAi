@@ -580,6 +580,18 @@ class MultirepoSetupTest {
     }
 
     @Test
+    fun `a repository row offers rename only while its alias is edited`() = runComposeUiTest {
+        val setup = declaredSetup()
+        val state = MultirepoSettingsState(product, setup, CoroutineScope(Dispatchers.Unconfined))
+        setContent { MaterialTheme { MultirepoSettingsView(state, onClose = {}, onDeleted = {}, pickFolder = { _, _ -> null }) } }
+
+        onNodeWithText("Rename").assertDoesNotExist()
+        onNodeWithTag("repository-alias-app").performScrollTo().performTextInput("x")
+
+        onNodeWithText("Rename").assertIsDisplayed()
+    }
+
+    @Test
     fun `the settings return a turned off workspace to detection`() = runComposeUiTest {
         val setup = workspaceSetup(WorkspaceSetting(enabled = false))
         val state = MultirepoSettingsState(product, setup, CoroutineScope(Dispatchers.Unconfined))

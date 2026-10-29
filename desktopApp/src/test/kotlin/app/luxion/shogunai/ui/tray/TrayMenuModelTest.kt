@@ -4,7 +4,12 @@ import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.usecase.Activity
 import app.luxion.shogunai.ui.i18n.EnglishStrings
-import app.luxion.shogunai.ui.worktree.OpenKind
+import app.luxion.shogunai.domain.model.RunnerId
+import app.luxion.shogunai.ui.actions.ActionId
+import app.luxion.shogunai.ui.actions.OpenTarget
+import app.luxion.shogunai.ui.actions.TrayActionEntries
+import app.luxion.shogunai.ui.actions.catalogFor
+import app.luxion.shogunai.ui.actions.trayEntries
 import app.luxion.shogunai.ui.worktree.WorktreeRef
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -25,9 +30,9 @@ class TrayMenuModelTest {
     private fun worktree(
         activity: Activity = Activity.Stopped,
         isLoaded: Boolean = true,
-        openActions: List<TrayOpenAction> = emptyList(),
+        actions: TrayActionEntries? = catalogFor().trayEntries(),
         name: String = "feature/TASK-123",
-    ) = TrayWorktree(ref, name, projectName = "api", activity, isLoaded, openActions)
+    ) = TrayWorktree(ref, name, projectName = "api", activity, isLoaded, actions)
 
     private fun menu(projects: List<Project> = emptyList(), worktrees: List<TrayWorktree> = emptyList()) =
         buildTrayMenu(strings, projects, worktrees)
@@ -72,35 +77,36 @@ class TrayMenuModelTest {
     }
 
     @Test
-    fun `a worktree submenu offers the same launch actions as the detail`() {
-        val actions = listOf(
-            TrayOpenAction(OpenKind.TERMINAL, "Open in iTerm2"),
-            TrayOpenAction(OpenKind.EDITOR, "Open in VS Code"),
-            TrayOpenAction(OpenKind.FOLDER, "Open folder"),
-        )
-
-        val submenu = submenuOf(menu(worktrees = listOf(worktree(openActions = actions))))
+    fun `a worktree submenu offers the default runner, open with and copy from the catalog`() {
+        val submenu = submenuOf(menu(worktrees = listOf(worktree(actions = catalogFor(defaultRunner = RunnerId.ORCA).trayEntries()))))
 
         assertEquals(
             listOf(
                 TrayEntry.Item("Show in ShogunAi", TrayAction.ShowWorktree(ref)),
-                TrayEntry.Item("Copy launch command", TrayAction.CopyLaunchCommand(ref)),
-                TrayEntry.Item("Open in iTerm2", TrayAction.Open(ref, OpenKind.TERMINAL)),
-                TrayEntry.Item("Open in VS Code", TrayAction.Open(ref, OpenKind.EDITOR)),
-                TrayEntry.Item("Open folder", TrayAction.Open(ref, OpenKind.FOLDER)),
+                TrayEntry.Item("Open in Orca", TrayAction.Run(ref, ActionId.Open(OpenTarget.ORCA))),
+                TrayEntry.Submenu(
+                    "Open with",
+                    listOf(
+                        TrayEntry.Item("Open in Herdr", TrayAction.Run(ref, ActionId.Open(OpenTarget.HERDR))),
+                        TrayEntry.Item("Open in iTerm2", TrayAction.Run(ref, ActionId.Open(OpenTarget.TERMINAL))),
+                        TrayEntry.Item("Open in IntelliJ IDEA", TrayAction.Run(ref, ActionId.Open(OpenTarget.EDITOR))),
+                        TrayEntry.Item("Open folder", TrayAction.Run(ref, ActionId.Open(OpenTarget.FOLDER))),
+                    ),
+                ),
+                TrayEntry.Item("Copy launch command", TrayAction.Run(ref, ActionId.CopyLaunchCommand)),
             ),
             submenu.entries,
         )
     }
 
     @Test
-    fun `only the available launch actions are offered`() {
-        val actions = listOf(TrayOpenAction(OpenKind.FOLDER, "Open folder"))
+    fun `only the installed tools are offered`() {
+        val actions = catalogFor(runners = emptyList(), defaultRunner = null, terminal = null, editor = null).trayEntries()
 
-        val submenu = submenuOf(menu(worktrees = listOf(worktree(openActions = actions))))
+        val submenu = submenuOf(menu(worktrees = listOf(worktree(actions = actions))))
 
         assertEquals(
-            listOf("Show in ShogunAi", "Copy launch command", "Open folder"),
+            listOf("Show in ShogunAi", "Open folder", "Copy launch command"),
             submenu.entries.filterIsInstance<TrayEntry.Item>().map { it.label },
         )
     }

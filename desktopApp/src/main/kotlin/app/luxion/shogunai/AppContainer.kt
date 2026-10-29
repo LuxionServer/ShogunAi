@@ -96,6 +96,7 @@ import app.luxion.shogunai.domain.io.RepositoryTrust
 import app.luxion.shogunai.domain.io.ShellPreferenceRepository
 import app.luxion.shogunai.domain.io.ThemePreferenceRepository
 import app.luxion.shogunai.domain.model.EditorId
+import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.TerminalId
 import app.luxion.shogunai.domain.usecase.OpenWorktreeInTerminalUseCase
 import app.luxion.shogunai.infrastructure.CommandEditorLauncher
@@ -388,7 +389,7 @@ class AppContainer {
     )
     val tools = ToolsPreferences(
         JsonToolPreferenceRepository(settingsFile),
-        LocalToolDetector(shellCommandExecutor, editorResolver = editorResolver),
+        LocalToolDetector(shellCommandExecutor, editorResolver = editorResolver, isRunnerInstalled = ::isRunnerInstalled),
     )
     private val terminalLaunchers = listOf(
         MacTerminalLauncher(TerminalId.TERMINAL, shellCommandExecutor),
@@ -453,6 +454,11 @@ class AppContainer {
     private val herdrConfig = HerdrConfigFile()
     private val herdrClient = CliHerdrClient(shellCommandExecutor)
     private val orcaClient = CliOrcaClient(shellCommandExecutor)
+
+    private fun isRunnerInstalled(runner: RunnerId): Boolean = when (runner) {
+        RunnerId.HERDR -> herdrClient.isInstalled()
+        RunnerId.ORCA -> orcaClient.isInstalled()
+    }
     private val orcaReader = OrcaWorktreeReader(orcaClient, JsonOrcaWorkspaceStore())
     private val resourceLimitsRepository: ResourceLimitsRepository = JsonResourceLimitsRepository(settingsFile)
     private val resolveResourceLimits = ResolveResourceLimitsUseCase(resourceLimitsRepository, JvmMachineCapacity())
