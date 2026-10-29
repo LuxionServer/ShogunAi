@@ -38,6 +38,7 @@ Rules:
 ./gradlew :desktopApp:hotRun --auto  # run with hot reload
 ./gradlew :cli:run --args="status"   # run the shogun CLI
 ./gradlew test                       # run tests for all modules
+./gradlew :cli:e2eTest               # run only the CLI's end-to-end tests
 mkdocs serve                         # serve the docs locally
 ```
 

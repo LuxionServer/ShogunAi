@@ -15,7 +15,7 @@ graph LR
 
 1. **Crear la rama** `release/X.X.X` (donde `X.X.X` es la versión a publicar) desde `develop`, escribir la feature principal de la release en `.github/release-title` (ver [Título de la release](#título-de-la-release)) y sus notas en `.github/release-notes/X.X.X.md` y `X.X.X.es.md` (ver [Notas de la release](#notas-de-la-release)).
 2. **Validar** — cada push a `release/**` dispara el workflow `Tests` (`.github/workflows/tests.yml`), que corre `./gradlew test`. Sirve para iterar y corregir antes de abrir la PR. El mismo workflow corre también en cada pull request hacia `develop` o una rama `epic/**` y en cada push a `develop`, así que las regresiones se detectan antes de llegar a una rama de release.
-3. **Abrir la PR** de `release/X.X.X` a `main` y revisarla como cualquier otra.
+3. **Abrir la PR** de `release/X.X.X` a `main` y revisarla como cualquier otra. Mientras está abierta, hacer el [ensayo en una cuenta limpia](clean-account-rehearsal.md) con el `.dmg` compilado desde la rama.
 4. **Mergear** — al mergearse una PR cuya rama de origen matchea `release/*`, el workflow `Release` (`.github/workflows/release.yml`):
       1. valida la versión tomada del nombre de la rama (o del tag): debe ser `X.Y.Z` solo con dígitos; si no, el run falla antes de compilar nada,
       2. ejecuta la suite completa de tests sobre el commit de la release en Linux, macOS y Windows (`.github/workflows/test-suite.yml`, el mismo que usa `Tests`). Nada más corre hasta que pasa,
