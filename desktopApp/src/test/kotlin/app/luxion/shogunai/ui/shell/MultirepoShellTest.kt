@@ -1,8 +1,10 @@
 package app.luxion.shogunai.ui.shell
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -135,9 +137,6 @@ class MultirepoShellTest {
                     activeCount = 9,
                     totalWorktreeCount = 12,
                     activityOf = { ProjectActivity.NONE },
-                    machineResources = emptyList(),
-                    machineSummaries = emptyMap(),
-                    selectedMachine = null,
                     rail = false,
                     onSelectActive = {},
                     onSelectAll = {},
@@ -145,7 +144,6 @@ class MultirepoShellTest {
                     onEditProject = {},
                     onRemoveProject = {},
                     onAddProject = {},
-                    onSelectMachine = {},
                     onToggle = {},
                     multirepos = listOf(
                         SidebarMultirepo(folder, "product", listOf(api, app, docs), ProjectActivity(3, listOf("codex")), collapsed = collapsed),
@@ -178,9 +176,6 @@ class MultirepoShellTest {
                     activeCount = 0,
                     totalWorktreeCount = 0,
                     activityOf = { ProjectActivity.NONE },
-                    machineResources = emptyList(),
-                    machineSummaries = emptyMap(),
-                    selectedMachine = null,
                     rail = false,
                     onSelectActive = {},
                     onSelectAll = {},
@@ -188,7 +183,6 @@ class MultirepoShellTest {
                     onEditProject = {},
                     onRemoveProject = {},
                     onAddProject = {},
-                    onSelectMachine = {},
                     onToggle = {},
                     multirepos = listOf(SidebarMultirepo(folder, "product", listOf(api, app), ProjectActivity.NONE, collapsed = true)),
                 )
@@ -263,5 +257,91 @@ class MultirepoShellTest {
         )
 
         assertTrue(registered.isEmpty())
+    }
+
+    @Test
+    fun `the workspace project is labelled with its alias inside its multirepo`() {
+        repository.save(workspaceProject)
+        known = listOf(workspaceMultirepo())
+        val viewModel = viewModel()
+        val membership = viewModel.memberships.single()
+
+        val labels = multirepoChildLabels(membership)
+
+        assertEquals(mapOf("workspace" to "workspace"), labels)
+        val folderEntry = sidebarEntries(
+            viewModel.projects,
+            listOf(SidebarMultirepo(folder, "product", listOf(workspaceProject, app), ProjectActivity.NONE, collapsed = false, labels = labels)),
+        ).filterIsInstance<SidebarEntry.FolderEntry>().single()
+        assertEquals(listOf("app", "workspace"), folderEntry.multirepo.projects.map(folderEntry.multirepo::labelOf))
+    }
+
+    @Test
+    fun `a multirepo without a workspace repository keeps its projects' names`() {
+        val viewModel = viewModel()
+
+        assertEquals(emptyMap(), multirepoChildLabels(viewModel.memberships.single()))
+    }
+
+    @Test
+    fun `the sidebar never shows the multirepo's name twice`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                SidebarWith(
+                    projects = listOf(workspaceProject, app, tools),
+                    multirepo = SidebarMultirepo(
+                        folder,
+                        "product",
+                        listOf(workspaceProject, app),
+                        ProjectActivity.NONE,
+                        collapsed = false,
+                        labels = mapOf(workspaceProject.id to "workspace"),
+                    ),
+                )
+            }
+        }
+
+        assertEquals(1, onAllNodesWithText("product").fetchSemanticsNodes().size)
+        onNodeWithText("workspace").assertIsDisplayed()
+        assertTrue(onAllNodesWithText("Machine").fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun `children start right of the multirepo's name and top-level projects align with it`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                SidebarWith(
+                    projects = listOf(api, app, tools),
+                    multirepo = SidebarMultirepo(folder, "product", listOf(api, app), ProjectActivity.NONE, collapsed = false),
+                )
+            }
+        }
+
+        val folderLeft = onNodeWithText("product", useUnmergedTree = true).getBoundsInRoot().left
+        assertEquals(folderLeft, onNodeWithText("tools", useUnmergedTree = true).getBoundsInRoot().left)
+        assertTrue(onNodeWithText("api", useUnmergedTree = true).getBoundsInRoot().left > folderLeft)
+        assertTrue(onNodeWithText("Projects", useUnmergedTree = true).getBoundsInRoot().left < folderLeft)
+    }
+
+    @Composable
+    private fun SidebarWith(projects: List<Project>, multirepo: SidebarMultirepo) {
+        Sidebar(
+            projects = projects,
+            selectedProjectId = null,
+            isActiveSelected = false,
+            isAllSelected = false,
+            activeCount = 0,
+            totalWorktreeCount = 0,
+            activityOf = { ProjectActivity.NONE },
+            rail = false,
+            onSelectActive = {},
+            onSelectAll = {},
+            onSelectProject = {},
+            onEditProject = {},
+            onRemoveProject = {},
+            onAddProject = {},
+            onToggle = {},
+            multirepos = listOf(multirepo),
+        )
     }
 }

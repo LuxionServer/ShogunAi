@@ -6,6 +6,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.platform.Font
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 
 val Geist = FontFamily(
@@ -20,9 +21,16 @@ val GeistMono = FontFamily(
     Font(resource = "fonts/GeistMono-SemiBold.ttf", weight = FontWeight.SemiBold),
 )
 
-data class ShogunTextStyles(val data: TextStyle, val dataSmall: TextStyle)
+data class ShogunTextStyles(
+    val data: TextStyle,
+    val dataSmall: TextStyle,
+    val viewTitle: TextStyle,
+    val sectionTitle: TextStyle,
+    val eyebrow: TextStyle,
+)
 
 private const val TABULAR_FIGURES = "tnum"
+private const val EYEBROW_LETTER_SPACING_EM = 0.06f
 
 private fun geist(weight: FontWeight, size: TextUnit, lineHeight: TextUnit) = TextStyle(
     fontFamily = Geist,
@@ -31,9 +39,9 @@ private fun geist(weight: FontWeight, size: TextUnit, lineHeight: TextUnit) = Te
     lineHeight = lineHeight,
 )
 
-private fun geistMono(size: TextUnit, lineHeight: TextUnit) = TextStyle(
+private fun geistMono(size: TextUnit, lineHeight: TextUnit, weight: FontWeight = FontWeight.Normal) = TextStyle(
     fontFamily = GeistMono,
-    fontWeight = FontWeight.Normal,
+    fontWeight = weight,
     fontSize = size,
     lineHeight = lineHeight,
     fontFeatureSettings = TABULAR_FIGURES,
@@ -60,4 +68,7 @@ val ShogunTypography = Typography(
 val ShogunDataTextStyles = ShogunTextStyles(
     data = geistMono(13.sp, 18.sp),
     dataSmall = geistMono(12.sp, 16.sp),
+    viewTitle = geist(FontWeight.SemiBold, 16.sp, 22.sp),
+    sectionTitle = geist(FontWeight.SemiBold, 13.sp, 18.sp),
+    eyebrow = geistMono(10.5.sp, 14.sp, FontWeight.Medium).copy(letterSpacing = EYEBROW_LETTER_SPACING_EM.em),
 )

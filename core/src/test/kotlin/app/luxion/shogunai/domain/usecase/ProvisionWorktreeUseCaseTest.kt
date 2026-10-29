@@ -10,6 +10,7 @@ import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.failure
 import app.luxion.shogunai.domain.FakeShellCommandExecutor.Companion.success
 import app.luxion.shogunai.domain.io.ApprovalDecision
 import app.luxion.shogunai.domain.io.RepositoryApproval
+import app.luxion.shogunai.domain.model.FlutterPubGet
 import app.luxion.shogunai.domain.model.ProjectConfig
 import app.luxion.shogunai.domain.executor.CommandExecutionException
 import app.luxion.shogunai.domain.model.EnvironmentDeclaration
@@ -211,12 +212,13 @@ class ProvisionWorktreeUseCaseTest {
 
         val result = ProvisionWorktreeUseCase(
             config, exec, fileManager, linkingProvisioning,
-            environment = { _, _ -> order += "environment"; PreparedWorktree(PodsPreparation(cloned = listOf("iosApp"))) },
+            environment = { _, _ -> order += "environment"; PreparedWorktree(PodsPreparation(cloned = listOf("iosApp")), FlutterPubGet.Resolved) },
             trust = approvedTrust,
         )(linked).getOrThrow()
 
         assertEquals(listOf("environment", "hook", "hook"), order)
         assertEquals(listOf("iosApp"), result.pods.cloned)
+        assertEquals(FlutterPubGet.Resolved, result.flutter)
         val hooks = exec.executedCommands.zip(exec.workingDirectories).filter { it.first.first() in setOf("npm", "direnv") }
         assertEquals(listOf(listOf("npm", "install") to linked, listOf("direnv", "allow") to linked), hooks)
     }

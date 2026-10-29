@@ -1,6 +1,5 @@
 package app.luxion.shogunai
 
-import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.ui.multirepo.MultirepoCatalog
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -14,6 +13,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.type
+import app.luxion.shogunai.ui.actions.ActionId
+import app.luxion.shogunai.ui.isMacOs
 import androidx.compose.ui.platform.LocalClipboard
 import app.luxion.shogunai.diagnostics.SecondaryWindowErrorHandler
 import app.luxion.shogunai.diagnostics.UiFreezeWatchdog
@@ -35,6 +43,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.luxion.shogunai.cli.runShogun
+import app.luxion.shogunai.ui.components.OpenMenus
 import app.luxion.shogunai.ui.components.TextInputFocus
 import app.luxion.shogunai.infrastructure.FileAppInstanceLock
 import app.luxion.shogunai.infrastructure.FileAppRequestChannel
@@ -209,6 +218,7 @@ private fun openWindow() = application {
     }
 
     val escapeWorktreeView = remember { mutableStateOf<(() -> Unit)?>(null) }
+    val openSelectedWorktree = remember { mutableStateOf<(() -> Unit)?>(null) }
     val trayLaunches = remember { TrayLaunchWatch() }
     val shellViewModelForTray = shellViewModelHolder.value
     val boardForTray = boardHolder.value
@@ -254,8 +264,14 @@ private fun openWindow() = application {
         title = "ShogunAi",
         icon = rememberAppIconPainter(),
         onPreviewKeyEvent = { event ->
-            if (event.key == Key.Escape) escapeWorktreeView.value?.invoke()
-            false
+            if (event.key == Key.Escape && event.type == KeyEventType.KeyUp && !OpenMenus.handleEscape()) escapeWorktreeView.value?.invoke()
+            val openSelected = openSelectedWorktree.value
+            if (openSelected != null && !TextInputFocus.isActive && isFormerOpenShortcut(event)) {
+                openSelected()
+                true
+            } else {
+                false
+            }
         },
     ) {
         LaunchedEffect(Unit) { window.minimumSize = MinimumWindowSize }
@@ -292,17 +308,22 @@ private fun openWindow() = application {
             }
         }
         val worktreeActions = shellViewModel.worktreeActions
-        SideEffect { escapeWorktreeView.value = worktreeActions?.onEscape }
+        SideEffect {
+            escapeWorktreeView.value = worktreeActions?.onEscape
+            openSelectedWorktree.value = worktreeActions?.let { actions ->
+                {
+                    actions.menuBar(appearance.strings).firstOrNull { it.id is ActionId.Open }?.let { actions.onRun(it.id) }
+                }
+            }
+        }
         AppMenuBar(
             strings = appearance.strings,
             onSave = shellViewModel::requestSaveSettings.takeIf { shellViewModel.canSaveSettings },
             onAddProject = shellViewModel::addProject,
             onNewWorktree = shellViewModel::requestNewWorktree.takeIf { shellViewModel.canCreateWorktree },
             onFind = worktreeActions?.onFind,
-            onCopySelectedLaunchCommand = worktreeActions?.onCopySelectedLaunchCommand,
-            onOpenSelectedInRunner = worktreeActions?.onOpenSelectedInRunner,
-            runner = appContainer.tools.defaultRunner ?: RunnerId.HERDR,
-            onDeleteSelectedWorktree = worktreeActions?.onDeleteSelectedWorktree,
+            worktreeMenu = worktreeActions?.menuBar?.invoke(appearance.strings),
+            onWorktreeAction = { id -> worktreeActions?.onRun?.invoke(id) },
             onClearSelection = worktreeActions?.onClearSelection,
             hasWorktreeSelection = worktreeActions?.hasSelection?.invoke() == true,
             isEditingText = TextInputFocus.isActive,
@@ -378,17 +399,18 @@ private fun runTrayAction(
             showMainWindow()
             viewModel.navigate(ShellDestination.All()) { board.revealInAllWorktrees(action.ref) }
         }
-        is TrayAction.CopyLaunchCommand -> {
+        is TrayAction.Run -> {
             launches.started(action.ref, board.actionErrors[action.ref])
-            board.copyLaunchCommand(action.ref)
-        }
-        is TrayAction.Open -> {
-            launches.started(action.ref, board.actionErrors[action.ref])
-            board.open(action.ref, action.kind)
+            board.perform(action.ref, action.id)
         }
         TrayAction.Preferences -> openPreferences()
         TrayAction.Quit -> quit()
     }
+}
+
+private fun isFormerOpenShortcut(event: KeyEvent): Boolean {
+    val modifierPressed = if (isMacOs) event.isMetaPressed else event.isCtrlPressed
+    return event.type == KeyEventType.KeyDown && event.key == Key.E && modifierPressed && !event.isShiftPressed && !event.isAltPressed
 }
 
 private fun requestAppForeground() {

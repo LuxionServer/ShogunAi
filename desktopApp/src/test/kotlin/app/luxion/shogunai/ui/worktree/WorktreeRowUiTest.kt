@@ -8,7 +8,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -38,6 +42,7 @@ import java.time.Duration
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
@@ -59,6 +64,9 @@ class WorktreeRowUiTest {
         emulator: WorktreeEmulator? = null,
         desktopTurn: WorktreeDesktopTurn? = null,
         headlessApp: HeadlessAppProcess? = null,
+        projectName: String? = null,
+        groupTag: String? = null,
+        alias: String? = null,
     ) = worktreeRowModel(
         worktree = Worktree(path = "/home/dev/projects/${branch.substringAfterLast('/')}", branch = branch),
         status = WorktreeStatusState.Loaded(status),
@@ -67,10 +75,12 @@ class WorktreeRowUiTest {
         emulator = emulator,
         simulator = null,
         origin = null,
-        projectName = null,
+        projectName = projectName,
         inactiveAfter = Duration.ofDays(3),
         now = now,
         strings = EnglishStrings,
+        alias = alias,
+        groupTag = groupTag,
         desktopTurn = desktopTurn,
         headlessApp = headlessApp,
     )
@@ -81,13 +91,9 @@ class WorktreeRowUiTest {
             model = model,
             selected = false,
             isCopied = false,
-            isMain = false,
             compact = compact,
             onSelect = {},
             onCopyLaunchCommand = {},
-            onCopyPath = {},
-            onOpenInHerdr = {},
-            onRemove = {},
         )
     }
 
@@ -114,6 +120,83 @@ class WorktreeRowUiTest {
             assertEquals(2, positions.size, tag)
             assertEquals(positions[0], positions[1], tag)
         }
+    }
+
+    @Test
+    fun `the second line separates the group tag from the project`() = runComposeUiTest {
+        setContent { MaterialTheme { Row(model("feature/TASK-7", projectName = "main-repo", groupTag = "TASK-7 · +app")) } }
+
+        onNodeWithText("TASK-7 · +app", useUnmergedTree = true).assertIsDisplayed()
+        onNodeWithText("· main-repo", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a compact row shows the compact activity`() = runComposeUiTest {
+        setContent { MaterialTheme { Column(Modifier.width(500.dp)) { Row(model("feature/TASK-1"), compact = true) } } }
+
+        onNodeWithText("3 h", useUnmergedTree = true).assertIsDisplayed()
+        onNodeWithText("commit 3 hours ago", useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun `a wide row shows the full activity`() = runComposeUiTest {
+        setContent { MaterialTheme { Row(model("feature/TASK-1")) } }
+
+        onNodeWithText("commit 3 hours ago", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a measured alias column shows the workspace alias whole`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                val width = aliasColumnWidth(listOf("workspace", "app", "api"))
+                Column(Modifier.width(900.dp)) {
+                    WorktreeRow(
+                        model = model("feature/TASK-1", alias = "workspace"),
+                        selected = false,
+                        isCopied = false,
+                        aliasWidth = width,
+                        onSelect = {},
+                        onCopyLaunchCommand = {},
+                    )
+                }
+            }
+        }
+
+        val layouts = mutableListOf<TextLayoutResult>()
+        onNodeWithTag(AliasTag, useUnmergedTree = true).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        assertTrue(layouts.single().fitsWidth())
+    }
+
+    @Test
+    fun `a narrow alias column truncates a long alias`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                Column(Modifier.width(900.dp)) {
+                    WorktreeRow(
+                        model = model("feature/TASK-1", alias = "a-very-long-repository-alias"),
+                        selected = false,
+                        isCopied = false,
+                        aliasWidth = aliasColumnWidth(listOf("a-very-long-repository-alias")),
+                        onSelect = {},
+                        onCopyLaunchCommand = {},
+                    )
+                }
+            }
+        }
+
+        val layouts = mutableListOf<TextLayoutResult>()
+        onNodeWithTag(AliasTag, useUnmergedTree = true).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        assertFalse(layouts.single().fitsWidth())
+    }
+
+    private fun TextLayoutResult.fitsWidth(): Boolean = multiParagraph.maxIntrinsicWidth <= size.width
+
+    @Test
+    fun `the alias column fits the usual aliases and is clamped`() {
+        assertEquals(48.dp, fitAliasColumnWidth(20.dp))
+        assertEquals(80.dp, fitAliasColumnWidth(80.dp))
+        assertEquals(128.dp, fitAliasColumnWidth(300.dp))
     }
 
     @Test
@@ -153,14 +236,14 @@ class WorktreeRowUiTest {
             }
         }
 
-        assertEquals(0, onAllNodesWithText("Claude · blocked", useUnmergedTree = true).fetchSemanticsNodes().size)
+        assertEquals(0, onAllNodesWithText("Claude · needs you", useUnmergedTree = true).fetchSemanticsNodes().size)
         assertEquals(2, onAllNodesWithTag(ExecutionTag, useUnmergedTree = true).fetchSemanticsNodes().size)
         val widths = onAllNodesWithTag(ExecutionTag, useUnmergedTree = true).fetchSemanticsNodes().map { it.size.width }
         assertTrue(widths.all { it == widths.first() })
-        onNodeWithContentDescription("Claude · blocked", useUnmergedTree = true).performMouseInput { moveTo(center) }
+        onNodeWithContentDescription("Claude · needs you", useUnmergedTree = true).performMouseInput { moveTo(center) }
         mainClock.advanceTimeBy(2_000)
 
-        onNodeWithText("Claude: blocked").assertIsDisplayed()
+        onNodeWithText("Claude · needs you\nOnly its process was found").assertIsDisplayed()
     }
 
     @Test
@@ -197,7 +280,7 @@ class WorktreeRowUiTest {
         val blocked = model("feature/TASK-1", agents = listOf(RunningAgent("claude", AgentState.BLOCKED)))
         setContent { MaterialTheme { Column(Modifier.width(900.dp)) { Row(blocked) } } }
 
-        onNodeWithText("Claude · blocked").assertIsDisplayed()
+        onNodeWithText("Claude · needs you", useUnmergedTree = true).assertIsDisplayed()
     }
 
     @Test

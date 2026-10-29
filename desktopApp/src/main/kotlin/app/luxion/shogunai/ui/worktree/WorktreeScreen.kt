@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.worktree
 
+import app.luxion.shogunai.ui.components.ButtonSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -16,53 +17,61 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.Grouping
 import app.luxion.shogunai.domain.model.HerdrOutcome
 import app.luxion.shogunai.domain.model.OrcaOutcome
 import app.luxion.shogunai.domain.model.WorktreeSort
 import app.luxion.shogunai.domain.model.Project
 import app.luxion.shogunai.ui.components.DangerButton
-import app.luxion.shogunai.ui.components.DangerTextButton
+import app.luxion.shogunai.ui.components.AgentIndicator
+import java.time.Instant
+import app.luxion.shogunai.ui.components.DisabledReason
 import app.luxion.shogunai.ui.components.DropdownSelector
+import app.luxion.shogunai.ui.components.EmptyState
+import app.luxion.shogunai.ui.components.Field
+import app.luxion.shogunai.ui.components.FieldIconAction
 import app.luxion.shogunai.ui.components.IconAction
 import app.luxion.shogunai.ui.components.InlineProgress
 import app.luxion.shogunai.ui.components.NeutralTextButton
+import app.luxion.shogunai.ui.components.Notice
+import app.luxion.shogunai.ui.components.NoticeKind
 import app.luxion.shogunai.ui.components.PrimaryButton
 import app.luxion.shogunai.ui.components.SecondaryButton
 import app.luxion.shogunai.ui.components.SegmentedSelector
 import app.luxion.shogunai.ui.components.ErrorNotice
+import app.luxion.shogunai.ui.components.ShogunDialog
 import app.luxion.shogunai.ui.components.Spacing
-import app.luxion.shogunai.ui.components.trackTextInputFocus
+import app.luxion.shogunai.ui.components.StateAction
+import app.luxion.shogunai.ui.components.ViewTitle
 import app.luxion.shogunai.ui.components.handPointer
 import app.luxion.shogunai.ui.components.onNewItemShortcut
+import app.luxion.shogunai.ui.actions.ActionId
+import app.luxion.shogunai.ui.actions.OpenTarget
+import app.luxion.shogunai.ui.actions.PerformAction
+import app.luxion.shogunai.ui.actions.ViewActionContext
+import app.luxion.shogunai.ui.actions.toMenu
+import app.luxion.shogunai.ui.actions.viewCatalog
+import app.luxion.shogunai.ui.actions.viewOverflow
+import app.luxion.shogunai.ui.components.MoreMenuButton
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.machine.MachineResource
@@ -73,6 +82,8 @@ import app.luxion.shogunai.ui.multirepo.multirepoNoticeMessage
 import app.luxion.shogunai.ui.shell.LocalAppMessages
 import app.luxion.shogunai.ui.shell.MessageAction
 import java.io.File
+import app.luxion.shogunai.ui.theme.ShogunLayout
+import app.luxion.shogunai.ui.theme.ShogunTheme
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -118,11 +129,8 @@ fun WorktreeScreen(
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
+            ViewTitle(
                 multirepo?.name ?: filteredProject?.name ?: if (board.isActiveView) strings.activeWorktrees else strings.allWorktrees,
-                style = MaterialTheme.typography.headlineSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
             if (board.shownProjects.any { it.id.let(board::holder)?.isLoading == true }) InlineProgress()
@@ -135,31 +143,46 @@ fun WorktreeScreen(
                 )
             }
             if (multirepo != null) {
-                board.multirepoAgentsOf(multirepo.folder).forEach { agent ->
-                    Text(strings.agentLabel(agent.name, agent.state), style = MaterialTheme.typography.bodySmall)
+                agentIndicator(board.multirepoAgentsOf(multirepo.folder), board.multirepoAgentsReadAt, Instant.now(), strings)?.let {
+                    AgentIndicator(it)
                 }
                 IconAction(icon = Icons.Default.Settings, label = strings.multirepoSettingsTitle, onClick = onOpenMultirepoSettings)
-                val canOpenAgent = !needsReview && !board.isOpeningMultirepoAgent
-                if (board.isOrcaInstalled) {
-                    MultirepoAgentMenu(enabled = canOpenAgent, runners = board.runnersInOrder) { runner ->
-                        if (runner == RunnerId.ORCA) board.openMultirepoAgentInOrca() else board.openMultirepoAgent()
-                    }
-                } else {
-                    SecondaryButton(onClick = board::openMultirepoAgent, enabled = canOpenAgent) {
-                        Text(strings.openMultirepoAgent)
-                    }
+            }
+            val reviewReason = CleanupBlock.NeedsReview.describe(strings).takeIf { needsReview }
+            val catalog = viewCatalog(
+                ViewActionContext(
+                    isMultirepo = multirepo != null,
+                    isProjectView = filteredProject != null,
+                    createBlocked = when {
+                        multirepo != null && multirepo.aliases.isEmpty() -> strings.addRepositoryFirst
+                        multirepo == null && board.projects.isEmpty() -> strings.addProjectFirst
+                        else -> null
+                    },
+                    cleanUpBlocked = reviewReason ?: board.cleanUpBlock()?.describe(strings),
+                    isOpeningMultirepoAgent = board.isOpeningMultirepoAgent,
+                    multirepoNeedsReview = reviewReason,
+                    orcaInstalled = board.isOrcaInstalled,
+                    defaultRunner = board.defaultRunner,
+                ),
+                strings,
+            )
+            val performView: PerformAction = { spec, _ ->
+                when (spec.id) {
+                    ActionId.OpenMultirepoAgent(OpenTarget.HERDR) -> board.openMultirepoAgent()
+                    ActionId.OpenMultirepoAgent(OpenTarget.ORCA) -> board.openMultirepoAgentInOrca()
+                    ActionId.CleanUp -> board.openCleanup()
+                    ActionId.NewChange -> board.openNewChange()
+                    ActionId.NewWorktree -> board.openCreateDialog()
+                    else -> Unit
                 }
             }
-            DangerTextButton(onClick = { board.openCleanup() }, enabled = !needsReview && board.canCleanUp()) { Text(strings.cleanUp) }
-            if (multirepo != null) {
-                PrimaryButton(onClick = board::openNewChange, enabled = !needsReview && multirepo.aliases.isNotEmpty()) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(ButtonIconSize))
-                    Text(strings.newChange, modifier = Modifier.padding(start = Spacing.sm))
-                }
-            } else {
-                PrimaryButton(onClick = { board.openCreateDialog() }, enabled = board.projects.isNotEmpty()) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(ButtonIconSize))
-                    Text(strings.newWorktree, modifier = Modifier.padding(start = Spacing.sm))
+            MoreMenuButton(label = strings.moreActions, entries = viewOverflow(catalog, strings).toMenu(strings, performView))
+            catalog.primary?.let { spec ->
+                DisabledReason(spec.disabledReason) {
+                    PrimaryButton(onClick = { performView(spec, null) }, enabled = spec.isAvailable) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(ButtonIconSize))
+                        Text(spec.label, modifier = Modifier.padding(start = Spacing.sm))
+                    }
                 }
             }
         }
@@ -266,74 +289,66 @@ private fun TextFilterField(board: WorktreeBoard) {
     LaunchedEffect(board.findRequests) {
         if (board.findRequests != findRequestsOnEntry) focusRequester.requestFocus()
     }
-    OutlinedTextField(
+    Field(
         value = board.textFilter,
         onValueChange = board::updateTextFilter,
-        placeholder = { Text(strings.filterWorktreesPlaceholder, style = MaterialTheme.typography.bodySmall) },
-        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(ButtonIconSize)) },
-        trailingIcon = if (board.textFilter.isNotEmpty()) {
-            { IconAction(icon = Icons.Default.Close, label = strings.clearFilter, onClick = board::clearTextFilter) }
+        placeholder = strings.filterWorktreesPlaceholder,
+        leading = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(ButtonIconSize)) },
+        trailing = if (board.textFilter.isNotEmpty()) {
+            { FieldIconAction(icon = Icons.Default.Close, label = strings.clearFilter, onClick = board::clearTextFilter) }
         } else {
             null
         },
         textStyle = MaterialTheme.typography.bodySmall,
-        singleLine = true,
-        modifier = Modifier
-            .width(FilterFieldWidth)
-            .focusRequester(focusRequester)
-            .trackTextInputFocus(),
+        modifier = Modifier.width(FilterFieldWidth),
+        inputModifier = Modifier.focusRequester(focusRequester),
     )
 }
 
 @Composable
 private fun ChooseTerminalDialog(holder: ProjectWorktrees) {
     val strings = LocalStrings.current
-    AlertDialog(
+    ShogunDialog(
+        title = strings.chooseTerminalTitle,
         onDismissRequest = { holder.dismissTerminalChoice() },
-        title = { Text(strings.chooseTerminalTitle) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                Text(strings.chooseTerminalMessage)
-                holder.tools.availableTerminals.forEach { terminal ->
-                    SecondaryButton(onClick = { holder.chooseTerminal(terminal) }, modifier = Modifier.fillMaxWidth()) {
-                        Text(terminal.displayName)
-                    }
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = {
+        confirm = {},
+        dismiss = {
             NeutralTextButton(onClick = { holder.dismissTerminalChoice() }) {
                 Text(strings.cancel)
             }
         },
-    )
+    ) {
+        Text(strings.chooseTerminalMessage)
+        holder.tools.availableTerminals.forEach { terminal ->
+            SecondaryButton(onClick = { holder.chooseTerminal(terminal) }, modifier = Modifier.fillMaxWidth()) {
+                Text(terminal.displayName)
+            }
+        }
+    }
 }
 
 @Composable
 private fun ForceDeleteBranchDialog(holder: ProjectWorktrees) {
     val strings = LocalStrings.current
     val branch = holder.keptBranchNotice?.branch ?: return
-    AlertDialog(
+    ShogunDialog(
+        title = strings.deleteBranchAnywayTitle,
         onDismissRequest = { holder.cancelForcedBranchDeletion() },
-        title = { Text(strings.deleteBranchAnywayTitle) },
-        text = { Text(strings.deleteBranchAnywayMessage(branch)) },
-        confirmButton = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (holder.isDeletingBranch) {
-                    InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
-                }
-                DangerButton(onClick = { holder.confirmForcedBranchDeletion() }, enabled = !holder.isDeletingBranch) {
-                    Text(strings.delete)
-                }
-            }
-        },
-        dismissButton = {
+        dismissible = !holder.isDeletingBranch,
+        dismiss = {
+            if (holder.isDeletingBranch) InlineProgress()
             NeutralTextButton(onClick = { holder.cancelForcedBranchDeletion() }, enabled = !holder.isDeletingBranch) {
                 Text(strings.cancel)
             }
         },
-    )
+        confirm = {
+            DangerButton(onClick = { holder.confirmForcedBranchDeletion() }, enabled = !holder.isDeletingBranch) {
+                Text(strings.delete)
+            }
+        },
+    ) {
+        Text(strings.deleteBranchAnywayMessage(branch))
+    }
 }
 
 @Composable
@@ -341,72 +356,58 @@ private fun RemoveWorktreeDialog(holder: ProjectWorktrees) {
     val strings = LocalStrings.current
     val worktree = holder.worktreePendingRemoval ?: return
     val requiresForce = holder.pendingRemovalRequiresForce
-    AlertDialog(
+    val runnerNotices = listOfNotNull(
+        strings.herdrWorkspaceWillClose.takeIf { holder.pendingRemovalOpenInHerdr },
+        strings.orcaTerminalsWillClose.takeIf { holder.pendingRemovalHasOrcaTerminals },
+    )
+    ShogunDialog(
+        title = if (requiresForce) strings.forceRemoveTitle else strings.removeWorktreeTitle,
         onDismissRequest = { holder.dismissPendingRemoval() },
-        title = { Text(if (requiresForce) strings.forceRemoveTitle else strings.removeWorktreeTitle) },
-        text = {
-            Column {
-                Text(
-                    if (requiresForce) {
-                        strings.forceRemoveMessage(worktree.path)
-                    } else {
-                        strings.removeWorktreeMessage(worktree.path)
-                    },
-                )
-                if (holder.pendingRemovalOpenInHerdr) {
-                    Text(
-                        strings.herdrWorkspaceWillClose,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(top = Spacing.sm),
-                    )
-                }
-                if (holder.pendingRemovalHasOrcaTerminals) {
-                    Text(
-                        strings.orcaTerminalsWillClose,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(top = Spacing.sm),
-                    )
-                }
-                holder.removeError?.let { error ->
-                    ErrorNotice(error = error, onDismiss = null, modifier = Modifier.padding(top = Spacing.sm))
-                }
-                worktree.branch?.let { branch ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(top = Spacing.sm),
-                    ) {
-                        Checkbox(
-                            checked = holder.pendingRemovalDeleteBranch,
-                            onCheckedChange = { holder.setPendingRemovalDeleteBranch(it) },
-                            modifier = Modifier.handPointer(),
-                        )
-                        Text(strings.alsoDeleteLocalBranch(branch))
-                    }
-                }
-            }
+        dismissible = !holder.isRemoving,
+        notices = if (runnerNotices.isEmpty()) {
+            null
+        } else {
+            { runnerNotices.forEach { Notice(kind = NoticeKind.WARNING, message = it, onDismiss = null) } }
         },
-        confirmButton = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (holder.isRemoving) {
-                    InlineProgress(modifier = Modifier.padding(end = Spacing.sm))
-                }
-                DangerButton(
-                    onClick = { holder.confirmPendingRemoval() },
-                    enabled = !holder.isRemoving,
-                ) {
-                    Text(if (requiresForce) strings.forceRemove else strings.delete)
-                }
-            }
-        },
-        dismissButton = {
+        dismiss = {
+            if (holder.isRemoving) InlineProgress()
             NeutralTextButton(
                 onClick = { holder.dismissPendingRemoval() },
                 enabled = !holder.isRemoving,
+                size = ButtonSize.Regular,
             ) {
                 Text(strings.cancel)
             }
         },
-    )
+        confirm = {
+            DangerButton(
+                onClick = { holder.confirmPendingRemoval() },
+                enabled = !holder.isRemoving,
+                size = ButtonSize.Regular,
+            ) {
+                Text(if (requiresForce) strings.forceRemove else strings.delete)
+            }
+        },
+    ) {
+        Text(
+            if (requiresForce) {
+                strings.forceRemoveMessage(worktree.path)
+            } else {
+                strings.removeWorktreeMessage(worktree.path)
+            },
+        )
+        holder.removeError?.let { error -> ErrorNotice(error = error, onDismiss = null) }
+        worktree.branch?.let { branch ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = holder.pendingRemovalDeleteBranch,
+                    onCheckedChange = { holder.setPendingRemovalDeleteBranch(it) },
+                    modifier = Modifier.handPointer(),
+                )
+                Text(strings.alsoDeleteLocalBranch(branch))
+            }
+        }
+    }
 }
 
 @Composable
@@ -436,7 +437,7 @@ private fun WorktreeContent(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(WorktreeOverlayScrim)
+                        .background(ShogunTheme.colors.scrim)
                         .clickable(onClick = board::clearSelection),
                 )
                 SelectedDetail(board, selected, Modifier.align(Alignment.CenterEnd).width(WorktreeDetailWidth))
@@ -464,6 +465,7 @@ private fun SelectedDetail(board: WorktreeBoard, selected: SelectedWorktree, mod
         projectName = selected.project.name.takeIf { !board.isFiltered },
         projectId = selected.project.id,
         desktopTurn = board.desktopTurn,
+        openWithRequests = board.openWithRequests,
         modifier = modifier,
     )
 }
@@ -475,55 +477,39 @@ private fun ViewSummary(board: WorktreeBoard, modifier: Modifier) {
         worktreeCount = holders.sumOf { it.worktrees.size },
         totalSize = holders.sumOf { it.totalSize },
         cleanupCandidateCount = holders.sumOf { it.cleanupCandidates.size },
-        canCleanUp = board.canCleanUp(),
-        onCleanUp = { board.openCleanup() },
         modifier = modifier,
+        isLoading = holders.any { it.loadState == ProjectLoadState.Loading },
     )
 }
 
 @Composable
 private fun NothingActive(onNewWorktree: () -> Unit, onSeeAll: () -> Unit, modifier: Modifier) {
     val strings = LocalStrings.current
-    Column(
-        modifier = modifier.fillMaxSize().padding(Spacing.xl),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(Spacing.md, Alignment.CenterVertically),
-    ) {
-        Text(strings.nothingActiveTitle, style = MaterialTheme.typography.headlineSmall)
-        Text(
-            strings.nothingActiveMessage,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            PrimaryButton(onClick = onNewWorktree) { Text(strings.newWorktree) }
-            SecondaryButton(onClick = onSeeAll) { Text(strings.seeAllWorktrees) }
-        }
-    }
+    EmptyState(
+        icon = Icons.Default.Inbox,
+        title = strings.nothingActiveTitle,
+        message = strings.nothingActiveMessage,
+        action = StateAction(strings.newWorktree, onNewWorktree),
+        link = StateAction(strings.seeAllWorktrees, onSeeAll),
+        modifier = modifier,
+    )
 }
 
 @Composable
 private fun NoMatch(onClear: () -> Unit, modifier: Modifier) {
     val strings = LocalStrings.current
-    Column(
-        modifier = modifier.fillMaxSize().padding(Spacing.xl),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(Spacing.md, Alignment.CenterVertically),
-    ) {
-        Text(
-            strings.noWorktreeMatches,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        SecondaryButton(onClick = onClear) { Text(strings.clearFilter) }
-    }
+    EmptyState(
+        icon = Icons.Default.SearchOff,
+        message = strings.noWorktreeMatches,
+        action = StateAction(strings.clearFilter, onClear),
+        modifier = modifier,
+    )
 }
 
 private val ButtonIconSize = 18.dp
 private val FilterFieldWidth = 240.dp
-private val WorktreeDetailWidth = 360.dp
-private val WorktreeDetailOverlayThreshold = 760.dp
-private val WorktreeOverlayScrim = Color(0x66000000)
+private val WorktreeDetailWidth = ShogunLayout.inspectorWidth
+private val WorktreeDetailOverlayThreshold = ShogunLayout.compactBreakpoint
 
 private fun Strings.successMessage(success: WorktreeSuccess): String = when (success) {
     is WorktreeSuccess.Created ->
@@ -567,27 +553,4 @@ private fun PendingSuccess.action(strings: Strings, board: WorktreeBoard): Messa
         MessageAction(strings.copyLaunchCommand) { holder.copyLastCreatedLaunchCommand() }
     }
     else -> null
-}
-
-@Composable
-private fun MultirepoAgentMenu(enabled: Boolean, runners: List<RunnerId>, onOpen: (RunnerId) -> Unit) {
-    val strings = LocalStrings.current
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        SecondaryButton(onClick = { expanded = true }, enabled = enabled) {
-            Text(strings.openMultirepoAgentMenu)
-            Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(ButtonIconSize))
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            runners.forEach { runner ->
-                DropdownMenuItem(
-                    text = { Text(if (runner == RunnerId.ORCA) strings.openMultirepoAgentInOrca else strings.openMultirepoAgent) },
-                    onClick = {
-                        expanded = false
-                        onOpen(runner)
-                    },
-                )
-            }
-        }
-    }
 }

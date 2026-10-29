@@ -5,6 +5,8 @@ import app.luxion.shogunai.domain.model.RunnerId
 import app.luxion.shogunai.domain.model.RunnerOpening
 import app.luxion.shogunai.domain.model.RunnerOutcome
 import app.luxion.shogunai.domain.usecase.toRunnerOpening
+import app.luxion.shogunai.ui.actions.ActionId
+import app.luxion.shogunai.ui.actions.menuBarEntries
 import app.luxion.shogunai.EmulatorUseCases
 import app.luxion.shogunai.GradleUseCases
 import app.luxion.shogunai.SimulatorUseCases
@@ -428,7 +430,7 @@ class WorktreeBoardTest {
         assertEquals("TASK-123", listed.single().name)
         assertEquals(Activity.Unknown, listed.single().activity)
         assertFalse(listed.single().isLoaded)
-        assertTrue(listed.single().openActions.isEmpty())
+        assertNull(listed.single().actions)
     }
 
     @Test
@@ -1088,6 +1090,18 @@ class WorktreeBoardTest {
     }
 
     @Test
+    fun `a disabled cleanup says there is nothing to clean up`() = runTest(dispatcher) {
+        api.worktrees = emptyList()
+        val board = board()
+        advanceUntilIdle()
+
+        assertEquals(CleanupBlock.NothingToCleanUp, board.cleanUpBlock("api"))
+        assertNull(board.cleanUpBlock())
+        assertEquals(EnglishStrings.cleanUpBlockedNothing, CleanupBlock.NothingToCleanUp.describe(EnglishStrings))
+        assertEquals(EnglishStrings.cleanUpBlockedRunning, CleanupBlock.Running.describe(EnglishStrings))
+    }
+
+    @Test
     fun `refreshing the view reloads branches only for an open existing-branch dialog`() = runTest(dispatcher) {
         val board = board()
         advanceUntilIdle()
@@ -1277,25 +1291,41 @@ class WorktreeBoardTest {
         advanceUntilIdle()
         board.select(WorktreeRef("main-repo", "/home/dev/projects/TASK-123"))
 
-        board.openSelectedInRunner()
+        board.runFromMenu(board.menuBarCatalog(EnglishStrings).primary!!.id)
         advanceUntilIdle()
 
         assertEquals(listOf("/home/dev/projects/TASK-123"), openedInHerdr)
     }
 
     @Test
-    fun `the selected worktree opens in Orca when Orca is the runner in use`() = runTest(dispatcher) {
-        val board = board(runnerInUse = RunnerId.ORCA)
+    fun `open with is requested only with a selection and outside text fields`() = runTest(dispatcher) {
+        val board = board()
         advanceUntilIdle()
+
+        board.runFromMenu(ActionId.OpenWith)
+        assertEquals(0, board.openWithRequests)
+
         board.select(WorktreeRef("main-repo", "/home/dev/projects/TASK-123"))
+        board.runFromMenu(ActionId.OpenWith)
+        assertEquals(1, board.openWithRequests)
 
-        board.openSelectedInRunner()
+        TextInputFocus.enter()
+        try {
+            board.runFromMenu(ActionId.OpenWith)
+            assertEquals(1, board.openWithRequests)
+        } finally {
+            TextInputFocus.leave()
+        }
+    }
+
+    @Test
+    fun `the worktree menu names the default runner even without a selection`() = runTest(dispatcher) {
+        val board = board()
         advanceUntilIdle()
 
-        assertEquals(RunnerId.ORCA, board.runner)
-        assertEquals(listOf("/home/dev/projects/TASK-123"), openedInOrca)
-        assertTrue(openedInHerdr.isEmpty())
-        assertEquals(listOf(RunnerId.ORCA, RunnerId.HERDR), board.runnersInOrder)
+        val items = board.menuBarCatalog(EnglishStrings).menuBarEntries().map { it.label }
+
+        assertEquals(listOf("Open in Herdr", "Open with…", "Copy launch command", "Delete worktree…"), items)
     }
 
     @Test
@@ -1303,7 +1333,7 @@ class WorktreeBoardTest {
         val board = board()
         advanceUntilIdle()
 
-        board.openSelectedInRunner()
+        board.runFromMenu(board.menuBarCatalog(EnglishStrings).primary!!.id)
         advanceUntilIdle()
 
         assertTrue(openedInHerdr.isEmpty())
@@ -1317,7 +1347,7 @@ class WorktreeBoardTest {
 
         TextInputFocus.enter()
         try {
-            board.openSelectedInRunner()
+            board.runFromMenu(board.menuBarCatalog(EnglishStrings).primary!!.id)
             advanceUntilIdle()
             assertTrue(openedInHerdr.isEmpty())
         } finally {

@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -31,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -68,8 +70,12 @@ import app.luxion.shogunai.ui.components.trackTextInputFocus
 import app.luxion.shogunai.ui.i18n.LocalStrings
 import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.isMacOs
+import app.luxion.shogunai.ui.components.OpenMenus
 import app.luxion.shogunai.ui.machine.icon
 import app.luxion.shogunai.ui.theme.ShogunTheme
+import app.luxion.shogunai.ui.theme.PanelShape
+import app.luxion.shogunai.ui.theme.ElevationBorderWidth
+import androidx.compose.foundation.BorderStroke
 
 private val PaletteWidth = 560.dp
 private val ResultRowHeight = 40.dp
@@ -94,6 +100,12 @@ fun CommandPalette(
     val listState = rememberLazyListState()
     val focusRequester = remember { FocusRequester() }
     var focusRequested by remember { mutableStateOf(false) }
+    val currentOnDismiss by rememberUpdatedState(onDismiss)
+    DisposableEffect(Unit) {
+        val dismiss = { currentOnDismiss() }
+        OpenMenus.opened(dismiss)
+        onDispose { OpenMenus.closed(dismiss) }
+    }
     LaunchedEffect(query) { listState.scrollToItem(0) }
     LaunchedEffect(highlighted) { if (results.isNotEmpty()) listState.scrollToItem(highlighted.coerceIn(0, results.lastIndex)) }
 
@@ -109,8 +121,10 @@ fun CommandPalette(
     ) {
         Surface(
             modifier = Modifier.width(PaletteWidth),
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = PanelShape,
+            color = ShogunTheme.elevation.level2.container,
+            border = ShogunTheme.elevation.level2.border?.let { BorderStroke(ElevationBorderWidth, it) },
+            shadowElevation = ShogunTheme.elevation.level2.shadow,
         ) {
             Column {
                 Row(
@@ -191,7 +205,7 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit, modifier
         onValueChange = onQueryChange,
         singleLine = true,
         textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
-        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+        cursorBrush = SolidColor(ShogunTheme.colors.accent),
         modifier = modifier.trackTextInputFocus(),
         decorationBox = { inner ->
             Box(modifier = Modifier.heightIn(min = ResultRowHeight), contentAlignment = Alignment.CenterStart) {
@@ -265,6 +279,7 @@ private fun highlight(text: String, query: String): AnnotatedString {
 private val PaletteItem.icon: ImageVector
     get() = when (kind) {
         PaletteKind.VIEW -> machineResource?.icon ?: Icons.AutoMirrored.Filled.ViewList
+        PaletteKind.SETTING -> Icons.Default.Settings
         PaletteKind.PROJECT -> Icons.Default.Folder
         PaletteKind.WORKTREE -> Icons.Default.AccountTree
         PaletteKind.ACTION -> Icons.Default.Bolt
@@ -272,6 +287,7 @@ private val PaletteItem.icon: ImageVector
 
 private fun PaletteItem.kindLabel(strings: Strings): String = when (kind) {
     PaletteKind.VIEW -> strings.paletteKindView
+    PaletteKind.SETTING -> strings.paletteKindSetting
     PaletteKind.PROJECT -> strings.paletteKindProject
     PaletteKind.WORKTREE -> strings.paletteKindWorktree
     PaletteKind.ACTION -> strings.paletteKindAction

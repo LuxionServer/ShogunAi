@@ -105,4 +105,5 @@ class ToolsSectionUiTest {
         onNodeWithText("No supported IDE found").assertIsDisplayed()
         onNodeWithText("Neither Herdr nor Orca was found").assertIsDisplayed()
     }
+
 }

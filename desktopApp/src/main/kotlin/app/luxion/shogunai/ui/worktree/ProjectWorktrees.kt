@@ -1,8 +1,6 @@
 package app.luxion.shogunai.ui.worktree
 
 import app.luxion.shogunai.domain.usecase.ResourceAcquisition
-import app.luxion.shogunai.domain.model.RunnerId
-import app.luxion.shogunai.domain.model.runnersInUseOrder
 import app.luxion.shogunai.domain.model.ReleaseRecord
 import app.luxion.shogunai.domain.model.ResourceKind
 import app.luxion.shogunai.domain.model.AgentLaunchConfig
@@ -29,6 +27,12 @@ import app.luxion.shogunai.domain.model.ProvisionDrift
 import app.luxion.shogunai.domain.model.WorktreeEnvironment
 import app.luxion.shogunai.domain.model.RunningAgent
 import app.luxion.shogunai.domain.model.TerminalId
+import app.luxion.shogunai.ui.actions.ActionId
+import app.luxion.shogunai.ui.actions.ActionTools
+import app.luxion.shogunai.ui.actions.OpenTarget
+import app.luxion.shogunai.ui.actions.WorktreeActionContext
+import app.luxion.shogunai.ui.actions.WorktreeCatalog
+import app.luxion.shogunai.ui.actions.worktreeCatalog
 import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.domain.model.Worktree
 import app.luxion.shogunai.domain.model.SimulatorDevice
@@ -117,6 +121,8 @@ class ProjectWorktrees(
     private val statusReadPermits = Semaphore(MAX_PARALLEL_STATUS_READS)
 
     var agents by mutableStateOf<Map<String, List<RunningAgent>>?>(null)
+        private set
+    var agentsReadAt by mutableStateOf<Instant?>(null)
         private set
     var sizes by mutableStateOf<Map<String, Long>>(emptyMap())
         private set
@@ -349,6 +355,7 @@ class ProjectWorktrees(
     fun applyAgents(detected: Map<String, List<RunningAgent>>?) {
         val paths = worktrees.map { it.path }.toSet()
         agents = detected?.filterKeys { it in paths }
+        agentsReadAt = clock()
         orcaOrigins = useCases.orca.origins()
     }
 
@@ -445,6 +452,7 @@ class ProjectWorktrees(
             val detected = useCases.detectAgents(listed).getOrNull()
             if (generation == listGeneration) {
                 agents = detected
+                agentsReadAt = clock()
                 orcaOrigins = useCases.orca.origins()
             }
         }
@@ -912,18 +920,6 @@ class ProjectWorktrees(
         }
     }
 
-    fun openIn(runner: RunnerId, worktree: Worktree, picked: AgentLaunchConfig? = null) = when (runner) {
-        RunnerId.HERDR -> openInHerdr(worktree, picked)
-        RunnerId.ORCA -> openInOrca(worktree, picked)
-    }
-
-    val runnersInOrder: List<RunnerId> get() = runnersInUseOrder(tools.defaultRunner ?: RunnerId.HERDR)
-
-    fun openingIn(runner: RunnerId): Set<String> = when (runner) {
-        RunnerId.HERDR -> openingInHerdr
-        RunnerId.ORCA -> openingInOrca
-    }
-
     fun openInOrca(worktree: Worktree, picked: AgentLaunchConfig? = null) {
         if (worktree.path in openingInOrca) return
         onUsed(worktree.path)
@@ -954,36 +950,44 @@ class ProjectWorktrees(
         useCases.agents.choose(worktree.path, agent)
     }
 
-    fun launchLabel(base: String, worktree: Worktree, strings: Strings): String =
-        if (hasAgentChoice) strings.launchWithAgent(base, agentFor(worktree).displayName) else base
+    fun actionTools(strings: Strings): ActionTools = ActionTools(
+        runners = tools.installedRunners,
+        defaultRunner = tools.defaultRunner,
+        terminal = tools.terminalShown?.let { tools.terminalInUse?.displayName ?: strings.terminalToolLabel.lowercase() },
+        editor = tools.editorFor(useCases.tools.editorOverride)?.displayName,
+        claudeDesktop = tools.claudeDesktopAvailable,
+    )
 
-    fun launchChoices(worktree: Worktree, strings: Strings): List<LaunchChoice> {
-        if (!hasAgentChoice) return emptyList()
-        val current = agentFor(worktree)
-        val kinds = if (worktree.isPrunable) {
-            listOf(LaunchKind.COPY)
-        } else {
-            listOfNotNull(LaunchKind.COPY, LaunchKind.TERMINAL.takeIf { tools.terminalShown != null }, LaunchKind.HERDR, LaunchKind.ORCA)
-        }
-        return agentOptions.filter { it.displayName != current.displayName }.flatMap { agent ->
-            kinds.map { kind ->
-                val base = when (kind) {
-                    LaunchKind.COPY -> strings.copyLaunchCommand
-                    LaunchKind.TERMINAL -> strings.openInTool(tools.terminalInUse?.displayName ?: strings.terminalToolLabel.lowercase())
-                    LaunchKind.HERDR -> strings.openInHerdr
-                    LaunchKind.ORCA -> strings.openInOrca
-                }
-                LaunchChoice(kind, agent, strings.launchWithAgent(base, agent.displayName))
+    fun actionCatalog(worktree: Worktree, strings: Strings): WorktreeCatalog = worktreeCatalog(
+        WorktreeActionContext(
+            tools = actionTools(strings),
+            isMain = worktree.isMain,
+            isFolderMissing = worktree.isPrunable,
+            agents = agentOptions.map { it.displayName },
+            agent = agentFor(worktree).displayName,
+            opening = setOfNotNull(
+                OpenTarget.HERDR.takeIf { worktree.path in openingInHerdr },
+                OpenTarget.ORCA.takeIf { worktree.path in openingInOrca },
+            ),
+        ),
+        strings,
+    )
+
+    fun perform(worktree: Worktree, id: ActionId, agent: String? = null) {
+        val picked = agent?.let { name -> agentOptions.firstOrNull { it.displayName == name } }
+        when (id) {
+            is ActionId.Open -> when (id.target) {
+                OpenTarget.HERDR -> openInHerdr(worktree, picked)
+                OpenTarget.ORCA -> openInOrca(worktree, picked)
+                OpenTarget.TERMINAL -> openInTerminal(worktree, picked)
+                OpenTarget.EDITOR -> openInEditor(worktree)
+                OpenTarget.CLAUDE_DESKTOP -> openInClaudeDesktop(worktree)
+                OpenTarget.FOLDER -> openFolder(worktree)
             }
-        }
-    }
-
-    fun launch(worktree: Worktree, kind: LaunchKind, agent: AgentLaunchConfig) {
-        when (kind) {
-            LaunchKind.COPY -> copyLaunchCommand(worktree, picked = agent)
-            LaunchKind.TERMINAL -> openInTerminal(worktree, agent)
-            LaunchKind.HERDR -> openInHerdr(worktree, agent)
-            LaunchKind.ORCA -> openInOrca(worktree, agent)
+            ActionId.CopyLaunchCommand -> copyLaunchCommand(worktree, picked = picked)
+            is ActionId.ChooseAgent -> agentOptions.firstOrNull { it.displayName == id.agent }?.let { setAgent(worktree, it) }
+            ActionId.RemoveWorktree -> if (!worktree.isMain) requestRemoval(worktree)
+            else -> Unit
         }
     }
 
@@ -991,31 +995,6 @@ class ProjectWorktrees(
         if (picked == null) return agentFor(worktree)
         setAgent(worktree, picked)
         return picked
-    }
-
-    fun openActions(worktree: Worktree, strings: Strings): List<OpenAction> {
-        if (worktree.isPrunable) return emptyList()
-        return listOfNotNull(
-            tools.terminalShown?.let {
-                val name = tools.terminalInUse?.displayName ?: strings.terminalToolLabel.lowercase()
-                OpenAction(OpenKind.TERMINAL, launchLabel(strings.openInTool(name), worktree, strings)) { openInTerminal(worktree) }
-            },
-            tools.editorFor(useCases.tools.editorOverride)?.let {
-                OpenAction(OpenKind.EDITOR, strings.openInTool(it.displayName)) { openInEditor(worktree) }
-            },
-            OpenAction(OpenKind.CLAUDE_DESKTOP, strings.openInTool(strings.claudeDesktopName)) { openInClaudeDesktop(worktree) }
-                .takeIf { tools.claudeDesktopAvailable },
-            OpenAction(OpenKind.FOLDER, strings.openFolder) { openFolder(worktree) },
-        )
-    }
-
-    fun open(worktree: Worktree, kind: OpenKind) {
-        when (kind) {
-            OpenKind.TERMINAL -> openInTerminal(worktree)
-            OpenKind.EDITOR -> openInEditor(worktree)
-            OpenKind.CLAUDE_DESKTOP -> openInClaudeDesktop(worktree)
-            OpenKind.FOLDER -> openFolder(worktree)
-        }
     }
 
     fun openInTerminal(worktree: Worktree, picked: AgentLaunchConfig? = null) {

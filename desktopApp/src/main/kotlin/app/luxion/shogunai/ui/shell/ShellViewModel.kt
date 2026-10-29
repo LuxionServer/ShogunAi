@@ -1,5 +1,8 @@
 package app.luxion.shogunai.ui.shell
 
+import app.luxion.shogunai.ui.actions.ActionId
+import app.luxion.shogunai.ui.actions.ActionSpec
+import app.luxion.shogunai.ui.i18n.Strings
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -363,9 +366,8 @@ data class AddMultirepoRequest(val folder: String?)
 
 data class WorktreeActions(
     val onFind: () -> Unit,
-    val onCopySelectedLaunchCommand: () -> Unit,
-    val onOpenSelectedInRunner: () -> Unit,
-    val onDeleteSelectedWorktree: () -> Unit,
+    val menuBar: (Strings) -> List<ActionSpec>,
+    val onRun: (ActionId) -> Unit,
     val onClearSelection: () -> Unit,
     val onEscape: () -> Unit,
     val hasSelection: () -> Boolean,

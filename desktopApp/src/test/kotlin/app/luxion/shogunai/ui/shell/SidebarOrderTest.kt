@@ -205,6 +205,22 @@ class SidebarOrderTest {
         assertEquals(listOf("mobile", "api", "main-repo", "product"), viewModel.topLevelNames())
     }
 
+    @Test
+    fun `a labelled project is ordered by its label and keeps its saved place`() {
+        val workspace = Project(id = "product-workspace", name = "product", config = ProjectConfig(productFolder, "/home/dev/projects/worktrees", emptyList()))
+        val folder = SidebarMultirepo(productFolder, "product", listOf(app, workspace, web), ProjectActivity.NONE, collapsed = false, labels = mapOf(workspace.id to "workspace"))
+
+        val alphabetical = sidebarEntries(emptyList(), listOf(folder)).single() as SidebarEntry.FolderEntry
+        val saved = sidebarEntries(
+            emptyList(),
+            listOf(folder),
+            SidebarOrder(multirepos = mapOf(productFolder to listOf(workspace.id, app.id))),
+        ).single() as SidebarEntry.FolderEntry
+
+        assertEquals(listOf("app", "web", "workspace"), alphabetical.multirepo.projects.map(folder::labelOf))
+        assertEquals(listOf("workspace", "app", "web"), saved.multirepo.projects.map(folder::labelOf))
+    }
+
     @Composable
     private fun SidebarUnderTest(viewModel: ShellViewModel, onSelect: (Project) -> Unit = {}) {
         var collapsed by remember { mutableStateOf(false) }
@@ -216,9 +232,6 @@ class SidebarOrderTest {
             activeCount = 0,
             totalWorktreeCount = 0,
             activityOf = { ProjectActivity.NONE },
-            machineResources = emptyList(),
-            machineSummaries = emptyMap(),
-            selectedMachine = null,
             rail = false,
             onSelectActive = {},
             onSelectAll = {},
@@ -226,7 +239,6 @@ class SidebarOrderTest {
             onEditProject = {},
             onRemoveProject = {},
             onAddProject = {},
-            onSelectMachine = {},
             onToggle = {},
             multirepos = viewModel.memberships.map { membership ->
                 SidebarMultirepo(membership.folder, membership.name, viewModel.projects.filter { it.id in membership.aliases }, ProjectActivity.NONE, collapsed)

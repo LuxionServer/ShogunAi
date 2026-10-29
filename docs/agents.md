@@ -28,6 +28,8 @@ For Gradle repositories, settings in the Gradle provider (`"providers": { "gradl
 
 For Xcode repositories, `"providers": { "xcode": { "compilationCache": true } }` adds `XCODE_XCCONFIG_FILE` to every worktree's environment, pointing to a machine-wide `.xcconfig` that turns on compilation caching with prefix mapping, so an agent's first `xcodebuild` in a new worktree reuses what other worktrees already compiled. It replaces an `XCODE_XCCONFIG_FILE` already set in the shell, doesn't reach Xcode opened from the Dock and doesn't help Swift packages. With `"cocoaPods": true`, a new worktree gets the base repository's CocoaPods pods cloned when its `Podfile.lock` matches, and `shogun new` and `shogun provision` name the folders that still need `pod install`. Agents can check DerivedData with `shogun xcode` and delete the orphaned folders with `shogun xcode clean` ([Providers › Xcode](guide/providers.md#xcode)).
 
+For Flutter repositories, `"providers": { "flutter": {} }` runs `flutter pub get` (`fvm flutter pub get` with `.fvmrc`) in every new or provisioned worktree, so it builds at once. Flutter doesn't read `ANDROID_SERIAL`, so the `SessionStart` hook tells Claude to start the worktree's device first and always pass it with `flutter run -d "$ANDROID_SERIAL"` or `-d "$IOS_SIMULATOR_UDID"`, and never to launch emulators with `flutter emulators --launch` ([Providers › Flutter](guide/providers.md#flutter)).
+
 The recipes below show how each agent gets these variables.
 
 ## Approving a repository
@@ -141,7 +143,7 @@ ShogunAi runs the project's own command rather than Orca's agent launcher, whose
 
 Herdr and Orca are both first-class runners. Choose the one you use in the desktop app's Settings, under **Tools** → **Default runner**; it's saved in `~/.shogunai/settings.json`, so `shogun` uses it too. The runner in use is the one you chose while it's installed; otherwise it's the first installed of Herdr and Orca, and Herdr when neither is. It decides:
 
-- what the Worktree menu's open item and its shortcut (Cmd+E on macOS, Ctrl+E elsewhere) open in, and what the guided tour offers;
+- what a worktree's main open action, the Worktree menu's open item and its shortcut (Cmd+O on macOS, Ctrl+O elsewhere) open in, and what the guided tour offers;
 - which runner comes first in a worktree's detail, its row's context menu, a group's header and the multirepo agent's menu (the other stays available);
 - where the "New change" selector starts;
 - where `shogun open <target>` opens when you pass neither `--herdr` nor `--orca`;

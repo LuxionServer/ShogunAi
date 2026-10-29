@@ -1,21 +1,14 @@
 package app.luxion.shogunai.ui.worktree
 
-import androidx.compose.foundation.ContextMenuArea
-import androidx.compose.foundation.ContextMenuItem
 import androidx.compose.foundation.background
-import androidx.compose.foundation.hoverable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bedtime
@@ -31,127 +24,115 @@ import androidx.compose.material.icons.filled.PhoneIphone
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PriorityHigh
 import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import app.luxion.shogunai.domain.model.RunnerId
+import app.luxion.shogunai.ui.components.ActionSlot
+import app.luxion.shogunai.ui.components.AgentIndicator
+import app.luxion.shogunai.ui.components.ColumnSpec
+import app.luxion.shogunai.ui.components.CompactBehavior
+import app.luxion.shogunai.ui.components.DataCell
+import app.luxion.shogunai.ui.components.DataRow
 import app.luxion.shogunai.ui.components.InlineProgress
-import app.luxion.shogunai.ui.components.InteractiveShape
+import app.luxion.shogunai.ui.components.MenuEntry
 import app.luxion.shogunai.ui.components.ProgressSize
 import app.luxion.shogunai.ui.components.Spacing
 import app.luxion.shogunai.ui.components.WithTooltip
 import app.luxion.shogunai.ui.components.interactive
 import app.luxion.shogunai.ui.i18n.LocalStrings
-import app.luxion.shogunai.ui.i18n.openIn
 import app.luxion.shogunai.ui.i18n.Strings
 import app.luxion.shogunai.ui.theme.ShogunTheme
 import app.luxion.shogunai.ui.theme.Status
+import androidx.compose.foundation.border
 
 @Composable
 fun WorktreeRow(
     model: WorktreeRowModel,
     selected: Boolean,
     isCopied: Boolean,
-    isMain: Boolean,
     compact: Boolean = false,
+    aliasWidth: Dp = DefaultAliasColumnWidth,
     onSelect: () -> Unit,
     onCopyLaunchCommand: () -> Unit,
-    onCopyPath: () -> Unit,
-    onOpenInHerdr: () -> Unit,
-    onOpenInOrca: () -> Unit = {},
-    runnersInOrder: List<RunnerId> = RunnerId.entries,
-    agentName: String? = null,
-    launchChoices: List<LaunchChoice> = emptyList(),
-    onLaunch: (LaunchChoice) -> Unit = {},
-    openActions: List<OpenAction> = emptyList(),
+    contextMenu: () -> List<MenuEntry> = { emptyList() },
     onOpenGroupTag: () -> Unit = {},
-    onRemove: () -> Unit,
 ) {
     val strings = LocalStrings.current
-    val interactionSource = remember { MutableInteractionSource() }
-    val hovered by interactionSource.collectIsHoveredAsState()
-    val prunable = model.isFolderMissing
-    ContextMenuArea(
-        items = {
-            buildList {
-                add(ContextMenuItem(withAgent(strings.copyLaunchCommand, agentName, strings), onClick = onCopyLaunchCommand))
-                if (!prunable) {
-                    runnersInOrder.forEach { runner ->
-                        val onOpen = if (runner == RunnerId.HERDR) onOpenInHerdr else onOpenInOrca
-                        add(ContextMenuItem(withAgent(strings.openIn(runner), agentName, strings), onClick = onOpen))
-                    }
-                    openActions.forEach { add(ContextMenuItem(it.label, onClick = it.onClick)) }
+    WorktreeContextMenu(entries = contextMenu) {
+        DataRow(
+            cells = listOfNotNull(
+                model.alias?.let { alias -> DataCell(ColumnSpec(width = aliasWidth)) { AliasCellView(alias) } },
+                DataCell(BadgeColumn) { StateBadgeCell(model.badge) },
+                DataCell(ExecutionColumn, Modifier.testTag(ExecutionTag)) { compact -> ExecutionCellView(model.execution, compact) },
+                DataCell(NameColumn) { NameCellView(model.name, onOpenGroupTag) },
+                DataCell(GitColumn, Modifier.testTag(GitTag)) { GitCellView(model.git) },
+                DataCell(TimeColumn, Modifier.testTag(TimeTag)) { compact -> TimeCellView(model.time, compact) },
+            ),
+            compact = compact,
+            selected = selected,
+            onSelect = onSelect,
+            actions = ActionSlot(width = RowActionSlotSize, pinned = isCopied) {
+                WithTooltip(label = strings.copyLaunchCommand) {
+                    Icon(
+                        imageVector = if (isCopied) Icons.Default.Check else Icons.Default.ContentCopy,
+                        contentDescription = strings.copyLaunchCommand,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .interactive(shape = CircleShape, onClick = onCopyLaunchCommand)
+                            .padding(Spacing.xs)
+                            .size(RowActionIconSize),
+                    )
                 }
-                launchChoices.forEach { choice -> add(ContextMenuItem(choice.label, onClick = { onLaunch(choice) })) }
-                add(ContextMenuItem(strings.copyPath, onClick = onCopyPath))
-                if (!isMain) {
-                    add(ContextMenuItem(strings.deleteWorktree, onClick = onRemove))
-                }
-            }
-        },
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .hoverable(interactionSource)
-                .interactive(onClick = onSelect)
-                .background(
-                    color = if (selected) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent,
-                    shape = InteractiveShape,
-                )
-                .padding(horizontal = Spacing.md, vertical = Spacing.sm),
-            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            model.alias?.let { AliasCellView(it, compact) }
-            StateBadgeCell(model.badge)
-            ExecutionCellView(model.execution, compact)
-            NameCellView(model.name, onOpenGroupTag, modifier = Modifier.weight(1f))
-            GitCellView(model.git, compact)
-            TimeCellView(model.time, compact)
-            Box(modifier = Modifier.size(RowActionSlotSize), contentAlignment = Alignment.Center) {
-                if (hovered || isCopied) {
-                    WithTooltip(label = strings.copyLaunchCommand) {
-                        Icon(
-                            imageVector = if (isCopied) Icons.Default.Check else Icons.Default.ContentCopy,
-                            contentDescription = strings.copyLaunchCommand,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier
-                                .interactive(shape = CircleShape, onClick = onCopyLaunchCommand)
-                                .padding(Spacing.xs)
-                                .size(RowActionIconSize),
-                        )
-                    }
-                }
-            }
-        }
+            },
+        )
     }
 }
 
 private val BadgeSize = 20.dp
 private val BadgeIconSize = 12.dp
-private val ExecutionWidth = 176.dp
-private val CompactExecutionWidth = 44.dp
-private val GitWidth = 76.dp
-private val CompactGitWidth = 68.dp
-private val TimeWidth = 172.dp
-private val CompactTimeWidth = 96.dp
+private val BadgeOutlineWidth = 1.dp
 private val RowActionSlotSize = 28.dp
 private val RowActionIconSize = 16.dp
 private val LineHeight = 18.dp
 private val CellIconSize = 14.dp
+
+val DefaultAliasColumnWidth = 72.dp
+private val MinAliasColumnWidth = 48.dp
+private val MaxAliasColumnWidth = 128.dp
+
+fun fitAliasColumnWidth(longest: Dp): Dp = longest.coerceIn(MinAliasColumnWidth, MaxAliasColumnWidth)
+
+@Composable
+fun aliasColumnWidth(aliases: List<String>): Dp {
+    val measurer = rememberTextMeasurer()
+    val style = ShogunTheme.typography.data
+    val density = LocalDensity.current
+    val distinct = aliases.distinct()
+    if (distinct.isEmpty()) return DefaultAliasColumnWidth
+    val longest = remember(distinct, style, density) {
+        distinct.maxOf { measurer.measure(it, style, maxLines = 1).size.width }
+    }
+    return fitAliasColumnWidth(with(density) { longest.toDp() } + AliasColumnSlack)
+}
+
+private val AliasColumnSlack = 2.dp
+private val BadgeColumn = ColumnSpec(width = BadgeSize)
+private val ExecutionColumn = ColumnSpec(width = 176.dp, compact = CompactBehavior.Shrink(44.dp))
+private val NameColumn = ColumnSpec()
+private val GitColumn = ColumnSpec(width = 76.dp, compact = CompactBehavior.Shrink(68.dp))
+private val TimeColumn = ColumnSpec(width = 172.dp, compact = CompactBehavior.Shrink(96.dp))
 
 internal const val BranchTag = "row-branch"
 internal const val GitTag = "row-git"
@@ -159,30 +140,27 @@ internal const val TimeTag = "row-time"
 internal const val ExecutionTag = "row-execution"
 internal const val AliasTag = "row-alias"
 internal const val GroupTagTag = "row-group-tag"
-private val AliasWidth = 72.dp
-private val CompactAliasWidth = 48.dp
+internal const val SecondLineTag = "row-second-line"
 
 @Composable
-private fun AliasCellView(alias: String, compact: Boolean) {
+private fun AliasCellView(alias: String) {
     WithTooltip(label = alias) {
         Text(
             alias,
             style = ShogunTheme.typography.data,
-            color = MaterialTheme.colorScheme.primary,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.width(if (compact) CompactAliasWidth else AliasWidth).testTag(AliasTag),
+            modifier = Modifier.testTag(AliasTag),
         )
     }
 }
 
 @Composable
-internal fun StateBadgeKind.color(): Color =
-    status?.let { ShogunTheme.status.of(it).color } ?: MaterialTheme.colorScheme.primary
+internal fun StateBadgeKind.color(): Color = ShogunTheme.status.of(status).color
 
 @Composable
-private fun StateBadgeKind.onColor(): Color =
-    status?.let { ShogunTheme.status.of(it).onColor } ?: MaterialTheme.colorScheme.onPrimary
+private fun StateBadgeKind.onColor(): Color = if (outlined) color() else ShogunTheme.status.of(status).onColor
 
 internal fun StateBadgeKind.icon(): ImageVector = when (this) {
     StateBadgeKind.NEEDS_YOU -> Icons.Default.PriorityHigh
@@ -199,7 +177,13 @@ internal fun StateBadgeKind.icon(): ImageVector = when (this) {
 private fun StateBadgeCell(badge: StateBadge) {
     WithTooltip(label = badge.label) {
         Box(
-            modifier = Modifier.size(BadgeSize).background(badge.kind.color(), CircleShape),
+            modifier = Modifier.size(BadgeSize).then(
+                if (badge.kind.outlined) {
+                    Modifier.border(BadgeOutlineWidth, badge.kind.color(), CircleShape)
+                } else {
+                    Modifier.background(badge.kind.color(), CircleShape)
+                },
+            ),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
@@ -223,35 +207,12 @@ private fun CellLine(modifier: Modifier = Modifier, content: @Composable RowScop
 
 @Composable
 private fun ExecutionCellView(cell: ExecutionCell, compact: Boolean) {
-    Column(modifier = Modifier.width(if (compact) CompactExecutionWidth else ExecutionWidth).testTag(ExecutionTag)) {
+    Column {
         CellLine {
-            cell.agent?.let { AgentLineView(it, compact) }
+            cell.agent?.let { AgentIndicator(it, compact = compact) }
         }
         CellLine {
             cell.device?.let { DeviceLineView(it, compact) }
-        }
-    }
-}
-
-@Composable
-private fun AgentLineView(agent: AgentLine, compact: Boolean) {
-    val color = ShogunTheme.status.of(agent.status).color
-    WithTooltip(label = agent.tooltip) {
-        CellLine {
-            Icon(Icons.Default.SmartToy, contentDescription = agent.label, tint = color, modifier = Modifier.size(CellIconSize))
-            if (!compact) {
-                Text(
-                    agent.label,
-                    style = ShogunTheme.typography.dataSmall,
-                    color = color,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                if (agent.moreCount > 0) {
-                    Text("+${agent.moreCount}", style = ShogunTheme.typography.dataSmall, maxLines = 1)
-                }
-            }
         }
     }
 }
@@ -293,10 +254,10 @@ private val SecondLineKind.icon: ImageVector
     }
 
 @Composable
-private fun NameCellView(name: NameCell, onOpenGroupTag: () -> Unit, modifier: Modifier) {
+private fun NameCellView(name: NameCell, onOpenGroupTag: () -> Unit) {
     val secondary = MaterialTheme.colorScheme.onSurfaceVariant
-    Column(modifier = modifier) {
-        WithTooltip(label = name.branch) {
+    Column {
+        WithTooltip(label = name.branchTooltip) {
             CellLine {
                 Text(
                     name.branch,
@@ -307,23 +268,24 @@ private fun NameCellView(name: NameCell, onOpenGroupTag: () -> Unit, modifier: M
                 )
             }
         }
-        CellLine {
+        CellLine(Modifier.testTag(SecondLineTag)) {
             name.groupTag?.let { tag ->
                 Text(
                     tag,
                     style = ShogunTheme.typography.dataSmall,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = secondary,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
+                        .weight(1f, fill = false)
                         .testTag(GroupTagTag)
                         .interactive(shape = MaterialTheme.shapes.extraSmall, onClick = onOpenGroupTag)
                         .padding(horizontal = Spacing.xxs),
                 )
             }
-            val context = listOfNotNull(name.folder, name.origin).joinToString(" · ")
-            if (context.isNotEmpty()) {
+            name.folder?.let { folder ->
                 Text(
-                    context,
+                    separated(folder, after = name.groupTag),
                     style = ShogunTheme.typography.dataSmall,
                     color = secondary,
                     maxLines = 1,
@@ -333,8 +295,8 @@ private fun NameCellView(name: NameCell, onOpenGroupTag: () -> Unit, modifier: M
             }
             name.project?.let { project ->
                 Text(
-                    if (context.isNotEmpty()) "· $project" else project,
-                    style = ShogunTheme.typography.dataSmall,
+                    separated(project, after = name.folder ?: name.groupTag),
+                    style = MaterialTheme.typography.bodySmall,
                     color = secondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -344,10 +306,14 @@ private fun NameCellView(name: NameCell, onOpenGroupTag: () -> Unit, modifier: M
     }
 }
 
+private fun separated(text: String, after: String?): String = if (after != null) "$SecondLineSeparator$text" else text
+
+private const val SecondLineSeparator = "· "
+
 @Composable
-private fun GitCellView(git: GitCell, compact: Boolean) {
+private fun GitCellView(git: GitCell) {
     val secondary = MaterialTheme.colorScheme.onSurfaceVariant
-    Column(modifier = Modifier.width(if (compact) CompactGitWidth else GitWidth).testTag(GitTag)) {
+    Column {
         when (git.state) {
             GitCellState.LOADING -> CellLine { InlineProgress(size = ProgressSize.Small) }
             GitCellState.UNAVAILABLE -> {
@@ -379,20 +345,25 @@ private fun TooltipText(text: String, tooltip: String?, status: Status?) {
 @Composable
 private fun TimeCellView(time: TimeCell, compact: Boolean) {
     val secondary = MaterialTheme.colorScheme.onSurfaceVariant
-    Column(modifier = Modifier.width(if (compact) CompactTimeWidth else TimeWidth).testTag(TimeTag)) {
+    Column {
         CellLine {
-            Text(
-                time.activity.orEmpty(),
-                style = ShogunTheme.typography.dataSmall,
-                color = secondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            val activity = time.activity
+            val shown = if (compact) time.compactActivity else activity
+            val text: @Composable () -> Unit = {
+                Text(
+                    shown.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = secondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (compact && activity != null) WithTooltip(label = activity, content = text) else text()
         }
         CellLine {
             Text(
                 time.marks.joinToString(" · "),
-                style = ShogunTheme.typography.dataSmall,
+                style = MaterialTheme.typography.bodySmall,
                 color = secondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -400,6 +371,3 @@ private fun TimeCellView(time: TimeCell, compact: Boolean) {
         }
     }
 }
-
-private fun withAgent(label: String, agentName: String?, strings: Strings): String =
-    if (agentName == null) label else strings.launchWithAgent(label, agentName)

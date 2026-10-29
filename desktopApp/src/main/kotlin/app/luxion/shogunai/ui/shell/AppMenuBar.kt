@@ -5,9 +5,10 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyShortcut
 import androidx.compose.ui.window.FrameWindowScope
 import androidx.compose.ui.window.MenuBar
-import app.luxion.shogunai.domain.model.RunnerId
+import app.luxion.shogunai.ui.actions.ActionId
+import app.luxion.shogunai.ui.actions.ActionShortcut
+import app.luxion.shogunai.ui.actions.ActionSpec
 import app.luxion.shogunai.ui.i18n.Strings
-import app.luxion.shogunai.ui.i18n.openIn
 import app.luxion.shogunai.ui.isMacOs
 
 @Composable
@@ -17,10 +18,8 @@ fun FrameWindowScope.AppMenuBar(
     onSave: (() -> Unit)?,
     onNewWorktree: (() -> Unit)?,
     onFind: (() -> Unit)?,
-    onCopySelectedLaunchCommand: (() -> Unit)?,
-    onOpenSelectedInRunner: (() -> Unit)?,
-    runner: RunnerId,
-    onDeleteSelectedWorktree: (() -> Unit)?,
+    worktreeMenu: List<ActionSpec>?,
+    onWorktreeAction: (ActionId) -> Unit,
     onClearSelection: (() -> Unit)?,
     hasWorktreeSelection: Boolean,
     isEditingText: Boolean,
@@ -48,23 +47,17 @@ fun FrameWindowScope.AppMenuBar(
                 Item(strings.menuQuit, shortcut = shortcut(Key.Q), onClick = onQuit)
             }
         }
-        val hasWorktreeActions = listOf(
-            onCopySelectedLaunchCommand,
-            onOpenSelectedInRunner,
-            onDeleteSelectedWorktree,
-            onClearSelection,
-        ).any { it != null }
-        if (hasWorktreeActions) {
+        if (worktreeMenu != null) {
             Menu(strings.menuWorktree) {
                 val actsOnSelection = hasWorktreeSelection && !isEditingText
-                onCopySelectedLaunchCommand?.let {
-                    Item(strings.copyLaunchCommand, shortcut = shortcut(Key.C, shift = true), enabled = actsOnSelection, onClick = it)
-                }
-                onOpenSelectedInRunner?.let {
-                    Item(strings.openIn(runner), shortcut = shortcut(Key.E), enabled = actsOnSelection, onClick = it)
-                }
-                onDeleteSelectedWorktree?.let {
-                    Item(strings.deleteWorktree, shortcut = shortcut(Key.Backspace), enabled = actsOnSelection, onClick = it)
+                worktreeMenu.forEach { spec ->
+                    if (spec.isDestructive) Separator()
+                    Item(
+                        spec.label,
+                        shortcut = spec.shortcut?.let(::keyShortcut),
+                        enabled = actsOnSelection && spec.isAvailable,
+                        onClick = { onWorktreeAction(spec.id) },
+                    )
                 }
                 onClearSelection?.let { Item(strings.clearSelection, enabled = hasWorktreeSelection, onClick = it) }
             }
@@ -85,6 +78,11 @@ fun FrameWindowScope.AppMenuBar(
         }
     }
 }
+
+fun keyShortcut(shortcut: ActionShortcut): KeyShortcut? =
+    menuKeys[shortcut.key]?.let { shortcut(it, shortcut.shift) }
+
+private val menuKeys = mapOf("O" to Key.O, "C" to Key.C, "⌫" to Key.Backspace, "N" to Key.N, "R" to Key.R)
 
 private fun shortcut(key: Key, shift: Boolean = false) =
     KeyShortcut(key, ctrl = !isMacOs, meta = isMacOs, shift = shift)

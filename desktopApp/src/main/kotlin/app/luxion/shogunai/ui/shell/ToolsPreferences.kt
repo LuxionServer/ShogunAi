@@ -48,14 +48,14 @@ class ToolsPreferences(
         detected = withContext(Dispatchers.IO) { detector.detect() }
     }
 
-    fun chooseRunner(runner: RunnerId) {
-        chosenRunner = runner
-        repository.saveRunner(runner)
-    }
-
     fun chooseTerminal(terminal: TerminalId) {
         chosenTerminal = terminal
         repository.saveTerminal(terminal)
+    }
+
+    fun chooseRunner(runner: RunnerId) {
+        chosenRunner = runner
+        repository.saveRunner(runner)
     }
 
     fun chooseEditor(editor: EditorId) {

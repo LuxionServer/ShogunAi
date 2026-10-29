@@ -21,6 +21,7 @@ enum class WorkflowCondition(val label: String) {
     SIMULATOR_PROVIDER("when the repository declares the ios-simulator provider"),
     COMPOSE_PROVIDER("when the repository declares the docker-compose provider"),
     DESKTOP_APP_PROVIDER("when the repository declares the desktop-app provider, on macOS"),
+    FLUTTER_PROVIDER("when the repository declares the flutter provider"),
 }
 
 data class WorkflowRule(
@@ -39,6 +40,8 @@ data class WorkflowContext(
     val composeProvider: Boolean = false,
     val desktopAppProvider: Boolean = false,
     val runner: RunnerId = RunnerId.HERDR,
+    val flutterProvider: Boolean = false,
+    val flutterUsesFvm: Boolean = false,
 ) {
     fun holds(condition: WorkflowCondition): Boolean = when (condition) {
         WorkflowCondition.ALWAYS -> true
@@ -49,6 +52,7 @@ data class WorkflowContext(
         WorkflowCondition.SIMULATOR_PROVIDER -> simulatorProvider
         WorkflowCondition.COMPOSE_PROVIDER -> composeProvider
         WorkflowCondition.DESKTOP_APP_PROVIDER -> desktopAppProvider
+        WorkflowCondition.FLUTTER_PROVIDER -> flutterProvider
     }
 }
 
@@ -64,6 +68,7 @@ object WorkflowRules {
     private const val OPEN_SESSION_RULE = "parallel.open"
 
     private fun openSessionText(runner: RunnerId): String = "Open another session with `shogun open <id> --${runner.flag}`."
+    private const val FLUTTER_RULE_ID = "resources.flutter"
 
     val all: List<WorkflowRule> = listOf(
         WorkflowRule(
@@ -153,6 +158,13 @@ object WorkflowRules {
             inSessionStart = true,
         ),
         WorkflowRule(
+            FLUTTER_RULE_ID,
+            WorkflowTopic.RESOURCES,
+            flutterRuleText(usesFvm = false, android = true, ios = true),
+            WorkflowCondition.FLUTTER_PROVIDER,
+            inSessionStart = true,
+        ),
+        WorkflowRule(
             "resources.compose",
             WorkflowTopic.RESOURCES,
             "Start and build the worktree's Docker Compose services with `shogun compose up` (`--build` to rebuild) and `shogun compose build`, " +
@@ -204,7 +216,32 @@ object WorkflowRules {
         val (applicable, inapplicable) = forRunner(context.runner)
             .filter { topic == null || it.topic == topic }
             .partition { context.holds(it.condition) }
-        return WorkflowSelection(applicable, inapplicable)
+        return WorkflowSelection(applicable.map { it.adaptedTo(context) }, inapplicable)
+    }
+
+    private fun WorkflowRule.adaptedTo(context: WorkflowContext): WorkflowRule =
+        if (id == FLUTTER_RULE_ID) {
+            copy(text = flutterRuleText(context.flutterUsesFvm, context.emulatorProvider, context.simulatorProvider))
+        } else {
+            this
+        }
+
+    private fun flutterRuleText(usesFvm: Boolean, android: Boolean, ios: Boolean): String {
+        val flutter = if (usesFvm) "fvm flutter" else "flutter"
+        val devices = listOfNotNull(
+            "`shogun emulator start` and then `$flutter run -d \"\$ANDROID_SERIAL\"`".takeIf { android },
+            "`shogun simulator start` and then `$flutter run -d \"\$IOS_SIMULATOR_UDID\"`".takeIf { ios },
+        )
+        return listOfNotNull(
+            "Run `$flutter pub get` after `pubspec.yaml` or `pubspec.lock` change" +
+                if (usesFvm) ", and use `fvm flutter` for every Flutter command, since .fvmrc pins the version." else ".",
+            devices.takeIf { it.isNotEmpty() }?.let {
+                "Flutter doesn't pick the worktree's device by itself and other worktrees' devices are online too: start the worktree's device first " +
+                    "and always pass it with -d to `$flutter run`, `$flutter test integration_test` and `$flutter drive`: " +
+                    it.joinToString("; ") + "."
+            },
+            "Never launch emulators with `$flutter emulators --launch`, which starts one outside ShogunAi's pool.",
+        ).joinToString(" ")
     }
 
     fun sessionStartRules(context: WorkflowContext): List<WorkflowRule> =

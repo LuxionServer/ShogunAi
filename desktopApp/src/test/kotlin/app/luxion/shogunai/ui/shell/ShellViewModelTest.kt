@@ -1,5 +1,6 @@
 package app.luxion.shogunai.ui.shell
 
+import app.luxion.shogunai.ui.actions.ActionId
 import app.luxion.shogunai.domain.FakeProjectRepository
 import app.luxion.shogunai.domain.FakeShellPreferenceRepository
 import app.luxion.shogunai.domain.io.ProjectRepository
@@ -315,17 +316,14 @@ class ShellViewModelTest {
     fun `worktree actions are stored and cleared`() {
         val viewModel = viewModel()
         var found = 0
-        var copied = 0
-        var openedInHerdr = 0
-        var deleted = 0
+        val ran = mutableListOf<ActionId>()
         var cleared = 0
 
         viewModel.updateWorktreeActions(
             WorktreeActions(
                 onFind = { found++ },
-                onCopySelectedLaunchCommand = { copied++ },
-                onOpenSelectedInRunner = { openedInHerdr++ },
-                onDeleteSelectedWorktree = { deleted++ },
+                menuBar = { emptyList() },
+                onRun = { ran += it },
                 onClearSelection = { cleared++ },
                 onEscape = {},
                 hasSelection = { true },
@@ -333,15 +331,12 @@ class ShellViewModelTest {
         )
         val actions = viewModel.worktreeActions
         actions?.onFind?.invoke()
-        actions?.onCopySelectedLaunchCommand?.invoke()
-        actions?.onOpenSelectedInRunner?.invoke()
-        actions?.onDeleteSelectedWorktree?.invoke()
+        actions?.onRun?.invoke(ActionId.CopyLaunchCommand)
+        actions?.onRun?.invoke(ActionId.RemoveWorktree)
         actions?.onClearSelection?.invoke()
 
         assertEquals(1, found)
-        assertEquals(1, copied)
-        assertEquals(1, openedInHerdr)
-        assertEquals(1, deleted)
+        assertEquals(listOf(ActionId.CopyLaunchCommand, ActionId.RemoveWorktree), ran)
         assertEquals(1, cleared)
 
         viewModel.updateWorktreeActions(null)

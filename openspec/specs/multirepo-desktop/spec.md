@@ -58,14 +58,14 @@ Each change group's header SHALL show as its title the group's branch without th
 - **THEN** the header shows "Merged"
 
 ### Requirement: Group header actions
-Each change group's header SHALL offer "Open all in Herdr", which opens every worktree of the group as `shogun open <id> --herdr` does, "Open all in Orca", which opens them as `shogun open <id> --orca` does, "Add repository", which creates a worktree on the group's branch in a repository of the multirepo not yet in it, as `shogun new <id> --repos <alias>` does, and "Clean up group", enabled only when the group is a cleanup candidate and confirmed before removing it as `shogun clean --yes` would.
+Each change group's header SHALL offer "Open all in <default runner>" as its button and, in its ⋯ menu, "Open all with…", "Add repository" and "Clean up group". Opening all SHALL work as `shogun open <id> --herdr` or `--orca`, "Add repository" as `shogun new <id> --repos <alias>`, and "Clean up group", enabled only for a cleanup candidate, SHALL be confirmed before removing the group as `shogun clean --yes` would.
 
 #### Scenario: Open all
-- **WHEN** the user activates "Open all in Herdr" on `feature/TASK-1`
+- **WHEN** Herdr is the default runner and the user activates "Open all in Herdr" on `feature/TASK-1`
 - **THEN** `app` and `api` open in Herdr under their repositories' spaces with their own environments and agents
 
 #### Scenario: Open all in Orca
-- **WHEN** the user activates "Open all in Orca" on `feature/TASK-1`
+- **WHEN** the user activates "Orca" in "Open all with…" on `feature/TASK-1`
 - **THEN** `app` and `api` open in Orca under their repositories with their own environments and agents, and the notice says, per repository, whether its agent was started or focused
 
 #### Scenario: Open all in Orca with a failure
@@ -73,12 +73,12 @@ Each change group's header SHALL offer "Open all in Herdr", which opens every wo
 - **THEN** `app` is still opened and the view shows `api`'s error with the terminal and the command as technical details
 
 #### Scenario: Add a repository to a group
-- **WHEN** the user activates "Add repository" on `feature/TASK-1` and picks `docs`
+- **WHEN** the user picks `docs` in "Add repository" of `feature/TASK-1`'s ⋯ menu
 - **THEN** `docs`'s worktree is created on `feature/TASK-1` in `docs`'s project worktrees folder and appears in the group
 
 #### Scenario: Group not ready to clean up
 - **WHEN** `api`'s worktree of the group isn't merged
-- **THEN** "Clean up group" is disabled and its tooltip says `api` isn't merged
+- **THEN** "Clean up group" is disabled and its reason says `api` isn't merged
 
 #### Scenario: Clean up a group
 - **WHEN** the user activates "Clean up group" on a candidate and confirms
@@ -88,8 +88,12 @@ Each change group's header SHALL offer "Open all in Herdr", which opens every wo
 - **WHEN** a worktree of the candidate has Orca terminals
 - **THEN** the dialog marks it as open in Orca and says its terminals and agents will be closed, and Orca not running leaves the dialog as before
 
+#### Scenario: Long branch in the header
+- **WHEN** a group's branch and repositories don't fit the header's second line
+- **THEN** the line is truncated and its tooltip shows the full branch and repositories
+
 ### Requirement: Open the multirepo agent from the app
-The multirepo view SHALL offer "Open multirepo agent in Herdr", which opens the multirepo agent as `shogun open --herdr` does in the multirepo folder, and SHALL tell apart, in English and Spanish, that the agent was opened, started in its already open workspace, or focused.
+The multirepo view SHALL offer opening the multirepo agent in Herdr in its header's "More" (⋯) menu, as "Open multirepo agent in Herdr" when Herdr is the default runner or as "Herdr" under "Open multirepo agent with…" otherwise, which opens the multirepo agent as `shogun open --herdr` does in the multirepo folder, and SHALL tell apart, in English and Spanish, that the agent was opened, started in its already open workspace, or focused.
 
 #### Scenario: Open the multirepo agent
 - **WHEN** the user activates it in `product`'s view
@@ -192,11 +196,11 @@ The multirepo view SHALL offer "New change", a dialog like "New worktree" with t
 - **THEN** the dialog reports `api`'s failure, and `app` and `api`'s kept worktree appear in the group, and only the worktrees that exist are opened when a runner was picked
 
 ### Requirement: Multirepo agent in the multirepo view
-The multirepo view SHALL show the multirepo agent running in the multirepo folder, with its state, next to "Open multirepo agent in Herdr" and "Open multirepo agent in Orca". Only an agent whose working directory is exactly the multirepo folder SHALL count, and the sidebar entry of the multirepo SHALL reflect its activity.
+The multirepo view SHALL show the multirepo agent running in the multirepo folder with the agent indicator, next to "Open multirepo agent in Herdr" and "Open multirepo agent in Orca". Only an agent whose working directory is exactly the multirepo folder SHALL count, and the sidebar entry of the multirepo SHALL reflect its activity.
 
 #### Scenario: Agent working in the folder
 - **WHEN** Claude Code runs in `~/projects/product` and is working
-- **THEN** the multirepo view shows the agent as working and the multirepo's sidebar row shows activity
+- **THEN** the multirepo view shows the agent with an info dot and "Claude · working", and the multirepo's sidebar row shows activity
 
 #### Scenario: Agent in a member repository
 - **WHEN** an agent runs in `~/projects/product/product-app`
@@ -204,7 +208,7 @@ The multirepo view SHALL show the multirepo agent running in the multirepo folde
 
 #### Scenario: Agent managed by Herdr
 - **WHEN** Herdr reports an agent whose directory is the multirepo folder
-- **THEN** its state comes from Herdr as for a worktree's agent
+- **THEN** its state comes from Herdr as for a worktree's agent, and the indicator's tooltip says so
 
 #### Scenario: Agent managed by Orca
 - **WHEN** Orca reports an agent in its workspace whose path is the multirepo folder, a folder workspace included
@@ -277,8 +281,44 @@ The multirepo settings SHALL list each shared variable with its repository, name
 - **WHEN** the declaration's `env` holds a non-string value
 - **THEN** the section names the problem, says to fix the file by hand, and doesn't offer editing
 
+### Requirement: One representation of a multirepo in the sidebar
+Every multirepo SHALL be shown as the same kind of row, approved or not and with or without repositories: a disclosure control in the row's leading slot followed by its name, styled as an item and never as a section header. Its repositories SHALL be indented one level, so their names start to the right of the multirepo's name, and top-level projects SHALL start where the views' labels start, after the leading slot.
+
+#### Scenario: Children nested under the name
+- **WHEN** the multirepo `product` is expanded with `api` and `app`, and `tools` is a top-level project
+- **THEN** the names `api` and `app` start to the right of where `product` starts, and `tools` starts where `product` starts
+
+#### Scenario: Multirepo without repositories
+- **WHEN** the multirepo `product` isn't approved yet and lists no repository
+- **THEN** it is shown as a collapsible row with its disclosure control and its review mark, like an approved one
+
+### Requirement: Workspace repository labelled with its alias in the sidebar
+Inside a multirepo's folder, the project of its workspace repository SHALL be labelled with its alias in the multirepo instead of its project name, so the multirepo's name never appears twice. Other repositories SHALL keep their project names. The label SHALL also decide its alphabetical place inside the folder, and reordering SHALL keep working on it.
+
+#### Scenario: Workspace repository with the folder's name
+- **WHEN** the multirepo `product` lives in `~/projects/product`, a Git repository registered as the project `product` with the alias `workspace`, and also holds `api`
+- **THEN** the folder `product` lists `api` and `workspace`, and no entry inside it reads `product`
+
+#### Scenario: Reorder the workspace repository
+- **WHEN** the folder `product` lists `api` and `workspace` and the user drags `workspace` to the top
+- **THEN** the folder lists `workspace` and `api`, and the order is kept after a restart
+
+### Requirement: Agents in the group headers by change
+In the multirepo view by change, each group's header SHALL show the most urgent agent running in the group's worktrees with the agent indicator, with a "+N" count of the others, and nothing when no agent runs in them.
+
+#### Scenario: Agent in one repository of the change
+- **WHEN** the change `TASK-12` has worktrees in `api` and `app`, and Claude needs the user in `app`'s
+- **THEN** the `TASK-12` header shows a warning dot with "Claude · needs you"
+
+### Requirement: Repository rows in the multirepo settings
+The multirepo settings SHALL list the repositories with the shared list row: the editable alias, the path in the data font, "Rename" only while the alias differs from the saved one, and the remove action at the row's end, labeled and with a tooltip.
+
+#### Scenario: Rename appears when editing
+- **WHEN** the user changes the alias `app` to `web` in its row
+- **THEN** the row offers "Rename", and it offers no "Rename" while the alias is unchanged
+
 ### Requirement: Open the multirepo agent in Orca from the app
-The multirepo view SHALL offer "Open multirepo agent in Orca", which opens the multirepo agent as `shogun open --orca` does in the multirepo folder, and SHALL tell apart, in English and Spanish, that the agent was started or focused.
+The multirepo view SHALL offer opening the multirepo agent in Orca in its header's "More" (⋯) menu, only when Orca is installed, as "Open multirepo agent in Orca" when Orca is the default runner or as "Orca" under "Open multirepo agent with…" otherwise, which opens the multirepo agent as `shogun open --orca` does in the multirepo folder, and SHALL tell apart, in English and Spanish, that the agent was started or focused.
 
 #### Scenario: Open the multirepo agent in Orca
 - **WHEN** the user activates it in `product`'s view and Orca has a workspace in the multirepo folder without a live agent
@@ -295,3 +335,18 @@ The multirepo view SHALL offer "Open multirepo agent in Orca", which opens the m
 #### Scenario: Agent doesn't start
 - **WHEN** Orca doesn't report the multirepo agent in time
 - **THEN** the view shows the error naming the terminal and the command
+
+#### Scenario: Orca not installed
+- **WHEN** Orca isn't installed
+- **THEN** the view's ⋯ menu doesn't offer opening the multirepo agent in Orca
+
+### Requirement: Repository alias column fits its aliases
+The multirepo view's repository alias column SHALL be as wide as its longest alias, between a minimum and a maximum width, so the usual aliases aren't truncated. An alias longer than the maximum SHALL be truncated with its full text in a tooltip.
+
+#### Scenario: Usual alias
+- **WHEN** the multirepo's repositories are `workspace`, `app` and `api`
+- **THEN** every row shows `workspace` whole in the alias column
+
+#### Scenario: Very long alias
+- **WHEN** an alias doesn't fit the maximum width
+- **THEN** it is truncated and its tooltip shows it whole
