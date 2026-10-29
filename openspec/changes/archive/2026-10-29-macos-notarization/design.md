@@ -55,7 +55,7 @@ The app runs `osascript` to drive Terminal and System Events (`MacTerminalLaunch
 
 The team ID isn't needed: the API key already belongs to the team and the identity comes from the certificate. The keychain password is generated per job. The local `.p12` and `.p8` are deleted once stored. `docs/process/release.md` documents the secrets and how to renew the certificate (every five years) and rotate the key.
 
-**Validation.** Before merging, the reusable workflow runs once on this branch through a temporary `push` trigger on `feature/macos-notarization` (dispatch only works for workflows already on the default branch), removed before the pull request. Its artifacts are downloaded and checked on a Mac with `spctl`, `stapler validate` and a first launch from a quarantined copy.
+**Validation.** Dispatch only works for workflows already on the default branch, so before merging the reusable workflow ran once from a temporary branch, `ci/macos-signing-check`, holding this change plus a `push` trigger for that branch, deleted afterwards; the change's own branch never carried the trigger. Its artifacts were downloaded and checked on a Mac with `spctl`, `stapler validate` and a first launch from a quarantined copy.
 
 ## Risks / Trade-offs
 
