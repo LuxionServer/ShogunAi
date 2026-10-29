@@ -6,6 +6,7 @@ import app.luxion.shogunai.domain.model.TerminalLaunch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -25,6 +26,9 @@ class TmuxIntegrationTest {
         ProcessBuilder("tmux", "-V").redirectErrorStream(true).start().waitFor() == 0
     }.getOrDefault(false)
 
+    private fun linesOf(file: Path): List<String> =
+        if (Files.exists(file)) Files.readAllLines(file) else emptyList()
+
     @Test
     fun `opens a window in a real tmux server with the folder and the environment`() = runBlocking {
         if (!tmuxAvailable()) return@runBlocking
@@ -41,8 +45,9 @@ class TmuxIntegrationTest {
 
             TmuxTerminalLauncher(isolatedTmux).open(launch).getOrThrow()
 
-            repeat(50) { if (!Files.exists(output) || Files.size(output) == 0L) delay(100) }
-            assertEquals(listOf(folder.toString(), "it's \$(id)"), Files.readAllLines(output))
+            val expected = listOf(folder.toString(), "it's \$(id)")
+            repeat(100) { if (linesOf(output) != expected) delay(100) }
+            assertEquals(expected, linesOf(output))
         } finally {
             isolatedTmux.execute(listOf("tmux", "kill-server"))
             folder.toFile().deleteRecursively()
